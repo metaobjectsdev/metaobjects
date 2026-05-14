@@ -1,0 +1,17 @@
+{
+  "metadata": {
+    "package": "acme",
+    "children": [
+      {
+        "object": {
+          "name": "Premium",
+          "subType": "entity",
+          "extends": "Product",
+          "children": [
+            { "field": { "name": "tier", "subType": "string" } }
+          ]
+        }
+      }
+    ]
+  }
+}

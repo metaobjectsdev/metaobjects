@@ -1,0 +1,29 @@
+{
+  "metadata": {
+    "package": "acme",
+    "children": [
+      {
+        "object": {
+          "name": "BaseEntity",
+          "subType": "entity",
+          "isAbstract": true,
+          "children": [
+            { "field": { "name": "id", "subType": "long" } },
+            { "field": { "name": "createdAt", "subType": "string" } },
+            { "identity": { "subType": "primary", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object": {
+          "name": "Subscriber",
+          "subType": "entity",
+          "extends": "BaseEntity",
+          "children": [
+            { "field": { "name": "email", "subType": "string" } }
+          ]
+        }
+      }
+    ]
+  }
+}

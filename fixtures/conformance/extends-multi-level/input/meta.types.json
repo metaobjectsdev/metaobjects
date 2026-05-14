@@ -1,0 +1,37 @@
+{
+  "metadata": {
+    "package": "acme",
+    "children": [
+      {
+        "object": {
+          "name": "Base",
+          "subType": "entity",
+          "children": [
+            { "field": { "name": "id", "subType": "long" } },
+            { "identity": { "subType": "primary", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object": {
+          "name": "Mid",
+          "subType": "entity",
+          "extends": "Base",
+          "children": [
+            { "field": { "name": "midField", "subType": "string" } }
+          ]
+        }
+      },
+      {
+        "object": {
+          "name": "Leaf",
+          "subType": "entity",
+          "extends": "Mid",
+          "children": [
+            { "field": { "name": "leafField", "subType": "string" } }
+          ]
+        }
+      }
+    ]
+  }
+}
