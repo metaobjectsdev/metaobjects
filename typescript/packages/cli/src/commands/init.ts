@@ -17,7 +17,7 @@ const META_COMMON_JSON = JSON.stringify(
   2,
 ) + "\n";
 
-const METAFORGE_GITIGNORE_BODY = `.gen-state/
+const METAOBJECTS_GITIGNORE_BODY = `.gen-state/
 `;
 
 const FORGE_CONFIG_BODY = `import { defineConfig } from "@metaobjects/cli";
@@ -70,10 +70,10 @@ export interface InitResult {
   warnings: string[];
 }
 
-async function writeAgentDocs(metaforgeDir: string, result: InitResult): Promise<void> {
+async function writeAgentDocs(agentDir: string, result: InitResult): Promise<void> {
   const docsBody = withContentHash(AGENT_DOCS_BODY);
   for (const filename of AGENT_DOC_FILES) {
-    const path = join(metaforgeDir, filename);
+    const path = join(agentDir, filename);
     const exists = await fileExists(path);
 
     if (!exists) {
@@ -98,16 +98,16 @@ async function writeAgentDocs(metaforgeDir: string, result: InitResult): Promise
 
 export async function init(opts: InitOptions): Promise<InitResult> {
   const result: InitResult = { created: [], preserved: [], warnings: [] };
-  const metaforgeDir = join(opts.cwd, DEFAULT_METAOBJECTS_DIR);
+  const agentDir = join(opts.cwd, DEFAULT_METAOBJECTS_DIR);
   const metaobjectsDir = join(opts.cwd, DEFAULT_METADATA_DIR);
 
-  const metaforgeExists = await dirExists(metaforgeDir);
+  const agentDirExists = await dirExists(agentDir);
   const metaobjectsExists = await dirExists(metaobjectsDir);
-  const exists = metaforgeExists || metaobjectsExists;
+  const exists = agentDirExists || metaobjectsExists;
 
   if (opts.refreshDocs && exists && !opts.force) {
     // Refresh-only path: scaffold agent docs, leave everything else alone.
-    await writeAgentDocs(metaforgeDir, result);
+    await writeAgentDocs(agentDir, result);
     return result;
   }
 
@@ -151,14 +151,14 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   }
 
   // .metaobjects/config.json
-  if (metaforgeExists) {
-    const configPath = join(metaforgeDir, "config.json");
+  if (agentDirExists) {
+    const configPath = join(agentDir, "config.json");
     let priorContent: string | undefined;
     try {
       priorContent = await readFile(configPath, "utf8");
       const parsed = ConfigSchema.parse(JSON.parse(priorContent));
       const merged = ConfigSchema.parse({ ...DEFAULT_CONFIG, ...parsed });
-      await saveConfig(metaforgeDir, merged);
+      await saveConfig(agentDir, merged);
       result.preserved.push(".metaobjects/config.json");
     } catch {
       if (priorContent !== undefined) {
@@ -167,7 +167,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
         result.warnings.push("invalid .metaobjects/config.json replaced with defaults");
       }
       await writeFile(
-        join(metaforgeDir, "config.json"),
+        join(agentDir, "config.json"),
         JSON.stringify(DEFAULT_CONFIG, null, 2) + "\n",
         "utf8",
       );
@@ -177,7 +177,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
     }
   } else {
     await writeFile(
-      join(metaforgeDir, "config.json"),
+      join(agentDir, "config.json"),
       JSON.stringify(DEFAULT_CONFIG, null, 2) + "\n",
       "utf8",
     );
@@ -185,11 +185,11 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   }
 
   // .metaobjects/.gitignore
-  await writeFile(join(metaforgeDir, ".gitignore"), METAFORGE_GITIGNORE_BODY, "utf8");
+  await writeFile(join(agentDir, ".gitignore"), METAOBJECTS_GITIGNORE_BODY, "utf8");
   result.created.push(".metaobjects/.gitignore");
 
   // .metaobjects/package.meta.json — scaffold v0.3 package manifest if absent
-  const manifestPath = join(metaforgeDir, PACKAGE_MANIFEST_FILE);
+  const manifestPath = join(agentDir, PACKAGE_MANIFEST_FILE);
   if (!(await fileExists(manifestPath))) {
     const defaultPackageName = basename(opts.cwd);
     const manifestBody = {
@@ -203,7 +203,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
     result.preserved.push(`.metaobjects/${PACKAGE_MANIFEST_FILE}`);
   }
 
-  await writeAgentDocs(metaforgeDir, result);
+  await writeAgentDocs(agentDir, result);
 
   // Scaffold metaobjects.config.ts at the project root. Never overwrite if it exists.
   const forgeConfigPath = join(opts.cwd, "metaobjects.config.ts");
