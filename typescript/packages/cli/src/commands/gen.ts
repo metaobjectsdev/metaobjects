@@ -38,7 +38,7 @@ export async function genCommand(args: string[]): Promise<number> {
   } catch (err) {
     const msg = (err as Error).message;
     if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {
-      log.error(`no metaobjects/ found in ${projectRoot}; run 'forge init' to scaffold`);
+      log.error(`no metaobjects/ found in ${projectRoot}; run 'meta init' to scaffold`);
     } else {
       log.error(`failed to load metadata: ${msg}`);
     }

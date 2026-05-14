@@ -4,10 +4,10 @@ export type { ForgeConfig } from "@metaobjects/codegen-ts";
 
 const VERSION = "0.2.0";
 
-const HELP_TEXT = `forge — Meta Forge CLI (v${VERSION})
+const HELP_TEXT = `meta — MetaObjects CLI (v${VERSION})
 
 USAGE:
-  forge <command> [flags]
+  meta <command> [flags]
 
 COMMANDS:
   init                  Scaffold metaobjects/ + .metaobjects/ in the current repo
@@ -34,7 +34,7 @@ MIGRATE FLAGS:
   --dry-run             Print SQL to stdout, don't write
 
 Other commands (ingest, mcp, serve, install-hooks, audit, capture, promote)
-ship in later sub-projects. See https://metaforge.dev for docs.
+ship in later sub-projects. See https://metaobjects.com for docs.
 `;
 
 export async function run(argv: string[]): Promise<number> {

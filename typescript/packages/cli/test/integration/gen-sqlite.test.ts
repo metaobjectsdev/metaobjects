@@ -41,7 +41,7 @@ async function runIn<T>(cwd: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-describe("forge gen — sqlite end-to-end", () => {
+describe("meta gen — sqlite end-to-end", () => {
   test("writes Drizzle schema for User/Post/Tag", async () => {
     const root = setupRepo();
     try {

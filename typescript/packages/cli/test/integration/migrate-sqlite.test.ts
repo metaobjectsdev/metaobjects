@@ -44,7 +44,7 @@ function findMigrationDir(migrationsRoot: string, slug: string): string {
   return join(migrationsRoot, match);
 }
 
-describe("forge migrate — sqlite end-to-end round-trip", () => {
+describe("meta migrate — sqlite end-to-end round-trip", () => {
   test("empty DB → migrate writes CREATE TABLE; apply; re-migrate yields no changes", async () => {
     const { repo, dbUrl } = setupRepo();
     try {

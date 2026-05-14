@@ -7,13 +7,13 @@ import { run } from "../../src/index.js";
 const FIXTURES = resolve("packages/cli/test/fixtures");
 const PG_URL = process.env.MIGRATE_TS_PG_URL;
 
-describe("forge migrate — postgres (env-gated)", () => {
+describe("meta migrate — postgres (env-gated)", () => {
   if (PG_URL === undefined || PG_URL.length === 0) {
     test.skip("skipped — MIGRATE_TS_PG_URL not set", () => {});
     return;
   }
 
-  test("forge migrate against real Postgres writes CREATE TABLE migration", async () => {
+  test("meta migrate against real Postgres writes CREATE TABLE migration", async () => {
     const root = mkdtempSync(join(tmpdir(), "forge-migrate-pg-"));
     cpSync(join(FIXTURES, "downstream-consumer-meta"), root, { recursive: true });
     const orig = process.cwd();

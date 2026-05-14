@@ -1,4 +1,4 @@
-// Output formatters for forge gen and forge migrate.
+// Output formatters for meta gen and meta migrate.
 //
 // TTY-gated glyphs: unicode (✓ ↺ ✗ = ⚠) when stdout is a TTY, plain words
 // (NEW MERGED CONFLICT UNCHANGED REFUSED) otherwise. Per SP5 §5.1.
@@ -45,7 +45,7 @@ const GEN_WORDS: Record<GenFileStatus, string> = {
 
 export function formatGenResult(result: GenResultShape, opts: FormatOptions): string {
   const symbols = opts.isTTY ? GEN_GLYPHS : GEN_WORDS;
-  const header = `forge gen${result.dryRun ? " --dry-run" : ""} — ${result.dialect}, ${result.outDir}`;
+  const header = `meta gen${result.dryRun ? " --dry-run" : ""} — ${result.dialect}, ${result.outDir}`;
 
   if (result.files.length === 0) {
     return `${header}\n\n  No entities to generate.\n`;
@@ -113,7 +113,7 @@ export interface MigrateResultShape {
 }
 
 export function formatMigrateResult(result: MigrateResultShape, _opts: FormatOptions): string {
-  const header = `forge migrate${result.dryRun ? " --dry-run" : ""} — ${result.dialect}, ${result.displayUrl}`;
+  const header = `meta migrate${result.dryRun ? " --dry-run" : ""} — ${result.dialect}, ${result.displayUrl}`;
   const lines: string[] = [header, ""];
 
   const changeEntries = Object.entries(result.changeCounts).filter(([, v]) => v > 0);

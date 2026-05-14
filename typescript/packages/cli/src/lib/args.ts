@@ -32,7 +32,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
 }
 
 // ---------------------------------------------------------------------------
-// gen flags — minimal: forge.config.ts holds outDir/dialect/dbImport/extStyle
+// gen flags — minimal: metaobjects.config.ts holds outDir/dialect/dbImport/extStyle
 // ---------------------------------------------------------------------------
 
 export interface GenFlags {

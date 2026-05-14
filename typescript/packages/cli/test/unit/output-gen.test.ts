@@ -52,7 +52,7 @@ describe("formatGenResult", () => {
     expect(out).toMatch(/1 refused/);
   });
 
-  test("dry-run header reads 'forge gen --dry-run'", () => {
+  test("dry-run header reads 'meta gen --dry-run'", () => {
     const out = formatGenResult({ ...sample, dryRun: true }, { isTTY: false });
     expect(out).toContain("--dry-run");
   });

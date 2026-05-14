@@ -9,7 +9,7 @@ const FIXTURES = resolve("packages/cli/test/fixtures");
 // are resolvable by jiti when it loads metaobjects.config.ts.
 const WORKSPACE_TMP = resolve("packages/cli/test/fixtures/__tmp__");
 
-describe("forge gen --dry-run", () => {
+describe("meta gen --dry-run", () => {
   test("returns 0 (v0.1 limitation: files still written; output marks --dry-run)", async () => {
     mkdirSync(WORKSPACE_TMP, { recursive: true });
     const root = mkdtempSync(join(WORKSPACE_TMP, "forge-gen-dryrun-"));

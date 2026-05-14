@@ -6,7 +6,7 @@ import { run } from "../../src/index.js";
 
 const FIXTURES = resolve("packages/cli/test/fixtures");
 
-describe("forge migrate --dry-run", () => {
+describe("meta migrate --dry-run", () => {
   test("returns 0, prints SQL to stdout, writes no migration directory", async () => {
     const root = mkdtempSync(join(tmpdir(), "forge-migrate-dryrun-"));
     cpSync(join(FIXTURES, "downstream-consumer-meta"), root, { recursive: true });

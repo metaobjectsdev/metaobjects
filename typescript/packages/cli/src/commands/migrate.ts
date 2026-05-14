@@ -133,7 +133,7 @@ export async function migrateCommand(args: string[]): Promise<number> {
   } catch (err) {
     const msg = (err as Error).message;
     if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {
-      log.error(`no metaobjects/ found in ${metaRoot}; run 'forge init' to scaffold`);
+      log.error(`no metaobjects/ found in ${metaRoot}; run 'meta init' to scaffold`);
     } else {
       log.error(`failed to load metadata: ${msg}`);
     }
@@ -202,8 +202,8 @@ export async function migrateCommand(args: string[]): Promise<number> {
 
     changeCounts = summarizeChanges(diffResult.changes);
 
-    // Load forge config to pick up columnNamingStrategy for view DDL emit.
-    // If forge.config.ts is absent (e.g. in projects that don't use codegen),
+    // Load metaobjects config to pick up columnNamingStrategy for view DDL emit.
+    // If metaobjects.config.ts is absent (e.g. in projects that don't use codegen),
     // fall back to snake_case so migrate still works without it.
     let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
     try {
@@ -212,7 +212,7 @@ export async function migrateCommand(args: string[]): Promise<number> {
         columnNamingStrategy = forgeConfig.columnNamingStrategy;
       }
     } catch {
-      // forge.config.ts absent or invalid — use default snake_case
+      // metaobjects.config.ts absent or invalid — use default snake_case
     }
 
     // Compute view migrations (projections) independently of table changes.

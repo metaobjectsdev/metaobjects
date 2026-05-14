@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 
 export const AGENT_DOCS_BODY = `# Meta Forge — agent reference
 
-This file is scaffolded by \`forge init\` and lives alongside your \`metaobjects/\` records. It teaches AI coding assistants (Claude Code, Codex, etc.) how to read and modify Meta Forge metadata correctly. Refresh after CLI updates with \`forge init --refresh-docs\`.
+This file is scaffolded by \`meta init\` and lives alongside your \`metaobjects/\` records. It teaches AI coding assistants (Claude Code, Codex, etc.) how to read and modify MetaObjects metadata correctly. Refresh after CLI updates with \`meta init --refresh-docs\`.
 
 ## Five working principles (read first)
 
@@ -19,11 +19,11 @@ The metaobjects raison d'être is that anything the metadata fully describes —
 
 The first version of downstream-consumer's database layer had hand-written Drizzle schemas, Zod schemas, and CRUD endpoints. Every one of those is now generated. The hand-written code that remains is real business logic (Stripe webhooks, Loops integration, custom auth flows) — things the generator genuinely cannot derive.
 
-When you're about to add a new field or entity: edit \`metaobjects/*.json\` and re-run \`forge gen\`. Don't reach for the generated file directly.
+When you're about to add a new field or entity: edit \`metaobjects/*.json\` and re-run \`meta gen\`. Don't reach for the generated file directly.
 
 ### 2. Use the generated constants. Never use magic strings that touch metadata.
 
-After \`forge gen\`, each entity file exports a rich metadata-constants block. Each non-dollar-prefixed key is a per-field object that carries everything a consumer might need (name, label, view, html input type, placeholder, RHF validation rules):
+After \`meta gen\`, each entity file exports a rich metadata-constants block. Each non-dollar-prefixed key is a per-field object that carries everything a consumer might need (name, label, view, html input type, placeholder, RHF validation rules):
 
 \`\`\`ts
 export const Subscriber = {
@@ -98,7 +98,7 @@ The same Zod schema (\`SubscriberInsertSchema\`) validates on the server (in Fas
 
 ### 4. Routes: use the generated \`<Entity>.routes.ts\` for stock CRUD. Hand-write only what's custom.
 
-\`forge gen\` emits a per-entity routes file that mounts the 5 standard verbs via \`mountCrudRoutes\` from \`@metaobjects/runtime-ts/drizzle-fastify\`. The runtime is plain Drizzle + Zod — no extra ORM.
+\`meta gen\` emits a per-entity routes file that mounts the 5 standard verbs via \`mountCrudRoutes\` from \`@metaobjects/runtime-ts/drizzle-fastify\`. The runtime is plain Drizzle + Zod — no extra ORM.
 
 For custom flows (Stripe webhooks, side effects, auth-gated actions), hand-write the route — but import the entity constants + generated Zod schema. The boilerplate (CRUD, validation, 404 mapping, pagination) lives in the helper; your hand-written code is just the business logic.
 
@@ -330,7 +330,7 @@ When a list needs computed columns (counts, sums, joined fields), create a **pro
 }
 \`\`\`
 
-\`forge gen\` produces a read-only \`useProgramSummaries(filter)\` hook, a SQL view DDL in the migration, and a read-only GET-only route.
+\`meta gen\` produces a read-only \`useProgramSummaries(filter)\` hook, a SQL view DDL in the migration, and a read-only GET-only route.
 
 **Aggregate vocabulary**: \`count\`, \`sum\`, \`avg\`, \`min\`, \`max\`.
 
@@ -388,9 +388,9 @@ User types \`15.99\` → component emits \`1599\` to \`onChange\` on blur. Wire 
 
 Currency code lives on the field; locale lives on the view.
 
-## Generated artifacts — what \`forge gen\` produces
+## Generated artifacts — what \`meta gen\` produces
 
-After \`forge gen\`, you get one barrel + per-entity files in your configured \`outDir\` (default \`packages/database/src/generated/\`):
+After \`meta gen\`, you get one barrel + per-entity files in your configured \`outDir\` (default \`packages/database/src/generated/\`):
 
 | File | What's in it | When to touch by hand |
 |---|---|---|
@@ -551,10 +551,10 @@ metaobjects.config.ts         generator wiring (committed)
 
 | Situation | Action |
 |---|---|
-| Adding a field to an existing entity | Edit the \`object\`'s \`children\`; append a \`field\` node, then \`forge gen\` |
-| New entity in an existing domain | Append an \`object\` to the appropriate package file, then \`forge gen\` |
+| Adding a field to an existing entity | Edit the \`object\`'s \`children\`; append a \`field\` node, then \`meta gen\` |
+| New entity in an existing domain | Append an \`object\` to the appropriate package file, then \`meta gen\` |
 | Renaming an entity or field | Edit the metadata, regenerate; TS will surface every stale consumer of the constants |
-| New REST resource | Already done — \`forge gen\` produced \`<Entity>.routes.ts\`. Just \`fastify.register(...)\` it |
+| New REST resource | Already done — \`meta gen\` produced \`<Entity>.routes.ts\`. Just \`fastify.register(...)\` it |
 | Custom business logic (Stripe webhook, side-effects, auth flows) | Hand-write a route/handler that imports the generated constants + \`om()\` |
 | Architectural choice affecting how entities are built | Add a \`decision\` with \`@forgeRationale\` + \`@forgeAlternatives\` |
 | Coding convention | Add a \`convention\` with \`@forgePatternDescription\` + \`@forgeAppliesTo\` |
@@ -562,8 +562,8 @@ metaobjects.config.ts         generator wiring (committed)
 
 ## Deeper references
 
-- \`packages/metaobjects-metadata/METAMODEL.md\` — full metamodel reference
-- \`packages/sdk/FORGE-METADATA.md\` — full \`@forge*\` inventory + Meta Forge layout details
+- \`packages/metadata/METAMODEL.md\` — full metamodel reference
+- \`packages/sdk/FORGE-METADATA.md\` — full \`@forge*\` inventory + MetaObjects layout details
 - \`docs/strategy/2026-05-12-v0.3-ai-first-metadata-loading.md\` — current strategy (v0.3 vocab, packages, AI-first loading)
 `;
 

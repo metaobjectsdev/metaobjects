@@ -41,7 +41,7 @@ async function setupMigratedRepo(): Promise<{ repo: string; dbUrl: string }> {
   return { repo, dbUrl };
 }
 
-describe("forge migrate — blocked changes without --allow", () => {
+describe("meta migrate — blocked changes without --allow", () => {
   test("drop-column without --allow drop-column → exit 1, no migration written", async () => {
     const { repo, dbUrl } = await setupMigratedRepo();
     try {

@@ -55,7 +55,7 @@ function renameField(metaPath: string, objectName: string, from: string, to: str
   writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 }
 
-describe("forge migrate — --on-ambiguous", () => {
+describe("meta migrate — --on-ambiguous", () => {
   test("default (abort): rename-shaped change → exit 1, no migration directory written", async () => {
     const { repo, dbUrl } = await setupMigratedRepo();
     try {
