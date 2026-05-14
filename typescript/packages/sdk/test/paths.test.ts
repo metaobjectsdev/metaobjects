@@ -6,7 +6,7 @@ import { recordPath, resolveMetaRoot } from "../src/paths.js";
 
 let tmp: string;
 beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), "metaforge-paths-"));
+  tmp = mkdtempSync(join(tmpdir(), "metaobjects-paths-"));
 });
 afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });

@@ -239,7 +239,7 @@ export function renderEntityConstants(entity: MetaModel, apiPrefix = ""): Code {
  * name, label, view, optional htmlType/placeholder/helpText, and the
  * RHF-shaped validation rules derived from the field's validator children.
  *
- * Typical usage with the metaforge React form helper:
+ * Typical usage with the metaobjects React form helper:
  *
  *   import { useEntityForm } from '@metaobjects/runtime-ts-client/react';
  *   const form = useEntityForm(${entityName}, ${entityName}InsertSchema);

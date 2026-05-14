@@ -51,7 +51,7 @@ describe("run() — top-level dispatcher", () => {
     expect(await run(["bogus"])).toBe(2);
   });
   test("dispatches init", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "metaforge-run-"));
+    const tmp = mkdtempSync(join(tmpdir(), "metaobjects-run-"));
     const orig = process.cwd();
     process.chdir(tmp);
     try {
@@ -63,7 +63,7 @@ describe("run() — top-level dispatcher", () => {
   });
 
   test("dispatches gen (returns 2 without metaobjects/ dir)", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "metaforge-run-gen-"));
+    const tmp = mkdtempSync(join(tmpdir(), "metaobjects-run-gen-"));
     const orig = process.cwd();
     process.chdir(tmp);
     try {
@@ -75,7 +75,7 @@ describe("run() — top-level dispatcher", () => {
   });
 
   test("dispatches migrate (returns 2 outside .meta/ context with no config)", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "metaforge-run-migrate-"));
+    const tmp = mkdtempSync(join(tmpdir(), "metaobjects-run-migrate-"));
     const orig = process.cwd();
     process.chdir(tmp);
     try {

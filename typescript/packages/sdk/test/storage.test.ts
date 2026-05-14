@@ -8,7 +8,7 @@ import { MetaForgeRecordNotFoundError } from "../src/storage/errors.js";
 
 let metaRoot: string;
 beforeEach(() => {
-  metaRoot = mkdtempSync(join(tmpdir(), "metaforge-storage-"));
+  metaRoot = mkdtempSync(join(tmpdir(), "metaobjects-storage-"));
   mkdirSync(join(metaRoot, "memory"), { recursive: true });
 });
 afterEach(() => {

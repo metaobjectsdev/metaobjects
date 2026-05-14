@@ -6,7 +6,7 @@ import { ConfigSchema, DEFAULT_CONFIG, loadConfig, saveConfig } from "../src/con
 
 let metaRoot: string;
 beforeEach(() => {
-  metaRoot = mkdtempSync(join(tmpdir(), "metaforge-config-"));
+  metaRoot = mkdtempSync(join(tmpdir(), "metaobjects-config-"));
   mkdirSync(metaRoot, { recursive: true });
 });
 afterEach(() => {
