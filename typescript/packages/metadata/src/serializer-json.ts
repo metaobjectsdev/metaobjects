@@ -193,30 +193,23 @@ function serializeAttrValue(value: AttrValue): unknown {
 // ---------------------------------------------------------------------------
 
 export function canonicalSerialize(model: MetaModel): string {
-  // Step 1: serialize with inlineAttrs + indent=2 (the canonical form).
   const raw = serializeJson(model, { inlineAttrs: true, indent: 2 });
 
-  // Step 2: parse → recursively sort @-prefixed keys alphabetically within
-  // each object → re-stringify. Non-@ keys keep their original (spec-defined)
-  // order from serializeJson.
   const parsed = JSON.parse(raw) as unknown;
-  const sorted = sortAttrKeysInPlace(parsed);
+  const sorted = sortAttrKeys(parsed);
   const out = JSON.stringify(sorted, null, 2);
 
-  // Step 3: trailing newline.
   return out + "\n";
 }
 
-function sortAttrKeysInPlace(value: unknown): unknown {
+function sortAttrKeys(value: unknown): unknown {
   if (Array.isArray(value)) {
-    return value.map(sortAttrKeysInPlace);
+    return value.map(sortAttrKeys);
   }
   if (value !== null && typeof value === "object") {
     const obj = value as Record<string, unknown>;
     const keys = Object.keys(obj);
 
-    // Split keys into structural (non-@) and attr (@-prefixed).
-    // Preserve original order for structural keys; sort attr keys alphabetically.
     const structuralKeys: string[] = [];
     const attrKeys: string[] = [];
     for (const k of keys) {
@@ -226,20 +219,16 @@ function sortAttrKeysInPlace(value: unknown): unknown {
     attrKeys.sort();
 
     const result: Record<string, unknown> = {};
-    // Structural keys go first in their original order — except `children`,
-    // which the spec says comes last. Find children if present and defer it.
     const hasChildren = structuralKeys.includes(RESERVED_KEY_CHILDREN);
     for (const k of structuralKeys) {
       if (k === RESERVED_KEY_CHILDREN) continue;
-      result[k] = sortAttrKeysInPlace(obj[k]);
+      result[k] = sortAttrKeys(obj[k]);
     }
-    // Then attrs alphabetically.
     for (const k of attrKeys) {
-      result[k] = sortAttrKeysInPlace(obj[k]);
+      result[k] = sortAttrKeys(obj[k]);
     }
-    // Then children last.
     if (hasChildren) {
-      result[RESERVED_KEY_CHILDREN] = sortAttrKeysInPlace(obj[RESERVED_KEY_CHILDREN]);
+      result[RESERVED_KEY_CHILDREN] = sortAttrKeys(obj[RESERVED_KEY_CHILDREN]);
     }
     return result;
   }

@@ -813,8 +813,6 @@ describe("canonicalSerialize — deterministic output for cross-language conform
     const loader = new Loader();
     const { root } = loader.loadJson('{"metadata":{"package":"acme"}}');
     const output = canonicalSerialize(root);
-    // The "metadata" wrapper key is indented 2 spaces; "package" is at 4 spaces
-    // (nested one level deeper). Confirm 2-space-per-level indentation is in use.
     expect(output).toContain('\n  "metadata"');
     expect(output).toContain('\n    "package": "acme"');
   });
