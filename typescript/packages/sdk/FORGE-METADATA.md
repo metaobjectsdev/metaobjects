@@ -33,11 +33,11 @@ Meta Forge stores provenance, confidence, and other knowledge-graph concerns as 
 | `@forgeWhatWasTried` | string | failure | What was attempted |
 | `@forgeWhyItFailed` | string | failure | Reason for failure |
 
-Constants for these names live in `@metaforge/sdk` as `FORGE_ATTR_CONFIDENCE`, `FORGE_ATTR_SOURCE`, etc. Always import the constant rather than hard-coding the string.
+Constants for these names live in `@metaobjects/sdk` as `FORGE_ATTR_CONFIDENCE`, `FORGE_ATTR_SOURCE`, etc. Always import the constant rather than hard-coding the string.
 
 ## 2. New top-level metadata types
 
-`@metaforge/sdk`'s `registerForgeTypes(registry)` adds these to a `TypeRegistry`:
+`@metaobjects/sdk`'s `registerForgeTypes(registry)` adds these to a `TypeRegistry`:
 
 | Type | Subtypes | Purpose |
 |---|---|---|
@@ -120,4 +120,4 @@ A `.meta/memory/*.json` file can mix `object` children (entities, drive codegen 
 
 - [`packages/metaobjects-metadata/METAMODEL.md`](../metaobjects-metadata/METAMODEL.md) — the underlying metaobjects rules
 - [SP5 design](../../docs/specs/2026-05-12-v0.2-sp5-cli-extensions-design.md) — full CLI spec
-- [`@metaforge/sdk`'s `forge-types.ts`](src/forge-types.ts) — constants source of truth
+- [`@metaobjects/sdk`'s `forge-types.ts`](src/forge-types.ts) — constants source of truth

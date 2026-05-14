@@ -1,13 +1,13 @@
-# @metaforge/cli
+# @metaobjects/cli
 
-The `forge` CLI for Meta Forge — scaffolds `.meta/`, runs codegen and migrations against MetaObjects metadata.
+The MetaObjects CLI — scaffolds `.meta/`, runs codegen and migrations against MetaObjects metadata.
 
 **Status:** v0.2.0 (pre-alpha).
 
 ## Install
 
 ```bash
-bun add -D @metaforge/cli
+bun add -D @metaobjects/cli
 ```
 
 Optional driver peers (install the one matching your DB):
@@ -18,21 +18,21 @@ Optional driver peers (install the one matching your DB):
 
 ```bash
 # 1. Scaffold .meta/ in your repo
-forge init
+meta init
 
 # 2. Author entity metadata
 $EDITOR .meta/memory/myapp.json    # see .meta/AGENTS.md for format
 
 # 3. Generate TS code
-forge gen --out-dir ./src/db --dialect sqlite --db-import '~/server/db'
+meta gen --out-dir ./src/db --dialect sqlite --db-import '~/server/db'
 
 # 4. Diff metadata against your DB and emit migration SQL
-forge migrate --db file:./local.db --slug initial
+meta migrate --db file:./local.db --slug initial
 ```
 
 ## Commands
 
-### `forge init`
+### `meta init`
 
 Scaffolds `.meta/` with `memory/`, `_pending/`, `config.json`, `README.md`, `.gitignore`, `AGENTS.md`, `CLAUDE.md`, `.gen-state/`.
 
@@ -42,7 +42,7 @@ Flags:
 - `--print-only` — show what would be created without writing
 - `--refresh-docs` — refresh AGENTS.md + CLAUDE.md after a CLI upgrade
 
-### `forge gen [<entity>...]`
+### `meta gen [<entity>...]`
 
 Generates TS code (Drizzle schema, Zod validators, query helpers) from `.meta/memory/` entity metadata.
 
@@ -55,7 +55,7 @@ Flags:
 
 Positional args filter entities by name.
 
-### `forge migrate`
+### `meta migrate`
 
 Diffs `.meta/memory/` metadata against a live DB and emits paired migration SQL files (per-migration subdirectories with `up.sql` and `down.sql`).
 
@@ -95,17 +95,17 @@ Precedence: CLI flag > env var (`DATABASE_URL` only) > config > built-in default
 
 ## Metadata format
 
-See `.meta/AGENTS.md` (scaffolded by `forge init`) for the metaobjects metamodel rules, the `@forge*` attribute namespace, the five descriptive top-level types (decision/principle/convention/glossary/failure), and worked examples. Deeper references:
+See `.meta/AGENTS.md` (scaffolded by `meta init`) for the metaobjects metamodel rules, the `@forge*` attribute namespace, the five descriptive top-level types (decision/principle/convention/glossary/failure), and worked examples. Deeper references:
 
 - `@metaobjects/metadata` [METAMODEL.md](../metaobjects-metadata/METAMODEL.md) — full metaobjects metamodel reference
-- `@metaforge/sdk` [FORGE-METADATA.md](../sdk/FORGE-METADATA.md) — Meta Forge additions
+- `@metaobjects/sdk` [FORGE-METADATA.md](../sdk/FORGE-METADATA.md) — MetaObjects metadata additions
 
 ## What's not in v0.2
 
-- `forge migrate --apply` (deferred to v0.3) — emit only, no DB writes from CLI
-- `forge gen --watch` (dropped) — re-run on demand
-- True 3-way merge in `forge gen` — codegen-ts v0.1 has overwrite/skip-existing only; true merge in v0.3
+- `meta migrate --apply` (deferred to v0.3) — emit only, no DB writes from CLI
+- `meta gen --watch` (dropped) — re-run on demand
+- True 3-way merge in `meta gen` — codegen-ts v0.1 has overwrite/skip-existing only; true merge in v0.3
 - Cross-file `super:` resolution at the metadata-file level — Loader limitation; v0.3 follow-up
 - Module-reference DB connections — URL-only
-- TS-format config file (`forge.config.ts`) — JSON only
+- TS-format config file (`.meta/config.ts`) — JSON only
 - Reified SDK APIs for adding/promoting descriptive records — hand-edit JSON for now

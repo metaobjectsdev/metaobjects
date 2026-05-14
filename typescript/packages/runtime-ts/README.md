@@ -2,7 +2,7 @@
 
 Runtime metadata layer — CRUD, validation, relationship traversal, and view introspection driven by MetaObjects metadata.
 
-Part of the [Meta Forge](https://github.com/metaobjectsdev/metaforge) monorepo.
+Part of the [MetaObjects](https://github.com/metaobjectsdev/metaobjects) monorepo.
 
 ## Install
 
