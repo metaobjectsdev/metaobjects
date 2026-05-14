@@ -1,6 +1,6 @@
 import { parseGenArgs } from "../lib/args.js";
 import { resolveGenConfig } from "../lib/config.js";
-import { loadForgeConfig } from "../lib/load-forge-config.js";
+import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { formatGenResult, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
 import { log } from "../lib/log.js";
 import { loadMemory } from "@metaforge/sdk";
@@ -26,7 +26,7 @@ export async function genCommand(args: string[]): Promise<number> {
 
   let forgeConfig;
   try {
-    forgeConfig = await loadForgeConfig(projectRoot);
+    forgeConfig = await loadMetaobjectsConfig(projectRoot);
   } catch (err) {
     log.error((err as Error).message);
     return 2;

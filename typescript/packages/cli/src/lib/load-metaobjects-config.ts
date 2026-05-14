@@ -5,15 +5,15 @@ import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti";
 import type { ForgeConfig } from "@metaobjects/codegen-ts";
 
-const CONFIG_FILE = "metaforge.config.ts";
+const CONFIG_FILE = "metaobjects.config.ts";
 
 // Resolve @metaobjects/codegen-ts from the CLI's own node_modules so that
-// forge.config.ts (which lives in the user's project) can import it even
+// metaobjects.config.ts (which lives in the user's project) can import it even
 // when the user's project has no direct dependency on the package.
 //
-// When compiled: import.meta.url is dist/src/lib/load-forge-config.js — four
+// When compiled: import.meta.url is dist/src/lib/load-metaobjects-config.js — four
 // levels up (past lib/, src/, dist/) reaches the CLI package root (packages/cli/).
-// When run as TS source (e.g. bun test): import.meta.url is src/lib/load-forge-config.ts
+// When run as TS source (e.g. bun test): import.meta.url is src/lib/load-metaobjects-config.ts
 // — three levels up (past lib/, src/) reaches the package root.
 const _thisFile = fileURLToPath(import.meta.url);
 const _isCompiled = _thisFile.includes("/dist/");
@@ -31,8 +31,8 @@ function resolveCliPkg(specifier: string): string {
   if (specifier === "@metaobjects/codegen-ts-tanstack") {
     return resolve(_cliDir, "node_modules/@metaobjects/codegen-ts-tanstack/dist/index.js");
   }
-  if (specifier === "@metaforge/cli") {
-    // The CLI package's own compiled entry — @metaforge/cli is this package itself,
+  if (specifier === "@metaobjects/cli") {
+    // The CLI package's own compiled entry — @metaobjects/cli is this package itself,
     // so we resolve directly from _cliDir rather than through node_modules (which
     // would be a non-existent self-referential symlink).
     return resolve(_cliDir, "dist/src/index.js");
@@ -40,11 +40,11 @@ function resolveCliPkg(specifier: string): string {
   return _require.resolve(specifier);
 }
 
-export async function loadForgeConfig(projectRoot: string): Promise<ForgeConfig> {
+export async function loadMetaobjectsConfig(projectRoot: string): Promise<ForgeConfig> {
   const fullPath = resolve(projectRoot, CONFIG_FILE);
   if (!existsSync(fullPath)) {
     throw new Error(
-      `metaforge.config.ts not found at ${fullPath}. Run 'forge init' to scaffold one.`,
+      `metaobjects.config.ts not found at ${fullPath}. Run 'meta init' to scaffold one.`,
     );
   }
   // Use import.meta.url as base so jiti resolves workspace deps (@metaobjects/*)
@@ -57,7 +57,7 @@ export async function loadForgeConfig(projectRoot: string): Promise<ForgeConfig>
       "@metaobjects/codegen-ts": resolveCliPkg("@metaobjects/codegen-ts"),
       "@metaobjects/codegen-ts/generators": resolveCliPkg("@metaobjects/codegen-ts/generators"),
       "@metaobjects/codegen-ts-tanstack": resolveCliPkg("@metaobjects/codegen-ts-tanstack"),
-      "@metaforge/cli": resolveCliPkg("@metaforge/cli"),
+      "@metaobjects/cli": resolveCliPkg("@metaobjects/cli"),
     },
   });
   const raw = (await jiti.import(fullPath)) as ForgeConfig | { default: ForgeConfig };
@@ -67,7 +67,7 @@ export async function loadForgeConfig(projectRoot: string): Promise<ForgeConfig>
     ? (raw as { default: ForgeConfig }).default
     : raw) as ForgeConfig;
   if (!cfg || typeof cfg !== "object" || !Array.isArray(cfg.generators)) {
-    throw new Error(`forge.config.ts at ${fullPath} did not export a valid ForgeConfig (missing 'generators' array).`);
+    throw new Error(`metaobjects.config.ts at ${fullPath} did not export a valid ForgeConfig (missing 'generators' array).`);
   }
   return cfg;
 }

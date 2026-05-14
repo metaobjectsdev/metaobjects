@@ -65,11 +65,11 @@ describe("init --refresh-docs", () => {
   });
 });
 
-describe("metaforge.config.ts section in refreshed docs", () => {
-  test("refreshed CLAUDE.md describes metaforge.config.ts as the wiring file", async () => {
+describe("metaobjects.config.ts section in refreshed docs", () => {
+  test("refreshed CLAUDE.md describes metaobjects.config.ts as the wiring file", async () => {
     await init({ cwd });
-    const claudeMd = readFileSync(join(cwd, ".metaforge", "CLAUDE.md"), "utf8");
-    expect(claudeMd).toContain("metaforge.config.ts");
+    const claudeMd = readFileSync(join(cwd, ".metaobjects", "CLAUDE.md"), "utf8");
+    expect(claudeMd).toContain("metaobjects.config.ts");
     expect(claudeMd).toContain("defineConfig");
     expect(claudeMd).toContain("@metaobjects/codegen-ts/generators");
     expect(claudeMd).not.toContain("--out-dir");

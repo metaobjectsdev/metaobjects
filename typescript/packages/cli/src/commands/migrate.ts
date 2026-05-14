@@ -6,7 +6,7 @@ import { formatMigrateResult, type BlockedEntry, type AmbiguousEntry } from "../
 import { buildKyselyFromUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
 import { loadMemory } from "@metaforge/sdk";
-import { loadForgeConfig } from "../lib/load-forge-config.js";
+import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import {
   buildExpectedSchema,
   introspect,
@@ -207,7 +207,7 @@ export async function migrateCommand(args: string[]): Promise<number> {
     // fall back to snake_case so migrate still works without it.
     let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
     try {
-      const forgeConfig = await loadForgeConfig(metaRoot);
+      const forgeConfig = await loadMetaobjectsConfig(metaRoot);
       if (forgeConfig.columnNamingStrategy) {
         columnNamingStrategy = forgeConfig.columnNamingStrategy;
       }

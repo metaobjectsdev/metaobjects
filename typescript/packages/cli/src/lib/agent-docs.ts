@@ -195,12 +195,12 @@ Validators can attach in two places, and they compose:
 
 Rule of thumb: rules that protect data integrity → field. Rules that improve input UX → view.
 
-## metaforge.config.ts — generator wiring (project root)
+## metaobjects.config.ts — generator wiring (project root)
 
-\`forge gen\` reads \`metaforge.config.ts\` at the project root. This is where you declare which generators run and their options. It is TypeScript, type-checked, and imported via \`jiti\` at run time.
+\`meta gen\` reads \`metaobjects.config.ts\` at the project root. This is where you declare which generators run and their options. It is TypeScript, type-checked, and imported via \`jiti\` at run time.
 
 \`\`\`ts
-import { defineConfig } from "@metaforge/cli";
+import { defineConfig } from "@metaobjects/cli";
 import {
   entityFile, queriesFile, routesFile, /* formFile, */ barrel,
 } from "@metaobjects/codegen-ts/generators";
@@ -224,11 +224,11 @@ export default defineConfig({
 
 Filters live on the generator entry: \`routesFile({ filter: e => e.name !== "AuditLog" })\`
 
-\`.metaforge/config.json\` is unchanged — it still holds static project state (schema_version, pending_in_git, confidence_thresholds). Generator wiring belongs in \`metaforge.config.ts\` so TypeScript can type-check the imports.
+\`.metaobjects/config.json\` is unchanged — it still holds static project state (schema_version, pending_in_git, confidence_thresholds). Generator wiring belongs in \`metaobjects.config.ts\` so TypeScript can type-check the imports.
 
 ## Generated hooks + grids (TanStack)
 
-When \`tanstackQuery()\` is in your \`metaforge.config.ts\`, every entity gets \`<Entity>.hooks.ts\` with a query-key factory + \`useEntity\`, \`useEntities\`, \`useCreate\`, \`useUpdate\`, \`useDelete\` hooks. When \`tanstackGrid()\` is in the config, entities with a \`layout[dataGrid]\` child also get \`<Entity>.columns.tsx\`.
+When \`tanstackQuery()\` is in your \`metaobjects.config.ts\`, every entity gets \`<Entity>.hooks.ts\` with a query-key factory + \`useEntity\`, \`useEntities\`, \`useCreate\`, \`useUpdate\`, \`useDelete\` hooks. When \`tanstackGrid()\` is in the config, entities with a \`layout[dataGrid]\` child also get \`<Entity>.columns.tsx\`.
 
 \`\`\`tsx
 import { usePrograms, useCreateProgram } from "@your-pkg/database/generated/Program.hooks";
@@ -397,7 +397,7 @@ After \`forge gen\`, you get one barrel + per-entity files in your configured \`
 | \`<Entity>.ts\` | Drizzle table, relations(), inferred types, Zod insert/update schemas, and the rich \`<Entity>\` constants block (per-field objects with name, label, view, htmlType, rules, etc.) | Never. Regenerate. |
 | \`<Entity>.queries.ts\` | Typed query helpers (\`findUserById\`, \`listUsers\`, \`createUser\`, ...) using prepared statements | Never. Regenerate. |
 | \`<Entity>.routes.ts\` | Fastify CRUD plugin delegating to \`mountCrudRoutes\` from \`@metaobjects/runtime-ts/drizzle-fastify\` (5 verbs, Zod validation, 404/204 mapping, Drizzle-direct under the hood) | Never. Regenerate. |
-| \`<Entity>.form.tsx\` | React form using \`useEntityForm\` + the entity constants. **OPT-IN at project level:** add \`formFile()\` to \`generators\` in \`metaforge.config.ts\`. Opt out per-entity via \`@emitForm: false\`. | Never. Regenerate. |
+| \`<Entity>.form.tsx\` | React form using \`useEntityForm\` + the entity constants. **OPT-IN at project level:** add \`formFile()\` to \`generators\` in \`metaobjects.config.ts\`. Opt out per-entity via \`@emitForm: false\`. | Never. Regenerate. |
 | \`index.ts\` | Barrel re-exporting every entity file | Never. Regenerate. |
 
 For business logic the generator doesn't cover, create a SIBLING file: \`<Entity>.extra.ts\` for query/route helpers, or any file you like in your apps directory. Import the constants from the generated \`<Entity>.ts\`.
@@ -505,7 +505,7 @@ metaobjects/
 ├── migrations/               written by forge migrate
 └── .gen-state/               codegen merge base (gitignored)
 
-metaforge.config.ts           generator wiring (committed)
+metaobjects.config.ts         generator wiring (committed)
 \`\`\`
 
 ## Worked example

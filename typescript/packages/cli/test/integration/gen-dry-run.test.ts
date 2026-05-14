@@ -6,7 +6,7 @@ import { run } from "../../src/index.js";
 
 const FIXTURES = resolve("packages/cli/test/fixtures");
 // Place temp dirs inside the monorepo so workspace packages (@metaobjects/*)
-// are resolvable by jiti when it loads metaforge.config.ts.
+// are resolvable by jiti when it loads metaobjects.config.ts.
 const WORKSPACE_TMP = resolve("packages/cli/test/fixtures/__tmp__");
 
 describe("forge gen --dry-run", () => {
@@ -15,7 +15,7 @@ describe("forge gen --dry-run", () => {
     const root = mkdtempSync(join(WORKSPACE_TMP, "forge-gen-dryrun-"));
     cpSync(join(FIXTURES, "downstream-consumer-meta"), root, { recursive: true });
     writeFileSync(
-      join(root, "metaforge.config.ts"),
+      join(root, "metaobjects.config.ts"),
       `
 import { defineConfig } from "@metaobjects/codegen-ts";
 import { entityFile } from "@metaobjects/codegen-ts/generators";

@@ -6,16 +6,16 @@ import { run } from "../../src/index.js";
 
 const FIXTURES = resolve("packages/cli/test/fixtures");
 // Place temp dirs inside the monorepo so workspace packages (@metaobjects/*)
-// are resolvable by jiti when it loads metaforge.config.ts.
+// are resolvable by jiti when it loads metaobjects.config.ts.
 const WORKSPACE_TMP = resolve("packages/cli/test/fixtures/__tmp__");
 
 function setupRepo(): string {
   mkdirSync(WORKSPACE_TMP, { recursive: true });
   const root = mkdtempSync(join(WORKSPACE_TMP, "forge-gen-sqlite-"));
   cpSync(join(FIXTURES, "downstream-consumer-meta"), root, { recursive: true });
-  // Write a metaforge.config.ts so the gen command can load it via jiti.
+  // Write a metaobjects.config.ts so the gen command can load it via jiti.
   writeFileSync(
-    join(root, "metaforge.config.ts"),
+    join(root, "metaobjects.config.ts"),
     `
 import { defineConfig } from "@metaobjects/codegen-ts";
 import { entityFile } from "@metaobjects/codegen-ts/generators";
@@ -92,11 +92,11 @@ describe("forge gen — sqlite end-to-end", () => {
     }
   });
 
-  test("returns 2 when metaforge.config.ts is missing", async () => {
+  test("returns 2 when metaobjects.config.ts is missing", async () => {
     mkdirSync(WORKSPACE_TMP, { recursive: true });
     const root = mkdtempSync(join(WORKSPACE_TMP, "forge-gen-noconfig-"));
     cpSync(join(FIXTURES, "downstream-consumer-meta"), root, { recursive: true });
-    // deliberately no metaforge.config.ts
+    // deliberately no metaobjects.config.ts
     try {
       const exit = await runIn(root, () => run(["gen"]));
       expect(exit).toBe(2);

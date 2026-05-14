@@ -17,7 +17,7 @@ function makeRoot(configBody?: object): string {
 }
 
 describe("resolveGenConfig", () => {
-  // resolveGenConfig is now synchronous and minimal: metaforge.config.ts owns
+  // resolveGenConfig is now synchronous and minimal: metaobjects.config.ts owns
   // outDir/dialect/dbImport/extStyle. Only dryRun + entities come from flags.
 
   test("passes dryRun and entities through", () => {

@@ -20,7 +20,7 @@ COMMANDS:
 GEN FLAGS:
   --dry-run             Compute and print, don't write
   <entity> [<entity>]   Positional filter on entity names
-  (outDir, dialect, dbImport, extStyle are read from metaforge.config.ts)
+  (outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts)
 
 MIGRATE FLAGS:
   --db <url>            DB connection URL (required, or set DATABASE_URL or config)

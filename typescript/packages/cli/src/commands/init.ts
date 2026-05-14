@@ -20,7 +20,7 @@ const META_COMMON_JSON = JSON.stringify(
 const METAFORGE_GITIGNORE_BODY = `.gen-state/
 `;
 
-const FORGE_CONFIG_BODY = `import { defineConfig } from "@metaforge/cli";
+const FORGE_CONFIG_BODY = `import { defineConfig } from "@metaobjects/cli";
 import {
   entityFile,
   queriesFile,
@@ -45,13 +45,13 @@ export default defineConfig({
 `;
 
 const NEXT_STEPS = `
-Initialized metaobjects/ + .metaforge/ + metaforge.config.ts
+Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
 
 Next steps (when later sub-projects ship):
-  forge ingest        # propose entities from your existing TS code
-  forge gen           # codegen TS targets from entities
-  forge serve         # local viewer
-  forge install-hooks # register MCP server + Claude Code hooks
+  meta ingest        # propose entities from your existing TS code
+  meta gen           # codegen TS targets from entities
+  meta serve         # local viewer
+  meta install-hooks # register MCP server + Claude Code hooks
 `;
 
 const AGENT_DOC_FILES = ["AGENTS.md", "CLAUDE.md"] as const;
@@ -132,7 +132,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
       `.metaforge/${PACKAGE_MANIFEST_FILE}`,
     );
     for (const filename of AGENT_DOC_FILES) result.created.push(`.metaforge/${filename}`);
-    result.created.push("metaforge.config.ts");
+    result.created.push("metaobjects.config.ts");
     return result;
   }
 
@@ -205,11 +205,11 @@ export async function init(opts: InitOptions): Promise<InitResult> {
 
   await writeAgentDocs(metaforgeDir, result);
 
-  // Scaffold metaforge.config.ts at the project root. Never overwrite if it exists.
-  const forgeConfigPath = join(opts.cwd, "metaforge.config.ts");
+  // Scaffold metaobjects.config.ts at the project root. Never overwrite if it exists.
+  const forgeConfigPath = join(opts.cwd, "metaobjects.config.ts");
   if (!(await fileExists(forgeConfigPath))) {
     await writeFile(forgeConfigPath, FORGE_CONFIG_BODY, "utf8");
-    result.created.push("metaforge.config.ts");
+    result.created.push("metaobjects.config.ts");
   }
 
   return result;
