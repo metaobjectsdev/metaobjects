@@ -211,17 +211,17 @@ After all rewrites, `pnpm install && pnpm build && pnpm dev` should produce iden
   Full Java Loader, typed MetaModel API, conformance test runner, runtime helpers (Spring JDBC, filter parser, `@autoSet`, currency, JSONB).
 - **H4 — TS codegen Java target** (2-3 wk)
   Refactor TS codegen to pluggable targets; Java target emits Spring JDBC DAOs, Spring MVC controllers, POJOs, Bean Validation.
-- **H5 — sibling-app Java backend migration** (3-4 wk)
-  Author sibling-app's entity metadata; replace JPA → metaobjects-emitted Java; strip JPA annotations.
+- **H5 — First Java consumer migration** (3-4 wk)
+  Author first Java consumer's entity metadata; replace JPA → metaobjects-emitted Java; strip JPA annotations.
 - **H6 — Forge AI commands implementation** (TBD)
   `forge mcp`, `forge install-hooks`, `forge ingest`, etc. Lives in `forge/`.
 - **H7 — npm publish** (1 wk)
   First stable public release of `@metaobjects/*` packages; reflects polyglot reality (TS + Java).
 - **H8 — downstream-consumer npm migration** (0.5 wk)
   Switch from `link:` deps to published npm versions.
-- **H9 — sibling-app UI migration** (2-3 wk)
-  sibling-app's TS frontend adopts `@metaobjects/runtime-ts-client`.
-- **H10 — sibling-project migration** (3-4 wk)
+- **H9 — First Java consumer UI migration** (2-3 wk)
+  First Java consumer's TS frontend adopts `@metaobjects/runtime-ts-client`.
+- **H10 — Polyglot consumer migration** (3-4 wk)
   Java backend + TS frontend onto metaobjects.
 
 ## Future (sketched)
@@ -316,9 +316,9 @@ The roadmap doc in `metaobjects/spec/roadmap.md` is the canonical tracker. Summa
 - **H2** — Shared conformance fixtures (1 wk)
 - **H3** — Java port: Loader + typed MetaModel + runtime helpers (4-6 wk)
 - **H4** — TS codegen Java target: refactor for pluggable targets, emit Java (2-3 wk)
-- **H5** — sibling-app Java backend migration (3-4 wk)
+- **H5** — First Java consumer migration (3-4 wk)
 - **H6** — Forge AI commands implementation (TBD)
 - **H7** — npm publish (1 wk)
 - **H8** — downstream-consumer npm migration (0.5 wk)
-- **H9** — sibling-app UI migration (2-3 wk)
-- **H10** — sibling-project migration (3-4 wk)
+- **H9** — First Java consumer UI migration (2-3 wk)
+- **H10** — Polyglot consumer migration (3-4 wk)
