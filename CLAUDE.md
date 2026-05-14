@@ -347,5 +347,4 @@ See `spec/roadmap.md` for current and planned work across the H1-H10 project ser
 
 - [TECHNICAL] Field-type → Drizzle-column-type mapping table (needed for complete TS codegen coverage).
 - [TECHNICAL] ObjectManagerDB modernization scope (jOOQ migration, Spring Boot 3 starter, async via virtual threads).
-- [TECHNICAL] Git history extraction strategy for H1 — `git filter-repo` per package vs. clean-start history.
 - [TECHNICAL] Conformance test format specification (H2 deliverable).
