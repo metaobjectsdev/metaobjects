@@ -1,0 +1,29 @@
+{
+  "metadata": {
+    "package": "acme",
+    "subType": "base",
+    "children": [
+      {
+        "object": {
+          "name": "Product",
+          "subType": "entity",
+          "@displayName": "Product v2",
+          "children": [
+            {
+              "field": {
+                "name": "id",
+                "subType": "long"
+              }
+            },
+            {
+              "identity": {
+                "subType": "primary",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

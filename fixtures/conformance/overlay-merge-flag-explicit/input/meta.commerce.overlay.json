@@ -1,0 +1,16 @@
+{
+  "metadata": {
+    "package": "acme",
+    "children": [
+      {
+        "object": {
+          "name": "Product",
+          "subType": "entity",
+          "children": [
+            { "field": { "name": "description", "subType": "string" } }
+          ]
+        }
+      }
+    ]
+  }
+}

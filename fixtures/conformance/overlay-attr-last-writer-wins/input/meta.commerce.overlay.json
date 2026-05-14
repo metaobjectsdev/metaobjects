@@ -1,0 +1,15 @@
+{
+  "metadata": {
+    "package": "acme",
+    "children": [
+      {
+        "object": {
+          "name": "Product",
+          "subType": "entity",
+          "merge": true,
+          "@displayName": "Product v2"
+        }
+      }
+    ]
+  }
+}
