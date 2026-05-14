@@ -4,8 +4,9 @@ import { describe, it, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { serializeJson } from "../src/serializer-json.js";
+import { serializeJson, canonicalSerialize } from "../src/serializer-json.js";
 import { parseJson } from "../src/parser-json.js";
+import { Loader } from "../src/loader.js";
 import { MetaModel } from "../src/model.js";
 import { TypeId, TypeRegistry } from "../src/registry.js";
 import { registerCoreTypes } from "../src/core-types.js";
@@ -766,5 +767,76 @@ describe("serializeJson — edge cases", () => {
     // Must use reserved key form, NOT @isAbstract
     expect(fruitData[RESERVED_KEY_IS_ABSTRACT]).toBe(true);
     expect(fruitData[`${ATTR_PREFIX}${ATTR_NAME_IS_ABSTRACT}`]).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// canonicalSerialize — deterministic output for cross-language conformance
+// ---------------------------------------------------------------------------
+
+describe("canonicalSerialize — deterministic output for cross-language conformance", () => {
+  it("emits inline attrs in alphabetical order", () => {
+    const json = JSON.stringify({
+      metadata: {
+        package: "acme",
+        children: [{
+          object: {
+            name: "Product",
+            subType: "entity",
+            "@zindex": "10",
+            "@alpha": "1",
+            "@mid": "5",
+          },
+        }],
+      },
+    });
+    const loader = new Loader();
+    const { root } = loader.loadJson(json);
+    const output = canonicalSerialize(root);
+    // @alpha must appear before @mid which must appear before @zindex
+    const aIdx = output.indexOf('"@alpha"');
+    const mIdx = output.indexOf('"@mid"');
+    const zIdx = output.indexOf('"@zindex"');
+    expect(aIdx).toBeGreaterThan(-1);
+    expect(aIdx).toBeLessThan(mIdx);
+    expect(mIdx).toBeLessThan(zIdx);
+  });
+
+  it("appends a trailing newline", () => {
+    const loader = new Loader();
+    const { root } = loader.loadJson('{"metadata":{}}');
+    const output = canonicalSerialize(root);
+    expect(output.endsWith("\n")).toBe(true);
+  });
+
+  it("uses 2-space indent", () => {
+    const loader = new Loader();
+    const { root } = loader.loadJson('{"metadata":{"package":"acme"}}');
+    const output = canonicalSerialize(root);
+    // The "metadata" wrapper key is indented 2 spaces; "package" is at 4 spaces
+    // (nested one level deeper). Confirm 2-space-per-level indentation is in use.
+    expect(output).toContain('\n  "metadata"');
+    expect(output).toContain('\n    "package": "acme"');
+  });
+
+  it("produces identical bytes on repeated calls (no Map iteration drift)", () => {
+    const json = JSON.stringify({
+      metadata: {
+        package: "acme",
+        children: [{
+          object: {
+            name: "Product", subType: "entity",
+            "@b": "1", "@a": "2", "@c": "3",
+            children: [
+              { field: { name: "id", subType: "long" } },
+              { field: { name: "name", subType: "string" } },
+            ],
+          },
+        }],
+      },
+    });
+    const out1 = canonicalSerialize(new Loader().loadJson(json).root);
+    const out2 = canonicalSerialize(new Loader().loadJson(json).root);
+    expect(out1).toBe(out2);
   });
 });

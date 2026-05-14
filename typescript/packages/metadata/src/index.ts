@@ -57,7 +57,7 @@ export { parseJson } from "./parser-json.js";
 export type { ParseOptions, ParseResult } from "./parser-json.js";
 
 // Serializer
-export { serializeJson, inferAttrSubType } from "./serializer-json.js";
+export { serializeJson, canonicalSerialize, inferAttrSubType } from "./serializer-json.js";
 export type { SerializeOptions } from "./serializer-json.js";
 
 // Super resolution helper (most resolution moved into parser; this is the lookup utility)
