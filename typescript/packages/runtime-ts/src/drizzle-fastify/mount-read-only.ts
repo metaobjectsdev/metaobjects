@@ -1,0 +1,167 @@
+import type { FastifyInstance } from "fastify";
+import { sql, eq } from "drizzle-orm";
+import qs from "qs";
+import { parseFilterParams, FilterParseError } from "./filter-parser.js";
+import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
+
+// biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user-supplied views
+type AnyView = any;
+
+/**
+ * Drizzle v0.45 stores view config under this well-known Symbol.
+ * Accessing `view._` on a proxy-wrapped view (empty-column .existing()) throws
+ * because the proxy tries to spread `subquery._.selectedFields` which is undefined.
+ * Using the symbol bypasses the proxy entirely.
+ */
+const VIEW_BASE_CONFIG = Symbol.for("drizzle:ViewBaseConfig");
+
+export interface MountReadOnlyOptions {
+  readonly fastify: FastifyInstance;
+  readonly path: string;
+  // biome-ignore lint/suspicious/noExplicitAny: dynamic Drizzle client
+  readonly db: any;
+  readonly view: AnyView;
+  readonly filterAllowlist: FilterAllowlist;
+  readonly sortAllowlist: SortAllowlist;
+  readonly dialect: "postgres" | "sqlite";
+  /** Override default ID column name (defaults to "id"). */
+  readonly idColumn?: string;
+}
+
+const REJECT_MUTATION = async (
+  request: { method: string },
+  reply: { code: (n: number) => { send: (b: unknown) => unknown } },
+) => {
+  reply
+    .code(405)
+    .send({ error: "method_not_allowed", message: `${request.method} is not supported on a projection (read-only).` });
+};
+
+function getViewConfig(view: AnyView): Record<string, unknown> | undefined {
+  try {
+    const cfg = (view as Record<symbol, unknown>)[VIEW_BASE_CONFIG];
+    if (cfg && typeof cfg === "object") return cfg as Record<string, unknown>;
+  } catch {
+    // ignore — proxy handler may throw on unexpected shapes
+  }
+  return undefined;
+}
+
+function resolveViewName(view: AnyView): string | undefined {
+  const cfg = getViewConfig(view);
+  if (cfg) {
+    if (typeof cfg["name"] === "string") return cfg["name"] as string;
+  }
+  // Fallback for non-proxy shapes
+  const v = view as Record<string, unknown>;
+  return (
+    (typeof v["__tableName"] === "string" ? v["__tableName"] as string : undefined) ??
+    (typeof v["_name"] === "string" ? v["_name"] as string : undefined)
+  );
+}
+
+/**
+ * Detect whether a Drizzle view was declared with `.existing()` and an empty
+ * column schema (`{}`). In that case, `db.select().from(view)` generates
+ * `SELECT  FROM ...` (invalid SQL), and we must fall back to raw SQL.
+ */
+function isEmptyColumnView(view: AnyView): boolean {
+  const cfg = getViewConfig(view);
+  if (cfg) {
+    const fields = cfg["selectedFields"] as Record<string, unknown> | undefined;
+    return fields !== undefined && Object.keys(fields).length === 0;
+  }
+  return false;
+}
+
+function snakeToCamel(s: string): string {
+  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+/** Normalise a raw SQL result row's keys from snake_case to camelCase. */
+function camelizeRow(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(row)) {
+    out[snakeToCamel(k)] = v;
+  }
+  return out;
+}
+
+export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
+  const { fastify, path, db, view, filterAllowlist, sortAllowlist, dialect } = opts;
+  const idCol = opts.idColumn ?? "id";
+
+  const viewName = resolveViewName(view);
+  const useRawSql = isEmptyColumnView(view) && !!viewName;
+
+  // ── List ──────────────────────────────────────────────────────────────────
+  fastify.get(path, async (req, reply) => {
+    try {
+      if (useRawSql) {
+        // .existing() view with no column schema — use raw SQL.
+        // Simple limit/offset only; filter/sort via allowlist is not available
+        // because column refs don't exist. This is sufficient for projection
+        // endpoints that return small full-table results.
+        const url = req.raw.url ?? "";
+        const qIdx = url.indexOf("?");
+        const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
+        const parsed = qs.parse(queryString) as Record<string, unknown>;
+        const limitVal = Math.min(1000, Math.max(1, Number(typeof parsed["limit"] === "string" ? parsed["limit"] : 1000)));
+        const offsetVal = Math.max(0, Number(typeof parsed["offset"] === "string" ? parsed["offset"] : 0));
+        // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
+        const rows = await db.all(sql.raw(`SELECT * FROM "${viewName}" LIMIT ${limitVal} OFFSET ${offsetVal}`)) as any[];
+        return rows.map((r: Record<string, unknown>) => camelizeRow(r));
+      }
+
+      const url = req.raw.url ?? "";
+      const qIdx = url.indexOf("?");
+      const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
+      const parsed = qs.parse(queryString) as Record<string, unknown>;
+      const result = parseFilterParams({
+        query: parsed,
+        table: view,
+        allowlist: filterAllowlist,
+        sortAllowlist,
+        dialect,
+      });
+      let q = db.select().from(view);
+      if (result.where) q = q.where(result.where);
+      if (result.orderBy) q = q.orderBy(...result.orderBy);
+      if (result.limit !== undefined) q = q.limit(result.limit);
+      if (result.offset !== undefined) q = q.offset(result.offset);
+      return q.all();
+    } catch (err) {
+      if (err instanceof FilterParseError) {
+        reply.code(400).send({ error: err.code, message: err.message });
+        return;
+      }
+      throw err;
+    }
+  });
+
+  // ── Get by ID ─────────────────────────────────────────────────────────────
+  fastify.get(`${path}/:id`, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (useRawSql) {
+      const numericId = Number(id);
+      if (!Number.isFinite(numericId)) {
+        return reply.code(400).send({ error: "invalid_id" });
+      }
+      // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
+      const rows = await db.all(sql.raw(`SELECT * FROM "${viewName}" WHERE "${idCol}" = ${numericId} LIMIT 1`)) as any[];
+      const row = rows[0] ? camelizeRow(rows[0]) : undefined;
+      return row ?? reply.code(404).send({ error: "not_found" });
+    }
+    // biome-ignore lint/suspicious/noExplicitAny: Drizzle table/view column ref
+    const colRef = (view as any)[idCol];
+    const row = await db.select().from(view).where(
+      colRef !== undefined ? eq(colRef, Number(id)) : undefined
+    ).get();
+    return row ?? reply.code(404).send({ error: "not_found" });
+  });
+
+  // ── Mutations explicitly rejected (405) ───────────────────────────────────
+  fastify.post(path, REJECT_MUTATION);
+  fastify.patch(`${path}/:id`, REJECT_MUTATION);
+  fastify.delete(`${path}/:id`, REJECT_MUTATION);
+}

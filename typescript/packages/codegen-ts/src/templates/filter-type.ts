@@ -1,0 +1,94 @@
+// Filter type template — emits <Entity>Filter type with subtype-gated operators.
+// String fields get eq/ne/in/like; numbers get eq/ne/gt/gte/lt/lte/in; booleans get eq/isNull only;
+// datetimes get eq/ne/gt/gte/lt/lte/in.
+
+import { code, type Code } from "ts-poet";
+import type { MetaModel } from "@metaobjects/metadata";
+import {
+  TYPE_FIELD,
+  FIELD_ATTR_FILTERABLE,
+  FIELD_SUBTYPE_BOOLEAN,
+  FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_SHORT,
+  FIELD_SUBTYPE_BYTE,
+  FIELD_SUBTYPE_LONG,
+  FIELD_SUBTYPE_DOUBLE,
+  FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_DECIMAL,
+  opsForSubType,
+} from "@metaobjects/metadata";
+import { isSortableField } from "./filter-shared.js";
+
+const NUMBER_SUBTYPES = new Set<string>([
+  FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_SHORT,
+  FIELD_SUBTYPE_BYTE,
+  FIELD_SUBTYPE_LONG,
+  FIELD_SUBTYPE_DOUBLE,
+  FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_DECIMAL,
+]);
+
+/** Maps a field subtype to its TS value type name for operator union codegen. */
+function tsNameFor(fieldSubType: string): string {
+  if (fieldSubType === FIELD_SUBTYPE_BOOLEAN) return "boolean";
+  if (NUMBER_SUBTYPES.has(fieldSubType)) return "number";
+  return "string";
+}
+
+function renderFieldUnion(field: MetaModel): string {
+  const ops = opsForSubType(field.subType);
+  const tsName = tsNameFor(field.subType);
+  const opEntries = ops.map((op) => {
+    if (op === "in") return `in?: ${tsName}[]`;
+    if (op === "isNull") return `isNull?: boolean`;
+    if (op === "like") return `like?: string`;
+    return `${op}?: ${tsName}`;
+  });
+  return `${tsName} | { ${opEntries.join("; ")} }`;
+}
+
+export function renderFilterType(entity: MetaModel): Code {
+  // Use effectiveChildren() so inherited fields (from extends:/super:) are included in filter types.
+  const allFields = entity.effectiveChildren().filter((c) => c.type === TYPE_FIELD);
+  const filterableFieldsList = allFields.filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true);
+  // Sort union uses isSortableField — same predicate as renderSortAllowlist to prevent
+  // client/server mismatches (@filterable: true + @sortable: false must be excluded from both).
+  const sortFieldNames = allFields.filter(isSortableField).map((f) => `"${f.name}"`);
+
+  const fieldLines: string[] = [];
+  for (const f of filterableFieldsList) {
+    fieldLines.push(`  ${f.name}?: ${renderFieldUnion(f)};`);
+  }
+
+  if (fieldLines.length === 0 && sortFieldNames.length === 0) {
+    return code`
+export type ${entity.name}Filter = {
+  limit?: number;
+  offset?: number;
+  sort?: string;
+  or?: ${entity.name}Filter[];
+  and?: ${entity.name}Filter[];
+};
+`;
+  }
+
+  const sortType =
+    sortFieldNames.length === 0
+      ? `string`
+      : (() => {
+          const sortUnion = sortFieldNames.join(" | ");
+          return `\`\${${sortUnion}}:\${"asc" | "desc"}\` | ${sortUnion}`;
+        })();
+
+  return code`
+export type ${entity.name}Filter = {
+  limit?: number;
+  offset?: number;
+  sort?: ${sortType};
+${fieldLines.join("\n")}
+  or?: ${entity.name}Filter[];
+  and?: ${entity.name}Filter[];
+};
+`;
+}

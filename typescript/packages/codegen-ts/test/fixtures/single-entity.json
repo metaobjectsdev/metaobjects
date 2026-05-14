@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "package": "demo",
+    "children": [
+      {
+        "object": {
+          "name": "Post",
+          "subType": "entity",
+          "children": [
+            { "field": { "name": "id", "subType": "long" } },
+            { "field": { "name": "title", "subType": "string", "@required": true, "@maxLength": 200 } },
+            { "field": { "name": "body", "subType": "string" } },
+            { "identity": { "name": "primary", "subType": "primary", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      }
+    ]
+  }
+}

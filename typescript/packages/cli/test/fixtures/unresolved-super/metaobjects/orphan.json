@@ -1,0 +1,16 @@
+{
+  "metadata": {
+    "package": "orphan",
+    "children": [
+      {
+        "object": {
+          "name": "Lonely",
+          "subType": "entity",
+          "children": [
+            {"field": {"name": "id", "extends": "..::nonexistent::id"}}
+          ]
+        }
+      }
+    ]
+  }
+}

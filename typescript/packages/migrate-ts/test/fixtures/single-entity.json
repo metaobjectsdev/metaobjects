@@ -1,0 +1,20 @@
+{
+  "metadata": {
+    "children": [
+      {
+        "object": {
+          "name": "User",
+          "subType": "entity",
+          "children": [
+            { "field": { "name": "id", "subType": "long" } },
+            { "field": { "name": "email", "subType": "string", "@required": true } },
+            { "field": { "name": "firstName", "subType": "string" } },
+            { "field": { "name": "isActive", "subType": "boolean", "@default": "true" } },
+            { "field": { "name": "createdAt", "subType": "timestamp", "@default": "CURRENT_TIMESTAMP", "@required": true } },
+            { "identity": { "name": "pk", "subType": "primary", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "metadata": {
+    "children": [
+      {
+        "object": {
+          "name": "Program",
+          "subType": "entity",
+          "children": [
+            {
+              "field": {
+                "name": "id",
+                "subType": "long",
+                "children": [
+                  {
+                    "identity": {
+                      "subType": "primary",
+                      "@fields": "id",
+                      "@generation": "increment"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "title",
+                "subType": "string",
+                "children": [{ "view": { "subType": "text" } }]
+              }
+            },
+            {
+              "field": {
+                "name": "priceCents",
+                "subType": "int",
+                "children": [{ "view": { "subType": "text" } }]
+              }
+            },
+            {
+              "layout": {
+                "subType": "dataGrid",
+                "name": "default",
+                "@pageSize": 25,
+                "@columns": ["title", "priceCents"]
+              }
+            },
+            {
+              "layout": {
+                "subType": "dataGrid",
+                "name": "compact",
+                "@pageSize": 50,
+                "@columns": ["title"]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

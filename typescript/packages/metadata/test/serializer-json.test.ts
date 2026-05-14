@@ -1,0 +1,770 @@
+// Tests for serializeJson — classic-mo v6 JSON serializer
+
+import { describe, it, expect } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { serializeJson } from "../src/serializer-json.js";
+import { parseJson } from "../src/parser-json.js";
+import { MetaModel } from "../src/model.js";
+import { TypeId, TypeRegistry } from "../src/registry.js";
+import { registerCoreTypes } from "../src/core-types.js";
+import {
+  TYPE_METADATA,
+  TYPE_OBJECT,
+  TYPE_FIELD,
+  TYPE_ATTR,
+  TYPE_IDENTITY,
+  TYPE_VALIDATOR,
+  SUBTYPE_BASE,
+  OBJECT_SUBTYPE_ENTITY,
+  OBJECT_SUBTYPE_ENTITY,
+  FIELD_SUBTYPE_STRING,
+  FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_LONG,
+  FIELD_SUBTYPE_BOOLEAN,
+  ATTR_SUBTYPE_BOOLEAN,
+  ATTR_SUBTYPE_STRING,
+  ATTR_SUBTYPE_INT,
+  IDENTITY_SUBTYPE_PRIMARY,
+  VALIDATOR_SUBTYPE_REQUIRED,
+  VALIDATOR_SUBTYPE_LENGTH,
+  RESERVED_KEY_NAME,
+  RESERVED_KEY_SUBTYPE,
+  RESERVED_KEY_PACKAGE,
+  RESERVED_KEY_EXTENDS,
+  RESERVED_KEY_IS_ABSTRACT,
+  RESERVED_KEY_CHILDREN,
+  RESERVED_KEY_VALUE,
+  ATTR_PREFIX,
+  ATTR_NAME_IS_ARRAY,
+  ATTR_NAME_IS_ABSTRACT,
+} from "../src/constants.js";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const FIXTURES_DIR = join(import.meta.dir, "fixtures");
+
+function loadFixture(name: string): string {
+  return readFileSync(join(FIXTURES_DIR, name), "utf-8");
+}
+
+function makeRegistry(): TypeRegistry {
+  const r = new TypeRegistry();
+  registerCoreTypes(r);
+  return r;
+}
+
+/** Create a MetaModel directly (without registry) for simple unit tests */
+function makeModel(type: string, subType: string, name: string): MetaModel {
+  return new MetaModel(new TypeId(type, subType), name);
+}
+
+/**
+ * Recursively assert two MetaModel trees are structurally equivalent.
+ * Compares: typeId, name, package, superRef, isAbstract, isArray, attrs, children (recursive).
+ * Does NOT compare frozen state or superResolved (runtime, not wire-format).
+ */
+function assertModelsEqual(a: MetaModel, b: MetaModel, path = "root"): void {
+  expect(a.type).toBe(b.type);
+  expect(a.subType).toBe(b.subType);
+  expect(a.name).toBe(b.name);
+  expect(a.package).toBe(b.package);
+  expect(a.superRef).toBe(b.superRef);
+  expect(a.isAbstract).toBe(b.isAbstract);
+  expect(a.isArray).toBe(b.isArray);
+
+  // Compare attrs maps
+  const aAttrs = a.attrs();
+  const bAttrs = b.attrs();
+  expect(aAttrs.size).toBe(bAttrs.size);
+  for (const [k, v] of aAttrs) {
+    expect(bAttrs.has(k)).toBe(true);
+    const bVal = bAttrs.get(k);
+    if (Array.isArray(v)) {
+      expect(Array.isArray(bVal)).toBe(true);
+      expect(v).toEqual(bVal);
+    } else {
+      expect(bVal).toBe(v);
+    }
+  }
+
+  // Compare children recursively
+  const aKids = a.children();
+  const bKids = b.children();
+  expect(aKids.length).toBe(bKids.length);
+  for (let i = 0; i < aKids.length; i++) {
+    assertModelsEqual(aKids[i]!, bKids[i]!, `${path}.children[${i}]`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1. Empty metadata root
+// ---------------------------------------------------------------------------
+
+describe("serializeJson — empty metadata root", () => {
+  it('serializes {"metadata": {}} with default indent=2', () => {
+    const model = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    const json = serializeJson(model);
+    const parsed = JSON.parse(json);
+    // Has wrapper key "metadata"
+    expect(typeof parsed[TYPE_METADATA]).toBe("object");
+    // subType "base" is emitted
+    expect(parsed[TYPE_METADATA][RESERVED_KEY_SUBTYPE]).toBe(SUBTYPE_BASE);
+    // No children key (empty)
+    expect(parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN]).toBeUndefined();
+    // No name key (empty string — omitted)
+    expect(parsed[TYPE_METADATA][RESERVED_KEY_NAME]).toBeUndefined();
+    // No package
+    expect(parsed[TYPE_METADATA][RESERVED_KEY_PACKAGE]).toBeUndefined();
+  });
+
+  it("emitted JSON is parseable with indent=2 (default)", () => {
+    const model = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    const json = serializeJson(model);
+    // Indented — should contain newlines
+    expect(json).toContain("\n");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2. Root with package
+// ---------------------------------------------------------------------------
+
+describe("serializeJson — root with package", () => {
+  it('emits "package" reserved key when set', () => {
+    const model = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    model.setPackage("demo");
+    const json = serializeJson(model);
+    const parsed = JSON.parse(json);
+    expect(parsed[TYPE_METADATA][RESERVED_KEY_PACKAGE]).toBe("demo");
+  });
+
+  it("omits package key when package is empty string", () => {
+    const model = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    model.setPackage("");
+    const json = serializeJson(model);
+    const parsed = JSON.parse(json);
+    expect(parsed[TYPE_METADATA][RESERVED_KEY_PACKAGE]).toBeUndefined();
+  });
+
+  it("omits package key when package is not set", () => {
+    const model = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    const json = serializeJson(model);
+    const parsed = JSON.parse(json);
+    expect(parsed[TYPE_METADATA][RESERVED_KEY_PACKAGE]).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3. Single object child
+// ---------------------------------------------------------------------------
+
+describe("serializeJson — single object child", () => {
+  it("emits object child wrapper in children array", () => {
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    const child = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Store");
+    root.addChild(child);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+
+    const children = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN];
+    expect(Array.isArray(children)).toBe(true);
+    expect(children.length).toBe(1);
+
+    const childWrapper = children[0];
+    expect(typeof childWrapper[TYPE_OBJECT]).toBe("object");
+    expect(childWrapper[TYPE_OBJECT][RESERVED_KEY_NAME]).toBe("Store");
+    expect(childWrapper[TYPE_OBJECT][RESERVED_KEY_SUBTYPE]).toBe(OBJECT_SUBTYPE_ENTITY);
+  });
+
+  it("omits children key when no children", () => {
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    expect(parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN]).toBeUndefined();
+  });
+
+  it("preserves multiple children in insertion order", () => {
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Alpha"));
+    root.addChild(makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Beta"));
+    root.addChild(makeModel(TYPE_FIELD, FIELD_SUBTYPE_STRING, "gamma"));
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const children = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN];
+    expect(children.length).toBe(3);
+    expect(children[0]![TYPE_OBJECT][RESERVED_KEY_NAME]).toBe("Alpha");
+    expect(children[1]![TYPE_OBJECT][RESERVED_KEY_NAME]).toBe("Beta");
+    expect(children[2]![TYPE_FIELD][RESERVED_KEY_NAME]).toBe("gamma");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. Inline @-attrs
+// ---------------------------------------------------------------------------
+
+describe("serializeJson — inline @-attrs", () => {
+  it("emits string attr inline as @attrName", () => {
+    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Store");
+    obj.setAttr("dbTable", "store_t");
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(obj);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const storeObj = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_OBJECT];
+    expect(storeObj[`${ATTR_PREFIX}dbTable`]).toBe("store_t");
+  });
+
+  it("emits boolean attr inline", () => {
+    const field = makeModel(TYPE_FIELD, FIELD_SUBTYPE_INT, "count");
+    field.setAttr("nullable", false);
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(field);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const fieldObj = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_FIELD];
+    expect(fieldObj[`${ATTR_PREFIX}nullable`]).toBe(false);
+  });
+
+  it("emits number attr inline", () => {
+    const validator = makeModel(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_LENGTH, "");
+    validator.setAttr("min", 1);
+    validator.setAttr("max", 50);
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(validator);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const validatorObj = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_VALIDATOR];
+    expect(validatorObj[`${ATTR_PREFIX}min`]).toBe(1);
+    expect(validatorObj[`${ATTR_PREFIX}max`]).toBe(50);
+  });
+
+  it("emits string[] attr inline as JSON array", () => {
+    const field = makeModel(TYPE_FIELD, FIELD_SUBTYPE_STRING, "tags");
+    field.setAttr("enumValues", ["red", "green", "blue"]);
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(field);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const fieldObj = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_FIELD];
+    expect(fieldObj[`${ATTR_PREFIX}enumValues`]).toEqual(["red", "green", "blue"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. @isArray native handling
+// ---------------------------------------------------------------------------
+
+describe("serializeJson — @isArray native handling", () => {
+  it('emits "@isArray": true when isArray is true', () => {
+    const field = makeModel(TYPE_FIELD, FIELD_SUBTYPE_STRING, "tags");
+    field.setIsArray(true);
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(field);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const fieldObj = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_FIELD];
+    expect(fieldObj[`${ATTR_PREFIX}${ATTR_NAME_IS_ARRAY}`]).toBe(true);
+  });
+
+  it("does NOT emit @isArray when isArray is false (default)", () => {
+    const field = makeModel(TYPE_FIELD, FIELD_SUBTYPE_STRING, "name");
+    // isArray defaults to false
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(field);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const fieldObj = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_FIELD];
+    expect(fieldObj[`${ATTR_PREFIX}${ATTR_NAME_IS_ARRAY}`]).toBeUndefined();
+  });
+
+  it("does NOT emit @isArray when explicitly set to false", () => {
+    const field = makeModel(TYPE_FIELD, FIELD_SUBTYPE_STRING, "name");
+    field.setIsArray(false);
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(field);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const fieldObj = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_FIELD];
+    expect(fieldObj[`${ATTR_PREFIX}${ATTR_NAME_IS_ARRAY}`]).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. isAbstract reserved key
+// ---------------------------------------------------------------------------
+
+describe("serializeJson — isAbstract reserved key", () => {
+  it('emits "isAbstract": true (reserved key, NOT @isAbstract) when isAbstract is true', () => {
+    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "BaseFruit");
+    obj.setIsAbstract(true);
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(obj);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const objWrapper = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_OBJECT];
+
+    // Emitted as reserved key (no @ prefix)
+    expect(objWrapper[RESERVED_KEY_IS_ABSTRACT]).toBe(true);
+    // NOT as @isAbstract
+    expect(objWrapper[`${ATTR_PREFIX}${ATTR_NAME_IS_ABSTRACT}`]).toBeUndefined();
+  });
+
+  it("does NOT emit isAbstract when false (default)", () => {
+    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Store");
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(obj);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const objWrapper = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_OBJECT];
+    expect(objWrapper[RESERVED_KEY_IS_ABSTRACT]).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. super reference
+// ---------------------------------------------------------------------------
+
+describe("serializeJson — super reference", () => {
+  it('emits "super" reserved key when superRef is set', () => {
+    const field = makeModel(TYPE_FIELD, FIELD_SUBTYPE_LONG, "id");
+    field.setSuper("..::common::id");
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(field);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const fieldObj = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_FIELD];
+    expect(fieldObj[RESERVED_KEY_EXTENDS]).toBe("..::common::id");
+  });
+
+  it("omits super key when superRef is not set", () => {
+    const field = makeModel(TYPE_FIELD, FIELD_SUBTYPE_STRING, "name");
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(field);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const fieldObj = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_FIELD];
+    expect(fieldObj[RESERVED_KEY_EXTENDS]).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Reserved key order
+// ---------------------------------------------------------------------------
+
+describe("serializeJson — reserved key order", () => {
+  it("emits keys in stable documented order: package, name, subType, super, isAbstract, @attrs, children", () => {
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Widget");
+    obj.setPackage("demo::widgets");
+    obj.setSuper("..::base::BaseWidget");
+    obj.setIsAbstract(false); // false — should NOT appear in output
+    obj.setAttr("dbTable", "widget_t");
+    obj.setAttr("cacheKey", "widget");
+
+    const child = makeModel(TYPE_FIELD, FIELD_SUBTYPE_STRING, "code");
+    obj.addChild(child);
+
+    root.addChild(obj);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const objData = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_OBJECT];
+
+    const keys = Object.keys(objData);
+    // package comes before name
+    const pkgIdx = keys.indexOf(RESERVED_KEY_PACKAGE);
+    const nameIdx = keys.indexOf(RESERVED_KEY_NAME);
+    const subTypeIdx = keys.indexOf(RESERVED_KEY_SUBTYPE);
+    const extendsIdx = keys.indexOf(RESERVED_KEY_EXTENDS);
+    const childrenIdx = keys.indexOf(RESERVED_KEY_CHILDREN);
+    const attrIdx = keys.indexOf(`${ATTR_PREFIX}dbTable`);
+
+    expect(pkgIdx).toBeLessThan(nameIdx);
+    expect(nameIdx).toBeLessThan(subTypeIdx);
+    expect(subTypeIdx).toBeLessThan(extendsIdx);
+    expect(extendsIdx).toBeLessThan(attrIdx);
+    expect(attrIdx).toBeLessThan(childrenIdx);
+  });
+
+  it("isAbstract appears before @-attrs when true", () => {
+    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "BaseFruit");
+    obj.setIsAbstract(true);
+    obj.setAttr("tag", "fruit");
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(obj);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const objData = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_OBJECT];
+
+    const keys = Object.keys(objData);
+    const isAbstractIdx = keys.indexOf(RESERVED_KEY_IS_ABSTRACT);
+    const attrIdx = keys.indexOf(`${ATTR_PREFIX}tag`);
+
+    expect(isAbstractIdx).toBeLessThan(attrIdx);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. Attr child node preservation (no double-emit)
+// ---------------------------------------------------------------------------
+
+describe("serializeJson — attr child node preservation", () => {
+  it("emits attr child as child node ONLY when it was stored as dual (child + parent attr)", () => {
+    // Mimic what the parser does: add both a child attr model AND setAttr on parent
+    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Item");
+
+    // Dual-storage: structural child
+    const attrChild = makeModel(TYPE_ATTR, ATTR_SUBTYPE_BOOLEAN, "isKey");
+    attrChild.setAttr(RESERVED_KEY_VALUE, true);
+    obj.addChild(attrChild);
+
+    // Dual-storage: also on the parent
+    obj.setAttr("isKey", true);
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(obj);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const objData = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_OBJECT];
+
+    // Should NOT have inline @isKey
+    expect(objData[`${ATTR_PREFIX}isKey`]).toBeUndefined();
+
+    // Should have children containing the attr child
+    const children = objData[RESERVED_KEY_CHILDREN];
+    expect(Array.isArray(children)).toBe(true);
+    expect(children.length).toBe(1);
+
+    const attrWrapper = children[0];
+    expect(typeof attrWrapper[TYPE_ATTR]).toBe("object");
+    const attrData = attrWrapper[TYPE_ATTR];
+    expect(attrData[RESERVED_KEY_NAME]).toBe("isKey");
+    expect(attrData[RESERVED_KEY_SUBTYPE]).toBe(ATTR_SUBTYPE_BOOLEAN);
+    expect(attrData[RESERVED_KEY_VALUE]).toBe(true);
+  });
+
+  it("emits attr with string subType for string attr child", () => {
+    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Item");
+
+    const attrChild = makeModel(TYPE_ATTR, ATTR_SUBTYPE_STRING, "label");
+    attrChild.setAttr(RESERVED_KEY_VALUE, "my label");
+    obj.addChild(attrChild);
+    obj.setAttr("label", "my label");
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(obj);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const objData = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_OBJECT];
+
+    // No inline @label
+    expect(objData[`${ATTR_PREFIX}label`]).toBeUndefined();
+
+    const attrData = objData[RESERVED_KEY_CHILDREN][0][TYPE_ATTR];
+    expect(attrData[RESERVED_KEY_NAME]).toBe("label");
+    expect(attrData[RESERVED_KEY_SUBTYPE]).toBe(ATTR_SUBTYPE_STRING);
+    expect(attrData[RESERVED_KEY_VALUE]).toBe("my label");
+  });
+
+  it("emits inline @attr for attrs that have NO matching child", () => {
+    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Item");
+    // Only set via setAttr — no structural child
+    obj.setAttr("dbTable", "item_t");
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(obj);
+
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const objData = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_OBJECT];
+
+    // Inline form
+    expect(objData[`${ATTR_PREFIX}dbTable`]).toBe("item_t");
+    // No children for this attr
+    expect(objData[RESERVED_KEY_CHILDREN]).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. inlineAttrs: false option
+// ---------------------------------------------------------------------------
+
+describe("serializeJson — inlineAttrs: false option", () => {
+  it("emits attrs as child attr nodes when inlineAttrs is false", () => {
+    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Item");
+    obj.setAttr("foo", "bar");
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(obj);
+
+    const json = serializeJson(root, { inlineAttrs: false });
+    const parsed = JSON.parse(json);
+    const objData = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_OBJECT];
+
+    // Should NOT have inline @foo
+    expect(objData[`${ATTR_PREFIX}foo`]).toBeUndefined();
+
+    // Should have children with the attr node
+    const children = objData[RESERVED_KEY_CHILDREN];
+    expect(Array.isArray(children)).toBe(true);
+
+    const attrWrapper = children.find((c: Record<string, unknown>) => TYPE_ATTR in c);
+    expect(attrWrapper).toBeDefined();
+    const attrData = attrWrapper[TYPE_ATTR];
+    expect(attrData[RESERVED_KEY_NAME]).toBe("foo");
+    expect(attrData[RESERVED_KEY_SUBTYPE]).toBe(ATTR_SUBTYPE_STRING);
+    expect(attrData[RESERVED_KEY_VALUE]).toBe("bar");
+  });
+
+  it("infers int subType for integer number values", () => {
+    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Item");
+    obj.setAttr("count", 42);
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(obj);
+
+    const json = serializeJson(root, { inlineAttrs: false });
+    const parsed = JSON.parse(json);
+    const objData = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_OBJECT];
+
+    const children = objData[RESERVED_KEY_CHILDREN];
+    const attrData = children.find((c: Record<string, unknown>) => TYPE_ATTR in c)[TYPE_ATTR];
+    expect(attrData[RESERVED_KEY_SUBTYPE]).toBe(ATTR_SUBTYPE_INT);
+    expect(attrData[RESERVED_KEY_VALUE]).toBe(42);
+  });
+
+  it("infers boolean subType for boolean values", () => {
+    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Item");
+    obj.setAttr("active", true);
+
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(obj);
+
+    const json = serializeJson(root, { inlineAttrs: false });
+    const parsed = JSON.parse(json);
+    const objData = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_OBJECT];
+
+    const children = objData[RESERVED_KEY_CHILDREN];
+    const attrData = children.find((c: Record<string, unknown>) => TYPE_ATTR in c)[TYPE_ATTR];
+    expect(attrData[RESERVED_KEY_SUBTYPE]).toBe(ATTR_SUBTYPE_BOOLEAN);
+    expect(attrData[RESERVED_KEY_VALUE]).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 11. Round-trip semantic equality (built model)
+// ---------------------------------------------------------------------------
+
+describe("serializeJson — round-trip semantic equality (built model)", () => {
+  it("round-trips a non-trivial model through serialize → parse → compare", () => {
+    const registry = makeRegistry();
+
+    // Build a non-trivial tree
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.setPackage("test::roundtrip");
+
+    // Common abstract field
+    const idField = makeModel(TYPE_FIELD, FIELD_SUBTYPE_LONG, "id");
+    idField.setPackage("test::common");
+    idField.setIsAbstract(true);
+    const isKeyAttr = makeModel(TYPE_ATTR, ATTR_SUBTYPE_BOOLEAN, "isKey");
+    isKeyAttr.setAttr(RESERVED_KEY_VALUE, true);
+    idField.addChild(isKeyAttr);
+    idField.setAttr("isKey", true);
+    root.addChild(idField);
+
+    // Object with fields
+    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Product");
+    obj.setAttr("dbTable", "product_t");
+    obj.setAttr("cacheEnabled", true);
+
+    const nameField = makeModel(TYPE_FIELD, FIELD_SUBTYPE_STRING, "name");
+    nameField.setIsArray(false);
+    const reqValidator = makeModel(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REQUIRED, "");
+    nameField.addChild(reqValidator);
+    obj.addChild(nameField);
+
+    const tagsField = makeModel(TYPE_FIELD, FIELD_SUBTYPE_STRING, "tags");
+    tagsField.setIsArray(true);
+    tagsField.setAttr("objectRef", "::Tag");
+    obj.addChild(tagsField);
+
+    const identity = makeModel(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY, "");
+    obj.addChild(identity);
+
+    root.addChild(obj);
+
+    // Serialize
+    const json = serializeJson(root);
+
+    // Parse back
+    const { root: reparsed } = parseJson(json, { registry });
+
+    // Compare
+    assertModelsEqual(root, reparsed);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 12. Round-trip on real fixture (fruitbasket-metadata.json)
+// ---------------------------------------------------------------------------
+
+describe("serializeJson — round-trip on real fixture", () => {
+  it("fruitbasket-metadata.json: parse → serialize → parse → structurally equivalent", () => {
+    const registry = makeRegistry();
+
+    const raw = loadFixture("fruitbasket-metadata.json");
+    const { root: first } = parseJson(raw, { registry });
+
+    const serialized = serializeJson(first);
+
+    const { root: second } = parseJson(serialized, { registry });
+
+    assertModelsEqual(first, second);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 13. indent: 0 option produces minified JSON
+// ---------------------------------------------------------------------------
+
+describe("serializeJson — indent: 0 option", () => {
+  it("produces minified JSON with no whitespace between tokens", () => {
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.setPackage("mini");
+    const child = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Foo");
+    child.setAttr("bar", "baz");
+    root.addChild(child);
+
+    const json = serializeJson(root, { indent: 0 });
+
+    // No newlines, no leading spaces
+    expect(json).not.toContain("\n");
+    // Still valid JSON
+    const parsed = JSON.parse(json);
+    expect(parsed[TYPE_METADATA][RESERVED_KEY_PACKAGE]).toBe("mini");
+  });
+
+  it("default indent=2 produces multi-line output", () => {
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Foo"));
+
+    const json = serializeJson(root);
+    expect(json).toContain("\n");
+    expect(json).toContain("  ");
+  });
+
+  it("explicit indent=4 uses 4-space indentation", () => {
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    const json = serializeJson(root, { indent: 4 });
+    // Contains 4-space indentation
+    expect(json).toContain("    ");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Additional edge cases
+// ---------------------------------------------------------------------------
+
+describe("serializeJson — edge cases", () => {
+  it("does NOT emit $schema key", () => {
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    const json = serializeJson(root);
+    expect(json).not.toContain("$schema");
+  });
+
+  it("emits name key when model has a non-empty name", () => {
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "myRoot");
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    expect(parsed[TYPE_METADATA][RESERVED_KEY_NAME]).toBe("myRoot");
+  });
+
+  it("does not emit isAbstract key when isAbstract is false", () => {
+    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Foo");
+    obj.setIsAbstract(false);
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    root.addChild(obj);
+    const json = serializeJson(root);
+    const parsed = JSON.parse(json);
+    const objData = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN][0][TYPE_OBJECT];
+    expect(objData[RESERVED_KEY_IS_ABSTRACT]).toBeUndefined();
+  });
+
+  it("handles deeply nested children", () => {
+    const registry = makeRegistry();
+    const root = makeModel(TYPE_METADATA, SUBTYPE_BASE, "");
+    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Widget");
+    const field = makeModel(TYPE_FIELD, FIELD_SUBTYPE_INT, "qty");
+    const validator = makeModel(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_LENGTH, "");
+    validator.setAttr("min", 0);
+    validator.setAttr("max", 100);
+    field.addChild(validator);
+    obj.addChild(field);
+    root.addChild(obj);
+
+    const json = serializeJson(root);
+    const { root: reparsed } = parseJson(json, { registry });
+    assertModelsEqual(root, reparsed);
+  });
+
+  it("handles fruitbasket fixture that used @isAbstract (inline attr form) — parsed and re-serialized as reserved key form", () => {
+    // fruitbasket uses @isAbstract which the parser routes to setIsAbstract.
+    // The serializer must emit it as the reserved key "isAbstract", not "@isAbstract".
+    const registry = makeRegistry();
+    const raw = loadFixture("fruitbasket-metadata.json");
+    const { root } = parseJson(raw, { registry });
+
+    // The Fruit object should have isAbstract=true
+    const fruitObj = root.children().find((c) => c.name === "Fruit");
+    expect(fruitObj).toBeDefined();
+    expect(fruitObj!.isAbstract).toBe(true);
+
+    const serialized = serializeJson(root);
+    const parsed = JSON.parse(serialized);
+
+    // Find the Fruit child in serialized output
+    const children = parsed[TYPE_METADATA][RESERVED_KEY_CHILDREN];
+    const fruitSerialized = children.find(
+      (c: Record<string, unknown>) => c[TYPE_OBJECT] && (c[TYPE_OBJECT] as Record<string, unknown>)[RESERVED_KEY_NAME] === "Fruit"
+    );
+    expect(fruitSerialized).toBeDefined();
+    const fruitData = fruitSerialized[TYPE_OBJECT] as Record<string, unknown>;
+
+    // Must use reserved key form, NOT @isAbstract
+    expect(fruitData[RESERVED_KEY_IS_ABSTRACT]).toBe(true);
+    expect(fruitData[`${ATTR_PREFIX}${ATTR_NAME_IS_ABSTRACT}`]).toBeUndefined();
+  });
+});

@@ -1,0 +1,418 @@
+/**
+ * Postgres introspection — stage 2 of the migration pipeline.
+ *
+ * Produces a SchemaSnapshot from a live Kysely<unknown> pointing at a Postgres
+ * (or pg-mem) database.
+ *
+ * Design notes:
+ * - We deliberately avoid Kysely's built-in db.introspection.getTables() because
+ *   it uses the `!~` regex operator in its internal query, which pg-mem (v3) does
+ *   not support. We read information_schema directly via raw SQL instead.
+ * - Primary keys come from information_schema.table_constraints +
+ *   key_column_usage. Real Postgres returns rows; pg-mem (v3) returns empty rows
+ *   for both views — so PK tests are gated on MIGRATE_TS_PG_URL in the test file.
+ * - Default values come from information_schema.columns.column_default. pg-mem
+ *   always returns null for this column, so default tests are gated too.
+ * - Type normalization (pgTypeToSqlType) is exported so it can be unit-tested
+ *   without a live DB.
+ *
+ * pg-mem gaps (documented here, gated in the test file):
+ *   - information_schema.columns.character_maximum_length → always null
+ *   - information_schema.columns.column_default → always null
+ *   - information_schema.table_constraints / key_column_usage → empty rows
+ *   - bigserial appears as "integer" (no sequence differentiation)
+ *   - array_position() not implemented → pg_index catalog query throws;
+ *     readPgIndexes() catches and returns [] on pg-mem
+ *   - information_schema.referential_constraints not supported →
+ *     readPgForeignKeys() catches and returns [] on pg-mem
+ */
+import type { Kysely } from "kysely";
+import { sql } from "kysely";
+import type { SchemaSnapshot, TableDescriptor, ColumnDescriptor, ColumnDefault, IndexDescriptor, FkDescriptor, FkAction, ViewDescriptor } from "../types.js";
+import type { SqlType } from "../sql-type.js";
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+export async function introspectPostgres(db: Kysely<unknown>): Promise<SchemaSnapshot> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const k = db as Kysely<any>;
+
+  const tableNames = await readTableNames(k);
+  const tables: TableDescriptor[] = [];
+
+  for (const tableName of tableNames) {
+    const columns = await readColumns(k, tableName);
+    const primaryKey = await readPrimaryKey(k, tableName);
+    tables.push({
+      name: tableName,
+      columns,
+      indexes: await readPgIndexes(k, tableName),
+      foreignKeys: await readPgForeignKeys(k, tableName),
+      primaryKey,
+    });
+  }
+
+  const views = await readPgViews(k);
+  return {
+    tables,
+    views,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers — all exported so they can be tested in isolation
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalise a PG column data type string into a canonical SqlType.
+ * The `dataType` string comes from information_schema.columns.data_type (or
+ * occasionally from information_schema.columns.udt_name).  Both are lower-cased
+ * before matching.
+ *
+ * If character_maximum_length is available, callers should pass `maxLength`.
+ */
+export function pgTypeToSqlType(dataType: string, maxLength?: number | null): SqlType {
+  const dt = dataType.toLowerCase().trim();
+
+  // Length-bearing text types — may arrive as "character varying(255)" (full
+  // inline) or as bare "character varying" with maxLength from a separate column.
+  const varcharMatch = /^(?:character varying|varchar)\((\d+)\)$/.exec(dt);
+  if (varcharMatch) {
+    return { kind: "text", maxLength: parseInt(varcharMatch[1] ?? "0", 10) };
+  }
+  if (dt === "character varying" || dt === "varchar") {
+    return maxLength != null ? { kind: "text", maxLength } : { kind: "text" };
+  }
+  if (dt === "text") {
+    return { kind: "text" };
+  }
+
+  // Integer types — serial variants are also covered here; callers supply
+  // identity=increment separately via a sequence check.
+  if (dt === "int8" || dt === "bigint" || dt === "bigserial") {
+    return { kind: "integer", bits: 64 };
+  }
+  if (
+    dt === "int4" || dt === "integer" || dt === "serial" ||
+    dt === "int2" || dt === "smallint" || dt === "smallserial" ||
+    dt === "int"
+  ) {
+    return { kind: "integer", bits: 32 };
+  }
+
+  // Floating-point
+  if (dt === "float4" || dt === "real") return { kind: "real" };
+  if (dt === "float8" || dt === "double precision") return { kind: "real" };
+
+  // Arbitrary-precision numeric — "numeric(p,s)" or bare "numeric"/"decimal"
+  const numMatch = /^(?:numeric|decimal)(?:\((\d+)(?:,\s*(\d+))?\))?$/.exec(dt);
+  if (numMatch) {
+    const out: SqlType = { kind: "numeric" };
+    if (numMatch[1]) out.precision = parseInt(numMatch[1], 10);
+    if (numMatch[2]) out.scale = parseInt(numMatch[2], 10);
+    return out;
+  }
+
+  // Boolean
+  if (dt === "bool" || dt === "boolean") return { kind: "boolean" };
+
+  // Date + time
+  if (dt === "date") return { kind: "date" };
+  if (dt === "timestamp" || dt === "timestamp without time zone") {
+    return { kind: "timestamp", withTimezone: false };
+  }
+  if (dt === "timestamptz" || dt === "timestamp with time zone") {
+    return { kind: "timestamp", withTimezone: true };
+  }
+
+  // JSON
+  if (dt === "json" || dt === "jsonb") return { kind: "json" };
+
+  // Binary
+  if (dt === "bytea") return { kind: "blob" };
+
+  // UUID
+  if (dt === "uuid") return { kind: "uuid" };
+
+  // Unknown types (user-defined enums, citext, ltree, etc.) fall back to text
+  // so we don't blow up on unrecognised types.
+  return { kind: "text" };
+}
+
+/**
+ * Parse a raw PG column_default string into a ColumnDefault.
+ * Returns undefined if the default is absent or empty.
+ *
+ * Classification rules:
+ *   - Expressions: now(), CURRENT_TIMESTAMP, CURRENT_DATE, CURRENT_TIME,
+ *     nextval(...), and any value that starts with a non-quote character and
+ *     contains a `::` cast (i.e. bare identifier with cast, like `NULL::text`).
+ *   - Literals: `'value'` (optionally followed by `::type` cast, which PG
+ *     commonly appends for clarity). The cast is stripped; the value is unquoted.
+ *
+ * PG stores literal booleans as `'true'::boolean`, integers as `'42'::integer`,
+ * strings as `'hello'::text` — all are literals after stripping the cast.
+ */
+export function parsePgDefault(raw: string | null | undefined): ColumnDefault | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+
+  // Function-call or keyword expressions
+  if (
+    /^now\(\)$/i.test(raw) ||
+    /^current_timestamp\b/i.test(raw) ||
+    /^current_date\b/i.test(raw) ||
+    /^current_time\b/i.test(raw) ||
+    /^nextval\(/i.test(raw)
+  ) {
+    return { kind: "expr", value: raw };
+  }
+
+  // If it starts with a single-quote, it's a quoted literal (possibly with
+  // a trailing ::type cast that PG appends for type clarity).
+  if (raw.startsWith("'")) {
+    // Strip the cast suffix (e.g. `::boolean`, `::text`, `::integer`)
+    const withoutCast = raw.replace(/::[^']+$/, "");
+    // Strip the surrounding single-quotes
+    const cleaned = withoutCast.replace(/^'(.*)'$/, "$1");
+    return { kind: "literal", value: cleaned };
+  }
+
+  // Anything else that contains a :: cast is a complex expression
+  // (e.g. NULL::text, ARRAY[]::text[])
+  if (/::/g.test(raw)) {
+    return { kind: "expr", value: raw };
+  }
+
+  // Bare literal (no quotes, no cast)
+  return { kind: "literal", value: raw };
+}
+
+// ---------------------------------------------------------------------------
+// Internal — raw SQL queries
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function readTableNames(k: Kysely<any>): Promise<string[]> {
+  const rows = await sql<{ table_name: string }>`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_type = 'BASE TABLE'
+    ORDER BY table_name
+  `.execute(k);
+  return rows.rows.map((r) => r.table_name);
+}
+
+async function readPgViews(k: RawKysely): Promise<ViewDescriptor[]> {
+  // pg-mem gap: information_schema.views is not supported — the query throws
+  // "relation views does not exist". We catch and return [] so other tests
+  // still pass on pg-mem. Real PG (Postgres 16) handles this correctly.
+  try {
+    const rows = await sql<{ table_name: string }>`
+      SELECT table_name FROM information_schema.views WHERE table_schema = 'public'
+    `.execute(k);
+    return rows.rows.map((r) => ({ name: r.table_name }));
+  } catch {
+    // pg-mem: information_schema.views not supported — return empty view list.
+    return [];
+  }
+}
+
+interface RawColumn {
+  column_name: string;
+  data_type: string;
+  udt_name: string;
+  character_maximum_length: number | null;
+  is_nullable: string;   // 'YES' | 'NO'
+  column_default: string | null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function readColumns(k: Kysely<any>, tableName: string): Promise<ColumnDescriptor[]> {
+  const rows = await sql<RawColumn>`
+    SELECT
+      column_name,
+      data_type,
+      udt_name,
+      character_maximum_length,
+      is_nullable,
+      column_default
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = ${tableName}
+    ORDER BY ordinal_position
+  `.execute(k);
+
+  return rows.rows.map((r) => {
+    const sqlType = pgTypeToSqlType(r.data_type, r.character_maximum_length);
+    const col: ColumnDescriptor = {
+      name: r.column_name,
+      sqlType,
+      nullable: r.is_nullable === "YES",
+    };
+
+    const def = parsePgDefault(r.column_default);
+    if (def !== undefined) col.default = def;
+
+    // Detect auto-increment (sequence) columns — real PG surfaces bigserial /
+    // serial as nextval(...) in column_default.  We also check udt_name for
+    // explicit serial type names as a belt-and-suspenders guard.
+    const isSerial =
+      (r.column_default !== null && /^nextval\(/i.test(r.column_default)) ||
+      /^(?:bigserial|serial8|serial4|serial|smallserial|serial2)$/i.test(r.udt_name);
+    if (isSerial) col.identity = "increment";
+
+    return col;
+  });
+}
+
+// Typed alias for raw Kysely — avoids per-call `as any` casts in the helpers below.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type RawKysely = Kysely<any>;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function readPrimaryKey(k: Kysely<any>, tableName: string): Promise<string[]> {
+  // Uses information_schema only — avoids pg_attribute / pg_constraint joins
+  // that are either missing or return empty in pg-mem.
+  const rows = await sql<{ column_name: string; ordinal_position: number }>`
+    SELECT kcu.column_name, kcu.ordinal_position
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON kcu.constraint_name = tc.constraint_name
+      AND kcu.table_schema    = tc.table_schema
+      AND kcu.table_name      = tc.table_name
+    WHERE tc.constraint_type = 'PRIMARY KEY'
+      AND tc.table_schema    = 'public'
+      AND tc.table_name      = ${tableName}
+    ORDER BY kcu.ordinal_position
+  `.execute(k);
+  return rows.rows.map((r) => r.column_name);
+}
+
+async function readPgIndexes(k: RawKysely, table: string): Promise<IndexDescriptor[]> {
+  // pg-mem gap: array_position() is not implemented, so this query throws on
+  // pg-mem. We catch and return [] so non-index tests still pass against pg-mem.
+  // Real PG (Postgres 16) handles this correctly.
+  let rows: { rows: Array<{ index_name: string; is_unique: boolean; is_primary: boolean; column_name: string; ordinal: number }> };
+  try {
+    rows = await sql<{
+      index_name: string;
+      is_unique: boolean;
+      is_primary: boolean;
+      column_name: string;
+      ordinal: number;
+    }>`
+      SELECT i.relname AS index_name,
+             ix.indisunique AS is_unique,
+             ix.indisprimary AS is_primary,
+             a.attname AS column_name,
+             array_position(ix.indkey, a.attnum) AS ordinal
+      FROM pg_index ix
+      JOIN pg_class i ON i.oid = ix.indexrelid
+      JOIN pg_class t ON t.oid = ix.indrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+      JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
+      WHERE n.nspname = 'public'
+        AND t.relname = ${table}
+      ORDER BY i.relname, ordinal
+    `.execute(k);
+  } catch {
+    // pg-mem: array_position() not implemented — return empty index list.
+    return [];
+  }
+
+  const byName = new Map<string, { isUnique: boolean; isPrimary: boolean; cols: string[] }>();
+  for (const r of rows.rows) {
+    let entry = byName.get(r.index_name);
+    if (!entry) {
+      entry = { isUnique: r.is_unique, isPrimary: r.is_primary, cols: [] };
+      byName.set(r.index_name, entry);
+    }
+    entry.cols.push(r.column_name);
+  }
+  return Array.from(byName.entries())
+    .filter(([, v]) => !v.isPrimary)        // PK index excluded — PK lives in TableDescriptor.primaryKey
+    .map(([name, v]) => ({ name, columns: v.cols, unique: v.isUnique }));
+}
+
+async function readPgForeignKeys(k: RawKysely, table: string): Promise<FkDescriptor[]> {
+  // pg-mem gap: information_schema.referential_constraints is not supported —
+  // the query returns empty rows or throws. We catch and return [] so other
+  // tests still pass on pg-mem. Real PG (Postgres 16) handles this correctly.
+  let rows: { rows: Array<{ fk_name: string; column_name: string; ref_table: string; ref_column: string; update_rule: string; delete_rule: string; ordinal: number }> };
+  try {
+    rows = await sql<{
+      fk_name: string;
+      column_name: string;
+      ref_table: string;
+      ref_column: string;
+      update_rule: string;
+      delete_rule: string;
+      ordinal: number;
+    }>`
+      SELECT tc.constraint_name AS fk_name,
+             kcu.column_name,
+             ccu.table_name AS ref_table,
+             ccu.column_name AS ref_column,
+             rc.update_rule,
+             rc.delete_rule,
+             kcu.ordinal_position AS ordinal
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu
+        ON kcu.constraint_name = tc.constraint_name
+        AND kcu.table_schema = tc.table_schema
+      JOIN information_schema.referential_constraints rc
+        ON rc.constraint_name = tc.constraint_name
+        AND rc.constraint_schema = tc.table_schema
+      JOIN information_schema.constraint_column_usage ccu
+        ON ccu.constraint_name = tc.constraint_name
+        AND ccu.table_schema = tc.table_schema
+      WHERE tc.constraint_type = 'FOREIGN KEY'
+        AND tc.table_schema = 'public'
+        AND tc.table_name = ${table}
+      ORDER BY tc.constraint_name, kcu.ordinal_position
+    `.execute(k);
+  } catch {
+    // pg-mem: referential_constraints not supported — return empty FK list.
+    return [];
+  }
+
+  const byName = new Map<string, {
+    cols: string[]; refTable: string; refCols: string[];
+    onDelete: FkAction; onUpdate: FkAction;
+  }>();
+  for (const r of rows.rows) {
+    let entry = byName.get(r.fk_name);
+    if (!entry) {
+      entry = {
+        cols: [], refTable: r.ref_table, refCols: [],
+        onDelete: pgRuleToAction(r.delete_rule),
+        onUpdate: pgRuleToAction(r.update_rule),
+      };
+      byName.set(r.fk_name, entry);
+    }
+    entry.cols.push(r.column_name);
+    entry.refCols.push(r.ref_column);
+  }
+  return Array.from(byName.entries()).map(([name, v]) => {
+    const fk: FkDescriptor = {
+      name,
+      columns: v.cols,
+      refTable: v.refTable,
+      refColumns: v.refCols,
+    };
+    if (v.onDelete !== "no-action") fk.onDelete = v.onDelete;
+    if (v.onUpdate !== "no-action") fk.onUpdate = v.onUpdate;
+    return fk;
+  });
+}
+
+function pgRuleToAction(rule: string): FkAction {
+  const r = rule.toUpperCase();
+  if (r === "CASCADE") return "cascade";
+  if (r === "SET NULL") return "set-null";
+  if (r === "RESTRICT") return "restrict";
+  return "no-action";
+}

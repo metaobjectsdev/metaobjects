@@ -1,0 +1,46 @@
+{
+  "name": "@metaobjects/cli",
+  "version": "0.2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "meta": "./dist/bin/meta.js"
+  },
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "dependencies": {
+    "@metaobjects/sdk": "workspace:*",
+    "@metaobjects/metadata": "workspace:*",
+    "@metaobjects/codegen-ts": "workspace:*",
+    "@metaobjects/codegen-ts-tanstack": "workspace:*",
+    "@metaobjects/migrate-ts": "workspace:*",
+    "jiti": "^2.4.0"
+  },
+  "peerDependencies": {
+    "kysely": ">=0.27.0",
+    "pg": ">=8.0.0",
+    "@libsql/kysely-libsql": ">=0.4.0"
+  },
+  "peerDependenciesMeta": {
+    "pg": { "optional": true },
+    "@libsql/kysely-libsql": { "optional": true }
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0",
+    "@libsql/kysely-libsql": "^0.4.1",
+    "@libsql/client": "^0.14.0",
+    "kysely": "^0.27.0",
+    "pg": "^8.0.0",
+    "@types/pg": "^8.0.0",
+    "pg-mem": "^3.0.4"
+  }
+}

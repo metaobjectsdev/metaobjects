@@ -1,0 +1,34 @@
+{"metadata": {"package": "acme",
+  "children": [
+    {"object": {"package": "::garage", "name": "Garage", "merge": true,
+        "children": [
+          {"field": {"name": "premiumLocation", "subType": "boolean", "@default": false}}
+        ]
+      }
+    },
+    {"object": {"package": "::vehicle", "name": "Vehicle", "merge": true,
+        "children": [
+          {"field": {"name": "warranty", "subType": "boolean", "@default": true}},
+          {"field": {"name": "inspectionDate", "subType": "date",
+              "children": [
+                {"validator": {"name": "pastDate", "subType": "required", "@maxDate": "today"}}
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {"object": {"package": "::vehicle::car::luxury", "name": "Porsche", "merge": true,
+        "children": [
+          {"field": {"name": "certifiedPreOwned", "subType": "boolean", "@default": false}}
+        ]
+      }
+    },
+    {"object": {"package": "::vehicle::motorcycle", "name": "Motorcycle", "merge": true,
+        "children": [
+          {"field": {"name": "customPaint", "subType": "boolean", "@default": false}}
+        ]
+      }
+    }
+  ]
+}}

@@ -1,0 +1,85 @@
+import { describe, test, expect } from "bun:test";
+import { Loader } from "@metaobjects/metadata";
+import { renderEntityFile } from "../../src/templates/entity-file.js";
+import { makeRenderContext } from "../../src/render-context.js";
+import { buildPkMap } from "../../src/pk-resolver.js";
+import { buildRelationMap } from "../../src/relation-resolver.js";
+
+function loadFixture() {
+  const loader = new Loader();
+  const result = loader.loadJson(
+    JSON.stringify({
+      metadata: {
+        package: "test",
+        children: [
+          {
+            object: {
+              name: "BaseEntity",
+              subType: "entity",
+              "@isAbstract": true,
+              children: [
+                { field: { name: "id", subType: "long", "@dbColumn": "id" } },
+                {
+                  field: {
+                    name: "createdAt",
+                    subType: "timestamp",
+                    "@dbColumn": "created_at",
+                  },
+                },
+                { identity: { subType: "primary", "@fields": "id" } },
+              ],
+            },
+          },
+          {
+            object: {
+              name: "Program",
+              subType: "entity",
+              extends: "BaseEntity",
+              children: [
+                { source: { subType: "dbTable", "@name": "programs" } },
+                { field: { name: "title", subType: "string", "@dbColumn": "title" } },
+              ],
+            },
+          },
+        ],
+      },
+    }),
+  );
+
+  if (result.errors.length > 0) {
+    throw new Error(
+      `Loader errors:\n${result.errors.map((e: Error) => e.message).join("\n")}`,
+    );
+  }
+
+  const root = result.root;
+  const program = root.children().find((o) => o.name === "Program")!;
+
+  const ctx = makeRenderContext({
+    dialect: "sqlite",
+    loadedRoot: root,
+    outDir: "/x",
+    dbImport: "~/db",
+    pkMap: buildPkMap(root),
+    relationMap: buildRelationMap(root),
+  });
+
+  return { root, program, ctx };
+}
+
+describe("entity extending BaseEntity — codegen inheritance", () => {
+  test("emitted entity file includes own field + inherited fields from BaseEntity", () => {
+    const { program, ctx } = loadFixture();
+    const code = renderEntityFile(program, ctx);
+    expect(code).toContain("title"); // own field
+    expect(code).toContain("id"); // inherited from BaseEntity
+    expect(code).toContain("createdAt"); // inherited from BaseEntity
+  });
+
+  test("emitted entity file declares the primary identity inherited from BaseEntity", () => {
+    const { program, ctx } = loadFixture();
+    const code = renderEntityFile(program, ctx);
+    // The drizzle schema should reference id as the primary key
+    expect(code).toMatch(/primaryKey|integer\(['"]id['"][^)]*\)\.primaryKey/i);
+  });
+});

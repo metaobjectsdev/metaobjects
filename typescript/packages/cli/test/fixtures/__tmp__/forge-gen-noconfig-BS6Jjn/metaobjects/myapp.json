@@ -1,0 +1,84 @@
+{
+  "metadata": {
+    "package": "downstream-consumer",
+    "children": [
+      {
+        "object": {
+          "name": "User",
+          "subType": "entity",
+          "@dbTable": "users",
+          "@forgeConfidence": 0.95,
+          "@forgeSource": "human",
+          "@forgePrimaryLocation": "src/db/users.schema.ts",
+          "children": [
+            {"field": {"name": "id", "subType": "long", "@dbColumn": "id"}},
+            {"field": {"name": "email", "subType": "string", "@dbColumn": "email",
+              "@maxLength": 255,
+              "children": [{"validator": {"subType": "required"}}]
+            }},
+            {"field": {"name": "displayName", "subType": "string", "@dbColumn": "display_name",
+              "@maxLength": 100
+            }},
+            {"field": {"name": "createdAt", "subType": "timestamp", "@dbColumn": "created_at"}},
+            {"identity": {"name": "pk", "subType": "primary", "@fields": ["id"], "@generation": "increment"}},
+            {"identity": {"name": "emailIdx", "subType": "secondary", "@fields": ["email"]}}
+          ]
+        }
+      },
+      {
+        "object": {
+          "name": "Post",
+          "subType": "entity",
+          "@dbTable": "posts",
+          "@forgeConfidence": 0.95,
+          "@forgeSource": "human",
+          "@forgePrimaryLocation": "src/db/posts.schema.ts",
+          "children": [
+            {"field": {"name": "id", "subType": "long", "@dbColumn": "id"}},
+            {"field": {"name": "userId", "subType": "long", "@dbColumn": "user_id"}},
+            {"field": {"name": "title", "subType": "string", "@dbColumn": "title",
+              "@maxLength": 200,
+              "children": [{"validator": {"subType": "required"}}]
+            }},
+            {"field": {"name": "body", "subType": "string", "@dbColumn": "body"}},
+            {"field": {"name": "publishedAt", "subType": "timestamp", "@dbColumn": "published_at"}},
+            {"identity": {"name": "pk", "subType": "primary", "@fields": ["id"], "@generation": "increment"}},
+            {"relationship": {"name": "author", "subType": "association",
+              "@cardinality": "one",
+              "@objectRef": "downstream-consumer::User",
+              "@fkField": "userId"
+            }}
+          ]
+        }
+      },
+      {
+        "object": {
+          "name": "Tag",
+          "subType": "entity",
+          "@dbTable": "tags",
+          "@forgeConfidence": 0.9,
+          "@forgeSource": "human",
+          "children": [
+            {"field": {"name": "id", "subType": "long", "@dbColumn": "id"}},
+            {"field": {"name": "name", "subType": "string", "@dbColumn": "name",
+              "@maxLength": 50,
+              "children": [{"validator": {"subType": "required"}}]
+            }},
+            {"identity": {"name": "pk", "subType": "primary", "@fields": ["id"], "@generation": "increment"}},
+            {"identity": {"name": "nameIdx", "subType": "secondary", "@fields": ["name"]}}
+          ]
+        }
+      },
+      {
+        "decision": {
+          "name": "useTanstackQuery",
+          "subType": "global",
+          "@forgeConfidence": 0.9,
+          "@forgeSource": "human",
+          "@forgeRationale": "Real-time invalidation matters for the games dashboard.",
+          "@forgeAlternatives": ["swr", "redux-toolkit-query"]
+        }
+      }
+    ]
+  }
+}

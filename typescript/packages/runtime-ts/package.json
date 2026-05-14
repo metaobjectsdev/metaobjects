@@ -1,0 +1,67 @@
+{
+  "name": "@metaobjects/runtime-ts",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./drivers": {
+      "types": "./dist/drivers/index.d.ts",
+      "import": "./dist/drivers/index.js"
+    },
+    "./fastify": {
+      "types": "./dist/fastify/index.d.ts",
+      "import": "./dist/fastify/index.js"
+    },
+    "./drizzle-fastify": {
+      "types": "./dist/drizzle-fastify/index.d.ts",
+      "import": "./dist/drizzle-fastify/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "dependencies": {
+    "@metaobjects/metadata": "workspace:*",
+    "qs": "^6.13.0"
+  },
+  "peerDependencies": {
+    "drizzle-orm": ">=0.36.0",
+    "fastify": ">=5.0.0",
+    "kysely": ">=0.27.0",
+    "zod": ">=3.23.0"
+  },
+  "peerDependenciesMeta": {
+    "drizzle-orm": {
+      "optional": true
+    },
+    "fastify": {
+      "optional": true
+    },
+    "kysely": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@libsql/client": "^0.15.0",
+    "@libsql/kysely-libsql": "^0.4.1",
+    "@types/qs": "^6.9.0",
+    "bun-types": "latest",
+    "drizzle-orm": "^0.45.1",
+    "fastify": "^5.6.2",
+    "jsdom": "^29.1.1",
+    "kysely": "^0.27.0",
+    "pg-mem": "^3.0.4",
+    "typescript": "^5.6.0",
+    "zod": "^4.4.3"
+  }
+}

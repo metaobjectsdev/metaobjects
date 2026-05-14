@@ -1,0 +1,32 @@
+{
+  "metadata": {
+    "children": [
+      {
+        "object": {
+          "name": "Program",
+          "subType": "entity",
+          "children": [
+            { "field": { "name": "id", "subType": "long" } },
+            { "field": { "name": "slug", "subType": "string", "@required": true } },
+            { "field": { "name": "title", "subType": "string", "@required": true } },
+            { "identity": { "name": "pk", "subType": "primary", "@fields": ["id"], "@generation": "increment" } },
+            { "identity": { "name": "uniqueSlug", "subType": "secondary", "@fields": ["slug"] } }
+          ]
+        }
+      },
+      {
+        "object": {
+          "name": "Week",
+          "subType": "entity",
+          "children": [
+            { "field": { "name": "id", "subType": "long" } },
+            { "field": { "name": "programId", "subType": "long", "@required": true } },
+            { "field": { "name": "weekNumber", "subType": "int", "@required": true } },
+            { "identity": { "name": "pk", "subType": "primary", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship": { "name": "program", "subType": "association", "@cardinality": "one", "@objectRef": "Program", "@fkField": "programId" } }
+          ]
+        }
+      }
+    ]
+  }
+}

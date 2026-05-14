@@ -1,0 +1,33 @@
+{
+  "name": "@metaobjects/migrate-ts",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "dependencies": {
+    "@metaobjects/metadata": "workspace:*"
+  },
+  "peerDependencies": {
+    "kysely": ">=0.27.0"
+  },
+  "devDependencies": {
+    "@libsql/kysely-libsql": "^0.4.1",
+    "@types/pg": "^8.20.0",
+    "bun-types": "latest",
+    "kysely": "^0.27.0",
+    "pg": "^8.20.0",
+    "pg-mem": "^3.0.4",
+    "typescript": "^5.6.0"
+  }
+}

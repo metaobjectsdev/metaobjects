@@ -1,0 +1,9 @@
+{
+  "metadata": {
+    "package": "demo::common",
+    "children": [
+      {"field": {"name": "id", "subType": "long", "@isAbstract": true, "@dbColumn": "id"}},
+      {"field": {"name": "createdAt", "subType": "timestamp", "@isAbstract": true, "@dbColumn": "created_at"}}
+    ]
+  }
+}

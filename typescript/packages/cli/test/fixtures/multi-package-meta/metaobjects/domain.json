@@ -1,0 +1,20 @@
+{
+  "metadata": {
+    "package": "demo",
+    "children": [
+      {
+        "object": {
+          "name": "Widget",
+          "subType": "entity",
+          "@dbTable": "widgets",
+          "children": [
+            {"field": {"name": "id", "extends": "::demo::common::id"}},
+            {"field": {"name": "createdAt", "extends": "::demo::common::createdAt"}},
+            {"field": {"name": "name", "subType": "string", "@dbColumn": "name", "@maxLength": 100}},
+            {"identity": {"name": "pk", "subType": "primary", "@fields": ["id"], "@generation": "increment"}}
+          ]
+        }
+      }
+    ]
+  }
+}

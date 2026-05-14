@@ -1,0 +1,79 @@
+import { describe, test, expect } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  buildKyselyFromUrl,
+  redactUrl,
+  inferDialect,
+} from "../../src/lib/kysely.js";
+
+describe("inferDialect", () => {
+  test("file: → sqlite", () => {
+    expect(inferDialect("file:./local.db")).toBe("sqlite");
+  });
+  test("libsql: → sqlite", () => {
+    expect(inferDialect("libsql://my-db.turso.io")).toBe("sqlite");
+  });
+  test("postgres: → postgres", () => {
+    expect(inferDialect("postgres://u:p@host/db")).toBe("postgres");
+  });
+  test("postgresql: → postgres", () => {
+    expect(inferDialect("postgresql://u:p@host/db")).toBe("postgres");
+  });
+  test("unknown scheme → throws with helpful message", () => {
+    expect(() => inferDialect("mysql://u:p@host/db")).toThrow(/scheme.*'mysql'/);
+  });
+});
+
+describe("redactUrl", () => {
+  test("strips password from postgres URL", () => {
+    expect(redactUrl("postgres://user:secret@host/db")).toBe("postgres://user:***@host/db");
+  });
+  test("leaves file URLs unchanged", () => {
+    expect(redactUrl("file:./local.db")).toBe("file:./local.db");
+  });
+  test("leaves libsql URLs without credentials unchanged", () => {
+    expect(redactUrl("libsql://my-db.turso.io")).toBe("libsql://my-db.turso.io");
+  });
+});
+
+describe("buildKyselyFromUrl", () => {
+  test("constructs a libsql Kysely instance from file: URL", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "kysely-build-"));
+    try {
+      const url = `file:${join(dir, "test.db")}`;
+      const result = await buildKyselyFromUrl(url);
+      expect(result.dialect).toBe("sqlite");
+      expect(result.db).toBeDefined();
+      expect(result.displayUrl).toBe(url);
+      await result.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("dialect override wins over inference", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "kysely-build-override-"));
+    try {
+      const url = `file:${join(dir, "test.db")}`;
+      const result = await buildKyselyFromUrl(url, "sqlite");
+      expect(result.dialect).toBe("sqlite");
+      await result.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("close() can be called twice without throwing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "kysely-build-close-"));
+    try {
+      const url = `file:${join(dir, "test.db")}`;
+      const result = await buildKyselyFromUrl(url);
+      await result.close();
+      await result.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

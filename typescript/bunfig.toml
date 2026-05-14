@@ -1,0 +1,5 @@
+[test]
+preload = [
+  "./packages/runtime-ts/test/setup.ts",
+  "./packages/runtime-ts-client/test/setup.ts",
+]

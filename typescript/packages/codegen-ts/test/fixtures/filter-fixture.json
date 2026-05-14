@@ -1,0 +1,107 @@
+{
+  "metadata": {
+    "children": [
+      {
+        "object": {
+          "name": "Subscriber",
+          "subType": "entity",
+          "children": [
+            {
+              "field": {
+                "name": "id",
+                "subType": "long",
+                "children": [
+                  {
+                    "identity": {
+                      "subType": "primary",
+                      "@fields": "id"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "email",
+                "subType": "string",
+                "@filterable": true
+              }
+            },
+            {
+              "field": {
+                "name": "firstName",
+                "subType": "string",
+                "@filterable": true
+              }
+            },
+            {
+              "field": {
+                "name": "lastName",
+                "subType": "string",
+                "@filterable": true,
+                "@sortable": false
+              }
+            },
+            {
+              "field": {
+                "name": "subscribed",
+                "subType": "boolean",
+                "@filterable": true
+              }
+            },
+            {
+              "field": {
+                "name": "createdAt",
+                "subType": "timestamp",
+                "@filterable": true,
+                "@sortable": true,
+                "@sortableDefaultOrder": "desc"
+              }
+            },
+            {
+              "field": {
+                "name": "internalNote",
+                "subType": "string"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object": {
+          "name": "Product",
+          "subType": "entity",
+          "children": [
+            {
+              "field": {
+                "name": "id",
+                "subType": "long",
+                "children": [
+                  {
+                    "identity": {
+                      "subType": "primary",
+                      "@fields": "id"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "title",
+                "subType": "string"
+              }
+            },
+            {
+              "field": {
+                "name": "price",
+                "subType": "decimal",
+                "@sortable": true
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

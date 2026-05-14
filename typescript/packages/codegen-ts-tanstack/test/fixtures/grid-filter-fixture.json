@@ -1,0 +1,62 @@
+{
+  "metadata": {
+    "children": [
+      {
+        "object": {
+          "name": "Subscriber",
+          "subType": "entity",
+          "children": [
+            {
+              "field": {
+                "name": "id",
+                "subType": "long",
+                "children": [
+                  {
+                    "identity": {
+                      "subType": "primary",
+                      "@fields": ["id"],
+                      "@generation": "increment"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "email",
+                "subType": "string",
+                "@filterable": true,
+                "children": [{ "view": { "subType": "text" } }]
+              }
+            },
+            {
+              "field": {
+                "name": "subscribed",
+                "subType": "boolean",
+                "@filterable": true,
+                "children": [{ "view": { "subType": "text" } }]
+              }
+            },
+            {
+              "field": {
+                "name": "createdAt",
+                "subType": "timestamp",
+                "children": [{ "view": { "subType": "date" } }]
+              }
+            },
+            {
+              "layout": {
+                "subType": "dataGrid",
+                "name": "active",
+                "@pageSize": 25,
+                "@filterable": true,
+                "@filter": "{\"subscribed\":true}",
+                "@columns": ["email", "subscribed"]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
