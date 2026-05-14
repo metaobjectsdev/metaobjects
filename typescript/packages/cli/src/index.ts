@@ -1,6 +1,6 @@
 import { log } from "./lib/log.js";
 export { defineConfig } from "@metaobjects/codegen-ts";
-export type { ForgeConfig } from "@metaobjects/codegen-ts";
+export type { MetaobjectsGenConfig } from "@metaobjects/codegen-ts";
 
 const VERSION = "0.2.0";
 

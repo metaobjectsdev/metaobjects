@@ -9,8 +9,8 @@ export type { RunGenOpts, RunGenResult } from "./runner.js";
 export type { Generator, GenContext, EmittedFile, GeneratorFactory } from "./generator.js";
 export { perEntity, oncePerRun } from "./generator.js";
 
-export type { ForgeConfig, NormalizedForgeConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy } from "./forge-config.js";
-export { defineConfig, normalizeConfig } from "./forge-config.js";
+export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy } from "./metaobjects-config.js";
+export { defineConfig, normalizeConfig } from "./metaobjects-config.js";
 
 export type { ColumnSpec, DefaultExpr } from "./column-mapper.js";
 export { mapColumnType } from "./column-mapper.js";

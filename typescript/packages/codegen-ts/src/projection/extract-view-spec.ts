@@ -27,7 +27,7 @@ import {
   columnNameFromField,
   viewNameFromProjection,
 } from "../naming.js";
-import type { ColumnNamingStrategy } from "../forge-config.js";
+import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import type {
   JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec,
 } from "./view-spec.js";

@@ -4,7 +4,7 @@ import type { MetaModel } from "@metaobjects/metadata";
 import type { Dialect } from "./column-mapper.js";
 import type { PkInfo } from "./pk-resolver.js";
 import type { RelationMap } from "./relation-resolver.js";
-import type { ColumnNamingStrategy } from "./forge-config.js";
+import type { ColumnNamingStrategy } from "./metaobjects-config.js";
 
 /**
  * How to format cross-entity import specifiers in generated files.

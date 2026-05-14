@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Loader } from "@metaobjects/metadata";
 import { runGen } from "../src/runner.js";
-import { defineConfig } from "../src/forge-config.js";
+import { defineConfig } from "../src/metaobjects-config.js";
 import { perEntity, oncePerRun, type Generator } from "../src/generator.js";
 
 const FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");

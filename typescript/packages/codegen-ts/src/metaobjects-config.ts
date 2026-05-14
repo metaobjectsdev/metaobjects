@@ -5,7 +5,7 @@ export type Dialect = "sqlite" | "postgres";
 export type ColumnNamingStrategy = "snake_case" | "literal" | "kebab-case";
 export type { ExtStyle };
 
-/** Subset of ForgeConfig surfaced to generators via GenContext. */
+/** Subset of MetaobjectsGenConfig surfaced to generators via GenContext. */
 export interface ResolvedGenConfig {
   outDir: string;
   extStyle: ExtStyle;
@@ -13,7 +13,7 @@ export interface ResolvedGenConfig {
   dialect: Dialect;
 }
 
-export interface ForgeConfig extends ResolvedGenConfig {
+export interface MetaobjectsGenConfig extends ResolvedGenConfig {
   generators: Generator[];
   /** How field names map to DB column names when @dbColumn is omitted. Defaults to "snake_case". */
   columnNamingStrategy?: ColumnNamingStrategy;
@@ -21,19 +21,19 @@ export interface ForgeConfig extends ResolvedGenConfig {
   apiPrefix?: string;
 }
 
-/** ForgeConfig after applying defaults. All fields required. */
-export interface NormalizedForgeConfig extends ForgeConfig {
+/** MetaobjectsGenConfig after applying defaults. All fields required. */
+export interface NormalizedMetaobjectsGenConfig extends MetaobjectsGenConfig {
   columnNamingStrategy: ColumnNamingStrategy;
   apiPrefix: string;
 }
 
 /** Identity passthrough; exists for IDE type-inference + autocomplete. */
-export function defineConfig(config: ForgeConfig): ForgeConfig {
+export function defineConfig(config: MetaobjectsGenConfig): MetaobjectsGenConfig {
   return config;
 }
 
-/** Apply defaults to a ForgeConfig, returning a NormalizedForgeConfig. */
-export function normalizeConfig(config: ForgeConfig): NormalizedForgeConfig {
+/** Apply defaults to a MetaobjectsGenConfig, returning a NormalizedMetaobjectsGenConfig. */
+export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobjectsGenConfig {
   return {
     ...config,
     columnNamingStrategy: config.columnNamingStrategy ?? "snake_case",

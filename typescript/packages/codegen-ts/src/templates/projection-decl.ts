@@ -15,7 +15,7 @@ import {
 import { extractViewSpec } from "../projection/extract-view-spec.js";
 import { columnNameFromField, toSnakeCase, pluralize } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
-import type { ColumnNamingStrategy } from "../forge-config.js";
+import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
 import { inferViewKind, zodTypeFor, currencyMetaFor, labelFor } from "./field-meta.js";

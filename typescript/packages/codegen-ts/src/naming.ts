@@ -1,7 +1,7 @@
 // Naming helpers — case conversion + pluralization for codegen output.
 // All functions are pure.
 
-import type { ColumnNamingStrategy } from "./forge-config.js";
+import type { ColumnNamingStrategy } from "./metaobjects-config.js";
 
 /**
  * Convert PascalCase or camelCase to snake_case.

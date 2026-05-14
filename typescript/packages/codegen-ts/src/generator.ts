@@ -1,6 +1,6 @@
 import type { MetaModel } from "@metaobjects/metadata";
 import type { RenderContext } from "./render-context.js";
-import type { ResolvedGenConfig } from "./forge-config.js";
+import type { ResolvedGenConfig } from "./metaobjects-config.js";
 
 export interface EmittedFile {
   /** Path relative to ResolvedGenConfig.outDir. */

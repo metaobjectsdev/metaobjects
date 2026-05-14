@@ -26,7 +26,7 @@ import {
   VALIDATOR_ATTR_MAX,
 } from "@metaobjects/metadata";
 import { columnNameFromField } from "./naming.js";
-import type { Dialect, ColumnNamingStrategy } from "./forge-config.js";
+import type { Dialect, ColumnNamingStrategy } from "./metaobjects-config.js";
 
 export type { Dialect };
 

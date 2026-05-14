@@ -2,8 +2,8 @@ import { join } from "node:path";
 import type { MetaModel } from "@metaobjects/metadata";
 import { TYPE_OBJECT } from "@metaobjects/metadata";
 import type { Generator, GenContext, EmittedFile } from "./generator.js";
-import type { ForgeConfig } from "./forge-config.js";
-import { normalizeConfig } from "./forge-config.js";
+import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
+import { normalizeConfig } from "./metaobjects-config.js";
 import { buildPkMap } from "./pk-resolver.js";
 import { buildRelationMap } from "./relation-resolver.js";
 import { makeRenderContext } from "./render-context.js";
@@ -14,7 +14,7 @@ import { decideAndWrite, type WriteResult, type MergeStrategy } from "./overwrit
 const VALID_ENTITY_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export interface RunGenOpts {
-  config: ForgeConfig;
+  config: MetaobjectsGenConfig;
   metadata: MetaModel;
   /** Optional whitelist of entity names. */
   entityFilter?: string[];

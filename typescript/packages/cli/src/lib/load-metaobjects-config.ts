@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti";
-import type { ForgeConfig } from "@metaobjects/codegen-ts";
+import type { MetaobjectsGenConfig } from "@metaobjects/codegen-ts";
 
 const CONFIG_FILE = "metaobjects.config.ts";
 
@@ -40,7 +40,7 @@ function resolveCliPkg(specifier: string): string {
   return _require.resolve(specifier);
 }
 
-export async function loadMetaobjectsConfig(projectRoot: string): Promise<ForgeConfig> {
+export async function loadMetaobjectsConfig(projectRoot: string): Promise<MetaobjectsGenConfig> {
   const fullPath = resolve(projectRoot, CONFIG_FILE);
   if (!existsSync(fullPath)) {
     throw new Error(
@@ -60,14 +60,14 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<ForgeC
       "@metaobjects/cli": resolveCliPkg("@metaobjects/cli"),
     },
   });
-  const raw = (await jiti.import(fullPath)) as ForgeConfig | { default: ForgeConfig };
+  const raw = (await jiti.import(fullPath)) as MetaobjectsGenConfig | { default: MetaobjectsGenConfig };
   // jiti's interopDefault doesn't always unwrap the default export when accessed
   // across module boundaries — explicitly unwrap if present.
   const cfg = (raw && typeof raw === "object" && "default" in raw && raw.default
-    ? (raw as { default: ForgeConfig }).default
-    : raw) as ForgeConfig;
+    ? (raw as { default: MetaobjectsGenConfig }).default
+    : raw) as MetaobjectsGenConfig;
   if (!cfg || typeof cfg !== "object" || !Array.isArray(cfg.generators)) {
-    throw new Error(`metaobjects.config.ts at ${fullPath} did not export a valid ForgeConfig (missing 'generators' array).`);
+    throw new Error(`metaobjects.config.ts at ${fullPath} did not export a valid MetaobjectsGenConfig (missing 'generators' array).`);
   }
   return cfg;
 }

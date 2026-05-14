@@ -1,5 +1,5 @@
 import { describe, test, expect, expectTypeOf } from "bun:test";
-import { defineConfig, normalizeConfig, type ForgeConfig, type ResolvedGenConfig } from "../src/forge-config.js";
+import { defineConfig, normalizeConfig, type MetaobjectsGenConfig, type ResolvedGenConfig } from "../src/metaobjects-config.js";
 import type { Generator } from "../src/generator.js";
 
 describe("defineConfig", () => {
@@ -16,12 +16,12 @@ describe("defineConfig", () => {
     expect(cfg.generators[0]!.name).toBe("stub");
   });
 
-  test("type-level: ForgeConfig.generators is Generator[]", () => {
-    expectTypeOf<ForgeConfig["generators"]>().toEqualTypeOf<Generator[]>();
+  test("type-level: MetaobjectsGenConfig.generators is Generator[]", () => {
+    expectTypeOf<MetaobjectsGenConfig["generators"]>().toEqualTypeOf<Generator[]>();
   });
 
-  test("type-level: ForgeConfig embeds ResolvedGenConfig (all required fields present, types exact)", () => {
-    expectTypeOf<Pick<ForgeConfig, "outDir" | "extStyle" | "dbImport" | "dialect">>()
+  test("type-level: MetaobjectsGenConfig embeds ResolvedGenConfig (all required fields present, types exact)", () => {
+    expectTypeOf<Pick<MetaobjectsGenConfig, "outDir" | "extStyle" | "dbImport" | "dialect">>()
       .toEqualTypeOf<ResolvedGenConfig>();
   });
 });
