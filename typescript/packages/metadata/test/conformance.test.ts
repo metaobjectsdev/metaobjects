@@ -120,6 +120,12 @@ describe("Conformance fixtures", () => {
         return;
       }
 
+      // At this point, expectedPath MUST be defined — the earlier validation
+      // ensures exactly one of expectedPath / expectedErrorsPath is present.
+      if (fixture.expectedPath === undefined) {
+        throw new Error(`Fixture "${fixture.name}": unreachable — expectedPath should be defined`);
+      }
+
       if (errors.length > 0) {
         throw new Error(
           `Fixture "${fixture.name}" expected no errors but got:\n` +
@@ -129,7 +135,7 @@ describe("Conformance fixtures", () => {
 
       const actualSerialized = canonicalSerialize(root);
       const actualParsed = JSON.parse(actualSerialized);
-      const expectedParsed = readJsonFile(fixture.expectedPath!);
+      const expectedParsed = readJsonFile(fixture.expectedPath);
       expect(actualParsed).toEqual(expectedParsed);
 
       const actualWarnings = [...warnings].sort();
