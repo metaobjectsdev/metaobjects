@@ -1,0 +1,25 @@
+# Build outputs
+dist/
+target/
+build/
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Tool caches
+.turbo/
+.cache/
+.parcel-cache/
+
+# Editor + OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Per-language conventions
+typescript/**/dist/
+typescript/**/node_modules/
+java/**/target/
