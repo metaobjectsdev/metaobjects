@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
 // Agent docs body — inlined excerpts from @metaobjects/metadata/METAMODEL.md
-// and @metaforge/sdk/FORGE-METADATA.md at CLI install time. Scaffolded into
-// .metaforge/AGENTS.md and .metaforge/CLAUDE.md by `forge init`. Users refresh after
-// CLI updates with `forge init --refresh-docs`.
+// and @metaobjects/sdk/FORGE-METADATA.md at CLI install time. Scaffolded into
+// .metaobjects/AGENTS.md and .metaobjects/CLAUDE.md by `meta init`. Users refresh after
+// CLI updates with `meta init --refresh-docs`.
 
 export const AGENT_DOCS_BODY = `# Meta Forge — agent reference
 
@@ -480,7 +480,7 @@ Full inventory in \`packages/sdk/FORGE-METADATA.md\`.
 
 ### New top-level types
 
-Registered by \`@metaforge/sdk\` into the TypeRegistry:
+Registered by \`@metaobjects/sdk\` into the TypeRegistry:
 
 | Type | Purpose |
 |---|---|
@@ -490,7 +490,7 @@ Registered by \`@metaforge/sdk\` into the TypeRegistry:
 | \`glossary\` | Domain-term definition |
 | \`failure\` | Recorded failure mode |
 
-These coexist with \`object\` children in the same package files. \`forge gen\` and \`forge migrate\` only consume \`object\`; the descriptive types are context for AI tooling and don't drive codegen.
+These coexist with \`object\` children in the same package files. \`meta gen\` and \`meta migrate\` only consume \`object\`; the descriptive types are context for AI tooling and don't drive codegen.
 
 ## File layout
 
@@ -500,9 +500,9 @@ metaobjects/
 ├── meta.<domain>.json        your entity packages(s)
 └── _pending/<pkg>.json       proposed packages awaiting review
 
-.metaforge/
+.metaobjects/
 ├── config.json               static project state
-├── migrations/               written by forge migrate
+├── migrations/               written by meta migrate
 └── .gen-state/               codegen merge base (gitignored)
 
 metaobjects.config.ts         generator wiring (committed)

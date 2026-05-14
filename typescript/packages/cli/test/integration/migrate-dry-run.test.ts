@@ -27,7 +27,7 @@ describe("forge migrate --dry-run", () => {
       expect(stdout).toContain("-- UP --");
       expect(stdout).toContain("-- DOWN --");
 
-      expect(existsSync(join(root, ".metaforge", "migrations"))).toBe(false);
+      expect(existsSync(join(root, ".metaobjects", "migrations"))).toBe(false);
     } finally {
       console.log = origLog;
       process.chdir(orig);

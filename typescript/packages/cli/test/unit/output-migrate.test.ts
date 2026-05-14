@@ -10,8 +10,8 @@ describe("formatMigrateResult", () => {
       blocked: [],
       ambiguous: [],
       writtenPaths: [
-        ".metaforge/migrations/20260512143200-add-user-shipping.up.sql",
-        ".metaforge/migrations/20260512143200-add-user-shipping.down.sql",
+        ".metaobjects/migrations/20260512143200-add-user-shipping.up.sql",
+        ".metaobjects/migrations/20260512143200-add-user-shipping.down.sql",
       ],
       dryRun: false,
     }, { isTTY: false });

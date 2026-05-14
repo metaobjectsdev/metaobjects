@@ -5,7 +5,7 @@ import { resolveMigrateConfig } from "../lib/config.js";
 import { formatMigrateResult, type BlockedEntry, type AmbiguousEntry } from "../lib/output.js";
 import { buildKyselyFromUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
-import { loadMemory } from "@metaforge/sdk";
+import { loadMemory } from "@metaobjects/sdk";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import {
   buildExpectedSchema,
@@ -123,7 +123,7 @@ export async function migrateCommand(args: string[]): Promise<number> {
   const config = await resolveMigrateConfig(flags, metaRoot);
 
   if (config.databaseUrl === undefined) {
-    log.error(`migrate: --db <url> required (or set DATABASE_URL, or add migrate.databaseUrl to .metaforge/config.json)`);
+    log.error(`migrate: --db <url> required (or set DATABASE_URL, or add migrate.databaseUrl to .metaobjects/config.json)`);
     return 2;
   }
 

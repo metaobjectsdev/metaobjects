@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { loadMemory } from "@metaforge/sdk";
+import { loadMemory } from "@metaobjects/sdk";
 import { TYPE_OBJECT } from "@metaobjects/metadata";
 
 const FIXTURES = resolve("packages/cli/test/fixtures");

@@ -1,7 +1,7 @@
 import { mkdir, writeFile, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { basename } from "node:path";
-import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAFORGE_DIR } from "@metaforge/sdk";
+import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "@metaobjects/sdk";
 import { parseInitArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "../lib/agent-docs.js";
@@ -78,17 +78,17 @@ async function writeAgentDocs(metaforgeDir: string, result: InitResult): Promise
 
     if (!exists) {
       await writeFile(path, docsBody, "utf8");
-      result.created.push(`.metaforge/${filename}`);
+      result.created.push(`.metaobjects/${filename}`);
       continue;
     }
 
     const existingBody = await readFile(path, "utf8");
     if (isUnmodified(existingBody)) {
       await writeFile(path, docsBody, "utf8");
-      result.created.push(`.metaforge/${filename}`);
+      result.created.push(`.metaobjects/${filename}`);
     } else {
       await writeFile(`${path}.new`, docsBody, "utf8");
-      result.created.push(`.metaforge/${filename}.new`);
+      result.created.push(`.metaobjects/${filename}.new`);
       result.warnings.push(
         `${filename} appears to have been hand-edited; refreshed docs written to ${filename}.new`,
       );
@@ -98,7 +98,7 @@ async function writeAgentDocs(metaforgeDir: string, result: InitResult): Promise
 
 export async function init(opts: InitOptions): Promise<InitResult> {
   const result: InitResult = { created: [], preserved: [], warnings: [] };
-  const metaforgeDir = join(opts.cwd, DEFAULT_METAFORGE_DIR);
+  const metaforgeDir = join(opts.cwd, DEFAULT_METAOBJECTS_DIR);
   const metaobjectsDir = join(opts.cwd, DEFAULT_METADATA_DIR);
 
   const metaforgeExists = await dirExists(metaforgeDir);
@@ -113,25 +113,25 @@ export async function init(opts: InitOptions): Promise<InitResult> {
 
   if (exists && !opts.force && !opts.refreshDocs) {
     throw new Error(
-      "metaobjects/ or .metaforge/ already exists; use --force to overwrite scaffold files (existing records are preserved), or --refresh-docs to update only agent docs",
+      "metaobjects/ or .metaobjects/ already exists; use --force to overwrite scaffold files (existing records are preserved), or --refresh-docs to update only agent docs",
     );
   }
 
   const dirs = [
     DEFAULT_METADATA_DIR,
-    DEFAULT_METAFORGE_DIR,
-    `${DEFAULT_METAFORGE_DIR}/.gen-state`,
+    DEFAULT_METAOBJECTS_DIR,
+    `${DEFAULT_METAOBJECTS_DIR}/.gen-state`,
   ];
 
   if (opts.printOnly) {
     for (const d of dirs) result.created.push(d);
     result.created.push(
       "metaobjects/meta.common.json",
-      ".metaforge/config.json",
-      ".metaforge/.gitignore",
-      `.metaforge/${PACKAGE_MANIFEST_FILE}`,
+      ".metaobjects/config.json",
+      ".metaobjects/.gitignore",
+      `.metaobjects/${PACKAGE_MANIFEST_FILE}`,
     );
-    for (const filename of AGENT_DOC_FILES) result.created.push(`.metaforge/${filename}`);
+    for (const filename of AGENT_DOC_FILES) result.created.push(`.metaobjects/${filename}`);
     result.created.push("metaobjects.config.ts");
     return result;
   }
@@ -150,7 +150,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
     result.preserved.push("metaobjects/meta.common.json");
   }
 
-  // .metaforge/config.json
+  // .metaobjects/config.json
   if (metaforgeExists) {
     const configPath = join(metaforgeDir, "config.json");
     let priorContent: string | undefined;
@@ -159,12 +159,12 @@ export async function init(opts: InitOptions): Promise<InitResult> {
       const parsed = ConfigSchema.parse(JSON.parse(priorContent));
       const merged = ConfigSchema.parse({ ...DEFAULT_CONFIG, ...parsed });
       await saveConfig(metaforgeDir, merged);
-      result.preserved.push(".metaforge/config.json");
+      result.preserved.push(".metaobjects/config.json");
     } catch {
       if (priorContent !== undefined) {
-        log.warn("existing .metaforge/config.json was invalid — writing fresh defaults. Prior content:");
+        log.warn("existing .metaobjects/config.json was invalid — writing fresh defaults. Prior content:");
         log.warn(priorContent);
-        result.warnings.push("invalid .metaforge/config.json replaced with defaults");
+        result.warnings.push("invalid .metaobjects/config.json replaced with defaults");
       }
       await writeFile(
         join(metaforgeDir, "config.json"),
@@ -172,7 +172,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
         "utf8",
       );
       if (priorContent === undefined) {
-        result.created.push(".metaforge/config.json");
+        result.created.push(".metaobjects/config.json");
       }
     }
   } else {
@@ -181,14 +181,14 @@ export async function init(opts: InitOptions): Promise<InitResult> {
       JSON.stringify(DEFAULT_CONFIG, null, 2) + "\n",
       "utf8",
     );
-    result.created.push(".metaforge/config.json");
+    result.created.push(".metaobjects/config.json");
   }
 
-  // .metaforge/.gitignore
+  // .metaobjects/.gitignore
   await writeFile(join(metaforgeDir, ".gitignore"), METAFORGE_GITIGNORE_BODY, "utf8");
-  result.created.push(".metaforge/.gitignore");
+  result.created.push(".metaobjects/.gitignore");
 
-  // .metaforge/package.meta.json — scaffold v0.3 package manifest if absent
+  // .metaobjects/package.meta.json — scaffold v0.3 package manifest if absent
   const manifestPath = join(metaforgeDir, PACKAGE_MANIFEST_FILE);
   if (!(await fileExists(manifestPath))) {
     const defaultPackageName = basename(opts.cwd);
@@ -198,9 +198,9 @@ export async function init(opts: InitOptions): Promise<InitResult> {
       extends: [] as string[],
     };
     await writeFile(manifestPath, JSON.stringify(manifestBody, null, 2) + "\n", "utf8");
-    result.created.push(`.metaforge/${PACKAGE_MANIFEST_FILE}`);
+    result.created.push(`.metaobjects/${PACKAGE_MANIFEST_FILE}`);
   } else {
-    result.preserved.push(`.metaforge/${PACKAGE_MANIFEST_FILE}`);
+    result.preserved.push(`.metaobjects/${PACKAGE_MANIFEST_FILE}`);
   }
 
   await writeAgentDocs(metaforgeDir, result);

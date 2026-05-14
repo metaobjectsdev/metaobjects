@@ -10,8 +10,8 @@ USAGE:
   forge <command> [flags]
 
 COMMANDS:
-  init                  Scaffold metaobjects/ + .metaforge/ in the current repo
-  init --refresh-docs   Refresh .metaforge/AGENTS.md + CLAUDE.md after CLI upgrades
+  init                  Scaffold metaobjects/ + .metaobjects/ in the current repo
+  init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
   gen [<entity>...]     Codegen TS targets from metaobjects/ entities
   migrate               Diff metadata vs live DB; emit migration SQL files
   --version, -v         Print version
@@ -26,7 +26,7 @@ MIGRATE FLAGS:
   --db <url>            DB connection URL (required, or set DATABASE_URL or config)
                         Supports: file:, libsql:, postgres:, postgresql:
   --dialect sqlite|postgres   Optional override (auto-detected from URL scheme)
-  --out-dir <path>      Migration directory (default: ./.metaforge/migrations)
+  --out-dir <path>      Migration directory (default: ./.metaobjects/migrations)
   --slug <name>         Required when changes are present (e.g., add-user-shipping)
   --allow <csv>         Comma-separated destructive-change permissions:
                         drop-column,drop-table,type-change,drop-index,drop-fk,nullable-to-not-null

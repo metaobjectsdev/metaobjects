@@ -3,33 +3,33 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { init, initCommand } from "../src/commands/init.js";
-import { saveConfig, ConfigSchema } from "@metaforge/sdk";
+import { saveConfig, ConfigSchema } from "@metaobjects/sdk";
 
 let cwd: string;
 beforeEach(() => {
-  cwd = mkdtempSync(join(tmpdir(), "metaforge-init-"));
+  cwd = mkdtempSync(join(tmpdir(), "metaobjects-init-"));
 });
 afterEach(() => {
   rmSync(cwd, { recursive: true, force: true });
 });
 
 describe("init() — happy path", () => {
-  test("creates metaobjects/ and .metaforge/ directory tree", async () => {
+  test("creates metaobjects/ and .metaobjects/ directory tree", async () => {
     const result = await init({ cwd });
     expect(result.created).toContain("metaobjects");
-    expect(result.created).toContain(".metaforge");
-    expect(result.created).toContain(".metaforge/config.json");
-    expect(result.created).toContain(".metaforge/.gitignore");
+    expect(result.created).toContain(".metaobjects");
+    expect(result.created).toContain(".metaobjects/config.json");
+    expect(result.created).toContain(".metaobjects/.gitignore");
 
     expect(existsSync(join(cwd, "metaobjects"))).toBe(true);
     expect(existsSync(join(cwd, "metaobjects", "meta.common.json"))).toBe(true);
-    expect(existsSync(join(cwd, ".metaforge"))).toBe(true);
-    expect(existsSync(join(cwd, ".metaforge", ".gen-state"))).toBe(true);
+    expect(existsSync(join(cwd, ".metaobjects"))).toBe(true);
+    expect(existsSync(join(cwd, ".metaobjects", ".gen-state"))).toBe(true);
   });
 
-  test("scaffolds package.meta.json under .metaforge/ with three-field manifest", async () => {
+  test("scaffolds package.meta.json under .metaobjects/ with three-field manifest", async () => {
     await init({ cwd });
-    const manifestPath = join(cwd, ".metaforge", "package.meta.json");
+    const manifestPath = join(cwd, ".metaobjects", "package.meta.json");
     expect(existsSync(manifestPath)).toBe(true);
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
     expect(manifest.name).toBeDefined();
@@ -37,16 +37,16 @@ describe("init() — happy path", () => {
     expect(manifest.extends).toEqual([]);
   });
 
-  test("writes a valid default config.json under .metaforge/", async () => {
+  test("writes a valid default config.json under .metaobjects/", async () => {
     await init({ cwd });
-    const config = JSON.parse(readFileSync(join(cwd, ".metaforge", "config.json"), "utf8"));
+    const config = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
     expect(config.schema_version).toBe(1);
     expect(config.pending_in_git).toBe(true);
   });
 
-  test("writes a .gitignore under .metaforge/ that includes .gen-state", async () => {
+  test("writes a .gitignore under .metaobjects/ that includes .gen-state", async () => {
     await init({ cwd });
-    const ignore = readFileSync(join(cwd, ".metaforge", ".gitignore"), "utf8");
+    const ignore = readFileSync(join(cwd, ".metaobjects", ".gitignore"), "utf8");
     expect(ignore).toContain(".gen-state/");
   });
 
@@ -66,7 +66,7 @@ describe("init() — re-run safety", () => {
     mkdirSync(join(cwd, "metaobjects"), { recursive: true });
     writeFileSync(join(cwd, "metaobjects", "entity-preserve-me.json"), "{}");
     const result = await init({ cwd, force: true });
-    expect(result.created).toContain(".metaforge/config.json");
+    expect(result.created).toContain(".metaobjects/config.json");
     // Records in metaobjects/ are preserved
     expect(existsSync(join(cwd, "metaobjects", "entity-preserve-me.json"))).toBe(true);
   });
@@ -75,7 +75,7 @@ describe("init() — re-run safety", () => {
     const result = await init({ cwd, printOnly: true });
     expect(result.created.length).toBeGreaterThan(0);
     expect(existsSync(join(cwd, "metaobjects"))).toBe(false);
-    expect(existsSync(join(cwd, ".metaforge"))).toBe(false);
+    expect(existsSync(join(cwd, ".metaobjects"))).toBe(false);
   });
 });
 
@@ -122,14 +122,14 @@ describe("init() --force config preservation", () => {
       sources: [{ kind: "package" as const, package: "@acme/entities" }],
       extract: {},
     };
-    await saveConfig(join(cwd, ".metaforge"), ConfigSchema.parse(customConfig));
+    await saveConfig(join(cwd, ".metaobjects"), ConfigSchema.parse(customConfig));
 
     // Re-init with --force
     const result = await init({ cwd, force: true });
-    expect(result.preserved).toContain(".metaforge/config.json");
+    expect(result.preserved).toContain(".metaobjects/config.json");
 
     // Customizations survived
-    const reloaded = JSON.parse(readFileSync(join(cwd, ".metaforge", "config.json"), "utf8"));
+    const reloaded = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
     expect(reloaded.pending_in_git).toBe(false);
     expect(reloaded.confidence_thresholds.pending_promote).toBe(0.95);
     expect(reloaded.sources).toEqual([{ kind: "package", package: "@acme/entities" }]);
@@ -138,7 +138,7 @@ describe("init() --force config preservation", () => {
   test("writes fresh defaults when existing config is invalid (and warns)", async () => {
     await init({ cwd });
     // Corrupt the config
-    writeFileSync(join(cwd, ".metaforge", "config.json"), "{ not valid", "utf8");
+    writeFileSync(join(cwd, ".metaobjects", "config.json"), "{ not valid", "utf8");
 
     const result = await init({ cwd, force: true });
 
@@ -146,7 +146,7 @@ describe("init() --force config preservation", () => {
     expect(result.warnings.some((w) => w.toLowerCase().includes("invalid"))).toBe(true);
 
     // Fresh defaults written
-    const reloaded = JSON.parse(readFileSync(join(cwd, ".metaforge", "config.json"), "utf8"));
+    const reloaded = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
     expect(reloaded.schema_version).toBe(1);
     expect(reloaded.pending_in_git).toBe(true); // back to default
   });

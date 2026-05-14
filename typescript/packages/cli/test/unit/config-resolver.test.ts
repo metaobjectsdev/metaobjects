@@ -6,10 +6,10 @@ import { resolveGenConfig, resolveMigrateConfig } from "../../src/lib/config.js"
 
 function makeRoot(configBody?: object): string {
   const root = mkdtempSync(join(tmpdir(), "config-resolver-"));
-  mkdirSync(join(root, ".metaforge"), { recursive: true });
+  mkdirSync(join(root, ".metaobjects"), { recursive: true });
   if (configBody !== undefined) {
     writeFileSync(
-      join(root, ".metaforge", "config.json"),
+      join(root, ".metaobjects", "config.json"),
       JSON.stringify({ schema_version: 1, ...configBody }, null, 2),
     );
   }
@@ -56,7 +56,7 @@ describe("resolveMigrateConfig", () => {
       onAmbiguous: undefined,
       dryRun: false,
     }, root);
-    expect(resolved.outDir).toBe("./.metaforge/migrations");
+    expect(resolved.outDir).toBe("./.metaobjects/migrations");
     expect(resolved.databaseUrl).toBeUndefined();
     expect(resolved.onAmbiguous).toBe("abort");
     expect(resolved.allow).toEqual([]);
@@ -110,10 +110,10 @@ describe("resolveMigrateConfig", () => {
     expect(resolved.allow).toEqual(["drop-table"]);
   });
 
-  test("empty .metaforge/ (config.json missing) is allowed", async () => {
+  test("empty .metaobjects/ (config.json missing) is allowed", async () => {
     root = mkdtempSync(join(tmpdir(), "config-resolver-empty-"));
     try {
-      mkdirSync(join(root, ".metaforge"), { recursive: true });
+      mkdirSync(join(root, ".metaobjects"), { recursive: true });
       const resolved = await resolveMigrateConfig({
         db: "file:./x.db",
         dialect: undefined,

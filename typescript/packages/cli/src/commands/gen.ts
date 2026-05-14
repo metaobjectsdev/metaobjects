@@ -3,7 +3,7 @@ import { resolveGenConfig } from "../lib/config.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { formatGenResult, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
 import { log } from "../lib/log.js";
-import { loadMemory } from "@metaforge/sdk";
+import { loadMemory } from "@metaobjects/sdk";
 import { runGen } from "@metaobjects/codegen-ts";
 import type { WriteStatus } from "@metaobjects/codegen-ts";
 

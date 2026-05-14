@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ConfigSchema, type Config, DEFAULT_METAFORGE_DIR } from "@metaforge/sdk";
+import { ConfigSchema, type Config, DEFAULT_METAOBJECTS_DIR } from "@metaobjects/sdk";
 import type { GenFlags, MigrateFlags } from "./args.js";
 
 // ---------------------------------------------------------------------------
@@ -8,7 +8,7 @@ import type { GenFlags, MigrateFlags } from "./args.js";
 // ---------------------------------------------------------------------------
 
 const MIGRATE_DEFAULTS = {
-  outDir: "./.metaforge/migrations",
+  outDir: "./.metaobjects/migrations",
   databaseUrl: undefined as string | undefined,
   dialect: undefined as "sqlite" | "postgres" | undefined,
   onAmbiguous: "abort" as const,
@@ -40,7 +40,7 @@ export interface ResolvedMigrateConfig {
 
 async function tryLoadConfig(metaRoot: string): Promise<Config | undefined> {
   try {
-    const raw = await readFile(join(metaRoot, DEFAULT_METAFORGE_DIR, "config.json"), "utf8");
+    const raw = await readFile(join(metaRoot, DEFAULT_METAOBJECTS_DIR, "config.json"), "utf8");
     return ConfigSchema.parse(JSON.parse(raw));
   } catch {
     return undefined;

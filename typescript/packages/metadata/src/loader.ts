@@ -504,7 +504,7 @@ export class Loader {
 
   /**
    * Load all `.json` files in a directory (non-recursive). Convenience wrapper
-   * over load(paths[]) — used by @metaforge/sdk's loadMemory() and any other
+   * over load(paths[]) — used by @metaobjects/sdk's loadMemory() and any other
    * caller that wants "everything in this dir".
    *
    * @param dir Absolute or relative directory path.

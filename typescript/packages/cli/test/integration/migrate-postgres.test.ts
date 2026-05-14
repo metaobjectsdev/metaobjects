@@ -22,7 +22,7 @@ describe("forge migrate — postgres (env-gated)", () => {
       const exit = await run(["migrate", "--db", PG_URL, "--slug", "initial"]);
       expect(exit).toBe(0);
 
-      const migrationsRoot = join(root, ".metaforge", "migrations");
+      const migrationsRoot = join(root, ".metaobjects", "migrations");
       const subdirs = readdirSync(migrationsRoot);
       const dir = subdirs.find((s) => s.endsWith("-initial"));
       expect(dir).toBeDefined();

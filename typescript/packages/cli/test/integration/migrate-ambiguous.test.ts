@@ -35,7 +35,7 @@ function findMigrationDir(migrationsRoot: string, slug: string): string | undefi
 async function setupMigratedRepo(): Promise<{ repo: string; dbUrl: string }> {
   const { repo, dbUrl } = setupRepo();
   await runIn(repo, () => run(["migrate", "--db", dbUrl, "--slug", "initial"]));
-  const root = join(repo, ".metaforge", "migrations");
+  const root = join(repo, ".metaobjects", "migrations");
   const dir = findMigrationDir(root, "initial")!;
   await applyMigration(dbUrl, join(root, dir, "up.sql"));
   return { repo, dbUrl };
@@ -78,7 +78,7 @@ describe("forge migrate — --on-ambiguous", () => {
       ]));
       expect(exit).toBe(0);
 
-      const root = join(repo, ".metaforge", "migrations");
+      const root = join(repo, ".metaobjects", "migrations");
       const dir = findMigrationDir(root, "rename");
       expect(dir).toBeDefined();
       const sql = readFileSync(join(root, dir!, "up.sql"), "utf8");
@@ -98,7 +98,7 @@ describe("forge migrate — --on-ambiguous", () => {
       ]));
       expect(exit).toBe(0);
 
-      const root = join(repo, ".metaforge", "migrations");
+      const root = join(repo, ".metaobjects", "migrations");
       const dir = findMigrationDir(root, "drop-add");
       expect(dir).toBeDefined();
       const sql = readFileSync(join(root, dir!, "up.sql"), "utf8");

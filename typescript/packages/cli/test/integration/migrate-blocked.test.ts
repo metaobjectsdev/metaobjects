@@ -35,7 +35,7 @@ function findMigrationDir(migrationsRoot: string, slug: string): string | undefi
 async function setupMigratedRepo(): Promise<{ repo: string; dbUrl: string }> {
   const { repo, dbUrl } = setupRepo();
   await runIn(repo, () => run(["migrate", "--db", dbUrl, "--slug", "initial"]));
-  const migrationsRoot = join(repo, ".metaforge", "migrations");
+  const migrationsRoot = join(repo, ".metaobjects", "migrations");
   const initialDir = findMigrationDir(migrationsRoot, "initial")!;
   await applyMigration(dbUrl, join(migrationsRoot, initialDir, "up.sql"));
   return { repo, dbUrl };
@@ -56,7 +56,7 @@ describe("forge migrate — blocked changes without --allow", () => {
       const exit = await runIn(repo, () => run(["migrate", "--db", dbUrl, "--slug", "drop-display-name"]));
       expect(exit).toBe(1);
 
-      const migrationsRoot = join(repo, ".metaforge", "migrations");
+      const migrationsRoot = join(repo, ".metaobjects", "migrations");
       expect(findMigrationDir(migrationsRoot, "drop-display-name")).toBeUndefined();
     } finally {
       rmSync(repo, { recursive: true, force: true });
@@ -79,7 +79,7 @@ describe("forge migrate — blocked changes without --allow", () => {
       ]));
       expect(exit).toBe(0);
 
-      const migrationsRoot = join(repo, ".metaforge", "migrations");
+      const migrationsRoot = join(repo, ".metaobjects", "migrations");
       expect(findMigrationDir(migrationsRoot, "drop-display-name")).toBeDefined();
     } finally {
       rmSync(repo, { recursive: true, force: true });

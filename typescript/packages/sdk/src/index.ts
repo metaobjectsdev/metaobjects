@@ -78,7 +78,7 @@ export type { ForgeType, ForgeAttr } from "./forge-types.js";
 // Memory loader — read metaobjects/ into a MetaModel
 // (workspace-aware: walks extends: deps via pnpm-workspace.yaml or
 //  package.json workspaces field if present)
-export { loadMemory, DEFAULT_METADATA_DIR, DEFAULT_METAFORGE_DIR } from "./memory.js";
+export { loadMemory, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "./memory.js";
 
 // Workspace discovery — finds peer metadata packages in a monorepo
 export { discoverWorkspace, resolveExtendsOrder, packageLabel } from "./workspace.js";

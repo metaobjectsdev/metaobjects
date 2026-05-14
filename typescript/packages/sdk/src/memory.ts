@@ -11,16 +11,16 @@ import { discoverWorkspace, resolveExtendsOrder } from "./workspace.js";
 
 /**
  * Default directory name (relative to project root) where metadata JSON files
- * are scanned. Scaffold via `forge init`; the directory is committed to git.
+ * are scanned. Scaffold via `meta init`; the directory is committed to git.
  */
 export const DEFAULT_METADATA_DIR = "metaobjects";
 
 /**
- * Default directory name (relative to project root) for Meta Forge's own
+ * Default directory name (relative to project root) for MetaObjects' own
  * runtime state: config.json, .gen-state/, package.meta.json, agent docs.
- * Scaffold via `forge init`; most contents are committed to git.
+ * Scaffold via `meta init`; most contents are committed to git.
  */
-export const DEFAULT_METAFORGE_DIR = ".metaforge";
+export const DEFAULT_METAOBJECTS_DIR = ".metaobjects";
 
 /**
  * Load all metadata files from `<repoRoot>/metaobjects/` into a single
@@ -32,7 +32,7 @@ export const DEFAULT_METAFORGE_DIR = ".metaforge";
  * descriptive top-level types (decision, principle, etc.) so mixed content
  * parses without warnings.
  *
- * Throws if `metaobjects/` doesn't exist (callers should run `forge init`).
+ * Throws if `metaobjects/` doesn't exist (callers should run `meta init`).
  *
  * @param repoRoot The project's working-directory root (e.g. process.cwd()).
  *   `loadMemory` resolves `metaobjects/` and (if workspace-aware) the

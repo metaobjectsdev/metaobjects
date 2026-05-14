@@ -51,7 +51,7 @@ describe("forge migrate — sqlite end-to-end round-trip", () => {
       const exit1 = await runIn(repo, () => run(["migrate", "--db", dbUrl, "--slug", "initial"]));
       expect(exit1).toBe(0);
 
-      const migrationsRoot = join(repo, ".metaforge", "migrations");
+      const migrationsRoot = join(repo, ".metaobjects", "migrations");
       expect(existsSync(migrationsRoot)).toBe(true);
       const migrationDir = findMigrationDir(migrationsRoot, "initial");
       const upSql = readFileSync(join(migrationDir, "up.sql"), "utf8");
@@ -76,7 +76,7 @@ describe("forge migrate — sqlite end-to-end round-trip", () => {
     const { repo, dbUrl } = setupRepo();
     try {
       await runIn(repo, () => run(["migrate", "--db", dbUrl, "--slug", "initial"]));
-      const migrationsRoot = join(repo, ".metaforge", "migrations");
+      const migrationsRoot = join(repo, ".metaobjects", "migrations");
       const initialDir = findMigrationDir(migrationsRoot, "initial");
       await applyMigration(dbUrl, join(initialDir, "up.sql"));
 
@@ -113,7 +113,7 @@ describe("forge migrate — sqlite end-to-end round-trip", () => {
     const { repo, dbUrl } = setupRepo();
     try {
       await runIn(repo, () => run(["migrate", "--db", dbUrl, "--slug", "initial"]));
-      const migrationsRoot = join(repo, ".metaforge", "migrations");
+      const migrationsRoot = join(repo, ".metaobjects", "migrations");
       const initialDir = findMigrationDir(migrationsRoot, "initial");
       await applyMigration(dbUrl, join(initialDir, "up.sql"));
 
