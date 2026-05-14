@@ -9,4 +9,4 @@
 // - `forge ingest` (extractor-driven AI metadata authoring)
 // - `forge audit`, `forge serve`, `forge capture`
 
-export {};
+export * from "./agent-docs/index.js";

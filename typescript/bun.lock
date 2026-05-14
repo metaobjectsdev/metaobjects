@@ -17,6 +17,7 @@
       "dependencies": {
         "@metaobjects/codegen-ts": "workspace:*",
         "@metaobjects/codegen-ts-tanstack": "workspace:*",
+        "@metaobjects/forge": "workspace:*",
         "@metaobjects/metadata": "workspace:*",
         "@metaobjects/migrate-ts": "workspace:*",
         "@metaobjects/sdk": "workspace:*",

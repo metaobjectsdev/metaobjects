@@ -21,6 +21,7 @@
     "@metaobjects/codegen-ts": "workspace:*",
     "@metaobjects/codegen-ts-tanstack": "workspace:*",
     "@metaobjects/migrate-ts": "workspace:*",
+    "@metaobjects/forge": "workspace:*",
     "jiti": "^2.4.0"
   },
   "peerDependencies": {

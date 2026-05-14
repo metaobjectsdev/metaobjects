@@ -4,7 +4,7 @@ import { basename } from "node:path";
 import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "@metaobjects/sdk";
 import { parseInitArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
-import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "../lib/agent-docs.js";
+import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "@metaobjects/forge/agent-docs";
 
 const META_COMMON_JSON = JSON.stringify(
   {
