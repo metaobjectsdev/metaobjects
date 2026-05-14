@@ -1,13 +1,17 @@
 # Conformance fixtures
 
-Cross-language test fixtures land here in Project H2.
+Cross-language test fixtures for the MetaObjects standard. Every language implementation (TS, Java, Python, C#) runs the same fixtures via its own conformance test runner.
 
-Each fixture directory contains:
-- `metadata.json` — input metadata declarations
-- `expected-parsed.json` — expected Loader output
-- `expected-warnings.json` — expected Loader warnings
-- `expected-sql/<dialect>.sql` — expected codegen output per dialect (if applicable)
+Each fixture is a directory:
 
-Every language's runtime iterates these fixtures via a conformance test runner. Adding a fixture means BOTH the TS and Java runtimes (when shipped) automatically verify it.
+```
+<fixture-name>/
+├── input/                       # one or more meta.*.json files
+├── expected.json                # canonical metamodel (happy-path)
+├── expected-errors.json         # alternative: expected error messages
+└── expected-warnings.json       # optional: expected warning messages
+```
 
-> Populated in Project H2.
+See [`../../spec/conformance-tests.md`](../../spec/conformance-tests.md) for the full convention.
+
+To add a fixture: create the directory, drop in `input/*.json`, run the test (it auto-discovers), inspect the diff, write the matching `expected.json`.
