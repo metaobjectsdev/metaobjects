@@ -1,0 +1,21 @@
+{
+  "name": "@metaobjects/forge",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./agent-docs": { "types": "./dist/agent-docs/index.d.ts", "import": "./dist/agent-docs/index.js" }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.6.0"
+  },
+  "description": "AI-collaboration capabilities for the MetaObjects standard"
+}
