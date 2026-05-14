@@ -29,7 +29,7 @@ describe("init writes agent docs", () => {
   test("AGENTS.md contains content-hash comment", async () => {
     await init({ cwd });
     const content = readFileSync(join(cwd, ".metaobjects", "AGENTS.md"), "utf8");
-    expect(content).toMatch(/<!-- metaforge-content-hash: [a-f0-9]{64} -->/);
+    expect(content).toMatch(/<!-- metaobjects-content-hash: [a-f0-9]{64} -->/);
   });
 
   test("AGENTS.md mentions key metamodel rules", async () => {

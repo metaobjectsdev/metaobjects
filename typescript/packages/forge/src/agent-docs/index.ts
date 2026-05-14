@@ -574,12 +574,12 @@ export function computeContentHash(body: string): string {
 /** Returns the body with a content-hash HTML comment prepended. */
 export function withContentHash(body: string): string {
   const hash = computeContentHash(body);
-  return `<!-- metaforge-content-hash: ${hash} -->\n${body}`;
+  return `<!-- metaobjects-content-hash: ${hash} -->\n${body}`;
 }
 
 /** Extract the embedded hash, or undefined if not present. */
 export function extractContentHash(fileBody: string): string | undefined {
-  const match = /<!-- metaforge-content-hash: ([a-f0-9]{64}) -->/.exec(fileBody);
+  const match = /<!-- metaobjects-content-hash: ([a-f0-9]{64}) -->/.exec(fileBody);
   return match?.[1];
 }
 
@@ -587,6 +587,6 @@ export function extractContentHash(fileBody: string): string | undefined {
 export function isUnmodified(fileBody: string): boolean {
   const embedded = extractContentHash(fileBody);
   if (embedded === undefined) return false;
-  const withoutHash = fileBody.replace(/^<!-- metaforge-content-hash: [a-f0-9]{64} -->\n/, "");
+  const withoutHash = fileBody.replace(/^<!-- metaobjects-content-hash: [a-f0-9]{64} -->\n/, "");
   return computeContentHash(withoutHash) === embedded;
 }
