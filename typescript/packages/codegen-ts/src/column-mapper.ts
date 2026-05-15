@@ -91,11 +91,12 @@ export interface ColumnSpec {
   leadingComment?: string;
 }
 
-/** Resolve max length from validator.length child or @maxLength attr. */
+/** Resolve max length from validator.length child or @maxLength attr.
+ *  Uses effectiveChildren() so a validator inherited via field-level extends is seen. */
 function getMaxLength(field: MetaModel): number | undefined {
   const lenAttr = field.attr(FIELD_ATTR_MAX_LENGTH);
   if (typeof lenAttr === "number") return lenAttr;
-  for (const child of field.children()) {
+  for (const child of field.effectiveChildren()) {
     if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_LENGTH) {
       const max = child.attr(VALIDATOR_ATTR_MAX);
       if (typeof max === "number") return max;
@@ -104,10 +105,11 @@ function getMaxLength(field: MetaModel): number | undefined {
   return undefined;
 }
 
-/** Check for validator.required child OR @required attr. */
+/** Check for validator.required child OR @required attr.
+ *  Uses effectiveChildren() so a validator inherited via field-level extends is seen. */
 function isRequired(field: MetaModel): boolean {
   if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
-  for (const child of field.children()) {
+  for (const child of field.effectiveChildren()) {
     if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_REQUIRED) {
       return true;
     }
