@@ -27,3 +27,6 @@ java/**/target/
 # C# build output
 bin/
 obj/
+
+# Python
+__pycache__/
