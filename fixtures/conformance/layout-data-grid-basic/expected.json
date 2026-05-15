@@ -1,0 +1,68 @@
+{
+  "metadata": {
+    "package": "acme",
+    "subType": "base",
+    "children": [
+      {
+        "object": {
+          "name": "Subscriber",
+          "subType": "entity",
+          "children": [
+            {
+              "field": {
+                "name": "id",
+                "subType": "long"
+              }
+            },
+            {
+              "field": {
+                "name": "email",
+                "subType": "string"
+              }
+            },
+            {
+              "field": {
+                "name": "firstName",
+                "subType": "string"
+              }
+            },
+            {
+              "field": {
+                "name": "subscribed",
+                "subType": "boolean"
+              }
+            },
+            {
+              "field": {
+                "name": "createdAt",
+                "subType": "string"
+              }
+            },
+            {
+              "identity": {
+                "subType": "primary",
+                "@fields": "id"
+              }
+            },
+            {
+              "layout": {
+                "name": "default",
+                "subType": "dataGrid",
+                "@columns": [
+                  "email",
+                  "firstName",
+                  "subscribed",
+                  "createdAt"
+                ],
+                "@defaultSortField": "createdAt",
+                "@defaultSortOrder": "desc",
+                "@filterable": true,
+                "@pageSize": 25
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
