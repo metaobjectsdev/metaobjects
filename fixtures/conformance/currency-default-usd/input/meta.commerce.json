@@ -1,0 +1,18 @@
+{
+  "metadata": {
+    "package": "acme::commerce",
+    "children": [
+      {
+        "object": {
+          "name": "Product",
+          "subType": "entity",
+          "children": [
+            { "field": { "name": "id", "subType": "long" } },
+            { "field": { "name": "priceCents", "subType": "currency" } },
+            { "identity": { "subType": "primary", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

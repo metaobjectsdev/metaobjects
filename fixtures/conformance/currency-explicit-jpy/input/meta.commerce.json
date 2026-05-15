@@ -1,0 +1,25 @@
+{
+  "metadata": {
+    "package": "acme::commerce",
+    "children": [
+      {
+        "object": {
+          "name": "Product",
+          "subType": "entity",
+          "children": [
+            { "field": { "name": "id", "subType": "long" } },
+            { "field": {
+                "name": "priceYen",
+                "subType": "currency",
+                "@currency": "JPY",
+                "children": [
+                  { "view": { "subType": "currency", "@locale": "ja-JP" } }
+                ]
+            } },
+            { "identity": { "subType": "primary", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}
