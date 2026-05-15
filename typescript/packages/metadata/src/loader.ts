@@ -598,6 +598,7 @@ export class Loader {
         // (parseJson handles BOM stripping internally.)
         const parseResult = parseJson(content, parseOpts);
         warnings.push(...parseResult.warnings);
+        errors.push(...parseResult.errors);
         root = parseResult.root;
       } catch (err) {
         errors.push(

@@ -67,6 +67,7 @@ export interface ParseOptions {
 export interface ParseResult {
   root: MetaModel;
   warnings: string[];
+  errors: ParseError[];
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +157,7 @@ let _deferSuperResolution = false;
 
 export function parseJson(content: string, opts: ParseOptions): ParseResult {
   const warnings: string[] = [];
+  const errors: ParseError[] = [];
   const strict = opts.strict ?? false;
   const source = opts.sourceName;
   _deferSuperResolution = opts.deferSuperResolution === true;
@@ -227,11 +229,12 @@ export function parseJson(content: string, opts: ParseOptions): ParseResult {
       contextPkg,
       opts.registry,
       warnings,
+      errors,
       strict,
       source,
       rootType,
     );
-    return { root: opts.intoRoot, warnings };
+    return { root: opts.intoRoot, warnings, errors };
   }
 
   // --- Fresh root mode: create a new root from the JSON ---
@@ -242,11 +245,12 @@ export function parseJson(content: string, opts: ParseOptions): ParseResult {
     "",        // no inherited context pkg yet for the root itself
     opts.registry,
     warnings,
+    errors,
     strict,
     source,
     rootType,
   );
-  return { root, warnings };
+  return { root, warnings, errors };
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +271,7 @@ function parseNodeFresh(
   inheritedContextPkg: string,
   registry: TypeRegistry,
   warnings: string[],
+  errors: ParseError[],
   strict: boolean,
   source: string | undefined,
   path: string,
@@ -289,7 +294,7 @@ function parseNodeFresh(
       subType = SUBTYPE_BASE;
     } else {
       const msg = `Unknown type "${type}.${subType}" — not registered`;
-      reportProblem(msg, strict, warnings, source, path);
+      errors.push(new ParseError(msg, errOpts(source, path)));
       const rawName = nodeData[RESERVED_KEY_NAME];
       const name = typeof rawName === "string" ? rawName : "";
       return new MetaModel(new TypeId(type, subType), name);
@@ -370,7 +375,7 @@ function parseNodeFresh(
   const childAccumRoot = accumRoot ?? model;
   // Use the model's actual package (not effective) as the inherited context for children.
   const childInheritedContextPkg = model.package ?? inheritedContextPkg;
-  processChildren(model, nodeData, childAccumRoot, childInheritedContextPkg, registry, warnings, strict, source, path);
+  processChildren(model, nodeData, childAccumRoot, childInheritedContextPkg, registry, warnings, errors, strict, source, path);
 
   return model;
 }
@@ -390,6 +395,7 @@ function parseNodeInto(
   inheritedContextPkg: string,
   registry: TypeRegistry,
   warnings: string[],
+  errors: ParseError[],
   strict: boolean,
   source: string | undefined,
   path: string,
@@ -403,7 +409,7 @@ function parseNodeInto(
   const effectivePkg = inheritedContextPkg;
 
   // Process children
-  processChildren(target, nodeData, accumRoot, effectivePkg, registry, warnings, strict, source, path);
+  processChildren(target, nodeData, accumRoot, effectivePkg, registry, warnings, errors, strict, source, path);
 }
 
 // ---------------------------------------------------------------------------
@@ -421,6 +427,7 @@ function createOrFindMetaData(
   inheritedContextPkg: string,
   registry: TypeRegistry,
   warnings: string[],
+  errors: ParseError[],
   strict: boolean,
   source: string | undefined,
   path: string,
@@ -446,19 +453,19 @@ function createOrFindMetaData(
       );
     }
     existing.setIsMerge(true);
-    parseNodeInto(nodeData, existing, accumRoot, inheritedContextPkg, registry, warnings, strict, source, path);
+    parseNodeInto(nodeData, existing, accumRoot, inheritedContextPkg, registry, warnings, errors, strict, source, path);
     return existing;
   }
 
   // Default: no operator → silently reuse existing or create new.
   if (existing !== undefined) {
     // Silently reuse existing (merge into it, no warning, no error)
-    parseNodeInto(nodeData, existing, accumRoot, inheritedContextPkg, registry, warnings, strict, source, path);
+    parseNodeInto(nodeData, existing, accumRoot, inheritedContextPkg, registry, warnings, errors, strict, source, path);
     return existing;
   }
 
   // Not found (or unnamed) → create new
-  return parseNodeFresh(type, nodeData, accumRoot, inheritedContextPkg, registry, warnings, strict, source, path, parent.type, parent);
+  return parseNodeFresh(type, nodeData, accumRoot, inheritedContextPkg, registry, warnings, errors, strict, source, path, parent.type, parent);
 }
 
 // ---------------------------------------------------------------------------
@@ -583,6 +590,7 @@ function processChildren(
   inheritedContextPkg: string,
   registry: TypeRegistry,
   warnings: string[],
+  errors: ParseError[],
   strict: boolean,
   source: string | undefined,
   path: string,
@@ -658,6 +666,7 @@ function processChildren(
         inheritedContextPkg,
         registry,
         warnings,
+        errors,
         strict,
         source,
         childNodePath,

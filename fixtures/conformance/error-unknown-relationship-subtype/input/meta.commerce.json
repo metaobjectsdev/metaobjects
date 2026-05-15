@@ -1,0 +1,28 @@
+{
+  "metadata": {
+    "package": "acme::commerce",
+    "children": [
+      {
+        "object": {
+          "name": "Program",
+          "subType": "entity",
+          "children": [
+            { "field": { "name": "id", "subType": "long" } },
+            { "relationship": { "name": "weeks", "subType": "oneToMany", "@objectRef": "Week" } },
+            { "identity": { "subType": "primary", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object": {
+          "name": "Week",
+          "subType": "entity",
+          "children": [
+            { "field": { "name": "id", "subType": "long" } },
+            { "identity": { "subType": "primary", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

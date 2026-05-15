@@ -702,6 +702,68 @@ describe("parseJson — unknown child type", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 10b. Unknown subtype — escalated to error (not warning)
+// ---------------------------------------------------------------------------
+
+describe("parseJson — unknown subtype is an error", () => {
+  it("parser collects error when subtype is unknown (relationship.oneToMany)", () => {
+    const registry = makeRegistry();
+    const json = JSON.stringify({
+      metadata: {
+        package: "acme",
+        children: [{
+          relationship: {
+            name: "weeks",
+            subType: "oneToMany",     // unregistered — only association/aggregation/composition exist
+            "@objectRef": "Week",
+          },
+        }],
+      },
+    });
+    const result = parseJson(json, { registry, strict: false });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some((e) => e.message.includes(`Unknown type "relationship.oneToMany"`))).toBe(true);
+  });
+
+  it("empty model is still returned for the bad node so parsing continues", () => {
+    const registry = makeRegistry();
+    const json = JSON.stringify({
+      metadata: {
+        package: "acme",
+        children: [
+          {
+            relationship: {
+              name: "weeks",
+              subType: "oneToMany",
+              "@objectRef": "Week",
+            },
+          },
+          { object: { name: "Week", subType: "entity" } },
+        ],
+      },
+    });
+    const result = parseJson(json, { registry, strict: false });
+    // Bad node emits an error but sibling (Week) is still parsed
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.root.childByTypeAndName("object", "Week")).toBeDefined();
+  });
+
+  it("unknown subtype does NOT appear in warnings — it is an error", () => {
+    const registry = makeRegistry();
+    const json = JSON.stringify({
+      metadata: {
+        children: [{
+          relationship: { name: "r", subType: "oneToMany" },
+        }],
+      },
+    });
+    const result = parseJson(json, { registry, strict: false });
+    expect(result.warnings.some((w) => w.includes("oneToMany"))).toBe(false);
+    expect(result.errors.some((e) => e.message.includes("oneToMany"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 11. Invalid JSON syntax
 // ---------------------------------------------------------------------------
 
