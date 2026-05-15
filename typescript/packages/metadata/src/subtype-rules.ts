@@ -28,7 +28,7 @@ export function validateSubtypeRules(root: MetaModel): SubtypeRuleResult {
 
 function walk(model: MetaModel, errors: ParseError[], warnings: string[]): void {
   if (model.type === TYPE_OBJECT) {
-    const hasPrimary = model.children().some(
+    const hasPrimary = model.effectiveChildren().some(
       (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
     );
     if (model.subType === OBJECT_SUBTYPE_VALUE && hasPrimary) {
