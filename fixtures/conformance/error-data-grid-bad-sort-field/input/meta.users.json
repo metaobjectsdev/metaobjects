@@ -1,0 +1,28 @@
+{
+  "metadata": {
+    "package": "acme",
+    "children": [
+      {
+        "object": {
+          "name": "Subscriber",
+          "subType": "entity",
+          "children": [
+            { "field": { "name": "id", "subType": "long" } },
+            { "field": { "name": "email", "subType": "string" } },
+            { "identity": { "subType": "primary", "@fields": "id" } },
+            {
+              "layout": {
+                "subType": "dataGrid",
+                "name": "default",
+                "@pageSize": 25,
+                "@defaultSortField": "doesNotExist",
+                "@defaultSortOrder": "desc",
+                "@columns": ["email"]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

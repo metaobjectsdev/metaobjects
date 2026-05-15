@@ -1,0 +1,3 @@
+[
+  "dataGrid layout \"default\" on entity \"Subscriber\" has @defaultSortField \"doesNotExist\" but no such field exists on \"Subscriber\". Available fields: id, email"
+]

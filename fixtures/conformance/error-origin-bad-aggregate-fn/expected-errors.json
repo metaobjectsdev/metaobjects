@@ -1,0 +1,3 @@
+[
+  "origin.aggregate.@agg \"notARealFn\" on ProgramSummary.weekStat: not a valid aggregate function. Valid: count, sum, avg, min, max."
+]
