@@ -83,6 +83,20 @@
         "@biomejs/biome": ">=1.9.0",
       },
     },
+    "packages/codegen-ts-typed": {
+      "name": "@metaobjects/codegen-ts-typed",
+      "version": "0.0.1",
+      "dependencies": {
+        "@metaobjects/codegen-ts": "workspace:*",
+        "@metaobjects/metadata": "workspace:*",
+        "ts-poet": "^6.10.0",
+      },
+      "devDependencies": {
+        "bun-types": "latest",
+        "drizzle-orm": "^0.36.0",
+        "typescript": "^5.6.0",
+      },
+    },
     "packages/forge": {
       "name": "@metaobjects/forge",
       "version": "0.1.0",
@@ -306,6 +320,8 @@
     "@metaobjects/codegen-ts": ["@metaobjects/codegen-ts@workspace:packages/codegen-ts"],
 
     "@metaobjects/codegen-ts-tanstack": ["@metaobjects/codegen-ts-tanstack@workspace:packages/codegen-ts-tanstack"],
+
+    "@metaobjects/codegen-ts-typed": ["@metaobjects/codegen-ts-typed@workspace:packages/codegen-ts-typed"],
 
     "@metaobjects/forge": ["@metaobjects/forge@workspace:packages/forge"],
 
