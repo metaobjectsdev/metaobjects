@@ -1,0 +1,54 @@
+{
+  "metadata": {
+    "package": "acme",
+    "subType": "base",
+    "children": [
+      {
+        "object": {
+          "name": "Subscriber",
+          "subType": "entity",
+          "children": [
+            {
+              "field": {
+                "name": "id",
+                "subType": "long"
+              }
+            },
+            {
+              "field": {
+                "name": "email",
+                "subType": "string"
+              }
+            },
+            {
+              "field": {
+                "name": "username",
+                "subType": "string"
+              }
+            },
+            {
+              "identity": {
+                "subType": "primary",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity": {
+                "name": "byEmail",
+                "subType": "secondary",
+                "@fields": "email"
+              }
+            },
+            {
+              "identity": {
+                "name": "byUsername",
+                "subType": "secondary",
+                "@fields": "username"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
