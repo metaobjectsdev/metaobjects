@@ -95,9 +95,14 @@ export abstract class MetaData {
     return this.model.attr(name) as V | undefined;
   }
 
-  /** All children, returned as typed views (preserves insertion order). */
+  /** All own children, returned as typed views (preserves insertion order). Java parity: getChildren() no-arg. */
   children(): MetaData[] {
     return this.model.children().map(metaOf);
+  }
+
+  /** All effective children (own + inherited via super chain), returned as typed views. Java parity: getChildren(Class<T>) typed-overload default. */
+  effectiveChildren(): MetaData[] {
+    return this.model.effectiveChildren().map(metaOf);
   }
 }
 
@@ -135,7 +140,7 @@ export class MetaRoot extends MetaData {
 
 export class MetaObject extends MetaData {
   get dbTable(): string | undefined {
-    const source = this.model.children().find(
+    const source = this.model.effectiveChildren().find(
       (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_TABLE,
     );
     const name = source?.attr(SOURCE_DB_TABLE_ATTR_NAME);
@@ -156,14 +161,14 @@ export class MetaObject extends MetaData {
 
   fields(): MetaField[] {
     return this.model
-      .children()
+      .effectiveChildren()
       .filter((c) => c.type === TYPE_FIELD)
       .map((c) => metaOf(c) as MetaField);
   }
 
   identities(): MetaIdentity[] {
     return this.model
-      .children()
+      .effectiveChildren()
       .filter((c) => c.type === TYPE_IDENTITY)
       .map((c) => metaOf(c) as MetaIdentity);
   }
@@ -184,20 +189,20 @@ export class MetaObject extends MetaData {
 
   relationships(): MetaRelationship[] {
     return this.model
-      .children()
+      .effectiveChildren()
       .filter((c) => c.type === TYPE_RELATIONSHIP)
       .map((c) => metaOf(c) as MetaRelationship);
   }
 
   validators(): MetaValidator[] {
     return this.model
-      .children()
+      .effectiveChildren()
       .filter((c) => c.type === TYPE_VALIDATOR)
       .map((c) => metaOf(c) as MetaValidator);
   }
 
   findField(name: string): MetaField | undefined {
-    const m = this.model.childByTypeAndName(TYPE_FIELD, name);
+    const m = this.model.effectiveChildByTypeAndName(TYPE_FIELD, name);
     return m ? (metaOf(m) as MetaField) : undefined;
   }
 }
@@ -240,7 +245,7 @@ export class MetaField extends MetaData {
    */
   get isRequired(): boolean {
     if (this.attr(FIELD_ATTR_REQUIRED) === true) return true;
-    for (const c of this.model.children()) {
+    for (const c of this.model.effectiveChildren()) {
       if (c.type === TYPE_VALIDATOR && c.subType === VALIDATOR_SUBTYPE_REQUIRED) {
         return true;
       }

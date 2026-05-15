@@ -180,6 +180,29 @@ export class MetaModel {
     return this._children.find((c) => c.type === type && c.name === name);
   }
 
+  /**
+   * Returns the first child matching (type, name), walking the super chain if not found locally.
+   * Java parity: matches MetaObject.getMetaField(name)'s behavior of falling back to getSuperObject().getMetaField(name).
+   * Cycle-safe: if the super chain contains a cycle, lookup stops at the cycle.
+   */
+  effectiveChildByTypeAndName(type: string, name: string): MetaModel | undefined {
+    return this._effectiveChildByTypeAndName(type, name, new Set([this]));
+  }
+
+  private _effectiveChildByTypeAndName(
+    type: string,
+    name: string,
+    visited: Set<MetaModel>,
+  ): MetaModel | undefined {
+    const own = this._children.find((c) => c.type === type && c.name === name);
+    if (own !== undefined) return own;
+    if (this._superResolved === undefined || visited.has(this._superResolved)) {
+      return undefined;
+    }
+    visited.add(this._superResolved);
+    return this._superResolved._effectiveChildByTypeAndName(type, name, visited);
+  }
+
   // ---------------------------------------------------------------------------
   // Effective view (own + inherited via super chain)
   // ---------------------------------------------------------------------------

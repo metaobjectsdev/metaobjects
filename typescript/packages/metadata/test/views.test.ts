@@ -601,6 +601,129 @@ describe("metaOf factory dispatches to MetaLayout / MetaSource / MetaOrigin", ()
   });
 });
 
+describe("MetaObject typed views — Java parity for extends inheritance", () => {
+  it("MetaObject.fields() returns inherited + own fields", () => {
+    const json = JSON.stringify({
+      metadata: {
+        package: "acme",
+        children: [
+          {
+            object: {
+              name: "BaseEntity",
+              subType: "entity",
+              isAbstract: true,
+              children: [
+                { field: { name: "id", subType: "long" } },
+                { field: { name: "createdAt", subType: "string" } },
+              ],
+            },
+          },
+          {
+            object: {
+              name: "Subscriber",
+              subType: "entity",
+              extends: "BaseEntity",
+              children: [
+                { field: { name: "email", subType: "string" } },
+                { identity: { subType: "primary", "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root, errors } = load(json);
+    expect(errors).toEqual([]);
+    const subscriber = root.children().find((c) => c.name === "Subscriber")!;
+    const view = metaOf(subscriber) as MetaObject;
+    const fieldNames = view.fields().map((f) => f.name);
+    expect(fieldNames).toContain("id");        // inherited
+    expect(fieldNames).toContain("createdAt"); // inherited
+    expect(fieldNames).toContain("email");     // own
+  });
+
+  it("MetaObject.findField walks super chain", () => {
+    const json = JSON.stringify({
+      metadata: {
+        package: "acme",
+        children: [
+          {
+            object: {
+              name: "BaseEntity",
+              subType: "entity",
+              isAbstract: true,
+              children: [{ field: { name: "id", subType: "long" } }],
+            },
+          },
+          {
+            object: {
+              name: "Subscriber",
+              subType: "entity",
+              extends: "BaseEntity",
+              children: [
+                { field: { name: "email", subType: "string" } },
+                { identity: { subType: "primary", "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root } = load(json);
+    const subscriber = root.children().find((c) => c.name === "Subscriber")!;
+    const view = metaOf(subscriber) as MetaObject;
+    expect(view.findField("id")?.name).toBe("id");       // inherited
+    expect(view.findField("email")?.name).toBe("email"); // own
+    expect(view.findField("notARealField")).toBeUndefined();
+  });
+
+  it("MetaObject.identities() returns inherited + own identities", () => {
+    const json = JSON.stringify({
+      metadata: {
+        package: "acme",
+        children: [
+          {
+            object: {
+              name: "BaseEntity",
+              subType: "entity",
+              isAbstract: true,
+              children: [
+                { field: { name: "id", subType: "long" } },
+                { identity: { subType: "primary", "@fields": "id" } },
+              ],
+            },
+          },
+          {
+            object: {
+              name: "Subscriber",
+              subType: "entity",
+              extends: "BaseEntity",
+              children: [
+                { field: { name: "email", subType: "string" } },
+                {
+                  identity: {
+                    subType: "secondary",
+                    name: "byEmail",
+                    "@fields": "email",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root, errors } = load(json);
+    expect(errors).toEqual([]);
+    const subscriber = root.children().find((c) => c.name === "Subscriber")!;
+    const view = metaOf(subscriber) as MetaObject;
+    const ids = view.identities();
+    expect(ids.length).toBe(2); // primary (inherited) + secondary (own)
+    expect(view.primaryIdentity()?.attr("fields")).toBe("id");
+    expect(view.secondaryIdentities().length).toBe(1);
+  });
+});
+
 describe("MetaField.resolveSuper", () => {
   it("returns the typed supertype field when extends: resolves", () => {
     const { root } = load(
