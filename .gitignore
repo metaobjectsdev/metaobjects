@@ -23,3 +23,7 @@ node_modules/
 typescript/**/dist/
 typescript/**/node_modules/
 java/**/target/
+
+# C# build output
+bin/
+obj/
