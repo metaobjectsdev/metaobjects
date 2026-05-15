@@ -1,0 +1,36 @@
+{
+  "metadata": {
+    "package": "acme::commerce",
+    "children": [
+      {
+        "object": {
+          "name": "Program",
+          "subType": "entity",
+          "children": [
+            { "field": { "name": "id", "subType": "long" } },
+            { "field": { "name": "title", "subType": "string" } },
+            { "identity": { "subType": "primary", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object": {
+          "name": "ProgramSummary",
+          "subType": "entity",
+          "extends": "Program",
+          "children": [
+            { "source": { "subType": "dbView", "@name": "v_program_summary" } },
+            { "field": {
+                "name": "displayTitle",
+                "subType": "string",
+                "children": [
+                  { "origin": { "subType": "passthrough", "@from": "Program.title" } }
+                ]
+            } },
+            { "identity": { "subType": "primary", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}
