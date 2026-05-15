@@ -1,0 +1,3 @@
+[
+  "[filterable-without-index] field \"Subscriber.email\" has @filterable: true but is not part of any identity. Filtering on this field will sequential-scan. Add @db.indexed: true to the field (when supported), or remove @filterable: true."
+]

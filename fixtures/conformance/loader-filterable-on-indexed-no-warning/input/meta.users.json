@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "package": "acme",
+    "children": [
+      {
+        "object": {
+          "name": "Subscriber",
+          "subType": "entity",
+          "children": [
+            { "field": { "name": "id", "subType": "long" } },
+            { "field": { "name": "email", "subType": "string", "@filterable": true } },
+            { "identity": { "subType": "primary", "@fields": "id" } },
+            { "identity": { "subType": "secondary", "name": "byEmail", "@fields": "email" } }
+          ]
+        }
+      }
+    ]
+  }
+}
