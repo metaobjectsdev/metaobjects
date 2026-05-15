@@ -1,0 +1,20 @@
+{
+  "metadata": {
+    "package": "acme",
+    "children": [
+      {
+        "object": {
+          "name": "Subscriber",
+          "subType": "entity",
+          "children": [
+            { "field": { "name": "id", "subType": "long" } },
+            { "field": { "name": "email", "subType": "string" } },
+            { "field": { "name": "createdAt", "subType": "string", "@autoSet": "onCreate" } },
+            { "field": { "name": "updatedAt", "subType": "string", "@autoSet": "onUpdate" } },
+            { "identity": { "subType": "primary", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}
