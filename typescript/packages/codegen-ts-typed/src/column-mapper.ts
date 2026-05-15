@@ -1,5 +1,5 @@
 // Field-type → Drizzle column type mapping. Typed-view port of codegen-ts/src/column-mapper.ts.
-// Key POC change: getMaxLength + isRequired use effectiveChildren() so inherited validators are seen.
+// Uses the typed MetaField.validators() accessor (effective — includes inherited) for all validator checks.
 
 import type { MetaField } from "@metaobjects/metadata";
 import {
@@ -16,7 +16,6 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
-  TYPE_VALIDATOR,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   FIELD_ATTR_MAX_LENGTH,
@@ -93,12 +92,12 @@ export interface ColumnSpec {
 }
 
 /** Resolve max length from validator.length child or @maxLength attr.
- *  Uses effectiveChildren() so inherited validators are seen. */
+ *  Uses field.validators() (effective) so inherited validators are seen. */
 function getMaxLength(field: MetaField): number | undefined {
   const lenAttr = field.attr(FIELD_ATTR_MAX_LENGTH);
   if (typeof lenAttr === "number") return lenAttr;
-  for (const child of field.effectiveChildren()) {
-    if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_LENGTH) {
+  for (const child of field.validators()) {
+    if (child.subType === VALIDATOR_SUBTYPE_LENGTH) {
       const max = child.attr(VALIDATOR_ATTR_MAX);
       if (typeof max === "number") return max;
     }
@@ -107,15 +106,10 @@ function getMaxLength(field: MetaField): number | undefined {
 }
 
 /** Check for validator.required child OR @required attr.
- *  Uses effectiveChildren() so inherited validators are seen. */
+ *  Uses field.validators() (effective) so inherited validators are seen. */
 function isRequired(field: MetaField): boolean {
   if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
-  for (const child of field.effectiveChildren()) {
-    if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_REQUIRED) {
-      return true;
-    }
-  }
-  return false;
+  return field.validators().some((child) => child.subType === VALIDATOR_SUBTYPE_REQUIRED);
 }
 
 export function mapColumnType(
