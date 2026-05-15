@@ -1,0 +1,18 @@
+{
+  "metadata": {
+    "package": "acme",
+    "children": [
+      {
+        "object": {
+          "name": "Address",
+          "subType": "value",
+          "children": [
+            { "field": { "name": "street", "subType": "string" } },
+            { "field": { "name": "city", "subType": "string" } },
+            { "field": { "name": "postalCode", "subType": "string" } }
+          ]
+        }
+      }
+    ]
+  }
+}
