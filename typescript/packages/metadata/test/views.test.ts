@@ -774,3 +774,127 @@ describe("MetaField.resolveSuper", () => {
     expect(id.resolveSuper()).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Java-parity: effective (default) vs own-only accessors
+// ---------------------------------------------------------------------------
+
+describe("typed-view accessors — Java-parity effective vs own-only", () => {
+  // Field-level extends uses FQN syntax: ::package::fieldName
+  // Base field is declared at root level with a package so it can be referenced.
+  const FIELD_EXTENDS_JSON = JSON.stringify({
+    metadata: {
+      package: "acme",
+      children: [
+        {
+          field: {
+            package: "acme::common",
+            name: "baseName",
+            subType: "string",
+            isAbstract: true,
+            children: [
+              { validator: { subType: "required" } },
+              { view: { subType: "text" } },
+            ],
+          },
+        },
+        {
+          object: {
+            name: "Widget",
+            subType: "entity",
+            children: [
+              { field: { name: "title", subType: "string", extends: "::acme::common::baseName" } },
+              { field: { name: "id", subType: "long" } },
+              { identity: { subType: "primary", "@fields": "id" } },
+            ],
+          },
+        },
+      ],
+    },
+  });
+
+  it("MetaField.validators() includes a validator inherited via field extends", () => {
+    const { root, errors } = load(FIELD_EXTENDS_JSON);
+    expect(errors).toEqual([]);
+    const widget = new MetaRoot(root).findObject("Widget")!;
+    const title = widget.findField("title")!;
+    expect(title.validators().some((v) => v.subType === "required")).toBe(true);
+  });
+
+  it("MetaField.ownValidators() excludes validators inherited via field extends", () => {
+    const { root, errors } = load(FIELD_EXTENDS_JSON);
+    expect(errors).toEqual([]);
+    const widget = new MetaRoot(root).findObject("Widget")!;
+    const title = widget.findField("title")!;
+    // title has no own validators — required comes from the base field
+    expect(title.ownValidators().some((v) => v.subType === "required")).toBe(false);
+  });
+
+  it("MetaField.views() returns views inherited via field extends", () => {
+    const { root, errors } = load(FIELD_EXTENDS_JSON);
+    expect(errors).toEqual([]);
+    const widget = new MetaRoot(root).findObject("Widget")!;
+    const title = widget.findField("title")!;
+    // views() is effective — the inherited view[text] must appear
+    expect(title.views().some((v) => v.subType === "text")).toBe(true);
+    // ownViews() is own-only — title has no own views
+    expect(title.ownViews()).toHaveLength(0);
+  });
+
+  it("MetaField.isRequired uses effective validators (includes inherited)", () => {
+    const { root, errors } = load(FIELD_EXTENDS_JSON);
+    expect(errors).toEqual([]);
+    const widget = new MetaRoot(root).findObject("Widget")!;
+    const title = widget.findField("title")!;
+    // required comes from the inherited validator
+    expect(title.isRequired).toBe(true);
+    // id has no required validator
+    const id = widget.findField("id")!;
+    expect(id.isRequired).toBe(false);
+  });
+
+  it("MetaObject.ownFields() excludes inherited fields; fields() includes them", () => {
+    const json = JSON.stringify({
+      metadata: {
+        package: "acme",
+        children: [
+          {
+            object: {
+              name: "BaseEntity",
+              subType: "entity",
+              isAbstract: true,
+              children: [
+                { field: { name: "id", subType: "long" } },
+                { field: { name: "createdAt", subType: "string" } },
+              ],
+            },
+          },
+          {
+            object: {
+              name: "Product",
+              subType: "entity",
+              extends: "BaseEntity",
+              children: [
+                { field: { name: "sku", subType: "string" } },
+                { identity: { subType: "primary", "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root, errors } = load(json);
+    expect(errors).toEqual([]);
+    const product = new MetaRoot(root).findObject("Product")!;
+    // fields() is effective: id + createdAt (inherited) + sku (own)
+    const allFieldNames = product.fields().map((f) => f.name);
+    expect(allFieldNames).toContain("id");
+    expect(allFieldNames).toContain("createdAt");
+    expect(allFieldNames).toContain("sku");
+    // ownFields() is own-only: only sku
+    const ownFieldNames = product.ownFields().map((f) => f.name);
+    expect(ownFieldNames).not.toContain("id");
+    expect(ownFieldNames).not.toContain("createdAt");
+    expect(ownFieldNames).toContain("sku");
+  });
+});

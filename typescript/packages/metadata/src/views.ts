@@ -201,6 +201,26 @@ export class MetaObject extends MetaData {
       .map((c) => metaOf(c) as MetaValidator);
   }
 
+  /** Own validators only — excludes validators inherited via extends. Java parity: getChildren(Class, false). */
+  ownValidators(): MetaValidator[] {
+    return this.model.children().filter((c) => c.type === TYPE_VALIDATOR).map((c) => metaOf(c) as MetaValidator);
+  }
+
+  /** Own fields only — excludes fields inherited via extends. Java parity: getMetaFields(false). */
+  ownFields(): MetaField[] {
+    return this.model.children().filter((c) => c.type === TYPE_FIELD).map((c) => metaOf(c) as MetaField);
+  }
+
+  /** Own identities only — excludes inherited. */
+  ownIdentities(): MetaIdentity[] {
+    return this.model.children().filter((c) => c.type === TYPE_IDENTITY).map((c) => metaOf(c) as MetaIdentity);
+  }
+
+  /** Own relationships only — excludes inherited. */
+  ownRelationships(): MetaRelationship[] {
+    return this.model.children().filter((c) => c.type === TYPE_RELATIONSHIP).map((c) => metaOf(c) as MetaRelationship);
+  }
+
   findField(name: string): MetaField | undefined {
     const m = this.model.effectiveChildByTypeAndName(TYPE_FIELD, name);
     return m ? (metaOf(m) as MetaField) : undefined;
@@ -245,19 +265,33 @@ export class MetaField extends MetaData {
    */
   get isRequired(): boolean {
     if (this.attr(FIELD_ATTR_REQUIRED) === true) return true;
-    for (const c of this.model.effectiveChildren()) {
-      if (c.type === TYPE_VALIDATOR && c.subType === VALIDATOR_SUBTYPE_REQUIRED) {
-        return true;
-      }
-    }
-    return false;
+    return this.validators().some((v) => v.subType === VALIDATOR_SUBTYPE_REQUIRED);
   }
 
+  /** All effective validators (own + inherited via extends). Java parity: MetaField.getValidators() / getChildren(MetaValidator.class, true). */
   validators(): MetaValidator[] {
     return this.model
-      .children()
+      .effectiveChildren()
       .filter((c) => c.type === TYPE_VALIDATOR)
       .map((c) => metaOf(c) as MetaValidator);
+  }
+
+  /** Own validators only — excludes validators inherited via extends. Java parity: getChildren(Class, false). */
+  ownValidators(): MetaValidator[] {
+    return this.model.children().filter((c) => c.type === TYPE_VALIDATOR).map((c) => metaOf(c) as MetaValidator);
+  }
+
+  /** All effective views (own + inherited via extends). Java parity: MetaField.getViews() / getChildren(MetaView.class, true). */
+  views(): MetaView[] {
+    return this.model
+      .effectiveChildren()
+      .filter((c) => c.type === TYPE_VIEW)
+      .map((c) => metaOf(c) as MetaView);
+  }
+
+  /** Own views only — excludes views inherited via extends. */
+  ownViews(): MetaView[] {
+    return this.model.children().filter((c) => c.type === TYPE_VIEW).map((c) => metaOf(c) as MetaView);
   }
 
   /** The typed supertype field if `extends:` resolved, else undefined. */
