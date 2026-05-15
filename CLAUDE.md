@@ -58,6 +58,7 @@ See `spec/roadmap.md` for current + planned work.
 - Confidence and provenance are first-class on memory records. Bias toward under-flagging on drift checks (false-positive rate >15% is a kill criterion).
 - Templates are user-owned plain TS. Anything inside a generated file is fair game to hand-edit; three-way merge preserves it.
 - TDD discipline throughout implementation.
+- **Cross-language conformance fixtures** live at `fixtures/conformance/`. Adding new metamodel behavior means adding a conformance fixture so every language port (TS, Java, Python, C#) automatically verifies it. See `spec/conformance-tests.md` for the fixture format and canonical serializer contract.
 
 ## File organization
 
