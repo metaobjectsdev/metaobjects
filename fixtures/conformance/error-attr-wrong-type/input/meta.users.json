@@ -1,0 +1,37 @@
+{
+  "metadata.root": {
+    "package": "acme::users",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Subscriber",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "email"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": "id"
+              }
+            },
+            {
+              "layout.dataGrid": {
+                "name": "default",
+                "@pageSize": "twenty-five",
+                "@columns": ["email"]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

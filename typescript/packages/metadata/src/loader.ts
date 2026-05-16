@@ -26,6 +26,7 @@ import { registerCoreTypes } from "./core-types.js";
 import { parseJson } from "./parser-json.js";
 import { resolveDeferredSupers } from "./super-resolve.js";
 import { validateSubtypeRules } from "./subtype-rules.js";
+import { validateAttrSchema } from "./attr-schema-validate.js";
 import { ParseError } from "./errors.js";
 import {
   TYPE_METADATA, SUBTYPE_ROOT,
@@ -638,6 +639,13 @@ export class Loader {
       // Sixth pass: origin path validation — validates passthrough.@from,
       // aggregate.@of, aggregate.@agg vocab, and .@via relationship chains.
       errors.push(...validateOriginPaths(root));
+
+      // Seventh pass: attribute-schema validation (Phase A3) — checks each
+      // node's @-attributes against its (type, subType) AttrSchema: required
+      // attrs present, declared attrs well-typed, allowedValues honored.
+      const attrSchemaResult = validateAttrSchema(root, this._registry);
+      errors.push(...attrSchemaResult.errors);
+      warnings.push(...attrSchemaResult.warnings);
     }
 
     // If nothing parsed successfully, synthesize an empty root so callers

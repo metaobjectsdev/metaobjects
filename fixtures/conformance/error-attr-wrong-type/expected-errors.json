@@ -1,0 +1,3 @@
+[
+  "layout.dataGrid 'default' attribute '@pageSize' must be of type 'int' but got string"
+]

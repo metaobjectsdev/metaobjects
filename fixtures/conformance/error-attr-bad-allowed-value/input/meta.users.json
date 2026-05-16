@@ -1,0 +1,26 @@
+{
+  "metadata.root": {
+    "package": "acme::users",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Account",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": "id",
+                "@generation": "sequence"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

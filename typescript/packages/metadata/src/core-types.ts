@@ -92,7 +92,6 @@ import {
   RELATIONSHIP_ATTR_PARENT_FIELD,
   RELATIONSHIP_ATTR_JOIN_ENTITY,
   RELATIONSHIP_ATTR_JOIN_FIELDS,
-  CARDINALITY_VALUES,
   VALIDATOR_ATTR_PATTERN,
   VALIDATOR_ATTR_MIN,
   VALIDATOR_ATTR_MAX,
@@ -154,9 +153,15 @@ const commonFieldAttrs: AttrSchema[] = [
   },
   {
     name: FIELD_ATTR_DEFAULT,
-    valueType: ATTR_SUBTYPE_STRING,
+    // @default is polymorphic: its value type follows the OWNING field's
+    // subtype — a boolean field defaults to a boolean, an int field to a
+    // number, a string field to a string. A single fixed valueType cannot
+    // capture that, so it is declared as the universal base subtype, which
+    // A3's type check treats as unconstrained (accept any AttrValue).
+    valueType: SUBTYPE_BASE,
     required: false,
-    description: "Default value applied to the column when no value is supplied.",
+    description:
+      "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...).",
   },
   {
     name: FIELD_ATTR_MAX_LENGTH,
@@ -254,8 +259,13 @@ const relationshipAttrs: AttrSchema[] = [
     name: RELATIONSHIP_ATTR_CARDINALITY,
     valueType: ATTR_SUBTYPE_STRING,
     required: false,
-    allowedValues: [...CARDINALITY_VALUES],
-    description: "Cardinality of the relationship target: 'one' or 'many'.",
+    // No allowedValues: @cardinality is an open string at the metamodel level
+    // (MetaRelationship.cardinality returns `string | undefined`). The Java
+    // canonical fixtures use composite forms such as "many-to-one"; the
+    // CARDINALITY_VALUES ("one"/"many") constant is a TS codegen convenience,
+    // NOT a closed metamodel enum. A3 must not reject the Java-canonical values.
+    description:
+      "Cardinality of the relationship target (e.g. 'one', 'many', 'many-to-one').",
   },
   {
     name: RELATIONSHIP_ATTR_OBJECT_REF,

@@ -103,6 +103,10 @@ export type { LoadOptions, LoadResult, LoadingState } from "./loader.js";
 // Errors
 export { ParseError } from "./errors.js";
 
+// Attribute-schema validation pass (Phase A3)
+export { validateAttrSchema } from "./attr-schema-validate.js";
+export type { AttrSchemaValidationResult } from "./attr-schema-validate.js";
+
 // Naming — hoisted from runtime-ts in v0.2.3 so multiple consumers (runtime-ts, migrate-ts, codegen-ts)
 // share identical name resolution. See spec §4.1.
 export {
