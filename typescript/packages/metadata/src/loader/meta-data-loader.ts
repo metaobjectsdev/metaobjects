@@ -11,9 +11,7 @@ import type { MetaData } from "../meta/meta-data.js";
 import { MetaRoot } from "../meta/meta-root.js";
 import { TypeId, TypeRegistry } from "../registry.js";
 import { registerCoreTypes } from "../core-types.js";
-import {
-  TYPE_METADATA, SUBTYPE_ROOT,
-} from "../constants.js";
+import { TYPE_METADATA, SUBTYPE_ROOT } from "../constants.js";
 import { ParseError } from "../errors.js";
 import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths } from "./validation-passes.js";

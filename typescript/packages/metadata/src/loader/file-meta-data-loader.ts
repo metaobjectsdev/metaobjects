@@ -2,6 +2,7 @@
 // MetaDataLoader pipeline over them. A UrlMetaDataLoader will slot in the
 // same way later.
 
+import type { Stats } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { MetaDataLoader, type LoadResult } from "./meta-data-loader.js";
@@ -43,7 +44,7 @@ export class FileMetaDataLoader extends MetaDataLoader {
     for (const entry of entries) {
       if (!entry.endsWith(".json")) continue;
       const filePath = join(dir, entry);
-      let statResult: Awaited<ReturnType<typeof stat>>;
+      let statResult: Stats;
       try {
         statResult = await stat(filePath);
       } catch {
