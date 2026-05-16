@@ -791,7 +791,10 @@ function parseAttrChild(
     registry,
   );
 
-  attrModel.setAttr(RESERVED_KEY_VALUE, coercedValue.value);
+  // Both the child attr node and the parent attr-map carry the same normalized
+  // value so dual storage stays consistent (non-inline serializer reads the
+  // child node; inline path reads the parent map).
+  attrModel.setAttr(RESERVED_KEY_VALUE, normalized);
   parent.addChild(attrModel);
   parent.setAttr(attrName, normalized);
 }

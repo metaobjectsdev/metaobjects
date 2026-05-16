@@ -10,12 +10,14 @@ import {
   TYPE_OBJECT,
   TYPE_FIELD,
   TYPE_ATTR,
+  TYPE_IDENTITY,
   SUBTYPE_ROOT,
   OBJECT_SUBTYPE_ENTITY,
   FIELD_SUBTYPE_LONG,
   ATTR_SUBTYPE_BOOLEAN,
   IDENTITY_SUBTYPE_PRIMARY,
 } from "../src/constants.js";
+import { MetaAttr } from "../src/meta/meta-attr.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1086,6 +1088,52 @@ describe("parseJson — deeply nested children", () => {
     expect(identity.attr("generation")).toBe("increment");
     // @fields is an array
     expect(Array.isArray(identity.attr("fields"))).toBe(true);
+  });
+
+  it("child-node form of stringArray attr desugars consistently: parent map and MetaAttr node both carry the array", () => {
+    // Regression test for the dual-storage bug: when @fields is expressed as
+    // a bare string in the child-node form {"attr.stringarray": {name:"fields",value:"id"}},
+    // both the parent identity's attr map AND the child MetaAttr node's value
+    // must carry the desugared ["id"] array — not a mix of array + bare string.
+    const registry = makeRegistry();
+    const input = JSON.stringify({
+      "metadata.root": {
+        children: [
+          {
+            "object.entity": {
+              name: "Store",
+              children: [
+                {
+                  "identity.primary": {
+                    name: "primary",
+                    children: [
+                      // Child-node form: bare string "id" for a stringArray attr.
+                      { "attr.stringarray": { name: "fields", value: "id" } },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root } = parseJson(input, { registry });
+    const obj = root.children()[0]!;
+    const identity = obj.childrenOfType(TYPE_IDENTITY)[0]!;
+
+    // Parent attr map must carry the desugared array.
+    const parentValue = identity.attr("fields");
+    expect(Array.isArray(parentValue)).toBe(true);
+    expect(parentValue).toEqual(["id"]);
+
+    // Child MetaAttr node must carry the same desugared array (dual-storage consistency).
+    const attrNode = identity.childrenOfType(TYPE_ATTR).find(
+      (c) => c.name === "fields",
+    ) as MetaAttr | undefined;
+    expect(attrNode).toBeDefined();
+    expect(Array.isArray(attrNode!.value)).toBe(true);
+    expect(attrNode!.value).toEqual(["id"]);
   });
 });
 
