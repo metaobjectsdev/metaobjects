@@ -108,6 +108,10 @@ export type { LoadOptions, LoadResult, LoadingState } from "./loader.js";
 // Errors
 export { ParseError } from "./errors.js";
 
+// Export convenience API — load a directory, emit one canonical-JSON document
+export { loadAndExportJson } from "./export-json.js";
+export type { ExportResult } from "./export-json.js";
+
 // Attribute-schema validation pass (Phase A3)
 export { validateAttrSchema } from "./attr-schema-validate.js";
 export type { AttrSchemaValidationResult } from "./attr-schema-validate.js";
