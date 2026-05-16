@@ -5,5 +5,55 @@
 // Extends MetaData directly: no model wrapper, no metaOf() indirection.
 
 import { MetaData } from "./meta-data.js";
+import {
+  LAYOUT_DATA_GRID_ATTR_PAGE_SIZE,
+  LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
+  LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER,
+  LAYOUT_DATA_GRID_ATTR_FILTERABLE,
+  LAYOUT_DATA_GRID_ATTR_FILTER,
+  LAYOUT_DATA_GRID_ATTR_COLUMNS,
+  type SortOrderValue,
+} from "../constants.js";
 
-export class MetaLayout extends MetaData {}
+export class MetaLayout extends MetaData {
+  /** The number of rows per page for the dataGrid layout. */
+  get pageSize(): number | undefined {
+    const v = this.attr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE);
+    return typeof v === "number" ? v : undefined;
+  }
+
+  /** The field name to sort by default in the dataGrid layout. */
+  get defaultSortField(): string | undefined {
+    const v = this.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
+    return typeof v === "string" ? v : undefined;
+  }
+
+  /**
+   * The default sort order (`"asc"` or `"desc"`) for the dataGrid layout.
+   * Returns `undefined` when the attr is absent.
+   */
+  get defaultSortOrder(): SortOrderValue | undefined {
+    const v = this.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
+    return typeof v === "string" ? (v as SortOrderValue) : undefined;
+  }
+
+  /**
+   * True when `@filterable: true` is set on the dataGrid layout.
+   * Defaults to `false` when the attr is absent.
+   */
+  get filterable(): boolean {
+    return this.attr(LAYOUT_DATA_GRID_ATTR_FILTERABLE) === true;
+  }
+
+  /** A JSON-encoded preset filter string for the dataGrid layout. */
+  get filter(): string | undefined {
+    const v = this.attr(LAYOUT_DATA_GRID_ATTR_FILTER);
+    return typeof v === "string" ? v : undefined;
+  }
+
+  /** The ordered list of field names to display as columns in the dataGrid layout. */
+  get columns(): string[] {
+    const c = this.attr(LAYOUT_DATA_GRID_ATTR_COLUMNS);
+    return Array.isArray(c) ? (c as string[]) : [];
+  }
+}

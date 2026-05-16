@@ -77,6 +77,10 @@ import {
   ATTR_SUBTYPE_STRING,
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_PAGE_SIZE,
+  LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
+  LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER,
+  LAYOUT_DATA_GRID_ATTR_FILTERABLE,
+  LAYOUT_DATA_GRID_ATTR_FILTER,
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
   SOURCE_SUBTYPE_DB_TABLE,
   SOURCE_SUBTYPE_DB_VIEW,
@@ -641,6 +645,106 @@ describe("MetaLayout", () => {
 });
 
 // ---------------------------------------------------------------------------
+// MetaLayout — typed dataGrid accessors (Phase B2)
+// ---------------------------------------------------------------------------
+
+describe("MetaLayout — typed dataGrid accessors", () => {
+  it("pageSize returns the @pageSize attr as a number", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE, 50);
+    expect(l.pageSize).toBe(50);
+  });
+
+  it("pageSize returns undefined when attr is absent", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
+    expect(l.pageSize).toBeUndefined();
+  });
+
+  it("defaultSortField returns the @defaultSortField attr", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD, "createdAt");
+    expect(l.defaultSortField).toBe("createdAt");
+  });
+
+  it("defaultSortField returns undefined when attr is absent", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
+    expect(l.defaultSortField).toBeUndefined();
+  });
+
+  it("defaultSortOrder returns 'asc' when set", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER, "asc");
+    expect(l.defaultSortOrder).toBe("asc");
+  });
+
+  it("defaultSortOrder returns 'desc' when set", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER, "desc");
+    expect(l.defaultSortOrder).toBe("desc");
+  });
+
+  it("defaultSortOrder returns undefined when attr is absent", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
+    expect(l.defaultSortOrder).toBeUndefined();
+  });
+
+  it("filterable returns true when @filterable: true is set", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_FILTERABLE, true);
+    expect(l.filterable).toBe(true);
+  });
+
+  it("filterable returns false when attr is absent (default false)", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
+    expect(l.filterable).toBe(false);
+  });
+
+  it("filterable returns false when @filterable: false is explicit", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_FILTERABLE, false);
+    expect(l.filterable).toBe(false);
+  });
+
+  it("filter returns the @filter preset-filter JSON string", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_FILTER, '{"subscribed":true}');
+    expect(l.filter).toBe('{"subscribed":true}');
+  });
+
+  it("filter returns undefined when attr is absent", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
+    expect(l.filter).toBeUndefined();
+  });
+
+  it("columns returns the @columns string array", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_COLUMNS, ["email", "firstName", "createdAt"]);
+    expect(l.columns).toEqual(["email", "firstName", "createdAt"]);
+  });
+
+  it("columns returns empty array when attr is absent", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
+    expect(l.columns).toEqual([]);
+  });
+
+  it("all dataGrid attrs set — each getter returns the authored value", () => {
+    const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "admin");
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE, 25);
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD, "createdAt");
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER, "desc");
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_FILTERABLE, true);
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_FILTER, '{"active":true}');
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_COLUMNS, ["id", "email", "createdAt"]);
+    expect(l.pageSize).toBe(25);
+    expect(l.defaultSortField).toBe("createdAt");
+    expect(l.defaultSortOrder).toBe("desc");
+    expect(l.filterable).toBe(true);
+    expect(l.filter).toBe('{"active":true}');
+    expect(l.columns).toEqual(["id", "email", "createdAt"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // MetaSource
 // ---------------------------------------------------------------------------
 
@@ -670,6 +774,27 @@ describe("MetaSource", () => {
   it("sourceName returns undefined when @name not set", () => {
     const s = makeSource(SOURCE_SUBTYPE_DB_TABLE);
     expect(s.sourceName).toBeUndefined();
+  });
+
+  it("isWritable() returns true for dbTable, false for dbView", () => {
+    const table = makeSource(SOURCE_SUBTYPE_DB_TABLE, "users");
+    const view  = makeSource(SOURCE_SUBTYPE_DB_VIEW, "v_summary");
+    expect(table.isWritable()).toBe(true);
+    expect(view.isWritable()).toBe(false);
+  });
+
+  it("isReadOnly() returns false for dbTable, true for dbView", () => {
+    const table = makeSource(SOURCE_SUBTYPE_DB_TABLE, "users");
+    const view  = makeSource(SOURCE_SUBTYPE_DB_VIEW, "v_summary");
+    expect(table.isReadOnly()).toBe(false);
+    expect(view.isReadOnly()).toBe(true);
+  });
+
+  it("isWritable() and isReadOnly() are not mirrors of each other (both false for base subtype)", () => {
+    // Verify the design: if a third subtype is added, neither flag is set.
+    const base = new MetaSource(new TypeId(TYPE_SOURCE, "someNewSubtype"), "s");
+    expect(base.isWritable()).toBe(false);
+    expect(base.isReadOnly()).toBe(false);
   });
 });
 
