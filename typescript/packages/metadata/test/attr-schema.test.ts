@@ -5,11 +5,28 @@ import type { MetaModel } from "../src/meta/meta-data.js";
 import {
   TYPE_FIELD,
   TYPE_OBJECT,
+  TYPE_IDENTITY,
+  TYPE_SOURCE,
+  TYPE_ORIGIN,
+  TYPE_LAYOUT,
+  TYPE_VIEW,
+  TYPE_RELATIONSHIP,
   FIELD_SUBTYPE_STRING,
+  FIELD_SUBTYPE_CURRENCY,
   OBJECT_SUBTYPE_ENTITY,
+  IDENTITY_SUBTYPE_PRIMARY,
+  IDENTITY_SUBTYPE_SECONDARY,
+  SOURCE_SUBTYPE_DB_TABLE,
+  SOURCE_SUBTYPE_DB_VIEW,
+  ORIGIN_SUBTYPE_PASSTHROUGH,
+  ORIGIN_SUBTYPE_AGGREGATE,
+  LAYOUT_SUBTYPE_DATA_GRID,
+  VIEW_SUBTYPE_CURRENCY,
+  RELATIONSHIP_SUBTYPE_ASSOCIATION,
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_INT,
   ATTR_SUBTYPE_BOOLEAN,
+  ATTR_SUBTYPE_STRINGARRAY,
 } from "../src/constants.js";
 
 // ---------------------------------------------------------------------------
@@ -167,13 +184,102 @@ describe("TypeRegistry.attrsOf()", () => {
     expect(registry.attrsOf(TYPE_FIELD, "string")).toEqual([]);
   });
 
-  it("attrsOf for core types (via registerCoreTypes) returns [] for every subType (Phase A1)", () => {
+  it("attrsOf for core types (via registerCoreTypes) returns a populated schema (Phase A2)", () => {
     const registry = new TypeRegistry();
     registerCoreTypes(registry);
-    // All core type definitions ship with attributes: [] in Phase A1.
-    for (const typeId of registry.allTypes()) {
-      const result = registry.attrsOf(typeId.type, typeId.subType);
-      expect(result).toEqual([]);
+    // After A2, at least some core subtypes carry attribute schemas.
+    const populated = registry
+      .allTypes()
+      .some((t) => registry.attrsOf(t.type, t.subType).length > 0);
+    expect(populated).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase A2 — populated core-type attribute schemas
+// ---------------------------------------------------------------------------
+
+describe("Phase A2 — core attribute schemas", () => {
+  const registry = new TypeRegistry();
+  registerCoreTypes(registry);
+
+  const byName = (type: string, subType: string) => {
+    const m = new Map<string, AttrSchema>();
+    for (const a of registry.attrsOf(type, subType)) m.set(a.name, a);
+    return m;
+  };
+
+  it("origin.aggregate declares @agg, @of, @via — all required", () => {
+    const attrs = byName(TYPE_ORIGIN, ORIGIN_SUBTYPE_AGGREGATE);
+    for (const n of ["agg", "of", "via"]) {
+      expect(attrs.get(n)).toBeDefined();
+      expect(attrs.get(n)!.required).toBe(true);
     }
+    expect(attrs.get("agg")!.allowedValues).toEqual(["count", "sum", "avg", "min", "max"]);
+  });
+
+  it("origin.passthrough declares @from (required) and @via (optional)", () => {
+    const attrs = byName(TYPE_ORIGIN, ORIGIN_SUBTYPE_PASSTHROUGH);
+    expect(attrs.get("from")!.required).toBe(true);
+    expect(attrs.get("via")!.required).toBe(false);
+  });
+
+  it("field.currency declares @currency with default 'USD'", () => {
+    const attrs = byName(TYPE_FIELD, FIELD_SUBTYPE_CURRENCY);
+    const currency = attrs.get("currency");
+    expect(currency).toBeDefined();
+    expect(currency!.valueType).toBe(ATTR_SUBTYPE_STRING);
+    expect(currency!.default).toBe("USD");
+    expect(currency!.required).toBe(false);
+  });
+
+  it("non-currency field subtypes do NOT declare @currency", () => {
+    const attrs = byName(TYPE_FIELD, FIELD_SUBTYPE_STRING);
+    expect(attrs.get("currency")).toBeUndefined();
+    // but they DO carry the common field attrs
+    expect(attrs.get("dbColumn")).toBeDefined();
+    expect(attrs.get("filterable")!.valueType).toBe(ATTR_SUBTYPE_BOOLEAN);
+  });
+
+  it("view.currency declares @locale with default 'en-US'", () => {
+    const attrs = byName(TYPE_VIEW, VIEW_SUBTYPE_CURRENCY);
+    expect(attrs.get("locale")!.default).toBe("en-US");
+  });
+
+  it("layout.dataGrid declares @pageSize as int and @defaultSortOrder enum", () => {
+    const attrs = byName(TYPE_LAYOUT, LAYOUT_SUBTYPE_DATA_GRID);
+    expect(attrs.get("pageSize")!.valueType).toBe(ATTR_SUBTYPE_INT);
+    expect(attrs.get("columns")!.valueType).toBe(ATTR_SUBTYPE_STRINGARRAY);
+    expect(attrs.get("defaultSortOrder")!.allowedValues).toEqual(["asc", "desc"]);
+  });
+
+  it("identity.primary declares required @fields (stringarray) and @generation enum", () => {
+    const attrs = byName(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY);
+    expect(attrs.get("fields")!.required).toBe(true);
+    expect(attrs.get("fields")!.valueType).toBe(ATTR_SUBTYPE_STRINGARRAY);
+    expect(attrs.get("generation")!.allowedValues).toEqual(["increment", "uuid", "assigned"]);
+  });
+
+  it("identity.secondary declares required @fields and optional @unique", () => {
+    const attrs = byName(TYPE_IDENTITY, IDENTITY_SUBTYPE_SECONDARY);
+    expect(attrs.get("fields")!.required).toBe(true);
+    expect(attrs.get("unique")!.required).toBe(false);
+    expect(attrs.get("generation")).toBeUndefined();
+  });
+
+  it("source.dbTable and source.dbView declare optional @name", () => {
+    for (const st of [SOURCE_SUBTYPE_DB_TABLE, SOURCE_SUBTYPE_DB_VIEW]) {
+      const attrs = byName(TYPE_SOURCE, st);
+      expect(attrs.get("name")!.required).toBe(false);
+    }
+  });
+
+  it("relationship.association declares cardinality/objectRef/fkField/joinEntity/joinFields", () => {
+    const attrs = byName(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION);
+    for (const n of ["cardinality", "objectRef", "fkField", "joinEntity", "joinFields"]) {
+      expect(attrs.get(n)).toBeDefined();
+      expect(attrs.get(n)!.required).toBe(false);
+    }
+    expect(attrs.get("joinFields")!.valueType).toBe(ATTR_SUBTYPE_STRINGARRAY);
   });
 });
