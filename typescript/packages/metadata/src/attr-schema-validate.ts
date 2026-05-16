@@ -53,13 +53,13 @@ export interface AttrSchemaValidationResult {
 // (validateFilterableHasIndex) already treat @fields as string-or-array, so
 // A3's type check matches that authoring reality rather than rejecting it.
 
-const NUMERIC_ATTR_SUBTYPES: ReadonlySet<string> = new Set([
+const NUMERIC_ATTR_SUBTYPES: ReadonlySet<AttrSubType> = new Set([
   ATTR_SUBTYPE_INT,
   ATTR_SUBTYPE_LONG,
   ATTR_SUBTYPE_DOUBLE,
 ]);
 
-const STRING_ATTR_SUBTYPES: ReadonlySet<string> = new Set([
+const STRING_ATTR_SUBTYPES: ReadonlySet<AttrSubType> = new Set([
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_CLASS,
   ATTR_SUBTYPE_PROPERTIES,
@@ -100,20 +100,18 @@ export function validateAttrSchema(
   registry: TypeRegistry,
 ): AttrSchemaValidationResult {
   const errors: ParseError[] = [];
-  const warnings: string[] = [];
-  walk(root, registry, errors, warnings);
-  return { errors, warnings };
+  walk(root, registry, errors);
+  return { errors, warnings: [] };
 }
 
 function walk(
   node: MetaModel,
   registry: TypeRegistry,
   errors: ParseError[],
-  _warnings: string[],
 ): void {
   validateNode(node, registry, errors);
   for (const child of node.children()) {
-    walk(child, registry, errors, _warnings);
+    walk(child, registry, errors);
   }
 }
 
@@ -136,8 +134,16 @@ function validateNode(
   for (const spec of schema) byName.set(spec.name, spec);
 
   // --- Check 1: required attrs present ---
+  //
+  // Use effectiveAttrs() (own + inherited via extends:) to determine presence.
+  // A node that legitimately inherits a required attr from its super must NOT be
+  // flagged as missing it — inherited attrs count as satisfying the requirement.
+  // Contrast with Checks 2+3 below, which iterate own attrs only: inherited attrs
+  // were already validated on the node that declared them, so re-checking would
+  // double-report. This mirrors the effective-vs-own split in subtype-rules.ts.
+  const effective = node.effectiveAttrs();
   for (const spec of schema) {
-    if (spec.required && !node.hasAttr(spec.name)) {
+    if (spec.required && !effective.has(spec.name)) {
       errors.push(
         new ParseError(
           `${nodeLabel(node)} is missing required attribute '@${spec.name}'`,

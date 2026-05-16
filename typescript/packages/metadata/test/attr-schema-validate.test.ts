@@ -28,6 +28,8 @@ function validateDirect(doc: unknown) {
 
 describe("attr-schema validation — required attrs", () => {
   it("flags an identity.primary missing its required @fields attr", () => {
+    // Full loader is fine here: no other pass also flags a missing @fields on
+    // identity.primary, so this test asserts exactly one error from A3.
     const { errors } = load({
       "metadata.root": {
         package: "demo",
@@ -99,6 +101,43 @@ describe("attr-schema validation — required attrs", () => {
       },
     });
     expect(errors).toHaveLength(0);
+  });
+
+  it("does not flag a node that satisfies a required attr via inheritance (Fix 1)", () => {
+    // BaseAccount declares @fields on its identity.primary. DerivedAccount extends
+    // BaseAccount and inherits that identity — the required-attr check must consult
+    // effectiveAttrs() so the inherited @fields satisfies the requirement.
+    const { errors } = load({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.entity": {
+              name: "BaseAccount",
+              "@isAbstract": true,
+              children: [
+                { "field.long": { name: "id" } },
+                { "identity.primary": { name: "pk", "@fields": "id" } },
+              ],
+            },
+          },
+          {
+            "object.entity": {
+              name: "DerivedAccount",
+              extends: "BaseAccount",
+              children: [
+                { "field.string": { name: "email" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    // DerivedAccount inherits identity.primary with @fields — must not be flagged.
+    const relevantErrors = errors.filter((e) =>
+      e.message.includes("missing required") && e.message.includes("DerivedAccount"),
+    );
+    expect(relevantErrors).toHaveLength(0);
   });
 });
 
