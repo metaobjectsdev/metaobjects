@@ -11,6 +11,7 @@ import {
   TYPE_FIELD,
   TYPE_ATTR,
   TYPE_IDENTITY,
+  TYPE_SOURCE,
   SUBTYPE_ROOT,
   OBJECT_SUBTYPE_ENTITY,
   FIELD_SUBTYPE_LONG,
@@ -164,6 +165,29 @@ describe("parseJson — inline @-attrs", () => {
     const { root } = parseJson(input, { registry });
     const child = root.children()[0]!;
     expect(child.attr("dbTable")).toBe("x_table");
+  });
+
+  // Regression guard: @dbTable is a plain attr — must NOT auto-synthesize a source child.
+  // Earlier docs described an auto-promotion from a @dbTable string attr — that was
+  // aspirational and was never implemented.  This test ensures it stays that way.
+  it('@dbTable attr does NOT synthesize a source[dbTable] child', () => {
+    const registry = makeRegistry();
+    const input = JSON.stringify({
+      "metadata.root": {
+        children: [
+          { "object.entity": { name: "Program", "@dbTable": "programs",
+            children: [
+              { "field.long": { name: "id" } },
+              { "identity.primary": { "@fields": "id" } },
+            ],
+          }},
+        ],
+      },
+    });
+    const { root } = parseJson(input, { registry });
+    const program = root.children().find((o) => o.name === "Program");
+    const sources = program?.children().filter((c) => c.type === TYPE_SOURCE) ?? [];
+    expect(sources.length).toBe(0); // NO source[dbTable] synthesized
   });
 
   it("@maxLength integer attr is coerced to a number", () => {
