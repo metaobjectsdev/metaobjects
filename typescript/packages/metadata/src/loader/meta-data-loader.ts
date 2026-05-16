@@ -40,7 +40,7 @@ export interface LoadResult {
 // Synthetic empty root (used when all sources fail to parse)
 // ---------------------------------------------------------------------------
 
-export function makeSyntheticRoot(): MetaData {
+function makeSyntheticRoot(): MetaData {
   return new MetaRoot(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
 }
 
@@ -102,7 +102,7 @@ export class MetaDataLoader {
     if (this._state !== "loaded") {
       throw new Error(
         `Loader.root accessed before loading is complete (state: "${this._state}"). ` +
-        `Call load() or loadJsonStrings() first.`,
+        `Call load() first.`,
       );
     }
   }
