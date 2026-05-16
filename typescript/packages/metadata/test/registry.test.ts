@@ -42,6 +42,7 @@ function makeDef(type: string, subType: string) {
     description: `Test definition for ${type}.${subType}`,
     factory: (_typeId: TypeId, _name: string) => stubFactory(),
     childRules: [],
+    attributes: [],
   };
 }
 

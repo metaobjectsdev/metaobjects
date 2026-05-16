@@ -1,5 +1,5 @@
 // registerCoreTypes() — Java's 7 base types (plus metadata wrapper) and their subtypes
-import { TypeId, type ChildRule, type TypeDefinition, TypeRegistry } from "./registry.js";
+import { TypeId, type AttrSchema, type ChildRule, type TypeDefinition, TypeRegistry } from "./registry.js";
 import type { MetaData } from "./meta/meta-data.js";
 import { MetaRoot } from "./meta/meta-root.js";
 import { MetaObject } from "./meta/meta-object.js";
@@ -73,12 +73,14 @@ function def(
   description: string,
   childRules: ChildRule[],
   NodeClass: NodeConstructor,
+  attributes: AttrSchema[] = [],
 ): TypeDefinition {
   return {
     typeId: new TypeId(type, subType),
     description,
     factory: (typeId, name) => new NodeClass(typeId, name),
     childRules,
+    attributes,
   };
 }
 

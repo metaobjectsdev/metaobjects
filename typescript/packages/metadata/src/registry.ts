@@ -1,5 +1,5 @@
-import type { MetaData } from "./meta/meta-data.js";
-import { CHILD_RULE_WILDCARD } from "./constants.js";
+import type { AttrValue, MetaData } from "./meta/meta-data.js";
+import { type AttrSubType, CHILD_RULE_WILDCARD } from "./constants.js";
 
 export class TypeId {
   constructor(
@@ -25,11 +25,27 @@ export interface ChildRule {
   childName: string;
 }
 
+export interface AttrSchema {
+  /** Attribute name WITHOUT the "@" prefix (e.g. "dbColumn", "currency"). */
+  name: string;
+  /** The attribute's value type — one of the registered attr subtypes. */
+  valueType: AttrSubType;
+  /** Whether this attribute must be present on the node. */
+  required: boolean;
+  /** Default value applied when the attribute is absent. Optional. */
+  default?: AttrValue;
+  /** When set, the attribute's value must be one of these (a closed enum). Optional. */
+  allowedValues?: readonly string[];
+  /** Human/AI-facing description of what the attribute means. */
+  description: string;
+}
+
 export interface TypeDefinition {
   typeId: TypeId;
   description: string;
   factory: (typeId: TypeId, name: string) => MetaData;
   childRules: ChildRule[];
+  attributes: AttrSchema[];
 }
 
 export class TypeRegistry {
@@ -70,6 +86,12 @@ export class TypeRegistry {
 
   allSubTypesOf(type: string): string[] {
     return [...(this._subTypes.get(type) ?? [])];
+  }
+
+  /** The declared attribute schema for a (type, subType), or [] if the
+   *  pair is unregistered or declares no attributes. */
+  attrsOf(type: string, subType: string): AttrSchema[] {
+    return this.find(type, subType)?.attributes ?? [];
   }
 }
 
