@@ -9,7 +9,7 @@ import { newDb } from "pg-mem";
 import { createClient } from "@libsql/client";
 import { drizzle as drizzleLibsql } from "drizzle-orm/libsql";
 import { sqliteTable, integer, text } from "drizzle-orm/sqlite-core";
-import { Loader } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata";
 import { resolve, join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -120,8 +120,8 @@ for (const { name, build, supportsTransactions } of DRIVERS) {
     beforeEach(async () => {
       const built = await build();
       teardown = built.teardown;
-      const loader = new Loader();
-      const result = await loader.load([FIXTURE]);
+      const loader = new FileMetaDataLoader();
+      const result = await loader.loadFiles([FIXTURE]);
       expect(result.errors).toEqual([]);
       om = new ObjectManager({ metadata: result.root, driver: built.driver });
     });

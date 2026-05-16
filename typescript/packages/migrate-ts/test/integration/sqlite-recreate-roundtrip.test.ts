@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Kysely, sql } from "kysely";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
-import { Loader } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
 import { introspectSqlite } from "../../src/introspect/sqlite.js";
 import { diff } from "../../src/diff/index.js";
@@ -67,7 +67,7 @@ describe("SQLite recreate-and-copy — data preservation", () => {
         }],
       },
     };
-    const metadata1 = new Loader().loadJson(JSON.stringify(json1)).root;
+    const metadata1 = (await new MetaDataLoader().load([new InMemorySource(JSON.stringify(json1))])).root;
     const expected1 = buildExpectedSchema(metadata1);
     {
       const initial = await diff(expected1, await introspectSqlite(k));
@@ -85,7 +85,7 @@ describe("SQLite recreate-and-copy — data preservation", () => {
       (ch: { "field.string"?: { name: string } }) => ch["field.string"]?.name === "tag",
     );
     tagField["field.string"]["@default"] = "default-tag";
-    const metadata2 = new Loader().loadJson(JSON.stringify(json2)).root;
+    const metadata2 = (await new MetaDataLoader().load([new InMemorySource(JSON.stringify(json2))])).root;
     const expected2 = buildExpectedSchema(metadata2);
 
     const second = await diff(expected2, await introspectSqlite(k));
@@ -134,7 +134,7 @@ describe("SQLite recreate-and-copy — data preservation", () => {
         }],
       },
     };
-    const metadata1 = new Loader().loadJson(JSON.stringify(json1)).root;
+    const metadata1 = (await new MetaDataLoader().load([new InMemorySource(JSON.stringify(json1))])).root;
     const expected1 = buildExpectedSchema(metadata1);
     {
       const initial = await diff(expected1, await introspectSqlite(k));
@@ -159,7 +159,7 @@ describe("SQLite recreate-and-copy — data preservation", () => {
       (ch: { "field.string"?: { name: string } }) => ch["field.string"]?.name === "tag",
     );
     tagField["field.string"]["@default"] = "v2";      // change tag default to trigger recreate-and-copy
-    const metadata2 = new Loader().loadJson(JSON.stringify(json2)).root;
+    const metadata2 = (await new MetaDataLoader().load([new InMemorySource(JSON.stringify(json2))])).root;
     const expected2 = buildExpectedSchema(metadata2);
 
     const second = await diff({

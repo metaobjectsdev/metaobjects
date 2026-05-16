@@ -1,13 +1,12 @@
 import { describe, test, expect } from "bun:test";
-import { Loader } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 
-function loadFixture() {
-  const loader = new Loader();
-  const result = loader.loadJson(
+async function loadFixture() {
+  const result = await new MetaDataLoader().load([new InMemorySource(
     JSON.stringify({
       "metadata.root": {
         package: "test",
@@ -41,7 +40,7 @@ function loadFixture() {
         ],
       },
     }),
-  );
+  )]);
 
   if (result.errors.length > 0) {
     throw new Error(
@@ -65,16 +64,16 @@ function loadFixture() {
 }
 
 describe("entity extending BaseEntity — codegen inheritance", () => {
-  test("emitted entity file includes own field + inherited fields from BaseEntity", () => {
-    const { program, ctx } = loadFixture();
+  test("emitted entity file includes own field + inherited fields from BaseEntity", async () => {
+    const { program, ctx } = await loadFixture();
     const code = renderEntityFile(program, ctx);
     expect(code).toContain("title"); // own field
     expect(code).toContain("id"); // inherited from BaseEntity
     expect(code).toContain("createdAt"); // inherited from BaseEntity
   });
 
-  test("emitted entity file declares the primary identity inherited from BaseEntity", () => {
-    const { program, ctx } = loadFixture();
+  test("emitted entity file declares the primary identity inherited from BaseEntity", async () => {
+    const { program, ctx } = await loadFixture();
     const code = renderEntityFile(program, ctx);
     // The drizzle schema should reference id as the primary key
     expect(code).toMatch(/primaryKey|integer\(['"]id['"][^)]*\)\.primaryKey/i);

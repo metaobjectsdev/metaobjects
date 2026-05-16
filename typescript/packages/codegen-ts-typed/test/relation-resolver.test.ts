@@ -1,17 +1,17 @@
 import { describe, it, expect } from "bun:test";
-import { Loader } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 import type { MetaRoot } from "@metaobjects/metadata";
 import { buildRelationMap } from "../src/relation-resolver.js";
 
-function loadRoot(json: string): MetaRoot {
-  const { root, errors } = new Loader().loadJson(json);
+async function loadRoot(json: string): Promise<MetaRoot> {
+  const { root, errors } = await new MetaDataLoader().load([new InMemorySource(json)]);
   if (errors.length) throw new Error(errors.map((e) => e.message).join("; "));
   return root as unknown as MetaRoot;
 }
 
 describe("buildRelationMap — typed MetaRoot", () => {
-  it("registers a one-side relation and its inverse many-side", () => {
-    const root = loadRoot(JSON.stringify({
+  it("registers a one-side relation and its inverse many-side", async () => {
+    const root = await loadRoot(JSON.stringify({
       "metadata.root": {
         package: "acme",
         children: [

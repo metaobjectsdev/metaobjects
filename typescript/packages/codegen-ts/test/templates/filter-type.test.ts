@@ -1,12 +1,12 @@
 import { describe, test, expect } from "bun:test";
-import { Loader, TYPE_OBJECT } from "@metaobjects/metadata";
+import { FileMetaDataLoader, TYPE_OBJECT } from "@metaobjects/metadata";
 import { renderFilterType } from "../../src/templates/filter-type.js";
 import { resolve } from "node:path";
 
 const FIXTURE = resolve(import.meta.dir, "..", "fixtures", "filter-fixture.json");
 
 async function loadEntity(name: string) {
-  const { root } = await new Loader().load([FIXTURE]);
+  const { root } = await new FileMetaDataLoader().loadFiles([FIXTURE]);
   return root.children().find((c) => c.type === TYPE_OBJECT && c.name === name)!;
 }
 

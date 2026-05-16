@@ -1,22 +1,21 @@
 import { describe, test, expect } from "bun:test";
-import { Loader } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 import {
   isProjection,
   isWriteThrough,
 } from "../../src/projection/projection-detector.js";
 
-function loadObj(objNode: unknown) {
-  const loader = new Loader();
+async function loadObj(objNode: unknown) {
   const json = JSON.stringify({
     "metadata.root": { package: "test", children: [objNode] },
   });
-  const result = loader.loadJson(json);
+  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
   return result.root.children()[0];
 }
 
 describe("isProjection / isWriteThrough", () => {
-  test("entity with only source[dbView] → isProjection true, isWriteThrough false", () => {
-    const obj = loadObj({
+  test("entity with only source[dbView] → isProjection true, isWriteThrough false", async () => {
+    const obj = await loadObj({
       "object.entity": {
         name: "Foo",
         children: [
@@ -30,8 +29,8 @@ describe("isProjection / isWriteThrough", () => {
     expect(isWriteThrough(obj)).toBe(false);
   });
 
-  test("entity with only source[dbTable] → isProjection false, isWriteThrough false", () => {
-    const obj = loadObj({
+  test("entity with only source[dbTable] → isProjection false, isWriteThrough false", async () => {
+    const obj = await loadObj({
       "object.entity": {
         name: "Foo",
         children: [
@@ -45,8 +44,8 @@ describe("isProjection / isWriteThrough", () => {
     expect(isWriteThrough(obj)).toBe(false);
   });
 
-  test("entity with both → isProjection false, isWriteThrough true", () => {
-    const obj = loadObj({
+  test("entity with both → isProjection false, isWriteThrough true", async () => {
+    const obj = await loadObj({
       "object.entity": {
         name: "Foo",
         children: [
@@ -61,8 +60,8 @@ describe("isProjection / isWriteThrough", () => {
     expect(isWriteThrough(obj)).toBe(true);
   });
 
-  test("entity with no source → isProjection false, isWriteThrough false (vanilla)", () => {
-    const obj = loadObj({
+  test("entity with no source → isProjection false, isWriteThrough false (vanilla)", async () => {
+    const obj = await loadObj({
       "object.entity": {
         name: "Foo",
         children: [

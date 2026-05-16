@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { Loader } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 import { renderProjectionDecl } from "../../src/templates/projection-decl.js";
 
 // ---------------------------------------------------------------------------
@@ -14,8 +14,7 @@ import { renderProjectionDecl } from "../../src/templates/projection-decl.js";
  * and a projection named `projName` that extends it. Used to exercise
  * `pathFromProjectionName` via renderProjectionDecl.
  */
-function makeMinimalProjection(projName: string, baseName: string) {
-  const loader = new Loader();
+async function makeMinimalProjection(projName: string, baseName: string) {
   const json = JSON.stringify({
     "metadata.root": {
       package: "test",
@@ -43,7 +42,7 @@ function makeMinimalProjection(projName: string, baseName: string) {
       ],
     },
   });
-  const result = loader.loadJson(json);
+  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
   if (result.errors.length > 0) throw new Error(result.errors.map((e) => e.message).join("\n"));
   const root = result.root;
   const projection = root.children().find((o) => o.name === projName)!;
@@ -51,27 +50,27 @@ function makeMinimalProjection(projName: string, baseName: string) {
 }
 
 describe("pathFromProjectionName — pluralization edge cases", () => {
-  test("BoxView → /box-views (x-ending uses pluralize())", () => {
+  test("BoxView → /box-views (x-ending uses pluralize())", async () => {
     // "BoxView" → pluralize("BoxView") = "BoxViews" → snake "box_views" → kebab "/box-views"
-    const { root, projection } = makeMinimalProjection("BoxView", "Box");
+    const { root, projection } = await makeMinimalProjection("BoxView", "Box");
     const code = renderProjectionDecl(projection, root, { columnNamingStrategy: "snake_case", dialect: "sqlite" });
     expect(code).toContain('"/box-views"');
   });
 
-  test("WishView → /wish-views (sh-ending uses pluralize())", () => {
-    const { root, projection } = makeMinimalProjection("WishView", "Wish");
+  test("WishView → /wish-views (sh-ending uses pluralize())", async () => {
+    const { root, projection } = await makeMinimalProjection("WishView", "Wish");
     const code = renderProjectionDecl(projection, root, { columnNamingStrategy: "snake_case", dialect: "sqlite" });
     expect(code).toContain('"/wish-views"');
   });
 
-  test("ProgramSummary → /program-summaries (y-ending regression)", () => {
-    const { root, projection } = makeMinimalProjection("ProgramSummary", "Program");
+  test("ProgramSummary → /program-summaries (y-ending regression)", async () => {
+    const { root, projection } = await makeMinimalProjection("ProgramSummary", "Program");
     const code = renderProjectionDecl(projection, root, { columnNamingStrategy: "snake_case", dialect: "sqlite" });
     expect(code).toContain('"/program-summaries"');
   });
 
-  test("CustomerSummary → /customer-summaries (y-ending regression)", () => {
-    const { root, projection } = makeMinimalProjection("CustomerSummary", "Customer");
+  test("CustomerSummary → /customer-summaries (y-ending regression)", async () => {
+    const { root, projection } = await makeMinimalProjection("CustomerSummary", "Customer");
     const code = renderProjectionDecl(projection, root, { columnNamingStrategy: "snake_case", dialect: "sqlite" });
     expect(code).toContain('"/customer-summaries"');
   });
@@ -82,8 +81,7 @@ describe("pathFromProjectionName — pluralization edge cases", () => {
 // Returns { root, projection } — root is the Loader's root MetaModel (all
 // top-level objects are direct children), projection is ProgramSummary.
 // ---------------------------------------------------------------------------
-function loadProjection() {
-  const loader = new Loader();
+async function loadProjection() {
   const json = JSON.stringify({
     "metadata.root": {
       package: "test",
@@ -145,7 +143,7 @@ function loadProjection() {
     },
   });
 
-  const result = loader.loadJson(json);
+  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
   if (result.errors.length > 0) {
     throw new Error(
       `Loader errors:\n${result.errors.map((e) => e.message).join("\n")}`,
@@ -162,8 +160,8 @@ function loadProjection() {
 }
 
 describe("renderProjectionDecl emits Drizzle view + Zod read schema + constants", () => {
-  test("sqlite dialect uses sqliteView", () => {
-    const { root, projection } = loadProjection();
+  test("sqlite dialect uses sqliteView", async () => {
+    const { root, projection } = await loadProjection();
     const code = renderProjectionDecl(projection, root, {
       columnNamingStrategy: "snake_case",
       dialect: "sqlite",
@@ -183,8 +181,8 @@ describe("renderProjectionDecl emits Drizzle view + Zod read schema + constants"
     expect(code).not.toContain("ProgramSummaryUpdate");
   });
 
-  test("postgres dialect uses pgView", () => {
-    const { root, projection } = loadProjection();
+  test("postgres dialect uses pgView", async () => {
+    const { root, projection } = await loadProjection();
     const code = renderProjectionDecl(projection, root, {
       columnNamingStrategy: "snake_case",
       dialect: "postgres",
@@ -197,8 +195,8 @@ describe("renderProjectionDecl emits Drizzle view + Zod read schema + constants"
     expect(code).toContain("export const ProgramSummary");
   });
 
-  test("inherited fields from super appear in schema and constants", () => {
-    const { root, projection } = loadProjection();
+  test("inherited fields from super appear in schema and constants", async () => {
+    const { root, projection } = await loadProjection();
     const code = renderProjectionDecl(projection, root, {
       columnNamingStrategy: "snake_case",
       dialect: "sqlite",
@@ -210,8 +208,8 @@ describe("renderProjectionDecl emits Drizzle view + Zod read schema + constants"
     expect(code).toContain("weekCount:");
   });
 
-  test("$entity constant matches projection name", () => {
-    const { root, projection } = loadProjection();
+  test("$entity constant matches projection name", async () => {
+    const { root, projection } = await loadProjection();
     const code = renderProjectionDecl(projection, root, {
       columnNamingStrategy: "snake_case",
       dialect: "sqlite",
@@ -220,8 +218,8 @@ describe("renderProjectionDecl emits Drizzle view + Zod read schema + constants"
     expect(code).toContain('$entity: "ProgramSummary"');
   });
 
-  test(".existing() is emitted on the view declaration", () => {
-    const { root, projection } = loadProjection();
+  test(".existing() is emitted on the view declaration", async () => {
+    const { root, projection } = await loadProjection();
     const code = renderProjectionDecl(projection, root, {
       columnNamingStrategy: "snake_case",
       dialect: "sqlite",
@@ -230,8 +228,8 @@ describe("renderProjectionDecl emits Drizzle view + Zod read schema + constants"
     expect(code).toContain(".existing()");
   });
 
-  test("emits FilterAllowlist, SortAllowlist, and Filter type", () => {
-    const { root, projection } = loadProjection();
+  test("emits FilterAllowlist, SortAllowlist, and Filter type", async () => {
+    const { root, projection } = await loadProjection();
     const code = renderProjectionDecl(projection, root, {
       columnNamingStrategy: "snake_case",
       dialect: "sqlite",

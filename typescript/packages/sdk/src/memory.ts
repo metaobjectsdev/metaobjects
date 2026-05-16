@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { readdir, stat } from "node:fs/promises";
 import {
-  Loader,
+  FileMetaDataLoader,
   TypeRegistry,
   registerCoreTypes,
   type MetaModel,
@@ -48,8 +48,8 @@ export async function loadMemory(repoRoot: string): Promise<MetaModel> {
   // against the merged tree afterwards) — dep packages first, current last.
   const paths = await collectMetadataPaths(repoRoot);
 
-  const loader = new Loader({ registry });
-  const result = await loader.load(paths);
+  const loader = new FileMetaDataLoader({ registry });
+  const result = await loader.loadFiles(paths);
 
   if (result.errors.length > 0) {
     const first = result.errors[0]!;

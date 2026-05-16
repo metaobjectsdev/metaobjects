@@ -17,8 +17,8 @@ const DIALECTS = ["sqlite", "postgres"] as const;
 
 describe("drizzle-schema — POC output is byte-identical to codegen-ts", () => {
   for (const dialect of DIALECTS) {
-    it(`matches for every comparison entity (${dialect})`, () => {
-      const modelRoot = loadModelRoot();
+    it(`matches for every comparison entity (${dialect})`, async () => {
+      const modelRoot = await loadModelRoot();
       const oldCtx = makeRenderContext({
         dialect,
         loadedRoot: modelRoot,
@@ -27,7 +27,7 @@ describe("drizzle-schema — POC output is byte-identical to codegen-ts", () => 
         pkMap: buildPkMapOld(modelRoot),
         relationMap: buildRelationMapOld(modelRoot),
       });
-      const metaRoot = loadMetaRoot();
+      const metaRoot = await loadMetaRoot();
       const newCtx = {
         dialect,
         loadedRoot: metaRoot,
@@ -41,8 +41,8 @@ describe("drizzle-schema — POC output is byte-identical to codegen-ts", () => 
         relationMap: buildRelationMapNew(metaRoot),
       };
 
-      const oldEntities = comparisonEntitiesAsModels();
-      const newEntities = comparisonEntitiesAsObjects();
+      const oldEntities = await comparisonEntitiesAsModels();
+      const newEntities = await comparisonEntitiesAsObjects();
       expect(newEntities.map((e) => e.name)).toEqual(oldEntities.map((e) => e.name));
 
       for (let i = 0; i < oldEntities.length; i++) {

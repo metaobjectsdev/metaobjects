@@ -4,7 +4,7 @@
 //   - vanilla entities still emit all 5 hooks (read + create/update/delete)
 
 import { describe, test, expect } from "bun:test";
-import { Loader } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 import { renderHooksFile } from "../src/templates/hooks-file.js";
 import { makeRenderContext, buildPkMap, buildRelationMap } from "@metaobjects/codegen-ts";
 
@@ -12,10 +12,9 @@ import { makeRenderContext, buildPkMap, buildRelationMap } from "@metaobjects/co
 // Shared fixture loader
 // ---------------------------------------------------------------------------
 
-function loadMetadata(children: unknown[]) {
-  const loader = new Loader();
+async function loadMetadata(children: unknown[]) {
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });
-  const result = loader.loadJson(json);
+  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
   if (result.errors.length > 0) {
     throw new Error(
       `Loader errors:\n${result.errors.map((e: { message: string }) => e.message).join("\n")}`,
@@ -28,8 +27,8 @@ function loadMetadata(children: unknown[]) {
 // Fixture: ProgramSummary projection (source[dbView] only)
 // ---------------------------------------------------------------------------
 
-function loadProjectionFixture() {
-  const root = loadMetadata([
+async function loadProjectionFixture() {
+  const root = await loadMetadata([
     {
       "object.entity": {
         name: "Program",
@@ -104,8 +103,8 @@ function loadProjectionFixture() {
 // Fixture: vanilla Post entity (source[dbTable])
 // ---------------------------------------------------------------------------
 
-function loadVanillaFixture() {
-  const root = loadMetadata([
+async function loadVanillaFixture() {
+  const root = await loadMetadata([
     {
       "object.entity": {
         name: "Post",
@@ -140,51 +139,51 @@ function loadVanillaFixture() {
 
 describe("renderHooksFile — source-aware dispatch", () => {
   describe("projection path (isProjection = true)", () => {
-    test("emits useProgramSummary and useProgramSummaries (list hook, y→ies pluralization)", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("emits useProgramSummary and useProgramSummaries (list hook, y→ies pluralization)", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderHooksFile(projection, ctx);
       expect(out).toContain("useProgramSummary");
       expect(out).toContain("useProgramSummaries");
       expect(out).not.toContain("useProgramSummarys");
     });
 
-    test("does NOT emit useCreateProgramSummary, useUpdateProgramSummary, useDeleteProgramSummary", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("does NOT emit useCreateProgramSummary, useUpdateProgramSummary, useDeleteProgramSummary", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderHooksFile(projection, ctx);
       expect(out).not.toContain("useCreateProgramSummary");
       expect(out).not.toContain("useUpdateProgramSummary");
       expect(out).not.toContain("useDeleteProgramSummary");
     });
 
-    test("emits query-key factory (programSummaryKeys)", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("emits query-key factory (programSummaryKeys)", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderHooksFile(projection, ctx);
       expect(out).toContain("programSummaryKeys");
     });
 
-    test("does NOT import ProgramSummaryInsert or ProgramSummaryUpdate", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("does NOT import ProgramSummaryInsert or ProgramSummaryUpdate", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderHooksFile(projection, ctx);
       expect(out).not.toContain("ProgramSummaryInsert");
       expect(out).not.toContain("ProgramSummaryUpdate");
     });
 
-    test("does NOT import useMutation or useQueryClient", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("does NOT import useMutation or useQueryClient", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderHooksFile(projection, ctx);
       expect(out).not.toContain("useMutation");
       expect(out).not.toContain("useQueryClient");
     });
 
-    test("imports from @tanstack/react-query and @metaobjects/runtime-ts-client", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("imports from @tanstack/react-query and @metaobjects/runtime-ts-client", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderHooksFile(projection, ctx);
       expect(out).toContain("@tanstack/react-query");
       expect(out).toContain("@metaobjects/runtime-ts-client");
     });
 
-    test("fetch URLs use $apiPrefix before $path", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("fetch URLs use $apiPrefix before $path", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderHooksFile(projection, ctx);
       expect(out).toContain("ProgramSummary.$apiPrefix");
       expect(out).toContain("${ProgramSummary.$apiPrefix}${ProgramSummary.$path}");
@@ -192,36 +191,36 @@ describe("renderHooksFile — source-aware dispatch", () => {
   });
 
   describe("vanilla entity path (isProjection = false)", () => {
-    test("emits usePost and usePosts", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("emits usePost and usePosts", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderHooksFile(entity, ctx);
       expect(out).toContain("usePost");
       expect(out).toContain("usePosts");
     });
 
-    test("emits useCreatePost, useUpdatePost, useDeletePost", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("emits useCreatePost, useUpdatePost, useDeletePost", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderHooksFile(entity, ctx);
       expect(out).toContain("useCreatePost");
       expect(out).toContain("useUpdatePost");
       expect(out).toContain("useDeletePost");
     });
 
-    test("emits query-key factory (postKeys)", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("emits query-key factory (postKeys)", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderHooksFile(entity, ctx);
       expect(out).toContain("postKeys");
     });
 
-    test("imports PostInsert and PostUpdate", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("imports PostInsert and PostUpdate", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderHooksFile(entity, ctx);
       expect(out).toContain("PostInsert");
       expect(out).toContain("PostUpdate");
     });
 
-    test("mutation hooks invalidate via postKeys.all()", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("mutation hooks invalidate via postKeys.all()", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderHooksFile(entity, ctx);
       const matches = out.match(/invalidateQueries\(\{\s*queryKey:\s*postKeys\.all\(\)/g);
       expect(matches?.length).toBe(3); // create, update, delete

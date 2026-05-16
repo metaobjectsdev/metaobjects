@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { MetaModel } from "@metaobjects/metadata";
 import {
-  Loader,
+  FileMetaDataLoader,
   TypeId,
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -31,8 +31,8 @@ const FIXTURE_DIR = resolve(import.meta.dir, "fixtures");
 
 describe("runGen — single entity, SQLite", () => {
   test("emits Post.ts, Post.queries.ts, and index.ts in outDir", async () => {
-    const loader = new Loader();
-    const result = await loader.load([join(FIXTURE_DIR, "single-entity.json")]);
+    const loader = new FileMetaDataLoader();
+    const result = await loader.loadFiles([join(FIXTURE_DIR, "single-entity.json")]);
     expect(result.errors).toEqual([]);
 
     const out = await runGen({
@@ -74,8 +74,8 @@ describe("runGen — single entity, SQLite", () => {
 
 describe("runGen — two entities with FK, Postgres", () => {
   test("emits entity + queries files; FK .references() auto-emitted; column type matches User.id", async () => {
-    const loader = new Loader();
-    const result = await loader.load([join(FIXTURE_DIR, "two-entities-fk.json")]);
+    const loader = new FileMetaDataLoader();
+    const result = await loader.loadFiles([join(FIXTURE_DIR, "two-entities-fk.json")]);
     expect(result.errors).toEqual([]);
 
     const out = await runGen({
@@ -107,8 +107,8 @@ describe("runGen — two entities with FK, Postgres", () => {
 
 describe("runGen — refuses to clobber hand-written files", () => {
   test("file without @generated header is left alone, status 'refused'", async () => {
-    const loader = new Loader();
-    const result = await loader.load([join(FIXTURE_DIR, "single-entity.json")]);
+    const loader = new FileMetaDataLoader();
+    const result = await loader.loadFiles([join(FIXTURE_DIR, "single-entity.json")]);
 
     // Pre-place a hand-written Post.ts in outDir
     const handPath = join(tmp, "Post.ts");
@@ -202,8 +202,8 @@ describe("runGen — path-traversal guard (security)", () => {
 // ---------------------------------------------------------------------------
 describe("runGen — mergeStrategy: 'skip-existing'", () => {
   test("existing generated files are skipped; new entities still written", async () => {
-    const loader = new Loader();
-    const result = await loader.load([join(FIXTURE_DIR, "single-entity.json")]);
+    const loader = new FileMetaDataLoader();
+    const result = await loader.loadFiles([join(FIXTURE_DIR, "single-entity.json")]);
     expect(result.errors).toEqual([]);
 
     const baseConfig = defineConfig({
@@ -272,8 +272,8 @@ describe("runGen — mergeStrategy: 'skip-existing'", () => {
 // ---------------------------------------------------------------------------
 describe("runGen — entityFilter", () => {
   test("entityFilter: ['Post'] produces only Post files; barrel reflects filter", async () => {
-    const loader = new Loader();
-    const result = await loader.load([join(FIXTURE_DIR, "two-entities-fk.json")]);
+    const loader = new FileMetaDataLoader();
+    const result = await loader.loadFiles([join(FIXTURE_DIR, "two-entities-fk.json")]);
     expect(result.errors).toEqual([]);
 
     const out = await runGen({
@@ -304,8 +304,8 @@ describe("runGen — entityFilter", () => {
   });
 
   test("entityFilter: ['NonExistent'] produces 0 entity files and a warning", async () => {
-    const loader = new Loader();
-    const result = await loader.load([join(FIXTURE_DIR, "two-entities-fk.json")]);
+    const loader = new FileMetaDataLoader();
+    const result = await loader.loadFiles([join(FIXTURE_DIR, "two-entities-fk.json")]);
     expect(result.errors).toEqual([]);
 
     const out = await runGen({

@@ -84,7 +84,7 @@ describe("FORGE_ATTR_* constants", () => {
   });
 });
 
-import { TypeRegistry, Loader, MetaModel, TypeId, registerCoreTypes } from "@metaobjects/metadata";
+import { TypeRegistry, FileMetaDataLoader, MetaModel, TypeId, registerCoreTypes } from "@metaobjects/metadata";
 import { registerForgeTypes } from "../src/forge-types.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -134,8 +134,8 @@ describe("registerForgeTypes", () => {
         }),
       );
 
-      const loader = new Loader({ registry: reg });
-      const result = await loader.load([path]);
+      const loader = new FileMetaDataLoader({ registry: reg });
+      const result = await loader.loadFiles([path]);
 
       expect(result.errors).toHaveLength(0);
       const dec = result.root.children().find((c) => c.type === "decision");

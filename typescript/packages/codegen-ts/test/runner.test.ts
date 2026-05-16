@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Loader } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { perEntity, oncePerRun, type Generator } from "../src/generator.js";
@@ -15,8 +15,8 @@ afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 
 describe("runGen — happy path", () => {
   test("runs each generator in order and writes their files", async () => {
-    const loader = new Loader();
-    const { root } = await loader.load([FIXTURE]);
+    const loader = new FileMetaDataLoader();
+    const { root } = await loader.loadFiles([FIXTURE]);
 
     const log: string[] = [];
     const a: Generator = {
@@ -46,8 +46,8 @@ describe("runGen — happy path", () => {
   });
 
   test("entityFilter narrows the entity set passed to generators", async () => {
-    const loader = new Loader();
-    const { root } = await loader.load([FIXTURE]);
+    const loader = new FileMetaDataLoader();
+    const { root } = await loader.loadFiles([FIXTURE]);
 
     const gen: Generator = {
       name: "any",
@@ -68,8 +68,8 @@ describe("runGen — happy path", () => {
 
 describe("runGen — error paths", () => {
   test("duplicate output paths from two generators -> throws naming both", async () => {
-    const loader = new Loader();
-    const { root } = await loader.load([FIXTURE]);
+    const loader = new FileMetaDataLoader();
+    const { root } = await loader.loadFiles([FIXTURE]);
 
     const a: Generator = { name: "alpha", generate: perEntity((e) => ({ path: `${e.name}.ts`, content: "// a" })) };
     const b: Generator = { name: "beta",  generate: perEntity((e) => ({ path: `${e.name}.ts`, content: "// b" })) };
@@ -84,8 +84,8 @@ describe("runGen — error paths", () => {
   });
 
   test("generator throws -> error prefixed with [generator.name]", async () => {
-    const loader = new Loader();
-    const { root } = await loader.load([FIXTURE]);
+    const loader = new FileMetaDataLoader();
+    const { root } = await loader.loadFiles([FIXTURE]);
 
     const bad: Generator = { name: "exploder", generate: () => { throw new Error("boom"); } };
     await expect(runGen({

@@ -1,17 +1,17 @@
 import { describe, it, expect } from "bun:test";
-import { Loader } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 import type { MetaRoot } from "@metaobjects/metadata";
 import { buildPkMap } from "../src/pk-resolver.js";
 
-function loadRoot(json: string): MetaRoot {
-  const { root, errors } = new Loader().loadJson(json);
+async function loadRoot(json: string): Promise<MetaRoot> {
+  const { root, errors } = await new MetaDataLoader().load([new InMemorySource(json)]);
   if (errors.length) throw new Error(errors.map((e) => e.message).join("; "));
   return root as unknown as MetaRoot;
 }
 
 describe("buildPkMap — typed MetaRoot", () => {
-  it("resolves a plain entity's primary key field + subtype", () => {
-    const root = loadRoot(JSON.stringify({
+  it("resolves a plain entity's primary key field + subtype", async () => {
+    const root = await loadRoot(JSON.stringify({
       "metadata.root": {
         package: "acme",
         children: [{
@@ -29,8 +29,8 @@ describe("buildPkMap — typed MetaRoot", () => {
     expect(map.get("Widget")).toEqual({ fieldName: "id", fieldSubType: "long", generation: "increment" });
   });
 
-  it("resolves a PK inherited via extends", () => {
-    const root = loadRoot(JSON.stringify({
+  it("resolves a PK inherited via extends", async () => {
+    const root = await loadRoot(JSON.stringify({
       "metadata.root": {
         package: "acme",
         children: [

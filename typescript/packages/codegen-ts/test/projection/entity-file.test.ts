@@ -4,7 +4,7 @@
 //   - vanilla entities still go through the Drizzle-table path
 
 import { describe, test, expect } from "bun:test";
-import { Loader } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
@@ -15,10 +15,9 @@ import { GENERATED_HEADER } from "../../src/constants.js";
 // Shared fixture loader
 // ---------------------------------------------------------------------------
 
-function loadMetadata(children: unknown[]) {
-  const loader = new Loader();
+async function loadMetadata(children: unknown[]) {
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });
-  const result = loader.loadJson(json);
+  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
   if (result.errors.length > 0) {
     throw new Error(
       `Loader errors:\n${result.errors.map((e) => e.message).join("\n")}`,
@@ -31,8 +30,8 @@ function loadMetadata(children: unknown[]) {
 // Fixture: ProgramSummary projection (extends Program, source[dbView])
 // ---------------------------------------------------------------------------
 
-function loadProjectionFixture() {
-  const root = loadMetadata([
+async function loadProjectionFixture() {
+  const root = await loadMetadata([
     {
       "object.entity": {
         name: "Program",
@@ -107,8 +106,8 @@ function loadProjectionFixture() {
 // Fixture: vanilla Post entity (source[dbTable])
 // ---------------------------------------------------------------------------
 
-function loadVanillaFixture() {
-  const root = loadMetadata([
+async function loadVanillaFixture() {
+  const root = await loadMetadata([
     {
       "object.entity": {
         name: "Post",
@@ -143,50 +142,50 @@ function loadVanillaFixture() {
 
 describe("renderEntityFile — source-aware dispatch", () => {
   describe("projection path (isProjection = true)", () => {
-    test("emits @generated header", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("emits @generated header", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderEntityFile(projection, ctx);
       expect(out).toContain(GENERATED_HEADER);
     });
 
-    test("emits Drizzle view declaration (sqliteView for sqlite)", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("emits Drizzle view declaration (sqliteView for sqlite)", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderEntityFile(projection, ctx);
       expect(out).toContain("sqliteView");
       expect(out).toContain("v_program_summary");
       expect(out).toContain(".existing()");
     });
 
-    test("emits Zod read schema (ProgramSummarySchema)", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("emits Zod read schema (ProgramSummarySchema)", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderEntityFile(projection, ctx);
       expect(out).toContain("ProgramSummarySchema");
       expect(out).toContain("z.object");
     });
 
-    test("emits constants block with $view and $path", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("emits constants block with $view and $path", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderEntityFile(projection, ctx);
       expect(out).toContain("$view");
       expect(out).toContain("$path");
       expect(out).toContain("/program-summaries");
     });
 
-    test("does NOT emit Drizzle table declaration", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("does NOT emit Drizzle table declaration", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderEntityFile(projection, ctx);
       expect(out).not.toContain("sqliteTable");
     });
 
-    test("does NOT emit Insert/Update Zod schemas", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("does NOT emit Insert/Update Zod schemas", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderEntityFile(projection, ctx);
       expect(out).not.toContain("InsertSchema");
       expect(out).not.toContain("UpdateSchema");
     });
 
-    test("inherited fields from super appear in schema", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("inherited fields from super appear in schema", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderEntityFile(projection, ctx);
       // id and title are inherited from Program
       expect(out).toContain("id:");
@@ -195,8 +194,8 @@ describe("renderEntityFile — source-aware dispatch", () => {
       expect(out).toContain("weekCount:");
     });
 
-    test("postgres dialect emits pgView", () => {
-      const { root, projection } = loadProjectionFixture();
+    test("postgres dialect emits pgView", async () => {
+      const { root, projection } = await loadProjectionFixture();
       const ctx = makeRenderContext({
         dialect: "postgres",
         loadedRoot: root,
@@ -212,33 +211,33 @@ describe("renderEntityFile — source-aware dispatch", () => {
   });
 
   describe("vanilla entity path (isProjection = false)", () => {
-    test("emits @generated header", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("emits @generated header", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderEntityFile(entity, ctx);
       expect(out).toContain(GENERATED_HEADER);
     });
 
-    test("emits Drizzle table declaration (sqliteTable)", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("emits Drizzle table declaration (sqliteTable)", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderEntityFile(entity, ctx);
       expect(out).toContain("sqliteTable");
     });
 
-    test("emits Insert and Update Zod schemas", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("emits Insert and Update Zod schemas", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderEntityFile(entity, ctx);
       expect(out).toContain("PostInsertSchema");
       expect(out).toContain("PostUpdateSchema");
     });
 
-    test("emits InferSelectModel type", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("emits InferSelectModel type", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderEntityFile(entity, ctx);
       expect(out).toContain("InferSelectModel");
     });
 
-    test("does NOT emit sqliteView", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("does NOT emit sqliteView", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderEntityFile(entity, ctx);
       expect(out).not.toContain("sqliteView");
     });

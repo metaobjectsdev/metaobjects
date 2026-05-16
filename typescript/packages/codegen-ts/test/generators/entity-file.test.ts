@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { Loader, TYPE_OBJECT } from "@metaobjects/metadata";
+import { FileMetaDataLoader, TYPE_OBJECT } from "@metaobjects/metadata";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { GENERATED_HEADER } from "../../src/constants.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
@@ -18,8 +18,8 @@ describe("entityFile() factory", () => {
   });
 
   test("emits one <Entity>.ts per entity with @generated header and Drizzle table", async () => {
-    const loader = new Loader();
-    const { root } = await loader.load([FIXTURE]);
+    const loader = new FileMetaDataLoader();
+    const { root } = await loader.loadFiles([FIXTURE]);
     const entities = root.children().filter(c => c.type === TYPE_OBJECT);
 
     const renderContext = makeRenderContext({
@@ -45,8 +45,8 @@ describe("entityFile() factory", () => {
   });
 
   test("filter option narrows generated entities", async () => {
-    const loader = new Loader();
-    const { root } = await loader.load([FIXTURE]);
+    const loader = new FileMetaDataLoader();
+    const { root } = await loader.loadFiles([FIXTURE]);
     const entities = root.children().filter(c => c.type === TYPE_OBJECT);
 
     const renderContext = makeRenderContext({

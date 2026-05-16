@@ -2,7 +2,7 @@
 // Four entities exercise: a plain entity, extends-inheritance, @autoSet,
 // a secondary-unique identity, and a one-side FK relationship.
 
-import { Loader } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 import type { MetaModel, MetaRoot, MetaObject } from "@metaobjects/metadata";
 
 export const COMPARISON_METADATA = JSON.stringify({
@@ -62,25 +62,25 @@ export const COMPARISON_METADATA = JSON.stringify({
 });
 
 /** Loads COMPARISON_METADATA. Returns the raw MetaModel root (for the codegen-ts baseline). */
-export function loadModelRoot(): MetaModel {
-  const { root, errors } = new Loader().loadJson(COMPARISON_METADATA);
+export async function loadModelRoot(): Promise<MetaModel> {
+  const { root, errors } = await new MetaDataLoader().load([new InMemorySource(COMPARISON_METADATA)]);
   if (errors.length) throw new Error("fixture load errors: " + errors.map((e) => e.message).join("; "));
   return root;
 }
 
 /** Loads COMPARISON_METADATA. Returns the MetaRoot typed view (for the POC). */
-export function loadMetaRoot(): MetaRoot {
-  return loadModelRoot() as unknown as MetaRoot;
+export async function loadMetaRoot(): Promise<MetaRoot> {
+  return (await loadModelRoot()) as unknown as MetaRoot;
 }
 
 /** The non-abstract entities of the comparison fixture, as raw MetaModels (codegen-ts baseline). */
-export function comparisonEntitiesAsModels(): MetaModel[] {
-  return loadModelRoot()
+export async function comparisonEntitiesAsModels(): Promise<MetaModel[]> {
+  return (await loadModelRoot())
     .children()
     .filter((c) => c.type === "object" && c.isAbstract !== true);
 }
 
 /** The non-abstract entities of the comparison fixture, as typed MetaObjects (POC). */
-export function comparisonEntitiesAsObjects(): MetaObject[] {
-  return (loadModelRoot() as unknown as MetaRoot).objects().filter((o) => o.isAbstract !== true);
+export async function comparisonEntitiesAsObjects(): Promise<MetaObject[]> {
+  return ((await loadModelRoot()) as unknown as MetaRoot).objects().filter((o) => o.isAbstract !== true);
 }

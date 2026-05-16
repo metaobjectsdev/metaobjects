@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { Loader, TYPE_OBJECT } from "@metaobjects/metadata";
+import { FileMetaDataLoader, TYPE_OBJECT } from "@metaobjects/metadata";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import { routesFile } from "../../src/generators/routes-file.js";
 import { formFile } from "../../src/generators/form-file.js";
@@ -14,8 +14,8 @@ import type { GenContext } from "../../src/generator.js";
 const FIXTURE = resolve(import.meta.dir, "..", "fixtures", "single-entity.json");
 
 async function buildCtx(genFilter?: (e: { name: string }) => boolean): Promise<GenContext> {
-  const loader = new Loader();
-  const { root } = await loader.load([FIXTURE]);
+  const loader = new FileMetaDataLoader();
+  const { root } = await loader.loadFiles([FIXTURE]);
   const entities = root.children().filter((c) => c.type === TYPE_OBJECT);
   const renderContext = makeRenderContext({
     dialect: "sqlite", loadedRoot: root, outDir: "/tmp",

@@ -1,15 +1,15 @@
 import { describe, test, expect } from "bun:test";
-import { Loader } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 import { extractViewSpec } from "../../src/projection/extract-view-spec.js";
 
 // ---------------------------------------------------------------------------
 // Helper — wraps an array of top-level node objects in the metadata envelope
 // expected by the Loader and returns { root } with errors thrown if any.
 // ---------------------------------------------------------------------------
-function load(children: unknown[]) {
-  const loader = new Loader();
+async function load(children: unknown[]) {
+
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });
-  const result = loader.loadJson(json);
+  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
   if (result.errors.length > 0) {
     throw new Error(
       `Loader errors:\n${result.errors.map((e) => e.message).join("\n")}`,
@@ -19,8 +19,8 @@ function load(children: unknown[]) {
 }
 
 describe("extractViewSpec — flat passthrough via extends", () => {
-  test("ProgramSummary extends Program with 1 aggregate field", () => {
-    const root = load([
+  test("ProgramSummary extends Program with 1 aggregate field", async () => {
+    const root = await load([
       {
         "object.entity": {
           name: "Program",
@@ -106,8 +106,8 @@ describe("extractViewSpec — flat passthrough via extends", () => {
 });
 
 describe("extractViewSpec — multi-level via path", () => {
-  test("Program.weeks.workouts → 2 joins (1 child on the first join)", () => {
-    const root = load([
+  test("Program.weeks.workouts → 2 joins (1 child on the first join)", async () => {
+    const root = await load([
       {
         "object.entity": {
           name: "Program",
@@ -191,8 +191,8 @@ describe("extractViewSpec — multi-level via path", () => {
 });
 
 describe("extractViewSpec — shared @via deduplication", () => {
-  test("two aggregates sharing the same @via produce ONE join", () => {
-    const root = load([
+  test("two aggregates sharing the same @via produce ONE join", async () => {
+    const root = await load([
       {
         "object.entity": {
           name: "Program",
@@ -277,8 +277,8 @@ describe("extractViewSpec — shared @via deduplication", () => {
 });
 
 describe("extractViewSpec — pure-extends projection (no origin children)", () => {
-  test("pure-extends projection with no additional fields has empty join tree and all-passthrough columns", () => {
-    const root = load([
+  test("pure-extends projection with no additional fields has empty join tree and all-passthrough columns", async () => {
+    const root = await load([
       {
         "object.entity": {
           name: "Program",
@@ -320,8 +320,8 @@ describe("extractViewSpec — pure-extends projection (no origin children)", () 
 });
 
 describe("extractViewSpec — parentJoinField resolution", () => {
-  test("defaults parentJoinField to parent primary identity field name", () => {
-    const root = load([
+  test("defaults parentJoinField to parent primary identity field name", async () => {
+    const root = await load([
       {
         "object.entity": {
           name: "Program",
@@ -384,8 +384,8 @@ describe("extractViewSpec — parentJoinField resolution", () => {
     expect(spec.joinTree.joins[0].parentJoinField).toBe("id");
   });
 
-  test("uses explicit @parentField when set (non-id join like email)", () => {
-    const root = load([
+  test("uses explicit @parentField when set (non-id join like email)", async () => {
+    const root = await load([
       {
         "object.entity": {
           name: "Customer",

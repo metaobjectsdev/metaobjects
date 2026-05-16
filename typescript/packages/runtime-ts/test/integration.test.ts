@@ -3,7 +3,7 @@
 // Runs against InMemoryDriver (fast) — DB integration via driver-parity test.
 
 import { describe, test, expect, beforeEach } from "bun:test";
-import { Loader } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata";
 import { resolve } from "node:path";
 import { ObjectManager } from "../src/index.js";
 import { inMemoryDriver } from "../src/drivers/index.js";
@@ -14,8 +14,8 @@ const FIXTURE = resolve(import.meta.dir, "../../codegen-ts/test/fixtures/trainer
 let om: ObjectManager;
 
 beforeEach(async () => {
-  const loader = new Loader();
-  const result = await loader.load([FIXTURE]);
+  const loader = new FileMetaDataLoader();
+  const result = await loader.loadFiles([FIXTURE]);
   expect(result.errors).toEqual([]);
   const driver = inMemoryDriver({
     pkFields: {

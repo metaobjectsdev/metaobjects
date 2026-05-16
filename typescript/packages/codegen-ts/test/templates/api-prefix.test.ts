@@ -13,7 +13,8 @@ import {
   IDENTITY_SUBTYPE_PRIMARY,
   OBJECT_SUBTYPE_ENTITY,
   SUBTYPE_ROOT,
-  Loader,
+  MetaDataLoader,
+  InMemorySource,
 } from "@metaobjects/metadata";
 import { meta } from "../_meta-build.js";
 import { renderEntityConstants } from "../../src/templates/entity-constants.js";
@@ -58,8 +59,7 @@ function makeVanillaCtx(apiPrefix = "") {
   });
 }
 
-function loadProjectionFixture() {
-  const loader = new Loader();
+async function loadProjectionFixture() {
   const json = JSON.stringify({
     "metadata.root": {
       package: "test",
@@ -88,7 +88,7 @@ function loadProjectionFixture() {
       ],
     },
   });
-  const result = loader.loadJson(json);
+  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
   if (result.errors.length > 0) throw new Error(result.errors.map((e) => e.message).join("\n"));
   return result.root;
 }
@@ -159,8 +159,8 @@ describe("renderRoutesFile — vanilla entity — apiPrefix", () => {
 // ---------------------------------------------------------------------------
 
 describe("renderRoutesFile — projection — apiPrefix", () => {
-  test("flat shape (no wrapping) when apiPrefix is empty", () => {
-    const root = loadProjectionFixture();
+  test("flat shape (no wrapping) when apiPrefix is empty", async () => {
+    const root = await loadProjectionFixture();
     const projection = root.children().find((o) => o.name === "ProgramSummary")!;
     const ctx = makeRenderContext({
       dialect: "sqlite",
@@ -177,8 +177,8 @@ describe("renderRoutesFile — projection — apiPrefix", () => {
     expect(out).toContain("fastify,");
   });
 
-  test("wraps with fastify.register when apiPrefix is '/api'", () => {
-    const root = loadProjectionFixture();
+  test("wraps with fastify.register when apiPrefix is '/api'", async () => {
+    const root = await loadProjectionFixture();
     const projection = root.children().find((o) => o.name === "ProgramSummary")!;
     const ctx = makeRenderContext({
       dialect: "sqlite",

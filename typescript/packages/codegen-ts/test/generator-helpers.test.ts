@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { Loader, type MetaModel } from "@metaobjects/metadata";
+import { FileMetaDataLoader, type MetaModel } from "@metaobjects/metadata";
 import { perEntity, oncePerRun, type GenContext } from "../src/generator.js";
 
 const SINGLE_ENTITY_FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
@@ -21,8 +21,8 @@ function makeCtx(
 
 describe("perEntity helper", () => {
   test("emits one file per matching entity", async () => {
-    const loader = new Loader();
-    const result = await loader.load([SINGLE_ENTITY_FIXTURE]);
+    const loader = new FileMetaDataLoader();
+    const result = await loader.loadFiles([SINGLE_ENTITY_FIXTURE]);
     const entities = result.root.children().filter(c => c.type === "object");
     const ctx = makeCtx(entities, result.root);
     const fn = perEntity((e) => ({ path: `${e.name}.ts`, content: `// ${e.name}` }));
@@ -32,8 +32,8 @@ describe("perEntity helper", () => {
   });
 
   test("respects ctx.matches filter", async () => {
-    const loader = new Loader();
-    const result = await loader.load([SINGLE_ENTITY_FIXTURE]);
+    const loader = new FileMetaDataLoader();
+    const result = await loader.loadFiles([SINGLE_ENTITY_FIXTURE]);
     const entities = result.root.children().filter(c => c.type === "object");
     const ctx = makeCtx(entities, result.root, (e) => e.name === "Post");
     const fn = perEntity((e) => ({ path: `${e.name}.ts`, content: "" }));
@@ -45,8 +45,8 @@ describe("perEntity helper", () => {
 
 describe("oncePerRun helper", () => {
   test("called once with all matching entities", async () => {
-    const loader = new Loader();
-    const result = await loader.load([SINGLE_ENTITY_FIXTURE]);
+    const loader = new FileMetaDataLoader();
+    const result = await loader.loadFiles([SINGLE_ENTITY_FIXTURE]);
     const entities = result.root.children().filter(c => c.type === "object");
     const ctx = makeCtx(entities, result.root);
     let invocations = 0;

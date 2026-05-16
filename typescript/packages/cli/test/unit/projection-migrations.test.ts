@@ -1,14 +1,14 @@
 import { describe, test, expect } from "bun:test";
-import { Loader } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 import { computeProjectionMigrations } from "../../src/lib/projection-migrations.js";
 
 // ---------------------------------------------------------------------------
 // Helper — wrap children in metadata envelope and load.
 // ---------------------------------------------------------------------------
-function load(children: unknown[]) {
-  const loader = new Loader();
+async function load(children: unknown[]) {
+
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });
-  const result = loader.loadJson(json);
+  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
   if (result.errors.length > 0) {
     throw new Error(
       `Loader errors:\n${result.errors.map((e) => e.message).join("\n")}`,
@@ -83,15 +83,15 @@ const programSummaryProjection = {
 // ---------------------------------------------------------------------------
 
 describe("computeProjectionMigrations", () => {
-  test("returns empty migrations when no projections exist", () => {
-    const metadata = load([programEntity, weekEntity]);
+  test("returns empty migrations when no projections exist", async () => {
+    const metadata = await load([programEntity, weekEntity]);
     const result = computeProjectionMigrations({ metadata, dialect: "sqlite" });
     expect(result.migrations).toHaveLength(0);
     expect(result.errors).toHaveLength(0);
   });
 
-  test("emits CREATE VIEW SQL for a projection with aggregate field", () => {
-    const metadata = load([programEntity, weekEntity, programSummaryProjection]);
+  test("emits CREATE VIEW SQL for a projection with aggregate field", async () => {
+    const metadata = await load([programEntity, weekEntity, programSummaryProjection]);
     const result = computeProjectionMigrations({ metadata, dialect: "sqlite" });
 
     expect(result.errors).toHaveLength(0);
@@ -105,8 +105,8 @@ describe("computeProjectionMigrations", () => {
     expect(sql).toMatch(/COUNT\(DISTINCT/i);
   });
 
-  test("resolves table name from @dbTable attr", () => {
-    const metadata = load([programEntity, weekEntity, programSummaryProjection]);
+  test("resolves table name from @dbTable attr", async () => {
+    const metadata = await load([programEntity, weekEntity, programSummaryProjection]);
     const result = computeProjectionMigrations({ metadata, dialect: "sqlite" });
 
     expect(result.errors).toHaveLength(0);
@@ -114,8 +114,8 @@ describe("computeProjectionMigrations", () => {
     expect(sql).toMatch(/FROM programs p/);
   });
 
-  test("uses postgres dialect when requested", () => {
-    const metadata = load([programEntity, weekEntity, programSummaryProjection]);
+  test("uses postgres dialect when requested", async () => {
+    const metadata = await load([programEntity, weekEntity, programSummaryProjection]);
     const result = computeProjectionMigrations({ metadata, dialect: "postgres" });
 
     expect(result.errors).toHaveLength(0);
@@ -123,8 +123,8 @@ describe("computeProjectionMigrations", () => {
     expect(result.migrations[0]).toMatch(/v_program_summary/);
   });
 
-  test("snake_case strategy (default) produces snake_case column aliases", () => {
-    const metadata = load([programEntity, weekEntity, programSummaryProjection]);
+  test("snake_case strategy (default) produces snake_case column aliases", async () => {
+    const metadata = await load([programEntity, weekEntity, programSummaryProjection]);
     const result = computeProjectionMigrations({
       metadata,
       dialect: "sqlite",
@@ -136,8 +136,8 @@ describe("computeProjectionMigrations", () => {
     expect(sql).toMatch(/week_count/);
   });
 
-  test("literal strategy preserves camelCase column aliases", () => {
-    const metadata = load([programEntity, weekEntity, programSummaryProjection]);
+  test("literal strategy preserves camelCase column aliases", async () => {
+    const metadata = await load([programEntity, weekEntity, programSummaryProjection]);
     const result = computeProjectionMigrations({
       metadata,
       dialect: "sqlite",
@@ -150,7 +150,7 @@ describe("computeProjectionMigrations", () => {
     expect(sql).not.toMatch(/\bweek_count\b/);
   });
 
-  test("handles email-based join via @parentField", () => {
+  test("handles email-based join via @parentField", async () => {
     const customerEntity = {
       "object.entity": {
         name: "Customer",
@@ -207,7 +207,7 @@ describe("computeProjectionMigrations", () => {
       },
     };
 
-    const metadata = load([customerEntity, purchaseEntity, customerSummaryProjection]);
+    const metadata = await load([customerEntity, purchaseEntity, customerSummaryProjection]);
     const result = computeProjectionMigrations({ metadata, dialect: "sqlite" });
 
     expect(result.errors).toHaveLength(0);

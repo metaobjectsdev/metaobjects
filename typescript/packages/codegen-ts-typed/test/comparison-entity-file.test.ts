@@ -18,21 +18,21 @@ const DIALECTS = ["sqlite", "postgres"] as const;
 
 describe("entity-file — POC output is byte-identical to codegen-ts", () => {
   for (const dialect of DIALECTS) {
-    it(`matches for every comparison entity (${dialect})`, () => {
-      const modelRoot = loadModelRoot();
+    it(`matches for every comparison entity (${dialect})`, async () => {
+      const modelRoot = await loadModelRoot();
       const oldCtx = makeRenderContext({
         dialect, loadedRoot: modelRoot, outDir: "out", dbImport: "./db",
         pkMap: buildPkMapOld(modelRoot), relationMap: buildRelationMapOld(modelRoot),
       });
-      const metaRoot = loadMetaRoot();
+      const metaRoot = await loadMetaRoot();
       const newCtx = {
         dialect, loadedRoot: metaRoot, outDir: "out", dbImport: "./db",
         omImport: "../index", extStyle: "none" as const,
         columnNamingStrategy: "snake_case" as const, apiPrefix: "",
         pkMap: buildPkMapNew(metaRoot), relationMap: buildRelationMapNew(metaRoot),
       };
-      const oldEntities = comparisonEntitiesAsModels();
-      const newEntities = comparisonEntitiesAsObjects();
+      const oldEntities = await comparisonEntitiesAsModels();
+      const newEntities = await comparisonEntitiesAsObjects();
 
       for (let i = 0; i < oldEntities.length; i++) {
         const oldOut = renderOld(oldEntities[i]!, oldCtx);

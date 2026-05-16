@@ -1,10 +1,10 @@
 import { describe, it, expect } from "bun:test";
-import { Loader } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 import type { MetaRoot, MetaObject } from "@metaobjects/metadata";
 import { mapColumnType } from "../src/column-mapper.js";
 
-function loadField(json: string, entityName: string, fieldName: string) {
-  const { root, errors } = new Loader().loadJson(json);
+async function loadField(json: string, entityName: string, fieldName: string) {
+  const { root, errors } = await new MetaDataLoader().load([new InMemorySource(json)]);
   if (errors.length) throw new Error(errors.map((e) => e.message).join("; "));
   const meta = root as unknown as MetaRoot;
   const entity = meta.findObject(entityName) as MetaObject;
@@ -31,20 +31,20 @@ const SAMPLE = JSON.stringify({
 });
 
 describe("mapColumnType — typed MetaField", () => {
-  it("maps a long field to sqlite integer", () => {
-    const spec = mapColumnType(loadField(SAMPLE, "Widget", "id"), "sqlite", "snake_case");
+  it("maps a long field to sqlite integer", async () => {
+    const spec = mapColumnType(await loadField(SAMPLE, "Widget", "id"), "sqlite", "snake_case");
     expect(spec.fnName).toBe("integer");
     expect(spec.dbName).toBe("id");
   });
 
-  it("maps a string field with @maxLength to postgres varchar", () => {
-    const spec = mapColumnType(loadField(SAMPLE, "Widget", "label"), "postgres", "snake_case");
+  it("maps a string field with @maxLength to postgres varchar", async () => {
+    const spec = mapColumnType(await loadField(SAMPLE, "Widget", "label"), "postgres", "snake_case");
     expect(spec.fnName).toBe("varchar");
     expect(spec.fnOptions).toEqual({ length: 80 });
   });
 
-  it("a @required field gets .notNull()", () => {
-    const spec = mapColumnType(loadField(SAMPLE, "Widget", "active"), "sqlite", "snake_case");
+  it("a @required field gets .notNull()", async () => {
+    const spec = mapColumnType(await loadField(SAMPLE, "Widget", "active"), "sqlite", "snake_case");
     expect(spec.modifiers).toContain(".notNull()");
   });
 });

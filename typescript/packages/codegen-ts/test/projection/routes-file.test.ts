@@ -4,7 +4,7 @@
 //   - vanilla entities still emit mountCrudRoutes + table var import
 
 import { describe, test, expect } from "bun:test";
-import { Loader } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 import { renderRoutesFile } from "../../src/templates/routes-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
@@ -15,10 +15,9 @@ import { GENERATED_HEADER } from "../../src/constants.js";
 // Shared fixture loader
 // ---------------------------------------------------------------------------
 
-function loadMetadata(children: unknown[]) {
-  const loader = new Loader();
+async function loadMetadata(children: unknown[]) {
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });
-  const result = loader.loadJson(json);
+  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
   if (result.errors.length > 0) {
     throw new Error(
       `Loader errors:\n${result.errors.map((e) => e.message).join("\n")}`,
@@ -31,8 +30,8 @@ function loadMetadata(children: unknown[]) {
 // Fixture: ProgramSummary projection (source[dbView] only)
 // ---------------------------------------------------------------------------
 
-function loadProjectionFixture() {
-  const root = loadMetadata([
+async function loadProjectionFixture() {
+  const root = await loadMetadata([
     {
       "object.entity": {
         name: "Program",
@@ -107,8 +106,8 @@ function loadProjectionFixture() {
 // Fixture: vanilla Post entity (source[dbTable])
 // ---------------------------------------------------------------------------
 
-function loadVanillaFixture() {
-  const root = loadMetadata([
+async function loadVanillaFixture() {
+  const root = await loadMetadata([
     {
       "object.entity": {
         name: "Post",
@@ -143,98 +142,98 @@ function loadVanillaFixture() {
 
 describe("renderRoutesFile — source-aware dispatch", () => {
   describe("projection path (isProjection = true)", () => {
-    test("emits @generated header", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("emits @generated header", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderRoutesFile(projection, ctx);
       expect(out).toContain(GENERATED_HEADER);
     });
 
-    test("emits mountReadOnlyCrudRoutes (not mountCrudRoutes)", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("emits mountReadOnlyCrudRoutes (not mountCrudRoutes)", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderRoutesFile(projection, ctx);
       expect(out).toContain("mountReadOnlyCrudRoutes");
       expect(out).not.toContain("mountCrudRoutes(");
     });
 
-    test("imports camelView from entity file", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("imports camelView from entity file", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderRoutesFile(projection, ctx);
       // camelName = "programSummary", so "programSummaryView"
       expect(out).toContain("programSummaryView");
     });
 
-    test("imports FilterAllowlist and SortAllowlist", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("imports FilterAllowlist and SortAllowlist", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderRoutesFile(projection, ctx);
       expect(out).toContain("ProgramSummaryFilterAllowlist");
       expect(out).toContain("ProgramSummaryFilterAllowlist");
     });
 
-    test("passes view (not table) to mountReadOnlyCrudRoutes", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("passes view (not table) to mountReadOnlyCrudRoutes", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderRoutesFile(projection, ctx);
       expect(out).toContain("view:");
       expect(out).toContain("programSummaryView");
       expect(out).not.toContain("table:");
     });
 
-    test("does NOT import InsertSchema or UpdateSchema", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("does NOT import InsertSchema or UpdateSchema", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderRoutesFile(projection, ctx);
       expect(out).not.toContain("InsertSchema");
       expect(out).not.toContain("UpdateSchema");
     });
 
-    test("exports a handler function named programSummaryRoutes", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("exports a handler function named programSummaryRoutes", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderRoutesFile(projection, ctx);
       expect(out).toContain("programSummaryRoutes");
     });
 
-    test("imports from @metaobjects/runtime-ts/drizzle-fastify", () => {
-      const { projection, ctx } = loadProjectionFixture();
+    test("imports from @metaobjects/runtime-ts/drizzle-fastify", async () => {
+      const { projection, ctx } = await loadProjectionFixture();
       const out = renderRoutesFile(projection, ctx);
       expect(out).toContain("@metaobjects/runtime-ts/drizzle-fastify");
     });
   });
 
   describe("vanilla entity path (isProjection = false)", () => {
-    test("emits @generated header", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("emits @generated header", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderRoutesFile(entity, ctx);
       expect(out).toContain(GENERATED_HEADER);
     });
 
-    test("emits mountCrudRoutes (not mountReadOnlyCrudRoutes)", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("emits mountCrudRoutes (not mountReadOnlyCrudRoutes)", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderRoutesFile(entity, ctx);
       expect(out).toContain("mountCrudRoutes");
       expect(out).not.toContain("mountReadOnlyCrudRoutes");
     });
 
-    test("imports table var from entity file", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("imports table var from entity file", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderRoutesFile(entity, ctx);
       // variableNameFromEntity("Post") → "post" table
       expect(out).toContain("post");
     });
 
-    test("imports InsertSchema and UpdateSchema", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("imports InsertSchema and UpdateSchema", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderRoutesFile(entity, ctx);
       expect(out).toContain("PostInsertSchema");
       expect(out).toContain("PostUpdateSchema");
     });
 
-    test("passes table (not view) to mountCrudRoutes", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("passes table (not view) to mountCrudRoutes", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderRoutesFile(entity, ctx);
       expect(out).toContain("table:");
       expect(out).not.toContain("view:");
     });
 
-    test("exports a handler function named postRoutes", () => {
-      const { entity, ctx } = loadVanillaFixture();
+    test("exports a handler function named postRoutes", async () => {
+      const { entity, ctx } = await loadVanillaFixture();
       const out = renderRoutesFile(entity, ctx);
       expect(out).toContain("postRoutes");
     });
