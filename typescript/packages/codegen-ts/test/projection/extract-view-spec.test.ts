@@ -8,7 +8,7 @@ import { extractViewSpec } from "../../src/projection/extract-view-spec.js";
 // ---------------------------------------------------------------------------
 function load(children: unknown[]) {
   const loader = new Loader();
-  const json = JSON.stringify({ metadata: { package: "test", children } });
+  const json = JSON.stringify({ "metadata.root": { package: "test", children } });
   const result = loader.loadJson(json);
   if (result.errors.length > 0) {
     throw new Error(
@@ -22,17 +22,15 @@ describe("extractViewSpec — flat passthrough via extends", () => {
   test("ProgramSummary extends Program with 1 aggregate field", () => {
     const root = load([
       {
-        object: {
+        "object.entity": {
           name: "Program",
-          subType: "entity",
           children: [
-            { source: { subType: "dbTable", "@name": "programs" } },
-            { field: { name: "id", subType: "int" } },
-            { field: { name: "title", subType: "string" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "source.dbTable": { "@name": "programs" } },
+            { "field.int": { name: "id", } },
+            { "field.string": { name: "title", } },
+            { "identity.primary": { "@fields": "id" } },
             {
-              relationship: {
-                subType: "association",
+              "relationship.association": {
                 name: "weeks",
                 "@objectRef": "Week",
                 "@cardinality": "many",
@@ -43,32 +41,28 @@ describe("extractViewSpec — flat passthrough via extends", () => {
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "Week",
-          subType: "entity",
           children: [
-            { source: { subType: "dbTable", "@name": "weeks" } },
-            { field: { name: "id", subType: "int" } },
-            { field: { name: "programId", subType: "int" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "source.dbTable": { "@name": "weeks" } },
+            { "field.int": { name: "id", } },
+            { "field.int": { name: "programId", } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "ProgramSummary",
-          subType: "entity",
           "extends": "Program",
           children: [
-            { source: { subType: "dbView", "@name": "v_program_summary" } },
+            { "source.dbView": { "@name": "v_program_summary" } },
             {
-              field: {
+              "field.int": {
                 name: "weekCount",
-                subType: "int",
                 children: [
                   {
-                    origin: {
-                      subType: "aggregate",
+                    "origin.aggregate": {
                       "@agg": "count",
                       "@of": "Week.id",
                       "@via": "Program.weeks",
@@ -77,7 +71,7 @@ describe("extractViewSpec — flat passthrough via extends", () => {
                 ],
               },
             },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
@@ -115,16 +109,14 @@ describe("extractViewSpec — multi-level via path", () => {
   test("Program.weeks.workouts → 2 joins (1 child on the first join)", () => {
     const root = load([
       {
-        object: {
+        "object.entity": {
           name: "Program",
-          subType: "entity",
           children: [
-            { source: { subType: "dbTable", "@name": "programs" } },
-            { field: { name: "id", subType: "int" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "source.dbTable": { "@name": "programs" } },
+            { "field.int": { name: "id", } },
+            { "identity.primary": { "@fields": "id" } },
             {
-              relationship: {
-                subType: "association",
+              "relationship.association": {
                 name: "weeks",
                 "@objectRef": "Week",
                 "@cardinality": "many",
@@ -135,16 +127,14 @@ describe("extractViewSpec — multi-level via path", () => {
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "Week",
-          subType: "entity",
           children: [
-            { source: { subType: "dbTable", "@name": "weeks" } },
-            { field: { name: "id", subType: "int" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "source.dbTable": { "@name": "weeks" } },
+            { "field.int": { name: "id", } },
+            { "identity.primary": { "@fields": "id" } },
             {
-              relationship: {
-                subType: "association",
+              "relationship.association": {
                 name: "workouts",
                 "@objectRef": "Workout",
                 "@cardinality": "many",
@@ -155,32 +145,28 @@ describe("extractViewSpec — multi-level via path", () => {
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "Workout",
-          subType: "entity",
           children: [
-            { source: { subType: "dbTable", "@name": "workouts" } },
-            { field: { name: "id", subType: "int" } },
-            { field: { name: "weekId", subType: "int" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "source.dbTable": { "@name": "workouts" } },
+            { "field.int": { name: "id", } },
+            { "field.int": { name: "weekId", } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "ProgramSummary",
-          subType: "entity",
           "extends": "Program",
           children: [
-            { source: { subType: "dbView", "@name": "v_program_summary" } },
+            { "source.dbView": { "@name": "v_program_summary" } },
             {
-              field: {
+              "field.int": {
                 name: "workoutCount",
-                subType: "int",
                 children: [
                   {
-                    origin: {
-                      subType: "aggregate",
+                    "origin.aggregate": {
                       "@agg": "count",
                       "@of": "Workout.id",
                       "@via": "Program.weeks.workouts",
@@ -189,7 +175,7 @@ describe("extractViewSpec — multi-level via path", () => {
                 ],
               },
             },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
@@ -208,17 +194,15 @@ describe("extractViewSpec — shared @via deduplication", () => {
   test("two aggregates sharing the same @via produce ONE join", () => {
     const root = load([
       {
-        object: {
+        "object.entity": {
           name: "Program",
-          subType: "entity",
           children: [
-            { source: { subType: "dbTable", "@name": "programs" } },
-            { field: { name: "id", subType: "int" } },
-            { field: { name: "title", subType: "string" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "source.dbTable": { "@name": "programs" } },
+            { "field.int": { name: "id", } },
+            { "field.string": { name: "title", } },
+            { "identity.primary": { "@fields": "id" } },
             {
-              relationship: {
-                subType: "association",
+              "relationship.association": {
                 name: "weeks",
                 "@objectRef": "Week",
                 "@cardinality": "many",
@@ -229,33 +213,29 @@ describe("extractViewSpec — shared @via deduplication", () => {
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "Week",
-          subType: "entity",
           children: [
-            { source: { subType: "dbTable", "@name": "weeks" } },
-            { field: { name: "id", subType: "int" } },
-            { field: { name: "programId", subType: "int" } },
-            { field: { name: "title", subType: "string" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "source.dbTable": { "@name": "weeks" } },
+            { "field.int": { name: "id", } },
+            { "field.int": { name: "programId", } },
+            { "field.string": { name: "title", } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "ProgramSummary",
-          subType: "entity",
           "extends": "Program",
           children: [
-            { source: { subType: "dbView", "@name": "v_program_summary" } },
+            { "source.dbView": { "@name": "v_program_summary" } },
             {
-              field: {
+              "field.int": {
                 name: "weekCount",
-                subType: "int",
                 children: [
                   {
-                    origin: {
-                      subType: "aggregate",
+                    "origin.aggregate": {
                       "@agg": "count",
                       "@of": "Week.id",
                       "@via": "Program.weeks",
@@ -265,13 +245,11 @@ describe("extractViewSpec — shared @via deduplication", () => {
               },
             },
             {
-              field: {
+              "field.string": {
                 name: "firstWeekTitle",
-                subType: "string",
                 children: [
                   {
-                    origin: {
-                      subType: "passthrough",
+                    "origin.passthrough": {
                       "@from": "Week.title",
                       "@via": "Program.weeks",
                     },
@@ -279,7 +257,7 @@ describe("extractViewSpec — shared @via deduplication", () => {
                 ],
               },
             },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
@@ -302,25 +280,23 @@ describe("extractViewSpec — pure-extends projection (no origin children)", () 
   test("pure-extends projection with no additional fields has empty join tree and all-passthrough columns", () => {
     const root = load([
       {
-        object: {
+        "object.entity": {
           name: "Program",
-          subType: "entity",
           children: [
-            { source: { subType: "dbTable", "@name": "programs" } },
-            { field: { name: "id", subType: "int" } },
-            { field: { name: "title", subType: "string" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "source.dbTable": { "@name": "programs" } },
+            { "field.int": { name: "id", } },
+            { "field.string": { name: "title", } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "ProgramView",
-          subType: "entity",
           "extends": "Program",
           children: [
-            { source: { subType: "dbView", "@name": "v_program_view" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "source.dbView": { "@name": "v_program_view" } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
@@ -347,17 +323,15 @@ describe("extractViewSpec — parentJoinField resolution", () => {
   test("defaults parentJoinField to parent primary identity field name", () => {
     const root = load([
       {
-        object: {
+        "object.entity": {
           name: "Program",
-          subType: "entity",
           children: [
-            { source: { subType: "dbTable", "@name": "programs" } },
-            { field: { name: "id", subType: "int" } },
-            { field: { name: "title", subType: "string" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "source.dbTable": { "@name": "programs" } },
+            { "field.int": { name: "id", } },
+            { "field.string": { name: "title", } },
+            { "identity.primary": { "@fields": "id" } },
             {
-              relationship: {
-                subType: "association",
+              "relationship.association": {
                 name: "weeks",
                 "@objectRef": "Week",
                 "@cardinality": "many",
@@ -368,31 +342,27 @@ describe("extractViewSpec — parentJoinField resolution", () => {
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "Week",
-          subType: "entity",
           children: [
-            { source: { subType: "dbTable", "@name": "weeks" } },
-            { field: { name: "id", subType: "int" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "source.dbTable": { "@name": "weeks" } },
+            { "field.int": { name: "id", } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "ProgramSummary",
-          subType: "entity",
           "extends": "Program",
           children: [
-            { source: { subType: "dbView", "@name": "v_program_summary" } },
+            { "source.dbView": { "@name": "v_program_summary" } },
             {
-              field: {
+              "field.int": {
                 name: "weekCount",
-                subType: "int",
                 children: [
                   {
-                    origin: {
-                      subType: "aggregate",
+                    "origin.aggregate": {
                       "@agg": "count",
                       "@of": "Week.id",
                       "@via": "Program.weeks",
@@ -401,7 +371,7 @@ describe("extractViewSpec — parentJoinField resolution", () => {
                 ],
               },
             },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
@@ -417,17 +387,15 @@ describe("extractViewSpec — parentJoinField resolution", () => {
   test("uses explicit @parentField when set (non-id join like email)", () => {
     const root = load([
       {
-        object: {
+        "object.entity": {
           name: "Customer",
-          subType: "entity",
           children: [
-            { source: { subType: "dbTable", "@name": "customers" } },
-            { field: { name: "id", subType: "int" } },
-            { field: { name: "email", subType: "string" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "source.dbTable": { "@name": "customers" } },
+            { "field.int": { name: "id", } },
+            { "field.string": { name: "email", } },
+            { "identity.primary": { "@fields": "id" } },
             {
-              relationship: {
-                subType: "association",
+              "relationship.association": {
                 name: "purchases",
                 "@objectRef": "Purchase",
                 "@cardinality": "many",
@@ -439,32 +407,28 @@ describe("extractViewSpec — parentJoinField resolution", () => {
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "Purchase",
-          subType: "entity",
           children: [
-            { source: { subType: "dbTable", "@name": "purchases" } },
-            { field: { name: "id", subType: "int" } },
-            { field: { name: "customerEmail", subType: "string" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "source.dbTable": { "@name": "purchases" } },
+            { "field.int": { name: "id", } },
+            { "field.string": { name: "customerEmail", } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "CustomerSummary",
-          subType: "entity",
           "extends": "Customer",
           children: [
-            { source: { subType: "dbView", "@name": "v_customer_summary" } },
+            { "source.dbView": { "@name": "v_customer_summary" } },
             {
-              field: {
+              "field.int": {
                 name: "purchaseCount",
-                subType: "int",
                 children: [
                   {
-                    origin: {
-                      subType: "aggregate",
+                    "origin.aggregate": {
                       "@agg": "count",
                       "@of": "Purchase.id",
                       "@via": "Customer.purchases",
@@ -473,7 +437,7 @@ describe("extractViewSpec — parentJoinField resolution", () => {
                 ],
               },
             },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },

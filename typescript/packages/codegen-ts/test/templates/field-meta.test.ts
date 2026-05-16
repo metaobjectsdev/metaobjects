@@ -9,48 +9,51 @@ import {
 
 function loadField(json: unknown) {
   const result = new Loader().loadJson(JSON.stringify({
-    metadata: { children: [
-      { object: { name: "X", subType: "entity", children: [json] }}
+    "metadata.root": { children: [
+      { "object.entity": { name: "X", children: [json] }}
     ]}
   }));
+  if (result.errors.length > 0) {
+    throw new Error(result.errors.map((e) => e.message).join("\n"));
+  }
   return result.root.children()[0]!.children()[0]!;
 }
 
 describe("inferViewKind", () => {
   test("string field → 'text'", () => {
-    expect(inferViewKind(loadField({ field: { name: "f", subType: "string" }}))).toBe("text");
+    expect(inferViewKind(loadField({ "field.string": { name: "f" }}))).toBe("text");
   });
   test("boolean field → 'checkbox'", () => {
-    expect(inferViewKind(loadField({ field: { name: "f", subType: "boolean" }}))).toBe("checkbox");
+    expect(inferViewKind(loadField({ "field.boolean": { name: "f" }}))).toBe("checkbox");
   });
   test("int field → 'number'", () => {
-    expect(inferViewKind(loadField({ field: { name: "f", subType: "int" }}))).toBe("number");
+    expect(inferViewKind(loadField({ "field.int": { name: "f" }}))).toBe("number");
   });
   test("currency field → 'currency'", () => {
-    expect(inferViewKind(loadField({ field: { name: "f", subType: "currency" }}))).toBe("currency");
+    expect(inferViewKind(loadField({ "field.currency": { name: "f" }}))).toBe("currency");
   });
   test("date field → 'date'", () => {
-    expect(inferViewKind(loadField({ field: { name: "f", subType: "date" }}))).toBe("date");
+    expect(inferViewKind(loadField({ "field.date": { name: "f" }}))).toBe("date");
   });
   test("time field → 'date'", () => {
-    expect(inferViewKind(loadField({ field: { name: "f", subType: "time" }}))).toBe("date");
+    expect(inferViewKind(loadField({ "field.time": { name: "f" }}))).toBe("date");
   });
   test("timestamp field → 'date'", () => {
-    expect(inferViewKind(loadField({ field: { name: "f", subType: "timestamp" }}))).toBe("date");
+    expect(inferViewKind(loadField({ "field.timestamp": { name: "f" }}))).toBe("date");
   });
   test("long field → 'number'", () => {
-    expect(inferViewKind(loadField({ field: { name: "f", subType: "long" }}))).toBe("number");
+    expect(inferViewKind(loadField({ "field.long": { name: "f" }}))).toBe("number");
   });
   test("double field → 'number'", () => {
-    expect(inferViewKind(loadField({ field: { name: "f", subType: "double" }}))).toBe("number");
+    expect(inferViewKind(loadField({ "field.double": { name: "f" }}))).toBe("number");
   });
   test("unknown subtype falls back to 'text'", () => {
-    expect(inferViewKind(loadField({ field: { name: "f", subType: "string" }}))).toBe("text");
+    expect(inferViewKind(loadField({ "field.string": { name: "f" }}))).toBe("text");
   });
   test("explicit view child overrides default", () => {
     expect(inferViewKind(loadField({
-      field: { name: "f", subType: "string",
-        children: [{ view: { subType: "textarea" }}]
+      "field.string": { name: "f",
+        children: [{ "view.textarea": {}}]
       }
     }))).toBe("textarea");
   });
@@ -58,68 +61,68 @@ describe("inferViewKind", () => {
 
 describe("zodTypeFor", () => {
   test("string → z.string()", () => {
-    expect(zodTypeFor(loadField({ field: { name: "f", subType: "string" }}))).toBe("z.string()");
+    expect(zodTypeFor(loadField({ "field.string": { name: "f" }}))).toBe("z.string()");
   });
   test("int → z.number().int()", () => {
-    expect(zodTypeFor(loadField({ field: { name: "f", subType: "int" }}))).toBe("z.number().int()");
+    expect(zodTypeFor(loadField({ "field.int": { name: "f" }}))).toBe("z.number().int()");
   });
   test("long → z.number().int()", () => {
-    expect(zodTypeFor(loadField({ field: { name: "f", subType: "long" }}))).toBe("z.number().int()");
+    expect(zodTypeFor(loadField({ "field.long": { name: "f" }}))).toBe("z.number().int()");
   });
   test("currency → z.number().int() (same as int/long)", () => {
-    expect(zodTypeFor(loadField({ field: { name: "f", subType: "currency" }}))).toBe("z.number().int()");
+    expect(zodTypeFor(loadField({ "field.currency": { name: "f" }}))).toBe("z.number().int()");
   });
   test("boolean → z.boolean()", () => {
-    expect(zodTypeFor(loadField({ field: { name: "f", subType: "boolean" }}))).toBe("z.boolean()");
+    expect(zodTypeFor(loadField({ "field.boolean": { name: "f" }}))).toBe("z.boolean()");
   });
   test("double → z.number()", () => {
-    expect(zodTypeFor(loadField({ field: { name: "f", subType: "double" }}))).toBe("z.number()");
+    expect(zodTypeFor(loadField({ "field.double": { name: "f" }}))).toBe("z.number()");
   });
   test("date → z.string() (ISO format)", () => {
-    expect(zodTypeFor(loadField({ field: { name: "f", subType: "date" }}))).toBe("z.string()");
+    expect(zodTypeFor(loadField({ "field.date": { name: "f" }}))).toBe("z.string()");
   });
   test("timestamp → z.string() (ISO format)", () => {
-    expect(zodTypeFor(loadField({ field: { name: "f", subType: "timestamp" }}))).toBe("z.string()");
+    expect(zodTypeFor(loadField({ "field.timestamp": { name: "f" }}))).toBe("z.string()");
   });
 });
 
 describe("currencyMetaFor", () => {
   test("currency field with @currency='EUR' and view@locale='de-DE'", () => {
-    const f = loadField({ field: { name: "f", subType: "currency", "@currency": "EUR",
-      children: [{ view: { subType: "currency", "@locale": "de-DE" }}]
+    const f = loadField({ "field.currency": { name: "f", "@currency": "EUR",
+      children: [{ "view.currency": { "@locale": "de-DE" }}]
     }});
     expect(currencyMetaFor(f)).toEqual({ currency: "EUR", locale: "de-DE" });
   });
   test("currency field with no attrs → USD/en-US defaults", () => {
-    expect(currencyMetaFor(loadField({ field: { name: "f", subType: "currency" }})))
+    expect(currencyMetaFor(loadField({ "field.currency": { name: "f" }})))
       .toEqual({ currency: "USD", locale: "en-US" });
   });
   test("non-currency field → null", () => {
-    expect(currencyMetaFor(loadField({ field: { name: "f", subType: "string" }}))).toBeNull();
+    expect(currencyMetaFor(loadField({ "field.string": { name: "f" }}))).toBeNull();
   });
   test("currency field with explicit @currency only uses default locale", () => {
-    expect(currencyMetaFor(loadField({ field: { name: "f", subType: "currency", "@currency": "GBP" }})))
+    expect(currencyMetaFor(loadField({ "field.currency": { name: "f", "@currency": "GBP" }})))
       .toEqual({ currency: "GBP", locale: "en-US" });
   });
 });
 
 describe("labelFor", () => {
   test("uses @label attr on view child if present", () => {
-    const f = loadField({ field: { name: "firstName", subType: "string",
-      children: [{ view: { subType: "text", "@label": "First Name" }}]
+    const f = loadField({ "field.string": { name: "firstName",
+      children: [{ "view.text": { "@label": "First Name" }}]
     }});
     expect(labelFor(f)).toBe("First Name");
   });
   test("falls back to humanized field name", () => {
-    expect(labelFor(loadField({ field: { name: "firstName", subType: "string" }})))
+    expect(labelFor(loadField({ "field.string": { name: "firstName" }})))
       .toBe("First Name");
   });
   test("PascalCase-style single word is capitalized", () => {
-    expect(labelFor(loadField({ field: { name: "email", subType: "string" }})))
+    expect(labelFor(loadField({ "field.string": { name: "email" }})))
       .toBe("Email");
   });
   test("multi-word camelCase → space-separated Title Case", () => {
-    expect(labelFor(loadField({ field: { name: "lastName", subType: "string" }})))
+    expect(labelFor(loadField({ "field.string": { name: "lastName" }})))
       .toBe("Last Name");
   });
 });

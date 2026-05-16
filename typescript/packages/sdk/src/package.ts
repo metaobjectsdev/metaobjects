@@ -28,7 +28,7 @@ const ExtendsEntrySchema = z.string().min(1);
 
 /**
  * Validates a canonical metaobjects package ref: snake_case segments
- * separated by `::`. Examples: `mikes_website`, `acme::common::user_mgmt`.
+ * separated by `::`. Examples: `trainer_website`, `acme::common::user_mgmt`.
  * Used in metadata file refs (extends:, super:) cross-language.
  */
 const MetaobjectsPackageSchema = z.string().regex(

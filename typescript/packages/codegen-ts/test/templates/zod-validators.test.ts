@@ -1,22 +1,23 @@
 import { describe, test, expect } from "bun:test";
-import { MetaModel, TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_VALIDATOR,
+import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_VALIDATOR,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_BOOLEAN,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
          VALIDATOR_SUBTYPE_REGEX } from "@metaobjects/metadata";
+import { meta } from "../_meta-build.js";
 import { renderZodValidators } from "../../src/templates/zod-validators.js";
 
 describe("renderZodValidators", () => {
   test("emits InsertSchema with required fields and optional unset fields", () => {
-    const post = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-    const id = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
+    const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+    const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
     post.addChild(id);
-    const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+    const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
     title.setAttr("required", true);
     title.setAttr("maxLength", 200);
     post.addChild(title);
-    const body = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "body");
+    const body = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "body");
     post.addChild(body);
-    const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
     primary.setAttr("fields", ["id"]);
     primary.setAttr("generation", "increment");
     post.addChild(primary);
@@ -33,10 +34,10 @@ describe("renderZodValidators", () => {
   });
 
   test("validator.regex emits .regex(new RegExp(pattern)) — Zod expects a RegExp object, not a string", () => {
-    const post = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-    const slug = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "slug");
+    const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+    const slug = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "slug");
     slug.setAttr("required", true);
-    const regex = new MetaModel(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REGEX), "slugFormat");
+    const regex = meta(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REGEX), "slugFormat");
     regex.setAttr("pattern", "^[a-z0-9-]+$");
     slug.addChild(regex);
     post.addChild(slug);

@@ -1,19 +1,16 @@
 {
-  "metadata": {
+  "metadata.root": {
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Program",
-          "subType": "entity",
           "children": [
             {
-              "field": {
+              "field.long": {
                 "name": "id",
-                "subType": "long",
                 "children": [
                   {
-                    "identity": {
-                      "subType": "primary",
+                    "identity.primary": {
                       "@fields": "id",
                       "@generation": "increment"
                     }
@@ -22,30 +19,26 @@
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "title",
-                "subType": "string",
-                "children": [{ "view": { "subType": "text" } }]
+                "children": [{ "view.text": {} }]
               }
             },
             {
-              "field": {
+              "field.int": {
                 "name": "priceCents",
-                "subType": "int",
-                "children": [{ "view": { "subType": "text" } }]
+                "children": [{ "view.text": {} }]
               }
             },
             {
-              "layout": {
-                "subType": "dataGrid",
+              "layout.dataGrid": {
                 "name": "default",
                 "@pageSize": 25,
                 "@columns": ["title", "priceCents"]
               }
             },
             {
-              "layout": {
-                "subType": "dataGrid",
+              "layout.dataGrid": {
                 "name": "compact",
                 "@pageSize": 50,
                 "@columns": ["title"]

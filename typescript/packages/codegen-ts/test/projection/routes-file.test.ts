@@ -17,7 +17,7 @@ import { GENERATED_HEADER } from "../../src/constants.js";
 
 function loadMetadata(children: unknown[]) {
   const loader = new Loader();
-  const json = JSON.stringify({ metadata: { package: "test", children } });
+  const json = JSON.stringify({ "metadata.root": { package: "test", children } });
   const result = loader.loadJson(json);
   if (result.errors.length > 0) {
     throw new Error(
@@ -34,17 +34,15 @@ function loadMetadata(children: unknown[]) {
 function loadProjectionFixture() {
   const root = loadMetadata([
     {
-      object: {
+      "object.entity": {
         name: "Program",
-        subType: "entity",
         children: [
-          { source: { subType: "dbTable", "@name": "programs" } },
-          { field: { name: "id", subType: "int" } },
-          { field: { name: "title", subType: "string" } },
-          { identity: { subType: "primary", "@fields": "id" } },
+          { "source.dbTable": { "@name": "programs" } },
+          { "field.int": { name: "id", } },
+          { "field.string": { name: "title", } },
+          { "identity.primary": { "@fields": "id" } },
           {
-            relationship: {
-              subType: "association",
+            "relationship.association": {
               name: "weeks",
               "@objectRef": "Week",
               "@cardinality": "many",
@@ -55,31 +53,27 @@ function loadProjectionFixture() {
       },
     },
     {
-      object: {
+      "object.entity": {
         name: "Week",
-        subType: "entity",
         children: [
-          { source: { subType: "dbTable", "@name": "weeks" } },
-          { field: { name: "id", subType: "int" } },
-          { identity: { subType: "primary", "@fields": "id" } },
+          { "source.dbTable": { "@name": "weeks" } },
+          { "field.int": { name: "id", } },
+          { "identity.primary": { "@fields": "id" } },
         ],
       },
     },
     {
-      object: {
+      "object.entity": {
         name: "ProgramSummary",
-        subType: "entity",
         extends: "Program",
         children: [
-          { source: { subType: "dbView", "@name": "v_program_summary" } },
+          { "source.dbView": { "@name": "v_program_summary" } },
           {
-            field: {
+            "field.int": {
               name: "weekCount",
-              subType: "int",
               children: [
                 {
-                  origin: {
-                    subType: "aggregate",
+                  "origin.aggregate": {
                     "@agg": "count",
                     "@of": "Week.id",
                     "@via": "Program.weeks",
@@ -88,7 +82,7 @@ function loadProjectionFixture() {
               ],
             },
           },
-          { identity: { subType: "primary", "@fields": "id" } },
+          { "identity.primary": { "@fields": "id" } },
         ],
       },
     },
@@ -116,14 +110,13 @@ function loadProjectionFixture() {
 function loadVanillaFixture() {
   const root = loadMetadata([
     {
-      object: {
+      "object.entity": {
         name: "Post",
-        subType: "entity",
         children: [
-          { source: { subType: "dbTable", "@name": "posts" } },
-          { field: { name: "id", subType: "long" } },
-          { field: { name: "title", subType: "string" } },
-          { identity: { subType: "primary", "@fields": "id" } },
+          { "source.dbTable": { "@name": "posts" } },
+          { "field.long": { name: "id", } },
+          { "field.string": { name: "title", } },
+          { "identity.primary": { "@fields": "id" } },
         ],
       },
     },

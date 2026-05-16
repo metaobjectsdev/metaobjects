@@ -1,42 +1,42 @@
 import { describe, it, expect } from "bun:test";
-import { Loader, metaOf } from "@metaobjects/metadata";
+import { Loader } from "@metaobjects/metadata";
 import type { MetaRoot } from "@metaobjects/metadata";
 import { buildRelationMap } from "../src/relation-resolver.js";
 
 function loadRoot(json: string): MetaRoot {
   const { root, errors } = new Loader().loadJson(json);
   if (errors.length) throw new Error(errors.map((e) => e.message).join("; "));
-  return metaOf(root) as MetaRoot;
+  return root as unknown as MetaRoot;
 }
 
 describe("buildRelationMap — typed MetaRoot", () => {
   it("registers a one-side relation and its inverse many-side", () => {
     const root = loadRoot(JSON.stringify({
-      metadata: {
+      "metadata.root": {
         package: "acme",
         children: [
           {
-            object: {
-              name: "Author", subType: "entity",
+            "object.entity": {
+              name: "Author",
               children: [
-                { field: { name: "id", subType: "long" } },
-                { identity: { subType: "primary", "@fields": "id" } },
+                { "field.long": { name: "id" } },
+                { "identity.primary": { "@fields": "id" } },
               ],
             },
           },
           {
-            object: {
-              name: "Article", subType: "entity",
+            "object.entity": {
+              name: "Article",
               children: [
-                { field: { name: "id", subType: "long" } },
-                { field: { name: "authorId", subType: "long" } },
+                { "field.long": { name: "id" } },
+                { "field.long": { name: "authorId" } },
                 {
-                  relationship: {
-                    name: "author", subType: "association",
+                  "relationship.association": {
+                    name: "author",
                     "@cardinality": "one", "@objectRef": "Author", "@fkField": "authorId",
                   },
                 },
-                { identity: { subType: "primary", "@fields": "id" } },
+                { "identity.primary": { "@fields": "id" } },
               ],
             },
           },

@@ -2,15 +2,15 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import type { MetaModel } from "@metaobjects/metadata";
 import {
   Loader,
-  MetaModel,
   TypeId,
   TYPE_METADATA,
   TYPE_OBJECT,
   TYPE_FIELD,
   TYPE_IDENTITY,
-  SUBTYPE_BASE,
+  SUBTYPE_ROOT,
   OBJECT_SUBTYPE_ENTITY,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_LONG,
@@ -19,6 +19,7 @@ import {
   IDENTITY_ATTR_GENERATION,
   GENERATION_INCREMENT,
 } from "@metaobjects/metadata";
+import { meta } from "./_meta-build.js";
 import { runGen, defineConfig } from "../src/index.js";
 import { entityFile, queriesFile, routesFile, barrel } from "../src/generators/index.js";
 
@@ -140,19 +141,19 @@ describe("runGen — refuses to clobber hand-written files", () => {
 // JSON parser (which might itself reject invalid names).
 // ---------------------------------------------------------------------------
 function makeRoot(pkg: string): MetaModel {
-  return new MetaModel(new TypeId(TYPE_METADATA, SUBTYPE_BASE), pkg);
+  return meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), pkg);
 }
 
 function makeEntity(name: string): MetaModel {
-  const entity = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), name);
+  const entity = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), name);
   // id field (long)
-  const id = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
+  const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
   entity.addChild(id);
   // title field (string)
-  const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+  const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
   entity.addChild(title);
   // primary identity
-  const pk = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const pk = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   pk.setAttr(IDENTITY_ATTR_FIELDS, ["id"]);
   pk.setAttr(IDENTITY_ATTR_GENERATION, GENERATION_INCREMENT);
   entity.addChild(pk);

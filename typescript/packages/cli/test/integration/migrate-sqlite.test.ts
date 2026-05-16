@@ -5,11 +5,11 @@ import { join, resolve } from "node:path";
 import { createClient } from "@libsql/client";
 import { run } from "../../src/index.js";
 
-const FIXTURES = resolve("packages/cli/test/fixtures");
+const FIXTURES = resolve(import.meta.dirname, "../fixtures");
 
 function setupRepo(): { repo: string; dbPath: string; dbUrl: string } {
   const repo = mkdtempSync(join(tmpdir(), "forge-migrate-sqlite-"));
-  cpSync(join(FIXTURES, "downstream-consumer-meta"), repo, { recursive: true });
+  cpSync(join(FIXTURES, "trainer-website-meta"), repo, { recursive: true });
   const dbPath = join(repo, "local.db");
   const dbUrl = `file:${dbPath}`;
   return { repo, dbPath, dbUrl };
@@ -82,9 +82,10 @@ describe("meta migrate — sqlite end-to-end round-trip", () => {
 
       const metaPath = join(repo, "metaobjects", "myapp.json");
       const meta = JSON.parse(readFileSync(metaPath, "utf8"));
-      const user = meta.metadata.children.find((c: { object?: { name: string } }) => c.object?.name === "User");
-      user.object.children.push({
-        field: { name: "bio", subType: "string", "@dbColumn": "bio" },
+      const root = meta["metadata.root"];
+      const user = root.children.find((c: Record<string, { name: string }>) => c["object.entity"]?.name === "User");
+      user["object.entity"].children.push({
+        "field.string": { name: "bio", "@dbColumn": "bio" },
       });
       writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 

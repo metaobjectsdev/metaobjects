@@ -17,28 +17,26 @@ import { renderProjectionDecl } from "../../src/templates/projection-decl.js";
 function makeMinimalProjection(projName: string, baseName: string) {
   const loader = new Loader();
   const json = JSON.stringify({
-    metadata: {
+    "metadata.root": {
       package: "test",
       children: [
         {
-          object: {
+          "object.entity": {
             name: baseName,
-            subType: "entity",
             children: [
-              { source: { subType: "dbTable", "@name": baseName.toLowerCase() + "s" } },
-              { field: { name: "id", subType: "int" } },
-              { identity: { subType: "primary", "@fields": "id" } },
+              { "source.dbTable": { "@name": baseName.toLowerCase() + "s" } },
+              { "field.int": { name: "id", } },
+              { "identity.primary": { "@fields": "id" } },
             ],
           },
         },
         {
-          object: {
+          "object.entity": {
             name: projName,
-            subType: "entity",
             extends: baseName,
             children: [
-              { source: { subType: "dbView", "@name": `v_${projName.toLowerCase()}` } },
-              { identity: { subType: "primary", "@fields": "id" } },
+              { "source.dbView": { "@name": `v_${projName.toLowerCase()}` } },
+              { "identity.primary": { "@fields": "id" } },
             ],
           },
         },
@@ -87,21 +85,19 @@ describe("pathFromProjectionName — pluralization edge cases", () => {
 function loadProjection() {
   const loader = new Loader();
   const json = JSON.stringify({
-    metadata: {
+    "metadata.root": {
       package: "test",
       children: [
         {
-          object: {
+          "object.entity": {
             name: "Program",
-            subType: "entity",
             children: [
-              { source: { subType: "dbTable", "@name": "programs" } },
-              { field: { name: "id", subType: "int" } },
-              { field: { name: "title", subType: "string" } },
-              { identity: { subType: "primary", "@fields": "id" } },
+              { "source.dbTable": { "@name": "programs" } },
+              { "field.int": { name: "id", } },
+              { "field.string": { name: "title", } },
+              { "identity.primary": { "@fields": "id" } },
               {
-                relationship: {
-                  subType: "association",
+                "relationship.association": {
                   name: "weeks",
                   "@objectRef": "Week",
                   "@cardinality": "many",
@@ -112,31 +108,27 @@ function loadProjection() {
           },
         },
         {
-          object: {
+          "object.entity": {
             name: "Week",
-            subType: "entity",
             children: [
-              { source: { subType: "dbTable", "@name": "weeks" } },
-              { field: { name: "id", subType: "int" } },
-              { identity: { subType: "primary", "@fields": "id" } },
+              { "source.dbTable": { "@name": "weeks" } },
+              { "field.int": { name: "id", } },
+              { "identity.primary": { "@fields": "id" } },
             ],
           },
         },
         {
-          object: {
+          "object.entity": {
             name: "ProgramSummary",
-            subType: "entity",
             extends: "Program",
             children: [
-              { source: { subType: "dbView", "@name": "v_program_summary" } },
+              { "source.dbView": { "@name": "v_program_summary" } },
               {
-                field: {
+                "field.int": {
                   name: "weekCount",
-                  subType: "int",
                   children: [
                     {
-                      origin: {
-                        subType: "aggregate",
+                      "origin.aggregate": {
                         "@agg": "count",
                         "@of": "Week.id",
                         "@via": "Program.weeks",
@@ -145,7 +137,7 @@ function loadProjection() {
                   ],
                 },
               },
-              { identity: { subType: "primary", "@fields": "id" } },
+              { "identity.primary": { "@fields": "id" } },
             ],
           },
         },

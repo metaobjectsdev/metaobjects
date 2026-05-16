@@ -9,35 +9,32 @@ function loadFixture() {
   const loader = new Loader();
   const result = loader.loadJson(
     JSON.stringify({
-      metadata: {
+      "metadata.root": {
         package: "test",
         children: [
           {
-            object: {
+            "object.entity": {
               name: "BaseEntity",
-              subType: "entity",
-              "@isAbstract": true,
+              abstract: true,
               children: [
-                { field: { name: "id", subType: "long", "@dbColumn": "id" } },
+                { "field.long": { name: "id", "@dbColumn": "id" } },
                 {
-                  field: {
+                  "field.timestamp": {
                     name: "createdAt",
-                    subType: "timestamp",
                     "@dbColumn": "created_at",
                   },
                 },
-                { identity: { subType: "primary", "@fields": "id" } },
+                { "identity.primary": { "@fields": "id" } },
               ],
             },
           },
           {
-            object: {
+            "object.entity": {
               name: "Program",
-              subType: "entity",
               extends: "BaseEntity",
               children: [
-                { source: { subType: "dbTable", "@name": "programs" } },
-                { field: { name: "title", subType: "string", "@dbColumn": "title" } },
+                { "source.dbTable": { "@name": "programs" } },
+                { "field.string": { name: "title", "@dbColumn": "title" } },
               ],
             },
           },

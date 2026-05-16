@@ -1,19 +1,16 @@
 {
-  "metadata": {
+  "metadata.root": {
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Subscriber",
-          "subType": "entity",
           "children": [
             {
-              "field": {
+              "field.long": {
                 "name": "id",
-                "subType": "long",
                 "children": [
                   {
-                    "identity": {
-                      "subType": "primary",
+                    "identity.primary": {
                       "@fields": ["id"],
                       "@generation": "increment"
                     }
@@ -22,22 +19,19 @@
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "email",
-                "subType": "string",
-                "children": [{ "view": { "subType": "text" } }]
+                "children": [{ "view.text": {} }]
               }
             },
             {
-              "field": {
+              "field.timestamp": {
                 "name": "createdAt",
-                "subType": "timestamp",
-                "children": [{ "view": { "subType": "date" } }]
+                "children": [{ "view.date": {} }]
               }
             },
             {
-              "layout": {
-                "subType": "dataGrid",
+              "layout.dataGrid": {
                 "name": "default",
                 "@pageSize": 25,
                 "@defaultSortField": "createdAt",

@@ -8,7 +8,7 @@ import {
 function loadObj(objNode: unknown) {
   const loader = new Loader();
   const json = JSON.stringify({
-    metadata: { package: "test", children: [objNode] },
+    "metadata.root": { package: "test", children: [objNode] },
   });
   const result = loader.loadJson(json);
   return result.root.children()[0];
@@ -17,13 +17,12 @@ function loadObj(objNode: unknown) {
 describe("isProjection / isWriteThrough", () => {
   test("entity with only source[dbView] → isProjection true, isWriteThrough false", () => {
     const obj = loadObj({
-      object: {
+      "object.entity": {
         name: "Foo",
-        subType: "entity",
         children: [
-          { source: { subType: "dbView", "@name": "v_foo" } },
-          { field: { name: "id", subType: "int" } },
-          { identity: { subType: "primary", "@fields": "id" } },
+          { "source.dbView": { "@name": "v_foo" } },
+          { "field.int": { name: "id", } },
+          { "identity.primary": { "@fields": "id" } },
         ],
       },
     });
@@ -33,13 +32,12 @@ describe("isProjection / isWriteThrough", () => {
 
   test("entity with only source[dbTable] → isProjection false, isWriteThrough false", () => {
     const obj = loadObj({
-      object: {
+      "object.entity": {
         name: "Foo",
-        subType: "entity",
         children: [
-          { source: { subType: "dbTable", "@name": "foos" } },
-          { field: { name: "id", subType: "int" } },
-          { identity: { subType: "primary", "@fields": "id" } },
+          { "source.dbTable": { "@name": "foos" } },
+          { "field.int": { name: "id", } },
+          { "identity.primary": { "@fields": "id" } },
         ],
       },
     });
@@ -49,14 +47,13 @@ describe("isProjection / isWriteThrough", () => {
 
   test("entity with both → isProjection false, isWriteThrough true", () => {
     const obj = loadObj({
-      object: {
+      "object.entity": {
         name: "Foo",
-        subType: "entity",
         children: [
-          { source: { subType: "dbTable", "@name": "foos" } },
-          { source: { subType: "dbView", "@name": "v_foo" } },
-          { field: { name: "id", subType: "int" } },
-          { identity: { subType: "primary", "@fields": "id" } },
+          { "source.dbTable": { "@name": "foos" } },
+          { "source.dbView": { "@name": "v_foo" } },
+          { "field.int": { name: "id", } },
+          { "identity.primary": { "@fields": "id" } },
         ],
       },
     });
@@ -66,12 +63,11 @@ describe("isProjection / isWriteThrough", () => {
 
   test("entity with no source → isProjection false, isWriteThrough false (vanilla)", () => {
     const obj = loadObj({
-      object: {
+      "object.entity": {
         name: "Foo",
-        subType: "entity",
         children: [
-          { field: { name: "id", subType: "int" } },
-          { identity: { subType: "primary", "@fields": "id" } },
+          { "field.int": { name: "id", } },
+          { "identity.primary": { "@fields": "id" } },
         ],
       },
     });

@@ -1,18 +1,21 @@
 // Tests for $apiPrefix emission in entity-constants + routes-file.
 
 import { describe, test, expect } from "bun:test";
+import type { MetaModel } from "@metaobjects/metadata";
 import {
-  MetaModel,
   TypeId,
   TYPE_OBJECT,
   TYPE_FIELD,
   TYPE_IDENTITY,
+  TYPE_METADATA,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_LONG,
   IDENTITY_SUBTYPE_PRIMARY,
   OBJECT_SUBTYPE_ENTITY,
+  SUBTYPE_ROOT,
   Loader,
 } from "@metaobjects/metadata";
+import { meta } from "../_meta-build.js";
 import { renderEntityConstants } from "../../src/templates/entity-constants.js";
 import { renderRoutesFile } from "../../src/templates/routes-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
@@ -24,13 +27,13 @@ import { buildRelationMap } from "../../src/relation-resolver.js";
 // ---------------------------------------------------------------------------
 
 function makeSimpleRoot(name = "Subscriber"): { root: MetaModel; entity: MetaModel } {
-  const root = new MetaModel(new TypeId("metadata", "base"), "");
-  const entity = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), name);
-  const id = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
+  const root = meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
+  const entity = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), name);
+  const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
   entity.addChild(id);
-  const email = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "email");
+  const email = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "email");
   entity.addChild(email);
-  const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr("fields", ["id"]);
   primary.setAttr("generation", "increment");
   entity.addChild(primary);
@@ -58,29 +61,27 @@ function makeVanillaCtx(apiPrefix = "") {
 function loadProjectionFixture() {
   const loader = new Loader();
   const json = JSON.stringify({
-    metadata: {
+    "metadata.root": {
       package: "test",
       children: [
         {
-          object: {
+          "object.entity": {
             name: "Program",
-            subType: "entity",
             children: [
-              { source: { subType: "dbTable", "@name": "programs" } },
-              { field: { name: "id", subType: "int" } },
-              { identity: { subType: "primary", "@fields": "id" } },
+              { "source.dbTable": { "@name": "programs" } },
+              { "field.int": { name: "id" } },
+              { "identity.primary": { "@fields": "id" } },
             ],
           },
         },
         {
-          object: {
+          "object.entity": {
             name: "ProgramSummary",
-            subType: "entity",
             extends: "Program",
             children: [
-              { source: { subType: "dbView", "@name": "v_program_summary" } },
-              { field: { name: "weekCount", subType: "int" } },
-              { identity: { subType: "primary", "@fields": "id" } },
+              { "source.dbView": { "@name": "v_program_summary" } },
+              { "field.int": { name: "weekCount" } },
+              { "identity.primary": { "@fields": "id" } },
             ],
           },
         },

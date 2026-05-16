@@ -1,12 +1,14 @@
 import { describe, test, expect } from "bun:test";
-import { MetaModel, TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_VALIDATOR,
+import type { MetaModel } from "@metaobjects/metadata";
+import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_VALIDATOR,
          FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_BOOLEAN,
          VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
          OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
+import { meta } from "./_meta-build.js";
 import { runValidators } from "../src/validator-runner.js";
 
 function makeEntity(buildFields: (e: MetaModel) => void): MetaModel {
-  const e = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+  const e = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
   buildFields(e);
   return e;
 }
@@ -14,8 +16,8 @@ function makeEntity(buildFields: (e: MetaModel) => void): MetaModel {
 describe("runValidators — required", () => {
   test("validator.required: missing field → error", () => {
     const e = makeEntity((post) => {
-      const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
-      title.addChild(new MetaModel(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REQUIRED), "required"));
+      const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+      title.addChild(meta(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REQUIRED), "required"));
       post.addChild(title);
     });
     const result = runValidators(e, {});
@@ -29,7 +31,7 @@ describe("runValidators — required", () => {
 
   test("@required attr shortcut", () => {
     const e = makeEntity((post) => {
-      const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+      const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
       title.setAttr("required", true);
       post.addChild(title);
     });
@@ -39,7 +41,7 @@ describe("runValidators — required", () => {
 
   test("required + provided → ok", () => {
     const e = makeEntity((post) => {
-      const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+      const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
       title.setAttr("required", true);
       post.addChild(title);
     });
@@ -50,8 +52,8 @@ describe("runValidators — required", () => {
 describe("runValidators — length", () => {
   test("string longer than max → error", () => {
     const e = makeEntity((post) => {
-      const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
-      const v = new MetaModel(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_LENGTH), "len");
+      const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+      const v = meta(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_LENGTH), "len");
       v.setAttr("max", 5);
       title.addChild(v);
       post.addChild(title);
@@ -63,8 +65,8 @@ describe("runValidators — length", () => {
 
   test("string shorter than min → error", () => {
     const e = makeEntity((post) => {
-      const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
-      const v = new MetaModel(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_LENGTH), "len");
+      const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+      const v = meta(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_LENGTH), "len");
       v.setAttr("min", 3);
       title.addChild(v);
       post.addChild(title);
@@ -74,7 +76,7 @@ describe("runValidators — length", () => {
 
   test("@maxLength attr shortcut", () => {
     const e = makeEntity((post) => {
-      const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+      const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
       title.setAttr("maxLength", 5);
       post.addChild(title);
     });
@@ -85,8 +87,8 @@ describe("runValidators — length", () => {
 describe("runValidators — regex", () => {
   test("non-matching string → error", () => {
     const e = makeEntity((post) => {
-      const slug = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "slug");
-      const v = new MetaModel(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REGEX), "fmt");
+      const slug = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "slug");
+      const v = meta(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REGEX), "fmt");
       v.setAttr("pattern", "^[a-z0-9-]+$");
       slug.addChild(v);
       post.addChild(slug);
@@ -96,8 +98,8 @@ describe("runValidators — regex", () => {
 
   test("matching string → ok", () => {
     const e = makeEntity((post) => {
-      const slug = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "slug");
-      const v = new MetaModel(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REGEX), "fmt");
+      const slug = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "slug");
+      const v = meta(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REGEX), "fmt");
       v.setAttr("pattern", "^[a-z0-9-]+$");
       slug.addChild(v);
       post.addChild(slug);
@@ -107,8 +109,8 @@ describe("runValidators — regex", () => {
 
   test("invalid pattern → structured error, never throws", () => {
     const e = makeEntity((post) => {
-      const slug = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "slug");
-      const v = new MetaModel(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REGEX), "fmt");
+      const slug = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "slug");
+      const v = meta(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REGEX), "fmt");
       v.setAttr("pattern", "[unterminated");
       slug.addChild(v);
       post.addChild(slug);
@@ -125,21 +127,21 @@ describe("runValidators — regex", () => {
 describe("runValidators — type checks (basic)", () => {
   test("int field with non-number value → error", () => {
     const e = makeEntity((post) => {
-      post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "count"));
+      post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "count"));
     });
     expect(runValidators(e, { count: "not a number" }).ok).toBe(false);
   });
 
   test("boolean field with non-boolean value → error", () => {
     const e = makeEntity((post) => {
-      post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_BOOLEAN), "active"));
+      post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_BOOLEAN), "active"));
     });
     expect(runValidators(e, { active: "yes" }).ok).toBe(false);
   });
 
   test("nullable fields skip type-check on null", () => {
     const e = makeEntity((post) => {
-      post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "count"));
+      post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "count"));
     });
     expect(runValidators(e, { count: null }).ok).toBe(true);
   });
@@ -148,11 +150,11 @@ describe("runValidators — type checks (basic)", () => {
 describe("runValidators — multiple failures", () => {
   test("collects all failures across fields", () => {
     const e = makeEntity((post) => {
-      const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+      const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
       title.setAttr("required", true);
       title.setAttr("maxLength", 5);
       post.addChild(title);
-      const count = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "count");
+      const count = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "count");
       count.setAttr("required", true);
       post.addChild(count);
     });

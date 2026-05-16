@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import { MetaModel, TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP, TYPE_VIEW,
+import type { MetaModel } from "@metaobjects/metadata";
+import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP, TYPE_VIEW,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_BOOLEAN,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
          RELATIONSHIP_SUBTYPE_ASSOCIATION,
@@ -8,16 +9,17 @@ import { MetaModel, TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIO
          IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
          RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF, RELATIONSHIP_ATTR_FK_FIELD,
          FIELD_ATTR_REQUIRED } from "@metaobjects/metadata";
+import { meta } from "./_meta-build.js";
 import { ObjectManager } from "../src/object-manager.js";
 import { inMemoryDriver } from "../src/drivers/in-memory-driver.js";
 import { MetadataError, UnsafeNameError, NotFoundError } from "../src/errors.js";
 
 function makePost(): MetaModel {
-  const post = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-  post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-  post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title"));
-  post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_BOOLEAN), "isPublished"));
-  const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+  post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+  post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title"));
+  post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_BOOLEAN), "isPublished"));
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr(IDENTITY_ATTR_FIELDS, ["id"]);
   primary.setAttr(IDENTITY_ATTR_GENERATION, GENERATION_INCREMENT);
   post.addChild(primary);
@@ -25,7 +27,7 @@ function makePost(): MetaModel {
 }
 
 function makeRoot(entities: MetaModel[]): MetaModel {
-  const r = new MetaModel(new TypeId("metadata", "base"), "");
+  const r = meta(new TypeId("metadata", "base"), "");
   for (const e of entities) r.addChild(e);
   return r;
 }
@@ -138,12 +140,12 @@ describe("ObjectManager — create", () => {
 
   test("ValidationError when @required field missing", async () => {
     const entity = makeRoot([(() => {
-      const post = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-      post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-      const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+      const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+      post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+      const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
       title.setAttr(FIELD_ATTR_REQUIRED, true);
       post.addChild(title);
-      const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+      const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
       primary.setAttr(IDENTITY_ATTR_FIELDS, ["id"]);
       primary.setAttr(IDENTITY_ATTR_GENERATION, GENERATION_INCREMENT);
       post.addChild(primary);
@@ -200,12 +202,12 @@ describe("ObjectManager — createMany", () => {
 
   test("validation error halts the batch (no partial inserts)", async () => {
     const entity = makeRoot([(() => {
-      const post = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-      post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-      const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+      const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+      post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+      const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
       title.setAttr(FIELD_ATTR_REQUIRED, true);
       post.addChild(title);
-      const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+      const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
       primary.setAttr(IDENTITY_ATTR_FIELDS, ["id"]);
       primary.setAttr(IDENTITY_ATTR_GENERATION, GENERATION_INCREMENT);
       post.addChild(primary);
@@ -251,15 +253,15 @@ describe("ObjectManager — deleteMany", () => {
 });
 
 function makePostWithAuthor(): MetaModel {
-  const post = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-  post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-  post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title"));
-  post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "authorId"));
-  const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+  post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+  post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title"));
+  post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "authorId"));
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr(IDENTITY_ATTR_FIELDS, ["id"]);
   primary.setAttr(IDENTITY_ATTR_GENERATION, GENERATION_INCREMENT);
   post.addChild(primary);
-  const rel = new MetaModel(new TypeId(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION), "author");
+  const rel = meta(new TypeId(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION), "author");
   rel.setAttr(RELATIONSHIP_ATTR_CARDINALITY, CARDINALITY_ONE);
   rel.setAttr(RELATIONSHIP_ATTR_OBJECT_REF, "User");
   rel.setAttr(RELATIONSHIP_ATTR_FK_FIELD, "authorId");
@@ -268,10 +270,10 @@ function makePostWithAuthor(): MetaModel {
 }
 
 function makeUser(): MetaModel {
-  const user = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "User");
-  user.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-  user.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "email"));
-  const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const user = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "User");
+  user.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+  user.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "email"));
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr(IDENTITY_ATTR_FIELDS, ["id"]);
   primary.setAttr(IDENTITY_ATTR_GENERATION, GENERATION_INCREMENT);
   user.addChild(primary);
@@ -372,13 +374,13 @@ describe("ObjectManager — transaction", () => {
 
 describe("ObjectManager — view introspection", () => {
   test("viewFields returns names tagged with view", () => {
-    const post = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-    post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-    const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
-    const titleEdit = new MetaModel(new TypeId(TYPE_VIEW, VIEW_SUBTYPE_TEXT), "edit");
+    const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+    post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+    const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+    const titleEdit = meta(new TypeId(TYPE_VIEW, VIEW_SUBTYPE_TEXT), "edit");
     title.addChild(titleEdit);
     post.addChild(title);
-    const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
     primary.setAttr(IDENTITY_ATTR_FIELDS, ["id"]);
     post.addChild(primary);
 
@@ -402,12 +404,12 @@ describe("ObjectManager — validate (standalone, no DB hit)", () => {
   });
 
   test("returns ok=false with errors[] when invalid", () => {
-    const post = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-    post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-    const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+    const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+    post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+    const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
     title.setAttr(FIELD_ATTR_REQUIRED, true);
     post.addChild(title);
-    const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
     primary.setAttr(IDENTITY_ATTR_FIELDS, ["id"]);
     post.addChild(primary);
 

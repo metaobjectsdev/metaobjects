@@ -8,7 +8,7 @@
 
 ## Context
 
-After Projects D–G, the TS implementation is reference-quality: filter syntax, projections, currency, full Cleanup pass with `metaobjects/` directory convention, `BaseEntity` extends pattern, `@autoSet` timestamps, package split between Node and browser, polyglot-aligned file organization. downstream-consumer is the canonical TS consumer; both repos pass their tests + builds cleanly.
+After Projects D–G, the TS implementation is reference-quality: filter syntax, projections, currency, full Cleanup pass with `metaobjects/` directory convention, `BaseEntity` extends pattern, `@autoSet` timestamps, package split between Node and browser, polyglot-aligned file organization. trainer-website is the canonical TS consumer; both repos pass their tests + builds cleanly.
 
 An existing Java implementation (metaobjects-core v6) pre-dates the TS reference's introduction of `layout`, `source`, `origin`, `currency`, `@autoSet`, and other patterns. The decision has been made to rebuild Java from the TS reference rather than migrate v6.
 
@@ -52,7 +52,7 @@ Downstream apps install BOTH `@metaobjects/*` (the standard, from npm) AND optio
 - **Conformance fixtures**: directory scaffolded in H1 with README; actual fixture extraction is H2.
 - **npm publishing**: deferred to H7 (will happen once Java is in place so first stable release reflects polyglot reality).
 - **Codegen target refactor**: deferred to H4.
-- **Any consumer migration**: deferred to H5/H8/H9. downstream-consumer gets path/dep updates as part of H1 but no functional changes.
+- **Any consumer migration**: deferred to H5/H8/H9. trainer-website gets path/dep updates as part of H1 but no functional changes.
 - **Future commercial capabilities in forge**: out of H roadmap scope entirely.
 - **GitHub org / website / npm org setup**: organizational infrastructure listed as open questions; not gating H1's code work.
 
@@ -174,9 +174,9 @@ See `metaobjects/CLAUDE.md` for the full contributor context. `forge/CLAUDE.md` 
 
 The `DEFAULT_METADATA_DIR = "metaobjects"` constant is unchanged (that's the entity-data directory, not the tool-state directory).
 
-### downstream-consumer implications
+### trainer-website implications
 
-downstream-consumer is the only existing consumer and must be updated in lockstep with H1's atomic switch:
+trainer-website is the only existing consumer and must be updated in lockstep with H1's atomic switch:
 
 | File | Change |
 |---|---|
@@ -217,7 +217,7 @@ After all rewrites, `pnpm install && pnpm build && pnpm dev` should produce iden
   `forge mcp`, `forge install-hooks`, `forge ingest`, etc. Lives in `forge/`.
 - **H7 — npm publish** (1 wk)
   First stable public release of `@metaobjects/*` packages; reflects polyglot reality (TS + Java).
-- **H8 — downstream-consumer npm migration** (0.5 wk)
+- **H8 — trainer-website npm migration** (0.5 wk)
   Switch from `link:` deps to published npm versions.
 - **H9 — First Java consumer UI migration** (2-3 wk)
   First Java consumer's TS frontend adopts `@metaobjects/runtime-ts-client`.
@@ -245,7 +245,7 @@ If any rename misses a reference, the corresponding consumer breaks at build tim
 H1's correctness is verified by:
 1. Pre-migration baseline: full `bun test` in metaforge passes (current state: 1612 pass, 0 fail).
 2. Post-migration in metaobjects/typescript: same test count, same passes, zero failures.
-3. downstream-consumer end-to-end: `pnpm build` clean; `pnpm dev` boots; all `/api/*` endpoints return 200; smoke test of one admin page in browser.
+3. trainer-website end-to-end: `pnpm build` clean; `pnpm dev` boots; all `/api/*` endpoints return 200; smoke test of one admin page in browser.
 4. Grep audits:
    - No `metaforge` strings in `metaobjects/` source (excluding historical specs in `design-docs/`)
    - No `@metaforge/` package references anywhere in `metaobjects/typescript/`
@@ -281,9 +281,9 @@ The migration is an atomic switch — not incremental:
    - Run all builds + tests in the new structure. Verify clean.
 
 2. **Atomic switch phase** (consumer briefly broken):
-   - Update downstream-consumer deps + paths + config rename + directory rename.
+   - Update trainer-website deps + paths + config rename + directory rename.
    - Run `pnpm install`, `pnpm build`, smoke test.
-   - Commit downstream-consumer's updates.
+   - Commit trainer-website's updates.
 
 3. **Cleanup phase**:
    - Archive `metaforge/` repo.
@@ -319,6 +319,6 @@ The roadmap doc in `metaobjects/spec/roadmap.md` is the canonical tracker. Summa
 - **H5** — First Java consumer migration (3-4 wk)
 - **H6** — Forge AI commands implementation (TBD)
 - **H7** — npm publish (1 wk)
-- **H8** — downstream-consumer npm migration (0.5 wk)
+- **H8** — trainer-website npm migration (0.5 wk)
 - **H9** — First Java consumer UI migration (2-3 wk)
 - **H10** — Polyglot consumer migration (3-4 wk)

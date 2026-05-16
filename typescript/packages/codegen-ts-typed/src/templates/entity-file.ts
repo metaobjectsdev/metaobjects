@@ -18,12 +18,12 @@ export function renderEntityFile(entity: MetaObject, ctx: RenderContext): string
   // --- Vanilla entity path (projection path dropped — out of POC scope) ---
   const sections: Code[] = [
     renderDrizzleSchema(entity, ctx),
-    renderInferredTypes(entity.model),
-    renderZodValidators(entity.model),
-    renderEntityConstants(entity.model, ctx.apiPrefix),
-    renderFilterAllowlist(entity.model),
-    renderSortAllowlist(entity.model),
-    renderFilterType(entity.model),
+    renderInferredTypes(entity),
+    renderZodValidators(entity),
+    renderEntityConstants(entity, ctx.apiPrefix),
+    renderFilterAllowlist(entity),
+    renderSortAllowlist(entity),
+    renderFilterType(entity),
   ];
 
   // Render ts-poet body first (ts-poet hoists imp()-tracked imports to the top),

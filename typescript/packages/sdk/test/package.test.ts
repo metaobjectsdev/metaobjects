@@ -145,9 +145,9 @@ describe("PackageManifestSchema — metaobjectsPackage validation", () => {
 
   test("accepts single-segment ref", () => {
     expect(PackageManifestSchema.parse({
-      name: "mikes_website", version: "0.1.0",
-      metaobjectsPackage: "mikes_website",
-    }).metaobjectsPackage).toBe("mikes_website");
+      name: "trainer_website", version: "0.1.0",
+      metaobjectsPackage: "trainer_website",
+    }).metaobjectsPackage).toBe("trainer_website");
   });
 
   test("rejects camelCase segments", () => {
@@ -191,9 +191,9 @@ describe("resolveMetaobjectsPackage", () => {
 
   test("auto-derives from bare name", () => {
     const m = PackageManifestSchema.parse({
-      name: "mikes_website", version: "1.0.0",
+      name: "trainer_website", version: "1.0.0",
     });
-    expect(resolveMetaobjectsPackage(m)).toBe("mikes_website");
+    expect(resolveMetaobjectsPackage(m)).toBe("trainer_website");
   });
 
   test("returns undefined when name can't be derived (uppercase)", () => {

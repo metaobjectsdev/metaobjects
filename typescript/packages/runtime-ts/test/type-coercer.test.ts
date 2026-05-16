@@ -1,12 +1,14 @@
 import { describe, test, expect } from "bun:test";
-import { MetaModel, TypeId, TYPE_OBJECT, TYPE_FIELD,
+import type { MetaModel } from "@metaobjects/metadata";
+import { TypeId, TYPE_OBJECT, TYPE_FIELD,
          FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
          OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
+import { meta } from "./_meta-build.js";
 import { coerceRowOnRead, coerceRowOnWrite } from "../src/type-coercer.js";
 
 function entityWithFields(specs: { name: string; subType: string }[]): MetaModel {
-  const e = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "X");
-  for (const s of specs) e.addChild(new MetaModel(new TypeId(TYPE_FIELD, s.subType), s.name));
+  const e = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "X");
+  for (const s of specs) e.addChild(meta(new TypeId(TYPE_FIELD, s.subType), s.name));
   return e;
 }
 

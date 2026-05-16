@@ -1,5 +1,7 @@
 import { describe, test, expect } from "bun:test";
-import { MetaModel, TypeId } from "@metaobjects/metadata";
+import type { MetaModel } from "@metaobjects/metadata";
+import { TypeId } from "@metaobjects/metadata";
+import { meta } from "./_meta-build.js";
 import {
   TYPE_FIELD,
   FIELD_SUBTYPE_STRING,
@@ -12,7 +14,7 @@ import {
 import { mapColumnType, type ColumnSpec } from "../src/column-mapper.js";
 
 const makeField = (subType: string, name: string): MetaModel =>
-  new MetaModel(new TypeId(TYPE_FIELD, subType), name);
+  meta(new TypeId(TYPE_FIELD, subType), name);
 
 describe("mapColumnType — SQLite", () => {
   test("string → text(name)", () => {
@@ -104,7 +106,7 @@ describe("mapColumnType — Postgres", () => {
 describe("mapColumnType — modifier attrs (both dialects)", () => {
   test("validator.required → notNull", () => {
     const f = makeField(FIELD_SUBTYPE_STRING, "title");
-    const v = new MetaModel(new TypeId("validator", "required"), "");
+    const v = meta(new TypeId("validator", "required"), "");
     f.addChild(v);
     const spec = mapColumnType(f, "sqlite");
     expect(spec.modifiers).toContain(".notNull()");

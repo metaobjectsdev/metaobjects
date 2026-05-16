@@ -53,15 +53,15 @@ describe("SQLite recreate-and-copy — data preservation", () => {
   test("change-column-default preserves rows", async () => {
     // Initial schema: Item with id, name (required), tag (with default).
     const json1 = {
-      metadata: {
+      "metadata.root": {
         children: [{
-          object: {
-            name: "Item", subType: "entity",
+          "object.entity": {
+            name: "Item",
             children: [
-              { field: { name: "id", subType: "long" } },
-              { field: { name: "name", subType: "string", "@required": true } },
-              { field: { name: "tag", subType: "string", "@default": "untagged" } },
-              { identity: { name: "pk", subType: "primary", "@fields": ["id"], "@generation": "increment" } },
+              { "field.long": { name: "id" } },
+              { "field.string": { name: "name", "@required": true } },
+              { "field.string": { name: "tag", "@default": "untagged" } },
+              { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
             ],
           },
         }],
@@ -81,10 +81,10 @@ describe("SQLite recreate-and-copy — data preservation", () => {
 
     // Mutate metadata: change tag default to 'default-tag'.
     const json2 = JSON.parse(JSON.stringify(json1));
-    const tagField = json2.metadata.children[0].object.children.find(
-      (ch: { field?: { name: string } }) => ch.field?.name === "tag",
+    const tagField = json2["metadata.root"].children[0]["object.entity"].children.find(
+      (ch: { "field.string"?: { name: string } }) => ch["field.string"]?.name === "tag",
     );
-    tagField.field["@default"] = "default-tag";
+    tagField["field.string"]["@default"] = "default-tag";
     const metadata2 = new Loader().loadJson(JSON.stringify(json2)).root;
     const expected2 = buildExpectedSchema(metadata2);
 
@@ -120,15 +120,15 @@ describe("SQLite recreate-and-copy — data preservation", () => {
     // The tag field's default will be changed to trigger recreate-and-copy while also
     // renaming firstName → first_name_v2 — verifying the rename SELECT mapping works.
     const json1 = {
-      metadata: {
+      "metadata.root": {
         children: [{
-          object: {
-            name: "Person", subType: "entity",
+          "object.entity": {
+            name: "Person",
             children: [
-              { field: { name: "id", subType: "long" } },
-              { field: { name: "firstName", subType: "string", "@required": true } },
-              { field: { name: "tag", subType: "string", "@default": "v1" } },
-              { identity: { name: "pk", subType: "primary", "@fields": ["id"], "@generation": "increment" } },
+              { "field.long": { name: "id" } },
+              { "field.string": { name: "firstName", "@required": true } },
+              { "field.string": { name: "tag", "@default": "v1" } },
+              { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
             ],
           },
         }],
@@ -151,14 +151,14 @@ describe("SQLite recreate-and-copy — data preservation", () => {
     // Also change tag's default to force recreate-and-copy — so the rename goes through
     // the recreate path and we can verify SELECT old_name → INSERT new_name mapping.
     const json2 = JSON.parse(JSON.stringify(json1));
-    const f = json2.metadata.children[0].object.children.find(
-      (ch: { field?: { name: string } }) => ch.field?.name === "firstName",
+    const f = json2["metadata.root"].children[0]["object.entity"].children.find(
+      (ch: { "field.string"?: { name: string } }) => ch["field.string"]?.name === "firstName",
     );
-    f.field.name = "first_name_v2";         // close enough for the rename heuristic
-    const tagField = json2.metadata.children[0].object.children.find(
-      (ch: { field?: { name: string } }) => ch.field?.name === "tag",
+    f["field.string"].name = "first_name_v2";         // close enough for the rename heuristic
+    const tagField = json2["metadata.root"].children[0]["object.entity"].children.find(
+      (ch: { "field.string"?: { name: string } }) => ch["field.string"]?.name === "tag",
     );
-    tagField.field["@default"] = "v2";      // change tag default to trigger recreate-and-copy
+    tagField["field.string"]["@default"] = "v2";      // change tag default to trigger recreate-and-copy
     const metadata2 = new Loader().loadJson(JSON.stringify(json2)).root;
     const expected2 = buildExpectedSchema(metadata2);
 

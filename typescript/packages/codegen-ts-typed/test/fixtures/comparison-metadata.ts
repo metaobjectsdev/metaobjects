@@ -2,58 +2,58 @@
 // Four entities exercise: a plain entity, extends-inheritance, @autoSet,
 // a secondary-unique identity, and a one-side FK relationship.
 
-import { Loader, metaOf } from "@metaobjects/metadata";
+import { Loader } from "@metaobjects/metadata";
 import type { MetaModel, MetaRoot, MetaObject } from "@metaobjects/metadata";
 
 export const COMPARISON_METADATA = JSON.stringify({
-  metadata: {
+  "metadata.root": {
     package: "acme",
     children: [
       {
-        object: {
-          name: "Tag", subType: "entity",
+        "object.entity": {
+          name: "Tag",
           children: [
-            { field: { name: "id", subType: "long" } },
-            { field: { name: "label", subType: "string", "@required": true } },
-            { identity: { subType: "primary", "@fields": "id", "@generation": "increment" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "label", "@required": true } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
           ],
         },
       },
       {
-        object: {
-          name: "Base", subType: "entity", isAbstract: true,
+        "object.entity": {
+          name: "Base", abstract: true,
           children: [
-            { field: { name: "id", subType: "long" } },
-            { field: { name: "createdAt", subType: "string", "@autoSet": "onCreate" } },
-            { identity: { subType: "primary", "@fields": "id", "@generation": "increment" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "createdAt", "@autoSet": "onCreate" } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
           ],
         },
       },
       {
-        object: {
-          name: "Author", subType: "entity",
+        "object.entity": {
+          name: "Author",
           children: [
-            { field: { name: "id", subType: "long" } },
-            { field: { name: "name", subType: "string", "@required": true } },
-            { identity: { subType: "primary", "@fields": "id", "@generation": "increment" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "name", "@required": true } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
           ],
         },
       },
       {
-        object: {
-          name: "Article", subType: "entity", extends: "Base",
+        "object.entity": {
+          name: "Article", extends: "Base",
           children: [
-            { field: { name: "title", subType: "string", "@required": true } },
-            { field: { name: "slug", subType: "string" } },
-            { field: { name: "authorId", subType: "long" } },
+            { "field.string": { name: "title", "@required": true } },
+            { "field.string": { name: "slug" } },
+            { "field.long": { name: "authorId" } },
             {
-              relationship: {
-                name: "author", subType: "association",
+              "relationship.association": {
+                name: "author",
                 "@cardinality": "one", "@objectRef": "Author", "@fkField": "authorId",
               },
             },
-            { identity: { subType: "primary", "@fields": "id" } },
-            { identity: { subType: "secondary", name: "bySlug", "@fields": ["slug"], "@unique": true } },
+            { "identity.primary": { "@fields": "id" } },
+            { "identity.secondary": { name: "bySlug", "@fields": ["slug"], "@unique": true } },
           ],
         },
       },
@@ -70,7 +70,7 @@ export function loadModelRoot(): MetaModel {
 
 /** Loads COMPARISON_METADATA. Returns the MetaRoot typed view (for the POC). */
 export function loadMetaRoot(): MetaRoot {
-  return metaOf(loadModelRoot()) as MetaRoot;
+  return loadModelRoot() as unknown as MetaRoot;
 }
 
 /** The non-abstract entities of the comparison fixture, as raw MetaModels (codegen-ts baseline). */
@@ -82,5 +82,5 @@ export function comparisonEntitiesAsModels(): MetaModel[] {
 
 /** The non-abstract entities of the comparison fixture, as typed MetaObjects (POC). */
 export function comparisonEntitiesAsObjects(): MetaObject[] {
-  return loadMetaRoot().objects().filter((o) => o.isAbstract !== true);
+  return (loadModelRoot() as unknown as MetaRoot).objects().filter((o) => o.isAbstract !== true);
 }

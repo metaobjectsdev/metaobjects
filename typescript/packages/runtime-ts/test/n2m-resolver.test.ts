@@ -1,39 +1,41 @@
 import { describe, test, expect } from "bun:test";
-import { MetaModel, TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP,
+import type { MetaModel } from "@metaobjects/metadata";
+import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
          IDENTITY_SUBTYPE_PRIMARY, RELATIONSHIP_SUBTYPE_ASSOCIATION,
          OBJECT_SUBTYPE_ENTITY, CARDINALITY_MANY } from "@metaobjects/metadata";
+import { meta } from "./_meta-build.js";
 import { resolveN2mDescriptor, buildN2mLazySpecs, buildN2mBatchSpecs } from "../src/n2m-resolver.js";
 
 function makeTag(): MetaModel {
-  const t = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Tag");
-  t.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-  t.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "name"));
-  const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const t = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Tag");
+  t.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+  t.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "name"));
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr("fields", ["id"]);
   t.addChild(primary);
   return t;
 }
 
 function makePostTag(): MetaModel {
-  const pt = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "PostTag");
-  pt.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "postId"));
-  pt.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "tagId"));
-  const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const pt = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "PostTag");
+  pt.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "postId"));
+  pt.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "tagId"));
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr("fields", ["postId", "tagId"]);
   pt.addChild(primary);
   return pt;
 }
 
 function makePost(): MetaModel {
-  const post = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-  post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-  post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title"));
-  const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+  post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+  post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title"));
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr("fields", ["id"]);
   post.addChild(primary);
   // tags relationship: cardinality many, joinEntity PostTag, joinFields [postId, tagId]
-  const rel = new MetaModel(new TypeId(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION), "tags");
+  const rel = meta(new TypeId(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION), "tags");
   rel.setAttr("cardinality", CARDINALITY_MANY);
   rel.setAttr("objectRef", "Tag");
   rel.setAttr("joinEntity", "PostTag");
@@ -43,7 +45,7 @@ function makePost(): MetaModel {
 }
 
 function makeRoot(entities: MetaModel[]): MetaModel {
-  const r = new MetaModel(new TypeId("metadata", "base"), "");
+  const r = meta(new TypeId("metadata", "base"), "");
   for (const e of entities) r.addChild(e);
   return r;
 }

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { run } from "../../src/index.js";
 
-const FIXTURES = resolve("packages/cli/test/fixtures");
+const FIXTURES = resolve(import.meta.dirname, "../fixtures");
 const PG_URL = process.env.MIGRATE_TS_PG_URL;
 
 describe("meta migrate — postgres (env-gated)", () => {
@@ -15,7 +15,7 @@ describe("meta migrate — postgres (env-gated)", () => {
 
   test("meta migrate against real Postgres writes CREATE TABLE migration", async () => {
     const root = mkdtempSync(join(tmpdir(), "forge-migrate-pg-"));
-    cpSync(join(FIXTURES, "downstream-consumer-meta"), root, { recursive: true });
+    cpSync(join(FIXTURES, "trainer-website-meta"), root, { recursive: true });
     const orig = process.cwd();
     process.chdir(root);
     try {

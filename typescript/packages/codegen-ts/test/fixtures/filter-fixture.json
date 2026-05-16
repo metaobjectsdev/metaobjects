@@ -1,104 +1,36 @@
 {
-  "metadata": {
+  "metadata.root": {
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Subscriber",
-          "subType": "entity",
           "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "email", "@filterable": true } },
+            { "field.string": { "name": "firstName", "@filterable": true } },
+            { "field.string": { "name": "lastName", "@filterable": true, "@sortable": false } },
+            { "field.boolean": { "name": "subscribed", "@filterable": true } },
             {
-              "field": {
-                "name": "id",
-                "subType": "long",
-                "children": [
-                  {
-                    "identity": {
-                      "subType": "primary",
-                      "@fields": "id"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "field": {
-                "name": "email",
-                "subType": "string",
-                "@filterable": true
-              }
-            },
-            {
-              "field": {
-                "name": "firstName",
-                "subType": "string",
-                "@filterable": true
-              }
-            },
-            {
-              "field": {
-                "name": "lastName",
-                "subType": "string",
-                "@filterable": true,
-                "@sortable": false
-              }
-            },
-            {
-              "field": {
-                "name": "subscribed",
-                "subType": "boolean",
-                "@filterable": true
-              }
-            },
-            {
-              "field": {
+              "field.timestamp": {
                 "name": "createdAt",
-                "subType": "timestamp",
                 "@filterable": true,
                 "@sortable": true,
                 "@sortableDefaultOrder": "desc"
               }
             },
-            {
-              "field": {
-                "name": "internalNote",
-                "subType": "string"
-              }
-            }
+            { "field.string": { "name": "internalNote" } },
+            { "identity.primary": { "@fields": "id" } }
           ]
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "Product",
-          "subType": "entity",
           "children": [
-            {
-              "field": {
-                "name": "id",
-                "subType": "long",
-                "children": [
-                  {
-                    "identity": {
-                      "subType": "primary",
-                      "@fields": "id"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "field": {
-                "name": "title",
-                "subType": "string"
-              }
-            },
-            {
-              "field": {
-                "name": "price",
-                "subType": "decimal",
-                "@sortable": true
-              }
-            }
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "title" } },
+            { "field.decimal": { "name": "price", "@sortable": true } },
+            { "identity.primary": { "@fields": "id" } }
           ]
         }
       }

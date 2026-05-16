@@ -1,0 +1,133 @@
+{
+  "metadata.root": {
+    "package": "trainer",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Subscriber",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "email", "@required": true, "@unique": true, "@maxLength": 255 } },
+            { "field.string": { "name": "firstName", "@required": true, "@maxLength": 100 } },
+            { "field.string": { "name": "lastName", "@maxLength": 100 } },
+            { "field.boolean": { "name": "subscribed", "@required": true, "@default": true } },
+            { "field.timestamp": { "name": "createdAt", "@required": true, "@default": "now" } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "slug", "@required": true, "@unique": true, "@maxLength": 100 } },
+            { "field.string": { "name": "title", "@required": true, "@maxLength": 200 } },
+            { "field.string": { "name": "description" } },
+            { "field.int": { "name": "priceCents", "@required": true } },
+            { "field.boolean": { "name": "isPublished", "@required": true, "@default": false } },
+            { "field.timestamp": { "name": "createdAt", "@required": true, "@default": "now" } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "programId", "@required": true } },
+            { "field.int": { "name": "weekNumber", "@required": true } },
+            { "field.string": { "name": "title", "@required": true, "@maxLength": 200 } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship.association": { "name": "program", "@cardinality": "one", "@objectRef": "Program", "@fkField": "programId" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Workout",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "weekId", "@required": true } },
+            { "field.string": { "name": "title", "@required": true, "@maxLength": 200 } },
+            { "field.int": { "name": "orderIndex", "@required": true } },
+            { "field.int": { "name": "durationMinutes" } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship.association": { "name": "week", "@cardinality": "one", "@objectRef": "Week", "@fkField": "weekId" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Exercise",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "workoutId", "@required": true } },
+            { "field.string": { "name": "name", "@required": true, "@maxLength": 200 } },
+            { "field.int": { "name": "sets" } },
+            { "field.int": { "name": "reps" } },
+            { "field.string": { "name": "notes" } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship.association": { "name": "workout", "@cardinality": "one", "@objectRef": "Workout", "@fkField": "workoutId" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Video",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "exerciseId", "@required": true } },
+            { "field.string": { "name": "url", "@required": true, "@maxLength": 500 } },
+            { "field.string": { "name": "title", "@maxLength": 200 } },
+            { "field.int": { "name": "durationSeconds" } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship.association": { "name": "exercise", "@cardinality": "one", "@objectRef": "Exercise", "@fkField": "exerciseId" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "WorkoutEvent",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "subscriberId", "@required": true } },
+            { "field.long": { "name": "workoutId", "@required": true } },
+            { "field.timestamp": { "name": "completedAt", "@required": true, "@default": "now" } },
+            { "field.int": { "name": "durationMinutes" } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship.association": { "name": "subscriber", "@cardinality": "one", "@objectRef": "Subscriber", "@fkField": "subscriberId" } },
+            { "relationship.association": { "name": "workout", "@cardinality": "one", "@objectRef": "Workout", "@fkField": "workoutId" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Purchase",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "subscriberId", "@required": true } },
+            { "field.long": { "name": "programId", "@required": true } },
+            { "field.int": { "name": "amountCents", "@required": true } },
+            { "field.timestamp": { "name": "purchasedAt", "@required": true, "@default": "now" } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship.association": { "name": "subscriber", "@cardinality": "one", "@objectRef": "Subscriber", "@fkField": "subscriberId" } },
+            { "relationship.association": { "name": "program", "@cardinality": "one", "@objectRef": "Program", "@fkField": "programId" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Tag",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name", "@required": true, "@unique": true, "@maxLength": 50 } },
+            { "field.string": { "name": "slug", "@required": true, "@unique": true, "@maxLength": 50 } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      }
+    ]
+  }
+}

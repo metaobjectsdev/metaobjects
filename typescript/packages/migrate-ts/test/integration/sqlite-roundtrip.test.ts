@@ -1,5 +1,5 @@
 /**
- * SQLite round-trip integration test — downstream-consumer fixture (load-bearing).
+ * SQLite round-trip integration test — trainer-website fixture (load-bearing).
  *
  * Per spec §8.3 / §9 #4. Mirrors Tasks 27–28 for SQLite via libsql tmp
  * file (mkdtemp + rm pattern — :memory: would lose connection state if
@@ -56,9 +56,9 @@ async function applyRaw(kysely: Kysely<unknown>, sqlText: string): Promise<void>
   }
 }
 
-describe("SQLite round-trip — downstream-consumer fixture", () => {
+describe("SQLite round-trip — trainer-website fixture", () => {
   test("create from empty: apply → re-diff yields no changes", async () => {
-    const metadata = loadFixture("downstream-consumer-entities");
+    const metadata = loadFixture("trainer-website-entities");
     const expected = buildExpectedSchema(metadata);
     const actual0 = await introspectSqlite(k);
     const initial = await diff(expected, actual0);
@@ -81,7 +81,7 @@ describe("SQLite round-trip — downstream-consumer fixture", () => {
   });
 
   test("add a field → migration applies → re-diff yields no changes", async () => {
-    const metadata1 = loadFixture("downstream-consumer-entities");
+    const metadata1 = loadFixture("trainer-website-entities");
     const expected1 = buildExpectedSchema(metadata1);
     {
       const initial = await diff(expected1, await introspectSqlite(k));
@@ -91,12 +91,12 @@ describe("SQLite round-trip — downstream-consumer fixture", () => {
 
     // Mutation: parse the fixture JSON and append a `phone` field to Subscriber.
     const json = JSON.parse(
-      readFileSync(join(import.meta.dir, "..", "fixtures", "downstream-consumer-entities.json"), "utf8"),
+      readFileSync(join(import.meta.dir, "..", "fixtures", "trainer-website-entities.json"), "utf8"),
     );
-    const subscriber = json.metadata.children.find(
-      (c: { object?: { name: string } }) => c.object?.name === "Subscriber",
-    ).object;
-    subscriber.children.push({ field: { name: "phone", subType: "string" } });
+    const subscriber = json["metadata.root"].children.find(
+      (c: { "object.entity"?: { name: string } }) => c["object.entity"]?.name === "Subscriber",
+    )["object.entity"];
+    subscriber.children.push({ "field.string": { name: "phone" } });
     const metadata2 = new Loader().loadJson(JSON.stringify(json)).root;
     const expected2 = buildExpectedSchema(metadata2);
 

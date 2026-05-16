@@ -5,11 +5,11 @@ import { join, resolve } from "node:path";
 import { createClient } from "@libsql/client";
 import { run } from "../../src/index.js";
 
-const FIXTURES = resolve("packages/cli/test/fixtures");
+const FIXTURES = resolve(import.meta.dirname, "../fixtures");
 
 function setupRepo(): { repo: string; dbUrl: string } {
   const repo = mkdtempSync(join(tmpdir(), "forge-migrate-amb-"));
-  cpSync(join(FIXTURES, "downstream-consumer-meta"), repo, { recursive: true });
+  cpSync(join(FIXTURES, "trainer-website-meta"), repo, { recursive: true });
   return { repo, dbUrl: `file:${join(repo, "local.db")}` };
 }
 
@@ -43,12 +43,14 @@ async function setupMigratedRepo(): Promise<{ repo: string; dbUrl: string }> {
 
 function renameField(metaPath: string, objectName: string, from: string, to: string): void {
   const meta = JSON.parse(readFileSync(metaPath, "utf8"));
-  const obj = meta.metadata.children.find((c: { object?: { name: string } }) => c.object?.name === objectName);
-  for (const child of obj.object.children) {
-    if (child.field?.name === from) {
-      child.field.name = to;
-      if (child.field["@dbColumn"] !== undefined) {
-        child.field["@dbColumn"] = to.replace(/([A-Z])/g, "_$1").toLowerCase();
+  const root = meta["metadata.root"];
+  const obj = root.children.find((c: Record<string, { name: string }>) => c["object.entity"]?.name === objectName);
+  for (const child of obj["object.entity"].children) {
+    const fieldKey = Object.keys(child).find((k) => k.startsWith("field.") || k === "field");
+    if (fieldKey && child[fieldKey]?.name === from) {
+      child[fieldKey].name = to;
+      if (child[fieldKey]["@dbColumn"] !== undefined) {
+        child[fieldKey]["@dbColumn"] = to.replace(/([A-Z])/g, "_$1").toLowerCase();
       }
     }
   }

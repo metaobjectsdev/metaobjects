@@ -1,4 +1,4 @@
-// Integration test: downstream-consumer-shape (9 entities)
+// Integration test: trainer-website-shape (9 entities)
 // End-to-end gate that proves Tasks 1-16 produce production-quality output.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -13,9 +13,9 @@ let tmp: string;
 beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-integration-")); });
 afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 
-const FIXTURE = resolve(import.meta.dir, "fixtures/downstream-consumer-shape.json");
+const FIXTURE = resolve(import.meta.dir, "fixtures/trainer-website-shape.json");
 
-describe("downstream-consumer-shape integration — 9 entities, SQLite", () => {
+describe("trainer-website-shape integration — 9 entities, SQLite", () => {
   test("loads 9 entities with no errors", async () => {
     const loader = new Loader();
     const result = await loader.load([FIXTURE]);
@@ -256,7 +256,7 @@ describe("downstream-consumer-shape integration — 9 entities, SQLite", () => {
   });
 });
 
-describe("downstream-consumer-shape integration — 9 entities, Postgres", () => {
+describe("trainer-website-shape integration — 9 entities, Postgres", () => {
   test("emits 28 files with no warnings (forms opt-in)", async () => {
     const loader = new Loader();
     const result = await loader.load([FIXTURE]);

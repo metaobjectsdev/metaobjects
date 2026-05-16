@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { run } from "../../src/index.js";
 
-const FIXTURES = resolve("packages/cli/test/fixtures");
+const FIXTURES = resolve(import.meta.dirname, "../fixtures");
 
 describe("meta migrate --dry-run", () => {
   test("returns 0, prints SQL to stdout, writes no migration directory", async () => {
     const root = mkdtempSync(join(tmpdir(), "forge-migrate-dryrun-"));
-    cpSync(join(FIXTURES, "downstream-consumer-meta"), root, { recursive: true });
+    cpSync(join(FIXTURES, "trainer-website-meta"), root, { recursive: true });
     const dbUrl = `file:${join(root, "local.db")}`;
     const orig = process.cwd();
     process.chdir(root);

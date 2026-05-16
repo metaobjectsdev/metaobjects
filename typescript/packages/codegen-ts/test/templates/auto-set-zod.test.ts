@@ -1,32 +1,34 @@
 import { describe, test, expect } from "bun:test";
-import { MetaModel, TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY,
+import type { MetaModel } from "@metaobjects/metadata";
+import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_TIMESTAMP,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
+import { meta } from "../_meta-build.js";
 import { renderZodValidators } from "../../src/templates/zod-validators.js";
 
 function makeEntity(): MetaModel {
-  const entity = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Foo");
+  const entity = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Foo");
 
   // auto-gen PK — excluded from both schemas
-  const id = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
+  const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
   entity.addChild(id);
 
   // ordinary field — present in both schemas
-  const name = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "name");
+  const name = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "name");
   name.setAttr("required", true);
   entity.addChild(name);
 
   // @autoSet: "onCreate" — present in insert (transform), OMITTED from update
-  const createdAt = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_TIMESTAMP), "createdAt");
+  const createdAt = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_TIMESTAMP), "createdAt");
   createdAt.setAttr("autoSet", "onCreate");
   entity.addChild(createdAt);
 
   // @autoSet: "onUpdate" — present in both schemas with transform
-  const updatedAt = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_TIMESTAMP), "updatedAt");
+  const updatedAt = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_TIMESTAMP), "updatedAt");
   updatedAt.setAttr("autoSet", "onUpdate");
   entity.addChild(updatedAt);
 
-  const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr("fields", ["id"]);
   primary.setAttr("generation", "increment");
   entity.addChild(primary);

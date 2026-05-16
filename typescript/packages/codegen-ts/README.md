@@ -65,7 +65,7 @@ without it. Hand-customizations live in sibling `<Entity>.extra.ts` files
 Generated `<Entity>.queries.ts` files use Drizzle's `.returning()` API in
 `create*` and `update*` functions. This works on:
 
-- `libsql` / Turso (downstream-consumer's stack)
+- `libsql` / Turso (the trainer website's stack)
 - `node-postgres` (`pg`)
 - `@neondatabase/serverless`
 

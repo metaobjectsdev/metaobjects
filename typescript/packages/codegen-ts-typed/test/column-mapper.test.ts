@@ -1,12 +1,12 @@
 import { describe, it, expect } from "bun:test";
-import { Loader, metaOf } from "@metaobjects/metadata";
+import { Loader } from "@metaobjects/metadata";
 import type { MetaRoot, MetaObject } from "@metaobjects/metadata";
 import { mapColumnType } from "../src/column-mapper.js";
 
 function loadField(json: string, entityName: string, fieldName: string) {
   const { root, errors } = new Loader().loadJson(json);
   if (errors.length) throw new Error(errors.map((e) => e.message).join("; "));
-  const meta = metaOf(root) as MetaRoot;
+  const meta = root as unknown as MetaRoot;
   const entity = meta.findObject(entityName) as MetaObject;
   const field = entity.findField(fieldName);
   if (!field) throw new Error(`field ${fieldName} not found`);
@@ -14,16 +14,16 @@ function loadField(json: string, entityName: string, fieldName: string) {
 }
 
 const SAMPLE = JSON.stringify({
-  metadata: {
+  "metadata.root": {
     package: "acme",
     children: [{
-      object: {
-        name: "Widget", subType: "entity",
+      "object.entity": {
+        name: "Widget",
         children: [
-          { field: { name: "id", subType: "long" } },
-          { field: { name: "label", subType: "string", "@maxLength": 80 } },
-          { field: { name: "active", subType: "boolean", "@required": true } },
-          { identity: { subType: "primary", "@fields": "id" } },
+          { "field.long": { name: "id" } },
+          { "field.string": { name: "label", "@maxLength": 80 } },
+          { "field.boolean": { name: "active", "@required": true } },
+          { "identity.primary": { "@fields": "id" } },
         ],
       },
     }],

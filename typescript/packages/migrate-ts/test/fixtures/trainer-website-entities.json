@@ -1,0 +1,92 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.entity": {
+          "name": "Subscriber",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "email", "@required": true } },
+            { "field.string": { "name": "firstName", "@required": true } },
+            { "field.string": { "name": "source", "@default": "landing_page" } },
+            { "field.boolean": { "name": "subscribed", "@required": true, "@default": "true" } },
+            { "field.timestamp": { "name": "createdAt", "@required": true, "@default": "CURRENT_TIMESTAMP" } },
+            { "field.timestamp": { "name": "updatedAt", "@required": true, "@default": "CURRENT_TIMESTAMP" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "identity.secondary": { "name": "uniqueEmail", "@fields": ["email"] } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "slug", "@required": true } },
+            { "field.string": { "name": "title", "@required": true } },
+            { "field.string": { "name": "description" } },
+            { "field.int": { "name": "priceCents", "@required": true } },
+            { "field.boolean": { "name": "isPublished", "@required": true, "@default": "false" } },
+            { "field.timestamp": { "name": "createdAt", "@required": true, "@default": "CURRENT_TIMESTAMP" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "identity.secondary": { "name": "uniqueSlug", "@fields": ["slug"] } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "programId", "@required": true } },
+            { "field.int": { "name": "weekNumber", "@required": true } },
+            { "field.string": { "name": "title" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship.association": { "name": "program", "@cardinality": "one", "@objectRef": "Program", "@fkField": "programId" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Workout",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "weekId", "@required": true } },
+            { "field.int": { "name": "dayNumber", "@required": true } },
+            { "field.string": { "name": "title", "@required": true } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship.association": { "name": "week", "@cardinality": "one", "@objectRef": "Week", "@fkField": "weekId" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Video",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "bunnyVideoId", "@required": true } },
+            { "field.string": { "name": "title", "@required": true } },
+            { "field.int": { "name": "durationSeconds" } },
+            { "field.timestamp": { "name": "createdAt", "@required": true, "@default": "CURRENT_TIMESTAMP" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Exercise",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "workoutId", "@required": true } },
+            { "field.long": { "name": "videoId" } },
+            { "field.int": { "name": "sortOrder", "@required": true, "@default": "0" } },
+            { "field.string": { "name": "name", "@required": true } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship.association": { "name": "workout", "@cardinality": "one", "@objectRef": "Workout", "@fkField": "workoutId" } },
+            { "relationship.association": { "name": "video", "@cardinality": "one", "@objectRef": "Video", "@fkField": "videoId" } }
+          ]
+        }
+      }
+    ]
+  }
+}

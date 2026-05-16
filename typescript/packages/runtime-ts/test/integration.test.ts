@@ -1,4 +1,4 @@
-// Integration: downstream-consumer-shape via runtime-ts.
+// Integration: trainer-website-shape via runtime-ts.
 // Reuses SP2's 9-entity fixture for cross-package consistency.
 // Runs against InMemoryDriver (fast) — DB integration via driver-parity test.
 
@@ -9,7 +9,7 @@ import { ObjectManager } from "../src/index.js";
 import { inMemoryDriver } from "../src/drivers/index.js";
 import type { Row } from "../src/persistence-driver.js";
 
-const FIXTURE = resolve(import.meta.dir, "../../codegen-ts/test/fixtures/downstream-consumer-shape.json");
+const FIXTURE = resolve(import.meta.dir, "../../codegen-ts/test/fixtures/trainer-website-shape.json");
 
 let om: ObjectManager;
 
@@ -26,7 +26,7 @@ beforeEach(async () => {
   om = new ObjectManager({ metadata: result.root, driver });
 });
 
-describe("Integration — downstream-consumer-shape via runtime-ts", () => {
+describe("Integration — trainer-website-shape via runtime-ts", () => {
   test("9 entities load and start empty", async () => {
     expect(await om.count("Subscriber")).toBe(0);
     expect(await om.count("Program")).toBe(0);

@@ -85,7 +85,7 @@ export function variableNameFromEntity(entityName: string): string {
 
 /**
  * Strip the package prefix from a metadata-qualified name (e.g.
- * "downstream-consumer::Program" → "Program"). Returns the input unchanged if no
+ * "trainerWebsite::Program" → "Program"). Returns the input unchanged if no
  * package separator is present. Used when consuming @objectRef values that
  * carry the full FQN.
  */

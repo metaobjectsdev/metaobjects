@@ -1,6 +1,6 @@
 /**
  * Generic fetcher signature. Returns already-parsed JSON of type T.
- * Mirrors the shape used by downstream-consumer's existing adminFetch<T> helper.
+ * Mirrors the shape used by the trainer website's existing adminFetch<T> helper.
  *
  * Generated hooks call this for every request — GET / POST / PATCH / DELETE.
  * The app supplies the concrete implementation via EntityFetcherProvider.

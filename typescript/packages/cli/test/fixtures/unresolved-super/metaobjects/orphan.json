@@ -1,11 +1,10 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "orphan",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Lonely",
-          "subType": "entity",
           "children": [
             {"field": {"name": "id", "extends": "..::nonexistent::id"}}
           ]

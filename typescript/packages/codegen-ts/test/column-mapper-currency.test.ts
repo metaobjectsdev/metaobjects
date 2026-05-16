@@ -1,10 +1,12 @@
 import { describe, test, expect } from "bun:test";
-import { MetaModel, TypeId } from "@metaobjects/metadata";
+import type { MetaModel } from "@metaobjects/metadata";
+import { TypeId } from "@metaobjects/metadata";
 import { FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_LONG, TYPE_FIELD } from "@metaobjects/metadata";
+import { meta } from "./_meta-build.js";
 import { mapColumnType, type ColumnSpec } from "../src/column-mapper.js";
 
 const makeField = (subType: string, name: string): MetaModel =>
-  new MetaModel(new TypeId(TYPE_FIELD, subType), name);
+  meta(new TypeId(TYPE_FIELD, subType), name);
 
 describe("mapColumnType for field[currency]", () => {
   test("sqlite → integer (same as long)", () => {

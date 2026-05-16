@@ -1,8 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { MetaModel, TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_SOURCE,
+import type { MetaModel } from "@metaobjects/metadata";
+import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_SOURCE,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_BOOLEAN,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
          SOURCE_SUBTYPE_DB_TABLE, SOURCE_DB_TABLE_ATTR_NAME } from "@metaobjects/metadata";
+import { meta } from "./_meta-build.js";
 import {
   compileFilter, buildSelectSpec, buildInsertSpec, buildUpdateSpec,
   buildDeleteSpec, buildCountSpec, resolveTableName, resolvePkFields,
@@ -10,13 +12,13 @@ import {
 import { MetadataError } from "../src/errors.js";
 
 function makePost(): MetaModel {
-  const post = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-  post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-  const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+  const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+  post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+  const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
   post.addChild(title);
-  const isPublished = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_BOOLEAN), "isPublished");
+  const isPublished = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_BOOLEAN), "isPublished");
   post.addChild(isPublished);
-  const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr("fields", ["id"]);
   post.addChild(primary);
   return post;
@@ -25,7 +27,7 @@ function makePost(): MetaModel {
 describe("resolveTableName", () => {
   test("uses source[dbTable]@name when present", () => {
     const e = makePost();
-    const source = new MetaModel(new TypeId(TYPE_SOURCE, SOURCE_SUBTYPE_DB_TABLE), "");
+    const source = meta(new TypeId(TYPE_SOURCE, SOURCE_SUBTYPE_DB_TABLE), "");
     source.setAttr(SOURCE_DB_TABLE_ATTR_NAME, "blog_posts");
     e.addChild(source);
     expect(resolveTableName(e)).toBe("blog_posts");
@@ -42,7 +44,7 @@ describe("resolvePkFields", () => {
   });
 
   test("throws MetadataError when no primary identity", () => {
-    const e = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "X");
+    const e = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "X");
     expect(() => resolvePkFields(e)).toThrow(MetadataError);
   });
 });
@@ -138,8 +140,8 @@ describe("compileFilter — column name resolution", () => {
   });
 
   test("falls back to snake_case", () => {
-    const e = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "X");
-    e.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "firstName"));
+    const e = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "X");
+    e.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "firstName"));
     expect(compileFilter(e, { firstName: "x" })).toEqual({
       kind: "eq", column: "first_name", value: "x",
     });

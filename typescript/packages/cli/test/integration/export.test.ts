@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { run } from "../../src/index.js";
 
-const FIXTURES = resolve("packages/cli/test/fixtures");
+const FIXTURES = resolve(import.meta.dirname, "../fixtures");
 
 // Helper to run a function with a changed working directory.
 async function runIn<T>(cwd: string, fn: () => Promise<T>): Promise<T> {
@@ -28,7 +28,7 @@ async function runIn<T>(cwd: string, fn: () => Promise<T>): Promise<T> {
 describe("meta export — --out <file>", () => {
   test("writes flattened canonical JSON to the specified file", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "metaobjects-export-"));
-    cpSync(join(FIXTURES, "downstream-consumer-meta"), tmp, { recursive: true });
+    cpSync(join(FIXTURES, "trainer-website-meta"), tmp, { recursive: true });
     const outFile = join(tmp, "metadata.json");
     try {
       const exit = await runIn(tmp, () => run(["export", "--out", outFile]));
@@ -43,7 +43,7 @@ describe("meta export — --out <file>", () => {
 
       // The root should contain the package declared in the fixture
       const root = (parsed as Record<string, unknown>)["metadata.root"] as Record<string, unknown>;
-      expect(root.package).toBe("downstream-consumer");
+      expect(root.package).toBe("trainerWebsite");
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
@@ -51,7 +51,7 @@ describe("meta export — --out <file>", () => {
 
   test("output file is valid JSON with expected entity children", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "metaobjects-export-"));
-    cpSync(join(FIXTURES, "downstream-consumer-meta"), tmp, { recursive: true });
+    cpSync(join(FIXTURES, "trainer-website-meta"), tmp, { recursive: true });
     const outFile = join(tmp, "out.json");
     try {
       const exit = await runIn(tmp, () => run(["export", "--out", outFile]));
@@ -72,7 +72,7 @@ describe("meta export — --out <file>", () => {
 describe("meta export — stdout", () => {
   test("writes flattened canonical JSON to stdout when --out is omitted", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "metaobjects-export-stdout-"));
-    cpSync(join(FIXTURES, "downstream-consumer-meta"), tmp, { recursive: true });
+    cpSync(join(FIXTURES, "trainer-website-meta"), tmp, { recursive: true });
     const chunks: Buffer[] = [];
     const origWrite = process.stdout.write.bind(process.stdout);
     // Capture stdout writes

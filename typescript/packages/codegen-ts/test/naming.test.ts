@@ -77,7 +77,7 @@ import { stripPackage } from "../src/naming.js";
 
 describe("stripPackage", () => {
   test("strips package prefix from fully-qualified name", () => {
-    expect(stripPackage("downstream-consumer::Program")).toBe("Program");
+    expect(stripPackage("trainerWebsite::Program")).toBe("Program");
   });
   test("strips nested package prefix", () => {
     expect(stripPackage("acme::common::User")).toBe("User");

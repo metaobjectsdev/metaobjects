@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
+import type { MetaModel } from "@metaobjects/metadata";
 import {
-  MetaModel,
   TypeId,
   TYPE_OBJECT,
   TYPE_FIELD,
@@ -12,20 +12,21 @@ import {
   OBJECT_SUBTYPE_ENTITY,
   VIEW_SUBTYPE_CURRENCY,
 } from "@metaobjects/metadata";
+import { meta } from "../_meta-build.js";
 import { renderEntityConstants } from "../../src/templates/entity-constants.js";
 
 function makeEntity(fields: MetaModel[]): MetaModel {
-  const entity = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Program");
+  const entity = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Program");
   entity.setAttr("dbTable", "programs");
 
-  const id = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "id");
+  const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "id");
   entity.addChild(id);
 
   for (const f of fields) {
     entity.addChild(f);
   }
 
-  const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr("fields", ["id"]);
   primary.setAttr("generation", "increment");
   entity.addChild(primary);
@@ -34,7 +35,7 @@ function makeEntity(fields: MetaModel[]): MetaModel {
 }
 
 function makeCurrencyField(name: string, currencyCode?: string): MetaModel {
-  const field = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_CURRENCY), name);
+  const field = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_CURRENCY), name);
   if (currencyCode !== undefined) {
     field.setAttr("currency", currencyCode);
   }
@@ -60,7 +61,7 @@ describe("renderEntityConstants — currency field", () => {
 
   test("view[currency]@locale overrides default locale", () => {
     const field = makeCurrencyField("priceCents", "EUR");
-    const viewChild = new MetaModel(new TypeId(TYPE_VIEW, VIEW_SUBTYPE_CURRENCY), "currency");
+    const viewChild = meta(new TypeId(TYPE_VIEW, VIEW_SUBTYPE_CURRENCY), "currency");
     viewChild.setAttr("locale", "de-DE");
     field.addChild(viewChild);
     const entity = makeEntity([field]);
@@ -77,7 +78,7 @@ describe("renderEntityConstants — currency field", () => {
 
   test("currency keys do not leak into non-currency fields", () => {
     const currencyField = makeCurrencyField("priceCents", "USD");
-    const intField = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "quantity");
+    const intField = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "quantity");
     const entity = makeEntity([currencyField, intField]);
     const out = renderEntityConstants(entity).toString();
 

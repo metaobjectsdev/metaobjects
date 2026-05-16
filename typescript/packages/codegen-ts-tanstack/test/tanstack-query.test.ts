@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { Loader, TYPE_OBJECT, MetaModel, TypeId, OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
+import { Loader, TYPE_OBJECT, MetaObject, TypeId, OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
 import { tanstackQuery } from "../src/tanstack-query.js";
 import { makeRenderContext } from "@metaobjects/codegen-ts";
 import { buildPkMap, buildRelationMap } from "@metaobjects/codegen-ts";
@@ -90,7 +90,7 @@ describe("tanstackQuery() factory", () => {
     // Build a fresh (unfrozen) MetaModel with @emitTanstack: false.
     // The Loader freezes models after parsing, so we construct one in-memory.
     const ctx = await buildCtx();
-    const optedOut = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Subscriber");
+    const optedOut = new MetaObject(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Subscriber");
     optedOut.setAttr("emitTanstack", false);
     const ctx2: GenContext = {
       ...ctx,

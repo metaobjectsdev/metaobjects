@@ -91,7 +91,7 @@ type Filter =
 
 Generated CRUD uses Kysely's `.returning()` API. Works on:
 
-- libsql / Turso (downstream-consumer's stack)
+- libsql / Turso (the trainer website's stack)
 - node-postgres (`pg`)
 - @neondatabase/serverless
 

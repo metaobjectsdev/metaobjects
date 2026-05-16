@@ -7,7 +7,7 @@ import { computeProjectionMigrations } from "../../src/lib/projection-migrations
 // ---------------------------------------------------------------------------
 function load(children: unknown[]) {
   const loader = new Loader();
-  const json = JSON.stringify({ metadata: { package: "test", children } });
+  const json = JSON.stringify({ "metadata.root": { package: "test", children } });
   const result = loader.loadJson(json);
   if (result.errors.length > 0) {
     throw new Error(
@@ -22,17 +22,15 @@ function load(children: unknown[]) {
 // ---------------------------------------------------------------------------
 
 const programEntity = {
-  object: {
+  "object.entity": {
     name: "Program",
-    subType: "entity",
-    "@dbTable": "programs",
     children: [
-      { field: { name: "id", subType: "int", "@dbColumn": "id" } },
-      { field: { name: "title", subType: "string", "@dbColumn": "title" } },
-      { identity: { subType: "primary", "@fields": "id" } },
+      { "source.dbTable": { "@name": "programs" } },
+      { "field.int": { name: "id", "@dbColumn": "id" } },
+      { "field.string": { name: "title", "@dbColumn": "title" } },
+      { "identity.primary": { "@fields": "id" } },
       {
-        relationship: {
-          subType: "association",
+        "relationship.association": {
           name: "weeks",
           "@objectRef": "Week",
           "@cardinality": "many",
@@ -44,33 +42,29 @@ const programEntity = {
 };
 
 const weekEntity = {
-  object: {
+  "object.entity": {
     name: "Week",
-    subType: "entity",
-    "@dbTable": "weeks",
     children: [
-      { field: { name: "id", subType: "int", "@dbColumn": "id" } },
-      { field: { name: "programId", subType: "int", "@dbColumn": "program_id" } },
-      { identity: { subType: "primary", "@fields": "id" } },
+      { "source.dbTable": { "@name": "weeks" } },
+      { "field.int": { name: "id", "@dbColumn": "id" } },
+      { "field.int": { name: "programId", "@dbColumn": "program_id" } },
+      { "identity.primary": { "@fields": "id" } },
     ],
   },
 };
 
 const programSummaryProjection = {
-  object: {
+  "object.entity": {
     name: "ProgramSummary",
-    subType: "entity",
     extends: "Program",
     children: [
-      { source: { subType: "dbView", "@name": "v_program_summary" } },
+      { "source.dbView": { "@name": "v_program_summary" } },
       {
-        field: {
+        "field.int": {
           name: "weekCount",
-          subType: "int",
           children: [
             {
-              origin: {
-                subType: "aggregate",
+              "origin.aggregate": {
                 "@agg": "count",
                 "@of": "Week.id",
                 "@via": "Program.weeks",
@@ -79,7 +73,7 @@ const programSummaryProjection = {
           ],
         },
       },
-      { identity: { subType: "primary", "@fields": "id" } },
+      { "identity.primary": { "@fields": "id" } },
     ],
   },
 };
@@ -158,17 +152,15 @@ describe("computeProjectionMigrations", () => {
 
   test("handles email-based join via @parentField", () => {
     const customerEntity = {
-      object: {
+      "object.entity": {
         name: "Customer",
-        subType: "entity",
-        "@dbTable": "customers",
         children: [
-          { field: { name: "id", subType: "int", "@dbColumn": "id" } },
-          { field: { name: "email", subType: "string", "@dbColumn": "email" } },
-          { identity: { subType: "primary", "@fields": "id" } },
+          { "source.dbTable": { "@name": "customers" } },
+          { "field.int": { name: "id", "@dbColumn": "id" } },
+          { "field.string": { name: "email", "@dbColumn": "email" } },
+          { "identity.primary": { "@fields": "id" } },
           {
-            relationship: {
-              subType: "association",
+            "relationship.association": {
               name: "purchases",
               "@objectRef": "Purchase",
               "@cardinality": "many",
@@ -180,32 +172,28 @@ describe("computeProjectionMigrations", () => {
       },
     };
     const purchaseEntity = {
-      object: {
+      "object.entity": {
         name: "Purchase",
-        subType: "entity",
-        "@dbTable": "purchases",
         children: [
-          { field: { name: "id", subType: "int", "@dbColumn": "id" } },
-          { field: { name: "customerEmail", subType: "string", "@dbColumn": "customer_email" } },
-          { identity: { subType: "primary", "@fields": "id" } },
+          { "source.dbTable": { "@name": "purchases" } },
+          { "field.int": { name: "id", "@dbColumn": "id" } },
+          { "field.string": { name: "customerEmail", "@dbColumn": "customer_email" } },
+          { "identity.primary": { "@fields": "id" } },
         ],
       },
     };
     const customerSummaryProjection = {
-      object: {
+      "object.entity": {
         name: "CustomerSummary",
-        subType: "entity",
         extends: "Customer",
         children: [
-          { source: { subType: "dbView", "@name": "v_customer_summary" } },
+          { "source.dbView": { "@name": "v_customer_summary" } },
           {
-            field: {
+            "field.int": {
               name: "purchaseCount",
-              subType: "int",
               children: [
                 {
-                  origin: {
-                    subType: "aggregate",
+                  "origin.aggregate": {
                     "@agg": "count",
                     "@of": "Purchase.id",
                     "@via": "Customer.purchases",
@@ -214,7 +202,7 @@ describe("computeProjectionMigrations", () => {
               ],
             },
           },
-          { identity: { subType: "primary", "@fields": "id" } },
+          { "identity.primary": { "@fields": "id" } },
         ],
       },
     };

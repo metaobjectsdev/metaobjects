@@ -1,8 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { MetaModel, TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP,
+import type { MetaModel } from "@metaobjects/metadata";
+import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
          IDENTITY_SUBTYPE_PRIMARY, RELATIONSHIP_SUBTYPE_ASSOCIATION,
          OBJECT_SUBTYPE_ENTITY, CARDINALITY_ONE } from "@metaobjects/metadata";
+import { meta } from "./_meta-build.js";
 import {
   resolveRelationDescriptor,
   buildLazyRelateSpec,
@@ -12,23 +14,23 @@ import {
 import { MetadataError } from "../src/errors.js";
 
 function makeUser(): MetaModel {
-  const user = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "User");
-  user.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-  const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const user = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "User");
+  user.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr("fields", ["id"]);
   user.addChild(primary);
   return user;
 }
 
 function makePost(): MetaModel {
-  const post = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-  post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-  post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title"));
-  post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "authorId"));
-  const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+  post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+  post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title"));
+  post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "authorId"));
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr("fields", ["id"]);
   post.addChild(primary);
-  const rel = new MetaModel(new TypeId(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION), "author");
+  const rel = meta(new TypeId(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION), "author");
   rel.setAttr("cardinality", CARDINALITY_ONE);
   rel.setAttr("objectRef", "User");
   rel.setAttr("fkField", "authorId");
@@ -37,7 +39,7 @@ function makePost(): MetaModel {
 }
 
 function makeRoot(entities: MetaModel[]): MetaModel {
-  const r = new MetaModel(new TypeId("metadata", "base"), "");
+  const r = meta(new TypeId("metadata", "base"), "");
   for (const e of entities) r.addChild(e);
   return r;
 }

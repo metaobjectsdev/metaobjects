@@ -1,33 +1,35 @@
 import { describe, test, expect } from "bun:test";
-import { MetaModel, TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_VIEW, TYPE_VALIDATOR,
+import type { MetaModel } from "@metaobjects/metadata";
+import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_VIEW, TYPE_VALIDATOR,
          FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_LONG,
          VIEW_SUBTYPE_TEXT, VIEW_SUBTYPE_TEXTAREA, VIEW_SUBTYPE_HIDDEN,
          VALIDATOR_SUBTYPE_REQUIRED,
          OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
+import { meta } from "./_meta-build.js";
 import { viewFieldNames, fieldViewSpec, entityViewSpec } from "../src/view.js";
 import { MetadataError } from "../src/errors.js";
 
 function makePostWithViews(): MetaModel {
-  const post = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-  post.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+  const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+  post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
 
-  const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
-  const titleEdit = new MetaModel(new TypeId(TYPE_VIEW, VIEW_SUBTYPE_TEXT), "edit");
+  const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+  const titleEdit = meta(new TypeId(TYPE_VIEW, VIEW_SUBTYPE_TEXT), "edit");
   titleEdit.setAttr("placeholder", "Title...");
   titleEdit.setAttr("maxLength", 200);
   title.addChild(titleEdit);
-  const titleRequired = new MetaModel(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REQUIRED), "required");
+  const titleRequired = meta(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REQUIRED), "required");
   title.addChild(titleRequired);
   post.addChild(title);
 
-  const body = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "body");
-  const bodyEdit = new MetaModel(new TypeId(TYPE_VIEW, VIEW_SUBTYPE_TEXTAREA), "edit");
+  const body = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "body");
+  const bodyEdit = meta(new TypeId(TYPE_VIEW, VIEW_SUBTYPE_TEXTAREA), "edit");
   bodyEdit.setAttr("rows", 10);
   body.addChild(bodyEdit);
   post.addChild(body);
 
-  const secret = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "secret");
-  const secretHidden = new MetaModel(new TypeId(TYPE_VIEW, VIEW_SUBTYPE_HIDDEN), "edit");
+  const secret = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "secret");
+  const secretHidden = meta(new TypeId(TYPE_VIEW, VIEW_SUBTYPE_HIDDEN), "edit");
   secret.addChild(secretHidden);
   post.addChild(secret);
 

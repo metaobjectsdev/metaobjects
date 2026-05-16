@@ -1,10 +1,12 @@
 // packages/codegen-ts/test/templates/drizzle-schema.test.ts
 import { describe, test, expect } from "bun:test";
-import { MetaModel, TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY,
-         TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION,
+import type { MetaModel } from "@metaobjects/metadata";
+import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_METADATA,
+         TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION, SUBTYPE_ROOT,
          FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_INT,
          FIELD_SUBTYPE_TIMESTAMP, IDENTITY_SUBTYPE_PRIMARY, IDENTITY_SUBTYPE_SECONDARY,
          OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
+import { meta } from "../_meta-build.js";
 import { renderDrizzleSchema } from "../../src/templates/drizzle-schema.js";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
@@ -12,20 +14,20 @@ import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 
 function makeRoot(entities: MetaModel[]): MetaModel {
-  const root = new MetaModel(new TypeId("metadata", "base"), "");
+  const root = meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
   for (const e of entities) root.addChild(e);
   return root;
 }
 
 function makePost(): MetaModel {
-  const post = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-  const id = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
+  const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+  const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
   post.addChild(id);
-  const title = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+  const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
   title.setAttr("required", true);
   title.setAttr("maxLength", 200);
   post.addChild(title);
-  const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr("fields", ["id"]);
   primary.setAttr("generation", "increment");
   post.addChild(primary);
@@ -35,11 +37,11 @@ function makePost(): MetaModel {
 function makePostWithAuthor(): MetaModel {
   const post = makePost();
   // FK field
-  const authorId = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "authorId");
+  const authorId = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "authorId");
   authorId.setAttr("required", true);
   post.addChild(authorId);
   // relationship child: Post has-one User (author)
-  const rel = new MetaModel(new TypeId(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION), "author");
+  const rel = meta(new TypeId(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION), "author");
   rel.setAttr("cardinality", "one");
   rel.setAttr("objectRef", "User");  // target entity
   rel.setAttr("fkField", "authorId"); // field on this entity that holds the FK
@@ -48,13 +50,13 @@ function makePostWithAuthor(): MetaModel {
 }
 
 function makeUser(): MetaModel {
-  const user = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "User");
-  const id = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
+  const user = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "User");
+  const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
   user.addChild(id);
-  const email = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "email");
+  const email = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "email");
   email.setAttr("required", true);
   user.addChild(email);
-  const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr("fields", ["id"]);
   primary.setAttr("generation", "increment");
   user.addChild(primary);
@@ -134,7 +136,7 @@ describe("renderDrizzleSchema — SQLite", () => {
   test("@default 'now' timestamp emits sql import in SQLite output", () => {
     const post = makePost();
     // Add a timestamp field with @default: "now"
-    const createdAt = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_TIMESTAMP), "createdAt");
+    const createdAt = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_TIMESTAMP), "createdAt");
     createdAt.setAttr("required", true);
     createdAt.setAttr("default", "now");
     post.addChild(createdAt);
@@ -192,9 +194,9 @@ describe("renderDrizzleSchema — Postgres", () => {
   });
 
   test("Postgres int PK emits serial (not bigserial)", () => {
-    const smallEntity = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "SmallEntity");
-    smallEntity.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "id"));
-    const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    const smallEntity = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "SmallEntity");
+    smallEntity.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "id"));
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
     primary.setAttr("fields", ["id"]);
     primary.setAttr("generation", "increment");
     smallEntity.addChild(primary);
@@ -213,14 +215,14 @@ describe("renderDrizzleSchema — Postgres", () => {
   });
 
   test("composite PK emits table-level primaryKey callback, not per-column .primaryKey()", () => {
-    const userTag = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "UserTag");
-    const userId = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "userId");
+    const userTag = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "UserTag");
+    const userId = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "userId");
     userId.setAttr("required", true);
     userTag.addChild(userId);
-    const tagId = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "tagId");
+    const tagId = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "tagId");
     tagId.setAttr("required", true);
     userTag.addChild(tagId);
-    const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
     primary.setAttr("fields", ["userId", "tagId"]);
     // No @generation — composite PKs are natural keys
     userTag.addChild(primary);
@@ -246,18 +248,18 @@ describe("renderDrizzleSchema — Postgres", () => {
 
 describe("renderDrizzleSchema — secondary identity", () => {
   test("identity.secondary emits .unique() on each field + uniqueIndex callback", () => {
-    const sub = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Subscriber");
-    sub.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-    const email = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "email");
+    const sub = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Subscriber");
+    sub.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+    const email = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "email");
     email.setAttr("required", true);
     sub.addChild(email);
     // Primary
-    const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
     primary.setAttr("fields", ["id"]);
     primary.setAttr("generation", "increment");
     sub.addChild(primary);
     // Secondary on email
-    const secondary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_SECONDARY), "uniqueEmail");
+    const secondary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_SECONDARY), "uniqueEmail");
     secondary.setAttr("fields", ["email"]);
     sub.addChild(secondary);
 
@@ -277,15 +279,15 @@ describe("renderDrizzleSchema — secondary identity", () => {
   });
 
   test("composite secondary identity emits multi-column uniqueIndex", () => {
-    const user = new MetaModel(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "User");
-    user.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-    user.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "firstName"));
-    user.addChild(new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "lastName"));
-    const primary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    const user = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "User");
+    user.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+    user.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "firstName"));
+    user.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "lastName"));
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
     primary.setAttr("fields", ["id"]);
     primary.setAttr("generation", "increment");
     user.addChild(primary);
-    const secondary = new MetaModel(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_SECONDARY), "uniqueName");
+    const secondary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_SECONDARY), "uniqueName");
     secondary.setAttr("fields", ["firstName", "lastName"]);
     user.addChild(secondary);
 

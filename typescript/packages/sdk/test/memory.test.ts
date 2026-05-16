@@ -229,10 +229,10 @@ describe("loadMemory — cross-package loading via workspace", () => {
       writeFileSync(
         join(wsRoot, "packages", "common", "metaobjects", "common.json"),
         JSON.stringify({
-          metadata: {
+          "metadata.root": {
             package: "acme::common",
             children: [
-              { field: { name: "id", subType: "long", "@isAbstract": true } },
+              { "field.long": { name: "id", abstract: true } },
             ],
           },
         }),
@@ -253,12 +253,12 @@ describe("loadMemory — cross-package loading via workspace", () => {
       writeFileSync(
         join(wsRoot, "packages", "domain", "metaobjects", "domain.json"),
         JSON.stringify({
-          metadata: {
+          "metadata.root": {
             package: "acme::domain",
             children: [
               {
-                object: {
-                  name: "Widget", subType: "entity",
+                "object.entity": {
+                  name: "Widget",
                   children: [
                     { field: { name: "id", extends: "::acme::common::id" } },
                   ],

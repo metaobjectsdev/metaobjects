@@ -1,5 +1,5 @@
 /**
- * PG round-trip integration test — downstream-consumer fixture (load-bearing).
+ * PG round-trip integration test — trainer-website fixture (load-bearing).
  *
  * Per spec §8.3 / §9 #4. Acceptance gate:
  *   build expected schema from metadata
@@ -96,7 +96,7 @@ async function dropFixtureTables(k: Kysely<Record<string, unknown>>): Promise<vo
 // Test suite: create from empty
 // ---------------------------------------------------------------------------
 
-describe("PG round-trip — downstream-consumer fixture", () => {
+describe("PG round-trip — trainer-website fixture", () => {
   if (!PG_URL) {
     test.skip("skipped — MIGRATE_TS_PG_URL not set (pg-mem lacks full information_schema fidelity)", () => {});
     return;
@@ -120,7 +120,7 @@ describe("PG round-trip — downstream-consumer fixture", () => {
   });
 
   test("create from empty: apply → re-diff yields no changes", async () => {
-    const metadata = loadFixture("downstream-consumer-entities");
+    const metadata = loadFixture("trainer-website-entities");
 
     // Step 1: Build the expected schema from metadata.
     const expected = buildExpectedSchema(metadata);
@@ -183,7 +183,7 @@ describe("PG round-trip — after metadata mutations", () => {
     await dropFixtureTables(kysely);
 
     // Apply initial migration from the base fixture.
-    const metadata1 = loadFixture("downstream-consumer-entities");
+    const metadata1 = loadFixture("trainer-website-entities");
     {
       const initial = await diff(buildExpectedSchema(metadata1), await introspectPostgres(kysely));
       const { up } = emit(initial.changes, { dialect: "postgres" });
@@ -192,12 +192,12 @@ describe("PG round-trip — after metadata mutations", () => {
 
     // Mutation: parse the fixture JSON, append a `phone` field to Subscriber.
     const json = JSON.parse(
-      readFileSync(join(import.meta.dir, "..", "fixtures", "downstream-consumer-entities.json"), "utf8"),
+      readFileSync(join(import.meta.dir, "..", "fixtures", "trainer-website-entities.json"), "utf8"),
     );
-    const subscriber = json.metadata.children.find(
-      (c: { object?: { name: string } }) => c.object?.name === "Subscriber",
-    ).object;
-    subscriber.children.push({ field: { name: "phone", subType: "string" } });
+    const subscriber = json["metadata.root"].children.find(
+      (c: { "object.entity"?: { name: string } }) => c["object.entity"]?.name === "Subscriber",
+    )["object.entity"];
+    subscriber.children.push({ "field.string": { name: "phone" } });
     const metadata2 = new Loader().loadJson(JSON.stringify(json)).root;
 
     // Second diff should detect one add-column.
@@ -223,7 +223,7 @@ describe("PG round-trip — after metadata mutations", () => {
 
     // Parse base fixture and apply initial migration.
     const json = JSON.parse(
-      readFileSync(join(import.meta.dir, "..", "fixtures", "downstream-consumer-entities.json"), "utf8"),
+      readFileSync(join(import.meta.dir, "..", "fixtures", "trainer-website-entities.json"), "utf8"),
     );
     const metadata1 = new Loader().loadJson(JSON.stringify(json)).root;
     {
@@ -233,11 +233,11 @@ describe("PG round-trip — after metadata mutations", () => {
     }
 
     // Mutation: remove Subscriber.source field.
-    const subscriber = json.metadata.children.find(
-      (c: { object?: { name: string } }) => c.object?.name === "Subscriber",
-    ).object;
+    const subscriber = json["metadata.root"].children.find(
+      (c: { "object.entity"?: { name: string } }) => c["object.entity"]?.name === "Subscriber",
+    )["object.entity"];
     subscriber.children = subscriber.children.filter(
-      (ch: { field?: { name: string } }) => ch.field?.name !== "source",
+      (ch: { "field.string"?: { name: string } }) => ch["field.string"]?.name !== "source",
     );
     const metadata2 = new Loader().loadJson(JSON.stringify(json)).root;
 
@@ -266,7 +266,7 @@ describe("PG round-trip — after metadata mutations", () => {
 
     // Parse base fixture and apply initial migration.
     const json = JSON.parse(
-      readFileSync(join(import.meta.dir, "..", "fixtures", "downstream-consumer-entities.json"), "utf8"),
+      readFileSync(join(import.meta.dir, "..", "fixtures", "trainer-website-entities.json"), "utf8"),
     );
     const metadata1 = new Loader().loadJson(JSON.stringify(json)).root;
     {
@@ -278,13 +278,13 @@ describe("PG round-trip — after metadata mutations", () => {
     // Mutation: rename Subscriber.firstName → first_name_2.
     // The DB has column "first_name"; the new metadata produces "first_name_2".
     // Levenshtein("first_name", "first_name_2") = 2, threshold = max(2, floor(10/3)) = 3 → within threshold.
-    const subscriber = json.metadata.children.find(
-      (c: { object?: { name: string } }) => c.object?.name === "Subscriber",
-    ).object;
+    const subscriber = json["metadata.root"].children.find(
+      (c: { "object.entity"?: { name: string } }) => c["object.entity"]?.name === "Subscriber",
+    )["object.entity"];
     const fnField = subscriber.children.find(
-      (ch: { field?: { name: string } }) => ch.field?.name === "firstName",
+      (ch: { "field.string"?: { name: string } }) => ch["field.string"]?.name === "firstName",
     );
-    fnField.field.name = "first_name_2";
+    fnField["field.string"].name = "first_name_2";
     const metadata2 = new Loader().loadJson(JSON.stringify(json)).root;
 
     // Second diff via object form so we can pass onAmbiguous.

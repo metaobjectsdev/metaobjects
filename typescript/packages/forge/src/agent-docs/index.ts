@@ -17,7 +17,7 @@ These shape every interaction with a metaobjects-driven project. Follow them whe
 
 The metaobjects raison d'être is that anything the metadata fully describes — schemas, FK references, basic CRUD, query helpers, Zod validators, route handlers, RHF rules, form fields — should be produced by codegen, not hand-typed. If you find yourself hand-writing something the metadata already knows about, stop and use the generated artifact.
 
-The first version of downstream-consumer's database layer had hand-written Drizzle schemas, Zod schemas, and CRUD endpoints. Every one of those is now generated. The hand-written code that remains is real business logic (Stripe webhooks, Loops integration, custom auth flows) — things the generator genuinely cannot derive.
+The first version of the trainer website's database layer had hand-written Drizzle schemas, Zod schemas, and CRUD endpoints. Every one of those is now generated. The hand-written code that remains is real business logic (Stripe webhooks, Loops integration, custom auth flows) — things the generator genuinely cannot derive.
 
 When you're about to add a new field or entity: edit \`metaobjects/*.json\` and re-run \`meta gen\`. Don't reach for the generated file directly.
 
@@ -108,7 +108,7 @@ For custom flows (Stripe webhooks, side effects, auth-gated actions), hand-write
 
 Generated code does the boilerplate. Hand-coded code does the business logic. They live in the same project, the same package, sometimes the same file. The hand-coded code consumes the generated constants and generated Zod schemas — it never duplicates schema, never hard-codes paths, never declares its own validators that metadata could declare.
 
-Concrete pattern from downstream-consumer:
+Concrete pattern from the trainer website:
 - Generated \`Subscriber.routes.ts\` registers GET / GET-by-id / POST / PATCH / DELETE on \`/api/subscribers\`.
 - Hand-written \`apps/api/src/routes/subscribers.ts\` keeps \`POST /subscribe\` — the custom endpoint with the Loops side-effect.
 - Both registered with \`fastify.register()\`. Both validate via \`SubscriberInsertSchema\`. Both use \`Subscriber.email.name\` / etc. Neither knows the other exists.

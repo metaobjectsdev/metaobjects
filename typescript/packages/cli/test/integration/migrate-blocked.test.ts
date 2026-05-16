@@ -5,11 +5,11 @@ import { join, resolve } from "node:path";
 import { createClient } from "@libsql/client";
 import { run } from "../../src/index.js";
 
-const FIXTURES = resolve("packages/cli/test/fixtures");
+const FIXTURES = resolve(import.meta.dirname, "../fixtures");
 
 function setupRepo(): { repo: string; dbUrl: string } {
   const repo = mkdtempSync(join(tmpdir(), "forge-migrate-blocked-"));
-  cpSync(join(FIXTURES, "downstream-consumer-meta"), repo, { recursive: true });
+  cpSync(join(FIXTURES, "trainer-website-meta"), repo, { recursive: true });
   return { repo, dbUrl: `file:${join(repo, "local.db")}` };
 }
 
@@ -41,15 +41,22 @@ async function setupMigratedRepo(): Promise<{ repo: string; dbUrl: string }> {
   return { repo, dbUrl };
 }
 
+/** Return the fused-key field name from a new-format child node (e.g. "field.string" → name). */
+function getFieldName(child: Record<string, { name?: string }>): string | undefined {
+  const key = Object.keys(child).find((k) => k.startsWith("field.") || k === "field");
+  return key ? child[key]?.name : undefined;
+}
+
 describe("meta migrate — blocked changes without --allow", () => {
   test("drop-column without --allow drop-column → exit 1, no migration written", async () => {
     const { repo, dbUrl } = await setupMigratedRepo();
     try {
       const metaPath = join(repo, "metaobjects", "myapp.json");
       const meta = JSON.parse(readFileSync(metaPath, "utf8"));
-      const user = meta.metadata.children.find((c: { object?: { name: string } }) => c.object?.name === "User");
-      user.object.children = user.object.children.filter(
-        (c: { field?: { name: string } }) => c.field?.name !== "displayName",
+      const root = meta["metadata.root"];
+      const user = root.children.find((c: Record<string, { name: string }>) => c["object.entity"]?.name === "User");
+      user["object.entity"].children = user["object.entity"].children.filter(
+        (c: Record<string, { name?: string }>) => getFieldName(c) !== "displayName",
       );
       writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 
@@ -68,9 +75,10 @@ describe("meta migrate — blocked changes without --allow", () => {
     try {
       const metaPath = join(repo, "metaobjects", "myapp.json");
       const meta = JSON.parse(readFileSync(metaPath, "utf8"));
-      const user = meta.metadata.children.find((c: { object?: { name: string } }) => c.object?.name === "User");
-      user.object.children = user.object.children.filter(
-        (c: { field?: { name: string } }) => c.field?.name !== "displayName",
+      const root = meta["metadata.root"];
+      const user = root.children.find((c: Record<string, { name: string }>) => c["object.entity"]?.name === "User");
+      user["object.entity"].children = user["object.entity"].children.filter(
+        (c: Record<string, { name?: string }>) => getFieldName(c) !== "displayName",
       );
       writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 

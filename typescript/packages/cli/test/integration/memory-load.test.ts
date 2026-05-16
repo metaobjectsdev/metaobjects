@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { loadMemory } from "@metaobjects/sdk";
 import { TYPE_OBJECT } from "@metaobjects/metadata";
 
-const FIXTURES = resolve("packages/cli/test/fixtures");
+const FIXTURES = resolve(import.meta.dirname, "../fixtures");
 
 function copyFixture(name: string): string {
   const dest = mkdtempSync(join(tmpdir(), `memload-${name}-`));
@@ -13,9 +13,9 @@ function copyFixture(name: string): string {
   return dest;
 }
 
-describe("loadMemory — downstream-consumer-meta", () => {
+describe("loadMemory — trainer-website-meta", () => {
   test("loads 3 objects + 1 decision", async () => {
-    const root = copyFixture("downstream-consumer-meta");
+    const root = copyFixture("trainer-website-meta");
     try {
       const meta = await loadMemory(root);
       const objects = meta.children().filter((c) => c.type === TYPE_OBJECT);
