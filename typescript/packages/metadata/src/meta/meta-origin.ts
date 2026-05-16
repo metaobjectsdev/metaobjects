@@ -14,6 +14,7 @@ import {
   ORIGIN_AGGREGATE_ATTR_AGG,
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
+  type AggregateFunction,
 } from "../constants.js";
 
 export class MetaOrigin extends MetaData {}
@@ -47,9 +48,9 @@ export class MetaPassthroughOrigin extends MetaOrigin {
  */
 export class MetaAggregateOrigin extends MetaOrigin {
   /** The aggregate function (count | sum | avg | min | max). */
-  get agg(): string | undefined {
+  get agg(): AggregateFunction | undefined {
     const v = this.attr(ORIGIN_AGGREGATE_ATTR_AGG);
-    return typeof v === "string" ? v : undefined;
+    return typeof v === "string" ? (v as AggregateFunction) : undefined;
   }
 
   /** The dotted-path target of the aggregate (e.g. "Week.id"). */
