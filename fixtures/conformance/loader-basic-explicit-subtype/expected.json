@@ -28,7 +28,9 @@
             },
             {
               "identity.primary": {
-                "@fields": "id"
+                "@fields": [
+                  "id"
+                ]
               }
             }
           ]
@@ -37,3 +39,4 @@
     ]
   }
 }
+

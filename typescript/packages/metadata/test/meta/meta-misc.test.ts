@@ -954,3 +954,105 @@ describe("Loader produces typed concrete nodes from JSON", () => {
     expect(origin).toBeInstanceOf(MetaOrigin);
   });
 });
+
+// ---------------------------------------------------------------------------
+// stringArray desugar — single-string @fields / @columns / @joinFields
+// authored values are normalized to one-element arrays by the parser, so the
+// MetaIdentity.fields / MetaRelationship.joinFields getters work (previously
+// they returned [] for the universal single-string authoring form).
+// ---------------------------------------------------------------------------
+
+describe("stringArray attr desugar", () => {
+  it("MetaIdentity.fields returns ['id'] for an identity authored @fields: 'id'", () => {
+    const json = JSON.stringify({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.entity": {
+              name: "User",
+              children: [
+                { "field.long": { name: "id" } },
+                { "identity.primary": { name: "pk", "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root, errors } = new Loader().loadJson(json);
+    expect(errors).toEqual([]);
+    const user = root.childByTypeAndName(TYPE_OBJECT, "User") as MetaObject;
+    const pk = user.primaryIdentity()!;
+    expect(pk).toBeInstanceOf(MetaIdentity);
+    // The bug: a single-string @fields previously yielded [] here.
+    expect(pk.fields).toEqual(["id"]);
+    expect(pk.isComposite()).toBe(false);
+  });
+
+  it("MetaRelationship.joinFields returns ['vehicleId'] for @joinFields: 'vehicleId'", () => {
+    const json = JSON.stringify({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.entity": {
+              name: "Vehicle",
+              children: [
+                { "field.long": { name: "id" } },
+                { "identity.primary": { name: "pk", "@fields": "id" } },
+                {
+                  "relationship.association": {
+                    name: "owners",
+                    "@joinEntity": "VehicleOwner",
+                    "@joinFields": "vehicleId",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root, errors } = new Loader().loadJson(json);
+    expect(errors).toEqual([]);
+    const vehicle = root.childByTypeAndName(TYPE_OBJECT, "Vehicle") as MetaObject;
+    const rel = vehicle
+      .children()
+      .find((c) => c instanceof MetaRelationship) as MetaRelationship;
+    expect(rel).toBeInstanceOf(MetaRelationship);
+    // The bug: a single-string @joinFields previously yielded [] here.
+    expect(rel.joinFields).toEqual(["vehicleId"]);
+  });
+
+  it("an already-array @fields value is left untouched", () => {
+    const json = JSON.stringify({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.entity": {
+              name: "Order",
+              children: [
+                { "field.long": { name: "id" } },
+                { "field.string": { name: "tenant" } },
+                {
+                  "identity.primary": {
+                    name: "pk",
+                    "@fields": ["id", "tenant"],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root, errors } = new Loader().loadJson(json);
+    expect(errors).toEqual([]);
+    const order = root.childByTypeAndName(TYPE_OBJECT, "Order") as MetaObject;
+    const pk = order.primaryIdentity()!;
+    expect(pk.fields).toEqual(["id", "tenant"]);
+    expect(pk.isComposite()).toBe(true);
+  });
+});

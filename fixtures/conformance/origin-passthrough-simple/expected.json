@@ -18,7 +18,9 @@
             },
             {
               "identity.primary": {
-                "@fields": "id"
+                "@fields": [
+                  "id"
+                ]
               }
             }
           ]
@@ -48,7 +50,9 @@
             },
             {
               "identity.primary": {
-                "@fields": "id"
+                "@fields": [
+                  "id"
+                ]
               }
             }
           ]
@@ -57,3 +61,4 @@
     ]
   }
 }
+

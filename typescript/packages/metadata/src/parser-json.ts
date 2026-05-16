@@ -43,7 +43,9 @@ import {
   TYPE_VALIDATOR,
   SUBTYPE_BASE,
   PACKAGE_SEPARATOR,
+  ATTR_SUBTYPE_STRINGARRAY,
 } from "./constants.js";
+import type { AttrValue } from "./meta/meta-data.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -368,7 +370,7 @@ function parseNodeFresh(
   }
 
   // --- Process inline attributes and other keys ---
-  applyInlineAttrsAndUnknownKeys(model, nodeData, strict, source, path, warnings);
+  applyInlineAttrsAndUnknownKeys(model, nodeData, strict, source, path, warnings, registry);
 
   // --- Process children ---
   // For the root node we use itself as the accumRoot for its children.
@@ -400,7 +402,7 @@ function parseNodeInto(
   path: string,
 ): void {
   // Apply inline attrs (not reserved keys — those stay on the existing model)
-  applyInlineAttrsAndUnknownKeys(target, nodeData, strict, source, path, warnings);
+  applyInlineAttrsAndUnknownKeys(target, nodeData, strict, source, path, warnings, registry);
 
   // The effective package for children: use inheritedContextPkg (from the new
   // JSON's root) — not target.package, because target is the existing model
@@ -523,6 +525,37 @@ function applyReservedKeys(
 }
 
 // ---------------------------------------------------------------------------
+// stringArray desugar — normalize a bare-string value for a declared
+// stringArray-typed @-attr into a one-element array.
+//
+// A single string is the degenerate one-element form of a `stringArray` attr
+// (every fixture authors `"@fields": "id"`, not `["id"]`). Since the parser is
+// registry-aware, it desugars at parse time so that stringArray attrs are
+// ALWAYS arrays in the loaded tree. This fixes MetaIdentity.fields /
+// MetaRelationship.joinFields (which do `Array.isArray(f) ? f : []` and so
+// returned [] for the single-string form) and keeps the canonical serialized
+// form consistent.
+//
+// Only a `string` value is wrapped. Already-array values are left as-is;
+// non-string scalars (number/boolean) are left as-is so A3's type validation
+// can flag them — the parser does NOT coerce non-strings. Undeclared attrs
+// (no matching AttrSchema) are also left as-is.
+// ---------------------------------------------------------------------------
+
+function normalizeStringArrayAttr(
+  type: string,
+  subType: string,
+  attrName: string,
+  value: AttrValue,
+  registry: TypeRegistry,
+): AttrValue {
+  if (typeof value !== "string") return value;
+  const spec = registry.attrsOf(type, subType).find((s) => s.name === attrName);
+  if (spec === undefined || spec.valueType !== ATTR_SUBTYPE_STRINGARRAY) return value;
+  return [value];
+}
+
+// ---------------------------------------------------------------------------
 // applyInlineAttrsAndUnknownKeys — apply @-prefixed attrs and warn about unknowns
 //
 // Called for both fresh creates AND merge-into-existing paths.
@@ -536,6 +569,7 @@ function applyInlineAttrsAndUnknownKeys(
   source: string | undefined,
   path: string,
   warnings: string[],
+  registry: TypeRegistry,
 ): void {
   for (const key of Object.keys(nodeData)) {
     // Skip all reserved structural keys (already handled or intentionally ignored)
@@ -566,7 +600,15 @@ function applyInlineAttrsAndUnknownKeys(
       continue;
     }
 
-    model.setAttr(attrName, coerced.value);
+    // Desugar a bare-string value for a declared stringArray-typed attr.
+    const normalized = normalizeStringArrayAttr(
+      model.type,
+      model.subType,
+      attrName,
+      coerced.value,
+      registry,
+    );
+    model.setAttr(attrName, normalized);
   }
 }
 
@@ -739,7 +781,17 @@ function parseAttrChild(
     ? attrDef.factory(attrDef.typeId, attrName)
     : new MetaRoot(new TypeId(attrType, resolvedSubType), attrName);
 
+  // Desugar a bare-string value for a declared stringArray-typed attr,
+  // mirroring the inline @-attr path in applyInlineAttrsAndUnknownKeys.
+  const normalized = normalizeStringArrayAttr(
+    parent.type,
+    parent.subType,
+    attrName,
+    coercedValue.value,
+    registry,
+  );
+
   attrModel.setAttr(RESERVED_KEY_VALUE, coercedValue.value);
   parent.addChild(attrModel);
-  parent.setAttr(attrName, coercedValue.value);
+  parent.setAttr(attrName, normalized);
 }

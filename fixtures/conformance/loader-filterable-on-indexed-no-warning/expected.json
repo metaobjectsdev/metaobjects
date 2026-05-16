@@ -19,13 +19,17 @@
             },
             {
               "identity.primary": {
-                "@fields": "id"
+                "@fields": [
+                  "id"
+                ]
               }
             },
             {
               "identity.secondary": {
                 "name": "byEmail",
-                "@fields": "email"
+                "@fields": [
+                  "email"
+                ]
               }
             }
           ]
@@ -34,3 +38,4 @@
     ]
   }
 }
+

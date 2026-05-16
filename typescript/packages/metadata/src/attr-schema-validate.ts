@@ -47,11 +47,11 @@ export interface AttrSchemaValidationResult {
 // no separate short/byte/float/decimal attr subtype — ATTR_SUBTYPES has exactly
 // the 9 entries below. `class` and `properties` are string-shaped on the wire.
 //
-// `stringarray` accepts EITHER a real string[] OR a plain string: a single
-// field name (e.g. `"@fields": "id"`) is the degenerate one-element form and
-// the parser does not auto-wrap it into an array. The Loader's own consumers
-// (validateFilterableHasIndex) already treat @fields as string-or-array, so
-// A3's type check matches that authoring reality rather than rejecting it.
+// `stringarray` requires a real string[]. A single bare field name
+// (e.g. `"@fields": "id"`) is the degenerate one-element authoring form, but
+// the parser now desugars it to a one-element array before A3 runs (see
+// normalizeStringArrayAttr in parser-json.ts). By the time A3 validates, every
+// stringArray attr is already an array — so a bare string here is invalid.
 
 const NUMERIC_ATTR_SUBTYPES: ReadonlySet<AttrSubType> = new Set([
   ATTR_SUBTYPE_INT,
@@ -77,8 +77,7 @@ function valueMatchesType(value: AttrValue, valueType: AttrSubType): boolean {
     return typeof value === "boolean";
   }
   if (valueType === ATTR_SUBTYPE_STRINGARRAY) {
-    // A real string[] OR a single string (degenerate one-element form).
-    if (typeof value === "string") return true;
+    // Must be a real string[]; the parser already desugared bare strings.
     return Array.isArray(value) && value.every((el) => typeof el === "string");
   }
   // SUBTYPE_BASE or any unexpected subtype — accept anything (no constraint).
