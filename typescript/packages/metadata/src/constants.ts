@@ -368,6 +368,25 @@ export const AUTO_SET_ON_UPDATE = "onUpdate";
 export const AUTO_SET_VALUES = [AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE] as const;
 export type AutoSetValue = (typeof AUTO_SET_VALUES)[number];
 
+// Sort order values (used by @sortableDefaultOrder on fields and @defaultSortOrder on dataGrid layouts)
+export const SORT_ORDER_ASC  = "asc";
+export const SORT_ORDER_DESC = "desc";
+
+export const SORT_ORDER_VALUES = [SORT_ORDER_ASC, SORT_ORDER_DESC] as const;
+export type SortOrderValue = (typeof SORT_ORDER_VALUES)[number];
+
+// Java runtime materialization strategies (values for @javaRuntime on objects)
+export const OBJECT_JAVA_RUNTIME_POJO  = "pojo";
+export const OBJECT_JAVA_RUNTIME_MAP   = "map";
+export const OBJECT_JAVA_RUNTIME_PROXY = "proxy";
+
+export const OBJECT_JAVA_RUNTIME_VALUES = [
+  OBJECT_JAVA_RUNTIME_POJO,
+  OBJECT_JAVA_RUNTIME_MAP,
+  OBJECT_JAVA_RUNTIME_PROXY,
+] as const;
+export type ObjectJavaRuntimeValue = (typeof OBJECT_JAVA_RUNTIME_VALUES)[number];
+
 // Validator attr keys (used by codegen-ts when reading validator children)
 export const VALIDATOR_ATTR_PATTERN = "pattern";
 export const VALIDATOR_ATTR_MIN = "min";

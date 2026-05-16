@@ -11,7 +11,14 @@ import {
   TYPE_LAYOUT,
   TYPE_VIEW,
   TYPE_RELATIONSHIP,
+  TYPE_VALIDATOR,
   FIELD_SUBTYPE_STRING,
+  VALIDATOR_SUBTYPE_LENGTH,
+  VALIDATOR_SUBTYPE_NUMERIC,
+  VALIDATOR_SUBTYPE_REGEX,
+  VALIDATOR_SUBTYPE_REQUIRED,
+  VALIDATOR_SUBTYPE_ARRAY,
+  SUBTYPE_BASE,
   FIELD_SUBTYPE_CURRENCY,
   OBJECT_SUBTYPE_ENTITY,
   IDENTITY_SUBTYPE_PRIMARY,
@@ -281,5 +288,48 @@ describe("Phase A2 — core attribute schemas", () => {
       expect(attrs.get(n)!.required).toBe(false);
     }
     expect(attrs.get("joinFields")!.valueType).toBe(ATTR_SUBTYPE_STRINGARRAY);
+  });
+
+  it("validator.length declares @min and @max (int, optional) — read via this.attr()", () => {
+    const attrs = byName(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_LENGTH);
+    expect(attrs.get("min")).toBeDefined();
+    expect(attrs.get("min")!.valueType).toBe(ATTR_SUBTYPE_INT);
+    expect(attrs.get("min")!.required).toBe(false);
+    expect(attrs.get("max")).toBeDefined();
+    expect(attrs.get("max")!.valueType).toBe(ATTR_SUBTYPE_INT);
+    expect(attrs.get("max")!.required).toBe(false);
+  });
+
+  it("validator.numeric declares @min and @max (int, optional)", () => {
+    const attrs = byName(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_NUMERIC);
+    expect(attrs.get("min")!.valueType).toBe(ATTR_SUBTYPE_INT);
+    expect(attrs.get("max")!.valueType).toBe(ATTR_SUBTYPE_INT);
+  });
+
+  it("validator.regex declares @min, @max, and @pattern (string, optional)", () => {
+    const attrs = byName(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REGEX);
+    expect(attrs.get("min")!.valueType).toBe(ATTR_SUBTYPE_INT);
+    expect(attrs.get("max")!.valueType).toBe(ATTR_SUBTYPE_INT);
+    const pattern = attrs.get("pattern");
+    expect(pattern).toBeDefined();
+    expect(pattern!.valueType).toBe(ATTR_SUBTYPE_STRING);
+    expect(pattern!.required).toBe(false);
+  });
+
+  it("validator.required declares no attributes", () => {
+    const attrs = byName(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REQUIRED);
+    expect(attrs.size).toBe(0);
+  });
+
+  it("validator.array declares @min and @max (int, optional)", () => {
+    const attrs = byName(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_ARRAY);
+    expect(attrs.get("min")!.valueType).toBe(ATTR_SUBTYPE_INT);
+    expect(attrs.get("max")!.valueType).toBe(ATTR_SUBTYPE_INT);
+  });
+
+  it("validator.base declares @min and @max (MetaValidator reads them on the base class)", () => {
+    const attrs = byName(TYPE_VALIDATOR, SUBTYPE_BASE);
+    expect(attrs.get("min")).toBeDefined();
+    expect(attrs.get("max")).toBeDefined();
   });
 });

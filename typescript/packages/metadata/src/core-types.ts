@@ -82,8 +82,6 @@ import {
   FIELD_ATTR_CURRENCY,
   FIELD_ATTR_CURRENCY_DEFAULT,
   FIELD_ATTR_AUTO_SET,
-  AUTO_SET_ON_CREATE,
-  AUTO_SET_ON_UPDATE,
   IDENTITY_ATTR_FIELDS,
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_UNIQUE,
@@ -101,6 +99,9 @@ import {
   VALIDATOR_ATTR_PATTERN,
   VALIDATOR_ATTR_MIN,
   VALIDATOR_ATTR_MAX,
+  AUTO_SET_VALUES,
+  SORT_ORDER_VALUES,
+  OBJECT_JAVA_RUNTIME_VALUES,
   OBJECT_ATTR_JAVA_RUNTIME,
   SOURCE_ATTR_NAME,
   ORIGIN_PASSTHROUGH_ATTR_FROM,
@@ -196,7 +197,7 @@ const commonFieldAttrs: AttrSchema[] = [
     name: FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
     valueType: ATTR_SUBTYPE_STRING,
     required: false,
-    allowedValues: ["asc", "desc"],
+    allowedValues: [...SORT_ORDER_VALUES],
     description: "Default sort direction applied when this field is the default sort field.",
   },
   {
@@ -210,7 +211,7 @@ const commonFieldAttrs: AttrSchema[] = [
     name: FIELD_ATTR_AUTO_SET,
     valueType: ATTR_SUBTYPE_STRING,
     required: false,
-    allowedValues: [AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE],
+    allowedValues: [...AUTO_SET_VALUES],
     description:
       "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write.",
   },
@@ -244,7 +245,7 @@ const objectAttrs: AttrSchema[] = [
     name: OBJECT_ATTR_JAVA_RUNTIME,
     valueType: ATTR_SUBTYPE_STRING,
     required: false,
-    allowedValues: ["pojo", "map", "proxy"],
+    allowedValues: [...OBJECT_JAVA_RUNTIME_VALUES],
     description:
       "Java runtime materialization strategy for this object (pojo / map / proxy). Ignored by non-Java implementations.",
   },
@@ -399,7 +400,7 @@ const dataGridLayoutAttrs: AttrSchema[] = [
     name: LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER,
     valueType: ATTR_SUBTYPE_STRING,
     required: false,
-    allowedValues: ["asc", "desc"],
+    allowedValues: [...SORT_ORDER_VALUES],
     description: "Initial sort direction for the default sort field: 'asc' or 'desc'.",
   },
   {
@@ -421,6 +422,40 @@ const dataGridLayoutAttrs: AttrSchema[] = [
     description: "Flat ordered list of field names to display as grid columns.",
   },
 ];
+
+/** @min / @max shared by length, numeric, array, and the base validator. */
+const minMaxValidatorAttrs: AttrSchema[] = [
+  {
+    name: VALIDATOR_ATTR_MIN,
+    valueType: ATTR_SUBTYPE_INT,
+    required: false,
+    description: "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype).",
+  },
+  {
+    name: VALIDATOR_ATTR_MAX,
+    valueType: ATTR_SUBTYPE_INT,
+    required: false,
+    description: "Maximum allowed value (length, numeric value, or array element count depending on the validator subtype).",
+  },
+];
+
+/** Attrs per validator subtype. Required uses none; regex adds @pattern. */
+const VALIDATOR_ATTRS_MAP = new Map<string, AttrSchema[]>([
+  [SUBTYPE_BASE, [...minMaxValidatorAttrs]],
+  [VALIDATOR_SUBTYPE_REQUIRED, []],
+  [VALIDATOR_SUBTYPE_LENGTH, [...minMaxValidatorAttrs]],
+  [VALIDATOR_SUBTYPE_REGEX, [
+    ...minMaxValidatorAttrs,
+    {
+      name: VALIDATOR_ATTR_PATTERN,
+      valueType: ATTR_SUBTYPE_STRING,
+      required: false,
+      description: "Regular expression the value must match.",
+    },
+  ]],
+  [VALIDATOR_SUBTYPE_NUMERIC, [...minMaxValidatorAttrs]],
+  [VALIDATOR_SUBTYPE_ARRAY, [...minMaxValidatorAttrs]],
+]);
 
 function wildcard(childType: string): ChildRule {
   return {
@@ -520,10 +555,14 @@ export function registerCoreTypes(registry: TypeRegistry): void {
   //   required → MetaRequiredValidator, length → MetaLengthValidator,
   //   regex → MetaRegexValidator, numeric → MetaNumericValidator,
   //   array → MetaArrayValidator, default (base) → MetaValidator.
+  // Attr schemas: MetaValidator (base) + length/numeric/array read @min/@max via
+  //   this.attr(VALIDATOR_ATTR_MIN/MAX); regex also reads @pattern via this.attr().
+  //   required has no extra attrs.
   const validatorRules = [wildcard(TYPE_ATTR)];
   for (const subType of VALIDATOR_SUBTYPES) {
     const NodeClass = VALIDATOR_CLASS_MAP.get(subType) ?? MetaValidator;
-    registry.register(def(TYPE_VALIDATOR, subType, `Validator (${subType})`, validatorRules, NodeClass));
+    const validatorAttrs = VALIDATOR_ATTRS_MAP.get(subType) ?? [];
+    registry.register(def(TYPE_VALIDATOR, subType, `Validator (${subType})`, validatorRules, NodeClass, validatorAttrs));
   }
 
   // view — N subtypes. Each view permits only attr children (Java parity:
