@@ -428,6 +428,9 @@ export type SourceSubType = (typeof SOURCE_SUBTYPES)[number];
 // (table name and view name respectively). Same key for ergonomic consistency.
 export const SOURCE_DB_TABLE_ATTR_NAME = "name";
 export const SOURCE_DB_VIEW_ATTR_NAME  = "name";
+/** Shared @name attr key for MetaSource (covers both dbTable and dbView). Use this
+ *  in generic source accessors instead of the subtype-specific aliases above. */
+export const SOURCE_ATTR_NAME          = "name";
 
 // ---------------------------------------------------------------------------
 // Origin type — field-level provenance (Project E).

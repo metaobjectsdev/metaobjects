@@ -733,8 +733,8 @@ describe("instanceof narrowing across hierarchy", () => {
 // Caching — key accessor cached after freeze
 // ---------------------------------------------------------------------------
 
-describe("caching — MetaIdentity.fields", () => {
-  it("fields getter returns same reference after freeze (caching active)", () => {
+describe("MetaIdentity.fields — reference stability", () => {
+  it("fields getter returns the same reference after freeze", () => {
     // MetaIdentity.fields is a getter (not cached via cached()), but should
     // be stable reference — actually it's a new array each call since we return
     // Array.isArray(f) ? (f as string[]) : []. Arrays are stored by reference
