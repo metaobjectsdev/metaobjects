@@ -4,6 +4,8 @@
 // sources; the MetaDataLoader pipeline calls read() on each. read() is async
 // so file/URL sources can do I/O; InMemorySource resolves immediately.
 
+import { basename } from "node:path";
+
 /** Format of a source's content. Phase 2 supports JSON only; XML/YAML land in Phase 3. */
 export type MetaDataFormat = "json";
 
@@ -57,8 +59,8 @@ export class FileSource implements MetaDataSource {
 
   constructor(path: string) {
     this._path = path;
-    // basename for readable error messages; full path retained for read().
-    this.id = path.slice(path.lastIndexOf("/") + 1);
+    // basename() for readable error messages; cross-platform (handles both / and \). Full path retained for read().
+    this.id = basename(path);
     this.format = "json"; // Phase 2: only .json files; format inference expands in Phase 3.
   }
 
