@@ -138,7 +138,7 @@ function serializeNodeInner(model: MetaModel, inlineAttrs: boolean): Record<stri
     serializedChildren.push({
       [fusedKey(TYPE_ATTR, attrSubType)]: {
         [RESERVED_KEY_NAME]: attrName,
-        [RESERVED_KEY_VALUE]: attrValue === undefined ? null : serializeAttrValue(attrValue),
+        [RESERVED_KEY_VALUE]: attrValue === undefined ? null : attrValue,
       },
     });
     emittedAsChild.add(attrName);
@@ -149,12 +149,12 @@ function serializeNodeInner(model: MetaModel, inlineAttrs: boolean): Record<stri
     if (emittedAsChild.has(attrName)) continue;
 
     if (inlineAttrs) {
-      obj[`${ATTR_PREFIX}${attrName}`] = serializeAttrValue(attrValue);
+      obj[`${ATTR_PREFIX}${attrName}`] = attrValue;
     } else {
       serializedChildren.push({
         [fusedKey(TYPE_ATTR, inferAttrSubType(attrValue))]: {
           [RESERVED_KEY_NAME]: attrName,
-          [RESERVED_KEY_VALUE]: serializeAttrValue(attrValue),
+          [RESERVED_KEY_VALUE]: attrValue,
         },
       });
     }
@@ -166,17 +166,6 @@ function serializeNodeInner(model: MetaModel, inlineAttrs: boolean): Record<stri
   }
 
   return obj;
-}
-
-// ---------------------------------------------------------------------------
-// Serialize an AttrValue to a JSON-compatible value
-// ---------------------------------------------------------------------------
-
-function serializeAttrValue(value: AttrValue): unknown {
-  if (Array.isArray(value)) {
-    return value;
-  }
-  return value;
 }
 
 // ---------------------------------------------------------------------------

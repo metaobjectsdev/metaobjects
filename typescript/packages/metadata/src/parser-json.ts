@@ -140,6 +140,9 @@ function splitTypeKey(key: string, registry: TypeRegistry): SplitKey {
   }
   const type = key.slice(0, dotIdx);
   const subType = key.slice(dotIdx + TYPE_SUBTYPE_SEPARATOR.length);
+  // Malformed keys (e.g. "object.entity.extra", ".entity", "object.") are not
+  // validated here — they fall through to the downstream registry.has() check
+  // which reports them as an unknown type or subtype error.
   return { type, subType, explicit: true };
 }
 

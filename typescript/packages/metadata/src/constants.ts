@@ -302,14 +302,6 @@ export const ATTR_PREFIX = "@";
 export const TYPE_SUBTYPE_SEPARATOR = ".";
 
 // ---------------------------------------------------------------------------
-// Special attribute names (intercepted by parser/serializer — NOT stored as
-// regular attrs; instead routed to setIsArray / setIsAbstract)
-// ---------------------------------------------------------------------------
-
-export const ATTR_NAME_IS_ARRAY = "isArray";
-export const ATTR_NAME_IS_ABSTRACT = "isAbstract";
-
-// ---------------------------------------------------------------------------
 // Package path conventions
 // ---------------------------------------------------------------------------
 
