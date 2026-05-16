@@ -1,7 +1,7 @@
 // PK resolver — pre-pass over the loaded metadata to build a name → PK info map.
 // codegen uses this when emitting FK columns (per design §13 #2).
 
-import { MetaModel } from "@metaobjects/metadata";
+import type { MetaModel } from "@metaobjects/metadata";
 import {
   TYPE_OBJECT,
   TYPE_FIELD,

@@ -107,10 +107,13 @@ import {
   type TypeDefinition,
   TypeId,
   TypeRegistry,
-  MetaModel,
+  MetaData,
   TYPE_ATTR,
   CHILD_RULE_WILDCARD,
 } from "@metaobjects/metadata";
+
+/** Minimal concrete MetaData subclass used for all forge descriptive nodes. */
+class MetaForgeNode extends MetaData {}
 
 function wildcardOf(childType: string): ChildRule {
   return {
@@ -129,8 +132,9 @@ function def(
   return {
     typeId: new TypeId(type, subType),
     description,
-    factory: (typeId, name) => new MetaModel(typeId, name),
+    factory: (typeId, name) => new MetaForgeNode(typeId, name),
     childRules,
+    attributes: [],
   };
 }
 

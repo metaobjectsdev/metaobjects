@@ -327,6 +327,16 @@ meta migrate                          # diff metadata vs DB schema; emit migrati
 meta migrate --dry-run                # preview without writing migration file
 ```
 
+## Running tests
+
+The Bun workspace root is `typescript/`. Run `bun test` / `bun run` from `typescript/` (or a specific package directory) — **never from the repository root**. At the repo root there is no workspace `package.json`, so Bun scans the entire polyglot tree (`java/`, `python/`, `csharp/`, `fixtures/`, every `node_modules/`) and re-resolves `@metaobjects/*` imports per file — turning a ~3-second run into several minutes.
+
+```
+cd typescript && bun test                          # whole TS monorepo (~3s, 1784 tests)
+cd typescript && bun run --filter '*' typecheck    # whole monorepo typecheck
+cd typescript/packages/<pkg> && bun test           # a single package
+```
+
 ## How to contribute
 
 PRs welcome. When contributing:

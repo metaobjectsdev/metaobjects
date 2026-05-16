@@ -1,6 +1,6 @@
 // Field-type → Drizzle column type mapping. Per design §6.
 
-import { MetaModel } from "@metaobjects/metadata";
+import type { MetaModel } from "@metaobjects/metadata";
 import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,

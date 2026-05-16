@@ -56,6 +56,28 @@ export function parseGenArgs(argv: string[]): GenFlags {
 }
 
 // ---------------------------------------------------------------------------
+// export flags
+// ---------------------------------------------------------------------------
+
+export interface ExportFlags {
+  out: string | undefined;
+}
+
+export function parseExportArgs(argv: string[]): ExportFlags {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      out: { type: "string" },
+    },
+    strict: true,
+    allowPositionals: false,
+  });
+  return {
+    out: values.out as string | undefined,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // migrate flags
 // ---------------------------------------------------------------------------
 

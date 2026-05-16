@@ -13,6 +13,7 @@ COMMANDS:
   init                  Scaffold metaobjects/ + .metaobjects/ in the current repo
   init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
   gen [<entity>...]     Codegen TS targets from metaobjects/ entities
+  export                Flatten loaded metadata to one canonical JSON artifact
   migrate               Diff metadata vs live DB; emit migration SQL files
   --version, -v         Print version
   --help, -h            Print this help
@@ -21,6 +22,9 @@ GEN FLAGS:
   --dry-run             Compute and print, don't write
   <entity> [<entity>]   Positional filter on entity names
   (outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts)
+
+EXPORT FLAGS:
+  --out <file>          Write output to a file (default: stdout)
 
 MIGRATE FLAGS:
   --db <url>            DB connection URL (required, or set DATABASE_URL or config)
@@ -56,6 +60,10 @@ export async function run(argv: string[]): Promise<number> {
     case "gen": {
       const { genCommand } = await import("./commands/gen.js");
       return genCommand(rest);
+    }
+    case "export": {
+      const { exportCommand } = await import("./commands/export.js");
+      return exportCommand(rest);
     }
     case "migrate": {
       const { migrateCommand } = await import("./commands/migrate.js");
