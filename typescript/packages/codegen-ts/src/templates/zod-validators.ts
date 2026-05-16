@@ -4,7 +4,7 @@
 //                 UPDATE → onCreate fields omitted entirely; onUpdate gets same transform
 
 import { code, imp, type Code } from "ts-poet";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_FIELD, TYPE_IDENTITY, TYPE_VALIDATOR,
   IDENTITY_SUBTYPE_PRIMARY,
@@ -19,7 +19,7 @@ import {
   GENERATION_INCREMENT, GENERATION_UUID,
 } from "@metaobjects/metadata";
 
-export function renderZodValidators(entity: MetaModel): Code {
+export function renderZodValidators(entity: MetaData): Code {
   const z = imp("z@zod");
   // Use effectiveChildren() to include inherited fields/identities (from extends:/super:).
   const effective = entity.effectiveChildren();
@@ -84,7 +84,7 @@ ${updateFieldLines.join(",\n")}
 `;
 }
 
-function zodFieldExpr(field: MetaModel): string {
+function zodFieldExpr(field: MetaData): string {
   let base: string;
   switch (field.subType) {
     case FIELD_SUBTYPE_INT:

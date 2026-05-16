@@ -1,6 +1,6 @@
 // packages/codegen-ts/test/templates/drizzle-schema.test.ts
 import { describe, test, expect } from "bun:test";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_METADATA,
          TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION, SUBTYPE_ROOT,
          FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_INT,
@@ -13,13 +13,13 @@ import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 
-function makeRoot(entities: MetaModel[]): MetaModel {
+function makeRoot(entities: MetaData[]): MetaData {
   const root = meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
   for (const e of entities) root.addChild(e);
   return root;
 }
 
-function makePost(): MetaModel {
+function makePost(): MetaData {
   const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
   const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
   post.addChild(id);
@@ -34,7 +34,7 @@ function makePost(): MetaModel {
   return post;
 }
 
-function makePostWithAuthor(): MetaModel {
+function makePostWithAuthor(): MetaData {
   const post = makePost();
   // FK field
   const authorId = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "authorId");
@@ -49,7 +49,7 @@ function makePostWithAuthor(): MetaModel {
   return post;
 }
 
-function makeUser(): MetaModel {
+function makeUser(): MetaData {
   const user = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "User");
   const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
   user.addChild(id);

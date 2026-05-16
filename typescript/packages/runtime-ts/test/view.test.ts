@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_VIEW, TYPE_VALIDATOR,
          FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_LONG,
          VIEW_SUBTYPE_TEXT, VIEW_SUBTYPE_TEXTAREA, VIEW_SUBTYPE_HIDDEN,
@@ -9,7 +9,7 @@ import { meta } from "./_meta-build.js";
 import { viewFieldNames, fieldViewSpec, entityViewSpec } from "../src/view.js";
 import { MetadataError } from "../src/errors.js";
 
-function makePostWithViews(): MetaModel {
+function makePostWithViews(): MetaData {
   const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
   post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
 

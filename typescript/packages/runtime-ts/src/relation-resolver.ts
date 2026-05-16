@@ -1,4 +1,4 @@
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_OBJECT, TYPE_RELATIONSHIP,
   RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF, RELATIONSHIP_ATTR_FK_FIELD,
@@ -28,9 +28,9 @@ export interface RelationDescriptor {
  * (lower-camel + plural) of the declaring source.
  */
 export function resolveRelationDescriptor(
-  sourceEntity: MetaModel,
+  sourceEntity: MetaData,
   relationName: string,
-  root: MetaModel,
+  root: MetaData,
 ): RelationDescriptor {
   for (const child of sourceEntity.children()) {
     if (child.type !== TYPE_RELATIONSHIP) continue;
@@ -105,7 +105,7 @@ function inversePluralName(entityName: string): string {
 export function buildLazyRelateSpec(
   desc: RelationDescriptor,
   sourceRecord: Row,
-  root: MetaModel,
+  root: MetaData,
 ): SelectSpec | null {
   const lookup = sourceRecord[desc.sourceField];
   if (lookup === null || lookup === undefined) return null;
@@ -117,7 +117,7 @@ export function buildLazyRelateSpec(
 export function buildIncludeBatchSpec(
   desc: RelationDescriptor,
   sourceRecords: Row[],
-  root: MetaModel,
+  root: MetaData,
 ): SelectSpec | null {
   const seen = new Set<PrimitiveValue>();
   for (const rec of sourceRecords) {
@@ -130,7 +130,7 @@ export function buildIncludeBatchSpec(
   return buildSelectSpec(target, { [desc.targetField]: [...seen] as (string | number)[] }, {});
 }
 
-function mustGetEntity(root: MetaModel, name: string): MetaModel {
+function mustGetEntity(root: MetaData, name: string): MetaData {
   const e = root.children().find((c) => c.type === TYPE_OBJECT && c.name === name);
   if (!e) throw new MetadataError(`Entity '${name}' not found`, { entity: name });
   return e;

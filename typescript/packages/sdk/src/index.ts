@@ -75,7 +75,7 @@ export {
 } from "./forge-types.js";
 export type { ForgeType, ForgeAttr } from "./forge-types.js";
 
-// Memory loader — read metaobjects/ into a MetaModel
+// Memory loader — read metaobjects/ into a MetaData tree
 // (workspace-aware: walks extends: deps via pnpm-workspace.yaml or
 //  package.json workspaces field if present)
 export { loadMemory, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "./memory.js";

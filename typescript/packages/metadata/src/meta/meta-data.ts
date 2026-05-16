@@ -316,7 +316,3 @@ export abstract class MetaData {
     return this._frozen;
   }
 }
-
-/** Compatibility alias — consumers that treat a node as "any metadata node".
- *  Removed in rebuild Phase 4 when all consumers adopt the typed tree. */
-export type MetaModel = MetaData;

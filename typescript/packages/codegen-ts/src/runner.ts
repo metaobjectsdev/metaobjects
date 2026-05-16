@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { TYPE_OBJECT } from "@metaobjects/metadata";
 import type { Generator, GenContext, EmittedFile } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
@@ -15,7 +15,7 @@ const VALID_ENTITY_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export interface RunGenOpts {
   config: MetaobjectsGenConfig;
-  metadata: MetaModel;
+  metadata: MetaData;
   /** Optional whitelist of entity names. */
   entityFilter?: string[];
   /** Overwrite strategy passed to decideAndWrite. Defaults to "overwrite". */
@@ -45,7 +45,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     return { files: [], warnings };
   }
 
-  const safeEntities: MetaModel[] = [];
+  const safeEntities: MetaData[] = [];
   for (const entity of filtered) {
     if (!VALID_ENTITY_NAME.test(entity.name)) {
       warnings.push(

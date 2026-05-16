@@ -4,7 +4,7 @@ import {
   FileMetaDataLoader,
   TypeRegistry,
   registerCoreTypes,
-  type MetaModel,
+  type MetaData,
 } from "@metaobjects/metadata";
 import { registerForgeTypes } from "./forge-types.js";
 import { discoverWorkspace, resolveExtendsOrder } from "./workspace.js";
@@ -24,7 +24,7 @@ export const DEFAULT_METAOBJECTS_DIR = ".metaobjects";
 
 /**
  * Load all metadata files from `<repoRoot>/metaobjects/` into a single
- * MetaModel. If `<repoRoot>/.meta/package.meta.json` declares `extends:` deps
+ * MetaData. If `<repoRoot>/.meta/package.meta.json` declares `extends:` deps
  * and a workspace can be discovered (pnpm-workspace.yaml or package.json
  * workspaces), peer packages are loaded too in topological dep-first order.
  *
@@ -38,7 +38,7 @@ export const DEFAULT_METAOBJECTS_DIR = ".metaobjects";
  *   `loadMemory` resolves `metaobjects/` and (if workspace-aware) the
  *   transitive `extends:` graph automatically.
  */
-export async function loadMemory(repoRoot: string): Promise<MetaModel> {
+export async function loadMemory(repoRoot: string): Promise<MetaData> {
   const registry = new TypeRegistry();
   registerCoreTypes(registry);
   registerForgeTypes(registry);

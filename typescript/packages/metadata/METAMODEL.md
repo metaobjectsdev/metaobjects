@@ -229,7 +229,7 @@ const result2 = await loader.loadDirectory("path/to/dir", {
 // Load from an in-memory JSON string (e.g. in tests):
 const result3 = await new MetaDataLoader().load([new InMemorySource(jsonString)]);
 
-// result.root is the merged MetaModel; result.errors / result.warnings carry diagnostics.
+// result.root is the merged MetaData tree; result.errors / result.warnings carry diagnostics.
 ```
 
 Strict mode rejects unknown types/attributes; permissive mode (the default) tolerates them as warnings. Set via `new FileMetaDataLoader({ strict: true })`.

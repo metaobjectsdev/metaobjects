@@ -1,5 +1,5 @@
 // Typed-view RenderContext — the POC parallel to codegen-ts/src/render-context.ts.
-// loadedRoot is a MetaRoot typed view, not a raw MetaModel.
+// loadedRoot is a MetaRoot typed view, not a raw MetaData.
 
 import type { MetaRoot } from "@metaobjects/metadata";
 import type { Dialect, ColumnNamingStrategy } from "@metaobjects/codegen-ts";

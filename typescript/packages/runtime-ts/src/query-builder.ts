@@ -1,4 +1,4 @@
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_FIELD, TYPE_IDENTITY,
   IDENTITY_SUBTYPE_PRIMARY,
@@ -36,7 +36,7 @@ export interface QueryOpts {
   offset?: number;
 }
 
-export function resolvePkFields(entity: MetaModel): string[] {
+export function resolvePkFields(entity: MetaData): string[] {
   const primary = entity.children().find(
     (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
   );
@@ -50,7 +50,7 @@ export function resolvePkFields(entity: MetaModel): string[] {
   return attr.map(String);
 }
 
-function listFieldNames(entity: MetaModel): string[] {
+function listFieldNames(entity: MetaData): string[] {
   const out: string[] = [];
   for (const child of entity.children()) {
     if (child.type === TYPE_FIELD) out.push(child.name);
@@ -58,7 +58,7 @@ function listFieldNames(entity: MetaModel): string[] {
   return out;
 }
 
-function getField(entity: MetaModel, fieldName: string): MetaModel {
+function getField(entity: MetaData, fieldName: string): MetaData {
   const f = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!f) {
     throw new MetadataError(
@@ -69,7 +69,7 @@ function getField(entity: MetaModel, fieldName: string): MetaModel {
   return f;
 }
 
-function rowToColumns(entity: MetaModel, data: Row): Row {
+function rowToColumns(entity: MetaData, data: Row): Row {
   const out: Row = {};
   for (const [k, v] of Object.entries(data)) {
     const field = getField(entity, k);
@@ -82,7 +82,7 @@ function rowToColumns(entity: MetaModel, data: Row): Row {
  * Returns null when `filter` has no clauses ({} or { $and: [] }) — meaning "match all"
  * (callers should treat null the same as omitting the where clause entirely).
  */
-export function compileFilter(entity: MetaModel, filter: Filter): WhereClause | null {
+export function compileFilter(entity: MetaData, filter: Filter): WhereClause | null {
   if ("$and" in filter && Array.isArray(filter.$and)) {
     // TS can't narrow $and away from the Record branch, so the runtime check above
     // proves it's a Filter[] but the element type still needs a bridge cast.
@@ -102,7 +102,7 @@ export function compileFilter(entity: MetaModel, filter: Filter): WhereClause | 
   };
 }
 
-function compileEntry(entity: MetaModel, fieldName: string, value: FilterValue): WhereClause {
+function compileEntry(entity: MetaData, fieldName: string, value: FilterValue): WhereClause {
   const field = getField(entity, fieldName);
   const column = resolveColumnName(field);
 
@@ -137,7 +137,7 @@ function compileEntry(entity: MetaModel, fieldName: string, value: FilterValue):
   throw new MetadataError(`No recognized operator on filter for field '${fieldName}'`);
 }
 
-function normalizeOrderBy(input: QueryOpts["orderBy"], entity: MetaModel): OrderBy[] | undefined {
+function normalizeOrderBy(input: QueryOpts["orderBy"], entity: MetaData): OrderBy[] | undefined {
   if (input === undefined) return undefined;
   const arr = Array.isArray(input[0]) ? (input as [string, "asc" | "desc"][]) : [input as [string, "asc" | "desc"]];
   return arr.map(([fieldName, dir]) => {
@@ -148,7 +148,7 @@ function normalizeOrderBy(input: QueryOpts["orderBy"], entity: MetaModel): Order
 
 /** If `projectedFields` is provided, only those fields are selected (PK is auto-added). */
 export function buildSelectSpec(
-  entity: MetaModel,
+  entity: MetaData,
   filter: Filter | undefined,
   opts: QueryOpts,
   projectedFields?: string[],
@@ -173,14 +173,14 @@ export function buildSelectSpec(
   return spec;
 }
 
-export function buildCountSpec(entity: MetaModel, filter: Filter | undefined): CountSpec {
+export function buildCountSpec(entity: MetaData, filter: Filter | undefined): CountSpec {
   const spec: CountSpec = { table: resolveTableName(entity) };
   const where = filter !== undefined ? compileFilter(entity, filter) : null;
   if (where !== null) spec.where = where;
   return spec;
 }
 
-export function buildInsertSpec(entity: MetaModel, data: Row): InsertSpec {
+export function buildInsertSpec(entity: MetaData, data: Row): InsertSpec {
   const values = rowToColumns(entity, data);
   const allFields = listFieldNames(entity);
   return {
@@ -190,7 +190,7 @@ export function buildInsertSpec(entity: MetaModel, data: Row): InsertSpec {
   };
 }
 
-export function buildUpdateSpec(entity: MetaModel, data: Row, id: unknown): UpdateSpec {
+export function buildUpdateSpec(entity: MetaData, data: Row, id: unknown): UpdateSpec {
   const values = rowToColumns(entity, data);
   const pkFields = resolvePkFields(entity);
   if (pkFields.length !== 1) {
@@ -208,7 +208,7 @@ export function buildUpdateSpec(entity: MetaModel, data: Row, id: unknown): Upda
   };
 }
 
-export function buildDeleteSpec(entity: MetaModel, id: unknown): DeleteSpec {
+export function buildDeleteSpec(entity: MetaData, id: unknown): DeleteSpec {
   const pkFields = resolvePkFields(entity);
   if (pkFields.length !== 1) {
     throw new MetadataError(

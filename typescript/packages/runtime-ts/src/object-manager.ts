@@ -1,4 +1,4 @@
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_OBJECT, TYPE_FIELD,
   FIELD_SUBTYPE_INT, FIELD_SUBTYPE_SHORT, FIELD_SUBTYPE_BYTE,
@@ -35,7 +35,7 @@ import { MetadataError, UnsafeNameError, ValidationError, NotFoundError } from "
 import { VALID_ENTITY_NAME, DEFAULT_IF_MISSING } from "./constants.js";
 
 export interface ObjectManagerOptions {
-  metadata: MetaModel;
+  metadata: MetaData;
   driver: PersistenceDriver;
 }
 
@@ -52,7 +52,7 @@ export interface WriteOpts {
 }
 
 export class ObjectManager {
-  private readonly metadata: MetaModel;
+  private readonly metadata: MetaData;
   private readonly driver: PersistenceDriver;
   private readonly nameMapCache = new Map<string, EntityNameMap>();
 
@@ -61,7 +61,7 @@ export class ObjectManager {
     this.driver = opts.driver;
   }
 
-  private nameMap(entity: MetaModel): EntityNameMap {
+  private nameMap(entity: MetaData): EntityNameMap {
     let m = this.nameMapCache.get(entity.name);
     if (!m) {
       m = buildNameMap(entity);
@@ -295,7 +295,7 @@ export class ObjectManager {
   }
 
   private async attachIncludes(
-    entity: MetaModel,
+    entity: MetaData,
     records: Row[],
     includes: string[],
     driver: PersistenceDriver,
@@ -354,7 +354,7 @@ export class ObjectManager {
     }
   }
 
-  private toDbRow(entity: MetaModel, jsRow: Row): Row {
+  private toDbRow(entity: MetaData, jsRow: Row): Row {
     const { jsToDb } = this.nameMap(entity);
     const out: Row = {};
     for (const [jsName, dbCol] of jsToDb) {
@@ -363,11 +363,11 @@ export class ObjectManager {
     return out;
   }
 
-  private allDbColumns(entity: MetaModel): string[] {
+  private allDbColumns(entity: MetaData): string[] {
     return [...this.nameMap(entity).jsToDb.values()];
   }
 
-  private applyViewRestriction(entity: MetaModel, data: Row, viewName: string | undefined): Row {
+  private applyViewRestriction(entity: MetaData, data: Row, viewName: string | undefined): Row {
     if (viewName === undefined) return data;
     const allowed = new Set(viewFieldNames(entity, viewName));
     const offending = Object.keys(data).filter((k) => !allowed.has(k));
@@ -386,7 +386,7 @@ export class ObjectManager {
     return data;
   }
 
-  private requireEntity(entityName: string): MetaModel {
+  private requireEntity(entityName: string): MetaData {
     if (!VALID_ENTITY_NAME.test(entityName)) {
       throw new UnsafeNameError(
         `Unsafe entity name '${entityName}'`,
@@ -400,7 +400,7 @@ export class ObjectManager {
     return entity;
   }
 
-  private toJsRow(entity: MetaModel, dbRow: Row): Row {
+  private toJsRow(entity: MetaData, dbRow: Row): Row {
     const { dbToJs } = this.nameMap(entity);
     const out: Row = {};
     for (const [dbCol, jsName] of dbToJs) {
@@ -412,7 +412,7 @@ export class ObjectManager {
 
 // updateMany / deleteMany with an empty filter would silently affect every row.
 // Force callers to be explicit (use $or-style or a tautology if they really mean "all").
-function requireNonEmptyFilter(entity: MetaModel, filter: Filter, op: string): WhereClause {
+function requireNonEmptyFilter(entity: MetaData, filter: Filter, op: string): WhereClause {
   const where = compileFilter(entity, filter);
   if (where === null) {
     throw new MetadataError(
@@ -434,7 +434,7 @@ const NUMERIC_SUBTYPES = new Set([
 ]);
 
 // decodeRef always returns strings; numeric PK fields need coercion back to number.
-function coercePkValue(entity: MetaModel, fieldName: string, rawValue: string): string | number {
+function coercePkValue(entity: MetaData, fieldName: string, rawValue: string): string | number {
   const field = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (field && NUMERIC_SUBTYPES.has(field.subType)) {
     const n = Number(rawValue);

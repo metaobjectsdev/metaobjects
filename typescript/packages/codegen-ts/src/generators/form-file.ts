@@ -1,9 +1,9 @@
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderFormFile } from "../templates/form-file.js";
 
 export interface FormFileOpts {
-  filter?: (entity: MetaModel) => boolean;
+  filter?: (entity: MetaData) => boolean;
 }
 
 /**
@@ -16,7 +16,7 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
   return {
     name: "form-file",
     // Always set: AND-composes metadata opt-out with optional user filter.
-    filter: (e: MetaModel) => e.attr("emitForm") !== false && userFilter(e),
+    filter: (e: MetaData) => e.attr("emitForm") !== false && userFilter(e),
     generate: perEntity((entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("form-file: renderContext is required (provided by runGen)");

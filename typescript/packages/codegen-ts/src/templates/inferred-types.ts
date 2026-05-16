@@ -1,10 +1,10 @@
 // Inferred types template — emits Drizzle's InferSelectModel / InferInsertModel type aliases.
 
 import { code, imp, type Code } from "ts-poet";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { variableNameFromEntity } from "../naming.js";
 
-export function renderInferredTypes(entity: MetaModel): Code {
+export function renderInferredTypes(entity: MetaData): Code {
   const varName = variableNameFromEntity(entity.name);
   const selectSym = imp("InferSelectModel@drizzle-orm");
   const insertSym = imp("InferInsertModel@drizzle-orm");

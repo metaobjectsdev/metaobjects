@@ -1,14 +1,14 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { FileMetaDataLoader, type MetaModel } from "@metaobjects/metadata";
+import { FileMetaDataLoader, type MetaData } from "@metaobjects/metadata";
 import { perEntity, oncePerRun, type GenContext } from "../src/generator.js";
 
 const SINGLE_ENTITY_FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 
 function makeCtx(
-  entities: MetaModel[],
-  loadedRoot: MetaModel,
-  match: (e: MetaModel) => boolean = () => true
+  entities: MetaData[],
+  loadedRoot: MetaData,
+  match: (e: MetaData) => boolean = () => true
 ): GenContext {
   return {
     entities,

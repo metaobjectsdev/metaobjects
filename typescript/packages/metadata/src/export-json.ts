@@ -9,7 +9,7 @@
 // Error semantics (match Loader's own conventions):
 //   - Content errors (parse/validation failures) are collected in errors[] and
 //     returned in the result — they do NOT throw. `json` is still produced from
-//     whatever tree the Loader returned (Loader always returns a valid MetaModel).
+//     whatever tree the Loader returned (Loader always returns a valid MetaData).
 //   - I/O failures (missing/unreadable directory) are caught by
 //     `loadFromDirectory` and returned in its `errors[]`; `loadAndExportJson`
 //     surfaces them unchanged in `ExportResult.errors`. It does not throw for

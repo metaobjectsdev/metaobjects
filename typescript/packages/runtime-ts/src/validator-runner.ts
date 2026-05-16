@@ -1,7 +1,7 @@
 // Pure function: NEVER throws. ObjectManager wraps a non-ok result in a ValidationError on writes;
 // om.validate() returns the result directly.
 
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_FIELD, TYPE_VALIDATOR,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
@@ -28,7 +28,7 @@ export interface RunValidatorsOpts {
 }
 
 export function runValidators(
-  entity: MetaModel,
+  entity: MetaData,
   data: Record<string, unknown>,
   opts: RunValidatorsOpts = {},
 ): ValidationResult {
@@ -126,7 +126,7 @@ export function runValidators(
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
 }
 
-function isRequired(field: MetaModel): boolean {
+function isRequired(field: MetaData): boolean {
   if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
   for (const child of field.children()) {
     if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_REQUIRED) return true;
@@ -134,7 +134,7 @@ function isRequired(field: MetaModel): boolean {
   return false;
 }
 
-function resolveMaxLength(field: MetaModel): number | undefined {
+function resolveMaxLength(field: MetaData): number | undefined {
   const attr = field.attr(FIELD_ATTR_MAX_LENGTH);
   if (typeof attr === "number") return attr;
   for (const child of field.children()) {
@@ -146,7 +146,7 @@ function resolveMaxLength(field: MetaModel): number | undefined {
   return undefined;
 }
 
-function resolveMinLength(field: MetaModel): number | undefined {
+function resolveMinLength(field: MetaData): number | undefined {
   for (const child of field.children()) {
     if (child.type !== TYPE_VALIDATOR) continue;
     if (child.subType !== VALIDATOR_SUBTYPE_LENGTH) continue;

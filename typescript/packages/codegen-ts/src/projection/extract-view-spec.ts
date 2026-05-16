@@ -22,7 +22,7 @@ import {
   FIELD_ATTR_DB_COLUMN,
   type AggregateFunction,
 } from "@metaobjects/metadata";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   columnNameFromField,
   viewNameFromProjection,
@@ -44,20 +44,20 @@ export interface ExtractContext {
 // Private helpers
 // ---------------------------------------------------------------------------
 
-function findEntity(root: MetaModel, name: string): MetaModel | undefined {
+function findEntity(root: MetaData, name: string): MetaData | undefined {
   for (const child of root.children()) {
     if (child.type === TYPE_OBJECT && child.name === name) return child;
   }
   return undefined;
 }
 
-function findRelationship(obj: MetaModel, name: string): MetaModel | undefined {
+function findRelationship(obj: MetaData, name: string): MetaData | undefined {
   return obj.children().find(
     (c) => c.type === TYPE_RELATIONSHIP && c.name === name,
   );
 }
 
-function viewName(projection: MetaModel, ctx: ExtractContext): string {
+function viewName(projection: MetaData, ctx: ExtractContext): string {
   const dbView = projection.children().find(
     (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_VIEW,
   );
@@ -66,9 +66,9 @@ function viewName(projection: MetaModel, ctx: ExtractContext): string {
 }
 
 function baseEntityFor(
-  projection: MetaModel,
-  root: MetaModel,
-): MetaModel {
+  projection: MetaData,
+  root: MetaData,
+): MetaData {
   // v1: base entity is the resolved super (set via `extends:` in metadata).
   const superModel = projection.superResolved;
   const superName = superModel?.name ?? projection.superRef;
@@ -87,7 +87,7 @@ function baseEntityFor(
 }
 
 function sourceColumnNameFor(
-  entityField: MetaModel,
+  entityField: MetaData,
   ctx: ExtractContext,
 ): string {
   const explicit = entityField.attr(FIELD_ATTR_DB_COLUMN) as string | undefined;
@@ -113,7 +113,7 @@ function shortAliasFor(entityName: string, used: Set<string>): string {
  * Determine the field name on `parentEntity` that the FK references.
  * Priority: explicit `@parentField` attr on the relationship > parent's primary identity field > "id" fallback.
  */
-function parentJoinColumnFor(parentEntity: MetaModel, relationship: MetaModel): string {
+function parentJoinColumnFor(parentEntity: MetaData, relationship: MetaData): string {
   // Explicit @parentField wins (e.g., for email-based joins).
   const explicit = relationship.attr(RELATIONSHIP_ATTR_PARENT_FIELD) as string | undefined;
   if (explicit) return explicit;
@@ -134,7 +134,7 @@ function parentJoinColumnFor(parentEntity: MetaModel, relationship: MetaModel): 
 }
 
 interface PathStep {
-  entity: MetaModel;
+  entity: MetaData;
   relationship: string;
   fkField: string;
   parentJoinField: string;
@@ -149,9 +149,9 @@ interface TrieNode {
 }
 
 function buildJoinTree(
-  projection: MetaModel,
-  base: MetaModel,
-  root: MetaModel,
+  projection: MetaData,
+  base: MetaData,
+  root: MetaData,
   usedAliases: Set<string>,
   baseAlias: string,
 ): JoinTree {
@@ -250,10 +250,10 @@ function findAliasInTree(
 }
 
 function buildSelectSpec(
-  projection: MetaModel,
-  base: MetaModel,
+  projection: MetaData,
+  base: MetaData,
   joinTree: JoinTree,
-  root: MetaModel,
+  root: MetaData,
   ctx: ExtractContext,
 ): SelectSpec {
   const columns: SelectColumn[] = [];
@@ -358,16 +358,16 @@ function buildGroupBy(spec: SelectSpec): string[] {
 /**
  * Walk a projection's origin children to produce a ViewSpec.
  *
- * @param projection  The projection entity MetaModel (has a source[dbView] child
+ * @param projection  The projection entity MetaData (has a source[dbView] child
  *                    and extends a writable entity).
- * @param root        The loader's root MetaModel — all top-level objects are
+ * @param root        The loader's root MetaData — all top-level objects are
  *                    direct children of root (returned by `MetaDataLoader.load()`
  *                    / `FileMetaDataLoader.loadFiles()` as `result.root`).
  * @param ctx         Column naming strategy for SQL identifiers.
  */
 export function extractViewSpec(
-  projection: MetaModel,
-  root: MetaModel,
+  projection: MetaData,
+  root: MetaData,
   ctx: ExtractContext,
 ): ViewSpec {
   const base = baseEntityFor(projection, root);

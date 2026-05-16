@@ -1,20 +1,20 @@
 // v0.1 only handles SQLite's int↔boolean. Date/timestamp coercion (ISO string ↔ Date) is deferred.
 
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { TYPE_FIELD, FIELD_SUBTYPE_BOOLEAN } from "@metaobjects/metadata";
 import type { Dialect, Row } from "./persistence-driver.js";
 
-export function coerceRowOnRead(entity: MetaModel, row: Row, dialect: Dialect): Row {
+export function coerceRowOnRead(entity: MetaData, row: Row, dialect: Dialect): Row {
   if (dialect !== "sqlite") return row;
   return mapBooleansFromInt(entity, row);
 }
 
-export function coerceRowOnWrite(entity: MetaModel, row: Row, dialect: Dialect): Row {
+export function coerceRowOnWrite(entity: MetaData, row: Row, dialect: Dialect): Row {
   if (dialect !== "sqlite") return row;
   return mapBooleansToInt(entity, row);
 }
 
-function mapBooleansFromInt(entity: MetaModel, row: Row): Row {
+function mapBooleansFromInt(entity: MetaData, row: Row): Row {
   const out: Row = { ...row };
   for (const child of entity.children()) {
     if (child.type !== TYPE_FIELD) continue;
@@ -26,7 +26,7 @@ function mapBooleansFromInt(entity: MetaModel, row: Row): Row {
   return out;
 }
 
-function mapBooleansToInt(entity: MetaModel, row: Row): Row {
+function mapBooleansToInt(entity: MetaData, row: Row): Row {
   const out: Row = { ...row };
   for (const child of entity.children()) {
     if (child.type !== TYPE_FIELD) continue;

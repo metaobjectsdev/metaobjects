@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { TypeId, TypeRegistry, type AttrSchema } from "../src/registry.js";
 import { registerCoreTypes } from "../src/core-types.js";
-import type { MetaModel } from "../src/meta/meta-data.js";
+import type { MetaData } from "../src/meta/meta-data.js";
 import {
   TYPE_FIELD,
   TYPE_OBJECT,
@@ -40,7 +40,7 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const stubFactory = (): MetaModel => null as unknown as MetaModel;
+const stubFactory = (): MetaData => null as unknown as MetaData;
 
 function makeMinimalDef(type: string, subType: string, attributes: AttrSchema[] = []) {
   return {

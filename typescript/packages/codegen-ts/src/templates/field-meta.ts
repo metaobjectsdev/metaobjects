@@ -1,9 +1,9 @@
 // Shared field-level metadata helpers — consumed by entity-constants.ts,
 // projection-decl.ts, and any future generator that needs per-field inference.
 //
-// All helpers take a MetaModel for a field node (type === "field").
+// All helpers take a MetaData for a field node (type === "field").
 
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_VIEW,
   FIELD_SUBTYPE_STRING,
@@ -38,7 +38,7 @@ import {
  * Resolve the cell-renderer key (view kind) for a field.
  * Explicit view child wins; field subType determines default.
  */
-export function inferViewKind(field: MetaModel): string {
+export function inferViewKind(field: MetaData): string {
   // Explicit view child has highest priority.
   const viewChild = field.children().find((c) => c.type === TYPE_VIEW);
   if (viewChild) return viewChild.subType;
@@ -76,7 +76,7 @@ function defaultViewForSubType(subType: string): string {
 /**
  * Resolve the Zod validator expression for a field's storage type.
  */
-export function zodTypeFor(field: MetaModel): string {
+export function zodTypeFor(field: MetaData): string {
   switch (field.subType) {
     case FIELD_SUBTYPE_STRING:
       return "z.string()";
@@ -110,7 +110,7 @@ export function zodTypeFor(field: MetaModel): string {
  * Resolve currency code + locale for a currency-subtype field.
  * Returns null for non-currency fields.
  */
-export function currencyMetaFor(field: MetaModel): { currency: string; locale: string } | null {
+export function currencyMetaFor(field: MetaData): { currency: string; locale: string } | null {
   if (field.subType !== FIELD_SUBTYPE_CURRENCY) return null;
   const currency =
     (field.attr(FIELD_ATTR_CURRENCY) as string | undefined) ?? FIELD_ATTR_CURRENCY_DEFAULT;
@@ -131,7 +131,7 @@ export function currencyMetaFor(field: MetaModel): { currency: string; locale: s
  * Resolve the human-readable label for a field.
  * Uses @label attr on a view child if present; otherwise humanizes the field name.
  */
-export function labelFor(field: MetaModel): string {
+export function labelFor(field: MetaData): string {
   for (const child of field.children()) {
     if (child.type === TYPE_VIEW) {
       const label = child.attr("label");

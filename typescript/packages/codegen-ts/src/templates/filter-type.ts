@@ -3,7 +3,7 @@
 // datetimes get eq/ne/gt/gte/lt/lte/in.
 
 import { code, type Code } from "ts-poet";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_FIELD,
   FIELD_ATTR_FILTERABLE,
@@ -36,7 +36,7 @@ function tsNameFor(fieldSubType: string): string {
   return "string";
 }
 
-function renderFieldUnion(field: MetaModel): string {
+function renderFieldUnion(field: MetaData): string {
   const ops = opsForSubType(field.subType);
   const tsName = tsNameFor(field.subType);
   const opEntries = ops.map((op) => {
@@ -48,7 +48,7 @@ function renderFieldUnion(field: MetaModel): string {
   return `${tsName} | { ${opEntries.join("; ")} }`;
 }
 
-export function renderFilterType(entity: MetaModel): Code {
+export function renderFilterType(entity: MetaData): Code {
   // Use effectiveChildren() so inherited fields (from extends:/super:) are included in filter types.
   const allFields = entity.effectiveChildren().filter((c) => c.type === TYPE_FIELD);
   const filterableFieldsList = allFields.filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true);

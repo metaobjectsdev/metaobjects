@@ -1,13 +1,13 @@
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { TYPE_LAYOUT, LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjects/metadata";
 import { perEntity, type Generator, type GeneratorFactory, formatTs } from "@metaobjects/codegen-ts";
 import { renderColumnsFile } from "./templates/columns-file.js";
 
 export interface TanstackGridOpts {
-  filter?: (entity: MetaModel) => boolean;
+  filter?: (entity: MetaData) => boolean;
 }
 
-function hasDataGridLayout(entity: MetaModel): boolean {
+function hasDataGridLayout(entity: MetaData): boolean {
   // Use effectiveChildren() so inherited layouts (from extends:/super:) are considered.
   return entity.effectiveChildren().some(
     (c) => c.type === TYPE_LAYOUT && c.subType === LAYOUT_SUBTYPE_DATA_GRID,
@@ -24,7 +24,7 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
   return {
     name: "tanstack-grid",
     // Always set: AND-composes opt-out, user filter, and dataGrid layout presence.
-    filter: (e: MetaModel) =>
+    filter: (e: MetaData) =>
       e.attr("emitTanstack") !== false
       && userFilter(e)
       && hasDataGridLayout(e),

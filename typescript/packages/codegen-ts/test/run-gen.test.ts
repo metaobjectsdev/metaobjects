@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   FileMetaDataLoader,
   TypeId,
@@ -136,15 +136,15 @@ describe("runGen — refuses to clobber hand-written files", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Helper: build a minimal in-memory MetaModel root with one entity + long PK.
+// Helper: build a minimal in-memory MetaData root with one entity + long PK.
 // Used for tests that need custom/untrusted names without going through the
 // JSON parser (which might itself reject invalid names).
 // ---------------------------------------------------------------------------
-function makeRoot(pkg: string): MetaModel {
+function makeRoot(pkg: string): MetaData {
   return meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), pkg);
 }
 
-function makeEntity(name: string): MetaModel {
+function makeEntity(name: string): MetaData {
   const entity = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), name);
   // id field (long)
   const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");

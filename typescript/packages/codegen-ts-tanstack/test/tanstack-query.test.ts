@@ -87,7 +87,7 @@ describe("tanstackQuery() factory", () => {
     // Filter mimics what the runner does: AND-composes the generator's filter
     // with the entity's @emitTanstack attribute.
     const gen = tanstackQuery();
-    // Build a fresh (unfrozen) MetaModel with @emitTanstack: false.
+    // Build a fresh (unfrozen) MetaData with @emitTanstack: false.
     // The Loader freezes models after parsing, so we construct one in-memory.
     const ctx = await buildCtx();
     const optedOut = new MetaObject(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Subscriber");

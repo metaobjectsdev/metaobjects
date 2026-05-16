@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
@@ -8,7 +8,7 @@ import { meta } from "./_meta-build.js";
 import { resolveIdentity, type IdentityResolution } from "../src/identity-strategy.js";
 import { ValidationError } from "../src/errors.js";
 
-function makePost(generation?: string): MetaModel {
+function makePost(generation?: string): MetaData {
   const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
   post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
   const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");

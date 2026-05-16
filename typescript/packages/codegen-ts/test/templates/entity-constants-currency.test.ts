@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TypeId,
   TYPE_OBJECT,
@@ -15,7 +15,7 @@ import {
 import { meta } from "../_meta-build.js";
 import { renderEntityConstants } from "../../src/templates/entity-constants.js";
 
-function makeEntity(fields: MetaModel[]): MetaModel {
+function makeEntity(fields: MetaData[]): MetaData {
   const entity = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Program");
   entity.setAttr("dbTable", "programs");
 
@@ -34,7 +34,7 @@ function makeEntity(fields: MetaModel[]): MetaModel {
   return entity;
 }
 
-function makeCurrencyField(name: string, currencyCode?: string): MetaModel {
+function makeCurrencyField(name: string, currencyCode?: string): MetaData {
   const field = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_CURRENCY), name);
   if (currencyCode !== undefined) {
     field.setAttr("currency", currencyCode);

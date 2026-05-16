@@ -179,7 +179,7 @@ describe("loadMemory — cross-package loading via workspace", () => {
       // Load from billing's perspective
       const meta = await loadMemory(join(wsRoot, "packages", "billing"));
       const childNames = meta.children().map((c) => c.name).sort();
-      // Both packages' entities are loaded into the merged MetaModel
+      // Both packages' entities are loaded into the merged MetaData tree
       expect(childNames).toContain("User");
       expect(childNames).toContain("Invoice");
     } finally {

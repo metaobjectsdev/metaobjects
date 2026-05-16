@@ -1,5 +1,5 @@
 import { code, imp, type Code } from "ts-poet";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_VIEW, TYPE_FIELD,
   TYPE_LAYOUT,
@@ -41,7 +41,7 @@ interface GridSpec {
  * Mirrors the logic in codegen-ts's renderFilterAllowlist — used here at codegen time
  * to validate @filter values on data-grid views.
  */
-function buildAllowlistForEntity(entity: MetaModel): FilterAllowlist {
+function buildAllowlistForEntity(entity: MetaData): FilterAllowlist {
   const result: Record<string, { ops: readonly string[]; subType: string; leadingWildcard: boolean }> = {};
   // Use effectiveChildren() so inherited fields (from extends:/super:) are included in allowlist.
   for (const f of entity.effectiveChildren().filter((c) => c.type === TYPE_FIELD && c.attr(FIELD_ATTR_FILTERABLE) === true)) {
@@ -56,12 +56,12 @@ function humanize(s: string): string {
     .replace(/^./, (c) => c.toUpperCase());
 }
 
-function fieldViewKind(field: MetaModel): string {
+function fieldViewKind(field: MetaData): string {
   const view = field.children().find((c) => c.type === TYPE_VIEW);
   return view?.subType ?? "text";
 }
 
-function fieldLabel(field: MetaModel): string {
+function fieldLabel(field: MetaData): string {
   const view = field.children().find((c) => c.type === TYPE_VIEW);
   const label = view?.attr("label");
   if (typeof label === "string") return label;
@@ -76,7 +76,7 @@ function fieldLabel(field: MetaModel): string {
  * fall back to all fields on the entity (pre-E-T2 behaviour, kept for
  * backwards compat with metadata not yet migrated by E-T4).
  */
-function extractGrids(entity: MetaModel): GridSpec[] {
+function extractGrids(entity: MetaData): GridSpec[] {
   // Use effectiveChildren() so inherited fields and layouts (from extends:/super:) are included.
   const effective = entity.effectiveChildren();
   const fieldsByName = new Map(
@@ -136,7 +136,7 @@ function renderColumnDef(col: ColumnSpec): string {
   return `  {\n${parts.join(",\n")}\n  }`;
 }
 
-export function renderColumnsFile(entity: MetaModel, _ctx: RenderContext): string {
+export function renderColumnsFile(entity: MetaData, _ctx: RenderContext): string {
   const entityName = entity.name;
   const lcEntity   = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const grids      = extractGrids(entity);

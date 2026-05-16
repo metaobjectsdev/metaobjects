@@ -2,7 +2,7 @@ import { test, expect, describe, beforeAll } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
 import type { SchemaSnapshot, ColumnDescriptor } from "../../src/types.js";
 
@@ -13,7 +13,7 @@ async function loadFixture(name: string) {
 }
 
 describe("buildExpectedSchema — single entity", () => {
-  let metadata: MetaModel;
+  let metadata: MetaData;
   let snapshot: SchemaSnapshot;
 
   beforeAll(async () => {

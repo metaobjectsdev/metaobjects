@@ -17,7 +17,7 @@
 // object metadata. Default off. Most projects don't need stock forms.
 
 import { code, imp } from "ts-poet";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_FIELD,
   TYPE_IDENTITY,
@@ -28,7 +28,7 @@ import {
 import { type RenderContext, withExt } from "../render-context.js";
 import { GENERATED_HEADER } from "../constants.js";
 
-function primaryFieldNames(entity: MetaModel): Set<string> {
+function primaryFieldNames(entity: MetaData): Set<string> {
   const set = new Set<string>();
   // Use effectiveChildren() so inherited identities (from extends:/super:) are included.
   for (const child of entity.effectiveChildren()) {
@@ -41,7 +41,7 @@ function primaryFieldNames(entity: MetaModel): Set<string> {
   return set;
 }
 
-function isAutoManaged(field: MetaModel): boolean {
+function isAutoManaged(field: MetaData): boolean {
   const def = field.attr(FIELD_ATTR_DEFAULT);
   if (typeof def === "string") {
     const upper = def.toUpperCase();
@@ -51,7 +51,7 @@ function isAutoManaged(field: MetaModel): boolean {
 }
 
 /** Visible form fields = all fields minus PK and DB-auto-defaulted. */
-function visibleFields(entity: MetaModel): string[] {
+function visibleFields(entity: MetaData): string[] {
   const pkNames = primaryFieldNames(entity);
   const names: string[] = [];
   // Use effectiveChildren() so inherited fields (from extends:/super:) are included in forms.
@@ -65,7 +65,7 @@ function visibleFields(entity: MetaModel): string[] {
   return names;
 }
 
-export function renderFormFile(entity: MetaModel, ctx: RenderContext): string {
+export function renderFormFile(entity: MetaData, ctx: RenderContext): string {
   const entityName = entity.name;
   const entityFileSpec = withExt(`./${entityName}`, ctx.extStyle);
   const fields = visibleFields(entity);

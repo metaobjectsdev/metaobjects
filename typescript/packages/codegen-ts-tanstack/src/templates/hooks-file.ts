@@ -1,5 +1,5 @@
 import { code, imp, joinCode, type Code } from "ts-poet";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import type { RenderContext } from "@metaobjects/codegen-ts";
 import { GENERATED_HEADER, isProjection, pluralize } from "@metaobjects/codegen-ts";
 
@@ -19,7 +19,7 @@ import { GENERATED_HEADER, isProjection, pluralize } from "@metaobjects/codegen-
  * All hooks call useEntityFetcher() (from @metaobjects/runtime-ts-client) for
  * the underlying HTTP. Mutations aggressively invalidate <entity>Keys.all().
  */
-export function renderHooksFile(entity: MetaModel, _ctx: RenderContext): string {
+export function renderHooksFile(entity: MetaData, _ctx: RenderContext): string {
   if (isProjection(entity)) {
     return renderReadOnlyHooksFile(entity);
   }
@@ -30,7 +30,7 @@ export function renderHooksFile(entity: MetaModel, _ctx: RenderContext): string 
 // Read-only path (projections)
 // ---------------------------------------------------------------------------
 
-function renderReadOnlyHooksFile(entity: MetaModel): string {
+function renderReadOnlyHooksFile(entity: MetaData): string {
   const entityName = entity.name;
   const entityNamePlural = pluralize(entityName);
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
@@ -99,7 +99,7 @@ export function use${entityNamePlural}(
 // Full path (writable entities — table-backed or write-through)
 // ---------------------------------------------------------------------------
 
-function renderFullHooksFile(entity: MetaModel): string {
+function renderFullHooksFile(entity: MetaData): string {
   const entityName = entity.name;
   const entityNamePlural = pluralize(entityName);
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);

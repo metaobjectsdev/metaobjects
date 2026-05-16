@@ -1,7 +1,7 @@
 // PK resolver — pre-pass over the loaded metadata to build a name → PK info map.
 // codegen uses this when emitting FK columns (per design §13 #2).
 
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_OBJECT,
   TYPE_FIELD,
@@ -28,7 +28,7 @@ export interface PkInfo {
  * Used by FK column emission: when Post.authorId references User, codegen
  * looks up User's PK info to choose the matching FK column type.
  */
-export function buildPkMap(root: MetaModel): Map<string, PkInfo> {
+export function buildPkMap(root: MetaData): Map<string, PkInfo> {
   const result = new Map<string, PkInfo>();
   for (const obj of root.children()) {
     if (obj.type !== TYPE_OBJECT) continue;

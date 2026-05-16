@@ -1,7 +1,7 @@
 # @metaobjects/codegen-ts
 
 TypeScript codegen for the metaobjects metamodel — emits Drizzle schema +
-inferred types + Zod validators + typed CRUD queries from a loaded `MetaModel`.
+inferred types + Zod validators + typed CRUD queries from a loaded `MetaData`.
 
 ## Install
 

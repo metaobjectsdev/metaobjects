@@ -24,9 +24,9 @@ import type { MetaOrigin } from "./meta/meta-origin.js";
 // Constants — type names, subtype names, reserved keys, separators
 export * from "./constants.js";
 
-// MetaData node base — abstract class; also exports AttrValue + MetaModel alias
+// MetaData node base — abstract class; also exports AttrValue
 export { MetaData } from "./meta/meta-data.js";
-export type { AttrValue, MetaModel } from "./meta/meta-data.js";
+export type { AttrValue } from "./meta/meta-data.js";
 
 // Concrete node classes
 export { MetaRoot } from "./meta/meta-root.js";

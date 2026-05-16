@@ -1,5 +1,5 @@
 // Typed-view generator interfaces — the POC parallel to codegen-ts/src/generator.ts.
-// Every MetaModel is replaced by a typed view (MetaObject / MetaRoot).
+// Every MetaData is replaced by a typed view (MetaObject / MetaRoot).
 
 import type { MetaObject, MetaRoot } from "@metaobjects/metadata";
 import type { RenderContext } from "./render-context.js";

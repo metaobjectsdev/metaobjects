@@ -1,7 +1,7 @@
 // Tests for $apiPrefix emission in entity-constants + routes-file.
 
 import { describe, test, expect } from "bun:test";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TypeId,
   TYPE_OBJECT,
@@ -27,7 +27,7 @@ import { buildRelationMap } from "../../src/relation-resolver.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeSimpleRoot(name = "Subscriber"): { root: MetaModel; entity: MetaModel } {
+function makeSimpleRoot(name = "Subscriber"): { root: MetaData; entity: MetaData } {
   const root = meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
   const entity = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), name);
   const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
@@ -42,7 +42,7 @@ function makeSimpleRoot(name = "Subscriber"): { root: MetaModel; entity: MetaMod
   return { root, entity };
 }
 
-function makeSimpleEntity(name = "Subscriber"): MetaModel {
+function makeSimpleEntity(name = "Subscriber"): MetaData {
   return makeSimpleRoot(name).entity;
 }
 

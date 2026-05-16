@@ -4,7 +4,7 @@
 //   - entity objects SHOULD have a primary identity, unless @isAbstract (warning)
 //   - base objects have no rule (template, may or may not have identity)
 
-import type { MetaModel } from "./meta/meta-data.js";
+import type { MetaData } from "./meta/meta-data.js";
 import { ParseError } from "./errors.js";
 import {
   TYPE_OBJECT,
@@ -19,14 +19,14 @@ export interface SubtypeRuleResult {
   warnings: string[];
 }
 
-export function validateSubtypeRules(root: MetaModel): SubtypeRuleResult {
+export function validateSubtypeRules(root: MetaData): SubtypeRuleResult {
   const errors: ParseError[] = [];
   const warnings: string[] = [];
   walk(root, errors, warnings);
   return { errors, warnings };
 }
 
-function walk(model: MetaModel, errors: ParseError[], warnings: string[]): void {
+function walk(model: MetaData, errors: ParseError[], warnings: string[]): void {
   if (model.type === TYPE_OBJECT) {
     const hasPrimary = model.effectiveChildren().some(
       (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,

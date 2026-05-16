@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
          IDENTITY_SUBTYPE_PRIMARY, RELATIONSHIP_SUBTYPE_ASSOCIATION,
@@ -13,7 +13,7 @@ import {
 } from "../src/relation-resolver.js";
 import { MetadataError } from "../src/errors.js";
 
-function makeUser(): MetaModel {
+function makeUser(): MetaData {
   const user = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "User");
   user.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
   const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
@@ -22,7 +22,7 @@ function makeUser(): MetaModel {
   return user;
 }
 
-function makePost(): MetaModel {
+function makePost(): MetaData {
   const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
   post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
   post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title"));
@@ -38,7 +38,7 @@ function makePost(): MetaModel {
   return post;
 }
 
-function makeRoot(entities: MetaModel[]): MetaModel {
+function makeRoot(entities: MetaData[]): MetaData {
   const r = meta(new TypeId("metadata", "base"), "");
   for (const e of entities) r.addChild(e);
   return r;

@@ -1,10 +1,10 @@
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderQueriesFile } from "../templates/queries-file.js";
 import { formatTs } from "../format.js";
 
 export interface QueriesFileOpts {
-  filter?: (entity: MetaModel) => boolean;
+  filter?: (entity: MetaData) => boolean;
 }
 
 export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generator {

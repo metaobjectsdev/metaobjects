@@ -4,7 +4,7 @@
 //  assigned  → caller must provide PK.
 //  composite → always treated as 'assigned' regardless of the @generation hint.
 
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
@@ -16,7 +16,7 @@ export type IdentityResolution =
   | { kind: "driver-generated"; values: Record<string, unknown> }
   | { kind: "preset"; values: Record<string, unknown> };
 
-export function resolveIdentity(entity: MetaModel, data: Record<string, unknown>): IdentityResolution {
+export function resolveIdentity(entity: MetaData, data: Record<string, unknown>): IdentityResolution {
   const primary = entity.children().find(
     (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
   );

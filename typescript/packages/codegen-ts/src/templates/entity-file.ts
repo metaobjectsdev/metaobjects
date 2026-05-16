@@ -6,7 +6,7 @@
 //   vanilla / write-through entity → Drizzle table path
 
 import { joinCode, type Code } from "ts-poet";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import type { RenderContext } from "../render-context.js";
 import { renderDrizzleSchema } from "./drizzle-schema.js";
 import { renderInferredTypes } from "./inferred-types.js";
@@ -18,7 +18,7 @@ import { GENERATED_HEADER } from "../constants.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { renderProjectionDecl } from "./projection-decl.js";
 
-export function renderEntityFile(entity: MetaModel, ctx: RenderContext): string {
+export function renderEntityFile(entity: MetaData, ctx: RenderContext): string {
   // --- Projection path (read-only: view-backed entity with no table source) ---
   if (isProjection(entity)) {
     return renderProjectionDecl(entity, ctx.loadedRoot, {

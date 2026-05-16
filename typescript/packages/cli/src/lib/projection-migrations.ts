@@ -1,7 +1,7 @@
 import {
   TYPE_OBJECT,
   resolveTableName,
-  type MetaModel,
+  type MetaData,
 } from "@metaobjects/metadata";
 import {
   isProjection,
@@ -15,7 +15,7 @@ import {
 } from "@metaobjects/migrate-ts";
 
 export interface ProjectionMigrationsOpts {
-  readonly metadata: MetaModel;
+  readonly metadata: MetaData;
   readonly dialect: "postgres" | "sqlite";
   readonly allowBreaking?: boolean;
   /** Column naming strategy forwarded to extractViewSpec. Defaults to "snake_case". */
@@ -44,7 +44,7 @@ export function computeProjectionMigrations(
   }
 
   // Find projection entities.
-  const projections: MetaModel[] = root.children().filter(
+  const projections: MetaData[] = root.children().filter(
     (c) => c.type === TYPE_OBJECT && isProjection(c),
   );
 

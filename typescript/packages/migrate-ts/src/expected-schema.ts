@@ -1,4 +1,4 @@
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP,
   IDENTITY_ATTR_FIELDS,
@@ -46,11 +46,11 @@ export interface BuildExpectedSchemaOptions {
 }
 
 export function buildExpectedSchema(
-  root: MetaModel,
+  root: MetaData,
   opts?: BuildExpectedSchemaOptions,
 ): SchemaSnapshot {
   // Pass 1: collect entities + their resolved table names.
-  const entities: { entity: MetaModel; tableName: string }[] = [];
+  const entities: { entity: MetaData; tableName: string }[] = [];
   for (const child of root.children()) {
     if (child.type !== TYPE_OBJECT) continue;
     entities.push({ entity: child, tableName: resolveTableName(child) });
@@ -93,12 +93,12 @@ function normalizeForSqlite(sqlType: SqlType): SqlType {
 }
 
 function buildTable(
-  entity: MetaModel,
+  entity: MetaData,
   tableName: string,
   resolveTargetTable: (entityName: string) => string | undefined,
 ): TableDescriptor {
   let primaryKey: string[] = [];
-  let pkIdentity: MetaModel | undefined;
+  let pkIdentity: MetaData | undefined;
 
   // First pass: locate the primary identity so column construction can consult it.
   for (const child of entity.children()) {
@@ -133,7 +133,7 @@ function buildTable(
   };
 }
 
-function buildSecondaryIndexes(entity: MetaModel, tableName: string): IndexDescriptor[] {
+function buildSecondaryIndexes(entity: MetaData, tableName: string): IndexDescriptor[] {
   const indexes: IndexDescriptor[] = [];
 
   // (a) Implicit unique indexes from @unique fields. Drizzle auto-creates these
@@ -172,7 +172,7 @@ function buildSecondaryIndexes(entity: MetaModel, tableName: string): IndexDescr
 }
 
 function buildForeignKeys(
-  entity: MetaModel,
+  entity: MetaData,
   tableName: string,
   resolveTargetTable: (entityName: string) => string | undefined,
 ): FkDescriptor[] {
@@ -213,7 +213,7 @@ const EXPR_DEFAULT_PATTERNS = [
 ];
 
 function buildColumn(
-  field: MetaModel,
+  field: MetaData,
   isPk: boolean,
   pkGeneration: string | undefined,
 ): ColumnDescriptor {
@@ -261,11 +261,11 @@ function subtypeToSqlType(subType: string): SqlType {
   }
 }
 
-function isPrimaryIdentity(identity: MetaModel): boolean {
+function isPrimaryIdentity(identity: MetaData): boolean {
   return identity.subType === IDENTITY_SUBTYPE_PRIMARY;
 }
 
-function readIdentityFields(identity: MetaModel): string[] {
+function readIdentityFields(identity: MetaData): string[] {
   const raw = identity.attr(IDENTITY_ATTR_FIELDS);
   if (Array.isArray(raw)) {
     return raw.map(String).filter((s) => s.length > 0);
@@ -277,7 +277,7 @@ function readIdentityFields(identity: MetaModel): string[] {
   return [];
 }
 
-function findField(entity: MetaModel, name: string): MetaModel | undefined {
+function findField(entity: MetaData, name: string): MetaData | undefined {
   for (const child of entity.children()) {
     if (child.type === TYPE_FIELD && child.name === name) return child;
   }

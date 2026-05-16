@@ -3,7 +3,7 @@
 // plus the relations() block auto-emitted at the end.
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP,
   IDENTITY_SUBTYPE_PRIMARY, IDENTITY_SUBTYPE_SECONDARY, FIELD_SUBTYPE_LONG,
@@ -27,7 +27,7 @@ import { renderRelationsBlock } from "./relations-block.js";
  * Returns a Code object so ts-poet can deduplicate imports when this composes
  * with the rest of the entity file. Biome formatting runs after composition.
  */
-export function renderDrizzleSchema(entity: MetaModel, ctx: RenderContext): Code {
+export function renderDrizzleSchema(entity: MetaData, ctx: RenderContext): Code {
   const dialect = ctx.dialect;
   const tableFn = dialect === "sqlite" ? "sqliteTable" : "pgTable";
   const importModule = dialect === "sqlite" ? "drizzle-orm/sqlite-core" : "drizzle-orm/pg-core";
@@ -139,7 +139,7 @@ interface FkInfo {
 }
 
 /** Pre-pass: map fkFieldName → FkInfo for this entity's effective (own + inherited) relationship children. */
-function buildFkMapForEntity(effective: readonly MetaModel[], ctx: RenderContext): Map<string, FkInfo> {
+function buildFkMapForEntity(effective: readonly MetaData[], ctx: RenderContext): Map<string, FkInfo> {
   const result = new Map<string, FkInfo>();
   for (const child of effective) {
     if (child.type !== TYPE_RELATIONSHIP) continue;
@@ -184,7 +184,7 @@ function inlineObjectLiteral(obj: Record<string, unknown>): string {
 
 /** Render one column line (field name + Drizzle column expression). */
 function renderColumn(
-  field: MetaModel,
+  field: MetaData,
   ctx: RenderContext,
   isPk: boolean,
   pkGeneration: string | undefined,

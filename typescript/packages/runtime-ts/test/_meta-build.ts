@@ -1,9 +1,9 @@
 // Shared test helper for building metadata graphs imperatively.
 //
-// The metadata refactor removed the constructible `MetaModel` class; nodes are
+// The metadata refactor removed the constructible `MetaData` class; nodes are
 // now concrete classes (MetaObject, MetaField, ...). This helper dispatches a
 // (TypeId, name) pair to the right concrete class so existing imperative test
-// builders keep working with a one-token change (`new MetaModel(` → `meta(`).
+// builders keep working with a one-token change (`new MetaData(` → `meta(`).
 
 import {
   MetaData,
@@ -50,7 +50,7 @@ const CTORS: Record<string, NodeCtor> = {
 
 /**
  * Build a concrete metadata node from a TypeId + name. Drop-in replacement for
- * the removed `new MetaModel(typeId, name)` constructor.
+ * the removed `new MetaData(typeId, name)` constructor.
  */
 export function meta(typeId: TypeId, name = ""): MetaData {
   const Ctor = CTORS[typeId.type];

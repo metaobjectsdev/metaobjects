@@ -6,7 +6,7 @@
 //   1. name      2. package   3. extends   4. abstract
 //   5. overlay   6. isArray   7. @-attrs (alphabetical)   8. children
 
-import type { MetaModel, AttrValue } from "./meta/meta-data.js";
+import type { MetaData, AttrValue } from "./meta/meta-data.js";
 import {
   TYPE_ATTR,
   ATTR_PREFIX,
@@ -38,7 +38,7 @@ export interface SerializeOptions {
   indent?: number;
 }
 
-export function serializeJson(model: MetaModel, opts?: SerializeOptions): string {
+export function serializeJson(model: MetaData, opts?: SerializeOptions): string {
   const inlineAttrs = opts?.inlineAttrs ?? true;
   const indent = opts?.indent ?? 2;
 
@@ -75,12 +75,12 @@ function fusedKey(type: string, subType: string): string {
 // Serialize a single node — returns { "<type>.<subType>": { ...body } }
 // ---------------------------------------------------------------------------
 
-function serializeNode(model: MetaModel, inlineAttrs: boolean): Record<string, unknown> {
+function serializeNode(model: MetaData, inlineAttrs: boolean): Record<string, unknown> {
   const inner = serializeNodeInner(model, inlineAttrs);
   return { [fusedKey(model.type, model.subType)]: inner };
 }
 
-function serializeNodeInner(model: MetaModel, inlineAttrs: boolean): Record<string, unknown> {
+function serializeNodeInner(model: MetaData, inlineAttrs: boolean): Record<string, unknown> {
   // Canonical body-key order:
   //   1. name  2. package  3. extends  4. abstract
   //   5. overlay  6. isArray  7. inline @-attrs  8. children
@@ -179,7 +179,7 @@ function serializeNodeInner(model: MetaModel, inlineAttrs: boolean): Record<stri
 // byte-identical output from the same input metamodel.
 // ---------------------------------------------------------------------------
 
-export function canonicalSerialize(model: MetaModel): string {
+export function canonicalSerialize(model: MetaData): string {
   const raw = serializeJson(model, { inlineAttrs: true, indent: 2 });
 
   const parsed = JSON.parse(raw) as unknown;

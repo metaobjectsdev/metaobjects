@@ -8,7 +8,7 @@ import { serializeJson, canonicalSerialize } from "../src/serializer-json.js";
 import { parseJson } from "../src/parser-json.js";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemorySource } from "../src/loader/meta-data-source.js";
-import type { MetaModel } from "../src/meta/meta-data.js";
+import type { MetaData } from "../src/meta/meta-data.js";
 import { MetaRoot } from "../src/meta/meta-root.js";
 import { MetaObject } from "../src/meta/meta-object.js";
 import { MetaField } from "../src/meta/meta-field.js";
@@ -72,7 +72,7 @@ function fused(type: string, subType: string): string {
  * Create a typed node directly (without registry) for simple unit tests.
  * Dispatches to the right concrete class so instanceof / typed getters work.
  */
-function makeModel(type: string, subType: string, name: string): MetaModel {
+function makeModel(type: string, subType: string, name: string): MetaData {
   const id = new TypeId(type, subType);
   switch (type) {
     case TYPE_METADATA:
@@ -93,11 +93,11 @@ function makeModel(type: string, subType: string, name: string): MetaModel {
 }
 
 /**
- * Recursively assert two MetaModel trees are structurally equivalent.
+ * Recursively assert two MetaData trees are structurally equivalent.
  * Compares: typeId, name, package, superRef, isAbstract, isArray, attrs, children (recursive).
  * Does NOT compare frozen state or superResolved (runtime, not wire-format).
  */
-function assertModelsEqual(a: MetaModel, b: MetaModel, path = "root"): void {
+function assertModelsEqual(a: MetaData, b: MetaData, path = "root"): void {
   expect(a.type).toBe(b.type);
   expect(a.subType).toBe(b.subType);
   expect(a.name).toBe(b.name);

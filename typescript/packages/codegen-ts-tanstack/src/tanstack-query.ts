@@ -1,9 +1,9 @@
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { perEntity, type Generator, type GeneratorFactory, formatTs } from "@metaobjects/codegen-ts";
 import { renderHooksFile } from "./templates/hooks-file.js";
 
 export interface TanstackQueryOpts {
-  filter?: (entity: MetaModel) => boolean;
+  filter?: (entity: MetaData) => boolean;
 }
 
 /**
@@ -18,7 +18,7 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
   return {
     name: "tanstack-query",
     // AND-composes metadata opt-out with optional user filter.
-    filter: (e: MetaModel) => e.attr("emitTanstack") !== false && userFilter(e),
+    filter: (e: MetaData) => e.attr("emitTanstack") !== false && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error(

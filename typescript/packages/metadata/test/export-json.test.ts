@@ -88,7 +88,7 @@ describe("loadAndExportJson — round-trip stability", () => {
   it("json re-loads and re-serializes identically (stable canonical form)", async () => {
     const { json: firstJson } = await loadAndExportJson(inputDir);
 
-    // Parse the exported JSON back into a MetaModel, then re-serialize.
+    // Parse the exported JSON back into a MetaData tree, then re-serialize.
     const loader = new MetaDataLoader();
     const reloadResult = await loader.load([new InMemorySource(firstJson, { id: "round-trip" })]);
     const secondJson = canonicalSerialize(reloadResult.root);

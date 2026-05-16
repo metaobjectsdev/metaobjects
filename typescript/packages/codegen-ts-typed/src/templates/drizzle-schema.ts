@@ -2,7 +2,7 @@
 // with FK .references() on FK columns derived from relationship children,
 // plus the relations() block auto-emitted at the end.
 //
-// POC port: uses typed MetaObject / MetaField accessors instead of raw MetaModel.
+// POC port: uses typed MetaObject / MetaField accessors instead of raw MetaData.
 
 import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject, MetaField } from "@metaobjects/metadata";

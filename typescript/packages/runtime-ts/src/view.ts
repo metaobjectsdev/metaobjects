@@ -1,4 +1,4 @@
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_FIELD, TYPE_VIEW, TYPE_VALIDATOR,
   VALIDATOR_SUBTYPE_REQUIRED,
@@ -22,7 +22,7 @@ export interface EntityViewSpec {
   fields: FieldViewSpec[];
 }
 
-export function viewFieldNames(entity: MetaModel, viewName: string): string[] {
+export function viewFieldNames(entity: MetaData, viewName: string): string[] {
   const names: string[] = [];
   for (const field of entity.children()) {
     if (field.type !== TYPE_FIELD) continue;
@@ -33,7 +33,7 @@ export function viewFieldNames(entity: MetaModel, viewName: string): string[] {
   return names;
 }
 
-export function fieldViewSpec(entity: MetaModel, fieldName: string, viewName: string): FieldViewSpec | null {
+export function fieldViewSpec(entity: MetaData, fieldName: string, viewName: string): FieldViewSpec | null {
   const field = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!field) return null;
   const view = field.children().find((c) => c.type === TYPE_VIEW && c.name === viewName);
@@ -57,7 +57,7 @@ export function fieldViewSpec(entity: MetaModel, fieldName: string, viewName: st
   return result;
 }
 
-export function entityViewSpec(entity: MetaModel, viewName: string): EntityViewSpec {
+export function entityViewSpec(entity: MetaData, viewName: string): EntityViewSpec {
   const fields: FieldViewSpec[] = [];
   for (const field of entity.children()) {
     if (field.type !== TYPE_FIELD) continue;
@@ -73,7 +73,7 @@ export function entityViewSpec(entity: MetaModel, viewName: string): EntityViewS
   return { entityName: entity.name, viewName, fields };
 }
 
-function isFieldRequired(field: MetaModel): boolean {
+function isFieldRequired(field: MetaData): boolean {
   if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
   for (const child of field.children()) {
     if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_REQUIRED) return true;

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP, TYPE_VIEW,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_BOOLEAN,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
@@ -14,7 +14,7 @@ import { ObjectManager } from "../src/object-manager.js";
 import { inMemoryDriver } from "../src/drivers/in-memory-driver.js";
 import { MetadataError, UnsafeNameError, NotFoundError } from "../src/errors.js";
 
-function makePost(): MetaModel {
+function makePost(): MetaData {
   const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
   post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
   post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title"));
@@ -26,7 +26,7 @@ function makePost(): MetaModel {
   return post;
 }
 
-function makeRoot(entities: MetaModel[]): MetaModel {
+function makeRoot(entities: MetaData[]): MetaData {
   const r = meta(new TypeId("metadata", "base"), "");
   for (const e of entities) r.addChild(e);
   return r;
@@ -252,7 +252,7 @@ describe("ObjectManager — deleteMany", () => {
   });
 });
 
-function makePostWithAuthor(): MetaModel {
+function makePostWithAuthor(): MetaData {
   const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
   post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
   post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title"));
@@ -269,7 +269,7 @@ function makePostWithAuthor(): MetaModel {
   return post;
 }
 
-function makeUser(): MetaModel {
+function makeUser(): MetaData {
   const user = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "User");
   user.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
   user.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "email"));

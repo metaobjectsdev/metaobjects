@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { TypeId, TypeRegistry, childRuleMatches } from "../src/registry.js";
 import { registerCoreTypes } from "../src/core-types.js";
-import type { MetaModel } from "../src/meta/meta-data.js";
+import type { MetaData } from "../src/meta/meta-data.js";
 import {
   TYPE_FIELD,
   TYPE_OBJECT,
@@ -32,8 +32,8 @@ import {
   LAYOUT_SUBTYPES,
 } from "../src/constants.js";
 
-// Stub factory used throughout tests — Task 3 will provide the real MetaModel.
-const stubFactory = (): MetaModel => null as unknown as MetaModel;
+// Stub factory used throughout tests — Task 3 will provide the real MetaData.
+const stubFactory = (): MetaData => null as unknown as MetaData;
 
 // Helper to build a minimal TypeDefinition for a given type+subType.
 function makeDef(type: string, subType: string) {
@@ -435,7 +435,7 @@ describe("registerCoreTypes", () => {
   });
 
   // 7. Factory works
-  it("factory for field.string produces a MetaModel with correct typeId and name", () => {
+  it("factory for field.string produces a MetaData with correct typeId and name", () => {
     const def = registry.find(TYPE_FIELD, FIELD_SUBTYPE_STRING);
     expect(def).toBeDefined();
     const typeId = new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING);
@@ -445,7 +445,7 @@ describe("registerCoreTypes", () => {
     expect(model.name).toBe("myField");
   });
 
-  it("factory for object.entity produces a MetaModel with correct typeId and name", () => {
+  it("factory for object.entity produces a MetaData with correct typeId and name", () => {
     const def = registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY);
     expect(def).toBeDefined();
     const typeId = new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY);

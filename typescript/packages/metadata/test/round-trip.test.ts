@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { FileMetaDataLoader } from "../src/loader/file-meta-data-loader.js";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemorySource } from "../src/loader/meta-data-source.js";
-import type { MetaModel } from "../src/meta/meta-data.js";
+import type { MetaData } from "../src/meta/meta-data.js";
 import { serializeJson } from "../src/serializer-json.js";
 import {
   TYPE_METADATA,
@@ -62,7 +62,7 @@ function fixturePath(name: string): string {
 //     canonical merged form where this flag is always false.
 // ---------------------------------------------------------------------------
 
-function assertModelsEqual(a: MetaModel, b: MetaModel, path = "root"): void {
+function assertModelsEqual(a: MetaData, b: MetaData, path = "root"): void {
   // Type identity
   if (a.type !== b.type) throw new Error(`${path}: type mismatch — expected "${a.type}", got "${b.type}"`);
   if (a.subType !== b.subType) throw new Error(`${path}: subType mismatch — expected "${a.subType}", got "${b.subType}"`);
@@ -112,7 +112,7 @@ function assertModelsEqual(a: MetaModel, b: MetaModel, path = "root"): void {
 // Helper: load a single fixture file via FileMetaDataLoader
 // ---------------------------------------------------------------------------
 
-async function loadFixture(name: string): Promise<{ root: MetaModel; warnings: string[]; errors: Error[] }> {
+async function loadFixture(name: string): Promise<{ root: MetaData; warnings: string[]; errors: Error[] }> {
   const loader = new FileMetaDataLoader({ freeze: false });
   return loader.loadFiles([fixturePath(name)]);
 }
@@ -121,7 +121,7 @@ async function loadFixture(name: string): Promise<{ root: MetaModel; warnings: s
 // Helper: load multiple fixture files in dependency order
 // ---------------------------------------------------------------------------
 
-async function loadFixtures(names: string[]): Promise<{ root: MetaModel; warnings: string[]; errors: Error[] }> {
+async function loadFixtures(names: string[]): Promise<{ root: MetaData; warnings: string[]; errors: Error[] }> {
   const loader = new FileMetaDataLoader({ freeze: false });
   return loader.loadFiles(names.map(fixturePath));
 }
@@ -130,7 +130,7 @@ async function loadFixtures(names: string[]): Promise<{ root: MetaModel; warning
 // Helper: round-trip a root — serialize → fresh MetaDataLoader → parse → return new root
 // ---------------------------------------------------------------------------
 
-async function roundTrip(root: MetaModel): Promise<MetaModel> {
+async function roundTrip(root: MetaData): Promise<MetaData> {
   const serialized = serializeJson(root);
   const loader = new MetaDataLoader({ freeze: false });
   const result = await loader.load([new InMemorySource(serialized, { id: "round-trip" })]);

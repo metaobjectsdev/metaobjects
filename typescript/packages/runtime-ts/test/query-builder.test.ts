@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_SOURCE,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_BOOLEAN,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
@@ -11,7 +11,7 @@ import {
 } from "../src/query-builder.js";
 import { MetadataError } from "../src/errors.js";
 
-function makePost(): MetaModel {
+function makePost(): MetaData {
   const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
   post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
   const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");

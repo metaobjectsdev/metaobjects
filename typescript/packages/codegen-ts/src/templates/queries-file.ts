@@ -2,7 +2,7 @@
 // a complete <Entity>.queries.ts file with @generated header and correct imports.
 
 import { code, joinCode, type Code } from "ts-poet";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { type RenderContext, withExt } from "../render-context.js";
 import {
   renderFindByIdFn,
@@ -14,7 +14,7 @@ import {
 import { variableNameFromEntity } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
 
-export function renderQueriesFile(entity: MetaModel, ctx: RenderContext): string {
+export function renderQueriesFile(entity: MetaData, ctx: RenderContext): string {
   const entityName = entity.name;
   const entityFileName = withExt(`./${entityName}`, ctx.extStyle);
   const varName = variableNameFromEntity(entityName);

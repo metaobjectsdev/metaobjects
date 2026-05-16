@@ -29,7 +29,7 @@
 // picks them up from this object automatically.
 
 import { code, type Code } from "ts-poet";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_FIELD,
   TYPE_VIEW,
@@ -69,7 +69,7 @@ function humanize(s: string): string {
  *   "Subscriber" → "/subscribers"
  *   "WorkoutEvent" → "/workout_events"
  */
-function resourcePath(entity: MetaModel): string {
+function resourcePath(entity: MetaData): string {
   const overrideAttr = entity.attr("routePath");
   if (typeof overrideAttr === "string" && overrideAttr.length > 0) {
     return overrideAttr.startsWith("/") ? overrideAttr : `/${overrideAttr}`;
@@ -78,7 +78,7 @@ function resourcePath(entity: MetaModel): string {
 }
 
 /** Resolve the view subtype: explicit `view` child wins, else inferred from field subType. */
-function resolveView(field: MetaModel): { view: string; viewNode?: MetaModel } {
+function resolveView(field: MetaData): { view: string; viewNode?: MetaData } {
   for (const child of field.children()) {
     if (child.type === TYPE_VIEW) {
       return { view: child.subType, viewNode: child };
@@ -127,7 +127,7 @@ function htmlTypeFromView(view: string, override?: string): string | undefined {
  * (e.g. `{ required: "X", maxLength: { value: 255, message: "..." } }`)
  * or undefined when there are no rules to emit.
  */
-function renderFieldRules(field: MetaModel): string | undefined {
+function renderFieldRules(field: MetaData): string | undefined {
   const ruleParts: string[] = [];
 
   let hasRequired = false;
@@ -182,7 +182,7 @@ function renderFieldRules(field: MetaModel): string | undefined {
 }
 
 /** Build one nested field-object entry like `email: { name, label, ... },`. */
-function renderFieldEntry(field: MetaModel): string {
+function renderFieldEntry(field: MetaData): string {
   const { view, viewNode } = resolveView(field);
   const label = labelFor(field);
   const placeholder = viewNode?.attr("placeholder") as string | undefined;
@@ -210,7 +210,7 @@ function renderFieldEntry(field: MetaModel): string {
   return `  ${field.name}: {\n    ${entries.join(",\n    ")},\n  }`;
 }
 
-export function renderEntityConstants(entity: MetaModel, apiPrefix = ""): Code {
+export function renderEntityConstants(entity: MetaData, apiPrefix = ""): Code {
   const entityName = entity.name;
   const tableName = resolveTableName(entity);
   const path = resourcePath(entity);

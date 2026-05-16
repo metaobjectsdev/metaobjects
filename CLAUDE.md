@@ -123,7 +123,7 @@ import type { Generator, GenContext, EmittedFile } from "@metaobjects/codegen-ts
 
 interface Generator {
   name: string;                          // kebab-case; surfaces in diagnostics
-  filter?: (entity: MetaModel) => boolean;
+  filter?: (entity: MetaData) => boolean;
   generate(ctx: GenContext): EmittedFile[] | Promise<EmittedFile[]>;
 }
 ```

@@ -11,7 +11,7 @@
 // This module provides only the lookup helper; the parser calls it inline.
 // The old resolveSupers() multi-pass walker has been deleted.
 
-import type { MetaModel } from "./meta/meta-data.js";
+import type { MetaData } from "./meta/meta-data.js";
 import { PACKAGE_SEPARATOR, PACKAGE_PARENT } from "./constants.js";
 
 // ---------------------------------------------------------------------------
@@ -22,7 +22,7 @@ import { PACKAGE_SEPARATOR, PACKAGE_PARENT } from "./constants.js";
  * Recursively searches the tree for a node whose fqn() matches.
  * Returns the first match, or undefined.
  */
-function findInTree(root: MetaModel, fqn: string): MetaModel | undefined {
+function findInTree(root: MetaData, fqn: string): MetaData | undefined {
   if (root.fqn() === fqn) return root;
   for (const child of root.children()) {
     const found = findInTree(child, fqn);
@@ -44,14 +44,14 @@ function findInTree(root: MetaModel, fqn: string): MetaModel | undefined {
  *
  * @param ref - The raw super reference (e.g., "Fruit", "::pkg::Name", "..::common::id")
  * @param contextPackage - The package of the model whose super is being resolved
- * @param root - The root MetaModel of the accumulating tree to search within
- * @returns The resolved MetaModel, or undefined if the reference cannot be resolved
+ * @param root - The root MetaData of the accumulating tree to search within
+ * @returns The resolved MetaData, or undefined if the reference cannot be resolved
  */
 export function resolveSuperRef(
   ref: string,
   contextPackage: string,
-  root: MetaModel,
-): MetaModel | undefined {
+  root: MetaData,
+): MetaData | undefined {
   // -------------------------------------------------------------------------
   // 1. Absolute reference: leading "::"
   // -------------------------------------------------------------------------
@@ -114,7 +114,7 @@ export interface DeferredSuperFailure {
  *
  * Idempotent: nodes that already have superResolved set are skipped.
  */
-export function resolveDeferredSupers(root: MetaModel): DeferredSuperFailure[] {
+export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
   const failures: DeferredSuperFailure[] = [];
   walk(root, "", (node, ctxPkg) => {
     if (node.superRef === undefined) return;
@@ -135,9 +135,9 @@ export function resolveDeferredSupers(root: MetaModel): DeferredSuperFailure[] {
 }
 
 function walk(
-  node: MetaModel,
+  node: MetaData,
   ctxPkg: string,
-  visit: (n: MetaModel, ctx: string) => void,
+  visit: (n: MetaData, ctx: string) => void,
 ): void {
   visit(node, ctxPkg);
   const nextCtx = node.package ?? ctxPkg;

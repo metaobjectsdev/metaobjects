@@ -1,6 +1,6 @@
 // Field-type → Drizzle column type mapping. Per design §6.
 
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
@@ -93,7 +93,7 @@ export interface ColumnSpec {
 
 /** Resolve max length from validator.length child or @maxLength attr.
  *  Uses effectiveChildren() so a validator inherited via field-level extends is seen. */
-function getMaxLength(field: MetaModel): number | undefined {
+function getMaxLength(field: MetaData): number | undefined {
   const lenAttr = field.attr(FIELD_ATTR_MAX_LENGTH);
   if (typeof lenAttr === "number") return lenAttr;
   for (const child of field.effectiveChildren()) {
@@ -107,7 +107,7 @@ function getMaxLength(field: MetaModel): number | undefined {
 
 /** Check for validator.required child OR @required attr.
  *  Uses effectiveChildren() so a validator inherited via field-level extends is seen. */
-function isRequired(field: MetaModel): boolean {
+function isRequired(field: MetaData): boolean {
   if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
   for (const child of field.effectiveChildren()) {
     if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_REQUIRED) {
@@ -118,7 +118,7 @@ function isRequired(field: MetaModel): boolean {
 }
 
 export function mapColumnType(
-  field: MetaModel,
+  field: MetaData,
   dialect: Dialect,
   strategy: ColumnNamingStrategy = "snake_case",
 ): ColumnSpec {

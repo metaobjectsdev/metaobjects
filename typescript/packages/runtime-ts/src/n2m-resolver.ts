@@ -1,7 +1,7 @@
 // Two-stage N:M: first query the join entity for FK pairs, then query the target entity for the rows.
 // The relationship declares @joinEntity + @joinFields: [sourceJoinField, targetJoinField].
 
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_OBJECT, TYPE_FIELD, TYPE_RELATIONSHIP,
   RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF,
@@ -37,9 +37,9 @@ export interface N2mBatchOutput {
 
 /** Returns null if the named relationship is not N:M — caller should try resolveRelationDescriptor. */
 export function resolveN2mDescriptor(
-  sourceEntity: MetaModel,
+  sourceEntity: MetaData,
   relationName: string,
-  root: MetaModel,
+  root: MetaData,
 ): N2mDescriptor | null {
   for (const child of sourceEntity.children()) {
     if (child.type !== TYPE_RELATIONSHIP) continue;
@@ -76,7 +76,7 @@ export function resolveN2mDescriptor(
 export function buildN2mLazySpecs(
   desc: N2mDescriptor,
   sourceRecord: Row,
-  root: MetaModel,
+  root: MetaData,
 ): N2mLazyOutput {
   const joinEntity = mustGetEntity(root, desc.joinEntityName);
   const targetEntity = mustGetEntity(root, desc.targetEntityName);
@@ -98,7 +98,7 @@ export function buildN2mLazySpecs(
 export function buildN2mBatchSpecs(
   desc: N2mDescriptor,
   sourceRecords: Row[],
-  root: MetaModel,
+  root: MetaData,
 ): N2mBatchOutput {
   const joinEntity = mustGetEntity(root, desc.joinEntityName);
   const targetEntity = mustGetEntity(root, desc.targetEntityName);
@@ -117,7 +117,7 @@ export function buildN2mBatchSpecs(
   return { joinSpec, makeTargetSpec };
 }
 
-function mustGetEntity(root: MetaModel, name: string): MetaModel {
+function mustGetEntity(root: MetaData, name: string): MetaData {
   const e = root.children().find((c) => c.type === TYPE_OBJECT && c.name === name);
   if (!e) throw new MetadataError(`Entity '${name}' not found`, { entity: name });
   return e;
@@ -133,7 +133,7 @@ function collectIds(records: Row[], pkField: string): (string | number)[] {
   return [...seen] as (string | number)[];
 }
 
-function collectTargetIds(joinRows: Row[], targetJoinField: string, joinEntity: MetaModel): (string | number)[] {
+function collectTargetIds(joinRows: Row[], targetJoinField: string, joinEntity: MetaData): (string | number)[] {
   // joinRows are raw column-keyed (driver hasn't been to-JS-row'd yet); resolve the metadata field name to its DB column.
   const dbColumn = resolveJoinColumnName(joinEntity, targetJoinField);
   const seen = new Set<PrimitiveValue>();
@@ -145,7 +145,7 @@ function collectTargetIds(joinRows: Row[], targetJoinField: string, joinEntity: 
   return [...seen] as (string | number)[];
 }
 
-export function resolveJoinColumnName(joinEntity: MetaModel, fieldName: string): string {
+export function resolveJoinColumnName(joinEntity: MetaData, fieldName: string): string {
   const field = joinEntity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!field) throw new MetadataError(`Join field '${fieldName}' not on '${joinEntity.name}'`);
   return resolveColumnName(field);

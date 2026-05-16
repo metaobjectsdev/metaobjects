@@ -1,6 +1,6 @@
 // packages/codegen-ts/test/templates/queries.test.ts
 import { describe, test, expect } from "bun:test";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_METADATA,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, SUBTYPE_ROOT,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
@@ -13,7 +13,7 @@ import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 
-function makePost(): MetaModel {
+function makePost(): MetaData {
   const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
   const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
   post.addChild(id);
@@ -28,7 +28,7 @@ function makePost(): MetaModel {
   return post;
 }
 
-function makeCtx(post: MetaModel) {
+function makeCtx(post: MetaData) {
   const root = meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
   root.addChild(post);
   return makeRenderContext({

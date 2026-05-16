@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_VALIDATOR,
          FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_BOOLEAN,
          VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
@@ -7,7 +7,7 @@ import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_VALIDATOR,
 import { meta } from "./_meta-build.js";
 import { runValidators } from "../src/validator-runner.js";
 
-function makeEntity(buildFields: (e: MetaModel) => void): MetaModel {
+function makeEntity(buildFields: (e: MetaData) => void): MetaData {
   const e = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
   buildFields(e);
   return e;

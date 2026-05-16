@@ -8,7 +8,7 @@
 //   - Insert/Update types
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_FIELD,
 } from "@metaobjects/metadata";
@@ -57,14 +57,14 @@ function pathFromProjectionName(name: string): string {
  *   - `<Projection>`         — `z.infer` type alias
  *   - `<Projection>` const   — constants block ($entity, $view, $path, per-field metadata)
  *
- * @param projection  The projection entity MetaModel (has a source[dbView] child).
- * @param root        The loader's root MetaModel (all top-level objects as direct children,
+ * @param projection  The projection entity MetaData (has a source[dbView] child).
+ * @param root        The loader's root MetaData (all top-level objects as direct children,
  *                    from `MetaDataLoader.load()` / `FileMetaDataLoader.loadFiles()` as `result.root`).
  * @param opts        Column naming strategy + dialect.
  */
 export function renderProjectionDecl(
-  projection: MetaModel,
-  root: MetaModel,
+  projection: MetaData,
+  root: MetaData,
   opts: ProjectionDeclOpts,
 ): string {
   const { dialect, columnNamingStrategy, apiPrefix = "" } = opts;
@@ -78,7 +78,7 @@ export function renderProjectionDecl(
   const spec = extractViewSpec(projection, root, { columnNamingStrategy });
 
   // Collect fields: inherited from extends parent first, then projection-declared.
-  const allFields: MetaModel[] = [];
+  const allFields: MetaData[] = [];
   const superModel = projection.superResolved;
   const superName = superModel?.name ?? projection.superRef;
   if (superName) {

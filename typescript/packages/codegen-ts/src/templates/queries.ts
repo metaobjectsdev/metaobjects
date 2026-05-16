@@ -2,7 +2,7 @@
 // Each returns a ts-poet Code block; composed into a file by queries-file.ts.
 
 import { code, imp, type Code } from "ts-poet";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import { TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY, IDENTITY_ATTR_FIELDS } from "@metaobjects/metadata";
 import type { RenderContext } from "../render-context.js";
 import { variableNameFromEntity, toSnakeCase, pluralize } from "../naming.js";
@@ -13,7 +13,7 @@ function prepareName(prefix: string, entitySnakeName: string, fieldDbName: strin
 }
 
 /** Get the PK field name and its TS type for a given entity. */
-function getPkInfo(entity: MetaModel, ctx: RenderContext): { fieldName: string; tsType: string } {
+function getPkInfo(entity: MetaData, ctx: RenderContext): { fieldName: string; tsType: string } {
   // Use effectiveChildren() to find the primary identity (may be inherited from extends:/super:).
   const primary = entity.effectiveChildren().find(
     (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
@@ -32,7 +32,7 @@ function getPkInfo(entity: MetaModel, ctx: RenderContext): { fieldName: string; 
   return { fieldName: pkFieldName, tsType };
 }
 
-export function renderFindByIdFn(entity: MetaModel, ctx: RenderContext): Code {
+export function renderFindByIdFn(entity: MetaData, ctx: RenderContext): Code {
   const varName = variableNameFromEntity(entity.name);
   const entityName = entity.name;
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
@@ -66,7 +66,7 @@ export async function ${fnName}(${pkField}: ${pkType}): Promise<${entityName} | 
 `;
 }
 
-export function renderListFn(entity: MetaModel, _ctx: RenderContext): Code {
+export function renderListFn(entity: MetaData, _ctx: RenderContext): Code {
   const varName = variableNameFromEntity(entity.name);
   const entityName = entity.name;
   // Pluralize the PascalCase entity name, preserving capitalization
@@ -83,7 +83,7 @@ export async function ${fnName}(opts?: { limit?: number; offset?: number }): Pro
 `;
 }
 
-export function renderCreateFn(entity: MetaModel, _ctx: RenderContext): Code {
+export function renderCreateFn(entity: MetaData, _ctx: RenderContext): Code {
   const varName = variableNameFromEntity(entity.name);
   const entityName = entity.name;
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
@@ -99,7 +99,7 @@ export async function ${fnName}(data: unknown): Promise<${entityName}> {
 `;
 }
 
-export function renderUpdateFn(entity: MetaModel, ctx: RenderContext): Code {
+export function renderUpdateFn(entity: MetaData, ctx: RenderContext): Code {
   const varName = variableNameFromEntity(entity.name);
   const entityName = entity.name;
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
@@ -117,7 +117,7 @@ export async function ${fnName}(${pkField}: ${pkType}, data: unknown): Promise<$
 `;
 }
 
-export function renderDeleteByIdFn(entity: MetaModel, ctx: RenderContext): Code {
+export function renderDeleteByIdFn(entity: MetaData, ctx: RenderContext): Code {
   const varName = variableNameFromEntity(entity.name);
   const entityName = entity.name;
   const { fieldName: pkField, tsType: pkType } = getPkInfo(entity, ctx);

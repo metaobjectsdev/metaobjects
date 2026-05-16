@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import {
-  // Concrete node classes (the typed tree replaces the old MetaModel/metaOf layers)
+  // Concrete node classes (the typed tree replaces the old metaOf-based layers)
   MetaData,
   MetaRoot,
   MetaObject,
@@ -57,7 +57,6 @@ import {
   CHILD_RULE_WILDCARD,
   // Types (type-only imports verified at compile time)
   type AttrValue,
-  type MetaModel,
   type LoadingState,
   type ChildRule,
   type TypeDefinition,
@@ -74,7 +73,7 @@ import {
 
 describe("Public API surface — @metaobjects/metadata index", () => {
   // ---------------------------------------------------------------------------
-  // Concrete node classes (typed tree) — MetaModel is now a type alias for MetaData
+  // Concrete node classes (typed tree)
   // ---------------------------------------------------------------------------
 
   test("concrete node classes are exported and constructible via index", () => {
@@ -85,8 +84,8 @@ describe("Public API surface — @metaobjects/metadata index", () => {
     expect(obj).toBeInstanceOf(MetaData);
   });
 
-  test("MetaModel type alias resolves to a MetaData node", () => {
-    const m: MetaModel = new MetaField(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "myField");
+  test("MetaData node base accepts attrs and reports correct instanceOf", () => {
+    const m: MetaData = new MetaField(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "myField");
     const val: AttrValue = "hello";
     m.setAttr("label", val);
     expect(m.attr("label")).toBe("hello");

@@ -78,7 +78,7 @@ describe("pathFromProjectionName — pluralization edge cases", () => {
 
 // ---------------------------------------------------------------------------
 // Helper — load a Program + Week + ProgramSummary tri-entity setup.
-// Returns { root, projection } — root is the loader's root MetaModel (all
+// Returns { root, projection } — root is the loader's root MetaData (all
 // top-level objects are direct children, from LoadResult.root), projection is ProgramSummary.
 // ---------------------------------------------------------------------------
 async function loadProjection() {

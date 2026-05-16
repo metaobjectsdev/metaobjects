@@ -19,7 +19,7 @@
 // Modeled on src/subtype-rules.ts: a recursive walk producing an
 // { errors, warnings } result. All A3 findings are ERRORS; warnings stays [].
 
-import type { AttrValue, MetaModel } from "./meta/meta-data.js";
+import type { AttrValue, MetaData } from "./meta/meta-data.js";
 import { ParseError } from "./errors.js";
 import type { AttrSchema, TypeRegistry } from "./registry.js";
 import {
@@ -95,7 +95,7 @@ function runtimeTypeName(value: AttrValue): string {
 // ---------------------------------------------------------------------------
 
 export function validateAttrSchema(
-  root: MetaModel,
+  root: MetaData,
   registry: TypeRegistry,
 ): AttrSchemaValidationResult {
   const errors: ParseError[] = [];
@@ -104,7 +104,7 @@ export function validateAttrSchema(
 }
 
 function walk(
-  node: MetaModel,
+  node: MetaData,
   registry: TypeRegistry,
   errors: ParseError[],
 ): void {
@@ -115,13 +115,13 @@ function walk(
 }
 
 /** A node label for error messages, e.g. `origin.aggregate 'weekCount'`. */
-function nodeLabel(node: MetaModel): string {
+function nodeLabel(node: MetaData): string {
   const head = `${node.type}.${node.subType}`;
   return node.name !== "" ? `${head} '${node.name}'` : head;
 }
 
 function validateNode(
-  node: MetaModel,
+  node: MetaData,
   registry: TypeRegistry,
   errors: ParseError[],
 ): void {

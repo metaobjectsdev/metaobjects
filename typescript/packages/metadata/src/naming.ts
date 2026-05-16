@@ -1,4 +1,4 @@
-import type { MetaModel } from "./meta/meta-data.js";
+import type { MetaData } from "./meta/meta-data.js";
 import {
   TYPE_FIELD, TYPE_SOURCE, FIELD_ATTR_DB_COLUMN,
   SOURCE_SUBTYPE_DB_TABLE, SOURCE_DB_TABLE_ATTR_NAME,
@@ -17,7 +17,7 @@ export function pluralize(s: string): string {
   return s + "s";
 }
 
-export function resolveTableName(entity: MetaModel): string {
+export function resolveTableName(entity: MetaData): string {
   const source = entity.children().find(
     (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_TABLE,
   );
@@ -26,7 +26,7 @@ export function resolveTableName(entity: MetaModel): string {
   return pluralize(toSnakeCase(entity.name));
 }
 
-export function resolveColumnName(field: MetaModel): string {
+export function resolveColumnName(field: MetaData): string {
   const attr = field.attr(FIELD_ATTR_DB_COLUMN);
   if (typeof attr === "string") return attr;
   return toSnakeCase(field.name);
@@ -38,7 +38,7 @@ export interface EntityNameMap {
   dbToJs: Map<string, string>;
 }
 
-export function buildNameMap(entity: MetaModel): EntityNameMap {
+export function buildNameMap(entity: MetaData): EntityNameMap {
   const jsToDb = new Map<string, string>();
   const dbToJs = new Map<string, string>();
   for (const child of entity.children()) {

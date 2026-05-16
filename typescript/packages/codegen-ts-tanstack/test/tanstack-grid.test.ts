@@ -116,7 +116,7 @@ describe("tanstackGrid() factory", () => {
 
   test("respects @emitTanstack: false per entity", async () => {
     // Same approach as the freeze workaround in B-T8 — construct a fresh entity.
-    // Use MetaModel directly. Import what's needed.
+    // Use MetaData directly. Import what's needed.
     const { MetaObject, TypeId, TYPE_OBJECT: T_OBJ, OBJECT_SUBTYPE_ENTITY } = await import("@metaobjects/metadata");
     const fakeEntity: any = new MetaObject(new TypeId(T_OBJ, OBJECT_SUBTYPE_ENTITY), "Subscriber");
     fakeEntity.setAttr("emitTanstack", false);

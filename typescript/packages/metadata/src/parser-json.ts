@@ -19,7 +19,7 @@
 //   the nearest ancestor with a package.
 
 import { TypeId, TypeRegistry } from "./registry.js";
-import type { MetaModel } from "./meta/meta-data.js";
+import type { MetaData } from "./meta/meta-data.js";
 import { MetaRoot } from "./meta/meta-root.js";
 import { coerceAttrValue } from "./value-coerce.js";
 import { ParseError } from "./errors.js";
@@ -62,7 +62,7 @@ export interface ParseOptions {
    * When provided, the returned `root` is this same instance (possibly mutated).
    * When undefined, a fresh root is created from the JSON.
    */
-  intoRoot?: MetaModel;
+  intoRoot?: MetaData;
   /**
    * If true, super refs that don't resolve at parse time are NOT a parse error;
    * the model retains its raw `superRef` and a second pass (via
@@ -75,7 +75,7 @@ export interface ParseOptions {
 }
 
 export interface ParseResult {
-  root: MetaModel;
+  root: MetaData;
   warnings: string[];
   errors: ParseError[];
 }
@@ -287,7 +287,7 @@ function parseNodeFresh(
   type: string,
   subType: string,
   nodeData: Record<string, unknown>,
-  accumRoot: MetaModel | undefined,
+  accumRoot: MetaData | undefined,
   inheritedContextPkg: string,
   registry: TypeRegistry,
   warnings: string[],
@@ -296,8 +296,8 @@ function parseNodeFresh(
   source: string | undefined,
   path: string,
   parentType?: string, // optional: type of the parent node (for inheritance rules)
-  parent?: MetaModel, // optional: the parent model itself (for checking fqn)
-): MetaModel {
+  parent?: MetaData, // optional: the parent model itself (for checking fqn)
+): MetaData {
   // --- Look up type in registry ---
   if (!registry.has(type, subType)) {
     if (registry.has(type, SUBTYPE_BASE)) {
@@ -391,8 +391,8 @@ function parseNodeFresh(
 
 function parseNodeInto(
   nodeData: Record<string, unknown>,
-  target: MetaModel,
-  accumRoot: MetaModel,
+  target: MetaData,
+  accumRoot: MetaData,
   inheritedContextPkg: string,
   registry: TypeRegistry,
   warnings: string[],
@@ -423,8 +423,8 @@ function createOrFindMetaData(
   type: string,
   subType: string,
   nodeData: Record<string, unknown>,
-  parent: MetaModel,
-  accumRoot: MetaModel,
+  parent: MetaData,
+  accumRoot: MetaData,
   inheritedContextPkg: string,
   registry: TypeRegistry,
   warnings: string[],
@@ -432,7 +432,7 @@ function createOrFindMetaData(
   strict: boolean,
   source: string | undefined,
   path: string,
-): MetaModel | undefined {
+): MetaData | undefined {
   // Only `overlay: true` re-opens an existing node. Anything else falls through
   // to the default reuse-or-create path.
   const isOverlayNode = nodeData[RESERVED_KEY_OVERLAY] === true;
@@ -474,7 +474,7 @@ function createOrFindMetaData(
 // ---------------------------------------------------------------------------
 
 function applyReservedKeys(
-  model: MetaModel,
+  model: MetaData,
   nodeData: Record<string, unknown>,
   strict: boolean,
   source: string | undefined,
@@ -563,7 +563,7 @@ function normalizeStringArrayAttr(
 // ---------------------------------------------------------------------------
 
 function applyInlineAttrsAndUnknownKeys(
-  model: MetaModel,
+  model: MetaData,
   nodeData: Record<string, unknown>,
   strict: boolean,
   source: string | undefined,
@@ -630,9 +630,9 @@ function applyInlineAttrsAndUnknownKeys(
 // ---------------------------------------------------------------------------
 
 function processChildren(
-  parent: MetaModel,
+  parent: MetaData,
   nodeData: Record<string, unknown>,
-  accumRoot: MetaModel,
+  accumRoot: MetaData,
   inheritedContextPkg: string,
   registry: TypeRegistry,
   warnings: string[],
@@ -743,7 +743,7 @@ function processChildren(
 //   2. The value set on the parent via setAttr(name, coercedValue)
 
 function parseAttrChild(
-  parent: MetaModel,
+  parent: MetaData,
   attrType: string,
   attrSubType: string,
   attrData: Record<string, unknown>,

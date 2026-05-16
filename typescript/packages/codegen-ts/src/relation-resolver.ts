@@ -3,7 +3,7 @@
 //   - Which outgoing relationships it declares (one-side, FK on this entity)
 //   - Which incoming relationships point to it (many-side, FK on other entity)
 
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_OBJECT,
   TYPE_RELATIONSHIP,
@@ -34,7 +34,7 @@ export type RelationMap = Map<string, RelationEntry[]>;
  * Walk all entities, collect relationship children, and also register inverse
  * many() sides on the target entity.
  */
-export function buildRelationMap(root: MetaModel): RelationMap {
+export function buildRelationMap(root: MetaData): RelationMap {
   const result: RelationMap = new Map();
 
   const ensure = (name: string): RelationEntry[] => {

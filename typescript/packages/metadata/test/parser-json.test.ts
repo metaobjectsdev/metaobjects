@@ -41,7 +41,7 @@ function makeRegistry(): TypeRegistry {
 // ---------------------------------------------------------------------------
 
 describe("parseJson — minimal root", () => {
-  it('{"metadata.root": {}} parses to a root MetaModel of type metadata.root', () => {
+  it('{"metadata.root": {}} parses to a root MetaData node of type metadata.root', () => {
     const registry = makeRegistry();
     const { root, warnings } = parseJson('{"metadata.root": {}}', { registry });
     expect(root.type).toBe(TYPE_METADATA);

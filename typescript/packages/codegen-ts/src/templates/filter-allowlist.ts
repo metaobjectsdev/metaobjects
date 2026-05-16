@@ -1,5 +1,5 @@
 import { code, type Code } from "ts-poet";
-import type { MetaModel } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjects/metadata";
 import {
   TYPE_FIELD,
   FIELD_ATTR_FILTERABLE,
@@ -43,12 +43,12 @@ function filterSubTypeFor(fieldSubType: string): "string" | "number" | "boolean"
   return "string";
 }
 
-function filterableFields(entity: MetaModel): MetaModel[] {
+function filterableFields(entity: MetaData): MetaData[] {
   // Use effectiveChildren() so inherited fields (from extends:/super:) are included in allowlists.
   return entity.effectiveChildren().filter((c) => c.type === TYPE_FIELD && c.attr(FIELD_ATTR_FILTERABLE) === true);
 }
 
-export function renderFilterAllowlist(entity: MetaModel): Code {
+export function renderFilterAllowlist(entity: MetaData): Code {
   const fields = filterableFields(entity);
   if (fields.length === 0) {
     return code`
@@ -73,7 +73,7 @@ ${rows}
 `;
 }
 
-export function renderSortAllowlist(entity: MetaModel): Code {
+export function renderSortAllowlist(entity: MetaData): Code {
   // Sortable = explicit @sortable === true, OR (no @sortable AND @filterable === true).
   // @sortable: false explicitly opts out.
   // Uses shared isSortableField predicate — must stay in sync with renderFilterType.
