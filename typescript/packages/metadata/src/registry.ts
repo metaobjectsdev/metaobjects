@@ -1,4 +1,4 @@
-import type { MetaModel } from "./model.js";
+import type { MetaData } from "./meta/meta-data.js";
 import { CHILD_RULE_WILDCARD } from "./constants.js";
 
 export class TypeId {
@@ -28,7 +28,7 @@ export interface ChildRule {
 export interface TypeDefinition {
   typeId: TypeId;
   description: string;
-  factory: (typeId: TypeId, name: string) => MetaModel;
+  factory: (typeId: TypeId, name: string) => MetaData;
   childRules: ChildRule[];
 }
 
