@@ -28,12 +28,14 @@ export class FileMetaDataLoader extends MetaDataLoader {
       entries = await readdir(dir);
     } catch (err) {
       // Surface the I/O failure as a collected error via the empty-source path.
-      const result = await this.load([]);
-      result.errors = [
-        new Error(`loadDirectory: cannot read ${dir}: ${(err as Error).message}`),
-        ...result.errors,
-      ];
-      return result;
+      const emptyResult = await this.load([]);
+      return {
+        ...emptyResult,
+        errors: [
+          new Error(`loadDirectory: cannot read ${dir}: ${(err as Error).message}`),
+          ...emptyResult.errors,
+        ],
+      };
     }
 
     const excludes = opts?.exclude ?? [];
