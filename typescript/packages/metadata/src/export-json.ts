@@ -15,8 +15,8 @@
 //     surfaces them unchanged in `ExportResult.errors`. It does not throw for
 //     directory or metadata problems.
 
-import { Loader } from "./loader.js";
-import type { LoadOptions } from "./loader.js";
+import { FileMetaDataLoader } from "./loader/file-meta-data-loader.js";
+import type { LoadOptions } from "./loader/meta-data-loader.js";
 import { canonicalSerialize } from "./serializer-json.js";
 
 // ---------------------------------------------------------------------------
@@ -39,24 +39,24 @@ export interface ExportResult {
  * Load all metadata under `dir` and export the entire model as one flattened
  * canonical-JSON document.
  *
- * Internally constructs a fresh `Loader` (using the default registry seeded
- * via `registerCoreTypes()`), calls `loadFromDirectory`, then serializes the
+ * Internally constructs a fresh `FileMetaDataLoader` (using the default registry
+ * seeded via `registerCoreTypes()`), calls `loadDirectory`, then serializes the
  * resulting tree with `canonicalSerialize`.
  *
  * @param dir  Absolute or relative path to the directory containing `meta.*.json` files.
- * @param opts Optional loader options forwarded to the `Loader` constructor
+ * @param opts Optional loader options forwarded to the `FileMetaDataLoader` constructor
  *             (registry, freeze, strict). The `exclude` glob list can be
- *             supplied as `opts.exclude` — see `Loader.loadFromDirectory`.
+ *             supplied as `opts.exclude` — see `FileMetaDataLoader.loadDirectory`.
  */
 export async function loadAndExportJson(
   dir: string,
   opts?: LoadOptions & { exclude?: string[] },
 ): Promise<ExportResult> {
   const { exclude, ...loaderOpts } = opts ?? {};
-  const loader = new Loader(loaderOpts);
+  const loader = new FileMetaDataLoader(loaderOpts);
   // Only pass the exclude option when defined, to satisfy exactOptionalPropertyTypes.
   const dirOpts = exclude !== undefined ? { exclude } : undefined;
-  const result = await loader.loadFromDirectory(dir, dirOpts);
+  const result = await loader.loadDirectory(dir, dirOpts);
   const json = canonicalSerialize(result.root);
   return {
     json,

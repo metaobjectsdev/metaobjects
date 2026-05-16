@@ -6,7 +6,8 @@ import { join } from "node:path";
 
 import { serializeJson, canonicalSerialize } from "../src/serializer-json.js";
 import { parseJson } from "../src/parser-json.js";
-import { Loader } from "../src/loader.js";
+import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
+import { InMemorySource } from "../src/loader/meta-data-source.js";
 import type { MetaModel } from "../src/meta/meta-data.js";
 import { MetaRoot } from "../src/meta/meta-root.js";
 import { MetaObject } from "../src/meta/meta-object.js";
@@ -826,7 +827,7 @@ describe("serializeJson — edge cases", () => {
 // ---------------------------------------------------------------------------
 
 describe("canonicalSerialize — deterministic output for cross-language conformance", () => {
-  it("emits inline attrs in alphabetical order", () => {
+  it("emits inline attrs in alphabetical order", async () => {
     const json = JSON.stringify({
       "metadata.root": {
         package: "acme",
@@ -840,8 +841,8 @@ describe("canonicalSerialize — deterministic output for cross-language conform
         }],
       },
     });
-    const loader = new Loader();
-    const { root } = loader.loadJson(json);
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new InMemorySource(json)]);
     const output = canonicalSerialize(root);
     // @alpha must appear before @mid which must appear before @zindex
     const aIdx = output.indexOf('"@alpha"');
@@ -852,22 +853,22 @@ describe("canonicalSerialize — deterministic output for cross-language conform
     expect(mIdx).toBeLessThan(zIdx);
   });
 
-  it("appends a trailing newline", () => {
-    const loader = new Loader();
-    const { root } = loader.loadJson('{"metadata.root":{}}');
+  it("appends a trailing newline", async () => {
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new InMemorySource('{"metadata.root":{}}')]);
     const output = canonicalSerialize(root);
     expect(output.endsWith("\n")).toBe(true);
   });
 
-  it("uses 2-space indent", () => {
-    const loader = new Loader();
-    const { root } = loader.loadJson('{"metadata.root":{"package":"acme"}}');
+  it("uses 2-space indent", async () => {
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new InMemorySource('{"metadata.root":{"package":"acme"}}')]);
     const output = canonicalSerialize(root);
     expect(output).toContain('\n  "metadata.root"');
     expect(output).toContain('\n    "package": "acme"');
   });
 
-  it("produces identical bytes on repeated calls (no Map iteration drift)", () => {
+  it("produces identical bytes on repeated calls (no Map iteration drift)", async () => {
     const json = JSON.stringify({
       "metadata.root": {
         package: "acme",
@@ -883,8 +884,10 @@ describe("canonicalSerialize — deterministic output for cross-language conform
         }],
       },
     });
-    const out1 = canonicalSerialize(new Loader().loadJson(json).root);
-    const out2 = canonicalSerialize(new Loader().loadJson(json).root);
+    const r1 = await new MetaDataLoader().load([new InMemorySource(json)]);
+    const r2 = await new MetaDataLoader().load([new InMemorySource(json)]);
+    const out1 = canonicalSerialize(r1.root);
+    const out2 = canonicalSerialize(r2.root);
     expect(out1).toBe(out2);
   });
 });

@@ -101,9 +101,12 @@ export type { SerializeOptions } from "./serializer-json.js";
 // Super resolution helper (most resolution moved into parser; this is the lookup utility)
 export { resolveSuperRef } from "./super-resolve.js";
 
-// Loader
-export { Loader } from "./loader.js";
-export type { LoadOptions, LoadResult, LoadingState } from "./loader.js";
+// Loader hierarchy
+export { MetaDataLoader } from "./loader/meta-data-loader.js";
+export type { LoadOptions, LoadResult, LoadingState } from "./loader/meta-data-loader.js";
+export { FileMetaDataLoader } from "./loader/file-meta-data-loader.js";
+export { FileSource, InMemorySource } from "./loader/meta-data-source.js";
+export type { MetaDataSource, MetaDataFormat } from "./loader/meta-data-source.js";
 
 // Errors
 export { ParseError } from "./errors.js";

@@ -19,8 +19,11 @@ import {
   inferAttrSubType,
   // Super resolution
   resolveSuperRef,
-  // Loader
-  Loader,
+  // Loader hierarchy
+  MetaDataLoader,
+  FileMetaDataLoader,
+  InMemorySource,
+  FileSource,
   // Errors
   ParseError,
   // Constants
@@ -65,6 +68,8 @@ import {
   type SerializeOptions,
   type LoadOptions,
   type LoadResult,
+  type MetaDataSource,
+  type MetaDataFormat,
 } from "../src/index.js";
 
 describe("Public API surface — @metaobjects/metadata index", () => {
@@ -221,32 +226,48 @@ describe("Public API surface — @metaobjects/metadata index", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Loader
+  // Loader hierarchy
   // ---------------------------------------------------------------------------
 
-  test("Loader constructor works via index", () => {
-    const loader = new Loader();
+  test("MetaDataLoader constructor works via index", () => {
+    const loader = new MetaDataLoader();
     const state: LoadingState = loader.state;
     expect(state).toBe("uninitialized");
   });
 
-  test("Loader.loadJson works via index", () => {
+  test("MetaDataLoader.load works via index", async () => {
     const opts: LoadOptions = { freeze: false };
-    const loader2 = new Loader(opts);
-    const result: LoadResult = loader2.loadJson(
+    const loader2 = new MetaDataLoader(opts);
+    const src: MetaDataSource = new InMemorySource(
       JSON.stringify({ "metadata.root": { name: "r" } }),
     );
+    const result: LoadResult = await loader2.load([src]);
     expect(result.root.name).toBe("r");
     expect(result.errors).toEqual([]);
     expect(loader2.state).toBe("loaded");
   });
 
-  test("Loader accepts custom registry via LoadOptions", () => {
+  test("MetaDataLoader accepts custom registry via LoadOptions", () => {
     const registry = new TypeRegistry();
     registerCoreTypes(registry);
     const opts: LoadOptions = { registry, freeze: true };
-    const loader = new Loader(opts);
+    const loader = new MetaDataLoader(opts);
     expect(loader.state).toBe("uninitialized");
+  });
+
+  test("FileMetaDataLoader is constructible via index", () => {
+    const loader = new FileMetaDataLoader();
+    expect(loader.state).toBe("uninitialized");
+  });
+
+  test("FileSource and InMemorySource are constructible via index", () => {
+    const inMem = new InMemorySource('{"metadata.root":{}}', { id: "test.json" });
+    expect(inMem).toBeDefined();
+    const fileSrc = new FileSource("/some/path.json");
+    expect(fileSrc).toBeDefined();
+    // MetaDataFormat type is verified at compile time
+    const fmt: MetaDataFormat = "json";
+    expect(fmt).toBe("json");
   });
 
   // ---------------------------------------------------------------------------

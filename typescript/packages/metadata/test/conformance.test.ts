@@ -21,7 +21,7 @@ import { describe, expect, it } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { Loader } from "../src/loader.js";
+import { FileMetaDataLoader } from "../src/loader/file-meta-data-loader.js";
 import { canonicalSerialize } from "../src/serializer-json.js";
 
 // ---------------------------------------------------------------------------
@@ -110,8 +110,8 @@ describe("Conformance fixtures", () => {
         );
       }
 
-      const loader = new Loader();
-      const { root, errors, warnings } = await loader.loadFromDirectory(fixture.inputDir);
+      const loader = new FileMetaDataLoader();
+      const { root, errors, warnings } = await loader.loadDirectory(fixture.inputDir);
 
       if (fixture.expectedErrorsPath !== undefined) {
         const expectedErrors = readJsonFile(fixture.expectedErrorsPath) as string[];

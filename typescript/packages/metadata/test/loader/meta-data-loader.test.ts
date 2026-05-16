@@ -3,6 +3,7 @@ import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
 import { InMemorySource, FileSource } from "../../src/loader/meta-data-source.js";
 import { MetaRoot } from "../../src/meta/meta-root.js";
 import { TypeRegistry } from "../../src/registry.js";
+import { ParseError } from "../../src/errors.js";
 import {
   TYPE_METADATA, SUBTYPE_ROOT,
   TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY,
@@ -214,5 +215,105 @@ describe("MetaDataLoader — accessor guards", () => {
   it("childrenOfType throws before load", () => {
     const loader = new MetaDataLoader();
     expect(() => loader.childrenOfType(TYPE_OBJECT)).toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Additional edge cases ported from the monolithic loader.test.ts
+// ---------------------------------------------------------------------------
+
+describe("MetaDataLoader — BOM-prefixed JSON", () => {
+  it("parses BOM-prefixed JSON correctly", async () => {
+    const loader = new MetaDataLoader();
+    // Prepend UTF-8 BOM (U+FEFF)
+    const jsonWithBOM = "﻿" + JSON.stringify({ "metadata.root": { package: "bom-test" } });
+    const result = await loader.load([new InMemorySource(jsonWithBOM, { id: "bom.json" })]);
+    expect(result.errors.length).toBe(0);
+    expect(result.root.package).toBe("bom-test");
+  });
+});
+
+describe("MetaDataLoader — empty sources array", () => {
+  it("returns synthetic root with no errors or warnings", async () => {
+    const loader = new MetaDataLoader();
+    const result = await loader.load([]);
+    expect(result.root.type).toBe(TYPE_METADATA);
+    expect(result.root.subType).toBe(SUBTYPE_ROOT);
+    expect(result.errors.length).toBe(0);
+    expect(result.warnings.length).toBe(0);
+  });
+
+  it("empty root has no children", async () => {
+    const loader = new MetaDataLoader();
+    const result = await loader.load([]);
+    expect(result.root.children().length).toBe(0);
+  });
+});
+
+describe("MetaDataLoader — multiple missing sources", () => {
+  it("collects one error per missing source", async () => {
+    const loader = new MetaDataLoader();
+    const result = await loader.load([
+      new FileSource("/nonexistent/a.json"),
+      new FileSource("/nonexistent/b.json"),
+    ]);
+    expect(result.errors.length).toBe(2);
+    expect(result.root.type).toBe(TYPE_METADATA);
+  });
+});
+
+describe("MetaDataLoader — warnings propagated from parser", () => {
+  it("non-strict loader propagates unknown-key warnings", async () => {
+    const loader = new MetaDataLoader({ strict: false });
+    const json = JSON.stringify({
+      "metadata.root": { package: "x", unknownKey: "val" },
+    });
+    const result = await loader.load([new InMemorySource(json)]);
+    expect(result.errors.length).toBe(0);
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(result.warnings[0]).toContain("unknownKey");
+  });
+});
+
+describe("MetaDataLoader — unresolvable super ref produces ParseError", () => {
+  it("unresolvable extends ref → ParseError in errors[], no warning", async () => {
+    const loader = new MetaDataLoader({ freeze: false });
+    const json = JSON.stringify({
+      "metadata.root": {
+        children: [{ "object.base": { name: "Widget", extends: "NonExistentBase" } }],
+      },
+    });
+    const result = await loader.load([new InMemorySource(json)]);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const parseErrors = result.errors.filter((e) => e instanceof ParseError);
+    expect(parseErrors.length).toBeGreaterThan(0);
+    expect(parseErrors[0]!.message).toContain("NonExistentBase");
+    const superWarnings = result.warnings.filter((w) => w.includes("Could not resolve"));
+    expect(superWarnings.length).toBe(0);
+  });
+});
+
+describe("MetaDataLoader — independent instances", () => {
+  it("two loader instances do not share state", async () => {
+    const loader1 = new MetaDataLoader();
+    const loader2 = new MetaDataLoader();
+    const json = '{"metadata.root":{}}';
+    const r1 = await loader1.load([new InMemorySource(json)]);
+    const r2 = await loader2.load([new InMemorySource(json)]);
+    expect(r1.root.type).toBe(r2.root.type);
+    expect(r1.errors.length).toBe(0);
+    expect(r2.errors.length).toBe(0);
+  });
+});
+
+describe("MetaDataLoader — InMemorySource id propagates to ParseError.source", () => {
+  it("source id appears in ParseError.source when parse fails", async () => {
+    const loader = new MetaDataLoader();
+    const result = await loader.load([
+      new InMemorySource("not json", { id: "my-source.json" }),
+    ]);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const pe = result.errors[0] as ParseError;
+    expect(pe.source).toBe("my-source.json");
   });
 });

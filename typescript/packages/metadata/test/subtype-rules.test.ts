@@ -1,14 +1,15 @@
 import { describe, it, expect } from "bun:test";
-import { Loader } from "../src/loader.js";
+import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
+import { InMemorySource } from "../src/loader/meta-data-source.js";
 
-function load(json: string) {
-  const loader = new Loader();
-  return loader.loadJsonStrings([{ content: json, sourceName: "test.json" }]);
+async function load(json: string) {
+  const loader = new MetaDataLoader();
+  return loader.load([new InMemorySource(json, { id: "test.json" })]);
 }
 
 describe("subtype rule validation", () => {
-  it("value object with a primary identity is an error", () => {
-    const { errors } = load(
+  it("value object with a primary identity is an error", async () => {
+    const { errors } = await load(
       JSON.stringify({
         "metadata.root": {
           package: "demo",
@@ -32,8 +33,8 @@ describe("subtype rule validation", () => {
     expect(errors[0]!.message).toContain("must not have a primary identity");
   });
 
-  it("value object without a primary identity is fine", () => {
-    const { errors, warnings } = load(
+  it("value object without a primary identity is fine", async () => {
+    const { errors, warnings } = await load(
       JSON.stringify({
         "metadata.root": {
           package: "demo",
@@ -55,8 +56,8 @@ describe("subtype rule validation", () => {
     expect(warnings).toHaveLength(0);
   });
 
-  it("entity without a primary identity emits a warning", () => {
-    const { errors, warnings } = load(
+  it("entity without a primary identity emits a warning", async () => {
+    const { errors, warnings } = await load(
       JSON.stringify({
         "metadata.root": {
           package: "demo",
@@ -78,8 +79,8 @@ describe("subtype rule validation", () => {
     expect(warnings[0]!).toContain("no primary identity");
   });
 
-  it("abstract entity without identity does NOT warn (it's a template)", () => {
-    const { errors, warnings } = load(
+  it("abstract entity without identity does NOT warn (it's a template)", async () => {
+    const { errors, warnings } = await load(
       JSON.stringify({
         "metadata.root": {
           package: "demo",
@@ -99,8 +100,8 @@ describe("subtype rule validation", () => {
     expect(warnings).toHaveLength(0);
   });
 
-  it("entity with a primary identity is fine", () => {
-    const { errors, warnings } = load(
+  it("entity with a primary identity is fine", async () => {
+    const { errors, warnings } = await load(
       JSON.stringify({
         "metadata.root": {
           package: "demo",
@@ -122,8 +123,8 @@ describe("subtype rule validation", () => {
     expect(warnings).toHaveLength(0);
   });
 
-  it("base objects are not subject to the rule (templates)", () => {
-    const { errors, warnings } = load(
+  it("base objects are not subject to the rule (templates)", async () => {
+    const { errors, warnings } = await load(
       JSON.stringify({
         "metadata.root": {
           package: "demo",

@@ -12,7 +12,7 @@ import {
   FIELD_SUBTYPE_LONG,
   IDENTITY_SUBTYPE_PRIMARY,
 } from "../src/constants.js";
-import { Loader } from "../src/loader.js";
+import { FileMetaDataLoader } from "../src/loader/file-meta-data-loader.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -50,7 +50,7 @@ describe("Loader drift warning for @filterable without index", () => {
       ]},
     }));
     try {
-      const result = await new Loader().load([path]);
+      const result = await new FileMetaDataLoader().loadFiles([path]);
       expect(result.errors).toEqual([]);
       const warningMessages = (result.warnings ?? []);
       const hit = warningMessages.find((m) => m.includes("Sub.firstName") && m.includes("filterable") && m.includes("index"));
@@ -76,7 +76,7 @@ describe("Loader drift warning for @filterable without index", () => {
       ]},
     }));
     try {
-      const result = await new Loader().load([path]);
+      const result = await new FileMetaDataLoader().loadFiles([path]);
       const warningMessages = (result.warnings ?? []);
       const hit = warningMessages.find((m) => m.includes("filterable"));
       expect(hit).toBeUndefined();
@@ -108,7 +108,7 @@ describe("@db.indexed opts a field out of the @filterable-without-index warning"
       ]},
     }));
     try {
-      const result = await new Loader().load([path]);
+      const result = await new FileMetaDataLoader().loadFiles([path]);
       expect(result.errors).toEqual([]);
       const warningMessages = (result.warnings ?? []);
       const hit = warningMessages.find((m) => m.includes("Subscriber.tags") && m.includes("filterable") && m.includes("index"));
@@ -138,7 +138,7 @@ describe("@db.indexed opts a field out of the @filterable-without-index warning"
       ]},
     }));
     try {
-      const result = await new Loader().load([path]);
+      const result = await new FileMetaDataLoader().loadFiles([path]);
       expect(result.errors).toEqual([]);
       const warningMessages = (result.warnings ?? []);
       const hit = warningMessages.find((m) => m.includes("Subscriber.tags") && m.includes("filterable") && m.includes("index"));

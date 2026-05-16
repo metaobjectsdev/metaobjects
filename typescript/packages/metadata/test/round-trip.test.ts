@@ -16,7 +16,9 @@
 
 import { describe, it, expect } from "bun:test";
 import { join } from "node:path";
-import { Loader } from "../src/loader.js";
+import { FileMetaDataLoader } from "../src/loader/file-meta-data-loader.js";
+import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
+import { InMemorySource } from "../src/loader/meta-data-source.js";
 import type { MetaModel } from "../src/meta/meta-data.js";
 import { serializeJson } from "../src/serializer-json.js";
 import {
@@ -111,8 +113,8 @@ function assertModelsEqual(a: MetaModel, b: MetaModel, path = "root"): void {
 // ---------------------------------------------------------------------------
 
 async function loadFixture(name: string): Promise<{ root: MetaModel; warnings: string[]; errors: Error[] }> {
-  const loader = new Loader({ freeze: false });
-  return loader.load([fixturePath(name)]);
+  const loader = new FileMetaDataLoader({ freeze: false });
+  return loader.loadFiles([fixturePath(name)]);
 }
 
 // ---------------------------------------------------------------------------
@@ -120,18 +122,18 @@ async function loadFixture(name: string): Promise<{ root: MetaModel; warnings: s
 // ---------------------------------------------------------------------------
 
 async function loadFixtures(names: string[]): Promise<{ root: MetaModel; warnings: string[]; errors: Error[] }> {
-  const loader = new Loader({ freeze: false });
-  return loader.load(names.map(fixturePath));
+  const loader = new FileMetaDataLoader({ freeze: false });
+  return loader.loadFiles(names.map(fixturePath));
 }
 
 // ---------------------------------------------------------------------------
 // Helper: round-trip a root — serialize → fresh Loader → parse → return new root
 // ---------------------------------------------------------------------------
 
-function roundTrip(root: MetaModel): MetaModel {
+async function roundTrip(root: MetaModel): Promise<MetaModel> {
   const serialized = serializeJson(root);
-  const loader = new Loader({ freeze: false });
-  const result = loader.loadJson(serialized, "round-trip");
+  const loader = new MetaDataLoader({ freeze: false });
+  const result = await loader.load([new InMemorySource(serialized, { id: "round-trip" })]);
   if (result.errors.length > 0) {
     throw new Error(
       `Round-trip parse produced errors:\n${result.errors.map((e) => e.message).join("\n")}`,
@@ -152,7 +154,7 @@ describe("Round-trip: fruitbasket-metadata.json", () => {
 
   it("serialize → reload → trees are semantically equivalent", async () => {
     const { root } = await loadFixture("fruitbasket-metadata.json");
-    const reparsed = roundTrip(root);
+    const reparsed = await roundTrip(root);
     assertModelsEqual(root, reparsed);
   });
 });
@@ -165,7 +167,7 @@ describe("Round-trip: fruitbasket-proxy-metadata.json", () => {
 
   it("serialize → reload → trees are semantically equivalent", async () => {
     const { root } = await loadFixture("fruitbasket-proxy-metadata.json");
-    const reparsed = roundTrip(root);
+    const reparsed = await roundTrip(root);
     assertModelsEqual(root, reparsed);
   });
 });
@@ -178,7 +180,7 @@ describe("Round-trip: acme-common-metadata.json", () => {
 
   it("serialize → reload → trees are semantically equivalent", async () => {
     const { root } = await loadFixture("acme-common-metadata.json");
-    const reparsed = roundTrip(root);
+    const reparsed = await roundTrip(root);
     assertModelsEqual(root, reparsed);
   });
 });
@@ -197,7 +199,7 @@ describe("Round-trip: acme-vehicle-metadata.json (with acme-common loaded first)
       "acme-common-metadata.json",
       "acme-vehicle-metadata.json",
     ]);
-    const reparsed = roundTrip(root);
+    const reparsed = await roundTrip(root);
     assertModelsEqual(root, reparsed);
   });
 });
@@ -218,7 +220,7 @@ describe("Round-trip: acme-vehicle-overlay-metadata.json (common + vehicle + ove
       "acme-vehicle-metadata.json",
       "acme-vehicle-overlay-metadata.json",
     ]);
-    const reparsed = roundTrip(root);
+    const reparsed = await roundTrip(root);
     assertModelsEqual(root, reparsed);
   });
 });
@@ -231,7 +233,7 @@ describe("Round-trip: valid-complete-metadata.json", () => {
 
   it("serialize → reload → trees are semantically equivalent", async () => {
     const { root } = await loadFixture("valid-complete-metadata.json");
-    const reparsed = roundTrip(root);
+    const reparsed = await roundTrip(root);
     assertModelsEqual(root, reparsed);
   });
 });
@@ -308,7 +310,7 @@ describe("Multi-file dependency order: common → vehicle → overlay", () => {
       "acme-vehicle-metadata.json",
       "acme-vehicle-overlay-metadata.json",
     ]);
-    const reparsed = roundTrip(root);
+    const reparsed = await roundTrip(root);
     assertModelsEqual(root, reparsed);
   });
 });
@@ -350,7 +352,7 @@ describe("Inline-vs-child attr round-trip: valid-complete-metadata.json", () => 
 
   it("attrs are semantically preserved after round-trip (assertModelsEqual passes)", async () => {
     const { root } = await loadFixture("valid-complete-metadata.json");
-    const reparsed = roundTrip(root);
+    const reparsed = await roundTrip(root);
     assertModelsEqual(root, reparsed);
   });
 
@@ -361,7 +363,7 @@ describe("Inline-vs-child attr round-trip: valid-complete-metadata.json", () => 
     expect(usernameField).toBeDefined();
 
     // After round-trip, attrs should still be present
-    const reparsed = roundTrip(root);
+    const reparsed = await roundTrip(root);
     const reparsedUser = reparsed.childByTypeAndName(TYPE_OBJECT, "User")!;
     const reparsedUsername = reparsedUser.childByTypeAndName(TYPE_FIELD, "username")!;
     expect(reparsedUsername.attr("maxLength")).toBe(50);
@@ -374,25 +376,25 @@ describe("Inline-vs-child attr round-trip: valid-complete-metadata.json", () => 
 // ===========================================================================
 
 describe("Empty load", () => {
-  it("loader with no sources returns root typed as metadata.root", () => {
-    const loader = new Loader({ freeze: false });
-    const { root, errors, warnings } = loader.loadJsonStrings([]);
+  it("loader with no sources returns root typed as metadata.root", async () => {
+    const loader = new MetaDataLoader({ freeze: false });
+    const { root, errors, warnings } = await loader.load([]);
     expect(root.type).toBe(TYPE_METADATA);
     expect(root.subType).toBe(SUBTYPE_ROOT);
     expect(errors.length).toBe(0);
     expect(warnings.length).toBe(0);
   });
 
-  it("empty root has no children", () => {
-    const loader = new Loader({ freeze: false });
-    const { root } = loader.loadJsonStrings([]);
+  it("empty root has no children", async () => {
+    const loader = new MetaDataLoader({ freeze: false });
+    const { root } = await loader.load([]);
     expect(root.children().length).toBe(0);
   });
 
-  it("empty root round-trips cleanly (serialize → reload → equivalent)", () => {
-    const loader = new Loader({ freeze: false });
-    const { root } = loader.loadJsonStrings([]);
-    const reparsed = roundTrip(root);
+  it("empty root round-trips cleanly (serialize → reload → equivalent)", async () => {
+    const loader = new MetaDataLoader({ freeze: false });
+    const { root } = await loader.load([]);
+    const reparsed = await roundTrip(root);
     assertModelsEqual(root, reparsed);
   });
 });
@@ -735,7 +737,7 @@ describe("Merge application sanity: acme-vehicle overlay", () => {
       "acme-vehicle-overlay-metadata.json",
     ]);
     // Verify override-added fields survive round-trip
-    const reparsed = roundTrip(root);
+    const reparsed = await roundTrip(root);
     const garageReparsed = reparsed.childByTypeAndName(TYPE_OBJECT, "Garage")!;
     expect(garageReparsed.childByTypeAndName(TYPE_FIELD, "premiumLocation")).toBeDefined();
     const vehicleReparsed = reparsed.childByTypeAndName(TYPE_OBJECT, "Vehicle")!;
@@ -767,7 +769,7 @@ describe("Fruitbasket proxy: identity nodes and @fields arrays round-trip", () =
     expect(fields).toEqual(["id"]);
 
     // Verify it survives round-trip
-    const reparsed = roundTrip(root);
+    const reparsed = await roundTrip(root);
     const reparsedBasket = reparsed.childByTypeAndName(TYPE_OBJECT, "Basket")!;
     const reparsedIdentity = reparsedBasket.childByTypeAndName(TYPE_IDENTITY, "primary")!;
     const reparsedFields = reparsedIdentity.attr("fields");
@@ -780,7 +782,7 @@ describe("Fruitbasket proxy: identity nodes and @fields arrays round-trip", () =
     const identity = basket.childByTypeAndName(TYPE_IDENTITY, "primary")!;
     expect(identity.attr("generation")).toBe("increment");
 
-    const reparsed = roundTrip(root);
+    const reparsed = await roundTrip(root);
     const reparsedBasket = reparsed.childByTypeAndName(TYPE_OBJECT, "Basket")!;
     const reparsedIdentity = reparsedBasket.childByTypeAndName(TYPE_IDENTITY, "primary")!;
     expect(reparsedIdentity.attr("generation")).toBe("increment");
@@ -793,7 +795,7 @@ describe("Fruitbasket proxy: identity nodes and @fields arrays round-trip", () =
     const relationships = btf.childrenOfType(TYPE_RELATIONSHIP);
     expect(relationships.length).toBe(2);
 
-    const reparsed = roundTrip(root);
+    const reparsed = await roundTrip(root);
     const reparsedBtf = reparsed.childByTypeAndName(TYPE_OBJECT, "BasketToFruit")!;
     const reparsedRelationships = reparsedBtf.childrenOfType(TYPE_RELATIONSHIP);
     expect(reparsedRelationships.length).toBe(2);

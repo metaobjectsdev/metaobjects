@@ -12,7 +12,7 @@ import {
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
   OBJECT_SUBTYPE_ENTITY, FIELD_SUBTYPE_STRING,
 } from "../src/constants.js";
-import { Loader } from "../src/loader.js";
+import { FileMetaDataLoader } from "../src/loader/file-meta-data-loader.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -48,7 +48,7 @@ describe("Loader accepts dataGrid layouts on objects", () => {
       ]},
     }));
     try {
-      const result = await new Loader().load([path]);
+      const result = await new FileMetaDataLoader().loadFiles([path]);
       expect(result.errors).toEqual([]);
       const sub = result.root.children().find((c) => c.name === "Sub");
       expect(sub).toBeDefined();
@@ -81,7 +81,7 @@ describe("Loader validates @defaultSortField references an existing field (layou
       ]},
     }));
     try {
-      const result = await new Loader().load([path]);
+      const result = await new FileMetaDataLoader().loadFiles([path]);
       expect(result.errors.length).toBeGreaterThan(0);
       const msg = result.errors.map((e) => e.message).join("\n");
       expect(msg).toContain("defaultSortField");
@@ -111,7 +111,7 @@ describe("Loader validates @defaultSortField references an existing field (layou
       ]},
     }));
     try {
-      const result = await new Loader().load([path]);
+      const result = await new FileMetaDataLoader().loadFiles([path]);
       expect(result.errors).toEqual([]);
     } finally {
       rmSync(tmp, { recursive: true, force: true });

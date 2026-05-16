@@ -5,16 +5,17 @@
 // A few tests also call validateAttrSchema directly against a parsed root.
 
 import { describe, it, expect } from "bun:test";
-import { Loader } from "../src/loader.js";
+import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
+import { InMemorySource } from "../src/loader/meta-data-source.js";
 import { validateAttrSchema } from "../src/attr-schema-validate.js";
 import { TypeRegistry } from "../src/registry.js";
 import { registerCoreTypes } from "../src/core-types.js";
 import { parseJson } from "../src/parser-json.js";
 
-function load(doc: unknown) {
-  const loader = new Loader();
-  return loader.loadJsonStrings([
-    { content: JSON.stringify(doc), sourceName: "test.json" },
+async function load(doc: unknown) {
+  const loader = new MetaDataLoader();
+  return loader.load([
+    new InMemorySource(JSON.stringify(doc), { id: "test.json" }),
   ]);
 }
 
@@ -27,10 +28,10 @@ function validateDirect(doc: unknown) {
 }
 
 describe("attr-schema validation — required attrs", () => {
-  it("flags an identity.primary missing its required @fields attr", () => {
+  it("flags an identity.primary missing its required @fields attr", async () => {
     // Full loader is fine here: no other pass also flags a missing @fields on
     // identity.primary, so this test asserts exactly one error from A3.
-    const { errors } = load({
+    const { errors } = await load({
       "metadata.root": {
         package: "demo",
         children: [
@@ -103,11 +104,11 @@ describe("attr-schema validation — required attrs", () => {
     expect(errors).toHaveLength(0);
   });
 
-  it("does not flag a node that satisfies a required attr via inheritance (Fix 1)", () => {
+  it("does not flag a node that satisfies a required attr via inheritance (Fix 1)", async () => {
     // BaseAccount declares @fields on its identity.primary. DerivedAccount extends
     // BaseAccount and inherits that identity — the required-attr check must consult
     // effectiveAttrs() so the inherited @fields satisfies the requirement.
-    const { errors } = load({
+    const { errors } = await load({
       "metadata.root": {
         package: "demo",
         children: [
@@ -142,8 +143,8 @@ describe("attr-schema validation — required attrs", () => {
 });
 
 describe("attr-schema validation — declared attr value types", () => {
-  it("flags a layout.dataGrid @pageSize that is a string, not an int", () => {
-    const { errors } = load({
+  it("flags a layout.dataGrid @pageSize that is a string, not an int", async () => {
+    const { errors } = await load({
       "metadata.root": {
         package: "demo",
         children: [
@@ -262,8 +263,8 @@ describe("attr-schema validation — declared attr value types", () => {
 });
 
 describe("attr-schema validation — allowedValues", () => {
-  it("flags an @generation value outside the allowed set", () => {
-    const { errors } = load({
+  it("flags an @generation value outside the allowed set", async () => {
+    const { errors } = await load({
       "metadata.root": {
         package: "demo",
         children: [

@@ -14,7 +14,8 @@
 
 import { describe, it, expect } from "bun:test";
 import { TypeId } from "../../src/registry.js";
-import { Loader } from "../../src/loader.js";
+import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
+import { InMemorySource } from "../../src/loader/meta-data-source.js";
 import { MetaData } from "../../src/meta/meta-data.js";
 import { MetaRoot } from "../../src/meta/meta-root.js";
 import { MetaObject } from "../../src/meta/meta-object.js";
@@ -920,7 +921,7 @@ describe("MetaAggregateOrigin", () => {
 // ---------------------------------------------------------------------------
 
 describe("registry dispatch — origin subtype classes", () => {
-  it("parsed origin.passthrough node is instanceof MetaPassthroughOrigin and MetaOrigin", () => {
+  it("parsed origin.passthrough node is instanceof MetaPassthroughOrigin and MetaOrigin", async () => {
     const json = JSON.stringify({
       "metadata.root": {
         package: "demo",
@@ -956,7 +957,8 @@ describe("registry dispatch — origin subtype classes", () => {
         ],
       },
     });
-    const { root, errors } = new Loader().loadJson(json);
+    const loader = new MetaDataLoader();
+    const { root, errors } = await loader.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
     const summary = root.childByTypeAndName(TYPE_OBJECT, "ProgramSummary") as MetaObject;
     const displayTitle = summary.findField("displayTitle")!;
@@ -967,7 +969,7 @@ describe("registry dispatch — origin subtype classes", () => {
     expect((origin as MetaPassthroughOrigin).from).toBe("Program.title");
   });
 
-  it("parsed origin.aggregate node is instanceof MetaAggregateOrigin and MetaOrigin", () => {
+  it("parsed origin.aggregate node is instanceof MetaAggregateOrigin and MetaOrigin", async () => {
     const json = JSON.stringify({
       "metadata.root": {
         package: "demo",
@@ -1018,7 +1020,8 @@ describe("registry dispatch — origin subtype classes", () => {
         ],
       },
     });
-    const { root, errors } = new Loader().loadJson(json);
+    const loader = new MetaDataLoader();
+    const { root, errors } = await loader.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
     const summary = root.childByTypeAndName(TYPE_OBJECT, "ProgramSummary") as MetaObject;
     const weekCount = summary.findField("weekCount")!;
@@ -1190,54 +1193,56 @@ describe("Loader produces typed concrete nodes from JSON", () => {
     },
   });
 
-  function loadUser(): MetaObject {
-    const { root, errors } = new Loader().loadJson(SAMPLE);
+  async function loadUser(): Promise<MetaObject> {
+    const loader = new MetaDataLoader();
+    const { root, errors } = await loader.load([new InMemorySource(SAMPLE)]);
     expect(errors).toEqual([]);
     return root.childByTypeAndName(TYPE_OBJECT, "User") as MetaObject;
   }
 
-  it("root is a MetaRoot, top-level object child is a MetaObject", () => {
-    const { root } = new Loader().loadJson(SAMPLE);
+  it("root is a MetaRoot, top-level object child is a MetaObject", async () => {
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new InMemorySource(SAMPLE)]);
     expect(root).toBeInstanceOf(MetaRoot);
     const user = root.childByTypeAndName(TYPE_OBJECT, "User");
     expect(user).toBeInstanceOf(MetaObject);
   });
 
-  it("field children are MetaField instances", () => {
-    const user = loadUser();
+  it("field children are MetaField instances", async () => {
+    const user = await loadUser();
     for (const f of user.fields()) {
       expect(f).toBeInstanceOf(MetaField);
     }
   });
 
-  it("source child is a MetaSource", () => {
-    const user = loadUser();
+  it("source child is a MetaSource", async () => {
+    const user = await loadUser();
     const source = user.children().find((c) => c.type === TYPE_SOURCE);
     expect(source).toBeInstanceOf(MetaSource);
   });
 
-  it("layout child is a MetaLayout", () => {
-    const user = loadUser();
+  it("layout child is a MetaLayout", async () => {
+    const user = await loadUser();
     const layout = user.children().find((c) => c.type === TYPE_LAYOUT);
     expect(layout).toBeInstanceOf(MetaLayout);
   });
 
-  it("primary identity → MetaPrimaryIdentity (also MetaIdentity)", () => {
-    const user = loadUser();
+  it("primary identity → MetaPrimaryIdentity (also MetaIdentity)", async () => {
+    const user = await loadUser();
     const pk = user.primaryIdentity()!;
     expect(pk).toBeInstanceOf(MetaPrimaryIdentity);
     expect(pk).toBeInstanceOf(MetaIdentity);
   });
 
-  it("secondary identity → MetaSecondaryIdentity", () => {
-    const user = loadUser();
+  it("secondary identity → MetaSecondaryIdentity", async () => {
+    const user = await loadUser();
     const sec = user.secondaryIdentities()[0]!;
     expect(sec).toBeInstanceOf(MetaSecondaryIdentity);
     expect(sec).toBeInstanceOf(MetaIdentity);
   });
 
-  it("required validator → MetaRequiredValidator; length validator → MetaLengthValidator", () => {
-    const user = loadUser();
+  it("required validator → MetaRequiredValidator; length validator → MetaLengthValidator", async () => {
+    const user = await loadUser();
     const emailValidator = user.findField("email")!.validators()[0]!;
     expect(emailValidator).toBeInstanceOf(MetaRequiredValidator);
 
@@ -1245,7 +1250,7 @@ describe("Loader produces typed concrete nodes from JSON", () => {
     expect(lengthValidator).toBeInstanceOf(MetaLengthValidator);
   });
 
-  it("regex / numeric / array validators dispatch to their concrete classes", () => {
+  it("regex / numeric / array validators dispatch to their concrete classes", async () => {
     const json = JSON.stringify({
       "metadata.root": {
         package: "demo",
@@ -1281,7 +1286,8 @@ describe("Loader produces typed concrete nodes from JSON", () => {
         ],
       },
     });
-    const { root, errors } = new Loader().loadJson(json);
+    const loader = new MetaDataLoader();
+    const { root, errors } = await loader.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
     const widget = root.childByTypeAndName(TYPE_OBJECT, "Widget") as MetaObject;
     expect(widget.findField("slug")!.validators()[0]).toBeInstanceOf(MetaRegexValidator);
@@ -1289,7 +1295,7 @@ describe("Loader produces typed concrete nodes from JSON", () => {
     expect(widget.findField("tags")!.validators()[0]).toBeInstanceOf(MetaArrayValidator);
   });
 
-  it("origin child of a field → MetaOrigin", () => {
+  it("origin child of a field → MetaOrigin", async () => {
     const json = JSON.stringify({
       "metadata.root": {
         package: "demo",
@@ -1324,7 +1330,8 @@ describe("Loader produces typed concrete nodes from JSON", () => {
         ],
       },
     });
-    const { root, errors } = new Loader().loadJson(json);
+    const loader2 = new MetaDataLoader();
+    const { root, errors } = await loader2.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
     const summary = root.childByTypeAndName(TYPE_OBJECT, "Summary") as MetaObject;
     const labelField = summary.findField("label")!;
@@ -1343,7 +1350,7 @@ describe("Loader produces typed concrete nodes from JSON", () => {
 // ---------------------------------------------------------------------------
 
 describe("stringArray attr desugar", () => {
-  it("MetaIdentity.fields returns ['id'] for an identity authored @fields: 'id'", () => {
+  it("MetaIdentity.fields returns ['id'] for an identity authored @fields: 'id'", async () => {
     const json = JSON.stringify({
       "metadata.root": {
         package: "demo",
@@ -1360,7 +1367,8 @@ describe("stringArray attr desugar", () => {
         ],
       },
     });
-    const { root, errors } = new Loader().loadJson(json);
+    const loaderA = new MetaDataLoader();
+    const { root, errors } = await loaderA.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
     const user = root.childByTypeAndName(TYPE_OBJECT, "User") as MetaObject;
     const pk = user.primaryIdentity()!;
@@ -1370,7 +1378,7 @@ describe("stringArray attr desugar", () => {
     expect(pk.isComposite()).toBe(false);
   });
 
-  it("MetaRelationship.joinFields returns ['vehicleId'] for @joinFields: 'vehicleId'", () => {
+  it("MetaRelationship.joinFields returns ['vehicleId'] for @joinFields: 'vehicleId'", async () => {
     const json = JSON.stringify({
       "metadata.root": {
         package: "demo",
@@ -1394,7 +1402,8 @@ describe("stringArray attr desugar", () => {
         ],
       },
     });
-    const { root, errors } = new Loader().loadJson(json);
+    const loaderB = new MetaDataLoader();
+    const { root, errors } = await loaderB.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
     const vehicle = root.childByTypeAndName(TYPE_OBJECT, "Vehicle") as MetaObject;
     const rel = vehicle
@@ -1405,7 +1414,7 @@ describe("stringArray attr desugar", () => {
     expect(rel.joinFields).toEqual(["vehicleId"]);
   });
 
-  it("an already-array @fields value is left untouched", () => {
+  it("an already-array @fields value is left untouched", async () => {
     const json = JSON.stringify({
       "metadata.root": {
         package: "demo",
@@ -1428,7 +1437,8 @@ describe("stringArray attr desugar", () => {
         ],
       },
     });
-    const { root, errors } = new Loader().loadJson(json);
+    const loaderC = new MetaDataLoader();
+    const { root, errors } = await loaderC.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
     const order = root.childByTypeAndName(TYPE_OBJECT, "Order") as MetaObject;
     const pk = order.primaryIdentity()!;
