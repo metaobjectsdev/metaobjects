@@ -139,7 +139,7 @@ export function registerCoreTypes(registry: TypeRegistry): void {
   }
 
   // validator — 6 subtypes (base + 5 named); dispatch to subtype-specific class.
-  // Mirrors metaOf()'s switch on model.subType for TYPE_VALIDATOR:
+  // Subtype→class dispatch for TYPE_VALIDATOR (formerly handled by metaOf()):
   //   required → MetaRequiredValidator, length → MetaLengthValidator,
   //   regex → MetaRegexValidator, numeric → MetaNumericValidator,
   //   array → MetaArrayValidator, default (base) → MetaValidator.
@@ -173,7 +173,7 @@ export function registerCoreTypes(registry: TypeRegistry): void {
   }
 
   // identity — 2 subtypes (no base; Java doesn't register one).
-  // Mirrors metaOf()'s switch on model.subType for TYPE_IDENTITY:
+  // Subtype→class dispatch for TYPE_IDENTITY (formerly handled by metaOf()):
   //   primary → MetaPrimaryIdentity, secondary → MetaSecondaryIdentity,
   //   default → MetaIdentity (fallback, not currently registered).
   for (const subType of IDENTITY_SUBTYPES) {

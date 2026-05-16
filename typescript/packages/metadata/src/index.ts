@@ -7,6 +7,20 @@
 // See docs/strategy/2026-05-09-northstar-v4.md and
 // docs/specs/2026-05-09-v0.2-ts-pillar.md for context.
 
+// AnyMeta imports — kept here (not in src/meta/) to avoid circular imports.
+// See the AnyMeta comment below for full explanation.
+import type { MetaRoot } from "./meta/meta-root.js";
+import type { MetaObject } from "./meta/meta-object.js";
+import type { MetaField } from "./meta/meta-field.js";
+import type { MetaIdentity } from "./meta/meta-identity.js";
+import type { MetaRelationship } from "./meta/meta-relationship.js";
+import type { MetaValidator } from "./meta/meta-validator.js";
+import type { MetaView } from "./meta/meta-view.js";
+import type { MetaAttr } from "./meta/meta-attr.js";
+import type { MetaLayout } from "./meta/meta-layout.js";
+import type { MetaSource } from "./meta/meta-source.js";
+import type { MetaOrigin } from "./meta/meta-origin.js";
+
 // Constants — type names, subtype names, reserved keys, separators
 export * from "./constants.js";
 
@@ -43,19 +57,12 @@ export { MetaLayout } from "./meta/meta-layout.js";
 export { MetaSource } from "./meta/meta-source.js";
 export { MetaOrigin } from "./meta/meta-origin.js";
 
-// AnyMeta — union of all concrete node types (replaces the old metaOf return type)
-import type { MetaRoot } from "./meta/meta-root.js";
-import type { MetaObject } from "./meta/meta-object.js";
-import type { MetaField } from "./meta/meta-field.js";
-import type { MetaIdentity } from "./meta/meta-identity.js";
-import type { MetaRelationship } from "./meta/meta-relationship.js";
-import type { MetaValidator } from "./meta/meta-validator.js";
-import type { MetaView } from "./meta/meta-view.js";
-import type { MetaAttr } from "./meta/meta-attr.js";
-import type { MetaLayout } from "./meta/meta-layout.js";
-import type { MetaSource } from "./meta/meta-source.js";
-import type { MetaOrigin } from "./meta/meta-origin.js";
-
+// AnyMeta — union of all concrete node types.
+// Defined here (not in src/meta/) to avoid a circular import: each concrete
+// class file imports MetaData from meta-data.ts; a shared any-meta.ts would
+// need to import all of them, and they'd need to import it — creating a
+// cycle. index.ts is the natural resolution point: it already re-exports
+// every class.
 export type AnyMeta =
   | MetaRoot
   | MetaObject

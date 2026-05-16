@@ -10,7 +10,7 @@ export abstract class MetaData {
   // Identity / packaging
   package?: string;
   superRef?: string;         // raw super reference string, pre-resolution
-  private _superData?: MetaData; // post-resolution pointer (set by Task 6)
+  private _superData?: MetaData; // post-resolution pointer; set by setSuperResolved() after parsing
   isAbstract: boolean = false;
 
   // Native @isArray (boolean property, NOT in attrs!)
@@ -105,7 +105,7 @@ export abstract class MetaData {
     return this._superData;
   }
 
-  /** Temporary compatibility alias for `superData` — kept while super-resolve.ts and views.ts still reference this name; to be removed in a later task. */
+  /** Temporary compatibility alias for `superData` — kept while super-resolve.ts still references this name; to be removed in a later task. */
   get superResolved(): MetaData | undefined {
     return this._superData;
   }
