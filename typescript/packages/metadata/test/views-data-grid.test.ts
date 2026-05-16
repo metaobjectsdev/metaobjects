@@ -29,7 +29,7 @@ describe("dataGrid layout subtype constants", () => {
   });
 });
 
-describe("Loader accepts dataGrid layouts on objects", () => {
+describe("FileMetaDataLoader accepts dataGrid layouts on objects", () => {
   test("dataGrid layout loads cleanly on an entity", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "loader-data-grid-layout-"));
     const path = join(tmp, "fixture.json");
@@ -61,7 +61,7 @@ describe("Loader accepts dataGrid layouts on objects", () => {
   });
 });
 
-describe("Loader validates @defaultSortField references an existing field (layout[dataGrid])", () => {
+describe("FileMetaDataLoader validates @defaultSortField references an existing field (layout[dataGrid])", () => {
   test("error when defaultSortField names a field not on the entity", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "loader-sort-validation-"));
     const path = join(tmp, "fixture.json");

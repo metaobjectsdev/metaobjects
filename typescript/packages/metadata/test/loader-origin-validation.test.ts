@@ -17,7 +17,7 @@ async function load(children: unknown[]) {
   };
 }
 
-describe("Loader validates origin.passthrough.from", () => {
+describe("MetaDataLoader validates origin.passthrough.from", () => {
   test("from references a real Entity.field → no error", async () => {
     const result = await load([
       {
@@ -86,7 +86,7 @@ describe("Loader validates origin.passthrough.from", () => {
   });
 });
 
-describe("Loader validates origin.aggregate.of", () => {
+describe("MetaDataLoader validates origin.aggregate.of", () => {
   test("of references a real field → no error", async () => {
     const result = await load([
       {
@@ -201,7 +201,7 @@ describe("Loader validates origin.aggregate.of", () => {
   });
 });
 
-describe("Loader validates origin.via paths against relationships", () => {
+describe("MetaDataLoader validates origin.via paths against relationships", () => {
   test("via references missing relationship segment → error", async () => {
     const result = await load([
       {

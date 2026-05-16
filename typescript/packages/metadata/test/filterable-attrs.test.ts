@@ -32,7 +32,7 @@ describe("grid filter attr constant", () => {
   });
 });
 
-describe("Loader drift warning for @filterable without index", () => {
+describe("FileMetaDataLoader drift warning for @filterable without index", () => {
   test("emits a warning when a @filterable field has no identity reference and no @db.indexed", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "loader-filterable-warn-"));
     const path = join(tmp, "fixture.json");

@@ -1,6 +1,6 @@
 // Phase A3 — unit tests for the attribute-schema validation pass.
 //
-// Each test parses a small metadata document through the Loader (which runs
+// Each test parses a small metadata document through the MetaDataLoader (which runs
 // validateAttrSchema as its seventh pass) and asserts the resulting errors.
 // A few tests also call validateAttrSchema directly against a parsed root.
 

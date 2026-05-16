@@ -9,7 +9,7 @@
 //   MetaSource
 //   MetaOrigin
 //
-// All trees are constructed by hand (no Loader) to keep tests fast and
+// All trees are constructed by hand (no MetaDataLoader) to keep tests fast and
 // dependency-free. Pattern mirrors meta-object.test.ts.
 
 import { describe, it, expect } from "bun:test";
@@ -1135,13 +1135,13 @@ describe("MetaIdentity.fields — reference stability", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Loader integration — the parser/registry factory builds the MOST SPECIFIC
+// MetaDataLoader integration — the parser/registry factory builds the MOST SPECIFIC
 // concrete node class from JSON. Ported from the deleted test/views.test.ts:
 // in the typed-tree design there is no metaOf() view layer, so the only thing
 // left to verify is that parsing dispatches to the right concrete subclass.
 // ---------------------------------------------------------------------------
 
-describe("Loader produces typed concrete nodes from JSON", () => {
+describe("MetaDataLoader produces typed concrete nodes from JSON", () => {
   const SAMPLE = JSON.stringify({
     "metadata.root": {
       package: "demo",
@@ -1330,8 +1330,8 @@ describe("Loader produces typed concrete nodes from JSON", () => {
         ],
       },
     });
-    const loader2 = new MetaDataLoader();
-    const { root, errors } = await loader2.load([new InMemorySource(json)]);
+    const loader = new MetaDataLoader();
+    const { root, errors } = await loader.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
     const summary = root.childByTypeAndName(TYPE_OBJECT, "Summary") as MetaObject;
     const labelField = summary.findField("label")!;

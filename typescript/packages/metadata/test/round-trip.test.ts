@@ -1,7 +1,7 @@
 // Round-trip parity tests — Task 11 of v0.2 SP1
 //
 // Integration-level sweep: for each Java fixture (or fixture group), loads via
-// Loader, serializes via serializeJson, reloads via a fresh Loader, and compares
+// FileMetaDataLoader, serializes via serializeJson, reloads via a fresh MetaDataLoader, and compares
 // both trees structurally. Catches drift between the parser and serializer that
 // per-component tests might miss.
 //
@@ -109,7 +109,7 @@ function assertModelsEqual(a: MetaModel, b: MetaModel, path = "root"): void {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: load a single fixture file via Loader
+// Helper: load a single fixture file via FileMetaDataLoader
 // ---------------------------------------------------------------------------
 
 async function loadFixture(name: string): Promise<{ root: MetaModel; warnings: string[]; errors: Error[] }> {
@@ -127,7 +127,7 @@ async function loadFixtures(names: string[]): Promise<{ root: MetaModel; warning
 }
 
 // ---------------------------------------------------------------------------
-// Helper: round-trip a root — serialize → fresh Loader → parse → return new root
+// Helper: round-trip a root — serialize → fresh MetaDataLoader → parse → return new root
 // ---------------------------------------------------------------------------
 
 async function roundTrip(root: MetaModel): Promise<MetaModel> {

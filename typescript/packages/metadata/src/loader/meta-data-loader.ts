@@ -363,7 +363,7 @@ export class MetaDataLoader {
   private _checkStateForRead(): void {
     if (this._state === "uninitialized" || this._state === "loading") {
       throw new Error(
-        `Loader.root accessed before loading has completed (state: "${this._state}"). ` +
+        `MetaDataLoader.root accessed before loading has completed (state: "${this._state}"). ` +
         `Call load() first.`,
       );
     }
@@ -420,7 +420,7 @@ export class MetaDataLoader {
     // INITIALIZED-once contract). Loader is a one-shot pipeline.
     if (this._state === "loaded" || this._state === "error") {
       throw new Error(
-        "Loader cannot be reused after load completes. Construct a new Loader for additional loads.",
+        "MetaDataLoader cannot be reused after load completes. Construct a new MetaDataLoader for additional loads.",
       );
     }
 
