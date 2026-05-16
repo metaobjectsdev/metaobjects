@@ -404,6 +404,10 @@ export function opsForSubType(subType: string): readonly FilterOp[] {
   return OPS_BY_SUBTYPE[subType] ?? [];
 }
 
+// Object-level attrs
+/** Java runtime strategy for an object. Values: "pojo" | "map" | "proxy". */
+export const OBJECT_ATTR_JAVA_RUNTIME = "javaRuntime";
+
 // ---------------------------------------------------------------------------
 // Source type — declares where an object's data lives (Project E).
 // dbTable / dbView ship in v1. Multiple sources per object are allowed

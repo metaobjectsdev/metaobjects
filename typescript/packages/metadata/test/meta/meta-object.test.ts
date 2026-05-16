@@ -21,6 +21,7 @@ import {
   FIELD_SUBTYPE_STRING,
   VALIDATOR_SUBTYPE_REQUIRED,
   RELATIONSHIP_SUBTYPE_ASSOCIATION,
+  IDENTITY_ATTR_FIELDS,
 } from "../../src/constants.js";
 
 // ---------------------------------------------------------------------------
@@ -36,7 +37,7 @@ function makeField(name: string, subType = FIELD_SUBTYPE_STRING): MetaField {
 
 function makeIdentity(name: string, subType: string, fields: string[]): MetaData {
   const node = new TestNode(new TypeId(TYPE_IDENTITY, subType), name);
-  node.setAttr("fields", fields);
+  node.setAttr(IDENTITY_ATTR_FIELDS, fields);
   return node;
 }
 

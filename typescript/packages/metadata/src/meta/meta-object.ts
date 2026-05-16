@@ -16,6 +16,7 @@ import {
   OBJECT_SUBTYPE_VALUE,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
+  OBJECT_ATTR_JAVA_RUNTIME,
 } from "../constants.js";
 import type { MetaField } from "./meta-field.js";
 
@@ -31,7 +32,7 @@ export class MetaObject extends MetaData {
   }
 
   get javaRuntime(): string | undefined {
-    const v = this.attr("javaRuntime");
+    const v = this.attr(OBJECT_ATTR_JAVA_RUNTIME);
     return typeof v === "string" ? v : undefined;
   }
 
