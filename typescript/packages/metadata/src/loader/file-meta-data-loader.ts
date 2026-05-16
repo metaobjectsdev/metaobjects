@@ -43,7 +43,14 @@ export class FileMetaDataLoader extends MetaDataLoader {
     for (const entry of entries) {
       if (!entry.endsWith(".json")) continue;
       const filePath = join(dir, entry);
-      const statResult = await stat(filePath);
+      let statResult: Awaited<ReturnType<typeof stat>>;
+      try {
+        statResult = await stat(filePath);
+      } catch {
+        // Entry vanished between readdir and stat (TOCTOU) or is not accessible.
+        // Skip it rather than breaking the no-throw contract of loadDirectory.
+        continue;
+      }
       if (!statResult.isFile()) continue;
       if (excludes.some((p) => matchSimpleGlob(p, entry))) continue;
       paths.push(filePath);
