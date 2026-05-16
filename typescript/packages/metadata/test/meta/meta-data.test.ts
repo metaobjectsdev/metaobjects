@@ -29,4 +29,15 @@ describe("MetaData base", () => {
     n.freeze();
     expect(() => n.addChild(new TestNode(new TypeId("field", "string"), "x"))).toThrow();
   });
+
+  it("effectiveAttrs() returns a fresh defensive copy on each call even when frozen", () => {
+    const n = new TestNode(new TypeId("object", "entity"), "Widget");
+    n.setAttr("color", "blue");
+    n.freeze();
+    const a = n.effectiveAttrs();
+    const b = n.effectiveAttrs();
+    expect(a).not.toBe(b);
+    expect(a.get("color")).toBe("blue");
+    expect(b.get("color")).toBe("blue");
+  });
 });

@@ -28,7 +28,7 @@ export abstract class MetaData {
   // Internal storage
   private _attrs = new Map<string, AttrValue>();
   private _children: MetaData[] = [];
-  protected _frozen: boolean = false;
+  private _frozen: boolean = false;
 
   // Per-instance read cache: only populated once the node is frozen.
   private readonly _cache = new Map<string, unknown>();
@@ -83,7 +83,7 @@ export abstract class MetaData {
 
   private _assertNotFrozen(): void {
     if (this._frozen) {
-      throw new Error(`Cannot mutate frozen MetaModel ${this.fqn()}`);
+      throw new Error(`Cannot mutate frozen MetaData ${this.fqn()}`);
     }
   }
 
@@ -105,7 +105,7 @@ export abstract class MetaData {
     return this._superData;
   }
 
-  /** Returns the resolved super model, or undefined if not yet resolved. */
+  /** Temporary compatibility alias for `superData` — kept while super-resolve.ts and views.ts still reference this name; to be removed in a later task. */
   get superResolved(): MetaData | undefined {
     return this._superData;
   }
@@ -240,7 +240,8 @@ export abstract class MetaData {
    * Cycle-safe: if the super chain contains a cycle, resolution stops at the cycle.
    */
   effectiveAttrs(): Map<string, AttrValue> {
-    return this.cached("effectiveAttrs", () => this._effectiveAttrs(new Set([this])));
+    const merged = this.cached("effectiveAttrs", () => this._effectiveAttrs(new Set([this])));
+    return new Map(merged);
   }
 
   private _effectiveAttrs(visited: Set<MetaData>): Map<string, AttrValue> {
