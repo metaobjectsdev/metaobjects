@@ -29,8 +29,6 @@ import {
   TYPE_VALIDATOR,
   SUBTYPE_ROOT,
   OBJECT_SUBTYPE_ENTITY,
-  OBJECT_SUBTYPE_ENTITY,
-  OBJECT_SUBTYPE_ENTITY,
 } from "../src/constants.js";
 
 // ---------------------------------------------------------------------------

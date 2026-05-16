@@ -385,9 +385,9 @@ describe("parseJson — reserved keys", () => {
     expect(() => parseJson(input, { registry })).toThrow(ParseError);
   });
 
-  it("isAbstract reserved key sets model.isAbstract flag", () => {
+  it("abstract reserved key sets model.isAbstract flag", () => {
     const registry = makeRegistry();
-    // Note: isAbstract as a plain reserved key (not @-prefixed)
+    // Note: abstract as a plain reserved key (not @-prefixed)
     const input = JSON.stringify({
       "metadata.root": {
         children: [{ "object.entity": { name: "Base", abstract: true } }],
@@ -396,7 +396,7 @@ describe("parseJson — reserved keys", () => {
     const { root } = parseJson(input, { registry });
     const child = root.children()[0]!;
     expect(child.isAbstract).toBe(true);
-    expect(child.hasAttr("isAbstract")).toBe(false);
+    expect(child.hasAttr("abstract")).toBe(false);
   });
 
   it("overlay: true at the root is ignored — no error, no warning", () => {
@@ -840,7 +840,7 @@ describe("parseJson — fruitbasket fixture round-trip", () => {
 
   it("id field has the abstract flag set", () => {
     const idField = result.root.children()[0]!;
-    // @isAbstract is a special flag
+    // 'abstract' is a reserved structural key — routes to setIsAbstract()
     expect(idField.isAbstract).toBe(true);
   });
 
