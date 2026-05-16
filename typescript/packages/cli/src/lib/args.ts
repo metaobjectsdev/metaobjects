@@ -73,7 +73,7 @@ export function parseExportArgs(argv: string[]): ExportFlags {
     allowPositionals: false,
   });
   return {
-    out: values.out as string | undefined,
+    out: values.out,
   };
 }
 

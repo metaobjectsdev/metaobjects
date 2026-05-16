@@ -19,32 +19,39 @@ const _thisFile = fileURLToPath(import.meta.url);
 const _isCompiled = _thisFile.includes("/dist/");
 const _cliDir = resolve(_thisFile, _isCompiled ? "../../../.." : "../../..");
 const _require = createRequire(import.meta.url);
-// When running from compiled output we resolve into each package's dist/; when
-// running TS source directly (bun test, `meta` run from the workspace) we resolve
-// into src/ so the CLI never depends on a stale, unrebuilt dist/.
+// Each aliased specifier maps to a compiled-output path and a TS-source path,
+// relative to _cliDir. When running from compiled output we resolve into the
+// package's dist/; when running TS source directly (bun test, `meta` run from
+// the workspace) we resolve into src/ so the CLI never depends on a stale,
+// unrebuilt dist/.
+//
+// The three workspace deps resolve through the CLI's own node_modules.
+// @metaobjects/cli is this package itself, so it resolves directly from
+// _cliDir rather than through node_modules (which would be a non-existent
+// self-referential symlink).
+const CLI_PKG_PATHS: Record<string, { dist: string; src: string }> = {
+  "@metaobjects/codegen-ts": {
+    dist: "node_modules/@metaobjects/codegen-ts/dist/index.js",
+    src: "node_modules/@metaobjects/codegen-ts/src/index.ts",
+  },
+  "@metaobjects/codegen-ts/generators": {
+    dist: "node_modules/@metaobjects/codegen-ts/dist/generators/index.js",
+    src: "node_modules/@metaobjects/codegen-ts/src/generators/index.ts",
+  },
+  "@metaobjects/codegen-ts-tanstack": {
+    dist: "node_modules/@metaobjects/codegen-ts-tanstack/dist/index.js",
+    src: "node_modules/@metaobjects/codegen-ts-tanstack/src/index.ts",
+  },
+  "@metaobjects/cli": {
+    dist: "dist/src/index.js",
+    src: "src/index.ts",
+  },
+};
+
 function resolveCliPkg(specifier: string): string {
-  if (specifier === "@metaobjects/codegen-ts") {
-    return _isCompiled
-      ? resolve(_cliDir, "node_modules/@metaobjects/codegen-ts/dist/index.js")
-      : resolve(_cliDir, "node_modules/@metaobjects/codegen-ts/src/index.ts");
-  }
-  if (specifier === "@metaobjects/codegen-ts/generators") {
-    return _isCompiled
-      ? resolve(_cliDir, "node_modules/@metaobjects/codegen-ts/dist/generators/index.js")
-      : resolve(_cliDir, "node_modules/@metaobjects/codegen-ts/src/generators/index.ts");
-  }
-  if (specifier === "@metaobjects/codegen-ts-tanstack") {
-    return _isCompiled
-      ? resolve(_cliDir, "node_modules/@metaobjects/codegen-ts-tanstack/dist/index.js")
-      : resolve(_cliDir, "node_modules/@metaobjects/codegen-ts-tanstack/src/index.ts");
-  }
-  if (specifier === "@metaobjects/cli") {
-    // The CLI package's own entry — @metaobjects/cli is this package itself,
-    // so we resolve directly from _cliDir rather than through node_modules (which
-    // would be a non-existent self-referential symlink).
-    return _isCompiled
-      ? resolve(_cliDir, "dist/src/index.js")
-      : resolve(_cliDir, "src/index.ts");
+  const paths = CLI_PKG_PATHS[specifier];
+  if (paths !== undefined) {
+    return resolve(_cliDir, _isCompiled ? paths.dist : paths.src);
   }
   return _require.resolve(specifier);
 }
