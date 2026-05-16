@@ -19,23 +19,32 @@ const _thisFile = fileURLToPath(import.meta.url);
 const _isCompiled = _thisFile.includes("/dist/");
 const _cliDir = resolve(_thisFile, _isCompiled ? "../../../.." : "../../..");
 const _require = createRequire(import.meta.url);
+// When running from compiled output we resolve into each package's dist/; when
+// running TS source directly (bun test, `meta` run from the workspace) we resolve
+// into src/ so the CLI never depends on a stale, unrebuilt dist/.
 function resolveCliPkg(specifier: string): string {
-  // pkg#exports require ESM resolution; strip the subpath and re-append it
-  // as a path into dist/ using the exports map convention.
   if (specifier === "@metaobjects/codegen-ts") {
-    return resolve(_cliDir, "node_modules/@metaobjects/codegen-ts/dist/index.js");
+    return _isCompiled
+      ? resolve(_cliDir, "node_modules/@metaobjects/codegen-ts/dist/index.js")
+      : resolve(_cliDir, "node_modules/@metaobjects/codegen-ts/src/index.ts");
   }
   if (specifier === "@metaobjects/codegen-ts/generators") {
-    return resolve(_cliDir, "node_modules/@metaobjects/codegen-ts/dist/generators/index.js");
+    return _isCompiled
+      ? resolve(_cliDir, "node_modules/@metaobjects/codegen-ts/dist/generators/index.js")
+      : resolve(_cliDir, "node_modules/@metaobjects/codegen-ts/src/generators/index.ts");
   }
   if (specifier === "@metaobjects/codegen-ts-tanstack") {
-    return resolve(_cliDir, "node_modules/@metaobjects/codegen-ts-tanstack/dist/index.js");
+    return _isCompiled
+      ? resolve(_cliDir, "node_modules/@metaobjects/codegen-ts-tanstack/dist/index.js")
+      : resolve(_cliDir, "node_modules/@metaobjects/codegen-ts-tanstack/src/index.ts");
   }
   if (specifier === "@metaobjects/cli") {
-    // The CLI package's own compiled entry — @metaobjects/cli is this package itself,
+    // The CLI package's own entry — @metaobjects/cli is this package itself,
     // so we resolve directly from _cliDir rather than through node_modules (which
     // would be a non-existent self-referential symlink).
-    return resolve(_cliDir, "dist/src/index.js");
+    return _isCompiled
+      ? resolve(_cliDir, "dist/src/index.js")
+      : resolve(_cliDir, "src/index.ts");
   }
   return _require.resolve(specifier);
 }

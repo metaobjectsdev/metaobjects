@@ -9,6 +9,12 @@ const FIXTURES = resolve(import.meta.dirname, "../fixtures");
 // are resolvable by jiti when it loads metaobjects.config.ts.
 const WORKSPACE_TMP = resolve(import.meta.dirname, "../fixtures/__tmp__");
 
+// Generated output lands here — an absolute path inside the temp root, so it
+// never pollutes the cli package's own src/ regardless of process.cwd().
+function genOutDir(root: string): string {
+  return join(root, "generated", "db");
+}
+
 function setupRepo(): string {
   mkdirSync(WORKSPACE_TMP, { recursive: true });
   const root = mkdtempSync(join(WORKSPACE_TMP, "forge-gen-sqlite-"));
@@ -20,7 +26,7 @@ function setupRepo(): string {
 import { defineConfig } from "@metaobjects/codegen-ts";
 import { entityFile } from "@metaobjects/codegen-ts/generators";
 export default defineConfig({
-  outDir: "./src/db",
+  outDir: ${JSON.stringify(genOutDir(root))},
   dialect: "sqlite",
   dbImport: "~/db",
   extStyle: "none",
@@ -48,7 +54,7 @@ describe("meta gen — sqlite end-to-end", () => {
       const exit = await runIn(root, () => run(["gen"]));
       expect(exit).toBe(0);
 
-      const outDir = join(root, "src", "db");
+      const outDir = genOutDir(root);
       expect(existsSync(outDir)).toBe(true);
 
       const files = readdirSync(outDir);
@@ -71,7 +77,7 @@ describe("meta gen — sqlite end-to-end", () => {
       const exit = await runIn(root, () => run(["gen", "User"]));
       expect(exit).toBe(0);
 
-      const outDir = join(root, "src", "db");
+      const outDir = genOutDir(root);
       const files = readdirSync(outDir);
       expect(files).toContain("User.ts");
       expect(files).not.toContain("Post.ts");

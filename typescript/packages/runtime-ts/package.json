@@ -3,23 +3,27 @@
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "bun": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
     },
     "./drivers": {
-      "types": "./dist/drivers/index.d.ts",
-      "import": "./dist/drivers/index.js"
+      "bun": "./src/drivers/index.ts",
+      "types": "./src/drivers/index.ts",
+      "default": "./dist/drivers/index.js"
     },
     "./fastify": {
-      "types": "./dist/fastify/index.d.ts",
-      "import": "./dist/fastify/index.js"
+      "bun": "./src/fastify/index.ts",
+      "types": "./src/fastify/index.ts",
+      "default": "./dist/fastify/index.js"
     },
     "./drizzle-fastify": {
-      "types": "./dist/drizzle-fastify/index.d.ts",
-      "import": "./dist/drizzle-fastify/index.js"
+      "bun": "./src/drizzle-fastify/index.ts",
+      "types": "./src/drizzle-fastify/index.ts",
+      "default": "./dist/drizzle-fastify/index.js"
     }
   },
   "files": ["dist"],

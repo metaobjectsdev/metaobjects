@@ -14,13 +14,17 @@ describe("meta gen --dry-run", () => {
     mkdirSync(WORKSPACE_TMP, { recursive: true });
     const root = mkdtempSync(join(WORKSPACE_TMP, "forge-gen-dryrun-"));
     cpSync(join(FIXTURES, "trainer-website-meta"), root, { recursive: true });
+    // outDir is an absolute path inside the temp root so generated files never
+    // land in the cli package's own src/ — codegen-ts v0.1 writes even on
+    // --dry-run, so the path must be sandboxed regardless of process.cwd().
+    const outDir = join(root, "generated", "db");
     writeFileSync(
       join(root, "metaobjects.config.ts"),
       `
 import { defineConfig } from "@metaobjects/codegen-ts";
 import { entityFile } from "@metaobjects/codegen-ts/generators";
 export default defineConfig({
-  outDir: "./src/db",
+  outDir: ${JSON.stringify(outDir)},
   dialect: "sqlite",
   dbImport: "~/db",
   extStyle: "none",

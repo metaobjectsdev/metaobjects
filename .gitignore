@@ -13,6 +13,9 @@ node_modules/
 .cache/
 .parcel-cache/
 
+# Test scratch dirs (cli integration tests mkdtemp into here)
+__tmp__/
+
 # Editor + OS
 .DS_Store
 *.swp

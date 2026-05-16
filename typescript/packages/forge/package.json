@@ -3,10 +3,18 @@
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-    "./agent-docs": { "types": "./dist/agent-docs/index.d.ts", "import": "./dist/agent-docs/index.js" }
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./agent-docs": {
+      "bun": "./src/agent-docs/index.ts",
+      "types": "./src/agent-docs/index.ts",
+      "default": "./dist/agent-docs/index.js"
+    }
   },
   "files": ["dist"],
   "scripts": {

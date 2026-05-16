@@ -4,15 +4,17 @@
   "description": "Browser-safe runtime for metaobjects entities — currency, TanStack hooks, cell renderers, CurrencyInput",
   "type": "module",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "bun": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
     },
     "./react": {
-      "types": "./dist/react/index.d.ts",
-      "import": "./dist/react/index.js"
+      "bun": "./src/react/index.tsx",
+      "types": "./src/react/index.tsx",
+      "default": "./dist/react/index.js"
     }
   },
   "files": ["dist", "README.md"],
