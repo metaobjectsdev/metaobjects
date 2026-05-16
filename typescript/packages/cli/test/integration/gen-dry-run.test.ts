@@ -1,6 +1,5 @@
 import { describe, test, expect } from "bun:test";
 import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { run } from "../../src/index.js";
 
