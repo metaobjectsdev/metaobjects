@@ -84,6 +84,7 @@ import {
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_PASSTHROUGH_ATTR_FROM,
+  ORIGIN_PASSTHROUGH_ATTR_VIA,
   ORIGIN_AGGREGATE_ATTR_AGG,
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
@@ -214,12 +215,13 @@ function makeOrigin(subType: string): MetaOrigin {
   return new MetaOrigin(new TypeId(TYPE_ORIGIN, subType), subType);
 }
 
-function makePassthroughOrigin(from?: string): MetaPassthroughOrigin {
+function makePassthroughOrigin(from?: string, via?: string): MetaPassthroughOrigin {
   const node = new MetaPassthroughOrigin(
     new TypeId(TYPE_ORIGIN, ORIGIN_SUBTYPE_PASSTHROUGH),
     ORIGIN_SUBTYPE_PASSTHROUGH,
   );
   if (from !== undefined) node.setAttr(ORIGIN_PASSTHROUGH_ATTR_FROM, from);
+  if (via !== undefined) node.setAttr(ORIGIN_PASSTHROUGH_ATTR_VIA, via);
   return node;
 }
 
@@ -729,6 +731,16 @@ describe("MetaPassthroughOrigin", () => {
   it("from getter returns undefined when @from is absent", () => {
     const o = makePassthroughOrigin();
     expect(o.from).toBeUndefined();
+  });
+
+  it("via getter returns the @via attr value when present", () => {
+    const o = makePassthroughOrigin("Program.title", "Program.weeks");
+    expect(o.via).toBe("Program.weeks");
+  });
+
+  it("via getter returns undefined when @via is absent", () => {
+    const o = makePassthroughOrigin("Program.title");
+    expect(o.via).toBeUndefined();
   });
 
   it("has correct type / subType", () => {
