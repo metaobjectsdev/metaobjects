@@ -85,17 +85,14 @@ import {
   IDENTITY_ATTR_FIELDS,
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_UNIQUE,
-  GENERATION_INCREMENT,
-  GENERATION_UUID,
-  GENERATION_ASSIGNED,
+  GENERATION_VALUES,
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_FK_FIELD,
   RELATIONSHIP_ATTR_PARENT_FIELD,
   RELATIONSHIP_ATTR_JOIN_ENTITY,
   RELATIONSHIP_ATTR_JOIN_FIELDS,
-  CARDINALITY_ONE,
-  CARDINALITY_MANY,
+  CARDINALITY_VALUES,
   VALIDATOR_ATTR_PATTERN,
   VALIDATOR_ATTR_MIN,
   VALIDATOR_ATTR_MAX,
@@ -257,7 +254,7 @@ const relationshipAttrs: AttrSchema[] = [
     name: RELATIONSHIP_ATTR_CARDINALITY,
     valueType: ATTR_SUBTYPE_STRING,
     required: false,
-    allowedValues: [CARDINALITY_ONE, CARDINALITY_MANY],
+    allowedValues: [...CARDINALITY_VALUES],
     description: "Cardinality of the relationship target: 'one' or 'many'.",
   },
   {
@@ -305,19 +302,19 @@ const identityFieldsAttr: AttrSchema = {
 };
 
 const primaryIdentityAttrs: AttrSchema[] = [
-  identityFieldsAttr,
+  { ...identityFieldsAttr },
   {
     name: IDENTITY_ATTR_GENERATION,
     valueType: ATTR_SUBTYPE_STRING,
     required: false,
-    allowedValues: [GENERATION_INCREMENT, GENERATION_UUID, GENERATION_ASSIGNED],
+    allowedValues: [...GENERATION_VALUES],
     description:
       "Primary-key value generation strategy: 'increment' (auto-increment), 'uuid', or 'assigned' (caller-supplied).",
   },
 ];
 
 const secondaryIdentityAttrs: AttrSchema[] = [
-  identityFieldsAttr,
+  { ...identityFieldsAttr },
   {
     name: IDENTITY_ATTR_UNIQUE,
     valueType: ATTR_SUBTYPE_BOOLEAN,
@@ -439,6 +436,13 @@ const minMaxValidatorAttrs: AttrSchema[] = [
   },
 ];
 
+/** Attrs per origin subtype. base has none; passthrough and aggregate carry their respective attrs. */
+const ORIGIN_ATTRS_MAP = new Map<string, AttrSchema[]>([
+  [SUBTYPE_BASE, []],
+  [ORIGIN_SUBTYPE_PASSTHROUGH, [...passthroughOriginAttrs]],
+  [ORIGIN_SUBTYPE_AGGREGATE, [...aggregateOriginAttrs]],
+]);
+
 /** Attrs per validator subtype. Required uses none; regex adds @pattern. */
 const VALIDATOR_ATTRS_MAP = new Map<string, AttrSchema[]>([
   [SUBTYPE_BASE, [...minMaxValidatorAttrs]],
@@ -538,7 +542,7 @@ export function registerCoreTypes(registry: TypeRegistry): void {
     // share the common codegen/filter attrs only.
     const fieldAttrs =
       subType === FIELD_SUBTYPE_CURRENCY
-        ? [...commonFieldAttrs, currencyFieldAttr]
+        ? [...commonFieldAttrs, { ...currencyFieldAttr }]
         : [...commonFieldAttrs];
     registry.register(
       def(TYPE_FIELD, subType, `Field of type ${subType}`, fieldRules, MetaField, fieldAttrs),
@@ -562,7 +566,9 @@ export function registerCoreTypes(registry: TypeRegistry): void {
   for (const subType of VALIDATOR_SUBTYPES) {
     const NodeClass = VALIDATOR_CLASS_MAP.get(subType) ?? MetaValidator;
     const validatorAttrs = VALIDATOR_ATTRS_MAP.get(subType) ?? [];
-    registry.register(def(TYPE_VALIDATOR, subType, `Validator (${subType})`, validatorRules, NodeClass, validatorAttrs));
+    registry.register(
+      def(TYPE_VALIDATOR, subType, `Validator (${subType})`, validatorRules, NodeClass, validatorAttrs),
+    );
   }
 
   // view — N subtypes. Each view permits only attr children (Java parity:
@@ -598,9 +604,7 @@ export function registerCoreTypes(registry: TypeRegistry): void {
 
   // origin — field-level provenance. Only attr children.
   for (const subType of ORIGIN_SUBTYPES) {
-    let originAttrs: AttrSchema[] = [];
-    if (subType === ORIGIN_SUBTYPE_PASSTHROUGH) originAttrs = [...passthroughOriginAttrs];
-    else if (subType === ORIGIN_SUBTYPE_AGGREGATE) originAttrs = [...aggregateOriginAttrs];
+    const originAttrs = ORIGIN_ATTRS_MAP.get(subType) ?? [];
     registry.register(
       def(TYPE_ORIGIN, subType, `Origin (${subType})`, [wildcard(TYPE_ATTR)], MetaOrigin, originAttrs),
     );
@@ -617,7 +621,7 @@ export function registerCoreTypes(registry: TypeRegistry): void {
         ? [...primaryIdentityAttrs]
         : subType === IDENTITY_SUBTYPE_SECONDARY
           ? [...secondaryIdentityAttrs]
-          : [identityFieldsAttr];
+          : [{ ...identityFieldsAttr }];
     registry.register(
       def(TYPE_IDENTITY, subType, `Identity (${subType})`, [wildcard(TYPE_ATTR)], NodeClass, idAttrs),
     );

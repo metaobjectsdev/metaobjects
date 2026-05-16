@@ -397,9 +397,19 @@ export const GENERATION_INCREMENT = "increment";
 export const GENERATION_UUID = "uuid";
 export const GENERATION_ASSIGNED = "assigned";
 
+export const GENERATION_VALUES = [
+  GENERATION_INCREMENT,
+  GENERATION_UUID,
+  GENERATION_ASSIGNED,
+] as const;
+export type GenerationValue = (typeof GENERATION_VALUES)[number];
+
 // Relationship cardinality values (for RELATIONSHIP_ATTR_CARDINALITY)
 export const CARDINALITY_ONE = "one";
 export const CARDINALITY_MANY = "many";
+
+export const CARDINALITY_VALUES = [CARDINALITY_ONE, CARDINALITY_MANY] as const;
+export type CardinalityValue = (typeof CARDINALITY_VALUES)[number];
 
 // ---------------------------------------------------------------------------
 // Filter operators (Project D) — shared source of truth across server +

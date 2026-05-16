@@ -281,9 +281,13 @@ describe("Phase A2 — core attribute schemas", () => {
     }
   });
 
-  it("relationship.association declares cardinality/objectRef/fkField/joinEntity/joinFields", () => {
+  it("origin.base declares no attributes", () => {
+    expect(registry.attrsOf(TYPE_ORIGIN, SUBTYPE_BASE)).toEqual([]);
+  });
+
+  it("relationship.association declares cardinality/objectRef/fkField/parentField/joinEntity/joinFields", () => {
     const attrs = byName(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION);
-    for (const n of ["cardinality", "objectRef", "fkField", "joinEntity", "joinFields"]) {
+    for (const n of ["cardinality", "objectRef", "fkField", "parentField", "joinEntity", "joinFields"]) {
       expect(attrs.get(n)).toBeDefined();
       expect(attrs.get(n)!.required).toBe(false);
     }
