@@ -1135,6 +1135,74 @@ describe("parseJson — deeply nested children", () => {
     expect(Array.isArray(attrNode!.value)).toBe(true);
     expect(attrNode!.value).toEqual(["id"]);
   });
+
+  it("stringArray attr with numeric-looking string value is NOT coerced to number — yields ['123']", () => {
+    // Regression test for Fix 2: a declared stringArray attr like @fields whose
+    // authored value is "123" must end up as ["123"], not the number 123.
+    // Previously coerceAttrValue ran first and turned "123" → 123 (int), then
+    // normalizeStringArrayAttr's `typeof value !== "string"` guard skipped it,
+    // leaving the attr as the number 123 — a type mismatch caught (wrongly) by A3.
+    const registry = makeRegistry();
+    const input = JSON.stringify({
+      "metadata.root": {
+        children: [
+          {
+            "object.entity": {
+              name: "Widget",
+              children: [
+                {
+                  "identity.primary": {
+                    name: "primary",
+                    "@fields": "123",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root, errors } = parseJson(input, { registry });
+    const obj = root.children()[0]!;
+    const identity = obj.childrenOfType(TYPE_IDENTITY)[0]!;
+    const fieldsValue = identity.attr("fields");
+    // Must be an array of strings, not a number.
+    expect(Array.isArray(fieldsValue)).toBe(true);
+    expect(fieldsValue).toEqual(["123"]);
+    // Must produce no A3 validation errors.
+    expect(errors).toHaveLength(0);
+  });
+
+  it("stringArray attr with boolean-looking string value is NOT coerced to boolean — yields ['true']", () => {
+    // Similar regression: @fields: "true" must yield ["true"], not boolean true.
+    const registry = makeRegistry();
+    const input = JSON.stringify({
+      "metadata.root": {
+        children: [
+          {
+            "object.entity": {
+              name: "Widget",
+              children: [
+                {
+                  "identity.primary": {
+                    name: "primary",
+                    "@fields": "true",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root, errors } = parseJson(input, { registry });
+    const obj = root.children()[0]!;
+    const identity = obj.childrenOfType(TYPE_IDENTITY)[0]!;
+    const fieldsValue = identity.attr("fields");
+    expect(Array.isArray(fieldsValue)).toBe(true);
+    expect(fieldsValue).toEqual(["true"]);
+    expect(errors).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

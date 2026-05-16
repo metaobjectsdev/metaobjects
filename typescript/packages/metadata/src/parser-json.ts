@@ -589,6 +589,19 @@ function applyInlineAttrsAndUnknownKeys(
     const attrName = key.slice(ATTR_PREFIX.length);
     const rawVal = nodeData[key];
 
+    // Approach (a): if this attr is declared as stringArray in the registry,
+    // skip numeric/boolean coercion for non-array scalars — identifiers and
+    // field names must never be coerced to number/boolean. Convert the raw
+    // value to its string form directly, then let normalizeStringArrayAttr
+    // wrap it into a one-element array.
+    const attrSpec = registry.attrsOf(model.type, model.subType).find((s) => s.name === attrName);
+    if (attrSpec?.valueType === ATTR_SUBTYPE_STRINGARRAY && !Array.isArray(rawVal)) {
+      const asString = rawVal === null || rawVal === undefined ? "" : String(rawVal);
+      const normalized = normalizeStringArrayAttr(model.type, model.subType, attrName, asString, registry);
+      model.setAttr(attrName, normalized);
+      continue;
+    }
+
     let coerced;
     try {
       coerced = coerceAttrValue(rawVal);

@@ -620,7 +620,7 @@ export class Loader {
       warnings.push(...validateFilterableHasIndex(root));
 
       // Sixth pass: origin path validation — validates passthrough.@from,
-      // aggregate.@of, aggregate.@agg vocab, and .@via relationship chains.
+      // aggregate.@of, and .@via relationship chains.
       errors.push(...validateOriginPaths(root));
 
       // Seventh pass: attribute-schema validation (Phase A3) — checks each
