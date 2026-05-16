@@ -162,12 +162,13 @@ function _validateFromPath(
   projectionName: string,
   fieldName: string,
   errors: ParseError[],
+  label: string = "origin.passthrough.@from",
 ): void {
   const dotIdx = fromAttr.indexOf(".");
   if (dotIdx < 1 || dotIdx === fromAttr.length - 1) {
     errors.push(
       new ParseError(
-        `origin.passthrough.@from "${fromAttr}" on ${projectionName}.${fieldName}: must be of form "Entity.field".`,
+        `${label} "${fromAttr}" on ${projectionName}.${fieldName}: must be of form "Entity.field".`,
       ),
     );
     return;
@@ -178,7 +179,7 @@ function _validateFromPath(
   if (!sourceObj) {
     errors.push(
       new ParseError(
-        `origin.passthrough.@from "${fromAttr}" on ${projectionName}.${fieldName}: no such entity "${entityName}".`,
+        `${label} "${fromAttr}" on ${projectionName}.${fieldName}: no such entity "${entityName}".`,
       ),
     );
     return;
@@ -187,7 +188,7 @@ function _validateFromPath(
   if (!sourceField) {
     errors.push(
       new ParseError(
-        `origin.passthrough.@from "${fromAttr}" on ${projectionName}.${fieldName}: no such field "${targetFieldName}" on ${entityName}.`,
+        `${label} "${fromAttr}" on ${projectionName}.${fieldName}: no such field "${targetFieldName}" on ${entityName}.`,
       ),
     );
   }
@@ -281,7 +282,7 @@ function validateOriginPaths(root: MetaData): ParseError[] {
             );
             continue;
           }
-          _validateFromPath(of_, root, obj.name, field.name, errors);
+          _validateFromPath(of_, root, obj.name, field.name, errors, "origin.aggregate.@of");
           const via = origin.attr(ORIGIN_AGGREGATE_ATTR_VIA);
           if (typeof via !== "string" || via === "") {
             errors.push(
@@ -346,17 +347,23 @@ export class MetaDataLoader {
 
   /**
    * Returns the loaded root MetaData.
-   * Throws if the loader has not yet completed loading (state != "loaded").
+   * Accessible once load() has completed, in either "loaded" or "error" state.
+   * Throws only before or during loading (state "uninitialized" or "loading").
    */
   get root(): MetaData {
     this._checkStateForRead();
     return this._root!;
   }
 
+  /**
+   * Guards read accessors — throws only when loading has not yet completed
+   * (state "uninitialized" or "loading"). Both "loaded" and "error" states
+   * are valid for reads: load() always sets _root before returning.
+   */
   private _checkStateForRead(): void {
-    if (this._state !== "loaded") {
+    if (this._state === "uninitialized" || this._state === "loading") {
       throw new Error(
-        `Loader.root accessed before loading is complete (state: "${this._state}"). ` +
+        `Loader.root accessed before loading has completed (state: "${this._state}"). ` +
         `Call load() first.`,
       );
     }
@@ -441,7 +448,10 @@ export class MetaDataLoader {
       }
 
       if (source.format !== "json") {
-        throw new Error(`unsupported metadata format: ${source.format}`);
+        errors.push(
+          new Error(`unsupported metadata format "${source.format}" for source "${source.id}"`),
+        );
+        continue;
       }
 
       // Build parser options, honoring exactOptionalPropertyTypes — only include

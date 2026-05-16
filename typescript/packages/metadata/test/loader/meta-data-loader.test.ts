@@ -154,10 +154,10 @@ describe("MetaDataLoader.load() — one-shot guard", () => {
 
   it("one-shot guard fires even after error state", async () => {
     const loader = new MetaDataLoader();
-    // Load with a single bad source — all sources fail → error state
+    // Load with a single bad source — all sources fail → synthetic root → "error"
     await loader.load([new FileSource("/does/not/exist.json")]);
-    // State might be "error" or "loaded" depending on whether synthetic root
-    // was created; either way a second call should throw
+    // Single failing source: read error collected, synthetic root created → state is deterministically "error"
+    expect(loader.state).toBe("error");
     await expect(
       loader.load([new InMemorySource('{"metadata.root":{}}')]),
     ).rejects.toThrow();
