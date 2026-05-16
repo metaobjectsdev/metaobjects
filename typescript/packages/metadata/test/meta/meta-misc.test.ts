@@ -37,7 +37,11 @@ import { MetaView } from "../../src/meta/meta-view.js";
 import { MetaAttr } from "../../src/meta/meta-attr.js";
 import { MetaLayout } from "../../src/meta/meta-layout.js";
 import { MetaSource } from "../../src/meta/meta-source.js";
-import { MetaOrigin } from "../../src/meta/meta-origin.js";
+import {
+  MetaOrigin,
+  MetaPassthroughOrigin,
+  MetaAggregateOrigin,
+} from "../../src/meta/meta-origin.js";
 import {
   TYPE_OBJECT,
   TYPE_IDENTITY,
@@ -208,6 +212,30 @@ function makeSource(subType: string, sourceName?: string): MetaSource {
 
 function makeOrigin(subType: string): MetaOrigin {
   return new MetaOrigin(new TypeId(TYPE_ORIGIN, subType), subType);
+}
+
+function makePassthroughOrigin(from?: string): MetaPassthroughOrigin {
+  const node = new MetaPassthroughOrigin(
+    new TypeId(TYPE_ORIGIN, ORIGIN_SUBTYPE_PASSTHROUGH),
+    ORIGIN_SUBTYPE_PASSTHROUGH,
+  );
+  if (from !== undefined) node.setAttr(ORIGIN_PASSTHROUGH_ATTR_FROM, from);
+  return node;
+}
+
+function makeAggregateOrigin(
+  agg?: string,
+  of_?: string,
+  via?: string,
+): MetaAggregateOrigin {
+  const node = new MetaAggregateOrigin(
+    new TypeId(TYPE_ORIGIN, ORIGIN_SUBTYPE_AGGREGATE),
+    ORIGIN_SUBTYPE_AGGREGATE,
+  );
+  if (agg !== undefined) node.setAttr(ORIGIN_AGGREGATE_ATTR_AGG, agg);
+  if (of_ !== undefined) node.setAttr(ORIGIN_AGGREGATE_ATTR_OF, of_);
+  if (via !== undefined) node.setAttr(ORIGIN_AGGREGATE_ATTR_VIA, via);
+  return node;
 }
 
 // ---------------------------------------------------------------------------
@@ -683,6 +711,201 @@ describe("MetaOrigin", () => {
 });
 
 // ---------------------------------------------------------------------------
+// MetaPassthroughOrigin — typed accessors (Phase B1)
+// ---------------------------------------------------------------------------
+
+describe("MetaPassthroughOrigin", () => {
+  it("extends MetaOrigin and MetaData", () => {
+    const o = makePassthroughOrigin("Program.title");
+    expect(o).toBeInstanceOf(MetaOrigin);
+    expect(o).toBeInstanceOf(MetaData);
+  });
+
+  it("from getter returns the @from attr value", () => {
+    const o = makePassthroughOrigin("Program.title");
+    expect(o.from).toBe("Program.title");
+  });
+
+  it("from getter returns undefined when @from is absent", () => {
+    const o = makePassthroughOrigin();
+    expect(o.from).toBeUndefined();
+  });
+
+  it("has correct type / subType", () => {
+    const o = makePassthroughOrigin("Base.label");
+    expect(o.type).toBe(TYPE_ORIGIN);
+    expect(o.subType).toBe(ORIGIN_SUBTYPE_PASSTHROUGH);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MetaAggregateOrigin — typed accessors (Phase B1)
+// ---------------------------------------------------------------------------
+
+describe("MetaAggregateOrigin", () => {
+  it("extends MetaOrigin and MetaData", () => {
+    const o = makeAggregateOrigin("count", "Week.id", "Program.weeks");
+    expect(o).toBeInstanceOf(MetaOrigin);
+    expect(o).toBeInstanceOf(MetaData);
+  });
+
+  it("agg getter returns the @agg attr value", () => {
+    const o = makeAggregateOrigin("sum", "Week.durationMinutes", "Program.weeks");
+    expect(o.agg).toBe("sum");
+  });
+
+  it("of getter returns the @of attr value", () => {
+    const o = makeAggregateOrigin("count", "Week.id", "Program.weeks");
+    expect(o.of).toBe("Week.id");
+  });
+
+  it("via getter returns the @via attr value", () => {
+    const o = makeAggregateOrigin("count", "Week.id", "Program.weeks");
+    expect(o.via).toBe("Program.weeks");
+  });
+
+  it("all getters return undefined when attrs are absent", () => {
+    const o = makeAggregateOrigin();
+    expect(o.agg).toBeUndefined();
+    expect(o.of).toBeUndefined();
+    expect(o.via).toBeUndefined();
+  });
+
+  it("has correct type / subType", () => {
+    const o = makeAggregateOrigin("count", "Week.id", "Program.weeks");
+    expect(o.type).toBe(TYPE_ORIGIN);
+    expect(o.subType).toBe(ORIGIN_SUBTYPE_AGGREGATE);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Registry dispatch — origin subtype classes (Phase B1)
+// ---------------------------------------------------------------------------
+
+describe("registry dispatch — origin subtype classes", () => {
+  it("parsed origin.passthrough node is instanceof MetaPassthroughOrigin and MetaOrigin", () => {
+    const json = JSON.stringify({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.entity": {
+              name: "Program",
+              children: [
+                { "field.long": { name: "id" } },
+                { "field.string": { name: "title" } },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+          {
+            "object.entity": {
+              name: "ProgramSummary",
+              extends: "Program",
+              children: [
+                { "source.dbView": { "@name": "v_program_summary" } },
+                {
+                  "field.string": {
+                    name: "displayTitle",
+                    children: [
+                      { "origin.passthrough": { "@from": "Program.title" } },
+                    ],
+                  },
+                },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root, errors } = new Loader().loadJson(json);
+    expect(errors).toEqual([]);
+    const summary = root.childByTypeAndName(TYPE_OBJECT, "ProgramSummary") as MetaObject;
+    const displayTitle = summary.findField("displayTitle")!;
+    const origin = displayTitle.children().find((c) => c.type === TYPE_ORIGIN);
+    expect(origin).toBeInstanceOf(MetaPassthroughOrigin);
+    expect(origin).toBeInstanceOf(MetaOrigin);
+    expect(origin).toBeInstanceOf(MetaData);
+    expect((origin as MetaPassthroughOrigin).from).toBe("Program.title");
+  });
+
+  it("parsed origin.aggregate node is instanceof MetaAggregateOrigin and MetaOrigin", () => {
+    const json = JSON.stringify({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.entity": {
+              name: "Program",
+              children: [
+                { "field.long": { name: "id" } },
+                { "relationship.association": { name: "weeks", "@objectRef": "Week" } },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+          {
+            "object.entity": {
+              name: "Week",
+              children: [
+                { "field.long": { name: "id" } },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+          {
+            "object.entity": {
+              name: "ProgramSummary",
+              extends: "Program",
+              children: [
+                { "source.dbView": { "@name": "v_program_summary" } },
+                {
+                  "field.int": {
+                    name: "weekCount",
+                    children: [
+                      {
+                        "origin.aggregate": {
+                          "@agg": "count",
+                          "@of": "Week.id",
+                          "@via": "Program.weeks",
+                        },
+                      },
+                    ],
+                  },
+                },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root, errors } = new Loader().loadJson(json);
+    expect(errors).toEqual([]);
+    const summary = root.childByTypeAndName(TYPE_OBJECT, "ProgramSummary") as MetaObject;
+    const weekCount = summary.findField("weekCount")!;
+    const origin = weekCount.children().find((c) => c.type === TYPE_ORIGIN);
+    expect(origin).toBeInstanceOf(MetaAggregateOrigin);
+    expect(origin).toBeInstanceOf(MetaOrigin);
+    expect(origin).toBeInstanceOf(MetaData);
+    expect((origin as MetaAggregateOrigin).agg).toBe("count");
+    expect((origin as MetaAggregateOrigin).of).toBe("Week.id");
+    expect((origin as MetaAggregateOrigin).via).toBe("Program.weeks");
+  });
+
+  it("origin.passthrough is NOT instanceof MetaAggregateOrigin", () => {
+    const o = makePassthroughOrigin("Program.title");
+    expect(o).not.toBeInstanceOf(MetaAggregateOrigin);
+  });
+
+  it("origin.aggregate is NOT instanceof MetaPassthroughOrigin", () => {
+    const o = makeAggregateOrigin("count", "Week.id", "Program.weeks");
+    expect(o).not.toBeInstanceOf(MetaPassthroughOrigin);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Subtype discrimination — instanceof narrowing
 // ---------------------------------------------------------------------------
 
@@ -731,6 +954,24 @@ describe("instanceof narrowing across hierarchy", () => {
 
   it("MetaRequiredValidator is NOT instanceof MetaLengthValidator", () => {
     expect(makeRequiredValidator()).not.toBeInstanceOf(MetaLengthValidator);
+  });
+
+  it("MetaPassthroughOrigin is instanceof MetaOrigin and MetaData", () => {
+    const o = makePassthroughOrigin("Program.title");
+    expect(o).toBeInstanceOf(MetaPassthroughOrigin);
+    expect(o).toBeInstanceOf(MetaOrigin);
+    expect(o).toBeInstanceOf(MetaData);
+  });
+
+  it("MetaAggregateOrigin is instanceof MetaOrigin and MetaData", () => {
+    const o = makeAggregateOrigin("count", "Week.id", "Program.weeks");
+    expect(o).toBeInstanceOf(MetaAggregateOrigin);
+    expect(o).toBeInstanceOf(MetaOrigin);
+    expect(o).toBeInstanceOf(MetaData);
+  });
+
+  it("MetaPassthroughOrigin is NOT instanceof MetaAggregateOrigin", () => {
+    expect(makePassthroughOrigin("X.y")).not.toBeInstanceOf(MetaAggregateOrigin);
   });
 });
 
@@ -951,6 +1192,8 @@ describe("Loader produces typed concrete nodes from JSON", () => {
     const summary = root.childByTypeAndName(TYPE_OBJECT, "Summary") as MetaObject;
     const labelField = summary.findField("label")!;
     const origin = labelField.children().find((c) => c.type === TYPE_ORIGIN);
+    // Now yields the concrete subtype class (Phase B1):
+    expect(origin).toBeInstanceOf(MetaPassthroughOrigin);
     expect(origin).toBeInstanceOf(MetaOrigin);
   });
 });

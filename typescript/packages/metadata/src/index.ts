@@ -55,7 +55,12 @@ export { MetaView } from "./meta/meta-view.js";
 export { MetaAttr } from "./meta/meta-attr.js";
 export { MetaLayout } from "./meta/meta-layout.js";
 export { MetaSource } from "./meta/meta-source.js";
-export { MetaOrigin } from "./meta/meta-origin.js";
+// Origin: base + subtype-specific
+export {
+  MetaOrigin,
+  MetaPassthroughOrigin,
+  MetaAggregateOrigin,
+} from "./meta/meta-origin.js";
 
 // AnyMeta — union of all concrete node types.
 // Defined here (not in src/meta/) to avoid a circular import: each concrete

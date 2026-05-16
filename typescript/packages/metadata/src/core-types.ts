@@ -22,7 +22,7 @@ import {
 import { MetaRelationship } from "./meta/meta-relationship.js";
 import { MetaLayout } from "./meta/meta-layout.js";
 import { MetaSource } from "./meta/meta-source.js";
-import { MetaOrigin } from "./meta/meta-origin.js";
+import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin } from "./meta/meta-origin.js";
 import {
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -513,6 +513,12 @@ const IDENTITY_CLASS_MAP = new Map<string, NodeConstructor>([
   [IDENTITY_SUBTYPE_SECONDARY, MetaSecondaryIdentity],
 ]);
 
+/** Map from origin subtype string → concrete node constructor. */
+const ORIGIN_CLASS_MAP = new Map<string, NodeConstructor>([
+  [ORIGIN_SUBTYPE_PASSTHROUGH, MetaPassthroughOrigin],
+  [ORIGIN_SUBTYPE_AGGREGATE, MetaAggregateOrigin],
+]);
+
 export function registerCoreTypes(registry: TypeRegistry): void {
   // metadata — 1 subtype (the document root: metadata.root)
   registry.register(
@@ -613,10 +619,14 @@ export function registerCoreTypes(registry: TypeRegistry): void {
   }
 
   // origin — field-level provenance. Only attr children.
+  // Subtype→class dispatch (mirrors validator / identity patterns):
+  //   passthrough → MetaPassthroughOrigin, aggregate → MetaAggregateOrigin,
+  //   base (and any unmapped subtype) → MetaOrigin.
   for (const subType of ORIGIN_SUBTYPES) {
+    const NodeClass = ORIGIN_CLASS_MAP.get(subType) ?? MetaOrigin;
     const originAttrs = ORIGIN_ATTRS_MAP.get(subType) ?? [];
     registry.register(
-      def(TYPE_ORIGIN, subType, `Origin (${subType})`, [wildcard(TYPE_ATTR)], MetaOrigin, originAttrs),
+      def(TYPE_ORIGIN, subType, `Origin (${subType})`, [wildcard(TYPE_ATTR)], NodeClass, originAttrs),
     );
   }
 
