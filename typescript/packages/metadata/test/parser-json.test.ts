@@ -10,9 +10,7 @@ import {
   TYPE_OBJECT,
   TYPE_FIELD,
   TYPE_ATTR,
-  SUBTYPE_BASE,
-  OBJECT_SUBTYPE_ENTITY,
-  OBJECT_SUBTYPE_ENTITY,
+  SUBTYPE_ROOT,
   OBJECT_SUBTYPE_ENTITY,
   FIELD_SUBTYPE_LONG,
   ATTR_SUBTYPE_BOOLEAN,
@@ -40,32 +38,32 @@ function makeRegistry(): TypeRegistry {
 // ---------------------------------------------------------------------------
 
 describe("parseJson — minimal root", () => {
-  it('{"metadata": {}} parses to a root MetaModel of type metadata.base', () => {
+  it('{"metadata.root": {}} parses to a root MetaModel of type metadata.root', () => {
     const registry = makeRegistry();
-    const { root, warnings } = parseJson('{"metadata": {}}', { registry });
+    const { root, warnings } = parseJson('{"metadata.root": {}}', { registry });
     expect(root.type).toBe(TYPE_METADATA);
-    expect(root.subType).toBe(SUBTYPE_BASE);
+    expect(root.subType).toBe(SUBTYPE_ROOT);
     expect(root.name).toBe("");
     expect(warnings.length).toBe(0);
   });
 
-  it('{"metadata": {"package": "demo"}} sets package on root', () => {
+  it('{"metadata.root": {"package": "demo"}} sets package on root', () => {
     const registry = makeRegistry();
-    const { root } = parseJson('{"metadata": {"package": "demo"}}', { registry });
+    const { root } = parseJson('{"metadata.root": {"package": "demo"}}', { registry });
     expect(root.package).toBe("demo");
     expect(root.type).toBe(TYPE_METADATA);
   });
 
   it("root with name sets name on root model", () => {
     const registry = makeRegistry();
-    const { root } = parseJson('{"metadata": {"name": "myRoot"}}', { registry });
+    const { root } = parseJson('{"metadata.root": {"name": "myRoot"}}', { registry });
     expect(root.name).toBe("myRoot");
   });
 
   it("$schema key at top level is ignored", () => {
     const registry = makeRegistry();
     const { root, warnings } = parseJson(
-      '{"$schema": "simple-model.schema.json", "metadata": {"package": "demo"}}',
+      '{"$schema": "simple-model.schema.json", "metadata.root": {"package": "demo"}}',
       { registry },
     );
     expect(root.type).toBe(TYPE_METADATA);
@@ -75,13 +73,13 @@ describe("parseJson — minimal root", () => {
 
   it("root has no children when children array is absent", () => {
     const registry = makeRegistry();
-    const { root } = parseJson('{"metadata": {"package": "demo"}}', { registry });
+    const { root } = parseJson('{"metadata.root": {"package": "demo"}}', { registry });
     expect(root.children().length).toBe(0);
   });
 
   it("returns empty warnings array for valid minimal input", () => {
     const registry = makeRegistry();
-    const { warnings } = parseJson('{"metadata": {}}', { registry });
+    const { warnings } = parseJson('{"metadata.root": {}}', { registry });
     expect(Array.isArray(warnings)).toBe(true);
     expect(warnings.length).toBe(0);
   });
@@ -95,8 +93,8 @@ describe("parseJson — single object child", () => {
   it("parses one object child with name and subType", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Store", subType: "entity" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "Store" } }],
       },
     });
     const { root } = parseJson(input, { registry });
@@ -110,8 +108,8 @@ describe("parseJson — single object child", () => {
   it("parses a field child with subType long", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ field: { name: "id", subType: "long" } }],
+      "metadata.root": {
+        children: [{ "field.long": { name: "id" } }],
       },
     });
     const { root } = parseJson(input, { registry });
@@ -124,11 +122,11 @@ describe("parseJson — single object child", () => {
   it("parses multiple sibling children preserving insertion order", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [
-          { object: { name: "Alpha", subType: "entity" } },
-          { object: { name: "Beta", subType: "entity" } },
-          { field: { name: "gamma", subType: "string" } },
+          { "object.entity": { name: "Alpha" } },
+          { "object.entity": { name: "Beta" } },
+          { "field.string": { name: "gamma" } },
         ],
       },
     });
@@ -140,11 +138,12 @@ describe("parseJson — single object child", () => {
     expect(kids[2]!.name).toBe("gamma");
   });
 
-  it("defaults subType to first registered subType for that base type when omitted", () => {
+  it("defaults subType to first registered subType when the wrapper key omits it", () => {
     const registry = makeRegistry();
-    // metadata's first registered subType is "base"
+    // A bare "metadata" wrapper key (no fused .subType) resolves to the
+    // registry default — metadata's only registered subType is "root".
     const { root } = parseJson('{"metadata": {}}', { registry });
-    expect(root.subType).toBe(SUBTYPE_BASE);
+    expect(root.subType).toBe(SUBTYPE_ROOT);
   });
 });
 
@@ -156,8 +155,8 @@ describe("parseJson — inline @-attrs", () => {
   it('@dbTable string attr is set correctly', () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "X", subType: "entity", "@dbTable": "x_table" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "X", "@dbTable": "x_table" } }],
       },
     });
     const { root } = parseJson(input, { registry });
@@ -168,8 +167,8 @@ describe("parseJson — inline @-attrs", () => {
   it("@maxLength integer attr is coerced to a number", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ field: { name: "title", subType: "string", "@maxLength": 100 } }],
+      "metadata.root": {
+        children: [{ "field.string": { name: "title", "@maxLength": 100 } }],
       },
     });
     const { root } = parseJson(input, { registry });
@@ -177,31 +176,29 @@ describe("parseJson — inline @-attrs", () => {
     expect(child.attr("maxLength")).toBe(100);
   });
 
-  it("@isAbstract boolean attr (true) sets isAbstract to true and is not in attrs", () => {
+  it("abstract reserved key (true) sets isAbstract to true and is not in attrs", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Base", subType: "entity", "@isAbstract": true } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "Base", abstract: true } }],
       },
     });
     const { root } = parseJson(input, { registry });
     const child = root.children()[0]!;
     expect(child.isAbstract).toBe(true);
-    // @isAbstract is treated as a flag — but our parser sets it on the model.
-    // It should NOT be stored again in setAttr — however we DO call setIsAbstract.
-    // The attr map should not contain "isAbstract".
-    // (We handle @isAbstract by calling setIsAbstract, not setAttr.)
+    // `abstract` is a reserved structural key — the parser routes it to
+    // setIsAbstract(), never setAttr(). The attr map must not contain it.
+    expect(child.hasAttr("abstract")).toBe(false);
   });
 
   it("multiple @-attrs of various types all coerced correctly", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [
           {
-            object: {
+            "object.entity": {
               name: "X",
-              subType: "entity",
               "@stringAttr": "hello",
               "@intAttr": 42,
               "@boolAttr": true,
@@ -222,9 +219,9 @@ describe("parseJson — inline @-attrs", () => {
   it("@objectRef string attr set on field", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [
-          { field: { name: "apples", subType: "object", "@objectRef": "::Apple" } },
+          { "field.object": { name: "apples", "@objectRef": "::Apple" } },
         ],
       },
     });
@@ -236,12 +233,11 @@ describe("parseJson — inline @-attrs", () => {
   it("@object attr (class ref string) is stored as-is", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [
           {
-            object: {
+            "object.entity": {
               name: "Store",
-              subType: "entity",
               "@object": "com.example.Store",
             },
           },
@@ -258,13 +254,13 @@ describe("parseJson — inline @-attrs", () => {
 // 4. @isArray special handling
 // ---------------------------------------------------------------------------
 
-describe("parseJson — @isArray special handling", () => {
-  it("@isArray: true sets field.isArray to true", () => {
+describe("parseJson — isArray reserved key handling", () => {
+  it("isArray: true reserved key sets field.isArray to true", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [
-          { field: { name: "tags", subType: "string", "@isArray": true } },
+          { "field.string": { name: "tags", isArray: true } },
         ],
       },
     });
@@ -273,12 +269,12 @@ describe("parseJson — @isArray special handling", () => {
     expect(field.isArray).toBe(true);
   });
 
-  it("@isArray: true does NOT appear in the attr map", () => {
+  it("isArray: true reserved key does NOT appear in the attr map", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [
-          { field: { name: "tags", subType: "string", "@isArray": true } },
+          { "field.string": { name: "tags", isArray: true } },
         ],
       },
     });
@@ -287,12 +283,12 @@ describe("parseJson — @isArray special handling", () => {
     expect(field.hasAttr("isArray")).toBe(false);
   });
 
-  it("@isArray: false sets field.isArray to false", () => {
+  it("isArray: false reserved key sets field.isArray to false", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [
-          { field: { name: "tags", subType: "string", "@isArray": false } },
+          { "field.string": { name: "tags", isArray: false } },
         ],
       },
     });
@@ -301,11 +297,11 @@ describe("parseJson — @isArray special handling", () => {
     expect(field.isArray).toBe(false);
   });
 
-  it("field without @isArray has isArray false by default", () => {
+  it("field without isArray key has isArray false by default", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ field: { name: "name", subType: "string" } }],
+      "metadata.root": {
+        children: [{ "field.string": { name: "name" } }],
       },
     });
     const { root } = parseJson(input, { registry });
@@ -322,8 +318,8 @@ describe("parseJson — reserved keys", () => {
   it("subType sets typeId.subType, not an attr", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "X", subType: "entity" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "X" } }],
       },
     });
     const { root } = parseJson(input, { registry });
@@ -335,8 +331,8 @@ describe("parseJson — reserved keys", () => {
   it("name sets model.name, not an attr", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ field: { name: "myField", subType: "string" } }],
+      "metadata.root": {
+        children: [{ "field.string": { name: "myField" } }],
       },
     });
     const { root } = parseJson(input, { registry });
@@ -348,8 +344,8 @@ describe("parseJson — reserved keys", () => {
   it("package sets model.package, not an attr", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ field: { name: "id", subType: "long", package: "demo::common" } }],
+      "metadata.root": {
+        children: [{ "field.long": { name: "id", package: "demo::common" } }],
       },
     });
     const { root } = parseJson(input, { registry });
@@ -363,10 +359,10 @@ describe("parseJson — reserved keys", () => {
     // To have a resolvable super, we need the target to exist in the same parse.
     // field "base" is defined first, then "derived" extends it.
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [
-          { field: { name: "base", subType: "string" } },
-          { field: { name: "derived", subType: "string", extends: "base" } },
+          { "field.string": { name: "base" } },
+          { "field.string": { name: "derived", extends: "base" } },
         ],
       },
     });
@@ -381,8 +377,8 @@ describe("parseJson — reserved keys", () => {
   it("super with unresolvable ref throws ParseError (Java: missing super = hard error)", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ field: { name: "id", extends: "..::common::id" } }],
+      "metadata.root": {
+        children: [{ "field.string": { name: "id", extends: "..::common::id" } }],
       },
     });
     // No common::id in the tree — parser throws immediately
@@ -393,8 +389,8 @@ describe("parseJson — reserved keys", () => {
     const registry = makeRegistry();
     // Note: isAbstract as a plain reserved key (not @-prefixed)
     const input = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Base", subType: "entity", isAbstract: true } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "Base", abstract: true } }],
       },
     });
     const { root } = parseJson(input, { registry });
@@ -403,9 +399,9 @@ describe("parseJson — reserved keys", () => {
     expect(child.hasAttr("isAbstract")).toBe(false);
   });
 
-  it("merge: true at the root is ignored — no error, no warning", () => {
+  it("overlay: true at the root is ignored — no error, no warning", () => {
     const registry = makeRegistry();
-    const input = JSON.stringify({ metadata: { merge: true } });
+    const input = JSON.stringify({ "metadata.root": { overlay: true } });
     const { root, warnings } = parseJson(input, { registry });
     expect(root.type).toBe(TYPE_METADATA);
     expect(warnings.length).toBe(0);
@@ -421,14 +417,13 @@ describe("parseJson — attr child nodes (dual storage)", () => {
   it("attr child is stored as a structural child of type attr", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [
           {
-            object: {
+            "object.entity": {
               name: "Store",
-              subType: "entity",
               children: [
-                { attr: { name: "isKey", subType: "boolean", value: true } },
+                { "attr.boolean": { name: "isKey", value: true } },
               ],
             },
           },
@@ -446,14 +441,13 @@ describe("parseJson — attr child nodes (dual storage)", () => {
   it("attr child's value is also set on the parent via setAttr", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [
           {
-            object: {
+            "object.entity": {
               name: "Store",
-              subType: "entity",
               children: [
-                { attr: { name: "isKey", subType: "boolean", value: true } },
+                { "attr.boolean": { name: "isKey", value: true } },
               ],
             },
           },
@@ -469,11 +463,10 @@ describe("parseJson — attr child nodes (dual storage)", () => {
   it("attr child structural model has subType matching declared subType", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      field: {
+      "field.long": {
         name: "id",
-        subType: "long",
         children: [
-          { attr: { name: "isKey", subType: "boolean", value: true } },
+          { "attr.boolean": { name: "isKey", value: true } },
         ],
       },
     });
@@ -485,11 +478,10 @@ describe("parseJson — attr child nodes (dual storage)", () => {
   it("attr child structural model stores the value in its own attr map", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      field: {
+      "field.long": {
         name: "id",
-        subType: "long",
         children: [
-          { attr: { name: "isKey", subType: "boolean", value: true } },
+          { "attr.boolean": { name: "isKey", value: true } },
         ],
       },
     });
@@ -502,12 +494,11 @@ describe("parseJson — attr child nodes (dual storage)", () => {
   it("multiple attr children are all stored correctly", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      field: {
+      "field.long": {
         name: "id",
-        subType: "long",
         children: [
-          { attr: { name: "isKey", subType: "boolean", value: true } },
-          { attr: { name: "maxValue", subType: "long", value: 9999 } },
+          { "attr.boolean": { name: "isKey", value: true } },
+          { "attr.long": { name: "maxValue", value: 9999 } },
         ],
       },
     });
@@ -521,11 +512,10 @@ describe("parseJson — attr child nodes (dual storage)", () => {
   it("integer attr child value is coerced to number on parent", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      object: {
+      "object.entity": {
         name: "Store",
-        subType: "entity",
         children: [
-          { attr: { name: "sortOrder", subType: "int", value: 42 } },
+          { "attr.int": { name: "sortOrder", value: 42 } },
         ],
       },
     });
@@ -542,8 +532,8 @@ describe("parseJson — unknown key, non-strict mode", () => {
   it("unknown non-@-prefixed key emits a warning and parsing continues", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "X", subType: "entity", weirdKey: "x" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "X", weirdKey: "x" } }],
       },
     });
     const { root, warnings } = parseJson(input, { registry });
@@ -555,8 +545,8 @@ describe("parseJson — unknown key, non-strict mode", () => {
   it("unknown key warning message references the key name", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "X", subType: "entity", dbColumn: "x_col" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "X", dbColumn: "x_col" } }],
       },
     });
     const { warnings } = parseJson(input, { registry });
@@ -566,8 +556,8 @@ describe("parseJson — unknown key, non-strict mode", () => {
   it("model remains unaffected by unknown key (no attr set)", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "X", subType: "entity", weirdKey: "x" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "X", weirdKey: "x" } }],
       },
     });
     const { root } = parseJson(input, { registry });
@@ -579,8 +569,8 @@ describe("parseJson — unknown key, non-strict mode", () => {
   it("multiple unknown keys all emit warnings", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "X", subType: "entity", key1: "a", key2: "b" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "X", key1: "a", key2: "b" } }],
       },
     });
     const { warnings } = parseJson(input, { registry });
@@ -597,8 +587,8 @@ describe("parseJson — unknown key, strict mode", () => {
   it("unknown non-@-prefixed key in strict mode throws ParseError", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "X", subType: "entity", weirdKey: "x" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "X", weirdKey: "x" } }],
       },
     });
     expect(() => parseJson(input, { registry, strict: true })).toThrow(ParseError);
@@ -607,8 +597,8 @@ describe("parseJson — unknown key, strict mode", () => {
   it("ParseError from unknown key contains the key name in message", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "X", subType: "entity", dbColumn: "col" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "X", dbColumn: "col" } }],
       },
     });
     let caught: unknown;
@@ -630,8 +620,8 @@ describe("parseJson — missing @-prefix on attribute-like key", () => {
   it("non-reserved non-@-prefixed key in strict mode throws ParseError", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ field: { name: "x", subType: "string", dbColumn: "y" } }],
+      "metadata.root": {
+        children: [{ "field.string": { name: "x", dbColumn: "y" } }],
       },
     });
     expect(() => parseJson(input, { registry, strict: true })).toThrow(ParseError);
@@ -640,8 +630,8 @@ describe("parseJson — missing @-prefix on attribute-like key", () => {
   it("non-reserved non-@-prefixed key in non-strict mode emits a warning", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ field: { name: "x", subType: "string", dbColumn: "y" } }],
+      "metadata.root": {
+        children: [{ "field.string": { name: "x", dbColumn: "y" } }],
       },
     });
     const { warnings } = parseJson(input, { registry });
@@ -654,26 +644,30 @@ describe("parseJson — missing @-prefix on attribute-like key", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseJson — unknown child type", () => {
-  it("unknown child type in strict mode throws ParseError", () => {
+  it("unknown child type collects a ParseError in errors[]", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [{ frobnicate: { name: "x" } }],
       },
     });
-    expect(() => parseJson(input, { registry, strict: true })).toThrow(ParseError);
+    // Unknown CHILD type is collected as an error (parity with unknown subtype),
+    // not thrown — strict mode escalates problems but unknown types are always errors.
+    const { errors } = parseJson(input, { registry, strict: true });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0]).toBeInstanceOf(ParseError);
   });
 
-  it("unknown child type in non-strict mode emits warning and skips the child", () => {
+  it("unknown child type collects an error and skips the child", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [{ frobnicate: { name: "x" } }],
       },
     });
-    const { root, warnings } = parseJson(input, { registry });
+    const { root, errors } = parseJson(input, { registry });
     expect(root.children().length).toBe(0); // child was skipped
-    expect(warnings.some((w) => w.includes("frobnicate"))).toBe(true);
+    expect(errors.some((e) => e.message.includes("frobnicate"))).toBe(true);
   });
 
   it("unknown root type throws ParseError", () => {
@@ -686,18 +680,18 @@ describe("parseJson — unknown child type", () => {
   it("siblings after unknown child type are still parsed (non-strict)", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [
           { frobnicate: { name: "x" } },
-          { object: { name: "Store", subType: "entity" } },
+          { "object.entity": { name: "Store" } },
         ],
       },
     });
-    const { root, warnings } = parseJson(input, { registry });
+    const { root, errors } = parseJson(input, { registry });
     // The unknown child is skipped; "Store" is still parsed
     expect(root.children().length).toBe(1);
     expect(root.children()[0]!.name).toBe("Store");
-    expect(warnings.some((w) => w.includes("frobnicate"))).toBe(true);
+    expect(errors.some((e) => e.message.includes("frobnicate"))).toBe(true);
   });
 });
 
@@ -709,12 +703,11 @@ describe("parseJson — unknown subtype is an error", () => {
   it("parser collects error when subtype is unknown (relationship.oneToMany)", () => {
     const registry = makeRegistry();
     const json = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         package: "acme",
         children: [{
-          relationship: {
-            name: "weeks",
-            subType: "oneToMany",     // unregistered — only association/aggregation/composition exist
+          "relationship.oneToMany": {
+            name: "weeks",     // unregistered — only association/aggregation/composition exist
             "@objectRef": "Week",
           },
         }],
@@ -728,17 +721,16 @@ describe("parseJson — unknown subtype is an error", () => {
   it("empty model is still returned for the bad node so parsing continues", () => {
     const registry = makeRegistry();
     const json = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         package: "acme",
         children: [
           {
-            relationship: {
+            "relationship.oneToMany": {
               name: "weeks",
-              subType: "oneToMany",
               "@objectRef": "Week",
             },
           },
-          { object: { name: "Week", subType: "entity" } },
+          { "object.entity": { name: "Week" } },
         ],
       },
     });
@@ -751,9 +743,9 @@ describe("parseJson — unknown subtype is an error", () => {
   it("unknown subtype does NOT appear in warnings — it is an error", () => {
     const registry = makeRegistry();
     const json = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [{
-          relationship: { name: "r", subType: "oneToMany" },
+          "relationship.oneToMany": { name: "r" },
         }],
       },
     });
@@ -820,9 +812,9 @@ describe("parseJson — fruitbasket fixture round-trip", () => {
     expect(result.root).toBeDefined();
   });
 
-  it("root is metadata.base", () => {
+  it("root is metadata.root", () => {
     expect(result.root.type).toBe(TYPE_METADATA);
-    expect(result.root.subType).toBe(SUBTYPE_BASE);
+    expect(result.root.subType).toBe(SUBTYPE_ROOT);
   });
 
   it("root package is simple::fruitbasket", () => {
@@ -846,7 +838,7 @@ describe("parseJson — fruitbasket fixture round-trip", () => {
     expect(idField.package).toBe("simple::common");
   });
 
-  it("id field has @isAbstract attr set (via @isAbstract)", () => {
+  it("id field has the abstract flag set", () => {
     const idField = result.root.children()[0]!;
     // @isAbstract is a special flag
     expect(idField.isAbstract).toBe(true);
@@ -956,8 +948,8 @@ describe("parseJson — ParseError source and path", () => {
   it("ParseError from strict unknown key includes a path", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "X", subType: "entity", weirdKey: "x" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "X", weirdKey: "x" } }],
       },
     });
     let caught: unknown;
@@ -973,25 +965,22 @@ describe("parseJson — ParseError source and path", () => {
     expect(err.path!.length).toBeGreaterThan(0);
   });
 
-  it("ParseError from strict unknown child type includes path with children index", () => {
+  it("ParseError from an unknown child type carries a path with the children index", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [
-          { object: { name: "X", subType: "entity" } },
-          { object: { name: "Y", subType: "entity" } },
+          { "object.entity": { name: "X" } },
+          { "object.entity": { name: "Y" } },
           { frobnicate: { name: "z" } },
         ],
       },
     });
-    let caught: unknown;
-    try {
-      parseJson(input, { registry, strict: true, sourceName: "test.json" });
-    } catch (e) {
-      caught = e;
-    }
-    expect(caught).toBeInstanceOf(ParseError);
-    const err = caught as ParseError;
+    // Unknown child type is collected in errors[] (not thrown).
+    const { errors } = parseJson(input, { registry, strict: true, sourceName: "test.json" });
+    expect(errors.length).toBeGreaterThan(0);
+    const err = errors[0]!;
+    expect(err).toBeInstanceOf(ParseError);
     // Path should reference the third child (index 2)
     expect(err.path).toContain("[2]");
   });
@@ -1029,23 +1018,20 @@ describe("parseJson — deeply nested children", () => {
   it("parses object > field > validator nesting", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [
           {
-            object: {
+            "object.entity": {
               name: "Store",
-              subType: "entity",
               children: [
                 {
-                  field: {
+                  "field.string": {
                     name: "name",
-                    subType: "string",
                     children: [
-                      { validator: { name: "required", subType: "required" } },
+                      { "validator.required": { name: "required" } },
                       {
-                        validator: {
+                        "validator.length": {
                           name: "length",
-                          subType: "length",
                           "@min": 1,
                           "@max": 50,
                         },
@@ -1073,17 +1059,15 @@ describe("parseJson — deeply nested children", () => {
   it("identity child with @-attrs parses correctly", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
-      metadata: {
+      "metadata.root": {
         children: [
           {
-            object: {
+            "object.entity": {
               name: "Store",
-              subType: "entity",
               children: [
                 {
-                  identity: {
+                  "identity.primary": {
                     name: "primary",
-                    subType: "primary",
                     "@fields": ["id"],
                     "@generation": "increment",
                   },
@@ -1106,20 +1090,20 @@ describe("parseJson — deeply nested children", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Per-node merge: true semantics
+// Per-node overlay: true semantics
 // ---------------------------------------------------------------------------
 
-describe("parseJson — per-node merge: true", () => {
+describe("parseJson — per-node overlay: true", () => {
   it("merges attrs into the existing same-(type,name) child", () => {
     const registry = makeRegistry();
     const baseJson = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Store", subType: "entity", "@dbTable": "t" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "Store", "@dbTable": "t" } }],
       },
     });
     const overlayJson = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Store", subType: "entity", merge: true, "@dbTable": "t2" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "Store", overlay: true, "@dbTable": "t2" } }],
       },
     });
     const { root: base } = parseJson(baseJson, { registry });
@@ -1134,13 +1118,13 @@ describe("parseJson — per-node merge: true", () => {
   it("sets isMerge on the existing child", () => {
     const registry = makeRegistry();
     const baseJson = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Store", subType: "entity" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "Store" } }],
       },
     });
     const overlayJson = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Store", subType: "entity", merge: true } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "Store", overlay: true } }],
       },
     });
     const { root: base } = parseJson(baseJson, { registry });
@@ -1152,13 +1136,13 @@ describe("parseJson — per-node merge: true", () => {
   it("throws ParseError when no existing same-(type,name) child is found", () => {
     const registry = makeRegistry();
     const baseJson = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Alpha", subType: "entity" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "Alpha" } }],
       },
     });
     const overlayJson = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Missing", subType: "entity", merge: true } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "Missing", overlay: true } }],
       },
     });
     const { root: base } = parseJson(baseJson, { registry });
@@ -1170,13 +1154,13 @@ describe("parseJson — default (no flag) merge semantics (Java default behavior
   it("same-named existing child is silently reused (no error, no warning)", () => {
     const registry = makeRegistry();
     const baseJson = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Store", subType: "entity", "@dbTable": "t_old" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "Store", "@dbTable": "t_old" } }],
       },
     });
     const secondJson = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Store", subType: "entity", "@dbTable": "t_new" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "Store", "@dbTable": "t_new" } }],
       },
     });
     const { root: base } = parseJson(baseJson, { registry });
@@ -1190,13 +1174,13 @@ describe("parseJson — default (no flag) merge semantics (Java default behavior
   it("new child (no existing match) → created and added", () => {
     const registry = makeRegistry();
     const baseJson = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Alpha", subType: "entity" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "Alpha" } }],
       },
     });
     const secondJson = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Beta", subType: "entity" } }],
+      "metadata.root": {
+        children: [{ "object.entity": { name: "Beta" } }],
       },
     });
     const { root: base } = parseJson(baseJson, { registry });
@@ -1210,9 +1194,9 @@ describe("parseJson — default (no flag) merge semantics (Java default behavior
 describe("parseJson — intoRoot (accumulating root) parameter", () => {
   it("intoRoot returns the same root instance", () => {
     const registry = makeRegistry();
-    const { root: base } = parseJson('{"metadata": {"package": "demo"}}', { registry });
+    const { root: base } = parseJson('{"metadata.root": {"package": "demo"}}', { registry });
     const { root: result } = parseJson(
-      '{"metadata": {"children": [{"object": {"name": "A", "subType": "map"}}]}}',
+      '{"metadata.root": {"children": [{"object.entity": {"name": "A"}}]}}',
       { registry, intoRoot: base },
     );
     // Same object reference
@@ -1222,11 +1206,11 @@ describe("parseJson — intoRoot (accumulating root) parameter", () => {
   it("intoRoot: new children from second parse are added to existing root", () => {
     const registry = makeRegistry();
     const { root: base } = parseJson(
-      '{"metadata": {"children": [{"object": {"name": "A", "subType": "map"}}]}}',
+      '{"metadata.root": {"children": [{"object.entity": {"name": "A"}}]}}',
       { registry },
     );
     parseJson(
-      '{"metadata": {"children": [{"object": {"name": "B", "subType": "map"}}]}}',
+      '{"metadata.root": {"children": [{"object.entity": {"name": "B"}}]}}',
       { registry, intoRoot: base },
     );
     expect(base.childByTypeAndName("object", "A")).toBeDefined();
@@ -1238,9 +1222,9 @@ describe("parseJson — intoRoot (accumulating root) parameter", () => {
     // Parse base file with abstract Vehicle
     const { root: base } = parseJson(
       JSON.stringify({
-        metadata: {
+        "metadata.root": {
           package: "demo",
-          children: [{ object: { name: "Vehicle", subType: "entity", isAbstract: true } }],
+          children: [{ "object.entity": { name: "Vehicle", abstract: true } }],
         },
       }),
       { registry },
@@ -1248,9 +1232,9 @@ describe("parseJson — intoRoot (accumulating root) parameter", () => {
     // Parse second file with Car extending Vehicle — Vehicle is already in root
     const { root, warnings } = parseJson(
       JSON.stringify({
-        metadata: {
+        "metadata.root": {
           package: "demo",
-          children: [{ object: { name: "Car", subType: "entity", extends: "Vehicle" } }],
+          children: [{ "object.entity": { name: "Car", extends: "Vehicle" } }],
         },
       }),
       { registry, intoRoot: base },
@@ -1308,7 +1292,7 @@ describe("parseJson — round-trip acme-vehicle base + overlay with intoRoot", (
     expect(moto.childByTypeAndName("field", "customPaint")).toBeDefined();
   });
 
-  it("overlay entities with merge: true have isMerge set", () => {
+  it("overlay entities with overlay: true have isMerge set", () => {
     const garage = mergedRoot.childByTypeAndName("object", "Garage")!;
     expect(garage.isMerge).toBe(true);
     const vehicle = mergedRoot.childByTypeAndName("object", "Vehicle")!;
@@ -1337,7 +1321,7 @@ describe("parseJson — root-level super (silent-swallow guard)", () => {
     const registry = new TypeRegistry();
     registerCoreTypes(registry);
     const result = parseJson(
-      JSON.stringify({ metadata: { extends: "Whatever" } }),
+      JSON.stringify({ "metadata.root": { extends: "Whatever" } }),
       { registry, strict: false },
     );
     expect(result.warnings.some((w) => w.includes("super on root node"))).toBe(true);
@@ -1348,7 +1332,7 @@ describe("parseJson — root-level super (silent-swallow guard)", () => {
     const registry = new TypeRegistry();
     registerCoreTypes(registry);
     expect(() =>
-      parseJson(JSON.stringify({ metadata: { extends: "X" } }), {
+      parseJson(JSON.stringify({ "metadata.root": { extends: "X" } }), {
         registry,
         strict: true,
       }),

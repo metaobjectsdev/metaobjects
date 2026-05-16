@@ -10,16 +10,15 @@ describe("subtype rule validation", () => {
   it("value object with a primary identity is an error", () => {
     const { errors } = load(
       JSON.stringify({
-        metadata: {
+        "metadata.root": {
           package: "demo",
           children: [
             {
-              object: {
+              "object.value": {
                 name: "Money",
-                subType: "value",
                 children: [
-                  { field: { name: "amount", subType: "long" } },
-                  { identity: { name: "pk", subType: "primary", "@fields": ["amount"] } },
+                  { "field.long": { name: "amount" } },
+                  { "identity.primary": { name: "pk", "@fields": ["amount"] } },
                 ],
               },
             },
@@ -36,16 +35,15 @@ describe("subtype rule validation", () => {
   it("value object without a primary identity is fine", () => {
     const { errors, warnings } = load(
       JSON.stringify({
-        metadata: {
+        "metadata.root": {
           package: "demo",
           children: [
             {
-              object: {
+              "object.value": {
                 name: "Money",
-                subType: "value",
                 children: [
-                  { field: { name: "amount", subType: "long" } },
-                  { field: { name: "currency", subType: "string" } },
+                  { "field.long": { name: "amount" } },
+                  { "field.string": { name: "currency" } },
                 ],
               },
             },
@@ -60,14 +58,13 @@ describe("subtype rule validation", () => {
   it("entity without a primary identity emits a warning", () => {
     const { errors, warnings } = load(
       JSON.stringify({
-        metadata: {
+        "metadata.root": {
           package: "demo",
           children: [
             {
-              object: {
+              "object.entity": {
                 name: "User",
-                subType: "entity",
-                children: [{ field: { name: "email", subType: "string" } }],
+                children: [{ "field.string": { name: "email" } }],
               },
             },
           ],
@@ -84,15 +81,14 @@ describe("subtype rule validation", () => {
   it("abstract entity without identity does NOT warn (it's a template)", () => {
     const { errors, warnings } = load(
       JSON.stringify({
-        metadata: {
+        "metadata.root": {
           package: "demo",
           children: [
             {
-              object: {
+              "object.entity": {
                 name: "Auditable",
-                subType: "entity",
-                "@isAbstract": true,
-                children: [{ field: { name: "createdAt", subType: "timestamp" } }],
+                abstract: true,
+                children: [{ "field.timestamp": { name: "createdAt" } }],
               },
             },
           ],
@@ -106,16 +102,15 @@ describe("subtype rule validation", () => {
   it("entity with a primary identity is fine", () => {
     const { errors, warnings } = load(
       JSON.stringify({
-        metadata: {
+        "metadata.root": {
           package: "demo",
           children: [
             {
-              object: {
+              "object.entity": {
                 name: "User",
-                subType: "entity",
                 children: [
-                  { field: { name: "id", subType: "long" } },
-                  { identity: { name: "pk", subType: "primary", "@fields": ["id"] } },
+                  { "field.long": { name: "id" } },
+                  { "identity.primary": { name: "pk", "@fields": ["id"] } },
                 ],
               },
             },
@@ -130,14 +125,13 @@ describe("subtype rule validation", () => {
   it("base objects are not subject to the rule (templates)", () => {
     const { errors, warnings } = load(
       JSON.stringify({
-        metadata: {
+        "metadata.root": {
           package: "demo",
           children: [
             {
-              object: {
+              "object.base": {
                 name: "Tagged",
-                subType: "base",
-                children: [{ field: { name: "label", subType: "string" } }],
+                children: [{ "field.string": { name: "label" } }],
               },
             },
           ],

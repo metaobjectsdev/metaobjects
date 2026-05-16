@@ -1,8 +1,24 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, beforeEach } from "bun:test";
 import { MetaData } from "../../src/meta/meta-data.js";
 import { TypeId } from "../../src/registry.js";
+import {
+  TYPE_FIELD,
+  TYPE_OBJECT,
+  FIELD_SUBTYPE_STRING,
+} from "../../src/constants.js";
 
+// MetaData is abstract — a minimal concrete subclass is the smallest thing
+// that exercises the shared base-node behavior. The construction API is
+// `new <ConcreteClass>(typeId, name)` for every node in the typed tree.
 class TestNode extends MetaData {}
+
+function makeField(subType: string, name: string): MetaData {
+  return new TestNode(new TypeId(TYPE_FIELD, subType), name);
+}
+
+function makeObject(subType: string, name: string): MetaData {
+  return new TestNode(new TypeId(TYPE_OBJECT, subType), name);
+}
 
 describe("MetaData base", () => {
   it("holds type, subType, name", () => {
@@ -39,5 +55,575 @@ describe("MetaData base", () => {
     expect(a).not.toBe(b);
     expect(a.get("color")).toBe("blue");
     expect(b.get("color")).toBe("blue");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Construction & defaults
+// (ported from the deleted test/model.test.ts — base-node behavior)
+// ---------------------------------------------------------------------------
+
+describe("MetaData — construction", () => {
+  it("exposes typeId, name, type, and subType", () => {
+    const m = new TestNode(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "myField");
+    expect(m.typeId.type).toBe(TYPE_FIELD);
+    expect(m.typeId.subType).toBe(FIELD_SUBTYPE_STRING);
+    expect(m.name).toBe("myField");
+    expect(m.type).toBe(TYPE_FIELD);
+    expect(m.subType).toBe(FIELD_SUBTYPE_STRING);
+  });
+
+  it("typeId accessor returns the TypeId instance passed in", () => {
+    const tid = new TypeId(TYPE_OBJECT, "entity");
+    const m = new TestNode(tid, "myObj");
+    expect(m.typeId).toBe(tid);
+  });
+
+  it("defaults: isArray is false", () => {
+    expect(makeField("string", "f").isArray).toBe(false);
+  });
+
+  it("defaults: isAbstract is false", () => {
+    expect(makeField("string", "f").isAbstract).toBe(false);
+  });
+
+  it("defaults: package is undefined", () => {
+    expect(makeField("string", "f").package).toBeUndefined();
+  });
+
+  it("defaults: superRef is undefined", () => {
+    expect(makeField("string", "f").superRef).toBeUndefined();
+  });
+
+  it("defaults: superData is undefined", () => {
+    expect(makeField("string", "f").superData).toBeUndefined();
+  });
+
+  it("defaults: attrs() is empty", () => {
+    expect(makeField("string", "f").attrs().size).toBe(0);
+  });
+
+  it("defaults: children() is empty", () => {
+    expect(makeField("string", "f").children().length).toBe(0);
+  });
+
+  it("defaults: isFrozen() is false", () => {
+    expect(makeField("string", "f").isFrozen()).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fqn()
+// ---------------------------------------------------------------------------
+
+describe("MetaData — fqn()", () => {
+  it("without package returns just the name", () => {
+    expect(makeField("string", "myField").fqn()).toBe("myField");
+  });
+
+  it("with package returns 'package::name'", () => {
+    const m = makeField("string", "myField");
+    m.setPackage("demo::pkg");
+    expect(m.fqn()).toBe("demo::pkg::myField");
+  });
+
+  it("with a simple package (no nested ::) returns 'pkg::name'", () => {
+    const m = makeField("string", "title");
+    m.setPackage("com");
+    expect(m.fqn()).toBe("com::title");
+  });
+
+  it("empty name with package returns 'pkg::'", () => {
+    const m = makeField("string", "");
+    m.setPackage("demo::pkg");
+    // Edge case: documented to not throw
+    expect(m.fqn()).toBe("demo::pkg::");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Attributes
+// ---------------------------------------------------------------------------
+
+describe("MetaData — attributes", () => {
+  let m: MetaData;
+
+  beforeEach(() => {
+    m = makeField("string", "f");
+  });
+
+  it("setAttr then attr returns the value", () => {
+    m.setAttr("label", "My Label");
+    expect(m.attr("label")).toBe("My Label");
+  });
+
+  it("attr returns undefined for an unset key", () => {
+    expect(m.attr("missing")).toBeUndefined();
+  });
+
+  it("overwriting setAttr replaces the value", () => {
+    m.setAttr("k", "first");
+    m.setAttr("k", "second");
+    expect(m.attr("k")).toBe("second");
+  });
+
+  it("hasAttr returns true after setAttr", () => {
+    m.setAttr("k", "v");
+    expect(m.hasAttr("k")).toBe(true);
+  });
+
+  it("hasAttr returns false for unset key", () => {
+    expect(m.hasAttr("missing")).toBe(false);
+  });
+
+  it("attrs() returns all set attributes", () => {
+    m.setAttr("a", 1);
+    m.setAttr("b", true);
+    m.setAttr("c", "hello");
+    const map = m.attrs();
+    expect(map.get("a")).toBe(1);
+    expect(map.get("b")).toBe(true);
+    expect(map.get("c")).toBe("hello");
+    expect(map.size).toBe(3);
+  });
+
+  it("attrs() returns a defensive copy — mutating it does not affect the model", () => {
+    m.setAttr("x", "original");
+    const copy = m.attrs();
+    copy.set("x", "mutated");
+    copy.set("injected", "val");
+    expect(m.attr("x")).toBe("original");
+    expect(m.hasAttr("injected")).toBe(false);
+  });
+
+  it("supports string AttrValue", () => {
+    m.setAttr("s", "hello");
+    expect(m.attr("s")).toBe("hello");
+  });
+
+  it("supports number AttrValue", () => {
+    m.setAttr("n", 42);
+    expect(m.attr("n")).toBe(42);
+  });
+
+  it("supports boolean AttrValue", () => {
+    m.setAttr("b", false);
+    expect(m.attr("b")).toBe(false);
+  });
+
+  it("supports string[] AttrValue", () => {
+    m.setAttr("arr", ["a", "b", "c"]);
+    expect(m.attr("arr")).toEqual(["a", "b", "c"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Children
+// ---------------------------------------------------------------------------
+
+describe("MetaData — children", () => {
+  let parent: MetaData;
+
+  beforeEach(() => {
+    parent = makeObject("entity", "Parent");
+  });
+
+  it("addChild then children() includes the child", () => {
+    const c = makeField("string", "title");
+    parent.addChild(c);
+    expect(parent.children()).toContain(c);
+  });
+
+  it("children() preserves insertion order", () => {
+    const c1 = makeField("string", "first");
+    const c2 = makeField("int", "second");
+    const c3 = makeField("boolean", "third");
+    parent.addChild(c1);
+    parent.addChild(c2);
+    parent.addChild(c3);
+    const list = parent.children();
+    expect(list[0]).toBe(c1);
+    expect(list[1]).toBe(c2);
+    expect(list[2]).toBe(c3);
+  });
+
+  it("childrenOfType filters by type", () => {
+    const f1 = makeField("string", "a");
+    const f2 = makeField("int", "b");
+    const o1 = makeObject("entity", "c");
+    parent.addChild(f1);
+    parent.addChild(f2);
+    parent.addChild(o1);
+    const fields = parent.childrenOfType("field");
+    expect(fields).toContain(f1);
+    expect(fields).toContain(f2);
+    expect(fields).not.toContain(o1);
+  });
+
+  it("childrenOfType returns empty array when no match", () => {
+    parent.addChild(makeField("string", "a"));
+    expect(parent.childrenOfType("nonexistent")).toEqual([]);
+  });
+
+  it("childrenOfSubType filters by both type and subType", () => {
+    const f1 = makeField("string", "a");
+    const f2 = makeField("int", "b");
+    parent.addChild(f1);
+    parent.addChild(f2);
+    const strings = parent.childrenOfSubType("field", "string");
+    expect(strings).toContain(f1);
+    expect(strings).not.toContain(f2);
+  });
+
+  it("childByName returns first matching child by name", () => {
+    const c1 = makeField("string", "foo");
+    const c2 = makeField("int", "foo"); // same name, different subType
+    parent.addChild(c1);
+    parent.addChild(c2);
+    expect(parent.childByName("foo")).toBe(c1);
+  });
+
+  it("childByName returns undefined when no match", () => {
+    expect(parent.childByName("nonexistent")).toBeUndefined();
+  });
+
+  it("childByTypeAndName returns first child matching both type and name", () => {
+    const f = makeField("string", "foo");
+    const o = makeObject("entity", "foo");
+    parent.addChild(f);
+    parent.addChild(o);
+    expect(parent.childByTypeAndName("field", "foo")).toBe(f);
+    expect(parent.childByTypeAndName("object", "foo")).toBe(o);
+  });
+
+  it("childByTypeAndName returns undefined when no match", () => {
+    parent.addChild(makeField("string", "a"));
+    expect(parent.childByTypeAndName("field", "missing")).toBeUndefined();
+    expect(parent.childByTypeAndName("object", "a")).toBeUndefined();
+  });
+
+  it("children() length matches number of added children", () => {
+    parent.addChild(makeField("string", "a"));
+    parent.addChild(makeField("string", "b"));
+    expect(parent.children().length).toBe(2);
+  });
+
+  it("children() is a defensive copy — a later addChild does not change a captured snapshot", () => {
+    const c1 = makeField("string", "first");
+    parent.addChild(c1);
+    const snapshot = parent.children().length;
+    parent.addChild(makeField("string", "second"));
+    expect(snapshot).toBe(1);
+    expect(parent.children().length).toBe(2);
+  });
+
+  it("mutating a cast copy of children() does not affect internal state", () => {
+    const c1 = makeField("string", "original");
+    parent.addChild(c1);
+    const mutableCopy = parent.children() as MetaData[];
+    mutableCopy.push(makeField("string", "injected"));
+    expect(parent.children().length).toBe(1);
+    expect(parent.childByName("injected")).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Flags and references
+// ---------------------------------------------------------------------------
+
+describe("MetaData — flags and references", () => {
+  it("setIsArray(true) then setIsArray(false) toggles isArray", () => {
+    const m = makeField("string", "f");
+    m.setIsArray(true);
+    expect(m.isArray).toBe(true);
+    m.setIsArray(false);
+    expect(m.isArray).toBe(false);
+  });
+
+  it("setIsAbstract(true) then setIsAbstract(false) toggles isAbstract", () => {
+    const m = makeField("string", "f");
+    m.setIsAbstract(true);
+    expect(m.isAbstract).toBe(true);
+    m.setIsAbstract(false);
+    expect(m.isAbstract).toBe(false);
+  });
+
+  it("setSuper sets superRef; superData stays undefined until resolution", () => {
+    const m = makeField("string", "f");
+    m.setSuper("..::common::id");
+    expect(m.superRef).toBe("..::common::id");
+    expect(m.superData).toBeUndefined();
+  });
+
+  it("setPackage sets package and affects fqn()", () => {
+    const m = makeField("string", "f");
+    m.setPackage("my::pkg");
+    expect(m.package).toBe("my::pkg");
+    expect(m.fqn()).toBe("my::pkg::f");
+  });
+
+  it("setSuperResolved sets superData, readable via the getter", () => {
+    const parent = makeObject("entity", "Parent");
+    const child = makeObject("entity", "Child");
+    child.setSuperResolved(parent);
+    expect(child.superData).toBe(parent);
+  });
+
+  it("setSuperResolved can be called before freeze without throwing", () => {
+    const parent = makeObject("entity", "Parent");
+    const child = makeObject("entity", "Child");
+    expect(() => child.setSuperResolved(parent)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Effective view: own + inherited via the super chain
+// ---------------------------------------------------------------------------
+
+describe("MetaData — effectiveAttrs()", () => {
+  it("without super returns own attrs as a defensive copy", () => {
+    const m = makeObject("entity", "A");
+    m.setAttr("x", 1);
+    m.setAttr("y", "hello");
+    const eff = m.effectiveAttrs();
+    expect(eff.get("x")).toBe(1);
+    expect(eff.get("y")).toBe("hello");
+    eff.set("z", "injected");
+    expect(m.hasAttr("z")).toBe(false);
+  });
+
+  it("with super returns both own and inherited attrs", () => {
+    const parent = makeObject("entity", "Parent");
+    parent.setAttr("a", 1);
+    const child = makeObject("entity", "Child");
+    child.setAttr("b", 2);
+    child.setSuperResolved(parent);
+    const eff = child.effectiveAttrs();
+    expect(eff.get("a")).toBe(1);
+    expect(eff.get("b")).toBe(2);
+  });
+
+  it("own attr overrides super attr of the same name", () => {
+    const parent = makeObject("entity", "Parent");
+    parent.setAttr("a", "parent-value");
+    const child = makeObject("entity", "Child");
+    child.setAttr("a", "child-value");
+    child.setSuperResolved(parent);
+    expect(child.effectiveAttrs().get("a")).toBe("child-value");
+  });
+
+  it("multi-level super chain: all attrs accumulate, child wins on conflict", () => {
+    const grandparent = makeObject("entity", "Grandparent");
+    grandparent.setAttr("x", "grandparent");
+    grandparent.setAttr("shared", "from-grandparent");
+
+    const parent = makeObject("entity", "Parent");
+    parent.setAttr("y", "parent");
+    parent.setAttr("shared", "from-parent");
+    parent.setSuperResolved(grandparent);
+
+    const child = makeObject("entity", "Child");
+    child.setAttr("z", "child");
+    child.setAttr("shared", "from-child");
+    child.setSuperResolved(parent);
+
+    const eff = child.effectiveAttrs();
+    expect(eff.get("x")).toBe("grandparent");
+    expect(eff.get("y")).toBe("parent");
+    expect(eff.get("z")).toBe("child");
+    expect(eff.get("shared")).toBe("from-child");
+  });
+});
+
+describe("MetaData — effectiveChildren()", () => {
+  it("without super returns own children as a copy", () => {
+    const parent = makeObject("entity", "Parent");
+    const c1 = makeField("string", "a");
+    parent.addChild(c1);
+    const eff = parent.effectiveChildren();
+    expect(eff).toContain(c1);
+    eff.push(makeField("string", "injected"));
+    expect(parent.children().length).toBe(1);
+  });
+
+  it("with super includes super's children first, then own appended", () => {
+    const superModel = makeObject("entity", "Super");
+    const x = makeField("string", "x");
+    superModel.addChild(x);
+
+    const child = makeObject("entity", "Child");
+    const y = makeField("string", "y");
+    child.addChild(y);
+    child.setSuperResolved(superModel);
+
+    const eff = child.effectiveChildren();
+    expect(eff.length).toBe(2);
+    expect(eff[0]).toBe(x);
+    expect(eff[1]).toBe(y);
+  });
+
+  it("own child with same (type, name) as a super child replaces it in the super's position", () => {
+    const superModel = makeObject("entity", "Super");
+    const superFoo = makeField("string", "foo");
+    const superBar = makeField("string", "bar");
+    superModel.addChild(superFoo);
+    superModel.addChild(superBar);
+
+    const child = makeObject("entity", "Child");
+    const childFoo = makeField("string", "foo");
+    childFoo.setAttr("origin", "child");
+    child.addChild(childFoo);
+    child.setSuperResolved(superModel);
+
+    const eff = child.effectiveChildren();
+    expect(eff.length).toBe(2);
+    expect(eff[0]).toBe(childFoo); // override in place of super's foo
+    expect(eff[1]).toBe(superBar);
+    expect((eff[0] as MetaData).attr("origin")).toBe("child");
+  });
+
+  it("multi-level super chain: all children accumulate", () => {
+    const grandparent = makeObject("entity", "Grandparent");
+    grandparent.addChild(makeField("string", "gp"));
+
+    const parent = makeObject("entity", "Parent");
+    parent.addChild(makeField("string", "p"));
+    parent.setSuperResolved(grandparent);
+
+    const child = makeObject("entity", "Child");
+    child.addChild(makeField("string", "c"));
+    child.setSuperResolved(parent);
+
+    const eff = child.effectiveChildren();
+    expect(eff.length).toBe(3);
+    expect(eff.map((c) => c.name)).toEqual(["gp", "p", "c"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cycle protection in effectiveAttrs() / effectiveChildren()
+// ---------------------------------------------------------------------------
+
+describe("MetaData — cycle protection in effective views", () => {
+  it("effectiveAttrs() does not infinite-loop on an A -> B -> A cycle", () => {
+    const A = makeObject("entity", "A");
+    A.setAttr("fromA", "a");
+    const B = makeObject("entity", "B");
+    B.setAttr("fromB", "b");
+    A.setSuperResolved(B);
+    B.setSuperResolved(A);
+
+    let result: Map<string, unknown> | undefined;
+    expect(() => { result = A.effectiveAttrs(); }).not.toThrow();
+    expect(result!.get("fromA")).toBe("a");
+    expect(result!.get("fromB")).toBe("b");
+  });
+
+  it("effectiveChildren() does not infinite-loop on an A -> B -> A cycle", () => {
+    const A = makeObject("entity", "A");
+    A.addChild(makeField("string", "childA"));
+    const B = makeObject("entity", "B");
+    B.addChild(makeField("string", "childB"));
+    A.setSuperResolved(B);
+    B.setSuperResolved(A);
+
+    let result: MetaData[] | undefined;
+    expect(() => { result = A.effectiveChildren(); }).not.toThrow();
+    expect(Array.isArray(result)).toBe(true);
+    expect(result!.length).toBeGreaterThan(0);
+    const names = result!.map((c) => c.name);
+    expect(names).toContain("childA");
+    expect(names).toContain("childB");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Freeze lifecycle
+// ---------------------------------------------------------------------------
+
+describe("MetaData — freeze()", () => {
+  it("isFrozen() returns false before freeze and true after", () => {
+    const m = makeField("string", "f");
+    expect(m.isFrozen()).toBe(false);
+    m.freeze();
+    expect(m.isFrozen()).toBe(true);
+  });
+
+  it("freeze() is idempotent (can be called twice without error)", () => {
+    const m = makeField("string", "f");
+    expect(() => { m.freeze(); m.freeze(); }).not.toThrow();
+  });
+
+  it("setAttr throws after freeze with a message containing the fqn", () => {
+    const m = makeField("string", "myField");
+    m.setPackage("pkg");
+    m.freeze();
+    expect(() => m.setAttr("k", "v")).toThrow("pkg::myField");
+  });
+
+  it("addChild throws after freeze", () => {
+    const m = makeField("string", "f");
+    m.freeze();
+    expect(() => m.addChild(makeField("string", "child"))).toThrow();
+  });
+
+  it("setPackage throws after freeze", () => {
+    const m = makeField("string", "f");
+    m.freeze();
+    expect(() => m.setPackage("pkg")).toThrow();
+  });
+
+  it("setSuper throws after freeze", () => {
+    const m = makeField("string", "f");
+    m.freeze();
+    expect(() => m.setSuper("..::ref")).toThrow();
+  });
+
+  it("setIsArray throws after freeze", () => {
+    const m = makeField("string", "f");
+    m.freeze();
+    expect(() => m.setIsArray(true)).toThrow();
+  });
+
+  it("setIsAbstract throws after freeze", () => {
+    const m = makeField("string", "f");
+    m.freeze();
+    expect(() => m.setIsAbstract(true)).toThrow();
+  });
+
+  it("setSuperResolved throws after freeze with a message containing the fqn", () => {
+    const parent = makeObject("entity", "Parent");
+    const child = makeObject("entity", "Child");
+    child.setPackage("pkg");
+    child.freeze();
+    expect(() => child.setSuperResolved(parent)).toThrow("pkg::Child");
+  });
+
+  it("before freeze: all mutators work without throwing", () => {
+    const m = makeField("string", "f");
+    expect(() => {
+      m.setAttr("k", "v");
+      m.setPackage("pkg");
+      m.setSuper("..::ref");
+      m.setIsArray(true);
+      m.setIsAbstract(true);
+      m.addChild(makeField("string", "child"));
+    }).not.toThrow();
+  });
+
+  it("freeze recursively freezes all descendants", () => {
+    const root = makeObject("entity", "Root");
+    const child1 = makeField("string", "a");
+    const child2 = makeField("string", "b");
+    const grandchild = makeField("int", "c");
+    child1.addChild(grandchild);
+    root.addChild(child1);
+    root.addChild(child2);
+
+    root.freeze();
+
+    expect(child1.isFrozen()).toBe(true);
+    expect(child2.isFrozen()).toBe(true);
+    expect(grandchild.isFrozen()).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { TypeId, TypeRegistry, childRuleMatches } from "../src/registry.js";
 import { registerCoreTypes } from "../src/core-types.js";
-import type { MetaModel } from "../src/model.js";
+import type { MetaModel } from "../src/meta/meta-data.js";
 import {
   TYPE_FIELD,
   TYPE_OBJECT,
@@ -15,6 +15,7 @@ import {
   TYPE_SOURCE,
   TYPE_ORIGIN,
   SUBTYPE_BASE,
+  SUBTYPE_ROOT,
   FIELD_SUBTYPE_STRING,
   OBJECT_SUBTYPE_ENTITY,
   ATTR_SUBTYPE_STRING,
@@ -313,7 +314,7 @@ describe("registerCoreTypes", () => {
 
   // 2. Per-base-type subtype lists exact match
   it("registers the correct subtypes for 'metadata'", () => {
-    expect(registry.allSubTypesOf(TYPE_METADATA).sort()).toEqual([SUBTYPE_BASE]);
+    expect(registry.allSubTypesOf(TYPE_METADATA).sort()).toEqual([SUBTYPE_ROOT]);
   });
 
   it("registers the correct subtypes for 'object'", () => {
@@ -412,8 +413,8 @@ describe("registerCoreTypes", () => {
     });
   });
 
-  it("metadata.base allows object, field, attr, and validator children", () => {
-    const def = registry.find(TYPE_METADATA, SUBTYPE_BASE);
+  it("metadata.root allows object, field, attr, and validator children", () => {
+    const def = registry.find(TYPE_METADATA, SUBTYPE_ROOT);
     expect(def).toBeDefined();
     const childTypes = def!.childRules.map((r) => r.childType).sort();
     expect(childTypes).toEqual([TYPE_ATTR, TYPE_FIELD, TYPE_OBJECT, TYPE_VALIDATOR].sort());

@@ -1,7 +1,10 @@
 import { describe, test, expect } from "bun:test";
 import {
-  // Model
-  MetaModel,
+  // Concrete node classes (the typed tree replaces the old MetaModel/metaOf layers)
+  MetaData,
+  MetaRoot,
+  MetaObject,
+  MetaField,
   // Registry
   TypeId,
   TypeRegistry,
@@ -33,6 +36,7 @@ import {
   TYPE_SOURCE,
   BASE_TYPES,
   SUBTYPE_BASE,
+  SUBTYPE_ROOT,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
   OBJECT_SUBTYPE_ENTITY,
@@ -40,16 +44,17 @@ import {
   IDENTITY_SUBTYPE_PRIMARY,
   RESERVED_KEY_NAME,
   RESERVED_KEY_CHILDREN,
+  RESERVED_KEY_IS_ARRAY,
+  RESERVED_KEY_ABSTRACT,
   RESERVED_KEYS,
   JSON_KEY_SCHEMA,
   ATTR_PREFIX,
-  ATTR_NAME_IS_ARRAY,
-  ATTR_NAME_IS_ABSTRACT,
   PACKAGE_SEPARATOR,
   PACKAGE_PARENT,
   CHILD_RULE_WILDCARD,
   // Types (type-only imports verified at compile time)
   type AttrValue,
+  type MetaModel,
   type LoadingState,
   type ChildRule,
   type TypeDefinition,
@@ -64,21 +69,23 @@ import {
 
 describe("Public API surface — @metaobjects/metadata index", () => {
   // ---------------------------------------------------------------------------
-  // MetaModel
+  // Concrete node classes (typed tree) — MetaModel is now a type alias for MetaData
   // ---------------------------------------------------------------------------
 
-  test("MetaModel constructor works via index", () => {
-    const m = new MetaModel(new TypeId(TYPE_OBJECT, "map"), "Test");
-    expect(m.name).toBe("Test");
-    expect(m.type).toBe(TYPE_OBJECT);
-    expect(m.subType).toBe("map");
+  test("concrete node classes are exported and constructible via index", () => {
+    const obj = new MetaObject(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Test");
+    expect(obj.name).toBe("Test");
+    expect(obj.type).toBe(TYPE_OBJECT);
+    expect(obj.subType).toBe(OBJECT_SUBTYPE_ENTITY);
+    expect(obj).toBeInstanceOf(MetaData);
   });
 
-  test("MetaModel accepts AttrValue type", () => {
-    const m = new MetaModel(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "myField");
+  test("MetaModel type alias resolves to a MetaData node", () => {
+    const m: MetaModel = new MetaField(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "myField");
     const val: AttrValue = "hello";
     m.setAttr("label", val);
     expect(m.attr("label")).toBe("hello");
+    expect(m).toBeInstanceOf(MetaData);
   });
 
   // ---------------------------------------------------------------------------
@@ -165,7 +172,7 @@ describe("Public API surface — @metaobjects/metadata index", () => {
     registerCoreTypes(registry);
     const opts: ParseOptions = { registry };
     const result: ParseResult = parseJson(
-      JSON.stringify({ metadata: { name: "root", subType: "base" } }),
+      JSON.stringify({ "metadata.root": { name: "root" } }),
       opts,
     );
     expect(result.root.name).toBe("root");
@@ -178,9 +185,9 @@ describe("Public API surface — @metaobjects/metadata index", () => {
   // ---------------------------------------------------------------------------
 
   test("serializeJson works via index", () => {
-    const m = new MetaModel(new TypeId(TYPE_METADATA, SUBTYPE_BASE), "myRoot");
+    const m = new MetaRoot(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "myRoot");
     const json = serializeJson(m);
-    expect(JSON.parse(json)).toMatchObject({ metadata: { name: "myRoot" } });
+    expect(JSON.parse(json)).toMatchObject({ "metadata.root": { name: "myRoot" } });
   });
 
   test("inferAttrSubType works via index", () => {
@@ -191,7 +198,7 @@ describe("Public API surface — @metaobjects/metadata index", () => {
   });
 
   test("SerializeOptions type is accepted", () => {
-    const m = new MetaModel(new TypeId(TYPE_METADATA, SUBTYPE_BASE), "r");
+    const m = new MetaRoot(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "r");
     const opts: SerializeOptions = { indent: 0, inlineAttrs: true };
     const json = serializeJson(m, opts);
     expect(typeof json).toBe("string");
@@ -204,8 +211,8 @@ describe("Public API surface — @metaobjects/metadata index", () => {
   test("resolveSuperRef works via index", () => {
     const registry = new TypeRegistry();
     registerCoreTypes(registry);
-    const root = new MetaModel(new TypeId(TYPE_METADATA, SUBTYPE_BASE), "root");
-    const fruit = new MetaModel(new TypeId(TYPE_OBJECT, SUBTYPE_BASE), "Fruit");
+    const root = new MetaRoot(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "root");
+    const fruit = new MetaObject(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Fruit");
     root.addChild(fruit);
     const found = resolveSuperRef("Fruit", "", root);
     expect(found).toBe(fruit);
@@ -224,11 +231,10 @@ describe("Public API surface — @metaobjects/metadata index", () => {
   });
 
   test("Loader.loadJson works via index", () => {
-    const loader = new Loader();
     const opts: LoadOptions = { freeze: false };
     const loader2 = new Loader(opts);
     const result: LoadResult = loader2.loadJson(
-      JSON.stringify({ metadata: { name: "r", subType: "base" } }),
+      JSON.stringify({ "metadata.root": { name: "r" } }),
     );
     expect(result.root.name).toBe("r");
     expect(result.errors).toEqual([]);
@@ -295,6 +301,8 @@ describe("Public API surface — @metaobjects/metadata index", () => {
   test("RESERVED_KEY_* constants are exported", () => {
     expect(RESERVED_KEY_NAME).toBe("name");
     expect(RESERVED_KEY_CHILDREN).toBe("children");
+    expect(RESERVED_KEY_IS_ARRAY).toBe("isArray");
+    expect(RESERVED_KEY_ABSTRACT).toBe("abstract");
   });
 
   test("RESERVED_KEYS Set is exported and contains expected keys", () => {
@@ -302,7 +310,11 @@ describe("Public API surface — @metaobjects/metadata index", () => {
     expect(RESERVED_KEYS.has("name")).toBe(true);
     expect(RESERVED_KEYS.has("children")).toBe(true);
     expect(RESERVED_KEYS.has("extends")).toBe(true);
-    expect(RESERVED_KEYS.has("merge")).toBe(true);
+    // `abstract` / `overlay` / `isArray` are reserved structural keys in the
+    // redesigned format; the old `merge` / `subType` keys no longer exist.
+    expect(RESERVED_KEYS.has("abstract")).toBe(true);
+    expect(RESERVED_KEYS.has("overlay")).toBe(true);
+    expect(RESERVED_KEYS.has("isArray")).toBe(true);
   });
 
   test("JSON_KEY_SCHEMA is '$schema'", () => {
@@ -311,11 +323,6 @@ describe("Public API surface — @metaobjects/metadata index", () => {
 
   test("ATTR_PREFIX is '@'", () => {
     expect(ATTR_PREFIX).toBe("@");
-  });
-
-  test("ATTR_NAME_IS_ARRAY and ATTR_NAME_IS_ABSTRACT are exported", () => {
-    expect(ATTR_NAME_IS_ARRAY).toBe("isArray");
-    expect(ATTR_NAME_IS_ABSTRACT).toBe("isAbstract");
   });
 
   test("PACKAGE_SEPARATOR and PACKAGE_PARENT are exported", () => {

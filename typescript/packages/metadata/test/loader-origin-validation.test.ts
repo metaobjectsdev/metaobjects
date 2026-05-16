@@ -6,7 +6,7 @@ import { Loader } from "../src/loader.js";
 function load(children: unknown[]) {
   const loader = new Loader();
   const json = JSON.stringify({
-    metadata: { package: "test", children },
+    "metadata.root": { package: "test", children },
   });
   const result = loader.loadJson(json);
   return {
@@ -20,32 +20,29 @@ describe("Loader validates origin.passthrough.from", () => {
   test("from references a real Entity.field → no error", () => {
     const result = load([
       {
-        object: {
+        "object.entity": {
           name: "User",
-          subType: "entity",
           children: [
-            { field: { name: "id", subType: "int" } },
-            { field: { name: "email", subType: "string" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "field.int": { name: "id" } },
+            { "field.string": { name: "email" } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "UserView",
-          subType: "entity",
           children: [
-            { source: { subType: "dbView", "@name": "v_user" } },
+            { "source.dbView": { "@name": "v_user" } },
             {
-              field: {
+              "field.string": {
                 name: "displayName",
-                subType: "string",
                 children: [
-                  { origin: { subType: "passthrough", "@from": "User.email" } },
+                  { "origin.passthrough": { "@from": "User.email" } },
                 ],
               },
             },
-            { identity: { subType: "primary", "@fields": "displayName" } },
+            { "identity.primary": { "@fields": "displayName" } },
           ],
         },
       },
@@ -56,31 +53,28 @@ describe("Loader validates origin.passthrough.from", () => {
   test("from references a missing field → error", () => {
     const result = load([
       {
-        object: {
+        "object.entity": {
           name: "User",
-          subType: "entity",
           children: [
-            { field: { name: "id", subType: "int" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "field.int": { name: "id" } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "UserView",
-          subType: "entity",
           children: [
-            { source: { subType: "dbView", "@name": "v_user" } },
+            { "source.dbView": { "@name": "v_user" } },
             {
-              field: {
+              "field.string": {
                 name: "displayName",
-                subType: "string",
                 children: [
-                  { origin: { subType: "passthrough", "@from": "User.notReal" } },
+                  { "origin.passthrough": { "@from": "User.notReal" } },
                 ],
               },
             },
-            { identity: { subType: "primary", "@fields": "displayName" } },
+            { "identity.primary": { "@fields": "displayName" } },
           ],
         },
       },
@@ -95,26 +89,23 @@ describe("Loader validates origin.aggregate.of", () => {
   test("of references a real field → no error", () => {
     const result = load([
       {
-        object: {
+        "object.entity": {
           name: "Order",
-          subType: "entity",
           children: [
-            { field: { name: "id", subType: "int" } },
-            { field: { name: "amount", subType: "long" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "field.int": { name: "id" } },
+            { "field.long": { name: "amount" } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "User",
-          subType: "entity",
           children: [
-            { field: { name: "id", subType: "int" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "field.int": { name: "id" } },
+            { "identity.primary": { "@fields": "id" } },
             {
-              relationship: {
-                subType: "association",
+              "relationship.association": {
                 name: "orders",
                 "@objectRef": "Order",
                 "@cardinality": "many",
@@ -125,19 +116,16 @@ describe("Loader validates origin.aggregate.of", () => {
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "UserSummary",
-          subType: "entity",
           children: [
-            { source: { subType: "dbView", "@name": "v_user_summary" } },
+            { "source.dbView": { "@name": "v_user_summary" } },
             {
-              field: {
+              "field.long": {
                 name: "totalSpent",
-                subType: "long",
                 children: [
                   {
-                    origin: {
-                      subType: "aggregate",
+                    "origin.aggregate": {
                       "@agg": "sum",
                       "@of": "Order.amount",
                       "@via": "User.orders",
@@ -146,7 +134,7 @@ describe("Loader validates origin.aggregate.of", () => {
                 ],
               },
             },
-            { identity: { subType: "primary", "@fields": "totalSpent" } },
+            { "identity.primary": { "@fields": "totalSpent" } },
           ],
         },
       },
@@ -157,15 +145,13 @@ describe("Loader validates origin.aggregate.of", () => {
   test("aggregate.agg outside the vocab → error", () => {
     const result = load([
       {
-        object: {
+        "object.entity": {
           name: "User",
-          subType: "entity",
           children: [
-            { field: { name: "id", subType: "int" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "field.int": { name: "id" } },
+            { "identity.primary": { "@fields": "id" } },
             {
-              relationship: {
-                subType: "association",
+              "relationship.association": {
                 name: "orders",
                 "@objectRef": "Order",
                 "@cardinality": "many",
@@ -176,29 +162,25 @@ describe("Loader validates origin.aggregate.of", () => {
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "Order",
-          subType: "entity",
           children: [
-            { field: { name: "id", subType: "int" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "field.int": { name: "id" } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "UserStat",
-          subType: "entity",
           children: [
-            { source: { subType: "dbView", "@name": "v_user_stat" } },
+            { "source.dbView": { "@name": "v_user_stat" } },
             {
-              field: {
+              "field.int": {
                 name: "n",
-                subType: "int",
                 children: [
                   {
-                    origin: {
-                      subType: "aggregate",
+                    "origin.aggregate": {
                       "@agg": "median", // not in AGGREGATE_FUNCTIONS
                       "@of": "Order.id",
                       "@via": "User.orders",
@@ -207,7 +189,7 @@ describe("Loader validates origin.aggregate.of", () => {
                 ],
               },
             },
-            { identity: { subType: "primary", "@fields": "n" } },
+            { "identity.primary": { "@fields": "n" } },
           ],
         },
       },
@@ -222,29 +204,25 @@ describe("Loader validates origin.via paths against relationships", () => {
   test("via references missing relationship segment → error", () => {
     const result = load([
       {
-        object: {
+        "object.entity": {
           name: "User",
-          subType: "entity",
           children: [
-            { field: { name: "id", subType: "int" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "field.int": { name: "id" } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         },
       },
       {
-        object: {
+        "object.entity": {
           name: "UserStat",
-          subType: "entity",
           children: [
-            { source: { subType: "dbView", "@name": "v_user_stat" } },
+            { "source.dbView": { "@name": "v_user_stat" } },
             {
-              field: {
+              "field.int": {
                 name: "n",
-                subType: "int",
                 children: [
                   {
-                    origin: {
-                      subType: "aggregate",
+                    "origin.aggregate": {
                       "@agg": "count",
                       "@of": "User.id",
                       "@via": "User.bogus",
@@ -253,7 +231,7 @@ describe("Loader validates origin.via paths against relationships", () => {
                 ],
               },
             },
-            { identity: { subType: "primary", "@fields": "n" } },
+            { "identity.primary": { "@fields": "n" } },
           ],
         },
       },

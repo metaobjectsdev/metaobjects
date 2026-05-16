@@ -5,23 +5,25 @@
 // immediate resolution during parse). This file only tests the reference lookup.
 
 import { describe, it, expect } from "bun:test";
-import { MetaModel } from "../src/model.js";
+import { MetaObject } from "../src/meta/meta-object.js";
+import { MetaRoot } from "../src/meta/meta-root.js";
+import type { MetaModel } from "../src/meta/meta-data.js";
 import { TypeId } from "../src/registry.js";
 import { resolveSuperRef } from "../src/super-resolve.js";
-import { TYPE_OBJECT } from "../src/constants.js";
+import { TYPE_METADATA, TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, SUBTYPE_ROOT } from "../src/constants.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function makeObject(name: string, pkg?: string): MetaModel {
-  const m = new MetaModel(new TypeId(TYPE_OBJECT, "simple"), name);
+  const m = new MetaObject(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), name);
   if (pkg !== undefined) m.setPackage(pkg);
   return m;
 }
 
 function makeRoot(): MetaModel {
-  return new MetaModel(new TypeId(TYPE_OBJECT, "root"), "__root__");
+  return new MetaRoot(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "__root__");
 }
 
 // ---------------------------------------------------------------------------

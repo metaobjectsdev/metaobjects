@@ -14,7 +14,11 @@
 
 import { describe, it, expect } from "bun:test";
 import { TypeId } from "../../src/registry.js";
+import { Loader } from "../../src/loader.js";
 import { MetaData } from "../../src/meta/meta-data.js";
+import { MetaRoot } from "../../src/meta/meta-root.js";
+import { MetaObject } from "../../src/meta/meta-object.js";
+import { MetaField } from "../../src/meta/meta-field.js";
 import {
   MetaIdentity,
   MetaPrimaryIdentity,
@@ -35,6 +39,7 @@ import { MetaLayout } from "../../src/meta/meta-layout.js";
 import { MetaSource } from "../../src/meta/meta-source.js";
 import { MetaOrigin } from "../../src/meta/meta-origin.js";
 import {
+  TYPE_OBJECT,
   TYPE_IDENTITY,
   TYPE_RELATIONSHIP,
   TYPE_VALIDATOR,
@@ -745,5 +750,207 @@ describe("MetaIdentity.fields — reference stability", () => {
     const b = id.fields;
     // attrs map stores the array by reference; both calls see the same stored ref
     expect(a).toBe(b);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Loader integration — the parser/registry factory builds the MOST SPECIFIC
+// concrete node class from JSON. Ported from the deleted test/views.test.ts:
+// in the typed-tree design there is no metaOf() view layer, so the only thing
+// left to verify is that parsing dispatches to the right concrete subclass.
+// ---------------------------------------------------------------------------
+
+describe("Loader produces typed concrete nodes from JSON", () => {
+  const SAMPLE = JSON.stringify({
+    "metadata.root": {
+      package: "demo",
+      children: [
+        {
+          "object.entity": {
+            name: "User",
+            children: [
+              { "source.dbTable": { "@name": "users" } },
+              { "field.long": { name: "id" } },
+              {
+                "field.string": {
+                  name: "email",
+                  children: [{ "validator.required": {} }],
+                },
+              },
+              {
+                "field.string": {
+                  name: "displayName",
+                  children: [
+                    { "validator.length": { "@min": 1, "@max": 100 } },
+                  ],
+                },
+              },
+              {
+                "identity.primary": {
+                  name: "pk",
+                  "@fields": ["id"],
+                  "@generation": "increment",
+                },
+              },
+              {
+                "identity.secondary": {
+                  name: "idx_users_email",
+                  "@fields": ["email"],
+                },
+              },
+              {
+                "layout.dataGrid": {
+                  name: "default",
+                  "@pageSize": 25,
+                  "@columns": ["id"],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+  });
+
+  function loadUser(): MetaObject {
+    const { root, errors } = new Loader().loadJson(SAMPLE);
+    expect(errors).toEqual([]);
+    return root.childByTypeAndName(TYPE_OBJECT, "User") as MetaObject;
+  }
+
+  it("root is a MetaRoot, top-level object child is a MetaObject", () => {
+    const { root } = new Loader().loadJson(SAMPLE);
+    expect(root).toBeInstanceOf(MetaRoot);
+    const user = root.childByTypeAndName(TYPE_OBJECT, "User");
+    expect(user).toBeInstanceOf(MetaObject);
+  });
+
+  it("field children are MetaField instances", () => {
+    const user = loadUser();
+    for (const f of user.fields()) {
+      expect(f).toBeInstanceOf(MetaField);
+    }
+  });
+
+  it("source child is a MetaSource", () => {
+    const user = loadUser();
+    const source = user.children().find((c) => c.type === TYPE_SOURCE);
+    expect(source).toBeInstanceOf(MetaSource);
+  });
+
+  it("layout child is a MetaLayout", () => {
+    const user = loadUser();
+    const layout = user.children().find((c) => c.type === TYPE_LAYOUT);
+    expect(layout).toBeInstanceOf(MetaLayout);
+  });
+
+  it("primary identity → MetaPrimaryIdentity (also MetaIdentity)", () => {
+    const user = loadUser();
+    const pk = user.primaryIdentity()!;
+    expect(pk).toBeInstanceOf(MetaPrimaryIdentity);
+    expect(pk).toBeInstanceOf(MetaIdentity);
+  });
+
+  it("secondary identity → MetaSecondaryIdentity", () => {
+    const user = loadUser();
+    const sec = user.secondaryIdentities()[0]!;
+    expect(sec).toBeInstanceOf(MetaSecondaryIdentity);
+    expect(sec).toBeInstanceOf(MetaIdentity);
+  });
+
+  it("required validator → MetaRequiredValidator; length validator → MetaLengthValidator", () => {
+    const user = loadUser();
+    const emailValidator = user.findField("email")!.validators()[0]!;
+    expect(emailValidator).toBeInstanceOf(MetaRequiredValidator);
+
+    const lengthValidator = user.findField("displayName")!.validators()[0]!;
+    expect(lengthValidator).toBeInstanceOf(MetaLengthValidator);
+  });
+
+  it("regex / numeric / array validators dispatch to their concrete classes", () => {
+    const json = JSON.stringify({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.entity": {
+              name: "Widget",
+              children: [
+                { "field.long": { name: "id" } },
+                {
+                  "field.string": {
+                    name: "slug",
+                    children: [{ "validator.regex": { "@pattern": "^[a-z-]+$" } }],
+                  },
+                },
+                {
+                  "field.int": {
+                    name: "age",
+                    children: [{ "validator.numeric": { "@min": 0, "@max": 150 } }],
+                  },
+                },
+                {
+                  "field.string": {
+                    name: "tags",
+                    isArray: true,
+                    children: [{ "validator.array": { "@min": 1, "@max": 10 } }],
+                  },
+                },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root, errors } = new Loader().loadJson(json);
+    expect(errors).toEqual([]);
+    const widget = root.childByTypeAndName(TYPE_OBJECT, "Widget") as MetaObject;
+    expect(widget.findField("slug")!.validators()[0]).toBeInstanceOf(MetaRegexValidator);
+    expect(widget.findField("age")!.validators()[0]).toBeInstanceOf(MetaNumericValidator);
+    expect(widget.findField("tags")!.validators()[0]).toBeInstanceOf(MetaArrayValidator);
+  });
+
+  it("origin child of a field → MetaOrigin", () => {
+    const json = JSON.stringify({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.entity": {
+              name: "Base",
+              children: [
+                { "field.long": { name: "id" } },
+                { "field.string": { name: "label" } },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+          {
+            "object.entity": {
+              name: "Summary",
+              children: [
+                { "source.dbView": { "@name": "v_summary" } },
+                {
+                  "field.string": {
+                    name: "label",
+                    children: [
+                      { "origin.passthrough": { "@from": "Base.label" } },
+                    ],
+                  },
+                },
+                { "identity.primary": { "@fields": "label" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root, errors } = new Loader().loadJson(json);
+    expect(errors).toEqual([]);
+    const summary = root.childByTypeAndName(TYPE_OBJECT, "Summary") as MetaObject;
+    const labelField = summary.findField("label")!;
+    const origin = labelField.children().find((c) => c.type === TYPE_ORIGIN);
+    expect(origin).toBeInstanceOf(MetaOrigin);
   });
 });

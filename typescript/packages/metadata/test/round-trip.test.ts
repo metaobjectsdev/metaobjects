@@ -17,7 +17,7 @@
 import { describe, it, expect } from "bun:test";
 import { join } from "node:path";
 import { Loader } from "../src/loader.js";
-import { MetaModel } from "../src/model.js";
+import type { MetaModel } from "../src/meta/meta-data.js";
 import { serializeJson } from "../src/serializer-json.js";
 import {
   TYPE_METADATA,
@@ -27,7 +27,7 @@ import {
   TYPE_IDENTITY,
   TYPE_RELATIONSHIP,
   TYPE_VALIDATOR,
-  SUBTYPE_BASE,
+  SUBTYPE_ROOT,
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_ENTITY,
@@ -376,11 +376,11 @@ describe("Inline-vs-child attr round-trip: valid-complete-metadata.json", () => 
 // ===========================================================================
 
 describe("Empty load", () => {
-  it("loader with no sources returns root typed as metadata.base", () => {
+  it("loader with no sources returns root typed as metadata.root", () => {
     const loader = new Loader({ freeze: false });
     const { root, errors, warnings } = loader.loadJsonStrings([]);
     expect(root.type).toBe(TYPE_METADATA);
-    expect(root.subType).toBe(SUBTYPE_BASE);
+    expect(root.subType).toBe(SUBTYPE_ROOT);
     expect(errors.length).toBe(0);
     expect(warnings.length).toBe(0);
   });

@@ -34,13 +34,13 @@ describe("Loader accepts dataGrid layouts on objects", () => {
     const tmp = mkdtempSync(join(tmpdir(), "loader-data-grid-layout-"));
     const path = join(tmp, "fixture.json");
     writeFileSync(path, JSON.stringify({
-      metadata: { children: [
-        { object: {
-            name: "Sub", subType: OBJECT_SUBTYPE_ENTITY,
+      "metadata.root": { children: [
+        { [`object.${OBJECT_SUBTYPE_ENTITY}`]: {
+            name: "Sub",
             children: [
-              { field: { name: "email", subType: FIELD_SUBTYPE_STRING } },
-              { layout: {
-                  subType: LAYOUT_SUBTYPE_DATA_GRID, name: "default",
+              { [`field.${FIELD_SUBTYPE_STRING}`]: { name: "email" } },
+              { [`layout.${LAYOUT_SUBTYPE_DATA_GRID}`]: {
+                  name: "default",
                   "@pageSize": 25,
               }},
             ],
@@ -66,13 +66,13 @@ describe("Loader validates @defaultSortField references an existing field (layou
     const tmp = mkdtempSync(join(tmpdir(), "loader-sort-validation-"));
     const path = join(tmp, "fixture.json");
     writeFileSync(path, JSON.stringify({
-      metadata: { children: [
-        { object: {
-            name: "Sub", subType: OBJECT_SUBTYPE_ENTITY,
+      "metadata.root": { children: [
+        { [`object.${OBJECT_SUBTYPE_ENTITY}`]: {
+            name: "Sub",
             children: [
-              { field: { name: "email", subType: FIELD_SUBTYPE_STRING } },
-              { layout: {
-                  subType: LAYOUT_SUBTYPE_DATA_GRID, name: "default",
+              { [`field.${FIELD_SUBTYPE_STRING}`]: { name: "email" } },
+              { [`layout.${LAYOUT_SUBTYPE_DATA_GRID}`]: {
+                  name: "default",
                   "@defaultSortField": "doesNotExist",
                   "@defaultSortOrder": "asc",
               }},
@@ -96,13 +96,13 @@ describe("Loader validates @defaultSortField references an existing field (layou
     const tmp = mkdtempSync(join(tmpdir(), "loader-sort-ok-"));
     const path = join(tmp, "fixture.json");
     writeFileSync(path, JSON.stringify({
-      metadata: { children: [
-        { object: {
-            name: "Sub", subType: OBJECT_SUBTYPE_ENTITY,
+      "metadata.root": { children: [
+        { [`object.${OBJECT_SUBTYPE_ENTITY}`]: {
+            name: "Sub",
             children: [
-              { field: { name: "createdAt", subType: FIELD_SUBTYPE_STRING } },
-              { layout: {
-                  subType: LAYOUT_SUBTYPE_DATA_GRID, name: "default",
+              { [`field.${FIELD_SUBTYPE_STRING}`]: { name: "createdAt" } },
+              { [`layout.${LAYOUT_SUBTYPE_DATA_GRID}`]: {
+                  name: "default",
                   "@defaultSortField": "createdAt",
                   "@defaultSortOrder": "desc",
               }},

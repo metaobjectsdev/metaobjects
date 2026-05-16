@@ -12,14 +12,14 @@ import { Loader } from "../src/loader.js";
 import { TypeRegistry } from "../src/registry.js";
 import { registerCoreTypes } from "../src/core-types.js";
 import { TypeId } from "../src/registry.js";
-import { MetaModel } from "../src/model.js";
+import { MetaObject } from "../src/meta/meta-object.js";
 import { ParseError } from "../src/errors.js";
 import {
   TYPE_METADATA,
   TYPE_OBJECT,
   TYPE_FIELD,
   TYPE_SOURCE,
-  SUBTYPE_BASE,
+  SUBTYPE_ROOT,
   FIELD_SUBTYPE_STRING,
 } from "../src/constants.js";
 
@@ -44,24 +44,24 @@ function makeRegistry(): TypeRegistry {
 // ---------------------------------------------------------------------------
 
 describe("Loader.loadJson — minimal metadata", () => {
-  it('loadJson(\'{"metadata":{}}\') → root is metadata.base, no warnings, no errors', () => {
+  it('loadJson(\'{"metadata.root":{}}\') → root is metadata.root, no warnings, no errors', () => {
     const loader = new Loader();
-    const result = loader.loadJson('{"metadata":{}}');
+    const result = loader.loadJson('{"metadata.root":{}}');
     expect(result.root.type).toBe(TYPE_METADATA);
-    expect(result.root.subType).toBe(SUBTYPE_BASE);
+    expect(result.root.subType).toBe(SUBTYPE_ROOT);
     expect(result.warnings.length).toBe(0);
     expect(result.errors.length).toBe(0);
   });
 
   it("result.root is defined", () => {
     const loader = new Loader();
-    const { root } = loader.loadJson('{"metadata":{}}');
+    const { root } = loader.loadJson('{"metadata.root":{}}');
     expect(root).toBeDefined();
   });
 
   it("returns the root name when set", () => {
     const loader = new Loader();
-    const { root } = loader.loadJson('{"metadata":{"name":"myRoot"}}');
+    const { root } = loader.loadJson('{"metadata.root":{"name":"myRoot"}}');
     expect(root.name).toBe("myRoot");
   });
 });
@@ -72,9 +72,9 @@ describe("Loader.loadJson — minimal metadata", () => {
 
 describe("Loader.loadJson — with package and entity children", () => {
   const json = JSON.stringify({
-    metadata: {
+    "metadata.root": {
       package: "acme",
-      children: [{ object: { name: "Product", subType: "base" } }],
+      children: [{ "object.base": { name: "Product" } }],
     },
   });
 
@@ -105,16 +105,16 @@ describe("Loader.loadJson — with package and entity children", () => {
 
 describe("Loader.loadJsonStrings — base + overlay", () => {
   const baseJson = JSON.stringify({
-    metadata: {
+    "metadata.root": {
       package: "acme",
-      children: [{ object: { name: "Store", subType: "base" } }],
+      children: [{ "object.base": { name: "Store" } }],
     },
   });
 
   const overlayJson = JSON.stringify({
-    metadata: {
+    "metadata.root": {
       package: "acme",
-      children: [{ object: { name: "Product", subType: "base" } }],
+      children: [{ "object.base": { name: "Product" } }],
     },
   });
 
@@ -154,17 +154,17 @@ describe("Loader.loadJsonStrings — base + overlay", () => {
 
 describe("Loader.loadJsonStrings — override attr in overlay", () => {
   const baseJson = JSON.stringify({
-    metadata: {
+    "metadata.root": {
       package: "acme",
-      children: [{ object: { name: "Store", subType: "base", "@dbTable": "t" } }],
+      children: [{ "object.base": { name: "Store", "@dbTable": "t" } }],
     },
   });
 
   const overlayJson = JSON.stringify({
-    metadata: {
+    "metadata.root": {
       package: "acme",
       children: [
-        { object: { name: "Store", subType: "base", merge: true, "@dbTable": "t2" } },
+        { "object.base": { name: "Store", overlay: true, "@dbTable": "t2" } },
       ],
     },
   });
@@ -201,20 +201,18 @@ describe("Loader — super resolution after overlay merge", () => {
   // Fish is also a direct child. fishId uses a bare-name super ref "id"
   // which resolves to the top-level abstract field via root-level fallback.
   const json = JSON.stringify({
-    metadata: {
+    "metadata.root": {
       children: [
         {
-          field: {
+          "field.string": {
             name: "id",
-            subType: "string",
-            isAbstract: true,
+            abstract: true,
           },
         },
         {
-          object: {
+          "object.base": {
             name: "Fish",
-            subType: "base",
-            children: [{ field: { name: "fishId", extends: "id" } }],
+            children: [{ "field.string": { name: "fishId", extends: "id" } }],
           },
         },
       ],
@@ -255,7 +253,7 @@ describe("Loader — super resolution after overlay merge", () => {
 describe("Loader — freeze applied by default", () => {
   it("root.isFrozen() === true after loadJson", () => {
     const loader = new Loader();
-    const { root } = loader.loadJson('{"metadata":{}}');
+    const { root } = loader.loadJson('{"metadata.root":{}}');
     expect(root.isFrozen()).toBe(true);
   });
 
@@ -263,8 +261,8 @@ describe("Loader — freeze applied by default", () => {
     const loader = new Loader();
     const { root } = loader.loadJson(
       JSON.stringify({
-        metadata: {
-          children: [{ object: { name: "A", subType: "base" } }],
+        "metadata.root": {
+          children: [{ "object.base": { name: "A" } }],
         },
       }),
     );
@@ -275,8 +273,8 @@ describe("Loader — freeze applied by default", () => {
     const loader = new Loader();
     const { root } = loader.loadJson(
       JSON.stringify({
-        metadata: {
-          children: [{ object: { name: "A", subType: "base" } }],
+        "metadata.root": {
+          children: [{ "object.base": { name: "A" } }],
         },
       }),
     );
@@ -292,20 +290,20 @@ describe("Loader — freeze applied by default", () => {
 describe("Loader — freeze: false", () => {
   it("root.isFrozen() === false when freeze: false passed to constructor", () => {
     const loader = new Loader({ freeze: false });
-    const { root } = loader.loadJson('{"metadata":{}}');
+    const { root } = loader.loadJson('{"metadata.root":{}}');
     expect(root.isFrozen()).toBe(false);
   });
 
   it("can mutate root after load with freeze: false", () => {
     const loader = new Loader({ freeze: false });
-    const { root } = loader.loadJson('{"metadata":{}}');
+    const { root } = loader.loadJson('{"metadata.root":{}}');
     expect(() => root.setAttr("key", "val")).not.toThrow();
     expect(root.attr("key")).toBe("val");
   });
 
   it("freeze: true is the same as default", () => {
     const loader = new Loader({ freeze: true });
-    const { root } = loader.loadJson('{"metadata":{}}');
+    const { root } = loader.loadJson('{"metadata.root":{}}');
     expect(root.isFrozen()).toBe(true);
   });
 });
@@ -319,7 +317,7 @@ describe("Loader — custom registry", () => {
     const emptyRegistry = new TypeRegistry();
     const loader = new Loader({ registry: emptyRegistry });
     // In non-strict mode, unknown ROOT type still throws (per parser spec for root type).
-    const { errors } = loader.loadJson('{"metadata":{}}');
+    const { errors } = loader.loadJson('{"metadata.root":{}}');
     expect(errors.length).toBeGreaterThan(0);
     expect(errors[0]).toBeInstanceOf(ParseError);
   });
@@ -331,13 +329,13 @@ describe("Loader — custom registry", () => {
     registry.register({
       typeId: new TypeId("widget", "base"),
       description: "A widget",
-      factory: (typeId, name) => new MetaModel(typeId, name),
+      factory: (typeId, name) => new MetaObject(typeId, name),
       childRules: [],
     });
 
     const json = JSON.stringify({
-      metadata: {
-        children: [{ widget: { name: "MyWidget", subType: "base" } }],
+      "metadata.root": {
+        children: [{ "widget.base": { name: "MyWidget" } }],
       },
     });
 
@@ -353,8 +351,8 @@ describe("Loader — custom registry", () => {
   it("using the default registry pre-populates core types", () => {
     const loader = new Loader(); // no opts — uses default registry with core types
     const json = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Entity", subType: "base" } }],
+      "metadata.root": {
+        children: [{ "object.base": { name: "Entity" } }],
       },
     });
     const { errors, warnings } = loader.loadJson(json);
@@ -380,7 +378,7 @@ describe("Loader.load — missing file", () => {
     const result = await loader.load(["/nonexistent/totally/missing.json"]);
     expect(result.root).toBeDefined();
     expect(result.root.type).toBe(TYPE_METADATA);
-    expect(result.root.subType).toBe(SUBTYPE_BASE);
+    expect(result.root.subType).toBe(SUBTYPE_ROOT);
   });
 
   it("warnings is empty when no files could be read", async () => {
@@ -396,9 +394,9 @@ describe("Loader.load — missing file", () => {
 
 describe("Loader.loadJsonStrings — mid-source parse error", () => {
   const validJson = JSON.stringify({
-    metadata: {
+    "metadata.root": {
       package: "acme",
-      children: [{ object: { name: "Store", subType: "base" } }],
+      children: [{ "object.base": { name: "Store" } }],
     },
   });
 
@@ -442,7 +440,7 @@ describe("Loader — strict mode", () => {
     const loader = new Loader({ strict: true });
     // "unknownKey" is not reserved and not @-prefixed — strict rejects it
     const json = JSON.stringify({
-      metadata: { package: "test", unknownKey: "value" },
+      "metadata.root": { package: "test", unknownKey: "value" },
     });
     const { errors } = loader.loadJson(json);
     expect(errors.length).toBeGreaterThan(0);
@@ -452,7 +450,7 @@ describe("Loader — strict mode", () => {
     const loader = new Loader({ strict: true });
     // @-prefixed keys are inline attrs and are always accepted
     const json = JSON.stringify({
-      metadata: { package: "test", "@myAttr": "value" },
+      "metadata.root": { package: "test", "@myAttr": "value" },
     });
     const { errors } = loader.loadJson(json);
     expect(errors.length).toBe(0);
@@ -461,7 +459,7 @@ describe("Loader — strict mode", () => {
   it("strict: false (default) + unknown key → warning, not error", () => {
     const loader = new Loader({ strict: false });
     const json = JSON.stringify({
-      metadata: { package: "test", unknownKey: "value" },
+      "metadata.root": { package: "test", unknownKey: "value" },
     });
     const { errors, warnings } = loader.loadJson(json);
     expect(errors.length).toBe(0);
@@ -567,9 +565,9 @@ describe("Loader — round-trip integration: acme-vehicle base + overlay", () =>
 
 describe("Loader.loadJson — convenience vs loadJsonStrings", () => {
   const json = JSON.stringify({
-    metadata: {
+    "metadata.root": {
       package: "demo",
-      children: [{ object: { name: "Widget", subType: "base", "@color": "red" } }],
+      children: [{ "object.base": { name: "Widget", "@color": "red" } }],
     },
   });
 
@@ -649,17 +647,17 @@ describe("Loader.loadJson — convenience vs loadJsonStrings", () => {
 
 describe("Loader.loadJsonStrings — multiple sources always merged sequentially", () => {
   const baseJson = JSON.stringify({
-    metadata: {
+    "metadata.root": {
       package: "acme",
-      children: [{ object: { name: "Alpha", subType: "base" } }],
+      children: [{ "object.base": { name: "Alpha" } }],
     },
   });
 
   const secondJson = JSON.stringify({
-    metadata: {
+    "metadata.root": {
       package: "acme",
       // No merge: true — Java has no such file-level marker
-      children: [{ object: { name: "Beta", subType: "base" } }],
+      children: [{ "object.base": { name: "Beta" } }],
     },
   });
 
@@ -700,7 +698,7 @@ describe("Loader — additional edge cases", () => {
   it("BOM-prefixed JSON parses correctly", () => {
     const loader = new Loader();
     // Prepend UTF-8 BOM (U+FEFF)
-    const jsonWithBOM = "﻿" + JSON.stringify({ metadata: { package: "bom-test" } });
+    const jsonWithBOM = "﻿" + JSON.stringify({ "metadata.root": { package: "bom-test" } });
     const { root, errors } = loader.loadJson(jsonWithBOM, "bom.json");
     expect(errors.length).toBe(0);
     expect(root.package).toBe("bom-test");
@@ -710,7 +708,7 @@ describe("Loader — additional edge cases", () => {
     const loader = new Loader();
     const { root, errors, warnings } = loader.loadJsonStrings([]);
     expect(root.type).toBe(TYPE_METADATA);
-    expect(root.subType).toBe(SUBTYPE_BASE);
+    expect(root.subType).toBe(SUBTYPE_ROOT);
     expect(errors.length).toBe(0);
     expect(warnings.length).toBe(0);
   });
@@ -746,7 +744,7 @@ describe("Loader — additional edge cases", () => {
   it("warnings are propagated from the parser", () => {
     const loader = new Loader({ strict: false }); // non-strict: warnings not errors
     const json = JSON.stringify({
-      metadata: { package: "x", unknownKey: "val" },
+      "metadata.root": { package: "x", unknownKey: "val" },
     });
     const { warnings, errors } = loader.loadJson(json);
     expect(errors.length).toBe(0);
@@ -757,8 +755,8 @@ describe("Loader — additional edge cases", () => {
   it("unresolvable super ref produces a ParseError in errors[] (not a warning)", () => {
     const loader = new Loader({ freeze: false });
     const json = JSON.stringify({
-      metadata: {
-        children: [{ object: { name: "Widget", extends: "NonExistentBase", subType: "base" } }],
+      "metadata.root": {
+        children: [{ "object.base": { name: "Widget", extends: "NonExistentBase" } }],
       },
     });
     // Java throws on missing super — the loader catches it and puts it in errors[].
@@ -775,7 +773,7 @@ describe("Loader — additional edge cases", () => {
   it("Loader instances are independent (separate registries)", () => {
     const loader1 = new Loader();
     const loader2 = new Loader();
-    const json = '{"metadata":{}}';
+    const json = '{"metadata.root":{}}';
     const r1 = loader1.loadJson(json);
     const r2 = loader2.loadJson(json);
     expect(r1.root.type).toBe(r2.root.type);
@@ -797,13 +795,13 @@ describe("Loader — lifecycle state machine", () => {
 
   it("state is 'loaded' after loadJson", () => {
     const loader = new Loader();
-    loader.loadJson('{"metadata":{}}');
+    loader.loadJson('{"metadata.root":{}}');
     expect(loader.state).toBe("loaded");
   });
 
   it("state is 'loaded' after loadJsonStrings", () => {
     const loader = new Loader();
-    loader.loadJsonStrings([{ content: '{"metadata":{}}' }]);
+    loader.loadJsonStrings([{ content: '{"metadata.root":{}}' }]);
     expect(loader.state).toBe("loaded");
   });
 
@@ -815,7 +813,7 @@ describe("Loader — lifecycle state machine", () => {
 
   it("root getter returns the loaded root after loading", () => {
     const loader = new Loader();
-    const { root: result } = loader.loadJson('{"metadata":{"package":"demo"}}');
+    const { root: result } = loader.loadJson('{"metadata.root":{"package":"demo"}}');
     expect(loader.root).toBe(result);
     expect(loader.root.package).toBe("demo");
   });
@@ -831,8 +829,8 @@ describe("Loader — convenience accessors (findByName, findByTypeAndName, child
     const loader = new Loader({ freeze: false });
     loader.loadJson(
       JSON.stringify({
-        metadata: {
-          children: [{ object: { name: "Store", subType: "entity" } }],
+        "metadata.root": {
+          children: [{ "object.entity": { name: "Store" } }],
         },
       }),
     );
@@ -842,7 +840,7 @@ describe("Loader — convenience accessors (findByName, findByTypeAndName, child
 
   it("findByName returns undefined when not found", () => {
     const loader = new Loader({ freeze: false });
-    loader.loadJson('{"metadata":{}}');
+    loader.loadJson('{"metadata.root":{}}');
     expect(loader.findByName("Missing")).toBeUndefined();
   });
 
@@ -850,8 +848,8 @@ describe("Loader — convenience accessors (findByName, findByTypeAndName, child
     const loader = new Loader({ freeze: false });
     loader.loadJson(
       JSON.stringify({
-        metadata: {
-          children: [{ object: { name: "Widget", subType: "entity" } }],
+        "metadata.root": {
+          children: [{ "object.entity": { name: "Widget" } }],
         },
       }),
     );
@@ -862,11 +860,11 @@ describe("Loader — convenience accessors (findByName, findByTypeAndName, child
     const loader = new Loader({ freeze: false });
     loader.loadJson(
       JSON.stringify({
-        metadata: {
+        "metadata.root": {
           children: [
-            { object: { name: "A", subType: "entity" } },
-            { object: { name: "B", subType: "entity" } },
-            { field: { name: "x", subType: FIELD_SUBTYPE_STRING } },
+            { "object.entity": { name: "A" } },
+            { "object.entity": { name: "B" } },
+            { [`field.${FIELD_SUBTYPE_STRING}`]: { name: "x" } },
           ],
         },
       }),
@@ -924,10 +922,10 @@ describe("loadFromDirectory", () => {
       writeFileSync(
         join(dir, "common.json"),
         JSON.stringify({
-          metadata: {
+          "metadata.root": {
             package: "test::common",
             children: [
-              { field: { name: "id", subType: "long", "@isAbstract": true } },
+              { "field.long": { name: "id", abstract: true } },
             ],
           },
         }),
@@ -935,14 +933,13 @@ describe("loadFromDirectory", () => {
       writeFileSync(
         join(dir, "domain.json"),
         JSON.stringify({
-          metadata: {
+          "metadata.root": {
             package: "test",
             children: [
               {
-                object: {
+                "object.entity": {
                   name: "User",
-                  subType: "entity",
-                  children: [{ field: { name: "id", extends: "::test::common::id" } }],
+                  children: [{ "field.long": { name: "id", extends: "::test::common::id" } }],
                 },
               },
             ],
@@ -967,10 +964,10 @@ describe("loadFromDirectory", () => {
       writeFileSync(
         join(dir, "main.json"),
         JSON.stringify({
-          metadata: {
+          "metadata.root": {
             package: "test",
             children: [
-              { object: { name: "Main", subType: "entity", children: [] } },
+              { "object.entity": { name: "Main", children: [] } },
             ],
           },
         }),
@@ -978,10 +975,10 @@ describe("loadFromDirectory", () => {
       writeFileSync(
         join(dir, "draft.json"),
         JSON.stringify({
-          metadata: {
+          "metadata.root": {
             package: "test::draft",
             children: [
-              { object: { name: "Draft", subType: "entity", children: [] } },
+              { "object.entity": { name: "Draft", children: [] } },
             ],
           },
         }),
@@ -1020,11 +1017,11 @@ describe("loadFromDirectory", () => {
 describe("Loader — legacy @dbTable attr is NOT promoted (dropped in v0.3)", () => {
   test("@dbTable attr on an entity does not synthesize a source[dbTable] child", () => {
     const result = new Loader().loadJson(JSON.stringify({
-      metadata: { children: [
-        { object: { name: "Program", subType: "entity", "@dbTable": "programs",
+      "metadata.root": { children: [
+        { "object.entity": { name: "Program", "@dbTable": "programs",
           children: [
-            { field: { name: "id", subType: "long" } },
-            { identity: { subType: "primary", "@fields": "id" } },
+            { "field.long": { name: "id" } },
+            { "identity.primary": { "@fields": "id" } },
           ],
         }},
       ]},
