@@ -41,10 +41,8 @@ import {
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_PASSTHROUGH_ATTR_FROM,
   ORIGIN_PASSTHROUGH_ATTR_VIA,
-  ORIGIN_AGGREGATE_ATTR_AGG,
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
-  AGGREGATE_FUNCTIONS,
   RELATIONSHIP_ATTR_OBJECT_REF,
 } from "./constants.js";
 
@@ -177,9 +175,11 @@ function validateFilterableHasIndex(root: MetaModel): string[] {
 // and validates:
 //   - passthrough.@from resolves to an existing entity + field
 //   - aggregate.@of resolves to an existing entity + field
-//   - aggregate.@agg is in AGGREGATE_FUNCTIONS vocab
 //   - .@via paths resolve through real relationships, hopping entity-by-entity
 //     using each relationship's @objectRef
+//
+// Note: @agg vocabulary is validated by validateAttrSchema (A3 pass) via
+// allowedValues on the origin.aggregate @agg attr schema — not here.
 // ---------------------------------------------------------------------------
 
 function _findObject(root: MetaModel, name: string): MetaModel | undefined {
@@ -312,23 +312,6 @@ function validateOriginPaths(root: MetaModel): ParseError[] {
             _validateViaPath(via, root, obj.name, field.name, errors);
           }
         } else if (origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
-          const agg = origin.attr(ORIGIN_AGGREGATE_ATTR_AGG);
-          if (typeof agg !== "string" || agg === "") {
-            errors.push(
-              new ParseError(
-                `origin.aggregate on ${obj.name}.${field.name}: missing @agg.`,
-              ),
-            );
-            continue;
-          }
-          if (!(AGGREGATE_FUNCTIONS as readonly string[]).includes(agg)) {
-            errors.push(
-              new ParseError(
-                `origin.aggregate.@agg "${agg}" on ${obj.name}.${field.name}: not a valid aggregate function. Valid: ${AGGREGATE_FUNCTIONS.join(", ")}.`,
-              ),
-            );
-            continue;
-          }
           const of_ = origin.attr(ORIGIN_AGGREGATE_ATTR_OF);
           if (typeof of_ !== "string" || of_ === "") {
             errors.push(

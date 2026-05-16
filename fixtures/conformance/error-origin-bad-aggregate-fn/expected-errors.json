@@ -1,4 +1,3 @@
 [
-  "origin.aggregate attribute '@agg' has value 'notARealFn' which is not one of the allowed values: count, sum, avg, min, max",
-  "origin.aggregate.@agg \"notARealFn\" on ProgramSummary.weekStat: not a valid aggregate function. Valid: count, sum, avg, min, max."
+  "origin.aggregate attribute '@agg' has value 'notARealFn' which is not one of the allowed values: count, sum, avg, min, max"
 ]
