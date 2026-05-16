@@ -35,7 +35,7 @@ export interface AttrSchema {
   /** Default value applied when the attribute is absent. Optional. */
   default?: AttrValue;
   /** When set, the attribute's value must be one of these (a closed enum). Optional. */
-  allowedValues?: readonly string[];
+  allowedValues?: readonly AttrValue[];
   /** Human/AI-facing description of what the attribute means. */
   description: string;
 }
