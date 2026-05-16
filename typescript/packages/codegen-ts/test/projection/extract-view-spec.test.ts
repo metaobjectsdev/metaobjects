@@ -4,10 +4,9 @@ import { extractViewSpec } from "../../src/projection/extract-view-spec.js";
 
 // ---------------------------------------------------------------------------
 // Helper — wraps an array of top-level node objects in the metadata envelope
-// expected by the Loader and returns { root } with errors thrown if any.
+// expected by MetaDataLoader and returns { root } with errors thrown if any.
 // ---------------------------------------------------------------------------
 async function load(children: unknown[]) {
-
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });
   const result = await new MetaDataLoader().load([new InMemorySource(json)]);
   if (result.errors.length > 0) {

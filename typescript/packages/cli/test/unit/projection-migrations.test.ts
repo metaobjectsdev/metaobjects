@@ -6,7 +6,6 @@ import { computeProjectionMigrations } from "../../src/lib/projection-migrations
 // Helper — wrap children in metadata envelope and load.
 // ---------------------------------------------------------------------------
 async function load(children: unknown[]) {
-
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });
   const result = await new MetaDataLoader().load([new InMemorySource(json)]);
   if (result.errors.length > 0) {

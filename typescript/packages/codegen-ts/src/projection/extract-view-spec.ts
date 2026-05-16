@@ -360,9 +360,9 @@ function buildGroupBy(spec: SelectSpec): string[] {
  *
  * @param projection  The projection entity MetaModel (has a source[dbView] child
  *                    and extends a writable entity).
- * @param root        The Loader's root MetaModel — all top-level objects are
- *                    direct children of root (returned by `Loader.loadJson()` /
- *                    `Loader.loadJsonStrings()` as `result.root`).
+ * @param root        The loader's root MetaModel — all top-level objects are
+ *                    direct children of root (returned by `MetaDataLoader.load()`
+ *                    / `FileMetaDataLoader.loadFiles()` as `result.root`).
  * @param ctx         Column naming strategy for SQL identifiers.
  */
 export function extractViewSpec(

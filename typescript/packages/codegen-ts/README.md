@@ -12,11 +12,11 @@ npm install @metaobjects/codegen-ts @metaobjects/metadata drizzle-orm zod
 ## Usage
 
 ```typescript
-import { Loader } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata";
 import { generate } from "@metaobjects/codegen-ts";
 
-const loader = new Loader();
-const { root } = await loader.load([".meta/memory/object/Post.json"]);
+const loader = new FileMetaDataLoader();
+const { root } = await loader.loadFiles([".meta/memory/object/Post.json"]);
 
 const result = await generate({
   metadata: root,

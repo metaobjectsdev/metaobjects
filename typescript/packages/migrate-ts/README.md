@@ -12,13 +12,13 @@ and emits paired `up.sql` + `down.sql` migration files.
 ```typescript
 import { Kysely } from "kysely";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
-import { Loader } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata";
 import {
   buildExpectedSchema, introspectSqlite, diff, emit, writeMigration,
 } from "@metaobjects/migrate-ts";
 
 // 1. Load metadata.
-const metadata = new Loader().load(metadataJson).metadata;
+const { root: metadata } = await new FileMetaDataLoader().loadDirectory("./metaobjects");
 
 // 2. Connect to live DB.
 const db = new Kysely({ dialect: new LibsqlDialect({ url: "file:./local.db" }) });

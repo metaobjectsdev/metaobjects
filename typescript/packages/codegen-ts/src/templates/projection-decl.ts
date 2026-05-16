@@ -58,7 +58,8 @@ function pathFromProjectionName(name: string): string {
  *   - `<Projection>` const   — constants block ($entity, $view, $path, per-field metadata)
  *
  * @param projection  The projection entity MetaModel (has a source[dbView] child).
- * @param root        The Loader's root MetaModel (all top-level objects as direct children).
+ * @param root        The loader's root MetaModel (all top-level objects as direct children,
+ *                    from `MetaDataLoader.load()` / `FileMetaDataLoader.loadFiles()` as `result.root`).
  * @param opts        Column naming strategy + dialect.
  */
 export function renderProjectionDecl(

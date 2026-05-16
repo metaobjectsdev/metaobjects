@@ -145,7 +145,7 @@ When node B has `super: A`:
 
 ### 4.4 Cross-file resolution
 
-A `super:` reference can target a node in a different file, as long as both files were passed to `Loader.load(paths[])` (or both live in the directory passed to `loadFromDirectory`). The loader resolves references across the full set of input files.
+A `super:` reference can target a node in a different file, as long as both files were passed to `FileMetaDataLoader.loadFiles(paths[])` (or both live in the directory passed to `loadDirectory`). The loader resolves references across the full set of input files.
 
 ## 5. Overlay vs override
 
@@ -215,22 +215,24 @@ When this file is loaded alongside one that declares `acme::Vehicle`, the overla
 Two entry points (TypeScript):
 
 ```typescript
-import { Loader } from "@metaobjects/metadata";
+import { FileMetaDataLoader, MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 
-const loader = new Loader();
-
-// Load specific files:
-const result1 = await loader.load(["path/to/a.json", "path/to/b.json"]);
+// Load specific files from disk:
+const loader = new FileMetaDataLoader();
+const result1 = await loader.loadFiles(["path/to/a.json", "path/to/b.json"]);
 
 // Load everything in a directory:
-const result2 = await loader.loadFromDirectory("path/to/dir", {
+const result2 = await loader.loadDirectory("path/to/dir", {
   exclude: ["_pending/**"],
 });
+
+// Load from an in-memory JSON string (e.g. in tests):
+const result3 = await new MetaDataLoader().load([new InMemorySource(jsonString)]);
 
 // result.root is the merged MetaModel; result.errors / result.warnings carry diagnostics.
 ```
 
-Strict mode rejects unknown types/attributes; permissive mode (the default) tolerates them as warnings. Set via `new Loader({ strict: true })`.
+Strict mode rejects unknown types/attributes; permissive mode (the default) tolerates them as warnings. Set via `new FileMetaDataLoader({ strict: true })`.
 
 ## 8. See also
 

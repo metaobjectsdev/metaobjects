@@ -1,8 +1,10 @@
-import { test, expect, describe } from "bun:test";
+import { test, expect, describe, beforeAll } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
+import type { MetaModel } from "@metaobjects/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
+import type { SchemaSnapshot, ColumnDescriptor } from "../../src/types.js";
 
 async function loadFixture(name: string) {
   const json = readFileSync(join(import.meta.dir, "..", "fixtures", `${name}.json`), "utf8");
@@ -11,122 +13,105 @@ async function loadFixture(name: string) {
 }
 
 describe("buildExpectedSchema — single entity", () => {
-  test("produces one table with snake_case + pluralized name", async () => {
-    const metadata = await loadFixture("single-entity");
-    const snapshot = buildExpectedSchema(metadata);
+  let metadata: MetaModel;
+  let snapshot: SchemaSnapshot;
+
+  beforeAll(async () => {
+    metadata = await loadFixture("single-entity");
+    snapshot = buildExpectedSchema(metadata);
+  });
+
+  test("produces one table with snake_case + pluralized name", () => {
     expect(snapshot.tables).toHaveLength(1);
     expect(snapshot.tables[0]?.name).toBe("users");
   });
 
-  test("columns are snake_cased and in metadata order", async () => {
-    const metadata = await loadFixture("single-entity");
-    const snapshot = buildExpectedSchema(metadata);
+  test("columns are snake_cased and in metadata order", () => {
     const cols = snapshot.tables[0]?.columns ?? [];
     expect(cols.map((c) => c.name)).toEqual(["id", "email", "first_name", "is_active", "created_at"]);
   });
 
-  test("string field → text(unbounded), boolean → boolean, long → integer{64}", async () => {
-    const metadata = await loadFixture("single-entity");
-    const snapshot = buildExpectedSchema(metadata);
+  test("string field → text(unbounded), boolean → boolean, long → integer{64}", () => {
     const cols = snapshot.tables[0]?.columns ?? [];
     expect(cols[0]?.sqlType).toEqual({ kind: "integer", bits: 64 });
     expect(cols[1]?.sqlType).toEqual({ kind: "text" });
     expect(cols[3]?.sqlType).toEqual({ kind: "boolean" });
   });
 
-  test("primary key reflects identity record", async () => {
-    const metadata = await loadFixture("single-entity");
-    const snapshot = buildExpectedSchema(metadata);
+  test("primary key reflects identity record", () => {
     expect(snapshot.tables[0]?.primaryKey).toEqual(["id"]);
   });
 
-  test("views array always empty in v0.1", async () => {
-    const metadata = await loadFixture("single-entity");
-    const snapshot = buildExpectedSchema(metadata);
+  test("views array always empty in v0.1", () => {
     expect(snapshot.views).toEqual([]);
   });
 
-  test("no indexes / FKs yet (Task 8)", async () => {
-    const metadata = await loadFixture("single-entity");
-    const snapshot = buildExpectedSchema(metadata);
+  test("no indexes / FKs yet (Task 8)", () => {
     expect(snapshot.tables[0]?.indexes).toEqual([]);
     expect(snapshot.tables[0]?.foreignKeys).toEqual([]);
   });
 });
 
 describe("buildExpectedSchema — nullable / default / identity", () => {
-  test("PK column is non-nullable even without explicit required attr", async () => {
+  let snapshot: SchemaSnapshot;
+  let byName: Map<string, ColumnDescriptor>;
+
+  beforeAll(async () => {
     const metadata = await loadFixture("single-entity");
-    const snapshot = buildExpectedSchema(metadata);
+    snapshot = buildExpectedSchema(metadata);
     const cols = snapshot.tables[0]?.columns ?? [];
-    const byName = new Map(cols.map((c) => [c.name, c]));
+    byName = new Map(cols.map((c) => [c.name, c]));
+  });
+
+  test("PK column is non-nullable even without explicit required attr", () => {
     expect(byName.get("id")?.nullable).toBe(false);
   });
 
-  test("required=true → nullable=false", async () => {
-    const metadata = await loadFixture("single-entity");
-    const snapshot = buildExpectedSchema(metadata);
-    const cols = snapshot.tables[0]?.columns ?? [];
-    const byName = new Map(cols.map((c) => [c.name, c]));
+  test("required=true → nullable=false", () => {
     expect(byName.get("email")?.nullable).toBe(false);
   });
 
-  test("no required attr → nullable=true", async () => {
-    const metadata = await loadFixture("single-entity");
-    const snapshot = buildExpectedSchema(metadata);
-    const cols = snapshot.tables[0]?.columns ?? [];
-    const byName = new Map(cols.map((c) => [c.name, c]));
+  test("no required attr → nullable=true", () => {
     expect(byName.get("first_name")?.nullable).toBe(true);
   });
 
-  test("default literal (boolean true)", async () => {
-    const metadata = await loadFixture("single-entity");
-    const snapshot = buildExpectedSchema(metadata);
-    const cols = snapshot.tables[0]?.columns ?? [];
-    const byName = new Map(cols.map((c) => [c.name, c]));
+  test("default literal (boolean true)", () => {
     expect(byName.get("is_active")?.default).toEqual({ kind: "literal", value: "true" });
   });
 
-  test("default expression (CURRENT_TIMESTAMP detected as expr, not literal)", async () => {
-    const metadata = await loadFixture("single-entity");
-    const snapshot = buildExpectedSchema(metadata);
-    const cols = snapshot.tables[0]?.columns ?? [];
-    const byName = new Map(cols.map((c) => [c.name, c]));
+  test("default expression (CURRENT_TIMESTAMP detected as expr, not literal)", () => {
     expect(byName.get("created_at")?.default).toEqual({
       kind: "expr",
       value: "CURRENT_TIMESTAMP",
     });
   });
 
-  test("PK column with generation=increment gets identity=increment", async () => {
-    const metadata = await loadFixture("single-entity");
-    const snapshot = buildExpectedSchema(metadata);
-    const cols = snapshot.tables[0]?.columns ?? [];
-    const byName = new Map(cols.map((c) => [c.name, c]));
+  test("PK column with generation=increment gets identity=increment", () => {
     expect(byName.get("id")?.identity).toBe("increment");
   });
 });
 
 describe("buildExpectedSchema — indexes + FKs", () => {
-  test("secondary identity → unique index", async () => {
+  let snapshot: SchemaSnapshot;
+
+  beforeAll(async () => {
     const metadata = await loadFixture("two-entities-fk");
-    const snapshot = buildExpectedSchema(metadata);
+    snapshot = buildExpectedSchema(metadata);
+  });
+
+  test("secondary identity → unique index", () => {
     const programs = snapshot.tables.find((t) => t.name === "programs");
     expect(programs?.indexes).toEqual([
       { name: "programs_unique_slug", columns: ["slug"], unique: true },
     ]);
   });
 
-  test("primary identity does NOT produce a separate index (PK is intrinsic)", async () => {
-    const metadata = await loadFixture("two-entities-fk");
-    const snapshot = buildExpectedSchema(metadata);
+  test("primary identity does NOT produce a separate index (PK is intrinsic)", () => {
     const programs = snapshot.tables.find((t) => t.name === "programs");
     expect(programs?.indexes.find((i) => i.name === "programs_pk")).toBeUndefined();
   });
 
-  test("many-to-one relationship → FK on child table", async () => {
-    const metadata = await loadFixture("two-entities-fk");
-    const snapshot = buildExpectedSchema(metadata);
+  test("many-to-one relationship → FK on child table", () => {
     const weeks = snapshot.tables.find((t) => t.name === "weeks");
     expect(weeks?.foreignKeys).toEqual([
       {
@@ -138,9 +123,7 @@ describe("buildExpectedSchema — indexes + FKs", () => {
     ]);
   });
 
-  test("FK column on child is also present as a regular column", async () => {
-    const metadata = await loadFixture("two-entities-fk");
-    const snapshot = buildExpectedSchema(metadata);
+  test("FK column on child is also present as a regular column", () => {
     const weeks = snapshot.tables.find((t) => t.name === "weeks");
     const programIdCol = weeks?.columns.find((c) => c.name === "program_id");
     expect(programIdCol).toBeDefined();
