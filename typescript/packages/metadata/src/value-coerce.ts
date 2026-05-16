@@ -16,7 +16,7 @@
 //   - undefined → throws. Should never arrive from JSON.parse.
 //   - Object/plain-object → throws. Not a valid attr value type.
 
-import type { AttrValue } from "./model.js";
+import type { AttrValue } from "./meta/meta-data.js";
 
 export type InferredType = "string" | "int" | "long" | "double" | "boolean";
 

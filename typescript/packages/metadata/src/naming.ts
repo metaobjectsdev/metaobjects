@@ -1,4 +1,4 @@
-import type { MetaModel } from "./model.js";
+import type { MetaModel } from "./meta/meta-data.js";
 import {
   TYPE_FIELD, TYPE_SOURCE, FIELD_ATTR_DB_COLUMN,
   SOURCE_SUBTYPE_DB_TABLE, SOURCE_DB_TABLE_ATTR_NAME,

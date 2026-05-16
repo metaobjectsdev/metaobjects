@@ -1,7 +1,8 @@
 // Public API surface for @metaobjects/metadata v0.2.0
 //
-// Architecture: runtime model (MetaModel) + open type registry + JSON
-// parser/serializer + Loader orchestration. Java-pattern aligned.
+// Architecture: one typed tree of concrete node classes under src/meta/,
+// plus open type registry + JSON parser/serializer + Loader orchestration.
+// Java-pattern aligned.
 //
 // See docs/strategy/2026-05-09-northstar-v4.md and
 // docs/specs/2026-05-09-v0.2-ts-pillar.md for context.
@@ -9,39 +10,64 @@
 // Constants — type names, subtype names, reserved keys, separators
 export * from "./constants.js";
 
-// Model (flat data layer)
-export { MetaModel } from "./model.js";
-export type { AttrValue } from "./model.js";
+// MetaData node base — abstract class; also exports AttrValue + MetaModel alias
+export { MetaData } from "./meta/meta-data.js";
+export type { AttrValue, MetaModel } from "./meta/meta-data.js";
 
-// Typed views (reflection layer over MetaModel — see views.ts)
+// Concrete node classes
+export { MetaRoot } from "./meta/meta-root.js";
+export { MetaObject } from "./meta/meta-object.js";
+export { MetaField } from "./meta/meta-field.js";
+// Identity: base + subtype-specific
 export {
-  MetaData,
-  MetaRoot,
-  MetaObject,
-  MetaField,
-  // Identity: base + subtype-specific
   MetaIdentity,
   MetaPrimaryIdentity,
   MetaSecondaryIdentity,
-  // Relationship
-  MetaRelationship,
-  // Validator: base + subtype-specific
+} from "./meta/meta-identity.js";
+export type { IdentityGeneration } from "./meta/meta-identity.js";
+// Relationship
+export { MetaRelationship } from "./meta/meta-relationship.js";
+// Validator: base + subtype-specific
+export {
   MetaValidator,
   MetaRequiredValidator,
   MetaLengthValidator,
   MetaRegexValidator,
   MetaNumericValidator,
   MetaArrayValidator,
-  // Other
-  MetaView,
-  MetaAttr,
-  MetaLayout,
-  MetaSource,
-  MetaOrigin,
-  // Factory
-  metaOf,
-} from "./views.js";
-export type { AnyMeta, IdentityGeneration } from "./views.js";
+} from "./meta/meta-validator.js";
+// Other node classes
+export { MetaView } from "./meta/meta-view.js";
+export { MetaAttr } from "./meta/meta-attr.js";
+export { MetaLayout } from "./meta/meta-layout.js";
+export { MetaSource } from "./meta/meta-source.js";
+export { MetaOrigin } from "./meta/meta-origin.js";
+
+// AnyMeta — union of all concrete node types (replaces the old metaOf return type)
+import type { MetaRoot } from "./meta/meta-root.js";
+import type { MetaObject } from "./meta/meta-object.js";
+import type { MetaField } from "./meta/meta-field.js";
+import type { MetaIdentity } from "./meta/meta-identity.js";
+import type { MetaRelationship } from "./meta/meta-relationship.js";
+import type { MetaValidator } from "./meta/meta-validator.js";
+import type { MetaView } from "./meta/meta-view.js";
+import type { MetaAttr } from "./meta/meta-attr.js";
+import type { MetaLayout } from "./meta/meta-layout.js";
+import type { MetaSource } from "./meta/meta-source.js";
+import type { MetaOrigin } from "./meta/meta-origin.js";
+
+export type AnyMeta =
+  | MetaRoot
+  | MetaObject
+  | MetaField
+  | MetaIdentity
+  | MetaRelationship
+  | MetaValidator
+  | MetaView
+  | MetaAttr
+  | MetaLayout
+  | MetaSource
+  | MetaOrigin;
 
 // Registry
 export { TypeId, TypeRegistry, childRuleMatches } from "./registry.js";
