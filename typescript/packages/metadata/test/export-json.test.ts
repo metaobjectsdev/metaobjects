@@ -60,7 +60,7 @@ describe("loadAndExportJson — multi-file happy path (conformance fixture)", ()
     // Canonical form wraps the root with a fused key
     const keys = Object.keys(parsed as Record<string, unknown>);
     expect(keys).toHaveLength(1);
-    expect(keys[0]).toBe("metadata.root");
+    expect(keys[0]).toBe(`${TYPE_METADATA}.${SUBTYPE_ROOT}`);
   });
 
   it("json contains both ProductA and ProductB (multi-file merge)", async () => {

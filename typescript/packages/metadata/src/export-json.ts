@@ -10,15 +10,14 @@
 //   - Content errors (parse/validation failures) are collected in errors[] and
 //     returned in the result — they do NOT throw. `json` is still produced from
 //     whatever tree the Loader returned (Loader always returns a valid MetaModel).
-//   - I/O failures (unreadable directory) propagate as thrown errors, because
-//     that is what Loader.loadFromDirectory already does for readdir failures
-//     (it returns an error in errors[] rather than throwing — so we surface it
-//     in errors[] too, consistent with that policy).
+//   - I/O failures (missing/unreadable directory) are caught by
+//     `loadFromDirectory` and returned in its `errors[]`; `loadAndExportJson`
+//     surfaces them unchanged in `ExportResult.errors`. It does not throw for
+//     directory or metadata problems.
 
 import { Loader } from "./loader.js";
 import type { LoadOptions } from "./loader.js";
 import { canonicalSerialize } from "./serializer-json.js";
-import { ParseError } from "./errors.js";
 
 // ---------------------------------------------------------------------------
 // Public API
