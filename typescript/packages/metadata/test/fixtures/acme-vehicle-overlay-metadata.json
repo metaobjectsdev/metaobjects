@@ -1,34 +1,80 @@
-{"metadata": {"package": "acme",
-  "children": [
-    {"object": {"package": "::garage", "name": "Garage", "merge": true,
-        "children": [
-          {"field": {"name": "premiumLocation", "subType": "boolean", "@default": false}}
-        ]
-      }
-    },
-    {"object": {"package": "::vehicle", "name": "Vehicle", "merge": true,
-        "children": [
-          {"field": {"name": "warranty", "subType": "boolean", "@default": true}},
-          {"field": {"name": "inspectionDate", "subType": "date",
-              "children": [
-                {"validator": {"name": "pastDate", "subType": "required", "@maxDate": "today"}}
-              ]
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.base": {
+          "name": "Garage",
+          "package": "::garage",
+          "overlay": true,
+          "children": [
+            {
+              "field.boolean": {
+                "name": "premiumLocation",
+                "@default": false
+              }
             }
-          }
-        ]
+          ]
+        }
+      },
+      {
+        "object.base": {
+          "name": "Vehicle",
+          "package": "::vehicle",
+          "overlay": true,
+          "children": [
+            {
+              "field.boolean": {
+                "name": "warranty",
+                "@default": true
+              }
+            },
+            {
+              "field.date": {
+                "name": "inspectionDate",
+                "children": [
+                  {
+                    "validator.required": {
+                      "name": "pastDate",
+                      "@maxDate": "today"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.base": {
+          "name": "Porsche",
+          "package": "::vehicle::car::luxury",
+          "overlay": true,
+          "children": [
+            {
+              "field.boolean": {
+                "name": "certifiedPreOwned",
+                "@default": false
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.base": {
+          "name": "Motorcycle",
+          "package": "::vehicle::motorcycle",
+          "overlay": true,
+          "children": [
+            {
+              "field.boolean": {
+                "name": "customPaint",
+                "@default": false
+              }
+            }
+          ]
+        }
       }
-    },
-    {"object": {"package": "::vehicle::car::luxury", "name": "Porsche", "merge": true,
-        "children": [
-          {"field": {"name": "certifiedPreOwned", "subType": "boolean", "@default": false}}
-        ]
-      }
-    },
-    {"object": {"package": "::vehicle::motorcycle", "name": "Motorcycle", "merge": true,
-        "children": [
-          {"field": {"name": "customPaint", "subType": "boolean", "@default": false}}
-        ]
-      }
-    }
-  ]
-}}
+    ]
+  }
+}

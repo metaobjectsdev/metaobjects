@@ -1,6 +1,5 @@
 {
-  "metadata": {
-    "package": "acme",
-    "subType": "base"
+  "metadata.root": {
+    "package": "acme"
   }
 }

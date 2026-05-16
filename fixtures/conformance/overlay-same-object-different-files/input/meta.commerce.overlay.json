@@ -1,14 +1,17 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme::commerce",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Product",
-          "subType": "entity",
-          "merge": true,
+          "overlay": true,
           "children": [
-            { "field": { "name": "description", "subType": "string" } }
+            {
+              "field.string": {
+                "name": "description"
+              }
+            }
           ]
         }
       }

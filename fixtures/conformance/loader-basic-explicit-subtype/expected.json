@@ -1,40 +1,33 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme",
-    "subType": "base",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Sample",
-          "subType": "entity",
           "children": [
             {
-              "field": {
-                "name": "id",
-                "subType": "long"
+              "field.long": {
+                "name": "id"
               }
             },
             {
-              "field": {
-                "name": "title",
-                "subType": "string"
+              "field.string": {
+                "name": "title"
               }
             },
             {
-              "field": {
-                "name": "count",
-                "subType": "int"
+              "field.int": {
+                "name": "count"
               }
             },
             {
-              "field": {
-                "name": "active",
-                "subType": "boolean"
+              "field.boolean": {
+                "name": "active"
               }
             },
             {
-              "identity": {
-                "subType": "primary",
+              "identity.primary": {
                 "@fields": "id"
               }
             }

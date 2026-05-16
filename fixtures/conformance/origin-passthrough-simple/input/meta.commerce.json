@@ -1,33 +1,56 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme::commerce",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Program",
-          "subType": "entity",
           "children": [
-            { "field": { "name": "id", "subType": "long" } },
-            { "field": { "name": "title", "subType": "string" } },
-            { "identity": { "subType": "primary", "@fields": "id" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
           ]
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "ProgramSummary",
-          "subType": "entity",
           "extends": "Program",
           "children": [
-            { "source": { "subType": "dbView", "@name": "v_program_summary" } },
-            { "field": {
+            {
+              "source.dbView": {
+                "@name": "v_program_summary"
+              }
+            },
+            {
+              "field.string": {
                 "name": "displayTitle",
-                "subType": "string",
                 "children": [
-                  { "origin": { "subType": "passthrough", "@from": "Program.title" } }
+                  {
+                    "origin.passthrough": {
+                      "@from": "Program.title"
+                    }
+                  }
                 ]
-            } },
-            { "identity": { "subType": "primary", "@fields": "id" } }
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
           ]
         }
       }

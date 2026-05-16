@@ -1,36 +1,30 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme",
-    "subType": "base",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Subscriber",
-          "subType": "entity",
           "children": [
             {
-              "field": {
-                "name": "id",
-                "subType": "long"
+              "field.long": {
+                "name": "id"
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "email",
-                "subType": "string",
                 "@filterable": true
               }
             },
             {
-              "identity": {
-                "subType": "primary",
+              "identity.primary": {
                 "@fields": "id"
               }
             },
             {
-              "identity": {
+              "identity.secondary": {
                 "name": "byEmail",
-                "subType": "secondary",
                 "@fields": "email"
               }
             }

@@ -1,35 +1,29 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme",
-    "subType": "base",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Document",
-          "subType": "entity",
           "children": [
             {
-              "field": {
-                "name": "id",
-                "subType": "long"
+              "field.long": {
+                "name": "id"
               }
             },
             {
-              "field": {
-                "name": "title",
-                "subType": "string"
+              "field.string": {
+                "name": "title"
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "updatedAt",
-                "subType": "string",
                 "@autoSet": "onUpdate"
               }
             },
             {
-              "identity": {
-                "subType": "primary",
+              "identity.primary": {
                 "@fields": "id"
               }
             }

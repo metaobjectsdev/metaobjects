@@ -1,51 +1,44 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "test_schema_validation",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "User",
-          "subType": "entity",
           "@javaRuntime": "pojo",
           "children": [
             {
-              "field": {
+              "field.long": {
                 "name": "id",
-                "subType": "long",
                 "@required": true,
                 "children": [
                   {
-                    "validator": {
-                      "name": "required",
-                      "subType": "required"
+                    "validator.required": {
+                      "name": "required"
                     }
                   }
                 ]
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "username",
-                "subType": "string",
                 "@maxLength": 50,
                 "@pattern": "^[a-zA-Z0-9_]+$",
                 "children": [
                   {
-                    "attr": {
+                    "attr.boolean": {
                       "name": "required",
-                      "subType": "boolean",
                       "value": "true"
                     }
                   },
                   {
-                    "validator": {
+                    "validator.length": {
                       "name": "length",
-                      "subType": "length",
                       "children": [
                         {
-                          "attr": {
+                          "attr.int": {
                             "name": "maxLength",
-                            "subType": "int",
                             "value": "50"
                           }
                         }
@@ -53,14 +46,12 @@
                     }
                   },
                   {
-                    "validator": {
+                    "validator.regex": {
                       "name": "pattern",
-                      "subType": "regex",
                       "children": [
                         {
-                          "attr": {
+                          "attr.string": {
                             "name": "pattern",
-                            "subType": "string",
                             "value": "^[a-zA-Z0-9_]+$"
                           }
                         }
@@ -71,21 +62,18 @@
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "email",
-                "subType": "string",
                 "@required": true,
                 "@maxLength": 255,
                 "children": [
                   {
-                    "validator": {
+                    "validator.regex": {
                       "name": "emailPattern",
-                      "subType": "regex",
                       "children": [
                         {
-                          "attr": {
+                          "attr.string": {
                             "name": "pattern",
-                            "subType": "string",
                             "value": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
                           }
                         }
@@ -96,14 +84,12 @@
               }
             },
             {
-              "field": {
+              "field.date": {
                 "name": "createdDate",
-                "subType": "date",
                 "children": [
                   {
-                    "attr": {
+                    "attr.string": {
                       "name": "format",
-                      "subType": "string",
                       "value": "yyyy-MM-dd"
                     }
                   }
@@ -111,17 +97,17 @@
               }
             },
             {
-              "field": {
+              "field.double": {
                 "name": "score",
-                "subType": "double",
                 "@defaultValue": "0.0"
               }
             },
             {
-              "identity": {
+              "identity.primary": {
                 "name": "primary",
-                "subType": "primary",
-                "@fields": ["id"],
+                "@fields": [
+                  "id"
+                ],
                 "@generation": "increment"
               }
             }

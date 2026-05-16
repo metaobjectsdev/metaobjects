@@ -1,30 +1,47 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme::commerce",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Product",
-          "subType": "entity",
           "children": [
-            { "field": { "name": "id", "subType": "long" } },
-            { "field": {
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.currency": {
                 "name": "priceUsd",
-                "subType": "currency",
                 "@currency": "USD",
                 "children": [
-                  { "view": { "subType": "currency", "@locale": "en-US" } }
+                  {
+                    "view.currency": {
+                      "@locale": "en-US"
+                    }
+                  }
                 ]
-            } },
-            { "field": {
+              }
+            },
+            {
+              "field.currency": {
                 "name": "priceEur",
-                "subType": "currency",
                 "@currency": "EUR",
                 "children": [
-                  { "view": { "subType": "currency", "@locale": "de-DE" } }
+                  {
+                    "view.currency": {
+                      "@locale": "de-DE"
+                    }
+                  }
                 ]
-            } },
-            { "identity": { "subType": "primary", "@fields": "id" } }
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
           ]
         }
       }

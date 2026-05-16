@@ -1,23 +1,35 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Subscriber",
-          "subType": "entity",
           "children": [
-            { "field": { "name": "id", "subType": "long" } },
-            { "field": { "name": "email", "subType": "string" } },
-            { "identity": { "subType": "primary", "@fields": "id" } },
             {
-              "layout": {
-                "subType": "dataGrid",
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "email"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            },
+            {
+              "layout.dataGrid": {
                 "name": "default",
                 "@pageSize": 25,
                 "@defaultSortField": "doesNotExist",
                 "@defaultSortOrder": "desc",
-                "@columns": ["email"]
+                "@columns": [
+                  "email"
+                ]
               }
             }
           ]

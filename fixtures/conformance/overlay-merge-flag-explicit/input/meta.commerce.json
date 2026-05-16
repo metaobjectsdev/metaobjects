@@ -1,14 +1,21 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Product",
-          "subType": "entity",
           "children": [
-            { "field": { "name": "id", "subType": "long" } },
-            { "identity": { "subType": "primary", "@fields": "id" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
           ]
         }
       }

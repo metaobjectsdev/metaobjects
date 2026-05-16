@@ -39,7 +39,15 @@ export const SUBTYPE_BASE = "base";
 // Metadata subtypes (1)
 // ---------------------------------------------------------------------------
 
-// (metadata has only base; use universal SUBTYPE_BASE)
+/**
+ * The metadata document root subtype. The root node is `metadata.root` in the
+ * canonical format. (Distinct from the universal SUBTYPE_BASE — the redesigned
+ * format spec confirms the root subtype is `root`, not `base`.)
+ */
+export const SUBTYPE_ROOT = "root";
+
+export const METADATA_SUBTYPES = [SUBTYPE_ROOT] as const;
+export type MetadataSubType = (typeof METADATA_SUBTYPES)[number];
 
 // ---------------------------------------------------------------------------
 // Object subtypes (cross-language, conceptual)
@@ -249,26 +257,32 @@ export const RELATIONSHIP_SUBTYPES = [
 export type RelationshipSubType = (typeof RELATIONSHIP_SUBTYPES)[number];
 
 // ---------------------------------------------------------------------------
-// Reserved JSON keys (NOT @-prefixed, NOT converted to attrs)
+// Reserved structural body keys (redesigned format — NOT @-prefixed, NOT attrs)
+//
+// Every node body is a map whose only permitted non-@ keys are these. The
+// canonical body-key order is: name, package, extends, abstract, overlay,
+// isArray, @-attrs (alphabetical), children.
 // ---------------------------------------------------------------------------
 
 export const RESERVED_KEY_NAME = "name";
-export const RESERVED_KEY_SUBTYPE = "subType";
 export const RESERVED_KEY_PACKAGE = "package";
-export const RESERVED_KEY_EXTENDS = "extends";   // v0.3 — sets the supertype reference
-export const RESERVED_KEY_IS_ABSTRACT = "isAbstract";
+export const RESERVED_KEY_EXTENDS = "extends";   // the supertype reference
+export const RESERVED_KEY_ABSTRACT = "abstract"; // true → the node is abstract
+export const RESERVED_KEY_OVERLAY = "overlay";   // true → re-opens an existing same-named node
+export const RESERVED_KEY_IS_ARRAY = "isArray";  // true → the node is an array
 export const RESERVED_KEY_CHILDREN = "children";
-export const RESERVED_KEY_MERGE = "merge";       // v0.3 — merges into an existing node (error if missing)
-export const RESERVED_KEY_VALUE = "value"; // for attr child nodes
+
+/** attr-child-node body key carrying the typed value. */
+export const RESERVED_KEY_VALUE = "value";
 
 export const RESERVED_KEYS = new Set<string>([
   RESERVED_KEY_NAME,
-  RESERVED_KEY_SUBTYPE,
   RESERVED_KEY_PACKAGE,
   RESERVED_KEY_EXTENDS,
-  RESERVED_KEY_IS_ABSTRACT,
+  RESERVED_KEY_ABSTRACT,
+  RESERVED_KEY_OVERLAY,
+  RESERVED_KEY_IS_ARRAY,
   RESERVED_KEY_CHILDREN,
-  RESERVED_KEY_MERGE,
   RESERVED_KEY_VALUE,
 ]);
 
@@ -279,10 +293,13 @@ export const RESERVED_KEYS = new Set<string>([
 export const JSON_KEY_SCHEMA = "$schema";
 
 // ---------------------------------------------------------------------------
-// Inline attribute prefix
+// Inline attribute prefix + fused type.subType key separator
 // ---------------------------------------------------------------------------
 
 export const ATTR_PREFIX = "@";
+
+/** Separator fusing type and subType in a node's wrapper key (`object.entity`). */
+export const TYPE_SUBTYPE_SEPARATOR = ".";
 
 // ---------------------------------------------------------------------------
 // Special attribute names (intercepted by parser/serializer — NOT stored as

@@ -1,37 +1,68 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Subscriber",
-          "subType": "entity",
           "children": [
-            { "field": { "name": "id", "subType": "long" } },
-            { "field": { "name": "email", "subType": "string" } },
-            { "field": { "name": "firstName", "subType": "string" } },
-            { "field": { "name": "subscribed", "subType": "boolean" } },
-            { "field": { "name": "createdAt", "subType": "string" } },
-            { "identity": { "subType": "primary", "@fields": "id" } },
             {
-              "layout": {
-                "subType": "dataGrid",
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "email"
+              }
+            },
+            {
+              "field.string": {
+                "name": "firstName"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "subscribed"
+              }
+            },
+            {
+              "field.string": {
+                "name": "createdAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            },
+            {
+              "layout.dataGrid": {
                 "name": "default",
                 "@pageSize": 25,
                 "@defaultSortField": "createdAt",
                 "@defaultSortOrder": "desc",
-                "@columns": ["email", "firstName", "createdAt"]
+                "@columns": [
+                  "email",
+                  "firstName",
+                  "createdAt"
+                ]
               }
             },
             {
-              "layout": {
-                "subType": "dataGrid",
+              "layout.dataGrid": {
                 "name": "admin",
                 "@pageSize": 50,
                 "@defaultSortField": "email",
                 "@defaultSortOrder": "asc",
                 "@filterable": true,
-                "@columns": ["id", "email", "firstName", "subscribed", "createdAt"]
+                "@columns": [
+                  "id",
+                  "email",
+                  "firstName",
+                  "subscribed",
+                  "createdAt"
+                ]
               }
             }
           ]

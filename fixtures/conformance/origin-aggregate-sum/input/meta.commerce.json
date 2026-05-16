@@ -1,45 +1,86 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme::commerce",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Program",
-          "subType": "entity",
           "children": [
-            { "field": { "name": "id", "subType": "long" } },
-            { "field": { "name": "title", "subType": "string" } },
-            { "relationship": { "name": "weeks", "subType": "association", "@objectRef": "Week" } },
-            { "identity": { "subType": "primary", "@fields": "id" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "weeks",
+                "@objectRef": "Week"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
           ]
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "Week",
-          "subType": "entity",
           "children": [
-            { "field": { "name": "id", "subType": "long" } },
-            { "field": { "name": "durationMinutes", "subType": "int" } },
-            { "identity": { "subType": "primary", "@fields": "id" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "durationMinutes"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
           ]
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "ProgramSummary",
-          "subType": "entity",
           "extends": "Program",
           "children": [
-            { "source": { "subType": "dbView", "@name": "v_program_summary" } },
-            { "field": {
+            {
+              "source.dbView": {
+                "@name": "v_program_summary"
+              }
+            },
+            {
+              "field.int": {
                 "name": "totalMinutes",
-                "subType": "int",
                 "children": [
-                  { "origin": { "subType": "aggregate", "@agg": "sum", "@of": "Week.durationMinutes", "@via": "Program.weeks" } }
+                  {
+                    "origin.aggregate": {
+                      "@agg": "sum",
+                      "@of": "Week.durationMinutes",
+                      "@via": "Program.weeks"
+                    }
+                  }
                 ]
-            } },
-            { "identity": { "subType": "primary", "@fields": "id" } }
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
           ]
         }
       }

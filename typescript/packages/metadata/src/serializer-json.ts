@@ -1,16 +1,21 @@
-// v0.3 JSON serializer — wrapper-keyed format
+// Canonical JSON serializer — redesigned (post-v0.3) format.
+//
+// Every node serializes to a single-key map { "<type>.<subType>": <body> }.
+// The wrapper key fuses type and subType. The body emits keys in the canonical
+// order, each included only when non-default:
+//   1. name      2. package   3. extends   4. abstract
+//   5. overlay   6. isArray   7. @-attrs (alphabetical)   8. children
 
-import type { MetaModel, AttrValue } from "./model.js";
+import type { MetaModel, AttrValue } from "./meta/meta-data.js";
 import {
   TYPE_ATTR,
   ATTR_PREFIX,
-  ATTR_NAME_IS_ARRAY,
-  ATTR_NAME_IS_ABSTRACT,
+  TYPE_SUBTYPE_SEPARATOR,
   RESERVED_KEY_NAME,
-  RESERVED_KEY_SUBTYPE,
   RESERVED_KEY_PACKAGE,
   RESERVED_KEY_EXTENDS,
-  RESERVED_KEY_IS_ABSTRACT,
+  RESERVED_KEY_ABSTRACT,
+  RESERVED_KEY_IS_ARRAY,
   RESERVED_KEY_CHILDREN,
   RESERVED_KEY_VALUE,
   ATTR_SUBTYPE_STRING,
@@ -27,7 +32,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export interface SerializeOptions {
-  /** Prefer inline @-attrs over child {"attr": {...}} nodes when type is unambiguous. Default true. */
+  /** Prefer inline @-attrs over child {"attr.*": {...}} nodes when type is unambiguous. Default true. */
   inlineAttrs?: boolean;
   /** Pretty-print indent. 0 = no whitespace. Default 2. */
   indent?: number;
@@ -58,62 +63,64 @@ export function inferAttrSubType(value: AttrValue): string {
       ? ATTR_SUBTYPE_INT
       : ATTR_SUBTYPE_LONG;
   }
-  // string (includes numeric strings that were preserved verbatim)
   return ATTR_SUBTYPE_STRING;
 }
 
+/** Build a fused `type.subType` wrapper key. */
+function fusedKey(type: string, subType: string): string {
+  return `${type}${TYPE_SUBTYPE_SEPARATOR}${subType}`;
+}
+
 // ---------------------------------------------------------------------------
-// Serialize a single node — returns { "<type>": { ...nodeProps } }
+// Serialize a single node — returns { "<type>.<subType>": { ...body } }
 // ---------------------------------------------------------------------------
 
 function serializeNode(model: MetaModel, inlineAttrs: boolean): Record<string, unknown> {
   const inner = serializeNodeInner(model, inlineAttrs);
-  return { [model.type]: inner };
+  return { [fusedKey(model.type, model.subType)]: inner };
 }
 
 function serializeNodeInner(model: MetaModel, inlineAttrs: boolean): Record<string, unknown> {
-  // Strict key order per spec:
-  //   1. package  2. name  3. subType  4. extends  5. isAbstract
-  //   6. @isArray  7. inline @-attrs  8. children
-  //
-  // subType is always emitted — being explicit is never wrong, and we lack
-  // registry access here to compute what the parser would infer.
+  // Canonical body-key order:
+  //   1. name  2. package  3. extends  4. abstract
+  //   5. overlay  6. isArray  7. inline @-attrs  8. children
 
   const obj: Record<string, unknown> = {};
-
-  if (model.package !== undefined && model.package !== "") {
-    obj[RESERVED_KEY_PACKAGE] = model.package;
-  }
 
   if (model.name !== "") {
     obj[RESERVED_KEY_NAME] = model.name;
   }
 
-  obj[RESERVED_KEY_SUBTYPE] = model.subType;
+  if (model.package !== undefined && model.package !== "") {
+    obj[RESERVED_KEY_PACKAGE] = model.package;
+  }
 
   if (model.superRef !== undefined) {
     obj[RESERVED_KEY_EXTENDS] = model.superRef;
   }
 
-  // isAbstract — reserved-key form (NOT @isAbstract)
   if (model.isAbstract === true) {
-    obj[RESERVED_KEY_IS_ABSTRACT] = true;
+    obj[RESERVED_KEY_ABSTRACT] = true;
   }
 
-  // isArray — emitted as @isArray (native attr-like key)
+  // NOTE: `overlay` is an authoring-time parser directive, not a property of
+  // the resolved tree. After a merge, the merged node is a normal node — the
+  // canonical serialization is the merged RESULT, which carries no overlay
+  // semantics. Re-emitting `overlay: true` would break round-trip stability
+  // (re-parsing would seek a non-existent node to merge into). So it is
+  // deliberately NOT serialized.
+
   if (model.isArray === true) {
-    obj[`${ATTR_PREFIX}${ATTR_NAME_IS_ARRAY}`] = true;
+    obj[RESERVED_KEY_IS_ARRAY] = true;
   }
 
-  // 7. Attrs: walk children first to find attr children, track names emitted as child nodes
+  // Walk children: structural children recurse; attr children emit either as
+  // inline @-attrs or as child {"attr.*": {...}} nodes.
   const emittedAsChild = new Set<string>();
-
-  // Build the serialized children array (non-attr children + attr children in original order)
   const serializedChildren: Record<string, unknown>[] = [];
 
   for (const child of model.children()) {
     if (child.type !== TYPE_ATTR) {
-      // Structural child — recurse
       serializedChildren.push(serializeNode(child, inlineAttrs));
       continue;
     }
@@ -125,41 +132,35 @@ function serializeNodeInner(model: MetaModel, inlineAttrs: boolean): Record<stri
       child.subType !== SUBTYPE_BASE ? child.subType : inferAttrSubType(attrValue ?? "");
 
     if (attrValue === undefined) {
-      // Shouldn't happen if parser is correct; emit null defensively
       console.warn(`[serializer-json] attr child "${attrName}" has no value attr — emitting null`);
     }
 
     serializedChildren.push({
-      [TYPE_ATTR]: {
+      [fusedKey(TYPE_ATTR, attrSubType)]: {
         [RESERVED_KEY_NAME]: attrName,
-        [RESERVED_KEY_SUBTYPE]: attrSubType,
         [RESERVED_KEY_VALUE]: attrValue === undefined ? null : serializeAttrValue(attrValue),
       },
     });
     emittedAsChild.add(attrName);
   }
 
-  // 8. Inline @-attrs: emit attrs NOT already emitted as child nodes.
-  //    Also skip isArray and isAbstract (handled via native paths above).
+  // Inline @-attrs: emit attrs NOT already emitted as child nodes.
   for (const [attrName, attrValue] of model.attrs()) {
     if (emittedAsChild.has(attrName)) continue;
-    if (attrName === ATTR_NAME_IS_ARRAY || attrName === ATTR_NAME_IS_ABSTRACT) continue;
 
     if (inlineAttrs) {
       obj[`${ATTR_PREFIX}${attrName}`] = serializeAttrValue(attrValue);
     } else {
-      // Emit as child attr node — appended after the structural/attr children above.
       serializedChildren.push({
-        [TYPE_ATTR]: {
+        [fusedKey(TYPE_ATTR, inferAttrSubType(attrValue))]: {
           [RESERVED_KEY_NAME]: attrName,
-          [RESERVED_KEY_SUBTYPE]: inferAttrSubType(attrValue),
           [RESERVED_KEY_VALUE]: serializeAttrValue(attrValue),
         },
       });
     }
   }
 
-  // 9. children — emit only if non-empty
+  // children — emit only if non-empty
   if (serializedChildren.length > 0) {
     obj[RESERVED_KEY_CHILDREN] = serializedChildren;
   }
@@ -173,10 +174,8 @@ function serializeNodeInner(model: MetaModel, inlineAttrs: boolean): Record<stri
 
 function serializeAttrValue(value: AttrValue): unknown {
   if (Array.isArray(value)) {
-    // string[] — emit as JSON array of strings
     return value;
   }
-  // boolean, number, string — pass through as-is
   return value;
 }
 
@@ -188,8 +187,7 @@ function serializeAttrValue(value: AttrValue): unknown {
 //   2. Output ends with exactly one trailing newline.
 //
 // Both behaviors are required so Java/Python/C# implementations can produce
-// byte-identical output from the same input metamodel. See
-// metaobjects/spec/conformance-tests.md for the full canonical contract.
+// byte-identical output from the same input metamodel.
 // ---------------------------------------------------------------------------
 
 export function canonicalSerialize(model: MetaModel): string {
@@ -234,4 +232,3 @@ function sortAttrKeys(value: unknown): unknown {
   }
   return value;
 }
-

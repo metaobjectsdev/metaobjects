@@ -1,34 +1,28 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme::commerce",
-    "subType": "base",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Product",
-          "subType": "entity",
           "children": [
             {
-              "source": {
-                "subType": "dbTable",
+              "source.dbTable": {
                 "@name": "products"
               }
             },
             {
-              "field": {
-                "name": "id",
-                "subType": "long"
+              "field.long": {
+                "name": "id"
               }
             },
             {
-              "field": {
-                "name": "name",
-                "subType": "string"
+              "field.string": {
+                "name": "name"
               }
             },
             {
-              "identity": {
-                "subType": "primary",
+              "identity.primary": {
                 "@fields": "id"
               }
             }

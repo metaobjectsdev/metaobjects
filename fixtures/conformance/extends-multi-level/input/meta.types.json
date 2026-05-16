@@ -1,34 +1,47 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Base",
-          "subType": "entity",
           "children": [
-            { "field": { "name": "id", "subType": "long" } },
-            { "identity": { "subType": "primary", "@fields": "id" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
           ]
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "Mid",
-          "subType": "entity",
           "extends": "Base",
           "children": [
-            { "field": { "name": "midField", "subType": "string" } }
+            {
+              "field.string": {
+                "name": "midField"
+              }
+            }
           ]
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "Leaf",
-          "subType": "entity",
           "extends": "Mid",
           "children": [
-            { "field": { "name": "leafField", "subType": "string" } }
+            {
+              "field.string": {
+                "name": "leafField"
+              }
+            }
           ]
         }
       }

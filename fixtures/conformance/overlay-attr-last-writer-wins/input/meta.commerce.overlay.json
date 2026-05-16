@@ -1,12 +1,11 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Product",
-          "subType": "entity",
-          "merge": true,
+          "overlay": true,
           "@displayName": "Product v2"
         }
       }

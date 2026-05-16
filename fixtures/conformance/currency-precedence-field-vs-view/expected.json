@@ -1,28 +1,23 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme::commerce",
-    "subType": "base",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Product",
-          "subType": "entity",
           "children": [
             {
-              "field": {
-                "name": "id",
-                "subType": "long"
+              "field.long": {
+                "name": "id"
               }
             },
             {
-              "field": {
+              "field.currency": {
                 "name": "priceUsd",
-                "subType": "currency",
                 "@currency": "USD",
                 "children": [
                   {
-                    "view": {
-                      "subType": "currency",
+                    "view.currency": {
                       "@locale": "en-US"
                     }
                   }
@@ -30,14 +25,12 @@
               }
             },
             {
-              "field": {
+              "field.currency": {
                 "name": "priceEur",
-                "subType": "currency",
                 "@currency": "EUR",
                 "children": [
                   {
-                    "view": {
-                      "subType": "currency",
+                    "view.currency": {
                       "@locale": "de-DE"
                     }
                   }
@@ -45,8 +38,7 @@
               }
             },
             {
-              "identity": {
-                "subType": "primary",
+              "identity.primary": {
                 "@fields": "id"
               }
             }

@@ -1,35 +1,29 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme::commerce",
-    "subType": "base",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Program",
-          "subType": "entity",
           "children": [
             {
-              "field": {
-                "name": "id",
-                "subType": "long"
+              "field.long": {
+                "name": "id"
               }
             },
             {
-              "field": {
-                "name": "title",
-                "subType": "string"
+              "field.string": {
+                "name": "title"
               }
             },
             {
-              "relationship": {
+              "relationship.association": {
                 "name": "weeks",
-                "subType": "association",
                 "@objectRef": "Week"
               }
             },
             {
-              "identity": {
-                "subType": "primary",
+              "identity.primary": {
                 "@fields": "id"
               }
             }
@@ -37,26 +31,22 @@
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "Week",
-          "subType": "entity",
           "children": [
             {
-              "field": {
-                "name": "id",
-                "subType": "long"
+              "field.long": {
+                "name": "id"
               }
             },
             {
-              "relationship": {
+              "relationship.association": {
                 "name": "workouts",
-                "subType": "association",
                 "@objectRef": "Workout"
               }
             },
             {
-              "identity": {
-                "subType": "primary",
+              "identity.primary": {
                 "@fields": "id"
               }
             }
@@ -64,25 +54,21 @@
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "Workout",
-          "subType": "entity",
           "children": [
             {
-              "field": {
-                "name": "id",
-                "subType": "long"
+              "field.long": {
+                "name": "id"
               }
             },
             {
-              "field": {
-                "name": "name",
-                "subType": "string"
+              "field.string": {
+                "name": "name"
               }
             },
             {
-              "identity": {
-                "subType": "primary",
+              "identity.primary": {
                 "@fields": "id"
               }
             }
@@ -90,25 +76,21 @@
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "ProgramSummary",
-          "subType": "entity",
           "extends": "Program",
           "children": [
             {
-              "source": {
-                "subType": "dbView",
+              "source.dbView": {
                 "@name": "v_program_summary"
               }
             },
             {
-              "field": {
+              "field.int": {
                 "name": "workoutCount",
-                "subType": "int",
                 "children": [
                   {
-                    "origin": {
-                      "subType": "aggregate",
+                    "origin.aggregate": {
                       "@agg": "count",
                       "@of": "Workout.id",
                       "@via": "Program.weeks.workouts"
@@ -118,8 +100,7 @@
               }
             },
             {
-              "identity": {
-                "subType": "primary",
+              "identity.primary": {
                 "@fields": "id"
               }
             }

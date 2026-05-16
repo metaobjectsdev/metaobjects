@@ -19,7 +19,8 @@
 
 import { basename, join } from "node:path";
 import { readdir, stat } from "node:fs/promises";
-import { MetaModel } from "./model.js";
+import type { MetaModel } from "./meta/meta-data.js";
+import { MetaRoot } from "./meta/meta-root.js";
 import { TypeId, TypeRegistry } from "./registry.js";
 import { registerCoreTypes } from "./core-types.js";
 import { parseJson } from "./parser-json.js";
@@ -27,7 +28,7 @@ import { resolveDeferredSupers } from "./super-resolve.js";
 import { validateSubtypeRules } from "./subtype-rules.js";
 import { ParseError } from "./errors.js";
 import {
-  TYPE_METADATA, SUBTYPE_BASE,
+  TYPE_METADATA, SUBTYPE_ROOT,
   TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_LAYOUT, TYPE_SOURCE,
   TYPE_ORIGIN, TYPE_RELATIONSHIP,
   LAYOUT_SUBTYPE_DATA_GRID,
@@ -91,7 +92,7 @@ async function getReadText(): Promise<(path: string) => Promise<string>> {
 // ---------------------------------------------------------------------------
 
 function makeSyntheticRoot(): MetaModel {
-  return new MetaModel(new TypeId(TYPE_METADATA, SUBTYPE_BASE), "");
+  return new MetaRoot(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
 }
 
 /** Minimal glob matcher supporting `*` (any chars except `/`) and `**` (any chars). */

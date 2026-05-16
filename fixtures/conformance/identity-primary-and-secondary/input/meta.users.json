@@ -1,18 +1,43 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "acme",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Subscriber",
-          "subType": "entity",
           "children": [
-            { "field": { "name": "id", "subType": "long" } },
-            { "field": { "name": "email", "subType": "string" } },
-            { "field": { "name": "username", "subType": "string" } },
-            { "identity": { "subType": "primary", "@fields": "id" } },
-            { "identity": { "subType": "secondary", "name": "byEmail", "@fields": "email" } },
-            { "identity": { "subType": "secondary", "name": "byUsername", "@fields": "username" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "email"
+              }
+            },
+            {
+              "field.string": {
+                "name": "username"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "byEmail",
+                "@fields": "email"
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "byUsername",
+                "@fields": "username"
+              }
+            }
           ]
         }
       }

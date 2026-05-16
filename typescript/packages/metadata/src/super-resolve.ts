@@ -11,7 +11,7 @@
 // This module provides only the lookup helper; the parser calls it inline.
 // The old resolveSupers() multi-pass walker has been deleted.
 
-import type { MetaModel } from "./model.js";
+import type { MetaModel } from "./meta/meta-data.js";
 import { PACKAGE_SEPARATOR, PACKAGE_PARENT } from "./constants.js";
 
 // ---------------------------------------------------------------------------

@@ -36,6 +36,7 @@ import {
   TYPE_SOURCE,
   TYPE_ORIGIN,
   SUBTYPE_BASE,
+  SUBTYPE_ROOT,
   OBJECT_SUBTYPES,
   FIELD_SUBTYPES,
   ATTR_SUBTYPES,
@@ -97,9 +98,9 @@ const IDENTITY_CLASS_MAP = new Map<string, NodeConstructor>([
 ]);
 
 export function registerCoreTypes(registry: TypeRegistry): void {
-  // metadata — 1 subtype
+  // metadata — 1 subtype (the document root: metadata.root)
   registry.register(
-    def(TYPE_METADATA, SUBTYPE_BASE, "Root metadata document", [
+    def(TYPE_METADATA, SUBTYPE_ROOT, "Root metadata document", [
       wildcard(TYPE_OBJECT),
       wildcard(TYPE_FIELD),
       wildcard(TYPE_ATTR),
