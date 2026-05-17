@@ -21,7 +21,7 @@ function recordingProvider(
   return {
     id,
     dependencies,
-    registerTypes: () => {
+    registerTypes() {
       log.push(id);
     },
   };
@@ -77,7 +77,7 @@ describe("composeRegistry — provider composition", () => {
 
   it("returns a populated TypeRegistry", () => {
     const registry = composeRegistry([
-      { id: "noop", registerTypes: () => {} },
+      { id: "noop", registerTypes() {} },
     ]);
     expect(typeof registry.has).toBe("function");
   });
