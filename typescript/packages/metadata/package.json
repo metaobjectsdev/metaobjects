@@ -16,7 +16,9 @@
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+    "yaml": "^2.9.0"
+  },
   "devDependencies": {
     "bun-types": "latest",
     "typescript": "^5.6.0"
