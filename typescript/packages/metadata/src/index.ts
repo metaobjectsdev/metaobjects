@@ -90,6 +90,18 @@ export { registerCoreTypes, coreTypesProvider, coreProviders } from "./core-type
 export { composeRegistry } from "./provider.js";
 export type { MetaDataTypeProvider } from "./provider.js";
 
+// DataType classification
+export {
+  DATA_TYPES,
+  DATA_TYPE_BOOLEAN, DATA_TYPE_INT, DATA_TYPE_LONG, DATA_TYPE_DOUBLE,
+  DATA_TYPE_STRING, DATA_TYPE_DATE, DATA_TYPE_OBJECT,
+} from "./data-type.js";
+export type { DataType, DataTypeAware } from "./data-type.js";
+
+// Metadata-driven object serializer
+export { objectToJson, jsonToObject } from "./object-serializer.js";
+export type { ObjectSerializeOptions } from "./object-serializer.js";
+
 // Value coercion
 export { coerceAttrValue } from "./value-coerce.js";
 export type { CoercedValue, InferredType } from "./value-coerce.js";
