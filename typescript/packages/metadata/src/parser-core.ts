@@ -176,8 +176,8 @@ function expandPackageForPath(basePkg: string, pkgPath: string): string {
 // ---------------------------------------------------------------------------
 
 // Module-level flag consumed by parseNodeFresh during super resolution.
-// Safe because parseJson is fully synchronous — no reentrancy risk within
-// a single parse call. Set at parseJson entry, read deep in the call tree.
+// Safe because buildTree is fully synchronous — no reentrancy risk within
+// a single parse call. Set at buildTree entry, read deep in the call tree.
 let _deferSuperResolution = false;
 
 /**

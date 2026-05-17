@@ -35,7 +35,7 @@ export function parseYaml(content: string, opts: ParseOptions): ParseResult {
   // first desugar error as a throw — parallels parseJson's top-level throws.
   if (Object.keys(canonical).length === 0) {
     throw new ParseError(
-      desugarErrors[0] ?? "YAML document is not a valid metadata structure",
+      desugarErrors[0]!,
       errOpts(opts.sourceName),
     );
   }
