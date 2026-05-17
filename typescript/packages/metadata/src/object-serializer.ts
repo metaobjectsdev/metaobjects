@@ -96,9 +96,8 @@ function fromJsonValue(field: MetaField, raw: unknown, mo: MetaObject): unknown 
       return coerceBoolean(raw);
     case DATA_TYPE_INT:
     case DATA_TYPE_LONG:
-      return coerceInteger(raw);
     case DATA_TYPE_DOUBLE:
-      return coerceNumber(raw);
+      return coerceNumeric(raw);
     case DATA_TYPE_OBJECT: {
       const target = resolveObjectRef(field, mo);
       if (target === undefined || !isPlainObject(raw)) return raw;
@@ -134,15 +133,7 @@ function coerceBoolean(raw: unknown): unknown {
   return raw;
 }
 
-function coerceInteger(raw: unknown): unknown {
-  if (typeof raw === "number") return raw;
-  if (typeof raw === "string" && raw.trim() !== "" && Number.isFinite(Number(raw))) {
-    return Number(raw);
-  }
-  return raw;
-}
-
-function coerceNumber(raw: unknown): unknown {
+function coerceNumeric(raw: unknown): unknown {
   if (typeof raw === "number") return raw;
   if (typeof raw === "string" && raw.trim() !== "" && Number.isFinite(Number(raw))) {
     return Number(raw);
