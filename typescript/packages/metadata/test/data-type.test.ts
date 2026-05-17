@@ -1,5 +1,8 @@
 import { describe, it, expect } from "bun:test";
 import { DATA_TYPES, DATA_TYPE_STRING, DATA_TYPE_OBJECT, type DataType } from "../src/data-type.js";
+import { TypeId } from "../src/registry.js";
+import { MetaField } from "../src/meta/meta-field.js";
+import { MetaAttr } from "../src/meta/meta-attr.js";
 
 describe("DataType", () => {
   it("DATA_TYPES is the closed set of coarse value types", () => {
@@ -67,15 +70,43 @@ describe("MetaField.dataType / MetaAttr.dataType", () => {
     const r = new TypeRegistry();
     registerCoreTypes(r);
     const def = r.find(TYPE_FIELD, FIELD_SUBTYPE_INT)!;
-    const node = def.factory(def.typeId, "age");
-    expect((node as { dataType: unknown }).dataType).toBe("int");
+    const node = def.factory(def.typeId, "age") as MetaField;
+    expect(node.dataType).toBe("int");
   });
 
   it("a built attr node reports its registry-supplied dataType", () => {
     const r = new TypeRegistry();
     registerCoreTypes(r);
     const def = r.find(TYPE_ATTR, ATTR_SUBTYPE_INT)!;
-    const node = def.factory(def.typeId, "x");
-    expect((node as { dataType: unknown }).dataType).toBe("int");
+    const node = def.factory(def.typeId, "x") as MetaAttr;
+    expect(node.dataType).toBe("int");
+  });
+});
+
+describe("DataType extensibility — a novel subtype", () => {
+  it("a provider-registered field subtype flows its dataType to the built node", () => {
+    // A provider contributes a brand-new field subtype `field.geopoint` with a
+    // `dataType` on its TypeDefinition; its factory stamps the node the same
+    // way the core `def()` helper does. The full pipeline — TypeDefinition
+    // .dataType → factory → setDataType → MetaField.dataType — is exercised
+    // without any edit to data-type.ts or the core registration.
+    const r = new TypeRegistry();
+    registerCoreTypes(r);
+    r.register({
+      typeId: new TypeId(TYPE_FIELD, "geopoint"),
+      description: "A geographic point field",
+      factory: (id, name) => {
+        const node = new MetaField(id, name);
+        node.setDataType("object");
+        return node;
+      },
+      childRules: [],
+      attributes: [],
+      dataType: "object",
+    });
+    const def = r.find(TYPE_FIELD, "geopoint")!;
+    expect(def.dataType).toBe("object");
+    const node = def.factory(def.typeId, "location") as MetaField;
+    expect(node.dataType).toBe("object");
   });
 });

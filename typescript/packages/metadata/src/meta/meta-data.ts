@@ -146,6 +146,7 @@ export abstract class MetaData {
   /** Set the registry-supplied DataType. Called by the registry factory at
    *  node construction. */
   setDataType(dt: DataType): void {
+    this._assertNotFrozen();
     this._dataType = dt;
   }
 

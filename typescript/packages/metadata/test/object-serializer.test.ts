@@ -95,7 +95,7 @@ describe("objectToJson / jsonToObject", () => {
   it("round-trips a flat instance", () => {
     const mo = order();
     const original = { code: "A1", qty: 3, totalCents: 1999, paid: true, tags: ["x"] };
-    const round = jsonToObject(mo, objectToJson(mo, original, { emitType: false }), { emitType: false });
+    const round = jsonToObject(mo, objectToJson(mo, original, { emitType: false }));
     expect(round).toEqual(original);
   });
 
@@ -107,7 +107,7 @@ describe("objectToJson / jsonToObject", () => {
   it("a nested object round-trips", () => {
     const mo = order();
     const original = { code: "A1", customer: { name: "Dana" } };
-    const round = jsonToObject(mo, objectToJson(mo, original, { emitType: false }), { emitType: false });
+    const round = jsonToObject(mo, objectToJson(mo, original, { emitType: false }));
     expect(round).toEqual(original);
   });
 });

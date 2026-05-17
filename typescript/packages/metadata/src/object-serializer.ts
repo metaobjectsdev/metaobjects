@@ -52,7 +52,6 @@ export function objectToJson(
 export function jsonToObject(
   mo: MetaObject,
   json: Record<string, unknown>,
-  opts?: ObjectSerializeOptions,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const field of mo.fields()) {
@@ -148,7 +147,7 @@ function coerceNumeric(raw: unknown): unknown {
 function resolveObjectRef(field: MetaField, mo: MetaObject): MetaObject | undefined {
   const ref = field.objectRef;
   if (ref === undefined) return undefined;
-  const found: MetaData | undefined = mo.root().childByName(ref);
-  if (found === undefined || found.type !== TYPE_OBJECT) return undefined;
+  const found: MetaData | undefined = mo.root().childByTypeAndName(TYPE_OBJECT, ref);
+  if (found === undefined) return undefined;
   return found as MetaObject;
 }

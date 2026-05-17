@@ -186,6 +186,16 @@ const ATTR_DATA_TYPE: Record<string, DataType> = {
   [ATTR_SUBTYPE_PROPERTIES]: DATA_TYPE_OBJECT,
 };
 
+/** Look up a subtype's DataType, failing loudly if the map omits it — a
+ *  forgotten entry must not silently register as `string`. */
+function dataTypeFor(map: Record<string, DataType>, subType: string, kind: string): DataType {
+  const dt = map[subType];
+  if (dt === undefined) {
+    throw new Error(`registerCoreTypes: no DataType mapped for ${kind} subtype "${subType}"`);
+  }
+  return dt;
+}
+
 /** Map from validator subtype string → concrete node constructor. */
 const VALIDATOR_CLASS_MAP = new Map<string, NodeConstructor>([
   [VALIDATOR_SUBTYPE_REQUIRED, MetaRequiredValidator],
@@ -250,7 +260,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
         : [...commonFieldAttrs];
     registry.register(
       def(TYPE_FIELD, subType, `Field of type ${subType}`, fieldRules, MetaField, fieldAttrs,
-        FIELD_DATA_TYPE[subType] ?? DATA_TYPE_STRING),
+        dataTypeFor(FIELD_DATA_TYPE, subType, "field")),
     );
   }
 
@@ -258,7 +268,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   for (const subType of ATTR_SUBTYPES) {
     registry.register(
       def(TYPE_ATTR, subType, `Attribute of type ${subType}`, [], MetaAttr,
-        [], ATTR_DATA_TYPE[subType] ?? DATA_TYPE_STRING),
+        [], dataTypeFor(ATTR_DATA_TYPE, subType, "attr")),
     );
   }
 
