@@ -86,6 +86,10 @@ export { TypeId, TypeRegistry, childRuleMatches } from "./registry.js";
 export type { ChildRule, TypeDefinition } from "./registry.js";
 export { registerCoreTypes } from "./core-types.js";
 
+// Type provider model
+export { composeRegistry } from "./provider.js";
+export type { MetaDataTypeProvider } from "./provider.js";
+
 // Value coercion
 export { coerceAttrValue } from "./value-coerce.js";
 export type { CoercedValue, InferredType } from "./value-coerce.js";
