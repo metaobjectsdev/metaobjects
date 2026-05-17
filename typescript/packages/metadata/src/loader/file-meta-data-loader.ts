@@ -20,7 +20,7 @@ function matchSimpleGlob(pattern: string, value: string): boolean {
 
 export class FileMetaDataLoader extends MetaDataLoader {
   /**
-   * Load every `.json` file in a directory (non-recursive).
+   * Load every `.json` / `.yaml` / `.yml` file in a directory (non-recursive).
    * @param opts.exclude glob patterns (relative to dir) to skip — `*` / `**`.
    */
   async loadDirectory(dir: string, opts?: { exclude?: string[] }): Promise<LoadResult> {
@@ -42,7 +42,10 @@ export class FileMetaDataLoader extends MetaDataLoader {
     const excludes = opts?.exclude ?? [];
     const paths: string[] = [];
     for (const entry of entries) {
-      if (!entry.endsWith(".json")) continue;
+      const lower = entry.toLowerCase();
+      if (!lower.endsWith(".json") && !lower.endsWith(".yaml") && !lower.endsWith(".yml")) {
+        continue;
+      }
       const filePath = join(dir, entry);
       let statResult: Stats;
       try {
