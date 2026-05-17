@@ -199,7 +199,7 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
   _deferSuperResolution = opts.deferSuperResolution === true;
 
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new ParseError("Top-level JSON must be an object", errOpts(source));
+    throw new ParseError("Top-level metadata must be an object", errOpts(source));
   }
 
   const topLevel = parsed as Record<string, unknown>;
@@ -208,11 +208,11 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
   const wrapperKeys = Object.keys(topLevel).filter((k) => k !== JSON_KEY_SCHEMA);
 
   if (wrapperKeys.length === 0) {
-    throw new ParseError("Top-level JSON object has no type wrapper key", errOpts(source));
+    throw new ParseError("Top-level metadata object has no type wrapper key", errOpts(source));
   }
   if (wrapperKeys.length > 1) {
     throw new ParseError(
-      `Top-level JSON object must have exactly one wrapper key (found: ${wrapperKeys.join(", ")})`,
+      `Top-level metadata object must have exactly one wrapper key (found: ${wrapperKeys.join(", ")})`,
       errOpts(source),
     );
   }
