@@ -102,9 +102,8 @@ export type { DataType, DataTypeAware } from "./data-type.js";
 export { objectToJson, jsonToObject } from "./object-serializer.js";
 export type { ObjectSerializeOptions } from "./object-serializer.js";
 
-// Value coercion
-export { coerceAttrValue } from "./value-coerce.js";
-export type { CoercedValue, InferredType } from "./value-coerce.js";
+// Data converter — convert a value to a known DataType (no inference)
+export { convertToDataType, toAttrValue } from "./data-converter.js";
 
 // Parser — shared core builder + per-format front-ends
 export { buildTree } from "./parser-core.js";

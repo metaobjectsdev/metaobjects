@@ -11,8 +11,9 @@ import {
   TypeRegistry,
   childRuleMatches,
   registerCoreTypes,
-  // Value coercion
-  coerceAttrValue,
+  // Data converter
+  convertToDataType,
+  toAttrValue,
   // Parser
   parseJson,
   // Serializer
@@ -59,8 +60,6 @@ import {
   type LoadingState,
   type ChildRule,
   type TypeDefinition,
-  type CoercedValue,
-  type InferredType,
   type ParseOptions,
   type ParseResult,
   type SerializeOptions,
@@ -144,26 +143,28 @@ describe("Public API surface — @metaobjects/metadata index", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // coerceAttrValue
+  // convertToDataType + toAttrValue
   // ---------------------------------------------------------------------------
 
-  test("coerceAttrValue handles string via index", () => {
-    const result: CoercedValue = coerceAttrValue("hello");
-    expect(result.value).toBe("hello");
-    expect(result.inferredType).toBe("string" satisfies InferredType);
-    expect(result.isArray).toBe(false);
+  test("convertToDataType converts a number to string via index", () => {
+    expect(convertToDataType("string", 1)).toBe("1");
+    expect(convertToDataType("string", true)).toBe("true");
   });
 
-  test("coerceAttrValue handles boolean via index", () => {
-    const result = coerceAttrValue(true);
-    expect(result.value).toBe(true);
-    expect(result.inferredType).toBe("boolean");
+  test("convertToDataType converts a string to int via index", () => {
+    expect(convertToDataType("int", "42")).toBe(42);
+    expect(convertToDataType("int", 42)).toBe(42);
   });
 
-  test("coerceAttrValue handles integer via index", () => {
-    const result = coerceAttrValue(42);
-    expect(result.value).toBe(42);
-    expect(result.inferredType).toBe("int");
+  test("convertToDataType converts a string to boolean via index", () => {
+    expect(convertToDataType("boolean", "true")).toBe(true);
+    expect(convertToDataType("boolean", false)).toBe(false);
+  });
+
+  test("toAttrValue passes through a string unchanged via index", () => {
+    expect(toAttrValue("x")).toBe("x");
+    expect(toAttrValue(42)).toBe(42);
+    expect(toAttrValue(true)).toBe(true);
   });
 
   // ---------------------------------------------------------------------------
