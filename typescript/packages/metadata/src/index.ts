@@ -94,6 +94,7 @@ export type { CoercedValue, InferredType } from "./value-coerce.js";
 export { buildTree } from "./parser-core.js";
 export type { ParseOptions, ParseResult } from "./parser-core.js";
 export { parseJson } from "./parser-json.js";
+export { parseYaml } from "./parser-yaml.js";
 
 // Serializer
 export { serializeJson, canonicalSerialize, inferAttrSubType } from "./serializer-json.js";
