@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { readdir, stat } from "node:fs/promises";
+import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import {
-  FileMetaDataLoader,
   TypeRegistry,
   registerCoreTypes,
   type MetaData,

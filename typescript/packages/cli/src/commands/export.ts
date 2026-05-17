@@ -2,7 +2,8 @@ import { resolve, join } from "node:path";
 import { writeFile } from "node:fs/promises";
 import { parseExportArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
-import { loadAndExportJson, TypeRegistry, registerCoreTypes } from "@metaobjects/metadata";
+import { loadAndExportJson } from "@metaobjects/metadata/core";
+import { TypeRegistry, registerCoreTypes } from "@metaobjects/metadata";
 import { DEFAULT_METADATA_DIR, registerForgeTypes } from "@metaobjects/sdk";
 
 export async function exportCommand(args: string[]): Promise<number> {
