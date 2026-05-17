@@ -13,7 +13,7 @@ npm install @metaobjects/runtime-ts @metaobjects/metadata kysely
 ## Usage
 
 ```typescript
-import { FileMetaDataLoader } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { ObjectManager } from "@metaobjects/runtime-ts";
 import { kyselyDriver } from "@metaobjects/runtime-ts/drivers";
 import { Kysely } from "kysely";

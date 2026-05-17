@@ -215,7 +215,8 @@ When this file is loaded alongside one that declares `acme::Vehicle`, the overla
 Two entry points (TypeScript):
 
 ```typescript
-import { FileMetaDataLoader, MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 
 // Load specific files from disk:
 const loader = new FileMetaDataLoader();

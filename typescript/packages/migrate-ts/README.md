@@ -12,7 +12,7 @@ and emits paired `up.sql` + `down.sql` migration files.
 ```typescript
 import { Kysely } from "kysely";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
-import { FileMetaDataLoader } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import {
   buildExpectedSchema, introspectSqlite, diff, emit, writeMigration,
 } from "@metaobjects/migrate-ts";
