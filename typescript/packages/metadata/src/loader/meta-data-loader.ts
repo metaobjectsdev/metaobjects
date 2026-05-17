@@ -10,7 +10,8 @@
 import type { MetaData } from "../meta/meta-data.js";
 import { MetaRoot } from "../meta/meta-root.js";
 import { TypeId, TypeRegistry } from "../registry.js";
-import { registerCoreTypes } from "../core-types.js";
+import { coreProviders } from "../core-types.js";
+import { composeRegistry } from "../provider.js";
 import { TYPE_METADATA, SUBTYPE_ROOT } from "../constants.js";
 import { ParseError } from "../errors.js";
 import { parseJson } from "../parser-json.js";
@@ -70,9 +71,7 @@ export class MetaDataLoader {
   }
 
   private static _defaultRegistry(): TypeRegistry {
-    const registry = new TypeRegistry();
-    registerCoreTypes(registry);
-    return registry;
+    return composeRegistry(coreProviders);
   }
 
   // ---------------------------------------------------------------------------
