@@ -106,6 +106,36 @@ export class TypeRegistry {
   attrsOf(type: string, subType: string): AttrSchema[] {
     return this.find(type, subType)?.attributes ?? [];
   }
+
+  /**
+   * Additively enrich an already-registered (type, subType): append attributes
+   * and/or child rules. Does NOT touch factory / typeId / dataType / default
+   * subType — a type's identity belongs to whoever registered it. Used by
+   * providers to extend types another provider defined.
+   */
+  extend(
+    type: string,
+    subType: string,
+    ext: { attributes?: AttrSchema[]; childRules?: ChildRule[] },
+  ): void {
+    const def = this.find(type, subType);
+    if (def === undefined) {
+      throw new Error(
+        `TypeRegistry.extend: no registered type "${type}.${subType}" to extend`,
+      );
+    }
+    for (const attr of ext.attributes ?? []) {
+      if (def.attributes.some((a) => a.name === attr.name)) {
+        throw new Error(
+          `TypeRegistry.extend: attribute "${attr.name}" is already declared on "${type}.${subType}"`,
+        );
+      }
+      def.attributes.push(attr);
+    }
+    for (const rule of ext.childRules ?? []) {
+      def.childRules.push(rule);
+    }
+  }
 }
 
 export function childRuleMatches(

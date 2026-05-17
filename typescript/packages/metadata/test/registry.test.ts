@@ -457,6 +457,59 @@ describe("registerCoreTypes", () => {
 });
 
 // ---------------------------------------------------------------------------
+// TypeRegistry — extend
+// ---------------------------------------------------------------------------
+
+describe("TypeRegistry — extend", () => {
+  function registryWithFieldString(): TypeRegistry {
+    const registry = new TypeRegistry();
+    registry.register({
+      typeId: new TypeId("field", "string"),
+      description: "test field.string",
+      factory: () => stubFactory(),
+      childRules: [],
+      attributes: [],
+    });
+    return registry;
+  }
+
+  it("extend adds attributes to an existing type", () => {
+    const registry = registryWithFieldString();
+    registry.extend("field", "string", {
+      attributes: [
+        { name: "objectRef", valueType: ATTR_SUBTYPE_STRING, required: false, description: "ref" },
+      ],
+    });
+    expect(registry.attrsOf("field", "string").some((a) => a.name === "objectRef")).toBe(true);
+  });
+
+  it("extend accumulates childRules", () => {
+    const registry = registryWithFieldString();
+    registry.extend("field", "string", {
+      childRules: [{ childType: "attr", childSubType: "*", childName: "*" }],
+    });
+    expect(registry.find("field", "string")!.childRules).toHaveLength(1);
+  });
+
+  it("extend errors on a conflicting attr name", () => {
+    const registry = registryWithFieldString();
+    registry.extend("field", "string", {
+      attributes: [{ name: "dup", valueType: ATTR_SUBTYPE_STRING, required: false, description: "first" }],
+    });
+    expect(() =>
+      registry.extend("field", "string", {
+        attributes: [{ name: "dup", valueType: ATTR_SUBTYPE_STRING, required: false, description: "second" }],
+      }),
+    ).toThrow(/dup/);
+  });
+
+  it("extend errors for an unregistered type", () => {
+    const registry = new TypeRegistry();
+    expect(() => registry.extend("field", "string", { attributes: [] })).toThrow(/field\.string/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // TypeRegistry — default subType
 // ---------------------------------------------------------------------------
 
