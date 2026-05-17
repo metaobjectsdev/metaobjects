@@ -5,7 +5,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { FileMetaDataLoader } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { runGen, defineConfig } from "../src/index.js";
 import { entityFile, queriesFile, routesFile, barrel } from "../src/generators/index.js";
 

@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { MetaData } from "@metaobjects/metadata";
 import {
-  FileMetaDataLoader,
   TypeId,
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -19,6 +18,7 @@ import {
   IDENTITY_ATTR_GENERATION,
   GENERATION_INCREMENT,
 } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { meta } from "./_meta-build.js";
 import { runGen, defineConfig } from "../src/index.js";
 import { entityFile, queriesFile, routesFile, barrel } from "../src/generators/index.js";

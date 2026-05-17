@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { FileMetaDataLoader, TYPE_OBJECT } from "@metaobjects/metadata";
+import { TYPE_OBJECT } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { tanstackGrid } from "../src/tanstack-grid.js";
 import { makeRenderContext, buildPkMap, buildRelationMap } from "@metaobjects/codegen-ts";
 import type { GenContext } from "@metaobjects/codegen-ts";

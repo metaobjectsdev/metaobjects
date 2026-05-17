@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { FileMetaDataLoader } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { runGen, defineConfig } from "@metaobjects/codegen-ts";
 import { entityFile, queriesFile, routesFile, barrel } from "@metaobjects/codegen-ts/generators";
 import { tanstackQuery, tanstackGrid } from "../src/index.js";

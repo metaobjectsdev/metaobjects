@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { FileMetaDataLoader, TYPE_OBJECT } from "@metaobjects/metadata";
+import { TYPE_OBJECT } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { renderFilterAllowlist, renderSortAllowlist } from "../../src/templates/filter-allowlist.js";
 import { resolve } from "node:path";
 

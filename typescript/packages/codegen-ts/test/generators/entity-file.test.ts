@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { FileMetaDataLoader, TYPE_OBJECT } from "@metaobjects/metadata";
+import { TYPE_OBJECT } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { GENERATED_HEADER } from "../../src/constants.js";
 import { buildPkMap } from "../../src/pk-resolver.js";

@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { FileMetaDataLoader, TYPE_OBJECT } from "@metaobjects/metadata";
+import { TYPE_OBJECT } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { tanstackQuery } from "../src/tanstack-query.js";
 import { makeRenderContext } from "@metaobjects/codegen-ts";
 import { buildPkMap, buildRelationMap } from "@metaobjects/codegen-ts";

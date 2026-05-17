@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { FileMetaDataLoader, TYPE_OBJECT } from "@metaobjects/metadata";
+import { TYPE_OBJECT } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { renderFilterType } from "../../src/templates/filter-type.js";
 import { resolve } from "node:path";
 

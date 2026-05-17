@@ -84,7 +84,8 @@ describe("FORGE_ATTR_* constants", () => {
   });
 });
 
-import { TypeRegistry, FileMetaDataLoader, TypeId, registerCoreTypes } from "@metaobjects/metadata";
+import { TypeRegistry, TypeId, registerCoreTypes } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { registerForgeTypes } from "../src/forge-types.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

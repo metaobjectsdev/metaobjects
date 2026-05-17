@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { FileMetaDataLoader, TYPE_OBJECT } from "@metaobjects/metadata";
+import { TYPE_OBJECT } from "@metaobjects/metadata";
+import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import { routesFile } from "../../src/generators/routes-file.js";
 import { formFile } from "../../src/generators/form-file.js";
