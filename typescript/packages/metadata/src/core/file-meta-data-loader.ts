@@ -7,6 +7,9 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { MetaDataLoader, type LoadResult } from "../loader/meta-data-loader.js";
 import { FileSource } from "./file-source.js";
+import { parseYaml } from "./parser-yaml.js";
+import type { ParseOptions, ParseResult } from "../parser-core.js";
+import type { MetaDataSource } from "../loader/meta-data-source.js";
 
 /** Minimal glob matcher supporting `*` (any chars except `/`) and `**` (any chars). */
 function matchSimpleGlob(pattern: string, value: string): boolean {
@@ -19,6 +22,18 @@ function matchSimpleGlob(pattern: string, value: string): boolean {
 }
 
 export class FileMetaDataLoader extends MetaDataLoader {
+  /** Adds YAML parsing on top of the base loader's JSON-only `parseSource`. */
+  protected override parseSource(
+    content: string,
+    source: MetaDataSource,
+    parseOpts: ParseOptions,
+  ): ParseResult {
+    if (source.format === "yaml") {
+      return parseYaml(content, parseOpts);
+    }
+    return super.parseSource(content, source, parseOpts);
+  }
+
   /**
    * Load every `.json` / `.yaml` / `.yml` file in a directory (non-recursive).
    * @param opts.exclude glob patterns (relative to dir) to skip — `*` / `**`.

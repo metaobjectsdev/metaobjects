@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
+import { FileMetaDataLoader } from "../../src/core/file-meta-data-loader.js";
 import { InMemorySource } from "../../src/loader/meta-data-source.js";
 import { FileSource } from "../../src/core/file-source.js";
 import { TYPE_METADATA } from "../../src/constants.js";
@@ -13,7 +14,7 @@ metadata:
         children:
           - field.string: sku
 `;
-  const loader = new MetaDataLoader();
+  const loader = new FileMetaDataLoader();
   const result = await loader.load([new InMemorySource(yaml, { id: "shop.yaml", format: "yaml" })]);
   expect(result.errors).toEqual([]);
   expect(result.root.type).toBe(TYPE_METADATA);
@@ -32,7 +33,7 @@ metadata:
         children:
           - field.string: email
 `;
-  const loader = new MetaDataLoader();
+  const loader = new FileMetaDataLoader();
   const result = await loader.load([
     new InMemorySource(json, { id: "a.json", format: "json" }),
     new InMemorySource(yaml, { id: "b.yaml", format: "yaml" }),

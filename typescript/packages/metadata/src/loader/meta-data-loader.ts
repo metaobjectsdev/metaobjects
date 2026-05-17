@@ -15,7 +15,6 @@ import { composeRegistry } from "../provider.js";
 import { TYPE_METADATA, SUBTYPE_ROOT } from "../constants.js";
 import { ParseError } from "../errors.js";
 import { parseJson } from "../parser-json.js";
-import { parseYaml } from "../core/parser-yaml.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths } from "./validation-passes.js";
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
@@ -156,9 +155,10 @@ export class MetaDataLoader {
   // ---------------------------------------------------------------------------
 
   /**
-   * Parse one source's raw content into a ParseResult. The base implementation
-   * handles JSON and YAML; subclasses override this seam to add or restrict
-   * formats. An unsupported format throws (the caller collects it).
+   * Parse one source's raw content into a ParseResult. The base loader handles
+   * JSON only; a non-JSON format throws. Subclasses override this seam to add
+   * formats — e.g. FileMetaDataLoader (in @metaobjects/metadata/core) adds YAML.
+   * This keeps the browser-safe base loader free of the YAML parser.
    */
   protected parseSource(
     content: string,
@@ -168,11 +168,9 @@ export class MetaDataLoader {
     if (source.format === "json") {
       return parseJson(content, parseOpts);
     }
-    if (source.format === "yaml") {
-      return parseYaml(content, parseOpts);
-    }
     throw new Error(
-      `unsupported metadata format "${source.format}" for source "${source.id}"`,
+      `MetaDataLoader parses JSON only; format "${source.format}" for source ` +
+        `"${source.id}" requires FileMetaDataLoader (from @metaobjects/metadata/core)`,
     );
   }
 
