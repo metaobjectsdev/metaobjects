@@ -21,6 +21,7 @@ import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
 import { validateAttrSchema } from "../attr-schema-validate.js";
 import type { MetaDataSource } from "./meta-data-source.js";
+import type { ParseOptions, ParseResult } from "../parser-core.js";
 
 // ---------------------------------------------------------------------------
 // Public API types
@@ -151,6 +152,32 @@ export class MetaDataLoader {
   }
 
   // ---------------------------------------------------------------------------
+  // parseSource — overridable format dispatch seam
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Parse one source's raw content into a ParseResult. The base loader handles
+   * JSON only; an unsupported format throws (the caller collects it). Subclasses
+   * override this to add formats — e.g. FileMetaDataLoader adds YAML. This is
+   * the seam that keeps the base loader free of the YAML parser.
+   */
+  protected parseSource(
+    content: string,
+    source: MetaDataSource,
+    parseOpts: ParseOptions,
+  ): ParseResult {
+    if (source.format === "json") {
+      return parseJson(content, parseOpts);
+    }
+    if (source.format === "yaml") {
+      return parseYaml(content, parseOpts);
+    }
+    throw new Error(
+      `unsupported metadata format "${source.format}" for source "${source.id}"`,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // load — async pipeline over MetaDataSource[]
   // ---------------------------------------------------------------------------
 
@@ -208,20 +235,7 @@ export class MetaDataLoader {
       if (root !== undefined) parseOpts.intoRoot = root;
 
       try {
-        // Dispatch by format. After the first successful parse, root is
-        // established; subsequent parses with intoRoot return the same root
-        // instance. Both parsers handle BOM stripping internally.
-        let parseResult;
-        if (source.format === "json") {
-          parseResult = parseJson(content, parseOpts);
-        } else if (source.format === "yaml") {
-          parseResult = parseYaml(content, parseOpts);
-        } else {
-          errors.push(
-            new Error(`unsupported metadata format "${source.format}" for source "${source.id}"`),
-          );
-          continue;
-        }
+        const parseResult = this.parseSource(content, source, parseOpts);
         warnings.push(...parseResult.warnings);
         errors.push(...parseResult.errors);
         root = parseResult.root;
