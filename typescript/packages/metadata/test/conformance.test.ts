@@ -21,7 +21,7 @@ import { describe, expect, it } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { FileMetaDataLoader } from "../src/loader/file-meta-data-loader.js";
+import { FileMetaDataLoader } from "../src/core/file-meta-data-loader.js";
 import { canonicalSerialize } from "../src/serializer-json.js";
 
 // ---------------------------------------------------------------------------

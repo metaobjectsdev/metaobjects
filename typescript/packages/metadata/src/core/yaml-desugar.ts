@@ -13,13 +13,13 @@
 // strings and a safe placeholder is substituted so buildTree does not
 // double-report.
 
-import type { TypeRegistry } from "./registry.js";
+import type { TypeRegistry } from "../registry.js";
 import {
   RESERVED_KEY_CHILDREN,
   RESERVED_KEY_NAME,
   RESERVED_KEY_IS_ARRAY,
   TYPE_SUBTYPE_SEPARATOR,
-} from "./constants.js";
+} from "../constants.js";
 
 const ARRAY_SUFFIX = "[]";
 

@@ -14,7 +14,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { loadAndExportJson } from "../src/export-json.js";
+import { loadAndExportJson } from "../src/core/export-json.js";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemorySource } from "../src/loader/meta-data-source.js";
 import { canonicalSerialize } from "../src/serializer-json.js";

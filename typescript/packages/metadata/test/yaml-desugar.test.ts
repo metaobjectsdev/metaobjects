@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { TypeRegistry } from "../src/registry.js";
 import { registerCoreTypes } from "../src/core-types.js";
-import { desugar } from "../src/yaml-desugar.js";
+import { desugar } from "../src/core/yaml-desugar.js";
 
 function coreRegistry(): TypeRegistry {
   const registry = new TypeRegistry();

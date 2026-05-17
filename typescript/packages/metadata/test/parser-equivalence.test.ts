@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import { TypeRegistry } from "../src/registry.js";
 import { registerCoreTypes } from "../src/core-types.js";
 import { parseJson } from "../src/parser-json.js";
-import { parseYaml } from "../src/parser-yaml.js";
+import { parseYaml } from "../src/core/parser-yaml.js";
 import { canonicalSerialize } from "../src/serializer-json.js";
 
 function coreRegistry(): TypeRegistry {

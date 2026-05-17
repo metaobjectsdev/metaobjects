@@ -12,7 +12,7 @@ import {
   FIELD_SUBTYPE_LONG,
   IDENTITY_SUBTYPE_PRIMARY,
 } from "../src/constants.js";
-import { FileMetaDataLoader } from "../src/loader/file-meta-data-loader.js";
+import { FileMetaDataLoader } from "../src/core/file-meta-data-loader.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

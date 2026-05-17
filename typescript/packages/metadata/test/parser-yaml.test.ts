@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { TypeRegistry } from "../src/registry.js";
 import { registerCoreTypes } from "../src/core-types.js";
-import { parseYaml } from "../src/parser-yaml.js";
+import { parseYaml } from "../src/core/parser-yaml.js";
 import { TYPE_METADATA, TYPE_FIELD } from "../src/constants.js";
 
 function coreRegistry(): TypeRegistry {

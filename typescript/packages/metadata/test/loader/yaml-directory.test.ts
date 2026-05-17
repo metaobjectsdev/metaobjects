@@ -2,7 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FileMetaDataLoader } from "../../src/loader/file-meta-data-loader.js";
+import { FileMetaDataLoader } from "../../src/core/file-meta-data-loader.js";
 import { TYPE_OBJECT } from "../../src/constants.js";
 
 // ---------------------------------------------------------------------------

@@ -6,9 +6,9 @@
 // produces.
 
 import { parse as parseYamlText } from "yaml";
-import { ParseError } from "./errors.js";
-import { buildTree, errOpts } from "./parser-core.js";
-import type { ParseOptions, ParseResult } from "./parser-core.js";
+import { ParseError } from "../errors.js";
+import { buildTree, errOpts } from "../parser-core.js";
+import type { ParseOptions, ParseResult } from "../parser-core.js";
 import { desugar } from "./yaml-desugar.js";
 
 export function parseYaml(content: string, opts: ParseOptions): ParseResult {

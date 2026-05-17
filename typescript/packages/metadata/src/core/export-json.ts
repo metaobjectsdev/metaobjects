@@ -15,9 +15,9 @@
 //     surfaces them unchanged in `ExportResult.errors`. It does not throw for
 //     directory or metadata problems.
 
-import { FileMetaDataLoader } from "./loader/file-meta-data-loader.js";
-import type { LoadOptions } from "./loader/meta-data-loader.js";
-import { canonicalSerialize } from "./serializer-json.js";
+import { FileMetaDataLoader } from "./file-meta-data-loader.js";
+import type { LoadOptions } from "../loader/meta-data-loader.js";
+import { canonicalSerialize } from "../serializer-json.js";
 
 // ---------------------------------------------------------------------------
 // Public API

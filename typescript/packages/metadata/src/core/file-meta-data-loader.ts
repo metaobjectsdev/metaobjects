@@ -5,8 +5,8 @@
 import type { Stats } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { MetaDataLoader, type LoadResult } from "./meta-data-loader.js";
-import { FileSource } from "../core/file-source.js";
+import { MetaDataLoader, type LoadResult } from "../loader/meta-data-loader.js";
+import { FileSource } from "./file-source.js";
 
 /** Minimal glob matcher supporting `*` (any chars except `/`) and `**` (any chars). */
 function matchSimpleGlob(pattern: string, value: string): boolean {

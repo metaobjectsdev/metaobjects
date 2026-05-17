@@ -9,6 +9,11 @@
       "bun": "./src/index.ts",
       "types": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./core": {
+      "bun": "./src/core/index.ts",
+      "types": "./src/core/index.ts",
+      "default": "./dist/core/index.js"
     }
   },
   "files": ["dist", "src"],

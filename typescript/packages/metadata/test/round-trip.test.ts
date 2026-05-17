@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from "bun:test";
 import { join } from "node:path";
-import { FileMetaDataLoader } from "../src/loader/file-meta-data-loader.js";
+import { FileMetaDataLoader } from "../src/core/file-meta-data-loader.js";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemorySource } from "../src/loader/meta-data-source.js";
 import type { MetaData } from "../src/meta/meta-data.js";

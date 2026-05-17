@@ -98,7 +98,6 @@ export type { CoercedValue, InferredType } from "./value-coerce.js";
 export { buildTree } from "./parser-core.js";
 export type { ParseOptions, ParseResult } from "./parser-core.js";
 export { parseJson } from "./parser-json.js";
-export { parseYaml } from "./parser-yaml.js";
 
 // Serializer
 export { serializeJson, canonicalSerialize, inferAttrSubType } from "./serializer-json.js";
@@ -110,17 +109,11 @@ export { resolveSuperRef } from "./super-resolve.js";
 // Loader hierarchy
 export { MetaDataLoader } from "./loader/meta-data-loader.js";
 export type { LoadOptions, LoadResult, LoadingState } from "./loader/meta-data-loader.js";
-export { FileMetaDataLoader } from "./loader/file-meta-data-loader.js";
-export { FileSource } from "./core/file-source.js";
 export { InMemorySource } from "./loader/meta-data-source.js";
 export type { MetaDataSource, MetaDataFormat } from "./loader/meta-data-source.js";
 
 // Errors
 export { ParseError } from "./errors.js";
-
-// Export convenience API — load a directory, emit one canonical-JSON document
-export { loadAndExportJson } from "./export-json.js";
-export type { ExportResult } from "./export-json.js";
 
 // Attribute-schema validation pass (Phase A3)
 export { validateAttrSchema } from "./attr-schema-validate.js";

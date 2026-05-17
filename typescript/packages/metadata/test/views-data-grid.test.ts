@@ -12,7 +12,7 @@ import {
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
   OBJECT_SUBTYPE_ENTITY, FIELD_SUBTYPE_STRING,
 } from "../src/constants.js";
-import { FileMetaDataLoader } from "../src/loader/file-meta-data-loader.js";
+import { FileMetaDataLoader } from "../src/core/file-meta-data-loader.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
