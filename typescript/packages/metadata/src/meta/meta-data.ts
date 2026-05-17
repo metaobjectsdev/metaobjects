@@ -28,6 +28,7 @@ export abstract class MetaData {
   // Internal storage
   private _attrs = new Map<string, AttrValue>();
   private _children: MetaData[] = [];
+  private _parent?: MetaData;
   private _frozen: boolean = false;
 
   // Per-instance read cache: only populated once the node is frozen.
@@ -179,7 +180,22 @@ export abstract class MetaData {
 
   addChild(child: MetaData): void {
     this._assertNotFrozen();
+    child._parent = this;
     this._children.push(child);
+  }
+
+  /** The node this node was added to as a child, or undefined for the tree root. */
+  get parent(): MetaData | undefined {
+    return this._parent;
+  }
+
+  /** Walk up to the top of the tree this node belongs to. */
+  root(): MetaData {
+    let node: MetaData = this;
+    while (node._parent !== undefined) {
+      node = node._parent;
+    }
+    return node;
   }
 
   /** Returns a defensive copy of the children array — mutating the result does not affect this model. */

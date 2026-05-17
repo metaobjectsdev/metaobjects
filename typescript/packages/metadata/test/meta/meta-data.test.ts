@@ -627,3 +627,21 @@ describe("MetaData — freeze()", () => {
     expect(grandchild.isFrozen()).toBe(true);
   });
 });
+
+describe("MetaData — parent / root", () => {
+  it("addChild sets the child's parent; root() walks to the top", () => {
+    const root = new TestNode(new TypeId("metadata", "root"), "");
+    const mid = makeObject("entity", "Mid");
+    const leaf = makeField("string", "Leaf");
+    root.addChild(mid);
+    mid.addChild(leaf);
+
+    expect(mid.parent).toBe(root);
+    expect(leaf.parent).toBe(mid);
+    expect(root.parent).toBeUndefined();
+
+    expect(leaf.root()).toBe(root);
+    expect(mid.root()).toBe(root);
+    expect(root.root()).toBe(root);
+  });
+});
