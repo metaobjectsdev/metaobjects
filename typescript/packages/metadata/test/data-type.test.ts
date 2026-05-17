@@ -61,3 +61,21 @@ describe("core dataType registration", () => {
     }
   });
 });
+
+describe("MetaField.dataType / MetaAttr.dataType", () => {
+  it("a built field node reports its registry-supplied dataType", () => {
+    const r = new TypeRegistry();
+    registerCoreTypes(r);
+    const def = r.find(TYPE_FIELD, FIELD_SUBTYPE_INT)!;
+    const node = def.factory(def.typeId, "age");
+    expect((node as { dataType: unknown }).dataType).toBe("int");
+  });
+
+  it("a built attr node reports its registry-supplied dataType", () => {
+    const r = new TypeRegistry();
+    registerCoreTypes(r);
+    const def = r.find(TYPE_ATTR, ATTR_SUBTYPE_INT)!;
+    const node = def.factory(def.typeId, "x");
+    expect((node as { dataType: unknown }).dataType).toBe("int");
+  });
+});

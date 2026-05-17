@@ -4,6 +4,7 @@
 // Children are already concrete typed nodes; accessors filter by type constant.
 
 import { MetaData } from "./meta-data.js";
+import { type DataType, type DataTypeAware, DATA_TYPE_STRING } from "../data-type.js";
 import {
   TYPE_VALIDATOR,
   TYPE_VIEW,
@@ -21,7 +22,12 @@ import {
 // MetaValidator and MetaView are defined in Task 3 (meta-validator.ts / meta-view.ts).
 // Using MetaData as the base type here; callers narrow as needed.
 
-export class MetaField extends MetaData {
+export class MetaField extends MetaData implements DataTypeAware {
+  /** The coarse value-type classification for this field's subtype. */
+  get dataType(): DataType {
+    return this._dataType ?? DATA_TYPE_STRING;
+  }
+
   get dbColumn(): string | undefined {
     const v = this.attr(FIELD_ATTR_DB_COLUMN);
     return typeof v === "string" ? v : undefined;
