@@ -455,3 +455,32 @@ describe("registerCoreTypes", () => {
     expect(model.name).toBe("MyEntity");
   });
 });
+
+// ---------------------------------------------------------------------------
+// TypeRegistry — default subType
+// ---------------------------------------------------------------------------
+
+describe("TypeRegistry — default subType", () => {
+  it("setDefaultSubType / defaultSubTypeOf round-trips", () => {
+    const registry = new TypeRegistry();
+    registry.register({
+      typeId: new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY),
+      description: "test",
+      factory: (id, name) => {
+        const typeId = new TypeId(id.type, id.subType);
+        const meta = stubFactory();
+        return meta;
+      },
+      childRules: [],
+      attributes: [],
+    });
+    expect(registry.defaultSubTypeOf(TYPE_OBJECT)).toBeUndefined();
+    registry.setDefaultSubType(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY);
+    expect(registry.defaultSubTypeOf(TYPE_OBJECT)).toBe(OBJECT_SUBTYPE_ENTITY);
+  });
+
+  it("defaultSubTypeOf is undefined for an undesignated type", () => {
+    const registry = new TypeRegistry();
+    expect(registry.defaultSubTypeOf(TYPE_FIELD)).toBeUndefined();
+  });
+});

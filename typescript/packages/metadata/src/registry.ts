@@ -55,6 +55,9 @@ export class TypeRegistry {
   /** Per-type insertion-ordered subtype lists. */
   private readonly _subTypes = new Map<string, string[]>();
 
+  /** Per-type designated default subType (queried by the YAML desugar). */
+  private readonly _defaultSubTypes = new Map<string, string>();
+
   register(def: TypeDefinition): void {
     const key = def.typeId.toString();
     if (this._defs.has(key)) {
@@ -86,6 +89,16 @@ export class TypeRegistry {
 
   allSubTypesOf(type: string): string[] {
     return [...(this._subTypes.get(type) ?? [])];
+  }
+
+  /** Designate the default subType for a bare `type` key (used by YAML authoring sugar). */
+  setDefaultSubType(type: string, subType: string): void {
+    this._defaultSubTypes.set(type, subType);
+  }
+
+  /** The designated default subType for a type, or undefined if none was designated. */
+  defaultSubTypeOf(type: string): string | undefined {
+    return this._defaultSubTypes.get(type);
   }
 
   /** The declared attribute schema for a (type, subType), or [] if the
