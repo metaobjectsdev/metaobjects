@@ -1,7 +1,16 @@
 // registerCoreTypes() — Java's 7 base types (plus metadata wrapper) and their subtypes
 import { TypeId, type AttrSchema, type ChildRule, type TypeDefinition, TypeRegistry } from "./registry.js";
 import type { MetaDataTypeProvider } from "./provider.js";
-import type { DataType } from "./data-type.js";
+import {
+  type DataType,
+  DATA_TYPE_BOOLEAN,
+  DATA_TYPE_INT,
+  DATA_TYPE_LONG,
+  DATA_TYPE_DOUBLE,
+  DATA_TYPE_STRING,
+  DATA_TYPE_DATE,
+  DATA_TYPE_OBJECT,
+} from "./data-type.js";
 import type { MetaData } from "./meta/meta-data.js";
 import { MetaRoot } from "./meta/meta-root.js";
 import { MetaObject } from "./meta/meta-object.js";
@@ -56,7 +65,29 @@ import {
   OBJECT_SUBTYPE_ENTITY,
   FIELD_SUBTYPES,
   FIELD_SUBTYPE_CURRENCY,
+  FIELD_SUBTYPE_STRING,
+  FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_SHORT,
+  FIELD_SUBTYPE_BYTE,
+  FIELD_SUBTYPE_LONG,
+  FIELD_SUBTYPE_DOUBLE,
+  FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_DECIMAL,
+  FIELD_SUBTYPE_BOOLEAN,
+  FIELD_SUBTYPE_DATE,
+  FIELD_SUBTYPE_TIME,
+  FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_SUBTYPE_OBJECT,
+  FIELD_SUBTYPE_CLASS,
   ATTR_SUBTYPES,
+  ATTR_SUBTYPE_STRING,
+  ATTR_SUBTYPE_INT,
+  ATTR_SUBTYPE_LONG,
+  ATTR_SUBTYPE_DOUBLE,
+  ATTR_SUBTYPE_BOOLEAN,
+  ATTR_SUBTYPE_CLASS,
+  ATTR_SUBTYPE_PROPERTIES,
+  ATTR_SUBTYPE_STRINGARRAY,
   VALIDATOR_SUBTYPES,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
@@ -121,6 +152,40 @@ function def(
   return definition;
 }
 
+/** Field subtype → DataType. Co-located with registration — a provider adding a
+ *  field subtype supplies its own dataType the same way. */
+const FIELD_DATA_TYPE: Record<string, DataType> = {
+  [SUBTYPE_BASE]: DATA_TYPE_STRING,
+  [FIELD_SUBTYPE_STRING]: DATA_TYPE_STRING,
+  [FIELD_SUBTYPE_CLASS]: DATA_TYPE_STRING,
+  [FIELD_SUBTYPE_INT]: DATA_TYPE_INT,
+  [FIELD_SUBTYPE_SHORT]: DATA_TYPE_INT,
+  [FIELD_SUBTYPE_BYTE]: DATA_TYPE_INT,
+  [FIELD_SUBTYPE_LONG]: DATA_TYPE_LONG,
+  [FIELD_SUBTYPE_CURRENCY]: DATA_TYPE_LONG,
+  [FIELD_SUBTYPE_DOUBLE]: DATA_TYPE_DOUBLE,
+  [FIELD_SUBTYPE_FLOAT]: DATA_TYPE_DOUBLE,
+  [FIELD_SUBTYPE_DECIMAL]: DATA_TYPE_DOUBLE,
+  [FIELD_SUBTYPE_BOOLEAN]: DATA_TYPE_BOOLEAN,
+  [FIELD_SUBTYPE_DATE]: DATA_TYPE_DATE,
+  [FIELD_SUBTYPE_TIME]: DATA_TYPE_DATE,
+  [FIELD_SUBTYPE_TIMESTAMP]: DATA_TYPE_DATE,
+  [FIELD_SUBTYPE_OBJECT]: DATA_TYPE_OBJECT,
+};
+
+/** Attr subtype → DataType. */
+const ATTR_DATA_TYPE: Record<string, DataType> = {
+  [SUBTYPE_BASE]: DATA_TYPE_STRING,
+  [ATTR_SUBTYPE_STRING]: DATA_TYPE_STRING,
+  [ATTR_SUBTYPE_CLASS]: DATA_TYPE_STRING,
+  [ATTR_SUBTYPE_STRINGARRAY]: DATA_TYPE_STRING,
+  [ATTR_SUBTYPE_INT]: DATA_TYPE_INT,
+  [ATTR_SUBTYPE_LONG]: DATA_TYPE_LONG,
+  [ATTR_SUBTYPE_DOUBLE]: DATA_TYPE_DOUBLE,
+  [ATTR_SUBTYPE_BOOLEAN]: DATA_TYPE_BOOLEAN,
+  [ATTR_SUBTYPE_PROPERTIES]: DATA_TYPE_OBJECT,
+};
+
 /** Map from validator subtype string → concrete node constructor. */
 const VALIDATOR_CLASS_MAP = new Map<string, NodeConstructor>([
   [VALIDATOR_SUBTYPE_REQUIRED, MetaRequiredValidator],
@@ -184,13 +249,17 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
         ? [...commonFieldAttrs, { ...currencyFieldAttr }]
         : [...commonFieldAttrs];
     registry.register(
-      def(TYPE_FIELD, subType, `Field of type ${subType}`, fieldRules, MetaField, fieldAttrs),
+      def(TYPE_FIELD, subType, `Field of type ${subType}`, fieldRules, MetaField, fieldAttrs,
+        FIELD_DATA_TYPE[subType] ?? DATA_TYPE_STRING),
     );
   }
 
   // attr — 9 subtypes, no children allowed
   for (const subType of ATTR_SUBTYPES) {
-    registry.register(def(TYPE_ATTR, subType, `Attribute of type ${subType}`, [], MetaAttr));
+    registry.register(
+      def(TYPE_ATTR, subType, `Attribute of type ${subType}`, [], MetaAttr,
+        [], ATTR_DATA_TYPE[subType] ?? DATA_TYPE_STRING),
+    );
   }
 
   // validator — 6 subtypes (base + 5 named); dispatch to subtype-specific class.
