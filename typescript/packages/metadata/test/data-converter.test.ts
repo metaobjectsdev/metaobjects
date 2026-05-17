@@ -1,0 +1,62 @@
+import { describe, it, expect } from "bun:test";
+import { convertToDataType, toAttrValue } from "../src/data-converter.js";
+
+describe("convertToDataType — convert toward a known DataType", () => {
+  it("string: stringifies a number supplied for a string attr", () => {
+    expect(convertToDataType("string", "users")).toBe("users");
+    expect(convertToDataType("string", 123)).toBe("123");
+    expect(convertToDataType("string", true)).toBe("true");
+  });
+
+  it("int / long: a number stays, a numeric string parses", () => {
+    expect(convertToDataType("int", 50)).toBe(50);
+    expect(convertToDataType("int", "50")).toBe(50);
+    expect(convertToDataType("long", 9999999999)).toBe(9999999999);
+  });
+
+  it("long: a value beyond MAX_SAFE_INTEGER is preserved verbatim as a string", () => {
+    expect(convertToDataType("long", "9223372036854775807")).toBe("9223372036854775807");
+  });
+
+  it("double: a number stays, a numeric string parses", () => {
+    expect(convertToDataType("double", 3.14)).toBe(3.14);
+    expect(convertToDataType("double", "2.5")).toBe(2.5);
+  });
+
+  it("boolean: a boolean stays, 'true'/'false' parse (case-sensitive)", () => {
+    expect(convertToDataType("boolean", true)).toBe(true);
+    expect(convertToDataType("boolean", "true")).toBe(true);
+    expect(convertToDataType("boolean", "false")).toBe(false);
+  });
+
+  it("any DataType: an array value becomes string[] element-wise", () => {
+    expect(convertToDataType("string", ["a", "b"])).toEqual(["a", "b"]);
+    expect(convertToDataType("string", [1, 2, 3])).toEqual(["1", "2", "3"]);
+    expect(convertToDataType("string", [])).toEqual([]);
+  });
+
+  it("rejects null, undefined, and nested arrays", () => {
+    expect(() => convertToDataType("string", null)).toThrow();
+    expect(() => convertToDataType("string", undefined)).toThrow();
+    expect(() => convertToDataType("string", [["nested"]])).toThrow();
+  });
+});
+
+describe("toAttrValue — a structurally-valid AttrValue, no known type", () => {
+  it("stores scalars as-is (no inference — a numeric string stays a string)", () => {
+    expect(toAttrValue("hello")).toBe("hello");
+    expect(toAttrValue("42")).toBe("42");
+    expect(toAttrValue(42)).toBe(42);
+    expect(toAttrValue(true)).toBe(true);
+  });
+
+  it("maps an array to string[]", () => {
+    expect(toAttrValue([1, 2])).toEqual(["1", "2"]);
+  });
+
+  it("rejects null, undefined, plain objects", () => {
+    expect(() => toAttrValue(null)).toThrow();
+    expect(() => toAttrValue(undefined)).toThrow();
+    expect(() => toAttrValue({ a: 1 })).toThrow();
+  });
+});
