@@ -48,3 +48,12 @@ test("FileSource: infers format from the file extension", () => {
   expect(new FileSource("meta.commerce.yaml").format).toBe("yaml");
   expect(new FileSource("meta.commerce.yml").format).toBe("yaml");
 });
+
+test("loader: the base MetaDataLoader rejects a yaml-format source", async () => {
+  const loader = new MetaDataLoader();
+  const result = await loader.load([
+    new InMemorySource("metadata:\n  children: []\n", { id: "x.yaml", format: "yaml" }),
+  ]);
+  expect(result.errors.length).toBeGreaterThan(0);
+  expect(result.errors[0]!.message).toContain("MetaDataLoader parses JSON only");
+});
