@@ -51,6 +51,7 @@ import {
   SUBTYPE_BASE,
   SUBTYPE_ROOT,
   OBJECT_SUBTYPES,
+  OBJECT_SUBTYPE_ENTITY,
   FIELD_SUBTYPES,
   FIELD_SUBTYPE_CURRENCY,
   ATTR_SUBTYPES,
@@ -268,4 +269,12 @@ export function registerCoreTypes(registry: TypeRegistry): void {
       ),
     );
   }
+
+  // Default subTypes for YAML authoring sugar: a bare `metadata:` / `object:`
+  // key resolves to these. `metadata` has exactly one subtype (root) so the
+  // default is unambiguous; `object` defaults to `entity`, the common case.
+  // Other types (field, validator, ...) have no default — authoring always
+  // writes the full `type.subType`.
+  registry.setDefaultSubType(TYPE_METADATA, SUBTYPE_ROOT);
+  registry.setDefaultSubType(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY);
 }
