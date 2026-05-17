@@ -90,9 +90,10 @@ export { registerCoreTypes } from "./core-types.js";
 export { coerceAttrValue } from "./value-coerce.js";
 export type { CoercedValue, InferredType } from "./value-coerce.js";
 
-// Parser
+// Parser — shared core builder + per-format front-ends
+export { buildTree } from "./parser-core.js";
+export type { ParseOptions, ParseResult } from "./parser-core.js";
 export { parseJson } from "./parser-json.js";
-export type { ParseOptions, ParseResult } from "./parser-json.js";
 
 // Serializer
 export { serializeJson, canonicalSerialize, inferAttrSubType } from "./serializer-json.js";
