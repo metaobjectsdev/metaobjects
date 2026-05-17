@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
-import { InMemorySource, FileSource } from "../../src/loader/meta-data-source.js";
+import { InMemorySource } from "../../src/loader/meta-data-source.js";
+import { FileSource } from "../../src/core/file-source.js";
 import { TYPE_METADATA } from "../../src/constants.js";
 
 test("loader: dispatches a yaml-format source through parseYaml", async () => {

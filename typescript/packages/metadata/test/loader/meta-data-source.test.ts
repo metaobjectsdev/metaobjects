@@ -2,7 +2,8 @@ import { describe, it, expect } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { InMemorySource, FileSource } from "../../src/loader/meta-data-source.js";
+import { InMemorySource } from "../../src/loader/meta-data-source.js";
+import { FileSource } from "../../src/core/file-source.js";
 
 describe("InMemorySource", () => {
   it("read() resolves the content; id/format default", async () => {

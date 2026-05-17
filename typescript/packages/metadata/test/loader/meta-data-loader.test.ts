@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
-import { InMemorySource, FileSource } from "../../src/loader/meta-data-source.js";
+import { InMemorySource } from "../../src/loader/meta-data-source.js";
+import { FileSource } from "../../src/core/file-source.js";
 import { MetaRoot } from "../../src/meta/meta-root.js";
 import { TypeRegistry } from "../../src/registry.js";
 import { ParseError } from "../../src/errors.js";

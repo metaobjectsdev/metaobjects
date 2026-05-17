@@ -111,7 +111,8 @@ export { resolveSuperRef } from "./super-resolve.js";
 export { MetaDataLoader } from "./loader/meta-data-loader.js";
 export type { LoadOptions, LoadResult, LoadingState } from "./loader/meta-data-loader.js";
 export { FileMetaDataLoader } from "./loader/file-meta-data-loader.js";
-export { FileSource, InMemorySource } from "./loader/meta-data-source.js";
+export { FileSource } from "./core/file-source.js";
+export { InMemorySource } from "./loader/meta-data-source.js";
 export type { MetaDataSource, MetaDataFormat } from "./loader/meta-data-source.js";
 
 // Errors
