@@ -76,10 +76,21 @@ function toInteger(raw: unknown): AttrValue {
     if (Number.isInteger(raw) && !Number.isSafeInteger(raw)) return String(raw);
     return raw;
   }
-  if (typeof raw === "string" && /^-?\d+$/.test(raw)) {
+  if (typeof raw === "string") {
+    // Strict integer string (e.g. "42", "-7").
+    if (/^-?\d+$/.test(raw)) {
+      const parsed = Number(raw);
+      // Beyond MAX_SAFE_INTEGER → keep verbatim to preserve precision.
+      return Number.isSafeInteger(parsed) ? parsed : raw;
+    }
+    // Float-format strings that represent a whole number (e.g. "3.0", "12.0").
+    // Metadata files sometimes store int attr values in float notation; convert
+    // to the integer value to preserve byte-identical behavior with the old
+    // coerceAttrValue, which parsed these via the double pattern.
     const parsed = Number(raw);
-    // Beyond MAX_SAFE_INTEGER → keep verbatim to preserve precision.
-    return Number.isSafeInteger(parsed) ? parsed : raw;
+    if (Number.isFinite(parsed) && Number.isInteger(parsed) && Number.isSafeInteger(parsed)) {
+      return parsed;
+    }
   }
   return raw as AttrValue;
 }

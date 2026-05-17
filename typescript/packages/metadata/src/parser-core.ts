@@ -26,7 +26,8 @@
 import { TypeId, TypeRegistry } from "./registry.js";
 import type { MetaData } from "./meta/meta-data.js";
 import { MetaRoot } from "./meta/meta-root.js";
-import { coerceAttrValue } from "./value-coerce.js";
+import { convertToDataType, toAttrValue } from "./data-converter.js";
+import { DATA_TYPE_STRING } from "./data-type.js";
 import { ParseError } from "./errors.js";
 import { resolveSuperRef } from "./super-resolve.js";
 import {
@@ -594,38 +595,28 @@ function applyInlineAttrsAndUnknownKeys(
     const attrName = key.slice(ATTR_PREFIX.length);
     const rawVal = nodeData[key];
 
-    // Approach (a): if this attr is declared as stringArray in the registry,
-    // skip numeric/boolean coercion for non-array scalars — identifiers and
-    // field names must never be coerced to number/boolean. Convert the raw
-    // value to its string form directly, then let normalizeStringArrayAttr
-    // wrap it into a one-element array.
     const attrSpec = registry.attrsOf(model.type, model.subType).find((s) => s.name === attrName);
-    if (attrSpec?.valueType === ATTR_SUBTYPE_STRINGARRAY && !Array.isArray(rawVal)) {
-      const asString = rawVal === null || rawVal === undefined ? "" : String(rawVal);
-      const normalized = normalizeStringArrayAttr(model.type, model.subType, attrName, asString, registry);
-      model.setAttr(attrName, normalized);
-      continue;
-    }
 
-    let coerced;
+    let value: AttrValue;
     try {
-      coerced = coerceAttrValue(rawVal);
+      if (attrSpec !== undefined) {
+        // Declared attr — convert toward the DataType of its registered subtype.
+        const dataType = registry.find(TYPE_ATTR, attrSpec.valueType)?.dataType ?? DATA_TYPE_STRING;
+        value = convertToDataType(dataType, rawVal);
+      } else {
+        // Undeclared @-attr — store a structurally-valid raw value, no inference.
+        value = toAttrValue(rawVal);
+      }
     } catch (err) {
       reportProblem(
-        `Failed to coerce attribute "${ATTR_PREFIX}${attrName}" at ${path}: ${(err as Error).message}`,
+        `Failed to convert attribute "${ATTR_PREFIX}${attrName}" at ${path}: ${(err as Error).message}`,
         strict, warnings, source, path,
       );
       continue;
     }
 
-    // Desugar a bare-string value for a declared stringArray-typed attr.
-    const normalized = normalizeStringArrayAttr(
-      model.type,
-      model.subType,
-      attrName,
-      coerced.value,
-      registry,
-    );
+    // A bare string for a declared stringArray attr → one-element array.
+    const normalized = normalizeStringArrayAttr(model.type, model.subType, attrName, value, registry);
     model.setAttr(attrName, normalized);
   }
 }
@@ -777,41 +768,39 @@ function parseAttrChild(
     return;
   }
 
-  let coercedValue: ReturnType<typeof coerceAttrValue>;
+  // Resolve the attr node's own subtype (fall back to base if unregistered).
+  const resolvedSubType =
+    registry.has(attrType, attrSubType) || !registry.has(attrType, SUBTYPE_BASE)
+      ? attrSubType
+      : SUBTYPE_BASE;
+  const attrDef = registry.find(attrType, resolvedSubType);
+
+  let value: AttrValue;
   try {
-    coercedValue = coerceAttrValue(attrValue);
+    // Convert toward the DataType of the attr node's own registered subtype.
+    const dataType = attrDef?.dataType ?? DATA_TYPE_STRING;
+    value = convertToDataType(dataType, attrValue);
   } catch (err) {
     reportProblem(
-      `Failed to coerce attr child "${attrName}" value at ${path}: ${(err as Error).message}`,
+      `Failed to convert attr child "${attrName}" value at ${path}: ${(err as Error).message}`,
       strict, warnings, source, path,
     );
     return;
   }
 
-  // Fall back to base subType if the requested one isn't registered.
-  const resolvedSubType =
-    registry.has(attrType, attrSubType) || !registry.has(attrType, SUBTYPE_BASE)
-      ? attrSubType
-      : SUBTYPE_BASE;
-
-  const attrDef = registry.find(attrType, resolvedSubType);
   const attrModel = attrDef !== undefined
     ? attrDef.factory(attrDef.typeId, attrName)
     : new MetaRoot(new TypeId(attrType, resolvedSubType), attrName);
 
-  // Desugar a bare-string value for a declared stringArray-typed attr,
-  // mirroring the inline @-attr path in applyInlineAttrsAndUnknownKeys.
+  // A bare string for a declared stringArray attr → one-element array.
   const normalized = normalizeStringArrayAttr(
     parent.type,
     parent.subType,
     attrName,
-    coercedValue.value,
+    value,
     registry,
   );
 
-  // Both the child attr node and the parent attr-map carry the same normalized
-  // value so dual storage stays consistent (non-inline serializer reads the
-  // child node; inline path reads the parent map).
   attrModel.setAttr(RESERVED_KEY_VALUE, normalized);
   parent.addChild(attrModel);
   parent.setAttr(attrName, normalized);
