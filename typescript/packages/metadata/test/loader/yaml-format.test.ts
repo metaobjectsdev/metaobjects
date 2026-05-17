@@ -1,0 +1,48 @@
+import { test, expect } from "bun:test";
+import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
+import { InMemorySource, FileSource } from "../../src/loader/meta-data-source.js";
+import { TYPE_METADATA } from "../../src/constants.js";
+
+test("loader: dispatches a yaml-format source through parseYaml", async () => {
+  const yaml = `
+metadata:
+  children:
+    - object:
+        name: Product
+        children:
+          - field.string: sku
+`;
+  const loader = new MetaDataLoader();
+  const result = await loader.load([new InMemorySource(yaml, { id: "shop.yaml", format: "yaml" })]);
+  expect(result.errors).toEqual([]);
+  expect(result.root.type).toBe(TYPE_METADATA);
+  expect(result.root.children()[0]!.name).toBe("Product");
+});
+
+test("loader: merges a json source and a yaml source into one tree", async () => {
+  const json = `{ "metadata.root": { "children": [
+    { "object.entity": { "name": "Product", "children": [
+      { "field.string": { "name": "sku" } } ] } } ] } }`;
+  const yaml = `
+metadata:
+  children:
+    - object:
+        name: Customer
+        children:
+          - field.string: email
+`;
+  const loader = new MetaDataLoader();
+  const result = await loader.load([
+    new InMemorySource(json, { id: "a.json", format: "json" }),
+    new InMemorySource(yaml, { id: "b.yaml", format: "yaml" }),
+  ]);
+  expect(result.errors).toEqual([]);
+  expect(result.root.childByName("Product")).toBeDefined();
+  expect(result.root.childByName("Customer")).toBeDefined();
+});
+
+test("FileSource: infers format from the file extension", () => {
+  expect(new FileSource("meta.commerce.json").format).toBe("json");
+  expect(new FileSource("meta.commerce.yaml").format).toBe("yaml");
+  expect(new FileSource("meta.commerce.yml").format).toBe("yaml");
+});

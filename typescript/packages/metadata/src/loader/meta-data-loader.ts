@@ -14,6 +14,7 @@ import { registerCoreTypes } from "../core-types.js";
 import { TYPE_METADATA, SUBTYPE_ROOT } from "../constants.js";
 import { ParseError } from "../errors.js";
 import { parseJson } from "../parser-json.js";
+import { parseYaml } from "../parser-yaml.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths } from "./validation-passes.js";
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
@@ -197,13 +198,6 @@ export class MetaDataLoader {
         continue;
       }
 
-      if (source.format !== "json") {
-        errors.push(
-          new Error(`unsupported metadata format "${source.format}" for source "${source.id}"`),
-        );
-        continue;
-      }
-
       // Build parser options, honoring exactOptionalPropertyTypes — only include
       // sourceName / intoRoot keys when defined.
       const parseOpts: Parameters<typeof parseJson>[1] = {
@@ -215,10 +209,20 @@ export class MetaDataLoader {
       if (root !== undefined) parseOpts.intoRoot = root;
 
       try {
-        // After the first successful parse, root is established.
-        // Subsequent parses with intoRoot return the same root instance.
-        // (parseJson handles BOM stripping internally.)
-        const parseResult = parseJson(content, parseOpts);
+        // Dispatch by format. After the first successful parse, root is
+        // established; subsequent parses with intoRoot return the same root
+        // instance. Both parsers handle BOM stripping internally.
+        let parseResult;
+        if (source.format === "json") {
+          parseResult = parseJson(content, parseOpts);
+        } else if (source.format === "yaml") {
+          parseResult = parseYaml(content, parseOpts);
+        } else {
+          errors.push(
+            new Error(`unsupported metadata format "${source.format}" for source "${source.id}"`),
+          );
+          continue;
+        }
         warnings.push(...parseResult.warnings);
         errors.push(...parseResult.errors);
         root = parseResult.root;
