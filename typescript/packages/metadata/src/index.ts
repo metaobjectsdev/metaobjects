@@ -83,7 +83,7 @@ export type AnyMeta =
 
 // Registry
 export { TypeId, TypeRegistry, childRuleMatches } from "./registry.js";
-export type { ChildRule, TypeDefinition } from "./registry.js";
+export type { AttrSchema, ChildRule, TypeDefinition } from "./registry.js";
 export { registerCoreTypes, coreTypesProvider, coreProviders } from "./core-types.js";
 
 // Type provider model

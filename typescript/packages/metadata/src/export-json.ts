@@ -40,7 +40,7 @@ export interface ExportResult {
  * canonical-JSON document.
  *
  * Internally constructs a fresh `FileMetaDataLoader` (using the default registry
- * seeded via `registerCoreTypes()`), calls `loadDirectory`, then serializes the
+ * composed via `composeRegistry(coreProviders)`), calls `loadDirectory`, then serializes the
  * resulting tree with `canonicalSerialize`.
  *
  * @param dir  Absolute or relative path to the directory containing `meta.*.json` files.

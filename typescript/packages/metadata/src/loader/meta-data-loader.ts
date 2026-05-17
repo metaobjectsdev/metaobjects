@@ -30,7 +30,7 @@ import type { MetaDataSource } from "./meta-data-source.js";
 export type LoadingState = "uninitialized" | "loading" | "loaded" | "error";
 
 export interface LoadOptions {
-  /** TypeRegistry to use; defaults to a fresh registry pre-populated via registerCoreTypes(). */
+  /** TypeRegistry to use; defaults to a fresh registry pre-populated via composeRegistry(coreProviders). */
   registry?: TypeRegistry;
   /** Freeze the loaded tree after parsing. Default true. */
   freeze?: boolean;
@@ -86,7 +86,7 @@ export class MetaDataLoader {
   /**
    * The TypeRegistry this MetaDataLoader uses to look up type definitions.
    * Either the one passed in via constructor, or the default registry
-   * pre-populated with core types via registerCoreTypes().
+   * pre-populated with core types via composeRegistry(coreProviders).
    *
    * Exposed for downstream consumers (codegen, runtime libraries) that
    * need to introspect registered types.

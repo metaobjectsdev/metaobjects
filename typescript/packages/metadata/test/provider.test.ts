@@ -1,7 +1,8 @@
 import { describe, it, expect } from "bun:test";
 import { composeRegistry, type MetaDataTypeProvider } from "../src/provider.js";
 import { coreTypesProvider, coreProviders, registerCoreTypes } from "../src/core-types.js";
-import { TypeRegistry } from "../src/registry.js";
+import { TypeRegistry, TypeId } from "../src/registry.js";
+import { MetaField } from "../src/meta/meta-field.js";
 import {
   TYPE_FIELD,
   TYPE_OBJECT,
@@ -9,6 +10,7 @@ import {
   SUBTYPE_ROOT,
   OBJECT_SUBTYPE_ENTITY,
   FIELD_SUBTYPE_STRING,
+  ATTR_SUBTYPE_STRING,
 } from "../src/constants.js";
 
 function recordingProvider(
@@ -102,5 +104,40 @@ describe("coreTypesProvider", () => {
     expect(viaWrapper.allTypes().map(String).sort()).toEqual(
       viaProvider.allTypes().map(String).sort(),
     );
+  });
+});
+
+describe("composeRegistry — third-party provider integration", () => {
+  it("a third-party provider can add a new subtype and extend a core type", () => {
+    const geoProvider: MetaDataTypeProvider = {
+      id: "geo-types",
+      dependencies: ["metaobjects-core-types"],
+      registerTypes(registry: TypeRegistry): void {
+        // adds a brand-new field subtype
+        registry.register({
+          typeId: new TypeId(TYPE_FIELD, "geopoint"),
+          description: "A geographic point field",
+          factory: (typeId, name) => new MetaField(typeId, name),
+          childRules: [],
+          attributes: [],
+        });
+        // extends an existing core type
+        registry.extend(TYPE_FIELD, FIELD_SUBTYPE_STRING, {
+          attributes: [
+            { name: "geoSrid", valueType: ATTR_SUBTYPE_STRING, required: false, description: "spatial ref id" },
+          ],
+        });
+      },
+    };
+
+    const registry = composeRegistry([...coreProviders, geoProvider]);
+
+    // the new subtype is registered
+    expect(registry.has(TYPE_FIELD, "geopoint")).toBe(true);
+    // the core type still works AND carries the third-party extension
+    expect(registry.has(TYPE_FIELD, FIELD_SUBTYPE_STRING)).toBe(true);
+    expect(
+      registry.attrsOf(TYPE_FIELD, FIELD_SUBTYPE_STRING).some((a) => a.name === "geoSrid"),
+    ).toBe(true);
   });
 });
