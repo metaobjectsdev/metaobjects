@@ -362,6 +362,10 @@ export const FIELD_ATTR_CURRENCY_DEFAULT = "USD";
 /** Auto-set semantics on a timestamp field. Values: "onCreate" | "onUpdate". */
 export const FIELD_ATTR_AUTO_SET = "autoSet";
 
+/** Name (or FQN) of the target object an object-typed field nests. Same wire
+ *  spelling as the relationship `@objectRef` — Java's single ATTR_OBJECT_REF. */
+export const FIELD_ATTR_OBJECT_REF = "objectRef";
+
 export const AUTO_SET_ON_CREATE = "onCreate";
 export const AUTO_SET_ON_UPDATE = "onUpdate";
 

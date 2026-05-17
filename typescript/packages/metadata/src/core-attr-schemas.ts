@@ -33,6 +33,7 @@ import {
   ATTR_SUBTYPE_STRINGARRAY,
   // attr-name constants
   FIELD_ATTR_DB_COLUMN,
+  FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
@@ -88,6 +89,13 @@ export const commonFieldAttrs: AttrSchema[] = [
     required: false,
     description:
       "Override the generated SQL column name for this field. Defaults to the field name run through the project's columnNamingStrategy.",
+  },
+  {
+    name: FIELD_ATTR_OBJECT_REF,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    description:
+      "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization.",
   },
   {
     name: FIELD_ATTR_REQUIRED,

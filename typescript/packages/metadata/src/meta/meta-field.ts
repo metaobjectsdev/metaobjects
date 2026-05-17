@@ -15,6 +15,7 @@ import {
   FIELD_ATTR_MAX_LENGTH,
   FIELD_ATTR_PRECISION,
   FIELD_ATTR_SCALE,
+  FIELD_ATTR_OBJECT_REF,
   VALIDATOR_SUBTYPE_REQUIRED,
 } from "../constants.js";
 
@@ -26,6 +27,12 @@ export class MetaField extends MetaData implements DataTypeAware {
   /** The coarse value-type classification for this field's subtype. */
   get dataType(): DataType {
     return this._dataType ?? DATA_TYPE_STRING;
+  }
+
+  /** The target object name for an object-typed field (the `@objectRef` attr). */
+  get objectRef(): string | undefined {
+    const v = this.attr(FIELD_ATTR_OBJECT_REF);
+    return typeof v === "string" ? v : undefined;
   }
 
   get dbColumn(): string | undefined {
