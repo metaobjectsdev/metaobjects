@@ -1,5 +1,6 @@
 // registerCoreTypes() — Java's 7 base types (plus metadata wrapper) and their subtypes
 import { TypeId, type AttrSchema, type ChildRule, type TypeDefinition, TypeRegistry } from "./registry.js";
+import type { MetaDataTypeProvider } from "./provider.js";
 import type { MetaData } from "./meta/meta-data.js";
 import { MetaRoot } from "./meta/meta-root.js";
 import { MetaObject } from "./meta/meta-object.js";
@@ -133,7 +134,7 @@ const ORIGIN_CLASS_MAP = new Map<string, NodeConstructor>([
   [ORIGIN_SUBTYPE_AGGREGATE, MetaAggregateOrigin],
 ]);
 
-export function registerCoreTypes(registry: TypeRegistry): void {
+function registerCoreTypeDefs(registry: TypeRegistry): void {
   // metadata — 1 subtype (the document root: metadata.root)
   registry.register(
     def(TYPE_METADATA, SUBTYPE_ROOT, "Root metadata document", [
@@ -277,4 +278,28 @@ export function registerCoreTypes(registry: TypeRegistry): void {
   // writes the full `type.subType`.
   registry.setDefaultSubType(TYPE_METADATA, SUBTYPE_ROOT);
   registry.setDefaultSubType(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY);
+}
+
+/**
+ * The core metaobjects metamodel — the seven base types (object, field, attr,
+ * validator, view, identity, relationship) plus layout / source / origin and
+ * the metadata root. One provider per package: this is `@metaobjects/metadata`'s.
+ */
+export const coreTypesProvider: MetaDataTypeProvider = {
+  id: "metaobjects-core-types",
+  description: "Core metaobjects metamodel types and subtypes.",
+  registerTypes(registry: TypeRegistry): void {
+    registerCoreTypeDefs(registry);
+  },
+};
+
+/** The default provider bundle. Spread it to add more: `[...coreProviders, mine]`. */
+export const coreProviders: readonly MetaDataTypeProvider[] = [coreTypesProvider];
+
+/**
+ * Register the core metamodel into an existing registry. Thin convenience
+ * wrapper over `coreTypesProvider`; prefer `composeRegistry(coreProviders)`.
+ */
+export function registerCoreTypes(registry: TypeRegistry): void {
+  coreTypesProvider.registerTypes(registry);
 }

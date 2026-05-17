@@ -1,5 +1,15 @@
 import { describe, it, expect } from "bun:test";
 import { composeRegistry, type MetaDataTypeProvider } from "../src/provider.js";
+import { coreTypesProvider, coreProviders, registerCoreTypes } from "../src/core-types.js";
+import { TypeRegistry } from "../src/registry.js";
+import {
+  TYPE_FIELD,
+  TYPE_OBJECT,
+  TYPE_METADATA,
+  SUBTYPE_ROOT,
+  OBJECT_SUBTYPE_ENTITY,
+  FIELD_SUBTYPE_STRING,
+} from "../src/constants.js";
 
 function recordingProvider(
   id: string,
@@ -68,5 +78,29 @@ describe("composeRegistry — provider composition", () => {
       { id: "noop", registerTypes: () => {} },
     ]);
     expect(typeof registry.has).toBe("function");
+  });
+});
+
+describe("coreTypesProvider", () => {
+  it("composeRegistry(coreProviders) registers the core metamodel", () => {
+    const registry = composeRegistry(coreProviders);
+    expect(registry.has(TYPE_FIELD, FIELD_SUBTYPE_STRING)).toBe(true);
+    expect(registry.has(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY)).toBe(true);
+    expect(registry.has(TYPE_METADATA, SUBTYPE_ROOT)).toBe(true);
+    expect(registry.defaultSubTypeOf(TYPE_METADATA)).toBe(SUBTYPE_ROOT);
+  });
+
+  it("coreProviders is a single-provider bundle", () => {
+    expect(coreProviders).toHaveLength(1);
+    expect(coreProviders[0]).toBe(coreTypesProvider);
+  });
+
+  it("the registerCoreTypes wrapper registers the same types as the provider", () => {
+    const viaWrapper = new TypeRegistry();
+    registerCoreTypes(viaWrapper);
+    const viaProvider = composeRegistry(coreProviders);
+    expect(viaWrapper.allTypes().map(String).sort()).toEqual(
+      viaProvider.allTypes().map(String).sort(),
+    );
   });
 });
