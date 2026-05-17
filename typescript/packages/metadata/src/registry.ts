@@ -1,5 +1,6 @@
 import type { AttrValue, MetaData } from "./meta/meta-data.js";
 import { type AttrSubType, CHILD_RULE_WILDCARD } from "./constants.js";
+import type { DataType } from "./data-type.js";
 
 export class TypeId {
   constructor(
@@ -46,6 +47,9 @@ export interface TypeDefinition {
   factory: (typeId: TypeId, name: string) => MetaData;
   childRules: ChildRule[];
   attributes: AttrSchema[];
+  /** The coarse value-type classification, for (type, subType)s whose nodes
+   *  carry a typed value (field, attr). Absent for non-value-bearing types. */
+  dataType?: DataType;
 }
 
 export class TypeRegistry {

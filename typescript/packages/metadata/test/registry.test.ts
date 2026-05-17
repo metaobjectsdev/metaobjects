@@ -557,3 +557,18 @@ describe("TypeRegistry — default subType", () => {
     expect(registry.defaultSubTypeOf(TYPE_FIELD)).toBeUndefined();
   });
 });
+
+describe("TypeDefinition — dataType", () => {
+  it("a registered definition carries its declared dataType", () => {
+    const registry = new TypeRegistry();
+    registry.register({
+      typeId: new TypeId("field", "string"),
+      description: "test",
+      factory: () => stubFactory(),
+      childRules: [],
+      attributes: [],
+      dataType: "string",
+    });
+    expect(registry.find("field", "string")!.dataType).toBe("string");
+  });
+});

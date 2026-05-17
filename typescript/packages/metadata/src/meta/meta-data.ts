@@ -1,5 +1,6 @@
 import { TypeId } from "../registry.js";
 import { PACKAGE_SEPARATOR } from "../constants.js";
+import type { DataType } from "../data-type.js";
 
 export type AttrValue = string | number | boolean | string[];
 
@@ -30,6 +31,10 @@ export abstract class MetaData {
   private _children: MetaData[] = [];
   private _parent?: MetaData;
   private _frozen: boolean = false;
+
+  // Registry-supplied coarse value type — set by the registry factory at node
+  // construction (for field/attr nodes). Read via MetaField/MetaAttr.dataType.
+  protected _dataType?: DataType;
 
   // Per-instance read cache: only populated once the node is frozen.
   private readonly _cache = new Map<string, unknown>();
@@ -132,6 +137,16 @@ export abstract class MetaData {
   setIsArray(val: boolean): void {
     this._assertNotFrozen();
     this.isArray = val;
+  }
+
+  // ---------------------------------------------------------------------------
+  // dataType
+  // ---------------------------------------------------------------------------
+
+  /** Set the registry-supplied DataType. Called by the registry factory at
+   *  node construction. */
+  setDataType(dt: DataType): void {
+    this._dataType = dt;
   }
 
   // ---------------------------------------------------------------------------
