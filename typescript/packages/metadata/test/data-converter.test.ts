@@ -14,6 +14,18 @@ describe("convertToDataType — convert toward a known DataType", () => {
     expect(convertToDataType("long", 9999999999)).toBe(9999999999);
   });
 
+  it("int / long: a float-format string that is a whole number converts to an integer", () => {
+    // "3.0" / "-5.0" / "3e2" are whole numbers — the old coercer turned them
+    // into integers, and conformance fixtures (e.g. @min: "3.0") rely on it.
+    expect(convertToDataType("int", "3.0")).toBe(3);
+    expect(convertToDataType("int", "-5.0")).toBe(-5);
+    expect(convertToDataType("long", "12.0")).toBe(12);
+  });
+
+  it("int / long: a non-whole float string is left as-is for schema validation", () => {
+    expect(convertToDataType("int", "3.5")).toBe("3.5");
+  });
+
   it("long: a value beyond MAX_SAFE_INTEGER is preserved verbatim as a string", () => {
     expect(convertToDataType("long", "9223372036854775807")).toBe("9223372036854775807");
   });
