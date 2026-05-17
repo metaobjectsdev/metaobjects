@@ -156,10 +156,9 @@ export class MetaDataLoader {
   // ---------------------------------------------------------------------------
 
   /**
-   * Parse one source's raw content into a ParseResult. The base loader handles
-   * JSON only; an unsupported format throws (the caller collects it). Subclasses
-   * override this to add formats — e.g. FileMetaDataLoader adds YAML. This is
-   * the seam that keeps the base loader free of the YAML parser.
+   * Parse one source's raw content into a ParseResult. The base implementation
+   * handles JSON and YAML; subclasses override this seam to add or restrict
+   * formats. An unsupported format throws (the caller collects it).
    */
   protected parseSource(
     content: string,
