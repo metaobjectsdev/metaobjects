@@ -507,6 +507,26 @@ describe("TypeRegistry — extend", () => {
     const registry = new TypeRegistry();
     expect(() => registry.extend("field", "string", { attributes: [] })).toThrow(/field\.string/);
   });
+
+  it("extend errors when an attr name conflicts with one set at register time", () => {
+    const registry = new TypeRegistry();
+    registry.register({
+      typeId: new TypeId("field", "string"),
+      description: "test field.string",
+      factory: () => stubFactory(),
+      childRules: [],
+      attributes: [
+        { name: "existing", valueType: ATTR_SUBTYPE_STRING, required: false, description: "declared at register time" },
+      ],
+    });
+    expect(() =>
+      registry.extend("field", "string", {
+        attributes: [
+          { name: "existing", valueType: ATTR_SUBTYPE_STRING, required: false, description: "added via extend" },
+        ],
+      }),
+    ).toThrow(/existing/);
+  });
 });
 
 // ---------------------------------------------------------------------------

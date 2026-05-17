@@ -104,7 +104,7 @@ export class TypeRegistry {
   /** The declared attribute schema for a (type, subType), or [] if the
    *  pair is unregistered or declares no attributes. */
   attrsOf(type: string, subType: string): AttrSchema[] {
-    return this.find(type, subType)?.attributes ?? [];
+    return [...(this.find(type, subType)?.attributes ?? [])];
   }
 
   /**
