@@ -8,11 +8,7 @@
 //   - Insert/Update types
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import type { MetaData } from "@metaobjects/metadata";
-import { MetaField } from "@metaobjects/metadata";
-import {
-  TYPE_FIELD,
-} from "@metaobjects/metadata";
+import { type MetaData, MetaField, MetaObject } from "@metaobjects/metadata";
 import { extractViewSpec } from "../projection/extract-view-spec.js";
 import { columnNameFromField, toSnakeCase, pluralize } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
@@ -79,9 +75,11 @@ export function renderProjectionDecl(
   const spec = extractViewSpec(projection, root, { columnNamingStrategy });
 
   // Collect fields: inherited from extends parent first, then projection-declared.
-  const allFields: MetaData[] = [];
-  const superModel = projection.superResolved;
-  const superName = superModel?.name ?? projection.superRef;
+  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
+  const allFields: MetaField[] = [];
+  const projectionObj = projection as MetaObject;
+  const superModel = projectionObj.superResolved;
+  const superName = superModel?.name ?? projectionObj.superRef;
   if (superName) {
     const baseObj =
       superModel ??
@@ -92,28 +90,22 @@ export function renderProjectionDecl(
         return undefined;
       })();
     if (baseObj) {
-      for (const f of baseObj.effectiveChildren()) {
-        if (f.type === TYPE_FIELD) allFields.push(f);
-      }
+      // fields() returns effective fields, so inherited fields (from extends:/super:) are included.
+      for (const f of (baseObj as MetaObject).fields()) allFields.push(f);
     }
   }
-  for (const f of projection.children()) {
-    if (f.type === TYPE_FIELD) allFields.push(f);
-  }
+  for (const f of projectionObj.ownFields()) allFields.push(f);
 
   const zodLines: Code[] = allFields.map(
-    // Transient cast: allFields contains MetaField instances; removed in Task 6.
-    (f) => code`  ${f.name}: ${z}.${zodTypeFor(f as MetaField).replace(/^z\./, "")}`,
+    (f) => code`  ${f.name}: ${z}.${zodTypeFor(f).replace(/^z\./, "")}`,
   );
 
   const constFieldLines: string[] = allFields.map((f) => {
-    // Transient cast: allFields contains MetaField instances; removed in Task 6.
-    const mf = f as MetaField;
     const dbCol = columnNameFromField(f.name, columnNamingStrategy);
-    const view = inferViewKind(mf);
-    const label = labelFor(mf);
+    const view = inferViewKind(f);
+    const label = labelFor(f);
     const baseEntry = `name: ${JSON.stringify(f.name)}, label: ${JSON.stringify(label)}, view: ${JSON.stringify(view)}, dbCol: ${JSON.stringify(dbCol)}`;
-    const currencyMeta = currencyMetaFor(mf);
+    const currencyMeta = currencyMetaFor(f);
     if (currencyMeta !== null) {
       return `  ${f.name}: { ${baseEntry}, currency: ${JSON.stringify(currencyMeta.currency)}, locale: ${JSON.stringify(currencyMeta.locale)} },`;
     }

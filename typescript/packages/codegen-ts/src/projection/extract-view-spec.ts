@@ -3,7 +3,6 @@ import {
   TYPE_FIELD,
   TYPE_ORIGIN,
   TYPE_RELATIONSHIP,
-  TYPE_IDENTITY,
   TYPE_SOURCE,
   SOURCE_SUBTYPE_DB_VIEW,
   SOURCE_DB_VIEW_ATTR_NAME,
@@ -17,12 +16,11 @@ import {
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_FK_FIELD,
   RELATIONSHIP_ATTR_PARENT_FIELD,
-  IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_ATTR_FIELDS,
   FIELD_ATTR_DB_COLUMN,
   type AggregateFunction,
 } from "@metaobjects/metadata";
-import type { MetaData } from "@metaobjects/metadata";
+import { type MetaData, MetaObject } from "@metaobjects/metadata";
 import {
   columnNameFromField,
   viewNameFromProjection,
@@ -117,10 +115,10 @@ function parentJoinColumnFor(parentEntity: MetaData, relationship: MetaData): st
   // Explicit @parentField wins (e.g., for email-based joins).
   const explicit = relationship.attr(RELATIONSHIP_ATTR_PARENT_FIELD) as string | undefined;
   if (explicit) return explicit;
-  // Default: parent's primary identity field name (use effectiveChildren for inherited identity).
-  const primary = parentEntity.effectiveChildren().find(
-    (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
-  );
+  // Default: parent's primary identity field name.
+  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
+  // primaryIdentity() is effective-by-default, so inherited identities (from extends:/super:) are included.
+  const primary = (parentEntity as MetaObject).primaryIdentity();
   const fields = primary?.attr(IDENTITY_ATTR_FIELDS) as string | string[] | undefined;
   if (typeof fields === "string") {
     const first = fields.split(",")[0];
@@ -260,9 +258,9 @@ function buildSelectSpec(
 
   // Inherited fields from extends parent — emit as passthrough on baseAlias.
   // Skip fields that the projection has overridden with an explicit origin.
-  // Use effectiveChildren() on base so multi-level inheritance (base → BaseEntity) works.
-  for (const baseField of base.effectiveChildren()) {
-    if (baseField.type !== TYPE_FIELD) continue;
+  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
+  // fields() is effective-by-default, so multi-level inheritance (base → BaseEntity) works.
+  for (const baseField of (base as MetaObject).fields()) {
     const overridden = projection.children().find(
       (c) => c.type === TYPE_FIELD && c.name === baseField.name,
     );
