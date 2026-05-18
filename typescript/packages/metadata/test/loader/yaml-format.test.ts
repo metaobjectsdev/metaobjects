@@ -18,7 +18,7 @@ metadata:
   const result = await loader.load([new InMemorySource(yaml, { id: "shop.yaml", format: "yaml" })]);
   expect(result.errors).toEqual([]);
   expect(result.root.type).toBe(TYPE_METADATA);
-  expect(result.root.children()[0]!.name).toBe("Product");
+  expect(result.root.ownChildren()[0]!.name).toBe("Product");
 });
 
 test("loader: merges a json source and a yaml source into one tree", async () => {
@@ -39,8 +39,8 @@ metadata:
     new InMemorySource(yaml, { id: "b.yaml", format: "yaml" }),
   ]);
   expect(result.errors).toEqual([]);
-  expect(result.root.childByName("Product")).toBeDefined();
-  expect(result.root.childByName("Customer")).toBeDefined();
+  expect(result.root.ownChildByName("Product")).toBeDefined();
+  expect(result.root.ownChildByName("Customer")).toBeDefined();
 });
 
 test("FileSource: infers format from the file extension", () => {

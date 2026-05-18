@@ -53,7 +53,7 @@ export class MetaObject extends MetaData {
   /** Own fields only — excludes fields inherited via extends. Java parity: getMetaFields(false). */
   ownFields(): MetaField[] {
     return this.cached("ownFields", () =>
-      this.children().filter((c): c is MetaField => c.type === TYPE_FIELD),
+      this.ownChildren().filter((c): c is MetaField => c.type === TYPE_FIELD),
     );
   }
 
@@ -66,7 +66,7 @@ export class MetaObject extends MetaData {
   /** Own identities only — excludes inherited. */
   ownIdentities(): MetaData[] {
     return this.cached("ownIdentities", () =>
-      this.children().filter((c) => c.type === TYPE_IDENTITY),
+      this.ownChildren().filter((c) => c.type === TYPE_IDENTITY),
     );
   }
 
@@ -93,7 +93,7 @@ export class MetaObject extends MetaData {
   /** Own relationships only — excludes inherited. */
   ownRelationships(): MetaData[] {
     return this.cached("ownRelationships", () =>
-      this.children().filter((c) => c.type === TYPE_RELATIONSHIP),
+      this.ownChildren().filter((c) => c.type === TYPE_RELATIONSHIP),
     );
   }
 
@@ -106,7 +106,7 @@ export class MetaObject extends MetaData {
   /** Own validators only — excludes validators inherited via extends. Java parity: getChildren(Class, false). */
   ownValidators(): MetaData[] {
     return this.cached("ownValidators", () =>
-      this.children().filter((c) => c.type === TYPE_VALIDATOR),
+      this.ownChildren().filter((c) => c.type === TYPE_VALIDATOR),
     );
   }
 

@@ -215,7 +215,7 @@ describe("MetaDataLoader — accessor guards", () => {
 
   it("childrenOfType throws before load", () => {
     const loader = new MetaDataLoader();
-    expect(() => loader.childrenOfType(TYPE_OBJECT)).toThrow();
+    expect(() => loader.ownChildrenOfType(TYPE_OBJECT)).toThrow();
   });
 });
 
@@ -247,7 +247,7 @@ describe("MetaDataLoader — empty sources array", () => {
   it("empty root has no children", async () => {
     const loader = new MetaDataLoader();
     const result = await loader.load([]);
-    expect(result.root.children().length).toBe(0);
+    expect(result.root.ownChildren().length).toBe(0);
   });
 });
 

@@ -214,28 +214,28 @@ export abstract class MetaData {
     return node;
   }
 
-  /** Returns a defensive copy of the children array — mutating the result does not affect this model. */
-  children(): readonly MetaData[] {
+  /** Own (locally declared) children — a defensive copy; excludes children inherited via extends. */
+  ownChildren(): readonly MetaData[] {
     return [...this._children];
   }
 
-  /** Returns a new array of children whose type matches. */
-  childrenOfType(type: string): MetaData[] {
+  /** Own children whose type matches — excludes inherited. */
+  ownChildrenOfType(type: string): MetaData[] {
     return this._children.filter((c) => c.type === type);
   }
 
-  /** Returns a new array of children matching both type and subType. */
-  childrenOfSubType(type: string, subType: string): MetaData[] {
+  /** Own children matching both type and subType — excludes inherited. */
+  ownChildrenOfSubType(type: string, subType: string): MetaData[] {
     return this._children.filter((c) => c.type === type && c.subType === subType);
   }
 
-  /** Returns the first child with matching name, or undefined. */
-  childByName(name: string): MetaData | undefined {
+  /** First own child with matching name, or undefined — excludes inherited. */
+  ownChildByName(name: string): MetaData | undefined {
     return this._children.find((c) => c.name === name);
   }
 
-  /** Returns the first child matching both type and name, or undefined. */
-  childByTypeAndName(type: string, name: string): MetaData | undefined {
+  /** First own child matching both type and name, or undefined — excludes inherited. */
+  ownChildByTypeAndName(type: string, name: string): MetaData | undefined {
     return this._children.find((c) => c.type === type && c.name === name);
   }
 

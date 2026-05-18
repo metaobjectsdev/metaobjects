@@ -74,7 +74,7 @@ describe("renderDrizzleSchema — SQLite", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.childByName("Post")!, ctx).toString();
+    const out = renderDrizzleSchema(root.ownChildByName("Post")!, ctx).toString();
     expect(out).toContain('sqliteTable("posts"');
     expect(out).toContain("integer(\"id\").primaryKey({ autoIncrement: true })");
     expect(out).toContain("text(\"title\").notNull()");
@@ -93,7 +93,7 @@ describe("renderDrizzleSchema — SQLite", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.childByName("Post")!, ctx).toString();
+    const out = renderDrizzleSchema(root.ownChildByName("Post")!, ctx).toString();
     expect(out).toContain(".references(");
     expect(out).toContain("users.id");
   });
@@ -110,7 +110,7 @@ describe("renderDrizzleSchema — SQLite", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.childByName("Post")!, ctx).toString();
+    const out = renderDrizzleSchema(root.ownChildByName("Post")!, ctx).toString();
     expect(out).toContain("postsRelations");
     expect(out).toContain("postsRelations = relations(");
     expect(out).toContain("one(users");
@@ -128,7 +128,7 @@ describe("renderDrizzleSchema — SQLite", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.childByName("User")!, ctx).toString();
+    const out = renderDrizzleSchema(root.ownChildByName("User")!, ctx).toString();
     expect(out).toContain("usersRelations");
     expect(out).toContain("many(posts");
   });
@@ -171,7 +171,7 @@ describe("renderDrizzleSchema — Postgres", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.childByName("Post")!, ctx).toString();
+    const out = renderDrizzleSchema(root.ownChildByName("Post")!, ctx).toString();
     expect(out).toContain('pgTable("posts"');
     expect(out).toContain("bigserial");
     expect(out).toContain("varchar(\"title\", { length: 200 }).notNull()");
@@ -187,7 +187,7 @@ describe("renderDrizzleSchema — Postgres", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.childByName("Post")!, ctx).toString();
+    const out = renderDrizzleSchema(root.ownChildByName("Post")!, ctx).toString();
     expect(out).toContain("bigserial");
     // \bserial( should NOT appear — only bigserial should
     expect(out).not.toMatch(/\bserial\(/);
@@ -209,7 +209,7 @@ describe("renderDrizzleSchema — Postgres", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.childByName("SmallEntity")!, ctx).toString();
+    const out = renderDrizzleSchema(root.ownChildByName("SmallEntity")!, ctx).toString();
     expect(out).toMatch(/\bserial\(/);
     expect(out).not.toContain("bigserial");
   });
@@ -235,7 +235,7 @@ describe("renderDrizzleSchema — Postgres", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.childByName("UserTag")!, ctx).toString();
+    const out = renderDrizzleSchema(root.ownChildByName("UserTag")!, ctx).toString();
     expect(out).toContain("primaryKey({ columns: [");
     // No per-column .primaryKey() — the table-level callback owns it
     expect(out).not.toMatch(/userId.*\.primaryKey\(\)/);
@@ -272,7 +272,7 @@ describe("renderDrizzleSchema — secondary identity", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.childByName("Subscriber")!, ctx).toString();
+    const out = renderDrizzleSchema(root.ownChildByName("Subscriber")!, ctx).toString();
     expect(out).toContain(".unique()");                  // .unique() on email column
     expect(out).toContain("uniqueIndex");                // table callback
     expect(out).toContain('"idx_subscribers_email"');    // index name in snake_case
@@ -300,7 +300,7 @@ describe("renderDrizzleSchema — secondary identity", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.childByName("User")!, ctx).toString();
+    const out = renderDrizzleSchema(root.ownChildByName("User")!, ctx).toString();
     expect(out).toContain('"idx_users_first_name_last_name"');
     // .on() should reference both fields
     // Index callbacks use the (table) => ... param to avoid TS self-init issues.

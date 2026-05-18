@@ -24,9 +24,9 @@ export interface EntityViewSpec {
 
 export function viewFieldNames(entity: MetaData, viewName: string): string[] {
   const names: string[] = [];
-  for (const field of entity.children()) {
+  for (const field of entity.ownChildren()) {
     if (field.type !== TYPE_FIELD) continue;
-    if (field.children().some((c) => c.type === TYPE_VIEW && c.name === viewName)) {
+    if (field.ownChildren().some((c) => c.type === TYPE_VIEW && c.name === viewName)) {
       names.push(field.name);
     }
   }
@@ -34,9 +34,9 @@ export function viewFieldNames(entity: MetaData, viewName: string): string[] {
 }
 
 export function fieldViewSpec(entity: MetaData, fieldName: string, viewName: string): FieldViewSpec | null {
-  const field = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
+  const field = entity.ownChildren().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!field) return null;
-  const view = field.children().find((c) => c.type === TYPE_VIEW && c.name === viewName);
+  const view = field.ownChildren().find((c) => c.type === TYPE_VIEW && c.name === viewName);
   if (!view) return null;
 
   const attrs: Record<string, unknown> = {};
@@ -59,7 +59,7 @@ export function fieldViewSpec(entity: MetaData, fieldName: string, viewName: str
 
 export function entityViewSpec(entity: MetaData, viewName: string): EntityViewSpec {
   const fields: FieldViewSpec[] = [];
-  for (const field of entity.children()) {
+  for (const field of entity.ownChildren()) {
     if (field.type !== TYPE_FIELD) continue;
     const spec = fieldViewSpec(entity, field.name, viewName);
     if (spec !== null) fields.push(spec);
@@ -75,7 +75,7 @@ export function entityViewSpec(entity: MetaData, viewName: string): EntityViewSp
 
 function isFieldRequired(field: MetaData): boolean {
   if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
-  for (const child of field.children()) {
+  for (const child of field.ownChildren()) {
     if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_REQUIRED) return true;
   }
   return false;

@@ -50,9 +50,9 @@ describe("FileMetaDataLoader accepts dataGrid layouts on objects", () => {
     try {
       const result = await new FileMetaDataLoader().loadFiles([path]);
       expect(result.errors).toEqual([]);
-      const sub = result.root.children().find((c) => c.name === "Sub");
+      const sub = result.root.ownChildren().find((c) => c.name === "Sub");
       expect(sub).toBeDefined();
-      const gridLayout = sub!.children().find((c) => c.type === TYPE_LAYOUT);
+      const gridLayout = sub!.ownChildren().find((c) => c.type === TYPE_LAYOUT);
       expect(gridLayout?.subType).toBe("dataGrid");
       expect(gridLayout?.name).toBe("default");
     } finally {

@@ -129,7 +129,7 @@ export class MetaDataLoader {
    */
   findByName(name: string): MetaData | undefined {
     this._checkStateForRead();
-    return this._root!.childByName(name);
+    return this._root!.ownChildByName(name);
   }
 
   /**
@@ -138,7 +138,7 @@ export class MetaDataLoader {
    */
   findByTypeAndName(type: string, name: string): MetaData | undefined {
     this._checkStateForRead();
-    return this._root!.childByTypeAndName(type, name);
+    return this._root!.ownChildByTypeAndName(type, name);
   }
 
   /**
@@ -147,7 +147,7 @@ export class MetaDataLoader {
    */
   childrenOfType(type: string): MetaData[] {
     this._checkStateForRead();
-    return this._root!.childrenOfType(type);
+    return this._root!.ownChildrenOfType(type);
   }
 
   // ---------------------------------------------------------------------------

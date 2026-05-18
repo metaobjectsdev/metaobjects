@@ -41,7 +41,7 @@ export function resolveN2mDescriptor(
   relationName: string,
   root: MetaData,
 ): N2mDescriptor | null {
-  for (const child of sourceEntity.children()) {
+  for (const child of sourceEntity.ownChildren()) {
     if (child.type !== TYPE_RELATIONSHIP) continue;
     if (child.name !== relationName) continue;
     if (child.attr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_MANY) continue;
@@ -54,11 +54,11 @@ export function resolveN2mDescriptor(
         { entity: sourceEntity.name },
       );
     }
-    const targetExists = root.children().some((c) => c.type === TYPE_OBJECT && c.name === targetEntityName);
+    const targetExists = root.ownChildren().some((c) => c.type === TYPE_OBJECT && c.name === targetEntityName);
     if (!targetExists) {
       throw new MetadataError(`Target entity '${targetEntityName}' not found`, { entity: sourceEntity.name });
     }
-    const joinExists = root.children().some((c) => c.type === TYPE_OBJECT && c.name === joinEntityName);
+    const joinExists = root.ownChildren().some((c) => c.type === TYPE_OBJECT && c.name === joinEntityName);
     if (!joinExists) {
       throw new MetadataError(`Join entity '${joinEntityName}' not found`, { entity: sourceEntity.name });
     }
@@ -118,7 +118,7 @@ export function buildN2mBatchSpecs(
 }
 
 function mustGetEntity(root: MetaData, name: string): MetaData {
-  const e = root.children().find((c) => c.type === TYPE_OBJECT && c.name === name);
+  const e = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
   if (!e) throw new MetadataError(`Entity '${name}' not found`, { entity: name });
   return e;
 }
@@ -146,7 +146,7 @@ function collectTargetIds(joinRows: Row[], targetJoinField: string, joinEntity: 
 }
 
 export function resolveJoinColumnName(joinEntity: MetaData, fieldName: string): string {
-  const field = joinEntity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
+  const field = joinEntity.ownChildren().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!field) throw new MetadataError(`Join field '${fieldName}' not on '${joinEntity.name}'`);
   return resolveColumnName(field);
 }

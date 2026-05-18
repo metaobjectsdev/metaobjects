@@ -37,7 +37,7 @@ export interface QueryOpts {
 }
 
 export function resolvePkFields(entity: MetaData): string[] {
-  const primary = entity.children().find(
+  const primary = entity.ownChildren().find(
     (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
   );
   if (!primary) {
@@ -52,14 +52,14 @@ export function resolvePkFields(entity: MetaData): string[] {
 
 function listFieldNames(entity: MetaData): string[] {
   const out: string[] = [];
-  for (const child of entity.children()) {
+  for (const child of entity.ownChildren()) {
     if (child.type === TYPE_FIELD) out.push(child.name);
   }
   return out;
 }
 
 function getField(entity: MetaData, fieldName: string): MetaData {
-  const f = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
+  const f = entity.ownChildren().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!f) {
     throw new MetadataError(
       `Unknown field '${fieldName}' on entity '${entity.name}'`,

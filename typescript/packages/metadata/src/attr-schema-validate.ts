@@ -109,7 +109,7 @@ function walk(
   errors: ParseError[],
 ): void {
   validateNode(node, registry, errors);
-  for (const child of node.children()) {
+  for (const child of node.ownChildren()) {
     walk(child, registry, errors);
   }
 }

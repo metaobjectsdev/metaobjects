@@ -22,7 +22,7 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
 
     expect(result.errors).toEqual([]);
 
-    const entities = result.root.children().filter((c) => c.type === "object");
+    const entities = result.root.ownChildren().filter((c) => c.type === "object");
     expect(entities).toHaveLength(9);
 
     const names = entities.map((e) => e.name).sort();

@@ -8,7 +8,7 @@ const FIXTURE = resolve(import.meta.dir, "..", "fixtures", "filter-fixture.json"
 
 async function loadEntity(name: string) {
   const { root } = await new FileMetaDataLoader().loadFiles([FIXTURE]);
-  return root.children().find((c) => c.type === TYPE_OBJECT && c.name === name)!;
+  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name)!;
 }
 
 describe("renderFilterAllowlist", () => {
@@ -36,7 +36,7 @@ describe("renderFilterAllowlist", () => {
 
   test("entity with no filterable fields emits empty allowlist", async () => {
     const { root } = await new FileMetaDataLoader().loadFiles([FIXTURE]);
-    const subscriber = root.children().find((c) => c.type === TYPE_OBJECT && c.name === "Subscriber")!;
+    const subscriber = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === "Subscriber")!;
     const out = renderFilterAllowlist(subscriber).toString();
     expect(out).toContain("SubscriberFilterAllowlist");
   });

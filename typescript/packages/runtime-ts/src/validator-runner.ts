@@ -34,7 +34,7 @@ export function runValidators(
 ): ValidationResult {
   const errors: ValidationFailure[] = [];
 
-  for (const field of entity.children()) {
+  for (const field of entity.ownChildren()) {
     if (field.type !== TYPE_FIELD) continue;
     const present = Object.prototype.hasOwnProperty.call(data, field.name);
     const value = data[field.name];
@@ -93,7 +93,7 @@ export function runValidators(
       }
     }
 
-    for (const child of field.children()) {
+    for (const child of field.ownChildren()) {
       if (child.type !== TYPE_VALIDATOR) continue;
       if (child.subType !== VALIDATOR_SUBTYPE_REGEX) continue;
       const pattern = child.attr(VALIDATOR_ATTR_PATTERN);
@@ -128,7 +128,7 @@ export function runValidators(
 
 function isRequired(field: MetaData): boolean {
   if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
-  for (const child of field.children()) {
+  for (const child of field.ownChildren()) {
     if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_REQUIRED) return true;
   }
   return false;
@@ -137,7 +137,7 @@ function isRequired(field: MetaData): boolean {
 function resolveMaxLength(field: MetaData): number | undefined {
   const attr = field.attr(FIELD_ATTR_MAX_LENGTH);
   if (typeof attr === "number") return attr;
-  for (const child of field.children()) {
+  for (const child of field.ownChildren()) {
     if (child.type !== TYPE_VALIDATOR) continue;
     if (child.subType !== VALIDATOR_SUBTYPE_LENGTH) continue;
     const max = child.attr(VALIDATOR_ATTR_MAX);
@@ -147,7 +147,7 @@ function resolveMaxLength(field: MetaData): number | undefined {
 }
 
 function resolveMinLength(field: MetaData): number | undefined {
-  for (const child of field.children()) {
+  for (const child of field.ownChildren()) {
     if (child.type !== TYPE_VALIDATOR) continue;
     if (child.subType !== VALIDATOR_SUBTYPE_LENGTH) continue;
     const min = child.attr(VALIDATOR_ATTR_MIN);

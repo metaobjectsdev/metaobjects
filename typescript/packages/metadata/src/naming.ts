@@ -18,7 +18,7 @@ export function pluralize(s: string): string {
 }
 
 export function resolveTableName(entity: MetaData): string {
-  const source = entity.children().find(
+  const source = entity.ownChildren().find(
     (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_TABLE,
   );
   const name = source?.attr(SOURCE_DB_TABLE_ATTR_NAME);
@@ -41,7 +41,7 @@ export interface EntityNameMap {
 export function buildNameMap(entity: MetaData): EntityNameMap {
   const jsToDb = new Map<string, string>();
   const dbToJs = new Map<string, string>();
-  for (const child of entity.children()) {
+  for (const child of entity.ownChildren()) {
     if (child.type !== TYPE_FIELD) continue;
     const dbCol = resolveColumnName(child);
     jsToDb.set(child.name, dbCol);

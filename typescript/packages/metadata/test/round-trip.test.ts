@@ -98,8 +98,8 @@ function assertModelsEqual(a: MetaData, b: MetaData, path = "root"): void {
   }
 
   // Children — order must match (round-trip preserves insertion order)
-  const aKids = a.children();
-  const bKids = b.children();
+  const aKids = a.ownChildren();
+  const bKids = b.ownChildren();
   if (aKids.length !== bKids.length) {
     throw new Error(`${path}: children count mismatch — expected ${aKids.length}, got ${bKids.length}`);
   }
@@ -259,16 +259,16 @@ describe("Multi-file dependency order: common → vehicle → overlay", () => {
       "acme-vehicle-overlay-metadata.json",
     ]);
     // Abstract fields from common
-    expect(root.childByTypeAndName(TYPE_FIELD, "id")).toBeDefined();
-    expect(root.childByTypeAndName(TYPE_FIELD, "name")).toBeDefined();
-    expect(root.childByTypeAndName(TYPE_FIELD, "description")).toBeDefined();
+    expect(root.ownChildByTypeAndName(TYPE_FIELD, "id")).toBeDefined();
+    expect(root.ownChildByTypeAndName(TYPE_FIELD, "name")).toBeDefined();
+    expect(root.ownChildByTypeAndName(TYPE_FIELD, "description")).toBeDefined();
     // Objects from vehicle
-    expect(root.childByTypeAndName(TYPE_OBJECT, "Garage")).toBeDefined();
-    expect(root.childByTypeAndName(TYPE_OBJECT, "Vehicle")).toBeDefined();
-    expect(root.childByTypeAndName(TYPE_OBJECT, "Car")).toBeDefined();
-    expect(root.childByTypeAndName(TYPE_OBJECT, "Truck")).toBeDefined();
-    expect(root.childByTypeAndName(TYPE_OBJECT, "Motorcycle")).toBeDefined();
-    expect(root.childByTypeAndName(TYPE_OBJECT, "Porsche")).toBeDefined();
+    expect(root.ownChildByTypeAndName(TYPE_OBJECT, "Garage")).toBeDefined();
+    expect(root.ownChildByTypeAndName(TYPE_OBJECT, "Vehicle")).toBeDefined();
+    expect(root.ownChildByTypeAndName(TYPE_OBJECT, "Car")).toBeDefined();
+    expect(root.ownChildByTypeAndName(TYPE_OBJECT, "Truck")).toBeDefined();
+    expect(root.ownChildByTypeAndName(TYPE_OBJECT, "Motorcycle")).toBeDefined();
+    expect(root.ownChildByTypeAndName(TYPE_OBJECT, "Porsche")).toBeDefined();
   });
 
   it("overlay file additions are present in merged tree (warranty field on Vehicle)", async () => {
@@ -277,9 +277,9 @@ describe("Multi-file dependency order: common → vehicle → overlay", () => {
       "acme-vehicle-metadata.json",
       "acme-vehicle-overlay-metadata.json",
     ]);
-    const vehicle = root.childByTypeAndName(TYPE_OBJECT, "Vehicle")!;
+    const vehicle = root.ownChildByTypeAndName(TYPE_OBJECT, "Vehicle")!;
     expect(vehicle).toBeDefined();
-    expect(vehicle.childByTypeAndName(TYPE_FIELD, "warranty")).toBeDefined();
+    expect(vehicle.ownChildByTypeAndName(TYPE_FIELD, "warranty")).toBeDefined();
   });
 
   it("overlay file additions are present in merged tree (premiumLocation field on Garage)", async () => {
@@ -288,9 +288,9 @@ describe("Multi-file dependency order: common → vehicle → overlay", () => {
       "acme-vehicle-metadata.json",
       "acme-vehicle-overlay-metadata.json",
     ]);
-    const garage = root.childByTypeAndName(TYPE_OBJECT, "Garage")!;
+    const garage = root.ownChildByTypeAndName(TYPE_OBJECT, "Garage")!;
     expect(garage).toBeDefined();
-    expect(garage.childByTypeAndName(TYPE_FIELD, "premiumLocation")).toBeDefined();
+    expect(garage.ownChildByTypeAndName(TYPE_FIELD, "premiumLocation")).toBeDefined();
   });
 
   it("overlay file additions are present in merged tree (certifiedPreOwned field on Porsche)", async () => {
@@ -299,9 +299,9 @@ describe("Multi-file dependency order: common → vehicle → overlay", () => {
       "acme-vehicle-metadata.json",
       "acme-vehicle-overlay-metadata.json",
     ]);
-    const porsche = root.childByTypeAndName(TYPE_OBJECT, "Porsche")!;
+    const porsche = root.ownChildByTypeAndName(TYPE_OBJECT, "Porsche")!;
     expect(porsche).toBeDefined();
-    expect(porsche.childByTypeAndName(TYPE_FIELD, "certifiedPreOwned")).toBeDefined();
+    expect(porsche.ownChildByTypeAndName(TYPE_FIELD, "certifiedPreOwned")).toBeDefined();
   });
 
   it("round-trips correctly after multi-file merge", async () => {
@@ -330,21 +330,21 @@ describe("Inline-vs-child attr round-trip: valid-complete-metadata.json", () => 
 
   it("User object is present after parse", async () => {
     const { root } = await loadFixture("valid-complete-metadata.json");
-    expect(root.childByTypeAndName(TYPE_OBJECT, "User")).toBeDefined();
+    expect(root.ownChildByTypeAndName(TYPE_OBJECT, "User")).toBeDefined();
   });
 
   it("User.id has @required attr set to true (inline form)", async () => {
     const { root } = await loadFixture("valid-complete-metadata.json");
-    const user = root.childByTypeAndName(TYPE_OBJECT, "User")!;
-    const idField = user.childByTypeAndName(TYPE_FIELD, "id")!;
+    const user = root.ownChildByTypeAndName(TYPE_OBJECT, "User")!;
+    const idField = user.ownChildByTypeAndName(TYPE_FIELD, "id")!;
     expect(idField).toBeDefined();
     expect(idField.attr("required")).toBe(true);
   });
 
   it("User.createdDate has format attr from child attr node", async () => {
     const { root } = await loadFixture("valid-complete-metadata.json");
-    const user = root.childByTypeAndName(TYPE_OBJECT, "User")!;
-    const createdDate = user.childByTypeAndName(TYPE_FIELD, "createdDate")!;
+    const user = root.ownChildByTypeAndName(TYPE_OBJECT, "User")!;
+    const createdDate = user.ownChildByTypeAndName(TYPE_FIELD, "createdDate")!;
     expect(createdDate).toBeDefined();
     // The "format" attr was set via a child {"attr":{...}} node
     expect(createdDate.attr("format")).toBe("yyyy-MM-dd");
@@ -358,14 +358,14 @@ describe("Inline-vs-child attr round-trip: valid-complete-metadata.json", () => 
 
   it("User.username attrs (inline @maxLength and @pattern) survive round-trip", async () => {
     const { root } = await loadFixture("valid-complete-metadata.json");
-    const user = root.childByTypeAndName(TYPE_OBJECT, "User")!;
-    const usernameField = user.childByTypeAndName(TYPE_FIELD, "username")!;
+    const user = root.ownChildByTypeAndName(TYPE_OBJECT, "User")!;
+    const usernameField = user.ownChildByTypeAndName(TYPE_FIELD, "username")!;
     expect(usernameField).toBeDefined();
 
     // After round-trip, attrs should still be present
     const reparsed = await roundTrip(root);
-    const reparsedUser = reparsed.childByTypeAndName(TYPE_OBJECT, "User")!;
-    const reparsedUsername = reparsedUser.childByTypeAndName(TYPE_FIELD, "username")!;
+    const reparsedUser = reparsed.ownChildByTypeAndName(TYPE_OBJECT, "User")!;
+    const reparsedUsername = reparsedUser.ownChildByTypeAndName(TYPE_FIELD, "username")!;
     expect(reparsedUsername.attr("maxLength")).toBe(50);
     expect(reparsedUsername.attr("pattern")).toBe("^[a-zA-Z0-9_]+$");
   });
@@ -388,7 +388,7 @@ describe("Empty load", () => {
   it("empty root has no children", async () => {
     const loader = new MetaDataLoader({ freeze: false });
     const { root } = await loader.load([]);
-    expect(root.children().length).toBe(0);
+    expect(root.ownChildren().length).toBe(0);
   });
 
   it("empty root round-trips cleanly (serialize → reload → equivalent)", async () => {
@@ -407,24 +407,24 @@ describe("Entity counts: fruitbasket-metadata.json", () => {
   // 2 abstract fields (common::id, common::name) + 5 objects (Basket, Fruit, Apple, Macintosh, Orange)
   it("has 7 top-level children", async () => {
     const { root } = await loadFixture("fruitbasket-metadata.json");
-    expect(root.children().length).toBe(7);
+    expect(root.ownChildren().length).toBe(7);
   });
 
   it("has 2 abstract field children", async () => {
     const { root } = await loadFixture("fruitbasket-metadata.json");
-    const abstractFields = root.childrenOfType(TYPE_FIELD);
+    const abstractFields = root.ownChildrenOfType(TYPE_FIELD);
     expect(abstractFields.length).toBe(2);
   });
 
   it("has 5 object children", async () => {
     const { root } = await loadFixture("fruitbasket-metadata.json");
-    const objects = root.childrenOfType(TYPE_OBJECT);
+    const objects = root.ownChildrenOfType(TYPE_OBJECT);
     expect(objects.length).toBe(5);
   });
 
   it("object names are Basket, Fruit, Apple, Macintosh, Orange", async () => {
     const { root } = await loadFixture("fruitbasket-metadata.json");
-    const objects = root.childrenOfType(TYPE_OBJECT);
+    const objects = root.ownChildrenOfType(TYPE_OBJECT);
     const names = objects.map((o) => o.name).sort();
     expect(names).toEqual(["Apple", "Basket", "Fruit", "Macintosh", "Orange"]);
   });
@@ -434,24 +434,24 @@ describe("Entity counts: fruitbasket-proxy-metadata.json", () => {
   // 2 abstract fields + 6 objects (Basket, BasketToFruit, Fruit, Apple, Macintosh, Orange)
   it("has 8 top-level children", async () => {
     const { root } = await loadFixture("fruitbasket-proxy-metadata.json");
-    expect(root.children().length).toBe(8);
+    expect(root.ownChildren().length).toBe(8);
   });
 
   it("has 2 abstract field children", async () => {
     const { root } = await loadFixture("fruitbasket-proxy-metadata.json");
-    const fields = root.childrenOfType(TYPE_FIELD);
+    const fields = root.ownChildrenOfType(TYPE_FIELD);
     expect(fields.length).toBe(2);
   });
 
   it("has 6 object children", async () => {
     const { root } = await loadFixture("fruitbasket-proxy-metadata.json");
-    const objects = root.childrenOfType(TYPE_OBJECT);
+    const objects = root.ownChildrenOfType(TYPE_OBJECT);
     expect(objects.length).toBe(6);
   });
 
   it("object names are Basket, BasketToFruit, Fruit, Apple, Macintosh, Orange", async () => {
     const { root } = await loadFixture("fruitbasket-proxy-metadata.json");
-    const objects = root.childrenOfType(TYPE_OBJECT);
+    const objects = root.ownChildrenOfType(TYPE_OBJECT);
     const names = objects.map((o) => o.name).sort();
     expect(names).toEqual(["Apple", "Basket", "BasketToFruit", "Fruit", "Macintosh", "Orange"]);
   });
@@ -461,19 +461,19 @@ describe("Entity counts: acme-common-metadata.json", () => {
   // 3 abstract fields: id, name, description
   it("has 3 top-level children", async () => {
     const { root } = await loadFixture("acme-common-metadata.json");
-    expect(root.children().length).toBe(3);
+    expect(root.ownChildren().length).toBe(3);
   });
 
   it("all children are abstract fields", async () => {
     const { root } = await loadFixture("acme-common-metadata.json");
-    const fields = root.childrenOfType(TYPE_FIELD);
+    const fields = root.ownChildrenOfType(TYPE_FIELD);
     expect(fields.length).toBe(3);
     expect(fields.every((f) => f.isAbstract)).toBe(true);
   });
 
   it("field names are id, name, description", async () => {
     const { root } = await loadFixture("acme-common-metadata.json");
-    const fields = root.childrenOfType(TYPE_FIELD);
+    const fields = root.ownChildrenOfType(TYPE_FIELD);
     const names = fields.map((f) => f.name).sort();
     expect(names).toEqual(["description", "id", "name"]);
   });
@@ -486,7 +486,7 @@ describe("Entity counts: acme-vehicle-metadata.json (loaded after acme-common)",
       "acme-common-metadata.json",
       "acme-vehicle-metadata.json",
     ]);
-    expect(root.children().length).toBe(9);
+    expect(root.ownChildren().length).toBe(9);
   });
 
   it("has 3 abstract field children (from common)", async () => {
@@ -494,7 +494,7 @@ describe("Entity counts: acme-vehicle-metadata.json (loaded after acme-common)",
       "acme-common-metadata.json",
       "acme-vehicle-metadata.json",
     ]);
-    const fields = root.childrenOfType(TYPE_FIELD);
+    const fields = root.ownChildrenOfType(TYPE_FIELD);
     expect(fields.length).toBe(3);
   });
 
@@ -503,7 +503,7 @@ describe("Entity counts: acme-vehicle-metadata.json (loaded after acme-common)",
       "acme-common-metadata.json",
       "acme-vehicle-metadata.json",
     ]);
-    const objects = root.childrenOfType(TYPE_OBJECT);
+    const objects = root.ownChildrenOfType(TYPE_OBJECT);
     expect(objects.length).toBe(6);
   });
 
@@ -512,7 +512,7 @@ describe("Entity counts: acme-vehicle-metadata.json (loaded after acme-common)",
       "acme-common-metadata.json",
       "acme-vehicle-metadata.json",
     ]);
-    const objects = root.childrenOfType(TYPE_OBJECT);
+    const objects = root.ownChildrenOfType(TYPE_OBJECT);
     const names = objects.map((o) => o.name).sort();
     expect(names).toEqual(["Car", "Garage", "Motorcycle", "Porsche", "Truck", "Vehicle"]);
   });
@@ -527,7 +527,7 @@ describe("Entity counts: acme-vehicle-overlay-metadata.json (full stack)", () =>
       "acme-vehicle-metadata.json",
       "acme-vehicle-overlay-metadata.json",
     ]);
-    expect(root.children().length).toBe(9);
+    expect(root.ownChildren().length).toBe(9);
   });
 });
 
@@ -535,12 +535,12 @@ describe("Entity counts: valid-complete-metadata.json", () => {
   // 1 object: User
   it("has 1 top-level child", async () => {
     const { root } = await loadFixture("valid-complete-metadata.json");
-    expect(root.children().length).toBe(1);
+    expect(root.ownChildren().length).toBe(1);
   });
 
   it("that child is an entity object named User with @javaRuntime=pojo", async () => {
     const { root } = await loadFixture("valid-complete-metadata.json");
-    const user = root.childByTypeAndName(TYPE_OBJECT, "User");
+    const user = root.ownChildByTypeAndName(TYPE_OBJECT, "User");
     expect(user).toBeDefined();
     expect(user!.subType).toBe("entity");
     expect(user!.attr("javaRuntime")).toBe("pojo");
@@ -554,7 +554,7 @@ describe("Entity counts: valid-complete-metadata.json", () => {
 describe("Super resolution sanity: fruitbasket-metadata.json", () => {
   it("Apple.superResolved points at Fruit", async () => {
     const { root } = await loadFixture("fruitbasket-metadata.json");
-    const apple = root.childByTypeAndName(TYPE_OBJECT, "Apple")!;
+    const apple = root.ownChildByTypeAndName(TYPE_OBJECT, "Apple")!;
     expect(apple).toBeDefined();
     expect(apple.superRef).toBe("Fruit");
     expect(apple.superResolved).toBeDefined();
@@ -563,7 +563,7 @@ describe("Super resolution sanity: fruitbasket-metadata.json", () => {
 
   it("Macintosh.superResolved points at Apple", async () => {
     const { root } = await loadFixture("fruitbasket-metadata.json");
-    const macintosh = root.childByTypeAndName(TYPE_OBJECT, "Macintosh")!;
+    const macintosh = root.ownChildByTypeAndName(TYPE_OBJECT, "Macintosh")!;
     expect(macintosh).toBeDefined();
     expect(macintosh.superRef).toBe("Apple");
     expect(macintosh.superResolved).toBeDefined();
@@ -572,7 +572,7 @@ describe("Super resolution sanity: fruitbasket-metadata.json", () => {
 
   it("Orange.superResolved points at Fruit", async () => {
     const { root } = await loadFixture("fruitbasket-metadata.json");
-    const orange = root.childByTypeAndName(TYPE_OBJECT, "Orange")!;
+    const orange = root.ownChildByTypeAndName(TYPE_OBJECT, "Orange")!;
     expect(orange).toBeDefined();
     expect(orange.superResolved).toBeDefined();
     expect(orange.superResolved!.name).toBe("Fruit");
@@ -580,7 +580,7 @@ describe("Super resolution sanity: fruitbasket-metadata.json", () => {
 
   it("Fruit object is abstract", async () => {
     const { root } = await loadFixture("fruitbasket-metadata.json");
-    const fruit = root.childByTypeAndName(TYPE_OBJECT, "Fruit")!;
+    const fruit = root.ownChildByTypeAndName(TYPE_OBJECT, "Fruit")!;
     expect(fruit).toBeDefined();
     expect(fruit.isAbstract).toBe(true);
   });
@@ -589,7 +589,7 @@ describe("Super resolution sanity: fruitbasket-metadata.json", () => {
 describe("Super resolution sanity: fruitbasket-proxy-metadata.json", () => {
   it("Apple.superResolved points at Fruit (proxy variant)", async () => {
     const { root } = await loadFixture("fruitbasket-proxy-metadata.json");
-    const apple = root.childByTypeAndName(TYPE_OBJECT, "Apple")!;
+    const apple = root.ownChildByTypeAndName(TYPE_OBJECT, "Apple")!;
     expect(apple).toBeDefined();
     expect(apple.superResolved).toBeDefined();
     expect(apple.superResolved!.name).toBe("Fruit");
@@ -597,7 +597,7 @@ describe("Super resolution sanity: fruitbasket-proxy-metadata.json", () => {
 
   it("Macintosh.superResolved points at Apple (proxy variant)", async () => {
     const { root } = await loadFixture("fruitbasket-proxy-metadata.json");
-    const macintosh = root.childByTypeAndName(TYPE_OBJECT, "Macintosh")!;
+    const macintosh = root.ownChildByTypeAndName(TYPE_OBJECT, "Macintosh")!;
     expect(macintosh).toBeDefined();
     expect(macintosh.superResolved).toBeDefined();
     expect(macintosh.superResolved!.name).toBe("Apple");
@@ -610,7 +610,7 @@ describe("Super resolution sanity: acme-vehicle-metadata.json (common + vehicle)
       "acme-common-metadata.json",
       "acme-vehicle-metadata.json",
     ]);
-    const car = root.childByTypeAndName(TYPE_OBJECT, "Car")!;
+    const car = root.ownChildByTypeAndName(TYPE_OBJECT, "Car")!;
     expect(car).toBeDefined();
     expect(car.superRef).toBe("..::Vehicle");
     expect(car.superResolved).toBeDefined();
@@ -622,7 +622,7 @@ describe("Super resolution sanity: acme-vehicle-metadata.json (common + vehicle)
       "acme-common-metadata.json",
       "acme-vehicle-metadata.json",
     ]);
-    const porsche = root.childByTypeAndName(TYPE_OBJECT, "Porsche")!;
+    const porsche = root.ownChildByTypeAndName(TYPE_OBJECT, "Porsche")!;
     expect(porsche).toBeDefined();
     expect(porsche.superRef).toBe("..::Car");
     expect(porsche.superResolved).toBeDefined();
@@ -634,7 +634,7 @@ describe("Super resolution sanity: acme-vehicle-metadata.json (common + vehicle)
       "acme-common-metadata.json",
       "acme-vehicle-metadata.json",
     ]);
-    const vehicle = root.childByTypeAndName(TYPE_OBJECT, "Vehicle")!;
+    const vehicle = root.ownChildByTypeAndName(TYPE_OBJECT, "Vehicle")!;
     expect(vehicle).toBeDefined();
     expect(vehicle.isAbstract).toBe(true);
   });
@@ -654,8 +654,8 @@ describe("Merge application sanity: acme-vehicle overlay", () => {
       "acme-common-metadata.json",
       "acme-vehicle-metadata.json",
     ]);
-    const garage = withoutOverlay.childByTypeAndName(TYPE_OBJECT, "Garage")!;
-    expect(garage.childByTypeAndName(TYPE_FIELD, "premiumLocation")).toBeUndefined();
+    const garage = withoutOverlay.ownChildByTypeAndName(TYPE_OBJECT, "Garage")!;
+    expect(garage.ownChildByTypeAndName(TYPE_FIELD, "premiumLocation")).toBeUndefined();
 
     // Then confirm it IS there with overlay applied
     const { root: withOverlay } = await loadFixtures([
@@ -663,8 +663,8 @@ describe("Merge application sanity: acme-vehicle overlay", () => {
       "acme-vehicle-metadata.json",
       "acme-vehicle-overlay-metadata.json",
     ]);
-    const garageWithOverlay = withOverlay.childByTypeAndName(TYPE_OBJECT, "Garage")!;
-    expect(garageWithOverlay.childByTypeAndName(TYPE_FIELD, "premiumLocation")).toBeDefined();
+    const garageWithOverlay = withOverlay.ownChildByTypeAndName(TYPE_OBJECT, "Garage")!;
+    expect(garageWithOverlay.ownChildByTypeAndName(TYPE_FIELD, "premiumLocation")).toBeDefined();
   });
 
   it("Vehicle has warranty and inspectionDate fields from overlay", async () => {
@@ -673,9 +673,9 @@ describe("Merge application sanity: acme-vehicle overlay", () => {
       "acme-vehicle-metadata.json",
       "acme-vehicle-overlay-metadata.json",
     ]);
-    const vehicle = root.childByTypeAndName(TYPE_OBJECT, "Vehicle")!;
-    expect(vehicle.childByTypeAndName(TYPE_FIELD, "warranty")).toBeDefined();
-    expect(vehicle.childByTypeAndName(TYPE_FIELD, "inspectionDate")).toBeDefined();
+    const vehicle = root.ownChildByTypeAndName(TYPE_OBJECT, "Vehicle")!;
+    expect(vehicle.ownChildByTypeAndName(TYPE_FIELD, "warranty")).toBeDefined();
+    expect(vehicle.ownChildByTypeAndName(TYPE_FIELD, "inspectionDate")).toBeDefined();
   });
 
   it("Porsche retains its original fields AND gains certifiedPreOwned from overlay", async () => {
@@ -684,13 +684,13 @@ describe("Merge application sanity: acme-vehicle overlay", () => {
       "acme-vehicle-metadata.json",
       "acme-vehicle-overlay-metadata.json",
     ]);
-    const porsche = root.childByTypeAndName(TYPE_OBJECT, "Porsche")!;
+    const porsche = root.ownChildByTypeAndName(TYPE_OBJECT, "Porsche")!;
     // Original fields from vehicle file
-    expect(porsche.childByTypeAndName(TYPE_FIELD, "model")).toBeDefined();
-    expect(porsche.childByTypeAndName(TYPE_FIELD, "topSpeed")).toBeDefined();
-    expect(porsche.childByTypeAndName(TYPE_FIELD, "series")).toBeDefined();
+    expect(porsche.ownChildByTypeAndName(TYPE_FIELD, "model")).toBeDefined();
+    expect(porsche.ownChildByTypeAndName(TYPE_FIELD, "topSpeed")).toBeDefined();
+    expect(porsche.ownChildByTypeAndName(TYPE_FIELD, "series")).toBeDefined();
     // New field from overlay
-    expect(porsche.childByTypeAndName(TYPE_FIELD, "certifiedPreOwned")).toBeDefined();
+    expect(porsche.ownChildByTypeAndName(TYPE_FIELD, "certifiedPreOwned")).toBeDefined();
   });
 
   it("Motorcycle retains its original fields AND gains customPaint from overlay", async () => {
@@ -699,12 +699,12 @@ describe("Merge application sanity: acme-vehicle overlay", () => {
       "acme-vehicle-metadata.json",
       "acme-vehicle-overlay-metadata.json",
     ]);
-    const motorcycle = root.childByTypeAndName(TYPE_OBJECT, "Motorcycle")!;
+    const motorcycle = root.ownChildByTypeAndName(TYPE_OBJECT, "Motorcycle")!;
     // Original fields
-    expect(motorcycle.childByTypeAndName(TYPE_FIELD, "engineSize")).toBeDefined();
-    expect(motorcycle.childByTypeAndName(TYPE_FIELD, "bikeType")).toBeDefined();
+    expect(motorcycle.ownChildByTypeAndName(TYPE_FIELD, "engineSize")).toBeDefined();
+    expect(motorcycle.ownChildByTypeAndName(TYPE_FIELD, "bikeType")).toBeDefined();
     // New field from overlay
-    expect(motorcycle.childByTypeAndName(TYPE_FIELD, "customPaint")).toBeDefined();
+    expect(motorcycle.ownChildByTypeAndName(TYPE_FIELD, "customPaint")).toBeDefined();
   });
 
   it("isMerge is set to true on entities touched by the overlay file", async () => {
@@ -714,10 +714,10 @@ describe("Merge application sanity: acme-vehicle overlay", () => {
       "acme-vehicle-overlay-metadata.json",
     ]);
     // Garage, Vehicle, Porsche, Motorcycle all use merge: true in the overlay file
-    expect(root.childByTypeAndName(TYPE_OBJECT, "Garage")!.isMerge).toBe(true);
-    expect(root.childByTypeAndName(TYPE_OBJECT, "Vehicle")!.isMerge).toBe(true);
-    expect(root.childByTypeAndName(TYPE_OBJECT, "Porsche")!.isMerge).toBe(true);
-    expect(root.childByTypeAndName(TYPE_OBJECT, "Motorcycle")!.isMerge).toBe(true);
+    expect(root.ownChildByTypeAndName(TYPE_OBJECT, "Garage")!.isMerge).toBe(true);
+    expect(root.ownChildByTypeAndName(TYPE_OBJECT, "Vehicle")!.isMerge).toBe(true);
+    expect(root.ownChildByTypeAndName(TYPE_OBJECT, "Porsche")!.isMerge).toBe(true);
+    expect(root.ownChildByTypeAndName(TYPE_OBJECT, "Motorcycle")!.isMerge).toBe(true);
   });
 
   it("Car and Truck (not in overlay) do NOT have isMerge set", async () => {
@@ -726,8 +726,8 @@ describe("Merge application sanity: acme-vehicle overlay", () => {
       "acme-vehicle-metadata.json",
       "acme-vehicle-overlay-metadata.json",
     ]);
-    expect(root.childByTypeAndName(TYPE_OBJECT, "Car")!.isMerge).toBe(false);
-    expect(root.childByTypeAndName(TYPE_OBJECT, "Truck")!.isMerge).toBe(false);
+    expect(root.ownChildByTypeAndName(TYPE_OBJECT, "Car")!.isMerge).toBe(false);
+    expect(root.ownChildByTypeAndName(TYPE_OBJECT, "Truck")!.isMerge).toBe(false);
   });
 
   it("round-trips correctly (override attrs preserved after serialize → reload)", async () => {
@@ -738,10 +738,10 @@ describe("Merge application sanity: acme-vehicle overlay", () => {
     ]);
     // Verify override-added fields survive round-trip
     const reparsed = await roundTrip(root);
-    const garageReparsed = reparsed.childByTypeAndName(TYPE_OBJECT, "Garage")!;
-    expect(garageReparsed.childByTypeAndName(TYPE_FIELD, "premiumLocation")).toBeDefined();
-    const vehicleReparsed = reparsed.childByTypeAndName(TYPE_OBJECT, "Vehicle")!;
-    expect(vehicleReparsed.childByTypeAndName(TYPE_FIELD, "warranty")).toBeDefined();
+    const garageReparsed = reparsed.ownChildByTypeAndName(TYPE_OBJECT, "Garage")!;
+    expect(garageReparsed.ownChildByTypeAndName(TYPE_FIELD, "premiumLocation")).toBeDefined();
+    const vehicleReparsed = reparsed.ownChildByTypeAndName(TYPE_OBJECT, "Vehicle")!;
+    expect(vehicleReparsed.ownChildByTypeAndName(TYPE_FIELD, "warranty")).toBeDefined();
   });
 });
 
@@ -752,17 +752,17 @@ describe("Merge application sanity: acme-vehicle overlay", () => {
 describe("Fruitbasket proxy: identity nodes and @fields arrays round-trip", () => {
   it("Basket has an identity child of type primary", async () => {
     const { root } = await loadFixture("fruitbasket-proxy-metadata.json");
-    const basket = root.childByTypeAndName(TYPE_OBJECT, "Basket")!;
+    const basket = root.ownChildByTypeAndName(TYPE_OBJECT, "Basket")!;
     expect(basket).toBeDefined();
-    const identity = basket.childByTypeAndName(TYPE_IDENTITY, "primary");
+    const identity = basket.ownChildByTypeAndName(TYPE_IDENTITY, "primary");
     expect(identity).toBeDefined();
     expect(identity!.subType).toBe("primary");
   });
 
   it("identity @fields array attr survives round-trip", async () => {
     const { root } = await loadFixture("fruitbasket-proxy-metadata.json");
-    const basket = root.childByTypeAndName(TYPE_OBJECT, "Basket")!;
-    const identity = basket.childByTypeAndName(TYPE_IDENTITY, "primary")!;
+    const basket = root.ownChildByTypeAndName(TYPE_OBJECT, "Basket")!;
+    const identity = basket.ownChildByTypeAndName(TYPE_IDENTITY, "primary")!;
     // @fields is a stringarray attr
     const fields = identity.attr("fields");
     expect(Array.isArray(fields)).toBe(true);
@@ -770,34 +770,34 @@ describe("Fruitbasket proxy: identity nodes and @fields arrays round-trip", () =
 
     // Verify it survives round-trip
     const reparsed = await roundTrip(root);
-    const reparsedBasket = reparsed.childByTypeAndName(TYPE_OBJECT, "Basket")!;
-    const reparsedIdentity = reparsedBasket.childByTypeAndName(TYPE_IDENTITY, "primary")!;
+    const reparsedBasket = reparsed.ownChildByTypeAndName(TYPE_OBJECT, "Basket")!;
+    const reparsedIdentity = reparsedBasket.ownChildByTypeAndName(TYPE_IDENTITY, "primary")!;
     const reparsedFields = reparsedIdentity.attr("fields");
     expect(reparsedFields).toEqual(["id"]);
   });
 
   it("@generation attr survives round-trip", async () => {
     const { root } = await loadFixture("fruitbasket-proxy-metadata.json");
-    const basket = root.childByTypeAndName(TYPE_OBJECT, "Basket")!;
-    const identity = basket.childByTypeAndName(TYPE_IDENTITY, "primary")!;
+    const basket = root.ownChildByTypeAndName(TYPE_OBJECT, "Basket")!;
+    const identity = basket.ownChildByTypeAndName(TYPE_IDENTITY, "primary")!;
     expect(identity.attr("generation")).toBe("increment");
 
     const reparsed = await roundTrip(root);
-    const reparsedBasket = reparsed.childByTypeAndName(TYPE_OBJECT, "Basket")!;
-    const reparsedIdentity = reparsedBasket.childByTypeAndName(TYPE_IDENTITY, "primary")!;
+    const reparsedBasket = reparsed.ownChildByTypeAndName(TYPE_OBJECT, "Basket")!;
+    const reparsedIdentity = reparsedBasket.ownChildByTypeAndName(TYPE_IDENTITY, "primary")!;
     expect(reparsedIdentity.attr("generation")).toBe("increment");
   });
 
   it("BasketToFruit has relationship children that round-trip correctly", async () => {
     const { root } = await loadFixture("fruitbasket-proxy-metadata.json");
-    const btf = root.childByTypeAndName(TYPE_OBJECT, "BasketToFruit")!;
+    const btf = root.ownChildByTypeAndName(TYPE_OBJECT, "BasketToFruit")!;
     expect(btf).toBeDefined();
-    const relationships = btf.childrenOfType(TYPE_RELATIONSHIP);
+    const relationships = btf.ownChildrenOfType(TYPE_RELATIONSHIP);
     expect(relationships.length).toBe(2);
 
     const reparsed = await roundTrip(root);
-    const reparsedBtf = reparsed.childByTypeAndName(TYPE_OBJECT, "BasketToFruit")!;
-    const reparsedRelationships = reparsedBtf.childrenOfType(TYPE_RELATIONSHIP);
+    const reparsedBtf = reparsed.ownChildByTypeAndName(TYPE_OBJECT, "BasketToFruit")!;
+    const reparsedRelationships = reparsedBtf.ownChildrenOfType(TYPE_RELATIONSHIP);
     expect(reparsedRelationships.length).toBe(2);
   });
 
@@ -807,7 +807,7 @@ describe("Fruitbasket proxy: identity nodes and @fields arrays round-trip", () =
     // (v0.3 rework — runtime strategy moved out of subType).
     // Apple, Macintosh, Orange have no explicit subType, so parser defaults to "base".
     for (const name of ["Basket", "BasketToFruit", "Fruit"]) {
-      const obj = root.childByTypeAndName(TYPE_OBJECT, name)!;
+      const obj = root.ownChildByTypeAndName(TYPE_OBJECT, name)!;
       expect(obj).toBeDefined();
       expect(obj.subType).toBe(OBJECT_SUBTYPE_ENTITY);
       expect(obj.attr("javaRuntime")).toBe("proxy");

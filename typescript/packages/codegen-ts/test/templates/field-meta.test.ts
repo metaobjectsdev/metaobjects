@@ -16,7 +16,7 @@ async function loadField(json: unknown) {
   if (result.errors.length > 0) {
     throw new Error(result.errors.map((e) => e.message).join("\n"));
   }
-  return result.root.children()[0]!.children()[0]!;
+  return result.root.ownChildren()[0]!.ownChildren()[0]!;
 }
 
 describe("inferViewKind", () => {

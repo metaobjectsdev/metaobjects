@@ -122,8 +122,8 @@ function assertModelsEqual(a: MetaData, b: MetaData, path = "root"): void {
   }
 
   // Compare children recursively
-  const aKids = a.children();
-  const bKids = b.children();
+  const aKids = a.ownChildren();
+  const bKids = b.ownChildren();
   expect(aKids.length).toBe(bKids.length);
   for (let i = 0; i < aKids.length; i++) {
     assertModelsEqual(aKids[i]!, bKids[i]!, `${path}.children[${i}]`);
@@ -799,7 +799,7 @@ describe("serializeJson — edge cases", () => {
     const { root } = parseJson(raw, { registry });
 
     // The Fruit object should have isAbstract=true
-    const fruitObj = root.children().find((c) => c.name === "Fruit");
+    const fruitObj = root.ownChildren().find((c) => c.name === "Fruit");
     expect(fruitObj).toBeDefined();
     expect(fruitObj!.isAbstract).toBe(true);
 

@@ -29,7 +29,7 @@ describe("loadMemory", () => {
       );
 
       const meta = await loadMemory(root);
-      const user = meta.children().find((c) => c.type === TYPE_OBJECT && c.name === "User");
+      const user = meta.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === "User");
       expect(user).toBeDefined();
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -63,7 +63,7 @@ describe("loadMemory", () => {
       );
 
       const meta = await loadMemory(root);
-      const names = meta.children().map((c) => c.name);
+      const names = meta.ownChildren().map((c) => c.name);
       expect(names).toContain("Main");
       expect(names).not.toContain("Draft");
     } finally {
@@ -93,7 +93,7 @@ describe("loadMemory", () => {
       );
 
       const meta = await loadMemory(root);
-      const dec = meta.children().find((c) => c.type === "decision");
+      const dec = meta.ownChildren().find((c) => c.type === "decision");
       expect(dec).toBeDefined();
       expect(dec!.name).toBe("useTanstackQuery");
     } finally {
@@ -114,7 +114,7 @@ describe("loadMemory", () => {
     const root = makeMetaRoot();
     try {
       const meta = await loadMemory(root);
-      expect(meta.children()).toHaveLength(0);
+      expect(meta.ownChildren()).toHaveLength(0);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -178,7 +178,7 @@ describe("loadMemory — cross-package loading via workspace", () => {
 
       // Load from billing's perspective
       const meta = await loadMemory(join(wsRoot, "packages", "billing"));
-      const childNames = meta.children().map((c) => c.name).sort();
+      const childNames = meta.ownChildren().map((c) => c.name).sort();
       // Both packages' entities are loaded into the merged MetaData tree
       expect(childNames).toContain("User");
       expect(childNames).toContain("Invoice");
@@ -203,7 +203,7 @@ describe("loadMemory — cross-package loading via workspace", () => {
         }),
       );
       const meta = await loadMemory(root);
-      expect(meta.children().map((c) => c.name)).toEqual(["Only"]);
+      expect(meta.ownChildren().map((c) => c.name)).toEqual(["Only"]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -270,9 +270,9 @@ describe("loadMemory — cross-package loading via workspace", () => {
       );
 
       const meta = await loadMemory(join(wsRoot, "packages", "domain"));
-      const widget = meta.children().find((c) => c.name === "Widget");
+      const widget = meta.ownChildren().find((c) => c.name === "Widget");
       expect(widget).toBeDefined();
-      const idField = widget!.children().find((c) => c.name === "id");
+      const idField = widget!.ownChildren().find((c) => c.name === "id");
       expect(idField).toBeDefined();
       // super resolved across package boundary
       expect(idField!.superResolved).toBeDefined();

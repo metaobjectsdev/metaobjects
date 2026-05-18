@@ -393,7 +393,7 @@ export class ObjectManager {
         { value: entityName },
       );
     }
-    const entity = this.metadata.children().find((c) => c.type === TYPE_OBJECT && c.name === entityName);
+    const entity = this.metadata.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === entityName);
     if (!entity) {
       throw new MetadataError(`Unknown entity '${entityName}'`, { entity: entityName });
     }
@@ -435,7 +435,7 @@ const NUMERIC_SUBTYPES = new Set([
 
 // decodeRef always returns strings; numeric PK fields need coercion back to number.
 function coercePkValue(entity: MetaData, fieldName: string, rawValue: string): string | number {
-  const field = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
+  const field = entity.ownChildren().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (field && NUMERIC_SUBTYPES.has(field.subType)) {
     const n = Number(rawValue);
     if (!Number.isNaN(n)) return n;

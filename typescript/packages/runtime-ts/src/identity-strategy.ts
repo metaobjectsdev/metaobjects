@@ -17,7 +17,7 @@ export type IdentityResolution =
   | { kind: "preset"; values: Record<string, unknown> };
 
 export function resolveIdentity(entity: MetaData, data: Record<string, unknown>): IdentityResolution {
-  const primary = entity.children().find(
+  const primary = entity.ownChildren().find(
     (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
   );
   if (!primary) {

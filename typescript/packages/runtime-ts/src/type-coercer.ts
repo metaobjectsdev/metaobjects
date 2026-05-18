@@ -16,7 +16,7 @@ export function coerceRowOnWrite(entity: MetaData, row: Row, dialect: Dialect): 
 
 function mapBooleansFromInt(entity: MetaData, row: Row): Row {
   const out: Row = { ...row };
-  for (const child of entity.children()) {
+  for (const child of entity.ownChildren()) {
     if (child.type !== TYPE_FIELD) continue;
     if (child.subType !== FIELD_SUBTYPE_BOOLEAN) continue;
     const v = out[child.name];
@@ -28,7 +28,7 @@ function mapBooleansFromInt(entity: MetaData, row: Row): Row {
 
 function mapBooleansToInt(entity: MetaData, row: Row): Row {
   const out: Row = { ...row };
-  for (const child of entity.children()) {
+  for (const child of entity.ownChildren()) {
     if (child.type !== TYPE_FIELD) continue;
     if (child.subType !== FIELD_SUBTYPE_BOOLEAN) continue;
     const v = out[child.name];

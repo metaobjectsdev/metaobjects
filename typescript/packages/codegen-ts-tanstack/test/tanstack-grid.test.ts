@@ -12,7 +12,7 @@ const GRID_FILTER    = resolve(import.meta.dir, "fixtures", "grid-filter-fixture
 
 async function ctxFor(fixturePath: string): Promise<GenContext> {
   const { root } = await new FileMetaDataLoader().loadFiles([fixturePath]);
-  const entities = root.children().filter((c) => c.type === TYPE_OBJECT);
+  const entities = root.ownChildren().filter((c) => c.type === TYPE_OBJECT);
   const renderContext = makeRenderContext({
     dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
     dbImport: "../db", extStyle: "none",

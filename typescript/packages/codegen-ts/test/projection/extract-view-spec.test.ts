@@ -76,7 +76,7 @@ describe("extractViewSpec — flat passthrough via extends", () => {
       },
     ]);
 
-    const projection = root.children().find((o) => o.name === "ProgramSummary")!;
+    const projection = root.ownChildren().find((o) => o.name === "ProgramSummary")!;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     expect(spec.viewName).toBe("v_program_summary");
@@ -180,7 +180,7 @@ describe("extractViewSpec — multi-level via path", () => {
       },
     ]);
 
-    const projection = root.children().find((o) => o.name === "ProgramSummary")!;
+    const projection = root.ownChildren().find((o) => o.name === "ProgramSummary")!;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     expect(spec.joinTree.joins.length).toBe(1);
@@ -262,7 +262,7 @@ describe("extractViewSpec — shared @via deduplication", () => {
       },
     ]);
 
-    const projection = root.children().find((o) => o.name === "ProgramSummary")!;
+    const projection = root.ownChildren().find((o) => o.name === "ProgramSummary")!;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     // Both fields reference Program.weeks — should deduplicate to a single join node.
@@ -301,7 +301,7 @@ describe("extractViewSpec — pure-extends projection (no origin children)", () 
       },
     ]);
 
-    const projection = root.children().find((o) => o.name === "ProgramView")!;
+    const projection = root.ownChildren().find((o) => o.name === "ProgramView")!;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     // No cross-entity origins → no joins
@@ -376,7 +376,7 @@ describe("extractViewSpec — parentJoinField resolution", () => {
       },
     ]);
 
-    const projection = root.children().find((o) => o.name === "ProgramSummary")!;
+    const projection = root.ownChildren().find((o) => o.name === "ProgramSummary")!;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     // Default: parent's primary identity field is "id"
@@ -442,7 +442,7 @@ describe("extractViewSpec — parentJoinField resolution", () => {
       },
     ]);
 
-    const projection = root.children().find((o) => o.name === "CustomerSummary")!;
+    const projection = root.ownChildren().find((o) => o.name === "CustomerSummary")!;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     // Must resolve to "email", not "id"

@@ -50,7 +50,7 @@ function walk(model: MetaData, errors: ParseError[], warnings: string[]): void {
     }
   }
 
-  for (const child of model.children()) {
+  for (const child of model.ownChildren()) {
     walk(child, errors, warnings);
   }
 }

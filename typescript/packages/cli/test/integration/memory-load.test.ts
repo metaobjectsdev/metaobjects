@@ -18,8 +18,8 @@ describe("loadMemory — trainer-website-meta", () => {
     const root = copyFixture("trainer-website-meta");
     try {
       const meta = await loadMemory(root);
-      const objects = meta.children().filter((c) => c.type === TYPE_OBJECT);
-      const decisions = meta.children().filter((c) => c.type === "decision");
+      const objects = meta.ownChildren().filter((c) => c.type === TYPE_OBJECT);
+      const decisions = meta.ownChildren().filter((c) => c.type === "decision");
       expect(objects.map((o) => o.name).sort()).toEqual(["Post", "Tag", "User"]);
       expect(decisions.map((d) => d.name)).toEqual(["useTanstackQuery"]);
     } finally {
@@ -37,10 +37,10 @@ describe("loadMemory — multi-package-meta", () => {
     const root = copyFixture("multi-package-meta");
     try {
       const meta = await loadMemory(root);
-      const widget = meta.children().find((c) => c.name === "Widget");
+      const widget = meta.ownChildren().find((c) => c.name === "Widget");
       expect(widget).toBeDefined();
       // id field's super resolves to common::id across files
-      const idField = widget!.children().find((c) => c.name === "id");
+      const idField = widget!.ownChildren().find((c) => c.name === "id");
       expect(idField).toBeDefined();
       expect(idField!.superRef).toBe("::demo::common::id");
       expect(idField!.superResolved).toBeDefined();

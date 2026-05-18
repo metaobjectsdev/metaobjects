@@ -32,7 +32,7 @@ export function resolveRelationDescriptor(
   relationName: string,
   root: MetaData,
 ): RelationDescriptor {
-  for (const child of sourceEntity.children()) {
+  for (const child of sourceEntity.ownChildren()) {
     if (child.type !== TYPE_RELATIONSHIP) continue;
     if (child.name !== relationName) continue;
     const card = child.attr(RELATIONSHIP_ATTR_CARDINALITY);
@@ -45,7 +45,7 @@ export function resolveRelationDescriptor(
         { entity: sourceEntity.name },
       );
     }
-    const target = root.children().find((c) => c.type === TYPE_OBJECT && c.name === targetEntityName);
+    const target = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === targetEntityName);
     if (!target) {
       throw new MetadataError(
         `Target entity '${targetEntityName}' not found for relation '${relationName}' on '${sourceEntity.name}'`,
@@ -60,10 +60,10 @@ export function resolveRelationDescriptor(
     };
   }
 
-  for (const other of root.children()) {
+  for (const other of root.ownChildren()) {
     if (other.type !== TYPE_OBJECT) continue;
     if (other.name === sourceEntity.name) continue;
-    for (const child of other.children()) {
+    for (const child of other.ownChildren()) {
       if (child.type !== TYPE_RELATIONSHIP) continue;
       const card = child.attr(RELATIONSHIP_ATTR_CARDINALITY);
       if (card !== CARDINALITY_ONE) continue;
@@ -131,7 +131,7 @@ export function buildIncludeBatchSpec(
 }
 
 function mustGetEntity(root: MetaData, name: string): MetaData {
-  const e = root.children().find((c) => c.type === TYPE_OBJECT && c.name === name);
+  const e = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
   if (!e) throw new MetadataError(`Entity '${name}' not found`, { entity: name });
   return e;
 }

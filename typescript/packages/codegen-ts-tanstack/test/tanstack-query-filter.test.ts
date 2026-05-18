@@ -12,7 +12,7 @@ const FIXTURE = resolve(import.meta.dir, "..", "..", "codegen-ts", "test", "fixt
 async function buildCtx(): Promise<GenContext> {
   const loader = new FileMetaDataLoader();
   const { root } = await loader.loadFiles([FIXTURE]);
-  const entities = root.children().filter((c) => c.type === TYPE_OBJECT);
+  const entities = root.ownChildren().filter((c) => c.type === TYPE_OBJECT);
   const renderContext = makeRenderContext({
     dialect: "sqlite",
     loadedRoot: root,

@@ -161,7 +161,7 @@ describe("renderRoutesFile — vanilla entity — apiPrefix", () => {
 describe("renderRoutesFile — projection — apiPrefix", () => {
   test("flat shape (no wrapping) when apiPrefix is empty", async () => {
     const root = await loadProjectionFixture();
-    const projection = root.children().find((o) => o.name === "ProgramSummary")!;
+    const projection = root.ownChildren().find((o) => o.name === "ProgramSummary")!;
     const ctx = makeRenderContext({
       dialect: "sqlite",
       loadedRoot: root,
@@ -179,7 +179,7 @@ describe("renderRoutesFile — projection — apiPrefix", () => {
 
   test("wraps with fastify.register when apiPrefix is '/api'", async () => {
     const root = await loadProjectionFixture();
-    const projection = root.children().find((o) => o.name === "ProgramSummary")!;
+    const projection = root.ownChildren().find((o) => o.name === "ProgramSummary")!;
     const ctx = makeRenderContext({
       dialect: "sqlite",
       loadedRoot: root,

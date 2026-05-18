@@ -21,7 +21,7 @@ describe("entityFile() factory", () => {
   test("emits one <Entity>.ts per entity with @generated header and Drizzle table", async () => {
     const loader = new FileMetaDataLoader();
     const { root } = await loader.loadFiles([FIXTURE]);
-    const entities = root.children().filter(c => c.type === TYPE_OBJECT);
+    const entities = root.ownChildren().filter(c => c.type === TYPE_OBJECT);
 
     const renderContext = makeRenderContext({
       dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
@@ -48,7 +48,7 @@ describe("entityFile() factory", () => {
   test("filter option narrows generated entities", async () => {
     const loader = new FileMetaDataLoader();
     const { root } = await loader.loadFiles([FIXTURE]);
-    const entities = root.children().filter(c => c.type === TYPE_OBJECT);
+    const entities = root.ownChildren().filter(c => c.type === TYPE_OBJECT);
 
     const renderContext = makeRenderContext({
       dialect: "sqlite", loadedRoot: root, outDir: "/tmp",

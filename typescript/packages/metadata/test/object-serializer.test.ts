@@ -18,7 +18,7 @@ describe("MetaField.objectRef", () => {
         { "field.object": { "name": "customer", "@objectRef": "Customer" } }
       ] } }
     ] } }`);
-    const order = root.childByName("Order") as MetaObject;
+    const order = root.ownChildByName("Order") as MetaObject;
     const customer = order.fields()[0] as MetaField;
     expect(customer.objectRef).toBe("Customer");
   });
@@ -29,7 +29,7 @@ describe("MetaField.objectRef", () => {
         { "field.string": { "name": "code" } }
       ] } }
     ] } }`);
-    const order = root.childByName("Order") as MetaObject;
+    const order = root.ownChildByName("Order") as MetaObject;
     const code = order.fields()[0] as MetaField;
     expect(code.objectRef).toBeUndefined();
   });
@@ -54,7 +54,7 @@ describe("objectToJson / jsonToObject", () => {
   ] } }`;
 
   function order(): MetaObject {
-    return loadRoot(shop).childByName("Order") as MetaObject;
+    return loadRoot(shop).ownChildByName("Order") as MetaObject;
   }
 
   it("objectToJson emits @type and the declared fields", () => {

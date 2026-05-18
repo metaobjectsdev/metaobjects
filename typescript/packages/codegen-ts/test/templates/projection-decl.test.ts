@@ -45,7 +45,7 @@ async function makeMinimalProjection(projName: string, baseName: string) {
   const result = await new MetaDataLoader().load([new InMemorySource(json)]);
   if (result.errors.length > 0) throw new Error(result.errors.map((e) => e.message).join("\n"));
   const root = result.root;
-  const projection = root.children().find((o) => o.name === projName)!;
+  const projection = root.ownChildren().find((o) => o.name === projName)!;
   return { root, projection };
 }
 
@@ -152,7 +152,7 @@ async function loadProjection() {
 
   const root = result.root;
   const projection = root
-    .children()
+    .ownChildren()
     .find((o) => o.name === "ProgramSummary");
   if (!projection) throw new Error("ProgramSummary not found in root");
 

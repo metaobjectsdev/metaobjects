@@ -249,7 +249,7 @@ describe("runGen — mergeStrategy: 'skip-existing'", () => {
     // Now add a NEW entity to the root — it should still be written
     const root2 = makeRoot("test");
     // Copy the Post entity from result
-    const postEntity = result.root.children().find((c) => c.name === "Post")!;
+    const postEntity = result.root.ownChildren().find((c) => c.name === "Post")!;
     root2.addChild(postEntity);
     root2.addChild(makeEntity("Comment"));
 

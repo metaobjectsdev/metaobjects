@@ -6,7 +6,7 @@ import {
 import type { MetaData } from "@metaobjects/metadata";
 
 function hasSource(entity: MetaData, subType: string): boolean {
-  return entity.children().some(
+  return entity.ownChildren().some(
     (c) => c.type === TYPE_SOURCE && c.subType === subType,
   );
 }

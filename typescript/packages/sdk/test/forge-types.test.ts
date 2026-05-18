@@ -139,7 +139,7 @@ describe("registerForgeTypes", () => {
       const result = await loader.loadFiles([path]);
 
       expect(result.errors).toHaveLength(0);
-      const dec = result.root.children().find((c) => c.type === "decision");
+      const dec = result.root.ownChildren().find((c) => c.type === "decision");
       expect(dec).toBeDefined();
       expect(dec!.name).toBe("useTanstackQuery");
     } finally {

@@ -32,7 +32,7 @@ import {
 
 export function validateDataGridSortFields(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
-  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
     // Use effectiveChildren() so inherited fields (via extends:/super:) are
     // visible when validating @defaultSortField references.
     const effective = obj.effectiveChildren();
@@ -60,7 +60,7 @@ export function validateDataGridSortFields(root: MetaData): ParseError[] {
 
 export function validateFilterableHasIndex(root: MetaData): string[] {
   const warnings: string[] = [];
-  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
     // Use effectiveChildren() so inherited fields and identities (via extends:/super:)
     // are included when checking filterable-without-index.
     const effective = obj.effectiveChildren();
@@ -105,7 +105,7 @@ export function validateFilterableHasIndex(root: MetaData): string[] {
 // ---------------------------------------------------------------------------
 
 function _findObject(root: MetaData, name: string): MetaData | undefined {
-  return root.children().find((c) => c.type === TYPE_OBJECT && c.name === name);
+  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
 }
 
 function _findField(obj: MetaData, name: string): MetaData | undefined {
@@ -216,9 +216,9 @@ function _validateViaPath(
 
 export function validateOriginPaths(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
-  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
-    for (const field of obj.children().filter((c) => c.type === TYPE_FIELD)) {
-      for (const origin of field.children().filter((c) => c.type === TYPE_ORIGIN)) {
+  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+    for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
+      for (const origin of field.ownChildren().filter((c) => c.type === TYPE_ORIGIN)) {
         if (origin.subType === ORIGIN_SUBTYPE_PASSTHROUGH) {
           const from = origin.attr(ORIGIN_PASSTHROUGH_ATTR_FROM);
           if (typeof from !== "string" || from === "") {

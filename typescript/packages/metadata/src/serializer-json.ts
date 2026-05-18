@@ -119,7 +119,7 @@ function serializeNodeInner(model: MetaData, inlineAttrs: boolean): Record<strin
   const emittedAsChild = new Set<string>();
   const serializedChildren: Record<string, unknown>[] = [];
 
-  for (const child of model.children()) {
+  for (const child of model.ownChildren()) {
     if (child.type !== TYPE_ATTR) {
       serializedChildren.push(serializeNode(child, inlineAttrs));
       continue;

@@ -8,7 +8,7 @@ const FIXTURE = resolve(import.meta.dir, "..", "fixtures", "filter-fixture.json"
 
 async function loadEntity(name: string) {
   const { root } = await new FileMetaDataLoader().loadFiles([FIXTURE]);
-  return root.children().find((c) => c.type === TYPE_OBJECT && c.name === name)!;
+  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name)!;
 }
 
 describe("renderFilterType", () => {

@@ -103,8 +103,8 @@ describe("MetaData — construction", () => {
     expect(makeField("string", "f").attrs().size).toBe(0);
   });
 
-  it("defaults: children() is empty", () => {
-    expect(makeField("string", "f").children().length).toBe(0);
+  it("defaults: ownChildren() is empty", () => {
+    expect(makeField("string", "f").ownChildren().length).toBe(0);
   });
 
   it("defaults: isFrozen() is false", () => {
@@ -228,102 +228,102 @@ describe("MetaData — children", () => {
     parent = makeObject("entity", "Parent");
   });
 
-  it("addChild then children() includes the child", () => {
+  it("addChild then ownChildren() includes the child", () => {
     const c = makeField("string", "title");
     parent.addChild(c);
-    expect(parent.children()).toContain(c);
+    expect(parent.ownChildren()).toContain(c);
   });
 
-  it("children() preserves insertion order", () => {
+  it("ownChildren() preserves insertion order", () => {
     const c1 = makeField("string", "first");
     const c2 = makeField("int", "second");
     const c3 = makeField("boolean", "third");
     parent.addChild(c1);
     parent.addChild(c2);
     parent.addChild(c3);
-    const list = parent.children();
+    const list = parent.ownChildren();
     expect(list[0]).toBe(c1);
     expect(list[1]).toBe(c2);
     expect(list[2]).toBe(c3);
   });
 
-  it("childrenOfType filters by type", () => {
+  it("ownChildrenOfType filters by type", () => {
     const f1 = makeField("string", "a");
     const f2 = makeField("int", "b");
     const o1 = makeObject("entity", "c");
     parent.addChild(f1);
     parent.addChild(f2);
     parent.addChild(o1);
-    const fields = parent.childrenOfType("field");
+    const fields = parent.ownChildrenOfType("field");
     expect(fields).toContain(f1);
     expect(fields).toContain(f2);
     expect(fields).not.toContain(o1);
   });
 
-  it("childrenOfType returns empty array when no match", () => {
+  it("ownChildrenOfType returns empty array when no match", () => {
     parent.addChild(makeField("string", "a"));
-    expect(parent.childrenOfType("nonexistent")).toEqual([]);
+    expect(parent.ownChildrenOfType("nonexistent")).toEqual([]);
   });
 
-  it("childrenOfSubType filters by both type and subType", () => {
+  it("ownChildrenOfSubType filters by both type and subType", () => {
     const f1 = makeField("string", "a");
     const f2 = makeField("int", "b");
     parent.addChild(f1);
     parent.addChild(f2);
-    const strings = parent.childrenOfSubType("field", "string");
+    const strings = parent.ownChildrenOfSubType("field", "string");
     expect(strings).toContain(f1);
     expect(strings).not.toContain(f2);
   });
 
-  it("childByName returns first matching child by name", () => {
+  it("ownChildByName returns first matching child by name", () => {
     const c1 = makeField("string", "foo");
     const c2 = makeField("int", "foo"); // same name, different subType
     parent.addChild(c1);
     parent.addChild(c2);
-    expect(parent.childByName("foo")).toBe(c1);
+    expect(parent.ownChildByName("foo")).toBe(c1);
   });
 
-  it("childByName returns undefined when no match", () => {
-    expect(parent.childByName("nonexistent")).toBeUndefined();
+  it("ownChildByName returns undefined when no match", () => {
+    expect(parent.ownChildByName("nonexistent")).toBeUndefined();
   });
 
-  it("childByTypeAndName returns first child matching both type and name", () => {
+  it("ownChildByTypeAndName returns first child matching both type and name", () => {
     const f = makeField("string", "foo");
     const o = makeObject("entity", "foo");
     parent.addChild(f);
     parent.addChild(o);
-    expect(parent.childByTypeAndName("field", "foo")).toBe(f);
-    expect(parent.childByTypeAndName("object", "foo")).toBe(o);
+    expect(parent.ownChildByTypeAndName("field", "foo")).toBe(f);
+    expect(parent.ownChildByTypeAndName("object", "foo")).toBe(o);
   });
 
-  it("childByTypeAndName returns undefined when no match", () => {
+  it("ownChildByTypeAndName returns undefined when no match", () => {
     parent.addChild(makeField("string", "a"));
-    expect(parent.childByTypeAndName("field", "missing")).toBeUndefined();
-    expect(parent.childByTypeAndName("object", "a")).toBeUndefined();
+    expect(parent.ownChildByTypeAndName("field", "missing")).toBeUndefined();
+    expect(parent.ownChildByTypeAndName("object", "a")).toBeUndefined();
   });
 
-  it("children() length matches number of added children", () => {
+  it("ownChildren() length matches number of added children", () => {
     parent.addChild(makeField("string", "a"));
     parent.addChild(makeField("string", "b"));
-    expect(parent.children().length).toBe(2);
+    expect(parent.ownChildren().length).toBe(2);
   });
 
-  it("children() is a defensive copy — a later addChild does not change a captured snapshot", () => {
+  it("ownChildren() is a defensive copy — a later addChild does not change a captured snapshot", () => {
     const c1 = makeField("string", "first");
     parent.addChild(c1);
-    const snapshot = parent.children().length;
+    const snapshot = parent.ownChildren().length;
     parent.addChild(makeField("string", "second"));
     expect(snapshot).toBe(1);
-    expect(parent.children().length).toBe(2);
+    expect(parent.ownChildren().length).toBe(2);
   });
 
-  it("mutating a cast copy of children() does not affect internal state", () => {
+  it("mutating a cast copy of ownChildren() does not affect internal state", () => {
     const c1 = makeField("string", "original");
     parent.addChild(c1);
-    const mutableCopy = parent.children() as MetaData[];
+    const mutableCopy = parent.ownChildren() as MetaData[];
     mutableCopy.push(makeField("string", "injected"));
-    expect(parent.children().length).toBe(1);
-    expect(parent.childByName("injected")).toBeUndefined();
+    expect(parent.ownChildren().length).toBe(1);
+    expect(parent.ownChildByName("injected")).toBeUndefined();
   });
 });
 
@@ -443,7 +443,7 @@ describe("MetaData — effectiveChildren()", () => {
     const eff = parent.effectiveChildren();
     expect(eff).toContain(c1);
     eff.push(makeField("string", "injected"));
-    expect(parent.children().length).toBe(1);
+    expect(parent.ownChildren().length).toBe(1);
   });
 
   it("with super includes super's children first, then own appended", () => {

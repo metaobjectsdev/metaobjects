@@ -24,10 +24,10 @@ metadata:
   expect(result.errors).toEqual([]);
   expect(result.root.type).toBe(TYPE_METADATA);
 
-  const product = result.root.children()[0]!;
+  const product = result.root.ownChildren()[0]!;
   expect(product.name).toBe("Product");
 
-  const sku = product.children()[0]!;
+  const sku = product.ownChildren()[0]!;
   expect(sku.type).toBe(TYPE_FIELD);
   expect(sku.name).toBe("sku");
 });
@@ -43,7 +43,7 @@ metadata:
 `;
   const result = parseYaml(yaml, { registry: coreRegistry() });
   expect(result.errors).toEqual([]);
-  const field = result.root.children()[0]!.children()[0]!;
+  const field = result.root.ownChildren()[0]!.ownChildren()[0]!;
   expect(field.name).toBe("weekIds");
   expect(field.isArray).toBe(true);
 });

@@ -147,7 +147,7 @@ function coerceNumeric(raw: unknown): unknown {
 function resolveObjectRef(field: MetaField, mo: MetaObject): MetaObject | undefined {
   const ref = field.objectRef;
   if (ref === undefined) return undefined;
-  const found: MetaData | undefined = mo.root().childByTypeAndName(TYPE_OBJECT, ref);
+  const found: MetaData | undefined = mo.root().ownChildByTypeAndName(TYPE_OBJECT, ref);
   if (found === undefined) return undefined;
   return found as MetaObject;
 }

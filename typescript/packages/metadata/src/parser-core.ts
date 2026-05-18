@@ -449,7 +449,7 @@ function createOrFindMetaData(
 
   // Look up an existing child with (type, name). Skip unnamed nodes — they
   // are always distinct (e.g. inline validators, anonymous attrs).
-  const existing = name !== "" ? parent.childByTypeAndName(type, name) : undefined;
+  const existing = name !== "" ? parent.ownChildByTypeAndName(type, name) : undefined;
 
   if (isOverlayNode) {
     if (existing === undefined) {
@@ -720,7 +720,7 @@ function processChildren(
         childNodePath,
       );
 
-      if (childModel !== undefined && !parent.children().includes(childModel)) {
+      if (childModel !== undefined && !parent.ownChildren().includes(childModel)) {
         parent.addChild(childModel);
       }
     }

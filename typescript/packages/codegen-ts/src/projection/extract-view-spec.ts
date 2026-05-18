@@ -42,13 +42,13 @@ export interface ExtractContext {
 // ---------------------------------------------------------------------------
 
 function findRelationship(obj: MetaData, name: string): MetaData | undefined {
-  return obj.children().find(
+  return obj.ownChildren().find(
     (c) => c.type === TYPE_RELATIONSHIP && c.name === name,
   );
 }
 
 function viewName(projection: MetaObject, ctx: ExtractContext): string {
-  const dbView = projection.children().find(
+  const dbView = projection.ownChildren().find(
     (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_VIEW,
   );
   const explicit = dbView?.attr(SOURCE_DB_VIEW_ATTR_NAME) as string | undefined;
@@ -147,9 +147,9 @@ function buildJoinTree(
 ): JoinTree {
   const allPaths: Path[] = [];
 
-  for (const field of projection.children()) {
+  for (const field of projection.ownChildren()) {
     if (field.type !== TYPE_FIELD) continue;
-    for (const origin of field.children()) {
+    for (const origin of field.ownChildren()) {
       if (origin.type !== TYPE_ORIGIN) continue;
       const viaAttr = origin.subType === ORIGIN_SUBTYPE_AGGREGATE
         ? (origin.attr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined)
@@ -252,7 +252,7 @@ function buildSelectSpec(
   // Skip fields that the projection has overridden with an explicit origin.
   // fields() is effective-by-default, so multi-level inheritance (base → BaseEntity) works.
   for (const baseField of base.fields()) {
-    const overridden = projection.children().find(
+    const overridden = projection.ownChildren().find(
       (c) => c.type === TYPE_FIELD && c.name === baseField.name,
     );
     if (overridden) continue;
@@ -266,9 +266,9 @@ function buildSelectSpec(
   }
 
   // Fields explicitly declared on the projection.
-  for (const field of projection.children()) {
+  for (const field of projection.ownChildren()) {
     if (field.type !== TYPE_FIELD) continue;
-    const origin = field.children().find((c) => c.type === TYPE_ORIGIN);
+    const origin = field.ownChildren().find((c) => c.type === TYPE_ORIGIN);
     const dbCol = sourceColumnNameFor(field, ctx);
 
     if (!origin) {
@@ -292,7 +292,7 @@ function buildSelectSpec(
       const targetEntity = root.findObject(entityName);
       const sourceAlias = findAliasInTree(joinTree, entityName);
       if (!targetEntity || sourceAlias === undefined) continue;
-      const targetField = targetEntity.children().find(
+      const targetField = targetEntity.ownChildren().find(
         (c) => c.type === TYPE_FIELD && c.name === fieldName,
       );
       if (!targetField) continue;
@@ -314,7 +314,7 @@ function buildSelectSpec(
       const targetEntity = root.findObject(entityName);
       const sourceAlias = findAliasInTree(joinTree, entityName);
       if (!targetEntity || sourceAlias === undefined) continue;
-      const targetField = targetEntity.children().find(
+      const targetField = targetEntity.ownChildren().find(
         (c) => c.type === TYPE_FIELD && c.name === fieldName,
       );
       if (!targetField) continue;

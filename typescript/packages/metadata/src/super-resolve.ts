@@ -24,7 +24,7 @@ import { PACKAGE_SEPARATOR, PACKAGE_PARENT } from "./constants.js";
  */
 function findInTree(root: MetaData, fqn: string): MetaData | undefined {
   if (root.fqn() === fqn) return root;
-  for (const child of root.children()) {
+  for (const child of root.ownChildren()) {
     const found = findInTree(child, fqn);
     if (found !== undefined) return found;
   }
@@ -141,7 +141,7 @@ function walk(
 ): void {
   visit(node, ctxPkg);
   const nextCtx = node.package ?? ctxPkg;
-  for (const child of node.children()) {
+  for (const child of node.ownChildren()) {
     walk(child, nextCtx, visit);
   }
 }

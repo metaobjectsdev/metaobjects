@@ -51,7 +51,7 @@ export function buildExpectedSchema(
 ): SchemaSnapshot {
   // Pass 1: collect entities + their resolved table names.
   const entities: { entity: MetaData; tableName: string }[] = [];
-  for (const child of root.children()) {
+  for (const child of root.ownChildren()) {
     if (child.type !== TYPE_OBJECT) continue;
     entities.push({ entity: child, tableName: resolveTableName(child) });
   }
@@ -101,7 +101,7 @@ function buildTable(
   let pkIdentity: MetaData | undefined;
 
   // First pass: locate the primary identity so column construction can consult it.
-  for (const child of entity.children()) {
+  for (const child of entity.ownChildren()) {
     if (child.type === TYPE_IDENTITY && isPrimaryIdentity(child)) {
       pkIdentity = child;
       primaryKey = readIdentityFields(child).map((jsName) => {
@@ -118,7 +118,7 @@ function buildTable(
     : undefined;
 
   const columns: ColumnDescriptor[] = [];
-  for (const child of entity.children()) {
+  for (const child of entity.ownChildren()) {
     if (child.type !== TYPE_FIELD) continue;
     const isPk = pkJsNames.includes(child.name);
     columns.push(buildColumn(child, isPk, isPk ? pkGeneration : undefined));
@@ -140,7 +140,7 @@ function buildSecondaryIndexes(entity: MetaData, tableName: string): IndexDescri
   // on the DB side using the convention `<table>_<column>_unique` whenever a
   // column has `.unique()`. We mirror them in the expected schema so the diff
   // doesn't see them as drop-only on the actual side.
-  for (const child of entity.children()) {
+  for (const child of entity.ownChildren()) {
     if (child.type !== TYPE_FIELD) continue;
     if (child.attr(FIELD_ATTR_UNIQUE) !== true) continue;
     const colName = resolveColumnName(child);
@@ -152,7 +152,7 @@ function buildSecondaryIndexes(entity: MetaData, tableName: string): IndexDescri
   }
 
   // (b) Explicit secondary identities — unique-by-default, opt out with @unique: false.
-  for (const child of entity.children()) {
+  for (const child of entity.ownChildren()) {
     if (child.type !== TYPE_IDENTITY) continue;
     if (isPrimaryIdentity(child)) continue;
     const fieldNames = readIdentityFields(child);
@@ -177,7 +177,7 @@ function buildForeignKeys(
   resolveTargetTable: (entityName: string) => string | undefined,
 ): FkDescriptor[] {
   const fks: FkDescriptor[] = [];
-  for (const child of entity.children()) {
+  for (const child of entity.ownChildren()) {
     if (child.type !== TYPE_RELATIONSHIP) continue;
     const cardinality = child.attr(RELATIONSHIP_ATTR_CARDINALITY);
     if (cardinality !== CARDINALITY_ONE) continue;
@@ -278,7 +278,7 @@ function readIdentityFields(identity: MetaData): string[] {
 }
 
 function findField(entity: MetaData, name: string): MetaData | undefined {
-  for (const child of entity.children()) {
+  for (const child of entity.ownChildren()) {
     if (child.type === TYPE_FIELD && child.name === name) return child;
   }
   return undefined;

@@ -47,7 +47,7 @@ function makeRoot(entities: MetaData[]): MetaData {
 describe("resolveRelationDescriptor — one-side", () => {
   test("Post.author → cardinality 'one' to User via authorId", () => {
     const root = makeRoot([makeUser(), makePost()]);
-    const post = root.childByName("Post")!;
+    const post = root.ownChildByName("Post")!;
     const desc = resolveRelationDescriptor(post, "author", root);
     expect(desc.cardinality).toBe("one");
     expect(desc.targetEntityName).toBe("User");
@@ -57,7 +57,7 @@ describe("resolveRelationDescriptor — one-side", () => {
 
   test("unknown relation name → MetadataError", () => {
     const root = makeRoot([makeUser(), makePost()]);
-    const post = root.childByName("Post")!;
+    const post = root.ownChildByName("Post")!;
     expect(() => resolveRelationDescriptor(post, "missing", root)).toThrow(MetadataError);
   });
 });
@@ -65,7 +65,7 @@ describe("resolveRelationDescriptor — one-side", () => {
 describe("resolveRelationDescriptor — many-side (inverse)", () => {
   test("User.posts → cardinality 'many' (inverse of Post.author)", () => {
     const root = makeRoot([makeUser(), makePost()]);
-    const user = root.childByName("User")!;
+    const user = root.ownChildByName("User")!;
     const desc = resolveRelationDescriptor(user, "posts", root);
     expect(desc.cardinality).toBe("many");
     expect(desc.targetEntityName).toBe("Post");
@@ -77,7 +77,7 @@ describe("resolveRelationDescriptor — many-side (inverse)", () => {
 describe("buildLazyRelateSpec", () => {
   test("one-side: SELECT users WHERE id = post.authorId", () => {
     const root = makeRoot([makeUser(), makePost()]);
-    const post = root.childByName("Post")!;
+    const post = root.ownChildByName("Post")!;
     const desc = resolveRelationDescriptor(post, "author", root);
     const spec = buildLazyRelateSpec(desc, { id: 42, authorId: 7 }, root);
     expect(spec).not.toBeNull();
@@ -87,7 +87,7 @@ describe("buildLazyRelateSpec", () => {
 
   test("one-side with null FK: returns null spec (caller returns null)", () => {
     const root = makeRoot([makeUser(), makePost()]);
-    const post = root.childByName("Post")!;
+    const post = root.ownChildByName("Post")!;
     const desc = resolveRelationDescriptor(post, "author", root);
     const spec = buildLazyRelateSpec(desc, { id: 42, authorId: null }, root);
     expect(spec).toBeNull();
@@ -95,7 +95,7 @@ describe("buildLazyRelateSpec", () => {
 
   test("many-side: SELECT posts WHERE author_id = user.id", () => {
     const root = makeRoot([makeUser(), makePost()]);
-    const user = root.childByName("User")!;
+    const user = root.ownChildByName("User")!;
     const desc = resolveRelationDescriptor(user, "posts", root);
     const spec = buildLazyRelateSpec(desc, { id: 7 }, root);
     expect(spec).not.toBeNull();
@@ -107,7 +107,7 @@ describe("buildLazyRelateSpec", () => {
 describe("buildIncludeBatchSpec — many-side IN(...)", () => {
   test("loads posts for many users in one query", () => {
     const root = makeRoot([makeUser(), makePost()]);
-    const user = root.childByName("User")!;
+    const user = root.ownChildByName("User")!;
     const desc = resolveRelationDescriptor(user, "posts", root);
     const records = [{ id: 1 }, { id: 2 }, { id: 3 }];
     const spec = buildIncludeBatchSpec(desc, records, root);
@@ -118,7 +118,7 @@ describe("buildIncludeBatchSpec — many-side IN(...)", () => {
 
   test("one-side eager-load: WHERE id IN (...) for unique FK values", () => {
     const root = makeRoot([makeUser(), makePost()]);
-    const post = root.childByName("Post")!;
+    const post = root.ownChildByName("Post")!;
     const desc = resolveRelationDescriptor(post, "author", root);
     const records = [
       { id: 1, authorId: 5 },
@@ -137,7 +137,7 @@ describe("buildIncludeBatchSpec — many-side IN(...)", () => {
 
   test("returns null when no FK values to load", () => {
     const root = makeRoot([makeUser(), makePost()]);
-    const post = root.childByName("Post")!;
+    const post = root.ownChildByName("Post")!;
     const desc = resolveRelationDescriptor(post, "author", root);
     const records = [{ id: 1, authorId: null }];
     expect(buildIncludeBatchSpec(desc, records, root)).toBeNull();

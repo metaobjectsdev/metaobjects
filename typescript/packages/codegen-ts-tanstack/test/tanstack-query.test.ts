@@ -12,7 +12,7 @@ const FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 async function buildCtx(genFilter?: (e: { name: string }) => boolean): Promise<GenContext> {
   const loader = new FileMetaDataLoader();
   const { root } = await loader.loadFiles([FIXTURE]);
-  const entities = root.children().filter((c) => c.type === TYPE_OBJECT);
+  const entities = root.ownChildren().filter((c) => c.type === TYPE_OBJECT);
   const renderContext = makeRenderContext({
     dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
     dbImport: "../db", extStyle: "none",

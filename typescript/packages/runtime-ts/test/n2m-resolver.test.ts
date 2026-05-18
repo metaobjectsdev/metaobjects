@@ -53,7 +53,7 @@ function makeRoot(entities: MetaData[]): MetaData {
 describe("resolveN2mDescriptor", () => {
   test("Post.tags → Tag via PostTag join entity", () => {
     const root = makeRoot([makePost(), makeTag(), makePostTag()]);
-    const post = root.childByName("Post")!;
+    const post = root.ownChildByName("Post")!;
     const desc = resolveN2mDescriptor(post, "tags", root);
     expect(desc.targetEntityName).toBe("Tag");
     expect(desc.joinEntityName).toBe("PostTag");
@@ -63,7 +63,7 @@ describe("resolveN2mDescriptor", () => {
 
   test("non-N:M relationship → null", () => {
     const root = makeRoot([makePost(), makeTag(), makePostTag()]);
-    const post = root.childByName("Post")!;
+    const post = root.ownChildByName("Post")!;
     expect(resolveN2mDescriptor(post, "missing", root)).toBeNull();
   });
 });
@@ -71,7 +71,7 @@ describe("resolveN2mDescriptor", () => {
 describe("buildN2mLazySpecs — single record", () => {
   test("returns 2 specs: [join-table SELECT WHERE postId = X, target SELECT WHERE id IN (tag ids)]", () => {
     const root = makeRoot([makePost(), makeTag(), makePostTag()]);
-    const post = root.childByName("Post")!;
+    const post = root.ownChildByName("Post")!;
     const desc = resolveN2mDescriptor(post, "tags", root)!;
     const specs = buildN2mLazySpecs(desc, { id: 42 }, root);
     expect(specs.joinSpec.table).toBe("post_tags");
@@ -86,7 +86,7 @@ describe("buildN2mLazySpecs — single record", () => {
 
   test("makeTargetSpec returns null when no join rows match", () => {
     const root = makeRoot([makePost(), makeTag(), makePostTag()]);
-    const post = root.childByName("Post")!;
+    const post = root.ownChildByName("Post")!;
     const desc = resolveN2mDescriptor(post, "tags", root)!;
     const specs = buildN2mLazySpecs(desc, { id: 42 }, root);
     expect(specs.makeTargetSpec([])).toBeNull();
@@ -96,7 +96,7 @@ describe("buildN2mLazySpecs — single record", () => {
 describe("buildN2mBatchSpecs — many records (eager include)", () => {
   test("returns 2 specs: [join WHERE postId IN (...), target WHERE id IN (...)]", () => {
     const root = makeRoot([makePost(), makeTag(), makePostTag()]);
-    const post = root.childByName("Post")!;
+    const post = root.ownChildByName("Post")!;
     const desc = resolveN2mDescriptor(post, "tags", root)!;
     const specs = buildN2mBatchSpecs(desc, [{ id: 1 }, { id: 2 }], root);
     expect(specs.joinSpec.table).toBe("post_tags");

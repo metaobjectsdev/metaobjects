@@ -960,9 +960,9 @@ describe("registry dispatch — origin subtype classes", () => {
     const loader = new MetaDataLoader();
     const { root, errors } = await loader.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
-    const summary = root.childByTypeAndName(TYPE_OBJECT, "ProgramSummary") as MetaObject;
+    const summary = root.ownChildByTypeAndName(TYPE_OBJECT, "ProgramSummary") as MetaObject;
     const displayTitle = summary.findField("displayTitle")!;
-    const origin = displayTitle.children().find((c) => c.type === TYPE_ORIGIN);
+    const origin = displayTitle.ownChildren().find((c) => c.type === TYPE_ORIGIN);
     expect(origin).toBeInstanceOf(MetaPassthroughOrigin);
     expect(origin).toBeInstanceOf(MetaOrigin);
     expect(origin).toBeInstanceOf(MetaData);
@@ -1023,9 +1023,9 @@ describe("registry dispatch — origin subtype classes", () => {
     const loader = new MetaDataLoader();
     const { root, errors } = await loader.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
-    const summary = root.childByTypeAndName(TYPE_OBJECT, "ProgramSummary") as MetaObject;
+    const summary = root.ownChildByTypeAndName(TYPE_OBJECT, "ProgramSummary") as MetaObject;
     const weekCount = summary.findField("weekCount")!;
-    const origin = weekCount.children().find((c) => c.type === TYPE_ORIGIN);
+    const origin = weekCount.ownChildren().find((c) => c.type === TYPE_ORIGIN);
     expect(origin).toBeInstanceOf(MetaAggregateOrigin);
     expect(origin).toBeInstanceOf(MetaOrigin);
     expect(origin).toBeInstanceOf(MetaData);
@@ -1197,14 +1197,14 @@ describe("MetaDataLoader produces typed concrete nodes from JSON", () => {
     const loader = new MetaDataLoader();
     const { root, errors } = await loader.load([new InMemorySource(SAMPLE)]);
     expect(errors).toEqual([]);
-    return root.childByTypeAndName(TYPE_OBJECT, "User") as MetaObject;
+    return root.ownChildByTypeAndName(TYPE_OBJECT, "User") as MetaObject;
   }
 
   it("root is a MetaRoot, top-level object child is a MetaObject", async () => {
     const loader = new MetaDataLoader();
     const { root } = await loader.load([new InMemorySource(SAMPLE)]);
     expect(root).toBeInstanceOf(MetaRoot);
-    const user = root.childByTypeAndName(TYPE_OBJECT, "User");
+    const user = root.ownChildByTypeAndName(TYPE_OBJECT, "User");
     expect(user).toBeInstanceOf(MetaObject);
   });
 
@@ -1217,13 +1217,13 @@ describe("MetaDataLoader produces typed concrete nodes from JSON", () => {
 
   it("source child is a MetaSource", async () => {
     const user = await loadUser();
-    const source = user.children().find((c) => c.type === TYPE_SOURCE);
+    const source = user.ownChildren().find((c) => c.type === TYPE_SOURCE);
     expect(source).toBeInstanceOf(MetaSource);
   });
 
   it("layout child is a MetaLayout", async () => {
     const user = await loadUser();
-    const layout = user.children().find((c) => c.type === TYPE_LAYOUT);
+    const layout = user.ownChildren().find((c) => c.type === TYPE_LAYOUT);
     expect(layout).toBeInstanceOf(MetaLayout);
   });
 
@@ -1289,7 +1289,7 @@ describe("MetaDataLoader produces typed concrete nodes from JSON", () => {
     const loader = new MetaDataLoader();
     const { root, errors } = await loader.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
-    const widget = root.childByTypeAndName(TYPE_OBJECT, "Widget") as MetaObject;
+    const widget = root.ownChildByTypeAndName(TYPE_OBJECT, "Widget") as MetaObject;
     expect(widget.findField("slug")!.validators()[0]).toBeInstanceOf(MetaRegexValidator);
     expect(widget.findField("age")!.validators()[0]).toBeInstanceOf(MetaNumericValidator);
     expect(widget.findField("tags")!.validators()[0]).toBeInstanceOf(MetaArrayValidator);
@@ -1333,9 +1333,9 @@ describe("MetaDataLoader produces typed concrete nodes from JSON", () => {
     const loader = new MetaDataLoader();
     const { root, errors } = await loader.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
-    const summary = root.childByTypeAndName(TYPE_OBJECT, "Summary") as MetaObject;
+    const summary = root.ownChildByTypeAndName(TYPE_OBJECT, "Summary") as MetaObject;
     const labelField = summary.findField("label")!;
-    const origin = labelField.children().find((c) => c.type === TYPE_ORIGIN);
+    const origin = labelField.ownChildren().find((c) => c.type === TYPE_ORIGIN);
     // Now yields the concrete subtype class (Phase B1):
     expect(origin).toBeInstanceOf(MetaPassthroughOrigin);
     expect(origin).toBeInstanceOf(MetaOrigin);
@@ -1370,7 +1370,7 @@ describe("stringArray attr desugar", () => {
     const loaderA = new MetaDataLoader();
     const { root, errors } = await loaderA.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
-    const user = root.childByTypeAndName(TYPE_OBJECT, "User") as MetaObject;
+    const user = root.ownChildByTypeAndName(TYPE_OBJECT, "User") as MetaObject;
     const pk = user.primaryIdentity()!;
     expect(pk).toBeInstanceOf(MetaIdentity);
     // The bug: a single-string @fields previously yielded [] here.
@@ -1405,9 +1405,9 @@ describe("stringArray attr desugar", () => {
     const loaderB = new MetaDataLoader();
     const { root, errors } = await loaderB.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
-    const vehicle = root.childByTypeAndName(TYPE_OBJECT, "Vehicle") as MetaObject;
+    const vehicle = root.ownChildByTypeAndName(TYPE_OBJECT, "Vehicle") as MetaObject;
     const rel = vehicle
-      .children()
+      .ownChildren()
       .find((c) => c instanceof MetaRelationship) as MetaRelationship;
     expect(rel).toBeInstanceOf(MetaRelationship);
     // The bug: a single-string @joinFields previously yielded [] here.
@@ -1440,7 +1440,7 @@ describe("stringArray attr desugar", () => {
     const loaderC = new MetaDataLoader();
     const { root, errors } = await loaderC.load([new InMemorySource(json)]);
     expect(errors).toEqual([]);
-    const order = root.childByTypeAndName(TYPE_OBJECT, "Order") as MetaObject;
+    const order = root.ownChildByTypeAndName(TYPE_OBJECT, "Order") as MetaObject;
     const pk = order.primaryIdentity()!;
     expect(pk.fields).toEqual(["id", "tenant"]);
     expect(pk.isComposite()).toBe(true);
