@@ -63,7 +63,12 @@ export async function run(argv: string[]): Promise<number> {
       continue;
     }
     if (a.startsWith("--cwd=")) {
-      cwd = resolve(process.cwd(), a.slice("--cwd=".length));
+      const val = a.slice("--cwd=".length);
+      if (val === "") {
+        log.error("--cwd= requires a path argument");
+        return 2;
+      }
+      cwd = resolve(process.cwd(), val);
       continue;
     }
     cleaned.push(a);

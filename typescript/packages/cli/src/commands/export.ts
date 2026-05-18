@@ -6,6 +6,7 @@ import { loadAndExportJson } from "@metaobjects/metadata/core";
 import { TypeRegistry, registerCoreTypes } from "@metaobjects/metadata";
 import { DEFAULT_METADATA_DIR, registerForgeTypes } from "@metaobjects/sdk";
 
+// `cwd` default is transitional — made required once direct callers pass it (Task 3).
 export async function exportCommand(args: string[], cwd: string = process.cwd()): Promise<number> {
   let flags;
   try {
