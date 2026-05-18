@@ -1,30 +1,30 @@
 import { describe, test, expect } from "bun:test";
 import type { MetaObject } from "@metaobjects/metadata";
-import { TypeId, TYPE_FIELD, TYPE_IDENTITY,
+import { TypeId, TYPE_IDENTITY,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_TIMESTAMP,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
-import { meta, metaObject } from "../_meta-build.js";
+import { meta, metaObject, metaField } from "../_meta-build.js";
 import { renderZodValidators } from "../../src/templates/zod-validators.js";
 
 function makeEntity(): MetaObject {
   const entity = metaObject(OBJECT_SUBTYPE_ENTITY, "Foo");
 
   // auto-gen PK — excluded from both schemas
-  const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
+  const id = metaField(FIELD_SUBTYPE_LONG, "id");
   entity.addChild(id);
 
   // ordinary field — present in both schemas
-  const name = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "name");
+  const name = metaField(FIELD_SUBTYPE_STRING, "name");
   name.setAttr("required", true);
   entity.addChild(name);
 
   // @autoSet: "onCreate" — present in insert (transform), OMITTED from update
-  const createdAt = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_TIMESTAMP), "createdAt");
+  const createdAt = metaField(FIELD_SUBTYPE_TIMESTAMP, "createdAt");
   createdAt.setAttr("autoSet", "onCreate");
   entity.addChild(createdAt);
 
   // @autoSet: "onUpdate" — present in both schemas with transform
-  const updatedAt = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_TIMESTAMP), "updatedAt");
+  const updatedAt = metaField(FIELD_SUBTYPE_TIMESTAMP, "updatedAt");
   updatedAt.setAttr("autoSet", "onUpdate");
   entity.addChild(updatedAt);
 

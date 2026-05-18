@@ -2,7 +2,6 @@ import { describe, test, expect } from "bun:test";
 import type { MetaObject, MetaData } from "@metaobjects/metadata";
 import {
   TypeId,
-  TYPE_FIELD,
   TYPE_IDENTITY,
   TYPE_VIEW,
   FIELD_SUBTYPE_INT,
@@ -11,14 +10,14 @@ import {
   OBJECT_SUBTYPE_ENTITY,
   VIEW_SUBTYPE_CURRENCY,
 } from "@metaobjects/metadata";
-import { meta, metaObject } from "../_meta-build.js";
+import { meta, metaObject, metaField } from "../_meta-build.js";
 import { renderEntityConstants } from "../../src/templates/entity-constants.js";
 
 function makeEntity(fields: MetaData[]): MetaObject {
   const entity = metaObject(OBJECT_SUBTYPE_ENTITY, "Program");
   entity.setAttr("dbTable", "programs");
 
-  const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "id");
+  const id = metaField(FIELD_SUBTYPE_INT, "id");
   entity.addChild(id);
 
   for (const f of fields) {
@@ -34,7 +33,7 @@ function makeEntity(fields: MetaData[]): MetaObject {
 }
 
 function makeCurrencyField(name: string, currencyCode?: string): MetaData {
-  const field = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_CURRENCY), name);
+  const field = metaField(FIELD_SUBTYPE_CURRENCY, name);
   if (currencyCode !== undefined) {
     field.setAttr("currency", currencyCode);
   }
@@ -77,7 +76,7 @@ describe("renderEntityConstants — currency field", () => {
 
   test("currency keys do not leak into non-currency fields", () => {
     const currencyField = makeCurrencyField("priceCents", "USD");
-    const intField = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "quantity");
+    const intField = metaField(FIELD_SUBTYPE_INT, "quantity");
     const entity = makeEntity([currencyField, intField]);
     const out = renderEntityConstants(entity).toString();
 

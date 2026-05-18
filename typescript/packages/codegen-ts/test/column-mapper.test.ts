@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import type { MetaField } from "@metaobjects/metadata";
 import {
+  TypeId,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
@@ -9,7 +10,6 @@ import {
   FIELD_SUBTYPE_DECIMAL,
 } from "@metaobjects/metadata";
 import { meta, metaField } from "./_meta-build.js";
-import { TypeId } from "@metaobjects/metadata";
 import { mapColumnType, type ColumnSpec } from "../src/column-mapper.js";
 
 const makeField = (subType: string, name: string): MetaField =>

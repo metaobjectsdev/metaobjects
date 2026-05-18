@@ -1,21 +1,21 @@
 import { describe, test, expect } from "bun:test";
-import { TypeId, TYPE_FIELD, TYPE_IDENTITY, TYPE_VALIDATOR,
+import { TypeId, TYPE_IDENTITY, TYPE_VALIDATOR,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
          VALIDATOR_SUBTYPE_REGEX } from "@metaobjects/metadata";
-import { meta, metaObject } from "../_meta-build.js";
+import { meta, metaObject, metaField } from "../_meta-build.js";
 import { renderZodValidators } from "../../src/templates/zod-validators.js";
 
 describe("renderZodValidators", () => {
   test("emits InsertSchema with required fields and optional unset fields", () => {
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
-    const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
     post.addChild(id);
-    const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+    const title = metaField(FIELD_SUBTYPE_STRING, "title");
     title.setAttr("required", true);
     title.setAttr("maxLength", 200);
     post.addChild(title);
-    const body = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "body");
+    const body = metaField(FIELD_SUBTYPE_STRING, "body");
     post.addChild(body);
     const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
     primary.setAttr("fields", ["id"]);
@@ -35,7 +35,7 @@ describe("renderZodValidators", () => {
 
   test("validator.regex emits .regex(new RegExp(pattern)) — Zod expects a RegExp object, not a string", () => {
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
-    const slug = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "slug");
+    const slug = metaField(FIELD_SUBTYPE_STRING, "slug");
     slug.setAttr("required", true);
     const regex = meta(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REGEX), "slugFormat");
     regex.setAttr("pattern", "^[a-z0-9-]+$");

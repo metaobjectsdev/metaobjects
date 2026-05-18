@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { MetaRoot } from "@metaobjects/metadata";
+import type { MetaRoot, MetaObject } from "@metaobjects/metadata";
 import {
   TypeId,
   TYPE_IDENTITY,
@@ -140,7 +140,7 @@ function makeRoot(pkg: string): MetaRoot {
   return metaRoot("root", pkg);
 }
 
-function makeEntity(name: string) {
+function makeEntity(name: string): MetaObject {
   const entity = metaObject(OBJECT_SUBTYPE_ENTITY, name);
   // id field (long)
   const id = metaField(FIELD_SUBTYPE_LONG, "id");
