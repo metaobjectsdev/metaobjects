@@ -215,7 +215,7 @@ describe("MetaDataLoader — accessor guards", () => {
 
   it("childrenOfType throws before load", () => {
     const loader = new MetaDataLoader();
-    expect(() => loader.ownChildrenOfType(TYPE_OBJECT)).toThrow();
+    expect(() => loader.childrenOfType(TYPE_OBJECT)).toThrow();
   });
 });
 
