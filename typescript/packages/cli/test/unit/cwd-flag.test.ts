@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, relative } from "node:path";
 import { run } from "../../src/index.js";
 
 const FIXTURES = resolve(import.meta.dirname, "../fixtures");
@@ -30,15 +30,13 @@ describe("--cwd / -C global flag", () => {
   });
 
   test("relative --cwd resolves against the launch directory", async () => {
-    const repo = mkdtempSync(join(tmpdir(), "metaobjects-cwd-rel-"));
+    // Create the temp repo *under* process.cwd() so a genuine relative path
+    // exists — a repo under the OS tmpdir would share no prefix with cwd.
+    const repo = mkdtempSync(join(process.cwd(), "metaobjects-cwd-rel-"));
     cpSync(join(FIXTURES, "trainer-website-meta"), repo, { recursive: true });
     try {
-      // Compute a relative path from process.cwd() to the temp repo
-      const launchDir = process.cwd();
-      // resolve() gives us the absolute repo path; we construct a relative from launchDir
-      const rel = resolve(repo).startsWith(launchDir)
-        ? resolve(repo).slice(launchDir.length + 1)
-        : resolve(repo);
+      const rel = relative(process.cwd(), repo);
+      expect(rel.startsWith("..")).toBe(false); // genuinely relative, under cwd
       const exit = await run(["export", "--cwd", rel]);
       expect(exit).toBe(0);
     } finally {

@@ -3,9 +3,7 @@ import { parseInitArgs } from "../src/lib/args.js";
 import { run } from "../src/index.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-
-const FIXTURES = resolve(import.meta.dirname, "fixtures");
+import { join } from "node:path";
 
 describe("parseInitArgs", () => {
   test("default flags are all false", () => {
