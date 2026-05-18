@@ -271,7 +271,7 @@ export abstract class MetaData {
   }
 
   // ---------------------------------------------------------------------------
-  // Effective view (own + inherited via super chain)
+  // Effective attrs (own + inherited via super chain)
   // ---------------------------------------------------------------------------
 
   /**

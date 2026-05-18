@@ -435,7 +435,7 @@ describe("MetaData — effectiveAttrs()", () => {
   });
 });
 
-describe("MetaData — children() effective behaviour", () => {
+describe("MetaData — children() (effective merge behaviour)", () => {
   it("without super returns own children as a copy", () => {
     const parent = makeObject("entity", "Parent");
     const c1 = makeField("string", "a");
