@@ -3,7 +3,9 @@ import { parseInitArgs } from "../src/lib/args.js";
 import { run } from "../src/index.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+
+const FIXTURES = resolve(import.meta.dirname, "fixtures");
 
 describe("parseInitArgs", () => {
   test("default flags are all false", () => {
@@ -52,36 +54,27 @@ describe("run() — top-level dispatcher", () => {
   });
   test("dispatches init", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "metaobjects-run-"));
-    const orig = process.cwd();
-    process.chdir(tmp);
     try {
-      expect(await run(["init"])).toBe(0);
+      expect(await run(["init", "--cwd", tmp])).toBe(0);
     } finally {
-      process.chdir(orig);
       rmSync(tmp, { recursive: true, force: true });
     }
   });
 
   test("dispatches gen (returns 2 without metaobjects/ dir)", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "metaobjects-run-gen-"));
-    const orig = process.cwd();
-    process.chdir(tmp);
     try {
-      expect(await run(["gen"])).toBe(2);
+      expect(await run(["gen", "--cwd", tmp])).toBe(2);
     } finally {
-      process.chdir(orig);
       rmSync(tmp, { recursive: true, force: true });
     }
   });
 
   test("dispatches migrate (returns 2 outside .meta/ context with no config)", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "metaobjects-run-migrate-"));
-    const orig = process.cwd();
-    process.chdir(tmp);
     try {
-      expect(await run(["migrate"])).toBe(2);
+      expect(await run(["migrate", "--cwd", tmp])).toBe(2);
     } finally {
-      process.chdir(orig);
       rmSync(tmp, { recursive: true, force: true });
     }
   });

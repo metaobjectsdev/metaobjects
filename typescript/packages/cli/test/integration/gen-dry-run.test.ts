@@ -31,16 +31,13 @@ export default defineConfig({
 });
 `,
     );
-    const orig = process.cwd();
-    process.chdir(root);
     try {
-      const exit = await run(["gen", "--dry-run"]);
+      const exit = await run(["gen", "--cwd", root, "--dry-run"]);
       expect(exit).toBe(0);
       // v0.1 limitation: codegen-ts has no internal no-write mode; files ARE
       // written but the output marks "--dry-run". Tighten when codegen-ts
       // gains true dry-run in v0.3.
     } finally {
-      process.chdir(orig);
       rmSync(root, { recursive: true, force: true });
     }
   });

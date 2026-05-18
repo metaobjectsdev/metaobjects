@@ -37,21 +37,11 @@ export default defineConfig({
   return root;
 }
 
-async function runIn<T>(cwd: string, fn: () => Promise<T>): Promise<T> {
-  const orig = process.cwd();
-  process.chdir(cwd);
-  try {
-    return await fn();
-  } finally {
-    process.chdir(orig);
-  }
-}
-
 describe("meta gen — sqlite end-to-end", () => {
   test("writes Drizzle schema for User/Post/Tag", async () => {
     const root = setupRepo();
     try {
-      const exit = await runIn(root, () => run(["gen"]));
+      const exit = await run(["gen", "--cwd", root]);
       expect(exit).toBe(0);
 
       const outDir = genOutDir(root);
@@ -74,7 +64,7 @@ describe("meta gen — sqlite end-to-end", () => {
   test("positional filter generates only specified entity", async () => {
     const root = setupRepo();
     try {
-      const exit = await runIn(root, () => run(["gen", "User"]));
+      const exit = await run(["gen", "--cwd", root, "User"]);
       expect(exit).toBe(0);
 
       const outDir = genOutDir(root);
@@ -91,7 +81,7 @@ describe("meta gen — sqlite end-to-end", () => {
     // For this test, temp dir outside monorepo is fine — it fails before jiti runs
     const empty = mkdtempSync(join(tmpdir(), "forge-gen-empty-"));
     try {
-      const exit = await runIn(empty, () => run(["gen"]));
+      const exit = await run(["gen", "--cwd", empty]);
       expect(exit).toBe(2);
     } finally {
       rmSync(empty, { recursive: true, force: true });
@@ -104,7 +94,7 @@ describe("meta gen — sqlite end-to-end", () => {
     cpSync(join(FIXTURES, "trainer-website-meta"), root, { recursive: true });
     // deliberately no metaobjects.config.ts
     try {
-      const exit = await runIn(root, () => run(["gen"]));
+      const exit = await run(["gen", "--cwd", root]);
       expect(exit).toBe(2);
     } finally {
       rmSync(root, { recursive: true, force: true });

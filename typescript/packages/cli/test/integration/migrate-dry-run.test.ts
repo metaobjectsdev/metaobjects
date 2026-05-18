@@ -11,15 +11,13 @@ describe("meta migrate --dry-run", () => {
     const root = mkdtempSync(join(tmpdir(), "forge-migrate-dryrun-"));
     cpSync(join(FIXTURES, "trainer-website-meta"), root, { recursive: true });
     const dbUrl = `file:${join(root, "local.db")}`;
-    const orig = process.cwd();
-    process.chdir(root);
 
     const captured: string[] = [];
     const origLog = console.log;
     console.log = (msg: string) => { captured.push(msg); };
 
     try {
-      const exit = await run(["migrate", "--db", dbUrl, "--slug", "initial", "--dry-run"]);
+      const exit = await run(["migrate", "--cwd", root, "--db", dbUrl, "--slug", "initial", "--dry-run"]);
       expect(exit).toBe(0);
 
       const stdout = captured.join("\n");
@@ -30,7 +28,6 @@ describe("meta migrate --dry-run", () => {
       expect(existsSync(join(root, ".metaobjects", "migrations"))).toBe(false);
     } finally {
       console.log = origLog;
-      process.chdir(orig);
       rmSync(root, { recursive: true, force: true });
     }
   });

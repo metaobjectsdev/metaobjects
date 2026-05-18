@@ -134,13 +134,7 @@ describe("currency fields in refreshed docs", () => {
 
 describe("initCommand --refresh-docs argv wrapper", () => {
   test("returns 0", async () => {
-    const orig = process.cwd();
-    process.chdir(cwd);
-    try {
-      expect(await initCommand([])).toBe(0);
-      expect(await initCommand(["--refresh-docs"])).toBe(0);
-    } finally {
-      process.chdir(orig);
-    }
+    expect(await initCommand([], cwd)).toBe(0);
+    expect(await initCommand(["--refresh-docs"], cwd)).toBe(0);
   });
 });

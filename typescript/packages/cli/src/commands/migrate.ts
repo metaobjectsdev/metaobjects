@@ -110,8 +110,7 @@ function ambiguousToEntries(amb: AmbiguousChange[]): AmbiguousEntry[] {
   });
 }
 
-// `cwd` default is transitional — made required once direct callers pass it (Task 3).
-export async function migrateCommand(args: string[], cwd: string = process.cwd()): Promise<number> {
+export async function migrateCommand(args: string[], cwd: string): Promise<number> {
   let flags;
   try {
     flags = parseMigrateArgs(args);

@@ -16,10 +16,8 @@ describe("meta migrate — postgres (env-gated)", () => {
   test("meta migrate against real Postgres writes CREATE TABLE migration", async () => {
     const root = mkdtempSync(join(tmpdir(), "forge-migrate-pg-"));
     cpSync(join(FIXTURES, "trainer-website-meta"), root, { recursive: true });
-    const orig = process.cwd();
-    process.chdir(root);
     try {
-      const exit = await run(["migrate", "--db", PG_URL, "--slug", "initial"]);
+      const exit = await run(["migrate", "--cwd", root, "--db", PG_URL, "--slug", "initial"]);
       expect(exit).toBe(0);
 
       const migrationsRoot = join(root, ".metaobjects", "migrations");
@@ -29,7 +27,6 @@ describe("meta migrate — postgres (env-gated)", () => {
       const sql = readFileSync(join(migrationsRoot, dir!, "up.sql"), "utf8");
       expect(sql).toMatch(/CREATE TABLE.*users/i);
     } finally {
-      process.chdir(orig);
       rmSync(root, { recursive: true, force: true });
     }
   });

@@ -81,32 +81,14 @@ describe("init() — re-run safety", () => {
 
 describe("initCommand argv wrapper", () => {
   test("returns 0 on success", async () => {
-    const orig = process.cwd();
-    process.chdir(cwd);
-    try {
-      expect(await initCommand([])).toBe(0);
-    } finally {
-      process.chdir(orig);
-    }
+    expect(await initCommand([], cwd)).toBe(0);
   });
   test("returns 1 when metaobjects/ exists without --force", async () => {
     mkdirSync(join(cwd, "metaobjects"));
-    const orig = process.cwd();
-    process.chdir(cwd);
-    try {
-      expect(await initCommand([])).toBe(1);
-    } finally {
-      process.chdir(orig);
-    }
+    expect(await initCommand([], cwd)).toBe(1);
   });
   test("returns 2 on unknown flag", async () => {
-    const orig = process.cwd();
-    process.chdir(cwd);
-    try {
-      expect(await initCommand(["--foo"])).toBe(2);
-    } finally {
-      process.chdir(orig);
-    }
+    expect(await initCommand(["--foo"], cwd)).toBe(2);
   });
 });
 

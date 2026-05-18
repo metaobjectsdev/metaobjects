@@ -14,24 +14,13 @@ import { run } from "../../src/index.js";
 
 const FIXTURES = resolve(import.meta.dirname, "../fixtures");
 
-// Helper to run a function with a changed working directory.
-async function runIn<T>(cwd: string, fn: () => Promise<T>): Promise<T> {
-  const orig = process.cwd();
-  process.chdir(cwd);
-  try {
-    return await fn();
-  } finally {
-    process.chdir(orig);
-  }
-}
-
 describe("meta export — --out <file>", () => {
   test("writes flattened canonical JSON to the specified file", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "metaobjects-export-"));
     cpSync(join(FIXTURES, "trainer-website-meta"), tmp, { recursive: true });
     const outFile = join(tmp, "metadata.json");
     try {
-      const exit = await runIn(tmp, () => run(["export", "--out", outFile]));
+      const exit = await run(["export", "--cwd", tmp, "--out", outFile]);
       expect(exit).toBe(0);
       expect(existsSync(outFile)).toBe(true);
 
@@ -54,7 +43,7 @@ describe("meta export — --out <file>", () => {
     cpSync(join(FIXTURES, "trainer-website-meta"), tmp, { recursive: true });
     const outFile = join(tmp, "out.json");
     try {
-      const exit = await runIn(tmp, () => run(["export", "--out", outFile]));
+      const exit = await run(["export", "--cwd", tmp, "--out", outFile]);
       expect(exit).toBe(0);
 
       const raw = readFileSync(outFile, "utf8");
@@ -84,7 +73,7 @@ describe("meta export — stdout", () => {
       return true;
     };
     try {
-      const exit = await runIn(tmp, () => run(["export"]));
+      const exit = await run(["export", "--cwd", tmp]);
       expect(exit).toBe(0);
 
       const output = Buffer.concat(chunks).toString("utf8");
@@ -109,7 +98,7 @@ describe("meta export — error handling", () => {
     console.error = (...args: unknown[]) => { stderrLines.push(String(args[0])); };
 
     try {
-      const exit = await runIn(tmp, () => run(["export", "--out", outFile]));
+      const exit = await run(["export", "--cwd", tmp, "--out", outFile]);
       expect(exit).toBe(1);
       // Output file must NOT have been written on error
       expect(existsSync(outFile)).toBe(false);
@@ -128,7 +117,7 @@ describe("meta export — error handling", () => {
     const origError = console.error;
     console.error = (...args: unknown[]) => { stderrLines.push(String(args[0])); };
     try {
-      const exit = await runIn(tmp, () => run(["export"]));
+      const exit = await run(["export", "--cwd", tmp]);
       // loadAndExportJson returns errors in result, so exit should be 1 (not 2)
       // because the metadata directory error is surfaced as result.errors
       expect(exit).toBe(1);
@@ -142,7 +131,7 @@ describe("meta export — error handling", () => {
   test("returns 2 on unknown flag", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "metaobjects-export-badflag-"));
     try {
-      const exit = await runIn(tmp, () => run(["export", "--unknown-flag"]));
+      const exit = await run(["export", "--cwd", tmp, "--unknown-flag"]);
       expect(exit).toBe(2);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
@@ -156,7 +145,7 @@ describe("meta export — multi-package fixture", () => {
     cpSync(join(FIXTURES, "multi-package-meta"), tmp, { recursive: true });
     const outFile = join(tmp, "out.json");
     try {
-      const exit = await runIn(tmp, () => run(["export", "--out", outFile]));
+      const exit = await run(["export", "--cwd", tmp, "--out", outFile]);
       expect(exit).toBe(0);
       expect(existsSync(outFile)).toBe(true);
       const raw = readFileSync(outFile, "utf8");

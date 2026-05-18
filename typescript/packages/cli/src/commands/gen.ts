@@ -16,8 +16,7 @@ function mapStatus(s: WriteStatus): GenFileStatus {
   }
 }
 
-// `cwd` default is transitional — made required once direct callers pass it (Task 3).
-export async function genCommand(args: string[], cwd: string = process.cwd()): Promise<number> {
+export async function genCommand(args: string[], cwd: string): Promise<number> {
   let flags;
   try { flags = parseGenArgs(args); }
   catch (err) { log.error((err as Error).message); return 2; }

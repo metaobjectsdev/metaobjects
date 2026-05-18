@@ -237,8 +237,7 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
-// `cwd` default is transitional — made required once direct callers pass it (Task 3).
-export async function initCommand(args: string[], cwd: string = process.cwd()): Promise<number> {
+export async function initCommand(args: string[], cwd: string): Promise<number> {
   let flags;
   try {
     flags = parseInitArgs(args);
