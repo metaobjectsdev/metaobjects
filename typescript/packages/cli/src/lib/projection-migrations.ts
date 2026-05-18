@@ -1,6 +1,6 @@
 import {
-  TYPE_OBJECT,
   resolveTableName,
+  MetaRoot,
   type MetaData,
 } from "@metaobjects/metadata";
 import {
@@ -33,20 +33,22 @@ export interface ProjectionMigrationsOpts {
 export function computeProjectionMigrations(
   opts: ProjectionMigrationsOpts,
 ): ViewMigrationsResult {
+  // The loaded metadata root is always a MetaRoot at run time; loadMemory still
+  // types its return as MetaData, so narrow here for the typed entity API.
+  if (!(opts.metadata instanceof MetaRoot)) {
+    throw new Error("computeProjectionMigrations: opts.metadata must be a loaded MetaRoot.");
+  }
   const root = opts.metadata;
   const columnNamingStrategy = opts.columnNamingStrategy ?? "snake_case";
 
   // Collect all writable entities for table name resolution.
   const joinTables: Record<string, string> = {};
-  for (const obj of root.children()) {
-    if (obj.type !== TYPE_OBJECT) continue;
+  for (const obj of root.objects()) {
     joinTables[obj.name] = resolveTableName(obj);
   }
 
   // Find projection entities.
-  const projections: MetaData[] = root.children().filter(
-    (c) => c.type === TYPE_OBJECT && isProjection(c),
-  );
+  const projections = root.objects().filter(isProjection);
 
   if (projections.length === 0) {
     return { migrations: [], errors: [] };

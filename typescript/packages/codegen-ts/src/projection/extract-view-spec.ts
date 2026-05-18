@@ -1,5 +1,4 @@
 import {
-  TYPE_OBJECT,
   TYPE_FIELD,
   TYPE_ORIGIN,
   TYPE_RELATIONSHIP,
@@ -20,7 +19,7 @@ import {
   FIELD_ATTR_DB_COLUMN,
   type AggregateFunction,
 } from "@metaobjects/metadata";
-import { type MetaData, MetaObject } from "@metaobjects/metadata";
+import { type MetaData, type MetaRoot, MetaObject } from "@metaobjects/metadata";
 import {
   columnNameFromField,
   viewNameFromProjection,
@@ -42,20 +41,13 @@ export interface ExtractContext {
 // Private helpers
 // ---------------------------------------------------------------------------
 
-function findEntity(root: MetaData, name: string): MetaObject | undefined {
-  for (const child of root.children()) {
-    if (child instanceof MetaObject && child.name === name) return child;
-  }
-  return undefined;
-}
-
 function findRelationship(obj: MetaData, name: string): MetaData | undefined {
   return obj.children().find(
     (c) => c.type === TYPE_RELATIONSHIP && c.name === name,
   );
 }
 
-function viewName(projection: MetaData, ctx: ExtractContext): string {
+function viewName(projection: MetaObject, ctx: ExtractContext): string {
   const dbView = projection.children().find(
     (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_VIEW,
   );
@@ -64,8 +56,8 @@ function viewName(projection: MetaData, ctx: ExtractContext): string {
 }
 
 function baseEntityFor(
-  projection: MetaData,
-  root: MetaData,
+  projection: MetaObject,
+  root: MetaRoot,
 ): MetaObject {
   // v1: base entity is the resolved super (set via `extends:` in metadata).
   const superModel = projection.superResolved;
@@ -76,7 +68,7 @@ function baseEntityFor(
     );
   }
   const base =
-    superModel instanceof MetaObject ? superModel : findEntity(root, superName);
+    superModel instanceof MetaObject ? superModel : root.findObject(superName);
   if (!base) {
     throw new Error(
       `Projection ${projection.name}: extends "${superName}" does not resolve to any entity.`,
@@ -147,9 +139,9 @@ interface TrieNode {
 }
 
 function buildJoinTree(
-  projection: MetaData,
+  projection: MetaObject,
   base: MetaObject,
-  root: MetaData,
+  root: MetaRoot,
   usedAliases: Set<string>,
   baseAlias: string,
 ): JoinTree {
@@ -168,7 +160,7 @@ function buildJoinTree(
       const entityName = segments[0];
       const relSegments = segments.slice(1);
       if (!entityName) continue;
-      let currentObj = findEntity(root, entityName);
+      let currentObj = root.findObject(entityName);
       if (!currentObj) continue;
 
       const path: Path = [];
@@ -177,7 +169,7 @@ function buildJoinTree(
         if (!rel) break;
         const targetName = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
         const fkField = rel.attr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
-        const target = targetName ? findEntity(root, targetName) : undefined;
+        const target = targetName ? root.findObject(targetName) : undefined;
         if (!target || !fkField || !targetName) break;
         path.push({
           entity: currentObj,
@@ -248,10 +240,10 @@ function findAliasInTree(
 }
 
 function buildSelectSpec(
-  projection: MetaData,
+  projection: MetaObject,
   base: MetaObject,
   joinTree: JoinTree,
-  root: MetaData,
+  root: MetaRoot,
   ctx: ExtractContext,
 ): SelectSpec {
   const columns: SelectColumn[] = [];
@@ -297,7 +289,7 @@ function buildSelectSpec(
       if (dotIdx < 1) continue;
       const entityName = from.slice(0, dotIdx);
       const fieldName = from.slice(dotIdx + 1);
-      const targetEntity = findEntity(root, entityName);
+      const targetEntity = root.findObject(entityName);
       const sourceAlias = findAliasInTree(joinTree, entityName);
       if (!targetEntity || sourceAlias === undefined) continue;
       const targetField = targetEntity.children().find(
@@ -319,7 +311,7 @@ function buildSelectSpec(
       if (dotIdx < 1) continue;
       const entityName = of_.slice(0, dotIdx);
       const fieldName = of_.slice(dotIdx + 1);
-      const targetEntity = findEntity(root, entityName);
+      const targetEntity = root.findObject(entityName);
       const sourceAlias = findAliasInTree(joinTree, entityName);
       if (!targetEntity || sourceAlias === undefined) continue;
       const targetField = targetEntity.children().find(
@@ -355,16 +347,16 @@ function buildGroupBy(spec: SelectSpec): string[] {
 /**
  * Walk a projection's origin children to produce a ViewSpec.
  *
- * @param projection  The projection entity MetaData (has a source[dbView] child
+ * @param projection  The projection entity (has a source[dbView] child
  *                    and extends a writable entity).
- * @param root        The loader's root MetaData — all top-level objects are
+ * @param root        The loader's MetaRoot — all top-level objects are
  *                    direct children of root (returned by `MetaDataLoader.load()`
  *                    / `FileMetaDataLoader.loadFiles()` as `result.root`).
  * @param ctx         Column naming strategy for SQL identifiers.
  */
 export function extractViewSpec(
-  projection: MetaData,
-  root: MetaData,
+  projection: MetaObject,
+  root: MetaRoot,
   ctx: ExtractContext,
 ): ViewSpec {
   const base = baseEntityFor(projection, root);
