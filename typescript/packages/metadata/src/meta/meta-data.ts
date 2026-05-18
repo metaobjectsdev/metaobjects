@@ -239,6 +239,37 @@ export abstract class MetaData {
     return this._children.find((c) => c.type === type && c.name === name);
   }
 
+  // ---------------------------------------------------------------------------
+  // Effective child accessors — the default. Own + children inherited via the
+  // super chain (own shadowing super on a (type, name) match). Own-only access
+  // is the explicit own* opt-in above.
+  // ---------------------------------------------------------------------------
+
+  /** Effective children: own + inherited via the super chain, own shadowing super. */
+  children(): MetaData[] {
+    return this.cached("children", () => this._effectiveChildren(new Set([this])));
+  }
+
+  /** Effective children whose type matches. */
+  childrenOfType(type: string): MetaData[] {
+    return this.children().filter((c) => c.type === type);
+  }
+
+  /** Effective children matching both type and subType. */
+  childrenOfSubType(type: string, subType: string): MetaData[] {
+    return this.children().filter((c) => c.type === type && c.subType === subType);
+  }
+
+  /** First effective child with matching name, or undefined. */
+  childByName(name: string): MetaData | undefined {
+    return this.children().find((c) => c.name === name);
+  }
+
+  /** First effective child matching both type and name, or undefined. */
+  childByTypeAndName(type: string, name: string): MetaData | undefined {
+    return this.children().find((c) => c.type === type && c.name === name);
+  }
+
   /**
    * Returns the first child matching (type, name), walking the super chain if not found locally.
    * Java parity: matches MetaObject.getMetaField(name)'s behavior of falling back to getSuperObject().getMetaField(name).

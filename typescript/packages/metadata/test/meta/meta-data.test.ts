@@ -645,3 +645,95 @@ describe("MetaData — parent / root", () => {
     expect(root.root()).toBe(root);
   });
 });
+
+describe("MetaData — effective child accessors (default)", () => {
+  it("children() includes inherited children from the super chain", () => {
+    const superModel = makeObject("entity", "Super");
+    superModel.addChild(makeField("string", "x"));
+    const child = makeObject("entity", "Child");
+    child.addChild(makeField("string", "y"));
+    child.setSuperResolved(superModel);
+    expect(child.children().map((c) => c.name)).toEqual(["x", "y"]);
+  });
+
+  it("ownChildren() excludes inherited children", () => {
+    const superModel = makeObject("entity", "Super");
+    superModel.addChild(makeField("string", "x"));
+    const child = makeObject("entity", "Child");
+    child.addChild(makeField("string", "y"));
+    child.setSuperResolved(superModel);
+    expect(child.ownChildren().map((c) => c.name)).toEqual(["y"]);
+  });
+
+  it("childrenOfType() includes inherited children of that type", () => {
+    const superModel = makeObject("entity", "Super");
+    superModel.addChild(makeField("string", "inheritedField"));
+    const child = makeObject("entity", "Child");
+    child.addChild(makeField("string", "ownField"));
+    child.setSuperResolved(superModel);
+    expect(child.childrenOfType(TYPE_FIELD).map((c) => c.name)).toEqual([
+      "inheritedField",
+      "ownField",
+    ]);
+  });
+
+  it("ownChildrenOfType() excludes inherited", () => {
+    const superModel = makeObject("entity", "Super");
+    superModel.addChild(makeField("string", "inheritedField"));
+    const child = makeObject("entity", "Child");
+    child.addChild(makeField("string", "ownField"));
+    child.setSuperResolved(superModel);
+    expect(child.ownChildrenOfType(TYPE_FIELD).map((c) => c.name)).toEqual([
+      "ownField",
+    ]);
+  });
+
+  it("childrenOfSubType() includes inherited children of that type+subType", () => {
+    const superModel = makeObject("entity", "Super");
+    superModel.addChild(makeField("string", "s1"));
+    superModel.addChild(makeField("int", "i1"));
+    const child = makeObject("entity", "Child");
+    child.addChild(makeField("string", "s2"));
+    child.setSuperResolved(superModel);
+    expect(
+      child.childrenOfSubType(TYPE_FIELD, "string").map((c) => c.name),
+    ).toEqual(["s1", "s2"]);
+  });
+
+  it("childByName() finds an inherited child; ownChildByName() does not", () => {
+    const superModel = makeObject("entity", "Super");
+    superModel.addChild(makeField("string", "inherited"));
+    const child = makeObject("entity", "Child");
+    child.setSuperResolved(superModel);
+    expect(child.childByName("inherited")?.name).toBe("inherited");
+    expect(child.ownChildByName("inherited")).toBeUndefined();
+  });
+
+  it("childByTypeAndName() finds an inherited child; ownChildByTypeAndName() does not", () => {
+    const superModel = makeObject("entity", "Super");
+    superModel.addChild(makeField("string", "inherited"));
+    const child = makeObject("entity", "Child");
+    child.setSuperResolved(superModel);
+    expect(child.childByTypeAndName(TYPE_FIELD, "inherited")?.name).toBe(
+      "inherited",
+    );
+    expect(
+      child.ownChildByTypeAndName(TYPE_FIELD, "inherited"),
+    ).toBeUndefined();
+  });
+
+  it("childByTypeAndName() returns the own override when child and super share (type, name)", () => {
+    const superModel = makeObject("entity", "Super");
+    const superFoo = makeField("string", "foo");
+    superFoo.setAttr("origin", "super");
+    superModel.addChild(superFoo);
+    const child = makeObject("entity", "Child");
+    const childFoo = makeField("string", "foo");
+    childFoo.setAttr("origin", "child");
+    child.addChild(childFoo);
+    child.setSuperResolved(superModel);
+    expect(child.childByTypeAndName(TYPE_FIELD, "foo")?.attr("origin")).toBe(
+      "child",
+    );
+  });
+});
