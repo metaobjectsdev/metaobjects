@@ -1,6 +1,7 @@
 // Field-type → Drizzle column type mapping. Per design §6.
+// Uses the typed MetaField.validators() accessor (effective — includes inherited) for all validator checks.
 
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData, MetaField } from "@metaobjects/metadata";
 import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
@@ -15,7 +16,6 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
-  TYPE_VALIDATOR,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   FIELD_ATTR_MAX_LENGTH,
@@ -92,12 +92,12 @@ export interface ColumnSpec {
 }
 
 /** Resolve max length from validator.length child or @maxLength attr.
- *  Uses effectiveChildren() so a validator inherited via field-level extends is seen. */
-function getMaxLength(field: MetaData): number | undefined {
+ *  Uses field.validators() (effective) so inherited validators are seen. */
+function getMaxLength(field: MetaField): number | undefined {
   const lenAttr = field.attr(FIELD_ATTR_MAX_LENGTH);
   if (typeof lenAttr === "number") return lenAttr;
-  for (const child of field.effectiveChildren()) {
-    if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_LENGTH) {
+  for (const child of field.validators()) {
+    if (child.subType === VALIDATOR_SUBTYPE_LENGTH) {
       const max = child.attr(VALIDATOR_ATTR_MAX);
       if (typeof max === "number") return max;
     }
@@ -106,15 +106,10 @@ function getMaxLength(field: MetaData): number | undefined {
 }
 
 /** Check for validator.required child OR @required attr.
- *  Uses effectiveChildren() so a validator inherited via field-level extends is seen. */
-function isRequired(field: MetaData): boolean {
+ *  Uses field.validators() (effective) so inherited validators are seen. */
+function isRequired(field: MetaField): boolean {
   if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
-  for (const child of field.effectiveChildren()) {
-    if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_REQUIRED) {
-      return true;
-    }
-  }
-  return false;
+  return field.validators().some((child) => child.subType === VALIDATOR_SUBTYPE_REQUIRED);
 }
 
 export function mapColumnType(
@@ -122,6 +117,9 @@ export function mapColumnType(
   dialect: Dialect,
   strategy: ColumnNamingStrategy = "snake_case",
 ): ColumnSpec {
+  // Transient cast: callers still type this as MetaData (Task 7 flips the interface).
+  // The runner passes real MetaField instances, so the cast is sound.
+  const f = field as MetaField;
   const dbName = (field.attr(FIELD_ATTR_DB_COLUMN) as string | undefined) ?? columnNameFromField(field.name, strategy);
   const importModule = dialect === "sqlite" ? "drizzle-orm/sqlite-core" : "drizzle-orm/pg-core";
   const subType = field.subType;
@@ -202,7 +200,7 @@ export function mapColumnType(
         fnOptions = { precision: 19, scale: 4 }; // sane default; @precision/@scale attrs override
         break;
       case FIELD_SUBTYPE_STRING: {
-        const maxLen = getMaxLength(field);
+        const maxLen = getMaxLength(f);
         if (maxLen !== undefined) {
           fnName = "varchar";
           fnOptions = { length: maxLen };
@@ -225,7 +223,7 @@ export function mapColumnType(
     modifiers.push(".array()");
   }
 
-  if (isRequired(field)) {
+  if (isRequired(f)) {
     modifiers.push(".notNull()");
   }
 

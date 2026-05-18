@@ -3,10 +3,8 @@
 //   - Which outgoing relationships it declares (one-side, FK on this entity)
 //   - Which incoming relationships point to it (many-side, FK on other entity)
 
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData, MetaRoot } from "@metaobjects/metadata";
 import {
-  TYPE_OBJECT,
-  TYPE_RELATIONSHIP,
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_FK_FIELD,
@@ -35,6 +33,9 @@ export type RelationMap = Map<string, RelationEntry[]>;
  * many() sides on the target entity.
  */
 export function buildRelationMap(root: MetaData): RelationMap {
+  // Transient cast: callers still type this as MetaData (Task 7 flips the interface).
+  // The runner passes a real MetaRoot instance, so the cast is sound.
+  const typedRoot = root as MetaRoot;
   const result: RelationMap = new Map();
 
   const ensure = (name: string): RelationEntry[] => {
@@ -42,11 +43,9 @@ export function buildRelationMap(root: MetaData): RelationMap {
     return result.get(name)!;
   };
 
-  for (const obj of root.children()) {
-    if (obj.type !== TYPE_OBJECT) continue;
-    // Use effectiveChildren() so inherited relationships (from extends:/super:) are included.
-    for (const child of obj.effectiveChildren()) {
-      if (child.type !== TYPE_RELATIONSHIP) continue;
+  for (const obj of typedRoot.objects()) {
+    // Use relationships() so inherited relationships (from extends:/super:) are included.
+    for (const child of obj.relationships()) {
       const cardinality = child.attr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
       if (cardinality !== CARDINALITY_ONE) continue;
       const targetEntityRaw = child.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;

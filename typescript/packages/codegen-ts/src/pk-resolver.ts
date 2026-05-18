@@ -1,12 +1,8 @@
 // PK resolver — pre-pass over the loaded metadata to build a name → PK info map.
 // codegen uses this when emitting FK columns (per design §13 #2).
 
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData, MetaRoot } from "@metaobjects/metadata";
 import {
-  TYPE_OBJECT,
-  TYPE_FIELD,
-  TYPE_IDENTITY,
-  IDENTITY_SUBTYPE_PRIMARY,
   FIELD_SUBTYPE_LONG,
   IDENTITY_ATTR_FIELDS,
   IDENTITY_ATTR_GENERATION,
@@ -29,23 +25,21 @@ export interface PkInfo {
  * looks up User's PK info to choose the matching FK column type.
  */
 export function buildPkMap(root: MetaData): Map<string, PkInfo> {
+  // Transient cast: callers still type this as MetaData (Task 7 flips the interface).
+  // The runner passes a real MetaRoot instance, so the cast is sound.
+  const typedRoot = root as MetaRoot;
   const result = new Map<string, PkInfo>();
-  for (const obj of root.children()) {
-    if (obj.type !== TYPE_OBJECT) continue;
-    // Use effectiveChildren() to include inherited identities/fields (from extends:/super:).
-    const effective = obj.effectiveChildren();
-    const primary = effective.find(
-      (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
-    );
+  for (const obj of typedRoot.objects()) {
+    // primaryIdentity() resolves the primary identity across the super-chain.
+    const primary = obj.primaryIdentity();
     if (!primary) continue;
     const fields = primary.attr(IDENTITY_ATTR_FIELDS);
     if (!Array.isArray(fields) && typeof fields !== "string") continue;
     const fieldsList = Array.isArray(fields) ? fields : [fields];
     if (fieldsList.length === 0) continue;
     const pkFieldName = String(fieldsList[0]);
-    const pkField = effective.find(
-      (c) => c.type === TYPE_FIELD && c.name === pkFieldName,
-    );
+    // findField() resolves the field across the super-chain (handles extends:).
+    const pkField = obj.findField(pkFieldName);
     const fieldSubType = pkField?.subType ?? FIELD_SUBTYPE_LONG; // sane default
     const generation = primary.attr(IDENTITY_ATTR_GENERATION);
     const info: PkInfo = { fieldName: pkFieldName, fieldSubType };
