@@ -4,15 +4,14 @@
 
 import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaData } from "@metaobjects/metadata";
+import { MetaObject, MetaField } from "@metaobjects/metadata";
 import {
-  TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP,
-  IDENTITY_SUBTYPE_PRIMARY, IDENTITY_SUBTYPE_SECONDARY, FIELD_SUBTYPE_LONG,
+  IDENTITY_SUBTYPE_SECONDARY, FIELD_SUBTYPE_LONG,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION, IDENTITY_ATTR_UNIQUE,
   RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF, RELATIONSHIP_ATTR_FK_FIELD,
   GENERATION_INCREMENT, GENERATION_UUID,
   CARDINALITY_ONE,
   FIELD_ATTR_AUTO_SET,
-  resolveTableName,
 } from "@metaobjects/metadata";
 import { type RenderContext, withExt } from "../render-context.js";
 import { mapColumnType } from "../column-mapper.js";
@@ -28,21 +27,18 @@ import { renderRelationsBlock } from "./relations-block.js";
  * with the rest of the entity file. Biome formatting runs after composition.
  */
 export function renderDrizzleSchema(entity: MetaData, ctx: RenderContext): Code {
+  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
+  const obj = entity as MetaObject;
+
   const dialect = ctx.dialect;
   const tableFn = dialect === "sqlite" ? "sqliteTable" : "pgTable";
   const importModule = dialect === "sqlite" ? "drizzle-orm/sqlite-core" : "drizzle-orm/pg-core";
   const tableFnSym = imp(`${tableFn}@${importModule}`);
 
-  const tableName = resolveTableName(entity);
-  const varName = variableNameFromEntity(entity.name);
+  const tableName = obj.dbTable ?? tableNameFromEntity(obj.name, ctx.columnNamingStrategy);
+  const varName = variableNameFromEntity(obj.name);
 
-  // Use effectiveChildren() throughout so inherited fields/identities/relationships
-  // (from extends: / super:) are included in the generated output.
-  const effective = entity.effectiveChildren();
-
-  const primary = effective.find(
-    (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
-  );
+  const primary = obj.primaryIdentity();
   const rawPkFields = primary?.attr(IDENTITY_ATTR_FIELDS);
   const pkFieldsList: string[] = Array.isArray(rawPkFields)
     ? rawPkFields as string[]
@@ -52,7 +48,7 @@ export function renderDrizzleSchema(entity: MetaData, ctx: RenderContext): Code 
   const pkFieldNames = new Set<string>(pkFieldsList);
   const pkGeneration = primary?.attr(IDENTITY_ATTR_GENERATION) as string | undefined;
 
-  const fkMap = buildFkMapForEntity(effective, ctx);
+  const fkMap = buildFkMapForEntity(obj, ctx);
 
   const isComposite = pkFieldNames.size > 1;
 
@@ -60,9 +56,7 @@ export function renderDrizzleSchema(entity: MetaData, ctx: RenderContext): Code 
   // their column. Only single-column UNIQUE identities propagate .unique() to
   // the column — non-unique indexes emit a separate index() callback entry
   // (handled below) and must not stamp .unique() on the underlying column.
-  const secondaryIdentities = effective.filter(
-    (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_SECONDARY,
-  );
+  const secondaryIdentities = obj.secondaryIdentities();
   const uniqueFieldNames = new Set<string>();
   for (const sec of secondaryIdentities) {
     const uniqueAttr = sec.attr(IDENTITY_ATTR_UNIQUE);
@@ -73,8 +67,7 @@ export function renderDrizzleSchema(entity: MetaData, ctx: RenderContext): Code 
   }
 
   const columnLines: Code[] = [];
-  for (const child of effective) {
-    if (child.type !== TYPE_FIELD) continue;
+  for (const child of obj.fields()) {
     const isPk = pkFieldNames.has(child.name);
     const isUnique = uniqueFieldNames.has(child.name) && !isPk;
     const fkInfo = fkMap.get(child.name);
@@ -123,7 +116,7 @@ ${joinCode(columnLines, { on: ",\n", trim: false })}
   }
 
   // Emit the relations() block (returns null if no relations).
-  const relationsBlock = renderRelationsBlock(entity, ctx);
+  const relationsBlock = renderRelationsBlock(obj, ctx);
 
   if (relationsBlock === null) {
     return tableBlock;
@@ -139,10 +132,9 @@ interface FkInfo {
 }
 
 /** Pre-pass: map fkFieldName → FkInfo for this entity's effective (own + inherited) relationship children. */
-function buildFkMapForEntity(effective: readonly MetaData[], ctx: RenderContext): Map<string, FkInfo> {
+function buildFkMapForEntity(obj: MetaObject, ctx: RenderContext): Map<string, FkInfo> {
   const result = new Map<string, FkInfo>();
-  for (const child of effective) {
-    if (child.type !== TYPE_RELATIONSHIP) continue;
+  for (const child of obj.relationships()) {
     const cardinality = child.attr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
     if (cardinality !== CARDINALITY_ONE) continue;
     const targetEntityRaw = child.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
@@ -184,7 +176,7 @@ function inlineObjectLiteral(obj: Record<string, unknown>): string {
 
 /** Render one column line (field name + Drizzle column expression). */
 function renderColumn(
-  field: MetaData,
+  field: MetaField,
   ctx: RenderContext,
   isPk: boolean,
   pkGeneration: string | undefined,

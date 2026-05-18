@@ -30,8 +30,8 @@
 
 import { code, type Code } from "ts-poet";
 import type { MetaData } from "@metaobjects/metadata";
+import { MetaObject, MetaField } from "@metaobjects/metadata";
 import {
-  TYPE_FIELD,
   TYPE_VIEW,
   TYPE_VALIDATOR,
   VIEW_SUBTYPE_TEXT,
@@ -78,7 +78,7 @@ function resourcePath(entity: MetaData): string {
 }
 
 /** Resolve the view subtype: explicit `view` child wins, else inferred from field subType. */
-function resolveView(field: MetaData): { view: string; viewNode?: MetaData } {
+function resolveView(field: MetaField): { view: string; viewNode?: MetaData } {
   for (const child of field.children()) {
     if (child.type === TYPE_VIEW) {
       return { view: child.subType, viewNode: child };
@@ -127,7 +127,7 @@ function htmlTypeFromView(view: string, override?: string): string | undefined {
  * (e.g. `{ required: "X", maxLength: { value: 255, message: "..." } }`)
  * or undefined when there are no rules to emit.
  */
-function renderFieldRules(field: MetaData): string | undefined {
+function renderFieldRules(field: MetaField): string | undefined {
   const ruleParts: string[] = [];
 
   let hasRequired = false;
@@ -182,7 +182,7 @@ function renderFieldRules(field: MetaData): string | undefined {
 }
 
 /** Build one nested field-object entry like `email: { name, label, ... },`. */
-function renderFieldEntry(field: MetaData): string {
+function renderFieldEntry(field: MetaField): string {
   const { view, viewNode } = resolveView(field);
   const label = labelFor(field);
   const placeholder = viewNode?.attr("placeholder") as string | undefined;
@@ -211,14 +211,15 @@ function renderFieldEntry(field: MetaData): string {
 }
 
 export function renderEntityConstants(entity: MetaData, apiPrefix = ""): Code {
-  const entityName = entity.name;
-  const tableName = resolveTableName(entity);
-  const path = resourcePath(entity);
+  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
+  const obj = entity as MetaObject;
+  const entityName = obj.name;
+  const tableName = resolveTableName(obj);
+  const path = resourcePath(obj);
 
   const fieldEntries: string[] = [];
-  // Use effectiveChildren() so inherited fields (from extends:/super:) appear in constants.
-  for (const child of entity.effectiveChildren()) {
-    if (child.type !== TYPE_FIELD) continue;
+  // Use fields() so inherited fields (from extends:/super:) appear in constants.
+  for (const child of obj.fields()) {
     fieldEntries.push(renderFieldEntry(child));
   }
 

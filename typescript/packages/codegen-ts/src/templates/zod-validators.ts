@@ -5,9 +5,9 @@
 
 import { code, imp, type Code } from "ts-poet";
 import type { MetaData } from "@metaobjects/metadata";
+import { MetaObject, MetaField } from "@metaobjects/metadata";
 import {
-  TYPE_FIELD, TYPE_IDENTITY, TYPE_VALIDATOR,
-  IDENTITY_SUBTYPE_PRIMARY,
+  TYPE_VALIDATOR,
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
@@ -20,12 +20,10 @@ import {
 } from "@metaobjects/metadata";
 
 export function renderZodValidators(entity: MetaData): Code {
+  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
+  const obj = entity as MetaObject;
   const z = imp("z@zod");
-  // Use effectiveChildren() to include inherited fields/identities (from extends:/super:).
-  const effective = entity.effectiveChildren();
-  const primary = effective.find(
-    (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
-  );
+  const primary = obj.primaryIdentity();
   const autoGenPkFields = new Set<string>();
   if (primary) {
     const generation = primary.attr(IDENTITY_ATTR_GENERATION);
@@ -38,8 +36,7 @@ export function renderZodValidators(entity: MetaData): Code {
 
   const insertFieldLines: string[] = [];
   const updateFieldLines: string[] = [];
-  for (const child of effective) {
-    if (child.type !== TYPE_FIELD) continue;
+  for (const child of obj.fields()) {
     if (autoGenPkFields.has(child.name)) continue;
 
     const autoSet = child.attr(FIELD_ATTR_AUTO_SET);
@@ -84,7 +81,7 @@ ${updateFieldLines.join(",\n")}
 `;
 }
 
-function zodFieldExpr(field: MetaData): string {
+function zodFieldExpr(field: MetaField): string {
   let base: string;
   switch (field.subType) {
     case FIELD_SUBTYPE_INT:

@@ -9,6 +9,7 @@
 
 import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaData } from "@metaobjects/metadata";
+import { MetaField } from "@metaobjects/metadata";
 import {
   TYPE_FIELD,
 } from "@metaobjects/metadata";
@@ -101,15 +102,18 @@ export function renderProjectionDecl(
   }
 
   const zodLines: Code[] = allFields.map(
-    (f) => code`  ${f.name}: ${z}.${zodTypeFor(f).replace(/^z\./, "")}`,
+    // Transient cast: allFields contains MetaField instances; removed in Task 6.
+    (f) => code`  ${f.name}: ${z}.${zodTypeFor(f as MetaField).replace(/^z\./, "")}`,
   );
 
   const constFieldLines: string[] = allFields.map((f) => {
+    // Transient cast: allFields contains MetaField instances; removed in Task 6.
+    const mf = f as MetaField;
     const dbCol = columnNameFromField(f.name, columnNamingStrategy);
-    const view = inferViewKind(f);
-    const label = labelFor(f);
+    const view = inferViewKind(mf);
+    const label = labelFor(mf);
     const baseEntry = `name: ${JSON.stringify(f.name)}, label: ${JSON.stringify(label)}, view: ${JSON.stringify(view)}, dbCol: ${JSON.stringify(dbCol)}`;
-    const currencyMeta = currencyMetaFor(f);
+    const currencyMeta = currencyMetaFor(mf);
     if (currencyMeta !== null) {
       return `  ${f.name}: { ${baseEntry}, currency: ${JSON.stringify(currencyMeta.currency)}, locale: ${JSON.stringify(currencyMeta.locale)} },`;
     }

@@ -29,6 +29,7 @@ export function renderEntityFile(entity: MetaData, ctx: RenderContext): string {
   }
 
   // --- Vanilla / write-through entity path ---
+  // Templates internally narrow entity to MetaObject/MetaField via transient casts.
   const sections: Code[] = [
     renderDrizzleSchema(entity, ctx),
     renderInferredTypes(entity),
