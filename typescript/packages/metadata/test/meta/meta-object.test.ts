@@ -10,6 +10,7 @@ import {
   TYPE_RELATIONSHIP,
   TYPE_VALIDATOR,
   TYPE_SOURCE,
+  TYPE_LAYOUT,
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
   SUBTYPE_BASE,
@@ -22,6 +23,7 @@ import {
   VALIDATOR_SUBTYPE_REQUIRED,
   RELATIONSHIP_SUBTYPE_ASSOCIATION,
   IDENTITY_ATTR_FIELDS,
+  LAYOUT_SUBTYPE_DATA_GRID,
 } from "../../src/constants.js";
 
 // ---------------------------------------------------------------------------
@@ -53,6 +55,10 @@ function makeValidator(subType: string): MetaData {
 
 function makeRelationship(name: string): MetaData {
   return new TestNode(new TypeId(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION), name);
+}
+
+function makeLayout(name: string): MetaData {
+  return new TestNode(new TypeId(TYPE_LAYOUT, LAYOUT_SUBTYPE_DATA_GRID), name);
 }
 
 function makeObject(name: string, subType = OBJECT_SUBTYPE_ENTITY): MetaObject {
@@ -351,5 +357,35 @@ describe("MetaObject.validators / ownValidators", () => {
     expect(child.validators()).toHaveLength(1);
     // ownValidators() is own-only — child has none
     expect(child.ownValidators()).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MetaObject.layouts / ownLayouts
+// ---------------------------------------------------------------------------
+
+describe("MetaObject.layouts / ownLayouts", () => {
+  it("layouts() returns effective layout children", () => {
+    const obj = makeObject("User");
+    obj.addChild(makeLayout("default"));
+    obj.freeze();
+
+    expect(obj.layouts()).toHaveLength(1);
+    expect(obj.layouts()[0]!.name).toBe("default");
+  });
+
+  it("ownLayouts() excludes inherited layouts", () => {
+    const base = makeObject("BaseEntity");
+    base.addChild(makeLayout("baseGrid"));
+    base.freeze();
+
+    const child = makeObject("Subscriber");
+    child.addChild(makeLayout("ownGrid"));
+    child.setSuperResolved(base);
+    child.freeze();
+
+    expect(child.layouts()).toHaveLength(2);
+    expect(child.ownLayouts()).toHaveLength(1);
+    expect(child.ownLayouts()[0]!.name).toBe("ownGrid");
   });
 });

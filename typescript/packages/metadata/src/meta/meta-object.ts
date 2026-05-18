@@ -10,6 +10,7 @@ import {
   TYPE_RELATIONSHIP,
   TYPE_VALIDATOR,
   TYPE_SOURCE,
+  TYPE_LAYOUT,
   SOURCE_SUBTYPE_DB_TABLE,
   SOURCE_DB_TABLE_ATTR_NAME,
   OBJECT_SUBTYPE_ENTITY,
@@ -20,6 +21,7 @@ import {
 } from "../constants.js";
 import type { MetaField } from "./meta-field.js";
 import type { MetaIdentity } from "./meta-identity.js";
+import type { MetaLayout } from "./meta-layout.js";
 import type { MetaRelationship } from "./meta-relationship.js";
 import type { MetaValidator } from "./meta-validator.js";
 
@@ -114,6 +116,20 @@ export class MetaObject extends MetaData {
   ownValidators(): MetaValidator[] {
     return this.cached("ownValidators", () =>
       this.ownChildren().filter((c): c is MetaValidator => c.type === TYPE_VALIDATOR),
+    );
+  }
+
+  /** All effective layouts (own + inherited via extends). */
+  layouts(): MetaLayout[] {
+    return this.cached("layouts", () =>
+      this.children().filter((c): c is MetaLayout => c.type === TYPE_LAYOUT),
+    );
+  }
+
+  /** Own layouts only — excludes inherited. */
+  ownLayouts(): MetaLayout[] {
+    return this.cached("ownLayouts", () =>
+      this.ownChildren().filter((c): c is MetaLayout => c.type === TYPE_LAYOUT),
     );
   }
 

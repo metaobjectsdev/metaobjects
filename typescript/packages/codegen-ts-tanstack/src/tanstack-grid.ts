@@ -1,5 +1,5 @@
 import type { MetaObject } from "@metaobjects/metadata";
-import { TYPE_LAYOUT, LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjects/metadata";
+import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjects/metadata";
 import { perEntity, type Generator, type GeneratorFactory, formatTs } from "@metaobjects/codegen-ts";
 import { renderColumnsFile } from "./templates/columns-file.js";
 
@@ -8,11 +8,8 @@ export interface TanstackGridOpts {
 }
 
 function hasDataGridLayout(entity: MetaObject): boolean {
-  // No typed `layouts()` accessor on MetaObject — filter children() by
-  // type tag so inherited layouts (from extends:/super:) are still considered.
-  return entity.children().some(
-    (c) => c.type === TYPE_LAYOUT && c.subType === LAYOUT_SUBTYPE_DATA_GRID,
-  );
+  // layouts() is effective — own + inherited layouts (from extends:/super:).
+  return entity.layouts().some((l) => l.subType === LAYOUT_SUBTYPE_DATA_GRID);
 }
 
 /**
