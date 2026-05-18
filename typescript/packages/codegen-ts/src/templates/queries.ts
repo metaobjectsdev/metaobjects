@@ -2,8 +2,8 @@
 // Each returns a ts-poet Code block; composed into a file by queries-file.ts.
 
 import { code, imp, type Code } from "ts-poet";
-import type { MetaData } from "@metaobjects/metadata";
-import { TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY, IDENTITY_ATTR_FIELDS } from "@metaobjects/metadata";
+import type { MetaObject } from "@metaobjects/metadata";
+import { IDENTITY_ATTR_FIELDS } from "@metaobjects/metadata";
 import type { RenderContext } from "../render-context.js";
 import { variableNameFromEntity, toSnakeCase, pluralize } from "../naming.js";
 
@@ -13,11 +13,9 @@ function prepareName(prefix: string, entitySnakeName: string, fieldDbName: strin
 }
 
 /** Get the PK field name and its TS type for a given entity. */
-function getPkInfo(entity: MetaData, ctx: RenderContext): { fieldName: string; tsType: string } {
-  // Use effectiveChildren() to find the primary identity (may be inherited from extends:/super:).
-  const primary = entity.effectiveChildren().find(
-    (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
-  );
+function getPkInfo(entity: MetaObject, ctx: RenderContext): { fieldName: string; tsType: string } {
+  // Use primaryIdentity() to find the primary identity (may be inherited from extends:/super:).
+  const primary = entity.primaryIdentity();
   const rawFields = primary?.attr(IDENTITY_ATTR_FIELDS);
   const fields = Array.isArray(rawFields) ? rawFields : (typeof rawFields === "string" ? [rawFields] : undefined);
   const pkFieldName = fields?.[0] ?? "id";
@@ -32,7 +30,7 @@ function getPkInfo(entity: MetaData, ctx: RenderContext): { fieldName: string; t
   return { fieldName: pkFieldName, tsType };
 }
 
-export function renderFindByIdFn(entity: MetaData, ctx: RenderContext): Code {
+export function renderFindByIdFn(entity: MetaObject, ctx: RenderContext): Code {
   const varName = variableNameFromEntity(entity.name);
   const entityName = entity.name;
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
@@ -66,7 +64,7 @@ export async function ${fnName}(${pkField}: ${pkType}): Promise<${entityName} | 
 `;
 }
 
-export function renderListFn(entity: MetaData, _ctx: RenderContext): Code {
+export function renderListFn(entity: MetaObject, _ctx: RenderContext): Code {
   const varName = variableNameFromEntity(entity.name);
   const entityName = entity.name;
   // Pluralize the PascalCase entity name, preserving capitalization
@@ -83,7 +81,7 @@ export async function ${fnName}(opts?: { limit?: number; offset?: number }): Pro
 `;
 }
 
-export function renderCreateFn(entity: MetaData, _ctx: RenderContext): Code {
+export function renderCreateFn(entity: MetaObject, _ctx: RenderContext): Code {
   const varName = variableNameFromEntity(entity.name);
   const entityName = entity.name;
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
@@ -99,7 +97,7 @@ export async function ${fnName}(data: unknown): Promise<${entityName}> {
 `;
 }
 
-export function renderUpdateFn(entity: MetaData, ctx: RenderContext): Code {
+export function renderUpdateFn(entity: MetaObject, ctx: RenderContext): Code {
   const varName = variableNameFromEntity(entity.name);
   const entityName = entity.name;
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
@@ -117,7 +115,7 @@ export async function ${fnName}(${pkField}: ${pkType}, data: unknown): Promise<$
 `;
 }
 
-export function renderDeleteByIdFn(entity: MetaData, ctx: RenderContext): Code {
+export function renderDeleteByIdFn(entity: MetaObject, ctx: RenderContext): Code {
   const varName = variableNameFromEntity(entity.name);
   const entityName = entity.name;
   const { fieldName: pkField, tsType: pkType } = getPkInfo(entity, ctx);

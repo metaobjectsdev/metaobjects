@@ -2,7 +2,7 @@
 // Derived from the RelationMap pre-pass (relation-resolver.ts).
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaObject } from "@metaobjects/metadata";
 import { CARDINALITY_ONE, CARDINALITY_MANY } from "@metaobjects/metadata";
 import { type RenderContext, withExt } from "../render-context.js";
 import { variableNameFromEntity } from "../naming.js";
@@ -12,7 +12,7 @@ import type { RelationEntry } from "../relation-resolver.js";
  * Render the relations() block for one entity.
  * Returns null if the entity has no relations to emit.
  */
-export function renderRelationsBlock(entity: MetaData, ctx: RenderContext): Code | null {
+export function renderRelationsBlock(entity: MetaObject, ctx: RenderContext): Code | null {
   const entries = ctx.relationMap.get(entity.name);
   if (!entries || entries.length === 0) return null;
 

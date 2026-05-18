@@ -3,6 +3,7 @@
 
 import { code, joinCode, type Code } from "ts-poet";
 import type { MetaData } from "@metaobjects/metadata";
+import { MetaObject } from "@metaobjects/metadata";
 import { type RenderContext, withExt } from "../render-context.js";
 import {
   renderFindByIdFn,
@@ -15,7 +16,10 @@ import { variableNameFromEntity } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
 
 export function renderQueriesFile(entity: MetaData, ctx: RenderContext): string {
-  const entityName = entity.name;
+  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
+  const obj = entity as MetaObject;
+
+  const entityName = obj.name;
   const entityFileName = withExt(`./${entityName}`, ctx.extStyle);
   const varName = variableNameFromEntity(entityName);
 
@@ -28,11 +32,11 @@ import { ${varName}, type ${entityName}, ${entityName}InsertSchema } from ${JSON
 
   const sections: Code[] = [
     literalImports,
-    renderFindByIdFn(entity, ctx),
-    renderListFn(entity, ctx),
-    renderCreateFn(entity, ctx),
-    renderUpdateFn(entity, ctx),
-    renderDeleteByIdFn(entity, ctx),
+    renderFindByIdFn(obj, ctx),
+    renderListFn(obj, ctx),
+    renderCreateFn(obj, ctx),
+    renderUpdateFn(obj, ctx),
+    renderDeleteByIdFn(obj, ctx),
   ];
 
   // Render ts-poet body first, then prepend the @generated header so it lands
@@ -40,7 +44,7 @@ import { ${varName}, type ${entityName}, ${entityName}InsertSchema } from ${JSON
   const body = joinCode(sections, { on: "\n" }).toString();
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
-    `// Source metadata: ${entityName} (${entity.fqn()})\n` +
+    `// Source metadata: ${entityName} (${obj.fqn()})\n` +
     `// Customize via ${entityName}.extra.ts in this directory (additional queries, custom logic).\n`;
   return header + body;
 }
