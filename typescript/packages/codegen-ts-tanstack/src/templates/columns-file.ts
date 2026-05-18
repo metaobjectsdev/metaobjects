@@ -1,7 +1,6 @@
 import { code, imp, type Code } from "ts-poet";
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaObject, MetaField } from "@metaobjects/metadata";
 import {
-  TYPE_VIEW, TYPE_FIELD,
   TYPE_LAYOUT,
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_PAGE_SIZE,
@@ -41,10 +40,10 @@ interface GridSpec {
  * Mirrors the logic in codegen-ts's renderFilterAllowlist — used here at codegen time
  * to validate @filter values on data-grid views.
  */
-function buildAllowlistForEntity(entity: MetaData): FilterAllowlist {
+function buildAllowlistForEntity(entity: MetaObject): FilterAllowlist {
   const result: Record<string, { ops: readonly string[]; subType: string; leadingWildcard: boolean }> = {};
-  // Use effectiveChildren() so inherited fields (from extends:/super:) are included in allowlist.
-  for (const f of entity.effectiveChildren().filter((c) => c.type === TYPE_FIELD && c.attr(FIELD_ATTR_FILTERABLE) === true)) {
+  // fields() is effective (own + inherited via extends:/super:).
+  for (const f of entity.fields().filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true)) {
     result[f.name] = { ops: opsForSubType(f.subType), subType: f.subType, leadingWildcard: false };
   }
   return result as FilterAllowlist;
@@ -56,13 +55,13 @@ function humanize(s: string): string {
     .replace(/^./, (c) => c.toUpperCase());
 }
 
-function fieldViewKind(field: MetaData): string {
-  const view = field.children().find((c) => c.type === TYPE_VIEW);
+function fieldViewKind(field: MetaField): string {
+  const view = field.ownViews()[0];
   return view?.subType ?? "text";
 }
 
-function fieldLabel(field: MetaData): string {
-  const view = field.children().find((c) => c.type === TYPE_VIEW);
+function fieldLabel(field: MetaField): string {
+  const view = field.ownViews()[0];
   const label = view?.attr("label");
   if (typeof label === "string") return label;
   return humanize(field.name);
@@ -76,15 +75,16 @@ function fieldLabel(field: MetaData): string {
  * fall back to all fields on the entity (pre-E-T2 behaviour, kept for
  * backwards compat with metadata not yet migrated by E-T4).
  */
-function extractGrids(entity: MetaData): GridSpec[] {
-  // Use effectiveChildren() so inherited fields and layouts (from extends:/super:) are included.
-  const effective = entity.effectiveChildren();
+function extractGrids(entity: MetaObject): GridSpec[] {
+  // fields() is effective (own + inherited via extends:/super:). Layouts have no
+  // typed accessor on MetaObject — filter effectiveChildren() by type tag so
+  // inherited layouts are still included.
   const fieldsByName = new Map(
-    effective.filter((c) => c.type === TYPE_FIELD).map((f) => [f.name, f] as const),
+    entity.fields().map((f) => [f.name, f] as const),
   );
 
   const grids: GridSpec[] = [];
-  for (const layout of effective) {
+  for (const layout of entity.effectiveChildren()) {
     if (layout.type !== TYPE_LAYOUT || layout.subType !== LAYOUT_SUBTYPE_DATA_GRID) continue;
 
     // @columns is a stringArray attr on the layout (set by E-T4 migration).
@@ -136,7 +136,7 @@ function renderColumnDef(col: ColumnSpec): string {
   return `  {\n${parts.join(",\n")}\n  }`;
 }
 
-export function renderColumnsFile(entity: MetaData, _ctx: RenderContext): string {
+export function renderColumnsFile(entity: MetaObject, _ctx: RenderContext): string {
   const entityName = entity.name;
   const lcEntity   = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const grids      = extractGrids(entity);
