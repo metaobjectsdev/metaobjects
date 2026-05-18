@@ -1,10 +1,10 @@
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaObject } from "@metaobjects/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderEntityFile } from "../templates/entity-file.js";
 import { formatTs } from "../format.js";
 
 export interface EntityFileOpts {
-  filter?: (entity: MetaData) => boolean;
+  filter?: (entity: MetaObject) => boolean;
 }
 
 export const entityFile = function entityFile(opts?: EntityFileOpts): Generator {

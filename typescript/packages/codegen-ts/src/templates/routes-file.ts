@@ -16,13 +16,13 @@
 // imported alongside the Zod schemas + constants from the sibling Entity.ts.
 
 import { code, imp } from "ts-poet";
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaObject } from "@metaobjects/metadata";
 import { type RenderContext, withExt } from "../render-context.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { variableNameFromEntity } from "../naming.js";
 import { isProjection } from "../projection/projection-detector.js";
 
-export function renderRoutesFile(entity: MetaData, ctx: RenderContext): string {
+export function renderRoutesFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
   const handlerName = `${entityName.charAt(0).toLowerCase()}${entityName.slice(1)}Routes`;
   const entityFileSpec = withExt(`./${entityName}`, ctx.extStyle);

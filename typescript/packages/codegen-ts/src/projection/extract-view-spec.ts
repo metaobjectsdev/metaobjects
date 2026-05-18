@@ -42,9 +42,9 @@ export interface ExtractContext {
 // Private helpers
 // ---------------------------------------------------------------------------
 
-function findEntity(root: MetaData, name: string): MetaData | undefined {
+function findEntity(root: MetaData, name: string): MetaObject | undefined {
   for (const child of root.children()) {
-    if (child.type === TYPE_OBJECT && child.name === name) return child;
+    if (child instanceof MetaObject && child.name === name) return child;
   }
   return undefined;
 }
@@ -66,7 +66,7 @@ function viewName(projection: MetaData, ctx: ExtractContext): string {
 function baseEntityFor(
   projection: MetaData,
   root: MetaData,
-): MetaData {
+): MetaObject {
   // v1: base entity is the resolved super (set via `extends:` in metadata).
   const superModel = projection.superResolved;
   const superName = superModel?.name ?? projection.superRef;
@@ -75,7 +75,8 @@ function baseEntityFor(
       `Projection ${projection.name}: missing extends — projections must extend a writable entity in v1.`,
     );
   }
-  const base = superModel ?? findEntity(root, superName);
+  const base =
+    superModel instanceof MetaObject ? superModel : findEntity(root, superName);
   if (!base) {
     throw new Error(
       `Projection ${projection.name}: extends "${superName}" does not resolve to any entity.`,
@@ -111,14 +112,13 @@ function shortAliasFor(entityName: string, used: Set<string>): string {
  * Determine the field name on `parentEntity` that the FK references.
  * Priority: explicit `@parentField` attr on the relationship > parent's primary identity field > "id" fallback.
  */
-function parentJoinColumnFor(parentEntity: MetaData, relationship: MetaData): string {
+function parentJoinColumnFor(parentEntity: MetaObject, relationship: MetaData): string {
   // Explicit @parentField wins (e.g., for email-based joins).
   const explicit = relationship.attr(RELATIONSHIP_ATTR_PARENT_FIELD) as string | undefined;
   if (explicit) return explicit;
   // Default: parent's primary identity field name.
-  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
   // primaryIdentity() is effective-by-default, so inherited identities (from extends:/super:) are included.
-  const primary = (parentEntity as MetaObject).primaryIdentity();
+  const primary = parentEntity.primaryIdentity();
   const fields = primary?.attr(IDENTITY_ATTR_FIELDS) as string | string[] | undefined;
   if (typeof fields === "string") {
     const first = fields.split(",")[0];
@@ -148,7 +148,7 @@ interface TrieNode {
 
 function buildJoinTree(
   projection: MetaData,
-  base: MetaData,
+  base: MetaObject,
   root: MetaData,
   usedAliases: Set<string>,
   baseAlias: string,
@@ -249,7 +249,7 @@ function findAliasInTree(
 
 function buildSelectSpec(
   projection: MetaData,
-  base: MetaData,
+  base: MetaObject,
   joinTree: JoinTree,
   root: MetaData,
   ctx: ExtractContext,
@@ -258,9 +258,8 @@ function buildSelectSpec(
 
   // Inherited fields from extends parent — emit as passthrough on baseAlias.
   // Skip fields that the projection has overridden with an explicit origin.
-  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
   // fields() is effective-by-default, so multi-level inheritance (base → BaseEntity) works.
-  for (const baseField of (base as MetaObject).fields()) {
+  for (const baseField of base.fields()) {
     const overridden = projection.children().find(
       (c) => c.type === TYPE_FIELD && c.name === baseField.name,
     );

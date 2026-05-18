@@ -3,7 +3,6 @@
 // plus the relations() block auto-emitted at the end.
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import type { MetaData } from "@metaobjects/metadata";
 import { MetaObject, MetaField } from "@metaobjects/metadata";
 import {
   IDENTITY_SUBTYPE_SECONDARY, FIELD_SUBTYPE_LONG,
@@ -26,10 +25,7 @@ import { renderRelationsBlock } from "./relations-block.js";
  * Returns a Code object so ts-poet can deduplicate imports when this composes
  * with the rest of the entity file. Biome formatting runs after composition.
  */
-export function renderDrizzleSchema(entity: MetaData, ctx: RenderContext): Code {
-  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
-  const obj = entity as MetaObject;
-
+export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   const dialect = ctx.dialect;
   const tableFn = dialect === "sqlite" ? "sqliteTable" : "pgTable";
   const importModule = dialect === "sqlite" ? "drizzle-orm/sqlite-core" : "drizzle-orm/pg-core";

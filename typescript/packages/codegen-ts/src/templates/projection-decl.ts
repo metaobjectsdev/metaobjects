@@ -8,7 +8,7 @@
 //   - Insert/Update types
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import { type MetaData, MetaField, MetaObject } from "@metaobjects/metadata";
+import { MetaField, MetaObject, type MetaRoot } from "@metaobjects/metadata";
 import { extractViewSpec } from "../projection/extract-view-spec.js";
 import { columnNameFromField, toSnakeCase, pluralize } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
@@ -54,14 +54,14 @@ function pathFromProjectionName(name: string): string {
  *   - `<Projection>`         — `z.infer` type alias
  *   - `<Projection>` const   — constants block ($entity, $view, $path, per-field metadata)
  *
- * @param projection  The projection entity MetaData (has a source[dbView] child).
- * @param root        The loader's root MetaData (all top-level objects as direct children,
+ * @param projection  The projection entity (has a source[dbView] child).
+ * @param root        The loader's root (all top-level objects as direct children,
  *                    from `MetaDataLoader.load()` / `FileMetaDataLoader.loadFiles()` as `result.root`).
  * @param opts        Column naming strategy + dialect.
  */
 export function renderProjectionDecl(
-  projection: MetaData,
-  root: MetaData,
+  projection: MetaObject,
+  root: MetaRoot,
   opts: ProjectionDeclOpts,
 ): string {
   const { dialect, columnNamingStrategy, apiPrefix = "" } = opts;
@@ -75,26 +75,18 @@ export function renderProjectionDecl(
   const spec = extractViewSpec(projection, root, { columnNamingStrategy });
 
   // Collect fields: inherited from extends parent first, then projection-declared.
-  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
   const allFields: MetaField[] = [];
-  const projectionObj = projection as MetaObject;
-  const superModel = projectionObj.superResolved;
-  const superName = superModel?.name ?? projectionObj.superRef;
+  const superModel = projection.superResolved;
+  const superName = superModel?.name ?? projection.superRef;
   if (superName) {
     const baseObj =
-      superModel ??
-      (() => {
-        for (const child of root.children()) {
-          if (child.name === superName) return child;
-        }
-        return undefined;
-      })();
+      superModel instanceof MetaObject ? superModel : root.findObject(superName);
     if (baseObj) {
       // fields() returns effective fields, so inherited fields (from extends:/super:) are included.
-      for (const f of (baseObj as MetaObject).fields()) allFields.push(f);
+      for (const f of baseObj.fields()) allFields.push(f);
     }
   }
-  for (const f of projectionObj.ownFields()) allFields.push(f);
+  for (const f of projection.ownFields()) allFields.push(f);
 
   const zodLines: Code[] = allFields.map(
     (f) => code`  ${f.name}: ${z}.${zodTypeFor(f).replace(/^z\./, "")}`,

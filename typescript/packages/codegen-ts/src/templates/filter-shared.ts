@@ -3,7 +3,7 @@
 // Both must agree on which fields are sortable; keeping them in sync via this shared
 // helper prevents client/server mismatches.
 
-import { type MetaData, MetaField, MetaObject } from "@metaobjects/metadata";
+import { MetaField, MetaObject } from "@metaobjects/metadata";
 import { FIELD_ATTR_FILTERABLE, FIELD_ATTR_SORTABLE } from "@metaobjects/metadata";
 
 /**
@@ -24,8 +24,7 @@ export function isSortableField(field: MetaField): boolean {
 /**
  * Returns all sortable field children of the given entity.
  */
-export function sortableFields(entity: MetaData): MetaField[] {
-  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
+export function sortableFields(entity: MetaObject): MetaField[] {
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in sort ops.
-  return (entity as MetaObject).fields().filter(isSortableField);
+  return entity.fields().filter(isSortableField);
 }

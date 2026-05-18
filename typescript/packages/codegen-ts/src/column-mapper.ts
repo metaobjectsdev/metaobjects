@@ -1,7 +1,7 @@
 // Field-type → Drizzle column type mapping. Per design §6.
 // Uses the typed MetaField.validators() accessor (effective — includes inherited) for all validator checks.
 
-import type { MetaData, MetaField } from "@metaobjects/metadata";
+import type { MetaField } from "@metaobjects/metadata";
 import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
@@ -113,13 +113,10 @@ function isRequired(field: MetaField): boolean {
 }
 
 export function mapColumnType(
-  field: MetaData,
+  field: MetaField,
   dialect: Dialect,
   strategy: ColumnNamingStrategy = "snake_case",
 ): ColumnSpec {
-  // Transient cast: callers still type this as MetaData (Task 7 flips the interface).
-  // The runner passes real MetaField instances, so the cast is sound.
-  const f = field as MetaField;
   const dbName = (field.attr(FIELD_ATTR_DB_COLUMN) as string | undefined) ?? columnNameFromField(field.name, strategy);
   const importModule = dialect === "sqlite" ? "drizzle-orm/sqlite-core" : "drizzle-orm/pg-core";
   const subType = field.subType;
@@ -200,7 +197,7 @@ export function mapColumnType(
         fnOptions = { precision: 19, scale: 4 }; // sane default; @precision/@scale attrs override
         break;
       case FIELD_SUBTYPE_STRING: {
-        const maxLen = getMaxLength(f);
+        const maxLen = getMaxLength(field);
         if (maxLen !== undefined) {
           fnName = "varchar";
           fnOptions = { length: maxLen };
@@ -223,7 +220,7 @@ export function mapColumnType(
     modifiers.push(".array()");
   }
 
-  if (isRequired(f)) {
+  if (isRequired(field)) {
     modifiers.push(".notNull()");
   }
 

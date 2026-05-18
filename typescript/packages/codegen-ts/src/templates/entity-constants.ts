@@ -210,9 +210,7 @@ function renderFieldEntry(field: MetaField): string {
   return `  ${field.name}: {\n    ${entries.join(",\n    ")},\n  }`;
 }
 
-export function renderEntityConstants(entity: MetaData, apiPrefix = ""): Code {
-  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
-  const obj = entity as MetaObject;
+export function renderEntityConstants(obj: MetaObject, apiPrefix = ""): Code {
   const entityName = obj.name;
   const tableName = resolveTableName(obj);
   const path = resourcePath(obj);

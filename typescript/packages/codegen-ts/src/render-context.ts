@@ -1,6 +1,6 @@
 // RenderContext — cross-cutting state passed to every template.
 
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaRoot } from "@metaobjects/metadata";
 import type { Dialect } from "./column-mapper.js";
 import type { PkInfo } from "./pk-resolver.js";
 import type { RelationMap } from "./relation-resolver.js";
@@ -18,7 +18,7 @@ export type ExtStyle = "js" | "none";
 
 export interface RenderContext {
   dialect: Dialect;
-  loadedRoot: MetaData;
+  loadedRoot: MetaRoot;
   outDir: string;
   /**
    * Import path for { db } in generated .queries.ts files.

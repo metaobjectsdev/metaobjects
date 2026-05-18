@@ -1,7 +1,7 @@
 // PK resolver — pre-pass over the loaded metadata to build a name → PK info map.
 // codegen uses this when emitting FK columns (per design §13 #2).
 
-import type { MetaData, MetaRoot } from "@metaobjects/metadata";
+import type { MetaRoot } from "@metaobjects/metadata";
 import {
   FIELD_SUBTYPE_LONG,
   IDENTITY_ATTR_FIELDS,
@@ -24,12 +24,9 @@ export interface PkInfo {
  * Used by FK column emission: when Post.authorId references User, codegen
  * looks up User's PK info to choose the matching FK column type.
  */
-export function buildPkMap(root: MetaData): Map<string, PkInfo> {
-  // Transient cast: callers still type this as MetaData (Task 7 flips the interface).
-  // The runner passes a real MetaRoot instance, so the cast is sound.
-  const typedRoot = root as MetaRoot;
+export function buildPkMap(root: MetaRoot): Map<string, PkInfo> {
   const result = new Map<string, PkInfo>();
-  for (const obj of typedRoot.objects()) {
+  for (const obj of root.objects()) {
     // primaryIdentity() resolves the primary identity across the super-chain.
     const primary = obj.primaryIdentity();
     if (!primary) continue;

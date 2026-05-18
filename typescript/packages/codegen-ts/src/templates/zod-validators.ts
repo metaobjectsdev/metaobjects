@@ -4,7 +4,6 @@
 //                 UPDATE → onCreate fields omitted entirely; onUpdate gets same transform
 
 import { code, imp, type Code } from "ts-poet";
-import type { MetaData } from "@metaobjects/metadata";
 import { MetaObject, MetaField } from "@metaobjects/metadata";
 import {
   TYPE_VALIDATOR,
@@ -19,9 +18,7 @@ import {
   GENERATION_INCREMENT, GENERATION_UUID,
 } from "@metaobjects/metadata";
 
-export function renderZodValidators(entity: MetaData): Code {
-  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
-  const obj = entity as MetaObject;
+export function renderZodValidators(obj: MetaObject): Code {
   const z = imp("z@zod");
   const primary = obj.primaryIdentity();
   const autoGenPkFields = new Set<string>();
@@ -67,8 +64,8 @@ export function renderZodValidators(entity: MetaData): Code {
     }
   }
 
-  const insertSchemaName = `${entity.name}InsertSchema`;
-  const updateSchemaName = `${entity.name}UpdateSchema`;
+  const insertSchemaName = `${obj.name}InsertSchema`;
+  const updateSchemaName = `${obj.name}UpdateSchema`;
 
   return code`
 export const ${insertSchemaName} = ${z}.object({

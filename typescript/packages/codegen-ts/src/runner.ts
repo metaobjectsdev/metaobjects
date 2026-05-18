@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import type { MetaData } from "@metaobjects/metadata";
-import { TYPE_OBJECT } from "@metaobjects/metadata";
+import type { MetaData, MetaObject } from "@metaobjects/metadata";
+import { MetaRoot } from "@metaobjects/metadata";
 import type { Generator, GenContext, EmittedFile } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
 import { normalizeConfig } from "./metaobjects-config.js";
@@ -31,8 +31,15 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const warnings: string[] = [];
   const strategy = opts.mergeStrategy ?? "overwrite";
 
+  // The loaded metadata root is always a MetaRoot at run time; loadMemory still
+  // types its return as MetaData, so narrow here for the typed entity API.
+  if (!(opts.metadata instanceof MetaRoot)) {
+    throw new Error("runGen: opts.metadata must be a loaded MetaRoot.");
+  }
+  const root = opts.metadata;
+
   // 1. Resolve entities (filter + safety check).
-  const allObjects = opts.metadata.children().filter((c) => c.type === TYPE_OBJECT);
+  const allObjects = root.objects();
   const entityFilter = opts.entityFilter;
   const filtered = entityFilter
     ? allObjects.filter((o) => entityFilter.includes(o.name))
@@ -45,7 +52,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     return { files: [], warnings };
   }
 
-  const safeEntities: MetaData[] = [];
+  const safeEntities: MetaObject[] = [];
   for (const entity of filtered) {
     if (!VALID_ENTITY_NAME.test(entity.name)) {
       warnings.push(
@@ -61,11 +68,11 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
 
   // 2. Build the shared RenderContext (computed once per run).
   const config = normalizeConfig(opts.config);
-  const pkMap = buildPkMap(opts.metadata);
-  const relationMap = buildRelationMap(opts.metadata);
+  const pkMap = buildPkMap(root);
+  const relationMap = buildRelationMap(root);
   const renderContext = makeRenderContext({
     dialect: config.dialect,
-    loadedRoot: opts.metadata,
+    loadedRoot: root,
     outDir: config.outDir,
     dbImport: config.dbImport,
     extStyle: config.extStyle,
@@ -80,7 +87,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   for (const generator of config.generators) {
     const ctx: GenContext = {
       entities: safeEntities,
-      loadedRoot: opts.metadata,
+      loadedRoot: root,
       matches: (e) => generator.filter?.(e) ?? true,
       config: {
         outDir: config.outDir,

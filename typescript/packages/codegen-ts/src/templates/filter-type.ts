@@ -3,7 +3,7 @@
 // datetimes get eq/ne/gt/gte/lt/lte/in.
 
 import { code, type Code } from "ts-poet";
-import { type MetaData, MetaField, MetaObject } from "@metaobjects/metadata";
+import { MetaField, MetaObject } from "@metaobjects/metadata";
 import {
   FIELD_ATTR_FILTERABLE,
   FIELD_SUBTYPE_BOOLEAN,
@@ -47,10 +47,9 @@ function renderFieldUnion(field: MetaField): string {
   return `${tsName} | { ${opEntries.join("; ")} }`;
 }
 
-export function renderFilterType(entity: MetaData): Code {
-  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
+export function renderFilterType(entity: MetaObject): Code {
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in filter types.
-  const allFields = (entity as MetaObject).fields();
+  const allFields = entity.fields();
   const filterableFieldsList = allFields.filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true);
   // Sort union uses isSortableField — same predicate as renderSortAllowlist to prevent
   // client/server mismatches (@filterable: true + @sortable: false must be excluded from both).

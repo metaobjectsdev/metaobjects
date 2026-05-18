@@ -17,7 +17,7 @@
 // object metadata. Default off. Most projects don't need stock forms.
 
 import { code, imp } from "ts-poet";
-import { type MetaData, MetaField, MetaObject } from "@metaobjects/metadata";
+import { MetaField, MetaObject } from "@metaobjects/metadata";
 import {
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_ATTR_FIELDS,
@@ -61,11 +61,10 @@ function visibleFields(entity: MetaObject): string[] {
   return names;
 }
 
-export function renderFormFile(entity: MetaData, ctx: RenderContext): string {
+export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
   const entityFileSpec = withExt(`./${entityName}`, ctx.extStyle);
-  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
-  const fields = visibleFields(entity as MetaObject);
+  const fields = visibleFields(entity);
 
   const ReactElementSym = imp("t:ReactElement@react");
   const SubmitHandlerSym = imp("t:SubmitHandler@react-hook-form");

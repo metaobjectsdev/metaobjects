@@ -1,5 +1,5 @@
 import { code, type Code } from "ts-poet";
-import { type MetaData, MetaField, MetaObject } from "@metaobjects/metadata";
+import { MetaField, MetaObject } from "@metaobjects/metadata";
 import {
   FIELD_ATTR_FILTERABLE,
   FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
@@ -42,13 +42,12 @@ function filterSubTypeFor(fieldSubType: string): "string" | "number" | "boolean"
   return "string";
 }
 
-function filterableFields(entity: MetaData): MetaField[] {
-  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
+function filterableFields(entity: MetaObject): MetaField[] {
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in allowlists.
-  return (entity as MetaObject).fields().filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true);
+  return entity.fields().filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true);
 }
 
-export function renderFilterAllowlist(entity: MetaData): Code {
+export function renderFilterAllowlist(entity: MetaObject): Code {
   const fields = filterableFields(entity);
   if (fields.length === 0) {
     return code`
@@ -73,7 +72,7 @@ ${rows}
 `;
 }
 
-export function renderSortAllowlist(entity: MetaData): Code {
+export function renderSortAllowlist(entity: MetaObject): Code {
   // Sortable = explicit @sortable === true, OR (no @sortable AND @filterable === true).
   // @sortable: false explicitly opts out.
   // Uses shared isSortableField predicate — must stay in sync with renderFilterType.
