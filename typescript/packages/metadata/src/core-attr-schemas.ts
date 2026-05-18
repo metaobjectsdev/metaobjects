@@ -32,7 +32,6 @@ import {
   ATTR_SUBTYPE_BOOLEAN,
   ATTR_SUBTYPE_STRINGARRAY,
   // attr-name constants
-  FIELD_ATTR_DB_COLUMN,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_UNIQUE,
@@ -43,7 +42,6 @@ import {
   FIELD_ATTR_FILTERABLE,
   FIELD_ATTR_SORTABLE,
   FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
-  FIELD_ATTR_DB_INDEXED,
   FIELD_ATTR_CURRENCY,
   FIELD_ATTR_CURRENCY_DEFAULT,
   FIELD_ATTR_AUTO_SET,
@@ -64,7 +62,6 @@ import {
   SORT_ORDER_VALUES,
   OBJECT_JAVA_RUNTIME_VALUES,
   OBJECT_ATTR_JAVA_RUNTIME,
-  SOURCE_ATTR_NAME,
   ORIGIN_PASSTHROUGH_ATTR_FROM,
   ORIGIN_PASSTHROUGH_ATTR_VIA,
   ORIGIN_AGGREGATE_ATTR_AGG,
@@ -83,13 +80,6 @@ import {
 
 /** Attrs common to every field subtype (codegen-ts column mapper + Project D filter/sort). */
 export const commonFieldAttrs: AttrSchema[] = [
-  {
-    name: FIELD_ATTR_DB_COLUMN,
-    valueType: ATTR_SUBTYPE_STRING,
-    required: false,
-    description:
-      "Override the generated SQL column name for this field. Defaults to the field name run through the project's columnNamingStrategy.",
-  },
   {
     name: FIELD_ATTR_OBJECT_REF,
     valueType: ATTR_SUBTYPE_STRING,
@@ -160,13 +150,6 @@ export const commonFieldAttrs: AttrSchema[] = [
     required: false,
     allowedValues: [...SORT_ORDER_VALUES],
     description: "Default sort direction applied when this field is the default sort field.",
-  },
-  {
-    name: FIELD_ATTR_DB_INDEXED,
-    valueType: ATTR_SUBTYPE_BOOLEAN,
-    required: false,
-    description:
-      "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).",
   },
   {
     name: FIELD_ATTR_AUTO_SET,
@@ -290,17 +273,6 @@ const secondaryIdentityAttrs: AttrSchema[] = [
     required: false,
     description:
       "When true (default), the secondary identity is a UNIQUE index; false makes it a plain (non-unique) index.",
-  },
-];
-
-/** Attrs on source.dbTable / source.dbView — @name (the SQL identifier). */
-export const sourceNameAttrs: AttrSchema[] = [
-  {
-    name: SOURCE_ATTR_NAME,
-    valueType: ATTR_SUBTYPE_STRING,
-    required: false,
-    description:
-      "The SQL table or view name for this source. Defaults to the object name run through the columnNamingStrategy when omitted.",
   },
 ];
 

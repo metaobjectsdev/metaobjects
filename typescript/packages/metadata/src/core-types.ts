@@ -1,6 +1,7 @@
 // registerCoreTypes() — Java's 7 base types (plus metadata wrapper) and their subtypes
 import { TypeId, type AttrSchema, type ChildRule, type TypeDefinition, TypeRegistry } from "./registry.js";
 import type { MetaDataTypeProvider } from "./provider.js";
+import { dbProvider } from "./db/db-provider.js";
 import {
   type DataType,
   DATA_TYPE_BOOLEAN,
@@ -41,7 +42,6 @@ import {
   objectAttrs,
   relationshipAttrs,
   identityFieldsAttr,
-  sourceNameAttrs,
   dataGridLayoutAttrs,
   ORIGIN_ATTRS_MAP,
   IDENTITY_ATTRS_MAP,
@@ -103,8 +103,6 @@ import {
   LAYOUT_SUBTYPES,
   LAYOUT_SUBTYPE_DATA_GRID,
   SOURCE_SUBTYPES,
-  SOURCE_SUBTYPE_DB_TABLE,
-  SOURCE_SUBTYPE_DB_VIEW,
   ORIGIN_SUBTYPES,
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
@@ -310,13 +308,10 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
 
   // source — declares where an object's data lives (dbTable, dbView, ...).
   // Only attr children; sources carry only configuration, never nested structure.
+  // DB-domain attrs (@name) are added by dbProvider via TypeRegistry.extend.
   for (const subType of SOURCE_SUBTYPES) {
-    const sourceAttrs =
-      subType === SOURCE_SUBTYPE_DB_TABLE || subType === SOURCE_SUBTYPE_DB_VIEW
-        ? [...sourceNameAttrs]
-        : [];
     registry.register(
-      def(TYPE_SOURCE, subType, `Source (${subType})`, [wildcard(TYPE_ATTR)], MetaSource, sourceAttrs),
+      def(TYPE_SOURCE, subType, `Source (${subType})`, [wildcard(TYPE_ATTR)], MetaSource, []),
     );
   }
 
@@ -380,8 +375,9 @@ export const coreTypesProvider: MetaDataTypeProvider = {
   },
 };
 
-/** The default provider bundle. Spread it to add more: `[...coreProviders, mine]`. */
-export const coreProviders: readonly MetaDataTypeProvider[] = [coreTypesProvider];
+/** The default provider bundle — core metamodel types plus DB-domain attrs.
+ *  Spread it to add more: `[...coreProviders, mine]`. */
+export const coreProviders: readonly MetaDataTypeProvider[] = [coreTypesProvider, dbProvider];
 
 /**
  * Register the core metamodel into an existing registry. Thin convenience

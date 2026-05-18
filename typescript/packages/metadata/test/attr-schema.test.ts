@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { TypeId, TypeRegistry, type AttrSchema } from "../src/registry.js";
-import { registerCoreTypes } from "../src/core-types.js";
+import { registerCoreTypes, coreProviders } from "../src/core-types.js";
+import { composeRegistry } from "../src/provider.js";
 import type { MetaData } from "../src/meta/meta-data.js";
 import {
   TYPE_FIELD,
@@ -207,8 +208,9 @@ describe("TypeRegistry.attrsOf()", () => {
 // ---------------------------------------------------------------------------
 
 describe("Phase A2 — core attribute schemas", () => {
-  const registry = new TypeRegistry();
-  registerCoreTypes(registry);
+  // Use composeRegistry(coreProviders) so DB-domain attrs from dbProvider are
+  // included — the full default registry matches what production code sees.
+  const registry = composeRegistry(coreProviders);
 
   const byName = (type: string, subType: string) => {
     const m = new Map<string, AttrSchema>();
