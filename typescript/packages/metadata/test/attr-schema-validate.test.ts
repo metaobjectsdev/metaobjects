@@ -107,7 +107,7 @@ describe("attr-schema validation — required attrs", () => {
   it("does not flag a node that satisfies a required attr via inheritance (Fix 1)", async () => {
     // BaseAccount declares @fields on its identity.primary. DerivedAccount extends
     // BaseAccount and inherits that identity — the required-attr check must consult
-    // effectiveAttrs() so the inherited @fields satisfies the requirement.
+    // attrs() so the inherited @fields satisfies the requirement.
     const { errors } = await load({
       "metadata.root": {
         package: "demo",

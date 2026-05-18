@@ -134,13 +134,13 @@ function validateNode(
 
   // --- Check 1: required attrs present ---
   //
-  // Use effectiveAttrs() (own + inherited via extends:) to determine presence.
+  // Use attrs() (own + inherited via extends:) to determine presence.
   // A node that legitimately inherits a required attr from its super must NOT be
   // flagged as missing it — inherited attrs count as satisfying the requirement.
   // Contrast with Checks 2+3 below, which iterate own attrs only: inherited attrs
   // were already validated on the node that declared them, so re-checking would
   // double-report. This mirrors the effective-vs-own split in subtype-rules.ts.
-  const effective = node.effectiveAttrs();
+  const effective = node.attrs();
   for (const spec of schema) {
     if (spec.required && !effective.has(spec.name)) {
       errors.push(

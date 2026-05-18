@@ -294,18 +294,8 @@ export abstract class MetaData {
   }
 
   // ---------------------------------------------------------------------------
-  // Effective attrs (own + inherited via super chain)
+  // Internal helpers for effective attr / child computation
   // ---------------------------------------------------------------------------
-
-  /**
-   * Returns a Map of effective attrs: super's attrs merged with own, where own wins.
-   * Returns a defensive copy — safe to mutate without affecting this model.
-   * Cycle-safe: if the super chain contains a cycle, resolution stops at the cycle.
-   */
-  effectiveAttrs(): Map<string, AttrValue> {
-    const merged = this.cached("effectiveAttrs", () => this._effectiveAttrs(new Set([this])));
-    return new Map(merged);
-  }
 
   private _effectiveAttrs(visited: Set<MetaData>): Map<string, AttrValue> {
     if (this._superData === undefined || visited.has(this._superData)) {

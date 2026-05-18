@@ -46,12 +46,12 @@ describe("MetaData base", () => {
     expect(() => n.addChild(new TestNode(new TypeId("field", "string"), "x"))).toThrow();
   });
 
-  it("effectiveAttrs() returns a fresh defensive copy on each call even when frozen", () => {
+  it("attrs() returns a fresh defensive copy on each call even when frozen", () => {
     const n = new TestNode(new TypeId("object", "entity"), "Widget");
     n.setAttr("color", "blue");
     n.freeze();
-    const a = n.effectiveAttrs();
-    const b = n.effectiveAttrs();
+    const a = n.attrs();
+    const b = n.attrs();
     expect(a).not.toBe(b);
     expect(a.get("color")).toBe("blue");
     expect(b.get("color")).toBe("blue");
@@ -380,15 +380,15 @@ describe("MetaData — flags and references", () => {
 // Effective view: own + inherited via the super chain
 // ---------------------------------------------------------------------------
 
-describe("MetaData — effectiveAttrs()", () => {
+describe("MetaData — attrs() (effective merge behaviour)", () => {
   it("without super returns own attrs as a defensive copy", () => {
     const m = makeObject("entity", "A");
     m.setAttr("x", 1);
     m.setAttr("y", "hello");
-    const eff = m.effectiveAttrs();
+    const eff = m.attrs();
     expect(eff.get("x")).toBe(1);
     expect(eff.get("y")).toBe("hello");
-    eff.set("z", "injected");
+    (eff as Map<string, unknown>).set("z", "injected");
     expect(m.ownHasAttr("z")).toBe(false);
   });
 
@@ -398,7 +398,7 @@ describe("MetaData — effectiveAttrs()", () => {
     const child = makeObject("entity", "Child");
     child.setAttr("b", 2);
     child.setSuperResolved(parent);
-    const eff = child.effectiveAttrs();
+    const eff = child.attrs();
     expect(eff.get("a")).toBe(1);
     expect(eff.get("b")).toBe(2);
   });
@@ -409,7 +409,7 @@ describe("MetaData — effectiveAttrs()", () => {
     const child = makeObject("entity", "Child");
     child.setAttr("a", "child-value");
     child.setSuperResolved(parent);
-    expect(child.effectiveAttrs().get("a")).toBe("child-value");
+    expect(child.attrs().get("a")).toBe("child-value");
   });
 
   it("multi-level super chain: all attrs accumulate, child wins on conflict", () => {
@@ -427,7 +427,7 @@ describe("MetaData — effectiveAttrs()", () => {
     child.setAttr("shared", "from-child");
     child.setSuperResolved(parent);
 
-    const eff = child.effectiveAttrs();
+    const eff = child.attrs();
     expect(eff.get("x")).toBe("grandparent");
     expect(eff.get("y")).toBe("parent");
     expect(eff.get("z")).toBe("child");
@@ -501,11 +501,11 @@ describe("MetaData — children() (effective merge behaviour)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Cycle protection in effectiveAttrs() / children()
+// Cycle protection in attrs() / children()
 // ---------------------------------------------------------------------------
 
 describe("MetaData — cycle protection in effective views", () => {
-  it("effectiveAttrs() does not infinite-loop on an A -> B -> A cycle", () => {
+  it("attrs() does not infinite-loop on an A -> B -> A cycle", () => {
     const A = makeObject("entity", "A");
     A.setAttr("fromA", "a");
     const B = makeObject("entity", "B");
@@ -513,8 +513,8 @@ describe("MetaData — cycle protection in effective views", () => {
     A.setSuperResolved(B);
     B.setSuperResolved(A);
 
-    let result: Map<string, unknown> | undefined;
-    expect(() => { result = A.effectiveAttrs(); }).not.toThrow();
+    let result: ReadonlyMap<string, unknown> | undefined;
+    expect(() => { result = A.attrs(); }).not.toThrow();
     expect(result!.get("fromA")).toBe("a");
     expect(result!.get("fromB")).toBe("b");
   });
