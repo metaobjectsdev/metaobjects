@@ -3,7 +3,6 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileMetaDataLoader } from "../../src/core/file-meta-data-loader.js";
-import { TYPE_OBJECT } from "../../src/constants.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -53,7 +52,7 @@ describe("FileMetaDataLoader.loadDirectory()", () => {
       expect(result.warnings).toHaveLength(0);
       expect(loader.state).toBe("loaded");
 
-      const objects = result.root.ownChildren().filter((c) => c.type === TYPE_OBJECT);
+      const objects = result.root.objects();
       const names = objects.map((o) => o.name);
       expect(names).toContain("Foo");
       expect(names).toContain("Bar");
@@ -73,7 +72,7 @@ describe("FileMetaDataLoader.loadDirectory()", () => {
       const result = await loader.loadDirectory(dir, { exclude: ["meta.beta.json"] });
 
       expect(result.errors).toHaveLength(0);
-      const names = result.root.ownChildren().filter((c) => c.type === TYPE_OBJECT).map((o) => o.name);
+      const names = result.root.objects().map((o) => o.name);
       expect(names).toContain("Alpha");
       expect(names).toContain("Gamma");
       expect(names).not.toContain("Beta");
@@ -101,7 +100,7 @@ describe("FileMetaDataLoader.loadDirectory()", () => {
       const result = await loader.loadDirectory(dir);
 
       expect(result.errors).toHaveLength(0);
-      const names = result.root.ownChildren().filter((c) => c.type === TYPE_OBJECT).map((o) => o.name);
+      const names = result.root.objects().map((o) => o.name);
       expect(names).toEqual(["Foo"]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -125,7 +124,7 @@ describe("FileMetaDataLoader.loadFiles()", () => {
 
       expect(result.errors).toHaveLength(0);
       expect(loader.state).toBe("loaded");
-      const names = result.root.ownChildren().filter((c) => c.type === TYPE_OBJECT).map((o) => o.name);
+      const names = result.root.objects().map((o) => o.name);
       expect(names).toContain("One");
       expect(names).toContain("Two");
     } finally {
@@ -146,7 +145,7 @@ describe("FileMetaDataLoader.loadFiles()", () => {
       expect(result.errors.length).toBeGreaterThan(0);
 
       // The valid file still loads — Valid entity is present.
-      const names = result.root.ownChildren().filter((c) => c.type === TYPE_OBJECT).map((o) => o.name);
+      const names = result.root.objects().map((o) => o.name);
       expect(names).toContain("Valid");
     } finally {
       rmSync(dir, { recursive: true, force: true });

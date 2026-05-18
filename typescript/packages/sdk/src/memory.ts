@@ -4,7 +4,7 @@ import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import {
   TypeRegistry,
   registerCoreTypes,
-  type MetaData,
+  type MetaRoot,
 } from "@metaobjects/metadata";
 import { registerForgeTypes } from "./forge-types.js";
 import { discoverWorkspace, resolveExtendsOrder } from "./workspace.js";
@@ -38,7 +38,7 @@ export const DEFAULT_METAOBJECTS_DIR = ".metaobjects";
  *   `loadMemory` resolves `metaobjects/` and (if workspace-aware) the
  *   transitive `extends:` graph automatically.
  */
-export async function loadMemory(repoRoot: string): Promise<MetaData> {
+export async function loadMemory(repoRoot: string): Promise<MetaRoot> {
   const registry = new TypeRegistry();
   registerCoreTypes(registry);
   registerForgeTypes(registry);

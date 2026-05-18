@@ -19,6 +19,7 @@ import {
   VALIDATOR_SUBTYPE_REQUIRED,
 } from "../constants.js";
 import type { MetaValidator } from "./meta-validator.js";
+import type { MetaView } from "./meta-view.js";
 
 export class MetaField extends MetaData implements DataTypeAware {
   /** The coarse value-type classification for this field's subtype. */
@@ -87,16 +88,16 @@ export class MetaField extends MetaData implements DataTypeAware {
   }
 
   /** All effective views (own + inherited via extends). Java parity: MetaField.getViews() / getChildren(MetaView.class, true). */
-  views(): MetaData[] {
+  views(): MetaView[] {
     return this.cached("views", () =>
-      this.children().filter((c) => c.type === TYPE_VIEW),
+      this.children().filter((c): c is MetaView => c.type === TYPE_VIEW),
     );
   }
 
   /** Own views only — excludes views inherited via extends. */
-  ownViews(): MetaData[] {
+  ownViews(): MetaView[] {
     return this.cached("ownViews", () =>
-      this.ownChildren().filter((c) => c.type === TYPE_VIEW),
+      this.ownChildren().filter((c): c is MetaView => c.type === TYPE_VIEW),
     );
   }
 

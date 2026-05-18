@@ -3,7 +3,6 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadMemory } from "../src/memory.js";
-import { TYPE_OBJECT } from "@metaobjects/metadata";
 
 function makeMetaRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "memory-load-"));
@@ -29,7 +28,7 @@ describe("loadMemory", () => {
       );
 
       const meta = await loadMemory(root);
-      const user = meta.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === "User");
+      const user = meta.findObject("User");
       expect(user).toBeDefined();
     } finally {
       rmSync(root, { recursive: true, force: true });

@@ -3,7 +3,6 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileMetaDataLoader } from "../../src/core/file-meta-data-loader.js";
-import { TYPE_OBJECT } from "../../src/constants.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -113,7 +112,7 @@ describe("FileMetaDataLoader.loadDirectory() — YAML discovery", () => {
       const result = await loader.loadDirectory(dir);
 
       expect(result.errors).toHaveLength(0);
-      const names = result.root.ownChildren().filter((c) => c.type === TYPE_OBJECT).map((o) => o.name);
+      const names = result.root.objects().map((o) => o.name);
       expect(names).toContain("FromJson");
       expect(names).toContain("FromYaml");
       expect(names).toContain("FromYml");
@@ -133,7 +132,7 @@ describe("FileMetaDataLoader.loadDirectory() — YAML discovery", () => {
       const result = await loader.loadDirectory(dir, { exclude: ["meta.beta.yaml"] });
 
       expect(result.errors).toHaveLength(0);
-      const names = result.root.ownChildren().filter((c) => c.type === TYPE_OBJECT).map((o) => o.name);
+      const names = result.root.objects().map((o) => o.name);
       expect(names).toContain("Alpha");
       expect(names).toContain("Gamma");
       expect(names).not.toContain("Beta");
@@ -152,7 +151,7 @@ describe("FileMetaDataLoader.loadDirectory() — YAML discovery", () => {
       const result = await loader.loadDirectory(dir, { exclude: ["meta.skip.yml"] });
 
       expect(result.errors).toHaveLength(0);
-      const names = result.root.ownChildren().filter((c) => c.type === TYPE_OBJECT).map((o) => o.name);
+      const names = result.root.objects().map((o) => o.name);
       expect(names).not.toContain("Skip");
       expect(names).toContain("Keep");
     } finally {

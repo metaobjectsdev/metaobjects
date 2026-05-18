@@ -3,7 +3,6 @@ import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { loadMemory } from "@metaobjects/sdk";
-import { TYPE_OBJECT } from "@metaobjects/metadata";
 
 const FIXTURES = resolve(import.meta.dirname, "../fixtures");
 
@@ -18,7 +17,7 @@ describe("loadMemory — trainer-website-meta", () => {
     const root = copyFixture("trainer-website-meta");
     try {
       const meta = await loadMemory(root);
-      const objects = meta.ownChildren().filter((c) => c.type === TYPE_OBJECT);
+      const objects = meta.objects();
       const decisions = meta.ownChildren().filter((c) => c.type === "decision");
       expect(objects.map((o) => o.name).sort()).toEqual(["Post", "Tag", "User"]);
       expect(decisions.map((d) => d.name)).toEqual(["useTanstackQuery"]);

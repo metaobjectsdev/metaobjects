@@ -33,8 +33,8 @@ export interface ProjectionMigrationsOpts {
 export function computeProjectionMigrations(
   opts: ProjectionMigrationsOpts,
 ): ViewMigrationsResult {
-  // The loaded metadata root is always a MetaRoot at run time; loadMemory still
-  // types its return as MetaData, so narrow here for the typed entity API.
+  // loadMemory now returns MetaRoot; guard here also covers callers that pass a
+  // plain MetaData (e.g. test helpers or external callers with non-MetaRoot roots).
   if (!(opts.metadata instanceof MetaRoot)) {
     throw new Error("computeProjectionMigrations: opts.metadata must be a loaded MetaRoot.");
   }

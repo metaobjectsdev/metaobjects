@@ -47,6 +47,7 @@ export class MetaObject extends MetaData {
     return this.subType === OBJECT_SUBTYPE_VALUE;
   }
 
+  /** All effective fields (own + inherited via extends). */
   fields(): MetaField[] {
     return this.cached("fields", () =>
       this.children().filter((c): c is MetaField => c.type === TYPE_FIELD),
@@ -60,6 +61,7 @@ export class MetaObject extends MetaData {
     );
   }
 
+  /** All effective identities (own + inherited via extends). */
   identities(): MetaIdentity[] {
     return this.cached("identities", () =>
       this.children().filter((c): c is MetaIdentity => c.type === TYPE_IDENTITY),
@@ -87,6 +89,7 @@ export class MetaObject extends MetaData {
     );
   }
 
+  /** All effective relationships (own + inherited via extends). */
   relationships(): MetaRelationship[] {
     return this.cached("relationships", () =>
       this.children().filter((c): c is MetaRelationship => c.type === TYPE_RELATIONSHIP),
@@ -100,6 +103,7 @@ export class MetaObject extends MetaData {
     );
   }
 
+  /** All effective validators (own + inherited via extends). */
   validators(): MetaValidator[] {
     return this.cached("validators", () =>
       this.children().filter((c): c is MetaValidator => c.type === TYPE_VALIDATOR),
@@ -114,9 +118,8 @@ export class MetaObject extends MetaData {
   }
 
   findField(name: string): MetaField | undefined {
-    return this.cached(`findField:${name}`, () => {
-      const child = this.childByTypeAndName(TYPE_FIELD, name);
-      return child !== undefined ? (child as MetaField) : undefined;
-    });
+    return this.cached(`findField:${name}`, () =>
+      this.fields().find((f) => f.name === name),
+    );
   }
 }

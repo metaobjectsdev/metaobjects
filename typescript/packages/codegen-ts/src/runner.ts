@@ -31,8 +31,8 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const warnings: string[] = [];
   const strategy = opts.mergeStrategy ?? "overwrite";
 
-  // The loaded metadata root is always a MetaRoot at run time; loadMemory still
-  // types its return as MetaData, so narrow here for the typed entity API.
+  // loadMemory now returns MetaRoot; guard here also covers callers that pass a
+  // plain MetaData (e.g. test helpers that build trees programmatically).
   if (!(opts.metadata instanceof MetaRoot)) {
     throw new Error("runGen: opts.metadata must be a loaded MetaRoot.");
   }
