@@ -262,10 +262,13 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
   }
 
   // --- Fresh root mode: create a new root from the JSON ---
-  // The registry enforces that the top-level wrapper key resolves to a
-  // registered type (checked above). For all valid metadata documents the root
-  // type is `metadata.root`, whose factory produces a MetaRoot. The cast is
-  // safe: any non-MetaRoot root would have been rejected by registry.has().
+  // The cast is safe within the core provider: `metadata.root` is the only
+  // registered `metadata` subtype, and its factory unconditionally produces a
+  // MetaRoot (see core-types.ts). A registry that registered a second
+  // `metadata.*` subtype backed by a non-MetaRoot factory would break this
+  // cast — a known limitation of the `TypeDefinition.factory: => MetaData`
+  // signature. `parseNodeFresh` is a general node parser, so MetaData is its
+  // correct return type; this top-level callsite is where the doc-root invariant holds.
   const root = parseNodeFresh(
     rootType,
     rootSubType,

@@ -96,7 +96,7 @@ export class MetaDataLoader {
   }
 
   /**
-   * Returns the loaded root MetaData.
+   * Returns the loaded root MetaRoot.
    * Accessible once load() has completed, in either "loaded" or "error" state.
    * Throws only before or during loading (state "uninitialized" or "loading").
    */
