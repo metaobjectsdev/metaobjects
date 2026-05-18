@@ -5,7 +5,6 @@
 
 import { MetaField } from "@metaobjects/metadata";
 import {
-  TYPE_VIEW,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
@@ -39,8 +38,8 @@ import {
  * Explicit view child wins; field subType determines default.
  */
 export function inferViewKind(field: MetaField): string {
-  // Explicit own view child has highest priority.
-  const viewChild = field.children().find((c) => c.type === TYPE_VIEW);
+  // Explicit view (own or inherited via extends) has highest priority.
+  const viewChild = field.views()[0];
   if (viewChild) return viewChild.subType;
   // Field subtype → default view.
   return defaultViewForSubType(field.subType);
@@ -114,9 +113,7 @@ export function currencyMetaFor(field: MetaField): { currency: string; locale: s
   if (field.subType !== FIELD_SUBTYPE_CURRENCY) return null;
   const currency =
     (field.attr(FIELD_ATTR_CURRENCY) as string | undefined) ?? FIELD_ATTR_CURRENCY_DEFAULT;
-  const viewChild = field
-    .children()
-    .find((c) => c.type === TYPE_VIEW && c.subType === VIEW_SUBTYPE_CURRENCY);
+  const viewChild = field.views().find((c) => c.subType === VIEW_SUBTYPE_CURRENCY);
   const locale =
     (viewChild?.attr(VIEW_CURRENCY_ATTR_LOCALE) as string | undefined) ??
     VIEW_CURRENCY_ATTR_LOCALE_DEFAULT;
@@ -132,11 +129,9 @@ export function currencyMetaFor(field: MetaField): { currency: string; locale: s
  * Uses @label attr on a view child if present; otherwise humanizes the field name.
  */
 export function labelFor(field: MetaField): string {
-  for (const child of field.children()) {
-    if (child.type === TYPE_VIEW) {
-      const label = child.attr("label");
-      if (typeof label === "string" && label.length > 0) return label;
-    }
+  for (const child of field.views()) {
+    const label = child.attr("label");
+    if (typeof label === "string" && label.length > 0) return label;
   }
   return humanize(field.name);
 }

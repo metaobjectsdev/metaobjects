@@ -6,7 +6,6 @@
 import { code, imp, type Code } from "ts-poet";
 import { MetaObject, MetaField } from "@metaobjects/metadata";
 import {
-  TYPE_VALIDATOR,
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
@@ -110,8 +109,7 @@ function zodFieldExpr(field: MetaField): string {
   let maxLen: number | undefined = field.attr(FIELD_ATTR_MAX_LENGTH) as number | undefined;
   let minLen: number | undefined;
   let pattern: string | undefined;
-  for (const child of field.children()) {
-    if (child.type !== TYPE_VALIDATOR) continue;
+  for (const child of field.validators()) {
     if (child.subType === VALIDATOR_SUBTYPE_REQUIRED) isRequired = true;
     if (child.subType === VALIDATOR_SUBTYPE_LENGTH) {
       const max = child.attr(VALIDATOR_ATTR_MAX);

@@ -32,8 +32,6 @@ import { code, type Code } from "ts-poet";
 import type { MetaData } from "@metaobjects/metadata";
 import { MetaObject, MetaField } from "@metaobjects/metadata";
 import {
-  TYPE_VIEW,
-  TYPE_VALIDATOR,
   VIEW_SUBTYPE_TEXT,
   VIEW_SUBTYPE_TEXTAREA,
   VIEW_SUBTYPE_NUMBER,
@@ -77,12 +75,11 @@ function resourcePath(entity: MetaData): string {
   return `/${pluralize(toSnakeCase(entity.name))}`;
 }
 
-/** Resolve the view subtype: explicit `view` child wins, else inferred from field subType. */
+/** Resolve the view subtype: explicit `view` child (own or inherited) wins, else inferred from field subType. */
 function resolveView(field: MetaField): { view: string; viewNode?: MetaData } {
-  for (const child of field.children()) {
-    if (child.type === TYPE_VIEW) {
-      return { view: child.subType, viewNode: child };
-    }
+  const viewChild = field.views()[0];
+  if (viewChild) {
+    return { view: viewChild.subType, viewNode: viewChild };
   }
   return { view: inferViewKind(field) };
 }
@@ -133,9 +130,7 @@ function renderFieldRules(field: MetaField): string | undefined {
   let hasRequired = false;
   let hasMaxLength = false;
 
-  for (const child of field.children()) {
-    if (child.type !== TYPE_VALIDATOR) continue;
-
+  for (const child of field.validators()) {
     if (child.subType === VALIDATOR_SUBTYPE_REQUIRED) {
       const msg = (child.attr("message") as string | undefined) ?? `${humanize(field.name)} is required`;
       ruleParts.push(`required: ${JSON.stringify(msg)}`);
