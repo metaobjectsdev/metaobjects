@@ -114,7 +114,7 @@ function buildTable(
 
   const pkJsNames = pkIdentity ? readIdentityFields(pkIdentity) : [];
   const pkGeneration = pkIdentity
-    ? (pkIdentity.attr(IDENTITY_ATTR_GENERATION) as string | undefined)
+    ? (pkIdentity.ownAttr(IDENTITY_ATTR_GENERATION) as string | undefined)
     : undefined;
 
   const columns: ColumnDescriptor[] = [];
@@ -142,7 +142,7 @@ function buildSecondaryIndexes(entity: MetaData, tableName: string): IndexDescri
   // doesn't see them as drop-only on the actual side.
   for (const child of entity.ownChildren()) {
     if (child.type !== TYPE_FIELD) continue;
-    if (child.attr(FIELD_ATTR_UNIQUE) !== true) continue;
+    if (child.ownAttr(FIELD_ATTR_UNIQUE) !== true) continue;
     const colName = resolveColumnName(child);
     indexes.push({
       name: `${tableName}_${colName}_unique`,
@@ -161,7 +161,7 @@ function buildSecondaryIndexes(entity: MetaData, tableName: string): IndexDescri
       const field = findField(entity, jsName);
       return field ? resolveColumnName(field) : toSnake(jsName);
     });
-    const uniqueAttr = child.attr(IDENTITY_ATTR_UNIQUE);
+    const uniqueAttr = child.ownAttr(IDENTITY_ATTR_UNIQUE);
     indexes.push({
       name: `${tableName}_${toSnake(child.name)}`,
       columns: cols,
@@ -179,15 +179,15 @@ function buildForeignKeys(
   const fks: FkDescriptor[] = [];
   for (const child of entity.ownChildren()) {
     if (child.type !== TYPE_RELATIONSHIP) continue;
-    const cardinality = child.attr(RELATIONSHIP_ATTR_CARDINALITY);
+    const cardinality = child.ownAttr(RELATIONSHIP_ATTR_CARDINALITY);
     if (cardinality !== CARDINALITY_ONE) continue;
 
-    const targetEntity = child.attr(RELATIONSHIP_ATTR_OBJECT_REF);
+    const targetEntity = child.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF);
     if (typeof targetEntity !== "string") continue;
     const refTable = resolveTargetTable(targetEntity);
     if (!refTable) continue;
 
-    const fkFieldRaw = child.attr(RELATIONSHIP_ATTR_FK_FIELD);
+    const fkFieldRaw = child.ownAttr(RELATIONSHIP_ATTR_FK_FIELD);
     const fkFieldJsName = typeof fkFieldRaw === "string"
       ? fkFieldRaw
       : `${child.name}Id`;          // default: <relationshipName>Id
@@ -217,9 +217,9 @@ function buildColumn(
   isPk: boolean,
   pkGeneration: string | undefined,
 ): ColumnDescriptor {
-  const required = field.attr(FIELD_ATTR_REQUIRED);
+  const required = field.ownAttr(FIELD_ATTR_REQUIRED);
   const isRequired = required === true || required === "true";
-  const defaultRaw = field.attr(FIELD_ATTR_DEFAULT);
+  const defaultRaw = field.ownAttr(FIELD_ATTR_DEFAULT);
 
   const col: ColumnDescriptor = {
     name: resolveColumnName(field),
@@ -266,7 +266,7 @@ function isPrimaryIdentity(identity: MetaData): boolean {
 }
 
 function readIdentityFields(identity: MetaData): string[] {
-  const raw = identity.attr(IDENTITY_ATTR_FIELDS);
+  const raw = identity.ownAttr(IDENTITY_ATTR_FIELDS);
   if (Array.isArray(raw)) {
     return raw.map(String).filter((s) => s.length > 0);
   }

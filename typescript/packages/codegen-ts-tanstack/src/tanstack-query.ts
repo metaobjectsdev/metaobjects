@@ -18,7 +18,7 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
   return {
     name: "tanstack-query",
     // AND-composes metadata opt-out with optional user filter.
-    filter: (e: MetaObject) => e.attr("emitTanstack") !== false && userFilter(e),
+    filter: (e: MetaObject) => e.ownAttr("emitTanstack") !== false && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error(

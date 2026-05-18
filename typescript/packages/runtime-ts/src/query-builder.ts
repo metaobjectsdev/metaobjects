@@ -43,7 +43,7 @@ export function resolvePkFields(entity: MetaData): string[] {
   if (!primary) {
     throw new MetadataError(`Entity '${entity.name}' has no primary identity`, { entity: entity.name });
   }
-  const attr = primary.attr(IDENTITY_ATTR_FIELDS);
+  const attr = primary.ownAttr(IDENTITY_ATTR_FIELDS);
   if (!Array.isArray(attr) || attr.length === 0) {
     throw new MetadataError(`Entity '${entity.name}' primary identity has no @fields`, { entity: entity.name });
   }

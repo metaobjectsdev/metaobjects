@@ -152,7 +152,7 @@ function validateNode(
   }
 
   // --- Checks 2 + 3: declared attrs on the node are well-typed + in range ---
-  for (const [attrName, value] of node.attrs()) {
+  for (const [attrName, value] of node.ownAttrs()) {
     const spec = byName.get(attrName);
     if (spec === undefined) continue; // undeclared attr → open policy: ignore.
 

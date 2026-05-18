@@ -94,11 +94,11 @@ export interface ColumnSpec {
 /** Resolve max length from validator.length child or @maxLength attr.
  *  Uses field.validators() (effective) so inherited validators are seen. */
 function getMaxLength(field: MetaField): number | undefined {
-  const lenAttr = field.attr(FIELD_ATTR_MAX_LENGTH);
+  const lenAttr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
   if (typeof lenAttr === "number") return lenAttr;
   for (const child of field.validators()) {
     if (child.subType === VALIDATOR_SUBTYPE_LENGTH) {
-      const max = child.attr(VALIDATOR_ATTR_MAX);
+      const max = child.ownAttr(VALIDATOR_ATTR_MAX);
       if (typeof max === "number") return max;
     }
   }
@@ -108,7 +108,7 @@ function getMaxLength(field: MetaField): number | undefined {
 /** Check for validator.required child OR @required attr.
  *  Uses field.validators() (effective) so inherited validators are seen. */
 function isRequired(field: MetaField): boolean {
-  if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
+  if (field.ownAttr(FIELD_ATTR_REQUIRED) === true) return true;
   return field.validators().some((child) => child.subType === VALIDATOR_SUBTYPE_REQUIRED);
 }
 
@@ -117,7 +117,7 @@ export function mapColumnType(
   dialect: Dialect,
   strategy: ColumnNamingStrategy = "snake_case",
 ): ColumnSpec {
-  const dbName = (field.attr(FIELD_ATTR_DB_COLUMN) as string | undefined) ?? columnNameFromField(field.name, strategy);
+  const dbName = (field.ownAttr(FIELD_ATTR_DB_COLUMN) as string | undefined) ?? columnNameFromField(field.name, strategy);
   const importModule = dialect === "sqlite" ? "drizzle-orm/sqlite-core" : "drizzle-orm/pg-core";
   const subType = field.subType;
   const isArray = field.isArray;
@@ -224,12 +224,12 @@ export function mapColumnType(
     modifiers.push(".notNull()");
   }
 
-  if (field.attr(FIELD_ATTR_UNIQUE) === true) {
+  if (field.ownAttr(FIELD_ATTR_UNIQUE) === true) {
     modifiers.push(".unique()");
   }
 
   let defaultExpr: DefaultExpr | undefined;
-  const defaultAttr = field.attr(FIELD_ATTR_DEFAULT);
+  const defaultAttr = field.ownAttr(FIELD_ATTR_DEFAULT);
   if (defaultAttr !== undefined) {
     if (typeof defaultAttr === "string" && isSqlExprDefault(defaultAttr)) {
       const canonical = canonicalizeSqlExpr(defaultAttr);

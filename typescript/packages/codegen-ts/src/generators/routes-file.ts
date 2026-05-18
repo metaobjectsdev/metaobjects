@@ -16,7 +16,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
   return {
     name: "routes-file",
     // Always set: AND-composes metadata opt-out with optional user filter.
-    filter: (e: MetaObject) => e.attr("emitRoutes") !== false && userFilter(e),
+    filter: (e: MetaObject) => e.ownAttr("emitRoutes") !== false && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("routes-file: renderContext is required (provided by runGen)");

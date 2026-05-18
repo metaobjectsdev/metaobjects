@@ -595,7 +595,7 @@ describe("MetaView", () => {
   it("attr() escape hatch works", () => {
     const v = makeView(VIEW_SUBTYPE_TEXT);
     v.setAttr("placeholder", "Enter value");
-    expect(v.attr("placeholder")).toBe("Enter value");
+    expect(v.ownAttr("placeholder")).toBe("Enter value");
   });
 });
 
@@ -640,8 +640,8 @@ describe("MetaLayout", () => {
     const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
     l.setAttr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE, 25);
     l.setAttr(LAYOUT_DATA_GRID_ATTR_COLUMNS, ["id", "name"]);
-    expect(l.attr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE)).toBe(25);
-    expect(l.attr(LAYOUT_DATA_GRID_ATTR_COLUMNS)).toEqual(["id", "name"]);
+    expect(l.ownAttr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE)).toBe(25);
+    expect(l.ownAttr(LAYOUT_DATA_GRID_ATTR_COLUMNS)).toEqual(["id", "name"]);
   });
 });
 
@@ -824,7 +824,7 @@ describe("MetaOrigin", () => {
   it("attr() escape hatch returns passthrough attrs", () => {
     const o = makeOrigin(ORIGIN_SUBTYPE_PASSTHROUGH);
     o.setAttr(ORIGIN_PASSTHROUGH_ATTR_FROM, "Base.label");
-    expect(o.attr(ORIGIN_PASSTHROUGH_ATTR_FROM)).toBe("Base.label");
+    expect(o.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM)).toBe("Base.label");
   });
 
   it("attr() escape hatch returns aggregate attrs", () => {
@@ -832,9 +832,9 @@ describe("MetaOrigin", () => {
     o.setAttr(ORIGIN_AGGREGATE_ATTR_AGG, "count");
     o.setAttr(ORIGIN_AGGREGATE_ATTR_OF, "Week.id");
     o.setAttr(ORIGIN_AGGREGATE_ATTR_VIA, "Program.weeks");
-    expect(o.attr(ORIGIN_AGGREGATE_ATTR_AGG)).toBe("count");
-    expect(o.attr(ORIGIN_AGGREGATE_ATTR_OF)).toBe("Week.id");
-    expect(o.attr(ORIGIN_AGGREGATE_ATTR_VIA)).toBe("Program.weeks");
+    expect(o.ownAttr(ORIGIN_AGGREGATE_ATTR_AGG)).toBe("count");
+    expect(o.ownAttr(ORIGIN_AGGREGATE_ATTR_OF)).toBe("Week.id");
+    expect(o.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA)).toBe("Program.weeks");
   });
 });
 

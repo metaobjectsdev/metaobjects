@@ -35,14 +35,14 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   const varName = variableNameFromEntity(obj.name);
 
   const primary = obj.primaryIdentity();
-  const rawPkFields = primary?.attr(IDENTITY_ATTR_FIELDS);
+  const rawPkFields = primary?.ownAttr(IDENTITY_ATTR_FIELDS);
   const pkFieldsList: string[] = Array.isArray(rawPkFields)
     ? rawPkFields as string[]
     : typeof rawPkFields === "string"
       ? rawPkFields.split(",").map((f) => f.trim()).filter(Boolean)
       : [];
   const pkFieldNames = new Set<string>(pkFieldsList);
-  const pkGeneration = primary?.attr(IDENTITY_ATTR_GENERATION) as string | undefined;
+  const pkGeneration = primary?.ownAttr(IDENTITY_ATTR_GENERATION) as string | undefined;
 
   const fkMap = buildFkMapForEntity(obj, ctx);
 
@@ -55,9 +55,9 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   const secondaryIdentities = obj.secondaryIdentities();
   const uniqueFieldNames = new Set<string>();
   for (const sec of secondaryIdentities) {
-    const uniqueAttr = sec.attr(IDENTITY_ATTR_UNIQUE);
+    const uniqueAttr = sec.ownAttr(IDENTITY_ATTR_UNIQUE);
     if (uniqueAttr === false) continue; // explicit non-unique → don't mark column
-    const fields = sec.attr(IDENTITY_ATTR_FIELDS) as string[] | undefined;
+    const fields = sec.ownAttr(IDENTITY_ATTR_FIELDS) as string[] | undefined;
     if (!Array.isArray(fields) || fields.length !== 1) continue; // multi-col uniques use a callback index, not a column flag
     uniqueFieldNames.add(fields[0]!);
   }
@@ -78,13 +78,13 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   }
 
   for (const sec of secondaryIdentities) {
-    const fields = sec.attr(IDENTITY_ATTR_FIELDS) as string[] | undefined;
+    const fields = sec.ownAttr(IDENTITY_ATTR_FIELDS) as string[] | undefined;
     if (!Array.isArray(fields) || fields.length === 0) continue;
     const indexName = `idx_${tableName}_${fields.map((f) => columnNameFromField(f, ctx.columnNamingStrategy)).join("_")}`;
     // @unique on the identity defaults to true (preserves back-compat with
     // foundations fixtures that assumed secondary identities were always
     // unique). Explicit @unique: false → ordinary non-unique index.
-    const uniqueAttr = sec.attr(IDENTITY_ATTR_UNIQUE);
+    const uniqueAttr = sec.ownAttr(IDENTITY_ATTR_UNIQUE);
     const isUnique = uniqueAttr !== false;
     const indexFn = isUnique ? "uniqueIndex" : "index";
     const indexSym = imp(`${indexFn}@${importModule}`);
@@ -131,12 +131,12 @@ interface FkInfo {
 function buildFkMapForEntity(obj: MetaObject, ctx: RenderContext): Map<string, FkInfo> {
   const result = new Map<string, FkInfo>();
   for (const child of obj.relationships()) {
-    const cardinality = child.attr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
+    const cardinality = child.ownAttr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
     if (cardinality !== CARDINALITY_ONE) continue;
-    const targetEntityRaw = child.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
+    const targetEntityRaw = child.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
     if (!targetEntityRaw) continue;
     const targetEntityName = stripPackage(targetEntityRaw);
-    const fkFieldName = child.attr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
+    const fkFieldName = child.ownAttr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
     if (!fkFieldName) continue;
     const pkInfo = ctx.pkMap.get(targetEntityName);
     const targetPkField = pkInfo?.fieldName ?? "id";
@@ -266,7 +266,7 @@ function renderColumn(
   // @autoSet fields: emit .$defaultFn(() => new Date().toISOString()) so Drizzle
   // inserts stamp the server-side timestamp automatically. This means callers don't
   // need to supply createdAt / updatedAt in INSERT calls — Drizzle fills them in.
-  const autoSet = field.attr(FIELD_ATTR_AUTO_SET);
+  const autoSet = field.ownAttr(FIELD_ATTR_AUTO_SET);
   const autoSetSuffix = (autoSet === "onCreate" || autoSet === "onUpdate")
     ? `.$defaultFn(() => new Date().toISOString())`
     : "";

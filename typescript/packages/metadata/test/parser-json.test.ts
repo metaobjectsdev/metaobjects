@@ -164,7 +164,7 @@ describe("parseJson — inline @-attrs", () => {
     });
     const { root } = parseJson(input, { registry });
     const child = root.ownChildren()[0]!;
-    expect(child.attr("dbTable")).toBe("x_table");
+    expect(child.ownAttr("dbTable")).toBe("x_table");
   });
 
   // Regression guard: @dbTable is a plain attr — must NOT auto-synthesize a source child.
@@ -199,7 +199,7 @@ describe("parseJson — inline @-attrs", () => {
     });
     const { root } = parseJson(input, { registry });
     const child = root.ownChildren()[0]!;
-    expect(child.attr("maxLength")).toBe(100);
+    expect(child.ownAttr("maxLength")).toBe(100);
   });
 
   it("abstract reserved key (true) sets isAbstract to true and is not in attrs", () => {
@@ -214,7 +214,7 @@ describe("parseJson — inline @-attrs", () => {
     expect(child.isAbstract).toBe(true);
     // `abstract` is a reserved structural key — the parser routes it to
     // setIsAbstract(), never setAttr(). The attr map must not contain it.
-    expect(child.hasAttr("abstract")).toBe(false);
+    expect(child.ownHasAttr("abstract")).toBe(false);
   });
 
   it("multiple @-attrs of various types all coerced correctly", () => {
@@ -236,10 +236,10 @@ describe("parseJson — inline @-attrs", () => {
     });
     const { root } = parseJson(input, { registry });
     const child = root.ownChildren()[0]!;
-    expect(child.attr("stringAttr")).toBe("hello");
-    expect(child.attr("intAttr")).toBe(42);
-    expect(child.attr("boolAttr")).toBe(true);
-    expect(child.attr("longAttr")).toBe(3000000000);
+    expect(child.ownAttr("stringAttr")).toBe("hello");
+    expect(child.ownAttr("intAttr")).toBe(42);
+    expect(child.ownAttr("boolAttr")).toBe(true);
+    expect(child.ownAttr("longAttr")).toBe(3000000000);
   });
 
   it("@objectRef string attr set on field", () => {
@@ -253,7 +253,7 @@ describe("parseJson — inline @-attrs", () => {
     });
     const { root } = parseJson(input, { registry });
     const child = root.ownChildren()[0]!;
-    expect(child.attr("objectRef")).toBe("::Apple");
+    expect(child.ownAttr("objectRef")).toBe("::Apple");
   });
 
   it("@object attr (class ref string) is stored as-is", () => {
@@ -272,7 +272,7 @@ describe("parseJson — inline @-attrs", () => {
     });
     const { root } = parseJson(input, { registry });
     const child = root.ownChildren()[0]!;
-    expect(child.attr("object")).toBe("com.example.Store");
+    expect(child.ownAttr("object")).toBe("com.example.Store");
   });
 });
 
@@ -306,7 +306,7 @@ describe("parseJson — isArray reserved key handling", () => {
     });
     const { root } = parseJson(input, { registry });
     const field = root.ownChildren()[0]!;
-    expect(field.hasAttr("isArray")).toBe(false);
+    expect(field.ownHasAttr("isArray")).toBe(false);
   });
 
   it("isArray: false reserved key sets field.isArray to false", () => {
@@ -351,7 +351,7 @@ describe("parseJson — reserved keys", () => {
     const { root } = parseJson(input, { registry });
     const child = root.ownChildren()[0]!;
     expect(child.subType).toBe(OBJECT_SUBTYPE_ENTITY);
-    expect(child.hasAttr("subType")).toBe(false);
+    expect(child.ownHasAttr("subType")).toBe(false);
   });
 
   it("name sets model.name, not an attr", () => {
@@ -364,7 +364,7 @@ describe("parseJson — reserved keys", () => {
     const { root } = parseJson(input, { registry });
     const child = root.ownChildren()[0]!;
     expect(child.name).toBe("myField");
-    expect(child.hasAttr("name")).toBe(false);
+    expect(child.ownHasAttr("name")).toBe(false);
   });
 
   it("package sets model.package, not an attr", () => {
@@ -377,7 +377,7 @@ describe("parseJson — reserved keys", () => {
     const { root } = parseJson(input, { registry });
     const child = root.ownChildren()[0]!;
     expect(child.package).toBe("demo::common");
-    expect(child.hasAttr("package")).toBe(false);
+    expect(child.ownHasAttr("package")).toBe(false);
   });
 
   it("super sets model.superRef and is resolved immediately if target exists in tree", () => {
@@ -397,7 +397,7 @@ describe("parseJson — reserved keys", () => {
     expect(derived.superRef).toBe("base");
     expect(derived.superResolved).toBeDefined(); // IS resolved by parser immediately
     expect(derived.superResolved!.name).toBe("base");
-    expect(derived.hasAttr("super")).toBe(false);
+    expect(derived.ownHasAttr("super")).toBe(false);
   });
 
   it("super with unresolvable ref throws ParseError (Java: missing super = hard error)", () => {
@@ -422,7 +422,7 @@ describe("parseJson — reserved keys", () => {
     const { root } = parseJson(input, { registry });
     const child = root.ownChildren()[0]!;
     expect(child.isAbstract).toBe(true);
-    expect(child.hasAttr("abstract")).toBe(false);
+    expect(child.ownHasAttr("abstract")).toBe(false);
   });
 
   it("overlay: true at the root is ignored — no error, no warning", () => {
@@ -483,7 +483,7 @@ describe("parseJson — attr child nodes (dual storage)", () => {
     const { root } = parseJson(input, { registry });
     const obj = root.ownChildren()[0]!;
     // Parent can access attr("isKey") directly
-    expect(obj.attr("isKey")).toBe(true);
+    expect(obj.ownAttr("isKey")).toBe(true);
   });
 
   it("attr child structural model has subType matching declared subType", () => {
@@ -514,7 +514,7 @@ describe("parseJson — attr child nodes (dual storage)", () => {
     const { root } = parseJson(input, { registry });
     const attrChild = root.ownChildrenOfType("attr")[0]!;
     // The attr node itself holds the value in its attr map
-    expect(attrChild.attr("value")).toBe(true);
+    expect(attrChild.ownAttr("value")).toBe(true);
   });
 
   it("multiple attr children are all stored correctly", () => {
@@ -529,8 +529,8 @@ describe("parseJson — attr child nodes (dual storage)", () => {
       },
     });
     const { root } = parseJson(input, { registry });
-    expect(root.attr("isKey")).toBe(true);
-    expect(root.attr("maxValue")).toBe(9999);
+    expect(root.ownAttr("isKey")).toBe(true);
+    expect(root.ownAttr("maxValue")).toBe(9999);
     const attrKids = root.ownChildrenOfType("attr");
     expect(attrKids.length).toBe(2);
   });
@@ -546,7 +546,7 @@ describe("parseJson — attr child nodes (dual storage)", () => {
       },
     });
     const { root } = parseJson(input, { registry });
-    expect(root.attr("sortOrder")).toBe(42);
+    expect(root.ownAttr("sortOrder")).toBe(42);
   });
 });
 
@@ -588,7 +588,7 @@ describe("parseJson — unknown key, non-strict mode", () => {
     });
     const { root } = parseJson(input, { registry });
     const child = root.ownChildren()[0]!;
-    expect(child.hasAttr("weirdKey")).toBe(false);
+    expect(child.ownHasAttr("weirdKey")).toBe(false);
     expect(child.name).toBe("X");
   });
 
@@ -870,10 +870,10 @@ describe("parseJson — fruitbasket fixture round-trip", () => {
     expect(idField.isAbstract).toBe(true);
   });
 
-  it("id field has an 'isKey' attr child that sets parent.attr('isKey') = true", () => {
+  it("id field has an 'isKey' attr child that sets parent.ownAttr('isKey') = true", () => {
     const idField = result.root.ownChildren()[0]!;
     // attr child dual storage
-    expect(idField.attr("isKey")).toBe(true);
+    expect(idField.ownAttr("isKey")).toBe(true);
     const attrKids = idField.ownChildrenOfType("attr");
     expect(attrKids.length).toBe(1);
     expect(attrKids[0]!.name).toBe("isKey");
@@ -887,7 +887,7 @@ describe("parseJson — fruitbasket fixture round-trip", () => {
 
   it("Basket object has @object attr", () => {
     const basket = result.root.ownChildByTypeAndName("object", "Basket");
-    expect(basket!.attr("object")).toBe("com.metaobjects.loader.simple.fruitbasket.Basket");
+    expect(basket!.ownAttr("object")).toBe("com.metaobjects.loader.simple.fruitbasket.Basket");
   });
 
   it("Basket has 6 field children", () => {
@@ -905,7 +905,7 @@ describe("parseJson — fruitbasket fixture round-trip", () => {
   it("Basket.apples field has @objectRef attr", () => {
     const basket = result.root.ownChildByTypeAndName("object", "Basket");
     const apples = basket!.ownChildByTypeAndName("field", "apples");
-    expect(apples!.attr("objectRef")).toBe("::Apple");
+    expect(apples!.ownAttr("objectRef")).toBe("::Apple");
   });
 
   it("Apple object has super set to 'Fruit' and is immediately resolved", () => {
@@ -933,8 +933,8 @@ describe("parseJson — fruitbasket fixture round-trip", () => {
   it("length validator on name field has @min and @max attrs", () => {
     const nameField = result.root.ownChildren()[1]!;
     const lengthValidator = nameField.ownChildrenOfSubType("validator", "length")[0]!;
-    expect(lengthValidator.attr("min")).toBe(1);
-    expect(lengthValidator.attr("max")).toBe(50);
+    expect(lengthValidator.ownAttr("min")).toBe(1);
+    expect(lengthValidator.ownAttr("max")).toBe(50);
   });
 
   it("produces no warnings for valid fixture", () => {
@@ -1078,8 +1078,8 @@ describe("parseJson — deeply nested children", () => {
     const validators = field.ownChildrenOfType("validator");
     expect(validators.length).toBe(2);
     const lengthV = field.ownChildrenOfSubType("validator", "length")[0]!;
-    expect(lengthV.attr("min")).toBe(1);
-    expect(lengthV.attr("max")).toBe(50);
+    expect(lengthV.ownAttr("min")).toBe(1);
+    expect(lengthV.ownAttr("max")).toBe(50);
   });
 
   it("identity child with @-attrs parses correctly", () => {
@@ -1109,9 +1109,9 @@ describe("parseJson — deeply nested children", () => {
     const identity = obj.ownChildrenOfType("identity")[0]!;
     expect(identity.name).toBe("primary");
     expect(identity.subType).toBe(IDENTITY_SUBTYPE_PRIMARY);
-    expect(identity.attr("generation")).toBe("increment");
+    expect(identity.ownAttr("generation")).toBe("increment");
     // @fields is an array
-    expect(Array.isArray(identity.attr("fields"))).toBe(true);
+    expect(Array.isArray(identity.ownAttr("fields"))).toBe(true);
   });
 
   it("child-node form of stringArray attr desugars consistently: parent map and MetaAttr node both carry the array", () => {
@@ -1147,7 +1147,7 @@ describe("parseJson — deeply nested children", () => {
     const identity = obj.ownChildrenOfType(TYPE_IDENTITY)[0]!;
 
     // Parent attr map must carry the desugared array.
-    const parentValue = identity.attr("fields");
+    const parentValue = identity.ownAttr("fields");
     expect(Array.isArray(parentValue)).toBe(true);
     expect(parentValue).toEqual(["id"]);
 
@@ -1189,7 +1189,7 @@ describe("parseJson — deeply nested children", () => {
     const { root, errors } = parseJson(input, { registry });
     const obj = root.ownChildren()[0]!;
     const identity = obj.ownChildrenOfType(TYPE_IDENTITY)[0]!;
-    const fieldsValue = identity.attr("fields");
+    const fieldsValue = identity.ownAttr("fields");
     // Must be an array of strings, not a number.
     expect(Array.isArray(fieldsValue)).toBe(true);
     expect(fieldsValue).toEqual(["123"]);
@@ -1222,7 +1222,7 @@ describe("parseJson — deeply nested children", () => {
     const { root, errors } = parseJson(input, { registry });
     const obj = root.ownChildren()[0]!;
     const identity = obj.ownChildrenOfType(TYPE_IDENTITY)[0]!;
-    const fieldsValue = identity.attr("fields");
+    const fieldsValue = identity.ownAttr("fields");
     expect(Array.isArray(fieldsValue)).toBe(true);
     expect(fieldsValue).toEqual(["true"]);
     expect(errors).toHaveLength(0);
@@ -1250,7 +1250,7 @@ describe("parseJson — per-node overlay: true", () => {
     const { root, warnings } = parseJson(overlayJson, { registry, intoRoot: base });
     const store = root.ownChildByTypeAndName("object", "Store")!;
     expect(store).toBeDefined();
-    expect(store.attr("dbTable")).toBe("t2");
+    expect(store.ownAttr("dbTable")).toBe("t2");
     expect(root.ownChildren().filter((c) => c.name === "Store").length).toBe(1);
     expect(warnings.length).toBe(0);
   });
@@ -1307,7 +1307,7 @@ describe("parseJson — default (no flag) merge semantics (Java default behavior
     const { root, warnings } = parseJson(secondJson, { registry, intoRoot: base });
     // Silently merged — only one Store, attr updated
     expect(root.ownChildren().filter((c) => c.name === "Store").length).toBe(1);
-    expect(root.ownChildByTypeAndName("object", "Store")!.attr("dbTable")).toBe("t_new");
+    expect(root.ownChildByTypeAndName("object", "Store")!.ownAttr("dbTable")).toBe("t_new");
     expect(warnings.length).toBe(0);
   });
 

@@ -127,7 +127,7 @@ function serializeNodeInner(model: MetaData, inlineAttrs: boolean): Record<strin
 
     // Emit attr as child node form
     const attrName = child.name;
-    const attrValue = child.attr(RESERVED_KEY_VALUE);
+    const attrValue = child.ownAttr(RESERVED_KEY_VALUE);
     const attrSubType =
       child.subType !== SUBTYPE_BASE ? child.subType : inferAttrSubType(attrValue ?? "");
 
@@ -145,7 +145,7 @@ function serializeNodeInner(model: MetaData, inlineAttrs: boolean): Record<strin
   }
 
   // Inline @-attrs: emit attrs NOT already emitted as child nodes.
-  for (const [attrName, attrValue] of model.attrs()) {
+  for (const [attrName, attrValue] of model.ownAttrs()) {
     if (emittedAsChild.has(attrName)) continue;
 
     if (inlineAttrs) {

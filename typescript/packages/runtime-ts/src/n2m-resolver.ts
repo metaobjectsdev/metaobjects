@@ -44,10 +44,10 @@ export function resolveN2mDescriptor(
   for (const child of sourceEntity.ownChildren()) {
     if (child.type !== TYPE_RELATIONSHIP) continue;
     if (child.name !== relationName) continue;
-    if (child.attr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_MANY) continue;
-    const targetEntityName = child.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-    const joinEntityName = child.attr(RELATIONSHIP_ATTR_JOIN_ENTITY) as string | undefined;
-    const joinFields = child.attr(RELATIONSHIP_ATTR_JOIN_FIELDS);
+    if (child.ownAttr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_MANY) continue;
+    const targetEntityName = child.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
+    const joinEntityName = child.ownAttr(RELATIONSHIP_ATTR_JOIN_ENTITY) as string | undefined;
+    const joinFields = child.ownAttr(RELATIONSHIP_ATTR_JOIN_FIELDS);
     if (!targetEntityName || !joinEntityName || !Array.isArray(joinFields) || joinFields.length !== 2) {
       throw new MetadataError(
         `N:M relationship '${relationName}' on '${sourceEntity.name}' requires @objectRef + @joinEntity + @joinFields: [sourceFk, targetFk]`,

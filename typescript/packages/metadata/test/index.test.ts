@@ -86,7 +86,7 @@ describe("Public API surface — @metaobjects/metadata index", () => {
     const m: MetaData = new MetaField(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "myField");
     const val: AttrValue = "hello";
     m.setAttr("label", val);
-    expect(m.attr("label")).toBe("hello");
+    expect(m.ownAttr("label")).toBe("hello");
     expect(m).toBeInstanceOf(MetaData);
   });
 

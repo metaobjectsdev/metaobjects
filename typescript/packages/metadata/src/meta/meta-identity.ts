@@ -17,7 +17,7 @@ export type IdentityGeneration = "increment" | "uuid" | "assigned";
 
 export class MetaIdentity extends MetaData {
   get fields(): string[] {
-    const f = this.attr(IDENTITY_ATTR_FIELDS);
+    const f = this.ownAttr(IDENTITY_ATTR_FIELDS);
     return Array.isArray(f) ? (f as string[]) : [];
   }
 
@@ -26,7 +26,7 @@ export class MetaIdentity extends MetaData {
    * Defaults to true; explicit `@unique: false` makes it a non-unique index.
    */
   get unique(): boolean {
-    return this.attr(IDENTITY_ATTR_UNIQUE) !== false;
+    return this.ownAttr(IDENTITY_ATTR_UNIQUE) !== false;
   }
 
   isPrimary(): boolean {
@@ -48,7 +48,7 @@ export class MetaIdentity extends MetaData {
  */
 export class MetaPrimaryIdentity extends MetaIdentity {
   get generation(): IdentityGeneration | undefined {
-    const v = this.attr(IDENTITY_ATTR_GENERATION);
+    const v = this.ownAttr(IDENTITY_ATTR_GENERATION);
     return typeof v === "string" ? (v as IdentityGeneration) : undefined;
   }
 }

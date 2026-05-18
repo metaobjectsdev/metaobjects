@@ -31,37 +31,37 @@ export class MetaField extends MetaData implements DataTypeAware {
 
   /** The target object name for an object-typed field (the `@objectRef` attr). */
   get objectRef(): string | undefined {
-    const v = this.attr(FIELD_ATTR_OBJECT_REF);
+    const v = this.ownAttr(FIELD_ATTR_OBJECT_REF);
     return typeof v === "string" ? v : undefined;
   }
 
   get dbColumn(): string | undefined {
-    const v = this.attr(FIELD_ATTR_DB_COLUMN);
+    const v = this.ownAttr(FIELD_ATTR_DB_COLUMN);
     return typeof v === "string" ? v : undefined;
   }
 
   get default(): unknown {
-    return this.attr(FIELD_ATTR_DEFAULT);
+    return this.ownAttr(FIELD_ATTR_DEFAULT);
   }
 
   get maxLength(): number | undefined {
-    const v = this.attr(FIELD_ATTR_MAX_LENGTH);
+    const v = this.ownAttr(FIELD_ATTR_MAX_LENGTH);
     return typeof v === "number" ? v : undefined;
   }
 
   get precision(): number | undefined {
-    const v = this.attr(FIELD_ATTR_PRECISION);
+    const v = this.ownAttr(FIELD_ATTR_PRECISION);
     return typeof v === "number" ? v : undefined;
   }
 
   get scale(): number | undefined {
-    const v = this.attr(FIELD_ATTR_SCALE);
+    const v = this.ownAttr(FIELD_ATTR_SCALE);
     return typeof v === "number" ? v : undefined;
   }
 
   /** True if `@unique: true` is set on the field itself (column-level unique). */
   get unique(): boolean {
-    return this.attr(FIELD_ATTR_UNIQUE) === true;
+    return this.ownAttr(FIELD_ATTR_UNIQUE) === true;
   }
 
   /**
@@ -71,7 +71,7 @@ export class MetaField extends MetaData implements DataTypeAware {
    * matches the codegen-ts isRequired() semantics.
    */
   get isRequired(): boolean {
-    if (this.attr(FIELD_ATTR_REQUIRED) === true) return true;
+    if (this.ownAttr(FIELD_ATTR_REQUIRED) === true) return true;
     return this.validators().some((v) => v.subType === VALIDATOR_SUBTYPE_REQUIRED);
   }
 

@@ -177,16 +177,18 @@ export abstract class MetaData {
     this._attrs.set(name, value);
   }
 
-  attr(name: string): AttrValue | undefined {
+  /** Own (locally declared) attr value for `name`, or undefined — excludes inherited. */
+  ownAttr(name: string): AttrValue | undefined {
     return this._attrs.get(name);
   }
 
-  /** Returns a defensive copy — mutating the result does not affect this model. */
-  attrs(): Map<string, AttrValue> {
+  /** Own (locally declared) attrs — a defensive copy; excludes attrs inherited via extends. */
+  ownAttrs(): Map<string, AttrValue> {
     return new Map(this._attrs);
   }
 
-  hasAttr(name: string): boolean {
+  /** True if `name` is an own (locally declared) attr — excludes inherited. */
+  ownHasAttr(name: string): boolean {
     return this._attrs.has(name);
   }
 

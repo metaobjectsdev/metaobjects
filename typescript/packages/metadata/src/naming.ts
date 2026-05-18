@@ -21,13 +21,13 @@ export function resolveTableName(entity: MetaData): string {
   const source = entity.ownChildren().find(
     (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_TABLE,
   );
-  const name = source?.attr(SOURCE_DB_TABLE_ATTR_NAME);
+  const name = source?.ownAttr(SOURCE_DB_TABLE_ATTR_NAME);
   if (typeof name === "string" && name !== "") return name;
   return pluralize(toSnakeCase(entity.name));
 }
 
 export function resolveColumnName(field: MetaData): string {
-  const attr = field.attr(FIELD_ATTR_DB_COLUMN);
+  const attr = field.ownAttr(FIELD_ATTR_DB_COLUMN);
   if (typeof attr === "string") return attr;
   return toSnakeCase(field.name);
 }

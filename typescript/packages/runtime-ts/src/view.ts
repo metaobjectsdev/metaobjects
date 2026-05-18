@@ -40,8 +40,8 @@ export function fieldViewSpec(entity: MetaData, fieldName: string, viewName: str
   if (!view) return null;
 
   const attrs: Record<string, unknown> = {};
-  for (const key of view.attrs().keys()) {
-    attrs[key] = view.attr(key);
+  for (const key of view.ownAttrs().keys()) {
+    attrs[key] = view.ownAttr(key);
   }
 
   const required = isFieldRequired(field);
@@ -74,7 +74,7 @@ export function entityViewSpec(entity: MetaData, viewName: string): EntityViewSp
 }
 
 function isFieldRequired(field: MetaData): boolean {
-  if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
+  if (field.ownAttr(FIELD_ATTR_REQUIRED) === true) return true;
   for (const child of field.ownChildren()) {
     if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_REQUIRED) return true;
   }

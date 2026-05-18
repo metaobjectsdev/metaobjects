@@ -14,7 +14,7 @@ import {
 export class MetaSource extends MetaData {
   /** The SQL table or view name (value of @name attr on the source child). */
   get sourceName(): string | undefined {
-    const v = this.attr(SOURCE_ATTR_NAME);
+    const v = this.ownAttr(SOURCE_ATTR_NAME);
     return typeof v === "string" ? v : undefined;
   }
 

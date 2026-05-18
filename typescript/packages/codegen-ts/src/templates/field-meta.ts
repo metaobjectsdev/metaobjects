@@ -112,10 +112,10 @@ export function zodTypeFor(field: MetaField): string {
 export function currencyMetaFor(field: MetaField): { currency: string; locale: string } | null {
   if (field.subType !== FIELD_SUBTYPE_CURRENCY) return null;
   const currency =
-    (field.attr(FIELD_ATTR_CURRENCY) as string | undefined) ?? FIELD_ATTR_CURRENCY_DEFAULT;
+    (field.ownAttr(FIELD_ATTR_CURRENCY) as string | undefined) ?? FIELD_ATTR_CURRENCY_DEFAULT;
   const viewChild = field.views().find((c) => c.subType === VIEW_SUBTYPE_CURRENCY);
   const locale =
-    (viewChild?.attr(VIEW_CURRENCY_ATTR_LOCALE) as string | undefined) ??
+    (viewChild?.ownAttr(VIEW_CURRENCY_ATTR_LOCALE) as string | undefined) ??
     VIEW_CURRENCY_ATTR_LOCALE_DEFAULT;
   return { currency, locale };
 }
@@ -130,7 +130,7 @@ export function currencyMetaFor(field: MetaField): { currency: string; locale: s
  */
 export function labelFor(field: MetaField): string {
   for (const child of field.views()) {
-    const label = child.attr("label");
+    const label = child.ownAttr("label");
     if (typeof label === "string" && label.length > 0) return label;
   }
   return humanize(field.name);

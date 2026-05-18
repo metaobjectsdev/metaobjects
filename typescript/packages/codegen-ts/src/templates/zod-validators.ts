@@ -22,9 +22,9 @@ export function renderZodValidators(obj: MetaObject): Code {
   const primary = obj.primaryIdentity();
   const autoGenPkFields = new Set<string>();
   if (primary) {
-    const generation = primary.attr(IDENTITY_ATTR_GENERATION);
+    const generation = primary.ownAttr(IDENTITY_ATTR_GENERATION);
     if (generation === GENERATION_INCREMENT || generation === GENERATION_UUID) {
-      const fields = primary.attr(IDENTITY_ATTR_FIELDS);
+      const fields = primary.ownAttr(IDENTITY_ATTR_FIELDS);
       const fieldsList = Array.isArray(fields) ? fields : (typeof fields === "string" ? [fields] : []);
       for (const f of fieldsList) autoGenPkFields.add(String(f));
     }
@@ -35,7 +35,7 @@ export function renderZodValidators(obj: MetaObject): Code {
   for (const child of obj.fields()) {
     if (autoGenPkFields.has(child.name)) continue;
 
-    const autoSet = child.attr(FIELD_ATTR_AUTO_SET);
+    const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
 
     // Insert schema: @autoSet fields use transform (always override client input).
     // NOTE: use "z" as a literal string here — these lines are embedded in the
@@ -105,20 +105,20 @@ function zodFieldExpr(field: MetaField): string {
 
   if (field.isArray) base = `z.array(${base})`;
 
-  let isRequired = field.attr(FIELD_ATTR_REQUIRED) === true;
-  let maxLen: number | undefined = field.attr(FIELD_ATTR_MAX_LENGTH) as number | undefined;
+  let isRequired = field.ownAttr(FIELD_ATTR_REQUIRED) === true;
+  let maxLen: number | undefined = field.ownAttr(FIELD_ATTR_MAX_LENGTH) as number | undefined;
   let minLen: number | undefined;
   let pattern: string | undefined;
   for (const child of field.validators()) {
     if (child.subType === VALIDATOR_SUBTYPE_REQUIRED) isRequired = true;
     if (child.subType === VALIDATOR_SUBTYPE_LENGTH) {
-      const max = child.attr(VALIDATOR_ATTR_MAX);
-      const min = child.attr(VALIDATOR_ATTR_MIN);
+      const max = child.ownAttr(VALIDATOR_ATTR_MAX);
+      const min = child.ownAttr(VALIDATOR_ATTR_MIN);
       if (typeof max === "number") maxLen = max;
       if (typeof min === "number") minLen = min;
     }
     if (child.subType === VALIDATOR_SUBTYPE_REGEX) {
-      const p = child.attr(VALIDATOR_ATTR_PATTERN);
+      const p = child.ownAttr(VALIDATOR_ATTR_PATTERN);
       if (typeof p === "string") pattern = p;
     }
   }
@@ -134,7 +134,7 @@ function zodFieldExpr(field: MetaField): string {
   // Fields with DB-level defaults are optional in the InsertSchema: the caller
   // can omit them and the DB will fill in. Otherwise required-with-default
   // would force callers to repeat the default at every call site.
-  const hasDefault = field.attr(FIELD_ATTR_DEFAULT) !== undefined;
+  const hasDefault = field.ownAttr(FIELD_ATTR_DEFAULT) !== undefined;
   if (!isRequired || hasDefault) chain += `.optional()`;
   return chain;
 }

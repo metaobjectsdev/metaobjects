@@ -43,12 +43,12 @@ export function buildRelationMap(root: MetaRoot): RelationMap {
   for (const obj of root.objects()) {
     // Use relationships() so inherited relationships (from extends:/super:) are included.
     for (const child of obj.relationships()) {
-      const cardinality = child.attr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
+      const cardinality = child.ownAttr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
       if (cardinality !== CARDINALITY_ONE) continue;
-      const targetEntityRaw = child.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
+      const targetEntityRaw = child.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
       if (!targetEntityRaw) continue;
       const targetEntity = stripPackage(targetEntityRaw);
-      const fkField = child.attr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
+      const fkField = child.ownAttr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
       // Match buildFkMapForEntity: skip relationships missing the FK field.
       if (fkField === undefined) continue;
 

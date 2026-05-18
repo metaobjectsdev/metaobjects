@@ -72,7 +72,7 @@ describe("tanstackGrid() factory", () => {
     // Synthesize a fake entity without grids:
     const fakeEntity = {
       name: "X",
-      attr: () => undefined,
+      ownAttr: () => undefined,
       children: () => [] as any[],
     } as any;
     expect(gen.filter?.(fakeEntity)).toBe(false);

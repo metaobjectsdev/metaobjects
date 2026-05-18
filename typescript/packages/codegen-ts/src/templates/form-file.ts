@@ -31,7 +31,7 @@ function primaryFieldNames(entity: MetaObject): Set<string> {
   // identities() returns effective identities, so inherited identities (from extends:/super:) are included.
   for (const child of entity.identities()) {
     if (child.subType !== IDENTITY_SUBTYPE_PRIMARY) continue;
-    const fields = child.attr(IDENTITY_ATTR_FIELDS);
+    const fields = child.ownAttr(IDENTITY_ATTR_FIELDS);
     const fieldsList = Array.isArray(fields) ? fields : (typeof fields === "string" ? [fields] : []);
     for (const f of fieldsList) if (typeof f === "string") set.add(f);
   }
@@ -39,7 +39,7 @@ function primaryFieldNames(entity: MetaObject): Set<string> {
 }
 
 function isAutoManaged(field: MetaField): boolean {
-  const def = field.attr(FIELD_ATTR_DEFAULT);
+  const def = field.ownAttr(FIELD_ATTR_DEFAULT);
   if (typeof def === "string") {
     const upper = def.toUpperCase();
     if (upper === "CURRENT_TIMESTAMP" || upper === "NOW" || upper === "NOW()") return true;
@@ -53,7 +53,7 @@ function visibleFields(entity: MetaObject): string[] {
   const names: string[] = [];
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in forms.
   for (const child of entity.fields()) {
-    if (child.attr("formExclude") === true) continue;
+    if (child.ownAttr("formExclude") === true) continue;
     if (pkNames.has(child.name)) continue;
     if (isAutoManaged(child)) continue;
     names.push(child.name);

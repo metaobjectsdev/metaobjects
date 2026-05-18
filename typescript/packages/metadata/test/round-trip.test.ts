@@ -79,8 +79,8 @@ function assertModelsEqual(a: MetaData, b: MetaData, path = "root"): void {
   if (a.isArray !== b.isArray) throw new Error(`${path}: isArray mismatch — expected ${a.isArray}, got ${b.isArray}`);
 
   // Attrs map
-  const aAttrs = a.attrs();
-  const bAttrs = b.attrs();
+  const aAttrs = a.ownAttrs();
+  const bAttrs = b.ownAttrs();
   if (aAttrs.size !== bAttrs.size) {
     const aKeys = [...aAttrs.keys()].sort().join(", ");
     const bKeys = [...bAttrs.keys()].sort().join(", ");
@@ -338,7 +338,7 @@ describe("Inline-vs-child attr round-trip: valid-complete-metadata.json", () => 
     const user = root.ownChildByTypeAndName(TYPE_OBJECT, "User")!;
     const idField = user.ownChildByTypeAndName(TYPE_FIELD, "id")!;
     expect(idField).toBeDefined();
-    expect(idField.attr("required")).toBe(true);
+    expect(idField.ownAttr("required")).toBe(true);
   });
 
   it("User.createdDate has format attr from child attr node", async () => {
@@ -347,7 +347,7 @@ describe("Inline-vs-child attr round-trip: valid-complete-metadata.json", () => 
     const createdDate = user.ownChildByTypeAndName(TYPE_FIELD, "createdDate")!;
     expect(createdDate).toBeDefined();
     // The "format" attr was set via a child {"attr":{...}} node
-    expect(createdDate.attr("format")).toBe("yyyy-MM-dd");
+    expect(createdDate.ownAttr("format")).toBe("yyyy-MM-dd");
   });
 
   it("attrs are semantically preserved after round-trip (assertModelsEqual passes)", async () => {
@@ -366,8 +366,8 @@ describe("Inline-vs-child attr round-trip: valid-complete-metadata.json", () => 
     const reparsed = await roundTrip(root);
     const reparsedUser = reparsed.ownChildByTypeAndName(TYPE_OBJECT, "User")!;
     const reparsedUsername = reparsedUser.ownChildByTypeAndName(TYPE_FIELD, "username")!;
-    expect(reparsedUsername.attr("maxLength")).toBe(50);
-    expect(reparsedUsername.attr("pattern")).toBe("^[a-zA-Z0-9_]+$");
+    expect(reparsedUsername.ownAttr("maxLength")).toBe(50);
+    expect(reparsedUsername.ownAttr("pattern")).toBe("^[a-zA-Z0-9_]+$");
   });
 });
 
@@ -543,7 +543,7 @@ describe("Entity counts: valid-complete-metadata.json", () => {
     const user = root.ownChildByTypeAndName(TYPE_OBJECT, "User");
     expect(user).toBeDefined();
     expect(user!.subType).toBe("entity");
-    expect(user!.attr("javaRuntime")).toBe("pojo");
+    expect(user!.ownAttr("javaRuntime")).toBe("pojo");
   });
 });
 
@@ -764,7 +764,7 @@ describe("Fruitbasket proxy: identity nodes and @fields arrays round-trip", () =
     const basket = root.ownChildByTypeAndName(TYPE_OBJECT, "Basket")!;
     const identity = basket.ownChildByTypeAndName(TYPE_IDENTITY, "primary")!;
     // @fields is a stringarray attr
-    const fields = identity.attr("fields");
+    const fields = identity.ownAttr("fields");
     expect(Array.isArray(fields)).toBe(true);
     expect(fields).toEqual(["id"]);
 
@@ -772,7 +772,7 @@ describe("Fruitbasket proxy: identity nodes and @fields arrays round-trip", () =
     const reparsed = await roundTrip(root);
     const reparsedBasket = reparsed.ownChildByTypeAndName(TYPE_OBJECT, "Basket")!;
     const reparsedIdentity = reparsedBasket.ownChildByTypeAndName(TYPE_IDENTITY, "primary")!;
-    const reparsedFields = reparsedIdentity.attr("fields");
+    const reparsedFields = reparsedIdentity.ownAttr("fields");
     expect(reparsedFields).toEqual(["id"]);
   });
 
@@ -780,12 +780,12 @@ describe("Fruitbasket proxy: identity nodes and @fields arrays round-trip", () =
     const { root } = await loadFixture("fruitbasket-proxy-metadata.json");
     const basket = root.ownChildByTypeAndName(TYPE_OBJECT, "Basket")!;
     const identity = basket.ownChildByTypeAndName(TYPE_IDENTITY, "primary")!;
-    expect(identity.attr("generation")).toBe("increment");
+    expect(identity.ownAttr("generation")).toBe("increment");
 
     const reparsed = await roundTrip(root);
     const reparsedBasket = reparsed.ownChildByTypeAndName(TYPE_OBJECT, "Basket")!;
     const reparsedIdentity = reparsedBasket.ownChildByTypeAndName(TYPE_IDENTITY, "primary")!;
-    expect(reparsedIdentity.attr("generation")).toBe("increment");
+    expect(reparsedIdentity.ownAttr("generation")).toBe("increment");
   });
 
   it("BasketToFruit has relationship children that round-trip correctly", async () => {
@@ -810,7 +810,7 @@ describe("Fruitbasket proxy: identity nodes and @fields arrays round-trip", () =
       const obj = root.ownChildByTypeAndName(TYPE_OBJECT, name)!;
       expect(obj).toBeDefined();
       expect(obj.subType).toBe(OBJECT_SUBTYPE_ENTITY);
-      expect(obj.attr("javaRuntime")).toBe("proxy");
+      expect(obj.ownAttr("javaRuntime")).toBe("proxy");
     }
   });
 });

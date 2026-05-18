@@ -9,7 +9,7 @@ import { RESERVED_KEY_VALUE } from "../constants.js";
 
 export class MetaAttr extends MetaData implements DataTypeAware {
   get value(): unknown {
-    return this.attr(RESERVED_KEY_VALUE);
+    return this.ownAttr(RESERVED_KEY_VALUE);
   }
 
   /** The coarse value-type classification for this attribute's subtype. */

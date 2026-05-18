@@ -43,7 +43,7 @@ interface GridSpec {
 function buildAllowlistForEntity(entity: MetaObject): FilterAllowlist {
   const result: Record<string, { ops: readonly string[]; subType: string; leadingWildcard: boolean }> = {};
   // fields() is effective (own + inherited via extends:/super:).
-  for (const f of entity.fields().filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true)) {
+  for (const f of entity.fields().filter((c) => c.ownAttr(FIELD_ATTR_FILTERABLE) === true)) {
     result[f.name] = { ops: opsForSubType(f.subType), subType: f.subType, leadingWildcard: false };
   }
   return result as FilterAllowlist;
@@ -62,7 +62,7 @@ function fieldViewKind(field: MetaField): string {
 
 function fieldLabel(field: MetaField): string {
   const view = field.ownViews()[0];
-  const label = view?.attr("label");
+  const label = view?.ownAttr("label");
   if (typeof label === "string") return label;
   return humanize(field.name);
 }
@@ -89,7 +89,7 @@ function extractGrids(entity: MetaObject): GridSpec[] {
 
     // @columns is a stringArray attr on the layout (set by E-T4 migration).
     // Fall back to all entity fields if not present.
-    const columnsAttr = layout.attr(LAYOUT_DATA_GRID_ATTR_COLUMNS);
+    const columnsAttr = layout.ownAttr(LAYOUT_DATA_GRID_ATTR_COLUMNS);
     const columnNames: string[] = Array.isArray(columnsAttr)
       ? (columnsAttr as unknown[]).filter((x): x is string => typeof x === "string")
       : [...fieldsByName.keys()];
@@ -105,14 +105,14 @@ function extractGrids(entity: MetaObject): GridSpec[] {
       return [spec];
     });
 
-    const sortField = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
-    const sortOrder = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
+    const sortField = layout.ownAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
+    const sortOrder = layout.ownAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
 
-    const filterAttr = layout.attr(LAYOUT_DATA_GRID_ATTR_FILTER);
+    const filterAttr = layout.ownAttr(LAYOUT_DATA_GRID_ATTR_FILTER);
     const grid: GridSpec = {
       name:       layout.name || "default",
-      pageSize:   (layout.attr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE) as number | undefined) ?? 25,
-      filterable: layout.attr(LAYOUT_DATA_GRID_ATTR_FILTERABLE) === true,
+      pageSize:   (layout.ownAttr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE) as number | undefined) ?? 25,
+      filterable: layout.ownAttr(LAYOUT_DATA_GRID_ATTR_FILTERABLE) === true,
       columns,
     };
     if (typeof sortField === "string") grid.defaultSortField = sortField;

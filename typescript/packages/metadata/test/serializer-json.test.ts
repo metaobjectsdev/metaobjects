@@ -107,8 +107,8 @@ function assertModelsEqual(a: MetaData, b: MetaData, path = "root"): void {
   expect(a.isArray).toBe(b.isArray);
 
   // Compare attrs maps
-  const aAttrs = a.attrs();
-  const bAttrs = b.attrs();
+  const aAttrs = a.ownAttrs();
+  const bAttrs = b.ownAttrs();
   expect(aAttrs.size).toBe(bAttrs.size);
   for (const [k, v] of aAttrs) {
     expect(bAttrs.has(k)).toBe(true);

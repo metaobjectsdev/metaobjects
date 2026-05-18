@@ -26,7 +26,7 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
     name: "tanstack-grid",
     // Always set: AND-composes opt-out, user filter, and dataGrid layout presence.
     filter: (e: MetaObject) =>
-      e.attr("emitTanstack") !== false
+      e.ownAttr("emitTanstack") !== false
       && userFilter(e)
       && hasDataGridLayout(e),
     generate: perEntity(async (entity, ctx) => {

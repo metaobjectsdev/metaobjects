@@ -99,8 +99,8 @@ describe("MetaData — construction", () => {
     expect(makeField("string", "f").superData).toBeUndefined();
   });
 
-  it("defaults: attrs() is empty", () => {
-    expect(makeField("string", "f").attrs().size).toBe(0);
+  it("defaults: ownAttrs() is empty", () => {
+    expect(makeField("string", "f").ownAttrs().size).toBe(0);
   });
 
   it("defaults: ownChildren() is empty", () => {
@@ -152,68 +152,68 @@ describe("MetaData — attributes", () => {
     m = makeField("string", "f");
   });
 
-  it("setAttr then attr returns the value", () => {
+  it("setAttr then ownAttr returns the value", () => {
     m.setAttr("label", "My Label");
-    expect(m.attr("label")).toBe("My Label");
+    expect(m.ownAttr("label")).toBe("My Label");
   });
 
-  it("attr returns undefined for an unset key", () => {
-    expect(m.attr("missing")).toBeUndefined();
+  it("ownAttr returns undefined for an unset key", () => {
+    expect(m.ownAttr("missing")).toBeUndefined();
   });
 
   it("overwriting setAttr replaces the value", () => {
     m.setAttr("k", "first");
     m.setAttr("k", "second");
-    expect(m.attr("k")).toBe("second");
+    expect(m.ownAttr("k")).toBe("second");
   });
 
-  it("hasAttr returns true after setAttr", () => {
+  it("ownHasAttr returns true after setAttr", () => {
     m.setAttr("k", "v");
-    expect(m.hasAttr("k")).toBe(true);
+    expect(m.ownHasAttr("k")).toBe(true);
   });
 
-  it("hasAttr returns false for unset key", () => {
-    expect(m.hasAttr("missing")).toBe(false);
+  it("ownHasAttr returns false for unset key", () => {
+    expect(m.ownHasAttr("missing")).toBe(false);
   });
 
-  it("attrs() returns all set attributes", () => {
+  it("ownAttrs() returns all set attributes", () => {
     m.setAttr("a", 1);
     m.setAttr("b", true);
     m.setAttr("c", "hello");
-    const map = m.attrs();
+    const map = m.ownAttrs();
     expect(map.get("a")).toBe(1);
     expect(map.get("b")).toBe(true);
     expect(map.get("c")).toBe("hello");
     expect(map.size).toBe(3);
   });
 
-  it("attrs() returns a defensive copy — mutating it does not affect the model", () => {
+  it("ownAttrs() returns a defensive copy — mutating it does not affect the model", () => {
     m.setAttr("x", "original");
-    const copy = m.attrs();
+    const copy = m.ownAttrs();
     copy.set("x", "mutated");
     copy.set("injected", "val");
-    expect(m.attr("x")).toBe("original");
-    expect(m.hasAttr("injected")).toBe(false);
+    expect(m.ownAttr("x")).toBe("original");
+    expect(m.ownHasAttr("injected")).toBe(false);
   });
 
   it("supports string AttrValue", () => {
     m.setAttr("s", "hello");
-    expect(m.attr("s")).toBe("hello");
+    expect(m.ownAttr("s")).toBe("hello");
   });
 
   it("supports number AttrValue", () => {
     m.setAttr("n", 42);
-    expect(m.attr("n")).toBe(42);
+    expect(m.ownAttr("n")).toBe(42);
   });
 
   it("supports boolean AttrValue", () => {
     m.setAttr("b", false);
-    expect(m.attr("b")).toBe(false);
+    expect(m.ownAttr("b")).toBe(false);
   });
 
   it("supports string[] AttrValue", () => {
     m.setAttr("arr", ["a", "b", "c"]);
-    expect(m.attr("arr")).toEqual(["a", "b", "c"]);
+    expect(m.ownAttr("arr")).toEqual(["a", "b", "c"]);
   });
 });
 
@@ -389,7 +389,7 @@ describe("MetaData — effectiveAttrs()", () => {
     expect(eff.get("x")).toBe(1);
     expect(eff.get("y")).toBe("hello");
     eff.set("z", "injected");
-    expect(m.hasAttr("z")).toBe(false);
+    expect(m.ownHasAttr("z")).toBe(false);
   });
 
   it("with super returns both own and inherited attrs", () => {
@@ -479,7 +479,7 @@ describe("MetaData — children() (effective merge behaviour)", () => {
     expect(eff.length).toBe(2);
     expect(eff[0]).toBe(childFoo); // override in place of super's foo
     expect(eff[1]).toBe(superBar);
-    expect((eff[0] as MetaData).attr("origin")).toBe("child");
+    expect((eff[0] as MetaData).ownAttr("origin")).toBe("child");
   });
 
   it("multi-level super chain: all children accumulate", () => {
@@ -732,7 +732,7 @@ describe("MetaData — effective child accessors (default)", () => {
     childFoo.setAttr("origin", "child");
     child.addChild(childFoo);
     child.setSuperResolved(superModel);
-    expect(child.childByTypeAndName(TYPE_FIELD, "foo")?.attr("origin")).toBe(
+    expect(child.childByTypeAndName(TYPE_FIELD, "foo")?.ownAttr("origin")).toBe(
       "child",
     );
   });

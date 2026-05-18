@@ -40,7 +40,7 @@ export function validateDataGridSortFields(root: MetaData): ParseError[] {
       effective.filter((c) => c.type === TYPE_FIELD).map((f) => f.name),
     );
     for (const layout of effective.filter((c) => c.type === TYPE_LAYOUT && c.subType === LAYOUT_SUBTYPE_DATA_GRID)) {
-      const sortField = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
+      const sortField = layout.ownAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
       if (typeof sortField === "string" && !fieldNames.has(sortField)) {
         errors.push(
           new ParseError(
@@ -67,7 +67,7 @@ export function validateFilterableHasIndex(root: MetaData): string[] {
     // Build the set of field names that are part of any identity on this object.
     const indexedFieldNames = new Set<string>();
     for (const identity of effective.filter((c) => c.type === TYPE_IDENTITY)) {
-      const fields = identity.attr(IDENTITY_ATTR_FIELDS);
+      const fields = identity.ownAttr(IDENTITY_ATTR_FIELDS);
       if (typeof fields === "string") {
         for (const name of fields.split(",")) indexedFieldNames.add(name.trim());
       } else if (Array.isArray(fields)) {
@@ -76,9 +76,9 @@ export function validateFilterableHasIndex(root: MetaData): string[] {
     }
 
     for (const field of effective.filter((c) => c.type === TYPE_FIELD)) {
-      const filterable = field.attr(FIELD_ATTR_FILTERABLE);
+      const filterable = field.ownAttr(FIELD_ATTR_FILTERABLE);
       if (filterable !== true) continue;
-      if (field.attr(FIELD_ATTR_DB_INDEXED) === true) continue;
+      if (field.ownAttr(FIELD_ATTR_DB_INDEXED) === true) continue;
       if (indexedFieldNames.has(field.name)) continue;
       warnings.push(
         `[filterable-without-index] field "${obj.name}.${field.name}" has @filterable: true but is not ` +
@@ -192,7 +192,7 @@ function _validateViaPath(
       );
       return;
     }
-    const refTarget = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
+    const refTarget = rel.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF);
     if (typeof refTarget !== "string" || refTarget === "") {
       errors.push(
         new ParseError(
@@ -220,7 +220,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
     for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
       for (const origin of field.ownChildren().filter((c) => c.type === TYPE_ORIGIN)) {
         if (origin.subType === ORIGIN_SUBTYPE_PASSTHROUGH) {
-          const from = origin.attr(ORIGIN_PASSTHROUGH_ATTR_FROM);
+          const from = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
           if (typeof from !== "string" || from === "") {
             errors.push(
               new ParseError(
@@ -230,12 +230,12 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             continue;
           }
           _validateFromPath(from, root, obj.name, field.name, errors);
-          const via = origin.attr(ORIGIN_PASSTHROUGH_ATTR_VIA);
+          const via = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
           if (typeof via === "string" && via !== "") {
             _validateViaPath(via, root, obj.name, field.name, errors);
           }
         } else if (origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
-          const of_ = origin.attr(ORIGIN_AGGREGATE_ATTR_OF);
+          const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF);
           if (typeof of_ !== "string" || of_ === "") {
             errors.push(
               new ParseError(
@@ -245,7 +245,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             continue;
           }
           _validateFromPath(of_, root, obj.name, field.name, errors, "origin.aggregate.@of");
-          const via = origin.attr(ORIGIN_AGGREGATE_ATTR_VIA);
+          const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
           if (typeof via !== "string" || via === "") {
             errors.push(
               new ParseError(

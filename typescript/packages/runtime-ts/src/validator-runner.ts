@@ -44,7 +44,7 @@ export function runValidators(
     // DB will fill them in (e.g. timestamps with `@default: CURRENT_TIMESTAMP`,
     // booleans with `@default: false`).
     const required = isRequired(field);
-    const hasDefault = field.attr(FIELD_ATTR_DEFAULT) !== undefined;
+    const hasDefault = field.ownAttr(FIELD_ATTR_DEFAULT) !== undefined;
     if (required && (value === undefined || value === null)) {
       if (opts.partial && !present) continue;
       if (hasDefault) continue;
@@ -96,7 +96,7 @@ export function runValidators(
     for (const child of field.ownChildren()) {
       if (child.type !== TYPE_VALIDATOR) continue;
       if (child.subType !== VALIDATOR_SUBTYPE_REGEX) continue;
-      const pattern = child.attr(VALIDATOR_ATTR_PATTERN);
+      const pattern = child.ownAttr(VALIDATOR_ATTR_PATTERN);
       if (typeof pattern !== "string") continue;
       if (typeof value !== "string") continue;
       let regex: RegExp;
@@ -127,7 +127,7 @@ export function runValidators(
 }
 
 function isRequired(field: MetaData): boolean {
-  if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
+  if (field.ownAttr(FIELD_ATTR_REQUIRED) === true) return true;
   for (const child of field.ownChildren()) {
     if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_REQUIRED) return true;
   }
@@ -135,12 +135,12 @@ function isRequired(field: MetaData): boolean {
 }
 
 function resolveMaxLength(field: MetaData): number | undefined {
-  const attr = field.attr(FIELD_ATTR_MAX_LENGTH);
+  const attr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
   if (typeof attr === "number") return attr;
   for (const child of field.ownChildren()) {
     if (child.type !== TYPE_VALIDATOR) continue;
     if (child.subType !== VALIDATOR_SUBTYPE_LENGTH) continue;
-    const max = child.attr(VALIDATOR_ATTR_MAX);
+    const max = child.ownAttr(VALIDATOR_ATTR_MAX);
     if (typeof max === "number") return max;
   }
   return undefined;
@@ -150,7 +150,7 @@ function resolveMinLength(field: MetaData): number | undefined {
   for (const child of field.ownChildren()) {
     if (child.type !== TYPE_VALIDATOR) continue;
     if (child.subType !== VALIDATOR_SUBTYPE_LENGTH) continue;
-    const min = child.attr(VALIDATOR_ATTR_MIN);
+    const min = child.ownAttr(VALIDATOR_ATTR_MIN);
     if (typeof min === "number") return min;
   }
   return undefined;

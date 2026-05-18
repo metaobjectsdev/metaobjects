@@ -35,10 +35,10 @@ export function resolveRelationDescriptor(
   for (const child of sourceEntity.ownChildren()) {
     if (child.type !== TYPE_RELATIONSHIP) continue;
     if (child.name !== relationName) continue;
-    const card = child.attr(RELATIONSHIP_ATTR_CARDINALITY);
+    const card = child.ownAttr(RELATIONSHIP_ATTR_CARDINALITY);
     if (card !== CARDINALITY_ONE) continue;
-    const targetEntityName = child.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-    const fkField = child.attr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
+    const targetEntityName = child.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
+    const fkField = child.ownAttr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
     if (!targetEntityName || !fkField) {
       throw new MetadataError(
         `Relationship '${relationName}' on '${sourceEntity.name}' missing @objectRef or @fkField`,
@@ -65,13 +65,13 @@ export function resolveRelationDescriptor(
     if (other.name === sourceEntity.name) continue;
     for (const child of other.ownChildren()) {
       if (child.type !== TYPE_RELATIONSHIP) continue;
-      const card = child.attr(RELATIONSHIP_ATTR_CARDINALITY);
+      const card = child.ownAttr(RELATIONSHIP_ATTR_CARDINALITY);
       if (card !== CARDINALITY_ONE) continue;
-      const targetEntityName = child.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
+      const targetEntityName = child.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
       if (targetEntityName !== sourceEntity.name) continue;
       const inverseName = inversePluralName(other.name);
       if (inverseName !== relationName) continue;
-      const fkField = child.attr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
+      const fkField = child.ownAttr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
       if (!fkField) {
         throw new MetadataError(
           `Inverse relationship for '${relationName}' on '${sourceEntity.name}' missing @fkField`,

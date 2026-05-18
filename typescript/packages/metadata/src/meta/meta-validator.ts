@@ -19,12 +19,12 @@ export class MetaValidator extends MetaData {
    * (Pattern moves to MetaRegexValidator; required validators have no extra attrs.)
    */
   get min(): number | undefined {
-    const v = this.attr(VALIDATOR_ATTR_MIN);
+    const v = this.ownAttr(VALIDATOR_ATTR_MIN);
     return typeof v === "number" ? v : undefined;
   }
 
   get max(): number | undefined {
-    const v = this.attr(VALIDATOR_ATTR_MAX);
+    const v = this.ownAttr(VALIDATOR_ATTR_MAX);
     return typeof v === "number" ? v : undefined;
   }
 
@@ -50,7 +50,7 @@ export class MetaLengthValidator extends MetaValidator {}
 /** Regex validator: carries the pattern. */
 export class MetaRegexValidator extends MetaValidator {
   get pattern(): string | undefined {
-    const v = this.attr(VALIDATOR_ATTR_PATTERN);
+    const v = this.ownAttr(VALIDATOR_ATTR_PATTERN);
     return typeof v === "string" ? v : undefined;
   }
 }

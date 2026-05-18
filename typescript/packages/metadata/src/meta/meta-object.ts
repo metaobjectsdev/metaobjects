@@ -26,13 +26,13 @@ export class MetaObject extends MetaData {
       const source = this.children().find(
         (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_TABLE,
       );
-      const name = source?.attr(SOURCE_DB_TABLE_ATTR_NAME);
+      const name = source?.ownAttr(SOURCE_DB_TABLE_ATTR_NAME);
       return typeof name === "string" && name !== "" ? name : undefined;
     });
   }
 
   get javaRuntime(): string | undefined {
-    const v = this.attr(OBJECT_ATTR_JAVA_RUNTIME);
+    const v = this.ownAttr(OBJECT_ATTR_JAVA_RUNTIME);
     return typeof v === "string" ? v : undefined;
   }
 

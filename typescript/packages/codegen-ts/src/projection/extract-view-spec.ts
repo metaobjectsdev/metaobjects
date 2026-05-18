@@ -51,7 +51,7 @@ function viewName(projection: MetaObject, ctx: ExtractContext): string {
   const dbView = projection.ownChildren().find(
     (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_VIEW,
   );
-  const explicit = dbView?.attr(SOURCE_DB_VIEW_ATTR_NAME) as string | undefined;
+  const explicit = dbView?.ownAttr(SOURCE_DB_VIEW_ATTR_NAME) as string | undefined;
   return explicit ?? viewNameFromProjection(projection.name, ctx.columnNamingStrategy);
 }
 
@@ -81,7 +81,7 @@ function sourceColumnNameFor(
   entityField: MetaData,
   ctx: ExtractContext,
 ): string {
-  const explicit = entityField.attr(FIELD_ATTR_DB_COLUMN) as string | undefined;
+  const explicit = entityField.ownAttr(FIELD_ATTR_DB_COLUMN) as string | undefined;
   return explicit ?? columnNameFromField(entityField.name, ctx.columnNamingStrategy);
 }
 
@@ -106,12 +106,12 @@ function shortAliasFor(entityName: string, used: Set<string>): string {
  */
 function parentJoinColumnFor(parentEntity: MetaObject, relationship: MetaData): string {
   // Explicit @parentField wins (e.g., for email-based joins).
-  const explicit = relationship.attr(RELATIONSHIP_ATTR_PARENT_FIELD) as string | undefined;
+  const explicit = relationship.ownAttr(RELATIONSHIP_ATTR_PARENT_FIELD) as string | undefined;
   if (explicit) return explicit;
   // Default: parent's primary identity field name.
   // primaryIdentity() is effective-by-default, so inherited identities (from extends:/super:) are included.
   const primary = parentEntity.primaryIdentity();
-  const fields = primary?.attr(IDENTITY_ATTR_FIELDS) as string | string[] | undefined;
+  const fields = primary?.ownAttr(IDENTITY_ATTR_FIELDS) as string | string[] | undefined;
   if (typeof fields === "string") {
     const first = fields.split(",")[0];
     if (first !== undefined) return first.trim();
@@ -152,8 +152,8 @@ function buildJoinTree(
     for (const origin of field.ownChildren()) {
       if (origin.type !== TYPE_ORIGIN) continue;
       const viaAttr = origin.subType === ORIGIN_SUBTYPE_AGGREGATE
-        ? (origin.attr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined)
-        : (origin.attr(ORIGIN_PASSTHROUGH_ATTR_VIA) as string | undefined);
+        ? (origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined)
+        : (origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA) as string | undefined);
       if (!viaAttr) continue;
 
       const segments = viaAttr.split(".");
@@ -167,8 +167,8 @@ function buildJoinTree(
       for (const relName of relSegments) {
         const rel = findRelationship(currentObj, relName);
         if (!rel) break;
-        const targetName = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-        const fkField = rel.attr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
+        const targetName = rel.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
+        const fkField = rel.ownAttr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
         const target = targetName ? root.findObject(targetName) : undefined;
         if (!target || !fkField || !targetName) break;
         path.push({
@@ -284,7 +284,7 @@ function buildSelectSpec(
     }
 
     if (origin.subType === ORIGIN_SUBTYPE_PASSTHROUGH) {
-      const from = origin.attr(ORIGIN_PASSTHROUGH_ATTR_FROM) as string;
+      const from = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM) as string;
       const dotIdx = from.indexOf(".");
       if (dotIdx < 1) continue;
       const entityName = from.slice(0, dotIdx);
@@ -304,8 +304,8 @@ function buildSelectSpec(
         sourceColumn: sourceColumnNameFor(targetField, ctx),
       });
     } else if (origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
-      const agg = origin.attr(ORIGIN_AGGREGATE_ATTR_AGG) as AggregateFunction;
-      const of_ = origin.attr(ORIGIN_AGGREGATE_ATTR_OF) as string;
+      const agg = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_AGG) as AggregateFunction;
+      const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF) as string;
       if (!agg || !of_) continue;
       const dotIdx = of_.indexOf(".");
       if (dotIdx < 1) continue;

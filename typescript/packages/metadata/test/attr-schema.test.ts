@@ -294,7 +294,7 @@ describe("Phase A2 — core attribute schemas", () => {
     expect(attrs.get("joinFields")!.valueType).toBe(ATTR_SUBTYPE_STRINGARRAY);
   });
 
-  it("validator.length declares @min and @max (int, optional) — read via this.attr()", () => {
+  it("validator.length declares @min and @max (int, optional) — read via this.ownAttr()", () => {
     const attrs = byName(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_LENGTH);
     expect(attrs.get("min")).toBeDefined();
     expect(attrs.get("min")!.valueType).toBe(ATTR_SUBTYPE_INT);
