@@ -377,7 +377,7 @@ describe("MetaData — flags and references", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Effective view: own + inherited via the super chain
+// attrs() — effective attrs: own + inherited via the super chain
 // ---------------------------------------------------------------------------
 
 describe("MetaData — attrs() (effective merge behaviour)", () => {
