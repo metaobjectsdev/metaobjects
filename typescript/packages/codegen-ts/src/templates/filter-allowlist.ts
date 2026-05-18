@@ -1,7 +1,6 @@
 import { code, type Code } from "ts-poet";
-import type { MetaData } from "@metaobjects/metadata";
+import { type MetaData, MetaField, MetaObject } from "@metaobjects/metadata";
 import {
-  TYPE_FIELD,
   FIELD_ATTR_FILTERABLE,
   FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
   FIELD_SUBTYPE_BOOLEAN,
@@ -43,9 +42,10 @@ function filterSubTypeFor(fieldSubType: string): "string" | "number" | "boolean"
   return "string";
 }
 
-function filterableFields(entity: MetaData): MetaData[] {
-  // Use effectiveChildren() so inherited fields (from extends:/super:) are included in allowlists.
-  return entity.effectiveChildren().filter((c) => c.type === TYPE_FIELD && c.attr(FIELD_ATTR_FILTERABLE) === true);
+function filterableFields(entity: MetaData): MetaField[] {
+  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
+  // fields() returns effective fields, so inherited fields (from extends:/super:) are included in allowlists.
+  return (entity as MetaObject).fields().filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true);
 }
 
 export function renderFilterAllowlist(entity: MetaData): Code {

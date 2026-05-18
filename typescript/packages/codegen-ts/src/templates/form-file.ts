@@ -17,10 +17,8 @@
 // object metadata. Default off. Most projects don't need stock forms.
 
 import { code, imp } from "ts-poet";
-import type { MetaData } from "@metaobjects/metadata";
+import { type MetaData, MetaField, MetaObject } from "@metaobjects/metadata";
 import {
-  TYPE_FIELD,
-  TYPE_IDENTITY,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_ATTR_FIELDS,
   FIELD_ATTR_DEFAULT,
@@ -28,11 +26,10 @@ import {
 import { type RenderContext, withExt } from "../render-context.js";
 import { GENERATED_HEADER } from "../constants.js";
 
-function primaryFieldNames(entity: MetaData): Set<string> {
+function primaryFieldNames(entity: MetaObject): Set<string> {
   const set = new Set<string>();
-  // Use effectiveChildren() so inherited identities (from extends:/super:) are included.
-  for (const child of entity.effectiveChildren()) {
-    if (child.type !== TYPE_IDENTITY) continue;
+  // identities() returns effective identities, so inherited identities (from extends:/super:) are included.
+  for (const child of entity.identities()) {
     if (child.subType !== IDENTITY_SUBTYPE_PRIMARY) continue;
     const fields = child.attr(IDENTITY_ATTR_FIELDS);
     const fieldsList = Array.isArray(fields) ? fields : (typeof fields === "string" ? [fields] : []);
@@ -41,7 +38,7 @@ function primaryFieldNames(entity: MetaData): Set<string> {
   return set;
 }
 
-function isAutoManaged(field: MetaData): boolean {
+function isAutoManaged(field: MetaField): boolean {
   const def = field.attr(FIELD_ATTR_DEFAULT);
   if (typeof def === "string") {
     const upper = def.toUpperCase();
@@ -51,12 +48,11 @@ function isAutoManaged(field: MetaData): boolean {
 }
 
 /** Visible form fields = all fields minus PK and DB-auto-defaulted. */
-function visibleFields(entity: MetaData): string[] {
+function visibleFields(entity: MetaObject): string[] {
   const pkNames = primaryFieldNames(entity);
   const names: string[] = [];
-  // Use effectiveChildren() so inherited fields (from extends:/super:) are included in forms.
-  for (const child of entity.effectiveChildren()) {
-    if (child.type !== TYPE_FIELD) continue;
+  // fields() returns effective fields, so inherited fields (from extends:/super:) are included in forms.
+  for (const child of entity.fields()) {
     if (child.attr("formExclude") === true) continue;
     if (pkNames.has(child.name)) continue;
     if (isAutoManaged(child)) continue;
@@ -68,7 +64,8 @@ function visibleFields(entity: MetaData): string[] {
 export function renderFormFile(entity: MetaData, ctx: RenderContext): string {
   const entityName = entity.name;
   const entityFileSpec = withExt(`./${entityName}`, ctx.extStyle);
-  const fields = visibleFields(entity);
+  // Transient cast: runner passes MetaObject; public interface still types as MetaData (flipped in Task 7).
+  const fields = visibleFields(entity as MetaObject);
 
   const ReactElementSym = imp("t:ReactElement@react");
   const SubmitHandlerSym = imp("t:SubmitHandler@react-hook-form");
