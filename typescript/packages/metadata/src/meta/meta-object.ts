@@ -20,6 +20,8 @@ import {
 } from "../constants.js";
 import type { MetaField } from "./meta-field.js";
 import type { MetaIdentity } from "./meta-identity.js";
+import type { MetaRelationship } from "./meta-relationship.js";
+import type { MetaValidator } from "./meta-validator.js";
 
 export class MetaObject extends MetaData {
   get dbTable(): string | undefined {
@@ -85,29 +87,29 @@ export class MetaObject extends MetaData {
     );
   }
 
-  relationships(): MetaData[] {
+  relationships(): MetaRelationship[] {
     return this.cached("relationships", () =>
-      this.children().filter((c) => c.type === TYPE_RELATIONSHIP),
+      this.children().filter((c): c is MetaRelationship => c.type === TYPE_RELATIONSHIP),
     );
   }
 
   /** Own relationships only — excludes inherited. */
-  ownRelationships(): MetaData[] {
+  ownRelationships(): MetaRelationship[] {
     return this.cached("ownRelationships", () =>
-      this.ownChildren().filter((c) => c.type === TYPE_RELATIONSHIP),
+      this.ownChildren().filter((c): c is MetaRelationship => c.type === TYPE_RELATIONSHIP),
     );
   }
 
-  validators(): MetaData[] {
+  validators(): MetaValidator[] {
     return this.cached("validators", () =>
-      this.children().filter((c) => c.type === TYPE_VALIDATOR),
+      this.children().filter((c): c is MetaValidator => c.type === TYPE_VALIDATOR),
     );
   }
 
   /** Own validators only — excludes validators inherited via extends. Java parity: getChildren(Class, false). */
-  ownValidators(): MetaData[] {
+  ownValidators(): MetaValidator[] {
     return this.cached("ownValidators", () =>
-      this.ownChildren().filter((c) => c.type === TYPE_VALIDATOR),
+      this.ownChildren().filter((c): c is MetaValidator => c.type === TYPE_VALIDATOR),
     );
   }
 

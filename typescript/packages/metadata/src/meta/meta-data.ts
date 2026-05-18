@@ -252,22 +252,22 @@ export abstract class MetaData {
 
   /** Own children whose type matches — excludes inherited. */
   ownChildrenOfType(type: string): MetaData[] {
-    return this._children.filter((c) => c.type === type);
+    return this.ownChildren().filter((c) => c.type === type);
   }
 
   /** Own children matching both type and subType — excludes inherited. */
   ownChildrenOfSubType(type: string, subType: string): MetaData[] {
-    return this._children.filter((c) => c.type === type && c.subType === subType);
+    return this.ownChildren().filter((c) => c.type === type && c.subType === subType);
   }
 
   /** First own child with matching name, or undefined — excludes inherited. */
   ownChildByName(name: string): MetaData | undefined {
-    return this._children.find((c) => c.name === name);
+    return this.ownChildren().find((c) => c.name === name);
   }
 
   /** First own child matching both type and name, or undefined — excludes inherited. */
   ownChildByTypeAndName(type: string, name: string): MetaData | undefined {
-    return this._children.find((c) => c.type === type && c.name === name);
+    return this.ownChildren().find((c) => c.type === type && c.name === name);
   }
 
   // ---------------------------------------------------------------------------

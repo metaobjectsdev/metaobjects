@@ -18,10 +18,7 @@ import {
   FIELD_ATTR_OBJECT_REF,
   VALIDATOR_SUBTYPE_REQUIRED,
 } from "../constants.js";
-
-// Forward-declared type imports to avoid circular references at runtime.
-// MetaValidator and MetaView are defined in Task 3 (meta-validator.ts / meta-view.ts).
-// Using MetaData as the base type here; callers narrow as needed.
+import type { MetaValidator } from "./meta-validator.js";
 
 export class MetaField extends MetaData implements DataTypeAware {
   /** The coarse value-type classification for this field's subtype. */
@@ -76,16 +73,16 @@ export class MetaField extends MetaData implements DataTypeAware {
   }
 
   /** All effective validators (own + inherited via extends). Java parity: MetaField.getValidators() / getChildren(MetaValidator.class, true). */
-  validators(): MetaData[] {
+  validators(): MetaValidator[] {
     return this.cached("validators", () =>
-      this.children().filter((c) => c.type === TYPE_VALIDATOR),
+      this.children().filter((c): c is MetaValidator => c.type === TYPE_VALIDATOR),
     );
   }
 
   /** Own validators only — excludes validators inherited via extends. Java parity: getChildren(Class, false). */
-  ownValidators(): MetaData[] {
+  ownValidators(): MetaValidator[] {
     return this.cached("ownValidators", () =>
-      this.ownChildren().filter((c) => c.type === TYPE_VALIDATOR),
+      this.ownChildren().filter((c): c is MetaValidator => c.type === TYPE_VALIDATOR),
     );
   }
 
