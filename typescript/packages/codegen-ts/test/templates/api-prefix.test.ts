@@ -1,22 +1,18 @@
 // Tests for $apiPrefix emission in entity-constants + routes-file.
 
 import { describe, test, expect } from "bun:test";
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaObject, MetaRoot } from "@metaobjects/metadata";
 import {
   TypeId,
-  TYPE_OBJECT,
-  TYPE_FIELD,
   TYPE_IDENTITY,
-  TYPE_METADATA,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_LONG,
   IDENTITY_SUBTYPE_PRIMARY,
   OBJECT_SUBTYPE_ENTITY,
-  SUBTYPE_ROOT,
   MetaDataLoader,
   InMemorySource,
 } from "@metaobjects/metadata";
-import { meta } from "../_meta-build.js";
+import { meta, metaRoot, metaObject, metaField } from "../_meta-build.js";
 import { renderEntityConstants } from "../../src/templates/entity-constants.js";
 import { renderRoutesFile } from "../../src/templates/routes-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
@@ -27,12 +23,12 @@ import { buildRelationMap } from "../../src/relation-resolver.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeSimpleRoot(name = "Subscriber"): { root: MetaData; entity: MetaData } {
-  const root = meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
-  const entity = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), name);
-  const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
+function makeSimpleRoot(name = "Subscriber"): { root: MetaRoot; entity: MetaObject } {
+  const root = metaRoot();
+  const entity = metaObject(OBJECT_SUBTYPE_ENTITY, name);
+  const id = metaField(FIELD_SUBTYPE_LONG, "id");
   entity.addChild(id);
-  const email = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "email");
+  const email = metaField(FIELD_SUBTYPE_STRING, "email");
   entity.addChild(email);
   const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr("fields", ["id"]);
@@ -42,7 +38,7 @@ function makeSimpleRoot(name = "Subscriber"): { root: MetaData; entity: MetaData
   return { root, entity };
 }
 
-function makeSimpleEntity(name = "Subscriber"): MetaData {
+function makeSimpleEntity(name = "Subscriber"): MetaObject {
   return makeSimpleRoot(name).entity;
 }
 
@@ -161,7 +157,7 @@ describe("renderRoutesFile — vanilla entity — apiPrefix", () => {
 describe("renderRoutesFile — projection — apiPrefix", () => {
   test("flat shape (no wrapping) when apiPrefix is empty", async () => {
     const root = await loadProjectionFixture();
-    const projection = root.ownChildren().find((o) => o.name === "ProgramSummary")!;
+    const projection = root.objects().find((o) => o.name === "ProgramSummary")!;
     const ctx = makeRenderContext({
       dialect: "sqlite",
       loadedRoot: root,
@@ -179,7 +175,7 @@ describe("renderRoutesFile — projection — apiPrefix", () => {
 
   test("wraps with fastify.register when apiPrefix is '/api'", async () => {
     const root = await loadProjectionFixture();
-    const projection = root.ownChildren().find((o) => o.name === "ProgramSummary")!;
+    const projection = root.objects().find((o) => o.name === "ProgramSummary")!;
     const ctx = makeRenderContext({
       dialect: "sqlite",
       loadedRoot: root,

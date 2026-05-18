@@ -59,3 +59,24 @@ export function meta(typeId: TypeId, name = ""): MetaData {
   }
   return new Ctor(typeId, name);
 }
+
+// ---------------------------------------------------------------------------
+// Typed convenience helpers — structurally justified casts.
+// meta(TypeId(TYPE_METADATA, ...)) ALWAYS returns MetaRoot because CTORS maps
+// TYPE_METADATA → MetaRoot; likewise for MetaObject and MetaField.
+// ---------------------------------------------------------------------------
+
+/** Build a MetaRoot node (type=metadata). */
+export function metaRoot(subType = "root", name = ""): MetaRoot {
+  return meta(new TypeId(TYPE_METADATA, subType), name) as MetaRoot;
+}
+
+/** Build a MetaObject node (type=object) with the given subType and name. */
+export function metaObject(subType: string, name: string): MetaObject {
+  return meta(new TypeId(TYPE_OBJECT, subType), name) as MetaObject;
+}
+
+/** Build a MetaField node (type=field) with the given subType and name. */
+export function metaField(subType: string, name: string): MetaField {
+  return meta(new TypeId(TYPE_FIELD, subType), name) as MetaField;
+}

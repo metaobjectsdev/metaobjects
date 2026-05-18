@@ -1,8 +1,7 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaObject, MetaData } from "@metaobjects/metadata";
 import {
   TypeId,
-  TYPE_OBJECT,
   TYPE_FIELD,
   TYPE_IDENTITY,
   TYPE_VIEW,
@@ -12,11 +11,11 @@ import {
   OBJECT_SUBTYPE_ENTITY,
   VIEW_SUBTYPE_CURRENCY,
 } from "@metaobjects/metadata";
-import { meta } from "../_meta-build.js";
+import { meta, metaObject } from "../_meta-build.js";
 import { renderEntityConstants } from "../../src/templates/entity-constants.js";
 
-function makeEntity(fields: MetaData[]): MetaData {
-  const entity = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Program");
+function makeEntity(fields: MetaData[]): MetaObject {
+  const entity = metaObject(OBJECT_SUBTYPE_ENTITY, "Program");
   entity.setAttr("dbTable", "programs");
 
   const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "id");

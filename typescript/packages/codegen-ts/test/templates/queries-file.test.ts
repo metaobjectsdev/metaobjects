@@ -1,21 +1,21 @@
 // packages/codegen-ts/test/templates/queries-file.test.ts
 import { describe, test, expect } from "bun:test";
-import type { MetaData } from "@metaobjects/metadata";
-import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_METADATA,
-         FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, SUBTYPE_ROOT,
+import type { MetaObject } from "@metaobjects/metadata";
+import { TypeId, TYPE_IDENTITY,
+         FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
-import { meta } from "../_meta-build.js";
+import { meta, metaRoot, metaObject, metaField } from "../_meta-build.js";
 import { renderQueriesFile } from "../../src/templates/queries-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import { GENERATED_HEADER } from "../../src/constants.js";
 
-function makePost(): MetaData {
-  const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-  const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
+function makePost(): MetaObject {
+  const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+  const id = metaField(FIELD_SUBTYPE_LONG, "id");
   post.addChild(id);
-  const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+  const title = metaField(FIELD_SUBTYPE_STRING, "title");
   title.setAttr("required", true);
   post.addChild(title);
   const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
@@ -27,7 +27,7 @@ function makePost(): MetaData {
 
 describe("renderQueriesFile", () => {
   test("emits @generated header", () => {
-    const root = meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
+    const root = metaRoot();
     const post = makePost();
     root.addChild(post);
     const ctx = makeRenderContext({
@@ -43,7 +43,7 @@ describe("renderQueriesFile", () => {
   });
 
   test("imports db from configured dbImport path", () => {
-    const root = meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
+    const root = metaRoot();
     const post = makePost();
     root.addChild(post);
     const ctx = makeRenderContext({
@@ -61,7 +61,7 @@ describe("renderQueriesFile", () => {
   });
 
   test("imports entity types from ./Post.js", () => {
-    const root = meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
+    const root = metaRoot();
     const post = makePost();
     root.addChild(post);
     const ctx = makeRenderContext({
@@ -78,7 +78,7 @@ describe("renderQueriesFile", () => {
   });
 
   test("contains all 5 CRUD functions", () => {
-    const root = meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
+    const root = metaRoot();
     const post = makePost();
     root.addChild(post);
     const ctx = makeRenderContext({

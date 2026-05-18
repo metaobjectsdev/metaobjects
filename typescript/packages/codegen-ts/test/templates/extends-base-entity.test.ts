@@ -49,7 +49,7 @@ async function loadFixture() {
   }
 
   const root = result.root;
-  const program = root.ownChildren().find((o) => o.name === "Program")!;
+  const program = root.objects().find((o) => o.name === "Program")!;
 
   const ctx = makeRenderContext({
     dialect: "sqlite",

@@ -1,8 +1,8 @@
 import { describe, test, expect } from "bun:test";
-import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_METADATA,
-         FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, SUBTYPE_ROOT,
+import { TypeId, TYPE_FIELD, TYPE_IDENTITY,
+         FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
-import { meta } from "../_meta-build.js";
+import { meta, metaRoot, metaObject } from "../_meta-build.js";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
@@ -11,8 +11,8 @@ import { GENERATED_HEADER } from "../../src/constants.js";
 
 describe("renderEntityFile", () => {
   test("emits @generated header + table + types + validators", () => {
-    const root = meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
-    const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+    const root = metaRoot();
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
     const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
     post.addChild(id);
     const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");

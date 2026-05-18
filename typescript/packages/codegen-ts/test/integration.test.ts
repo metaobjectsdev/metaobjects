@@ -50,7 +50,7 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "sqlite",
-        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
       }),
       metadata: result.root,
     });
@@ -95,7 +95,7 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "sqlite",
-        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
       }),
       metadata: result.root,
     });
@@ -191,7 +191,7 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "sqlite",
-        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
       }),
       metadata: result.root,
     });
@@ -230,7 +230,7 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "sqlite",
-        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
       }),
       metadata: result.root,
     });
@@ -241,7 +241,7 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
     const routesFiles = files.filter((f) => f.endsWith(".routes.ts"));
     expect(routesFiles.length).toBeGreaterThan(0);
 
-    const sampleFile = routesFiles[0];
+    const sampleFile = routesFiles[0]!;
     const content = readFileSync(join(tmp, sampleFile), "utf-8");
     const entityName = sampleFile.replace(/\.routes\.ts$/, "");
 
@@ -268,7 +268,7 @@ describe("trainer-website-shape integration — 9 entities, Postgres", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "postgres",
-        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
       }),
       metadata: result.root,
     });
@@ -310,7 +310,7 @@ describe("trainer-website-shape integration — 9 entities, Postgres", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "postgres",
-        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
       }),
       metadata: result.root,
     });

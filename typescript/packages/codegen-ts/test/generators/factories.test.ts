@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { TYPE_OBJECT } from "@metaobjects/metadata";
+import type { MetaObject } from "@metaobjects/metadata";
 import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import { routesFile } from "../../src/generators/routes-file.js";
@@ -14,10 +14,10 @@ import type { GenContext } from "../../src/generator.js";
 
 const FIXTURE = resolve(import.meta.dir, "..", "fixtures", "single-entity.json");
 
-async function buildCtx(genFilter?: (e: { name: string }) => boolean): Promise<GenContext> {
+async function buildCtx(genFilter?: (e: MetaObject) => boolean): Promise<GenContext> {
   const loader = new FileMetaDataLoader();
   const { root } = await loader.loadFiles([FIXTURE]);
-  const entities = root.ownChildren().filter((c) => c.type === TYPE_OBJECT);
+  const entities = root.objects();
   const renderContext = makeRenderContext({
     dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
     dbImport: "../db", extStyle: "none",
@@ -35,7 +35,7 @@ async function buildCtx(genFilter?: (e: { name: string }) => boolean): Promise<G
 describe("queriesFile()", () => {
   test("emits <Entity>.queries.ts with findById + create", async () => {
     const ctx = await buildCtx();
-    const gen = queriesFile();
+    const gen = queriesFile({});
     const files = await gen.generate(ctx);
     const f = files.find(f => f.path === "Post.queries.ts");
     expect(f).toBeDefined();
@@ -56,7 +56,7 @@ describe("queriesFile()", () => {
 describe("routesFile()", () => {
   test("emits <Entity>.routes.ts wiring mountCrudRoutes from drizzle-fastify", async () => {
     const ctx = await buildCtx();
-    const gen = routesFile();
+    const gen = routesFile({});
     const files = await gen.generate(ctx);
     const f = files.find(f => f.path === "Post.routes.ts");
     expect(f).toBeDefined();
@@ -77,7 +77,7 @@ describe("routesFile()", () => {
 describe("formFile()", () => {
   test("emits <Entity>.form.tsx with useEntityForm import", async () => {
     const ctx = await buildCtx();
-    const gen = formFile();
+    const gen = formFile({});
     const files = await gen.generate(ctx);
     const f = files.find(f => f.path === "Post.form.tsx");
     expect(f).toBeDefined();

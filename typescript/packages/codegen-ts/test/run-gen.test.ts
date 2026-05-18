@@ -2,14 +2,10 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaRoot } from "@metaobjects/metadata";
 import {
   TypeId,
-  TYPE_METADATA,
-  TYPE_OBJECT,
-  TYPE_FIELD,
   TYPE_IDENTITY,
-  SUBTYPE_ROOT,
   OBJECT_SUBTYPE_ENTITY,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_LONG,
@@ -19,7 +15,7 @@ import {
   GENERATION_INCREMENT,
 } from "@metaobjects/metadata";
 import { FileMetaDataLoader } from "@metaobjects/metadata/core";
-import { meta } from "./_meta-build.js";
+import { meta, metaRoot, metaObject, metaField } from "./_meta-build.js";
 import { runGen, defineConfig } from "../src/index.js";
 import { entityFile, queriesFile, routesFile, barrel } from "../src/generators/index.js";
 
@@ -41,7 +37,7 @@ describe("runGen — single entity, SQLite", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "sqlite",
-        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
       }),
       metadata: result.root,
     });
@@ -84,7 +80,7 @@ describe("runGen — two entities with FK, Postgres", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "postgres",
-        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
       }),
       metadata: result.root,
     });
@@ -120,7 +116,7 @@ describe("runGen — refuses to clobber hand-written files", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "sqlite",
-        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
       }),
       metadata: result.root,
     });
@@ -140,17 +136,17 @@ describe("runGen — refuses to clobber hand-written files", () => {
 // Used for tests that need custom/untrusted names without going through the
 // JSON parser (which might itself reject invalid names).
 // ---------------------------------------------------------------------------
-function makeRoot(pkg: string): MetaData {
-  return meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), pkg);
+function makeRoot(pkg: string): MetaRoot {
+  return metaRoot("root", pkg);
 }
 
-function makeEntity(name: string): MetaData {
-  const entity = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), name);
+function makeEntity(name: string) {
+  const entity = metaObject(OBJECT_SUBTYPE_ENTITY, name);
   // id field (long)
-  const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
+  const id = metaField(FIELD_SUBTYPE_LONG, "id");
   entity.addChild(id);
   // title field (string)
-  const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+  const title = metaField(FIELD_SUBTYPE_STRING, "title");
   entity.addChild(title);
   // primary identity
   const pk = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
@@ -175,7 +171,7 @@ describe("runGen — path-traversal guard (security)", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "sqlite",
-        generators: [entityFile(), barrel()],
+        generators: [entityFile({}), barrel()],
       }),
       metadata: root,
     });
@@ -211,7 +207,7 @@ describe("runGen — mergeStrategy: 'skip-existing'", () => {
       extStyle: "none",
       dbImport: "~/server/db",
       dialect: "sqlite",
-      generators: [entityFile(), queriesFile(), barrel()],
+      generators: [entityFile({}), queriesFile({}), barrel()],
     });
 
     // First run: overwrite strategy produces new files
@@ -282,7 +278,7 @@ describe("runGen — entityFilter", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "postgres",
-        generators: [entityFile(), queriesFile(), barrel()],
+        generators: [entityFile({}), queriesFile({}), barrel()],
       }),
       metadata: result.root,
       entityFilter: ["Post"],
@@ -314,7 +310,7 @@ describe("runGen — entityFilter", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "postgres",
-        generators: [entityFile(), queriesFile(), barrel()],
+        generators: [entityFile({}), queriesFile({}), barrel()],
       }),
       metadata: result.root,
       entityFilter: ["NonExistent"],

@@ -1,15 +1,15 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaObject, MetaRoot } from "@metaobjects/metadata";
 import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { perEntity, oncePerRun, type GenContext } from "../src/generator.js";
 
 const SINGLE_ENTITY_FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 
 function makeCtx(
-  entities: MetaData[],
-  loadedRoot: MetaData,
-  match: (e: MetaData) => boolean = () => true
+  entities: MetaObject[],
+  loadedRoot: MetaRoot,
+  match: (e: MetaObject) => boolean = () => true
 ): GenContext {
   return {
     entities,
@@ -24,7 +24,7 @@ describe("perEntity helper", () => {
   test("emits one file per matching entity", async () => {
     const loader = new FileMetaDataLoader();
     const result = await loader.loadFiles([SINGLE_ENTITY_FIXTURE]);
-    const entities = result.root.ownChildren().filter(c => c.type === "object");
+    const entities = result.root.objects();
     const ctx = makeCtx(entities, result.root);
     const fn = perEntity((e) => ({ path: `${e.name}.ts`, content: `// ${e.name}` }));
     const files = await fn(ctx);
@@ -35,7 +35,7 @@ describe("perEntity helper", () => {
   test("respects ctx.matches filter", async () => {
     const loader = new FileMetaDataLoader();
     const result = await loader.loadFiles([SINGLE_ENTITY_FIXTURE]);
-    const entities = result.root.ownChildren().filter(c => c.type === "object");
+    const entities = result.root.objects();
     const ctx = makeCtx(entities, result.root, (e) => e.name === "Post");
     const fn = perEntity((e) => ({ path: `${e.name}.ts`, content: "" }));
     const files = await fn(ctx);
@@ -48,7 +48,7 @@ describe("oncePerRun helper", () => {
   test("called once with all matching entities", async () => {
     const loader = new FileMetaDataLoader();
     const result = await loader.loadFiles([SINGLE_ENTITY_FIXTURE]);
-    const entities = result.root.ownChildren().filter(c => c.type === "object");
+    const entities = result.root.objects();
     const ctx = makeCtx(entities, result.root);
     let invocations = 0;
     const fn = oncePerRun((all) => {

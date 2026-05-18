@@ -1,4 +1,5 @@
 import { describe, test, expect } from "bun:test";
+import type { MetaField } from "@metaobjects/metadata";
 import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
 import {
   inferViewKind,
@@ -7,7 +8,7 @@ import {
   labelFor,
 } from "../../src/templates/field-meta.js";
 
-async function loadField(json: unknown) {
+async function loadField(json: unknown): Promise<MetaField> {
   const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
     "metadata.root": { children: [
       { "object.entity": { name: "X", children: [json] }}
@@ -16,7 +17,7 @@ async function loadField(json: unknown) {
   if (result.errors.length > 0) {
     throw new Error(result.errors.map((e) => e.message).join("\n"));
   }
-  return result.root.ownChildren()[0]!.ownChildren()[0]!;
+  return result.root.objects()[0]!.ownFields()[0]!;
 }
 
 describe("inferViewKind", () => {

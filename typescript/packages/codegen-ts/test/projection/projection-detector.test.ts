@@ -10,7 +10,7 @@ async function loadObj(objNode: unknown) {
     "metadata.root": { package: "test", children: [objNode] },
   });
   const result = await new MetaDataLoader().load([new InMemorySource(json)]);
-  return result.root.ownChildren()[0];
+  return result.root.objects()[0]!;
 }
 
 describe("isProjection / isWriteThrough", () => {

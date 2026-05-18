@@ -1,29 +1,28 @@
 // packages/codegen-ts/test/templates/drizzle-schema.test.ts
 import { describe, test, expect } from "bun:test";
-import type { MetaData } from "@metaobjects/metadata";
-import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_METADATA,
-         TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION, SUBTYPE_ROOT,
+import type { MetaObject, MetaRoot } from "@metaobjects/metadata";
+import { TypeId, TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION,
          FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_INT,
          FIELD_SUBTYPE_TIMESTAMP, IDENTITY_SUBTYPE_PRIMARY, IDENTITY_SUBTYPE_SECONDARY,
-         OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
-import { meta } from "../_meta-build.js";
+         OBJECT_SUBTYPE_ENTITY, TYPE_FIELD, TYPE_IDENTITY } from "@metaobjects/metadata";
+import { meta, metaRoot, metaObject, metaField } from "../_meta-build.js";
 import { renderDrizzleSchema } from "../../src/templates/drizzle-schema.js";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 
-function makeRoot(entities: MetaData[]): MetaData {
-  const root = meta(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
+function makeRoot(entities: MetaObject[]): MetaRoot {
+  const root = metaRoot();
   for (const e of entities) root.addChild(e);
   return root;
 }
 
-function makePost(): MetaData {
-  const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
-  const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
+function makePost(): MetaObject {
+  const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+  const id = metaField(FIELD_SUBTYPE_LONG, "id");
   post.addChild(id);
-  const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+  const title = metaField(FIELD_SUBTYPE_STRING, "title");
   title.setAttr("required", true);
   title.setAttr("maxLength", 200);
   post.addChild(title);
@@ -34,10 +33,10 @@ function makePost(): MetaData {
   return post;
 }
 
-function makePostWithAuthor(): MetaData {
+function makePostWithAuthor(): MetaObject {
   const post = makePost();
   // FK field
-  const authorId = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "authorId");
+  const authorId = metaField(FIELD_SUBTYPE_LONG, "authorId");
   authorId.setAttr("required", true);
   post.addChild(authorId);
   // relationship child: Post has-one User (author)
@@ -49,11 +48,11 @@ function makePostWithAuthor(): MetaData {
   return post;
 }
 
-function makeUser(): MetaData {
-  const user = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "User");
-  const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
+function makeUser(): MetaObject {
+  const user = metaObject(OBJECT_SUBTYPE_ENTITY, "User");
+  const id = metaField(FIELD_SUBTYPE_LONG, "id");
   user.addChild(id);
-  const email = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "email");
+  const email = metaField(FIELD_SUBTYPE_STRING, "email");
   email.setAttr("required", true);
   user.addChild(email);
   const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
@@ -74,7 +73,7 @@ describe("renderDrizzleSchema — SQLite", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.ownChildByName("Post")!, ctx).toString();
+    const out = renderDrizzleSchema(root.findObject("Post")!, ctx).toString();
     expect(out).toContain('sqliteTable("posts"');
     expect(out).toContain("integer(\"id\").primaryKey({ autoIncrement: true })");
     expect(out).toContain("text(\"title\").notNull()");
@@ -93,7 +92,7 @@ describe("renderDrizzleSchema — SQLite", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.ownChildByName("Post")!, ctx).toString();
+    const out = renderDrizzleSchema(root.findObject("Post")!, ctx).toString();
     expect(out).toContain(".references(");
     expect(out).toContain("users.id");
   });
@@ -110,7 +109,7 @@ describe("renderDrizzleSchema — SQLite", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.ownChildByName("Post")!, ctx).toString();
+    const out = renderDrizzleSchema(root.findObject("Post")!, ctx).toString();
     expect(out).toContain("postsRelations");
     expect(out).toContain("postsRelations = relations(");
     expect(out).toContain("one(users");
@@ -128,7 +127,7 @@ describe("renderDrizzleSchema — SQLite", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.ownChildByName("User")!, ctx).toString();
+    const out = renderDrizzleSchema(root.findObject("User")!, ctx).toString();
     expect(out).toContain("usersRelations");
     expect(out).toContain("many(posts");
   });
@@ -136,7 +135,7 @@ describe("renderDrizzleSchema — SQLite", () => {
   test("@default 'now' timestamp emits sql import in SQLite output", () => {
     const post = makePost();
     // Add a timestamp field with @default: "now"
-    const createdAt = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_TIMESTAMP), "createdAt");
+    const createdAt = metaField(FIELD_SUBTYPE_TIMESTAMP, "createdAt");
     createdAt.setAttr("required", true);
     createdAt.setAttr("default", "now");
     post.addChild(createdAt);
@@ -171,7 +170,7 @@ describe("renderDrizzleSchema — Postgres", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.ownChildByName("Post")!, ctx).toString();
+    const out = renderDrizzleSchema(root.findObject("Post")!, ctx).toString();
     expect(out).toContain('pgTable("posts"');
     expect(out).toContain("bigserial");
     expect(out).toContain("varchar(\"title\", { length: 200 }).notNull()");
@@ -187,15 +186,15 @@ describe("renderDrizzleSchema — Postgres", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.ownChildByName("Post")!, ctx).toString();
+    const out = renderDrizzleSchema(root.findObject("Post")!, ctx).toString();
     expect(out).toContain("bigserial");
     // \bserial( should NOT appear — only bigserial should
     expect(out).not.toMatch(/\bserial\(/);
   });
 
   test("Postgres int PK emits serial (not bigserial)", () => {
-    const smallEntity = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "SmallEntity");
-    smallEntity.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "id"));
+    const smallEntity = metaObject(OBJECT_SUBTYPE_ENTITY, "SmallEntity");
+    smallEntity.addChild(metaField(FIELD_SUBTYPE_INT, "id"));
     const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
     primary.setAttr("fields", ["id"]);
     primary.setAttr("generation", "increment");
@@ -209,17 +208,17 @@ describe("renderDrizzleSchema — Postgres", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.ownChildByName("SmallEntity")!, ctx).toString();
+    const out = renderDrizzleSchema(root.findObject("SmallEntity")!, ctx).toString();
     expect(out).toMatch(/\bserial\(/);
     expect(out).not.toContain("bigserial");
   });
 
   test("composite PK emits table-level primaryKey callback, not per-column .primaryKey()", () => {
-    const userTag = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "UserTag");
-    const userId = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "userId");
+    const userTag = metaObject(OBJECT_SUBTYPE_ENTITY, "UserTag");
+    const userId = metaField(FIELD_SUBTYPE_LONG, "userId");
     userId.setAttr("required", true);
     userTag.addChild(userId);
-    const tagId = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "tagId");
+    const tagId = metaField(FIELD_SUBTYPE_LONG, "tagId");
     tagId.setAttr("required", true);
     userTag.addChild(tagId);
     const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
@@ -235,7 +234,7 @@ describe("renderDrizzleSchema — Postgres", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.ownChildByName("UserTag")!, ctx).toString();
+    const out = renderDrizzleSchema(root.findObject("UserTag")!, ctx).toString();
     expect(out).toContain("primaryKey({ columns: [");
     // No per-column .primaryKey() — the table-level callback owns it
     expect(out).not.toMatch(/userId.*\.primaryKey\(\)/);
@@ -248,9 +247,9 @@ describe("renderDrizzleSchema — Postgres", () => {
 
 describe("renderDrizzleSchema — secondary identity", () => {
   test("identity.secondary emits .unique() on each field + uniqueIndex callback", () => {
-    const sub = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Subscriber");
-    sub.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-    const email = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "email");
+    const sub = metaObject(OBJECT_SUBTYPE_ENTITY, "Subscriber");
+    sub.addChild(metaField(FIELD_SUBTYPE_LONG, "id"));
+    const email = metaField(FIELD_SUBTYPE_STRING, "email");
     email.setAttr("required", true);
     sub.addChild(email);
     // Primary
@@ -272,17 +271,17 @@ describe("renderDrizzleSchema — secondary identity", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.ownChildByName("Subscriber")!, ctx).toString();
+    const out = renderDrizzleSchema(root.findObject("Subscriber")!, ctx).toString();
     expect(out).toContain(".unique()");                  // .unique() on email column
     expect(out).toContain("uniqueIndex");                // table callback
     expect(out).toContain('"idx_subscribers_email"');    // index name in snake_case
   });
 
   test("composite secondary identity emits multi-column uniqueIndex", () => {
-    const user = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "User");
-    user.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
-    user.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "firstName"));
-    user.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "lastName"));
+    const user = metaObject(OBJECT_SUBTYPE_ENTITY, "User");
+    user.addChild(metaField(FIELD_SUBTYPE_LONG, "id"));
+    user.addChild(metaField(FIELD_SUBTYPE_STRING, "firstName"));
+    user.addChild(metaField(FIELD_SUBTYPE_STRING, "lastName"));
     const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
     primary.setAttr("fields", ["id"]);
     primary.setAttr("generation", "increment");
@@ -300,7 +299,7 @@ describe("renderDrizzleSchema — secondary identity", () => {
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     });
-    const out = renderDrizzleSchema(root.ownChildByName("User")!, ctx).toString();
+    const out = renderDrizzleSchema(root.findObject("User")!, ctx).toString();
     expect(out).toContain('"idx_users_first_name_last_name"');
     // .on() should reference both fields
     // Index callbacks use the (table) => ... param to avoid TS self-init issues.

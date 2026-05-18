@@ -1,6 +1,5 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { TYPE_OBJECT } from "@metaobjects/metadata";
 import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { GENERATED_HEADER } from "../../src/constants.js";
@@ -13,7 +12,7 @@ const FIXTURE = resolve(import.meta.dir, "..", "fixtures", "single-entity.json")
 
 describe("entityFile() factory", () => {
   test("returns a Generator named 'entity-file'", () => {
-    const gen = entityFile();
+    const gen = entityFile({});
     expect(gen.name).toBe("entity-file");
     expect(typeof gen.generate).toBe("function");
   });
@@ -21,7 +20,7 @@ describe("entityFile() factory", () => {
   test("emits one <Entity>.ts per entity with @generated header and Drizzle table", async () => {
     const loader = new FileMetaDataLoader();
     const { root } = await loader.loadFiles([FIXTURE]);
-    const entities = root.ownChildren().filter(c => c.type === TYPE_OBJECT);
+    const entities = root.objects();
 
     const renderContext = makeRenderContext({
       dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
@@ -36,7 +35,7 @@ describe("entityFile() factory", () => {
       warn: () => {},
     };
 
-    const files = await entityFile().generate(ctx);
+    const files = await entityFile({}).generate(ctx);
     expect(files.length).toBe(entities.length);
     const post = files.find(f => f.path === "Post.ts");
     expect(post).toBeDefined();
@@ -48,7 +47,7 @@ describe("entityFile() factory", () => {
   test("filter option narrows generated entities", async () => {
     const loader = new FileMetaDataLoader();
     const { root } = await loader.loadFiles([FIXTURE]);
-    const entities = root.ownChildren().filter(c => c.type === TYPE_OBJECT);
+    const entities = root.objects();
 
     const renderContext = makeRenderContext({
       dialect: "sqlite", loadedRoot: root, outDir: "/tmp",

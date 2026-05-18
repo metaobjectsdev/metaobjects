@@ -76,15 +76,15 @@ describe("extractViewSpec — flat passthrough via extends", () => {
       },
     ]);
 
-    const projection = root.ownChildren().find((o) => o.name === "ProgramSummary")!;
+    const projection = root.objects().find((o) => o.name === "ProgramSummary")!;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     expect(spec.viewName).toBe("v_program_summary");
     expect(spec.joinTree.baseEntity).toBe("Program");
     expect(spec.joinTree.joins.length).toBe(1);
-    expect(spec.joinTree.joins[0].relationship).toBe("weeks");
-    expect(spec.joinTree.joins[0].targetEntity).toBe("Week");
-    expect(spec.joinTree.joins[0].fkField).toBe("programId");
+    expect(spec.joinTree.joins[0]!.relationship).toBe("weeks");
+    expect(spec.joinTree.joins[0]!.targetEntity).toBe("Week");
+    expect(spec.joinTree.joins[0]!.fkField).toBe("programId");
 
     // Select columns: id + title (inherited from extends), weekCount (aggregate)
     const fieldNames = spec.selectSpec.columns.map((c) => c.fieldName);
@@ -180,12 +180,12 @@ describe("extractViewSpec — multi-level via path", () => {
       },
     ]);
 
-    const projection = root.ownChildren().find((o) => o.name === "ProgramSummary")!;
+    const projection = root.objects().find((o) => o.name === "ProgramSummary")!;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     expect(spec.joinTree.joins.length).toBe(1);
-    expect(spec.joinTree.joins[0].children.length).toBe(1);
-    expect(spec.joinTree.joins[0].children[0].targetEntity).toBe("Workout");
+    expect(spec.joinTree.joins[0]!.children.length).toBe(1);
+    expect(spec.joinTree.joins[0]!.children[0]!.targetEntity).toBe("Workout");
   });
 });
 
@@ -262,12 +262,12 @@ describe("extractViewSpec — shared @via deduplication", () => {
       },
     ]);
 
-    const projection = root.ownChildren().find((o) => o.name === "ProgramSummary")!;
+    const projection = root.objects().find((o) => o.name === "ProgramSummary")!;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     // Both fields reference Program.weeks — should deduplicate to a single join node.
     expect(spec.joinTree.joins.length).toBe(1);
-    expect(spec.joinTree.joins[0].relationship).toBe("weeks");
+    expect(spec.joinTree.joins[0]!.relationship).toBe("weeks");
     // Both weekCount (aggregate) and firstWeekTitle (passthrough) appear in columns.
     const fieldNames = spec.selectSpec.columns.map((c) => c.fieldName);
     expect(fieldNames).toContain("weekCount");
@@ -301,7 +301,7 @@ describe("extractViewSpec — pure-extends projection (no origin children)", () 
       },
     ]);
 
-    const projection = root.ownChildren().find((o) => o.name === "ProgramView")!;
+    const projection = root.objects().find((o) => o.name === "ProgramView")!;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     // No cross-entity origins → no joins
@@ -376,11 +376,11 @@ describe("extractViewSpec — parentJoinField resolution", () => {
       },
     ]);
 
-    const projection = root.ownChildren().find((o) => o.name === "ProgramSummary")!;
+    const projection = root.objects().find((o) => o.name === "ProgramSummary")!;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     // Default: parent's primary identity field is "id"
-    expect(spec.joinTree.joins[0].parentJoinField).toBe("id");
+    expect(spec.joinTree.joins[0]!.parentJoinField).toBe("id");
   });
 
   test("uses explicit @parentField when set (non-id join like email)", async () => {
@@ -442,11 +442,11 @@ describe("extractViewSpec — parentJoinField resolution", () => {
       },
     ]);
 
-    const projection = root.ownChildren().find((o) => o.name === "CustomerSummary")!;
+    const projection = root.objects().find((o) => o.name === "CustomerSummary")!;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     // Must resolve to "email", not "id"
-    expect(spec.joinTree.joins[0].parentJoinField).toBe("email");
-    expect(spec.joinTree.joins[0].fkField).toBe("customerEmail");
+    expect(spec.joinTree.joins[0]!.parentJoinField).toBe("email");
+    expect(spec.joinTree.joins[0]!.fkField).toBe("customerEmail");
   });
 });

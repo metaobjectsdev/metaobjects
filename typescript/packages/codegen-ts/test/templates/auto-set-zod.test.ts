@@ -1,13 +1,13 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaData } from "@metaobjects/metadata";
-import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY,
+import type { MetaObject } from "@metaobjects/metadata";
+import { TypeId, TYPE_FIELD, TYPE_IDENTITY,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_TIMESTAMP,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
-import { meta } from "../_meta-build.js";
+import { meta, metaObject } from "../_meta-build.js";
 import { renderZodValidators } from "../../src/templates/zod-validators.js";
 
-function makeEntity(): MetaData {
-  const entity = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Foo");
+function makeEntity(): MetaObject {
+  const entity = metaObject(OBJECT_SUBTYPE_ENTITY, "Foo");
 
   // auto-gen PK — excluded from both schemas
   const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
