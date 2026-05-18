@@ -1,35 +1,31 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaField } from "@metaobjects/metadata";
 import { FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_LONG } from "@metaobjects/metadata";
 import { metaField } from "./_meta-build.js";
 import { mapColumnType, type ColumnSpec } from "../src/column-mapper.js";
 
-const makeField = (subType: string, name: string): MetaField =>
-  metaField(subType, name);
-
 describe("mapColumnType for field[currency]", () => {
   test("sqlite → integer (same as long)", () => {
-    const spec = mapColumnType(makeField(FIELD_SUBTYPE_CURRENCY, "priceCents"), "sqlite");
+    const spec = mapColumnType(metaField(FIELD_SUBTYPE_CURRENCY, "priceCents"), "sqlite");
     expect(spec.fnName).toBe("integer");
     expect(spec.fnOptions).toBeUndefined();
   });
 
   test("postgres → bigint with mode: number (same as long)", () => {
-    const spec = mapColumnType(makeField(FIELD_SUBTYPE_CURRENCY, "priceCents"), "postgres");
+    const spec = mapColumnType(metaField(FIELD_SUBTYPE_CURRENCY, "priceCents"), "postgres");
     expect(spec.fnName).toBe("bigint");
     expect(spec.fnOptions).toEqual({ mode: "number" });
   });
 
   test("currency and long return identical specs for sqlite", () => {
-    const currencySpec = mapColumnType(makeField(FIELD_SUBTYPE_CURRENCY, "priceCents"), "sqlite");
-    const longSpec = mapColumnType(makeField(FIELD_SUBTYPE_LONG, "priceCents"), "sqlite");
+    const currencySpec = mapColumnType(metaField(FIELD_SUBTYPE_CURRENCY, "priceCents"), "sqlite");
+    const longSpec = mapColumnType(metaField(FIELD_SUBTYPE_LONG, "priceCents"), "sqlite");
     expect(currencySpec.fnName).toBe(longSpec.fnName);
     expect(currencySpec.fnOptions).toEqual(longSpec.fnOptions);
   });
 
   test("currency and long return identical specs for postgres", () => {
-    const currencySpec = mapColumnType(makeField(FIELD_SUBTYPE_CURRENCY, "priceCents"), "postgres");
-    const longSpec = mapColumnType(makeField(FIELD_SUBTYPE_LONG, "priceCents"), "postgres");
+    const currencySpec = mapColumnType(metaField(FIELD_SUBTYPE_CURRENCY, "priceCents"), "postgres");
+    const longSpec = mapColumnType(metaField(FIELD_SUBTYPE_LONG, "priceCents"), "postgres");
     expect(currencySpec.fnName).toBe(longSpec.fnName);
     expect(currencySpec.fnOptions).toEqual(longSpec.fnOptions);
   });
