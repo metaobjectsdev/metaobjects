@@ -72,7 +72,6 @@ describe("tanstackGrid() factory", () => {
     const fakeEntity = {
       name: "X",
       ownAttr: () => undefined,
-      children: () => [] as any[],
       layouts: () => [] as any[],
     } as any;
     expect(gen.filter?.(fakeEntity)).toBe(false);
