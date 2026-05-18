@@ -15,6 +15,9 @@ COMMANDS:
   --version, -v         Print version
   --help, -h            Print this help
 
+GLOBAL OPTIONS:
+  --cwd <path>, -C <path>   Run as if launched from <path> (default: current directory)
+
 GEN FLAGS:
   --dry-run             Compute and print, don't write
   <entity> [<entity>]   Positional filter on entity names

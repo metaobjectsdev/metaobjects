@@ -6,7 +6,7 @@ import { loadAndExportJson } from "@metaobjects/metadata/core";
 import { TypeRegistry, registerCoreTypes } from "@metaobjects/metadata";
 import { DEFAULT_METADATA_DIR, registerForgeTypes } from "@metaobjects/sdk";
 
-export async function exportCommand(args: string[]): Promise<number> {
+export async function exportCommand(args: string[], cwd: string = process.cwd()): Promise<number> {
   let flags;
   try {
     flags = parseExportArgs(args);
@@ -15,7 +15,7 @@ export async function exportCommand(args: string[]): Promise<number> {
     return 2;
   }
 
-  const projectRoot = process.cwd();
+  const projectRoot = cwd;
   const metadataDir = join(projectRoot, DEFAULT_METADATA_DIR);
 
   // Build a registry with core + forge types so metadata that includes

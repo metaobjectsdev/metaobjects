@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { log } from "./lib/log.js";
 export { defineConfig } from "@metaobjects/codegen-ts";
 export type { MetaobjectsGenConfig } from "@metaobjects/codegen-ts";
@@ -17,6 +18,9 @@ COMMANDS:
   migrate               Diff metadata vs live DB; emit migration SQL files
   --version, -v         Print version
   --help, -h            Print this help
+
+GLOBAL OPTIONS:
+  --cwd <path>, -C <path>   Run as if launched from <path> (default: current directory)
 
 GEN FLAGS:
   --dry-run             Compute and print, don't write
@@ -42,7 +46,30 @@ ship in later sub-projects. See https://metaobjects.com for docs.
 `;
 
 export async function run(argv: string[]): Promise<number> {
-  const [cmd, ...rest] = argv;
+  // Extract the global --cwd / -C flag (anywhere in argv). A relative path
+  // resolves against the real process.cwd(). Absent → process.cwd().
+  let cwd = process.cwd();
+  const cleaned: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === "--cwd" || a === "-C") {
+      const val = argv[i + 1];
+      if (val === undefined) {
+        log.error(`${a} requires a path argument`);
+        return 2;
+      }
+      cwd = resolve(process.cwd(), val);
+      i++; // consume the value
+      continue;
+    }
+    if (a.startsWith("--cwd=")) {
+      cwd = resolve(process.cwd(), a.slice("--cwd=".length));
+      continue;
+    }
+    cleaned.push(a);
+  }
+
+  const [cmd, ...rest] = cleaned;
   switch (cmd) {
     case undefined:
     case "--help":
@@ -55,19 +82,19 @@ export async function run(argv: string[]): Promise<number> {
       return 0;
     case "init": {
       const { initCommand } = await import("./commands/init.js");
-      return initCommand(rest);
+      return initCommand(rest, cwd);
     }
     case "gen": {
       const { genCommand } = await import("./commands/gen.js");
-      return genCommand(rest);
+      return genCommand(rest, cwd);
     }
     case "export": {
       const { exportCommand } = await import("./commands/export.js");
-      return exportCommand(rest);
+      return exportCommand(rest, cwd);
     }
     case "migrate": {
       const { migrateCommand } = await import("./commands/migrate.js");
-      return migrateCommand(rest);
+      return migrateCommand(rest, cwd);
     }
     default:
       log.error(`Unknown command: ${cmd}`);

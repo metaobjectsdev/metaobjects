@@ -237,7 +237,7 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
-export async function initCommand(args: string[]): Promise<number> {
+export async function initCommand(args: string[], cwd: string = process.cwd()): Promise<number> {
   let flags;
   try {
     flags = parseInitArgs(args);
@@ -248,7 +248,7 @@ export async function initCommand(args: string[]): Promise<number> {
 
   try {
     const result = await init({
-      cwd: process.cwd(),
+      cwd,
       force: flags.force,
       quiet: flags.quiet,
       printOnly: flags.printOnly,

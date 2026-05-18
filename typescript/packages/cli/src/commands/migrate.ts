@@ -110,7 +110,7 @@ function ambiguousToEntries(amb: AmbiguousChange[]): AmbiguousEntry[] {
   });
 }
 
-export async function migrateCommand(args: string[]): Promise<number> {
+export async function migrateCommand(args: string[], cwd: string = process.cwd()): Promise<number> {
   let flags;
   try {
     flags = parseMigrateArgs(args);
@@ -119,7 +119,7 @@ export async function migrateCommand(args: string[]): Promise<number> {
     return 2;
   }
 
-  const metaRoot = process.cwd();
+  const metaRoot = cwd;
   const config = await resolveMigrateConfig(flags, metaRoot);
 
   if (config.databaseUrl === undefined) {

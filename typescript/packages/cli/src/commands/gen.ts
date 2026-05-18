@@ -16,12 +16,12 @@ function mapStatus(s: WriteStatus): GenFileStatus {
   }
 }
 
-export async function genCommand(args: string[]): Promise<number> {
+export async function genCommand(args: string[], cwd: string = process.cwd()): Promise<number> {
   let flags;
   try { flags = parseGenArgs(args); }
   catch (err) { log.error((err as Error).message); return 2; }
 
-  const projectRoot = process.cwd();
+  const projectRoot = cwd;
   const cliConfig = resolveGenConfig(flags);
 
   let forgeConfig;
