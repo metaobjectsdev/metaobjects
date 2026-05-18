@@ -26,6 +26,8 @@ export const dbProvider: MetaDataTypeProvider = {
         attributes: [dbColumnSchema, dbIndexedSchema],
       });
     }
+    // Two explicit calls (not a loop) — dbTable and dbView are the only DB
+    // source subtypes, and there is no DB_SOURCE_SUBTYPES constant to loop.
     registry.extend(TYPE_SOURCE, SOURCE_SUBTYPE_DB_TABLE, {
       attributes: [sourceNameSchema],
     });

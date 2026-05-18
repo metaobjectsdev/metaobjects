@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { composeRegistry, type MetaDataTypeProvider } from "../src/provider.js";
 import { coreTypesProvider, coreProviders, registerCoreTypes } from "../src/core-types.js";
+import { dbProvider } from "../src/db/db-provider.js";
 import { TypeRegistry, TypeId } from "../src/registry.js";
 import { MetaField } from "../src/meta/meta-field.js";
 import {
@@ -95,22 +96,24 @@ describe("coreTypesProvider", () => {
   it("coreProviders is a two-provider bundle: coreTypesProvider + dbProvider", () => {
     expect(coreProviders).toHaveLength(2);
     expect(coreProviders[0]).toBe(coreTypesProvider);
+    expect(coreProviders[1]).toBe(dbProvider);
   });
 
-  it("the registerCoreTypes wrapper registers only the structural types (no DB attrs)", () => {
-    // registerCoreTypes is a thin wrapper over coreTypesProvider alone.
-    // It does NOT include dbProvider — callers wanting the full default
-    // registry should use composeRegistry(coreProviders).
+  it("registerCoreTypes registers the structural types but not the DB-domain attrs", () => {
+    // registerCoreTypes is a thin wrapper over coreTypesProvider alone — it does
+    // NOT include dbProvider. composeRegistry(coreProviders) is the full default
+    // registry; it carries the DB-domain attrs (@dbColumn etc.) on top.
     const viaWrapper = new TypeRegistry();
     registerCoreTypes(viaWrapper);
-    // The wrapper still registers all 11 type families.
-    expect(viaWrapper.allTypes().length).toBeGreaterThan(0);
-    // But it omits DB-domain attrs — composeRegistry(coreProviders) has more attrs.
     const viaProviders = composeRegistry(coreProviders);
-    const wrapperTypeCount = viaWrapper.allTypes().length;
-    const providerTypeCount = viaProviders.allTypes().length;
-    // Same structural types registered (same type+subtype count).
-    expect(wrapperTypeCount).toBe(providerTypeCount);
+
+    // Same structural type+subtype pairs — dbProvider only extends, adds no types.
+    expect(viaWrapper.allTypes().length).toBe(viaProviders.allTypes().length);
+
+    // But composeRegistry(coreProviders) carries strictly more attrs (the DB attrs).
+    const sumAttrs = (reg: TypeRegistry): number =>
+      reg.allTypes().reduce((n, t) => n + reg.attrsOf(t.type, t.subType).length, 0);
+    expect(sumAttrs(viaProviders)).toBeGreaterThan(sumAttrs(viaWrapper));
   });
 });
 
