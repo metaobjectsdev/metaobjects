@@ -193,6 +193,27 @@ export abstract class MetaData {
   }
 
   // ---------------------------------------------------------------------------
+  // Effective attr accessors — the default. Own + attrs inherited via the
+  // super chain (own winning on a key conflict). Own-only access is the
+  // explicit own* opt-in above.
+  // ---------------------------------------------------------------------------
+
+  /** Effective attrs: own + inherited via the super chain, own winning on a key conflict. */
+  attrs(): ReadonlyMap<string, AttrValue> {
+    return new Map(this.cached("attrs", () => this._effectiveAttrs(new Set([this]))));
+  }
+
+  /** Effective attr value for `name`, or undefined. */
+  attr(name: string): AttrValue | undefined {
+    return this.attrs().get(name);
+  }
+
+  /** True if `name` resolves to an effective attr (own or inherited). */
+  hasAttr(name: string): boolean {
+    return this.attrs().has(name);
+  }
+
+  // ---------------------------------------------------------------------------
   // Children
   // ---------------------------------------------------------------------------
 

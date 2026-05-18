@@ -737,3 +737,52 @@ describe("MetaData — effective child accessors (default)", () => {
     );
   });
 });
+
+describe("MetaData — effective attr accessors (default)", () => {
+  it("attrs() includes inherited attrs from the super chain", () => {
+    const superModel = makeObject("entity", "Super");
+    superModel.setAttr("a", "super-a");
+    const child = makeObject("entity", "Child");
+    child.setAttr("b", "child-b");
+    child.setSuperResolved(superModel);
+    expect(child.attrs().get("a")).toBe("super-a");
+    expect(child.attrs().get("b")).toBe("child-b");
+  });
+
+  it("ownAttrs() excludes inherited attrs", () => {
+    const superModel = makeObject("entity", "Super");
+    superModel.setAttr("a", "super-a");
+    const child = makeObject("entity", "Child");
+    child.setAttr("b", "child-b");
+    child.setSuperResolved(superModel);
+    expect(child.ownAttrs().has("a")).toBe(false);
+    expect(child.ownAttrs().get("b")).toBe("child-b");
+  });
+
+  it("attr() resolves an inherited attr; ownAttr() does not", () => {
+    const superModel = makeObject("entity", "Super");
+    superModel.setAttr("inherited", "v");
+    const child = makeObject("entity", "Child");
+    child.setSuperResolved(superModel);
+    expect(child.attr("inherited")).toBe("v");
+    expect(child.ownAttr("inherited")).toBeUndefined();
+  });
+
+  it("hasAttr() is true for an inherited attr; ownHasAttr() is false", () => {
+    const superModel = makeObject("entity", "Super");
+    superModel.setAttr("inherited", "v");
+    const child = makeObject("entity", "Child");
+    child.setSuperResolved(superModel);
+    expect(child.hasAttr("inherited")).toBe(true);
+    expect(child.ownHasAttr("inherited")).toBe(false);
+  });
+
+  it("an own attr shadows a super attr of the same key", () => {
+    const superModel = makeObject("entity", "Super");
+    superModel.setAttr("k", "super-value");
+    const child = makeObject("entity", "Child");
+    child.setAttr("k", "child-value");
+    child.setSuperResolved(superModel);
+    expect(child.attr("k")).toBe("child-value");
+  });
+});
