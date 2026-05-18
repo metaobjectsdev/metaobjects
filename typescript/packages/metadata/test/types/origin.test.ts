@@ -56,7 +56,7 @@ describe("origin registration in core types", () => {
     registerCoreTypes(registry);
     const def = registry.find(TYPE_ORIGIN, ORIGIN_SUBTYPE_PASSTHROUGH)!;
     expect(def.childRules.length).toBe(1);
-    expect(def.childRules[0].childType).toBe(TYPE_ATTR);
+    expect(def.childRules[0]!.childType).toBe(TYPE_ATTR);
   });
 
   test("field child rules accept origin", () => {

@@ -43,7 +43,7 @@ afterEach(async () => {
  * each statement individually. This works for both plain DDL and
  * recreate-and-copy blocks (PRAGMA / BEGIN TRANSACTION / DDL / COMMIT).
  */
-async function applyRaw(kysely: Kysely<unknown>, sqlText: string): Promise<void> {
+async function applyRaw(kysely: Kysely<Record<string, unknown>>, sqlText: string): Promise<void> {
   for (const stmt of sqlText.trim().split(";").map((s) => s.trim()).filter((s) => s.length > 0)) {
     await sql.raw(stmt).execute(kysely);
   }

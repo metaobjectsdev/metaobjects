@@ -55,10 +55,11 @@ describe("resolveN2mDescriptor", () => {
     const root = makeRoot([makePost(), makeTag(), makePostTag()]);
     const post = root.ownChildByName("Post")!;
     const desc = resolveN2mDescriptor(post, "tags", root);
-    expect(desc.targetEntityName).toBe("Tag");
-    expect(desc.joinEntityName).toBe("PostTag");
-    expect(desc.sourceJoinField).toBe("postId");
-    expect(desc.targetJoinField).toBe("tagId");
+    expect(desc).not.toBeNull();
+    expect(desc!.targetEntityName).toBe("Tag");
+    expect(desc!.joinEntityName).toBe("PostTag");
+    expect(desc!.sourceJoinField).toBe("postId");
+    expect(desc!.targetJoinField).toBe("tagId");
   });
 
   test("non-N:M relationship → null", () => {

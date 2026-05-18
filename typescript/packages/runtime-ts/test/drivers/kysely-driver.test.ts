@@ -3,7 +3,7 @@ import { Kysely } from "kysely";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
 import { kyselyDriver } from "../../src/drivers/kysely-driver.js";
 import { ConstraintViolationError } from "../../src/errors.js";
-import type { PersistenceDriver } from "../../src/persistence-driver.js";
+import type { PersistenceDriver, Row } from "../../src/persistence-driver.js";
 
 interface DB {
   posts: { id: number | null; title: string; author_id: number | null };
@@ -39,7 +39,7 @@ beforeEach(async () => {
     { id: 1, title: "Hello", author_id: 10 },
     { id: 2, title: "World", author_id: 11 },
   ]).execute();
-  driver = kyselyDriver({ db, dialect: "sqlite" });
+  driver = kyselyDriver({ db: db as unknown as Kysely<Record<string, Row>>, dialect: "sqlite" });
 });
 
 afterEach(async () => {

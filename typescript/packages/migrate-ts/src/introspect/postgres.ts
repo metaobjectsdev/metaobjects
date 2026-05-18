@@ -1,7 +1,7 @@
 /**
  * Postgres introspection — stage 2 of the migration pipeline.
  *
- * Produces a SchemaSnapshot from a live Kysely<unknown> pointing at a Postgres
+ * Produces a SchemaSnapshot from a live Kysely<Record<string, unknown>> pointing at a Postgres
  * (or pg-mem) database.
  *
  * Design notes:
@@ -35,7 +35,7 @@ import type { SqlType } from "../sql-type.js";
 // Public API
 // ---------------------------------------------------------------------------
 
-export async function introspectPostgres(db: Kysely<unknown>): Promise<SchemaSnapshot> {
+export async function introspectPostgres(db: Kysely<Record<string, unknown>>): Promise<SchemaSnapshot> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const k = db as Kysely<any>;
 

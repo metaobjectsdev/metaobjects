@@ -57,6 +57,6 @@ describe("currency registered in core types", () => {
     registerCoreTypes(registry);
     const def = registry.find(TYPE_VIEW, VIEW_SUBTYPE_CURRENCY);
     expect(def!.childRules.length).toBe(1);
-    expect(def!.childRules[0].childType).toBe("attr");
+    expect(def!.childRules[0]!.childType).toBe("attr");
   });
 });

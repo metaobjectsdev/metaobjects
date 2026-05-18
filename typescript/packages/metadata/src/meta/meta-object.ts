@@ -19,6 +19,7 @@ import {
   OBJECT_ATTR_JAVA_RUNTIME,
 } from "../constants.js";
 import type { MetaField } from "./meta-field.js";
+import type { MetaIdentity } from "./meta-identity.js";
 
 export class MetaObject extends MetaData {
   get dbTable(): string | undefined {
@@ -57,28 +58,28 @@ export class MetaObject extends MetaData {
     );
   }
 
-  identities(): MetaData[] {
+  identities(): MetaIdentity[] {
     return this.cached("identities", () =>
-      this.children().filter((c) => c.type === TYPE_IDENTITY),
+      this.children().filter((c): c is MetaIdentity => c.type === TYPE_IDENTITY),
     );
   }
 
   /** Own identities only — excludes inherited. */
-  ownIdentities(): MetaData[] {
+  ownIdentities(): MetaIdentity[] {
     return this.cached("ownIdentities", () =>
-      this.ownChildren().filter((c) => c.type === TYPE_IDENTITY),
+      this.ownChildren().filter((c): c is MetaIdentity => c.type === TYPE_IDENTITY),
     );
   }
 
   /** Returns the single primary identity, if any. */
-  primaryIdentity(): MetaData | undefined {
+  primaryIdentity(): MetaIdentity | undefined {
     return this.cached("primaryIdentity", () =>
       this.identities().find((i) => i.subType === IDENTITY_SUBTYPE_PRIMARY),
     );
   }
 
   /** Secondary identities. */
-  secondaryIdentities(): MetaData[] {
+  secondaryIdentities(): MetaIdentity[] {
     return this.cached("secondaryIdentities", () =>
       this.identities().filter((i) => i.subType === IDENTITY_SUBTYPE_SECONDARY),
     );

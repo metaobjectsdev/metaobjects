@@ -77,8 +77,9 @@ describe("meta export — stdout", () => {
     const origWrite = process.stdout.write.bind(process.stdout);
     // Capture stdout writes
     (process.stdout as unknown as { write: (...args: unknown[]) => boolean }).write = (
-      chunk: string | Buffer,
+      ...args: unknown[]
     ) => {
+      const chunk = args[0] as string | Buffer;
       chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
       return true;
     };

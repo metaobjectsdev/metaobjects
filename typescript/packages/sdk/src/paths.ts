@@ -1,10 +1,9 @@
 import { stat } from "node:fs/promises";
 import { join, dirname, resolve, parse } from "node:path";
-import type { RecordType } from "./records/core.js";
 
 export function recordPath(
   metaRoot: string,
-  type: RecordType,
+  type: string,
   id: string,
   opts: { pending?: boolean } = {},
 ): string {

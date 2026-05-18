@@ -43,7 +43,7 @@ describe("source registration in core types", () => {
     registerCoreTypes(registry);
     const def = registry.find(TYPE_SOURCE, SOURCE_SUBTYPE_DB_VIEW)!;
     expect(def.childRules.length).toBe(1);
-    expect(def.childRules[0].childType).toBe("attr");
+    expect(def.childRules[0]!.childType).toBe("attr");
   });
 
   test("object child rules accept source", () => {

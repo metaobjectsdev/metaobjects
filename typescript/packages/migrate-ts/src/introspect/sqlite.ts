@@ -9,7 +9,7 @@ import type { SqlType } from "../sql-type.js";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RawKysely = Kysely<any>;
 
-export async function introspectSqlite(db: Kysely<unknown>): Promise<SchemaSnapshot> {
+export async function introspectSqlite(db: Kysely<Record<string, unknown>>): Promise<SchemaSnapshot> {
   const k = db as RawKysely;
 
   const versionRow = await sql<{ v: string }>`SELECT sqlite_version() AS v`.execute(k);

@@ -6,7 +6,7 @@ import { introspectSqlite } from "./sqlite.js";
 export { introspectPostgres } from "./postgres.js";
 export { introspectSqlite } from "./sqlite.js";
 
-export async function introspect(db: Kysely<unknown>, dialect: Dialect): Promise<SchemaSnapshot> {
+export async function introspect(db: Kysely<Record<string, unknown>>, dialect: Dialect): Promise<SchemaSnapshot> {
   switch (dialect) {
     case "postgres": return introspectPostgres(db);
     case "sqlite":   return introspectSqlite(db);

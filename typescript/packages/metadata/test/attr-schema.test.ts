@@ -137,8 +137,8 @@ describe("TypeDefinition — attributes default", () => {
     const def = registry.find(TYPE_FIELD, "currency");
     expect(def).toBeDefined();
     expect(def!.attributes).toEqual(attrs);
-    expect(def!.attributes[0].name).toBe("currency");
-    expect(def!.attributes[0].default).toBe("USD");
+    expect(def!.attributes[0]!.name).toBe("currency");
+    expect(def!.attributes[0]!.default).toBe("USD");
   });
 
   it("multiple AttrSchema entries in the array are preserved in order", () => {
@@ -179,7 +179,7 @@ describe("TypeRegistry.attrsOf()", () => {
     registry.register(makeMinimalDef(TYPE_FIELD, "currency", attrs));
     const result = registry.attrsOf(TYPE_FIELD, "currency");
     expect(result).toHaveLength(1);
-    expect(result[0].name).toBe("locale");
+    expect(result[0]!.name).toBe("locale");
   });
 
   it("returns [] when type matches but subType does not", () => {

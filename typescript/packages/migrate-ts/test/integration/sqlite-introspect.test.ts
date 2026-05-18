@@ -138,7 +138,7 @@ describe("introspectSqlite — views + dispatcher", () => {
   test("captures view names", async () => {
     const tmpV = mkdtempSync(join(tmpdir(), "migrate-ts-sqlite-view-"));
     const url = `file:${join(tmpV, "test.db")}`;
-    const k = new Kysely({ dialect: new LibsqlDialect({ url }) });
+    const k = new Kysely<Record<string, unknown>>({ dialect: new LibsqlDialect({ url }) });
     try {
       await k.schema.createTable("orders").addColumn("id", "integer", (c) => c.primaryKey()).execute();
       await sql`CREATE VIEW order_summary AS SELECT id FROM orders`.execute(k as never);
@@ -153,7 +153,7 @@ describe("introspectSqlite — views + dispatcher", () => {
   test("dispatcher routes 'sqlite' to introspectSqlite", async () => {
     const tmpD = mkdtempSync(join(tmpdir(), "migrate-ts-sqlite-disp-"));
     const url = `file:${join(tmpD, "test.db")}`;
-    const k = new Kysely({ dialect: new LibsqlDialect({ url }) });
+    const k = new Kysely<Record<string, unknown>>({ dialect: new LibsqlDialect({ url }) });
     try {
       await k.schema.createTable("t").addColumn("id", "integer", (c) => c.primaryKey()).execute();
       const snapshot = await introspect(k, "sqlite");

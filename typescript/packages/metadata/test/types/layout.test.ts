@@ -59,7 +59,7 @@ describe("layout registration in core types", () => {
     const def = registry.find(TYPE_LAYOUT, LAYOUT_SUBTYPE_DATA_GRID);
     expect(def).toBeDefined();
     expect(def!.childRules.length).toBe(1);
-    expect(def!.childRules[0].childType).toBe("attr");
+    expect(def!.childRules[0]!.childType).toBe("attr");
   });
 });
 

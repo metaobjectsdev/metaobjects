@@ -58,8 +58,9 @@ describe("compileFilter — equality", () => {
 
   test("multiple keys → and(eq, eq)", () => {
     const c = compileFilter(makePost(), { id: 42, title: "x" });
-    expect(c.kind).toBe("and");
-    if (c.kind === "and") expect(c.clauses).toHaveLength(2);
+    expect(c).not.toBeNull();
+    expect(c!.kind).toBe("and");
+    if (c !== null && c.kind === "and") expect(c.clauses).toHaveLength(2);
   });
 
   test("{ field: null } → isNull", () => {
@@ -119,13 +120,15 @@ describe("compileFilter — operators", () => {
 describe("compileFilter — $and", () => {
   test("explicit $and → and(...)", () => {
     const c = compileFilter(makePost(), { $and: [{ id: 1 }, { title: "x" }] });
-    expect(c.kind).toBe("and");
-    if (c.kind === "and") expect(c.clauses).toHaveLength(2);
+    expect(c).not.toBeNull();
+    expect(c!.kind).toBe("and");
+    if (c !== null && c.kind === "and") expect(c.clauses).toHaveLength(2);
   });
 
   test("nested $and → flattened (single and-clause)", () => {
     const c = compileFilter(makePost(), { $and: [{ $and: [{ id: 1 }] }, { title: "x" }] });
-    expect(c.kind).toBe("and");
+    expect(c).not.toBeNull();
+    expect(c!.kind).toBe("and");
   });
 });
 

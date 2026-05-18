@@ -115,7 +115,7 @@ function assertModelsEqual(a: MetaData, b: MetaData, path = "root"): void {
     const bVal = bAttrs.get(k);
     if (Array.isArray(v)) {
       expect(Array.isArray(bVal)).toBe(true);
-      expect(v).toEqual(bVal);
+      expect(bVal).toEqual(v);
     } else {
       expect(bVal).toBe(v);
     }

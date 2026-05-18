@@ -3,7 +3,7 @@ import { Kysely } from "kysely";
 export type Dialect = "sqlite" | "postgres";
 
 export interface KyselyHandle {
-  db: Kysely<unknown>;
+  db: Kysely<Record<string, unknown>>;
   dialect: Dialect;
   /** URL with credentials redacted, safe for display. */
   displayUrl: string;
@@ -57,7 +57,7 @@ export async function buildKyselyFromUrl(
   const displayUrl = redactUrl(url);
 
   if (dialect === "sqlite") {
-    type LibsqlDialectCtor = new (opts: { url: string }) => ConstructorParameters<typeof Kysely<unknown>>[0]["dialect"];
+    type LibsqlDialectCtor = new (opts: { url: string }) => ConstructorParameters<typeof Kysely<Record<string, unknown>>>[0]["dialect"];
     let LibsqlDialect: LibsqlDialectCtor;
     try {
       const mod = await import("@libsql/kysely-libsql");
@@ -67,7 +67,7 @@ export async function buildKyselyFromUrl(
         `dialect 'sqlite' requires '@libsql/kysely-libsql'; install it: 'bun add @libsql/kysely-libsql'`,
       );
     }
-    const db = new Kysely<unknown>({ dialect: new LibsqlDialect({ url }) });
+    const db = new Kysely<Record<string, unknown>>({ dialect: new LibsqlDialect({ url }) });
     let closed = false;
     return {
       db,
@@ -98,7 +98,7 @@ export async function buildKyselyFromUrl(
     throw new Error(`dialect 'postgres' requires 'pg' (no Pool export found)`);
   }
   const pool = new PoolCtor({ connectionString: url });
-  const db = new Kysely<unknown>({ dialect: new PostgresDialect({ pool: pool as never }) });
+  const db = new Kysely<Record<string, unknown>>({ dialect: new PostgresDialect({ pool: pool as never }) });
   let closed = false;
   return {
     db,
