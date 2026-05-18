@@ -68,7 +68,7 @@ export interface ParseOptions {
    * When provided, the returned `root` is this same instance (possibly mutated).
    * When undefined, a fresh root is created from the JSON.
    */
-  intoRoot?: MetaData;
+  intoRoot?: MetaRoot;
   /**
    * If true, super refs that don't resolve at parse time are NOT a parse error;
    * the model retains its raw `superRef` and a second pass (via
@@ -81,7 +81,7 @@ export interface ParseOptions {
 }
 
 export interface ParseResult {
-  root: MetaData;
+  root: MetaRoot;
   warnings: string[];
   errors: ParseError[];
 }
@@ -262,6 +262,10 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
   }
 
   // --- Fresh root mode: create a new root from the JSON ---
+  // The registry enforces that the top-level wrapper key resolves to a
+  // registered type (checked above). For all valid metadata documents the root
+  // type is `metadata.root`, whose factory produces a MetaRoot. The cast is
+  // safe: any non-MetaRoot root would have been rejected by registry.has().
   const root = parseNodeFresh(
     rootType,
     rootSubType,
@@ -274,7 +278,7 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
     strict,
     source,
     rootKey,
-  );
+  ) as MetaRoot;
   return { root, warnings, errors };
 }
 

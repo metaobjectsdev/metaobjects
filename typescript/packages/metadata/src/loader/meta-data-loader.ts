@@ -39,7 +39,7 @@ export interface LoadOptions {
 }
 
 export interface LoadResult {
-  root: MetaData;
+  root: MetaRoot;
   warnings: string[];
   errors: Error[];
 }
@@ -48,7 +48,7 @@ export interface LoadResult {
 // Synthetic empty root (used when all sources fail to parse)
 // ---------------------------------------------------------------------------
 
-function makeSyntheticRoot(): MetaData {
+function makeSyntheticRoot(): MetaRoot {
   return new MetaRoot(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
 }
 
@@ -62,7 +62,7 @@ export class MetaDataLoader {
   private readonly _strict: boolean;
 
   private _state: LoadingState = "uninitialized";
-  private _root: MetaData | undefined;
+  private _root: MetaRoot | undefined;
 
   constructor(opts?: LoadOptions) {
     this._registry = opts?.registry ?? MetaDataLoader._defaultRegistry();
@@ -100,7 +100,7 @@ export class MetaDataLoader {
    * Accessible once load() has completed, in either "loaded" or "error" state.
    * Throws only before or during loading (state "uninitialized" or "loading").
    */
-  get root(): MetaData {
+  get root(): MetaRoot {
     this._checkStateForRead();
     return this._root!;
   }
@@ -202,7 +202,7 @@ export class MetaDataLoader {
     const warnings: string[] = [];
     const errors: Error[] = [];
 
-    let root: MetaData | undefined;
+    let root: MetaRoot | undefined;
 
     // Parse all sources with super resolution DEFERRED so cross-file super
     // refs work — one source may declare a super target that's defined in a
