@@ -74,7 +74,6 @@ describe("tanstackGrid() factory", () => {
       name: "X",
       attr: () => undefined,
       children: () => [] as any[],
-      effectiveChildren: () => [] as any[],
     } as any;
     expect(gen.filter?.(fakeEntity)).toBe(false);
   });

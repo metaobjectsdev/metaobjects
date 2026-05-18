@@ -270,29 +270,6 @@ export abstract class MetaData {
     return this.children().find((c) => c.type === type && c.name === name);
   }
 
-  /**
-   * Returns the first child matching (type, name), walking the super chain if not found locally.
-   * Java parity: matches MetaObject.getMetaField(name)'s behavior of falling back to getSuperObject().getMetaField(name).
-   * Cycle-safe: if the super chain contains a cycle, lookup stops at the cycle.
-   */
-  effectiveChildByTypeAndName(type: string, name: string): MetaData | undefined {
-    return this._effectiveChildByTypeAndName(type, name, new Set([this]));
-  }
-
-  private _effectiveChildByTypeAndName(
-    type: string,
-    name: string,
-    visited: Set<MetaData>,
-  ): MetaData | undefined {
-    const own = this._children.find((c) => c.type === type && c.name === name);
-    if (own !== undefined) return own;
-    if (this._superData === undefined || visited.has(this._superData)) {
-      return undefined;
-    }
-    visited.add(this._superData);
-    return this._superData._effectiveChildByTypeAndName(type, name, visited);
-  }
-
   // ---------------------------------------------------------------------------
   // Effective view (own + inherited via super chain)
   // ---------------------------------------------------------------------------
@@ -318,16 +295,6 @@ export abstract class MetaData {
       result.set(k, v);
     }
     return result;
-  }
-
-  /**
-   * Returns the effective children list: super's children merged with own.
-   * Own children with the same (type, name) as a super child replace that super child
-   * in-position. Own children that don't conflict are appended after super's.
-   * Cycle-safe: if the super chain contains a cycle, resolution stops at the cycle.
-   */
-  effectiveChildren(): MetaData[] {
-    return this.cached("effectiveChildren", () => this._effectiveChildren(new Set([this])));
   }
 
   private _effectiveChildren(visited: Set<MetaData>): MetaData[] {

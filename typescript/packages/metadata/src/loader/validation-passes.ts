@@ -33,9 +33,9 @@ import {
 export function validateDataGridSortFields(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
-    // Use effectiveChildren() so inherited fields (via extends:/super:) are
+    // Use children() so inherited fields (via extends:/super:) are
     // visible when validating @defaultSortField references.
-    const effective = obj.effectiveChildren();
+    const effective = obj.children();
     const fieldNames = new Set(
       effective.filter((c) => c.type === TYPE_FIELD).map((f) => f.name),
     );
@@ -61,9 +61,9 @@ export function validateDataGridSortFields(root: MetaData): ParseError[] {
 export function validateFilterableHasIndex(root: MetaData): string[] {
   const warnings: string[] = [];
   for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
-    // Use effectiveChildren() so inherited fields and identities (via extends:/super:)
+    // Use children() so inherited fields and identities (via extends:/super:)
     // are included when checking filterable-without-index.
-    const effective = obj.effectiveChildren();
+    const effective = obj.children();
     // Build the set of field names that are part of any identity on this object.
     const indexedFieldNames = new Set<string>();
     for (const identity of effective.filter((c) => c.type === TYPE_IDENTITY)) {
@@ -109,13 +109,13 @@ function _findObject(root: MetaData, name: string): MetaData | undefined {
 }
 
 function _findField(obj: MetaData, name: string): MetaData | undefined {
-  // Use effectiveChildren() so inherited fields (via extends:/super:) are included.
-  return obj.effectiveChildren().find((c) => c.type === TYPE_FIELD && c.name === name);
+  // Use children() so inherited fields (via extends:/super:) are included.
+  return obj.children().find((c) => c.type === TYPE_FIELD && c.name === name);
 }
 
 function _findRelationship(obj: MetaData, name: string): MetaData | undefined {
-  // Use effectiveChildren() so inherited relationships (via extends:/super:) are included.
-  return obj.effectiveChildren().find((c) => c.type === TYPE_RELATIONSHIP && c.name === name);
+  // Use children() so inherited relationships (via extends:/super:) are included.
+  return obj.children().find((c) => c.type === TYPE_RELATIONSHIP && c.name === name);
 }
 
 function _validateFromPath(

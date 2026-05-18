@@ -435,12 +435,12 @@ describe("MetaData — effectiveAttrs()", () => {
   });
 });
 
-describe("MetaData — effectiveChildren()", () => {
+describe("MetaData — children() effective behaviour", () => {
   it("without super returns own children as a copy", () => {
     const parent = makeObject("entity", "Parent");
     const c1 = makeField("string", "a");
     parent.addChild(c1);
-    const eff = parent.effectiveChildren();
+    const eff = parent.children();
     expect(eff).toContain(c1);
     eff.push(makeField("string", "injected"));
     expect(parent.ownChildren().length).toBe(1);
@@ -456,7 +456,7 @@ describe("MetaData — effectiveChildren()", () => {
     child.addChild(y);
     child.setSuperResolved(superModel);
 
-    const eff = child.effectiveChildren();
+    const eff = child.children();
     expect(eff.length).toBe(2);
     expect(eff[0]).toBe(x);
     expect(eff[1]).toBe(y);
@@ -475,7 +475,7 @@ describe("MetaData — effectiveChildren()", () => {
     child.addChild(childFoo);
     child.setSuperResolved(superModel);
 
-    const eff = child.effectiveChildren();
+    const eff = child.children();
     expect(eff.length).toBe(2);
     expect(eff[0]).toBe(childFoo); // override in place of super's foo
     expect(eff[1]).toBe(superBar);
@@ -494,14 +494,14 @@ describe("MetaData — effectiveChildren()", () => {
     child.addChild(makeField("string", "c"));
     child.setSuperResolved(parent);
 
-    const eff = child.effectiveChildren();
+    const eff = child.children();
     expect(eff.length).toBe(3);
     expect(eff.map((c) => c.name)).toEqual(["gp", "p", "c"]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Cycle protection in effectiveAttrs() / effectiveChildren()
+// Cycle protection in effectiveAttrs() / children()
 // ---------------------------------------------------------------------------
 
 describe("MetaData — cycle protection in effective views", () => {
@@ -519,7 +519,7 @@ describe("MetaData — cycle protection in effective views", () => {
     expect(result!.get("fromB")).toBe("b");
   });
 
-  it("effectiveChildren() does not infinite-loop on an A -> B -> A cycle", () => {
+  it("children() does not infinite-loop on an A -> B -> A cycle", () => {
     const A = makeObject("entity", "A");
     A.addChild(makeField("string", "childA"));
     const B = makeObject("entity", "B");
@@ -528,7 +528,7 @@ describe("MetaData — cycle protection in effective views", () => {
     B.setSuperResolved(A);
 
     let result: MetaData[] | undefined;
-    expect(() => { result = A.effectiveChildren(); }).not.toThrow();
+    expect(() => { result = A.children(); }).not.toThrow();
     expect(Array.isArray(result)).toBe(true);
     expect(result!.length).toBeGreaterThan(0);
     const names = result!.map((c) => c.name);

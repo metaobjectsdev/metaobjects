@@ -23,7 +23,7 @@ import type { MetaField } from "./meta-field.js";
 export class MetaObject extends MetaData {
   get dbTable(): string | undefined {
     return this.cached("dbTable", () => {
-      const source = this.effectiveChildren().find(
+      const source = this.children().find(
         (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_TABLE,
       );
       const name = source?.attr(SOURCE_DB_TABLE_ATTR_NAME);
@@ -46,7 +46,7 @@ export class MetaObject extends MetaData {
 
   fields(): MetaField[] {
     return this.cached("fields", () =>
-      this.effectiveChildren().filter((c): c is MetaField => c.type === TYPE_FIELD),
+      this.children().filter((c): c is MetaField => c.type === TYPE_FIELD),
     );
   }
 
@@ -59,7 +59,7 @@ export class MetaObject extends MetaData {
 
   identities(): MetaData[] {
     return this.cached("identities", () =>
-      this.effectiveChildren().filter((c) => c.type === TYPE_IDENTITY),
+      this.children().filter((c) => c.type === TYPE_IDENTITY),
     );
   }
 
@@ -86,7 +86,7 @@ export class MetaObject extends MetaData {
 
   relationships(): MetaData[] {
     return this.cached("relationships", () =>
-      this.effectiveChildren().filter((c) => c.type === TYPE_RELATIONSHIP),
+      this.children().filter((c) => c.type === TYPE_RELATIONSHIP),
     );
   }
 
@@ -99,7 +99,7 @@ export class MetaObject extends MetaData {
 
   validators(): MetaData[] {
     return this.cached("validators", () =>
-      this.effectiveChildren().filter((c) => c.type === TYPE_VALIDATOR),
+      this.children().filter((c) => c.type === TYPE_VALIDATOR),
     );
   }
 
@@ -112,7 +112,7 @@ export class MetaObject extends MetaData {
 
   findField(name: string): MetaField | undefined {
     return this.cached(`findField:${name}`, () => {
-      const child = this.effectiveChildByTypeAndName(TYPE_FIELD, name);
+      const child = this.childByTypeAndName(TYPE_FIELD, name);
       return child !== undefined ? (child as MetaField) : undefined;
     });
   }

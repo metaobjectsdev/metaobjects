@@ -77,14 +77,14 @@ function fieldLabel(field: MetaField): string {
  */
 function extractGrids(entity: MetaObject): GridSpec[] {
   // fields() is effective (own + inherited via extends:/super:). Layouts have no
-  // typed accessor on MetaObject — filter effectiveChildren() by type tag so
+  // typed accessor on MetaObject — filter children() by type tag so
   // inherited layouts are still included.
   const fieldsByName = new Map(
     entity.fields().map((f) => [f.name, f] as const),
   );
 
   const grids: GridSpec[] = [];
-  for (const layout of entity.effectiveChildren()) {
+  for (const layout of entity.children()) {
     if (layout.type !== TYPE_LAYOUT || layout.subType !== LAYOUT_SUBTYPE_DATA_GRID) continue;
 
     // @columns is a stringArray attr on the layout (set by E-T4 migration).

@@ -78,7 +78,7 @@ export class MetaField extends MetaData implements DataTypeAware {
   /** All effective validators (own + inherited via extends). Java parity: MetaField.getValidators() / getChildren(MetaValidator.class, true). */
   validators(): MetaData[] {
     return this.cached("validators", () =>
-      this.effectiveChildren().filter((c) => c.type === TYPE_VALIDATOR),
+      this.children().filter((c) => c.type === TYPE_VALIDATOR),
     );
   }
 
@@ -92,7 +92,7 @@ export class MetaField extends MetaData implements DataTypeAware {
   /** All effective views (own + inherited via extends). Java parity: MetaField.getViews() / getChildren(MetaView.class, true). */
   views(): MetaData[] {
     return this.cached("views", () =>
-      this.effectiveChildren().filter((c) => c.type === TYPE_VIEW),
+      this.children().filter((c) => c.type === TYPE_VIEW),
     );
   }
 

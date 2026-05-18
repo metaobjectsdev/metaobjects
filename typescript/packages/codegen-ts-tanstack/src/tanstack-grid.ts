@@ -8,9 +8,9 @@ export interface TanstackGridOpts {
 }
 
 function hasDataGridLayout(entity: MetaObject): boolean {
-  // No typed `layouts()` accessor on MetaObject — filter effectiveChildren() by
+  // No typed `layouts()` accessor on MetaObject — filter children() by
   // type tag so inherited layouts (from extends:/super:) are still considered.
-  return entity.effectiveChildren().some(
+  return entity.children().some(
     (c) => c.type === TYPE_LAYOUT && c.subType === LAYOUT_SUBTYPE_DATA_GRID,
   );
 }
