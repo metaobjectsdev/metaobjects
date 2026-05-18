@@ -84,7 +84,7 @@ async function loadProjectionFixture() {
     },
   ]);
 
-  const projection = root.ownChildren().find((o) => o.name === "ProgramSummary");
+  const projection = root.findObject("ProgramSummary");
   if (!projection) throw new Error("ProgramSummary not found");
 
   const ctx = makeRenderContext({
@@ -118,7 +118,7 @@ async function loadVanillaFixture() {
     },
   ]);
 
-  const entity = root.ownChildren().find((o) => o.name === "Post");
+  const entity = root.findObject("Post");
   if (!entity) throw new Error("Post not found");
 
   const ctx = makeRenderContext({

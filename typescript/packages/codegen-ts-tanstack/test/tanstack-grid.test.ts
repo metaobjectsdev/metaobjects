@@ -1,6 +1,5 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { TYPE_OBJECT } from "@metaobjects/metadata";
 import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { tanstackGrid } from "../src/tanstack-grid.js";
 import { makeRenderContext, buildPkMap, buildRelationMap } from "@metaobjects/codegen-ts";
@@ -12,7 +11,7 @@ const GRID_FILTER    = resolve(import.meta.dir, "fixtures", "grid-filter-fixture
 
 async function ctxFor(fixturePath: string): Promise<GenContext> {
   const { root } = await new FileMetaDataLoader().loadFiles([fixturePath]);
-  const entities = root.ownChildren().filter((c) => c.type === TYPE_OBJECT);
+  const entities = root.objects();
   const renderContext = makeRenderContext({
     dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
     dbImport: "../db", extStyle: "none",

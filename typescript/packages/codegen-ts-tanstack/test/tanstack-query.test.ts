@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { TYPE_OBJECT, MetaObject, TypeId, OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
+import { MetaObject, TypeId, OBJECT_SUBTYPE_ENTITY, TYPE_OBJECT } from "@metaobjects/metadata";
 import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { tanstackQuery } from "../src/tanstack-query.js";
 import { makeRenderContext } from "@metaobjects/codegen-ts";
@@ -12,7 +12,7 @@ const FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 async function buildCtx(genFilter?: (e: { name: string }) => boolean): Promise<GenContext> {
   const loader = new FileMetaDataLoader();
   const { root } = await loader.loadFiles([FIXTURE]);
-  const entities = root.ownChildren().filter((c) => c.type === TYPE_OBJECT);
+  const entities = root.objects();
   const renderContext = makeRenderContext({
     dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
     dbImport: "../db", extStyle: "none",
