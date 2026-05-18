@@ -37,7 +37,7 @@ export interface Generator {
 
 export type GeneratorFactory<TOpts = void> = TOpts extends void
   ? () => Generator
-  : (opts: TOpts) => Generator;
+  : (opts?: TOpts) => Generator;
 
 /** One-file-per-entity convenience. Async-safe. */
 export function perEntity(

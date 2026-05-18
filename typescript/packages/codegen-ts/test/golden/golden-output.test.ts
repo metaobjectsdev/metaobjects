@@ -40,7 +40,7 @@ describe("golden output — byte-identical port gate", () => {
             extStyle: "none",
             dbImport: "~/server/db",
             dialect,
-            generators: [entityFile({}), queriesFile({}), routesFile({}), formFile({}), barrel()],
+            generators: [entityFile(), queriesFile(), routesFile(), formFile(), barrel()],
           }),
           metadata: metadataRoot,
         });

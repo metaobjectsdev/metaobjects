@@ -35,7 +35,7 @@ async function buildCtx(genFilter?: (e: MetaObject) => boolean): Promise<GenCont
 describe("queriesFile()", () => {
   test("emits <Entity>.queries.ts with findById + create", async () => {
     const ctx = await buildCtx();
-    const gen = queriesFile({});
+    const gen = queriesFile();
     const files = await gen.generate(ctx);
     const f = files.find(f => f.path === "Post.queries.ts");
     expect(f).toBeDefined();
@@ -56,7 +56,7 @@ describe("queriesFile()", () => {
 describe("routesFile()", () => {
   test("emits <Entity>.routes.ts wiring mountCrudRoutes from drizzle-fastify", async () => {
     const ctx = await buildCtx();
-    const gen = routesFile({});
+    const gen = routesFile();
     const files = await gen.generate(ctx);
     const f = files.find(f => f.path === "Post.routes.ts");
     expect(f).toBeDefined();
@@ -77,7 +77,7 @@ describe("routesFile()", () => {
 describe("formFile()", () => {
   test("emits <Entity>.form.tsx with useEntityForm import", async () => {
     const ctx = await buildCtx();
-    const gen = formFile({});
+    const gen = formFile();
     const files = await gen.generate(ctx);
     const f = files.find(f => f.path === "Post.form.tsx");
     expect(f).toBeDefined();

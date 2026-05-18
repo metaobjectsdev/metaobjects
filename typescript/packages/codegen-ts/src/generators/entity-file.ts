@@ -24,4 +24,4 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
     generator.filter = opts.filter;
   }
   return generator;
-} as GeneratorFactory<EntityFileOpts | void>;
+} as GeneratorFactory<EntityFileOpts>;

@@ -50,7 +50,7 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "sqlite",
-        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
+        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
       }),
       metadata: result.root,
     });
@@ -95,7 +95,7 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "sqlite",
-        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
+        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
       }),
       metadata: result.root,
     });
@@ -191,7 +191,7 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "sqlite",
-        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
+        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
       }),
       metadata: result.root,
     });
@@ -230,7 +230,7 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "sqlite",
-        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
+        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
       }),
       metadata: result.root,
     });
@@ -268,7 +268,7 @@ describe("trainer-website-shape integration — 9 entities, Postgres", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "postgres",
-        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
+        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
       }),
       metadata: result.root,
     });
@@ -310,7 +310,7 @@ describe("trainer-website-shape integration — 9 entities, Postgres", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "postgres",
-        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
+        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
       }),
       metadata: result.root,
     });

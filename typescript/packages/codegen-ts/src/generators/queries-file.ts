@@ -24,4 +24,4 @@ export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generat
     generator.filter = opts.filter;
   }
   return generator;
-} as GeneratorFactory<QueriesFileOpts | void>;
+} as GeneratorFactory<QueriesFileOpts>;

@@ -27,4 +27,4 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
       };
     }),
   };
-} as GeneratorFactory<RoutesFileOpts | void>;
+} as GeneratorFactory<RoutesFileOpts>;

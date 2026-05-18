@@ -37,7 +37,7 @@ describe("runGen — single entity, SQLite", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "sqlite",
-        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
+        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
       }),
       metadata: result.root,
     });
@@ -80,7 +80,7 @@ describe("runGen — two entities with FK, Postgres", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "postgres",
-        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
+        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
       }),
       metadata: result.root,
     });
@@ -116,7 +116,7 @@ describe("runGen — refuses to clobber hand-written files", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "sqlite",
-        generators: [entityFile({}), queriesFile({}), routesFile({}), barrel()],
+        generators: [entityFile(), queriesFile(), routesFile(), barrel()],
       }),
       metadata: result.root,
     });
@@ -171,7 +171,7 @@ describe("runGen — path-traversal guard (security)", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "sqlite",
-        generators: [entityFile({}), barrel()],
+        generators: [entityFile(), barrel()],
       }),
       metadata: root,
     });
@@ -207,7 +207,7 @@ describe("runGen — mergeStrategy: 'skip-existing'", () => {
       extStyle: "none",
       dbImport: "~/server/db",
       dialect: "sqlite",
-      generators: [entityFile({}), queriesFile({}), barrel()],
+      generators: [entityFile(), queriesFile(), barrel()],
     });
 
     // First run: overwrite strategy produces new files
@@ -278,7 +278,7 @@ describe("runGen — entityFilter", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "postgres",
-        generators: [entityFile({}), queriesFile({}), barrel()],
+        generators: [entityFile(), queriesFile(), barrel()],
       }),
       metadata: result.root,
       entityFilter: ["Post"],
@@ -310,7 +310,7 @@ describe("runGen — entityFilter", () => {
         extStyle: "none",
         dbImport: "~/server/db",
         dialect: "postgres",
-        generators: [entityFile({}), queriesFile({}), barrel()],
+        generators: [entityFile(), queriesFile(), barrel()],
       }),
       metadata: result.root,
       entityFilter: ["NonExistent"],

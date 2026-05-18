@@ -12,7 +12,7 @@ const FIXTURE = resolve(import.meta.dir, "..", "fixtures", "single-entity.json")
 
 describe("entityFile() factory", () => {
   test("returns a Generator named 'entity-file'", () => {
-    const gen = entityFile({});
+    const gen = entityFile();
     expect(gen.name).toBe("entity-file");
     expect(typeof gen.generate).toBe("function");
   });
@@ -35,7 +35,7 @@ describe("entityFile() factory", () => {
       warn: () => {},
     };
 
-    const files = await entityFile({}).generate(ctx);
+    const files = await entityFile().generate(ctx);
     expect(files.length).toBe(entities.length);
     const post = files.find(f => f.path === "Post.ts");
     expect(post).toBeDefined();

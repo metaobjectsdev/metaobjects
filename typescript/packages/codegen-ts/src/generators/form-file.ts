@@ -27,4 +27,4 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
       };
     }),
   };
-} as GeneratorFactory<FormFileOpts | void>;
+} as GeneratorFactory<FormFileOpts>;
