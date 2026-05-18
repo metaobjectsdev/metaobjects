@@ -182,9 +182,9 @@ export abstract class MetaData {
     return this._attrs.get(name);
   }
 
-  /** Own (locally declared) attrs — a defensive copy; excludes attrs inherited via extends. */
-  ownAttrs(): Map<string, AttrValue> {
-    return new Map(this._attrs);
+  /** Own (locally declared) attrs — a cached map; excludes attrs inherited via extends. */
+  ownAttrs(): ReadonlyMap<string, AttrValue> {
+    return this.cached("ownAttrs", () => new Map(this._attrs));
   }
 
   /** True if `name` is an own (locally declared) attr — excludes inherited. */
@@ -198,9 +198,9 @@ export abstract class MetaData {
   // explicit own* opt-in above.
   // ---------------------------------------------------------------------------
 
-  /** Effective attrs: own + inherited via the super chain, own winning on a key conflict. */
+  /** Effective attrs: own + inherited via the super chain, own winning on a key conflict. Cached. */
   attrs(): ReadonlyMap<string, AttrValue> {
-    return new Map(this.cached("attrs", () => this._effectiveAttrs(new Set([this]))));
+    return this.cached("attrs", () => this._effectiveAttrs(new Set([this])));
   }
 
   /** Effective attr value for `name`, or undefined. */
@@ -237,9 +237,9 @@ export abstract class MetaData {
     return node;
   }
 
-  /** Own (locally declared) children — a defensive copy; excludes children inherited via extends. */
+  /** Own (locally declared) children — a cached frozen array; excludes children inherited via extends. */
   ownChildren(): readonly MetaData[] {
-    return [...this._children];
+    return this.cached("ownChildren", () => Object.freeze([...this._children]));
   }
 
   /** Own children whose type matches — excludes inherited. */
@@ -268,9 +268,9 @@ export abstract class MetaData {
   // is the explicit own* opt-in above.
   // ---------------------------------------------------------------------------
 
-  /** Effective children: own + inherited via the super chain, own shadowing super. */
-  children(): MetaData[] {
-    return this.cached("children", () => this._effectiveChildren(new Set([this])));
+  /** Effective children: own + inherited via the super chain, own shadowing super. Cached, frozen. */
+  children(): readonly MetaData[] {
+    return this.cached("children", () => Object.freeze(this._effectiveChildren(new Set([this]))));
   }
 
   /** Effective children whose type matches. */

@@ -46,16 +46,6 @@ describe("MetaData base", () => {
     expect(() => n.addChild(new TestNode(new TypeId("field", "string"), "x"))).toThrow();
   });
 
-  it("attrs() returns a fresh defensive copy on each call even when frozen", () => {
-    const n = new TestNode(new TypeId("object", "entity"), "Widget");
-    n.setAttr("color", "blue");
-    n.freeze();
-    const a = n.attrs();
-    const b = n.attrs();
-    expect(a).not.toBe(b);
-    expect(a.get("color")).toBe("blue");
-    expect(b.get("color")).toBe("blue");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -187,15 +177,6 @@ describe("MetaData — attributes", () => {
     expect(map.size).toBe(3);
   });
 
-  it("ownAttrs() returns a defensive copy — mutating it does not affect the model", () => {
-    m.setAttr("x", "original");
-    const copy = m.ownAttrs();
-    copy.set("x", "mutated");
-    copy.set("injected", "val");
-    expect(m.ownAttr("x")).toBe("original");
-    expect(m.ownHasAttr("injected")).toBe(false);
-  });
-
   it("supports string AttrValue", () => {
     m.setAttr("s", "hello");
     expect(m.ownAttr("s")).toBe("hello");
@@ -308,7 +289,7 @@ describe("MetaData — children", () => {
     expect(parent.ownChildren().length).toBe(2);
   });
 
-  it("ownChildren() is a defensive copy — a later addChild does not change a captured snapshot", () => {
+  it("ownChildren() reflects only children added before the call (before freeze)", () => {
     const c1 = makeField("string", "first");
     parent.addChild(c1);
     const snapshot = parent.ownChildren().length;
@@ -317,14 +298,6 @@ describe("MetaData — children", () => {
     expect(parent.ownChildren().length).toBe(2);
   });
 
-  it("mutating a cast copy of ownChildren() does not affect internal state", () => {
-    const c1 = makeField("string", "original");
-    parent.addChild(c1);
-    const mutableCopy = parent.ownChildren() as MetaData[];
-    mutableCopy.push(makeField("string", "injected"));
-    expect(parent.ownChildren().length).toBe(1);
-    expect(parent.ownChildByName("injected")).toBeUndefined();
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -381,15 +354,13 @@ describe("MetaData — flags and references", () => {
 // ---------------------------------------------------------------------------
 
 describe("MetaData — attrs() (effective merge behaviour)", () => {
-  it("without super returns own attrs as a defensive copy", () => {
+  it("without super returns own attrs", () => {
     const m = makeObject("entity", "A");
     m.setAttr("x", 1);
     m.setAttr("y", "hello");
     const eff = m.attrs();
     expect(eff.get("x")).toBe(1);
     expect(eff.get("y")).toBe("hello");
-    (eff as Map<string, unknown>).set("z", "injected");
-    expect(m.ownHasAttr("z")).toBe(false);
   });
 
   it("with super returns both own and inherited attrs", () => {
@@ -436,14 +407,13 @@ describe("MetaData — attrs() (effective merge behaviour)", () => {
 });
 
 describe("MetaData — children() (effective merge behaviour)", () => {
-  it("without super returns own children as a copy", () => {
+  it("without super returns own children", () => {
     const parent = makeObject("entity", "Parent");
     const c1 = makeField("string", "a");
     parent.addChild(c1);
     const eff = parent.children();
     expect(eff).toContain(c1);
-    eff.push(makeField("string", "injected"));
-    expect(parent.ownChildren().length).toBe(1);
+    expect(eff.length).toBe(1);
   });
 
   it("with super includes super's children first, then own appended", () => {
@@ -527,7 +497,7 @@ describe("MetaData — cycle protection in effective views", () => {
     A.setSuperResolved(B);
     B.setSuperResolved(A);
 
-    let result: MetaData[] | undefined;
+    let result: readonly MetaData[] | undefined;
     expect(() => { result = A.children(); }).not.toThrow();
     expect(Array.isArray(result)).toBe(true);
     expect(result!.length).toBeGreaterThan(0);
@@ -735,6 +705,50 @@ describe("MetaData — effective child accessors (default)", () => {
     expect(child.childByTypeAndName(TYPE_FIELD, "foo")?.ownAttr("origin")).toBe(
       "child",
     );
+  });
+});
+
+describe("MetaData — cached immutable accessors", () => {
+  it("children() returns a frozen array", () => {
+    const n = makeObject("entity", "N");
+    n.addChild(makeField("string", "f"));
+    n.freeze();
+    expect(Object.isFrozen(n.children())).toBe(true);
+  });
+
+  it("children() returns the same cached reference across calls after freeze", () => {
+    const n = makeObject("entity", "N");
+    n.addChild(makeField("string", "f"));
+    n.freeze();
+    expect(n.children()).toBe(n.children());
+  });
+
+  it("ownChildren() returns a frozen array", () => {
+    const n = makeObject("entity", "N");
+    n.addChild(makeField("string", "f"));
+    n.freeze();
+    expect(Object.isFrozen(n.ownChildren())).toBe(true);
+  });
+
+  it("ownChildren() returns the same cached reference across calls after freeze", () => {
+    const n = makeObject("entity", "N");
+    n.addChild(makeField("string", "f"));
+    n.freeze();
+    expect(n.ownChildren()).toBe(n.ownChildren());
+  });
+
+  it("attrs() returns the same cached reference across calls after freeze", () => {
+    const n = makeObject("entity", "N");
+    n.setAttr("k", "v");
+    n.freeze();
+    expect(n.attrs()).toBe(n.attrs());
+  });
+
+  it("ownAttrs() returns the same cached reference across calls after freeze", () => {
+    const n = makeObject("entity", "N");
+    n.setAttr("k", "v");
+    n.freeze();
+    expect(n.ownAttrs()).toBe(n.ownAttrs());
   });
 });
 
