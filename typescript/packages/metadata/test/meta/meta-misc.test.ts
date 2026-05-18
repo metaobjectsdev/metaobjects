@@ -592,7 +592,7 @@ describe("MetaView", () => {
     expect(v.subType).toBe(VIEW_SUBTYPE_CURRENCY);
   });
 
-  it("attr() escape hatch works", () => {
+  it("ownAttr() returns view attrs", () => {
     const v = makeView(VIEW_SUBTYPE_TEXT);
     v.setAttr("placeholder", "Enter value");
     expect(v.ownAttr("placeholder")).toBe("Enter value");
@@ -636,7 +636,7 @@ describe("MetaLayout", () => {
     expect(l.subType).toBe(LAYOUT_SUBTYPE_DATA_GRID);
   });
 
-  it("attr() escape hatch returns layout attrs", () => {
+  it("ownAttr() returns layout attrs", () => {
     const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
     l.setAttr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE, 25);
     l.setAttr(LAYOUT_DATA_GRID_ATTR_COLUMNS, ["id", "name"]);
@@ -821,13 +821,13 @@ describe("MetaOrigin", () => {
     expect(o.subType).toBe(ORIGIN_SUBTYPE_AGGREGATE);
   });
 
-  it("attr() escape hatch returns passthrough attrs", () => {
+  it("ownAttr() returns passthrough attrs", () => {
     const o = makeOrigin(ORIGIN_SUBTYPE_PASSTHROUGH);
     o.setAttr(ORIGIN_PASSTHROUGH_ATTR_FROM, "Base.label");
     expect(o.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM)).toBe("Base.label");
   });
 
-  it("attr() escape hatch returns aggregate attrs", () => {
+  it("ownAttr() returns aggregate attrs", () => {
     const o = makeOrigin(ORIGIN_SUBTYPE_AGGREGATE);
     o.setAttr(ORIGIN_AGGREGATE_ATTR_AGG, "count");
     o.setAttr(ORIGIN_AGGREGATE_ATTR_OF, "Week.id");

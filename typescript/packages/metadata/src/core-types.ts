@@ -278,7 +278,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   //   regex → MetaRegexValidator, numeric → MetaNumericValidator,
   //   array → MetaArrayValidator, default (base) → MetaValidator.
   // Attr schemas: MetaValidator (base) + length/numeric/array read @min/@max via
-  //   this.attr(VALIDATOR_ATTR_MIN/MAX); regex also reads @pattern via this.attr().
+  //   this.ownAttr(VALIDATOR_ATTR_MIN/MAX); regex also reads @pattern via this.ownAttr().
   //   required has no extra attrs.
   const validatorRules = [wildcard(TYPE_ATTR)];
   for (const subType of VALIDATOR_SUBTYPES) {
