@@ -182,7 +182,11 @@ export abstract class MetaData {
     return this._attrs.get(name);
   }
 
-  /** Own (locally declared) attrs — a cached map; excludes attrs inherited via extends. */
+  /**
+   * Own (locally declared) attrs — a cached map; excludes attrs inherited via extends.
+   * Do not cast to `Map` and mutate — the same reference is returned on every call
+   * after freeze, so a mutation would corrupt subsequent reads.
+   */
   ownAttrs(): ReadonlyMap<string, AttrValue> {
     return this.cached("ownAttrs", () => new Map(this._attrs));
   }
@@ -198,7 +202,11 @@ export abstract class MetaData {
   // explicit own* opt-in above.
   // ---------------------------------------------------------------------------
 
-  /** Effective attrs: own + inherited via the super chain, own winning on a key conflict. Cached. */
+  /**
+   * Effective attrs — own + inherited via the super chain, own winning on a key conflict; cached.
+   * Do not cast to `Map` and mutate — the same reference is returned on every call
+   * after freeze, so a mutation would corrupt subsequent reads.
+   */
   attrs(): ReadonlyMap<string, AttrValue> {
     return this.cached("attrs", () => this._effectiveAttrs(new Set([this])));
   }
