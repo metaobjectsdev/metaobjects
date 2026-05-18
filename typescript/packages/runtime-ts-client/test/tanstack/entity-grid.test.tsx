@@ -41,7 +41,7 @@ describe("<EntityGrid>", () => {
     );
     const cell = screen.getByText("carol");
     fireEvent.click(cell.closest("tr")!);
-    expect(clicked).toEqual({ id: 7, name: "carol", active: true });
+    expect(clicked!).toEqual({ id: 7, name: "carol", active: true });
   });
 
   test("renders emptyState when data is empty and not loading", () => {

@@ -52,7 +52,7 @@ describe("CurrencyInput — blur emits cents", () => {
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "15.99" } });
     fireEvent.blur(input);
-    expect(emitted).toBe(1599);
+    expect(emitted!).toBe(1599);
     expect(input.value).toBe("$15.99");
   });
 
@@ -70,7 +70,7 @@ describe("CurrencyInput — blur emits cents", () => {
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "" } });
     fireEvent.blur(input);
-    expect(emitted).toBe(0);
+    expect(emitted!).toBe(0);
     expect(input.value).toBe("$0.00");
   });
 

@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import "../setup.js";
 import { renderHook } from "@testing-library/react";
-import { EntityFetcherProvider, useEntityFetcher } from "../../src/tanstack/index.js";
+import { EntityFetcherProvider, useEntityFetcher, type EntityFetcher } from "../../src/tanstack/index.js";
 import type { ReactNode } from "react";
 
 function Wrapper({ value, children }: { value: any; children: ReactNode }) {
@@ -31,6 +31,8 @@ describe("useEntityFetcher", () => {
         </EntityFetcherProvider>
       ),
     });
-    expect(result.current).toBe(inner);
+    // Cast for reference-identity check: inner is passed as any to the provider;
+    // result.current is EntityFetcher (generic), so a structural cast is needed here.
+    expect(result.current).toBe(inner as unknown as EntityFetcher);
   });
 });
