@@ -606,12 +606,13 @@ function applyInlineAttrsAndUnknownKeys(
 
     let value: AttrValue;
     try {
-      if (attrSpec !== undefined) {
-        // Declared attr — convert toward the DataType of its registered subtype.
+      if (attrSpec !== undefined && attrSpec.valueType !== SUBTYPE_BASE) {
+        // Declared attr with a concrete value-type — convert toward that DataType.
         const dataType = registry.find(TYPE_ATTR, attrSpec.valueType)?.dataType ?? DATA_TYPE_STRING;
         value = convertToDataType(dataType, rawVal);
       } else {
-        // Undeclared @-attr — store a structurally-valid raw value, no inference.
+        // Undeclared @-attr OR declared with SUBTYPE_BASE (polymorphic/unconstrained)
+        // — store the value type-preserved, exactly as the JSON author wrote it.
         value = toAttrValue(rawVal);
       }
     } catch (err) {
@@ -784,9 +785,14 @@ function parseAttrChild(
 
   let value: AttrValue;
   try {
-    // Convert toward the DataType of the attr node's own registered subtype.
-    const dataType = attrDef?.dataType ?? DATA_TYPE_STRING;
-    value = convertToDataType(dataType, attrValue);
+    // SUBTYPE_BASE is the polymorphic/unconstrained marker — store type-preserved.
+    // For all other subtypes, convert toward the DataType of the registered subtype.
+    if (resolvedSubType === SUBTYPE_BASE) {
+      value = toAttrValue(attrValue);
+    } else {
+      const dataType = attrDef?.dataType ?? DATA_TYPE_STRING;
+      value = convertToDataType(dataType, attrValue);
+    }
   } catch (err) {
     reportProblem(
       `Failed to convert attr child "${attrName}" value at ${path}: ${(err as Error).message}`,

@@ -1,0 +1,44 @@
+{
+  "metadata.root": {
+    "package": "acme::order",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "confirmed",
+                "@default": false
+              }
+            },
+            {
+              "field.long": {
+                "name": "quantity",
+                "@default": 0
+              }
+            },
+            {
+              "field.string": {
+                "name": "status",
+                "@default": "pending"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

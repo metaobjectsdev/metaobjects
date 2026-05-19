@@ -20,7 +20,7 @@ export const programs = sqliteTable("programs", {
   priceCents: integer("price_cents").notNull(),
   isPublished: integer("is_published", { mode: "boolean" })
     .notNull()
-    .default("false"),
+    .default(false),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 export const programsRelations = relations(programs, ({ many }) => ({

@@ -19,7 +19,7 @@ export const subscribers = sqliteTable("subscribers", {
   lastName: text("last_name"),
   subscribed: integer("subscribed", { mode: "boolean" })
     .notNull()
-    .default("true"),
+    .default(true),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 export const subscribersRelations = relations(subscribers, ({ many }) => ({

@@ -1481,6 +1481,121 @@ describe("parseJson — root-level super (silent-swallow guard)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Polymorphic (SUBTYPE_BASE) attr value type-preservation
+//
+// @default is declared with valueType SUBTYPE_BASE — the "unconstrained /
+// polymorphic" marker. The parser must NOT coerce its value toward
+// DATA_TYPE_STRING; it must preserve whatever JSON type the author wrote.
+// ---------------------------------------------------------------------------
+
+describe("parseJson — @default (SUBTYPE_BASE / polymorphic) preserves value type", () => {
+  it("@default: false (boolean) is stored as boolean false, not the string 'false'", () => {
+    const registry = makeRegistry();
+    const input = JSON.stringify({
+      "metadata.root": {
+        children: [
+          {
+            "object.entity": {
+              name: "Order",
+              children: [
+                { "field.boolean": { name: "confirmed", "@default": false } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root } = parseJson(input, { registry });
+    const entity = root.ownChildren()[0]!;
+    const field = entity.ownChildren()[0]!;
+    const v = field.ownAttr("default");
+    expect(typeof v).toBe("boolean");
+    expect(v).toBe(false);
+  });
+
+  it("@default: 0 (number) is stored as the number 0, not the string '0'", () => {
+    const registry = makeRegistry();
+    const input = JSON.stringify({
+      "metadata.root": {
+        children: [
+          {
+            "object.entity": {
+              name: "Order",
+              children: [
+                { "field.long": { name: "quantity", "@default": 0 } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root } = parseJson(input, { registry });
+    const entity = root.ownChildren()[0]!;
+    const field = entity.ownChildren()[0]!;
+    const v = field.ownAttr("default");
+    expect(typeof v).toBe("number");
+    expect(v).toBe(0);
+  });
+
+  it("@default: 'active' (string) is stored as the string 'active' (regression guard)", () => {
+    const registry = makeRegistry();
+    const input = JSON.stringify({
+      "metadata.root": {
+        children: [
+          {
+            "object.entity": {
+              name: "Order",
+              children: [
+                { "field.string": { name: "status", "@default": "active" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root } = parseJson(input, { registry });
+    const entity = root.ownChildren()[0]!;
+    const field = entity.ownChildren()[0]!;
+    const v = field.ownAttr("default");
+    expect(typeof v).toBe("string");
+    expect(v).toBe("active");
+  });
+
+  it("attr.base child node with boolean value is stored type-preserved on parent", () => {
+    const registry = makeRegistry();
+    // Explicit attr child node with subtype "base" (the polymorphic subtype)
+    // carrying a boolean value — must NOT be stringified.
+    const input = JSON.stringify({
+      "metadata.root": {
+        children: [
+          {
+            "object.entity": {
+              name: "Item",
+              children: [
+                {
+                  "field.boolean": {
+                    name: "enabled",
+                    children: [
+                      { "attr.base": { name: "default", value: false } },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const { root } = parseJson(input, { registry });
+    const entity = root.ownChildren()[0]!;
+    const field = entity.ownChildren()[0]!;
+    const v = field.ownAttr("default");
+    expect(typeof v).toBe("boolean");
+    expect(v).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Additional: errors.ts exports
 // ---------------------------------------------------------------------------
 

@@ -18,7 +18,7 @@ export const subscribers = pgTable("subscribers", {
   email: varchar("email", { length: 255 }).notNull().unique(),
   firstName: varchar("first_name", { length: 100 }).notNull(),
   lastName: varchar("last_name", { length: 100 }),
-  subscribed: boolean("subscribed").notNull().default("true"),
+  subscribed: boolean("subscribed").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 export const subscribersRelations = relations(subscribers, ({ many }) => ({
