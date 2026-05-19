@@ -104,13 +104,15 @@ export const commonFieldAttrs: AttrSchema[] = [
     name: FIELD_ATTR_DEFAULT,
     // @default is polymorphic: its value type follows the OWNING field's
     // subtype — a boolean field defaults to a boolean, an int field to a
-    // number, a string field to a string. A single fixed valueType cannot
-    // capture that, so it is declared as the universal base subtype, which
-    // A3's type check treats as unconstrained (accept any AttrValue).
-    valueType: SUBTYPE_BASE,
+    // number, a string field to a string. No single fixed valueType can
+    // capture that, so valueType is intentionally omitted (declared-but-untyped).
+    // The parser stores the raw JSON value type-preserved (no coercion).
+    // Typed conversion happens at consumption time via MetaField.defaultValue(),
+    // which applies the field's own DataType — Java parity with
+    // MetaField.getDefaultValue() / DataConverter.toTypeSafe(getDataType(), o).
     required: false,
     description:
-      "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...).",
+      "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().",
   },
   {
     name: FIELD_ATTR_MAX_LENGTH,

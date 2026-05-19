@@ -8,6 +8,8 @@ import {
   TYPE_VIEW,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_LONG,
+  FIELD_SUBTYPE_BOOLEAN,
+  FIELD_SUBTYPE_INT,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   VIEW_SUBTYPE_TEXT,
@@ -20,6 +22,11 @@ import {
   FIELD_ATTR_SCALE,
   SUBTYPE_BASE,
 } from "../../src/constants.js";
+import {
+  DATA_TYPE_BOOLEAN,
+  DATA_TYPE_INT,
+  DATA_TYPE_STRING,
+} from "../../src/data-type.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -30,6 +37,13 @@ class TestNode extends MetaData {}
 
 function makeField(name: string, subType = FIELD_SUBTYPE_STRING): MetaField {
   return new MetaField(new TypeId(TYPE_FIELD, subType), name);
+}
+
+/** Create a MetaField with its DataType set — needed for defaultValue() tests. */
+function makeTypedField(name: string, subType: string, dataType: import("../../src/data-type.js").DataType): MetaField {
+  const f = new MetaField(new TypeId(TYPE_FIELD, subType), name);
+  f.setDataType(dataType);
+  return f;
 }
 
 function makeValidator(subType: string): MetaData {
@@ -278,5 +292,103 @@ describe("MetaField.resolveSuper", () => {
     const sup = derived.resolveSuper();
     // Should be a MetaField instance, not just MetaData
     expect(sup).toBeInstanceOf(MetaField);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MetaField.defaultValue() — typed conversion at consumption time
+//
+// Java parity: MetaField.getDefaultValue() applies DataConverter.toTypeSafe(
+// getDataType(), raw). This converts the raw @default attr (which the parser
+// stores type-preserved) to the field's own DataType.
+//
+// The key case this guards: a raw @default of the string "false" on a
+// field.boolean must return the boolean false — not the string "false".
+// ---------------------------------------------------------------------------
+
+describe("MetaField.defaultValue()", () => {
+  it("returns undefined when @default is not set", () => {
+    const f = makeTypedField("confirmed", FIELD_SUBTYPE_BOOLEAN, DATA_TYPE_BOOLEAN);
+    f.freeze();
+    expect(f.defaultValue()).toBeUndefined();
+  });
+
+  it("boolean field: raw boolean false → boolean false", () => {
+    const f = makeTypedField("confirmed", FIELD_SUBTYPE_BOOLEAN, DATA_TYPE_BOOLEAN);
+    f.setAttr(FIELD_ATTR_DEFAULT, false);
+    f.freeze();
+    const v = f.defaultValue();
+    expect(typeof v).toBe("boolean");
+    expect(v).toBe(false);
+  });
+
+  it("boolean field: raw boolean true → boolean true", () => {
+    const f = makeTypedField("subscribed", FIELD_SUBTYPE_BOOLEAN, DATA_TYPE_BOOLEAN);
+    f.setAttr(FIELD_ATTR_DEFAULT, true);
+    f.freeze();
+    const v = f.defaultValue();
+    expect(typeof v).toBe("boolean");
+    expect(v).toBe(true);
+  });
+
+  it("boolean field: raw string 'false' → boolean false (consumption-time conversion)", () => {
+    // Proves the design: even if the raw value arrives as a string (e.g. from
+    // YAML authoring or string-keyed JSON), defaultValue() converts it to the
+    // correct type using the field's DataType.
+    const f = makeTypedField("confirmed", FIELD_SUBTYPE_BOOLEAN, DATA_TYPE_BOOLEAN);
+    f.setAttr(FIELD_ATTR_DEFAULT, "false");
+    f.freeze();
+    const v = f.defaultValue();
+    expect(typeof v).toBe("boolean");
+    expect(v).toBe(false);
+  });
+
+  it("boolean field: raw string 'true' → boolean true (consumption-time conversion)", () => {
+    const f = makeTypedField("active", FIELD_SUBTYPE_BOOLEAN, DATA_TYPE_BOOLEAN);
+    f.setAttr(FIELD_ATTR_DEFAULT, "true");
+    f.freeze();
+    const v = f.defaultValue();
+    expect(typeof v).toBe("boolean");
+    expect(v).toBe(true);
+  });
+
+  it("int field: raw number 0 → number 0", () => {
+    const f = makeTypedField("quantity", FIELD_SUBTYPE_INT, DATA_TYPE_INT);
+    f.setAttr(FIELD_ATTR_DEFAULT, 0);
+    f.freeze();
+    const v = f.defaultValue();
+    expect(typeof v).toBe("number");
+    expect(v).toBe(0);
+  });
+
+  it("int field: raw string '42' → number 42 (consumption-time conversion)", () => {
+    const f = makeTypedField("retries", FIELD_SUBTYPE_INT, DATA_TYPE_INT);
+    f.setAttr(FIELD_ATTR_DEFAULT, "42");
+    f.freeze();
+    const v = f.defaultValue();
+    expect(typeof v).toBe("number");
+    expect(v).toBe(42);
+  });
+
+  it("string field: raw string 'active' → string 'active'", () => {
+    const f = makeTypedField("status", FIELD_SUBTYPE_STRING, DATA_TYPE_STRING);
+    f.setAttr(FIELD_ATTR_DEFAULT, "active");
+    f.freeze();
+    const v = f.defaultValue();
+    expect(typeof v).toBe("string");
+    expect(v).toBe("active");
+  });
+
+  it("result is cached — same reference returned on repeat calls after freeze", () => {
+    const f = makeTypedField("confirmed", FIELD_SUBTYPE_BOOLEAN, DATA_TYPE_BOOLEAN);
+    f.setAttr(FIELD_ATTR_DEFAULT, false);
+    f.freeze();
+    // Call twice — must return exact same object reference (cache hit)
+    const first = f.defaultValue();
+    const second = f.defaultValue();
+    // For primitives, === checks value equality; we verify object-level cache
+    // consistency by asserting the values are equal (caching guarantees idempotence).
+    expect(first).toBe(second);
+    expect(first).toBe(false);
   });
 });

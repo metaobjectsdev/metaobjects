@@ -19,7 +19,7 @@ export const subscribers = sqliteTable("subscribers", {
   lastName: text("last_name"),
   subscribed: integer("subscribed", { mode: "boolean" })
     .notNull()
-    .default("true"),
+    .default(true),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 export const subscribersRelations = relations(subscribers, ({ many }) => ({
@@ -27,7 +27,8 @@ export const subscribersRelations = relations(subscribers, ({ many }) => ({
   purchases: many(purchases),
 }));
 export type Subscriber = InferSelectModel<typeof subscribers>;
-export type NewSubscriber = InferInsertModel<typeof subscribers>;
+export type SubscriberInsert = InferInsertModel<typeof subscribers>;
+export type SubscriberUpdate = Partial<SubscriberInsert>;
 export const SubscriberInsertSchema = z.object({
   email: z.string().min(1).max(255),
   firstName: z.string().min(1).max(100),

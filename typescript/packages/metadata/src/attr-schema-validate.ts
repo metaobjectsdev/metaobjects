@@ -158,7 +158,9 @@ function validateNode(
     if (spec === undefined) continue; // undeclared attr → open policy: ignore.
 
     // Check 2: value runtime type matches the declared valueType.
-    if (!valueMatchesType(value, spec.valueType)) {
+    // When valueType is absent (declared-but-untyped, e.g. @default), skip the
+    // type check — any AttrValue is valid, by design.
+    if (spec.valueType !== undefined && !valueMatchesType(value, spec.valueType)) {
       errors.push(
         new ParseError(
           `${nodeLabel(node)} attribute '@${attrName}' must be of type ` +

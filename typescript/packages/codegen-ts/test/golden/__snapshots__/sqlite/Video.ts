@@ -22,7 +22,8 @@ export const videosRelations = relations(videos, ({ one }) => ({
   }),
 }));
 export type Video = InferSelectModel<typeof videos>;
-export type NewVideo = InferInsertModel<typeof videos>;
+export type VideoInsert = InferInsertModel<typeof videos>;
+export type VideoUpdate = Partial<VideoInsert>;
 export const VideoInsertSchema = z.object({
   exerciseId: z.number().int(),
   url: z.string().min(1).max(500),

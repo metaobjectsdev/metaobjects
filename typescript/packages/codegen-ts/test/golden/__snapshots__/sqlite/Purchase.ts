@@ -34,7 +34,8 @@ export const purchasesRelations = relations(purchases, ({ one }) => ({
   }),
 }));
 export type Purchase = InferSelectModel<typeof purchases>;
-export type NewPurchase = InferInsertModel<typeof purchases>;
+export type PurchaseInsert = InferInsertModel<typeof purchases>;
+export type PurchaseUpdate = Partial<PurchaseInsert>;
 export const PurchaseInsertSchema = z.object({
   subscriberId: z.number().int(),
   programId: z.number().int(),

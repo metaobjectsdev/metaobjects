@@ -20,7 +20,7 @@ export const programs = sqliteTable("programs", {
   priceCents: integer("price_cents").notNull(),
   isPublished: integer("is_published", { mode: "boolean" })
     .notNull()
-    .default("false"),
+    .default(false),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 export const programsRelations = relations(programs, ({ many }) => ({
@@ -28,7 +28,8 @@ export const programsRelations = relations(programs, ({ many }) => ({
   purchases: many(purchases),
 }));
 export type Program = InferSelectModel<typeof programs>;
-export type NewProgram = InferInsertModel<typeof programs>;
+export type ProgramInsert = InferInsertModel<typeof programs>;
+export type ProgramUpdate = Partial<ProgramInsert>;
 export const ProgramInsertSchema = z.object({
   slug: z.string().min(1).max(100),
   title: z.string().min(1).max(200),

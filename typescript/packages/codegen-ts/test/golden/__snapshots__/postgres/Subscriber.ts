@@ -18,7 +18,7 @@ export const subscribers = pgTable("subscribers", {
   email: varchar("email", { length: 255 }).notNull().unique(),
   firstName: varchar("first_name", { length: 100 }).notNull(),
   lastName: varchar("last_name", { length: 100 }),
-  subscribed: boolean("subscribed").notNull().default("true"),
+  subscribed: boolean("subscribed").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 export const subscribersRelations = relations(subscribers, ({ many }) => ({
@@ -26,7 +26,8 @@ export const subscribersRelations = relations(subscribers, ({ many }) => ({
   purchases: many(purchases),
 }));
 export type Subscriber = InferSelectModel<typeof subscribers>;
-export type NewSubscriber = InferInsertModel<typeof subscribers>;
+export type SubscriberInsert = InferInsertModel<typeof subscribers>;
+export type SubscriberUpdate = Partial<SubscriberInsert>;
 export const SubscriberInsertSchema = z.object({
   email: z.string().min(1).max(255),
   firstName: z.string().min(1).max(100),

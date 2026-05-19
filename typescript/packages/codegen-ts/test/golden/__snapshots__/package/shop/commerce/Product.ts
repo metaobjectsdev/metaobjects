@@ -19,7 +19,8 @@ export const productsRelations = relations(products, ({ one, many }) => ({
   tag: one(tags, { fields: [products.tagId], references: [tags.id] }),
 }));
 export type Product = InferSelectModel<typeof products>;
-export type NewProduct = InferInsertModel<typeof products>;
+export type ProductInsert = InferInsertModel<typeof products>;
+export type ProductUpdate = Partial<ProductInsert>;
 export const ProductInsertSchema = z.object({
   name: z.string().min(1).max(200),
   tagId: z.number().int(),

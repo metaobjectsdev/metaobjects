@@ -10,6 +10,7 @@ export function renderInferredTypes(entity: MetaObject): Code {
   const insertSym = imp("InferInsertModel@drizzle-orm");
   return code`
 export type ${entity.name} = ${selectSym}<typeof ${varName}>;
-export type New${entity.name} = ${insertSym}<typeof ${varName}>;
+export type ${entity.name}Insert = ${insertSym}<typeof ${varName}>;
+export type ${entity.name}Update = Partial<${entity.name}Insert>;
 `;
 }

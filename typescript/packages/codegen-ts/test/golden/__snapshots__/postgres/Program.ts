@@ -21,7 +21,7 @@ export const programs = pgTable("programs", {
   title: varchar("title", { length: 200 }).notNull(),
   description: text("description"),
   priceCents: integer("price_cents").notNull(),
-  isPublished: boolean("is_published").notNull().default("false"),
+  isPublished: boolean("is_published").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 export const programsRelations = relations(programs, ({ many }) => ({
@@ -29,7 +29,8 @@ export const programsRelations = relations(programs, ({ many }) => ({
   purchases: many(purchases),
 }));
 export type Program = InferSelectModel<typeof programs>;
-export type NewProgram = InferInsertModel<typeof programs>;
+export type ProgramInsert = InferInsertModel<typeof programs>;
+export type ProgramUpdate = Partial<ProgramInsert>;
 export const ProgramInsertSchema = z.object({
   slug: z.string().min(1).max(100),
   title: z.string().min(1).max(200),
