@@ -70,5 +70,20 @@ public static class ConformanceAdapter
     public static string CanonicalSerializeEffective(MetaRoot tree) =>
         SerializerJson.CanonicalSerializeEffective(tree);
 
-    // Slice 7: Navigate / Invoke capability script support.
+    /// <summary>
+    /// Navigate a path from the tree root, returning the resolved node or
+    /// <see langword="null"/> if any segment does not match.
+    /// </summary>
+    public static MetaData? Navigate(MetaRoot tree, IReadOnlyList<string> path) =>
+        Navigator.Navigate(tree, path);
+
+    /// <summary>
+    /// Invoke a capability on a node. Throws <see cref="UnknownCapabilityException"/>
+    /// for an unbound capability-id.
+    /// </summary>
+    public static NormalizedResult Invoke(
+        MetaData node,
+        string capabilityId,
+        IReadOnlyDictionary<string, object?> args) =>
+        CapabilityBinding.Invoke(node, capabilityId, args);
 }

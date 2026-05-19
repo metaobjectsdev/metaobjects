@@ -215,12 +215,63 @@ public class ConformanceTests
                     $"unexpected warnings: [{string.Join(", ", outcome.Warnings)}]");
         }
 
-        // ── script.json check (Slice 7) ───────────────────────────────────────
+        // ── script.json check ────────────────────────────────────────────────
         if (fix.HasScript && !treeCheckBlocked)
         {
-            // Slice 7: capability script execution not yet implemented.
-            // Script-only fixtures (HasScript && !HasExpected && !HasExpectedErrors)
-            // will be ledger-listed through Slice 6.
+            OperationScript? script = null;
+            try
+            {
+                var raw = File.ReadAllText(
+                    System.IO.Path.Combine(fix.Dir, "script.json"));
+                var parsed = JsonSerializer.Deserialize<JsonElement>(raw);
+                script = OperationScriptParser.ParseOperationScript(parsed);
+            }
+            catch (Exception ex)
+            {
+                failures.Add($"script.json parse error: {ex.Message}");
+            }
+
+            if (script is not null)
+            {
+                for (int i = 0; i < script.Operations.Count; i++)
+                {
+                    var op = script.Operations[i];
+                    var node = ConformanceAdapter.Navigate(outcome.Tree, op.Navigate);
+                    if (node is null)
+                    {
+                        failures.Add(
+                            $"operation {i}: navigate [{string.Join(", ", op.Navigate)}] did not resolve");
+                        continue;
+                    }
+
+                    NormalizedResult actual;
+                    var args = op.Args
+                        ?? (IReadOnlyDictionary<string, object?>)
+                            new Dictionary<string, object?>(StringComparer.Ordinal);
+                    try
+                    {
+                        actual = ConformanceAdapter.Invoke(node, op.Invoke, args);
+                    }
+                    catch (UnknownCapabilityException)
+                    {
+                        failures.Add($"operation {i}: unbound capability '{op.Invoke}'");
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        failures.Add($"operation {i}: invoke threw: {ex.Message}");
+                        continue;
+                    }
+
+                    var expect = NormalizedResult.FromJson(op.Expect);
+                    if (!ResultsEqual.Equal(actual, expect))
+                    {
+                        failures.Add(
+                            $"operation {i}: expected {op.Expect.GetRawText()}, " +
+                            $"got {actual.Node.ToJsonString()}");
+                    }
+                }
+            }
         }
 
         // ── no expectation files at all — configuration error ─────────────────
