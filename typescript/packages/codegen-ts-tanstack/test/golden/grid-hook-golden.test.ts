@@ -43,6 +43,13 @@ const fixtures = [
     name: "multi-grid",
     path: resolve(import.meta.dir, "../fixtures/multi-grid-entity.json"),
   },
+  {
+    // Covers the @filter preset path — the layout has @filter so the
+    // generated hook imports the preset const from ./<Entity>.columns
+    // and spreads it into the filter object.
+    name: "grid-filter",
+    path: resolve(import.meta.dir, "../fixtures/grid-filter-fixture.json"),
+  },
 ] as const;
 
 describe("tanstackGridHook() — golden snapshot", () => {
