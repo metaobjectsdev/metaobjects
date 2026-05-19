@@ -5,3 +5,4 @@ export * from "./fixture.js";
 export * from "./operation-script.js";
 export * from "./report.js";
 export * from "./result.js";
+export * from "./runner.js";
