@@ -13,7 +13,7 @@ afterAll(async () => { await Promise.all(dirs.map((d) => rm(d, { recursive: true
 // A fake adapter: the tree is the parsed input; serialization is JSON.stringify.
 const fake: ConformanceAdapter = {
   language: "fake",
-  async loadFixture() { return { tree: { ok: true }, errorCodes: [] }; },
+  async loadFixture() { return { tree: { ok: true }, errorCodes: [], warnings: [] }; },
   canonicalSerialize() { return '{"ok":true}'; },
   canonicalSerializeEffective() { return '{"ok":true}'; },
   navigate() { return { node: true }; },
@@ -66,7 +66,7 @@ test("an operation check compares the normalized result", async () => {
 test("expected-errors: matching error codes → pass, no detail", async () => {
   const errorsAdapter: ConformanceAdapter = {
     ...fake,
-    async loadFixture() { return { tree: undefined, errorCodes: ["ERR_UNKNOWN_TYPE"] }; },
+    async loadFixture() { return { tree: undefined, errorCodes: ["ERR_UNKNOWN_TYPE"], warnings: [] }; },
   };
   const root = await fixture({
     "input/m.json": "{}",
@@ -83,7 +83,7 @@ test("expected-errors: matching error codes → pass, no detail", async () => {
 test("expected-errors: mismatching error codes → fail with detail", async () => {
   const errorsAdapter: ConformanceAdapter = {
     ...fake,
-    async loadFixture() { return { tree: undefined, errorCodes: ["ERR_WRONG"] }; },
+    async loadFixture() { return { tree: undefined, errorCodes: ["ERR_WRONG"], warnings: [] }; },
   };
   const root = await fixture({
     "input/m.json": "{}",
@@ -159,7 +159,7 @@ test("invoke throwing UnknownCapabilityError → fails with 'unbound capability'
 test("load failure on a tree-expecting fixture → synthetic 'load produced no tree' check", async () => {
   const failAdapter: ConformanceAdapter = {
     ...fake,
-    async loadFixture() { return { errorCodes: [] }; },
+    async loadFixture() { return { errorCodes: [], warnings: [] }; },
   };
   const root = await fixture({
     "input/m.json": "{}",

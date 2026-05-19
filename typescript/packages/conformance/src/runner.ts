@@ -111,6 +111,44 @@ export async function runFixture(
     }
   }
 
+  if (outcome.tree !== undefined) {
+    if (fix.hasExpectedWarnings) {
+      let want: string[] | undefined;
+      try {
+        const raw = await readJson(join(fix.dir, "expected-warnings.json"));
+        if (!Array.isArray(raw) || !raw.every((w) => typeof w === "string")) {
+          throw new Error("expected-warnings.json must be a JSON array of strings");
+        }
+        want = (raw as string[]).slice().sort();
+      } catch (err) {
+        checks.push({
+          kind: "expected-warnings",
+          passed: false,
+          detail: `expected-warnings.json parse error: ${(err as Error).message}`,
+        });
+      }
+      if (want !== undefined) {
+        const got = [...outcome.warnings].sort();
+        const passed = want.length === got.length && want.every((w, i) => w === got[i]);
+        checks.push({
+          kind: "expected-warnings",
+          passed,
+          ...(passed ? {} : { detail: `expected [${want}], got [${got}]` }),
+        });
+      }
+    } else if (fix.hasExpected) {
+      // Happy-path fixture with no expected-warnings.json — assert no warnings.
+      const passed = outcome.warnings.length === 0;
+      if (!passed) {
+        checks.push({
+          kind: "expected-warnings",
+          passed: false,
+          detail: `unexpected warnings: [${outcome.warnings.join(", ")}]`,
+        });
+      }
+    }
+  }
+
   if (fix.hasScript && outcome.tree !== undefined) {
     const tree = outcome.tree;
     let script: ReturnType<typeof parseOperationScript> | undefined;
@@ -166,6 +204,7 @@ export async function runFixture(
     !fix.hasExpected &&
     !fix.hasExpectedEffective &&
     !fix.hasExpectedErrors &&
+    !fix.hasExpectedWarnings &&
     !fix.hasScript
   ) {
     checks.push({

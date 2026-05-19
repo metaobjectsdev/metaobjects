@@ -14,6 +14,8 @@ export interface LoadOutcome {
   readonly tree?: TreeHandle;
   /** Normalized error codes the load produced (empty on success). */
   readonly errorCodes: string[];
+  /** Warning messages the load produced (empty on success). */
+  readonly warnings: string[];
 }
 
 export interface ConformanceAdapter {

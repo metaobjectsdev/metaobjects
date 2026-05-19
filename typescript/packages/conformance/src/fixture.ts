@@ -17,6 +17,7 @@ export interface Fixture {
   readonly hasExpected: boolean;
   readonly hasExpectedEffective: boolean;
   readonly hasExpectedErrors: boolean;
+  readonly hasExpectedWarnings: boolean;
   readonly hasScript: boolean;
 }
 
@@ -63,6 +64,7 @@ export async function discoverFixtures(corpusRoot: string): Promise<Fixture[]> {
       hasExpected: await exists(join(dir, "expected.json")),
       hasExpectedEffective: await exists(join(dir, "expected-effective.json")),
       hasExpectedErrors: await exists(join(dir, "expected-errors.json")),
+      hasExpectedWarnings: await exists(join(dir, "expected-warnings.json")),
       hasScript: await exists(join(dir, "script.json")),
     });
   }

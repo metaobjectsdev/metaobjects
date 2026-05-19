@@ -58,6 +58,7 @@ export const tsAdapter: ConformanceAdapter = {
     return {
       tree: result.root,
       errorCodes: result.errors.map(errorCode),
+      warnings: result.warnings,
     };
   },
 

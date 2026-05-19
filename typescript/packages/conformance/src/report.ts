@@ -2,7 +2,7 @@
 // aggregator (Task 13) merges N of them into CONFORMANCE.md.
 
 export type CheckKind =
-  | "expected" | "expected-effective" | "expected-errors" | "operation";
+  | "expected" | "expected-effective" | "expected-errors" | "expected-warnings" | "operation";
 
 export type FixtureStatus = "pass" | "fail" | "known-gap" | "fixed-but-listed";
 
