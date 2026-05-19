@@ -3,9 +3,13 @@ using Xunit;
 
 namespace MetaObjects.Conformance.Tests;
 
+// NOTE: overlay, intoRoot-merge, strict-mode, and the "unknown child type
+// is a collected MetaError, not an exception" paths are exercised by the
+// cross-language conformance harness (Task 4.3). These unit tests cover
+// parser construction and key desugar paths only.
 public class ParserTests
 {
-    private static TypeRegistry Reg() => Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+    private static TypeRegistry Reg() => Provider.ComposeRegistry([CoreTypes.CoreTypesProvider]);
 
     [Fact]
     public void Parses_a_single_entity_with_a_field()
@@ -62,7 +66,7 @@ public class ParserTests
 file sealed class WidgetProvider : IMetaDataTypeProvider
 {
     public string Id => "test-widget";
-    public IReadOnlyList<string> Dependencies => new[] { "metaobjects-core-types" };
+    public IReadOnlyList<string> Dependencies => ["metaobjects-core-types"];
     public void RegisterTypes(TypeRegistry registry) => registry.Register(new TypeDefinition(
         new TypeId("widget", "fancy"), "test widget", new List<ChildRule>(),
         (id, name) => new MetaObjects.Meta.MetaObject(id, name), new List<AttrSchema>()));

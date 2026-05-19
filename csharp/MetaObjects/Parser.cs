@@ -85,7 +85,7 @@ public static class Parser
     {
         // Strip UTF-8 BOM if present (Java-authored files often have it).
         string normalized = content.Length > 0 && content[0] == '﻿'
-            ? content.Substring(1)
+            ? content[1..]
             : content;
 
         JsonDocument document;
@@ -171,8 +171,8 @@ public static class Parser
             // Bare type, no fused subType — resolve via the registry default.
             return new SplitKey(key, DefaultSubTypeFor(key, registry), false);
         }
-        string type = key.Substring(0, dotIdx);
-        string subType = key.Substring(dotIdx + Constants.TYPE_SUBTYPE_SEPARATOR.Length);
+        string type = key[..dotIdx];
+        string subType = key[(dotIdx + Constants.TYPE_SUBTYPE_SEPARATOR.Length)..];
         // Malformed keys are not validated here — they fall through to the
         // downstream registry.Has() check which reports them.
         return new SplitKey(type, subType, true);
@@ -188,7 +188,7 @@ public static class Parser
 
     private static string ExpandPackageForPath(string basePkg, string pkgPath)
     {
-        if (basePkg.Trim() == "" ||
+        if (basePkg.Length == 0 ||
             !pkgPath.StartsWith(Constants.PACKAGE_SEPARATOR, StringComparison.Ordinal))
         {
             return pkgPath;
@@ -614,7 +614,7 @@ public static class Parser
             }
 
             // Inline attribute (@-prefixed).
-            string attrName = key.Substring(Constants.ATTR_PREFIX.Length);
+            string attrName = key[Constants.ATTR_PREFIX.Length..];
             JsonElement rawVal = prop.Value;
 
             AttrSchema? attrSpec = st.Registry
@@ -673,6 +673,8 @@ public static class Parser
 
         if (rawChildren.ValueKind != JsonValueKind.Array)
         {
+            // Reuses ERR_TOP_LEVEL_NOT_OBJECT per TS parity — the code is overloaded
+            // for "structural shape violation" generally, not just the root level.
             ReportProblem(
                 $"\"{Constants.RESERVED_KEY_CHILDREN}\" must be an array at {path}",
                 st, path, ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT);
@@ -693,34 +695,48 @@ public static class Parser
                 continue;
             }
 
-            var childKeys = new List<string>();
+            string? childKey = null;
+            int keyCount = 0;
             foreach (JsonProperty p in childEntry.EnumerateObject())
             {
-                childKeys.Add(p.Name);
+                childKey ??= p.Name;
+                keyCount++;
+                if (keyCount > 1) break;
             }
 
-            if (childKeys.Count != 1)
+            if (keyCount != 1)
             {
-                string msg = childKeys.Count == 0
-                    ? $"Child at {childPath} has no type wrapper key"
-                    : $"Child at {childPath} has multiple keys ({string.Join(", ", childKeys)}) — each child must have exactly one wrapper key";
+                string msg;
+                if (keyCount == 0)
+                {
+                    msg = $"Child at {childPath} has no type wrapper key";
+                }
+                else
+                {
+                    // keyCount > 1: collect all keys only on this rare error path.
+                    var allKeys = new List<string>();
+                    foreach (JsonProperty p in childEntry.EnumerateObject())
+                        allKeys.Add(p.Name);
+                    msg = $"Child at {childPath} has multiple keys ({string.Join(", ", allKeys)}) — each child must have exactly one wrapper key";
+                }
                 ReportProblem(msg, st, childPath, ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT);
                 continue;
             }
 
-            string childKey = childKeys[0];
-            JsonElement childData = childEntry.GetProperty(childKey);
-            string childNodePath = $"{childPath}.{childKey}";
+            // keyCount == 1 guarantees childKey was assigned above (null-forgiving is safe).
+            string singleChildKey = childKey!;
+            JsonElement childData = childEntry.GetProperty(singleChildKey);
+            string childNodePath = $"{childPath}.{singleChildKey}";
 
             if (childData.ValueKind != JsonValueKind.Object)
             {
                 ReportProblem(
-                    $"Child wrapper \"{childKey}\" at {childNodePath} must contain an object",
+                    $"Child wrapper \"{singleChildKey}\" at {childNodePath} must contain an object",
                     st, childNodePath, ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT);
                 continue;
             }
 
-            SplitKey childSplit = SplitTypeKey(childKey, st.Registry);
+            SplitKey childSplit = SplitTypeKey(singleChildKey, st.Registry);
             string childType = childSplit.Type;
             string childSubType = childSplit.SubType;
             bool explicitSubType = childSplit.Explicit;
@@ -759,10 +775,12 @@ public static class Parser
                     childType, childSubType, childData, parent, accumRoot,
                     inheritedContextPkg, st, childNodePath);
 
-                if (childModel is not null && !parent.OwnChildren().Contains(childModel))
-                {
+                // Overlay and same-name-reuse paths in CreateOrFindMetaData return an existing
+                // child that is already in parent's own children; only AddChild for freshly
+                // created nodes to avoid duplicates.
+                var owned = parent.OwnChildren();
+                if (childModel is not null && !owned.Contains(childModel))
                     parent.AddChild(childModel);
-                }
             }
         }
     }

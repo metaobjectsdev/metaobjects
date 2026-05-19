@@ -20,7 +20,7 @@ namespace MetaObjects;
 /// <summary>
 /// Super reference resolution helpers — package navigation against a tree.
 /// </summary>
-public static class SuperResolve
+internal static class SuperResolve
 {
     // -----------------------------------------------------------------------
     // Tree search helper
@@ -63,7 +63,7 @@ public static class SuperResolve
         // ---------------------------------------------------------------------
         if (reference.StartsWith(Constants.PACKAGE_SEPARATOR, StringComparison.Ordinal))
         {
-            string absolutePath = reference.Substring(Constants.PACKAGE_SEPARATOR.Length);
+            string absolutePath = reference[Constants.PACKAGE_SEPARATOR.Length..];
             return FindInTree(root, absolutePath);
         }
 
