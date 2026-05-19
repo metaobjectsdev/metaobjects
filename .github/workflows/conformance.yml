@@ -1,0 +1,35 @@
+name: conformance
+on: [push, pull_request]
+
+jobs:
+  fixture-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: cd typescript && bun install
+      - run: cd typescript/packages/conformance && bun bin/conformance.ts lint ../../../fixtures/conformance
+
+  conformance:
+    needs: fixture-lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [typescript]   # java, python, csharp added as ports land
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: cd typescript && bun install
+      - name: TypeScript conformance
+        if: matrix.language == 'typescript'
+        run: cd typescript/packages/metadata && bun test test/conformance.test.ts
+
+  completeness-gate:
+    needs: conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: cd typescript && bun install
+      - run: cd typescript/packages/metadata && bun run conformance:mutation
