@@ -25,7 +25,7 @@
 
 ## Future (sketched)
 - Python port
-- C# port
+- C# loader + conformance — **shipped** (csharp/, full conformance corpus green at v0.3 parity; codegen + runtime out of scope)
 - Forms codegen revival (deferred from earlier)
 - Date / case transforms
 - Materialized views, federated entities, search-index sources
