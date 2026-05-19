@@ -53,7 +53,7 @@ public class ConstraintSystemTest {
             metaObject.addMetaField(validField2);
             
             // This should succeed
-            loader.addChild(metaObject);
+            loader.getRoot().addChild(metaObject);
             
         } catch (Exception e) {
             fail("Valid field names should not cause constraint violations: " + e.getMessage());
@@ -73,7 +73,7 @@ public class ConstraintSystemTest {
             metaObject.addMetaField(invalidField);
             
             // This should fail when adding to loader due to constraint violation
-            loader.addChild(metaObject);
+            loader.getRoot().addChild(metaObject);
             fail("Expected constraint violation for invalid field name pattern");
             
         } catch (ConstraintViolationException e) {
@@ -100,7 +100,7 @@ public class ConstraintSystemTest {
             
             PojoMetaObject metaObject = new PojoMetaObject("testObject");
             metaObject.addMetaField(field);
-            loader.addChild(metaObject);
+            loader.getRoot().addChild(metaObject);
             
             fail("Expected constraint violation for missing field name");
             
@@ -125,7 +125,7 @@ public class ConstraintSystemTest {
         
         try {
             metaObject.addMetaField(field);
-            loader.addChild(metaObject);
+            loader.getRoot().addChild(metaObject);
             // Should succeed with proper data type
         } catch (Exception e) {
             fail("Valid field with proper data type should not cause constraint violations: " + e.getMessage());
@@ -148,7 +148,7 @@ public class ConstraintSystemTest {
             metaObject.addMetaField(emailField);
             
             // Add to loader - should succeed with valid structure
-            loader.addChild(metaObject);
+            loader.getRoot().addChild(metaObject);
             
             // Verify structure is intact
             assertEquals("User", metaObject.getName());
@@ -196,7 +196,7 @@ public class ConstraintSystemTest {
             StringField invalidField = new StringField("123invalid"); // Starts with number
             
             metaObject.addMetaField(invalidField);
-            loader.addChild(metaObject);
+            loader.getRoot().addChild(metaObject);
             
             fail("Expected constraint violation for field name starting with number");
             
@@ -228,7 +228,7 @@ public class ConstraintSystemTest {
             metaObject.addMetaField(invalidField); // Should work at object level
             
             // But should fail when adding to loader (where constraints are enforced)
-            loader.addChild(metaObject);
+            loader.getRoot().addChild(metaObject);
             fail("Expected constraint violation during construction");
             
         } catch (Exception e) {

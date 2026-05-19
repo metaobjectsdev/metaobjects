@@ -9,7 +9,6 @@ package com.metaobjects.loader;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.MetaRoot;
-import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.loader.parser.json.JsonMetaDataParser;
 import com.metaobjects.loader.parser.xml.XMLMetaDataParser;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -712,31 +711,15 @@ public class MetaDataLoader implements LoaderConfigurable {
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////
-    // Node-style accessors — delegate to the owned MetaRoot
+    // Node-style QUERY accessors — read-only delegations to the owned MetaRoot.
+    //
+    // As of H3a Task 4 the loader carries no node identity. Tree MUTATION
+    // (addChild/clearChildren/addMetaAttr) is NOT exposed here — callers that
+    // need to build the tree must do so through {@link #getRoot()}.
 
     /** Wrap the MetaDataLoader (unsupported). */
     public MetaDataLoader overload() {
         throw new IllegalStateException( "You cannot wrap a MetaDataLoader!" );
-    }
-
-    /**
-     * Adds an attribute to the root node.
-     */
-    public void addMetaAttr(MetaAttribute attr) {
-        root.addChild(attr);
-    }
-
-    /**
-     * Adds a child to the root node.
-     */
-    public void addChild(MetaData mc) {
-        checkState();
-        root.addChild(mc);
-    }
-
-    /** Removes all children from the root node. */
-    public void clearChildren() {
-        root.clearChildren();
     }
 
     /** Returns all direct children of the root node. */

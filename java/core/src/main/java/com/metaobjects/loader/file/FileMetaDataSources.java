@@ -1,6 +1,7 @@
 package com.metaobjects.loader.file;
 
 import com.metaobjects.MetaDataException;
+import com.metaobjects.loader.MetaDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,8 +19,17 @@ public class FileMetaDataSources {
 
     private static final Logger log = LoggerFactory.getLogger(FileMetaDataSources.class);
 
-    /** Holds the SourceData */
-    public static class SourceData {
+    /**
+     * One discovered-and-preloaded file, exposed as a {@link MetaDataSource}.
+     *
+     * <p>As of H3a Task 4 the file loader runs on the same {@code MetaDataSource}
+     * pipeline as every other loader: file/.bundle discovery and ClassLoader-chain
+     * resolution happen here, in {@link FileMetaDataSources}, and each resolved file
+     * surfaces as a {@code MetaDataSource} carrying its filename (id), inferred
+     * {@link MetaDataFormat}, and already-read content. The loader then feeds the
+     * collected list straight into {@link com.metaobjects.loader.MetaDataLoader#load(List)}.</p>
+     */
+    public static class SourceData implements MetaDataSource {
 
         public final String filename;
         public final Class<? extends FileMetaDataSources> sourceClass;
@@ -29,6 +39,29 @@ public class FileMetaDataSources {
             this.filename = filename;
             this.sourceClass = sourceClass;
             this.sourceData = sourceData;
+        }
+
+        /** {@inheritDoc} — the filename serves as the human-readable id. */
+        @Override
+        public String getId() {
+            return filename;
+        }
+
+        /**
+         * {@inheritDoc} — inferred from the filename extension: {@code .xml}
+         * (case-insensitive) is {@link MetaDataFormat#XML}; everything else
+         * (including {@code .json}) is {@link MetaDataFormat#JSON}.
+         */
+        @Override
+        public MetaDataFormat getFormat() {
+            return filename.toLowerCase().endsWith(".xml")
+                    ? MetaDataFormat.XML : MetaDataFormat.JSON;
+        }
+
+        /** {@inheritDoc} — content was already read during discovery; no I/O here. */
+        @Override
+        public String read() {
+            return sourceData;
         }
 
         @Override

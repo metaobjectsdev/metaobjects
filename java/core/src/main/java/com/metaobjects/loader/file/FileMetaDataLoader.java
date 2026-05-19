@@ -1,21 +1,15 @@
 package com.metaobjects.loader.file;
 
-import com.metaobjects.MetaDataException;
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.parser.json.JsonMetaDataParser;
-import com.metaobjects.loader.parser.xml.XMLMetaDataParser;
+import com.metaobjects.loader.MetaDataSource;
 import com.metaobjects.loader.uri.URIHelper;
 import com.metaobjects.registry.CoreTypeInitializer;
-import com.metaobjects.registry.MetaDataRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Meta Class loader for Files
@@ -128,34 +122,36 @@ public class FileMetaDataLoader extends MetaDataLoader {
         return this;
     }
 
+    /**
+     * Run file discovery, then hand the discovered files to the shared
+     * {@link MetaDataLoader#load(List)} pipeline.
+     *
+     * <p>As of H3a Task 4 the file loader no longer carries its own direct-parser
+     * branch. Discovery (directory scanning, {@code .bundle}-file expansion, and
+     * the ClassLoader-chain resolution) still lives in {@link FileMetaDataSources}
+     * and its subclasses — but the <em>output</em> of discovery is now a flat list
+     * of {@link MetaDataSource}s ({@link FileMetaDataSources.SourceData} implements
+     * it), which feeds straight into the inherited source pipeline. {@code .bundle}
+     * files are expanded during discovery and never surface as their own source.</p>
+     */
     protected void loadSourceFiles() {
 
-        AtomicInteger i = new AtomicInteger();
-
-        // Load all the source data using direct parser selection
-        List<FileMetaDataSources> sources = (List<FileMetaDataSources>) getLoaderOptions().getSources();
-        sources.forEach( s -> s.getSourceData().forEach( d -> {
-
-            if ( log.isDebugEnabled() ) log.debug( "LOADING: " + d.filename );
-            
-            // Direct parser selection based on file extension
-            if (d.filename.endsWith(".json")) {
-                JsonMetaDataParser parser = new JsonMetaDataParser(this, d.filename);
-                parser.loadFromStream(new ByteArrayInputStream(d.sourceData.getBytes()));
-            } else if (d.filename.endsWith(".xml")) {
-                XMLMetaDataParser parser = new XMLMetaDataParser(this, d.filename);
-                parser.loadFromStream(new ByteArrayInputStream(d.sourceData.getBytes()));
-            } else if (!d.filename.endsWith(".bundle")) {
-                // Bundle files are handled by FileMetaDataSources itself, ignore here
-                throw new MetaDataException("Unsupported file type: " + d.filename + 
-                    ". Supported types: .json, .xml, .bundle");
+        // Discovery already happened (FileMetaDataSources.read(...) during
+        // construction / processSources). Collect the resolved files as
+        // MetaDataSources — bundles are expanded into their member files here.
+        List<MetaDataSource> sources = new ArrayList<>();
+        for (FileMetaDataSources s : (List<FileMetaDataSources>) getLoaderOptions().getSources()) {
+            for (FileMetaDataSources.SourceData d : s.getSourceData()) {
+                if (log.isDebugEnabled()) log.debug("LOADING: " + d.filename);
+                sources.add(d);
             }
-            
-            i.getAndIncrement();
-        }));
+        }
+
+        // Parse via the shared source pipeline (JSON/XML routing by format).
+        load(sources);
 
         if ( getLoaderOptions().isVerbose() ) {
-            log.info( "METADATA - ("+i+") Source Files Loaded in " +toString() );
+            log.info( "METADATA - ("+sources.size()+") Source Files Loaded in " +toString() );
         }
     }
 

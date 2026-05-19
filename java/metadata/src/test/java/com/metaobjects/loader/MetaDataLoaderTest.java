@@ -31,7 +31,7 @@ public class MetaDataLoaderTest {
         MetaDataLoader tempLoader = MetaDataLoader.createManual( false, "test1" );
         tempLoader.init();
         tempLoader.register();
-        tempLoader.addMetaAttr( StringAttribute.create( "hello", "world" ));
+        tempLoader.getRoot().addChild( StringAttribute.create( "hello", "world" ));
         
         MappedMetaObject foo = MappedMetaObject.create("foo");
         IntegerField bar = IntegerField.create( "bar", 5 );
@@ -39,7 +39,7 @@ public class MetaDataLoaderTest {
         bar.addMetaAttr( StringAttribute.create("abc", "def"));
         foo.addMetaField(bar);
         
-        tempLoader.addChild(foo);
+        tempLoader.getRoot().addChild(foo);
         loader = tempLoader.getLoader();
     }
 

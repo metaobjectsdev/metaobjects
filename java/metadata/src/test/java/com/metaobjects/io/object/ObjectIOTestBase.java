@@ -79,7 +79,7 @@ public abstract class ObjectIOTestBase {
         basketFruitsField.addChild(BooleanAttribute.create("isArray", true));
         basket.addChild(basketFruitsField);
         
-        tempLoader.addChild(basket);
+        tempLoader.getRoot().addChild(basket);
         
         // Create fruit object  
         MappedMetaObject fruit = MappedMetaObject.create("fruit");
@@ -91,14 +91,14 @@ public abstract class ObjectIOTestBase {
         fruitBugField.addChild(StringAttribute.create(MetaObject.ATTR_OBJECT_REF, MD.OBJ_BUG));
         fruit.addChild(fruitBugField);
         
-        tempLoader.addChild(fruit);
+        tempLoader.getRoot().addChild(fruit);
         
         // Create bug object
         MappedMetaObject bug = MappedMetaObject.create(MD.OBJ_BUG);
         bug.addChild(IntegerField.create( MD.ID, 1 ));
         bug.addChild(StringField.create( MD.NAME, null ));
         
-        tempLoader.addChild(bug);
+        tempLoader.getRoot().addChild(bug);
         
         loader = tempLoader.getLoader();
     }
