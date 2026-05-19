@@ -22,6 +22,8 @@ export interface ParseFilterResult {
   orderBy?: SQLWrapper[];
   limit?: number;
   offset?: number;
+  /** Search predicate — OR(like('%term%')) across @filterable string fields. */
+  searchWhere?: SQL;
 }
 
 export class FilterParseError extends Error {
@@ -62,6 +64,22 @@ export function parseFilterParams(opts: ParseFilterOpts): ParseFilterResult {
   if (typeof opts.query.sort === "string") {
     result.orderBy = parseSort(opts.query.sort, opts.table, opts.sortAllowlist);
   }
+
+  if (typeof opts.query.search === "string" && opts.query.search !== "") {
+    const term = `%${opts.query.search}%`;
+    const stringCols = Object.entries(opts.allowlist)
+      .filter(([, rule]) => (rule as FilterFieldRule).subType === "string")
+      .map(([field]) => opts.table[field]);
+    if (stringCols.length > 0) {
+      const parts = stringCols.map((col) => like(col, term));
+      // or() is defined as returning SQL | undefined but will always return
+      // SQL when given a non-empty array. parts[0] is always defined here
+      // because stringCols.length > 0 guarantees at least one element.
+      // biome-ignore lint/style/noNonNullAssertion: parts is guaranteed non-empty
+      result.searchWhere = (parts.length === 1 ? parts[0] : or(...parts)) as SQL;
+    }
+  }
+
   return result;
 }
 

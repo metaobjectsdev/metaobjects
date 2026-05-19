@@ -134,4 +134,51 @@ describe("mountListRoute with filter+sort allowlists", () => {
     // Only 1 row returned due to limit=1
     expect(body.rows.length).toBe(1);
   });
+
+  test("?search=term ORs like('%term%') across @filterable string fields", async () => {
+    // "alice" appears in alice@x.com (email field) — exactly 1 subscriber matches
+    const r = await app.inject({
+      method: "GET",
+      url: "/subscribers?search=alice&withCount=1",
+    });
+    expect(r.statusCode).toBe(200);
+    const body = JSON.parse(r.body) as { rows: Array<Record<string, unknown>>; total: number };
+    expect(body.total).toBe(1);
+    expect((body.rows[0] as { email: string }).email).toBe("alice@x.com");
+  });
+
+  test("search does NOT match against non-string filterable fields", async () => {
+    // "true" does not appear as a substring in any email or firstName —
+    // the boolean `subscribed` field is excluded because its subType is not "string"
+    const r = await app.inject({
+      method: "GET",
+      url: "/subscribers?search=true&withCount=1",
+    });
+    expect(r.statusCode).toBe(200);
+    const body = JSON.parse(r.body) as { rows: unknown[]; total: number };
+    expect(body.total).toBe(0);
+  });
+
+  test("search combines with explicit filter as AND (not OR)", async () => {
+    // search="@y.com" matches carol@y.com (1 row: Carol, subscribed=true)
+    // filter[subscribed][eq]=false matches only Bob (subscribed=false)
+    // AND-combination yields intersection = 0 rows
+    const r = await app.inject({
+      method: "GET",
+      url: "/subscribers?search=%40y.com&filter[subscribed][eq]=false&withCount=1",
+    });
+    expect(r.statusCode).toBe(200);
+    const body = JSON.parse(r.body) as { rows: unknown[]; total: number };
+    expect(body.total).toBe(0);
+  });
+
+  test("empty/absent search is a no-op", async () => {
+    const a = await app.inject({ method: "GET", url: "/subscribers?withCount=1" });
+    const b = await app.inject({ method: "GET", url: "/subscribers?search=&withCount=1" });
+    expect(a.statusCode).toBe(200);
+    expect(b.statusCode).toBe(200);
+    expect((JSON.parse(a.body) as { total: number }).total).toBe(
+      (JSON.parse(b.body) as { total: number }).total,
+    );
+  });
 });

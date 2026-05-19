@@ -16,7 +16,7 @@
 
 import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import type { ZodTypeAny } from "zod";
-import { eq, count } from "drizzle-orm";
+import { eq, count, and } from "drizzle-orm";
 import qs from "qs";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
@@ -103,7 +103,10 @@ export function mountListRoute(opts: VerbOptions): void {
           sortAllowlist: opts.sortAllowlist,
           dialect: opts.dialect ?? "sqlite",
         });
-        if (parsed.where)   { q = q.where(parsed.where); where = parsed.where; }
+        const combinedWhere = parsed.where && parsed.searchWhere
+          ? and(parsed.where, parsed.searchWhere)
+          : (parsed.where ?? parsed.searchWhere);
+        if (combinedWhere) { q = q.where(combinedWhere); where = combinedWhere; }
         if (parsed.orderBy) q = q.orderBy(...parsed.orderBy);
         if (parsed.limit  !== undefined) q = q.limit(parsed.limit);
         if (parsed.offset !== undefined) q = q.offset(parsed.offset);

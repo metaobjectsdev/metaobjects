@@ -61,4 +61,16 @@ describe("buildFilterQs", () => {
     const result = buildFilterQs({ limit: 10 });
     expect(result).not.toMatch(/(^|&)withCount(=|&|$)/);
   });
+
+  test("emits search as a top-level qs param when present", () => {
+    const result = buildFilterQs({ search: "alpha", limit: 10 });
+    expect(result).toContain("search=alpha");
+    expect(result).not.toContain("filter%5Bsearch%5D");
+    expect(result).not.toContain("filter[search]");
+  });
+
+  test("omits search when undefined (no key, not 'search=undefined')", () => {
+    const result = buildFilterQs({ limit: 10 });
+    expect(result).not.toMatch(/(^|&)search(=|&|$)/);
+  });
 });
