@@ -213,11 +213,27 @@ public class MetaDataLoader
             }
         }
 
-        // Pass 2: validateSubtypeRules — Slice 6 (Task 6.1).
-        // Pass 3: validateDataGridSortFields — Slice 6.
-        // Pass 4: validateFilterableHasIndex — Slice 6.
-        // Pass 5: validateOriginPaths — Slice 6.
-        // Pass 6: validateAttrSchema — Slice 6.
+        if (root is not null)
+        {
+            // Pass 2: subtype rules (value must not have primary identity; entity should have one)
+            var subtypeResult = ValidationPasses.ValidateSubtypeRules(root);
+            errors.AddRange(subtypeResult.Errors);
+            warnings.AddRange(subtypeResult.Warnings);
+
+            // Pass 3: dataGrid @defaultSortField cross-reference
+            errors.AddRange(ValidationPasses.ValidateDataGridSortFields(root));
+
+            // Pass 4: filterable-without-index drift warning
+            warnings.AddRange(ValidationPasses.ValidateFilterableHasIndex(root));
+
+            // Pass 5: origin path validation
+            errors.AddRange(ValidationPasses.ValidateOriginPaths(root));
+
+            // Pass 6: attribute-schema validation
+            var attrResult = ValidationPasses.ValidateAttrSchema(root, _registry);
+            errors.AddRange(attrResult.Errors);
+            warnings.AddRange(attrResult.Warnings);
+        }
 
         // If nothing parsed successfully, synthesize an empty root so callers
         // always get a valid MetaData tree.
