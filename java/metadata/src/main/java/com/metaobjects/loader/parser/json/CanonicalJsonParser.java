@@ -416,14 +416,28 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      * {@code { "attr.<subType>": { "name": "...", "value": <v> } }}.
      *
      * <p>Mirrors {@code parser-core.ts:parseAttrChild}: reads {@code name} (required,
-     * non-empty) and {@code value} (required), then delegates to
-     * {@link BaseMetaDataParser#parseInlineAttribute} so that value conversion is
-     * consistent with inline {@code @}-attribute handling. The {@code subType} from the
-     * fused key is passed as the attribute name's hint via {@code parseInlineAttribute}'s
-     * existing registry-driven type-inference path.</p>
+     * non-empty) and {@code value} (required), then <strong>honours the declared
+     * {@code subType}</strong> from the fused key. Specifically:</p>
+     * <ol>
+     *   <li>Resolves the subtype: if {@code (MetaAttribute.TYPE_ATTR, subType)} is
+     *       registered in the type registry, {@code subType} is used; otherwise falls
+     *       back to {@link MetaData#SUBTYPE_BASE}. This mirrors the TS
+     *       {@code parseAttrChild} fallback logic.</li>
+     *   <li>Creates the attribute instance via
+     *       {@code getTypeRegistry().createInstance(TYPE_ATTR, resolvedSubType, attrName)}
+     *       — yielding the correctly-typed subclass ({@code StringAttribute},
+     *       {@code IntAttribute}, etc.) for the declared type, not the inferred one.</li>
+     *   <li>Sets the value via {@link MetaAttribute#setValueAsString}, letting the
+     *       declared type drive conversion (e.g. {@code "64"} stays a string when
+     *       {@code attr.string} was declared).</li>
+     *   <li>For JSON-array values ({@code [...]}) the array is converted to
+     *       comma-delimited form and {@link MetaAttribute#setArray(boolean)} is set,
+     *       consistent with how {@code parseInlineAttribute} treats {@code @}-array
+     *       attributes.</li>
+     * </ol>
      *
-     * <p>This is 100% registry-driven — no hardcoded subtype names beyond the framework
-     * {@link MetaAttribute#TYPE_ATTR} constant used to detect the dispatch path.</p>
+     * <p>This is 100% registry-driven — {@link MetaAttribute#TYPE_ATTR} is the only
+     * framework constant; no hardcoded subtype literals appear in this method.</p>
      *
      * @param parent   the parent MetaData node on which the attribute should be created
      * @param subType  the attribute subtype from the fused key (e.g. {@code "string"}, {@code "int"})
@@ -442,14 +456,42 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         }
 
         JsonElement valueEl = body.get(KEY_VALUE);
-        // Convert the JSON value to a string form that parseInlineAttribute can consume.
-        // jsonElementToString returns the raw value without quotes for primitives, and
-        // bracket-form for arrays — matching what processAttributes produces for @-attrs.
-        String stringValue = jsonElementToString(valueEl);
 
-        // Delegate to the base parser's attribute-creation path, which is registry-driven
-        // and handles type inference + array desugar consistently with @-attributes.
-        super.parseInlineAttribute(parent, attrName, stringValue);
+        // Step 1: Resolve the subtype — honour the declared subType from the fused key.
+        // If (TYPE_ATTR, subType) is registered, use it; otherwise fall back to SUBTYPE_BASE
+        // (the polymorphic/unconstrained marker). This mirrors parseAttrChild in parser-core.ts.
+        String resolvedSubType = getTypeRegistry().isRegistered(MetaAttribute.TYPE_ATTR, subType)
+            ? subType
+            : MetaData.SUBTYPE_BASE;
+
+        // Step 2: Create the correctly-typed attribute instance via the registry.
+        // This yields StringAttribute for "string", IntAttribute for "int", etc. —
+        // the declared type drives the class, not value-based inference.
+        MetaAttribute<?> attr = (MetaAttribute<?>) getTypeRegistry().createInstance(
+            MetaAttribute.TYPE_ATTR, resolvedSubType, attrName);
+
+        if (attr == null) {
+            throw new MetaDataException(
+                "Registry could not create attr [" + MetaAttribute.TYPE_ATTR + ":" + resolvedSubType
+                    + "] named '" + attrName + "' in file [" + getFilename() + "]");
+        }
+
+        // Step 3: Convert the JSON value to a string form and set it on the attribute.
+        // For JSON-array values, convert to comma-delimited format and mark isArray=true,
+        // consistent with how parseInlineAttribute handles @-array attributes.
+        String stringValue = jsonElementToString(valueEl);
+        boolean isJsonArray = false;
+        if (stringValue != null && stringValue.trim().startsWith("[") && stringValue.trim().endsWith("]")) {
+            stringValue = convertJsonArrayToCommaDelimited(stringValue);
+            isJsonArray = true;
+        }
+        attr.setValueAsString(stringValue);
+        if (isJsonArray) {
+            attr.setArray(true);
+        }
+
+        // Step 4: Attach the attribute to the parent.
+        parent.addChild(attr);
     }
 
     /**

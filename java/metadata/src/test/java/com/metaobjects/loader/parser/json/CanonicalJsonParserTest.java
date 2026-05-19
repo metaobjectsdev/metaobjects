@@ -329,6 +329,49 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
         assertEquals("64", maxLengthAttr.getValueAsString());
     }
 
+    /**
+     * Fix 1 (subtype-wins): The declared {@code attr.<subType>} in the fused key must take
+     * precedence over value-based inference.
+     *
+     * <p>Concrete regression: {@code { "attr.string": { "name": "code", "value": "64" } }}.
+     * A naïve implementation would infer {@code IntAttribute} because the value {@code "64"}
+     * looks like an integer. The correct behaviour — and what this test asserts — is that
+     * a {@link StringAttribute} is produced because the author explicitly declared
+     * {@code attr.string}.</p>
+     */
+    @Test
+    public void attrChildNodeHonorsDeclaredSubtypeOverValueInference() {
+        String canonical =
+            "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+            "  { \"object.map\": { \"name\": \"Product\", \"children\": [" +
+            "    { \"field.string\": { \"name\": \"code\", \"children\": [" +
+            "      { \"attr.string\": { \"name\": \"code\", \"value\": \"64\" } }" +
+            "    ] } }" +
+            "  ] } }" +
+            "] } }";
+
+        MetaDataLoader loader = newTestLoader();
+        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "subtype-wins-test.json");
+        parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+
+        MetaData product = loader.getRoot().getChildOfType("object", "acme::Product");
+        assertNotNull("Product should exist", product);
+        MetaData codeField = product.getChildOfType("field", "code");
+        assertNotNull("code field should exist", codeField);
+
+        MetaAttribute codeAttr = codeField.getMetaAttr("code");
+        assertNotNull("code attr should exist on code field", codeAttr);
+
+        // THE REGRESSION ASSERTION: declared subtype "string" must win over value-inference.
+        // "64" looks like an int, but attr.string was declared — must be StringAttribute.
+        assertTrue(
+            "attr.string with value '64' must produce StringAttribute, not IntAttribute " +
+            "(declared subtype wins over value-based inference)",
+            codeAttr instanceof StringAttribute);
+        assertFalse("attr.string must NOT be an IntAttribute", codeAttr instanceof IntAttribute);
+        assertEquals("value should be preserved as '64'", "64", codeAttr.getValueAsString());
+    }
+
     // -----------------------------------------------------------------------
     // Step 6 — provider-genericity test
     // -----------------------------------------------------------------------
