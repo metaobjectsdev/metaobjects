@@ -33,3 +33,7 @@ csharp/**/obj/
 
 # Python
 __pycache__/
+
+# Stryker mutation testing
+.stryker-tmp/
+reports/

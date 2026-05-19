@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/api/schema/stryker-schema.json",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "METAOBJECTS_CONFORMANCE_CORPUS=/home/doug/.config/superpowers/worktrees/metaobjects/conformance-harness/fixtures/conformance bun test test/conformance.test.ts"
+  },
+  "mutate": [
+    "src/parser-core.ts",
+    "src/super-resolve.ts",
+    "src/subtype-rules.ts",
+    "src/serializer-json.ts",
+    "src/overlay.ts",
+    "src/provider.ts"
+  ],
+  "thresholds": { "high": 60, "low": 40, "break": 35 },
+  "reporters": ["clear-text", "html"]
+}

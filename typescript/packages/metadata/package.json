@@ -19,13 +19,15 @@
   "files": ["dist", "src"],
   "scripts": {
     "build": "tsc -p .",
-    "typecheck": "tsc -p tsconfig.typecheck.json"
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "conformance:mutation": "stryker run"
   },
   "dependencies": {
     "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@metaobjects/conformance": "workspace:*",
+    "@stryker-mutator/core": "^9.6.1",
     "bun-types": "latest",
     "typescript": "^5.6.0"
   }

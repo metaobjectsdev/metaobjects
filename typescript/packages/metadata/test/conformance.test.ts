@@ -20,7 +20,12 @@ import {
 } from "@metaobjects/conformance";
 import { tsAdapter } from "./conformance/adapter.js";
 
-const CORPUS = join(import.meta.dir, "../../../../fixtures/conformance");
+// METAOBJECTS_CONFORMANCE_CORPUS env override lets mutation-testing sandboxes
+// (e.g. Stryker) point at the real corpus via absolute path rather than
+// resolving four `../` levels up from an instrumented sandbox copy of this file.
+const CORPUS =
+  process.env.METAOBJECTS_CONFORMANCE_CORPUS ??
+  join(import.meta.dir, "../../../../fixtures/conformance");
 const LEDGER = join(import.meta.dir, "../conformance-expected-failures.json");
 const ERROR_CODES = Object.keys(
   ((await Bun.file(join(CORPUS, "ERROR-CODES.json")).json()) as {
