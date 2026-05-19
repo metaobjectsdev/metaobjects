@@ -3,12 +3,16 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Fixture } from "./fixture.js";
-import { parseOperationScript } from "./operation-script.js";
+import { parseOperationScript, parseExpectedErrors } from "./operation-script.js";
 
 /**
- * Collect every node name that appears in a canonical expected.json — used to
- * cheaply check that a navigate path's terminal node exists in the resolved
- * tree. (A wrapper key is `type.subType`; the body's `name` is the node name.)
+ * Collect every `"name"` value that appears anywhere in a canonical
+ * expected.json — used as a cheap over-approximation when checking that a
+ * navigate path's colon-segment terminal exists.  Because this recurses into
+ * attr/relationship bodies as well as node bodies, it can produce false-
+ * negatives (a path may lint as clean even though the named node is absent),
+ * but it never produces false-positives (a truly present node name is always
+ * collected here).
  */
 function namesIn(value: unknown, acc: Set<string>): void {
   if (Array.isArray(value)) { for (const v of value) namesIn(v, acc); return; }
@@ -24,8 +28,15 @@ export function lintFixture(fix: Fixture, errorCodes: readonly string[]): string
   const problems: string[] = [];
 
   if (fix.hasExpectedErrors) {
-    const codes = JSON.parse(
-      readFileSync(join(fix.dir, "expected-errors.json"), "utf8")) as { code: string }[];
+    // Fix 1: use parseExpectedErrors for validated parsing instead of a blind cast.
+    let codes: { code: string }[];
+    try {
+      codes = parseExpectedErrors(
+        JSON.parse(readFileSync(join(fix.dir, "expected-errors.json"), "utf8")));
+    } catch (err) {
+      problems.push(`${fix.name}: malformed expected-errors.json — ${(err as Error).message}`);
+      return problems;
+    }
     for (const { code } of codes) {
       if (!errorCodes.includes(code)) {
         problems.push(`${fix.name}: unregistered error code '${code}'`);
@@ -45,16 +56,31 @@ export function lintFixture(fix: Fixture, errorCodes: readonly string[]): string
     if (fix.hasExpected) {
       const known = new Set<string>();
       namesIn(JSON.parse(readFileSync(join(fix.dir, "expected.json"), "utf8")), known);
+      // Fix 3a: recognize both segment grammars — `type:name` and `type[subType]`.
+      const COLON_SEG = /^[a-z][a-z0-9-]*:[^[]+$/;
+      const BRACKET_SEG = /^[a-z][a-z0-9-]*\[[a-zA-Z][a-zA-Z0-9-]*\]$/;
       for (const op of script.operations) {
         for (const segment of op.navigate) {
-          const colon = segment.indexOf(":");
-          if (colon !== -1) {
-            const nodeName = segment.slice(colon + 1);
-            if (!known.has(nodeName)) {
-              problems.push(
-                `${fix.name}: navigate segment '${segment}' names a node `
-                  + `absent from expected.json`);
-            }
+          if (BRACKET_SEG.test(segment)) {
+            // Bracket segments (`type[subType]`) address nameless nodes — we
+            // cannot cheaply verify existence against expected.json, so we
+            // accept any syntactically valid bracket segment without emitting a
+            // false "absent node" problem.
+            continue;
+          }
+          if (!COLON_SEG.test(segment)) {
+            // Neither colon nor bracket — malformed segment grammar.
+            problems.push(
+              `${fix.name}: navigate segment '${segment}' has malformed syntax `
+                + `(expected 'type:name' or 'type[subType]')`);
+            continue;
+          }
+          // Colon segment: check the named node exists in expected.json.
+          const nodeName = segment.slice(segment.indexOf(":") + 1);
+          if (!known.has(nodeName)) {
+            problems.push(
+              `${fix.name}: navigate segment '${segment}' names a node `
+                + `absent from expected.json`);
           }
         }
       }

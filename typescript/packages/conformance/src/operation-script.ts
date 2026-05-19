@@ -2,6 +2,27 @@
 
 import type { NormalizedResult } from "./result.js";
 
+/**
+ * Parse + validate a parsed expected-errors.json value.
+ * Throws a clear Error if `raw` is not an array of objects each with a string
+ * `code` — mirrors the validation style of `parseOperationScript`.
+ */
+export function parseExpectedErrors(raw: unknown): { code: string }[] {
+  if (!Array.isArray(raw)) {
+    throw new Error("expected-errors.json must be a JSON array");
+  }
+  return raw.map((item, i) => {
+    if (typeof item !== "object" || item === null) {
+      throw new Error(`expected-errors.json entry ${i} is not an object`);
+    }
+    const { code } = item as Record<string, unknown>;
+    if (typeof code !== "string") {
+      throw new Error(`expected-errors.json entry ${i} missing string 'code' field`);
+    }
+    return { code };
+  });
+}
+
 /** capability-id grammar: `<type>.<capability>`, both kebab-case. */
 const CAPABILITY_ID = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
 

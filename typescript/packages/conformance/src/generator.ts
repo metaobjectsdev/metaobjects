@@ -10,6 +10,11 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+// Intentionally a small subset for fixture generation — @metaobjects/metadata
+// exports the full FIELD_SUBTYPES array (including currency, date, object, etc.)
+// which is too broad for deterministic round-trip fixtures.  Keep this list in
+// sync with the generator's intent: only "safe" primitive types that the TS
+// oracle handles without extra provider registration.
 const FIELD_SUBTYPES = ["string", "int", "long", "boolean"] as const;
 
 /** Generate a canonical-shaped metadata document deterministically from a seed. */

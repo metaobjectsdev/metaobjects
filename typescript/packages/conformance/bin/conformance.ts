@@ -20,6 +20,17 @@ switch (subcommand) {
     const fixtures = await discoverFixtures(corpusRoot);
     const errorCodesRaw: unknown = JSON.parse(
       readFileSync(join(corpusRoot, "ERROR-CODES.json"), "utf8"));
+    // Fix 9: guard the shape — a missing or non-object `codes` key would cause
+    // Object.keys(undefined) to throw an opaque TypeError at runtime.
+    if (
+      typeof errorCodesRaw !== "object" ||
+      errorCodesRaw === null ||
+      typeof (errorCodesRaw as Record<string, unknown>).codes !== "object" ||
+      (errorCodesRaw as Record<string, unknown>).codes === null
+    ) {
+      console.error("lint: ERROR-CODES.json must be an object with a 'codes' object property");
+      process.exit(1);
+    }
     const errorCodes = Object.keys(
       (errorCodesRaw as { codes: Record<string, string> }).codes);
 
@@ -74,13 +85,15 @@ switch (subcommand) {
       console.error("Usage: conformance generate <corpusRoot> <count> [startSeed]");
       process.exit(1);
     }
-    const count = parseInt(countStr, 10);
-    if (isNaN(count) || count < 1) {
+    // Fix 8: use Number() + Number.isInteger() so "5abc" is rejected (parseInt
+    // would silently accept it as 5).
+    const count = Number(countStr);
+    if (!Number.isInteger(count) || count < 1) {
       console.error("generate: <count> must be a positive integer");
       process.exit(1);
     }
-    const startSeed = startSeedStr !== undefined ? parseInt(startSeedStr, 10) : 1;
-    if (isNaN(startSeed)) {
+    const startSeed = startSeedStr !== undefined ? Number(startSeedStr) : 1;
+    if (!Number.isInteger(startSeed)) {
       console.error("generate: [startSeed] must be an integer");
       process.exit(1);
     }

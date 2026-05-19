@@ -186,3 +186,34 @@ test("fixture with no expectation files → one failed check with 'declares no e
   expect(report.checks[0]!.passed).toBe(false);
   expect(report.checks[0]!.detail).toContain("declares no expectation files");
 });
+
+// ── Fix 2: malformed fixture files produce failed checks, not throws ──────────
+
+test("malformed expected-errors.json (object not array) → failed check, no throw", async () => {
+  const root = await fixture({
+    "input/m.json": "{}",
+    "expected-errors.json": '{"code":"ERR_UNKNOWN_TYPE"}',
+  });
+  const [fix] = await discoverFixtures(root);
+  // runFixture must not throw
+  const report = await runFixture(fix!, fake);
+  expect(report.status).toBe("fail");
+  const errCheck = report.checks.find((c) => c.kind === "expected-errors");
+  expect(errCheck).toBeDefined();
+  expect(errCheck!.passed).toBe(false);
+  expect(errCheck!.detail).toMatch(/parse error/);
+});
+
+test("malformed script.json (bad JSON) → failed check, no throw", async () => {
+  const root = await fixture({
+    "input/m.json": "{}",
+    "script.json": "not-valid-json{{{",
+  });
+  const [fix] = await discoverFixtures(root);
+  const report = await runFixture(fix!, fake);
+  expect(report.status).toBe("fail");
+  const errCheck = report.checks.find((c) => c.kind === "operation");
+  expect(errCheck).toBeDefined();
+  expect(errCheck!.passed).toBe(false);
+  expect(errCheck!.detail).toMatch(/parse error/);
+});

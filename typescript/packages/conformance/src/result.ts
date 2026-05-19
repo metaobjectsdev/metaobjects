@@ -23,6 +23,8 @@ export function resultsEqual(a: NormalizedResult, b: NormalizedResult): boolean 
   if ("effective-tree" in a && "effective-tree" in b) {
     return a["effective-tree"] === b["effective-tree"];
   }
+  // Error equality is by `code` ONLY — message and path are intentionally not
+  // part of the cross-language contract, so implementations may vary freely.
   if ("error" in a && "error" in b) return a.error.code === b.error.code;
   return false;
 }
