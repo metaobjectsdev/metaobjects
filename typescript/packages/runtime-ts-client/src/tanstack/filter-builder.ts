@@ -19,19 +19,14 @@ import qs from "qs";
  */
 export function buildFilterQs(filter: Record<string, unknown>): string {
   const { limit, offset, sort, withCount, search, or, and, ...fields } = filter as any;
-  return qs.stringify(
-    {
-      ...(limit     !== undefined ? { limit }     : {}),
-      ...(offset    !== undefined ? { offset }    : {}),
-      ...(sort      !== undefined ? { sort }      : {}),
-      ...(withCount !== undefined ? { withCount } : {}),
-      ...(search    !== undefined ? { search }    : {}),
-      filter: {
-        ...fields,
-        ...(or  !== undefined ? { or }  : {}),
-        ...(and !== undefined ? { and } : {}),
-      },
-    },
-    { encodeValuesOnly: true },
-  );
+  const top: Record<string, unknown> = {};
+  if (limit     !== undefined) top.limit     = limit;
+  if (offset    !== undefined) top.offset    = offset;
+  if (sort      !== undefined) top.sort      = sort;
+  if (withCount !== undefined) top.withCount = withCount;
+  if (search    !== undefined) top.search    = search;
+  const filterObj: Record<string, unknown> = { ...fields };
+  if (or  !== undefined) filterObj.or  = or;
+  if (and !== undefined) filterObj.and = and;
+  return qs.stringify({ ...top, filter: filterObj }, { encodeValuesOnly: true });
 }

@@ -114,20 +114,16 @@ export function EntityGrid<T extends { id?: number | string }>(
               {hg.headers.map((h) => {
                 const meta = h.column.columnDef.meta as { sortable?: boolean; width?: number } | undefined;
                 const sortable = meta?.sortable !== false && h.column.getCanSort();
+                const sortDir = h.column.getIsSorted();
                 return (
                   <th
                     key={h.id}
                     style={meta?.width ? { width: meta.width } : undefined}
                     onClick={sortable ? h.column.getToggleSortingHandler() : undefined}
-                    aria-sort={
-                      h.column.getIsSorted() === "asc"  ? "ascending"  :
-                      h.column.getIsSorted() === "desc" ? "descending" :
-                      "none"
-                    }
+                    aria-sort={sortDir === "asc" ? "ascending" : sortDir === "desc" ? "descending" : "none"}
                   >
                     {flexRender(h.column.columnDef.header, h.getContext())}
-                    {h.column.getIsSorted() === "asc"  ? " ↑" : ""}
-                    {h.column.getIsSorted() === "desc" ? " ↓" : ""}
+                    {sortDir === "asc" ? " ↑" : sortDir === "desc" ? " ↓" : ""}
                   </th>
                 );
               })}
