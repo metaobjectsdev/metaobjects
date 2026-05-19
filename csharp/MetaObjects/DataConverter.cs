@@ -58,6 +58,43 @@ public static class DataConverter
     public static object ConvertToDataType(DataType dataType, JsonElement element) =>
         ToAttrValueInternal(element, fnName: "convertToDataType", typeDirected: true, dataType: dataType);
 
+    /// <summary>
+    /// Convert an already-parsed attr value (i.e. <c>object?</c> from <see cref="MetaData.OwnAttr"/>)
+    /// to the given <see cref="DataType"/>. Used by <c>MetaField.DefaultValue()</c> to re-coerce
+    /// the <c>@default</c> attr that was already stored (analogous to TS
+    /// <c>convertToDataType(dataType, raw)</c> where <c>raw</c> is an already-parsed value).
+    /// </summary>
+    public static object? ConvertToDataType(DataType dataType, object? raw)
+    {
+        if (raw is null) return null;
+
+        // Array → IReadOnlyList<string> (passthrough — already converted at parse time).
+        if (raw is IReadOnlyList<string> list) return list;
+
+        // Type-directed coercion on scalar values.
+        return dataType switch
+        {
+            DataType.Boolean => raw is bool b ? (object)b
+                             : raw is string s && s == "true" ? true
+                             : raw is string s2 && s2 == "false" ? false
+                             : raw,
+            DataType.Int or DataType.Long =>
+                raw is long ? raw
+                : raw is double d && d == Math.Floor(d) ? (object)(long)d
+                : raw is string str && long.TryParse(str, out long parsed) ? parsed
+                : raw,
+            DataType.Double =>
+                raw is double ? raw
+                : raw is long lg ? (object)(double)lg
+                : raw is string str2 && double.TryParse(str2,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double pd) ? pd
+                : raw,
+            // String, Object, Date — string form (mirrors TS `default: String(raw)`).
+            _ => raw is string ? raw : raw.ToString() ?? raw,
+        };
+    }
+
     // -------------------------------------------------------------------------
     // Internal dispatch
     // -------------------------------------------------------------------------
