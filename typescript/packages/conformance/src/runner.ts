@@ -31,7 +31,20 @@ export async function runFixture(
     checks.push({
       kind: "expected-errors",
       passed,
-      detail: `expected [${want}], got [${got}]`,
+      ...(passed ? {} : { detail: `expected [${want}], got [${got}]` }),
+    });
+  }
+
+  // If the load produced no tree but tree-dependent checks are expected, push a
+  // synthetic failed check so the report is self-explanatory rather than silent.
+  if (
+    outcome.tree === undefined &&
+    (fix.hasExpected || fix.hasExpectedEffective || fix.hasScript)
+  ) {
+    checks.push({
+      kind: "expected",
+      passed: false,
+      detail: "load produced no tree — cannot run tree-dependent checks",
     });
   }
 
@@ -88,6 +101,22 @@ export async function runFixture(
         passed,
         ...(passed ? {} : { detail: `expected ${JSON.stringify(op.expect)}, got ${JSON.stringify(actual)}` }),
       });
+    });
+  }
+
+  // A fixture with no expectation files at all is a configuration error — push an
+  // explanatory failed check so the report is never a bare empty "fail".
+  if (
+    checks.length === 0 &&
+    !fix.hasExpected &&
+    !fix.hasExpectedEffective &&
+    !fix.hasExpectedErrors &&
+    !fix.hasScript
+  ) {
+    checks.push({
+      kind: "expected",
+      passed: false,
+      detail: "fixture declares no expectation files",
     });
   }
 
