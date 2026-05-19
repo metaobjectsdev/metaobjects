@@ -226,25 +226,18 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         }
         JsonObject rootBody = rootBodyEl.getAsJsonObject();
 
-        // Extract package from the root body and set as the default package for this file
+        // Extract package from the root body and set as the default package for this file.
+        // The canonical "package" key sets the default-package context for this file; the
+        // loader owns the MetaRoot name and it is not overwritten here.
         String pkgValue = getStringOrNull(rootBody, KEY_PACKAGE);
         if (pkgValue != null) {
             setDefaultPackageName(pkgValue);
         }
 
-        // The root node IS the loader's root — we do not create a new MetaRoot.
-        // Set the root's name to the package value (mirrors how MetaDataLoader names the root).
-        if (pkgValue != null && !pkgValue.isEmpty()) {
-            // MetaRoot's full name is the package itself — set via rename if available,
-            // or simply record it via the loader's existing root.
-            // The loader's root already has a name set at construction time; we honour
-            // the canonical package by updating the default package context.
-        }
-
         // Process the root body's children into the loader's existing MetaRoot.
         // Attributes on the root body (rare) are processed first.
         MetaData loaderRoot = getRootMetaData();
-        processBody(loaderRoot, rootBody, true);
+        processBody(loaderRoot, rootBody);
     }
 
     // -----------------------------------------------------------------------
@@ -252,31 +245,28 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
     // -----------------------------------------------------------------------
 
     /**
-     * Processes a node body: extracts reserved keys, creates/overlays the
-     * MetaData via {@link BaseMetaDataParser#createOrOverlayMetaData}, applies
-     * attributes, then recurses into children.
+     * Processes the document root body: applies any {@code @}-attributes on the root,
+     * then recurses into its {@code children} array.
      *
-     * @param parent   the parent MetaData under which this node is placed
-     * @param body     the canonical JSON body object for this node
-     * @param isRoot   true when processing the document root node's body
-     *                 (children go directly into {@link #getRootMetaData()})
+     * <p>This method is only called once, for the top-level {@code metadata.root} body.
+     * Children of the root are top-level nodes ({@code isRoot=true}).</p>
+     *
+     * @param rootNode the loader's MetaRoot node
+     * @param body     the canonical JSON body of the {@code metadata.root} wrapper
      */
-    private void processBody(MetaData parent, JsonObject body, boolean isRoot) {
+    private void processBody(MetaData rootNode, JsonObject body) {
         // Process children array if present
         if (body.has(KEY_CHILDREN)) {
             JsonElement childrenEl = body.get(KEY_CHILDREN);
             if (childrenEl.isJsonArray()) {
-                processChildrenArray(parent, childrenEl.getAsJsonArray(), isRoot);
+                processChildrenArray(rootNode, childrenEl.getAsJsonArray(), true);
             } else {
                 log.warn("'children' key is not an array in file [{}]", getFilename());
             }
         }
 
-        // Process @-attributes on the parent (root-level body attrs).
-        // For the loader root these are unusual but valid.
-        if (isRoot) {
-            processAttributes(parent, body);
-        }
+        // Process @-attributes on the root body (rare but valid).
+        processAttributes(rootNode, body);
     }
 
     /**
@@ -319,6 +309,15 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             // Registry check — skip unknown types with a warning (mirrors JsonMetaDataParser)
             if (!getTypeRegistry().hasType(type)) {
                 log.warn("Unknown type '{}' in canonical JSON file [{}] — skipping", type, getFilename());
+                continue;
+            }
+
+            // Attr child nodes: { "attr.<subType>": { "name": "...", "value": <v> } }
+            // The value would otherwise be silently lost via the generic createOrOverlayMetaData path.
+            // Mirror parseAttrChild in parser-core.ts: read name + value, delegate to parseInlineAttribute
+            // for typed conversion, so the subtype is used for type-consistent creation.
+            if (MetaAttribute.TYPE_ATTR.equals(type)) {
+                processAttrChildNode(parent, subType, childBody);
                 continue;
             }
 
@@ -410,6 +409,47 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                 processChildrenArray(md, childrenEl.getAsJsonArray(), false);
             }
         }
+    }
+
+    /**
+     * Handles a typed {@code attr} child node in the canonical format:
+     * {@code { "attr.<subType>": { "name": "...", "value": <v> } }}.
+     *
+     * <p>Mirrors {@code parser-core.ts:parseAttrChild}: reads {@code name} (required,
+     * non-empty) and {@code value} (required), then delegates to
+     * {@link BaseMetaDataParser#parseInlineAttribute} so that value conversion is
+     * consistent with inline {@code @}-attribute handling. The {@code subType} from the
+     * fused key is passed as the attribute name's hint via {@code parseInlineAttribute}'s
+     * existing registry-driven type-inference path.</p>
+     *
+     * <p>This is 100% registry-driven — no hardcoded subtype names beyond the framework
+     * {@link MetaAttribute#TYPE_ATTR} constant used to detect the dispatch path.</p>
+     *
+     * @param parent   the parent MetaData node on which the attribute should be created
+     * @param subType  the attribute subtype from the fused key (e.g. {@code "string"}, {@code "int"})
+     * @param body     the child body containing {@code name} and {@code value}
+     * @throws MetaDataException if {@code name} is missing/empty or {@code value} is absent
+     */
+    private void processAttrChildNode(MetaData parent, String subType, JsonObject body) {
+        String attrName = getStringOrNull(body, KEY_NAME);
+        if (attrName == null || attrName.isEmpty()) {
+            throw new MetaDataException(
+                "attr child node requires a non-empty '" + KEY_NAME + "' in file [" + getFilename() + "]");
+        }
+        if (!body.has(KEY_VALUE)) {
+            throw new MetaDataException(
+                "attr child '" + attrName + "' is missing '" + KEY_VALUE + "' in file [" + getFilename() + "]");
+        }
+
+        JsonElement valueEl = body.get(KEY_VALUE);
+        // Convert the JSON value to a string form that parseInlineAttribute can consume.
+        // jsonElementToString returns the raw value without quotes for primitives, and
+        // bracket-form for arrays — matching what processAttributes produces for @-attrs.
+        String stringValue = jsonElementToString(valueEl);
+
+        // Delegate to the base parser's attribute-creation path, which is registry-driven
+        // and handles type inference + array desugar consistently with @-attributes.
+        super.parseInlineAttribute(parent, attrName, stringValue);
     }
 
     /**
@@ -538,11 +578,27 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
     /**
      * Returns the boolean value of a key in the body object, or {@code null} if
      * the key is absent or its value is JSON null.
+     *
+     * <p>Throws a {@link MetaDataException} if the key is present but its JSON value
+     * is not a real JSON boolean ({@code true} / {@code false}). Gson's
+     * {@code getAsBoolean()} silently coerces strings ({@code "yes"} → {@code false}),
+     * which would cause structural flags like {@code abstract} and {@code isArray} to
+     * be silently mis-parsed as {@code false}.</p>
+     *
+     * @param body the JSON object to read from
+     * @param key  the key to look up (e.g. {@code "abstract"}, {@code "isArray"})
+     * @return the boolean value, or {@code null} if absent / JSON null
+     * @throws MetaDataException if the value is present but not a JSON boolean
      */
-    private static Boolean getBooleanOrNull(JsonObject body, String key) {
+    private Boolean getBooleanOrNull(JsonObject body, String key) {
         if (!body.has(key)) return null;
         JsonElement el = body.get(key);
         if (el.isJsonNull()) return null;
+        if (!el.isJsonPrimitive() || !el.getAsJsonPrimitive().isBoolean()) {
+            throw new MetaDataException(
+                "Key '" + key + "' must be a JSON boolean (true/false) but got: "
+                    + el + " in file [" + getFilename() + "]");
+        }
         return el.getAsBoolean();
     }
 

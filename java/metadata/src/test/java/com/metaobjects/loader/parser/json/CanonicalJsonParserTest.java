@@ -285,6 +285,51 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
     }
 
     // -----------------------------------------------------------------------
+    // Fix 1 — typed attr child node handling
+    // -----------------------------------------------------------------------
+
+    /**
+     * Fix 1: Reads typed {@code attr} child nodes: {@code { "attr.<subType>": { "name": "...", "value": <v> } }}.
+     *
+     * <p>Previously the {@code value} key was silently dropped (skipped as a reserved key in
+     * the generic {@code createOrOverlayMetaData} path). This test verifies the value is correctly
+     * parsed and lands on the parent node.</p>
+     */
+    @Test
+    public void readsAttrChildNode() {
+        String canonical =
+            "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+            "  { \"object.map\": { \"name\": \"Config\", \"children\": [" +
+            "    { \"field.string\": { \"name\": \"label\", \"children\": [" +
+            "      { \"attr.string\": { \"name\": \"pattern\", \"value\": \"^[a-z]+$\" } }," +
+            "      { \"attr.int\": { \"name\": \"maxLength\", \"value\": 64 } }" +
+            "    ] } }" +
+            "  ] } }" +
+            "] } }";
+
+        MetaDataLoader loader = newTestLoader();
+        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "attr-child-test.json");
+        parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+
+        MetaData config = loader.getRoot().getChildOfType("object", "acme::Config");
+        assertNotNull("Config should exist", config);
+        MetaData labelField = config.getChildOfType("field", "label");
+        assertNotNull("label field should exist", labelField);
+
+        // pattern attr: authored as attr.string child node — value must not be silently lost
+        MetaAttribute patternAttr = labelField.getMetaAttr("pattern");
+        assertNotNull("pattern attr should exist after attr child node parsing", patternAttr);
+        assertTrue("pattern should be StringAttribute", patternAttr instanceof StringAttribute);
+        assertEquals("^[a-z]+$", patternAttr.getValueAsString());
+
+        // maxLength attr: authored as attr.int child node — value must be typed int, not dropped
+        MetaAttribute maxLengthAttr = labelField.getMetaAttr("maxLength");
+        assertNotNull("maxLength attr should exist after attr child node parsing", maxLengthAttr);
+        assertTrue("maxLength should be IntAttribute", maxLengthAttr instanceof IntAttribute);
+        assertEquals("64", maxLengthAttr.getValueAsString());
+    }
+
+    // -----------------------------------------------------------------------
     // Step 6 — provider-genericity test
     // -----------------------------------------------------------------------
 
