@@ -1,6 +1,6 @@
 import type { MetaObject } from "@metaobjects/metadata";
 import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjects/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs } from "@metaobjects/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath } from "@metaobjects/codegen-ts";
 import { renderColumnsFile } from "./templates/columns-file.js";
 
 export interface TanstackGridOpts {
@@ -31,7 +31,7 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
         throw new Error("tanstack-grid: renderContext is required (provided by runGen)");
       }
       return {
-        path: `${entity.name}.columns.tsx`,
+        path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.columns.tsx`),
         content: await formatTs(renderColumnsFile(entity, ctx.renderContext)),
       };
     }),

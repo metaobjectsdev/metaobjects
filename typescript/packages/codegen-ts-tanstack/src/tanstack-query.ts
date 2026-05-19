@@ -1,5 +1,5 @@
 import type { MetaObject } from "@metaobjects/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs } from "@metaobjects/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath } from "@metaobjects/codegen-ts";
 import { renderHooksFile } from "./templates/hooks-file.js";
 
 export interface TanstackQueryOpts {
@@ -26,7 +26,7 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
         );
       }
       return {
-        path: `${entity.name}.hooks.ts`,
+        path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.hooks.ts`),
         content: await formatTs(renderHooksFile(entity, ctx.renderContext)),
       };
     }),
