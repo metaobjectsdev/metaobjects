@@ -28,7 +28,8 @@ export const ordersRelations = relations(orders, ({ one }) => ({
   }),
 }));
 export type Order = InferSelectModel<typeof orders>;
-export type NewOrder = InferInsertModel<typeof orders>;
+export type OrderInsert = InferInsertModel<typeof orders>;
+export type OrderUpdate = Partial<OrderInsert>;
 export const OrderInsertSchema = z.object({
   customerId: z.number().int(),
   productId: z.number().int(),

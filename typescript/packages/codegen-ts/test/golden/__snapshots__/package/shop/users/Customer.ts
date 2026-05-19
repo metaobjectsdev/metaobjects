@@ -16,7 +16,8 @@ export const customersRelations = relations(customers, ({ many }) => ({
   tags: many(tags),
 }));
 export type Customer = InferSelectModel<typeof customers>;
-export type NewCustomer = InferInsertModel<typeof customers>;
+export type CustomerInsert = InferInsertModel<typeof customers>;
+export type CustomerUpdate = Partial<CustomerInsert>;
 export const CustomerInsertSchema = z.object({
   email: z.string().min(1).max(255),
 });

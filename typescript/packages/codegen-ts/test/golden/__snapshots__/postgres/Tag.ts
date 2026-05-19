@@ -11,7 +11,8 @@ export const tags = pgTable("tags", {
   slug: varchar("slug", { length: 50 }).notNull().unique(),
 });
 export type Tag = InferSelectModel<typeof tags>;
-export type NewTag = InferInsertModel<typeof tags>;
+export type TagInsert = InferInsertModel<typeof tags>;
+export type TagUpdate = Partial<TagInsert>;
 export const TagInsertSchema = z.object({
   name: z.string().min(1).max(50),
   slug: z.string().min(1).max(50),

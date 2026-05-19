@@ -34,7 +34,8 @@ export const workoutEventsRelations = relations(workoutEvents, ({ one }) => ({
   }),
 }));
 export type WorkoutEvent = InferSelectModel<typeof workoutEvents>;
-export type NewWorkoutEvent = InferInsertModel<typeof workoutEvents>;
+export type WorkoutEventInsert = InferInsertModel<typeof workoutEvents>;
+export type WorkoutEventUpdate = Partial<WorkoutEventInsert>;
 export const WorkoutEventInsertSchema = z.object({
   subscriberId: z.number().int(),
   workoutId: z.number().int(),

@@ -26,7 +26,8 @@ export const subscribersRelations = relations(subscribers, ({ many }) => ({
   purchases: many(purchases),
 }));
 export type Subscriber = InferSelectModel<typeof subscribers>;
-export type NewSubscriber = InferInsertModel<typeof subscribers>;
+export type SubscriberInsert = InferInsertModel<typeof subscribers>;
+export type SubscriberUpdate = Partial<SubscriberInsert>;
 export const SubscriberInsertSchema = z.object({
   email: z.string().min(1).max(255),
   firstName: z.string().min(1).max(100),

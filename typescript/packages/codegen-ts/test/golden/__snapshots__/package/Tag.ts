@@ -22,7 +22,8 @@ export const tagsRelations = relations(tags, ({ one, many }) => ({
   }),
 }));
 export type Tag = InferSelectModel<typeof tags>;
-export type NewTag = InferInsertModel<typeof tags>;
+export type TagInsert = InferInsertModel<typeof tags>;
+export type TagUpdate = Partial<TagInsert>;
 export const TagInsertSchema = z.object({
   label: z.string().min(1).max(100),
   customerId: z.number().int(),

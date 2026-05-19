@@ -29,7 +29,8 @@ export const workoutsRelations = relations(workouts, ({ one, many }) => ({
   workoutEvents: many(workoutEvents),
 }));
 export type Workout = InferSelectModel<typeof workouts>;
-export type NewWorkout = InferInsertModel<typeof workouts>;
+export type WorkoutInsert = InferInsertModel<typeof workouts>;
+export type WorkoutUpdate = Partial<WorkoutInsert>;
 export const WorkoutInsertSchema = z.object({
   weekId: z.number().int(),
   title: z.string().min(1).max(200),
