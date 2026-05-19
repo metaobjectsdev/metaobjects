@@ -13,4 +13,9 @@
   <ItemGroup>
     <ProjectReference Include="../MetaObjects/MetaObjects.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="conformance-expected-failures.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>
