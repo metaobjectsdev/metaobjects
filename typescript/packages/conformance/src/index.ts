@@ -7,3 +7,4 @@ export * from "./report.js";
 export * from "./result.js";
 export * from "./runner.js";
 export * from "./expected-failures.js";
+export * from "./fixture-lint.js";
