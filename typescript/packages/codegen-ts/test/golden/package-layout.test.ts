@@ -20,7 +20,7 @@ import {
   statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve, relative } from "node:path";
+import { join, resolve, relative, dirname } from "node:path";
 import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { runGen, defineConfig } from "../../src/index.js";
 import { entityFile, queriesFile, routesFile, formFile, barrel } from "../../src/generators/index.js";
@@ -87,9 +87,7 @@ describe("golden output — package layout placement + import gate", () => {
         const snapPath = join(SNAP, snapKey);
 
         if (UPDATE) {
-          mkdirSync(join(SNAP, snapKey.slice(0, snapKey.lastIndexOf("/") + 1) || "."), {
-            recursive: true,
-          });
+          mkdirSync(dirname(snapPath), { recursive: true });
           writeFileSync(snapPath, content);
         } else {
           expect(
