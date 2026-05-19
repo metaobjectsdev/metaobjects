@@ -53,7 +53,6 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
         });
     }
 
-
     /// <summary>Maximum string or array length (the <c>@maxLength</c> attr).</summary>
     public long? MaxLength
     {
@@ -97,7 +96,7 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
         get
         {
             if (OwnAttr(Constants.FIELD_ATTR_REQUIRED) is true) return true;
-            return Validators().Any(v => v.SubType == Constants.VALIDATOR_SUBTYPE_REQUIRED);
+            return Validators().Any(v => v.IsRequired());
         }
     }
 

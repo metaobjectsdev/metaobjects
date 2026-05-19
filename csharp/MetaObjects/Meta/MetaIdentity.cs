@@ -5,14 +5,6 @@
 
 namespace MetaObjects.Meta;
 
-/// <summary>Strongly-typed identity generation strategies.</summary>
-public static class IdentityGeneration
-{
-    public const string Increment = "increment";
-    public const string Uuid      = "uuid";
-    public const string Assigned  = "assigned";
-}
-
 /// <summary>
 /// Concrete base node class for <c>identity.*</c> nodes.
 /// Extends <see cref="MetaData"/> directly: no model wrapper, no metaOf() indirection.

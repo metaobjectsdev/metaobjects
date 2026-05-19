@@ -13,6 +13,8 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
     /// <summary>
     /// The SQL table name from the first <c>source[dbTable]</c> child,
     /// or <see langword="null"/> when none is declared.
+    /// Uses effective <see cref="MetaData.Children"/> (not <see cref="MetaData.OwnChildren"/>)
+    /// because a <c>source</c> node can be inherited via the super chain — mirrors TS.
     /// </summary>
     public string? DbTable => Cached("dbTable", () =>
     {

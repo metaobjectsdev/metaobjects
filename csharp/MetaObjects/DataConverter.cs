@@ -91,7 +91,10 @@ public static class DataConverter
                     System.Globalization.CultureInfo.InvariantCulture, out double pd) ? pd
                 : raw,
             // String, Object, Date — string form (mirrors TS `default: String(raw)`).
-            _ => raw is string ? raw : raw.ToString() ?? raw,
+            // bool.ToString() returns "True"/"False"; TS String(true) returns "true"/"false".
+            _ => raw is string s ? s
+               : raw is bool b ? (b ? "true" : "false")
+               : raw.ToString() ?? raw,
         };
     }
 
