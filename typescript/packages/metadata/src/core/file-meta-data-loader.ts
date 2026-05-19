@@ -35,13 +35,18 @@ export class FileMetaDataLoader extends MetaDataLoader {
   }
 
   /**
-   * Load every `.json` / `.yaml` / `.yml` file in a directory (non-recursive).
+   * Load every `.json` / `.yaml` / `.yml` file in a directory (non-recursive),
+   * in deterministic ordinal filename order.
    * @param opts.exclude glob patterns (relative to dir) to skip — `*` / `**`.
    */
   async loadDirectory(dir: string, opts?: { exclude?: string[] }): Promise<LoadResult> {
     let entries: string[];
     try {
-      entries = await readdir(dir);
+      // Sorted for deterministic multi-file load order: the overlay merge is
+      // order-sensitive (last-writer-wins on attr conflicts), so the scan must
+      // not depend on filesystem readdir order. Ordinal filename sort is
+      // reproducible across the Java/Python/C# ports.
+      entries = (await readdir(dir)).sort();
     } catch (err) {
       // Surface the I/O failure as a collected error via the empty-source path.
       const emptyResult = await this.load([]);

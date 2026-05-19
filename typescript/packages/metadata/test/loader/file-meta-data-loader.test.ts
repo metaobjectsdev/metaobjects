@@ -106,6 +106,27 @@ describe("FileMetaDataLoader.loadDirectory()", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("loads files in sorted filename order — deterministic regardless of readdir order", async () => {
+    const dir = makeTmpDir();
+    try {
+      // Written reverse-alphabetically on purpose: on an insertion-order
+      // filesystem an unsorted readdir would yield [zzz, aaa]. The loader must
+      // sort so multi-file load order — and the order-sensitive overlay merge —
+      // is deterministic across environments and language ports.
+      writeFixture(dir, "meta.zzz.json", "Zentity");
+      writeFixture(dir, "meta.aaa.json", "Aentity");
+
+      const loader = new FileMetaDataLoader();
+      const result = await loader.loadDirectory(dir);
+
+      expect(result.errors).toHaveLength(0);
+      // Sorted filename order (meta.aaa before meta.zzz) → Aentity before Zentity.
+      expect(result.root.objects().map((o) => o.name)).toEqual(["Aentity", "Zentity"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

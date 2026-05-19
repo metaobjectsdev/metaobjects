@@ -4,7 +4,7 @@
     "children": [
       {
         "object.entity": {
-          "name": "ProductB",
+          "name": "ProductA",
           "children": [
             {
               "field.long": {
@@ -23,7 +23,7 @@
       },
       {
         "object.entity": {
-          "name": "ProductA",
+          "name": "ProductB",
           "children": [
             {
               "field.long": {
