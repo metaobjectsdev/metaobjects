@@ -32,15 +32,13 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
       if (!ctx.renderContext) {
         throw new Error("tanstack-grid-hook: renderContext is required (provided by runGen)");
       }
-      const content = renderGridHookFile(entity, ctx.renderContext);
-      if (!content) return [];
       return {
         path: entityOutputPath(
           ctx.renderContext.outputLayout,
           entity.package,
           `${entity.name}.grid.ts`,
         ),
-        content: await formatTs(content),
+        content: await formatTs(renderGridHookFile(entity, ctx.renderContext)),
       };
     }),
   };
