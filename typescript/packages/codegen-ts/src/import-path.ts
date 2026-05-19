@@ -64,7 +64,9 @@ export function barrelEntrySpecifier(
 
 /** A `dbImport` (or any module specifier) adjusted for a file at the given
  *  package depth. A non-relative specifier (alias / package) is depth-invariant
- *  and returned unchanged; a relative one gets extra "../" per package segment. */
+ *  and returned unchanged; a relative one gets extra "../" per package segment.
+ *  Caller contract: a relative moduleSpec must be relative to outDir root (as
+ *  dbImport is). */
 export function relativeModuleSpecifier(
   layout: OutputLayout,
   pkg: string | undefined,

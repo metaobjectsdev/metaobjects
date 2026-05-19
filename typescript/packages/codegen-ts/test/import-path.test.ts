@@ -40,6 +40,9 @@ describe("crossEntitySpecifier", () => {
   it("package, target at root → relative up to root", () => {
     expect(crossEntitySpecifier("package", "acme::commerce", undefined, "Tag", "none")).toBe("../../Tag");
   });
+  it("package, importing entity at root → into a package", () => {
+    expect(crossEntitySpecifier("package", undefined, "acme::commerce", "Program", "none")).toBe("./acme/commerce/Program");
+  });
   it("honors extStyle", () => {
     expect(crossEntitySpecifier("package", "acme::commerce", "acme::commerce", "Purchase", "js")).toBe("./Purchase.js");
   });
@@ -69,5 +72,8 @@ describe("relativeModuleSpecifier (dbImport adjustment)", () => {
   });
   it("package, relative './' specifier → strip './' and prepend '../' per segment", () => {
     expect(relativeModuleSpecifier("package", "acme::commerce", "./index")).toBe("../../index");
+  });
+  it("package, single-segment package, './' specifier", () => {
+    expect(relativeModuleSpecifier("package", "acme", "./index")).toBe("../index");
   });
 });
