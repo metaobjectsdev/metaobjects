@@ -23,5 +23,6 @@ export {
   type CellRendererProviderProps,
   EntityGrid,
   type EntityGridProps,
+  type EntityGridState,
   buildFilterQs,
 } from "./tanstack/index.js";

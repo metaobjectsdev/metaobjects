@@ -7,5 +7,5 @@ export {
   useCellRenderers,
   type CellRendererProviderProps,
 } from "./cell-renderer-provider.js";
-export { EntityGrid, type EntityGridProps } from "./entity-grid.js";
+export { EntityGrid, type EntityGridProps, type EntityGridState } from "./entity-grid.js";
 export { buildFilterQs } from "./filter-builder.js";

@@ -2,21 +2,39 @@ import { useMemo, type ReactNode } from "react";
 import {
   useReactTable,
   getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
   flexRender,
   type ColumnDef,
   type SortingState,
+  type PaginationState,
+  type ColumnFiltersState,
+  type OnChangeFn,
 } from "@tanstack/react-table";
 import type { GridConfig } from "./types.js";
 import { useCellRenderers } from "./cell-renderer-provider.js";
 
+export interface EntityGridState {
+  sorting: SortingState;
+  pagination: PaginationState;
+  columnFilters: ColumnFiltersState;
+}
+
 export interface EntityGridProps<T> {
   columns:  ColumnDef<T>[];
   grid:     GridConfig;
+  /** The single server page of rows. */
   data:     T[];
-  isLoading?: boolean;
-  error?:    Error | null;
+  /** Total rows matching the filter (server-supplied; drives page count). */
+  rowCount: number;
+  /** Controlled state — owned by the parent / generated grid hook. */
+  state:    EntityGridState;
+  onSortingChange:       OnChangeFn<SortingState>;
+  onPaginationChange:    OnChangeFn<PaginationState>;
+  onColumnFiltersChange: OnChangeFn<ColumnFiltersState>;
+  /** Optional free-text search — input renders iff onSearchChange is supplied. */
+  search?:         string;
+  onSearchChange?: (value: string) => void;
+  isLoading?:  boolean;
+  error?:      Error | null;
   emptyState?: ReactNode;
   onRowClick?: (row: T) => void;
   actions?:    (row: T) => ReactNode;
@@ -25,22 +43,22 @@ export interface EntityGridProps<T> {
   rowClassName?:        string;
   cellClassName?:       string;
   paginationClassName?: string;
+  searchClassName?:     string;
 }
 
 /**
- * Opinionated table component built on TanStack Table.
+ * Controlled, server-driven data grid. All filter/sort/pagination state lives
+ * outside; on-change callbacks fire so the parent re-queries. The component
+ * renders `data` as-is — no client-side sort/paginate/filter row models.
+ *
  * Cell rendering routes through the CellRendererProvider registry, keyed by
  * `column.meta.view`. Per-column `cell` always wins if set.
- *
- * For advanced cases (virtualization, drag-and-drop, custom layout) drop
- * down to `useReactTable` directly with the same generated columns array.
  */
 export function EntityGrid<T extends { id?: number | string }>(
   props: EntityGridProps<T>,
 ): ReactNode {
   const renderers = useCellRenderers();
 
-  // Inject registry-backed cell renderers for columns without an explicit cell.
   const columns = useMemo<ColumnDef<T>[]>(() => {
     const base: ColumnDef<T>[] = props.columns.map((col): ColumnDef<T> => {
       if (col.cell) return col;
@@ -50,30 +68,27 @@ export function EntityGrid<T extends { id?: number | string }>(
       return { ...col, cell: renderer } as ColumnDef<T>;
     });
     if (props.actions) {
-      const actionsCol: ColumnDef<T> = {
+      base.push({
         id: "__actions",
         header: "",
         cell: ({ row }) => props.actions!(row.original),
-      };
-      base.push(actionsCol);
+      });
     }
     return base;
   }, [props.columns, props.actions, renderers]);
 
-  const initialSort: SortingState = props.grid.defaultSort
-    ? [{ id: props.grid.defaultSort.field, desc: props.grid.defaultSort.order === "desc" }]
-    : [];
-
   const table = useReactTable<T>({
     data: props.data,
     columns,
-    initialState: {
-      sorting: initialSort,
-      pagination: { pageIndex: 0, pageSize: props.grid.pageSize },
-    },
-    getCoreRowModel:       getCoreRowModel(),
-    getSortedRowModel:     getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    rowCount: props.rowCount,
+    state: props.state,
+    onSortingChange:       props.onSortingChange,
+    onPaginationChange:    props.onPaginationChange,
+    onColumnFiltersChange: props.onColumnFiltersChange,
+    manualSorting:    true,
+    manualPagination: true,
+    manualFiltering:  true,
+    getCoreRowModel:  getCoreRowModel(),
   });
 
   if (!props.isLoading && props.data.length === 0 && props.emptyState) {
@@ -82,6 +97,16 @@ export function EntityGrid<T extends { id?: number | string }>(
 
   return (
     <div>
+      {props.onSearchChange !== undefined && (
+        <div className={props.searchClassName}>
+          <input
+            type="search"
+            placeholder="Search"
+            value={props.search ?? ""}
+            onChange={(e) => props.onSearchChange!(e.target.value)}
+          />
+        </div>
+      )}
       <table className={props.className}>
         <thead className={props.headerClassName}>
           {table.getHeaderGroups().map((hg) => (
