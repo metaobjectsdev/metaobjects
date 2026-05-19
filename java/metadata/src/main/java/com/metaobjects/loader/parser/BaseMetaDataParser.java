@@ -15,6 +15,8 @@ import com.metaobjects.registry.TypeDefinition;
 import com.metaobjects.registry.ChildRequirement;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.util.MetaDataUtil;
+import com.metaobjects.validator.MetaValidator;
+import com.metaobjects.view.MetaView;
 // BaseMetaDataParser is format-agnostic; JSON parsing is handled by CanonicalJsonParser
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -261,13 +263,13 @@ public abstract class BaseMetaDataParser {
             }
             
             // Validation rule: Object and field types require names (unless overlay)
-            if (("object".equals(typeName) || "field".equals(typeName)) && !Boolean.TRUE.equals(isOverlay)) {
-                throw new MetaDataException("MetaData [type=" + typeName + "][subType=" + subTypeName 
+            if ((MetaObject.TYPE_OBJECT.equals(typeName) || MetaField.TYPE_FIELD.equals(typeName)) && !Boolean.TRUE.equals(isOverlay)) {
+                throw new MetaDataException("MetaData [type=" + typeName + "][subType=" + subTypeName
                     + "] requires a name to be specified in file [" + getFilename() + "]");
             }
-            
+
             // Auto-naming only allowed for validator and view types (and not abstract at root)
-            if (("validator".equals(typeName) || "view".equals(typeName)) && 
+            if (isAutoNamingType(typeName) &&
                 !(isRoot && Boolean.TRUE.equals(isAbstract))) {
                 // Generate sequential name based on subtype if available, otherwise use type
                 String namePrefix = (subTypeName != null && !subTypeName.isEmpty()) 
@@ -881,6 +883,23 @@ public abstract class BaseMetaDataParser {
 
         // Default to string
         return "string";
+    }
+
+    /**
+     * Returns {@code true} if nodes of the given type use auto-naming (i.e. the parser
+     * may generate a sequential name when no explicit name is provided).
+     *
+     * <p>Currently only {@link MetaValidator#TYPE_VALIDATOR} and {@link MetaView#TYPE_VIEW}
+     * nodes are auto-named.  All other types require an explicit name.  This predicate is
+     * the single source of truth for the auto-naming type set — both the parser and the
+     * serializer ({@link com.metaobjects.io.json.CanonicalJsonSerializer}) consume it so
+     * the two stay in sync automatically.</p>
+     *
+     * @param typeName the type string as it appears in metadata (e.g. {@code "validator"})
+     * @return {@code true} if the type participates in auto-naming
+     */
+    public static boolean isAutoNamingType(String typeName) {
+        return MetaValidator.TYPE_VALIDATOR.equals(typeName) || MetaView.TYPE_VIEW.equals(typeName);
     }
 
 
