@@ -18,7 +18,7 @@ Equal weight, shipping per-language:
 
 ## Status
 
-TypeScript reference implementation is at v0.3. Java port is planned (H3 on the roadmap). Python and C# are planned later.
+TypeScript reference implementation is at v0.3. Java port is in progress (H3 on the roadmap). **C# loader + conformance shipped** (loader, canonical serializer, and a `dotnet test` conformance runner that runs the full shared corpus; codegen + runtime remain out of scope for C#). Python is planned later.
 
 See `spec/roadmap.md` for current + planned work.
 
