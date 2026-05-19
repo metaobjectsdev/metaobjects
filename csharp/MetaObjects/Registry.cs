@@ -57,11 +57,14 @@ public sealed record AttrSchema(
 /// </summary>
 public sealed class TypeDefinition
 {
+    private readonly List<ChildRule> _childRules;
+    private readonly List<AttrSchema> _attributes;
+
     public TypeId TypeId { get; }
     public string Description { get; }
     public Func<TypeId, string, MetaData> Factory { get; }
-    public List<ChildRule> ChildRules { get; }
-    public List<AttrSchema> Attributes { get; }
+    public IReadOnlyList<ChildRule> ChildRules => _childRules;
+    public IReadOnlyList<AttrSchema> Attributes => _attributes;
     public DataType? DataType { get; }
 
     public TypeDefinition(
@@ -74,11 +77,14 @@ public sealed class TypeDefinition
     {
         TypeId = typeId;
         Description = description;
-        ChildRules = childRules;
+        _childRules = new List<ChildRule>(childRules);
         Factory = factory;
-        Attributes = attributes;
+        _attributes = new List<AttrSchema>(attributes);
         DataType = dataType;
     }
+
+    internal void AppendAttr(AttrSchema attr) => _attributes.Add(attr);
+    internal void AppendChildRule(ChildRule rule) => _childRules.Add(rule);
 }
 
 // ---------------------------------------------------------------------------
@@ -228,12 +234,12 @@ public sealed class TypeRegistry
                     ErrorCode.ERR_PROVIDER_ATTR_CONFLICT);
             }
 
-            def.Attributes.Add(attr);
+            def.AppendAttr(attr);
         }
 
         foreach (ChildRule rule in childRules ?? [])
         {
-            def.ChildRules.Add(rule);
+            def.AppendChildRule(rule);
         }
     }
 }

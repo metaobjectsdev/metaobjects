@@ -14,6 +14,9 @@ public interface IMetaDataTypeProvider
     /// <summary>Stable id; other providers reference it in <see cref="Dependencies"/>.</summary>
     string Id { get; }
 
+    /// <summary>Human/AI-facing description of what this provider contributes. Optional.</summary>
+    string? Description => null;
+
     /// <summary>
     /// Ids of providers that must register before this one.
     /// Return an empty list when there are no dependencies.

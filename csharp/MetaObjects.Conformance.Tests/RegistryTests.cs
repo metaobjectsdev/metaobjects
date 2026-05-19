@@ -9,12 +9,14 @@ public class RegistryTests
     public void Register_then_find_round_trips()
     {
         var reg = new TypeRegistry();
-        reg.Register(new TypeDefinition(
+        var def = new TypeDefinition(
             new TypeId("object", "entity"), "test", new List<ChildRule>(),
             (id, name) => throw new System.NotImplementedException(),
-            new List<AttrSchema>()));
+            new List<AttrSchema>());
+        reg.Register(def);
         Assert.True(reg.Has("object", "entity"));
         Assert.Equal(new[] { "entity" }, reg.AllSubTypesOf("object"));
+        Assert.Same(def, reg.Find("object", "entity"));
     }
 
     [Fact]
