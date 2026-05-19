@@ -231,6 +231,8 @@ export function mapColumnType(
   let defaultExpr: DefaultExpr | undefined;
   const defaultAttr = field.ownAttr(FIELD_ATTR_DEFAULT);
   if (defaultAttr !== undefined) {
+    // SQL-expression detection runs on the raw string value — a string like
+    // "CURRENT_TIMESTAMP" or "now" must be emitted as sql`...`, not a literal.
     if (typeof defaultAttr === "string" && isSqlExprDefault(defaultAttr)) {
       const canonical = canonicalizeSqlExpr(defaultAttr);
       // "now"/"CURRENT_TIMESTAMP" gets the dialect-aware emit path (defaultNow for postgres);
@@ -241,7 +243,12 @@ export function mapColumnType(
         defaultExpr = { kind: "sqlExpr", raw: canonical };
       }
     } else {
-      defaultExpr = { kind: "literal", value: defaultAttr };
+      // Literal branch: use the field-type-converted value so booleans/numbers
+      // are real JS booleans/numbers (not strings). field.defaultValue() applies
+      // convertToDataType(field.dataType, raw) — Java parity with getDefaultValue().
+      // JSON.stringify(false) → "false", JSON.stringify(0) → "0" (unquoted) in templates.
+      const typedValue = field.defaultValue() ?? defaultAttr;
+      defaultExpr = { kind: "literal", value: typedValue };
     }
   }
 

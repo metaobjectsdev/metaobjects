@@ -3,8 +3,9 @@
 // Extends MetaData directly: no model wrapper, no metaOf() indirection.
 // Children are already concrete typed nodes; accessors filter by type constant.
 
-import { MetaData } from "./meta-data.js";
+import { MetaData, type AttrValue } from "./meta-data.js";
 import { type DataType, type DataTypeAware, DATA_TYPE_STRING } from "../data-type.js";
+import { convertToDataType } from "../data-converter.js";
 import {
   TYPE_VALIDATOR,
   TYPE_VIEW,
@@ -40,6 +41,26 @@ export class MetaField extends MetaData implements DataTypeAware {
 
   get default(): unknown {
     return this.ownAttr(FIELD_ATTR_DEFAULT);
+  }
+
+  /**
+   * The default value for this field, converted to the field's own DataType.
+   *
+   * Java parity: MetaField.getDefaultValue() — reads the raw @default attr and
+   * converts it via DataConverter.toTypeSafe(getDataType(), raw). This ensures
+   * that even if the raw value was stored as a string (e.g. "@default": "false"
+   * in YAML or string-keyed JSON), the returned value is the correctly-typed
+   * boolean/number/string for this field's subtype.
+   *
+   * Returns undefined when @default is not set on this field.
+   * Result is cached after freeze (same pattern as validators()/views()).
+   */
+  defaultValue(): AttrValue | undefined {
+    return this.cached("defaultValue", () => {
+      const raw = this.ownAttr(FIELD_ATTR_DEFAULT);
+      if (raw === undefined) return undefined;
+      return convertToDataType(this.dataType, raw);
+    });
   }
 
   get maxLength(): number | undefined {

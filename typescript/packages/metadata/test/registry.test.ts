@@ -572,3 +572,82 @@ describe("TypeDefinition — dataType", () => {
     expect(registry.find("field", "string")!.dataType).toBe("string");
   });
 });
+
+// ---------------------------------------------------------------------------
+// TypeRegistry — SUBTYPE_BASE rejection as attr valueType
+//
+// SUBTYPE_BASE ("base") is a valid node subType (e.g. object.base, field.base)
+// but must NOT be used as an AttrSchema.valueType. Using it as a valueType is
+// a design error: its DataType resolves to DATA_TYPE_STRING, silently coercing
+// boolean/number defaults to strings. Polymorphic attrs must omit valueType.
+// ---------------------------------------------------------------------------
+
+describe("TypeRegistry — rejects SUBTYPE_BASE as attr valueType", () => {
+  it("register() throws when an attr schema declares valueType: 'base'", () => {
+    const registry = new TypeRegistry();
+    expect(() => {
+      registry.register({
+        typeId: new TypeId(TYPE_FIELD, "string"),
+        description: "test",
+        factory: () => stubFactory(),
+        childRules: [],
+        attributes: [
+          {
+            name: "badAttr",
+            valueType: SUBTYPE_BASE as never, // cast: intentional invalid usage
+            required: false,
+            description: "bad attr",
+          },
+        ],
+      });
+    }).toThrow(/SUBTYPE_BASE.*not valid for attrs|valueType.*base.*not valid/i);
+  });
+
+  it("extend() throws when an added attr schema declares valueType: 'base'", () => {
+    const registry = new TypeRegistry();
+    registry.register(makeDef(TYPE_FIELD, FIELD_SUBTYPE_STRING));
+    expect(() => {
+      registry.extend(TYPE_FIELD, FIELD_SUBTYPE_STRING, {
+        attributes: [
+          {
+            name: "badAttr",
+            valueType: SUBTYPE_BASE as never, // cast: intentional invalid usage
+            required: false,
+            description: "bad attr",
+          },
+        ],
+      });
+    }).toThrow(/SUBTYPE_BASE.*not valid for attrs|valueType.*base.*not valid/i);
+  });
+
+  it("omitting valueType (declared-but-untyped) is valid — no error", () => {
+    const registry = new TypeRegistry();
+    expect(() => {
+      registry.register({
+        typeId: new TypeId(TYPE_FIELD, "custom"),
+        description: "test",
+        factory: () => stubFactory(),
+        childRules: [],
+        attributes: [
+          {
+            name: "polymorphicAttr",
+            // No valueType — declared-but-untyped (valid)
+            required: false,
+            description: "polymorphic attr",
+          },
+        ],
+      });
+    }).not.toThrow();
+  });
+
+  it("object.base (abstract base object) still parses fine — SUBTYPE_BASE rejection is attr-scoped only", () => {
+    // Confirm the rejection does NOT affect non-attr nodes that legitimately
+    // use SUBTYPE_BASE as their node subtype (e.g. object.base for abstract objects).
+    const registry = new TypeRegistry();
+    registerCoreTypes(registry);
+    // object.base is registered by core types — must be reachable.
+    expect(registry.has(TYPE_OBJECT, SUBTYPE_BASE)).toBe(true);
+    // field.base is also registered.
+    expect(registry.has(TYPE_FIELD, SUBTYPE_BASE)).toBe(true);
+  });
+});

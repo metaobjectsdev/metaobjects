@@ -606,12 +606,12 @@ function applyInlineAttrsAndUnknownKeys(
 
     let value: AttrValue;
     try {
-      if (attrSpec !== undefined && attrSpec.valueType !== SUBTYPE_BASE) {
+      if (attrSpec !== undefined && attrSpec.valueType !== undefined) {
         // Declared attr with a concrete value-type — convert toward that DataType.
         const dataType = registry.find(TYPE_ATTR, attrSpec.valueType)?.dataType ?? DATA_TYPE_STRING;
         value = convertToDataType(dataType, rawVal);
       } else {
-        // Undeclared @-attr OR declared with SUBTYPE_BASE (polymorphic/unconstrained)
+        // Undeclared @-attr OR declared-but-untyped (valueType absent, e.g. @default)
         // — store the value type-preserved, exactly as the JSON author wrote it.
         value = toAttrValue(rawVal);
       }

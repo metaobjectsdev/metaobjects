@@ -1,5 +1,5 @@
 import type { AttrValue, MetaData } from "./meta/meta-data.js";
-import { type AttrSubType, CHILD_RULE_WILDCARD } from "./constants.js";
+import { type AttrSubType, CHILD_RULE_WILDCARD, SUBTYPE_BASE, TYPE_ATTR } from "./constants.js";
 import type { DataType } from "./data-type.js";
 
 export class TypeId {
@@ -29,8 +29,19 @@ export interface ChildRule {
 export interface AttrSchema {
   /** Attribute name WITHOUT the "@" prefix (e.g. "dbColumn", "currency"). */
   name: string;
-  /** The attribute's value type — one of the registered attr subtypes. */
-  valueType: AttrSubType;
+  /**
+   * The attribute's value type — one of the registered attr subtypes.
+   *
+   * Optional: when absent, the attr is declared-but-untyped (no parse-time
+   * coercion; value stored raw via `toAttrValue`). Use this for polymorphic
+   * attrs whose value type is determined by the owning node at consumption
+   * time (e.g. `@default`, which is typed by its owning field's subtype).
+   *
+   * `SUBTYPE_BASE` ("base") MUST NOT be used here — it is the universal root
+   * subtype for object/field/etc. nodes and carries no "untyped" semantics for
+   * attrs. Attempting to register an AttrSchema with `valueType: "base"` throws.
+   */
+  valueType?: AttrSubType;
   /** Whether this attribute must be present on the node. */
   required: boolean;
   /** Default value applied when the attribute is absent. Optional. */
@@ -69,6 +80,21 @@ export class TypeRegistry {
         `TypeRegistry: duplicate registration for "${key}" (type="${def.typeId.type}", subType="${def.typeId.subType}")`,
       );
     }
+
+    // Reject SUBTYPE_BASE as an attr valueType. "base" is the universal root
+    // subtype for object/field/etc. nodes; it must NOT be used as an attr value
+    // type because it carries no meaningful type semantics for attrs (its DataType
+    // resolves to DATA_TYPE_STRING, silently coercing boolean/number defaults to
+    // strings). Polymorphic attrs (e.g. @default) must omit valueType instead.
+    for (const attr of def.attributes) {
+      if (attr.valueType === SUBTYPE_BASE) {
+        throw new Error(
+          `TypeRegistry.register: attr "${attr.name}" on "${key}" declares valueType "${SUBTYPE_BASE}", ` +
+          `which is not valid for attrs. Use no valueType (omit the field) for a polymorphic/untyped attr.`,
+        );
+      }
+    }
+
     this._defs.set(key, def);
 
     const list = this._subTypes.get(def.typeId.type);
@@ -129,6 +155,12 @@ export class TypeRegistry {
       );
     }
     for (const attr of ext.attributes ?? []) {
+      if (attr.valueType === SUBTYPE_BASE) {
+        throw new Error(
+          `TypeRegistry.extend: attr "${attr.name}" being added to "${type}.${subType}" declares valueType "${SUBTYPE_BASE}", ` +
+          `which is not valid for attrs. Use no valueType (omit the field) for a polymorphic/untyped attr.`,
+        );
+      }
       if (def.attributes.some((a) => a.name === attr.name)) {
         throw new Error(
           `TypeRegistry.extend: attribute "${attr.name}" is already declared on "${type}.${subType}"`,
