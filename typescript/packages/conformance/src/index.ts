@@ -6,3 +6,4 @@ export * from "./operation-script.js";
 export * from "./report.js";
 export * from "./result.js";
 export * from "./runner.js";
+export * from "./expected-failures.js";
