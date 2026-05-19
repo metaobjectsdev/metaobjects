@@ -666,21 +666,19 @@ public class MetaDataLoader implements LoaderConfigurable {
      * {@link #processSources}), parse each URI into this loader's {@link MetaRoot}.
      * Called automatically from {@link #performInitializationInternal} so that
      * {@code setSourceURIs(...).init()} is the standard URI-based loading pattern.
+     *
+     * <p>Each URI is wrapped in a {@link URIMetaDataSource} (which infers JSON vs XML
+     * from the file extension) and routed through the canonical
+     * {@link #load(List)} method, ensuring a single parser-dispatch path.</p>
      */
     private void loadSourceURIsIfPresent() {
         if (sourceURIs == null || sourceURIs.isEmpty()) return;
 
-        for (URI sourceURI : sourceURIs) {
-            String filename = sourceURI.toString();
-            JsonMetaDataParser jsonParser = new JsonMetaDataParser(this, filename);
-            try (InputStream is = URIHelper.getInputStream(sourceURI)) {
-                jsonParser.loadFromStream(is);
-            } catch (IOException e) {
-                throw new MetaDataLoadingException(
-                    "Failed to load metadata from [" + filename + "]: " + e.getMessage(),
-                    getName(), LoadingState.Phase.INITIALIZING, 0, e);
-            }
+        List<MetaDataSource> sources = new ArrayList<>();
+        for (URI uri : sourceURIs) {
+            sources.add(new URIMetaDataSource(uri));
         }
+        load(sources);
     }
 
     private void validateAndTransitionToInitializing() {
