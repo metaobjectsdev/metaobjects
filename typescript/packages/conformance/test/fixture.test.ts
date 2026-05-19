@@ -52,3 +52,35 @@ test("fixtures are returned sorted by name", async () => {
   const fixtures = await discoverFixtures(root);
   expect(fixtures.map((f) => f.name)).toEqual(["a-fix", "b-fix"]);
 });
+
+test("hasExpectedEffective and hasExpectedErrors reflect presence of those files", async () => {
+  const root = await corpus({
+    "with-both/input/m.json": "{}",
+    "with-both/expected-effective.json": "{}",
+    "with-both/expected-errors.json": "[]",
+    "without/input/m.json": "{}",
+  });
+  const fixtures = await discoverFixtures(root);
+  const withBoth = fixtures.find((f) => f.name === "with-both")!;
+  const without = fixtures.find((f) => f.name === "without")!;
+  expect(withBoth.hasExpectedEffective).toBe(true);
+  expect(withBoth.hasExpectedErrors).toBe(true);
+  expect(without.hasExpectedEffective).toBe(false);
+  expect(without.hasExpectedErrors).toBe(false);
+});
+
+test("a malformed providers.json (non-array) causes discoverFixtures to reject", async () => {
+  const root = await corpus({
+    "bad-providers/input/m.json": "{}",
+    "bad-providers/providers.json": '{"not":"an array"}',
+  });
+  await expect(discoverFixtures(root)).rejects.toThrow(/providers\.json must be a JSON array of strings/);
+});
+
+test("a malformed providers.json (array with non-strings) causes discoverFixtures to reject", async () => {
+  const root = await corpus({
+    "bad-providers2/input/m.json": "{}",
+    "bad-providers2/providers.json": '[1, 2, 3]',
+  });
+  await expect(discoverFixtures(root)).rejects.toThrow(/providers\.json must be a JSON array of strings/);
+});

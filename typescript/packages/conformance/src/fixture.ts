@@ -21,7 +21,13 @@ export interface Fixture {
 }
 
 async function exists(path: string): Promise<boolean> {
-  try { await stat(path); return true; } catch { return false; }
+  try {
+    await stat(path);
+    return true;
+  } catch (e: unknown) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw e;
+  }
 }
 
 /** Discover every scenario directory under a corpus root, sorted by name. */
@@ -39,8 +45,18 @@ export async function discoverFixtures(corpusRoot: string): Promise<Fixture[]> {
       throw new Error(`Fixture '${name}' has no input/ directory`);
     }
     let providers: readonly string[] = DEFAULT_PROVIDERS;
-    if (await exists(join(dir, "providers.json"))) {
-      providers = JSON.parse(await readFile(join(dir, "providers.json"), "utf8"));
+    try {
+      const raw: unknown = JSON.parse(
+        await readFile(join(dir, "providers.json"), "utf8"),
+      );
+      if (!Array.isArray(raw) || !raw.every((p) => typeof p === "string")) {
+        throw new Error(
+          `Fixture '${name}': providers.json must be a JSON array of strings`,
+        );
+      }
+      providers = raw;
+    } catch (e: unknown) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     }
     fixtures.push({
       name, dir, inputDir, providers,
