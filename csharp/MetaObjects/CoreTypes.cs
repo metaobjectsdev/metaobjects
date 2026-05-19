@@ -196,12 +196,11 @@ public static class CoreTypes
         ];
         foreach (string subType in Constants.OBJECT_SUBTYPES)
         {
-            string capturedSubType = subType;
             registry.Register(
                 Def(
                     Constants.TYPE_OBJECT,
-                    capturedSubType,
-                    $"Object/entity ({capturedSubType})",
+                    subType,
+                    $"Object/entity ({subType})",
                     new List<ChildRule>(objectRules),
                     (tid, n) => new MetaObject(tid, n),
                     CoreAttrSchemas.ObjectAttrs.ToList()));
@@ -217,58 +216,55 @@ public static class CoreTypes
         ];
         foreach (string subType in Constants.FIELD_SUBTYPES)
         {
-            string capturedSubType = subType;
             List<AttrSchema> fieldAttrs =
-                capturedSubType == Constants.FIELD_SUBTYPE_CURRENCY
+                subType == Constants.FIELD_SUBTYPE_CURRENCY
                     ? [.. CoreAttrSchemas.CommonFieldAttrs, CoreAttrSchemas.CurrencyFieldAttr]
                     : CoreAttrSchemas.CommonFieldAttrs.ToList();
 
             registry.Register(
                 Def(
                     Constants.TYPE_FIELD,
-                    capturedSubType,
-                    $"Field of type {capturedSubType}",
+                    subType,
+                    $"Field of type {subType}",
                     new List<ChildRule>(fieldRules),
                     (tid, n) => new MetaField(tid, n),
                     fieldAttrs,
-                    DataTypeFor(FieldDataType, capturedSubType, "field")));
+                    DataTypeFor(FieldDataType, subType, "field")));
         }
 
         // attr — 9 subtypes (base + 8), no children allowed
         foreach (string subType in Constants.ATTR_SUBTYPES)
         {
-            string capturedSubType = subType;
             registry.Register(
                 Def(
                     Constants.TYPE_ATTR,
-                    capturedSubType,
-                    $"Attribute of type {capturedSubType}",
+                    subType,
+                    $"Attribute of type {subType}",
                     [],
                     (tid, n) => new MetaAttr(tid, n),
                     [],
-                    DataTypeFor(AttrDataType, capturedSubType, "attr")));
+                    DataTypeFor(AttrDataType, subType, "attr")));
         }
 
         // validator — 6 subtypes (base + 5); dispatch to subtype-specific class
         List<ChildRule> validatorRules = [Wildcard(Constants.TYPE_ATTR)];
         foreach (string subType in Constants.VALIDATOR_SUBTYPES)
         {
-            string capturedSubType = subType;
             Func<TypeId, string, MetaData> nodeFactory =
-                ValidatorClassMap.TryGetValue(capturedSubType, out var vf)
+                ValidatorClassMap.TryGetValue(subType, out var vf)
                     ? vf
                     : (tid, n) => new MetaValidator(tid, n);
 
             IReadOnlyList<AttrSchema> validatorAttrs =
-                CoreAttrSchemas.ValidatorAttrsMap.TryGetValue(capturedSubType, out var va)
+                CoreAttrSchemas.ValidatorAttrsMap.TryGetValue(subType, out var va)
                     ? va
                     : [];
 
             registry.Register(
                 Def(
                     Constants.TYPE_VALIDATOR,
-                    capturedSubType,
-                    $"Validator ({capturedSubType})",
+                    subType,
+                    $"Validator ({subType})",
                     new List<ChildRule>(validatorRules),
                     nodeFactory,
                     validatorAttrs.ToList()));
@@ -277,17 +273,16 @@ public static class CoreTypes
         // view — 14 subtypes (base + 13); only attr children
         foreach (string subType in Constants.VIEW_SUBTYPES)
         {
-            string capturedSubType = subType;
             List<AttrSchema> viewAttrs =
-                capturedSubType == Constants.VIEW_SUBTYPE_CURRENCY
+                subType == Constants.VIEW_SUBTYPE_CURRENCY
                     ? CoreAttrSchemas.CurrencyViewAttrs.ToList()
                     : [];
 
             registry.Register(
                 Def(
                     Constants.TYPE_VIEW,
-                    capturedSubType,
-                    $"View ({capturedSubType})",
+                    subType,
+                    $"View ({subType})",
                     [Wildcard(Constants.TYPE_ATTR)],
                     (tid, n) => new MetaView(tid, n),
                     viewAttrs));
@@ -296,17 +291,16 @@ public static class CoreTypes
         // layout — 2 subtypes (base + dataGrid); only attr children
         foreach (string subType in Constants.LAYOUT_SUBTYPES)
         {
-            string capturedSubType = subType;
             List<AttrSchema> layoutAttrs =
-                capturedSubType == Constants.LAYOUT_SUBTYPE_DATA_GRID
+                subType == Constants.LAYOUT_SUBTYPE_DATA_GRID
                     ? CoreAttrSchemas.DataGridLayoutAttrs.ToList()
                     : [];
 
             registry.Register(
                 Def(
                     Constants.TYPE_LAYOUT,
-                    capturedSubType,
-                    $"Layout ({capturedSubType})",
+                    subType,
+                    $"Layout ({subType})",
                     [Wildcard(Constants.TYPE_ATTR)],
                     (tid, n) => new MetaLayout(tid, n),
                     layoutAttrs));
@@ -315,12 +309,11 @@ public static class CoreTypes
         // source — 3 subtypes (base + dbTable + dbView); only attr children
         foreach (string subType in Constants.SOURCE_SUBTYPES)
         {
-            string capturedSubType = subType;
             registry.Register(
                 Def(
                     Constants.TYPE_SOURCE,
-                    capturedSubType,
-                    $"Source ({capturedSubType})",
+                    subType,
+                    $"Source ({subType})",
                     [Wildcard(Constants.TYPE_ATTR)],
                     (tid, n) => new MetaSource(tid, n),
                     []));
@@ -329,22 +322,21 @@ public static class CoreTypes
         // origin — 3 subtypes (base + passthrough + aggregate); dispatch to subtype class
         foreach (string subType in Constants.ORIGIN_SUBTYPES)
         {
-            string capturedSubType = subType;
             Func<TypeId, string, MetaData> nodeFactory =
-                OriginClassMap.TryGetValue(capturedSubType, out var of)
-                    ? of
+                OriginClassMap.TryGetValue(subType, out var originFactory)
+                    ? originFactory
                     : (tid, n) => new MetaOrigin(tid, n);
 
             IReadOnlyList<AttrSchema> originAttrs =
-                CoreAttrSchemas.OriginAttrsMap.TryGetValue(capturedSubType, out var oa)
+                CoreAttrSchemas.OriginAttrsMap.TryGetValue(subType, out var oa)
                     ? oa
                     : [];
 
             registry.Register(
                 Def(
                     Constants.TYPE_ORIGIN,
-                    capturedSubType,
-                    $"Origin ({capturedSubType})",
+                    subType,
+                    $"Origin ({subType})",
                     [Wildcard(Constants.TYPE_ATTR)],
                     nodeFactory,
                     originAttrs.ToList()));
@@ -353,22 +345,21 @@ public static class CoreTypes
         // identity — 2 subtypes (primary + secondary — NO base); dispatch to subtype class
         foreach (string subType in Constants.IDENTITY_SUBTYPES)
         {
-            string capturedSubType = subType;
             Func<TypeId, string, MetaData> nodeFactory =
-                IdentityClassMap.TryGetValue(capturedSubType, out var idf)
+                IdentityClassMap.TryGetValue(subType, out var idf)
                     ? idf
                     : (tid, n) => new MetaIdentity(tid, n);
 
             IReadOnlyList<AttrSchema> idAttrs =
-                CoreAttrSchemas.IdentityAttrsMap.TryGetValue(capturedSubType, out var ia)
+                CoreAttrSchemas.IdentityAttrsMap.TryGetValue(subType, out var ia)
                     ? ia
                     : [CoreAttrSchemas.IdentityFieldsAttr];
 
             registry.Register(
                 Def(
                     Constants.TYPE_IDENTITY,
-                    capturedSubType,
-                    $"Identity ({capturedSubType})",
+                    subType,
+                    $"Identity ({subType})",
                     [Wildcard(Constants.TYPE_ATTR)],
                     nodeFactory,
                     idAttrs.ToList()));
@@ -377,12 +368,11 @@ public static class CoreTypes
         // relationship — 4 subtypes (base + association + aggregation + composition)
         foreach (string subType in Constants.RELATIONSHIP_SUBTYPES)
         {
-            string capturedSubType = subType;
             registry.Register(
                 Def(
                     Constants.TYPE_RELATIONSHIP,
-                    capturedSubType,
-                    $"Relationship ({capturedSubType})",
+                    subType,
+                    $"Relationship ({subType})",
                     [Wildcard(Constants.TYPE_ATTR)],
                     (tid, n) => new MetaRelationship(tid, n),
                     CoreAttrSchemas.RelationshipAttrs.ToList()));

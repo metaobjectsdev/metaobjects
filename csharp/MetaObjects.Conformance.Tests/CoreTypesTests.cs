@@ -26,4 +26,14 @@ public class CoreTypesTests
         var node = def.Factory(def.TypeId, "pk");
         Assert.IsType<MetaObjects.Meta.MetaPrimaryIdentity>(node);
     }
+
+    [Fact]
+    public void Core_provider_registers_exactly_63_types()
+    {
+        // Guard: if a Constants subtype array gains an entry without a matching
+        // FieldDataType / AttrDataType mapping, RegisterCoreTypeDefs throws and
+        // this test catches the mismatch before it reaches downstream callers.
+        var reg = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        Assert.Equal(63, reg.AllTypes().Count);
+    }
 }
