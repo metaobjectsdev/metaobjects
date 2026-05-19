@@ -9,11 +9,11 @@ package com.metaobjects.validator;
 import com.metaobjects.InvalidMetaDataException;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataNotFoundException;
+import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.field.MetaField;
-import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.util.MetaDataUtil;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -80,10 +80,10 @@ public abstract class MetaValidator extends MetaData {
      * Gets the declaring meta field.<br>
      * NOTE: This may not be the MetaField from which the view
      * was retrieved, so be careful!
-     * @return the MetaField that declares this validator, or null if attached to MetaDataLoader
+     * @return the MetaField that declares this validator, or null if attached to the metadata root
      */
     public MetaField getDeclaringMetaField() {
-        if ( getParent() instanceof com.metaobjects.MetaRoot) return null;
+        if ( getParent() instanceof MetaRoot) return null;
         if ( getParent() instanceof MetaField ) return (MetaField) getParent();
         throw new InvalidMetaDataException(this, "MetaValidators can only be attached to MetaFields " +
                 "or the metadata root as abstracts");

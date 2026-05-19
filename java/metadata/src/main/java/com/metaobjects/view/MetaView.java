@@ -4,8 +4,8 @@ import com.metaobjects.InvalidMetaDataException;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaDataNotFoundException;
+import com.metaobjects.MetaRoot;
 import com.metaobjects.field.MetaField;
-import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.util.MetaDataUtil;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -73,7 +73,7 @@ public abstract class MetaView extends MetaData {
     //  return addChild(attr);
     //}
     public MetaField getDeclaringMetaField() {
-        if (getParent() instanceof com.metaobjects.MetaRoot) return null;
+        if (getParent() instanceof MetaRoot) return null;
         if (getParent() instanceof MetaField) return (MetaField) getParent();
         throw new InvalidMetaDataException(this, "MetaViews can only be attached to MetaFields " +
                 "or the metadata root as abstracts");

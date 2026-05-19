@@ -12,7 +12,6 @@ import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.constraint.PlacementConstraint;
 import com.metaobjects.constraint.RegexConstraint;
-import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.util.DataConverter;
 import com.metaobjects.validator.MetaValidator;
 import com.metaobjects.validator.MetaValidatorNotFoundException;
@@ -190,7 +189,7 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
      * @return The declaring MetaClass
      */
     public MetaObject getDeclaringObject() {
-        if ( getParent() instanceof com.metaobjects.MetaRoot) return null;
+        if ( getParent() instanceof MetaRoot) return null;
         if ( getParent() instanceof MetaObject ) return (MetaObject) getParent();
         throw new InvalidMetaDataException(this, "MetaFields can only be attached to MetaObjects " +
                 "or the metadata root as abstracts");

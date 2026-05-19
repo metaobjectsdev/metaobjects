@@ -8,9 +8,8 @@
  * Contributors:
  *    Doug Mealing LLC - initial API and implementation and/or initial documentation
  */
-package com.metaobjects.loader.simple;
+package com.metaobjects.loader;
 
-import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import java.net.URI;
 import java.util.List;
@@ -19,12 +18,13 @@ import java.util.List;
  * Base class for loader tests that uses the shared registry approach
  * to prevent registry conflicts between tests.
  *
- * <p>H3a Task 5: SimpleLoader has been removed; this class now delegates to
- * {@link MetaDataLoader} via {@link SharedRegistryTestBase#createTestLoader}.</p>
+ * <p>H3a Task 6: renamed from {@code SimpleLoaderTestBase} (package
+ * {@code com.metaobjects.loader.simple}) to reflect that the class now
+ * delegates to {@link MetaDataLoader}, not the removed {@code SimpleLoader}.</p>
  *
  * @author dmealing
  */
-public class SimpleLoaderTestBase extends SharedRegistryTestBase {
+public class MetaDataLoaderTestBase extends SharedRegistryTestBase {
 
     /**
      * Initialize a loader with specific sources while using the shared registry.

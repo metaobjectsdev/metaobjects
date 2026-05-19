@@ -1,6 +1,5 @@
-package com.metaobjects.loader.simple;
+package com.metaobjects.loader;
 
-import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
 import org.junit.Test;
 
@@ -10,9 +9,13 @@ import java.util.Arrays;
 import static org.junit.Assert.assertNotNull;
 
 /**
- * Loader tests — H3a Task 5: retargeted from SimpleLoader to MetaDataLoader.
+ * Loader URI-based tests — exercises {@link MetaDataLoader} with classpath resource URIs.
+ *
+ * <p>H3a Task 6: renamed from {@code SimpleLoaderTest} (package
+ * {@code com.metaobjects.loader.simple}) to reflect that the class now
+ * exercises {@link MetaDataLoader}, not the removed {@code SimpleLoader}.</p>
  */
-public class SimpleLoaderTest extends SimpleLoaderTestBase {
+public class MetaDataLoaderUriTest extends MetaDataLoaderTestBase {
 
     @Test
     public void testLoadSimpleTypes() throws URISyntaxException {
