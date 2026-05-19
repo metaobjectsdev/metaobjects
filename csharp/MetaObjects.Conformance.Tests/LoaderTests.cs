@@ -28,7 +28,7 @@ public class LoaderTests
         // The base pipeline takes sources directly — no filesystem knowledge.
         const string json = "{\"metadata.root\":{\"children\":[{\"object.entity\":{\"name\":\"W\"}}]}}";
         var src = new InMemorySource(json, id: "inline.json");
-        var result = new MetaDataLoader().Load(new IMetaDataSource[] { src });
+        var result = new MetaDataLoader().Load([src]);
         Assert.Empty(result.Errors);
         Assert.NotNull(result.Root.OwnChildByName("W"));
     }
@@ -41,5 +41,14 @@ public class LoaderTests
             System.IO.Path.Combine(Corpus, "loader-basic-single-entity", "input"));
         Assert.Empty(result.Errors);
         Assert.Equal("loaded", loader.State);
+    }
+
+    [Fact]
+    public void FileMetaDataLoader_directory_read_failure_collects_error_and_state_is_error()
+    {
+        var loader = new FileMetaDataLoader();
+        var result = loader.LoadDirectory("/nonexistent/path/that/does/not/exist");
+        Assert.NotEmpty(result.Errors);
+        Assert.Equal("error", loader.State);
     }
 }

@@ -4,6 +4,8 @@
 // Ported from typescript/packages/metadata/src/loader/core/file-meta-data-loader.ts
 // and cross-referenced with Java H3a MetaDataLoader + FileMetaDataLoader.
 
+using MetaObjects.Meta;
+
 namespace MetaObjects.Loader;
 
 /// <summary>
@@ -75,10 +77,11 @@ public class FileMetaDataLoader : MetaDataLoader
         }
         catch (Exception ex)
         {
-            // Build an error-tagged synthetic-root result directly, bypassing
-            // Load() (which cannot accept pre-populated errors). The base
-            // Freeze flag is respected so the synthetic root is consistent.
-            var emptyRoot = new Meta.MetaRoot(
+            // The directory-read failed before any source was discovered. Return a
+            // synthetic empty root with the I/O error collected; transition State to
+            // "error" so the post-load contract is satisfied.
+            SetState("error");
+            var emptyRoot = new MetaRoot(
                 new TypeId(Constants.TYPE_METADATA, Constants.SUBTYPE_ROOT), "");
             if (Freeze) emptyRoot.Freeze();
             var dirError = new MetaError(

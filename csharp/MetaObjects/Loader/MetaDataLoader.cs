@@ -38,6 +38,13 @@ public class MetaDataLoader
     private readonly bool _strict;
 
     private string _state = "uninitialized";
+
+    /// <summary>
+    /// Protected setter so subclasses can transition state on failure paths
+    /// that bypass <see cref="Load"/> (e.g. directory-read failure in
+    /// <see cref="FileMetaDataLoader.LoadDirectory"/>).
+    /// </summary>
+    protected void SetState(string state) => _state = state;
     private MetaRoot? _root;
 
     // -------------------------------------------------------------------------
