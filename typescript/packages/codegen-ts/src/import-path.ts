@@ -49,17 +49,15 @@ export function crossEntitySpecifier(
   return withExt(`${prefix}${toEntity}`, extStyle);
 }
 
-/** Barrel (at outDir root) re-export specifier for an entity. */
+/** Barrel (at outDir root) re-export specifier for an entity.
+ *  Equivalent to crossEntitySpecifier with fromPkg=undefined (barrel is always at root). */
 export function barrelEntrySpecifier(
   layout: OutputLayout,
   pkg: string | undefined,
   entity: string,
   extStyle: ExtStyle,
 ): string {
-  if (layout === "flat") return withExt(`./${entity}`, extStyle);
-  const dir = packageToPath(pkg);
-  const spec = dir === "" ? `./${entity}` : `./${dir}/${entity}`;
-  return withExt(spec, extStyle);
+  return crossEntitySpecifier(layout, undefined, pkg, entity, extStyle);
 }
 
 /** A `dbImport` (or any module specifier) adjusted for a file at the given
