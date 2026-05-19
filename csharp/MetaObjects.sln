@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MetaObjects", "MetaObjects\MetaObjects.csproj", "{11684307-DFC2-4B11-869A-E4198C6FEC58}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MetaObjects.Conformance.Tests", "MetaObjects.Conformance.Tests\MetaObjects.Conformance.Tests.csproj", "{F4CB2029-C741-4C95-8726-9CA18C1F7665}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{11684307-DFC2-4B11-869A-E4198C6FEC58}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11684307-DFC2-4B11-869A-E4198C6FEC58}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11684307-DFC2-4B11-869A-E4198C6FEC58}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11684307-DFC2-4B11-869A-E4198C6FEC58}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F4CB2029-C741-4C95-8726-9CA18C1F7665}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F4CB2029-C741-4C95-8726-9CA18C1F7665}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F4CB2029-C741-4C95-8726-9CA18C1F7665}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F4CB2029-C741-4C95-8726-9CA18C1F7665}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
