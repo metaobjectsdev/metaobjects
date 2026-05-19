@@ -52,7 +52,10 @@ public abstract class MetaData
     private bool _frozen;
 
     /// <summary>Registry-supplied coarse value type — set by the registry factory at node construction.</summary>
-    protected DataType? _dataType;
+    private DataType? _dataType;
+
+    /// <summary>Read-only accessor for <see cref="_dataType"/>; available to subclasses.</summary>
+    protected DataType? DataTypeValue => _dataType;
 
     /// <summary>Per-instance read cache: only populated once the node is frozen.</summary>
     private readonly Dictionary<string, object?> _cache = new();
@@ -286,13 +289,13 @@ public abstract class MetaData
     /// <summary>Own children whose type matches — excludes inherited.</summary>
     public IReadOnlyList<MetaData> OwnChildrenOfType(string type)
     {
-        return OwnChildren().Where(c => c.Type == type).ToList();
+        return OwnChildren().Where(c => c.Type == type).ToArray();
     }
 
     /// <summary>Own children matching both type and subType — excludes inherited.</summary>
     public IReadOnlyList<MetaData> OwnChildrenOfSubType(string type, string subType)
     {
-        return OwnChildren().Where(c => c.Type == type && c.SubType == subType).ToList();
+        return OwnChildren().Where(c => c.Type == type && c.SubType == subType).ToArray();
     }
 
     /// <summary>First own child with matching name, or null — excludes inherited.</summary>
@@ -326,13 +329,13 @@ public abstract class MetaData
     /// <summary>Effective children whose type matches.</summary>
     public IReadOnlyList<MetaData> ChildrenOfType(string type)
     {
-        return Children().Where(c => c.Type == type).ToList();
+        return Children().Where(c => c.Type == type).ToArray();
     }
 
     /// <summary>Effective children matching both type and subType.</summary>
     public IReadOnlyList<MetaData> ChildrenOfSubType(string type, string subType)
     {
-        return Children().Where(c => c.Type == type && c.SubType == subType).ToList();
+        return Children().Where(c => c.Type == type && c.SubType == subType).ToArray();
     }
 
     /// <summary>First effective child with matching name, or null.</summary>
