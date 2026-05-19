@@ -28,6 +28,7 @@ export const ERROR_CODES = [
   "ERR_OVERLAY_NO_TARGET",
   "ERR_MALFORMED_YAML",
   "ERR_INVALID_ORIGIN",
+  "ERR_UNKNOWN",
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

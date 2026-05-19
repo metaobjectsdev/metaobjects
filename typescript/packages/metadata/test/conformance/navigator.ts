@@ -12,7 +12,7 @@ function matchSegment(node: MetaData, segment: string): boolean {
   return node.type === segment.slice(0, colon) && node.name === segment.slice(colon + 1);
 }
 
-/** Walk `root.children()` matching each path segment; undefined if any segment misses. */
+/** Walk `root.children()` matching each path segment; undefined if any segment misses. An empty path returns root itself (identity case). */
 export function navigate(root: MetaData, path: readonly string[]): MetaData | undefined {
   let current: MetaData = root;
   for (const segment of path) {

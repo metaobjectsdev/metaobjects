@@ -20,6 +20,7 @@
     "ERR_SUBTYPE_RULE_VIOLATION": "A node violates a subtype composition rule (e.g. a value object with a primary identity).",
     "ERR_OVERLAY_NO_TARGET": "An overlay node has no existing target to merge into.",
     "ERR_MALFORMED_YAML": "The YAML metadata input is not valid YAML, or cannot be desugared into canonical metadata.",
-    "ERR_INVALID_ORIGIN": "A field origin (passthrough/aggregate) declares an invalid path or attribute."
+    "ERR_INVALID_ORIGIN": "A field origin (passthrough/aggregate) declares an invalid path or attribute.",
+    "ERR_UNKNOWN": "An internal loader error with no stable error code."
   }
 }
