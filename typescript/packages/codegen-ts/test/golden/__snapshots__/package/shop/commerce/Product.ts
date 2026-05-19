@@ -4,23 +4,30 @@
 import { InferInsertModel, InferSelectModel, relations } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
+import { tags } from "../../Tag";
 import { orders } from "./Order";
 
 export const products = sqliteTable("products", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
+  tagId: integer("tag_id")
+    .notNull()
+    .references(() => tags.id),
 });
-export const productsRelations = relations(products, ({ many }) => ({
+export const productsRelations = relations(products, ({ one, many }) => ({
   orders: many(orders),
+  tag: one(tags, { fields: [products.tagId], references: [tags.id] }),
 }));
 export type Product = InferSelectModel<typeof products>;
 export type NewProduct = InferInsertModel<typeof products>;
 export const ProductInsertSchema = z.object({
   name: z.string().min(1).max(200),
+  tagId: z.number().int(),
 });
 
 export const ProductUpdateSchema = z.object({
   name: z.string().min(1).max(200).optional(),
+  tagId: z.number().int().optional(),
 });
 /**
  * Metadata constants for Product.
@@ -51,6 +58,13 @@ export const Product = {
       required: "Name is required",
       maxLength: { value: 200, message: "Must be 200 characters or fewer" },
     },
+  },
+  tagId: {
+    name: "tagId",
+    label: "Tag Id",
+    view: "number",
+    htmlType: "number",
+    rules: { required: "Tag Id is required" },
   },
 } as const;
 import type { FilterAllowlist } from "@metaobjects/runtime-ts/drizzle-fastify";

@@ -45,6 +45,15 @@ export function TagForm(props: TagFormProps): ReactElement {
           </span>
         )}
       </div>
+      <div className="metaobjects-field" key="customerId">
+        <label className="metaobjects-field-label" htmlFor={Tag.customerId.name}>{Tag.customerId.label}</label>
+        <input className="metaobjects-field-input" {...form.input.customerId} />
+        {form.formState.errors.customerId !== undefined && (
+          <span className="metaobjects-field-error" role="alert">
+            {String(form.formState.errors.customerId?.message ?? "")}
+          </span>
+        )}
+      </div>
       <button type="submit" disabled={form.formState.isSubmitting}>{props.submitLabel ?? "Submit"}</button>
     </form>
   );

@@ -45,6 +45,15 @@ export function ProductForm(props: ProductFormProps): ReactElement {
           </span>
         )}
       </div>
+      <div className="metaobjects-field" key="tagId">
+        <label className="metaobjects-field-label" htmlFor={Product.tagId.name}>{Product.tagId.label}</label>
+        <input className="metaobjects-field-input" {...form.input.tagId} />
+        {form.formState.errors.tagId !== undefined && (
+          <span className="metaobjects-field-error" role="alert">
+            {String(form.formState.errors.tagId?.message ?? "")}
+          </span>
+        )}
+      </div>
       <button type="submit" disabled={form.formState.isSubmitting}>{props.submitLabel ?? "Submit"}</button>
     </form>
   );

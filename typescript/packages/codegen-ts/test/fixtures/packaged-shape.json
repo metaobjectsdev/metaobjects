@@ -23,7 +23,9 @@
           "children": [
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "name", "@required": true, "@maxLength": 200 } },
-            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } }
+            { "field.long": { "name": "tagId", "@required": true } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship.association": { "name": "tag", "@cardinality": "one", "@objectRef": "Tag", "@fkField": "tagId" } }
           ]
         }
       },
@@ -44,7 +46,9 @@
           "children": [
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "label", "@required": true, "@maxLength": 100 } },
-            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } }
+            { "field.long": { "name": "customerId", "@required": true } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship.association": { "name": "customer", "@cardinality": "one", "@objectRef": "Customer", "@fkField": "customerId" } }
           ]
         }
       }

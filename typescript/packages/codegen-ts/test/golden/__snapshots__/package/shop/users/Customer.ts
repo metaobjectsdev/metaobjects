@@ -4,6 +4,7 @@
 import { InferInsertModel, InferSelectModel, relations } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
+import { tags } from "../../Tag";
 import { orders } from "../commerce/Order";
 
 export const customers = sqliteTable("customers", {
@@ -12,6 +13,7 @@ export const customers = sqliteTable("customers", {
 });
 export const customersRelations = relations(customers, ({ many }) => ({
   orders: many(orders),
+  tags: many(tags),
 }));
 export type Customer = InferSelectModel<typeof customers>;
 export type NewCustomer = InferInsertModel<typeof customers>;
