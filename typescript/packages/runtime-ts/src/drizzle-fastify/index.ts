@@ -96,9 +96,6 @@ export function mountListRoute(opts: VerbOptions): void {
 
       let where: ReturnType<typeof parseFilterParams>["where"];
       if (opts.filterAllowlist && opts.sortAllowlist) {
-        // Fastify's default querystring parser doesn't handle bracket notation
-        // (filter[field][op]=value). Re-parse the raw URL with qs so nested
-        // filter objects are available to parseFilterParams.
         const parsed = parseFilterParams({
           query: qsParsed,
           table: opts.table,
