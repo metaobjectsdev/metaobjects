@@ -17,13 +17,9 @@ import { coreTypesProvider } from "../../src/core-types.js";
 import { dbProvider } from "../../src/db/db-provider.js";
 import { FileMetaDataLoader } from "../../src/core/file-meta-data-loader.js";
 import type { MetaData } from "../../src/meta/meta-data.js";
-import { canonicalSerialize } from "../../src/serializer-json.js";
+import { canonicalSerialize, canonicalSerializeEffective } from "../../src/serializer-json.js";
 import { navigate } from "./navigator.js";
 import { binding } from "./binding.js";
-
-// `canonicalSerializeEffective` is added in Task 12. Until then, alias it to
-// the plain canonical serializer so the adapter contract is satisfied.
-const canonicalSerializeEffective = canonicalSerialize;
 
 /**
  * Provider-id → provider object. The fixture corpus names providers by their

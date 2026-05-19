@@ -42,7 +42,7 @@ export function serializeJson(model: MetaData, opts?: SerializeOptions): string 
   const inlineAttrs = opts?.inlineAttrs ?? true;
   const indent = opts?.indent ?? 2;
 
-  const nodeObj = serializeNode(model, inlineAttrs);
+  const nodeObj = serializeNode(model, inlineAttrs, false);
   return JSON.stringify(nodeObj, null, indent === 0 ? undefined : indent);
 }
 
@@ -75,12 +75,20 @@ function fusedKey(type: string, subType: string): string {
 // Serialize a single node — returns { "<type>.<subType>": { ...body } }
 // ---------------------------------------------------------------------------
 
-function serializeNode(model: MetaData, inlineAttrs: boolean): Record<string, unknown> {
-  const inner = serializeNodeInner(model, inlineAttrs);
+function serializeNode(
+  model: MetaData,
+  inlineAttrs: boolean,
+  effective: boolean,
+): Record<string, unknown> {
+  const inner = serializeNodeInner(model, inlineAttrs, effective);
   return { [fusedKey(model.type, model.subType)]: inner };
 }
 
-function serializeNodeInner(model: MetaData, inlineAttrs: boolean): Record<string, unknown> {
+function serializeNodeInner(
+  model: MetaData,
+  inlineAttrs: boolean,
+  effective: boolean,
+): Record<string, unknown> {
   // Canonical body-key order:
   //   1. name  2. package  3. extends  4. abstract
   //   5. overlay  6. isArray  7. inline @-attrs  8. children
@@ -114,14 +122,19 @@ function serializeNodeInner(model: MetaData, inlineAttrs: boolean): Record<strin
     obj[RESERVED_KEY_IS_ARRAY] = true;
   }
 
+  // In effective mode use children()/attrs() (own + inherited via super chain);
+  // in own mode use ownChildren()/ownAttrs() (declared on this node only).
+  const childList = effective ? model.children() : model.ownChildren();
+  const attrMap = effective ? model.attrs() : model.ownAttrs();
+
   // Walk children: structural children recurse; attr children emit either as
   // inline @-attrs or as child {"attr.*": {...}} nodes.
   const emittedAsChild = new Set<string>();
   const serializedChildren: Record<string, unknown>[] = [];
 
-  for (const child of model.ownChildren()) {
+  for (const child of childList) {
     if (child.type !== TYPE_ATTR) {
-      serializedChildren.push(serializeNode(child, inlineAttrs));
+      serializedChildren.push(serializeNode(child, inlineAttrs, effective));
       continue;
     }
 
@@ -145,7 +158,7 @@ function serializeNodeInner(model: MetaData, inlineAttrs: boolean): Record<strin
   }
 
   // Inline @-attrs: emit attrs NOT already emitted as child nodes.
-  for (const [attrName, attrValue] of model.ownAttrs()) {
+  for (const [attrName, attrValue] of attrMap) {
     if (emittedAsChild.has(attrName)) continue;
 
     if (inlineAttrs) {
@@ -181,6 +194,23 @@ function serializeNodeInner(model: MetaData, inlineAttrs: boolean): Record<strin
 
 export function canonicalSerialize(model: MetaData): string {
   const raw = serializeJson(model, { inlineAttrs: true, indent: 2 });
+
+  const parsed = JSON.parse(raw) as unknown;
+  const sorted = sortAttrKeys(parsed);
+  const out = JSON.stringify(sorted, null, 2);
+
+  return out + "\n";
+}
+
+/**
+ * Like canonicalSerialize, but emits the EFFECTIVE tree — children() and
+ * attrs() at every node (own + inherited via the super chain), so the
+ * super-chain merge is materialized in the output.
+ * Used by the conformance harness's expected-effective fixtures.
+ */
+export function canonicalSerializeEffective(model: MetaData): string {
+  const nodeObj = serializeNode(model, true, true);
+  const raw = JSON.stringify(nodeObj, null, 2);
 
   const parsed = JSON.parse(raw) as unknown;
   const sorted = sortAttrKeys(parsed);
