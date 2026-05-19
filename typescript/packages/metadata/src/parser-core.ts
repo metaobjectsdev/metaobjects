@@ -28,7 +28,7 @@ import type { MetaData } from "./meta/meta-data.js";
 import { MetaRoot } from "./meta/meta-root.js";
 import { convertToDataType, toAttrValue } from "./data-converter.js";
 import { DATA_TYPE_STRING } from "./data-type.js";
-import { ParseError } from "./errors.js";
+import { ParseError, type ErrorCode } from "./errors.js";
 import { resolveSuperRef } from "./super-resolve.js";
 import {
   RESERVED_KEYS,
@@ -111,8 +111,9 @@ function reportProblem(
   warnings: string[],
   source: string | undefined,
   path: string,
+  code?: ErrorCode,
 ): void {
-  if (strict) throw new ParseError(msg, errOpts(source, path));
+  if (strict) throw new ParseError(msg, { ...errOpts(source, path), ...(code !== undefined ? { code } : {}) });
   warnings.push(msg);
 }
 
@@ -382,6 +383,7 @@ function parseNodeFresh(
       warnings,
       source,
       path,
+      "ERR_UNRESOLVED_SUPER",
     );
   }
 
@@ -465,7 +467,7 @@ function createOrFindMetaData(
     if (existing === undefined) {
       throw new ParseError(
         `Overlay operation requested for [${type}:${name}] but no existing metadata found to merge into`,
-        errOpts(source, path),
+        { ...errOpts(source, path), code: "ERR_OVERLAY_NO_TARGET" },
       );
     }
     existing.setIsMerge(true);
@@ -502,7 +504,7 @@ function applyReservedKeys(
   const rawPkg = nodeData[RESERVED_KEY_PACKAGE];
   if (rawPkg !== undefined) {
     if (typeof rawPkg !== "string") {
-      reportProblem(`"${RESERVED_KEY_PACKAGE}" must be a string at ${path}`, strict, warnings, source, path);
+      reportProblem(`"${RESERVED_KEY_PACKAGE}" must be a string at ${path}`, strict, warnings, source, path, "ERR_BAD_ATTR_VALUE");
     } else {
       const expandedPkg = contextPkg !== undefined ? expandPackageForPath(contextPkg, rawPkg) : rawPkg;
       model.setPackage(expandedPkg);
@@ -513,7 +515,7 @@ function applyReservedKeys(
   const rawExtends = nodeData[RESERVED_KEY_EXTENDS];
   if (rawExtends !== undefined) {
     if (typeof rawExtends !== "string") {
-      reportProblem(`"${RESERVED_KEY_EXTENDS}" must be a string at ${path}`, strict, warnings, source, path);
+      reportProblem(`"${RESERVED_KEY_EXTENDS}" must be a string at ${path}`, strict, warnings, source, path, "ERR_UNRESOLVED_SUPER");
     } else {
       model.setSuper(rawExtends);
     }
@@ -523,7 +525,7 @@ function applyReservedKeys(
   const rawAbstract = nodeData[RESERVED_KEY_ABSTRACT];
   if (rawAbstract !== undefined) {
     if (typeof rawAbstract !== "boolean") {
-      reportProblem(`"${RESERVED_KEY_ABSTRACT}" must be a boolean at ${path}`, strict, warnings, source, path);
+      reportProblem(`"${RESERVED_KEY_ABSTRACT}" must be a boolean at ${path}`, strict, warnings, source, path, "ERR_BAD_ATTR_VALUE");
     } else {
       model.setIsAbstract(rawAbstract);
     }
@@ -533,7 +535,7 @@ function applyReservedKeys(
   const rawIsArray = nodeData[RESERVED_KEY_IS_ARRAY];
   if (rawIsArray !== undefined) {
     if (typeof rawIsArray !== "boolean") {
-      reportProblem(`"${RESERVED_KEY_IS_ARRAY}" must be a boolean at ${path}`, strict, warnings, source, path);
+      reportProblem(`"${RESERVED_KEY_IS_ARRAY}" must be a boolean at ${path}`, strict, warnings, source, path, "ERR_BAD_ATTR_VALUE");
     } else {
       model.setIsArray(rawIsArray);
     }
@@ -596,7 +598,7 @@ function applyInlineAttrsAndUnknownKeys(
         model.name !== "" ? `${model.type}.${model.subType} '${model.name}'` : `${model.type}.${model.subType}`;
       reportProblem(
         `Unknown key '${key}' on ${displayName} at ${path} (must be reserved or ${ATTR_PREFIX}-prefixed)`,
-        strict, warnings, source, path,
+        strict, warnings, source, path, "ERR_UNKNOWN_ATTR",
       );
       continue;
     }
@@ -620,7 +622,7 @@ function applyInlineAttrsAndUnknownKeys(
     } catch (err) {
       reportProblem(
         `Failed to convert attribute "${ATTR_PREFIX}${attrName}" at ${path}: ${(err as Error).message}`,
-        strict, warnings, source, path,
+        strict, warnings, source, path, "ERR_BAD_ATTR_VALUE",
       );
       continue;
     }
@@ -651,7 +653,7 @@ function processChildren(
   if (rawChildren === undefined) return;
 
   if (!Array.isArray(rawChildren)) {
-    reportProblem(`"${RESERVED_KEY_CHILDREN}" must be an array at ${path}`, strict, warnings, source, path);
+    reportProblem(`"${RESERVED_KEY_CHILDREN}" must be an array at ${path}`, strict, warnings, source, path, "ERR_TOP_LEVEL_NOT_OBJECT");
     return;
   }
 
@@ -660,7 +662,7 @@ function processChildren(
     const childPath = `${path}.${RESERVED_KEY_CHILDREN}[${i}]`;
 
     if (typeof childEntry !== "object" || childEntry === null || Array.isArray(childEntry)) {
-      reportProblem(`Child at ${childPath} must be an object`, strict, warnings, source, childPath);
+      reportProblem(`Child at ${childPath} must be an object`, strict, warnings, source, childPath, "ERR_TOP_LEVEL_NOT_OBJECT");
       continue;
     }
 
@@ -672,7 +674,7 @@ function processChildren(
         childKeys.length === 0
           ? `Child at ${childPath} has no type wrapper key`
           : `Child at ${childPath} has multiple keys (${childKeys.join(", ")}) — each child must have exactly one wrapper key`;
-      reportProblem(msg, strict, warnings, source, childPath);
+      reportProblem(msg, strict, warnings, source, childPath, "ERR_TOP_LEVEL_NOT_OBJECT");
       continue;
     }
 
@@ -683,7 +685,7 @@ function processChildren(
     if (typeof childData !== "object" || childData === null || Array.isArray(childData)) {
       reportProblem(
         `Child wrapper "${childKey}" at ${childNodePath} must contain an object`,
-        strict, warnings, source, childNodePath,
+        strict, warnings, source, childNodePath, "ERR_TOP_LEVEL_NOT_OBJECT",
       );
       continue;
     }
@@ -768,7 +770,7 @@ function parseAttrChild(
   if (typeof attrName !== "string" || attrName === "") {
     reportProblem(
       `attr child at ${path} requires a non-empty "${RESERVED_KEY_NAME}" string`,
-      strict, warnings, source, path,
+      strict, warnings, source, path, "ERR_MISSING_REQUIRED_ATTR",
     );
     return;
   }
@@ -776,7 +778,7 @@ function parseAttrChild(
   if (attrValue === undefined) {
     reportProblem(
       `attr child "${attrName}" at ${path} is missing "${RESERVED_KEY_VALUE}"`,
-      strict, warnings, source, path,
+      strict, warnings, source, path, "ERR_MISSING_REQUIRED_ATTR",
     );
     return;
   }
@@ -796,7 +798,7 @@ function parseAttrChild(
   } catch (err) {
     reportProblem(
       `Failed to convert attr child "${attrName}" value at ${path}: ${(err as Error).message}`,
-      strict, warnings, source, path,
+      strict, warnings, source, path, "ERR_BAD_ATTR_VALUE",
     );
     return;
   }

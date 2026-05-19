@@ -6,6 +6,7 @@
 // composeRegistry. See docs/superpowers/specs/2026-05-17-type-provider-model-design.md.
 
 import { TypeRegistry } from "./registry.js";
+import { MetaModelError } from "./errors.js";
 
 /** A unit of metamodel registration. One provider per package. */
 export interface MetaDataTypeProvider {
@@ -43,7 +44,7 @@ function topoSortProviders(
   const ids = new Set<string>();
   for (const p of providers) {
     if (ids.has(p.id)) {
-      throw new Error(`composeRegistry: duplicate provider id "${p.id}"`);
+      throw new MetaModelError(`composeRegistry: duplicate provider id "${p.id}"`, { code: "ERR_PROVIDER_DEPENDENCY_CYCLE" });
     }
     ids.add(p.id);
   }
@@ -51,8 +52,9 @@ function topoSortProviders(
   for (const p of providers) {
     for (const dep of p.dependencies ?? []) {
       if (!ids.has(dep)) {
-        throw new Error(
+        throw new MetaModelError(
           `composeRegistry: provider "${p.id}" depends on "${dep}", which is not in the provider set`,
+          { code: "ERR_PROVIDER_MISSING_DEPENDENCY" },
         );
       }
     }
@@ -71,8 +73,9 @@ function topoSortProviders(
       const stuck = providers
         .filter((p) => !emitted.has(p.id))
         .map((p) => p.id);
-      throw new Error(
+      throw new MetaModelError(
         `composeRegistry: dependency cycle among providers [${stuck.join(", ")}]`,
+        { code: "ERR_PROVIDER_DEPENDENCY_CYCLE" },
       );
     }
     result.push(next);

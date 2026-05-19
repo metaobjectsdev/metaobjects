@@ -1,6 +1,7 @@
 import type { AttrValue, MetaData } from "./meta/meta-data.js";
 import { type AttrSubType, CHILD_RULE_WILDCARD } from "./constants.js";
 import type { DataType } from "./data-type.js";
+import { MetaModelError } from "./errors.js";
 
 export class TypeId {
   constructor(
@@ -130,8 +131,9 @@ export class TypeRegistry {
     }
     for (const attr of ext.attributes ?? []) {
       if (def.attributes.some((a) => a.name === attr.name)) {
-        throw new Error(
+        throw new MetaModelError(
           `TypeRegistry.extend: attribute "${attr.name}" is already declared on "${type}.${subType}"`,
+          { code: "ERR_PROVIDER_ATTR_CONFLICT" },
         );
       }
       def.attributes.push(attr);

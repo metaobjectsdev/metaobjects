@@ -24,7 +24,7 @@ export function parseYaml(content: string, opts: ParseOptions): ParseResult {
   } catch (err) {
     throw new ParseError(
       `Invalid YAML: ${(err as Error).message}`,
-      errOpts(opts.sourceName),
+      { ...errOpts(opts.sourceName), code: "ERR_MALFORMED_YAML" },
     );
   }
 
@@ -36,7 +36,7 @@ export function parseYaml(content: string, opts: ParseOptions): ParseResult {
   if (Object.keys(canonical).length === 0) {
     throw new ParseError(
       desugarErrors[0]!,
-      errOpts(opts.sourceName),
+      { ...errOpts(opts.sourceName), code: "ERR_MALFORMED_YAML" },
     );
   }
 
@@ -44,7 +44,7 @@ export function parseYaml(content: string, opts: ParseOptions): ParseResult {
 
   // Merge collected desugar errors ahead of buildTree's own collected errors.
   const desugarParseErrors = desugarErrors.map(
-    (msg) => new ParseError(msg, errOpts(opts.sourceName)),
+    (msg) => new ParseError(msg, { ...errOpts(opts.sourceName), code: "ERR_MALFORMED_YAML" }),
   );
   return {
     root: result.root,

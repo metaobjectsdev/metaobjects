@@ -36,6 +36,7 @@ function walk(model: MetaData, errors: ParseError[], warnings: string[]): void {
         new ParseError(
           `value object '${model.fqn()}' must not have a primary identity ` +
             `(use subType: "entity" for records with identity)`,
+          { code: "ERR_SUBTYPE_RULE_VIOLATION" },
         ),
       );
     } else if (

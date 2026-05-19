@@ -132,6 +132,7 @@ function _validateFromPath(
     errors.push(
       new ParseError(
         `${label} "${fromAttr}" on ${projectionName}.${fieldName}: must be of form "Entity.field".`,
+        { code: "ERR_INVALID_ORIGIN" },
       ),
     );
     return;
@@ -143,6 +144,7 @@ function _validateFromPath(
     errors.push(
       new ParseError(
         `${label} "${fromAttr}" on ${projectionName}.${fieldName}: no such entity "${entityName}".`,
+        { code: "ERR_INVALID_ORIGIN" },
       ),
     );
     return;
@@ -152,6 +154,7 @@ function _validateFromPath(
     errors.push(
       new ParseError(
         `${label} "${fromAttr}" on ${projectionName}.${fieldName}: no such field "${targetFieldName}" on ${entityName}.`,
+        { code: "ERR_INVALID_ORIGIN" },
       ),
     );
   }
@@ -169,6 +172,7 @@ function _validateViaPath(
     errors.push(
       new ParseError(
         `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: must be of form "Entity.relationship[.relationship...]".`,
+        { code: "ERR_INVALID_ORIGIN" },
       ),
     );
     return;
@@ -179,6 +183,7 @@ function _validateViaPath(
     errors.push(
       new ParseError(
         `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: no such entity "${entityName}".`,
+        { code: "ERR_INVALID_ORIGIN" },
       ),
     );
     return;
@@ -189,6 +194,7 @@ function _validateViaPath(
       errors.push(
         new ParseError(
           `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: no such relationship "${relName}" on ${currentObj.name}.`,
+          { code: "ERR_INVALID_ORIGIN" },
         ),
       );
       return;
@@ -198,6 +204,7 @@ function _validateViaPath(
       errors.push(
         new ParseError(
           `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: relationship "${relName}" on ${currentObj.name} is missing @objectRef.`,
+          { code: "ERR_INVALID_ORIGIN" },
         ),
       );
       return;
@@ -207,6 +214,7 @@ function _validateViaPath(
       errors.push(
         new ParseError(
           `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: relationship "${relName}" points to non-existent entity "${refTarget}".`,
+          { code: "ERR_INVALID_ORIGIN" },
         ),
       );
       return;
@@ -226,6 +234,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             errors.push(
               new ParseError(
                 `origin.passthrough on ${obj.name}.${field.name}: missing @from.`,
+                { code: "ERR_INVALID_ORIGIN" },
               ),
             );
             continue;
@@ -241,6 +250,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             errors.push(
               new ParseError(
                 `origin.aggregate on ${obj.name}.${field.name}: missing @of.`,
+                { code: "ERR_INVALID_ORIGIN" },
               ),
             );
             continue;
@@ -251,6 +261,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             errors.push(
               new ParseError(
                 `origin.aggregate on ${obj.name}.${field.name}: missing @via (aggregates require a relationship path).`,
+                { code: "ERR_INVALID_ORIGIN" },
               ),
             );
             continue;

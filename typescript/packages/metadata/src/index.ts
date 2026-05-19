@@ -125,7 +125,8 @@ export { InMemorySource } from "./loader/meta-data-source.js";
 export type { MetaDataSource, MetaDataFormat } from "./loader/meta-data-source.js";
 
 // Errors
-export { ParseError } from "./errors.js";
+export { ParseError, MetaModelError, ERROR_CODES } from "./errors.js";
+export type { ErrorCode } from "./errors.js";
 
 // Attribute-schema validation pass (Phase A3)
 export { validateAttrSchema } from "./attr-schema-validate.js";

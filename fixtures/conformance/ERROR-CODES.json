@@ -15,6 +15,10 @@
     "ERR_BAD_DEFAULT_SORT_FIELD": "A layout @defaultSortField names a field absent from the entity.",
     "ERR_PROVIDER_DEPENDENCY_CYCLE": "Provider composition has a dependency cycle.",
     "ERR_PROVIDER_MISSING_DEPENDENCY": "A provider declares a dependency id with no matching provider.",
-    "ERR_PROVIDER_ATTR_CONFLICT": "A provider extend redefines an attr another provider already declared."
+    "ERR_PROVIDER_ATTR_CONFLICT": "A provider extend redefines an attr another provider already declared.",
+    "ERR_SUBTYPE_RULE_VIOLATION": "A node violates a subtype composition rule (e.g. a value object with a primary identity).",
+    "ERR_OVERLAY_NO_TARGET": "An overlay node has no existing target to merge into.",
+    "ERR_MALFORMED_YAML": "The YAML metadata input is not valid YAML, or cannot be desugared into canonical metadata.",
+    "ERR_INVALID_ORIGIN": "A field origin (passthrough/aggregate) declares an invalid path or attribute."
   }
 }

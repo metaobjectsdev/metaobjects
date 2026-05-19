@@ -13,5 +13,5 @@ test("every ParseError code is registered in ERROR-CODES.json", async () => {
     `${import.meta.dir}/../../../../fixtures/conformance/ERROR-CODES.json`,
   ).json();
   const err = new ParseError("dup", { code: "ERR_DUPLICATE_NAME" });
-  expect(Object.keys(registry.codes)).toContain(err.code);
+  expect(Object.keys(registry.codes)).toContain(err.code!);
 });
