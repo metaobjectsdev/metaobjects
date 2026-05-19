@@ -76,9 +76,13 @@ switch (subcommand) {
       process.exit(1);
     }
     const count = parseInt(countStr, 10);
-    const startSeed = startSeedStr !== undefined ? parseInt(startSeedStr, 10) : 1;
     if (isNaN(count) || count < 1) {
       console.error("generate: <count> must be a positive integer");
+      process.exit(1);
+    }
+    const startSeed = startSeedStr !== undefined ? parseInt(startSeedStr, 10) : 1;
+    if (isNaN(startSeed)) {
+      console.error("generate: [startSeed] must be an integer");
       process.exit(1);
     }
 
@@ -91,16 +95,25 @@ switch (subcommand) {
       const doc = generateMetadata(seed);
       const inputJson = JSON.stringify(doc, null, 2) + "\n";
 
+      // Run through TS reference (oracle) to capture golden expected.json.
+      // A generated document that fails to load is a generator bug — abort loudly.
+      const loader = new MetaDataLoader();
+      const source = new InMemorySource(inputJson, { id: "meta.json", format: "json" });
+      const result = await loader.load([source]);
+      if (result.errors.length > 0) {
+        const details = result.errors
+          .map((e) => `  - ${"code" in e ? `[${(e as { code: string }).code}] ` : ""}${e.message}`)
+          .join("\n");
+        console.error(`generate: seed ${seed} produced invalid metadata (generator bug):\n${details}`);
+        process.exit(1);
+      }
+
       // Write input/meta.json
       const fixtureDir = join(corpusRoot, `generated-${seed}`);
       const inputDir = join(fixtureDir, "input");
       mkdirSync(inputDir, { recursive: true });
       writeFileSync(join(inputDir, "meta.json"), inputJson, "utf8");
 
-      // Run through TS reference (oracle) to capture golden expected.json
-      const loader = new MetaDataLoader();
-      const source = new InMemorySource(inputJson, { id: "meta.json", format: "json" });
-      const result = await loader.load([source]);
       const golden = canonicalSerialize(result.root) + "\n";
       writeFileSync(join(fixtureDir, "expected.json"), golden, "utf8");
 

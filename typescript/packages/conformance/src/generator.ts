@@ -16,10 +16,10 @@ const FIELD_SUBTYPES = ["string", "int", "long", "boolean"] as const;
 export function generateMetadata(seed: number): unknown {
   const rand = mulberry32(seed);
   const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)]!;
-  const objectCount = 1 + Math.floor(rand() * 4);
+  const objectCount = 1 + Math.floor(rand() * 4); // 1–4 objects per document
   const children: unknown[] = [];
   for (let o = 0; o < objectCount; o++) {
-    const fieldCount = 1 + Math.floor(rand() * 5);
+    const fieldCount = 1 + Math.floor(rand() * 5); // 1–5 fields per object
     const fields: unknown[] = [];
     for (let f = 0; f < fieldCount; f++) {
       fields.push({ [`field.${pick(FIELD_SUBTYPES)}`]: { name: `f${o}_${f}` } });
