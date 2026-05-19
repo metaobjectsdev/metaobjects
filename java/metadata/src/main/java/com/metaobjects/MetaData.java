@@ -123,6 +123,9 @@ public class MetaData implements Cloneable, Serializable {
     /** Root metadata subtype for metadata file structure */
     public static final String SUBTYPE_BASE = "base";
 
+    /** Root metadata subtype for the tree-root node (MetaRoot) */
+    public static final String SUBTYPE_ROOT = "root";
+
     // Unified registry self-registration for root metadata type
     /**
      * Register MetaData as metadata.base with abstract requirements constraints.
