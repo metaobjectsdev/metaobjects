@@ -5,6 +5,7 @@ import type { Dialect } from "./column-mapper.js";
 import type { PkInfo } from "./pk-resolver.js";
 import type { RelationMap } from "./relation-resolver.js";
 import type { ColumnNamingStrategy } from "./metaobjects-config.js";
+import type { OutputLayout } from "./import-path.js";
 
 /**
  * How to format cross-entity import specifiers in generated files.
@@ -38,17 +39,20 @@ export interface RenderContext {
   columnNamingStrategy: ColumnNamingStrategy;
   /** Path prefix applied to generated route registrations + hook fetch URLs. Defaults to "". */
   apiPrefix: string;
+  /** Output layout mode: "flat" (default) — all files in outDir; "package" — sub-paths from entity metadata package. */
+  outputLayout: OutputLayout;
   pkMap: Map<string, PkInfo>;
   /** Pre-pass relation map for FK + relations() block emission. */
   relationMap: RelationMap;
 }
 
-/** Optional shape — `extStyle`, `omImport`, `columnNamingStrategy`, and `apiPrefix` default if omitted. */
-export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "apiPrefix"> & {
+/** Optional shape — `extStyle`, `omImport`, `columnNamingStrategy`, `apiPrefix`, and `outputLayout` default if omitted. */
+export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "apiPrefix" | "outputLayout"> & {
   extStyle?: ExtStyle;
   omImport?: string;
   columnNamingStrategy?: ColumnNamingStrategy;
   apiPrefix?: string;
+  outputLayout?: OutputLayout;
 };
 
 /** Append the configured extension to a cross-entity module specifier. */
@@ -64,5 +68,6 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     omImport: opts.omImport ?? "../index",
     columnNamingStrategy: opts.columnNamingStrategy ?? "snake_case",
     apiPrefix: opts.apiPrefix ?? "",
+    outputLayout: opts.outputLayout ?? "flat",
   };
 }

@@ -1,9 +1,11 @@
 import type { Generator } from "./generator.js";
 import type { ExtStyle } from "./render-context.js";
+import type { OutputLayout } from "./import-path.js";
 
 export type Dialect = "sqlite" | "postgres";
 export type ColumnNamingStrategy = "snake_case" | "literal" | "kebab-case";
 export type { ExtStyle };
+export type { OutputLayout };
 
 /** Subset of MetaobjectsGenConfig surfaced to generators via GenContext. */
 export interface ResolvedGenConfig {
@@ -11,6 +13,8 @@ export interface ResolvedGenConfig {
   extStyle: ExtStyle;
   dbImport: string;
   dialect: Dialect;
+  /** "flat" (default) — all files in outDir; "package" — files placed in a sub-path derived from each entity's metadata package. */
+  outputLayout?: OutputLayout;
 }
 
 export interface MetaobjectsGenConfig extends ResolvedGenConfig {
@@ -25,6 +29,7 @@ export interface MetaobjectsGenConfig extends ResolvedGenConfig {
 export interface NormalizedMetaobjectsGenConfig extends MetaobjectsGenConfig {
   columnNamingStrategy: ColumnNamingStrategy;
   apiPrefix: string;
+  outputLayout: OutputLayout;
 }
 
 /** Identity passthrough; exists for IDE type-inference + autocomplete. */
@@ -38,5 +43,6 @@ export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobj
     ...config,
     columnNamingStrategy: config.columnNamingStrategy ?? "snake_case",
     apiPrefix: config.apiPrefix ?? "",
+    outputLayout: config.outputLayout ?? "flat",
   };
 }

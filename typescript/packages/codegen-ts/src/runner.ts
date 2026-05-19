@@ -78,6 +78,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     extStyle: config.extStyle,
     columnNamingStrategy: config.columnNamingStrategy,
     apiPrefix: config.apiPrefix,
+    outputLayout: config.outputLayout,
     pkMap,
     relationMap,
   });
@@ -94,6 +95,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         extStyle: config.extStyle,
         dbImport: config.dbImport,
         dialect: config.dialect,
+        outputLayout: config.outputLayout,
       },
       renderContext,
       warn: (msg) => warnings.push(`[${generator.name}] ${msg}`),
