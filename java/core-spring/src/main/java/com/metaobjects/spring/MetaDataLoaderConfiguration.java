@@ -1,7 +1,7 @@
 package com.metaobjects.spring;
 
+import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.simple.SimpleLoader;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -38,7 +38,8 @@ import java.util.List;
  *     
  *     @Bean
  *     public MetaDataLoader userMetaDataLoader() {
- *         SimpleLoader loader = new SimpleLoader("userLoader");
+ *         MetaDataLoader loader = new MetaDataLoader(
+ *             LoaderOptions.create(false, false, true), MetaDataLoader.SUBTYPE_MANUAL, "userLoader");
  *         loader.setSourceURIs(Arrays.asList(
  *             URI.create("classpath:metadata/users.json")
  *         ));
@@ -84,11 +85,13 @@ public class MetaDataLoaderConfiguration {
         }
         
         // Create and configure loader
-        SimpleLoader loader = new SimpleLoader("applicationLoader");
-        
+        MetaDataLoader loader = new MetaDataLoader(
+                LoaderOptions.create(false, false, true),
+                MetaDataLoader.SUBTYPE_MANUAL, "applicationLoader");
+
         loader.setSourceURIs(sourceURIs);
         loader.init();
-        
+
         return loader;
     }
     

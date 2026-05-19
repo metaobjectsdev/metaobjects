@@ -6,7 +6,7 @@ import com.metaobjects.field.*;
 import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.loader.parser.json.JsonMetaDataParser;
 import com.metaobjects.loader.parser.xml.XMLMetaDataParser;
-import com.metaobjects.loader.simple.SimpleLoader;
+import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Before;
@@ -391,7 +391,7 @@ public class ParserComparisonTest extends SharedRegistryTestBase {
      * Helper method to parse JSON and return the first MetaField
      */
     private MetaField parseJsonAndGetFirstField(String json) throws Exception {
-        SimpleLoader loader = createTestLoader("JsonComparisonTest", Collections.emptyList());
+        MetaDataLoader loader = createTestLoader("JsonComparisonTest", Collections.emptyList());
         JsonMetaDataParser parser = new JsonMetaDataParser(loader, "test.json");
         InputStream is = new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8));
         parser.loadFromStream(is);
@@ -405,7 +405,7 @@ public class ParserComparisonTest extends SharedRegistryTestBase {
      * Helper method to parse JSON and return the first PrimaryIdentity
      */
     private PrimaryIdentity parseJsonAndGetFirstIdentity(String json) throws Exception {
-        SimpleLoader loader = createTestLoader("JsonComparisonTest", Collections.emptyList());
+        MetaDataLoader loader = createTestLoader("JsonComparisonTest", Collections.emptyList());
         JsonMetaDataParser parser = new JsonMetaDataParser(loader, "test.json");
         InputStream is = new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8));
         parser.loadFromStream(is);
@@ -419,7 +419,7 @@ public class ParserComparisonTest extends SharedRegistryTestBase {
      * Helper method to parse JSON and return the first MetaObject (deprecated - use parseJsonAndGetFirstField for field tests)
      */
     private MetaObject parseJsonAndGetFirstObject(String json) throws Exception {
-        SimpleLoader loader = createTestLoader("JsonComparisonTest", Collections.emptyList());
+        MetaDataLoader loader = createTestLoader("JsonComparisonTest", Collections.emptyList());
         JsonMetaDataParser parser = new JsonMetaDataParser(loader, "test.json");
         InputStream is = new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8));
         parser.loadFromStream(is);
@@ -443,7 +443,7 @@ public class ParserComparisonTest extends SharedRegistryTestBase {
      * Helper method to parse XML and return the first MetaField
      */
     private MetaField parseXmlAndGetFirstField(String xml) throws Exception {
-        SimpleLoader loader = createTestLoader("XmlComparisonTest", Collections.emptyList());
+        MetaDataLoader loader = createTestLoader("XmlComparisonTest", Collections.emptyList());
         XMLMetaDataParser parser = new XMLMetaDataParser(loader, "test.xml");
         InputStream is = new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8));
         parser.loadFromStream(is);
@@ -457,7 +457,7 @@ public class ParserComparisonTest extends SharedRegistryTestBase {
      * Helper method to parse XML and return the first MetaObject (deprecated - use parseXmlAndGetFirstField for field tests)
      */
     private MetaObject parseXmlAndGetFirstObject(String xml) throws Exception {
-        SimpleLoader loader = createTestLoader("XmlComparisonTest", Collections.emptyList());
+        MetaDataLoader loader = createTestLoader("XmlComparisonTest", Collections.emptyList());
         XMLMetaDataParser parser = new XMLMetaDataParser(loader, "test.xml");
         InputStream is = new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8));
         parser.loadFromStream(is);

@@ -21,7 +21,7 @@ import java.util.Scanner;
  *
  * <p>Mirrors the TypeScript {@code FileSource} class introduced in H3a,
  * adapted to Java's URI-based addressing scheme already used by
- * {@link com.metaobjects.loader.simple.SimpleLoader}.</p>
+ * {@link com.metaobjects.loader.MetaDataLoader}.</p>
  *
  * <p>Example usage:</p>
  * <pre>{@code

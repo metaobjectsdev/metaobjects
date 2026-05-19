@@ -5,7 +5,6 @@ import com.metaobjects.attr.*;
 import com.metaobjects.field.*;
 import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.simple.SimpleLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Before;
@@ -467,7 +466,7 @@ public class JsonMetaDataParserTest extends SharedRegistryTestBase {
      */
     private MetaObject parseJsonAndGetFirstObject(String json) throws Exception {
         // Create test loader
-        SimpleLoader loader = createTestLoader("JsonParserTest", Collections.emptyList());
+        MetaDataLoader loader = createTestLoader("JsonParserTest", Collections.emptyList());
 
         // Parse JSON using JsonMetaDataParser
         JsonMetaDataParser parser = new JsonMetaDataParser(loader, "test.json");

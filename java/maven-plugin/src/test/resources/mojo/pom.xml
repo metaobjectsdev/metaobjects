@@ -20,7 +20,7 @@
                 <configuration>
                     <!-- Specify the Mojo parameter -->
                     <loader>
-                        <classname>com.metaobjects.loader.simple.SimpleLoader</classname>
+                        <classname>com.metaobjects.loader.MetaDataLoader</classname>
                         <name>mojo-test-pom</name>
                         <sourceDir>./src/test/resources</sourceDir>
                         <sources>

@@ -4,7 +4,6 @@ import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.field.StringField;
-import com.metaobjects.loader.simple.SimpleLoader;
 import com.metaobjects.object.pojo.PojoMetaObject;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.TypeDefinition;

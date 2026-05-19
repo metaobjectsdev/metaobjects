@@ -4,7 +4,6 @@ import com.metaobjects.MetaData;
 import com.metaobjects.attr.*;
 import com.metaobjects.field.*;
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.simple.SimpleLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Before;
@@ -413,7 +412,7 @@ public class XMLMetaDataParserTest extends SharedRegistryTestBase {
      */
     private MetaObject parseXmlAndGetFirstObject(String xml) throws Exception {
         // Create test loader
-        SimpleLoader loader = createTestLoader("XmlParserTest", Collections.emptyList());
+        MetaDataLoader loader = createTestLoader("XmlParserTest", Collections.emptyList());
 
         // Parse XML using XMLMetaDataParser
         XMLMetaDataParser parser = new XMLMetaDataParser(loader, "test.xml");

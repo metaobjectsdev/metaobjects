@@ -2,8 +2,8 @@ package com.metaobjects.examples.osgi;
 
 import com.metaobjects.registry.MetaDataLoaderRegistry;
 import com.metaobjects.registry.ServiceRegistryFactory;
+import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.simple.SimpleLoader;
 import com.metaobjects.object.MetaObject;
 
 import java.net.URI;
@@ -54,7 +54,9 @@ public class OSGiMetaObjectsExample {
         // 2. Create and register a test loader
         System.out.println("\n2. Creating and registering MetaDataLoader...");
         
-        SimpleLoader loader = new SimpleLoader("osgiExample");
+        MetaDataLoader loader = new MetaDataLoader(
+                LoaderOptions.create(false, false, true),
+                MetaDataLoader.SUBTYPE_MANUAL, "osgiExample");
         
         // Load from classpath (provided by shared-resources module)
         java.net.URL resourceUrl = getClass().getResource("/metadata/examples-metadata.json");

@@ -7,7 +7,7 @@ import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.validator.RequiredValidator;
 import com.metaobjects.field.StringField;
-import com.metaobjects.loader.simple.SimpleLoader;
+import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -190,12 +190,14 @@ public class UnifiedFieldRegistryTest {
                 .getLoader();
         
         try {
-            SimpleLoader simpleLoader = new SimpleLoader("all-field-types");
+            MetaDataLoader simpleLoader = new MetaDataLoader(
+                    LoaderOptions.create(false, false, true),
+                    MetaDataLoader.SUBTYPE_MANUAL, "all-field-types");
             simpleLoader.setSourceURIs(java.util.Arrays.asList(metadataFile.toUri()));
             simpleLoader.init();
-            
+
             // Debug: Print what children are actually loaded
-            System.out.println("SimpleLoader children: " + simpleLoader.getChildren().size());
+            System.out.println("MetaDataLoader children: " + simpleLoader.getChildren().size());
             for (com.metaobjects.MetaData child : simpleLoader.getChildren()) {
                 System.out.println("  Child: " + child.getName() + " (" + child.getClass().getSimpleName() + ")");
             }
@@ -253,7 +255,9 @@ public class UnifiedFieldRegistryTest {
                 .getLoader();
         
         try {
-            SimpleLoader simpleLoader = new SimpleLoader("fields-with-attributes");
+            MetaDataLoader simpleLoader = new MetaDataLoader(
+                    LoaderOptions.create(false, false, true),
+                    MetaDataLoader.SUBTYPE_MANUAL, "fields-with-attributes");
             simpleLoader.setSourceURIs(java.util.Arrays.asList(metadataFile.toUri()));
             simpleLoader.init();
             
@@ -298,7 +302,9 @@ public class UnifiedFieldRegistryTest {
                 .getLoader();
         
         try {
-            SimpleLoader simpleLoader = new SimpleLoader("constraint-test");
+            MetaDataLoader simpleLoader = new MetaDataLoader(
+                    LoaderOptions.create(false, false, true),
+                    MetaDataLoader.SUBTYPE_MANUAL, "constraint-test");
             simpleLoader.setSourceURIs(java.util.Arrays.asList(metadataFile.toUri()));
             simpleLoader.init();
             

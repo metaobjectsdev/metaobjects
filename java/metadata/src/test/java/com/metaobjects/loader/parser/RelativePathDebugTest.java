@@ -4,8 +4,8 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.simple.SimpleLoader;
 import com.metaobjects.util.MetaDataUtil;
 
 /**
@@ -29,14 +29,15 @@ public class RelativePathDebugTest {
     }
 
     @Test
-    public void testSimpleLoaderCrossFileReferences() throws Exception {
-        SimpleLoader loader = new SimpleLoader("debug-loader");
-
-        // Load the metadata files in a list
+    public void testLoaderCrossFileReferences() throws Exception {
+        // H3a Task 5: retargeted from SimpleLoader to MetaDataLoader
         java.util.List<java.net.URI> uris = java.util.Arrays.asList(
             getClass().getClassLoader().getResource("com/metaobjects/loader/simple/acme-common-metadata.json").toURI(),
             getClass().getClassLoader().getResource("com/metaobjects/loader/simple/acme-vehicle-metadata.json").toURI()
         );
+        MetaDataLoader loader = new MetaDataLoader(
+                LoaderOptions.create(false, false, true),
+                MetaDataLoader.SUBTYPE_MANUAL, "debug-loader");
         loader.setSourceURIs(uris);
 
         try {

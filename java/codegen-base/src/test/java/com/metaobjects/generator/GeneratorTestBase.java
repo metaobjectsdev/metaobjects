@@ -1,12 +1,11 @@
 package com.metaobjects.generator;
 
-import com.metaobjects.loader.simple.SimpleLoader;
 import com.metaobjects.loader.simple.SimpleLoaderTestBase;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
 
+/**
+ * Base class for generator tests.
+ * H3a Task 5: delegates to SimpleLoaderTestBase which now uses MetaDataLoader.
+ */
 public class GeneratorTestBase extends SimpleLoaderTestBase {
-
 
 }

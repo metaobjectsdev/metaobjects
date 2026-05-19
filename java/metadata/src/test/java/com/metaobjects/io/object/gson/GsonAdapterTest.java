@@ -2,7 +2,6 @@ package com.metaobjects.io.object.gson;
 
 import com.metaobjects.io.object.json.JsonObjectWriter;
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.simple.SimpleLoader;
 import com.metaobjects.test.proxy.fruitbasket.Apple;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -22,7 +21,7 @@ public class GsonAdapterTest {
 
     @Before
     public void initLoader() throws ClassNotFoundException {
-        loader = SimpleLoader.createManual("proxytest", Arrays.asList(
+        loader = MetaDataLoader.createFromResources("proxytest", Arrays.asList(
                 "com/metaobjects/loader/simple/fruitbasket-proxy-metadata.json"
         ));
         

@@ -18,12 +18,16 @@ import com.metaobjects.object.MetaObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.metaobjects.loader.uri.URIHelper;
+
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -52,9 +56,9 @@ import java.util.concurrent.TimeoutException;
  * <strong>Loading vs Runtime Phases</strong>:
  * <pre>{@code
  * // LOADING PHASE - Happens once at startup
- * MetaDataLoader loader = new SimpleLoader("myLoader");
- * loader.setSourceURIs(Arrays.asList(URI.create("metadata.json")));
- * loader.init(); // Loads ALL metadata into permanent memory structures
+ * MetaDataLoader loader = new MetaDataLoader(LoaderOptions.create(false, false, true), "manual", "myLoader");
+ * loader.setSourceURIs(Arrays.asList(URIHelper.toURI("model:file:/path/to/metadata.json")));
+ * loader.init(); // Loads ALL metadata into permanent memory structures (including URI sources)
  *
  * // RUNTIME PHASE - All operations are READ-ONLY
  * MetaObject userMeta = loader.getMetaObjectByName("User");  // O(1) lookup
@@ -64,7 +68,6 @@ import java.util.concurrent.TimeoutException;
  * @author Doug Mealing
  * @version 6.0.0
  * @since 1.0
- * @see com.metaobjects.loader.simple.SimpleLoader
  * @see MetaRoot
  */
 public class MetaDataLoader implements LoaderConfigurable {
@@ -104,6 +107,26 @@ public class MetaDataLoader implements LoaderConfigurable {
     // in H3a Task 4).
     private final LoadingState loadingState = new LoadingState();
 
+    // URI-based source list (H3a Task 5: lifted from SimpleLoader).
+    // If set before init(), sources are loaded automatically during init().
+    private List<URI> sourceURIs = null;
+
+    /**
+     * Convenience constructor accepting only a name.
+     * Uses {@link LoaderOptions} defaults (no-register, non-verbose, strict) and
+     * {@link #SUBTYPE_MANUAL} as the subType.
+     *
+     * <p>This constructor satisfies the {@code Constructor(String)} reflection contract
+     * required by {@code AbstractMetaDataMojo.getConfiguredLoader()} when
+     * {@code MetaDataLoader} is specified as the loader classname in a Maven plugin
+     * configuration.</p>
+     *
+     * @param name the loader name
+     */
+    public MetaDataLoader(String name) {
+        this(LoaderOptions.create(false, false, true), SUBTYPE_MANUAL, name);
+    }
+
     /**
      * Constructs a new MetaDataLoader
      * @param subtype The subType for the metadata loader
@@ -142,6 +165,37 @@ public class MetaDataLoader implements LoaderConfigurable {
         return new MetaDataLoader(
                 LoaderOptions.create( false, false, false),
                         SUBTYPE_MANUAL, name );
+    }
+
+    /**
+     * Construct a MetaDataLoader, set the given URI list, then init + load — all in one call.
+     * Equivalent to the old {@code SimpleLoader.createManualURIs(name, uris)}.
+     *
+     * @param name the loader name
+     * @param uris model URIs to load (e.g. {@code model:resource:…}, {@code model:file:…})
+     * @return a fully-initialized loader with all URIs loaded
+     */
+    public static MetaDataLoader createFromURIs(String name, List<URI> uris) {
+        MetaDataLoader loader = new MetaDataLoader(
+                LoaderOptions.create(false, false, true), SUBTYPE_MANUAL, name);
+        loader.setSourceURIs(uris);
+        loader.init();
+        return loader;
+    }
+
+    /**
+     * Construct a MetaDataLoader from classpath resource paths, then init + load.
+     * Each resource path is wrapped as {@code model:resource:<path>}.
+     * Equivalent to the old {@code SimpleLoader.createManual(name, List&lt;String&gt;)}.
+     *
+     * @param name      the loader name
+     * @param resources classpath resource paths (no {@code model:} prefix needed)
+     * @return a fully-initialized loader with all resources loaded
+     */
+    public static MetaDataLoader createFromResources(String name, List<String> resources) {
+        List<URI> uris = new ArrayList<>();
+        for (String r : resources) uris.add(URIHelper.toURI("model:resource:" + r));
+        return createFromURIs(name, uris);
     }
 
     ///////////////////////////////////////////////////////////////////////
@@ -215,6 +269,28 @@ public class MetaDataLoader implements LoaderConfigurable {
             return metaDataClassLoader;
         }
         return getDefaultMetaDataClassLoader();
+    }
+
+    ///////////////////////////////////////////////////////////////////////
+    // Source URIs (H3a Task 5: lifted from SimpleLoader)
+
+    /**
+     * Set the URI list to be loaded during {@link #init()}.
+     *
+     * @param sourceURIs list of model URIs; must not be {@code null}
+     * @return this loader (for fluent chaining)
+     */
+    @SuppressWarnings("unchecked")
+    public <T extends MetaDataLoader> T setSourceURIs(List<URI> sourceURIs) {
+        this.sourceURIs = sourceURIs;
+        return (T) this;
+    }
+
+    /**
+     * Returns the URI list set via {@link #setSourceURIs}, or {@code null} if none was set.
+     */
+    public List<URI> getSourceURIs() {
+        return sourceURIs;
     }
 
     ///////////////////////////////////////////////////////////////////////
@@ -448,9 +524,30 @@ public class MetaDataLoader implements LoaderConfigurable {
         init();
     }
 
+    /**
+     * Convert a list of source strings to URIs and store them for loading during {@link #init()}.
+     * Each string may be a bare path (resolved against {@code sourceDir} or the classpath) or a
+     * fully-qualified {@code model:…} URI string.  This is the same logic that used to live in
+     * {@code SimpleLoader.processSources()} and is invoked by {@link #configure(LoaderConfiguration)}.
+     */
     protected void processSources(String sourceDir, List<String> sourceList) {
-        throw new UnsupportedOperationException(getClass().getName() + " does not support source processing " +
-                "(you must implement processSources method)");
+        if (sourceList == null) throw new IllegalArgumentException(
+                "sourceList was null on processSources for " + getName());
+
+        List<URI> uris = new ArrayList<>();
+        for (String s : sourceList) {
+            if (s.indexOf(':') < 0) {
+                if (sourceDir != null) {
+                    s = "model:file:" + s + ";" + com.metaobjects.loader.uri.URIHelper.URI_ARG_SOURCEDIR + "=" + sourceDir;
+                } else if (new File(s).exists()) {
+                    s = "model:file:" + s;
+                } else {
+                    s = "model:resource:" + s;
+                }
+            }
+            uris.add(URIHelper.toURI(s));
+        }
+        setSourceURIs(uris);
     }
 
     protected void processArguments(Map<String, String> args) {
@@ -551,6 +648,7 @@ public class MetaDataLoader implements LoaderConfigurable {
         try {
             logInitializationStart();
             initializeRegistriesIfNeeded();
+            loadSourceURIsIfPresent();
             transitionToInitialized(startTime);
             registerIfRequested();
             logInitializationSuccess(startTime);
@@ -560,6 +658,28 @@ public class MetaDataLoader implements LoaderConfigurable {
         } catch (Exception e) {
             handleInitializationFailure(e, startTime);
             throw e;
+        }
+    }
+
+    /**
+     * If {@link #sourceURIs} has been populated (e.g. via {@link #setSourceURIs} or
+     * {@link #processSources}), parse each URI into this loader's {@link MetaRoot}.
+     * Called automatically from {@link #performInitializationInternal} so that
+     * {@code setSourceURIs(...).init()} is the standard URI-based loading pattern.
+     */
+    private void loadSourceURIsIfPresent() {
+        if (sourceURIs == null || sourceURIs.isEmpty()) return;
+
+        for (URI sourceURI : sourceURIs) {
+            String filename = sourceURI.toString();
+            JsonMetaDataParser jsonParser = new JsonMetaDataParser(this, filename);
+            try (InputStream is = URIHelper.getInputStream(sourceURI)) {
+                jsonParser.loadFromStream(is);
+            } catch (IOException e) {
+                throw new MetaDataLoadingException(
+                    "Failed to load metadata from [" + filename + "]: " + e.getMessage(),
+                    getName(), LoadingState.Phase.INITIALIZING, 0, e);
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 package com.metaobjects.examples.basic;
 
-import com.metaobjects.loader.simple.SimpleLoader;
+import com.metaobjects.loader.LoaderOptions;
+import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.generator.mustache.MustacheTemplateGenerator;
@@ -18,7 +19,7 @@ import java.util.Map;
  * Basic example demonstrating SIMPLE PATTERN MetaObjects CORE usage without framework integration.
  *
  * This example demonstrates the simple pattern for single-loader scenarios:
- * 1. Direct SimpleLoader usage (no registry complexity)
+ * 1. Direct MetaDataLoader usage (no registry complexity)
  * 2. MetaDataUtil.findMetaObject*(loader, ...) methods
  * 3. Single-loader metadata operations
  * 4. Basic object creation and validation using Map
@@ -37,9 +38,11 @@ public class BasicMetaObjectsExample {
             
             // 1. Load metadata from shared resources
             System.out.println("\n1. Loading metadata...");
-            SimpleLoader loader = new SimpleLoader("examples");
-            
-            // Load from classpath - create a temporary file for SimpleLoader
+            MetaDataLoader loader = new MetaDataLoader(
+                    LoaderOptions.create(false, false, true),
+                    MetaDataLoader.SUBTYPE_MANUAL, "examples");
+
+            // Load from classpath via temporary file
             java.net.URL resourceUrl = BasicMetaObjectsExample.class.getResource("/metadata/examples-metadata.json");
             if (resourceUrl == null) {
                 throw new RuntimeException("Could not find metadata resource: /metadata/examples-metadata.json");
@@ -172,7 +175,7 @@ public class BasicMetaObjectsExample {
             // 7. Simple vs Complex pattern comparison
             System.out.println("\n7. When to use simple vs complex patterns...");
             System.out.println("   SIMPLE PATTERN (this example):");
-            System.out.println("     - Single MetaDataLoader");
+            System.out.println("     - Single MetaDataLoader (MetaDataLoader.createFromResources or setSourceURIs + init)");
             System.out.println("     - Direct loader.getMetaObjectByName() or MetaDataUtil.findMetaObjectByName(loader, ...)");
             System.out.println("     - No registry complexity needed");
             System.out.println("   COMPLEX PATTERN (see spring-example, osgi-example):");

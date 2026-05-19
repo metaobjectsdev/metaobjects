@@ -2,9 +2,9 @@ package com.metaobjects.mojo;
 
 import com.metaobjects.MetaDataException;
 import com.metaobjects.generator.Generator;
-import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.LoaderConfigurable;
-import com.metaobjects.loader.simple.SimpleLoader;
+import com.metaobjects.loader.LoaderOptions;
+import com.metaobjects.loader.MetaDataLoader;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -137,7 +137,9 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         if (loaderClass != null) {
             configurable = getConfiguredLoader(projectClassLoader, loaderClass, loaderName);
         } else {
-            configurable = new SimpleLoader(loaderName);
+            configurable = new MetaDataLoader(
+                    LoaderOptions.create(false, false, true),
+                    MetaDataLoader.SUBTYPE_MANUAL, loaderName);
         }
 
         // Configure the loader using the new pattern

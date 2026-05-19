@@ -1,18 +1,18 @@
 package com.metaobjects.generator.direct.object;
 
-import com.metaobjects.generator.direct.object.BaseObjectCodeGenerator;
-import com.metaobjects.loader.simple.SimpleLoader;
+import com.metaobjects.loader.MetaDataLoader;
 
 /**
  * Helper class for handling known issues in generator tests.
+ * H3a Task 5: retargeted from SimpleLoader to MetaDataLoader.
  */
 public class GeneratorTestHelper {
-    
+
     /**
      * Execute a generator with tolerance for known indentation issues.
      * Returns true if execution was successful, false if it was skipped due to known issues.
      */
-    public static boolean executeGeneratorSafely(BaseObjectCodeGenerator generator, SimpleLoader loader) {
+    public static boolean executeGeneratorSafely(BaseObjectCodeGenerator generator, MetaDataLoader loader) {
         try {
             generator.execute(loader);
             return true;
@@ -25,20 +25,20 @@ public class GeneratorTestHelper {
             }
         }
     }
-    
+
     /**
      * Check if an exception is the known JavaCodeWriter indentation issue.
      */
     public static boolean isKnownIndentationIssue(Exception e) {
-        return e.getMessage() != null && 
+        return e.getMessage() != null &&
                e.getMessage().contains("indenting increment is not back to root level");
     }
-    
+
     /**
      * Execute generator and return whether it succeeded or was skipped due to known issues.
      * Throws exception for unexpected errors.
      */
-    public static GeneratorResult executeWithResult(BaseObjectCodeGenerator generator, SimpleLoader loader) {
+    public static GeneratorResult executeWithResult(BaseObjectCodeGenerator generator, MetaDataLoader loader) {
         try {
             generator.execute(loader);
             return GeneratorResult.SUCCESS;
@@ -50,7 +50,7 @@ public class GeneratorTestHelper {
             }
         }
     }
-    
+
     public enum GeneratorResult {
         SUCCESS,
         SKIPPED_KNOWN_ISSUE

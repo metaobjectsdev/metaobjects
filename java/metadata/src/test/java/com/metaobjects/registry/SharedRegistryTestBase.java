@@ -1,6 +1,7 @@
 package com.metaobjects.registry;
 
-import com.metaobjects.loader.simple.SimpleLoader;
+import com.metaobjects.loader.LoaderOptions;
+import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.validator.RequiredValidator;
 import com.metaobjects.validator.LengthValidator;
 import org.junit.BeforeClass;
@@ -36,7 +37,7 @@ public abstract class SharedRegistryTestBase {
      * Shared static loader instance used by tests that need a loader.
      * This uses the shared registry and is initialized once.
      */
-    protected static SimpleLoader sharedLoader;
+    protected static MetaDataLoader sharedLoader;
 
     /**
      * Flag to ensure initialization happens only once across all test classes
@@ -137,10 +138,12 @@ public abstract class SharedRegistryTestBase {
     }
 
     /**
-     * Create the shared SimpleLoader instance that all tests can use.
+     * Create the shared MetaDataLoader instance that all tests can use.
      */
-    private static SimpleLoader createSharedLoader() {
-        return new SimpleLoader("shared-test-loader");
+    private static MetaDataLoader createSharedLoader() {
+        return new MetaDataLoader(
+                LoaderOptions.create(false, false, true),
+                MetaDataLoader.SUBTYPE_MANUAL, "shared-test-loader");
     }
 
     /**
@@ -155,9 +158,9 @@ public abstract class SharedRegistryTestBase {
     }
 
     /**
-     * Get the shared SimpleLoader instance for tests that need a loader.
+     * Get the shared MetaDataLoader instance for tests that need a loader.
      */
-    protected static SimpleLoader getSharedLoader() {
+    protected static MetaDataLoader getSharedLoader() {
         if (sharedLoader == null) {
             throw new IllegalStateException("Shared loader not initialized. Make sure test class calls super.initializeSharedRegistry()");
         }
@@ -168,11 +171,12 @@ public abstract class SharedRegistryTestBase {
      * Create a loader for specific test resources while still using the shared registry.
      * This allows tests to load specific metadata files without creating registry conflicts.
      */
-    protected SimpleLoader createTestLoader(String testName, List<URI> sources) {
-        SimpleLoader loader = new SimpleLoader("test-" + testName)
-            .setSourceURIs(sources)
-            .init();
-
+    protected MetaDataLoader createTestLoader(String testName, List<URI> sources) {
+        MetaDataLoader loader = new MetaDataLoader(
+                LoaderOptions.create(false, false, true),
+                MetaDataLoader.SUBTYPE_MANUAL, "test-" + testName);
+        loader.setSourceURIs(sources);
+        loader.init();
         return loader;
     }
 

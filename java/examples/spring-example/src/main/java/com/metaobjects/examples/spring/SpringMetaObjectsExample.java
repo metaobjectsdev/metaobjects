@@ -1,8 +1,8 @@
 package com.metaobjects.examples.spring;
 
 import com.metaobjects.spring.MetaDataService;
+import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.simple.SimpleLoader;
 import com.metaobjects.registry.MetaDataLoaderRegistry;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.util.MetaDataUtil;
@@ -71,7 +71,9 @@ public class SpringMetaObjectsExample implements CommandLineRunner {
         System.out.println("\n2. Basic MetaObjects functionality...");
 
         // Simple pattern: Create one loader for single-loader scenario
-        SimpleLoader loader = new SimpleLoader("spring-test");
+        MetaDataLoader loader = new MetaDataLoader(
+                LoaderOptions.create(false, false, true),
+                MetaDataLoader.SUBTYPE_MANUAL, "spring-test");
 
         java.net.URL resourceUrl = SpringMetaObjectsExample.class.getResource("/metadata/examples-metadata.json");
         if (resourceUrl == null) {
@@ -201,7 +203,9 @@ public class SpringMetaObjectsExample implements CommandLineRunner {
      */
     @Bean
     public MetaDataLoader exampleMetaDataLoader() throws Exception {
-        SimpleLoader loader = new SimpleLoader("spring-example");
+        MetaDataLoader loader = new MetaDataLoader(
+                LoaderOptions.create(false, false, true),
+                MetaDataLoader.SUBTYPE_MANUAL, "spring-example");
         
         // Load example metadata from shared resources
         java.net.URL resourceUrl = getClass().getResource("/metadata/examples-metadata.json");

@@ -2,7 +2,7 @@ package com.metaobjects.generator.direct.metadata.html;
 
 import com.metaobjects.generator.GeneratorIOException;
 import com.metaobjects.generator.GeneratorTestBase;
-import com.metaobjects.loader.simple.SimpleLoader;
+import com.metaobjects.loader.MetaDataLoader;
 import org.junit.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -100,7 +100,7 @@ public class HtmlDocumentationGeneratorExample extends GeneratorTestBase {
 
         // Step 2: Load test metadata to get actual content
         URI testMetadataUri = getClass().getClassLoader().getResource("template-test-metadata.json").toURI();
-        SimpleLoader loader = initLoader(Arrays.asList(testMetadataUri));
+        MetaDataLoader loader = initLoader(Arrays.asList(testMetadataUri));
 
         System.out.println("Loaded metadata from: " + testMetadataUri);
         System.out.println("Loader has " + loader.getChildren().size() + " root children");
@@ -159,7 +159,7 @@ public class HtmlDocumentationGeneratorExample extends GeneratorTestBase {
         System.out.println("\n=== Testing Minimal HTML Generation ===");
 
         // Use shared loader for minimal test (just registry types, no external metadata)
-        SimpleLoader loader = getSharedLoader();
+        MetaDataLoader loader = getSharedLoader();
 
         // Generate HTML documentation to a byte array
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();

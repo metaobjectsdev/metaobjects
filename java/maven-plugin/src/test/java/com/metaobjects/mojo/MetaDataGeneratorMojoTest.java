@@ -35,7 +35,7 @@ public class MetaDataGeneratorMojoTest {
         //System.out.println( "loader: " + configuration.getChild("loader").getChild("name").getValue() );
 
         assertEquals("mojo-test-pom", configuration.getChild("loader").getChild("name").getValue());
-        assertEquals("com.metaobjects.loader.simple.SimpleLoader", configuration.getChild("loader").getChild("classname").getValue());
+        assertEquals("com.metaobjects.loader.MetaDataLoader", configuration.getChild("loader").getChild("classname").getValue());
         assertEquals(1, configuration.getChild("loader").getChild("sources").getChildren().length);
 
         //assertEquals("rootPkg", configuration.getChild("loader").getChild("rootPkg").getValue());

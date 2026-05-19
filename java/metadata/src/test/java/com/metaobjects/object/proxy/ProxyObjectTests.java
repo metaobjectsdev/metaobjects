@@ -3,7 +3,6 @@ package com.metaobjects.object.proxy;
 import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.simple.SimpleLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.MetaObjectAware;
 import com.metaobjects.test.proxy.fruitbasket.*;
@@ -36,7 +35,7 @@ public class ProxyObjectTests {
     public void initLoader() throws ClassNotFoundException {
         log.debug("Starting loader initialization");
 
-        loader = SimpleLoader.createManual("proxytest", Arrays.asList(
+        loader = MetaDataLoader.createFromResources("proxytest", Arrays.asList(
                 "com/metaobjects/loader/simple/fruitbasket-proxy-metadata.json"
         ));
 

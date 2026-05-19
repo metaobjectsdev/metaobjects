@@ -1,7 +1,7 @@
 package com.metaobjects.generator.direct.xsd;
 
 import com.metaobjects.generator.GeneratorTestBase;
-import com.metaobjects.loader.simple.SimpleLoader;
+import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
 import org.junit.Before;
 import java.util.Arrays;
@@ -9,7 +9,7 @@ import java.util.Arrays;
 public class XSDWriterTest extends GeneratorTestBase {
 
     public final static String ROOT_DIR = "./src/test/resources/com/metaobjects/loader/simple";
-    protected SimpleLoader loader = null;
+    protected MetaDataLoader loader = null;
 
     /*@Before
     public void setup() {

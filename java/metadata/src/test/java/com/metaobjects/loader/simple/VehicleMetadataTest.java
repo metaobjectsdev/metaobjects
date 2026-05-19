@@ -1,5 +1,6 @@
 package com.metaobjects.loader.simple;
 
+import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -22,7 +23,7 @@ public class VehicleMetadataTest extends SimpleLoaderTestBase {
         log.debug("Testing basic common metadata loading");
         
         // Simple test to verify the parser works at all
-        SimpleLoader loader = initLoader(Arrays.asList(
+        MetaDataLoader loader = initLoader(Arrays.asList(
             URIHelper.toURI("model:resource:com/metaobjects/loader/simple/acme-common-metadata.json")
         ));
         
@@ -37,7 +38,7 @@ public class VehicleMetadataTest extends SimpleLoaderTestBase {
         log.debug("Testing basic vehicle metadata loading");
         
         // Load common first, then vehicle
-        SimpleLoader loader = initLoader(Arrays.asList(
+        MetaDataLoader loader = initLoader(Arrays.asList(
             URIHelper.toURI("model:resource:com/metaobjects/loader/simple/acme-common-metadata.json"),
             URIHelper.toURI("model:resource:com/metaobjects/loader/simple/acme-vehicle-metadata.json")
         ));
@@ -53,7 +54,7 @@ public class VehicleMetadataTest extends SimpleLoaderTestBase {
         log.debug("Testing complete metadata loading with overlay");
         
         // Load all three files
-        SimpleLoader loader = initLoader(Arrays.asList(
+        MetaDataLoader loader = initLoader(Arrays.asList(
             URIHelper.toURI("model:resource:com/metaobjects/loader/simple/acme-common-metadata.json"),
             URIHelper.toURI("model:resource:com/metaobjects/loader/simple/acme-vehicle-metadata.json"),
             URIHelper.toURI("model:resource:com/metaobjects/loader/simple/acme-vehicle-overlay-metadata.json")
@@ -100,7 +101,7 @@ public class VehicleMetadataTest extends SimpleLoaderTestBase {
         
         // The metadata files use [...] directly instead of "children": [...]
         // If they load successfully, the array-only format is working
-        SimpleLoader loader = initLoader(Arrays.asList(
+        MetaDataLoader loader = initLoader(Arrays.asList(
             URIHelper.toURI("model:resource:com/metaobjects/loader/simple/acme-common-metadata.json")
         ));
         
@@ -116,7 +117,7 @@ public class VehicleMetadataTest extends SimpleLoaderTestBase {
         
         // The metadata files use @attribute: "value" inline format
         // Need to load common metadata first for cross-file references to work
-        SimpleLoader loader = initLoader(Arrays.asList(
+        MetaDataLoader loader = initLoader(Arrays.asList(
             URIHelper.toURI("model:resource:com/metaobjects/loader/simple/acme-common-metadata.json"),
             URIHelper.toURI("model:resource:com/metaobjects/loader/simple/acme-vehicle-metadata.json")
         ));
@@ -132,7 +133,7 @@ public class VehicleMetadataTest extends SimpleLoaderTestBase {
         log.debug("Testing minimal cross-file reference");
         
         // Load common first, then concrete
-        SimpleLoader loader = initLoader(Arrays.asList(
+        MetaDataLoader loader = initLoader(Arrays.asList(
             URIHelper.toURI("model:resource:com/metaobjects/loader/simple/test-common.json"),
             URIHelper.toURI("model:resource:com/metaobjects/loader/simple/test-concrete.json")
         ));

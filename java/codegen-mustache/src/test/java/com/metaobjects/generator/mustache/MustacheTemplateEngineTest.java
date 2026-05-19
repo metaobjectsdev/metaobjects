@@ -3,7 +3,7 @@ package com.metaobjects.generator.mustache;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.attr.MetaAttribute;
-import com.metaobjects.loader.simple.SimpleLoader;
+import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
 import org.junit.Before;
 import org.junit.Test;
@@ -19,18 +19,15 @@ public class MustacheTemplateEngineTest {
 
     private MustacheTemplateEngine engine;
     private MetaObject testMetaObject;
-    private SimpleLoader loader;
+    private MetaDataLoader loader;
 
     @Before
     public void setUp() throws Exception {
         engine = new MustacheTemplateEngine();
 
-        // Load test metadata using SimpleLoader directly
-        loader = new SimpleLoader("mustache-test");
-        loader.setSourceURIs(Arrays.asList(
-            URIHelper.toURI("model:resource:mustache-test-metadata.json")
-        ));
-        loader.init();
+        // Load test metadata using MetaDataLoader directly
+        loader = MetaDataLoader.createFromURIs("mustache-test",
+            Arrays.asList(URIHelper.toURI("model:resource:mustache-test-metadata.json")));
 
         // Get the User MetaObject
         testMetaObject = loader.getChild("com_example_model::User", MetaObject.class);

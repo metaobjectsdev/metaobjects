@@ -1,7 +1,7 @@
 package com.metaobjects.generator.mustache;
 
 import com.metaobjects.generator.GeneratorTestBase;
-import com.metaobjects.loader.simple.SimpleLoader;
+import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
 import org.junit.Before;
 import org.junit.Test;
@@ -27,7 +27,7 @@ public class MustacheTemplateGeneratorTest extends GeneratorTestBase {
     public TemporaryFolder tempFolder = new TemporaryFolder();
     
     private MustacheTemplateGenerator generator;
-    private SimpleLoader loader;
+    private MetaDataLoader loader;
     private File outputDir;
     
     @Before

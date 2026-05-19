@@ -4,7 +4,7 @@ import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.GeneratorTestBase;
 import com.metaobjects.generator.direct.plantuml.PlantUMLGenerator;
-import com.metaobjects.loader.simple.SimpleLoader;
+import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
 import org.junit.After;
 import org.junit.Before;
@@ -20,7 +20,7 @@ import java.util.Map;
 public class PlantUMLTest extends GeneratorTestBase {
 
 
-    protected SimpleLoader loader = null;
+    protected MetaDataLoader loader = null;
 
     @Before
     public void initLoader() { 

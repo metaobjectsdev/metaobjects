@@ -8,7 +8,7 @@ import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.StringField;
-import com.metaobjects.loader.simple.SimpleLoader;
+import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.parser.json.JsonMetaDataParser;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.SharedRegistryTestBase;
@@ -65,7 +65,7 @@ public class FieldSpecificMappingTest extends SharedRegistryTestBase {
         """;
 
         // Parse the JSON using the same pattern as ParserComparisonTest
-        SimpleLoader loader = createTestLoader("FieldSpecificMappingTest", Collections.emptyList());
+        MetaDataLoader loader = createTestLoader("FieldSpecificMappingTest", Collections.emptyList());
         JsonMetaDataParser parser = new JsonMetaDataParser(loader, "test.json");
         InputStream is = new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8));
         parser.loadFromStream(is);

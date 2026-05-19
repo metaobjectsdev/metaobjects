@@ -52,9 +52,9 @@ import java.util.stream.Stream;
  * <strong>Usage Examples:</strong>
  * <pre>{@code
  * // Loading Phase - Happens once at startup
- * MetaDataLoader loader = new SimpleLoader("myLoader");
- * loader.setSourceURIs(Arrays.asList(URI.create("metadata.json")));
- * loader.init(); // Loads ALL metadata into permanent memory structures
+ * MetaDataLoader loader = MetaDataLoader.createFromResources("myLoader",
+ *     Arrays.asList("com/example/metadata.json"));
+ * // OR: loader = new MetaDataLoader(...); loader.setSourceURIs(...); loader.init();
  * 
  * // Runtime Phase - All operations are READ-ONLY
  * MetaObject userMeta = loader.getMetaObjectByName("User");  // O(1) lookup

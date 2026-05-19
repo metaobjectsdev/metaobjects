@@ -1,7 +1,7 @@
 package com.metaobjects.spring;
 
+import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.simple.SimpleLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.MetaDataLoaderRegistry;
 import com.metaobjects.registry.ServiceRegistryFactory;
@@ -51,7 +51,9 @@ public class MetaDataSpringIntegrationTest {
         
         @Bean
         public MetaDataLoader testMetaDataLoader() throws Exception {
-            SimpleLoader loader = new SimpleLoader("testLoader");
+            MetaDataLoader loader = new MetaDataLoader(
+                    LoaderOptions.create(false, false, true),
+                    MetaDataLoader.SUBTYPE_MANUAL, "testLoader");
             
             // Create a simple test metadata file for this test
             java.io.File tempFile = java.io.File.createTempFile("test-metadata", ".json");
