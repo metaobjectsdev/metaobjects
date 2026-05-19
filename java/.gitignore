@@ -1,0 +1,10 @@
+.idea
+*.iml
+derby.log
+.hg
+.hgignore
+.hgtags
+target
+out
+.DS_Store
+*.code-workspace

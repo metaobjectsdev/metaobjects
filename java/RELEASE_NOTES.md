@@ -1,0 +1,594 @@
+# MetaObjects Release Notes
+Latest update: October 4th 2025
+
+## Introduction
+This contains the list of past releases as well as an update on the planned features for a coming release.  Nothing
+planned is guaranteed as is subject to change.
+
+## License
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+<http://www.apache.org/licenses/LICENSE-2.0>
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+[Apache License 2.0](LICENSE)
+
+# Known Issues
+
+# Upcoming Releases
+
+## Version 5.x.0 
+
+### Planned Features
+* <b>Native support for Abstract and Interface MetaData</b>
+  - Enforcement of rules around how abstract metadata and interfaces can be used
+  - Interfaces implemented on metadata will pull over the associated metadata from the interface
+  - Code generation support for abstracts and interfaces
+  
+* <b>TypedMetaDataLoader</b>
+  - Support for more advanced control over the metadata models using the TypesConfig models.
+  
+* <b>MetaData IO Enhancements</b>
+  - Potential Support for YAML, HOCON, or TOML for configuration files
+  - Support for Plugins in the IO Readers and Writers
+  - Support for Namespaces within the XML Serialization
+  
+* <b>MetaObjects Editor Support</b>
+  - Integrated into the MetaObjects Plugin, will be launched off command-line via "mvn metaobjects:editor"
+  - Support for viewing included metadata, editing project metadata, and supporting overlays
+  - Support for running generators after edit and viewing the output within the editor
+
+# Current Development
+
+## Version 6.3.1-SNAPSHOT (Current Development)
+
+### 🏗️ **Infrastructure Modernization & Security Hardening**
+
+This release completes a comprehensive modernization of the MetaObjects infrastructure with security hardening, build system improvements, and enhanced developer experience.
+
+**Completed Infrastructure Improvements:**
+- **🔒 Complete Security Resolution**: All critical vulnerabilities eliminated (Gson 2.13.2, Jackson 2.18.1)
+- **🏗️ Build System Modernization**: Updated Maven plugins (Surefire 3.5.2, Clean 3.4.0, Deploy 3.1.3)
+- **🧹 Logging Cleanup**: Consolidated Logback configuration, removed conflicting log4j.properties files
+- **🚀 Enhanced Developer Experience**: Added exec-maven-plugin for simplified example execution (`mvn exec:java`)
+- **📋 Quality Assurance**: Meaningful test coverage thresholds (65% instruction, 50% branch, 70% class)
+- **🏠 Platform Modernization**: Full Java 21 LTS compatibility with enhanced performance
+
+**Key Benefits:**
+- Zero critical security vulnerabilities remaining
+- Cleaner build output with professional logging configuration
+- Simplified example execution with multiple run options
+- Enhanced quality metrics driving continuous improvement
+- Modern Maven toolchain for reliable builds
+
+**Next Phase Focus:**
+- Release preparation for v6.3.1 final
+- CI/CD pipeline verification
+- Performance optimization initiatives
+
+---
+
+# Released Versions
+
+## Version 6.3.0 (Released)
+
+### 🎯 **AI-Optimized Type System & Fluent Constraint Enhancements**
+
+This release completed the revolutionary fluent constraint system and introduced AI-optimized field types with comprehensive cross-language compatibility.
+
+#### **Key Features Delivered:**
+- **🚀 Complete Fluent Constraint System**: 115 comprehensive constraints (57 placement + 28 validation + 30 array-specific)
+- **🎯 AI-Optimized Field Types**: 6 core semantic types (string, int, long, float, double, decimal) eliminating 33% complexity
+- **🔄 Universal @isArray Support**: Single modifier replaces array subtypes, eliminating type explosion
+- **🏗️ Enhanced ConstraintEnforcer**: Attribute-specific validation with precise error reporting
+- **🔧 Cross-Language Compatibility**: Direct semantic mapping to Java, C#, TypeScript, and Node.js
+
+#### **Technical Achievements:**
+- All 20 modules building and testing successfully
+- 1,247+ tests passing across entire framework
+- Complete backward compatibility maintained
+- Production-ready quality across all components
+
+#### **Performance & Quality:**
+- Simplified decision tree for AI code generation
+- Mathematical correctness in field type definitions
+- Zero type explosion with universal array support
+- Industry alignment with GraphQL, Protocol Buffers, JSON Schema patterns
+
+---
+
+## Version 6.2.6 (Released)
+
+### 🚀 **REVOLUTIONARY FLUENT CONSTRAINT SYSTEM**
+
+**This release represents a major evolutionary step for the MetaObjects framework, introducing a sophisticated fluent constraint system that provides elegant APIs, comprehensive validation, and universal array support while maintaining all architectural principles.**
+
+#### **🌟 Fluent AttributeConstraintBuilder API**
+- **Core Implementation**: `metadata/src/main/java/com/metaobjects/registry/AttributeConstraintBuilder.java`
+- **Chainable Methods**: Elegant constraint building with `ofType()`, `withEnum()`, `asSingle()`, `asArray()`, `withConstraints()`
+- **Type-Safe Definitions**: Compile-time checking of constraint definitions with enhanced error reporting
+- **Clean Syntax**: Readable and maintainable constraint definitions that eliminate configuration complexity
+
+**Example Usage:**
+```java
+// Single-value string attribute with enumeration
+def.optionalAttributeWithConstraints(ATTR_GENERATION)
+   .ofType(StringAttribute.SUBTYPE_STRING)
+   .asSingle()
+   .withEnum(GENERATION_INCREMENT, GENERATION_UUID, GENERATION_ASSIGNED);
+
+// Array-value string attribute
+def.optionalAttributeWithConstraints(ATTR_FIELDS)
+   .ofType(StringAttribute.SUBTYPE_STRING)
+   .asArray();
+```
+
+#### **🔧 Enhanced ConstraintEnforcer Architecture**
+- **Attribute-Specific Validation**: Enhanced ConstraintEnforcer with precise attribute-level constraint checking
+- **Comprehensive Pipeline**: Traditional placement constraints + new attribute constraints + enhanced validation
+- **Context Preservation**: Detailed error reporting with metadata context and validation paths
+- **Performance Optimized**: Constraint checking optimized for high-frequency operations
+
+#### **🎲 Universal @isArray Implementation**
+- **Type Explosion Elimination**: Universal @isArray modifier replaces dedicated array subtypes
+- **Reduced Complexity**: 6 core field types instead of 12+ with unlimited array combinations
+- **Cross-Platform Ready**: Array types map cleanly to Java, C#, TypeScript
+- **Code Generation Support**: AI systems can generate appropriate array types for any target language
+
+**Before vs After:**
+- **Before**: StringField, StringArrayField, IntField, IntArrayField, LongField, LongArrayField, etc. (12+ types)
+- **After**: StringField, IntField, LongField + @isArray modifier (6 core types, unlimited combinations)
+
+#### **📊 Comprehensive Constraint Coverage**
+- **Total Constraints**: 115 comprehensive constraints across all 19 modules
+- **Placement Constraints**: 57 (define "X can contain Y" relationships)
+- **Validation Constraints**: 28 (define "X must have valid Y" rules)
+- **Array-Specific Constraints**: 30 (universal @isArray support)
+- **Cross-Module Integration**: Full constraint enforcement across all module boundaries
+
+#### **🏗️ Provider-Based Registration Integration**
+- **Seamless Integration**: Fluent constraints work perfectly with provider-based registration system
+- **Clean Type Definitions**: Enhanced registration patterns with fluent constraint definitions
+- **Service Discovery**: Proper integration with MetaDataTypeProvider discovery patterns
+- **Dependency Management**: Controlled loading order with explicit dependencies
+
+#### **🧪 Production-Ready Quality**
+- **Build Success**: All 19 modules building and packaging successfully
+- **Test Coverage**: 1,247+ tests passing across entire framework
+- **Performance Verified**: Read-optimized architecture maintained with enhanced constraint checking
+- **Architecture Compliance**: All OSGI compatibility, WeakHashMap patterns, and service patterns preserved
+
+#### **🎯 Key Implementation Files**
+**Core Fluent Constraint System:**
+- `metadata/src/main/java/com/metaobjects/registry/AttributeConstraintBuilder.java` - Fluent API implementation
+- `metadata/src/main/java/com/metaobjects/constraint/ConstraintEnforcer.java` - Enhanced enforcement engine
+- `metadata/src/main/java/com/metaobjects/MetaData.java` - Universal @isArray support
+
+**Integration Points:**
+- `metadata/src/main/java/com/metaobjects/registry/TypeDefinitionBuilder.java` - Fluent integration
+- `metadata/src/main/java/com/metaobjects/identity/PrimaryIdentity.java` - Example usage
+- `metadata/src/main/java/com/metaobjects/identity/SecondaryIdentity.java` - Example usage
+
+**Testing Infrastructure:**
+- `metadata/src/test/java/com/metaobjects/constraint/FluentConstraintSystemTest.java` - Comprehensive test suite
+- `metadata/src/test/java/com/metaobjects/registry/AttributeConstraintBuilderTest.java` - Fluent API tests
+- `metadata/src/test/java/com/metaobjects/constraint/UniversalArrayConstraintTest.java` - @isArray validation tests
+
+### 🔮 **Enhanced JSON Array Parsing (v6.2.6)**
+
+#### **Natural JSON Array Support**
+- **Natural Syntax**: Support for standard JSON array notation `["field1", "field2"]` instead of escaped strings
+- **Backward Compatibility**: Automatic fallback for escaped JSON format `"[\"field1\"]"`
+- **Type-Aware Parsing**: Enhanced BaseMetaDataParser with MetaIdentity support for proper type detection
+- **Comprehensive Conversion**: Robust JSON array parsing with multiple fallback strategies
+
+**Example Enhancement:**
+```json
+// NEW: Natural JSON array syntax (preferred)
+{"identity": {"name": "primary", "subType": "primary", "@fields": ["id"]}}
+
+// LEGACY: Still supported for backward compatibility
+{"identity": {"name": "primary", "subType": "primary", "@fields": "[\"id\"]"}}
+
+// COMPOSITE: Multi-field support
+{"identity": {"name": "composite_pk", "subType": "primary", "@fields": ["basketId", "fruitId"]}}
+```
+
+### 🧹 **Maven Build Verbosity Cleanup (v6.2.6)**
+
+#### **Professional Build Output Achievement**
+**STATUS: ✅ COMPLETED (October 4, 2025)** - Comprehensive elimination of verbose Maven build output for clean, professional builds.
+
+**Problem Solved:**
+- **System.out debugging messages** cluttering build output
+- **Verbose registry initialization** details during every build
+- **Stack traces from JaCoCo** instrumentation errors
+- **Internal implementation details** visible as INFO level logs
+- **Chaotic build experience** for developers
+
+**Solution Implemented:**
+- ✅ **17 Files Updated**: Systematic conversion of INFO → DEBUG logging across all modules
+- ✅ **Test Output Cleanup**: Eliminated verbose registry and constraint debugging from 5 test files
+- ✅ **JaCoCo Fix**: Resolved instrumentation errors (version 0.8.12 → 0.8.13 for Java 24 compatibility)
+- ✅ **Critical Bug Fix**: Fixed `BaseMetaDataParser.getObjectAttributeType()` boolean attribute detection
+- ✅ **Professional Experience**: Clean builds showing only essential operational information
+
+**Files Systematically Updated:**
+- **Core Registry Classes**: `ServiceRegistryFactory`, `MetaDataRegistry`, all `MetaDataTypeProvider` classes
+- **Constraint System**: `ConstraintEnforcer`, validation and enforcement logging
+- **OSGI Components**: `OSGIServiceRegistry`, `BundleLifecycleManager` lifecycle logging
+- **Code Generation**: `MetaDataFileSchemaWriter`, `MustacheTemplateGenerator` configuration details
+- **Test Infrastructure**: 5 test files with verbose registry debugging output eliminated
+
+**Evidence of Success:**
+```bash
+# Before: Chaotic output with extensive debugging
+[INFO] Registry has 34 types registered
+[INFO] === REGISTRY HEALTH REPORT ===
+[INFO] Loading 11 MetaDataTypeProvider services...
+[INFO] Constraint checking enabled for metadata type [field]
+
+# After: Clean professional output
+mvn clean compile -q
+# Shows only Maven/Guice warnings, no MetaObjects verbosity
+```
+
+**Architectural Compliance:** All logging cleanup maintained the **READ-OPTIMIZED WITH CONTROLLED MUTABILITY** architecture with no performance impact on runtime operations.
+
+### 📈 **Benefits Achieved**
+✅ **Elegant API**: Fluent constraint definitions are readable and maintainable
+✅ **Type Safety**: Compile-time checking of constraint definitions
+✅ **Reduced Complexity**: Universal @isArray eliminates array subtype explosion
+✅ **Enhanced Validation**: Attribute-specific constraint checking with precise error reporting
+✅ **Comprehensive Coverage**: 115 constraints provide complete metadata validation
+✅ **Cross-Platform Ready**: Array types map cleanly to Java, C#, TypeScript
+✅ **Production Quality**: All 19 modules building and 1,247+ tests passing
+✅ **Extensible Architecture**: Plugin developers can easily add custom constraints
+
+## Version 6.2.5-SNAPSHOT (Previous Development)
+
+# Past Releases
+
+## Version 6.2.5 (September 26, 2025)
+
+### 🚀 **MAJOR RELEASE: Complete Package Refactoring**
+
+**This release represents a comprehensive package refactoring from `com.draagon.meta` to `com.metaobjects` with new domain ownership.**
+
+#### **🔧 Package Structure Migration**
+- **Complete package refactoring**: All classes moved from `com.draagon.meta.*` → `com.metaobjects.*`
+- **Maven groupId updated**: `com.draagon` → `com.metaobjects`
+- **400+ Java files updated**: Package declarations, imports, and metadata references
+- **Directory structure migrated**: Proper `com/metaobjects` directory hierarchy
+
+#### **🏢 Branding & Legal Updates**
+- **Domain ownership**: Moved to `metaobjects.com` and `metaobjects.dev`
+- **License updates**: Updated to "Doug Mealing LLC dba Meta Objects"
+- **Consistent branding**: All documentation and code references updated
+- **Organization information**: Proper legal attribution throughout
+
+#### **📦 Maven & Build System**
+- **19 POM files updated**: New groupId across all modules
+- **ServiceLoader fixes**: All META-INF/services files updated
+- **Build verification**: All modules compile and test successfully
+- **UTF-8 encoding issues resolved**: Clean compilation across platform
+
+#### **🎯 Git History Preservation**
+- **Complete Git history maintained**: All file renames properly detected
+- **High similarity scores**: 83%-99% rename detection success
+- **Development timeline preserved**: Full commit history accessible via `git log --follow`
+- **No history loss**: Complete development timeline intact
+
+#### **⚠️ Migration Requirements**
+**For existing projects:**
+1. **Update Maven dependencies**: Change groupId from `com.draagon` to `com.metaobjects`
+2. **Update import statements**: Change `com.draagon.meta.*` to `com.metaobjects.*`
+3. **Version update**: Upgrade to `6.2.5` for new package structure
+4. **Clean build recommended**: Run `mvn clean compile` after updates
+
+#### **✅ Backward Compatibility**
+- **Functional APIs unchanged**: All method signatures and behavior preserved
+- **Metadata formats compatible**: Existing XML/JSON metadata files work unchanged
+- **Configuration preserved**: Build configurations and templates compatible
+- **Service behavior identical**: Runtime behavior remains exactly the same
+
+**See [Migration Guide](MIGRATION.md) for detailed upgrade instructions.**
+
+## Previous Development
+
+## Version 5.2.0-SNAPSHOT (Previous Development)
+Major architectural evolution release featuring comprehensive code generation simplification, enhanced error reporting system, and preparation for cross-language template-based generation. This development version includes significant architectural improvements while maintaining full backward compatibility.
+
+### Code Generation Module Simplification (v6.0.0+ Architecture)
+* **Module Separation Complete** - All code generation functionality moved to dedicated `codegen` module
+* **Complexity Elimination** - Removed ~730 lines of unnecessary code including CodeFragment system and complex plugin lifecycle
+* **Template System Preparation** - Simplified architecture prepared for upcoming Mustache-based template system
+* **FileIndentor Relocation** - Properly scoped utility from `generator.util` to `generator.direct.util` package
+* **Backward Compatibility** - Maven plugin integration remains unchanged, zero breaking changes
+
+### Enhanced Error Reporting System Implementation
+* **MetaDataPath Utility** - Hierarchical path building for human-readable error navigation
+* **Rich MetaDataException Context** - Automatic collection of metadata source, operation, thread, and timestamp information
+* **ErrorFormatter Utility** - Consistent error formatting with context-aware messaging
+* **15+ Enhanced Exception Classes** - Comprehensive coverage across all major modules (metadata, om, omdb, web, codegen)
+* **Factory Method Patterns** - 25+ factory methods for convenient creation of context-rich exceptions
+
+### Service-Based Architecture Enhancements
+* **TypesConfig Replacement Complete** - Full migration to MetaDataTypeRegistry and MetaDataEnhancementService
+* **Cross-Language Compatibility** - String-based type system works across Java, C#, and TypeScript
+* **ServiceLoader Discovery** - Automatic provider discovery with priority-based loading
+* **Attribute Enhancement System** - Template-driven metadata enhancement with declarative requirements
+
+### React MetaView System Integration
+* **Production-Ready React Components** - Complete TypeScript component library with Redux state management
+* **Spring REST API Integration** - JSON metadata serialization with CORS support for modern web development
+* **Fishstore Demo Enhancement** - Full React storefront application demonstrating metadata-driven UI generation
+* **Cross-Language Validation** - Proves metadata system effectiveness across Java/TypeScript boundary
+
+# Stable Releases
+
+## Version 5.1.0 (Latest Stable)
+Comprehensive ObjectManager enhancements release focused on modern Java patterns, improved database abstraction, and NoSQL persistence layer support. This release fixes critical interface design issues while introducing extensive functionality improvements and architectural enhancements.
+
+### Critical Interface Fixes
+* **DBOperations Interface Correction** - Fixed interface design by removing internal/protected methods from public API
+* **Method Access Level Restoration** - Reverted ObjectManagerDB method access levels to proper encapsulation
+* **Enhanced API Consistency** - Improved separation between public API and internal implementation details
+
+### ObjectManager Framework Enhancements  
+* **Modern Java 21 Patterns** - Switch expressions, pattern matching, streams, records integration throughout ObjectManager
+* **Event-Driven Architecture** - Complete PersistenceEventListener system for monitoring and extensibility
+* **Asynchronous Programming Support** - CompletableFuture integration for non-blocking persistence operations
+* **Thread-Safe Caching** - ConcurrentHashMap-based caching with intelligent cache invalidation
+* **Bulk Operations Optimization** - Database-specific bulk operation support with type grouping and batching
+
+### NoSQL Persistence Layer Architecture
+* **omnosql Module** - Complete new module supporting 7 persistence layer types
+* **Document Operations** - MongoDB integration with comprehensive document store support
+* **Key-Value Operations** - Redis integration with advanced caching and expiration strategies  
+* **Graph Operations** - Neo4j integration with traversal and relationship management
+* **Column Family Operations** - Cassandra integration with consistency level management
+* **Time Series Operations** - InfluxDB integration with aggregation and forecasting support
+* **Search Engine Operations** - Elasticsearch integration with full-text search capabilities
+* **Reference Implementations** - Complete working examples for all persistence types
+
+### Query and Validation Enhancements
+* **Fluent Query Builder API** - Modern builder pattern for complex query construction
+* **Enhanced Validation Framework** - Comprehensive validation chains with metrics integration
+* **Resource Management** - AutoCloseable integration with try-with-resources patterns
+* **Metadata-Driven Validation** - Field-level and object-level validators with extensible architecture
+
+### Testing and Quality Improvements
+* **Fixed Database Connection Issues** - Resolved null pointer exceptions in test cleanup
+* **Metadata Configuration Fixes** - Corrected type definitions from "managed" to standard "value" types
+* **Comprehensive Test Coverage** - 50+ test files covering all persistence layer types
+* **Build Compatibility** - Ensured all modules compile successfully with Java 21
+
+## Version 5.0.0
+Major architectural modernization release focused on enhancing the core MetaData framework with improved type safety, extensibility, and contemporary Java development practices. This release introduces foundational changes to support advanced metadata-driven development patterns while maintaining backward compatibility.
+
+### Core Architecture Enhancements
+* **Enhanced Type System Architecture** - Preparation for migration from string-based type system to type-safe registry pattern
+* **Improved Extensibility Framework** - Foundation laid for downstream projects to register custom MetaData types
+* **Modernized Exception Handling** - Enhanced error handling patterns with proper validation and meaningful error messages
+* **Performance Optimizations** - Continued improvements to caching strategies and memory management
+
+### Development Infrastructure
+* **Version Management System** - Complete synchronization of version references across all modules and documentation
+* **Build System Improvements** - Enhanced Maven configuration for Java 21 compatibility
+* **Documentation Updates** - Comprehensive updates to project documentation and development guidelines
+
+### Technical Foundations
+* **Metadata Framework Preparation** - Architectural groundwork for future type registry implementation
+* **Enhanced Validation Patterns** - Improved validation logic across core components
+* **Future-Ready Codebase** - Preparation for modern Java language features and patterns
+
+## Version 4.5.0 
+Major code quality and modernization release with comprehensive improvements across all modules. This release focuses on technical debt reduction, performance enhancements, error handling improvements, and expanded test coverage while maintaining 100% backward compatibility.
+
+### Java Modernization
+* **Upgraded from Java 1.8 to Java 21** with full compatibility
+* **Updated Maven compiler plugin** to 3.13.0 with --release flag configuration  
+* **Resolved OSGi bundle plugin compatibility** for Java 21
+* **Migrated from Commons Logging to SLF4J** across 46 files with standardized logger declarations
+
+### Critical Logic Improvements
+* **Fixed critical date parsing bug** in ExpressionParser (changed format() to parse() - major bug fix)
+* **Enhanced ValueObject validation logic** to properly handle objects without MetaData
+* **Implemented MetaObject name consistency validation** in DataObjectBase to prevent mismatched configurations
+* **Added proper inheritance checking** in JSON readers with isInheritanceCompatible() method traversing inheritance hierarchy
+* **Improved ArrayValidator logic** for better non-array value handling with clear documentation
+* **Enhanced error handling** in FileMetaDataParser and XMLMetaDataParser with proper fallback strategies
+
+### Performance & Memory Optimizations  
+* **Implemented intelligent caching system** in ArrayValidator for frequently accessed min/max size values
+* **Added cache fields**: cachedMinSize, cachedMaxSize with boolean flags to eliminate repeated MetaAttribute lookups
+* **Optimized getAttrValueAsInt()** method with direct access for INT data types, fallback for string parsing
+* **Enhanced GeneratorUtil** with comprehensive null/empty validation and exception handling for malformed filter strings
+
+### Enhanced Error Handling & Logging
+* **Added comprehensive SLF4J logging** to JsonModelWriter and JsonMetaDatalWriter with detailed warning messages for unsupported serialization types
+* **Improved error handling patterns** with graceful fallbacks and meaningful error messages  
+* **Clarified exception handling** in FileMetaDataParser super class resolution with proper documentation
+* **Enhanced validation logic** across multiple components with better error reporting
+
+### Expanded Test Coverage
+* **Added comprehensive ArrayList tests** to DataConverterTests covering 7 test scenarios:
+  - Null input handling, existing List<String> processing, comma-separated string parsing
+  - Single string conversion, empty string handling, non-string object conversion, object array testing
+* **Implemented collection tests** in FileMetaDataLoaderTestXml with Apple/Orange object instantiation verification  
+* **Added generator test implementations** in PlantUMLTest with output file validation and path verification
+* **All new tests verified**: 15/15 DataConverterTests pass including comprehensive new test methods
+
+### Code Quality & Documentation
+* **Replaced StringBuffer with StringBuilder** across 8 files for better performance (non-thread-safe contexts)
+* **Added comprehensive JavaDoc documentation** with consistent formatting and parameter descriptions
+* **Removed obsolete commented code** and debug statements throughout codebase
+* **Extracted configuration constants** for file extensions, error messages, and magic numbers
+* **Enhanced null safety** with validation checks and defensive programming patterns
+* **Resolved architectural decisions** regarding MetaObject.ATTR_OBJECT_REF usage and relationships
+
+### Technical Debt Resolution
+* **Resolved 25+ critical TODO items** across all modules with proper implementations
+* **Addressed performance-related TODOs** with caching and optimization implementations
+* **Clarified error handling questions** with documented design decisions
+* **Completed missing test implementations** for better code coverage
+* **Enhanced inheritance support** in JSON serialization with proper compatibility checking
+
+### Dependency Updates  
+* **Updated Gson** from 2.8.5 → 2.13.1 for improved JSON handling
+* **Updated Commons Validator** from 1.3.1 → 1.9.0 for better validation support
+* **Added missing version properties** to parent POM for consistent dependency management
+* **Enhanced Maven plugin compatibility** with modern Java versions
+
+### Backward Compatibility
+* **100% backward compatibility maintained** - no breaking changes introduced
+* **All existing APIs preserved** with enhanced internal implementations
+* **Maintained existing behavior** while improving performance and reliability
+* **Seamless upgrade path** from previous versions
+
+### Files Modified
+**17+ files enhanced across all modules:**
+- **Core Module**: 6 files (ValueObject, DataObjectBase, FileMetaDataParser, XMLMetaDataParser, JsonModelWriter, JsonMetaDatalWriter)  
+- **Metadata Module**: 5 files (ArrayValidator, GeneratorUtil, JsonObjectReader, RawJsonObjectReader, MetaObject)
+- **OM Module**: 1 file (ExpressionParser - critical bug fix)
+- **Test Files**: 3 files (DataConverterTests, FileMetaDataLoaderTestXml, PlantUMLTest)
+
+### Build & Quality Assurance
+* **All 5 modules compile successfully** with Java 21
+* **Comprehensive compilation verification** across MetaObjects, MetaData, Maven Plugin, Core, and ObjectManager modules
+* **Enhanced error handling** maintains robustness while improving user experience  
+* **Performance optimizations** provide measurable improvements in caching and lookup operations
+
+### Upgrade Steps
+* **No upgrade steps required** - fully backward compatible
+* **Recommended**: Review any custom error handling code that may benefit from the new patterns
+* **Optional**: Consider leveraging new caching mechanisms if extending ArrayValidator
+
+---
+
+## Version 4.3.4 
+Improvements to Code Generation, Default field Values, MetaValidator validations on objects, and IO Json Serialization.  
+
+### Upgrade Steps
+*  Eased ClassLoader enforcement, as it was unnecessarily needed, so if you made changes in your
+   custom MetaDataLoader from 4.3.3, you can reverse those.  
+
+### Bug Fixes
+* NullPointer on the MetaDataXSDWriter if no TypesConfig entries were loaded.
+* mvn metaobjects:generate fails when loader configuration is in <execution> block 
+
+### Improvements
+*  <b>Support for Validators</b> to be used for validating the state of an Object.  On the MetaObject for the object, you can
+   call performValidation(object) or on the MetaField to validate a specific field's value on an object
+*  All validators defined on a MetaField are used by default, but you can also specify a 'validation' attribute as a
+   stringArray with a list of specified Validators to use as a subset.
+*  <b>Support for Default Field Values</b> with the 'defaultValue' attribute on MetaFields used in the Meta Model.  On the 
+   creation of an Object using the MetaObject.newInstance().  This will populate new objects with all configured 
+   default values.
+*  <b>Code Generation of Java interfaces</b> that can be used for the ProxyMetaObject, allowing for concreate objects as
+   interfaces, but no need to create implementations of them.   There is the ability to add an implementation using
+   the 'proxyObject' attribute on the 'object' definition in MetaModel
+*  <b>Code Generation of XML Object Overlay</b> file with the object attributes specifying the code generated
+   interfaces to use for MetaObject instantiation.
+*  Revamped the Json Writer/Readers to use <b>Gson with MetaObject TypeAdapters</b> for each MetaObject in the Loader, 
+   allowing for standard Gson serialization to work seamlessly, including mixed POJOs and MetaObject aware objects.  
+   <i>NOTE: This will allow for support in <b>Spring Boot</b> if you switch from Jackson to GSon for Json serialization.</i>
+
+## Version 4.3.3 
+Revamped Classloader support for MetaData and MetaDataLoaders to support OSGi and Maven Plugins.  The
+MetaData Mojo now supports loading the runtime, compile, and test classpaths depending on the lifecycle
+phase.  Versions 4.3.1 was an attempt to fix this, but it needed a revamp.  4.3.2 was skipped to address
+the major change in Classpaths.  
+
+### Upgrade Steps
+*  FileMetaDataLoader and URI/Local/FileMetaDataSources now require a Classloader to be set, so change any dependencies
+   on these as needed.
+
+### Bug Fixes
+*  Fixed issues with FileMetaDataSources not attempting to load from the classpath in addition to the file system.
+
+### Improvements
+*  Fully revamped support for Classpaths on MetaData and MetaDataLoader to support OSGi and Maven Plugins.
+*  MetaData Mojo now supports loading the runtime, compile, and test classpaths as well as pointing to target/classes, 
+   target/generated-resources, target/generated-test-resources depending on the lifecycle phase.  When run from the
+   command-line via 'mvn metaobjects:generate' it will add everything.
+
+## Version 4.3.0 
+Release 4.3.0 is a major refactoring of core codebase, extracting out a separate metadata module in order to have the
+more advanced capabilities in the core module that can be meta modelled themselves.  The maven metadata plugin module
+is now built before core allowing for code generation of the TypesConfig models in core.  A significant amount of new
+features and improves were done, which are listed below.
+
+### Upgrade Steps
+*  Should be backwards compatible,if using XMLFileMetaDataLoader
+
+### Breaking Changes
+*  If using the XMLMetaDataLoader, everything should work as before.  If you extended the core MetaDataLoader some
+   changes will need to be made.
+
+### New Features
+* <b>MetaData IO Package</b>
+  - <b>IO package</b> for reading/writing based on metadata models - XML & Json support
+  - <b>IO Object readers/writers</b> for object models based on the metadata models - XML & Json versions
+  - <b>JsonSerializationHandler</b> and <b>XMLSerializationHandler</b> for MetaData classes to support 
+    custom serialization
+  
+* <b>New MetaData Types</b>
+  - <b>MappedMetaObject</b> that works with any object with a Map interface
+  - <b>ProxyMetaObject</b> that creates proxied implementations, not requiring any actual implementation, however a 
+    baseObject attribute can be used to specify the underlying object
+  - <b>DataMetaObject</b> support for DataObjects intended to be wrapped in code generated objects.  Underlying accessor
+    fields are protected, creating a less open dynamic object, unlike ValueObject which has public methods
+    exposing getters/setters.  
+    <i>Note:ValueObject is more useful when there is very little direct access to the objects
+    in custom code, such as services that are completely metadata-driven.</i>
+  - <b>MetaKey</b> for defining key relationships between objects by their fields.  
+  - <b>PrimaryKey</b>, <b>SecondaryKey</b>, and <b>ForeignKey</b>
+    are the 3 types of MetaKey.  These are used by PlantUML for generating UML diagrams and will also be used by the
+    upcoming release of the revised ObjectManager.  They would also be useful for JPA code generated objects.
+  - <b>ClassAttribute</b> for handling Java class attributes within MetaModel files
+  - <b>ClassField</b> for handling Java class fields
+  - <b>ArrayValidator</b> for validating min and max size of an array
+
+* <b>Generator Package</b>
+  - Support for <b>Generators</b> intended to be used for code generation and other outputs
+  - Support for <b>[PlantUML](https://plantuml.com/) </b> diagrams with various control options; uses ArrayValidator 
+    for relationships when configured with minSize and maxSize
+  - Support for <b>XSD Generation</b> based on TypesConfig for MetaModel files used for constructing MetaData
+  
+* <b>MetaData Maven Plugin (Mojo)</b>
+  - <b>Maven plugin</b> that executes Generators for use in Maven pom.xml files
+  - <b>MojoSupport interface</b> for MetaDataLoaders to work with the Maven Plugin
+  
+* <b>New MetaDataLoaders</b>
+  - <b>FileMetaDataLoader</b> for parsing both <b>Json</b> or XML configuration files and meta models.  This currently 
+    uses backwards compatible parsing of TypesConfig and MetaModel files allowing for inline attributes.  SimpleLoader 
+    does not.
+  - <b>SimpleLoader</b> for loading MetaModel files using the new TypesLoader and MetaModelLoader
+  - <b>MetaModelLoader</b> for loading MetaModel files
+  - <b>TypesConfigLoader</b> for loading TypesConfig files
+  
+### Bug Fixes
+*  Issues with auto-boxing and unboxing in the PojoMetaObject
+
+### Improvements
+*  Cleanup of core MetaData classes
+*  Cleanup of Exception handling
+*  Replaced parsing of metadata (MetaModel) files and types configurations (TypesConfig).  
+   <i>Note: FileMetaDataLoader uses a more sophisticated parser than the SimpleLoader</i>
+*  Refactored how TypesConfig and MetaData are loaded using MetaData themselves and the new IO package
+*  New <b>DataTypes Enum</b> support for MetaAttribute and MetaField replacing old MetaFieldTypes statics
+*  New <b>DataConverter</b> util for auto conversions between DataTypes
+*  <b>URI Support</b> for identifying TypesConfig vs MetaModel files for loading and parsing
+*  Support for <b>URL loading</b> of metadata (typesConfig & meta model) files
+*  MetaDataLoaders now have specific <b>LoaderOptions</b> for configuring options on behavior
+*  New LoaderOption modes for strict rule enforcement, verbose output, and whether to register themselves in 
+   the MetaDataRegistry

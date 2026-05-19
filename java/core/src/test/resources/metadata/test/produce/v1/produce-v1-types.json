@@ -1,0 +1,15 @@
+﻿{"typesConfig": {
+
+  "types": [
+
+    {"subType": {"name": "metadata", "class": "com.metaobjects.MetaData",
+      "children": [
+        {"child": {"subType": "attr", "subType": "string", "name": "farmName"}}
+      ]}},
+
+    {"subType": {"name": "object", "class": "com.metaobjects.object.MetaObject",
+      "children": [
+          {"child": {"subType": "attr", "subType": "boolean", "name": "isEmbedded"}}
+        ]}}
+  ]}
+}

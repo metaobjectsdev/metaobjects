@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+
+<metadata package="simple::fruitbasket">
+
+    <!-- Id -->
+    <field package="simple::common" name="id" subType="long" _isAbstract="true">
+        <attr subType="boolean" name="isKey">true</attr>
+    </field>
+
+    <!-- Name -->
+    <field package="simple::common" name="name" subType="string" _isAbstract="true">
+        <validator subType="required"/>
+        <validator subType="length">
+            <attr subType="int" name="min">1</attr>
+            <attr name="max">50</attr>
+        </validator>
+    </field>
+    
+    <!-- Basket -->
+    <object name="Basket" subType="map" object="com.metaobjects.loader.simple.fruitbasket.Basket">
+
+        <!-- Id -->
+        <field name="id" super="..::common::id"/>
+
+        <!-- Name -->
+        <field name="name" super="..::common::name"/>
+
+        <!-- Number of apples -->
+        <field name="numApples" subType="int">
+            <validator subType="length" min="0" max="10"/>
+        </field>
+
+        <!-- Number of oranges -->
+        <field name="numOranges" subType="int">
+            <validator subType="length" min="0" max="10"/>
+        </field>
+
+        <!-- Number of veggies -->
+        <!-- field name="numVeggies" subType="int">
+            <validator subType="length" min="0" max="5"/>
+        </field -->
+
+        <!-- Apples -->
+        <field name="apples" subType="objectArray" objectRef="::Apple"/>
+
+        <!-- Oranges -->
+        <field name="oranges" subType="objectArray" objectRef="::Orange"/>
+
+        <!-- Veggies -->
+        <!-- field name="veggies" subType="objectArray">
+            <objectRef subType="oneToMany" reference="..::vegetable::Vegetable"/>
+        </field -->
+
+    </object>
+
+    <!-- Fruit -->
+    <object name="Fruit" subType="map" _isAbstract="true">
+
+        <attr name="object">com.metaobjects.loader.simple.fruitbasket.Fruit</attr>
+
+        <!-- Id -->
+        <field name="id" super="..::common::id"/>
+
+        <!-- Name -->
+        <field name="name" super="..::common::name"/>
+
+        <!-- Length -->
+        <field name="length" subType="int"/>
+
+        <!-- Weight -->
+        <field name="weight" subType="int"/>
+
+        <!-- In Basket -->
+        <field name="inBasket" subType="boolean"/>
+        
+    </object>
+
+    <!-- Apple -->
+    <object name="Apple" super="Fruit" object="com.metaobjects.loader.simple.fruitbasket.Apple">
+
+        <!-- attr name="object">com.metaobjects.loader.simple.fruitbasket.Apple</attr -->
+
+        <!-- Orachard -->
+        <field name="orchard" subType="string"/>
+
+        <!-- Worms -->
+        <field name="worms" subType="short"/>
+
+    </object>
+
+    <!-- Macintosh -->
+    <object name="Macintosh" super="Apple">
+
+        <attr name="object">com.metaobjects.loader.simple.fruitbasket.Macintosh</attr>
+
+    </object>
+
+    <!-- Orange -->
+    <object name="Orange" super="Fruit">
+
+        <attr name="object">com.metaobjects.loader.simple.fruitbasket.Orange</attr>
+
+        <field name="pickedDate" subType="date"/>
+
+    </object>
+
+</metadata>

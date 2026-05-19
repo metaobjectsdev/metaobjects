@@ -1,0 +1,94 @@
+package com.metaobjects.registry;
+
+import org.junit.Test;
+import org.junit.Before;
+import static org.junit.Assert.*;
+
+/**
+ * Test to validate base subtype consistency using the registry health validation system.
+ * This test ensures all type families have proper base subtype registrations and
+ * inheritance patterns are working correctly.
+ */
+public class BaseSubTypeAnalysisTest {
+
+    private MetaDataRegistry registry;
+
+    @Before
+    public void setUp() {
+        registry = MetaDataRegistry.getInstance();
+    }
+
+    @Test
+    public void testBaseSubTypeConsistency() {
+        // Use the new health validation system
+        RegistryHealthReport report = registry.validateConsistency();
+
+        // Registry health report available for assertions - no verbose output needed
+
+        // Test should pass structurally but report any missing base types
+        assertTrue("Registry should be structurally sound", report.isStructurallySound());
+
+        // Missing base types analysis available for assertions - no verbose output needed
+
+        // ✅ MIGRATED: Key types removed - now using MetaRelationship and field attributes
+        // - Foreign keys → AssociationRelationship
+        // - Primary keys → field.isPrimaryKey() attribute
+        // - Secondary keys → field.isSecondaryKey() attribute
+
+        // Verify that relationship types are working instead of key types
+        assertTrue("relationship.base should be registered", registry.isRegistered("relationship", "base"));
+
+        // Verify inheritance is working for relationship types
+        TypeDefinition associationDef = registry.getTypeDefinition("relationship", "association");
+        if (associationDef != null) {
+            assertTrue("AssociationRelationship should inherit from relationship.base",
+                associationDef.hasParent() && "base".equals(associationDef.getParentSubType()));
+        }
+    }
+
+    @Test
+    public void testRegistryHealthValidation() {
+        RegistryHealthReport report = registry.validateConsistency();
+
+        // Ensure core functionality is working
+        assertFalse("Registry should have some types registered",
+            ((Integer) report.getMetadata("totalTypes")) == 0);
+
+        // Log inheritance patterns
+        @SuppressWarnings("unchecked")
+        java.util.List<String> inheritanceChains =
+            (java.util.List<String>) report.getMetadata("inheritanceChains");
+
+        // Inheritance patterns available for assertions - no verbose output needed
+
+        // Inheritance should be actively used
+        Integer typesWithInheritance = (Integer) report.getMetadata("typesWithInheritance");
+        assertNotNull("Should track inheritance usage", typesWithInheritance);
+        assertTrue("Should have types using inheritance", typesWithInheritance > 0);
+
+        // Should have types inheriting from base types
+        Integer typesInheritingFromBase = (Integer) report.getMetadata("typesInheritingFromBase");
+        assertNotNull("Should track base inheritance", typesInheritingFromBase);
+        assertTrue("Should have types inheriting from base", typesInheritingFromBase > 0);
+    }
+
+    @Test
+    public void ensureAllCoreBaseTypesPresent() {
+        RegistryHealthReport report = registry.validateConsistency();
+
+        // These are the expected core base types after MetaKey to MetaRelationship migration
+        String[] expectedBaseTypes = {"field.base", "object.base", "attr.base", "validator.base", "relationship.base"};
+
+        for (String expectedType : expectedBaseTypes) {
+            String[] parts = expectedType.split("\\.");
+            assertTrue("Core base type " + expectedType + " should be registered",
+                registry.isRegistered(parts[0], parts[1]));
+        }
+
+        // Should have no errors about missing core types
+        assertFalse("Should not have core type errors",
+            report.getErrors().stream().anyMatch(error -> error.contains("Missing core base types")));
+
+        // Core base types validation successful - no verbose output needed
+    }
+}

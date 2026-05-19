@@ -1,0 +1,105 @@
+{
+  "metadata": {
+    "package": "test",
+    "children": [
+      {
+        "object": {
+          "name": "Product",
+          "subType": "pojo",
+          "@dbTable": "products",
+          "@hasAuditing": true,
+          "children": [
+            {
+              "field": {
+                "name": "productId",
+                "subType": "long",
+                "@dbColumn": "product_id",
+                "@dbNullable": false,
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "name",
+                "subType": "string",
+                "@dbColumn": "product_name",
+                "@isSearchable": true,
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  },
+                  {
+                    "validator": {
+                      "name": "length",
+                      "subType": "length",
+                      "@min": "1",
+                      "@max": "100"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "price",
+                "subType": "double",
+                "@dbColumn": "price",
+                "@dbScale": 2,
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  },
+                  {
+                    "validator": {
+                      "name": "minValue",
+                      "subType": "numeric",
+                      "@min": "0.01"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "inStock",
+                "subType": "boolean",
+                "@defaultValue": true,
+                "@dbColumn": "in_stock"
+              }
+            },
+            {
+              "field": {
+                "name": "categoryId",
+                "subType": "int",
+                "@dbColumn": "category_id",
+                "@dbForeignKey": "categories.id",
+                "@isOptional": true
+              }
+            },
+            {
+              "identity": {
+                "name": "primary",
+                "subType": "primary",
+                "@fields": ["productId"],
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

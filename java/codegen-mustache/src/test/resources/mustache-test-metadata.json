@@ -1,0 +1,181 @@
+{
+  "name": "mustache-test-metadata",
+  "metadata": {
+    "version": "1.0.0",
+    "children": [
+      {
+        "object": {
+          "name": "User",
+          "subType": "pojo",
+          "package": "com_example_model",
+          "@dbTable": "users",
+          "@hasAuditing": true,
+          "children": [
+            {
+              "field": {
+                "name": "id",
+                "subType": "long",
+                "@dbColumn": "user_id"
+              }
+            },
+            {
+              "field": {
+                "name": "username",
+                "subType": "string",
+                "@dbColumn": "username",
+                "@isSearchable": true,
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  },
+                  {
+                    "validator": {
+                      "name": "length",
+                      "subType": "length",
+                      "@max": "50"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "email",
+                "subType": "string",
+                "@dbColumn": "email_address",
+                "@isSearchable": true,
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  },
+                  {
+                    "validator": {
+                      "name": "length",
+                      "subType": "length",
+                      "@max": "255"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "age",
+                "subType": "int",
+                "@dbColumn": "user_age",
+                "@isOptional": true
+              }
+            },
+            {
+              "field": {
+                "name": "createdAt",
+                "subType": "date",
+                "@dbColumn": "created_at"
+              }
+            },
+            {
+              "field": {
+                "name": "tags",
+                "subType": "string",
+                "@isArray": true,
+                "@dbColumn": "user_tags"
+              }
+            },
+            {
+              "identity": {
+                "name": "primary",
+                "subType": "primary",
+                "@fields": ["id"],
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object": {
+          "name": "Product",
+          "subType": "pojo",
+          "package": "com_example_model",
+          "@dbTable": "products",
+          "children": [
+            {
+              "field": {
+                "name": "id",
+                "subType": "long",
+                "@dbColumn": "product_id"
+              }
+            },
+            {
+              "field": {
+                "name": "name",
+                "subType": "string",
+                "@dbColumn": "product_name",
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  },
+                  {
+                    "validator": {
+                      "name": "length",
+                      "subType": "length",
+                      "@max": "100"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "price",
+                "subType": "double",
+                "@dbColumn": "price",
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "notes",
+                "subType": "string",
+                "@dbColumn": "description",
+                "children": [
+                  {
+                    "validator": {
+                      "name": "length",
+                      "subType": "length",
+                      "@max": "1000"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity": {
+                "name": "primary",
+                "subType": "primary",
+                "@fields": ["id"],
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+
+<metadata
+        xmlns="https://metaobjects.com/schema/metamodel/produce/v1"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="https://metaobjects.com/schema/metamodel/produce/v1 produce-v1-model.xsd"
+        package="produce::v1::fruit">
+
+    <!-- Fruit -->
+    <object name="Fruit" subType="pojo" _isAbstract="true">
+
+        <key name="primary" keys="id"/>
+        <key subType="foreign" name="basketKey" keys="basketId" foreignObjectRef="..::container::Basket"/>
+
+        <attr name="object">com.metaobjects.test.produce.v1.Fruit</attr>
+
+        <!-- Id -->
+        <field name="id" super="..::common::id"/>
+
+        <!-- Name -->
+        <field name="name" super="..::common::name"/>
+
+        <!-- BasketId -->
+        <field name="basketId" super="..::common::id"/>
+
+        <!-- Length -->
+        <field name="length" subType="int"/>
+
+        <!-- Weight -->
+        <field name="weight" subType="int"/>
+     
+    </object>
+
+    <!-- Apple -->
+    <object name="Apple" super="Fruit" object="com.metaobjects.test.produce.v1.Apple">
+
+        <!-- attr name="object">com.metaobjects.test.produce.v1.Apple</attr -->
+
+        <!-- Orachard -->
+        <field name="orchard" subType="string"/>
+
+        <!-- Worms -->
+        <field name="worms" subType="short"/>
+      
+    </object>  
+
+    <!-- Macintosh -->
+    <object name="Macintosh" super="Apple">
+
+        <attr name="object">com.metaobjects.test.produce.v1.Macintosh</attr>
+
+    </object>
+
+    <!-- Orange -->
+    <object name="Orange" super="Fruit">
+
+        <attr name="object">com.metaobjects.test.produce.v1.Orange</attr>
+
+        <field name="pickedDate" subType="date"/>
+           
+    </object>
+
+</metadata>

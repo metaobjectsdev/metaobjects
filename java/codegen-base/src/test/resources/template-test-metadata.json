@@ -1,0 +1,139 @@
+{
+  "name": "template-test-metadata",
+  "metadata": {
+    "version": "1.0.0",
+    "children": [
+      {
+        "object": {
+          "name": "User",
+          "subType": "pojo",
+          "package": "example",
+          "@dbTable": "users",
+          "@description": "User entity for template testing",
+          "children": [
+            {
+              "field": {
+                "name": "id",
+                "subType": "long",
+                "@dbColumn": "id"
+              }
+            },
+            {
+              "field": {
+                "name": "username",
+                "subType": "string",
+                "@dbColumn": "username",
+                "@dbNullable": false,
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  },
+                  {
+                    "validator": {
+                      "name": "length",
+                      "subType": "length",
+                      "@max": "50"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "email",
+                "subType": "string",
+                "@dbColumn": "email",
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  },
+                  {
+                    "validator": {
+                      "name": "length",
+                      "subType": "length",
+                      "@max": "100"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity": {
+                "name": "primary",
+                "subType": "primary",
+                "@fields": ["id"],
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object": {
+          "name": "Product",
+          "subType": "pojo",
+          "package": "example",
+          "@description": "Product value object for template testing",
+          "children": [
+            {
+              "field": {
+                "name": "name",
+                "subType": "string",
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  },
+                  {
+                    "validator": {
+                      "name": "length",
+                      "subType": "length",
+                      "@max": "100"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "price",
+                "subType": "double",
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "category",
+                "subType": "string",
+                "children": [
+                  {
+                    "validator": {
+                      "name": "length",
+                      "subType": "length",
+                      "@max": "50"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

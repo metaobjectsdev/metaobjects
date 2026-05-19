@@ -1,0 +1,45 @@
+﻿
+{"metadata": {"package": "produce::v1::fruit",
+  "children": [
+
+    {"object": {"name": "Fruit", "subType": "pojo",
+      "children": [
+        {"key": {"name": "primary", "subType":"primary",
+          "children": [
+            {"attr": {"name": "keys", "value": "id"}},
+            {"attr": {"name": "autoIncrementStrategy", "value": "sequential"}}
+          ]}},
+        {"key": {"name": "basketKey", "subType":"foreign",
+          "children": [
+            {"attr": {"name": "keys", "value": "basketId"}},
+            {"attr": {"name": "foreignObjectRef", "value": "..::container::Basket"}}
+          ]}},
+        {"attr": {"name": "object", "value": "com.metaobjects.test.produce.v1.Fruit"}},
+        {"field": {"name": "id", "super": "..::common::id"}},
+        {"field": {"name": "basketId", "super": "..::common::id"}},
+        {"field": {"name": "name", "super": "..::common::name"}},
+        {"field": {"name": "length", "subType": "int"}},
+        {"field": {"name": "weight", "subType": "int"}}
+      ]}},
+
+    {"object": {"name": "Apple", "super": "Fruit",
+      "children": [
+        {"attr": {"name": "object", "value": "com.metaobjects.test.produce.v1.Apple"}},
+        {"field": {"name": "orchard", "subType": "string"}},
+        {"field": {"name": "worms", "subType": "int"}},
+        {"field": {"name": "length", "subType": "int"}},
+        {"field": {"name": "weight", "subType": "int"}}
+      ]}},
+
+    {"object": {"name": "Macintosh", "super": "Apple",
+      "children": [
+        {"attr": {"name": "object", "value": "com.metaobjects.test.produce.v1.Macintosh"}}
+      ]}},
+
+    {"object": {"name": "Orange", "super": "Fruit",
+      "children": [
+        {"attr": {"name": "object", "value": "com.metaobjects.test.produce.v1.Orange"}},
+        {"field": {"name": "pickedDate", "subType": "date"}}
+      ]}}
+  ]}
+}

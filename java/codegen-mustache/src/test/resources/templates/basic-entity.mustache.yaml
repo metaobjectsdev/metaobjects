@@ -1,0 +1,70 @@
+name: "Basic Entity Template"
+version: "1.0.0"
+description: "Generate basic POJO entities"
+targetLanguage: "java"
+outputFileExtension: "java"
+packagePath: true
+requirements:
+  helpers: ["capitalize", "javaType", "javaArrayType", "isArrayField"]
+template: |
+  package {{packageName}};
+
+  import java.util.List;
+  {{#imports}}
+  import {{.}};
+  {{/imports}}
+  
+  /**
+   * {{description}}
+   * Generated entity class for {{className}}
+   */
+  public class {{className}} {
+      
+      {{#fields}}
+      {{#isArrayField}}
+      private {{javaArrayType}} {{name}};
+      {{/isArrayField}}
+      {{^isArrayField}}
+      private {{javaType}} {{name}};
+      {{/isArrayField}}
+      {{/fields}}
+      
+      // Default constructor
+      public {{className}}() {}
+      
+      {{#fields}}
+      {{#isArrayField}}
+      // Array getter for {{name}}
+      public {{javaArrayType}} {{getterName}}() {
+          return this.{{name}};
+      }
+
+      // Array setter for {{name}}
+      public void {{setterName}}({{javaArrayType}} {{name}}) {
+          this.{{name}} = {{name}};
+      }
+      {{/isArrayField}}
+      {{^isArrayField}}
+      // Getter for {{name}}
+      public {{javaType}} {{getterName}}() {
+          return this.{{name}};
+      }
+
+      // Setter for {{name}}
+      public void {{setterName}}({{javaType}} {{name}}) {
+          this.{{name}} = {{name}};
+      }
+      {{/isArrayField}}
+
+      {{/fields}}
+      
+      // Static factory method using MetaObjects
+      public static {{className}} newInstance() {
+          com.draagon.meta.object.MetaObject metaObject = 
+              com.draagon.meta.loader.MetaDataRegistry.findMetaObject("{{fullName}}");
+          if (metaObject == null) {
+              throw new IllegalStateException("MetaObject not found: {{fullName}}");
+          }
+          return new {{className}}();
+      }
+  }

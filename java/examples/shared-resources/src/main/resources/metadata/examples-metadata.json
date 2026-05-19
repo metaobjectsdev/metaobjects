@@ -1,0 +1,159 @@
+{
+  "metadata": {
+    "package": "example",
+    "children": [
+      {
+        "object": {
+          "name": "User",
+          "subType": "pojo",
+          "@dbTable": "users",
+          "children": [
+            {
+              "field": {
+                "name": "id",
+                "subType": "long",
+                "@dbColumn": "user_id",
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "username",
+                "subType": "string",
+                "@dbColumn": "username",
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  },
+                  {
+                    "validator": {
+                      "name": "length",
+                      "subType": "length",
+                      "@max": "50"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "email",
+                "subType": "string",
+                "@dbColumn": "email",
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  },
+                  {
+                    "validator": {
+                      "name": "length",
+                      "subType": "length",
+                      "@max": "255"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "createdDate",
+                "subType": "date",
+                "@dbColumn": "created_date"
+              }
+            },
+            {
+              "key": {
+                "name": "primary",
+                "subType": "primary",
+                "@keys": ["id"],
+                "@autoIncrementStrategy": "sequential"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object": {
+          "name": "Product",
+          "subType": "pojo",
+          "@dbTable": "products",
+          "children": [
+            {
+              "field": {
+                "name": "id",
+                "subType": "long",
+                "@dbColumn": "product_id",
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "name",
+                "subType": "string",
+                "@dbColumn": "product_name",
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  },
+                  {
+                    "validator": {
+                      "name": "length",
+                      "subType": "length",
+                      "@max": "100"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field": {
+                "name": "price",
+                "subType": "double",
+                "@dbColumn": "price",
+                "children": [
+                  {
+                    "validator": {
+                      "name": "required",
+                      "subType": "required"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "key": {
+                "name": "primary",
+                "subType": "primary",
+                "@keys": ["id"],
+                "@autoIncrementStrategy": "sequential"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

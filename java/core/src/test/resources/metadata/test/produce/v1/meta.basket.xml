@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<metadata xmlns="http://metaobjects.com/schema/metamodel/v3"
+        package="produce::v1::container">
+
+    <!-- Basket -->
+    <object name="Basket" subType="value">
+
+        <key name="primary" keys="id"/>
+
+        <!-- Id -->
+        <field name="id" super="..::common::id"/>
+
+        <!-- Name -->
+        <field name="name" super="..::common::name"/>
+
+        <!-- Number of apples -->
+        <field name="numApples" subType="int" defaultValue="0"/>
+
+        <!-- Number of oranges -->
+        <field name="numOranges" subType="int" defaultValue="0"/>
+
+        <!-- Number of oranges -->
+        <field name="numVeggies" subType="int" defaultValue="0"/>
+
+        <!-- Apples -->
+        <field name="apples" subType="objectArray" objectRef="..::fruit::Apple" defaultValue="[]">
+            <validator subType="array" minSize="0" maxSize="5" />
+        </field>
+
+        <!-- Oranges -->
+        <field name="oranges" subType="objectArray" objectRef="..::fruit::Orange" defaultValue="[]">
+            <validator subType="array" minSize="0" maxSize="3" />
+        </field>
+
+        <!-- Veggies -->
+        <field name="veggies" subType="objectArray" objectRef="..::vegetable::Vegetable" defaultValue="[]">
+            <validator subType="required"/>
+            <validator subType="array" minSize="1" maxSize="2"/>
+        </field>
+
+    </object>
+
+    <!-- Add an overlay for the basket for all fruit -->
+    <object package="..::fruit" name="Fruit">
+        <field name="inBasket" subType="boolean"  defaultValue="false"/>
+    </object>
+
+</metadata>
