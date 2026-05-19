@@ -12,7 +12,7 @@ export interface Manifest {
 }
 
 /** Scan every script.json; collect the capability set. */
-export function deriveManifest(fixtures: readonly Fixture[], _corpusRoot: string): Manifest {
+export function deriveManifest(fixtures: readonly Fixture[]): Manifest {
   const caps = new Set<string>();
   for (const fix of fixtures) {
     if (!fix.hasScript) continue;

@@ -23,15 +23,14 @@ switch (subcommand) {
     const errorCodes = Object.keys(
       (errorCodesRaw as { codes: Record<string, string> }).codes);
 
-    const allProblems: string[] = [];
+    let anyProblems = false;
     for (const fix of fixtures) {
-      const problems = lintFixture(fix, errorCodes);
-      for (const p of problems) {
-        console.log(p);
-        allProblems.push(p);
+      for (const problem of lintFixture(fix, errorCodes)) {
+        console.log(problem);
+        anyProblems = true;
       }
     }
-    if (allProblems.length > 0) {
+    if (anyProblems) {
       process.exit(1);
     } else {
       console.log(`lint: ${fixtures.length} fixture(s) clean`);
@@ -44,7 +43,7 @@ switch (subcommand) {
     if (!corpusRoot) { console.error("Usage: conformance manifest <corpusRoot>"); process.exit(1); }
 
     const fixtures = await discoverFixtures(corpusRoot);
-    const manifest = deriveManifest(fixtures, corpusRoot);
+    const manifest = deriveManifest(fixtures);
     const outPath = join(corpusRoot, "CAPABILITIES.json");
     writeFileSync(outPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
     console.log(`manifest: wrote ${outPath} (${manifest.capabilities.length} capability-id(s))`);

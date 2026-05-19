@@ -19,6 +19,6 @@ test("manifest is the sorted distinct set of invoked capability-ids", async () =
       operations: caps.map((c) => ({ navigate: [], invoke: c, expect: {} })),
     }));
   }
-  const manifest = deriveManifest(await discoverFixtures(root), root);
+  const manifest = deriveManifest(await discoverFixtures(root));
   expect(manifest.capabilities).toEqual(["field.is-required", "object.own-fields"]);
 });
