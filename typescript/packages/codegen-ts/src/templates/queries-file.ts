@@ -3,7 +3,8 @@
 
 import { code, joinCode, type Code } from "ts-poet";
 import { MetaObject } from "@metaobjects/metadata";
-import { type RenderContext, withExt } from "../render-context.js";
+import { type RenderContext } from "../render-context.js";
+import { crossEntitySpecifier, relativeModuleSpecifier } from "../import-path.js";
 import {
   renderFindByIdFn,
   renderListFn,
@@ -16,13 +17,20 @@ import { GENERATED_HEADER } from "../constants.js";
 
 export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   const entityName = obj.name;
-  const entityFileName = withExt(`./${entityName}`, ctx.extStyle);
+  const entityFileName = crossEntitySpecifier(
+    ctx.outputLayout,
+    obj.package,
+    obj.package,
+    entityName,
+    ctx.extStyle,
+  );
+  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, obj.package, ctx.dbImport);
   const varName = variableNameFromEntity(entityName);
 
   // Literal imports (db + entity types) live in a code block so they sort
   // alongside ts-poet's hoisted imp() imports at the top of the body.
   const literalImports = code`
-import { db } from ${JSON.stringify(ctx.dbImport)};
+import { db } from ${JSON.stringify(dbImportSpec)};
 import { ${varName}, type ${entityName}, ${entityName}InsertSchema } from ${JSON.stringify(entityFileName)};
 `;
 

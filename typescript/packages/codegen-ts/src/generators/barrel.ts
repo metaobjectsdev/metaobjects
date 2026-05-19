@@ -7,7 +7,13 @@ export const barrel = function barrel(): Generator {
     name: "barrel",
     generate: oncePerRun(async (entities, ctx) => ({
       path: "index.ts",
-      content: await formatTs(renderBarrel(entities.map((e) => e.name), ctx.config.extStyle)),
+      content: await formatTs(
+        renderBarrel(
+          entities.map((e) => ({ name: e.name, package: e.package })),
+          ctx.config.extStyle,
+          ctx.config.outputLayout ?? "flat",
+        ),
+      ),
     })),
   };
 } as GeneratorFactory;

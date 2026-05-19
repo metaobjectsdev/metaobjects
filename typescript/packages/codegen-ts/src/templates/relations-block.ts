@@ -4,7 +4,8 @@
 import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjects/metadata";
 import { CARDINALITY_ONE, CARDINALITY_MANY } from "@metaobjects/metadata";
-import { type RenderContext, withExt } from "../render-context.js";
+import { type RenderContext } from "../render-context.js";
+import { crossEntitySpecifier } from "../import-path.js";
 import { variableNameFromEntity } from "../naming.js";
 import type { RelationEntry } from "../relation-resolver.js";
 
@@ -28,7 +29,10 @@ export function renderRelationsBlock(entity: MetaObject, ctx: RenderContext): Co
   if (hasMany) paramParts.push("many");
   const params = `{ ${paramParts.join(", ")} }`;
 
-  const lines: Code[] = entries.map((entry) => renderRelationEntry(entry, ctx, varName));
+  const thisEntityPackage = entity.package;
+  const lines: Code[] = entries.map((entry) =>
+    renderRelationEntry(entry, ctx, varName, thisEntityPackage),
+  );
 
   return code`export const ${relationsVarName} = ${relationsFn}(${varName}, (${params}) => ({
 ${joinCode(lines, { on: ",\n", trim: false })}
@@ -36,11 +40,21 @@ ${joinCode(lines, { on: ",\n", trim: false })}
 `;
 }
 
-function renderRelationEntry(entry: RelationEntry, ctx: RenderContext, thisVarName: string): Code {
+function renderRelationEntry(
+  entry: RelationEntry,
+  ctx: RenderContext,
+  thisVarName: string,
+  thisEntityPackage: string | undefined,
+): Code {
   // Use imp() for cross-entity references so ts-poet tracks and emits the import.
-  const targetVarSym = imp(
-    `${variableNameFromEntity(entry.targetEntity)}@${withExt(`./${entry.targetEntity}`, ctx.extStyle)}`,
+  const targetSpec = crossEntitySpecifier(
+    ctx.outputLayout,
+    thisEntityPackage,
+    ctx.packageOf.get(entry.targetEntity),
+    entry.targetEntity,
+    ctx.extStyle,
   );
+  const targetVarSym = imp(`${variableNameFromEntity(entry.targetEntity)}@${targetSpec}`);
 
   if (entry.cardinality === CARDINALITY_ONE) {
     const pkInfo = ctx.pkMap.get(entry.targetEntity);

@@ -44,15 +44,18 @@ export interface RenderContext {
   pkMap: Map<string, PkInfo>;
   /** Pre-pass relation map for FK + relations() block emission. */
   relationMap: RelationMap;
+  /** Entity name → its metadata package (undefined if the entity has no package). Built once per run. */
+  packageOf: Map<string, string | undefined>;
 }
 
-/** Optional shape — `extStyle`, `omImport`, `columnNamingStrategy`, `apiPrefix`, and `outputLayout` default if omitted. */
-export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "apiPrefix" | "outputLayout"> & {
+/** Optional shape — `extStyle`, `omImport`, `columnNamingStrategy`, `apiPrefix`, `outputLayout`, and `packageOf` default if omitted. `packageOf` defaults to an empty Map (correct for flat layout; `runGen` always provides the real map). */
+export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "apiPrefix" | "outputLayout" | "packageOf"> & {
   extStyle?: ExtStyle;
   omImport?: string;
   columnNamingStrategy?: ColumnNamingStrategy;
   apiPrefix?: string;
   outputLayout?: OutputLayout;
+  packageOf?: Map<string, string | undefined>;
 };
 
 /** Append the configured extension to a cross-entity module specifier. */
@@ -69,5 +72,6 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     columnNamingStrategy: opts.columnNamingStrategy ?? "snake_case",
     apiPrefix: opts.apiPrefix ?? "",
     outputLayout: opts.outputLayout ?? "flat",
+    packageOf: opts.packageOf ?? new Map(),
   };
 }

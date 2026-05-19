@@ -17,7 +17,8 @@
 
 import { code, imp } from "ts-poet";
 import type { MetaObject } from "@metaobjects/metadata";
-import { type RenderContext, withExt } from "../render-context.js";
+import { type RenderContext } from "../render-context.js";
+import { crossEntitySpecifier, relativeModuleSpecifier } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { variableNameFromEntity } from "../naming.js";
 import { isProjection } from "../projection/projection-detector.js";
@@ -25,7 +26,14 @@ import { isProjection } from "../projection/projection-detector.js";
 export function renderRoutesFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
   const handlerName = `${entityName.charAt(0).toLowerCase()}${entityName.slice(1)}Routes`;
-  const entityFileSpec = withExt(`./${entityName}`, ctx.extStyle);
+  const entityFileSpec = crossEntitySpecifier(
+    ctx.outputLayout,
+    entity.package,
+    entity.package,
+    entityName,
+    ctx.extStyle,
+  );
+  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, entity.package, ctx.dbImport);
 
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
@@ -41,7 +49,7 @@ export function renderRoutesFile(entity: MetaObject, ctx: RenderContext): string
     );
 
     const literalImports = code`
-import { db } from ${JSON.stringify(ctx.dbImport)};
+import { db } from ${JSON.stringify(dbImportSpec)};
 import {
   ${entityName},
   ${camelName}View,
@@ -104,7 +112,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjects/runtime-ts/drizzle-fastify");
 
   const literalImports = code`
-import { db } from ${JSON.stringify(ctx.dbImport)};
+import { db } from ${JSON.stringify(dbImportSpec)};
 import {
   ${entityName},
   ${tableVar},

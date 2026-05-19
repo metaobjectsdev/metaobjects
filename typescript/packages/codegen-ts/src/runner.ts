@@ -70,6 +70,9 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const config = normalizeConfig(opts.config);
   const pkMap = buildPkMap(root);
   const relationMap = buildRelationMap(root);
+  const packageOf = new Map<string, string | undefined>(
+    root.objects().map((o) => [o.name, o.package]),
+  );
   const renderContext = makeRenderContext({
     dialect: config.dialect,
     loadedRoot: root,
@@ -81,6 +84,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     outputLayout: config.outputLayout,
     pkMap,
     relationMap,
+    packageOf,
   });
 
   // 3. Run each generator sequentially.

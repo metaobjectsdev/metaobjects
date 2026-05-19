@@ -4,7 +4,11 @@ import { GENERATED_HEADER } from "../../src/constants.js";
 
 describe("renderBarrel", () => {
   test("emits alphabetical exports + @generated header", () => {
-    const out = renderBarrel(["Post", "Comment", "User"]);
+    const out = renderBarrel([
+      { name: "Post", package: undefined },
+      { name: "Comment", package: undefined },
+      { name: "User", package: undefined },
+    ]);
     expect(out).toContain(GENERATED_HEADER);
     // Alphabetical
     const postIdx = out.indexOf("Post");

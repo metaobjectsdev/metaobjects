@@ -23,7 +23,8 @@ import {
   IDENTITY_ATTR_FIELDS,
   FIELD_ATTR_DEFAULT,
 } from "@metaobjects/metadata";
-import { type RenderContext, withExt } from "../render-context.js";
+import { type RenderContext } from "../render-context.js";
+import { crossEntitySpecifier } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
 
 function primaryFieldNames(entity: MetaObject): Set<string> {
@@ -63,7 +64,13 @@ function visibleFields(entity: MetaObject): string[] {
 
 export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
-  const entityFileSpec = withExt(`./${entityName}`, ctx.extStyle);
+  const entityFileSpec = crossEntitySpecifier(
+    ctx.outputLayout,
+    entity.package,
+    entity.package,
+    entityName,
+    ctx.extStyle,
+  );
   const fields = visibleFields(entity);
 
   const ReactElementSym = imp("t:ReactElement@react");

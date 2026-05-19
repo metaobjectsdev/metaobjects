@@ -2,6 +2,7 @@ import type { MetaObject } from "@metaobjects/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderEntityFile } from "../templates/entity-file.js";
 import { formatTs } from "../format.js";
+import { entityOutputPath } from "../import-path.js";
 
 export interface EntityFileOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -15,7 +16,7 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
         throw new Error("entity-file: renderContext is required (provided by runGen)");
       }
       return {
-        path: `${entity.name}.ts`,
+        path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.ts`),
         content: await formatTs(renderEntityFile(entity, ctx.renderContext)),
       };
     }),

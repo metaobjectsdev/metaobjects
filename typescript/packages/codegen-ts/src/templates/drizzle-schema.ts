@@ -12,7 +12,8 @@ import {
   CARDINALITY_ONE,
   FIELD_ATTR_AUTO_SET,
 } from "@metaobjects/metadata";
-import { type RenderContext, withExt } from "../render-context.js";
+import { type RenderContext } from "../render-context.js";
+import { crossEntitySpecifier } from "../import-path.js";
 import { mapColumnType } from "../column-mapper.js";
 import { tableNameFromEntity, variableNameFromEntity, columnNameFromField, stripPackage } from "../naming.js";
 import { renderRelationsBlock } from "./relations-block.js";
@@ -67,7 +68,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     const isPk = pkFieldNames.has(child.name);
     const isUnique = uniqueFieldNames.has(child.name) && !isPk;
     const fkInfo = fkMap.get(child.name);
-    columnLines.push(renderColumn(child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique));
+    columnLines.push(renderColumn(child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique, obj.package));
   }
 
   // Build all table callback entries
@@ -179,6 +180,7 @@ function renderColumn(
   fkInfo: FkInfo | undefined,
   isComposite: boolean,
   isUnique: boolean = false,
+  entityPackage: string | undefined = undefined,
 ): Code {
   const spec = mapColumnType(field, ctx.dialect, ctx.columnNamingStrategy);
   const fnSym = imp(`${spec.fnName}@${spec.importModule}`);
@@ -257,9 +259,14 @@ function renderColumn(
   // FK .references() uses imp() so ts-poet tracks the cross-entity import.
   let fkRefSegment: Code | null = null;
   if (fkInfo !== undefined && !isPk) {
-    const targetVarSym = imp(
-      `${fkInfo.targetVarName}@${withExt(`./${fkInfo.targetEntityName}`, ctx.extStyle)}`,
+    const targetSpec = crossEntitySpecifier(
+      ctx.outputLayout,
+      entityPackage,
+      ctx.packageOf.get(fkInfo.targetEntityName),
+      fkInfo.targetEntityName,
+      ctx.extStyle,
     );
+    const targetVarSym = imp(`${fkInfo.targetVarName}@${targetSpec}`);
     fkRefSegment = code`.references(() => ${targetVarSym}.${fkInfo.targetPkField})`;
   }
 

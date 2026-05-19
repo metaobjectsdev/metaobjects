@@ -2,6 +2,7 @@ import type { MetaObject } from "@metaobjects/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderQueriesFile } from "../templates/queries-file.js";
 import { formatTs } from "../format.js";
+import { entityOutputPath } from "../import-path.js";
 
 export interface QueriesFileOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -15,7 +16,7 @@ export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generat
         throw new Error("queries-file: renderContext is required (provided by runGen)");
       }
       return {
-        path: `${entity.name}.queries.ts`,
+        path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.queries.ts`),
         content: await formatTs(renderQueriesFile(entity, ctx.renderContext)),
       };
     }),
