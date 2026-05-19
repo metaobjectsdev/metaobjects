@@ -199,10 +199,20 @@ public class MetaDataLoader
             }
         }
 
-        // After the merge loop, BEFORE freeze — validation pass placeholders.
-        // These are wired in Slices 5 and 6.
+        // After the merge loop, BEFORE freeze — validation passes.
 
-        // Pass 1: resolveDeferredSupers — Slice 5 (Task 5.1) wires this in.
+        // Pass 1: resolveDeferredSupers — resolve cross-file extends refs against the full merged root.
+        if (root is not null)
+        {
+            var failures = SuperResolve.ResolveDeferredSupers(root);
+            foreach (var failure in failures)
+            {
+                errors.Add(new MetaError(
+                    $"the SuperClass '{failure.Ref}' does not exist (referenced by {failure.NodeFqn})",
+                    ErrorCode.ERR_UNRESOLVED_SUPER));
+            }
+        }
+
         // Pass 2: validateSubtypeRules — Slice 6 (Task 6.1).
         // Pass 3: validateDataGridSortFields — Slice 6.
         // Pass 4: validateFilterableHasIndex — Slice 6.

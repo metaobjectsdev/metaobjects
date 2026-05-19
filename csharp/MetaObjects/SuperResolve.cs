@@ -110,4 +110,55 @@ internal static class SuperResolve
     /// </summary>
     private static string[] Split(string value) =>
         value.Split(Constants.PACKAGE_SEPARATOR, StringSplitOptions.None);
+
+    // -----------------------------------------------------------------------
+    // Deferred resolution — second pass after all files parsed
+    // -----------------------------------------------------------------------
+
+    /// <summary>One node whose extends reference could not be resolved against the full tree.</summary>
+    public sealed record DeferredSuperFailure(string NodeFqn, string Ref);
+
+    /// <summary>
+    /// Walk the tree, resolve every node's SuperRef against the full root,
+    /// collect unresolved refs. Idempotent: nodes that already have SuperData set are skipped.
+    /// Tracks an inherited context-package while walking so children whose own Package is
+    /// unset still resolve correctly (mirroring the parser's eager-resolution semantics).
+    /// </summary>
+    public static IReadOnlyList<DeferredSuperFailure> ResolveDeferredSupers(MetaData root)
+    {
+        var failures = new List<DeferredSuperFailure>();
+        Walk(root, "", (node, ctxPkg) =>
+        {
+            if (node.SuperRef is null) return;
+            if (node.SuperData is not null) return;
+            string effectivePkg = node.Package ?? ctxPkg;
+            MetaData? target = ResolveSuperRef(node.SuperRef, effectivePkg, root);
+            if (target is not null)
+            {
+                try
+                {
+                    node.SetSuperResolved(target);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Frozen — ignore; the loader should resolve before freeze.
+                }
+            }
+            else
+            {
+                failures.Add(new DeferredSuperFailure(node.Fqn(), node.SuperRef));
+            }
+        });
+        return failures.AsReadOnly();
+    }
+
+    private static void Walk(MetaData node, string ctxPkg, Action<MetaData, string> visit)
+    {
+        visit(node, ctxPkg);
+        string nextCtx = node.Package ?? ctxPkg;
+        foreach (MetaData child in node.OwnChildren())
+        {
+            Walk(child, nextCtx, visit);
+        }
+    }
 }
