@@ -44,7 +44,7 @@ function topoSortProviders(
   const ids = new Set<string>();
   for (const p of providers) {
     if (ids.has(p.id)) {
-      throw new MetaModelError(`composeRegistry: duplicate provider id "${p.id}"`, { code: "ERR_PROVIDER_DEPENDENCY_CYCLE" });
+      throw new MetaModelError(`composeRegistry: duplicate provider id "${p.id}"`, { code: "ERR_PROVIDER_DUPLICATE_ID" });
     }
     ids.add(p.id);
   }

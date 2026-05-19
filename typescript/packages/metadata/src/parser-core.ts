@@ -113,7 +113,11 @@ function reportProblem(
   path: string,
   code?: ErrorCode,
 ): void {
-  if (strict) throw new ParseError(msg, { ...errOpts(source, path), ...(code !== undefined ? { code } : {}) });
+  if (strict) {
+    const opts = errOpts(source, path);
+    if (code !== undefined) throw new ParseError(msg, { ...opts, code });
+    else throw new ParseError(msg, opts);
+  }
   warnings.push(msg);
 }
 

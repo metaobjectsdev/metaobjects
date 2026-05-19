@@ -14,6 +14,7 @@
     "ERR_BAD_ATTR_VALUE": "An attribute value fails its declared schema (type/range).",
     "ERR_BAD_DEFAULT_SORT_FIELD": "A layout @defaultSortField names a field absent from the entity.",
     "ERR_PROVIDER_DEPENDENCY_CYCLE": "Provider composition has a dependency cycle.",
+    "ERR_PROVIDER_DUPLICATE_ID": "Two providers in a composition share the same id.",
     "ERR_PROVIDER_MISSING_DEPENDENCY": "A provider declares a dependency id with no matching provider.",
     "ERR_PROVIDER_ATTR_CONFLICT": "A provider extend redefines an attr another provider already declared.",
     "ERR_SUBTYPE_RULE_VIOLATION": "A node violates a subtype composition rule (e.g. a value object with a primary identity).",

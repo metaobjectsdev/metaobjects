@@ -1,6 +1,12 @@
 // Typed error classes for the metadata parser.
 
 /** Stable, language-neutral error codes — mirrors fixtures/conformance/ERROR-CODES.json. */
+// NOTE: The following codes are forward-declared (no emitting site in the current
+// TS parser/loader — the condition is not yet detected):
+//   - ERR_DUPLICATE_NAME: parser silently reuses existing same-name nodes (find-or-create).
+//   - ERR_MISSING_SUBTYPE: missing subType is resolved to the registry default, never an error.
+//   - ERR_INVALID_SUBTYPE_CHILD: no child-rule validation pass exists yet.
+// Cross-language conformance consumers should not expect these codes from the TS adapter.
 export const ERROR_CODES = [
   "ERR_TOP_LEVEL_NOT_OBJECT",
   "ERR_UNKNOWN_TYPE",
@@ -13,6 +19,7 @@ export const ERROR_CODES = [
   "ERR_BAD_ATTR_VALUE",
   "ERR_BAD_DEFAULT_SORT_FIELD",
   "ERR_PROVIDER_DEPENDENCY_CYCLE",
+  "ERR_PROVIDER_DUPLICATE_ID",
   "ERR_PROVIDER_MISSING_DEPENDENCY",
   "ERR_PROVIDER_ATTR_CONFLICT",
   "ERR_MALFORMED_JSON",

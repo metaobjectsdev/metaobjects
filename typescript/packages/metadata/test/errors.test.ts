@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
-import { ParseError } from "../src/errors.js";
+import { ParseError, MetaModelError, ERROR_CODES } from "../src/errors.js";
+import { composeRegistry, type MetaDataTypeProvider } from "../src/provider.js";
 
 test("ParseError carries a stable ERR_ code", () => {
   const err = new ParseError("unknown type 'widget'", {
@@ -8,10 +9,21 @@ test("ParseError carries a stable ERR_ code", () => {
   expect(err.code).toBe("ERR_UNKNOWN_TYPE");
 });
 
-test("every ParseError code is registered in ERROR-CODES.json", async () => {
+test("ERROR_CODES and ERROR-CODES.json are in full agreement", async () => {
   const registry = await Bun.file(
     `${import.meta.dir}/../../../../fixtures/conformance/ERROR-CODES.json`,
   ).json();
-  const err = new ParseError("dup", { code: "ERR_DUPLICATE_NAME" });
-  expect(Object.keys(registry.codes)).toContain(err.code!);
+  expect([...ERROR_CODES].sort()).toEqual((Object.keys(registry.codes) as typeof ERROR_CODES[number][]).sort());
+});
+
+test("MetaModelError carries a stable ERR_PROVIDER_* code", () => {
+  const dupProvider: MetaDataTypeProvider = { id: "dup", registerTypes() {} };
+  let thrown: unknown;
+  try {
+    composeRegistry([dupProvider, dupProvider]);
+  } catch (err) {
+    thrown = err;
+  }
+  expect(thrown).toBeInstanceOf(MetaModelError);
+  expect((thrown as MetaModelError).code).toBe("ERR_PROVIDER_DUPLICATE_ID");
 });
