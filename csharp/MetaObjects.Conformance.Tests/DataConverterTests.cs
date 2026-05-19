@@ -111,4 +111,65 @@ public class DataConverterTests
             DataConverter.ConvertToDataType(DataType.String,
                 JsonDocument.Parse("null").RootElement));
     }
+
+    // --- Fix 1: float-notation whole-number string → long (safe range) ---------
+
+    [Fact]
+    public void ConvertToDataType_float_notation_whole_number_string_coerces_to_long()
+    {
+        // "3.0" is a float-notation string that represents the integer 3.
+        // TS toInteger: Number("3.0") === 3, Number.isSafeInteger(3) → true → returns 3.
+        var result = DataConverter.ConvertToDataType(DataType.Long,
+            JsonDocument.Parse("\"3.0\"").RootElement);
+        Assert.IsType<long>(result);
+        Assert.Equal(3L, result);
+    }
+
+    [Fact]
+    public void ConvertToDataType_float_notation_beyond_safe_integer_range_keeps_string()
+    {
+        // 9007199254740993.0 is beyond 2^53-1 — double parse already loses precision.
+        // TS: Number.isSafeInteger(parsed) → false → return original string.
+        var result = DataConverter.ConvertToDataType(DataType.Long,
+            JsonDocument.Parse("\"9007199254740993.0\"").RootElement);
+        Assert.IsType<string>(result);
+        Assert.Equal("9007199254740993.0", result);
+    }
+
+    // --- Fix 2: non-integer JSON number passes through as double ----------------
+
+    [Fact]
+    public void ConvertToDataType_non_integer_json_number_passes_through_as_double()
+    {
+        // JSON number 3.7 targeting DataType.Int — TS toInteger returns raw (the number)
+        // unchanged. C# must return double 3.7, NOT the string "3.7".
+        var result = DataConverter.ConvertToDataType(DataType.Int,
+            JsonDocument.Parse("3.7").RootElement);
+        Assert.IsType<double>(result);
+        Assert.Equal(3.7, (double)result!, 10);
+    }
+
+    // --- Fix 3: boolean pass-through for non-boolean values --------------------
+
+    [Fact]
+    public void ConvertToDataType_boolean_with_non_bool_string_passes_through_as_string()
+    {
+        // TS toBoolean: a non-"true"/"false" string → pass through as-is (AttrValue).
+        // C# must return the original string, not throw.
+        var result = DataConverter.ConvertToDataType(DataType.Boolean,
+            JsonDocument.Parse("\"maybe\"").RootElement);
+        Assert.IsType<string>(result);
+        Assert.Equal("maybe", result);
+    }
+
+    [Fact]
+    public void ConvertToDataType_boolean_with_json_number_passes_through()
+    {
+        // TS toBoolean: a number (not bool, not string) → `return raw as AttrValue`.
+        // The JSON number 1 should pass through — C# returns the raw text.
+        var result = DataConverter.ConvertToDataType(DataType.Boolean,
+            JsonDocument.Parse("1").RootElement);
+        // The value is neither true nor false; implementation returns raw text "1".
+        Assert.Equal("1", result);
+    }
 }

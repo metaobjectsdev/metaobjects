@@ -46,14 +46,14 @@ public static class DataConverter
         ToAttrValueInternal(element, fnName: "toAttrValue", typeDirected: false, dataType: null);
 
     /// <summary>
-    /// Convert a raw JSON element to a valid AttrValue with NO known type —
-    /// for undeclared <c>@</c>-attrs. No type-directed conversion: scalars are
-    /// stored as-is (a numeric-looking JSON number stays a number, a string
-    /// stays a string), arrays become <see cref="IReadOnlyList{string}"/>,
-    /// objects/null are rejected.
+    /// Convert a raw JSON element to a valid AttrValue, coercing toward the
+    /// given <see cref="DataType"/>. For declared <c>@</c>-attrs whose type is
+    /// known from the registered schema. Arrays always return
+    /// <see cref="IReadOnlyList{string}"/> regardless of the scalar DataType;
+    /// scalars are coerced (e.g. string "42" → long 42, string "true" → bool).
     /// </summary>
     /// <remarks>
-    /// Mirrors TS <c>toAttrValue(raw)</c>.
+    /// Mirrors TS <c>convertToDataType(dataType, raw)</c>.
     /// </remarks>
     public static object ConvertToDataType(DataType dataType, JsonElement element) =>
         ToAttrValueInternal(element, fnName: "convertToDataType", typeDirected: true, dataType: dataType);
@@ -144,12 +144,17 @@ public static class DataConverter
     /// </summary>
     private static object ToInteger(JsonElement element, string fnName)
     {
+        // JS safe-integer range: [-(2^53 - 1), 2^53 - 1]
+        const long JsSafeIntegerMax =  9007199254740991L;
+        const long JsSafeIntegerMin = -9007199254740991L;
+
         if (element.ValueKind == JsonValueKind.Number)
         {
             if (element.TryGetInt64(out long lng))
                 return lng;
-            // Beyond long range — stringify to preserve precision (mirrors TS isSafeInteger check).
-            return element.GetRawText();
+            // Non-integer JSON number (e.g. 3.7) — pass through as double,
+            // matching TS `toInteger` which returns `raw` (the number) unchanged.
+            return element.GetDouble();
         }
         if (element.ValueKind == JsonValueKind.String)
         {
@@ -163,14 +168,18 @@ public static class DataConverter
                 return s;
             }
             // Float-notation strings that represent a whole number (e.g. "3.0", "12.0").
-            // Mirrors TS: float-format strings that represent a whole number → integer value.
+            // Mirrors TS: convert only when Number.isSafeInteger(parsed) — values beyond
+            // 2^53−1 would have already lost precision in the double; keep original string.
             if (double.TryParse(s, System.Globalization.NumberStyles.Float,
                     System.Globalization.CultureInfo.InvariantCulture, out double parsed2)
                 && double.IsFinite(parsed2)
-                && parsed2 == Math.Floor(parsed2)
-                && parsed2 >= long.MinValue && parsed2 <= long.MaxValue)
+                && parsed2 == Math.Floor(parsed2))
             {
-                return (long)parsed2;
+                long asLong = (long)parsed2;
+                if (asLong >= JsSafeIntegerMin && asLong <= JsSafeIntegerMax)
+                    return asLong;
+                // Outside safe-integer range — keep original string verbatim (mirrors TS).
+                return s;
             }
             // Not integer-shaped — pass through.
             return s;
