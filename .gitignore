@@ -28,8 +28,8 @@ typescript/**/node_modules/
 java/**/target/
 
 # C# build output
-bin/
-obj/
+csharp/**/bin/
+csharp/**/obj/
 
 # Python
 __pycache__/

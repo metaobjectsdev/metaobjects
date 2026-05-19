@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "capabilities": [
+    "object.effective-fields",
+    "object.find-field",
+    "object.own-fields",
+    "object.primary-identity"
+  ]
+}
