@@ -1,3 +1,5 @@
 [
-  "identity.primary 'pk' is missing required attribute '@fields'"
+  {
+    "code": "ERR_MISSING_REQUIRED_ATTR"
+  }
 ]

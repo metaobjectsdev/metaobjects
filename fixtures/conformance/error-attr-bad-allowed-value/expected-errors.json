@@ -1,3 +1,5 @@
 [
-  "identity.primary 'pk' attribute '@generation' has value 'sequence' which is not one of the allowed values: increment, uuid, assigned"
+  {
+    "code": "ERR_BAD_ATTR_VALUE"
+  }
 ]

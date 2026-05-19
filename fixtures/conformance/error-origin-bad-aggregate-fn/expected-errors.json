@@ -1,3 +1,5 @@
 [
-  "origin.aggregate attribute '@agg' has value 'notARealFn' which is not one of the allowed values: count, sum, avg, min, max"
+  {
+    "code": "ERR_BAD_ATTR_VALUE"
+  }
 ]

@@ -1,0 +1,31 @@
+{
+  "operations": [
+    {
+      "navigate": ["object:Subscriber"],
+      "invoke": "object.effective-fields",
+      "expect": { "names": ["id", "createdAt", "email"] }
+    },
+    {
+      "navigate": ["object:Subscriber"],
+      "invoke": "object.own-fields",
+      "expect": { "names": ["email"] }
+    },
+    {
+      "navigate": ["object:Subscriber"],
+      "invoke": "object.find-field",
+      "args": { "name": "createdAt" },
+      "expect": { "name": "createdAt" }
+    },
+    {
+      "navigate": ["object:Subscriber"],
+      "invoke": "object.find-field",
+      "args": { "name": "noSuchField" },
+      "expect": { "absent": true }
+    },
+    {
+      "navigate": ["object:Subscriber"],
+      "invoke": "object.primary-identity",
+      "expect": { "subtype": "primary" }
+    }
+  ]
+}

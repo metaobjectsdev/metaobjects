@@ -1,3 +1,5 @@
 [
-  "Invalid JSON: JSON Parse error: Expected '}'"
+  {
+    "code": "ERR_MALFORMED_JSON"
+  }
 ]

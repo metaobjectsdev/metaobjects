@@ -1,3 +1,5 @@
 [
-  "the SuperClass 'DoesNotExist' does not exist (referenced by Premium)"
+  {
+    "code": "ERR_UNRESOLVED_SUPER"
+  }
 ]

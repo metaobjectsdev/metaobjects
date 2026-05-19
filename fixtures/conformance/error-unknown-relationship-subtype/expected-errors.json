@@ -1,3 +1,5 @@
 [
-  "Unknown type \"relationship.oneToMany\" — not registered"
+  {
+    "code": "ERR_UNKNOWN_SUBTYPE"
+  }
 ]
