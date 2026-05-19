@@ -48,14 +48,12 @@ public class FileMetaDataSources {
         }
 
         /**
-         * {@inheritDoc} — inferred from the filename extension: {@code .xml}
-         * (case-insensitive) is {@link MetaDataFormat#XML}; everything else
-         * (including {@code .json}) is {@link MetaDataFormat#JSON}.
+         * {@inheritDoc} — as of H3b-1 Task 4 all metadata files are canonical
+         * JSON, so this always returns {@link MetaDataFormat#JSON}.
          */
         @Override
         public MetaDataFormat getFormat() {
-            return filename.toLowerCase().endsWith(".xml")
-                    ? MetaDataFormat.XML : MetaDataFormat.JSON;
+            return MetaDataFormat.JSON;
         }
 
         /** {@inheritDoc} — content was already read during discovery; no I/O here. */

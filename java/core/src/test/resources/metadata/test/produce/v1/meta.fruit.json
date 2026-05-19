@@ -1,45 +1,94 @@
-﻿
-{"metadata": {"package": "produce::v1::fruit",
-  "children": [
-
-    {"object": {"name": "Fruit", "subType": "pojo",
-      "children": [
-        {"key": {"name": "primary", "subType":"primary",
+{
+  "metadata.root": {
+    "package": "produce::v1::fruit",
+    "children": [
+      {
+        "object.pojo": {
+          "name": "Fruit",
+          "abstract": true,
+          "@object": "com.metaobjects.test.produce.v1.Fruit",
           "children": [
-            {"attr": {"name": "keys", "value": "id"}},
-            {"attr": {"name": "autoIncrementStrategy", "value": "sequential"}}
-          ]}},
-        {"key": {"name": "basketKey", "subType":"foreign",
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "..::common::id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "basketId",
+                "extends": "..::common::id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "extends": "..::common::name"
+              }
+            },
+            {
+              "field.int": {
+                "name": "length"
+              }
+            },
+            {
+              "field.int": {
+                "name": "weight"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.pojo": {
+          "name": "Apple",
+          "extends": "Fruit",
+          "@object": "com.metaobjects.test.produce.v1.Apple",
           "children": [
-            {"attr": {"name": "keys", "value": "basketId"}},
-            {"attr": {"name": "foreignObjectRef", "value": "..::container::Basket"}}
-          ]}},
-        {"attr": {"name": "object", "value": "com.metaobjects.test.produce.v1.Fruit"}},
-        {"field": {"name": "id", "super": "..::common::id"}},
-        {"field": {"name": "basketId", "super": "..::common::id"}},
-        {"field": {"name": "name", "super": "..::common::name"}},
-        {"field": {"name": "length", "subType": "int"}},
-        {"field": {"name": "weight", "subType": "int"}}
-      ]}},
-
-    {"object": {"name": "Apple", "super": "Fruit",
-      "children": [
-        {"attr": {"name": "object", "value": "com.metaobjects.test.produce.v1.Apple"}},
-        {"field": {"name": "orchard", "subType": "string"}},
-        {"field": {"name": "worms", "subType": "int"}},
-        {"field": {"name": "length", "subType": "int"}},
-        {"field": {"name": "weight", "subType": "int"}}
-      ]}},
-
-    {"object": {"name": "Macintosh", "super": "Apple",
-      "children": [
-        {"attr": {"name": "object", "value": "com.metaobjects.test.produce.v1.Macintosh"}}
-      ]}},
-
-    {"object": {"name": "Orange", "super": "Fruit",
-      "children": [
-        {"attr": {"name": "object", "value": "com.metaobjects.test.produce.v1.Orange"}},
-        {"field": {"name": "pickedDate", "subType": "date"}}
-      ]}}
-  ]}
+            {
+              "field.string": {
+                "name": "orchard"
+              }
+            },
+            {
+              "field.int": {
+                "name": "worms"
+              }
+            },
+            {
+              "field.int": {
+                "name": "length"
+              }
+            },
+            {
+              "field.int": {
+                "name": "weight"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.pojo": {
+          "name": "Macintosh",
+          "extends": "Apple",
+          "@object": "com.metaobjects.test.produce.v1.Macintosh"
+        }
+      },
+      {
+        "object.pojo": {
+          "name": "Orange",
+          "extends": "Fruit",
+          "@object": "com.metaobjects.test.produce.v1.Orange",
+          "children": [
+            {
+              "field.date": {
+                "name": "pickedDate"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
 }

@@ -14,10 +14,9 @@ import java.util.Scanner;
  *
  * <p>The URI must follow the {@code model:<sourceType>:<source>} scheme
  * understood by {@link URIHelper} (e.g. {@code model:file:/path/to/meta.json},
- * {@code model:resource:com/example/meta.xml}).  The {@link MetaDataFormat}
- * is inferred from the URI string: if it ends with {@code .xml} (case-insensitive)
- * the format is {@link MetaDataFormat#XML}; everything else defaults to
- * {@link MetaDataFormat#JSON}.</p>
+ * {@code model:resource:com/example/meta.json}).  The {@link MetaDataFormat}
+ * is always {@link MetaDataFormat#JSON} — as of H3b-1 Task 4 all metadata files
+ * are canonical JSON.</p>
  *
  * <p>Mirrors the TypeScript {@code FileSource} class introduced in H3a,
  * adapted to Java's URI-based addressing scheme already used by
@@ -51,15 +50,12 @@ public class URIMetaDataSource implements MetaDataSource {
 
     /**
      * Infers the document format from the URI string.
-     * A URI ending in {@code .xml} (case-insensitive) is treated as
-     * {@link MetaDataFormat#XML}; everything else is {@link MetaDataFormat#JSON}.
+     *
+     * <p>As of H3b-1 Task 4 all metadata files are canonical JSON; this method
+     * always returns {@link MetaDataFormat#JSON}.</p>
      */
     private static MetaDataFormat inferFormat(String uriString) {
-        String lower = uriString.toLowerCase();
-        // Strip any query args after ';' before checking extension
-        int semi = lower.indexOf(';');
-        if (semi > 0) lower = lower.substring(0, semi);
-        return lower.endsWith(".xml") ? MetaDataFormat.XML : MetaDataFormat.JSON;
+        return MetaDataFormat.JSON;
     }
 
     @Override

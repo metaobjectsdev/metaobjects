@@ -207,9 +207,23 @@ public final class CanonicalJsonSerializer {
         }
 
         // 3. extends — emit when super data is set
+        // Use the short name when the super is in the same package as the node;
+        // use the fully-qualified name when the super lives in a different package
+        // so that round-trip loading can resolve it correctly.
         if (node.hasSuperData()) {
             MetaData superData = node.getSuperData();
-            String superRef = superData.getShortName();
+            String nodePackageForSuper = resolveNodePackage(node);
+            String superPackage = resolveNodePackage(superData);
+            String superRef;
+            if (nodePackageForSuper != null && !nodePackageForSuper.isEmpty()
+                    && nodePackageForSuper.equals(superPackage)) {
+                // Same package — short name is unambiguous
+                superRef = superData.getShortName();
+            } else {
+                // Different package — emit the fully-qualified name so the
+                // canonical parser can resolve it without the original context
+                superRef = superData.getName();
+            }
             if (superRef != null && !superRef.isEmpty()) {
                 body.addProperty(KEY_EXTENDS, superRef);
             }

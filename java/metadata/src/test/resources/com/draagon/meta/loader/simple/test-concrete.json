@@ -1,10 +1,20 @@
-{"metadata": {"package": "test",
-  "children": [
-    {"object": {"name": "TestObject", "subType": "map", 
-        "children": [
-          {"field": {"name": "id", "super": "..::common::id"}}
-        ]
+{
+  "metadata.root": {
+    "package": "test",
+    "children": [
+      {
+        "object.map": {
+          "name": "TestObject",
+          "children": [
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "common::id"
+              }
+            }
+          ]
+        }
       }
-    }
-  ]
-}}
+    ]
+  }
+}

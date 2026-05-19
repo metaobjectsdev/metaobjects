@@ -1,59 +1,52 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "domain",
     "children": [
       {
-        "object": {
+        "object.pojo": {
           "name": "User",
-          "subType": "pojo",
           "children": [
             {
-              "field": {
-                "name": "id",
-                "subType": "long"
+              "field.long": {
+                "name": "id"
               }
             },
             {
-              "field": {
-                "name": "username",
-                "subType": "string"
+              "field.string": {
+                "name": "username"
               }
             },
             {
-              "field": {
-                "name": "email",
-                "subType": "string"
+              "field.string": {
+                "name": "email"
               }
             },
             {
-              "field": {
-                "name": "firstName",
-                "subType": "string"
+              "field.string": {
+                "name": "firstName"
               }
             },
             {
-              "field": {
-                "name": "lastName",
-                "subType": "string"
+              "field.string": {
+                "name": "lastName"
               }
             },
             {
-              "field": {
-                "name": "createdAt",
-                "subType": "string"
+              "field.string": {
+                "name": "createdAt"
               }
             },
             {
-              "field": {
-                "name": "updatedAt",
-                "subType": "string"
+              "field.string": {
+                "name": "updatedAt"
               }
             },
             {
-              "identity": {
+              "identity.primary": {
                 "name": "primary",
-                "subType": "primary",
-                "@fields": ["id"],
+                "@fields": [
+                  "id"
+                ],
                 "@generation": "increment"
               }
             }
@@ -61,75 +54,65 @@
         }
       },
       {
-        "object": {
+        "object.pojo": {
           "name": "Order",
-          "subType": "pojo",
           "children": [
             {
-              "field": {
-                "name": "id",
-                "subType": "long"
+              "field.long": {
+                "name": "id"
               }
             },
             {
-              "field": {
-                "name": "userRef",
-                "subType": "long"
+              "field.long": {
+                "name": "userRef"
               }
             },
             {
-              "field": {
-                "name": "status",
-                "subType": "string"
+              "field.string": {
+                "name": "status"
               }
             },
             {
-              "field": {
-                "name": "totalAmount",
-                "subType": "decimal"
+              "field.decimal": {
+                "name": "totalAmount"
               }
             },
             {
-              "field": {
-                "name": "orderDate",
-                "subType": "string"
+              "field.string": {
+                "name": "orderDate"
               }
             },
             {
-              "field": {
-                "name": "orderNumber",
-                "subType": "string"
+              "field.string": {
+                "name": "orderNumber"
               }
             },
             {
-              "field": {
-                "name": "subtotalAmount",
-                "subType": "decimal"
+              "field.decimal": {
+                "name": "subtotalAmount"
               }
             },
             {
-              "field": {
-                "name": "taxAmount",
-                "subType": "decimal"
+              "field.decimal": {
+                "name": "taxAmount"
               }
             },
             {
-              "field": {
-                "name": "shippingAddress",
-                "subType": "string"
+              "field.string": {
+                "name": "shippingAddress"
               }
             },
             {
-              "field": {
-                "name": "notes",
-                "subType": "string"
+              "field.string": {
+                "name": "notes"
               }
             },
             {
-              "identity": {
+              "identity.primary": {
                 "name": "primary",
-                "subType": "primary",
-                "@fields": ["id"],
+                "@fields": [
+                  "id"
+                ],
                 "@generation": "increment"
               }
             }
@@ -137,57 +120,50 @@
         }
       },
       {
-        "object": {
+        "object.pojo": {
           "name": "OrderItem",
-          "subType": "pojo",
           "children": [
             {
-              "field": {
-                "name": "id",
-                "subType": "long"
+              "field.long": {
+                "name": "id"
               }
             },
             {
-              "field": {
-                "name": "orderRef",
-                "subType": "long"
+              "field.long": {
+                "name": "orderRef"
               }
             },
             {
-              "field": {
-                "name": "productName",
-                "subType": "string"
+              "field.string": {
+                "name": "productName"
               }
             },
             {
-              "field": {
-                "name": "productDescription",
-                "subType": "string"
+              "field.string": {
+                "name": "productDescription"
               }
             },
             {
-              "field": {
-                "name": "quantity",
-                "subType": "int"
+              "field.int": {
+                "name": "quantity"
               }
             },
             {
-              "field": {
-                "name": "unitPrice",
-                "subType": "decimal"
+              "field.decimal": {
+                "name": "unitPrice"
               }
             },
             {
-              "field": {
-                "name": "totalPrice",
-                "subType": "decimal"
+              "field.decimal": {
+                "name": "totalPrice"
               }
             },
             {
-              "identity": {
+              "identity.primary": {
                 "name": "primary",
-                "subType": "primary",
-                "@fields": ["id"],
+                "@fields": [
+                  "id"
+                ],
                 "@generation": "increment"
               }
             }

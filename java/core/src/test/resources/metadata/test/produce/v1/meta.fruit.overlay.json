@@ -1,23 +1,60 @@
-{"metadata": {"package": "produce::v1",
-    "types" : [],
-    "shortcuts" : [],
-    "rules" : [],
+{
+  "metadata.root": {
+    "package": "produce::v1",
     "children": [
-        {"object": {"package": "::container::ext", "name": "ProduceExt", "isEmbedded": true,
-            "children": [
-                {"field": {"name": "name", "super": "..::..::common::name"}},
-                {"field": {"name": "foo", "subType": "double"}}
-            ]
-        }},
-        {"object": {"package": "::fruit", "name": "Apple",
-            "children": [
-                {"field": {"name": "specialOverlay", "subType": "string"}}
-            ]
-        }},
-        {"object": {"package": "::container", "name": "Basket",
-            "children": [
-                {"field": {"name": "specialOverlay", "subType": "string"}},
-                {"field": {"name": "specialExt", "subType": "object", "objectRef": "::ext::ProduceExt"}}
-                ]}
-        }]
-}}
+      {
+        "object.map": {
+          "package": "::container::ext",
+          "name": "ProduceExt",
+          "children": [
+            {
+              "field.string": {
+                "name": "name",
+                "extends": "..::..::common::name"
+              }
+            },
+            {
+              "field.double": {
+                "name": "foo"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.pojo": {
+          "package": "::fruit",
+          "name": "Apple",
+          "overlay": true,
+          "children": [
+            {
+              "field.string": {
+                "name": "specialOverlay"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.map": {
+          "package": "::container",
+          "name": "Basket",
+          "overlay": true,
+          "children": [
+            {
+              "field.string": {
+                "name": "specialOverlay"
+              }
+            },
+            {
+              "field.object": {
+                "name": "specialExt",
+                "@objectRef": "::ext::ProduceExt"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

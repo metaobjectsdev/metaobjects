@@ -1,159 +1,139 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "examples",
     "children": [
       {
-        "object": {
+        "object.pojo": {
           "name": "Customer",
-          "subType": "pojo",
           "children": [
             {
-              "field": {
+              "field.long": {
                 "name": "id",
-                "subType": "long",
                 "@required": true
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "name",
-                "subType": "string",
-                "@required": true,
-                "@maxLength": 100
+                "@maxLength": 100,
+                "@required": true
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "email",
-                "subType": "string",
-                "@required": true,
-                "@maxLength": 255
+                "@maxLength": 255,
+                "@required": true
               }
             },
             {
-              "relationship": {
+              "relationship.composition": {
                 "name": "profile",
-                "subType": "composition",
-                "@targetObject": "CustomerProfile",
                 "@cardinality": "one",
+                "@description": "One-to-One Composition: Customer owns exactly one profile (dependent lifecycle)",
                 "@referencedBy": "profileId",
-                "@description": "One-to-One Composition: Customer owns exactly one profile (dependent lifecycle)"
+                "@targetObject": "CustomerProfile"
               }
             },
             {
-              "relationship": {
+              "relationship.composition": {
                 "name": "addresses",
-                "subType": "composition",
-                "@targetObject": "Address",
                 "@cardinality": "many",
+                "@description": "One-to-Many Composition: Customer owns multiple addresses (dependent lifecycle)",
                 "@referencedBy": "addressIds",
-                "@description": "One-to-Many Composition: Customer owns multiple addresses (dependent lifecycle)"
+                "@targetObject": "Address"
               }
             },
             {
-              "relationship": {
+              "relationship.association": {
                 "name": "preferredStore",
-                "subType": "association",
-                "@targetObject": "Store",
                 "@cardinality": "one",
+                "@description": "One-to-One Association: Customer references a preferred store (independent lifecycle)",
                 "@referencedBy": "preferredStoreId",
-                "@description": "One-to-One Association: Customer references a preferred store (independent lifecycle)"
+                "@targetObject": "Store"
               }
             },
             {
-              "relationship": {
+              "relationship.association": {
                 "name": "favoriteProducts",
-                "subType": "association",
-                "@targetObject": "Product",
                 "@cardinality": "many",
+                "@description": "One-to-Many Association: Customer references multiple favorite products (independent lifecycle)",
                 "@referencedBy": "favoriteProductIds",
-                "@description": "One-to-Many Association: Customer references multiple favorite products (independent lifecycle)"
+                "@targetObject": "Product"
               }
             }
           ]
         }
       },
       {
-        "object": {
+        "object.pojo": {
           "name": "CustomerProfile",
-          "subType": "pojo",
           "children": [
             {
-              "field": {
+              "field.long": {
                 "name": "id",
-                "subType": "long",
                 "@required": true
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "firstName",
-                "subType": "string",
                 "@maxLength": 50
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "lastName",
-                "subType": "string",
                 "@maxLength": 50
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "phoneNumber",
-                "subType": "string",
                 "@maxLength": 20
               }
             },
             {
-              "field": {
-                "name": "birthDate",
-                "subType": "date"
+              "field.date": {
+                "name": "birthDate"
               }
             }
           ]
         }
       },
       {
-        "object": {
+        "object.pojo": {
           "name": "Address",
-          "subType": "pojo",
           "children": [
             {
-              "field": {
+              "field.long": {
                 "name": "id",
-                "subType": "long",
                 "@required": true
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "street",
-                "subType": "string",
-                "@required": true,
-                "@maxLength": 255
+                "@maxLength": 255,
+                "@required": true
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "city",
-                "subType": "string",
-                "@required": true,
-                "@maxLength": 100
+                "@maxLength": 100,
+                "@required": true
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "zipCode",
-                "subType": "string",
                 "@maxLength": 20
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "type",
-                "subType": "string",
                 "@maxLength": 20
               }
             }
@@ -161,29 +141,25 @@
         }
       },
       {
-        "object": {
+        "object.pojo": {
           "name": "Store",
-          "subType": "pojo",
           "children": [
             {
-              "field": {
+              "field.long": {
                 "name": "id",
-                "subType": "long",
                 "@required": true
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "name",
-                "subType": "string",
-                "@required": true,
-                "@maxLength": 100
+                "@maxLength": 100,
+                "@required": true
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "location",
-                "subType": "string",
                 "@maxLength": 255
               }
             }
@@ -191,36 +167,31 @@
         }
       },
       {
-        "object": {
+        "object.pojo": {
           "name": "Product",
-          "subType": "pojo",
           "children": [
             {
-              "field": {
+              "field.long": {
                 "name": "id",
-                "subType": "long",
                 "@required": true
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "name",
-                "subType": "string",
-                "@required": true,
-                "@maxLength": 255
+                "@maxLength": 255,
+                "@required": true
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "description",
-                "subType": "string",
                 "@maxLength": 1000
               }
             },
             {
-              "field": {
+              "field.decimal": {
                 "name": "price",
-                "subType": "decimal",
                 "@required": true
               }
             }

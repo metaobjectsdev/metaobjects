@@ -9,8 +9,7 @@ package com.metaobjects.loader;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.MetaRoot;
-import com.metaobjects.loader.parser.json.JsonMetaDataParser;
-import com.metaobjects.loader.parser.xml.XMLMetaDataParser;
+import com.metaobjects.loader.parser.json.CanonicalJsonParser;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataLoaderRegistry;
 import com.metaobjects.registry.ServiceRegistryFactory;
@@ -815,14 +814,12 @@ public class MetaDataLoader implements LoaderConfigurable {
                     getName(), LoadingState.Phase.INITIALIZING, 0, e);
             }
 
+            // H3b-1 Task 4: all metadata is canonical JSON; dispatch directly to CanonicalJsonParser.
+            // The legacy XML and natural-JSON parsers still exist in the codebase (deleted in Task 5)
+            // but are no longer used here.
             InputStream is = new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8));
-            if (source.getFormat() == MetaDataSource.MetaDataFormat.XML) {
-                XMLMetaDataParser parser = new XMLMetaDataParser(this, source.getId());
-                parser.loadFromStream(is);
-            } else {
-                JsonMetaDataParser parser = new JsonMetaDataParser(this, source.getId());
-                parser.loadFromStream(is);
-            }
+            CanonicalJsonParser parser = new CanonicalJsonParser(this, source.getId());
+            parser.loadFromStream(is);
         }
 
         return this;

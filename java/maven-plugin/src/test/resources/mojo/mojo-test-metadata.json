@@ -1,54 +1,169 @@
-﻿{"$schema": "simple-model.schema.json",
- "metadata": {"package": "simple::fruitbasket",
-  "children": [
-
-    {"field": {"package": "simple::common", "name": "id", "subType": "long", "@isAbstract": true,
-      "children": [
-        {"attr": {"name": "isKey", "subType": "boolean", "value": true}}
-      ]}},
-
-    {"field": {"package": "simple::common", "name": "name", "subType": "string", "@isAbstract": true,
-      "children": [
-        {"validator": {"subType": "required"}},
-        {"validator": {"subType": "length", "@min": 1, "@max": 50}}
-      ]}},
-
-    {"object": {"name": "Basket", "subType": "map", "@object": "com.metaobjects.loader.simple.fruitbasket.Basket",
-      "children": [
-        {"field": {"name": "id", "super": "..::common::id"}},
-        {"field": {"name": "name", "super": "..::common::name"}},
-        {"field": {"name": "numApples", "subType": "int",
+{
+  "metadata.root": {
+    "package": "simple::fruitbasket",
+    "children": [
+      {
+        "field.long": {
+          "name": "id",
+          "package": "simple::common",
+          "abstract": true,
+          "@simple::fruitbasket::isKey": "true"
+        }
+      },
+      {
+        "field.string": {
+          "name": "name",
+          "package": "simple::common",
+          "abstract": true,
           "children": [
-            {"validator": {"subType": "length", "@min": 0, "@max": 10}}
-          ]}},
-        {"field": {"name": "numOranges", "subType": "int",
+            {
+              "validator.required": {}
+            },
+            {
+              "validator.length": {
+                "@max": 50,
+                "@min": 1
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.map": {
+          "name": "Basket",
+          "@object": "com.metaobjects.loader.simple.fruitbasket.Basket",
           "children": [
-            {"validator": {"subType": "length", "@min": 0, "@max": 10}}
-          ]}},
-        {"field": {"name": "apples", "subType": "object", "@isArray": true, "@objectRef": "::Apple"}},
-        {"field": {"name": "oranges", "subType": "object", "@isArray": true, "@objectRef": "::Orange"}}
-      ]}},
-
-    {"object": {"name": "Fruit", "subType": "map", "@isAbstract": true, "@object": "com.metaobjects.loader.simple.fruitbasket.Fruit",
-      "children": [
-        {"field": {"name": "id", "super": "..::common::id"}},
-        {"field": {"name": "name", "super": "..::common::name"}},
-        {"field": {"name": "length", "subType": "int"}},
-        {"field": {"name": "weight", "subType": "int"}},
-        {"field": {"name": "inBasket", "subType": "boolean"}}
-      ]}},
-
-    {"object": {"name": "Apple", "super": "Fruit", "@object": "com.metaobjects.loader.simple.fruitbasket.Apple",
-      "children": [
-        {"field": {"name": "orchard", "subType": "string"}},
-        {"field": {"name": "worms", "subType": "int"}}
-      ]}},
-
-    {"object": {"name": "Macintosh", "super": "Apple", "@object": "com.metaobjects.loader.simple.fruitbasket.Macintosh"}},
-
-    {"object": {"name": "Orange", "super": "Fruit", "@object": "com.metaobjects.loader.simple.fruitbasket.Orange",
-      "children": [
-        {"field": {"name": "pickedDate", "subType": "date"}}
-      ]}}
-  ]
-}}
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "extends": "name"
+              }
+            },
+            {
+              "field.int": {
+                "name": "numApples",
+                "children": [
+                  {
+                    "validator.length": {
+                      "@max": 10,
+                      "@min": 0
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.int": {
+                "name": "numOranges",
+                "children": [
+                  {
+                    "validator.length": {
+                      "@max": 10,
+                      "@min": 0
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.object": {
+                "name": "apples",
+                "isArray": true,
+                "@objectRef": "::Apple"
+              }
+            },
+            {
+              "field.object": {
+                "name": "oranges",
+                "isArray": true,
+                "@objectRef": "::Orange"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.map": {
+          "name": "Fruit",
+          "abstract": true,
+          "@object": "com.metaobjects.loader.simple.fruitbasket.Fruit",
+          "children": [
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "extends": "name"
+              }
+            },
+            {
+              "field.int": {
+                "name": "length"
+              }
+            },
+            {
+              "field.int": {
+                "name": "weight"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "inBasket"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.map": {
+          "name": "Apple",
+          "extends": "Fruit",
+          "@object": "com.metaobjects.loader.simple.fruitbasket.Apple",
+          "children": [
+            {
+              "field.string": {
+                "name": "orchard"
+              }
+            },
+            {
+              "field.int": {
+                "name": "worms"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.map": {
+          "name": "Macintosh",
+          "extends": "Apple",
+          "@object": "com.metaobjects.loader.simple.fruitbasket.Macintosh"
+        }
+      },
+      {
+        "object.map": {
+          "name": "Orange",
+          "extends": "Fruit",
+          "@object": "com.metaobjects.loader.simple.fruitbasket.Orange",
+          "children": [
+            {
+              "field.date": {
+                "name": "pickedDate"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

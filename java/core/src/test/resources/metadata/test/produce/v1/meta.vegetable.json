@@ -1,28 +1,51 @@
-﻿{"metadata": {"package": "produce::v1::vegetable",
-  "children": [
-
-    {"object": {"name": "Vegetable", "subType": "pojo",
-      "children": [
-        {"key": {"name": "primary", "subType":"primary",
+{
+  "metadata.root": {
+    "package": "produce::v1::vegetable",
+    "children": [
+      {
+        "object.pojo": {
+          "name": "Vegetable",
+          "abstract": true,
+          "@object": "com.metaobjects.test.produce.v1.Vegetable",
           "children": [
-            {"attr": {"name": "keys", "value": "id"}}
-          ]}},
-        {"key": {"name": "basketKey", "subType":"foreign",
-          "children": [
-            {"attr": {"name": "keys", "value": "basketId"}},
-            {"attr": {"name": "foreignObjectRef", "value": "..::container::Basket"}}
-          ]}},
-        {"attr": {"name": "object", "value": "com.metaobjects.test.produce.v1.Vegetable"}},
-        {"field": {"name": "id", "super": "..::common::id"}},
-        {"field": {"name": "name", "super": "..::common::name"}},
-        {"field": {"name": "basketId", "super": "..::common::id"}},
-        {"field": {"name": "length", "subType": "int"}},
-        {"field": {"name": "weight", "subType": "int"}}
-      ]}},
-
-    {"object": {"name": "Tomato", "super": "Vegetable",
-      "children": [
-        {"attr": {"name": "object", "value": "com.metaobjects.test.produce.v1.Tomato"}}
-      ]}}
-  ]}
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "..::common::id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "extends": "..::common::name"
+              }
+            },
+            {
+              "field.long": {
+                "name": "basketId",
+                "extends": "..::common::id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "length"
+              }
+            },
+            {
+              "field.int": {
+                "name": "weight"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.pojo": {
+          "name": "Tomato",
+          "extends": "Vegetable",
+          "@object": "com.metaobjects.test.produce.v1.Tomato"
+        }
+      }
+    ]
+  }
 }

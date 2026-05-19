@@ -24,12 +24,13 @@ public interface MetaDataSource {
     /**
      * The raw-document formats understood by the loader pipeline.
      * Maps directly to the parsers registered in the pipeline.
+     *
+     * <p>As of H3b-1 Task 4 only canonical JSON is supported. The XML value was
+     * removed; all fixture files have been migrated to canonical JSON.</p>
      */
     enum MetaDataFormat {
-        /** JavaScript Object Notation — the default format. */
-        JSON,
-        /** Extensible Markup Language — legacy format supported by {@link com.metaobjects.loader.parser.xml.XMLMetaDataParser}. */
-        XML
+        /** Canonical JSON — the only supported format as of H3b-1 Task 4. */
+        JSON
     }
 
     /**

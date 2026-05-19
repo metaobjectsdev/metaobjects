@@ -1,32 +1,100 @@
-{"metadata": {"package": "produce::v1::container",
+{
+  "metadata.root": {
+    "package": "produce::v1::container",
     "children": [
-        {"object": {"name": "Basket", "subType": "value",
-            "children": [
-                {"key": {"name": "primary", "subType":"primary",
-                    "children": [
-                        {"attr": {"name": "keys", "value": "id"}}
-                    ]}},
-                {"field": {"name": "id", "super": "..::common::id"}},
-                {"field": {"name": "name", "super": "..::common::name"}},
-                {"field": {"name": "numApples", "subType": "int"}},
-                {"field": {"name": "numOranges", "subType": "int"}},
-                {"field": {"name": "numVeggies", "subType": "int"}},
-                {"field": {"name": "apples", "subType": "object", "@isArray": true, "objectRef":"..::fruit::Apple",
-                    "children": [
-                        {"validator": {"subType": "array", "minSize": "0", "minSize": "5"}}
-                        ]}},
-                {"field": {"name": "oranges",  "subType": "object", "@isArray": true, "objectRef":"..::fruit::Orange",
-                    "children": [
-                        {"validator": {"subType": "array", "minSize": "0", "minSize": "3"}}
-                    ]}},
-                {"field": {"name": "veggies",  "subType": "object", "@isArray": true, "objectRef":"..::fruit::Vegetable",
-                    "children": [
-                        {"validator": {"subType": "array", "minSize": "1", "minSize": "2"}}
-                    ]}}
-            ]}},
-        {"object": {"package": "..::fruit", "name": "Fruit",
-            "children": [
-                {"field": {"name": "inBasket", "subType": "boolean"}}
-            ]}}
-    ]}
+      {
+        "object.map": {
+          "name": "Basket",
+          "children": [
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "..::common::id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "extends": "..::common::name"
+              }
+            },
+            {
+              "field.int": {
+                "name": "numApples"
+              }
+            },
+            {
+              "field.int": {
+                "name": "numOranges"
+              }
+            },
+            {
+              "field.int": {
+                "name": "numVeggies"
+              }
+            },
+            {
+              "field.object": {
+                "name": "apples",
+                "isArray": true,
+                "@objectRef": "..::fruit::Apple",
+                "children": [
+                  {
+                    "validator.array": {
+                      "@minSize": "0",
+                      "@maxSize": "5"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.object": {
+                "name": "oranges",
+                "isArray": true,
+                "@objectRef": "..::fruit::Orange",
+                "children": [
+                  {
+                    "validator.array": {
+                      "@minSize": "0",
+                      "@maxSize": "3"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.object": {
+                "name": "veggies",
+                "isArray": true,
+                "@objectRef": "..::vegetable::Vegetable",
+                "children": [
+                  {
+                    "validator.array": {
+                      "@minSize": "1",
+                      "@maxSize": "2"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.pojo": {
+          "package": "..::fruit",
+          "name": "Fruit",
+          "overlay": true,
+          "children": [
+            {
+              "field.boolean": {
+                "name": "inBasket"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
 }
