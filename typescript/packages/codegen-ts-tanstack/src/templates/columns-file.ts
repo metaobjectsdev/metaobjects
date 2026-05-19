@@ -1,4 +1,4 @@
-import { code, imp, type Code } from "ts-poet";
+import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject, MetaField } from "@metaobjects/metadata";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
@@ -212,7 +212,7 @@ export const ${filterConstName}: ${entityName}Filter = ${JSON.stringify(parsed, 
     ? code`import type { ${entityName} as ${entityName}Row, ${entityName}Filter } from ${JSON.stringify(entityModule)};`
     : code`import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityModule)};`;
 
-  const body: Code = code`${sections.join("\n")}`;
+  const body: Code = joinCode(sections, { on: "\n" });
   return header + entityImportCode.toString() + "\n" + body.toString();
 }
 

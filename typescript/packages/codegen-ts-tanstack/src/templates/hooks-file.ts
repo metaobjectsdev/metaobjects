@@ -185,9 +185,9 @@ export function useCreate${entityName}(
       body: JSON.stringify(input),
     }),
     ...opts,
-    onSuccess: (data, vars, ctx) => {
+    onSuccess: (...args) => {
       qc.invalidateQueries({ queryKey: ${keysVar}.all() });
-      opts?.onSuccess?.(data, vars, ctx);
+      opts?.onSuccess?.(...args);
     },
   });
 }
@@ -204,9 +204,9 @@ export function useUpdate${entityName}(
       body: JSON.stringify(input),
     }),
     ...opts,
-    onSuccess: (data, vars, ctx) => {
+    onSuccess: (...args) => {
       qc.invalidateQueries({ queryKey: ${keysVar}.all() });
-      opts?.onSuccess?.(data, vars, ctx);
+      opts?.onSuccess?.(...args);
     },
   });
 }
@@ -219,9 +219,9 @@ export function useDelete${entityName}(
   return ${useMutationSym}({
     mutationFn: (id) => fetcher<void>(\`\${${entityName}.$apiPrefix}\${${entityName}.$path}/\${id}\`, { method: "DELETE" }),
     ...opts,
-    onSuccess: (data, vars, ctx) => {
+    onSuccess: (...args) => {
       qc.invalidateQueries({ queryKey: ${keysVar}.all() });
-      opts?.onSuccess?.(data, vars, ctx);
+      opts?.onSuccess?.(...args);
     },
   });
 }
