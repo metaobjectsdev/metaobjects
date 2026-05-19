@@ -48,4 +48,17 @@ describe("buildFilterQs", () => {
     expect(qs).toContain("sort=createdAt");
     expect(qs).toContain("limit=25");
   });
+
+  test("emits withCount as a top-level qs param when present", () => {
+    const result = buildFilterQs({ limit: 10, offset: 0, withCount: 1 });
+    expect(result).toContain("withCount=1");
+    // withCount must not appear nested under filter[]
+    expect(result).not.toContain("filter%5BwithCount%5D");
+    expect(result).not.toContain("filter[withCount]");
+  });
+
+  test("omits withCount when not present (no key, not 'withCount=undefined')", () => {
+    const result = buildFilterQs({ limit: 10 });
+    expect(result).not.toMatch(/(^|&)withCount(=|&|$)/);
+  });
 });

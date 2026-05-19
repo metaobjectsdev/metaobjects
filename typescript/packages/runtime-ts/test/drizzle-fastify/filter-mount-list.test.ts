@@ -104,4 +104,34 @@ describe("mountListRoute with filter+sort allowlists", () => {
     expect(rows.length).toBe(1);
     expect(rows[0].firstName).toBe("Bob");
   });
+
+  test("returns a bare array when withCount is absent (unchanged contract)", async () => {
+    const r = await app.inject({ method: "GET", url: "/subscribers?limit=10" });
+    expect(r.statusCode).toBe(200);
+    const body = JSON.parse(r.body);
+    expect(Array.isArray(body)).toBe(true);
+  });
+
+  test("returns { rows, total } when withCount=1, total reflects the full filtered set", async () => {
+    const r = await app.inject({ method: "GET", url: "/subscribers?limit=2&withCount=1" });
+    expect(r.statusCode).toBe(200);
+    const body = JSON.parse(r.body) as { rows: unknown[]; total: number };
+    expect(Array.isArray(body.rows)).toBe(true);
+    expect(body.rows.length).toBeLessThanOrEqual(2);
+    expect(typeof body.total).toBe("number");
+    expect(body.total).toBeGreaterThanOrEqual(body.rows.length);
+  });
+
+  test("total respects the filter — counts the filtered set, not the table", async () => {
+    const r = await app.inject({
+      method: "GET",
+      url: "/subscribers?filter[subscribed][eq]=true&limit=1&withCount=1",
+    });
+    expect(r.statusCode).toBe(200);
+    const body = JSON.parse(r.body) as { rows: unknown[]; total: number };
+    // 2 subscribers are subscribed (Alice + Carol); total should reflect the filtered count
+    expect(body.total).toBe(2);
+    // Only 1 row returned due to limit=1
+    expect(body.rows.length).toBe(1);
+  });
 });

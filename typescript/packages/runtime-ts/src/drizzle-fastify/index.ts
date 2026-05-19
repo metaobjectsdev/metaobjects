@@ -16,7 +16,7 @@
 
 import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import type { ZodTypeAny } from "zod";
-import { eq } from "drizzle-orm";
+import { eq, count } from "drizzle-orm";
 import qs from "qs";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
@@ -86,14 +86,19 @@ export function mountListRoute(opts: VerbOptions): void {
   opts.fastify.get(opts.path, routeOpts(opts), async (req, reply) => {
     try {
       let q = opts.db.select().from(opts.table).$dynamic();
+      // Re-parse the raw URL with qs so bracketed filter notation and the
+      // top-level withCount flag are available.
+      const rawSearch = req.raw.url?.includes("?")
+        ? req.raw.url.slice(req.raw.url.indexOf("?") + 1)
+        : "";
+      const qsParsed = qs.parse(rawSearch) as Record<string, unknown>;
+      const withCount = isTruthyFlag(qsParsed.withCount);
+
+      let where: ReturnType<typeof parseFilterParams>["where"];
       if (opts.filterAllowlist && opts.sortAllowlist) {
         // Fastify's default querystring parser doesn't handle bracket notation
         // (filter[field][op]=value). Re-parse the raw URL with qs so nested
         // filter objects are available to parseFilterParams.
-        const rawSearch = req.raw.url?.includes("?")
-          ? req.raw.url.slice(req.raw.url.indexOf("?") + 1)
-          : "";
-        const qsParsed = qs.parse(rawSearch) as Record<string, unknown>;
         const parsed = parseFilterParams({
           query: qsParsed,
           table: opts.table,
@@ -101,7 +106,7 @@ export function mountListRoute(opts: VerbOptions): void {
           sortAllowlist: opts.sortAllowlist,
           dialect: opts.dialect ?? "sqlite",
         });
-        if (parsed.where)   q = q.where(parsed.where);
+        if (parsed.where)   { q = q.where(parsed.where); where = parsed.where; }
         if (parsed.orderBy) q = q.orderBy(...parsed.orderBy);
         if (parsed.limit  !== undefined) q = q.limit(parsed.limit);
         if (parsed.offset !== undefined) q = q.offset(parsed.offset);
@@ -111,7 +116,17 @@ export function mountListRoute(opts: VerbOptions): void {
         if (limit  !== undefined) q = q.limit(Number(limit));
         if (offset !== undefined) q = q.offset(Number(offset));
       }
-      return q.all();
+
+      const rows = await q.all();
+
+      if (!withCount) return rows;
+
+      // Count query: same WHERE, no limit/offset/orderBy.
+      let cq = opts.db.select({ c: count() }).from(opts.table).$dynamic();
+      if (where) cq = cq.where(where);
+      const countRow = (await cq.all())[0] as { c: number } | undefined;
+      const total = countRow?.c ?? 0;
+      return { rows, total };
     } catch (err) {
       if (err instanceof FilterParseError) {
         return reply.code(400).send({ error: err.code, ...(err.details ?? {}) });
@@ -119,6 +134,13 @@ export function mountListRoute(opts: VerbOptions): void {
       throw err;
     }
   });
+}
+
+function isTruthyFlag(v: unknown): boolean {
+  if (v === undefined || v === null) return false;
+  if (typeof v === "boolean") return v;
+  const s = String(v).toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
 }
 
 export function mountGetRoute(opts: VerbOptions): void {
