@@ -53,16 +53,6 @@ public static class SerializerJson
     }
 
     // ---------------------------------------------------------------------------
-    // Serializer options (internal — mirrors TS SerializeOptions)
-    // ---------------------------------------------------------------------------
-
-    private sealed class SerializeOptions
-    {
-        public bool InlineAttrs { get; init; } = true;
-        public int Indent { get; init; } = 2;
-    }
-
-    // ---------------------------------------------------------------------------
     // JSON output settings
     // ---------------------------------------------------------------------------
 
@@ -92,7 +82,9 @@ public static class SerializerJson
                 ? Constants.ATTR_SUBTYPE_INT
                 : Constants.ATTR_SUBTYPE_LONG,
             double d => Number.IsIntegerDouble(d)
-                ? Constants.ATTR_SUBTYPE_INT   // whole-number double: treat as int
+                ? ((long)d >= JavaIntMin && (long)d <= JavaIntMax
+                    ? Constants.ATTR_SUBTYPE_INT
+                    : Constants.ATTR_SUBTYPE_LONG)
                 : Constants.ATTR_SUBTYPE_DOUBLE,
             _ => Constants.ATTR_SUBTYPE_STRING,
         };
