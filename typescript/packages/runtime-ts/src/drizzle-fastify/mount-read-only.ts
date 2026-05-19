@@ -1,8 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, and, count } from "drizzle-orm";
 import qs from "qs";
 import { parseFilterParams, FilterParseError } from "./filter-parser.js";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
+import { isTruthyFlag } from "./util.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user-supplied views
 type AnyView = any;
@@ -108,15 +109,22 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
         const parsed = qs.parse(queryString) as Record<string, unknown>;
         const limitVal = Math.min(1000, Math.max(1, Number(typeof parsed["limit"] === "string" ? parsed["limit"] : 1000)));
         const offsetVal = Math.max(0, Number(typeof parsed["offset"] === "string" ? parsed["offset"] : 0));
+        const withCount = isTruthyFlag(parsed["withCount"]);
         // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
         const rows = await db.all(sql.raw(`SELECT * FROM "${viewName}" LIMIT ${limitVal} OFFSET ${offsetVal}`)) as any[];
-        return rows.map((r: Record<string, unknown>) => camelizeRow(r));
+        const camelRows = rows.map((r: Record<string, unknown>) => camelizeRow(r));
+        if (!withCount) return camelRows;
+        // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
+        const countRows = await db.all(sql.raw(`SELECT COUNT(*) AS c FROM "${viewName}"`)) as any[];
+        const total: number = Number(countRows[0]?.c ?? 0);
+        return { rows: camelRows, total };
       }
 
       const url = req.raw.url ?? "";
       const qIdx = url.indexOf("?");
       const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
       const parsed = qs.parse(queryString) as Record<string, unknown>;
+      const withCount = isTruthyFlag(parsed["withCount"]);
       const result = parseFilterParams({
         query: parsed,
         table: view,
@@ -124,12 +132,24 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
         sortAllowlist,
         dialect,
       });
+      const combinedWhere = result.where && result.searchWhere
+        ? and(result.where, result.searchWhere)
+        : (result.where ?? result.searchWhere);
       let q = db.select().from(view);
-      if (result.where) q = q.where(result.where);
+      if (combinedWhere) q = q.where(combinedWhere);
       if (result.orderBy) q = q.orderBy(...result.orderBy);
       if (result.limit !== undefined) q = q.limit(result.limit);
       if (result.offset !== undefined) q = q.offset(result.offset);
-      return q.all();
+      const rows = await q.all();
+
+      if (!withCount) return rows;
+
+      // Count query: same WHERE, no limit/offset/orderBy.
+      let cq = db.select({ c: count() }).from(view);
+      if (combinedWhere) cq = cq.where(combinedWhere);
+      const countRow = (await cq.all())[0] as { c: number } | undefined;
+      const total = countRow?.c ?? 0;
+      return { rows, total };
     } catch (err) {
       if (err instanceof FilterParseError) {
         reply.code(400).send({ error: err.code, message: err.message });

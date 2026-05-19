@@ -21,6 +21,8 @@ import qs from "qs";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { parseFilterParams, FilterParseError } from "./filter-parser.js";
+import { isTruthyFlag } from "./util.js";
+export { isTruthyFlag } from "./util.js";
 
 // ---------------------------------------------------------------------------
 // Loose types — we don't bind to a specific Drizzle backend so the helper
@@ -134,13 +136,6 @@ export function mountListRoute(opts: VerbOptions): void {
       throw err;
     }
   });
-}
-
-function isTruthyFlag(v: unknown): boolean {
-  if (v === undefined || v === null) return false;
-  if (typeof v === "boolean") return v;
-  const s = String(v).toLowerCase();
-  return s === "1" || s === "true" || s === "yes";
 }
 
 export function mountGetRoute(opts: VerbOptions): void {

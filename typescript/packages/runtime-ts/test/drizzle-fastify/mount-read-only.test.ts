@@ -93,4 +93,56 @@ describe("mountReadOnlyCrudRoutes", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].title).toBe("Alpha");
   });
+
+  test("bare array contract is unchanged when withCount is absent", async () => {
+    const res = await fastify.inject({ method: "GET", url: "/program-summaries" });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(Array.isArray(body)).toBe(true);
+  });
+
+  test("withCount=1 returns { rows, total } and total reflects the full filtered set", async () => {
+    // withCount without a filter — total should be 2 (both rows)
+    const res = await fastify.inject({ method: "GET", url: "/program-summaries?withCount=1" });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { rows: unknown[]; total: number };
+    expect(Array.isArray(body.rows)).toBe(true);
+    expect(body.rows.length).toBe(2);
+    expect(body.total).toBe(2);
+  });
+
+  test("withCount=1 with filter — total counts the filtered set, not the whole table", async () => {
+    const res = await fastify.inject({
+      method: "GET",
+      url: "/program-summaries?filter[title]=Alpha&withCount=1",
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { rows: unknown[]; total: number };
+    expect(body.rows).toHaveLength(1);
+    expect(body.total).toBe(1);
+  });
+
+  test("search= filters rows via OR-like across string fields", async () => {
+    // "Alpha" only matches the first row by title
+    const res = await fastify.inject({
+      method: "GET",
+      url: "/program-summaries?search=Alpha&withCount=1",
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { rows: Array<Record<string, unknown>>; total: number };
+    expect(body.total).toBe(1);
+    expect((body.rows[0] as { title: string }).title).toBe("Alpha");
+  });
+
+  test("search AND filter combine — intersection of both predicates", async () => {
+    // search="Alpha" matches first row; filter[title]=Beta matches second row
+    // AND combination → 0 results
+    const res = await fastify.inject({
+      method: "GET",
+      url: "/program-summaries?search=Alpha&filter[title]=Beta&withCount=1",
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { rows: unknown[]; total: number };
+    expect(body.total).toBe(0);
+  });
 });

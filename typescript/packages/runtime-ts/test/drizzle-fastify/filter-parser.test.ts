@@ -8,6 +8,25 @@ import type { FilterAllowlist, SortAllowlist } from "../../src/drizzle-fastify/f
 // Drizzle's helpers and we check the output by presence (not exact SQL).
 import { sql } from "drizzle-orm";
 
+/**
+ * Flatten all `value` strings out of a Drizzle SQL expression's queryChunks
+ * tree, recursively. This lets us inspect which operators were generated
+ * (e.g. "ilike" vs "like") without depending on a specific Drizzle toSQL API.
+ */
+function collectSqlText(expr: unknown): string {
+  if (!expr || typeof expr !== "object") return "";
+  const chunks = (expr as Record<string, unknown>)["queryChunks"];
+  if (!Array.isArray(chunks)) return "";
+  return chunks
+    .map((c: unknown) => {
+      if (!c || typeof c !== "object") return typeof c === "string" ? c : "";
+      const v = (c as Record<string, unknown>)["value"];
+      const nested = collectSqlText(c);
+      return (v !== undefined ? String(v) : "") + nested;
+    })
+    .join("");
+}
+
 function expectFilterError(fn: () => unknown, expectedCode: string) {
   try {
     fn();
@@ -143,11 +162,44 @@ describe("parseFilterParams — happy path", () => {
       query: parsedQs("?filter[email][like]=" + encodeURIComponent("@x.com")),
       table, allowlist, sortAllowlist, dialect: "postgres",
     });
-    // Drizzle's ilike returns an SQL fragment. We verify the dialect dispatch
-    // by checking that where is defined (it will use ilike internally on postgres).
-    // A full SQL inspection would require Drizzle's toSQL() method, but the
-    // fact that parseFilterParams succeeds proves the postgres code path ran.
     expect(r.where).toBeDefined();
+    // Structural check: Drizzle's ilike places " ilike " as a queryChunk value.
+    const sqlText = collectSqlText(r.where);
+    expect(sqlText).toContain("ilike");
+    expect(sqlText).not.toContain(" like ");
+  });
+
+  test("like on sqlite uses like (not ilike)", () => {
+    const r = parseFilterParams({
+      query: parsedQs("?filter[email][like]=" + encodeURIComponent("@x.com")),
+      table, allowlist, sortAllowlist, dialect: "sqlite",
+    });
+    expect(r.where).toBeDefined();
+    const sqlText = collectSqlText(r.where);
+    expect(sqlText).toContain(" like ");
+    expect(sqlText).not.toContain("ilike");
+  });
+
+  test("search on postgres dispatches ilike for string fields", () => {
+    const r = parseFilterParams({
+      query: { search: "term" },
+      table, allowlist, sortAllowlist, dialect: "postgres",
+    });
+    expect(r.searchWhere).toBeDefined();
+    const sqlText = collectSqlText(r.searchWhere);
+    expect(sqlText).toContain("ilike");
+    expect(sqlText).not.toContain(" like ");
+  });
+
+  test("search on sqlite dispatches like (not ilike) for string fields", () => {
+    const r = parseFilterParams({
+      query: { search: "term" },
+      table, allowlist, sortAllowlist, dialect: "sqlite",
+    });
+    expect(r.searchWhere).toBeDefined();
+    const sqlText = collectSqlText(r.searchWhere);
+    expect(sqlText).toContain(" like ");
+    expect(sqlText).not.toContain("ilike");
   });
 });
 
