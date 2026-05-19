@@ -190,10 +190,10 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
      * @return The declaring MetaClass
      */
     public MetaObject getDeclaringObject() {
-        if ( getParent() instanceof MetaDataLoader) return null;
+        if ( getParent() instanceof com.metaobjects.MetaRoot) return null;
         if ( getParent() instanceof MetaObject ) return (MetaObject) getParent();
         throw new InvalidMetaDataException(this, "MetaFields can only be attached to MetaObjects " +
-                "or MetaDataLoaders as abstracts");
+                "or the metadata root as abstracts");
     }
 
     /**

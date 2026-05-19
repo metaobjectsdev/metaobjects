@@ -91,7 +91,7 @@ public class JsonMetaDataParser extends BaseMetaDataParser implements MetaDataFi
             if (metadata.has(ATTR_CHILDREN)) {
                 JsonElement childrenElement = metadata.get(ATTR_CHILDREN);
                 if (childrenElement.isJsonArray()) {
-                    parseMetaData(getLoader(), childrenElement.getAsJsonArray(), false);
+                    parseMetaData(getRootMetaData(), childrenElement.getAsJsonArray(), false);
                 }
             } else {
                 // Check for array-only format - direct array without "children" wrapper
@@ -99,7 +99,7 @@ public class JsonMetaDataParser extends BaseMetaDataParser implements MetaDataFi
                     if (!entry.getKey().equals(ATTR_PACKAGE) && !entry.getKey().equals(ATTR_DEFPACKAGE)
                         && entry.getValue().isJsonArray()) {
                         // Found direct array - this is array-only format
-                        parseMetaData(getLoader(), entry.getValue().getAsJsonArray(), false);
+                        parseMetaData(getRootMetaData(), entry.getValue().getAsJsonArray(), false);
                         break;
                     }
                 }

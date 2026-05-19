@@ -148,6 +148,20 @@ public abstract class BaseMetaDataParser {
         return this.loader;
     }
 
+    /**
+     * Return the tree-root node ({@link com.metaobjects.MetaRoot}) that parsed
+     * top-level metadata should attach to.
+     *
+     * <p>As of H3a Task 4 the loader is no longer a {@link MetaData} node, so
+     * parsers attach root-level metadata to {@code loader.getRoot()} rather than
+     * to the loader itself.</p>
+     *
+     * @return the loader's MetaRoot
+     */
+    protected MetaData getRootMetaData() {
+        return this.loader.getRoot();
+    }
+
     /** Return the filename being loaded */
     public String getFilename() {
         return filename;
@@ -456,7 +470,7 @@ public abstract class BaseMetaDataParser {
     protected boolean shouldUseParentPackage( MetaData parent, String packageName ) {
         // TODO:  This may need to be refactored
         return parent != null
-                && !(parent instanceof MetaDataLoader)
+                && !(parent instanceof com.metaobjects.MetaRoot)
                 && !parent.getPackage().isEmpty()
                 && !parent.getPackage().equals( packageName );
     }

@@ -8,7 +8,6 @@
 
 package com.metaobjects;
 
-import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.util.MetaDataUtil;
 
 public class InvalidMetaDataException extends MetaDataException {
@@ -23,7 +22,7 @@ public class InvalidMetaDataException extends MetaDataException {
     protected static String prefix( MetaData md ) {
         if ( md == null ) return "[null] ";
         String pkg = md.getPackage();
-        if (pkg.isEmpty() && !(md instanceof MetaDataLoader)) pkg = MetaDataUtil.findPackageForMetaData(md);
+        if (pkg.isEmpty() && !(md instanceof MetaRoot)) pkg = MetaDataUtil.findPackageForMetaData(md);
         if (!pkg.isEmpty()) pkg+=MetaData.PKG_SEPARATOR;
         return "["+md.getClass().getSimpleName()+":"+pkg+md.getShortName()+"] ";
     }

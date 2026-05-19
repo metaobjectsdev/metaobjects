@@ -31,31 +31,9 @@ public class SimpleLoader extends MetaDataLoader
 
     public final static String SUBTYPE_SIMPLE = "simple";
 
-    // Unified registry self-registration
-    static {
-        try {
-            MetaDataRegistry.getInstance().registerType(SimpleLoader.class, def -> def
-                .type(TYPE_LOADER).subType(SUBTYPE_SIMPLE)
-                .description("Simple JSON-based metadata loader")
-                
-                // LOADER ACCEPTS ALL FIELD TYPES
-                .optionalChild(MetaField.TYPE_FIELD, "*")
-                
-                // LOADER ACCEPTS ALL OBJECT TYPES
-                .optionalChild(MetaObject.TYPE_OBJECT, "*")
-                
-                // LOADER ACCEPTS ALL ATTRIBUTE TYPES
-                .optionalChild(MetaAttribute.TYPE_ATTR, "*")
-
-                // LOADER ACCEPTS ALL IDENTITY TYPES
-                .optionalChild(MetaIdentity.TYPE_IDENTITY, "*")
-            );
-            
-            log.debug("Registered SimpleLoader type with unified registry");
-        } catch (Exception e) {
-            log.error("Failed to register SimpleLoader type with unified registry", e);
-        }
-    }
+    // H3a Task 4: MetaDataLoader is no longer a MetaData node, so the loader is
+    // not registered as a registry type. The metadata.root type (MetaRoot) is
+    // the tree root and carries the child-acceptance rules.
 
     private static List<URI> sourceURIs = null;
 

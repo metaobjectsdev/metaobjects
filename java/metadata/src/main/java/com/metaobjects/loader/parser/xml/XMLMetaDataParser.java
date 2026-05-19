@@ -64,7 +64,7 @@ public class XMLMetaDataParser extends BaseMetaDataParser implements MetaDataFil
                 setDefaultPackageName(defPkg);
 
                 // Parse the metadata elements
-                parseMetaData(getLoader(), pkgEl, true);
+                parseMetaData(getRootMetaData(), pkgEl, true);
         } catch (SAXException e) {
             throw new MetaDataException("Parse error loading MetaData from file [" + getFilename() + "]: " + e.getMessage(), e);
         } catch (IOException e) {

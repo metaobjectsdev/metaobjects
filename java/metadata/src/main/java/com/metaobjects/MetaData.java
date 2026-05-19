@@ -679,9 +679,12 @@ public class MetaData implements Cloneable, Serializable {
         if (metaDataClassLoader != null) {
             return metaDataClassLoader;
         }
-        else if (!(this instanceof MetaDataLoader)) {
-            if ( getLoader() != null ) {
-                return getLoader().getMetaDataClassLoader();
+        else {
+            // MetaDataLoader is no longer a MetaData node (H3a Task 4); a node's
+            // ClassLoader falls back to the producing loader's ClassLoader.
+            MetaDataLoader l = getLoader();
+            if ( l != null ) {
+                return l.getMetaDataClassLoader();
             }
         }
 
@@ -752,12 +755,25 @@ public class MetaData implements Cloneable, Serializable {
         return this instanceof com.metaobjects.view.MetaView;
     }
     
+    /**
+     * @deprecated As of H3a Task 4, {@code MetaDataLoader} is no longer a
+     *             {@link MetaData} node, so a MetaData instance is never a
+     *             loader. Always returns {@code false}.
+     */
+    @Deprecated
     public boolean isLoaderMetaData() {
-        return this instanceof com.metaobjects.loader.MetaDataLoader;
+        return false;
     }
 
     /**
-     * Iterates up the Super Data until it finds the MetaDataLoader
+     * Walks up the parent hierarchy to the {@link MetaRoot} tree root and
+     * returns the {@link MetaDataLoader} that produced it.
+     *
+     * <p>As of H3a Task 4, {@code MetaDataLoader} is no longer a {@code MetaData}
+     * node. The tree root is a {@link MetaRoot}, which holds a back-reference to
+     * its owning loader. This method walks to that root and delegates to
+     * {@link MetaRoot#getLoader()}.</p>
+     *
      * @return the MetaDataLoader that contains this metadata, or null if none found
      */
     public MetaDataLoader getLoader() {
@@ -766,8 +782,8 @@ public class MetaData implements Cloneable, Serializable {
             synchronized (this) {
                 MetaData d = this;
                 while (d != null) {
-                    if (d instanceof MetaDataLoader) {
-                        loader = (MetaDataLoader) d;
+                    if (d instanceof MetaRoot) {
+                        loader = ((MetaRoot) d).getLoader();
                         break;
                     }
                     d = d.getParent();

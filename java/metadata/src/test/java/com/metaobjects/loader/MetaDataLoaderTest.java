@@ -52,7 +52,7 @@ public class MetaDataLoaderTest {
     public void testModelMetadata() {
 
         assertEquals("hello attribute from loader", "hello", loader.getChildOfType(MetaAttribute.TYPE_ATTR, "hello").getName());
-        assertEquals("hello attribute from registry", "hello", loader.getMetaAttr("hello").getName());
+        assertEquals("hello attribute from registry", "hello", loader.getRoot().getMetaAttr("hello").getName());
 
         assertEquals("1 foo object", 1, loader.getMetaDataOfType(MetaObject.TYPE_OBJECT).size());
 

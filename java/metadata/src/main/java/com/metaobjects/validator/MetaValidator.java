@@ -83,10 +83,10 @@ public abstract class MetaValidator extends MetaData {
      * @return the MetaField that declares this validator, or null if attached to MetaDataLoader
      */
     public MetaField getDeclaringMetaField() {
-        if ( getParent() instanceof MetaDataLoader) return null;
+        if ( getParent() instanceof com.metaobjects.MetaRoot) return null;
         if ( getParent() instanceof MetaField ) return (MetaField) getParent();
         throw new InvalidMetaDataException(this, "MetaValidators can only be attached to MetaFields " +
-                "or MetaDataLoaders as abstracts");
+                "or the metadata root as abstracts");
     }
 
     /**

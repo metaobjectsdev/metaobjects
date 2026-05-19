@@ -25,29 +25,14 @@ public class FileMetaDataLoader extends MetaDataLoader {
     private static final Logger log = LoggerFactory.getLogger(FileMetaDataLoader.class);
 
     public final static String SUBTYPE_FILE = "file";
-    
+
     // File extension constants
     public static final String XML_EXTENSION = "*.xml";
     public static final String JSON_EXTENSION = "*.json";
 
-    // Self-registration with unified registry
-    static {
-        try {
-            MetaDataRegistry.getInstance().registerType(FileMetaDataLoader.class, def -> def
-                .type("loader").subType(SUBTYPE_FILE)
-                .description("File-based metadata loader for XML and JSON files")
-                .optionalChild("field", "*")
-                .optionalChild("object", "*")
-                .optionalChild("attr", "*")
-                .optionalChild("validator", "*")
-                .optionalChild("key", "*")
-                .optionalChild("view", "*")
-            );
-            log.debug("Registered FileMetaDataLoader type with unified registry");
-        } catch (Exception e) {
-            log.error("Failed to register FileMetaDataLoader type with unified registry", e);
-        }
-    }
+    // H3a Task 4: MetaDataLoader is no longer a MetaData node, so the loader is
+    // not registered as a registry type. The metadata.root type (MetaRoot) is
+    // the tree root and carries the child-acceptance rules.
 
     public FileMetaDataLoader(String name) {
         this( new FileLoaderOptions(), name );

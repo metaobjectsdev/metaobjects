@@ -73,10 +73,10 @@ public abstract class MetaView extends MetaData {
     //  return addChild(attr);
     //}
     public MetaField getDeclaringMetaField() {
-        if (getParent() instanceof MetaDataLoader) return null;
+        if (getParent() instanceof com.metaobjects.MetaRoot) return null;
         if (getParent() instanceof MetaField) return (MetaField) getParent();
         throw new InvalidMetaDataException(this, "MetaViews can only be attached to MetaFields " +
-                "or MetaDataLoaders as abstracts");
+                "or the metadata root as abstracts");
     }
 
     /**
