@@ -60,3 +60,17 @@ Fixtures assert error *codes*, never message prose. Codes are registered in
 Create a directory; add `input/` and expectation files. No runner code changes —
 discovery is automatic. A new fixture a port cannot yet pass goes in that port's
 `conformance-expected-failures.json` ledger.
+
+## Generated fixtures (differential testing)
+
+`generated-*` directories are produced by the differential fixture generator
+(`conformance generate <corpusRoot> <count> [startSeed]`). Each fixture's
+`expected.json` golden is captured from the TS reference implementation at
+generation time (spec §7.2).
+
+**Important (spec §7.5):** a port diverging on a `generated-*` fixture does
+not automatically mean the port is wrong. The TS reference is the oracle only
+insofar as it is correct. If a port disagrees with a generated golden,
+investigate both sides: the port may be right and the TS reference may have a
+bug. Do not auto-conform ports to a generated golden without understanding the
+divergence.
