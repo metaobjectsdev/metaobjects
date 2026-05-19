@@ -1,40 +1,30 @@
 {
-  "name": "template-test-metadata",
-  "metadata": {
-    "version": "1.0.0",
+  "metadata.root": {
     "children": [
       {
-        "object": {
+        "object.pojo": {
           "name": "User",
-          "subType": "pojo",
           "package": "example",
           "@dbTable": "users",
           "@description": "User entity for template testing",
           "children": [
             {
-              "field": {
+              "field.long": {
                 "name": "id",
-                "subType": "long",
                 "@dbColumn": "id"
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "username",
-                "subType": "string",
                 "@dbColumn": "username",
-                "@dbNullable": false,
+                "@dbNullable": "false",
                 "children": [
                   {
-                    "validator": {
-                      "name": "required",
-                      "subType": "required"
-                    }
+                    "validator.required": {}
                   },
                   {
-                    "validator": {
-                      "name": "length",
-                      "subType": "length",
+                    "validator.length": {
                       "@max": "50"
                     }
                   }
@@ -42,21 +32,15 @@
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "email",
-                "subType": "string",
                 "@dbColumn": "email",
                 "children": [
                   {
-                    "validator": {
-                      "name": "required",
-                      "subType": "required"
-                    }
+                    "validator.required": {}
                   },
                   {
-                    "validator": {
-                      "name": "length",
-                      "subType": "length",
+                    "validator.length": {
                       "@max": "100"
                     }
                   }
@@ -64,9 +48,8 @@
               }
             },
             {
-              "identity": {
+              "identity.primary": {
                 "name": "primary",
-                "subType": "primary",
                 "@fields": ["id"],
                 "@generation": "increment"
               }
@@ -75,27 +58,20 @@
         }
       },
       {
-        "object": {
+        "object.pojo": {
           "name": "Product",
-          "subType": "pojo",
           "package": "example",
           "@description": "Product value object for template testing",
           "children": [
             {
-              "field": {
+              "field.string": {
                 "name": "name",
-                "subType": "string",
                 "children": [
                   {
-                    "validator": {
-                      "name": "required",
-                      "subType": "required"
-                    }
+                    "validator.required": {}
                   },
                   {
-                    "validator": {
-                      "name": "length",
-                      "subType": "length",
+                    "validator.length": {
                       "@max": "100"
                     }
                   }
@@ -103,28 +79,21 @@
               }
             },
             {
-              "field": {
+              "field.double": {
                 "name": "price",
-                "subType": "double",
                 "children": [
                   {
-                    "validator": {
-                      "name": "required",
-                      "subType": "required"
-                    }
+                    "validator.required": {}
                   }
                 ]
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "category",
-                "subType": "string",
                 "children": [
                   {
-                    "validator": {
-                      "name": "length",
-                      "subType": "length",
+                    "validator.length": {
                       "@max": "50"
                     }
                   }

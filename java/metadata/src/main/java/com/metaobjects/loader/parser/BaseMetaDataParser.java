@@ -306,7 +306,7 @@ public abstract class BaseMetaDataParser {
             } else {
                 // For fields within objects, use no package to get simple names
                 if ("field".equals(typeName) && parent != null && "object".equals(parent.getType())) {
-                    packageName = null;
+                    packageName = "";
                 } else {
                     packageName = getDefaultPackageName();
                 }

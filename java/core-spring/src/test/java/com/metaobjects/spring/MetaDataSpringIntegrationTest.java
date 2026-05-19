@@ -59,21 +59,19 @@ public class MetaDataSpringIntegrationTest {
             java.io.File tempFile = java.io.File.createTempFile("test-metadata", ".json");
             tempFile.deleteOnExit();
             
-            // Write minimal test metadata
+            // Write minimal test metadata in canonical format
             try (java.io.FileWriter writer = new java.io.FileWriter(tempFile)) {
                 writer.write("{\n");
-                writer.write("  \"metadata\": {\n");
+                writer.write("  \"metadata.root\": {\n");
                 writer.write("    \"package\": \"test\",\n");
                 writer.write("    \"children\": [\n");
                 writer.write("      {\n");
-                writer.write("        \"object\": {\n");
+                writer.write("        \"object.pojo\": {\n");
                 writer.write("          \"name\": \"TestObject\",\n");
-                writer.write("          \"subType\": \"pojo\",\n");
                 writer.write("          \"children\": [\n");
                 writer.write("            {\n");
-                writer.write("              \"field\": {\n");
-                writer.write("                \"name\": \"id\",\n");
-                writer.write("                \"subType\": \"long\"\n");
+                writer.write("              \"field.long\": {\n");
+                writer.write("                \"name\": \"id\"\n");
                 writer.write("              }\n");
                 writer.write("            }\n");
                 writer.write("          ]\n");

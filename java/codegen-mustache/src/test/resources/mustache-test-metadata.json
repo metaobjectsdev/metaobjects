@@ -1,40 +1,30 @@
 {
-  "name": "mustache-test-metadata",
-  "metadata": {
-    "version": "1.0.0",
+  "metadata.root": {
     "children": [
       {
-        "object": {
+        "object.pojo": {
           "name": "User",
-          "subType": "pojo",
           "package": "com_example_model",
           "@dbTable": "users",
-          "@hasAuditing": true,
+          "@hasAuditing": "true",
           "children": [
             {
-              "field": {
+              "field.long": {
                 "name": "id",
-                "subType": "long",
                 "@dbColumn": "user_id"
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "username",
-                "subType": "string",
                 "@dbColumn": "username",
-                "@isSearchable": true,
+                "@isSearchable": "true",
                 "children": [
                   {
-                    "validator": {
-                      "name": "required",
-                      "subType": "required"
-                    }
+                    "validator.required": {}
                   },
                   {
-                    "validator": {
-                      "name": "length",
-                      "subType": "length",
+                    "validator.length": {
                       "@max": "50"
                     }
                   }
@@ -42,22 +32,16 @@
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "email",
-                "subType": "string",
                 "@dbColumn": "email_address",
-                "@isSearchable": true,
+                "@isSearchable": "true",
                 "children": [
                   {
-                    "validator": {
-                      "name": "required",
-                      "subType": "required"
-                    }
+                    "validator.required": {}
                   },
                   {
-                    "validator": {
-                      "name": "length",
-                      "subType": "length",
+                    "validator.length": {
                       "@max": "255"
                     }
                   }
@@ -65,32 +49,28 @@
               }
             },
             {
-              "field": {
+              "field.int": {
                 "name": "age",
-                "subType": "int",
                 "@dbColumn": "user_age",
-                "@isOptional": true
+                "@isOptional": "true"
               }
             },
             {
-              "field": {
+              "field.date": {
                 "name": "createdAt",
-                "subType": "date",
                 "@dbColumn": "created_at"
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "tags",
-                "subType": "string",
-                "@isArray": true,
+                "isArray": true,
                 "@dbColumn": "user_tags"
               }
             },
             {
-              "identity": {
+              "identity.primary": {
                 "name": "primary",
-                "subType": "primary",
                 "@fields": ["id"],
                 "@generation": "increment"
               }
@@ -99,35 +79,27 @@
         }
       },
       {
-        "object": {
+        "object.pojo": {
           "name": "Product",
-          "subType": "pojo",
           "package": "com_example_model",
           "@dbTable": "products",
           "children": [
             {
-              "field": {
+              "field.long": {
                 "name": "id",
-                "subType": "long",
                 "@dbColumn": "product_id"
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "name",
-                "subType": "string",
                 "@dbColumn": "product_name",
                 "children": [
                   {
-                    "validator": {
-                      "name": "required",
-                      "subType": "required"
-                    }
+                    "validator.required": {}
                   },
                   {
-                    "validator": {
-                      "name": "length",
-                      "subType": "length",
+                    "validator.length": {
                       "@max": "100"
                     }
                   }
@@ -135,30 +107,23 @@
               }
             },
             {
-              "field": {
+              "field.double": {
                 "name": "price",
-                "subType": "double",
                 "@dbColumn": "price",
                 "children": [
                   {
-                    "validator": {
-                      "name": "required",
-                      "subType": "required"
-                    }
+                    "validator.required": {}
                   }
                 ]
               }
             },
             {
-              "field": {
+              "field.string": {
                 "name": "notes",
-                "subType": "string",
                 "@dbColumn": "description",
                 "children": [
                   {
-                    "validator": {
-                      "name": "length",
-                      "subType": "length",
+                    "validator.length": {
                       "@max": "1000"
                     }
                   }
@@ -166,9 +131,8 @@
               }
             },
             {
-              "identity": {
+              "identity.primary": {
                 "name": "primary",
-                "subType": "primary",
                 "@fields": ["id"],
                 "@generation": "increment"
               }

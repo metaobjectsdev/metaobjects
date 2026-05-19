@@ -36,13 +36,13 @@
             {
               "field.long": {
                 "name": "id",
-                "extends": "id"
+                "extends": "simple::common::id"
               }
             },
             {
               "field.string": {
                 "name": "name",
-                "extends": "name"
+                "extends": "simple::common::name"
               }
             },
             {
@@ -97,13 +97,13 @@
             {
               "field.long": {
                 "name": "id",
-                "extends": "id"
+                "extends": "simple::common::id"
               }
             },
             {
               "field.string": {
                 "name": "name",
-                "extends": "name"
+                "extends": "simple::common::name"
               }
             },
             {

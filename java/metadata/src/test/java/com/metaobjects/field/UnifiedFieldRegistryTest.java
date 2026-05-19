@@ -343,48 +343,41 @@ public class UnifiedFieldRegistryTest {
     private void createAllFieldTypesMetadata(Path outputFile) throws IOException {
         String metadata = """
             {
-              "metadata": {
+              "metadata.root": {
                 "package": "test::alltypes",
                 "children": [
                   {
-                    "object": {
+                    "object.pojo": {
                       "name": "AllFieldTypesTest",
-                      "subType": "pojo",
                       "children": [
                         {
-                          "field": {
-                            "name": "testString",
-                            "subType": "string"
+                          "field.string": {
+                            "name": "testString"
                           }
                         },
                         {
-                          "field": {
-                            "name": "testInt",
-                            "subType": "int"
+                          "field.int": {
+                            "name": "testInt"
                           }
                         },
                         {
-                          "field": {
-                            "name": "testLong",
-                            "subType": "long"
+                          "field.long": {
+                            "name": "testLong"
                           }
                         },
                         {
-                          "field": {
-                            "name": "testDouble",
-                            "subType": "double"
+                          "field.double": {
+                            "name": "testDouble"
                           }
                         },
                         {
-                          "field": {
-                            "name": "testBoolean",
-                            "subType": "boolean"
+                          "field.boolean": {
+                            "name": "testBoolean"
                           }
                         },
                         {
-                          "field": {
-                            "name": "testDate",
-                            "subType": "date"
+                          "field.date": {
+                            "name": "testDate"
                           }
                         }
                       ]
@@ -400,34 +393,30 @@ public class UnifiedFieldRegistryTest {
     private void createFieldsWithAttributesMetadata(Path outputFile) throws IOException {
         String metadata = """
             {
-              "metadata": {
+              "metadata.root": {
                 "package": "test::withattributes",
                 "children": [
                   {
-                    "object": {
+                    "object.pojo": {
                       "name": "FieldsWithAttributesTest",
-                      "subType": "pojo",
                       "children": [
                         {
-                          "field": {
+                          "field.string": {
                             "name": "email",
-                            "subType": "string",
                             "@maxLength": 255,
                             "@pattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}$"
                           }
                         },
                         {
-                          "field": {
+                          "field.double": {
                             "name": "price",
-                            "subType": "double",
                             "@precision": 2,
                             "@minValue": 0.0
                           }
                         },
                         {
-                          "field": {
+                          "field.long": {
                             "name": "quantity",
-                            "subType": "long",
                             "@minValue": 1,
                             "@maxValue": 1000
                           }
@@ -445,18 +434,16 @@ public class UnifiedFieldRegistryTest {
     private void createConstraintTestMetadata(Path outputFile) throws IOException {
         String metadata = """
             {
-              "metadata": {
+              "metadata.root": {
                 "package": "test::constraints",
                 "children": [
                   {
-                    "object": {
+                    "object.pojo": {
                       "name": "ConstraintTest",
-                      "subType": "pojo",
                       "children": [
                         {
-                          "field": {
-                            "name": "validField",
-                            "subType": "string"
+                          "field.string": {
+                            "name": "validField"
                           }
                         }
                       ]
