@@ -2,7 +2,6 @@ package com.metaobjects.generator;
 
 import com.metaobjects.generator.direct.metadata.ai.MetaDataAIDocumentationWriter;
 import com.metaobjects.generator.direct.metadata.file.json.MetaDataFileSchemaWriter;
-import com.metaobjects.generator.direct.metadata.file.xsd.MetaDataFileXSDWriter;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -92,24 +91,6 @@ public class WorkingSchemaGeneratorTest {
                 log.info("✅ Generated JSON schema: {} bytes -> target/working-metadata-schema.json", jsonSchema.length());
             } else {
                 log.warn("❌ JSON schema is empty");
-            }
-        }
-
-        // 3. Generate XSD Schema
-        log.info("Generating XSD schema...");
-        try (ByteArrayOutputStream xsdStream = new ByteArrayOutputStream()) {
-            MetaDataFileXSDWriter xsdWriter = new MetaDataFileXSDWriter(null, xsdStream);
-            xsdWriter.writeXML();
-            xsdWriter.close();
-
-            String xsdSchema = xsdStream.toString();
-            if (!xsdSchema.trim().isEmpty()) {
-                try (FileWriter writer = new FileWriter("target/working-metadata-schema.xsd")) {
-                    writer.write(xsdSchema);
-                }
-                log.info("✅ Generated XSD schema: {} bytes -> target/working-metadata-schema.xsd", xsdSchema.length());
-            } else {
-                log.warn("❌ XSD schema is empty");
             }
         }
 

@@ -2,7 +2,6 @@ package com.metaobjects.generator;
 
 import com.metaobjects.generator.direct.metadata.ai.MetaDataAIDocumentationWriter;
 import com.metaobjects.generator.direct.metadata.file.json.MetaDataFileSchemaWriter;
-import com.metaobjects.generator.direct.metadata.file.xsd.MetaDataFileXSDWriter;
 import com.metaobjects.registry.MetaDataRegistry;
 import org.junit.Before;
 import org.junit.Test;
@@ -88,27 +87,9 @@ public class SchemaReviewTest {
             log.info("✅ Generated working JSON schema: target/working-metadata-schema.json");
         }
 
-        // Generate XSD Schema
-        log.info("Generating XSD schema...");
-        try (FileOutputStream xsdOut = new FileOutputStream("target/metadata-schema.xsd")) {
-            MetaDataFileXSDWriter xsdWriter = new MetaDataFileXSDWriter(null, xsdOut);
-            xsdWriter.writeXML();
-            xsdWriter.close();  // Important: Must call close() to actually write the XML
-            log.info("✅ Generated XSD schema: target/metadata-schema.xsd");
-        }
-
-        // Generate working XSD Schema (for other tests)
-        try (FileOutputStream xsdOut = new FileOutputStream("target/working-metadata-schema.xsd")) {
-            MetaDataFileXSDWriter xsdWriter = new MetaDataFileXSDWriter(null, xsdOut);
-            xsdWriter.writeXML();
-            xsdWriter.close();
-            log.info("✅ Generated working XSD schema: target/working-metadata-schema.xsd");
-        }
-
         log.info("=== ALL SCHEMAS GENERATED SUCCESSFULLY ===");
         log.info("Review files in codegen-base/target/:");
         log.info("- ai-documentation.json (AI-optimized metadata documentation)");
         log.info("- metadata-schema.json (JSON Schema for metadata validation)");
-        log.info("- metadata-schema.xsd (XSD Schema for XML metadata validation)");
     }
 }

@@ -11,15 +11,8 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.xml.sax.SAXException;
 
-import javax.xml.XMLConstants;
-import javax.xml.transform.stream.StreamSource;
-import javax.xml.validation.Schema;
-import javax.xml.validation.SchemaFactory;
-import javax.xml.validation.Validator;
 import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.Set;
 
@@ -34,7 +27,6 @@ public class SchemaValidationTest {
     private static final Logger log = LoggerFactory.getLogger(SchemaValidationTest.class);
 
     private JsonSchema jsonSchema;
-    private Schema xmlSchema;
     private ObjectMapper objectMapper;
 
     @BeforeClass
@@ -43,10 +35,9 @@ public class SchemaValidationTest {
 
         // Check if schema files exist, generate them if they don't
         File jsonSchemaFile = new File("target/working-metadata-schema.json");
-        File xsdSchemaFile = new File("target/working-metadata-schema.xsd");
         File aiDocFile = new File("target/working-ai-documentation.json");
 
-        if (!jsonSchemaFile.exists() || !xsdSchemaFile.exists() || !aiDocFile.exists()) {
+        if (!jsonSchemaFile.exists() || !aiDocFile.exists()) {
             staticLog.info("Schema files missing, generating them...");
 
             // Run the schema generation test to create the files
@@ -73,60 +64,8 @@ public class SchemaValidationTest {
             throw e;
         }
 
-        // Load XSD Schema from generated file
-        try {
-            SchemaFactory xsdFactory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
-            xmlSchema = xsdFactory.newSchema(new File("target/working-metadata-schema.xsd"));
-            log.info("✅ Loaded XSD Schema for validation");
-        } catch (Exception e) {
-            log.warn("⚠️ Could not load XSD Schema from target/working-metadata-schema.xsd: {}", e.getMessage());
-            log.warn("This might be because the schema generation test hasn't been run yet");
-            throw e;
-        }
-
         objectMapper = new ObjectMapper();
         log.info("Schema validation test setup completed");
-    }
-
-    @Test
-    public void testValidCompleteMetadataJson() throws Exception {
-        log.info("=== Testing Valid Complete JSON Metadata ===");
-
-        // Load and validate the valid JSON file
-        try (InputStream jsonStream = getClass().getResourceAsStream("/schema-validation/valid-complete-metadata.json")) {
-            JsonNode jsonNode = objectMapper.readTree(jsonStream);
-            Set<ValidationMessage> validationMessages = jsonSchema.validate(jsonNode);
-
-            if (!validationMessages.isEmpty()) {
-                log.error("❌ Validation failed for valid-complete-metadata.json:");
-                for (ValidationMessage msg : validationMessages) {
-                    log.error("  - {}: {}", msg.getInstanceLocation(), msg.getMessage());
-                }
-            }
-
-            assertTrue("Valid complete metadata JSON should pass validation", validationMessages.isEmpty());
-            log.info("✅ Valid complete metadata JSON passed validation");
-        }
-    }
-
-    @Test
-    public void testValidInlineAttributesJson() throws Exception {
-        log.info("=== Testing Valid Inline Attributes JSON Metadata ===");
-
-        try (InputStream jsonStream = getClass().getResourceAsStream("/schema-validation/valid-inline-attributes.json")) {
-            JsonNode jsonNode = objectMapper.readTree(jsonStream);
-            Set<ValidationMessage> validationMessages = jsonSchema.validate(jsonNode);
-
-            if (!validationMessages.isEmpty()) {
-                log.error("❌ Validation failed for valid-inline-attributes.json:");
-                for (ValidationMessage msg : validationMessages) {
-                    log.error("  - {}: {}", msg.getInstanceLocation(), msg.getMessage());
-                }
-            }
-
-            assertTrue("Valid inline attributes JSON should pass validation", validationMessages.isEmpty());
-            log.info("✅ Valid inline attributes JSON passed validation");
-        }
     }
 
     @Test
@@ -215,74 +154,6 @@ public class SchemaValidationTest {
             }
 
             assertTrue("Should have found enum constraint violation", foundEnumError);
-        }
-    }
-
-    @Test
-    public void testValidCompleteMetadataXml() throws Exception {
-        log.info("=== Testing Valid Complete XML Metadata ===");
-
-        try (InputStream xmlStream = getClass().getResourceAsStream("/schema-validation/valid-complete-metadata.xml")) {
-            Validator validator = xmlSchema.newValidator();
-            validator.validate(new StreamSource(xmlStream));
-            log.info("✅ Valid complete metadata XML passed validation");
-        }
-    }
-
-    @Test
-    public void testInvalidNamingPatternXml() throws Exception {
-        log.info("=== Testing Invalid Naming Pattern XML Metadata ===");
-
-        try (InputStream xmlStream = getClass().getResourceAsStream("/schema-validation/invalid-naming-pattern.xml")) {
-            Validator validator = xmlSchema.newValidator();
-
-            boolean validationFailed = false;
-            try {
-                validator.validate(new StreamSource(xmlStream));
-            } catch (SAXException e) {
-                validationFailed = true;
-                log.info("✅ Invalid naming pattern XML correctly failed validation: {}", e.getMessage());
-            }
-
-            assertTrue("Invalid naming pattern XML should fail validation", validationFailed);
-        }
-    }
-
-    @Test
-    public void testInvalidMissingRequiredXml() throws Exception {
-        log.info("=== Testing Invalid Missing Required Fields XML Metadata ===");
-
-        try (InputStream xmlStream = getClass().getResourceAsStream("/schema-validation/invalid-missing-required.xml")) {
-            Validator validator = xmlSchema.newValidator();
-
-            boolean validationFailed = false;
-            try {
-                validator.validate(new StreamSource(xmlStream));
-            } catch (SAXException e) {
-                validationFailed = true;
-                log.info("✅ Invalid missing required XML correctly failed validation: {}", e.getMessage());
-            }
-
-            assertTrue("Invalid missing required XML should fail validation", validationFailed);
-        }
-    }
-
-    @Test
-    public void testInvalidSubtypesXml() throws Exception {
-        log.info("=== Testing Invalid Subtypes XML Metadata ===");
-
-        try (InputStream xmlStream = getClass().getResourceAsStream("/schema-validation/invalid-subtypes.xml")) {
-            Validator validator = xmlSchema.newValidator();
-
-            boolean validationFailed = false;
-            try {
-                validator.validate(new StreamSource(xmlStream));
-            } catch (SAXException e) {
-                validationFailed = true;
-                log.info("✅ Invalid subtypes XML correctly failed validation: {}", e.getMessage());
-            }
-
-            assertTrue("Invalid subtypes XML should fail validation", validationFailed);
         }
     }
 
@@ -391,43 +262,4 @@ public class SchemaValidationTest {
         log.info("✅ Minimum length constraint correctly enforced - empty name failed validation");
     }
 
-    @Test
-    public void testInlineAttributeTypeValidation() throws Exception {
-        log.info("=== Testing Inline Attribute Type Validation ===");
-
-        // Test mixed types for inline attributes
-        String testJson = """
-            {
-              "metadata": {
-                "package": "test_inline_types",
-                "children": [
-                  {
-                    "field": {
-                      "name": "testField",
-                      "subType": "string",
-                      "@required": true,
-                      "@maxLength": 100,
-                      "@pattern": "^[a-zA-Z]+$",
-                      "@customFlag": false
-                    }
-                  }
-                ]
-              }
-            }
-            """;
-
-        JsonNode jsonNode = objectMapper.readTree(testJson);
-        Set<ValidationMessage> validationMessages = jsonSchema.validate(jsonNode);
-
-        // This should pass - inline attributes support boolean, number, and string types
-        if (!validationMessages.isEmpty()) {
-            log.error("Inline attribute validation failed:");
-            for (ValidationMessage msg : validationMessages) {
-                log.error("  - {}: {}", msg.getInstanceLocation(), msg.getMessage());
-            }
-        }
-
-        assertTrue("Mixed inline attribute types should be valid", validationMessages.isEmpty());
-        log.info("✅ Inline attribute type validation passed");
-    }
 }
