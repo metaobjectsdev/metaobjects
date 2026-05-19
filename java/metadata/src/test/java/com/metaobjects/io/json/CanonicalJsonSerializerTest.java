@@ -12,11 +12,15 @@ import com.metaobjects.field.StringField;
 import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.object.mapped.MappedMetaObject;
 import com.metaobjects.registry.SharedRegistryTestBase;
+import com.metaobjects.validator.LengthValidator;
+import com.metaobjects.validator.RegexValidator;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Tests for CanonicalJsonSerializer — mirrors the TS canonicalSerialize / canonicalSerializeEffective
@@ -36,6 +40,8 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
             new StringArrayAttribute("_boot_saa");
             new BooleanAttribute("_boot_bool");
             new IntAttribute("_boot_int_attr");
+            new LengthValidator("_boot_length");
+            new RegexValidator("_boot_regex");
         } catch (Exception ignored) {
             // registration errors during boot are acceptable
         }
@@ -122,8 +128,8 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
         MetaRoot root = new MetaRoot("myapp::core");
         String json = CanonicalJsonSerializer.canonicalSerialize(root);
         assertNotNull(json);
-        assert json.contains("\"metadata.root\"") : "expected metadata.root key";
-        assert json.contains("\"package\": \"myapp::core\"") : "expected package key, got: " + json;
+        assertTrue("expected metadata.root key", json.contains("\"metadata.root\""));
+        assertTrue("expected package key, got: " + json, json.contains("\"package\": \"myapp::core\""));
     }
 
     // -----------------------------------------------------------------------
@@ -140,8 +146,8 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
         String json = CanonicalJsonSerializer.canonicalSerialize(root);
 
         // The isAbstract=true should appear as "abstract": true, NOT as "@isAbstract"
-        assert json.contains("\"abstract\": true") : "expected 'abstract' reserved key, got: " + json;
-        assert !json.contains("\"@isAbstract\"") : "must NOT emit @isAbstract as an attr key";
+        assertTrue("expected 'abstract' reserved key, got: " + json, json.contains("\"abstract\": true"));
+        assertFalse("must NOT emit @isAbstract as an attr key", json.contains("\"@isAbstract\""));
     }
 
     // -----------------------------------------------------------------------
@@ -159,8 +165,8 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
 
         String json = CanonicalJsonSerializer.canonicalSerialize(root);
 
-        assert json.contains("\"isArray\": true") : "expected 'isArray' reserved key, got: " + json;
-        assert !json.contains("\"@isArray\"") : "must NOT emit @isArray as an attr key";
+        assertTrue("expected 'isArray' reserved key, got: " + json, json.contains("\"isArray\": true"));
+        assertFalse("must NOT emit @isArray as an attr key", json.contains("\"@isArray\""));
     }
 
     // -----------------------------------------------------------------------
@@ -177,9 +183,9 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
         String json = CanonicalJsonSerializer.canonicalSerialize(root);
 
         // "@tags" should be a JSON array ["alpha","beta","gamma"]
-        assert json.contains("\"@tags\": [") : "expected @tags as array, got: " + json;
-        assert json.contains("\"alpha\"") : "expected alpha in array";
-        assert json.contains("\"beta\"") : "expected beta in array";
+        assertTrue("expected @tags as array, got: " + json, json.contains("\"@tags\": ["));
+        assertTrue("expected alpha in array", json.contains("\"alpha\""));
+        assertTrue("expected beta in array", json.contains("\"beta\""));
     }
 
     // -----------------------------------------------------------------------
@@ -200,8 +206,8 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
 
         int posAaa = json.indexOf("\"@aaa\"");
         int posZzz = json.indexOf("\"@zzz\"");
-        assert posAaa >= 0 && posZzz >= 0 : "both attrs should be present";
-        assert posAaa < posZzz : "@aaa must appear before @zzz (alphabetical order)";
+        assertTrue("both attrs should be present", posAaa >= 0 && posZzz >= 0);
+        assertTrue("@aaa must appear before @zzz (alphabetical order)", posAaa < posZzz);
     }
 
     // -----------------------------------------------------------------------
@@ -221,7 +227,7 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
 
         String json = CanonicalJsonSerializer.canonicalSerialize(root);
 
-        assert json.contains("\"extends\": \"BaseEntity\"") : "expected extends key with short name, got: " + json;
+        assertTrue("expected extends key with short name, got: " + json, json.contains("\"extends\": \"BaseEntity\""));
     }
 
     // -----------------------------------------------------------------------
@@ -232,8 +238,8 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
         MetaRoot root = new MetaRoot("test::pkg");
         String json = CanonicalJsonSerializer.canonicalSerialize(root);
 
-        assert json.endsWith("\n") : "output must end with newline";
-        assert !json.endsWith("\n\n") : "output must end with EXACTLY one newline";
+        assertTrue("output must end with newline", json.endsWith("\n"));
+        assertFalse("output must end with EXACTLY one newline", json.endsWith("\n\n"));
     }
 
     // -----------------------------------------------------------------------
@@ -255,6 +261,49 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
 
         assertNotNull(effectiveJson);
         // The effective output for Child should include baseAttr from Base
-        assert effectiveJson.contains("\"@baseAttr\"") : "effective output should include inherited @baseAttr";
+        assertTrue("effective output should include inherited @baseAttr", effectiveJson.contains("\"@baseAttr\""));
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 10 — child in a different package emits a "package" key
+    // -----------------------------------------------------------------------
+    @Test
+    public void testChildInDifferentPackageEmitsPackageKey() {
+        // Root is "acme::core"; child object lives in "acme::commerce" (different package).
+        MetaRoot root = new MetaRoot("acme::core");
+
+        MappedMetaObject product = MappedMetaObject.create("acme::commerce::Product");
+        root.addChild(product);
+
+        String json = CanonicalJsonSerializer.canonicalSerialize(root);
+
+        // The child node must emit its own "package" key because it differs from the root's.
+        assertTrue("child node must emit 'package' key when it differs from parent's, got: " + json,
+                json.contains("\"package\": \"acme::commerce\""));
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 11 — validator with authored name ending in digit is NOT suppressed (Fix 1)
+    //
+    // A RegexValidator named "length2" has subType "regex", so the auto-generated
+    // prefix would be "regex". The name "length2" does NOT match "^regex\d+$", so
+    // isAutoGeneratedName() must return false and the name must be emitted.
+    // -----------------------------------------------------------------------
+    @Test
+    public void testAuthoredValidatorNameEndingInDigitIsEmitted() {
+        MetaRoot root = new MetaRoot("test::pkg");
+        MappedMetaObject obj = MappedMetaObject.create("test::pkg::Widget");
+
+        // RegexValidator subType = "regex"; name "length2" ends in digit but does NOT
+        // match the expected auto-generated pattern "regex<N>".
+        RegexValidator validator = new RegexValidator("length2");
+        obj.addChild(validator);
+        root.addChild(obj);
+
+        String json = CanonicalJsonSerializer.canonicalSerialize(root);
+
+        // The validator's authored name must appear in the output.
+        assertTrue("authored validator name 'length2' must be emitted (not suppressed as auto-generated), got: " + json,
+                json.contains("\"name\": \"length2\""));
     }
 }
