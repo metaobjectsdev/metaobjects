@@ -26,6 +26,9 @@ import { isProjection } from "../projection/projection-detector.js";
 export function renderRoutesFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
   const handlerName = `${entityName.charAt(0).toLowerCase()}${entityName.slice(1)}Routes`;
+  // Same-entity sibling import (the entity's own file). Passing the entity's
+  // package as both from/to resolves to "./Entity" — its file shares this
+  // file's package directory.
   const entityFileSpec = crossEntitySpecifier(
     ctx.outputLayout,
     entity.package,

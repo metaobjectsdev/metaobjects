@@ -17,6 +17,9 @@ import { GENERATED_HEADER } from "../constants.js";
 
 export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   const entityName = obj.name;
+  // Same-entity sibling import (the entity's own file). Passing the entity's
+  // package as both from/to resolves to "./Entity" — its file shares this
+  // file's package directory.
   const entityFileName = crossEntitySpecifier(
     ctx.outputLayout,
     obj.package,
