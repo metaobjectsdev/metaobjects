@@ -12,7 +12,7 @@ import {
   opsForSubType,
 } from "@metaobjects/metadata";
 import type { RenderContext } from "@metaobjects/codegen-ts";
-import { GENERATED_HEADER } from "@metaobjects/codegen-ts";
+import { GENERATED_HEADER, crossEntitySpecifier } from "@metaobjects/codegen-ts";
 import { validateGridFilter, type FilterAllowlist } from "../grid-filter-validate.js";
 
 interface ColumnSpec {
@@ -133,7 +133,7 @@ function renderColumnDef(col: ColumnSpec): string {
   return `  {\n${parts.join(",\n")}\n  }`;
 }
 
-export function renderColumnsFile(entity: MetaObject, _ctx: RenderContext): string {
+export function renderColumnsFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
   const lcEntity   = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const grids      = extractGrids(entity);
@@ -198,10 +198,19 @@ export const ${filterConstName}: ${entityName}Filter = ${JSON.stringify(parsed, 
     `// ${GENERATED_HEADER}-tanstack — DO NOT EDIT.\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n`;
 
+  // Same-entity sibling import (the entity's own file) — routed through the
+  // shared helper so extStyle and package layout match the core generators.
+  const entityModule = crossEntitySpecifier(
+    ctx.outputLayout,
+    entity.package,
+    entity.package,
+    entityName,
+    ctx.extStyle,
+  );
   // Import <Entity>Row always; import <Entity>Filter only when a filter const is emitted.
   const entityImportCode = hasFilterConst
-    ? code`import type { ${entityName} as ${entityName}Row, ${entityName}Filter } from "./${entityName}";`
-    : code`import type { ${entityName} as ${entityName}Row } from "./${entityName}";`;
+    ? code`import type { ${entityName} as ${entityName}Row, ${entityName}Filter } from ${JSON.stringify(entityModule)};`
+    : code`import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityModule)};`;
 
   const body: Code = code`${sections.join("\n")}`;
   return header + entityImportCode.toString() + "\n" + body.toString();

@@ -1,7 +1,7 @@
 import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjects/metadata";
 import type { RenderContext } from "@metaobjects/codegen-ts";
-import { GENERATED_HEADER, isProjection, pluralize } from "@metaobjects/codegen-ts";
+import { GENERATED_HEADER, isProjection, pluralize, crossEntitySpecifier } from "@metaobjects/codegen-ts";
 
 /**
  * Render <Entity>.hooks.ts — query-key factory + 2 query hooks + (for non-projections) 3 mutation hooks.
@@ -19,18 +19,28 @@ import { GENERATED_HEADER, isProjection, pluralize } from "@metaobjects/codegen-
  * All hooks call useEntityFetcher() (from @metaobjects/runtime-ts-client) for
  * the underlying HTTP. Mutations aggressively invalidate <entity>Keys.all().
  */
-export function renderHooksFile(entity: MetaObject, _ctx: RenderContext): string {
+export function renderHooksFile(entity: MetaObject, ctx: RenderContext): string {
+  // Same-entity sibling import (the entity's own file). Same package as this
+  // file, so it resolves to "./Entity" — routed through the shared helper so
+  // extStyle and package layout are applied consistently with the core generators.
+  const entityModule = crossEntitySpecifier(
+    ctx.outputLayout,
+    entity.package,
+    entity.package,
+    entity.name,
+    ctx.extStyle,
+  );
   if (isProjection(entity)) {
-    return renderReadOnlyHooksFile(entity);
+    return renderReadOnlyHooksFile(entity, entityModule);
   }
-  return renderFullHooksFile(entity);
+  return renderFullHooksFile(entity, entityModule);
 }
 
 // ---------------------------------------------------------------------------
 // Read-only path (projections)
 // ---------------------------------------------------------------------------
 
-function renderReadOnlyHooksFile(entity: MetaObject): string {
+function renderReadOnlyHooksFile(entity: MetaObject, entityModule: string): string {
   const entityName = entity.name;
   const entityNamePlural = pluralize(entityName);
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
@@ -47,7 +57,7 @@ import {
   ${entityName},
   type ${entityName} as ${entityName}Row,
   type ${entityName}Filter,
-} from "./${entityName}";
+} from ${JSON.stringify(entityModule)};
 `;
 
   const queryKeys: Code = code`
@@ -99,7 +109,7 @@ export function use${entityNamePlural}(
 // Full path (writable entities — table-backed or write-through)
 // ---------------------------------------------------------------------------
 
-function renderFullHooksFile(entity: MetaObject): string {
+function renderFullHooksFile(entity: MetaObject, entityModule: string): string {
   const entityName = entity.name;
   const entityNamePlural = pluralize(entityName);
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
@@ -122,7 +132,7 @@ import {
   type ${entityName}Insert,
   type ${entityName}Update,
   type ${entityName}Filter,
-} from "./${entityName}";
+} from ${JSON.stringify(entityModule)};
 `;
 
   const queryKeys: Code = code`

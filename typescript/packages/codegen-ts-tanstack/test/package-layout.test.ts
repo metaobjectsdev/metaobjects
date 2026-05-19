@@ -78,4 +78,28 @@ describe("package-aware output placement — tanstackQuery + tanstackGrid", () =
     expect(rootFiles).toContain("Product.hooks.ts");
     expect(rootFiles).toContain("Product.columns.tsx");
   });
+
+  test("extStyle: js — hooks and columns import the entity with a .js extension", async () => {
+    const { root, errors } = await new FileMetaDataLoader().loadFiles([PACKAGED_GRID]);
+    expect(errors).toEqual([]);
+
+    const out = await runGen({
+      config: defineConfig({
+        outDir: tmp,
+        extStyle: "js",
+        dbImport: "../db",
+        dialect: "sqlite",
+        generators: [entityFile(), tanstackQuery(), tanstackGrid()],
+      }),
+      metadata: root,
+    });
+    expect(out.warnings).toEqual([]);
+
+    // The sibling entity import must carry the .js extension, consistent with
+    // the core generators — not a bare extensionless specifier.
+    const hooksContent = readFileSync(join(tmp, "Product.hooks.ts"), "utf-8");
+    expect(hooksContent).toContain('from "./Product.js"');
+    const colsContent = readFileSync(join(tmp, "Product.columns.tsx"), "utf-8");
+    expect(colsContent).toContain('from "./Product.js"');
+  });
 });
