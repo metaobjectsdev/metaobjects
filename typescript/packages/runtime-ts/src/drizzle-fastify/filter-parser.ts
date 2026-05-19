@@ -71,7 +71,10 @@ export function parseFilterParams(opts: ParseFilterOpts): ParseFilterResult {
       .filter(([, rule]) => (rule as FilterFieldRule).subType === "string")
       .map(([field]) => opts.table[field]);
     if (stringCols.length > 0) {
-      const parts = stringCols.map((col) => like(col, term));
+      // Case-insensitive on Postgres (ilike), case-sensitive on SQLite (like) —
+      // matches the dispatch the existing [like] op uses (parseNode, below).
+      const matcher = opts.dialect === "postgres" ? ilike : like;
+      const parts = stringCols.map((col) => matcher(col, term));
       // or() is defined as returning SQL | undefined but will always return
       // SQL when given a non-empty array. parts[0] is always defined here
       // because stringCols.length > 0 guarantees at least one element.
