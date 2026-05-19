@@ -1,0 +1,233 @@
+// MetaDataLoader — core loader pipeline.
+//
+// Ported from typescript/packages/metadata/src/loader/meta-data-loader.ts
+//
+// Owns the load pipeline contract, lifecycle state, and accessor members.
+// Load() sequences IMetaDataSource reads into one accumulating tree using the
+// parser's IntoRoot param for merge-during-parse.
+//
+// Lifecycle phases: "uninitialized" → "loading" → "loaded" | "error"
+// (mirrors Java MetaDataLoader's UNINITIALIZED → LOADING → LOADED → ERROR).
+//
+// This is a one-shot pipeline: calling Load() again after completion throws.
+
+using MetaObjects.Meta;
+
+namespace MetaObjects.Loader;
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/// <summary>The result of a load run.</summary>
+public sealed record LoadResult(
+    MetaRoot Root,
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<MetaError> Errors);
+
+/// <summary>
+/// Core metadata loader pipeline. Consumes a list of
+/// <see cref="IMetaDataSource"/> instances, reads and parses each in order,
+/// and merges them into one <see cref="MetaRoot"/>.
+/// </summary>
+public class MetaDataLoader
+{
+    private readonly TypeRegistry _registry;
+    /// <summary>Whether to freeze the tree after loading. Visible to subclasses for synthetic-root paths.</summary>
+    protected readonly bool Freeze;
+    private readonly bool _strict;
+
+    private string _state = "uninitialized";
+    private MetaRoot? _root;
+
+    // -------------------------------------------------------------------------
+    // Constructors
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Construct with the default core-types registry, freeze=true, strict=false.
+    /// </summary>
+    public MetaDataLoader()
+        : this(DefaultRegistry()) { }
+
+    /// <summary>
+    /// Construct with a custom registry, freeze=true, strict=false.
+    /// </summary>
+    public MetaDataLoader(TypeRegistry registry)
+        : this(registry, freeze: true, strict: false) { }
+
+    /// <summary>Full constructor — registry, freeze, strict all configurable.</summary>
+    public MetaDataLoader(TypeRegistry registry, bool freeze = true, bool strict = false)
+    {
+        _registry = registry;
+        Freeze = freeze;
+        _strict = strict;
+    }
+
+    private static TypeRegistry DefaultRegistry() =>
+        Provider.ComposeRegistry([CoreTypes.CoreTypesProvider]);
+
+    // -------------------------------------------------------------------------
+    // Public properties
+    // -------------------------------------------------------------------------
+
+    /// <summary>Current lifecycle state: "uninitialized" | "loading" | "loaded" | "error".</summary>
+    public string State => _state;
+
+    /// <summary>The TypeRegistry this loader uses to resolve type definitions.</summary>
+    public TypeRegistry Registry => _registry;
+
+    /// <summary>
+    /// The loaded root. Accessible once Load() has completed ("loaded" or "error"
+    /// state). Throws if called before or during loading.
+    /// </summary>
+    public MetaRoot Root
+    {
+        get
+        {
+            CheckStateForRead();
+            return _root!;
+        }
+    }
+
+    private void CheckStateForRead()
+    {
+        if (_state == "uninitialized" || _state == "loading")
+        {
+            throw new InvalidOperationException(
+                $"MetaDataLoader.Root accessed before loading has completed (state: \"{_state}\"). " +
+                "Call Load() first.");
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // ParseSource — overridable format-dispatch seam
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Parse one source's raw content into a <see cref="ParseResult"/>. The base
+    /// loader handles JSON only; non-JSON formats throw. Subclasses override this
+    /// seam to add formats (e.g. YAML). Keeping the base loader free of the YAML
+    /// parser matches the TS architecture.
+    /// </summary>
+    protected virtual ParseResult ParseSource(
+        string content,
+        IMetaDataSource source,
+        ParseOptions parseOpts)
+    {
+        if (source.Format == MetaDataFormat.Json)
+        {
+            return Parser.ParseJson(content, parseOpts);
+        }
+        throw new InvalidOperationException(
+            $"MetaDataLoader parses JSON only; format \"{source.Format}\" for source " +
+            $"\"{source.Id}\" requires a subclass that overrides ParseSource");
+    }
+
+    // -------------------------------------------------------------------------
+    // Load — synchronous pipeline over IReadOnlyList<IMetaDataSource>
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Load metadata from one or more <see cref="IMetaDataSource"/> instances.
+    /// Sources are read in order; each source is parsed and merged into the
+    /// accumulating root. Source read failures are collected as errors — no throw.
+    /// <para>
+    /// This is a one-shot pipeline. Calling Load() again after completion throws.
+    /// </para>
+    /// </summary>
+    public LoadResult Load(IReadOnlyList<IMetaDataSource> sources)
+    {
+        if (_state == "loaded" || _state == "error")
+        {
+            throw new InvalidOperationException(
+                "MetaDataLoader cannot be reused after Load() completes. " +
+                "Construct a new MetaDataLoader for additional loads.");
+        }
+
+        _state = "loading";
+        var warnings = new List<string>();
+        var errors = new List<MetaError>();
+
+        MetaRoot? root = null;
+
+        // Parse all sources with super resolution DEFERRED so cross-file super
+        // refs work — one source may declare a super target defined in a later
+        // source. A second pass (Task 5.1) resolves everything against the
+        // fully-merged root.
+        foreach (IMetaDataSource source in sources)
+        {
+            string content;
+            try
+            {
+                content = source.Read();
+            }
+            catch (Exception ex)
+            {
+                errors.Add(new MetaError(
+                    $"Failed to read source \"{source.Id}\": {ex.Message}",
+                    ErrorCode.ERR_UNKNOWN,
+                    source.Id));
+                continue;
+            }
+
+            var parseOpts = new ParseOptions(_registry)
+            {
+                Strict = _strict,
+                SourceName = source.Id,
+                DeferSuperResolution = true,
+                IntoRoot = root,  // null on first source; accumulating root thereafter
+            };
+
+            try
+            {
+                ParseResult parseResult = ParseSource(content, source, parseOpts);
+                warnings.AddRange(parseResult.Warnings);
+                errors.AddRange(parseResult.Errors);
+                root = parseResult.Root;
+            }
+            catch (ParseException ex)
+            {
+                errors.Add(new MetaError(ex.Message, ex.Code, ex.SourceFile, ex.NodePath));
+            }
+        }
+
+        // After the merge loop, BEFORE freeze — validation pass placeholders.
+        // These are wired in Slices 5 and 6.
+
+        // Pass 1: resolveDeferredSupers — Slice 5 (Task 5.1) wires this in.
+        // Pass 2: validateSubtypeRules — Slice 6 (Task 6.1).
+        // Pass 3: validateDataGridSortFields — Slice 6.
+        // Pass 4: validateFilterableHasIndex — Slice 6.
+        // Pass 5: validateOriginPaths — Slice 6.
+        // Pass 6: validateAttrSchema — Slice 6.
+
+        // If nothing parsed successfully, synthesize an empty root so callers
+        // always get a valid MetaData tree.
+        if (root is null)
+        {
+            root = MakeSyntheticRoot();
+            _state = errors.Count > 0 ? "error" : "loaded";
+        }
+        else
+        {
+            _state = "loaded";
+        }
+
+        // Freeze applies to both paths.
+        if (Freeze)
+        {
+            root.Freeze();
+        }
+
+        _root = root;
+        return new LoadResult(root, warnings.AsReadOnly(), errors.AsReadOnly());
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    private static MetaRoot MakeSyntheticRoot() =>
+        new MetaRoot(new TypeId(Constants.TYPE_METADATA, Constants.SUBTYPE_ROOT), "");
+}

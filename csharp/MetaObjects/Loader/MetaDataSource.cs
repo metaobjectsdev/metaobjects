@@ -1,0 +1,40 @@
+// MetaDataSource — the raw-document unit consumed by the loader pipeline.
+//
+// Ported from typescript/packages/metadata/src/loader/meta-data-source.ts
+//
+// The C# loader is synchronous (corpus is tiny; sync I/O keeps the adapter
+// simple). Read() returns string, not Task<string>.
+
+namespace MetaObjects.Loader;
+
+/// <summary>Content format of a source — selects the parser.</summary>
+public enum MetaDataFormat { Json, Yaml }
+
+/// <summary>One unit of raw metadata input consumed by the loader pipeline.</summary>
+public interface IMetaDataSource
+{
+    /// <summary>Human-readable id — used in parse-error messages (e.g. a filename).</summary>
+    string Id { get; }
+    /// <summary>Content-format hint — selects the parser.</summary>
+    MetaDataFormat Format { get; }
+    /// <summary>Resolve the raw content. May perform I/O.</summary>
+    string Read();
+}
+
+/// <summary>A metadata source backed by an in-memory string.</summary>
+public sealed class InMemorySource : IMetaDataSource
+{
+    private readonly string _content;
+    public string Id { get; }
+    public MetaDataFormat Format { get; }
+
+    public InMemorySource(string content, string id = "<in-memory>",
+        MetaDataFormat format = MetaDataFormat.Json)
+    {
+        _content = content;
+        Id = id;
+        Format = format;
+    }
+
+    public string Read() => _content;
+}
