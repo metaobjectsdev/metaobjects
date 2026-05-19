@@ -10,7 +10,7 @@ import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.TypeDefinition;
 import com.metaobjects.registry.ChildRequirement;
 import static com.metaobjects.MetaData.*;
-import static com.metaobjects.loader.parser.json.JsonMetaDataParser.JSON_ATTR_PREFIX;
+import static com.metaobjects.loader.parser.json.CanonicalJsonParser.JSON_ATTR_PREFIX;
 import com.metaobjects.MetaDataTypeId;
 import com.google.gson.*;
 import org.slf4j.Logger;

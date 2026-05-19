@@ -95,8 +95,17 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
     /** Separator between type and subType in the fused node key. */
     private static final String TYPE_SUBTYPE_SEPARATOR = ".";
 
-    /** Prefix for inline @-attributes. */
-    private static final String ATTR_PREFIX = "@";
+    /**
+     * Prefix for inline @-attributes.
+     * Public so that other modules (e.g. codegen-base schema writer) can reference
+     * the canonical attribute-prefix symbol without depending on the deleted
+     * {@code JsonMetaDataParser}.
+     */
+    public static final String JSON_ATTR_PREFIX = "@";
+
+    /** @deprecated use {@link #JSON_ATTR_PREFIX} */
+    @Deprecated
+    private static final String ATTR_PREFIX = JSON_ATTR_PREFIX;
 
     /** All reserved body keys — keys handled structurally (not as @-attrs). */
     private static final List<String> RESERVED_KEYS = Arrays.asList(
