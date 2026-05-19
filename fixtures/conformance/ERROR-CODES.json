@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "codes": {
+    "ERR_MALFORMED_JSON": "The input is not valid JSON (parse failure before structural checks).",
+    "ERR_TOP_LEVEL_NOT_OBJECT": "The metadata document root is not a JSON object.",
+    "ERR_UNKNOWN_TYPE": "A node uses a type not registered in the registry.",
+    "ERR_UNKNOWN_SUBTYPE": "A node uses a subType not valid for its type.",
+    "ERR_MISSING_SUBTYPE": "A node omits subType and the type has no default subType.",
+    "ERR_DUPLICATE_NAME": "Two sibling nodes share the same name.",
+    "ERR_UNRESOLVED_SUPER": "An extends/super reference names a node that does not exist.",
+    "ERR_INVALID_SUBTYPE_CHILD": "A child node type/subType is not permitted under its parent.",
+    "ERR_UNKNOWN_ATTR": "An attribute name is not declared on the node's type.",
+    "ERR_MISSING_REQUIRED_ATTR": "A required attribute is absent from the node.",
+    "ERR_BAD_ATTR_VALUE": "An attribute value fails its declared schema (type/range).",
+    "ERR_BAD_DEFAULT_SORT_FIELD": "A layout @defaultSortField names a field absent from the entity.",
+    "ERR_PROVIDER_DEPENDENCY_CYCLE": "Provider composition has a dependency cycle.",
+    "ERR_PROVIDER_MISSING_DEPENDENCY": "A provider declares a dependency id with no matching provider.",
+    "ERR_PROVIDER_ATTR_CONFLICT": "A provider extend redefines an attr another provider already declared."
+  }
+}
