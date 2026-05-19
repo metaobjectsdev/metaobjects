@@ -283,7 +283,65 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
     }
 
     // -----------------------------------------------------------------------
-    // Test 11 — validator with authored name ending in digit is NOT suppressed (Fix 1)
+    // Test 11 — extends emitted as FQN when super is in a different package
+    //
+    // Base lives in "other::pkg"; Derived lives in "acme::commerce".
+    // The serializer must emit the fully-qualified "other::pkg::Base" so that
+    // a canonical parser can resolve it without its original load context.
+    // -----------------------------------------------------------------------
+    @Test
+    public void testExtendsEmittedAsFQNWhenSuperInDifferentPackage() {
+        MetaRoot root = new MetaRoot("acme::commerce");
+
+        // Base is in a DIFFERENT package from the root/Derived.
+        MappedMetaObject base = MappedMetaObject.create("other::pkg::Base");
+        base.addMetaAttr(BooleanAttribute.create(MetaData.ATTR_IS_ABSTRACT, true));
+        root.addChild(base);
+
+        MappedMetaObject derived = MappedMetaObject.create("acme::commerce::Derived");
+        derived.setSuperData(base);
+        root.addChild(derived);
+
+        String json = CanonicalJsonSerializer.canonicalSerialize(root);
+
+        // Must use the fully-qualified name because super is in a different package.
+        assertTrue("extends must be the FQN when super is in a different package, got: " + json,
+                json.contains("\"extends\": \"other::pkg::Base\""));
+        // Must NOT use the short name — that would be unresolvable in the canonical parser.
+        assertFalse("extends must NOT be the short name when super is in a different package",
+                json.contains("\"extends\": \"Base\""));
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 12 — extends emitted as short name when super is in the same package
+    //
+    // Both Base and Derived are in "test::pkg".  The existing Test 7 covers
+    // same-package extends; this test makes the intent explicit.
+    // -----------------------------------------------------------------------
+    @Test
+    public void testExtendsEmittedAsShortNameWhenSamePackage() {
+        MetaRoot root = new MetaRoot("test::pkg");
+
+        MappedMetaObject base = MappedMetaObject.create("test::pkg::Base");
+        base.addMetaAttr(BooleanAttribute.create(MetaData.ATTR_IS_ABSTRACT, true));
+        root.addChild(base);
+
+        MappedMetaObject derived = MappedMetaObject.create("test::pkg::Derived");
+        derived.setSuperData(base);
+        root.addChild(derived);
+
+        String json = CanonicalJsonSerializer.canonicalSerialize(root);
+
+        // Same package — short name is unambiguous and preferred.
+        assertTrue("extends must be the short name when super is in the same package, got: " + json,
+                json.contains("\"extends\": \"Base\""));
+        // Must NOT use the FQN — that would be unnecessarily verbose.
+        assertFalse("extends must NOT be the FQN when super is in the same package",
+                json.contains("\"extends\": \"test::pkg::Base\""));
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 13 — validator with authored name ending in digit is NOT suppressed (Fix 1)
     //
     // A RegexValidator named "length2" has subType "regex", so the auto-generated
     // prefix would be "regex". The name "length2" does NOT match "^regex\d+$", so

@@ -32,8 +32,7 @@ import java.util.Map;
  *   <li><strong>100% registry-driven</strong> — no hardcoded type or subtype names.
  *       New types contributed by a {@code MetaDataTypeProvider} parse without any
  *       edits here.</li>
- *   <li>Behavioural differences from {@link JsonMetaDataParser} are exactly those
- *       mandated by the canonical format:
+ *   <li>Canonical format conventions followed by this reader:
  *       <ol>
  *         <li>Wrapper key is {@code <type>.<subType>} (fused); split on first {@code .}.</li>
  *         <li>Root key is {@code metadata.root}; body has no separate {@code subType} field.</li>
@@ -50,8 +49,7 @@ import java.util.Map;
  *       unchanged.</li>
  * </ul>
  *
- * <p>This class is intentionally a thin layer over {@link BaseMetaDataParser}.
- * {@link JsonMetaDataParser} is untouched; production still uses it until a later task.</p>
+ * <p>This class is intentionally a thin layer over {@link BaseMetaDataParser}.</p>
  */
 public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataFileParser {
 
@@ -96,10 +94,9 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
     private static final String TYPE_SUBTYPE_SEPARATOR = ".";
 
     /**
-     * Prefix for inline @-attributes.
-     * Public so that other modules (e.g. codegen-base schema writer) can reference
-     * the canonical attribute-prefix symbol without depending on the deleted
-     * {@code JsonMetaDataParser}.
+     * Prefix for inline @-attributes ({@code "@"}).
+     * Public so that downstream modules (e.g. codegen-base schema writer) can reference
+     * the canonical attribute-prefix constant without depending on this parser's internals.
      */
     public static final String JSON_ATTR_PREFIX = "@";
 
@@ -315,7 +312,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             String type = split.type;
             String subType = split.subType;
 
-            // Registry check — skip unknown types with a warning (mirrors JsonMetaDataParser)
+            // Registry check — skip unknown types with a warning
             if (!getTypeRegistry().hasType(type)) {
                 log.warn("Unknown type '{}' in canonical JSON file [{}] — skipping", type, getFilename());
                 continue;

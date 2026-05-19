@@ -814,9 +814,7 @@ public class MetaDataLoader implements LoaderConfigurable {
                     getName(), LoadingState.Phase.INITIALIZING, 0, e);
             }
 
-            // H3b-1 Task 4: all metadata is canonical JSON; dispatch directly to CanonicalJsonParser.
-            // The legacy XML and natural-JSON parsers still exist in the codebase (deleted in Task 5)
-            // but are no longer used here.
+            // All metadata sources are canonical JSON; dispatch unconditionally to CanonicalJsonParser.
             InputStream is = new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8));
             CanonicalJsonParser parser = new CanonicalJsonParser(this, source.getId());
             parser.loadFromStream(is);

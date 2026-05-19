@@ -15,7 +15,7 @@ import com.metaobjects.registry.TypeDefinition;
 import com.metaobjects.registry.ChildRequirement;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.util.MetaDataUtil;
-// JSON imports moved to JsonMetaDataParser - BaseMetaDataParser should be format-agnostic
+// BaseMetaDataParser is format-agnostic; JSON parsing is handled by CanonicalJsonParser
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -758,8 +758,6 @@ public abstract class BaseMetaDataParser {
         }
     }
 
-    // determineJsonArrayElementType() moved to JsonMetaDataParser
-
     // getAttributeSubTypeFromMetaData() removed - replaced with value-based pattern recognition in determineAttributeSubTypeFromValue()
     
     // getExpectedJavaTypeFromMetaData() removed - replaced with MetaAttribute-first approach
@@ -769,8 +767,6 @@ public abstract class BaseMetaDataParser {
     // getAttributeTypeFromRegistry() and convertAttributeTypeStringToClass() removed - replaced with MetaAttribute-first approach
 
     // convertStringToExpectedType() removed - MetaAttribute handles its own value conversion
-
-    // parseJsonStringArray() moved to JsonMetaDataParser
 
     /**
      * Determine appropriate attribute subtype from detected value type (legacy method)
@@ -888,5 +884,4 @@ public abstract class BaseMetaDataParser {
     }
 
 
-    // isJsonArray() moved to JsonMetaDataParser
 }
