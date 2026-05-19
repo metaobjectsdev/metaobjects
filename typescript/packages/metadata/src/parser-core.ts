@@ -200,7 +200,7 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
   _deferSuperResolution = opts.deferSuperResolution === true;
 
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new ParseError("Top-level metadata must be an object", errOpts(source));
+    throw new ParseError("Top-level metadata must be an object", { ...errOpts(source), code: "ERR_TOP_LEVEL_NOT_OBJECT" });
   }
 
   const topLevel = parsed as Record<string, unknown>;
@@ -209,12 +209,12 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
   const wrapperKeys = Object.keys(topLevel).filter((k) => k !== JSON_KEY_SCHEMA);
 
   if (wrapperKeys.length === 0) {
-    throw new ParseError("Top-level metadata object has no type wrapper key", errOpts(source));
+    throw new ParseError("Top-level metadata object has no type wrapper key", { ...errOpts(source), code: "ERR_TOP_LEVEL_NOT_OBJECT" });
   }
   if (wrapperKeys.length > 1) {
     throw new ParseError(
       `Top-level metadata object must have exactly one wrapper key (found: ${wrapperKeys.join(", ")})`,
-      errOpts(source),
+      { ...errOpts(source), code: "ERR_TOP_LEVEL_NOT_OBJECT" },
     );
   }
 
@@ -224,7 +224,7 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
   if (typeof rootData !== "object" || rootData === null || Array.isArray(rootData)) {
     throw new ParseError(
       `Top-level wrapper "${rootKey}" must contain an object`,
-      errOpts(source, rootKey),
+      { ...errOpts(source, rootKey), code: "ERR_TOP_LEVEL_NOT_OBJECT" },
     );
   }
 
@@ -233,9 +233,12 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
 
   // Check root type is registered (always throw — can't skip the root)
   if (!opts.registry.has(rootType, rootSubType)) {
+    const rootTypeCode = opts.registry.allSubTypesOf(rootType).length > 0
+      ? "ERR_UNKNOWN_SUBTYPE" as const
+      : "ERR_UNKNOWN_TYPE" as const;
     throw new ParseError(
       `Unknown root type "${rootType}.${rootSubType}" — not registered`,
-      errOpts(source, rootKey),
+      { ...errOpts(source, rootKey), code: rootTypeCode },
     );
   }
 
@@ -317,7 +320,7 @@ function parseNodeFresh(
       subType = SUBTYPE_BASE;
     } else {
       const msg = `Unknown type "${type}.${subType}" — not registered`;
-      errors.push(new ParseError(msg, errOpts(source, path)));
+      errors.push(new ParseError(msg, { ...errOpts(source, path), code: "ERR_UNKNOWN_TYPE" }));
       const rawName = nodeData[RESERVED_KEY_NAME];
       const name = typeof rawName === "string" ? rawName : "";
       return new MetaRoot(new TypeId(type, subType), name);
@@ -368,7 +371,7 @@ function parseNodeFresh(
     } else {
       throw new ParseError(
         `the SuperClass '${model.superRef}' does not exist in file '${source ?? "<unknown>"}'`,
-        errOpts(source, path),
+        { ...errOpts(source, path), code: "ERR_UNRESOLVED_SUPER" },
       );
     }
   } else if (model.superRef !== undefined && accumRoot === undefined) {
@@ -697,10 +700,13 @@ function processChildren(
       if (!explicit && registry.has(childType, SUBTYPE_BASE)) {
         childSubType = SUBTYPE_BASE;
       } else {
+        const childTypeCode = explicit && registry.allSubTypesOf(childType).length > 0
+          ? "ERR_UNKNOWN_SUBTYPE" as const
+          : "ERR_UNKNOWN_TYPE" as const;
         errors.push(
           new ParseError(
             `Unknown type "${childType}.${childSubType}" — not registered`,
-            errOpts(source, childNodePath),
+            { ...errOpts(source, childNodePath), code: childTypeCode },
           ),
         );
         continue; // skip this child

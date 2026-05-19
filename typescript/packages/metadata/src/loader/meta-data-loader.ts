@@ -254,6 +254,7 @@ export class MetaDataLoader {
         errors.push(
           new ParseError(
             `the SuperClass '${failure.ref}' does not exist (referenced by ${failure.nodeFqn})`,
+            { code: "ERR_UNRESOLVED_SUPER" },
           ),
         );
       }

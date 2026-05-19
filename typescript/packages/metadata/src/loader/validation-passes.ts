@@ -46,6 +46,7 @@ export function validateDataGridSortFields(root: MetaData): ParseError[] {
           new ParseError(
             `dataGrid layout "${layout.name}" on entity "${obj.name}" has @defaultSortField "${sortField}" ` +
             `but no such field exists on "${obj.name}". Available fields: ${[...fieldNames].join(", ")}`,
+            { code: "ERR_BAD_DEFAULT_SORT_FIELD" },
           ),
         );
       }

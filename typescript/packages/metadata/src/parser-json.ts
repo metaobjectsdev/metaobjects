@@ -20,7 +20,7 @@ export function parseJson(content: string, opts: ParseOptions): ParseResult {
   } catch (err) {
     throw new ParseError(
       `Invalid JSON: ${(err as Error).message}`,
-      errOpts(opts.sourceName),
+      { ...errOpts(opts.sourceName), code: "ERR_MALFORMED_JSON" },
     );
   }
 

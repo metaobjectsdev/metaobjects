@@ -146,6 +146,7 @@ function validateNode(
       errors.push(
         new ParseError(
           `${nodeLabel(node)} is missing required attribute '@${spec.name}'`,
+          { code: "ERR_MISSING_REQUIRED_ATTR" },
         ),
       );
     }
@@ -162,6 +163,7 @@ function validateNode(
         new ParseError(
           `${nodeLabel(node)} attribute '@${attrName}' must be of type ` +
             `'${spec.valueType}' but got ${runtimeTypeName(value)}`,
+          { code: "ERR_BAD_ATTR_VALUE" },
         ),
       );
       // Skip the allowedValues check when the type is already wrong —
@@ -177,6 +179,7 @@ function validateNode(
             `${nodeLabel(node)} attribute '@${attrName}' has value ` +
               `'${String(value)}' which is not one of the allowed values: ` +
               `${spec.allowedValues.map((v) => String(v)).join(", ")}`,
+            { code: "ERR_BAD_ATTR_VALUE" },
           ),
         );
       }
