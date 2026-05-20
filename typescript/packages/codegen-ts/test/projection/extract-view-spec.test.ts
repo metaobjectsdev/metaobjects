@@ -33,7 +33,6 @@ describe("extractViewSpec — flat passthrough via extends", () => {
                 name: "weeks",
                 "@objectRef": "Week",
                 "@cardinality": "many",
-                "@fkField": "programId",
               },
             },
           ],
@@ -46,7 +45,8 @@ describe("extractViewSpec — flat passthrough via extends", () => {
             { "source.dbTable": { "@name": "weeks" } },
             { "field.int": { name: "id", } },
             { "field.int": { name: "programId", } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary":   { "@fields": "id" } },
+            { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
           ],
         },
       },
@@ -119,7 +119,6 @@ describe("extractViewSpec — multi-level via path", () => {
                 name: "weeks",
                 "@objectRef": "Week",
                 "@cardinality": "many",
-                "@fkField": "programId",
               },
             },
           ],
@@ -131,13 +130,14 @@ describe("extractViewSpec — multi-level via path", () => {
           children: [
             { "source.dbTable": { "@name": "weeks" } },
             { "field.int": { name: "id", } },
-            { "identity.primary": { "@fields": "id" } },
+            { "field.int": { name: "programId", } },
+            { "identity.primary":   { "@fields": "id" } },
+            { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
             {
               "relationship.association": {
                 name: "workouts",
                 "@objectRef": "Workout",
                 "@cardinality": "many",
-                "@fkField": "weekId",
               },
             },
           ],
@@ -150,7 +150,8 @@ describe("extractViewSpec — multi-level via path", () => {
             { "source.dbTable": { "@name": "workouts" } },
             { "field.int": { name: "id", } },
             { "field.int": { name: "weekId", } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary":   { "@fields": "id" } },
+            { "identity.reference": { name: "ref_week", "@fields": "weekId", "@references": "Week" } },
           ],
         },
       },
@@ -205,7 +206,6 @@ describe("extractViewSpec — shared @via deduplication", () => {
                 name: "weeks",
                 "@objectRef": "Week",
                 "@cardinality": "many",
-                "@fkField": "programId",
               },
             },
           ],
@@ -219,7 +219,8 @@ describe("extractViewSpec — shared @via deduplication", () => {
             { "field.int": { name: "id", } },
             { "field.int": { name: "programId", } },
             { "field.string": { name: "title", } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary":   { "@fields": "id" } },
+            { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
           ],
         },
       },
@@ -318,8 +319,8 @@ describe("extractViewSpec — pure-extends projection (no origin children)", () 
   });
 });
 
-describe("extractViewSpec — parentJoinField resolution", () => {
-  test("defaults parentJoinField to parent primary identity field name", async () => {
+describe("extractViewSpec — pkField resolution", () => {
+  test("defaults pkField to parent primary identity field name", async () => {
     const root = await load([
       {
         "object.entity": {
@@ -334,7 +335,6 @@ describe("extractViewSpec — parentJoinField resolution", () => {
                 name: "weeks",
                 "@objectRef": "Week",
                 "@cardinality": "many",
-                "@fkField": "programId",
               },
             },
           ],
@@ -346,7 +346,9 @@ describe("extractViewSpec — parentJoinField resolution", () => {
           children: [
             { "source.dbTable": { "@name": "weeks" } },
             { "field.int": { name: "id", } },
-            { "identity.primary": { "@fields": "id" } },
+            { "field.int": { name: "programId", } },
+            { "identity.primary":   { "@fields": "id" } },
+            { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
           ],
         },
       },
@@ -380,10 +382,10 @@ describe("extractViewSpec — parentJoinField resolution", () => {
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     // Default: parent's primary identity field is "id"
-    expect(spec.joinTree.joins[0]!.parentJoinField).toBe("id");
+    expect(spec.joinTree.joins[0]!.pkField).toBe("id");
   });
 
-  test("uses explicit @parentField when set (non-id join like email)", async () => {
+  test("uses explicit dotted @references when set (non-id join like email)", async () => {
     const root = await load([
       {
         "object.entity": {
@@ -392,14 +394,13 @@ describe("extractViewSpec — parentJoinField resolution", () => {
             { "source.dbTable": { "@name": "customers" } },
             { "field.int": { name: "id", } },
             { "field.string": { name: "email", } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary":   { "@fields": "id" } },
+            { "identity.secondary": { "@fields": "email" } },
             {
               "relationship.association": {
                 name: "purchases",
                 "@objectRef": "Purchase",
                 "@cardinality": "many",
-                "@fkField": "customerEmail",
-                "@parentField": "email",
               },
             },
           ],
@@ -412,7 +413,8 @@ describe("extractViewSpec — parentJoinField resolution", () => {
             { "source.dbTable": { "@name": "purchases" } },
             { "field.int": { name: "id", } },
             { "field.string": { name: "customerEmail", } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary":   { "@fields": "id" } },
+            { "identity.reference": { name: "ref_customer", "@fields": "customerEmail", "@references": "Customer.email" } },
           ],
         },
       },
@@ -446,7 +448,70 @@ describe("extractViewSpec — parentJoinField resolution", () => {
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     // Must resolve to "email", not "id"
-    expect(spec.joinTree.joins[0]!.parentJoinField).toBe("email");
+    expect(spec.joinTree.joins[0]!.pkField).toBe("email");
     expect(spec.joinTree.joins[0]!.fkField).toBe("customerEmail");
+  });
+});
+
+describe("extractViewSpec — belongs-to via identity.reference", () => {
+  test("Purchase.program (one): pkField is target's PK, referenceHolder='source'", async () => {
+    const root = await load([
+      {
+        "object.entity": {
+          name: "Program",
+          children: [
+            { "field.long":   { name: "id" } },
+            { "field.string": { name: "title" } },
+            { "identity.primary": { "@fields": "id" } },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "Purchase",
+          children: [
+            { "field.long":   { name: "id" } },
+            { "field.long":   { name: "programId" } },
+            { "identity.primary":   { "@fields": "id" } },
+            { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
+            {
+              "relationship.association": {
+                name: "program",
+                "@cardinality": "one",
+                "@objectRef": "Program",
+              },
+            },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "PurchaseSummary",
+          "extends": "Purchase",
+          children: [
+            { "source.dbView": { "@name": "v_purchase_summary" } },
+            {
+              "field.string": {
+                name: "programTitle",
+                children: [
+                  { "origin.passthrough": { "@from": "Program.title", "@via": "Purchase.program" } },
+                ],
+              },
+            },
+            { "identity.primary": { "@fields": "id" } },
+          ],
+        },
+      },
+    ]);
+
+    const proj = root.objects().find((o) => o.name === "PurchaseSummary")!;
+    const spec = extractViewSpec(proj, root, { columnNamingStrategy: "snake_case" });
+
+    expect(spec.joinTree.joins).toHaveLength(1);
+    const join = spec.joinTree.joins[0]!;
+    expect(join.cardinality).toBe("one");
+    expect(join.referenceHolder).toBe("source");
+    expect(join.fkField).toBe("programId");
+    expect(join.pkField).toBe("id");
   });
 });

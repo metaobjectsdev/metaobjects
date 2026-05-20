@@ -13,10 +13,11 @@ import {
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
   RELATIONSHIP_ATTR_OBJECT_REF,
-  RELATIONSHIP_ATTR_FK_FIELD,
-  RELATIONSHIP_ATTR_PARENT_FIELD,
+  RELATIONSHIP_ATTR_CARDINALITY,
+  CARDINALITY_ONE,
   IDENTITY_ATTR_FIELDS,
   FIELD_ATTR_DB_COLUMN,
+  findReferenceBetween,
   type AggregateFunction,
 } from "@metaobjects/metadata";
 import { type MetaData, type MetaRoot, MetaObject } from "@metaobjects/metadata";
@@ -100,34 +101,13 @@ function shortAliasFor(entityName: string, used: Set<string>): string {
 // prefix into a trie, then converts to JoinNode tree.
 // ---------------------------------------------------------------------------
 
-/**
- * Determine the field name on `parentEntity` that the FK references.
- * Priority: explicit `@parentField` attr on the relationship > parent's primary identity field > "id" fallback.
- */
-function parentJoinColumnFor(parentEntity: MetaObject, relationship: MetaData): string {
-  // Explicit @parentField wins (e.g., for email-based joins).
-  const explicit = relationship.ownAttr(RELATIONSHIP_ATTR_PARENT_FIELD) as string | undefined;
-  if (explicit) return explicit;
-  // Default: parent's primary identity field name.
-  // primaryIdentity() is effective-by-default, so inherited identities (from extends:/super:) are included.
-  const primary = parentEntity.primaryIdentity();
-  const fields = primary?.ownAttr(IDENTITY_ATTR_FIELDS) as string | string[] | undefined;
-  if (typeof fields === "string") {
-    const first = fields.split(",")[0];
-    if (first !== undefined) return first.trim();
-  }
-  if (Array.isArray(fields) && fields.length > 0) {
-    const first = fields[0];
-    if (first !== undefined) return String(first).trim();
-  }
-  return "id"; // last-resort fallback
-}
-
 interface PathStep {
   entity: MetaData;
   relationship: string;
+  cardinality: "one" | "many";
   fkField: string;
-  parentJoinField: string;
+  pkField: string;
+  referenceHolder: "source" | "target";
   targetEntity: string;
 }
 
@@ -168,14 +148,39 @@ function buildJoinTree(
         const rel = findRelationship(currentObj, relName);
         if (!rel) break;
         const targetName = rel.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-        const fkField = rel.ownAttr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
         const target = targetName ? root.findObject(targetName) : undefined;
-        if (!target || !fkField || !targetName) break;
+        if (!target || !targetName) break;
+
+        const cardAttr = rel.ownAttr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
+        const cardinality: "one" | "many" = cardAttr === CARDINALITY_ONE ? "one" : "many";
+
+        const ref = findReferenceBetween(currentObj as MetaObject, target);
+        if (!ref) break;
+
+        const fkField = ref.referenceIdentity.fields[0];
+        if (!fkField) break;
+
+        const pkOwner = ref.holder.name === currentObj.name ? target : (currentObj as MetaObject);
+        const primary = pkOwner.primaryIdentity();
+        const pkFields = primary?.ownAttr(IDENTITY_ATTR_FIELDS) as string | string[] | undefined;
+        const pkFieldDefault =
+          typeof pkFields === "string" ? pkFields.split(",")[0]!.trim()
+          : Array.isArray(pkFields)    ? String(pkFields[0]).trim()
+          :                              "id";
+
+        const targetFieldOverride = ref.referenceIdentity.targetFields[0];
+        const resolvedPkField = targetFieldOverride ?? pkFieldDefault;
+
+        const referenceHolder: "source" | "target" =
+          ref.holder.name === currentObj.name ? "source" : "target";
+
         path.push({
           entity: currentObj,
           relationship: relName,
+          cardinality,
           fkField,
-          parentJoinField: parentJoinColumnFor(currentObj, rel),
+          pkField: resolvedPkField,
+          referenceHolder,
           targetEntity: targetName,
         });
         currentObj = target;
@@ -204,8 +209,10 @@ function buildJoinTree(
       relationship: step.relationship,
       targetEntity: step.targetEntity,
       alias: shortAliasFor(step.targetEntity, usedAliases),
+      cardinality: step.cardinality,
       fkField: step.fkField,
-      parentJoinField: step.parentJoinField,
+      pkField: step.pkField,
+      referenceHolder: step.referenceHolder,
       children: Array.from(node.children.values()).map(toJoinNode),
     };
   }

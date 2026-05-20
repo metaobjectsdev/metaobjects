@@ -99,7 +99,6 @@ async function loadProjection() {
                   name: "weeks",
                   "@objectRef": "Week",
                   "@cardinality": "many",
-                  "@fkField": "programId",
                 },
               },
             ],
@@ -111,7 +110,9 @@ async function loadProjection() {
             children: [
               { "source.dbTable": { "@name": "weeks" } },
               { "field.int": { name: "id", } },
-              { "identity.primary": { "@fields": "id" } },
+              { "field.int": { name: "programId", } },
+              { "identity.primary":   { "@fields": "id" } },
+              { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
             ],
           },
         },

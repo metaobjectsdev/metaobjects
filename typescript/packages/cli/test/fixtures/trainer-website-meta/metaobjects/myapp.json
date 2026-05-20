@@ -40,11 +40,11 @@
             }},
             {"field.string": {"name": "body", "@dbColumn": "body"}},
             {"field.timestamp": {"name": "publishedAt", "@dbColumn": "published_at"}},
-            {"identity.primary": {"name": "pk", "@fields": ["id"], "@generation": "increment"}},
+            {"identity.primary":   {"name": "pk", "@fields": ["id"], "@generation": "increment"}},
+            {"identity.reference": {"name": "ref_user", "@fields": ["userId"], "@references": "trainerWebsite::User"}},
             {"relationship.association": {"name": "author",
               "@cardinality": "one",
-              "@objectRef": "trainerWebsite::User",
-              "@fkField": "userId"
+              "@objectRef": "trainerWebsite::User"
             }}
           ]
         }

@@ -20,8 +20,9 @@
             { "field.long": { "name": "id" } },
             { "field.long": { "name": "programId", "@required": true } },
             { "field.int": { "name": "weekNumber", "@required": true } },
-            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship.association": { "name": "program", "@cardinality": "one", "@objectRef": "Program", "@fkField": "programId" } }
+            { "identity.primary":   { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "identity.reference": { "name": "ref_program", "@fields": ["programId"], "@references": "Program" } },
+            { "relationship.association": { "name": "program", "@cardinality": "one", "@objectRef": "Program" } }
           ]
         }
       }

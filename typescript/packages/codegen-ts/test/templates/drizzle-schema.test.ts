@@ -39,11 +39,15 @@ function makePostWithAuthor(): MetaObject {
   const authorId = metaField(FIELD_SUBTYPE_LONG, "authorId");
   authorId.setAttr("required", true);
   post.addChild(authorId);
+  // identity.reference establishes FK direction (Post.authorId → User).
+  const ref = meta(new TypeId(TYPE_IDENTITY, "reference"), "ref_author");
+  ref.setAttr("fields", ["authorId"]);
+  ref.setAttr("references", "User");
+  post.addChild(ref);
   // relationship child: Post has-one User (author)
   const rel = meta(new TypeId(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION), "author");
   rel.setAttr("cardinality", "one");
   rel.setAttr("objectRef", "User");  // target entity
-  rel.setAttr("fkField", "authorId"); // field on this entity that holds the FK
   post.addChild(rel);
   return post;
 }

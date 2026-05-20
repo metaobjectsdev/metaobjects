@@ -53,8 +53,6 @@ import {
   GENERATION_VALUES,
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
-  RELATIONSHIP_ATTR_FK_FIELD,
-  RELATIONSHIP_ATTR_PARENT_FIELD,
   RELATIONSHIP_ATTR_JOIN_ENTITY,
   RELATIONSHIP_ATTR_JOIN_FIELDS,
   VALIDATOR_ATTR_PATTERN,
@@ -219,20 +217,6 @@ export const relationshipAttrs: AttrSchema[] = [
     required: false,
     description:
       "Name or fully-qualified name of the target object the relationship points to (e.g. 'Week' or 'acme::vehicle::Car').",
-  },
-  {
-    name: RELATIONSHIP_ATTR_FK_FIELD,
-    valueType: ATTR_SUBTYPE_STRING,
-    required: false,
-    description:
-      "Name of the foreign-key field on the source entity (for one-to-many / many-to-one relationships).",
-  },
-  {
-    name: RELATIONSHIP_ATTR_PARENT_FIELD,
-    valueType: ATTR_SUBTYPE_STRING,
-    required: false,
-    description:
-      "Field name on the parent entity that the FK references. Defaults to the parent's primary identity field.",
   },
   {
     name: RELATIONSHIP_ATTR_JOIN_ENTITY,

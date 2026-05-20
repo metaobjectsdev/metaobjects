@@ -11,8 +11,10 @@
             { "field.long": { "name": "productId", "@required": true } },
             { "field.int": { "name": "quantity", "@required": true } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship.association": { "name": "customer", "@cardinality": "one", "@objectRef": "Customer", "@fkField": "customerId" } },
-            { "relationship.association": { "name": "product", "@cardinality": "one", "@objectRef": "Product", "@fkField": "productId" } }
+            { "identity.reference": { "name": "ref_customer", "@fields": ["customerId"], "@references": "Customer" } },
+            { "identity.reference": { "name": "ref_product", "@fields": ["productId"], "@references": "Product" } },
+            { "relationship.association": { "name": "customer", "@cardinality": "one", "@objectRef": "Customer" } },
+            { "relationship.association": { "name": "product", "@cardinality": "one", "@objectRef": "Product" } }
           ]
         }
       },
@@ -25,7 +27,8 @@
             { "field.string": { "name": "name", "@required": true, "@maxLength": 200 } },
             { "field.long": { "name": "tagId", "@required": true } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship.association": { "name": "tag", "@cardinality": "one", "@objectRef": "Tag", "@fkField": "tagId" } }
+            { "identity.reference": { "name": "ref_tag", "@fields": ["tagId"], "@references": "Tag" } },
+            { "relationship.association": { "name": "tag", "@cardinality": "one", "@objectRef": "Tag" } }
           ]
         }
       },
@@ -48,7 +51,8 @@
             { "field.string": { "name": "label", "@required": true, "@maxLength": 100 } },
             { "field.long": { "name": "customerId", "@required": true } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship.association": { "name": "customer", "@cardinality": "one", "@objectRef": "Customer", "@fkField": "customerId" } }
+            { "identity.reference": { "name": "ref_customer", "@fields": ["customerId"], "@references": "Customer" } },
+            { "relationship.association": { "name": "customer", "@cardinality": "one", "@objectRef": "Customer" } }
           ]
         }
       }

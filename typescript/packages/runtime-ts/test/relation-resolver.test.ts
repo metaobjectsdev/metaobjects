@@ -30,10 +30,13 @@ function makePost(): MetaData {
   const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
   primary.setAttr("fields", ["id"]);
   post.addChild(primary);
+  const ref = meta(new TypeId(TYPE_IDENTITY, "reference"), "ref_author");
+  ref.setAttr("fields", ["authorId"]);
+  ref.setAttr("references", "User");
+  post.addChild(ref);
   const rel = meta(new TypeId(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION), "author");
   rel.setAttr("cardinality", CARDINALITY_ONE);
   rel.setAttr("objectRef", "User");
-  rel.setAttr("fkField", "authorId");
   post.addChild(rel);
   return post;
 }

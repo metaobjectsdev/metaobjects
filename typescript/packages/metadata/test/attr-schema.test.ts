@@ -287,13 +287,16 @@ describe("Phase A2 — core attribute schemas", () => {
     expect(registry.attrsOf(TYPE_ORIGIN, SUBTYPE_BASE)).toEqual([]);
   });
 
-  it("relationship.association declares cardinality/objectRef/fkField/parentField/joinEntity/joinFields", () => {
+  it("relationship.association declares cardinality/objectRef/joinEntity/joinFields", () => {
     const attrs = byName(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION);
-    for (const n of ["cardinality", "objectRef", "fkField", "parentField", "joinEntity", "joinFields"]) {
+    for (const n of ["cardinality", "objectRef", "joinEntity", "joinFields"]) {
       expect(attrs.get(n)).toBeDefined();
       expect(attrs.get(n)!.required).toBe(false);
     }
     expect(attrs.get("joinFields")!.valueType).toBe(ATTR_SUBTYPE_STRINGARRAY);
+    // FK direction now lives on identity.reference; legacy attrs are removed.
+    expect(attrs.get("fkField")).toBeUndefined();
+    expect(attrs.get("parentField")).toBeUndefined();
   });
 
   it("validator.length declares @min and @max (int, optional) — read via this.ownAttr()", () => {

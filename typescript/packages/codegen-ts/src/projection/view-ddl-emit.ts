@@ -34,9 +34,14 @@ function renderJoin(
   // JoinNode stores raw camelCase field names from metadata (e.g. "programId").
   // Emit always applies snake_case — view DDL is SQL-side and always snake_case.
   const fkCol = toSnakeCase(node.fkField);
-  const parentCol = toSnakeCase(node.parentJoinField);
+  const pkCol = toSnakeCase(node.pkField);
   const childAlias = node.alias;
-  let sql = `  LEFT OUTER JOIN ${table} ${childAlias} ON ${childAlias}.${fkCol} = ${parentAlias}.${parentCol}`;
+  // referenceHolder = "source" → FK on parent (source): child.pk = parent.fk  (belongs-to)
+  // referenceHolder = "target" → FK on child  (target): child.fk = parent.pk  (has-many)
+  const onClause = node.referenceHolder === "source"
+    ? `${childAlias}.${pkCol} = ${parentAlias}.${fkCol}`
+    : `${childAlias}.${fkCol} = ${parentAlias}.${pkCol}`;
+  let sql = `  LEFT OUTER JOIN ${table} ${childAlias} ON ${onClause}`;
   for (const childJoin of node.children) {
     sql += "\n" + renderJoin(childJoin, childAlias, options);
   }

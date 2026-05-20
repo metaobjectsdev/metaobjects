@@ -7,15 +7,13 @@ import { MetaObject, MetaField } from "@metaobjects/metadata";
 import {
   IDENTITY_SUBTYPE_SECONDARY, FIELD_SUBTYPE_LONG,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION, IDENTITY_ATTR_UNIQUE,
-  RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF, RELATIONSHIP_ATTR_FK_FIELD,
   GENERATION_INCREMENT, GENERATION_UUID,
-  CARDINALITY_ONE,
   FIELD_ATTR_AUTO_SET,
 } from "@metaobjects/metadata";
 import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier } from "../import-path.js";
 import { mapColumnType } from "../column-mapper.js";
-import { tableNameFromEntity, variableNameFromEntity, columnNameFromField, stripPackage } from "../naming.js";
+import { tableNameFromEntity, variableNameFromEntity, columnNameFromField } from "../naming.js";
 import { renderRelationsBlock } from "./relations-block.js";
 
 /**
@@ -128,22 +126,28 @@ interface FkInfo {
   targetPkField: string;    // e.g., "id"
 }
 
-/** Pre-pass: map fkFieldName → FkInfo for this entity's effective (own + inherited) relationship children. */
+/** Pre-pass: map fkFieldName → FkInfo for this entity's effective (own + inherited) identity.reference children. */
 function buildFkMapForEntity(obj: MetaObject, ctx: RenderContext): Map<string, FkInfo> {
   const result = new Map<string, FkInfo>();
-  for (const child of obj.relationships()) {
-    const cardinality = child.ownAttr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
-    if (cardinality !== CARDINALITY_ONE) continue;
-    const targetEntityRaw = child.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-    if (!targetEntityRaw) continue;
-    const targetEntityName = stripPackage(targetEntityRaw);
-    const fkFieldName = child.ownAttr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
-    if (!fkFieldName) continue;
-    const pkInfo = ctx.pkMap.get(targetEntityName);
-    const targetPkField = pkInfo?.fieldName ?? "id";
-    result.set(fkFieldName, {
-      targetVarName: variableNameFromEntity(targetEntityName),
-      targetEntityName,
+  for (const ref of obj.referenceIdentities()) {
+    const fkFieldNames = ref.fields;
+    if (fkFieldNames.length === 0) continue;
+    const fkField = fkFieldNames[0]!;
+    const targetName = ref.targetEntity;
+    if (!targetName) continue;
+    const targetObj = ctx.loadedRoot.findObject(targetName);
+    if (!targetObj) continue;
+    const explicitPk = ref.targetFields[0];
+    const targetPkField = explicitPk ?? ((): string => {
+      const primary = targetObj.primaryIdentity();
+      const fields = primary?.ownAttr(IDENTITY_ATTR_FIELDS) as string | string[] | undefined;
+      if (typeof fields === "string") return fields.split(",")[0]!.trim();
+      if (Array.isArray(fields)) return String(fields[0]).trim();
+      return "id";
+    })();
+    result.set(fkField, {
+      targetVarName: variableNameFromEntity(targetObj.name),
+      targetEntityName: targetObj.name,
       targetPkField,
     });
   }

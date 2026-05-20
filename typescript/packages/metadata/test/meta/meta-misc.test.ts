@@ -62,7 +62,6 @@ import {
   RELATIONSHIP_SUBTYPE_AGGREGATION,
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
-  RELATIONSHIP_ATTR_FK_FIELD,
   RELATIONSHIP_ATTR_JOIN_ENTITY,
   RELATIONSHIP_ATTR_JOIN_FIELDS,
   VALIDATOR_SUBTYPE_REQUIRED,
@@ -405,17 +404,6 @@ describe("MetaRelationship", () => {
   it("objectRef returns undefined when absent", () => {
     const rel = makeRelationship("posts");
     expect(rel.objectRef).toBeUndefined();
-  });
-
-  it("fkField returns @fkField attr", () => {
-    const rel = makeRelationship("posts");
-    rel.setAttr(RELATIONSHIP_ATTR_FK_FIELD, "userId");
-    expect(rel.fkField).toBe("userId");
-  });
-
-  it("fkField returns undefined when absent", () => {
-    const rel = makeRelationship("posts");
-    expect(rel.fkField).toBeUndefined();
   });
 
   it("joinEntity returns @joinEntity attr", () => {

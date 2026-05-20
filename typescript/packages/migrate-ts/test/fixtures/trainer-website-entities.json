@@ -41,8 +41,9 @@
             { "field.long": { "name": "programId", "@required": true } },
             { "field.int": { "name": "weekNumber", "@required": true } },
             { "field.string": { "name": "title" } },
-            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship.association": { "name": "program", "@cardinality": "one", "@objectRef": "Program", "@fkField": "programId" } }
+            { "identity.primary":   { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "identity.reference": { "name": "ref_program", "@fields": ["programId"], "@references": "Program" } },
+            { "relationship.association": { "name": "program", "@cardinality": "one", "@objectRef": "Program" } }
           ]
         }
       },
@@ -54,8 +55,9 @@
             { "field.long": { "name": "weekId", "@required": true } },
             { "field.int": { "name": "dayNumber", "@required": true } },
             { "field.string": { "name": "title", "@required": true } },
-            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship.association": { "name": "week", "@cardinality": "one", "@objectRef": "Week", "@fkField": "weekId" } }
+            { "identity.primary":   { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "identity.reference": { "name": "ref_week", "@fields": ["weekId"], "@references": "Week" } },
+            { "relationship.association": { "name": "week", "@cardinality": "one", "@objectRef": "Week" } }
           ]
         }
       },
@@ -81,9 +83,11 @@
             { "field.long": { "name": "videoId" } },
             { "field.int": { "name": "sortOrder", "@required": true, "@default": "0" } },
             { "field.string": { "name": "name", "@required": true } },
-            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship.association": { "name": "workout", "@cardinality": "one", "@objectRef": "Workout", "@fkField": "workoutId" } },
-            { "relationship.association": { "name": "video", "@cardinality": "one", "@objectRef": "Video", "@fkField": "videoId" } }
+            { "identity.primary":   { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "identity.reference": { "name": "ref_workout", "@fields": ["workoutId"], "@references": "Workout" } },
+            { "identity.reference": { "name": "ref_video", "@fields": ["videoId"], "@references": "Video" } },
+            { "relationship.association": { "name": "workout", "@cardinality": "one", "@objectRef": "Workout" } },
+            { "relationship.association": { "name": "video", "@cardinality": "one", "@objectRef": "Video" } }
           ]
         }
       }

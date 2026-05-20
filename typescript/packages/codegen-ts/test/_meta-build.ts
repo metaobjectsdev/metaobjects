@@ -19,6 +19,9 @@ import {
   TYPE_LAYOUT,
   TYPE_SOURCE,
   TYPE_ORIGIN,
+  IDENTITY_SUBTYPE_REFERENCE,
+  IDENTITY_SUBTYPE_PRIMARY,
+  IDENTITY_SUBTYPE_SECONDARY,
   MetaRoot,
   MetaObject,
   MetaField,
@@ -26,6 +29,9 @@ import {
   MetaValidator,
   MetaView,
   MetaIdentity,
+  MetaPrimaryIdentity,
+  MetaSecondaryIdentity,
+  MetaReferenceIdentity,
   MetaRelationship,
   MetaLayout,
   MetaSource,
@@ -48,11 +54,25 @@ const CTORS: Record<string, NodeCtor> = {
   [TYPE_ORIGIN]: MetaOrigin,
 };
 
+// Subtype-aware dispatch — keeps MetaObject.primaryIdentity() / referenceIdentities()
+// working in tests that hand-build identity nodes via meta(new TypeId(...)).
+const IDENTITY_CTORS: Record<string, NodeCtor> = {
+  [IDENTITY_SUBTYPE_PRIMARY]: MetaPrimaryIdentity,
+  [IDENTITY_SUBTYPE_SECONDARY]: MetaSecondaryIdentity,
+  [IDENTITY_SUBTYPE_REFERENCE]: MetaReferenceIdentity,
+};
+
 /**
  * Build a concrete metadata node from a TypeId + name. Drop-in replacement for
  * the removed `new MetaData(typeId, name)` constructor.
  */
 export function meta(typeId: TypeId, name = ""): MetaData {
+  if (typeId.type === TYPE_IDENTITY) {
+    const SubCtor = IDENTITY_CTORS[typeId.subType];
+    if (SubCtor !== undefined) {
+      return new SubCtor(typeId, name);
+    }
+  }
   const Ctor = CTORS[typeId.type];
   if (Ctor === undefined) {
     throw new Error(`meta(): no concrete class for type "${typeId.type}"`);

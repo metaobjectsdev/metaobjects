@@ -37,6 +37,7 @@ export {
   MetaIdentity,
   MetaPrimaryIdentity,
   MetaSecondaryIdentity,
+  MetaReferenceIdentity,
 } from "./meta/meta-identity.js";
 export type { IdentityGeneration } from "./meta/meta-identity.js";
 // Relationship
@@ -50,6 +51,10 @@ export {
   MetaNumericValidator,
   MetaArrayValidator,
 } from "./meta/meta-validator.js";
+// Cross-entity reference lookup
+export { findReferenceBetween } from "./meta/find-reference.js";
+export type { ReferenceLookup } from "./meta/find-reference.js";
+
 // Other node classes
 export { MetaView } from "./meta/meta-view.js";
 export { MetaAttr } from "./meta/meta-attr.js";

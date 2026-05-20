@@ -40,7 +40,8 @@
             { "field.int": { "name": "weekNumber", "@required": true } },
             { "field.string": { "name": "title", "@required": true, "@maxLength": 200 } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship.association": { "name": "program", "@cardinality": "one", "@objectRef": "Program", "@fkField": "programId" } }
+            { "identity.reference": { "name": "ref_program", "@fields": ["programId"], "@references": "Program" } },
+            { "relationship.association": { "name": "program", "@cardinality": "one", "@objectRef": "Program" } }
           ]
         }
       },
@@ -54,7 +55,8 @@
             { "field.int": { "name": "orderIndex", "@required": true } },
             { "field.int": { "name": "durationMinutes" } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship.association": { "name": "week", "@cardinality": "one", "@objectRef": "Week", "@fkField": "weekId" } }
+            { "identity.reference": { "name": "ref_week", "@fields": ["weekId"], "@references": "Week" } },
+            { "relationship.association": { "name": "week", "@cardinality": "one", "@objectRef": "Week" } }
           ]
         }
       },
@@ -69,7 +71,8 @@
             { "field.int": { "name": "reps" } },
             { "field.string": { "name": "notes" } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship.association": { "name": "workout", "@cardinality": "one", "@objectRef": "Workout", "@fkField": "workoutId" } }
+            { "identity.reference": { "name": "ref_workout", "@fields": ["workoutId"], "@references": "Workout" } },
+            { "relationship.association": { "name": "workout", "@cardinality": "one", "@objectRef": "Workout" } }
           ]
         }
       },
@@ -83,7 +86,8 @@
             { "field.string": { "name": "title", "@maxLength": 200 } },
             { "field.int": { "name": "durationSeconds" } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship.association": { "name": "exercise", "@cardinality": "one", "@objectRef": "Exercise", "@fkField": "exerciseId" } }
+            { "identity.reference": { "name": "ref_exercise", "@fields": ["exerciseId"], "@references": "Exercise" } },
+            { "relationship.association": { "name": "exercise", "@cardinality": "one", "@objectRef": "Exercise" } }
           ]
         }
       },
@@ -97,8 +101,10 @@
             { "field.timestamp": { "name": "completedAt", "@required": true, "@default": "now" } },
             { "field.int": { "name": "durationMinutes" } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship.association": { "name": "subscriber", "@cardinality": "one", "@objectRef": "Subscriber", "@fkField": "subscriberId" } },
-            { "relationship.association": { "name": "workout", "@cardinality": "one", "@objectRef": "Workout", "@fkField": "workoutId" } }
+            { "identity.reference": { "name": "ref_subscriber", "@fields": ["subscriberId"], "@references": "Subscriber" } },
+            { "identity.reference": { "name": "ref_workout", "@fields": ["workoutId"], "@references": "Workout" } },
+            { "relationship.association": { "name": "subscriber", "@cardinality": "one", "@objectRef": "Subscriber" } },
+            { "relationship.association": { "name": "workout", "@cardinality": "one", "@objectRef": "Workout" } }
           ]
         }
       },
@@ -112,8 +118,10 @@
             { "field.int": { "name": "amountCents", "@required": true } },
             { "field.timestamp": { "name": "purchasedAt", "@required": true, "@default": "now" } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship.association": { "name": "subscriber", "@cardinality": "one", "@objectRef": "Subscriber", "@fkField": "subscriberId" } },
-            { "relationship.association": { "name": "program", "@cardinality": "one", "@objectRef": "Program", "@fkField": "programId" } }
+            { "identity.reference": { "name": "ref_subscriber", "@fields": ["subscriberId"], "@references": "Subscriber" } },
+            { "identity.reference": { "name": "ref_program", "@fields": ["programId"], "@references": "Program" } },
+            { "relationship.association": { "name": "subscriber", "@cardinality": "one", "@objectRef": "Subscriber" } },
+            { "relationship.association": { "name": "program", "@cardinality": "one", "@objectRef": "Program" } }
           ]
         }
       },

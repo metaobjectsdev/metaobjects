@@ -33,7 +33,6 @@ const programEntity = {
           name: "weeks",
           "@objectRef": "Week",
           "@cardinality": "many",
-          "@fkField": "programId",
         },
       },
     ],
@@ -47,7 +46,8 @@ const weekEntity = {
       { "source.dbTable": { "@name": "weeks" } },
       { "field.int": { name: "id", "@dbColumn": "id" } },
       { "field.int": { name: "programId", "@dbColumn": "program_id" } },
-      { "identity.primary": { "@fields": "id" } },
+      { "identity.primary":   { "@fields": "id" } },
+      { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
     ],
   },
 };
@@ -149,7 +149,7 @@ describe("computeProjectionMigrations", () => {
     expect(sql).not.toMatch(/\bweek_count\b/);
   });
 
-  test("handles email-based join via @parentField", async () => {
+  test("handles email-based join via dotted identity.reference", async () => {
     const customerEntity = {
       "object.entity": {
         name: "Customer",
@@ -157,14 +157,13 @@ describe("computeProjectionMigrations", () => {
           { "source.dbTable": { "@name": "customers" } },
           { "field.int": { name: "id", "@dbColumn": "id" } },
           { "field.string": { name: "email", "@dbColumn": "email" } },
-          { "identity.primary": { "@fields": "id" } },
+          { "identity.primary":   { "@fields": "id" } },
+          { "identity.secondary": { "@fields": "email" } },
           {
             "relationship.association": {
               name: "purchases",
               "@objectRef": "Purchase",
               "@cardinality": "many",
-              "@fkField": "customerEmail",
-              "@parentField": "email",
             },
           },
         ],
@@ -177,7 +176,8 @@ describe("computeProjectionMigrations", () => {
           { "source.dbTable": { "@name": "purchases" } },
           { "field.int": { name: "id", "@dbColumn": "id" } },
           { "field.string": { name: "customerEmail", "@dbColumn": "customer_email" } },
-          { "identity.primary": { "@fields": "id" } },
+          { "identity.primary":   { "@fields": "id" } },
+          { "identity.reference": { name: "ref_customer", "@fields": "customerEmail", "@references": "Customer.email" } },
         ],
       },
     };

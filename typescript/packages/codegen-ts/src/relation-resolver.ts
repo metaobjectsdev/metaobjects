@@ -1,16 +1,18 @@
 // Relation resolver — pre-pass that builds the inverse-side map for relations() emission.
 // For each entity, we need to know:
-//   - Which outgoing relationships it declares (one-side, FK on this entity)
-//   - Which incoming relationships point to it (many-side, FK on other entity)
+//   - Which outgoing belongs-to relationships it declares (one-side, reference on this entity)
+//   - Which incoming relationships point to it (many-side, reference on the other entity)
+//
+// Reads identity.reference declarations to determine the physical reference side.
 
 import type { MetaRoot } from "@metaobjects/metadata";
 import {
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
-  RELATIONSHIP_ATTR_FK_FIELD,
   CARDINALITY_ONE,
 } from "@metaobjects/metadata";
 import { variableNameFromEntity, stripPackage } from "./naming.js";
+import { isProjection } from "./projection/projection-detector.js";
 
 export interface RelationEntry {
   /** Name of the relationship (e.g., "author") */
@@ -41,25 +43,37 @@ export function buildRelationMap(root: MetaRoot): RelationMap {
   };
 
   for (const obj of root.objects()) {
-    // Use relationships() so inherited relationships (from extends:/super:) are included.
+    // Projections (source.dbView) are view-backed; they never emit a relations()
+    // block, and their inherited belongs-to relationships would otherwise register
+    // a spurious inverse-many on the target entity.
+    if (isProjection(obj)) continue;
+
     for (const child of obj.relationships()) {
       const cardinality = child.ownAttr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
       if (cardinality !== CARDINALITY_ONE) continue;
+
       const targetEntityRaw = child.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
       if (!targetEntityRaw) continue;
       const targetEntity = stripPackage(targetEntityRaw);
-      const fkField = child.ownAttr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
-      // Match buildFkMapForEntity: skip relationships missing the FK field.
-      if (fkField === undefined) continue;
+
+      // Find an identity.reference on `obj` whose @references targets this relationship's target.
+      // Compare against package-stripped names since both relationship @objectRef and
+      // identity.reference @references may carry package-qualified entity names.
+      const refs = obj.referenceIdentities();
+      const matching = refs.find((r) => stripPackage(r.targetEntity ?? "") === targetEntity);
+      if (!matching) continue;
+
+      const fkFields = matching.fields;
+      if (fkFields.length === 0) continue;
+      const fkField = fkFields[0]!;
 
       ensure(obj.name).push({
         name: child.name,
         cardinality: "one",
         targetEntity,
         fkField,
-        targetPkField: "id", // resolved properly via pkMap during emit
+        targetPkField: "id",
       });
-      // Inverse many() side on the target entity.
       ensure(targetEntity).push({
         name: variableNameFromEntity(obj.name),
         cardinality: "many",

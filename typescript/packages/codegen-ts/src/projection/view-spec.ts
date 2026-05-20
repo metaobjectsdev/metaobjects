@@ -8,10 +8,14 @@ export interface JoinNode {
   readonly targetEntity: string;
   /** Auto-assigned SQL alias for this join (e.g., "w", "w0"). */
   readonly alias: string;
-  /** FK field name on the child table that references the parent's PK. */
+  /** Cardinality of the relationship being traversed. */
+  readonly cardinality: "one" | "many";
+  /** FK field name (lives on whichever side `referenceHolder` indicates). */
   readonly fkField: string;
-  /** Field name on the PARENT entity that the FK references. Usually the parent's primary id field. */
-  readonly parentJoinField: string;
+  /** PK field name on the side that does NOT hold the FK. */
+  readonly pkField: string;
+  /** Which side of this hop physically holds the FK: the parent (source) or the child (target). */
+  readonly referenceHolder: "source" | "target";
   /** Child joins. */
   readonly children: readonly JoinNode[];
 }

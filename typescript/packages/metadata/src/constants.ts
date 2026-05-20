@@ -339,9 +339,6 @@ export const IDENTITY_REFERENCE_ATTR_REFERENCES = "references";
 // Relationship attrs
 export const RELATIONSHIP_ATTR_CARDINALITY = "cardinality";
 export const RELATIONSHIP_ATTR_OBJECT_REF = "objectRef";
-export const RELATIONSHIP_ATTR_FK_FIELD = "fkField";
-/** The field name on the PARENT entity that the FK references. Defaults to the parent's primary identity field. */
-export const RELATIONSHIP_ATTR_PARENT_FIELD = "parentField";
 export const RELATIONSHIP_ATTR_JOIN_ENTITY = "joinEntity";    // N:M cardinality
 export const RELATIONSHIP_ATTR_JOIN_FIELDS = "joinFields";    // N:M cardinality
 

@@ -12,15 +12,19 @@ const programSummarySpec: ViewSpec = {
         relationship: "weeks",
         targetEntity: "Week",
         alias: "w",
+        cardinality: "many",
         fkField: "programId",
-        parentJoinField: "id",
+        pkField: "id",
+        referenceHolder: "target",
         children: [
           {
             relationship: "workouts",
             targetEntity: "Workout",
             alias: "wo",
+            cardinality: "many",
             fkField: "weekId",
-            parentJoinField: "id",
+            pkField: "id",
+            referenceHolder: "target",
             children: [],
           },
         ],
@@ -86,8 +90,8 @@ describe("emitViewDdl — flat projection with no aggregates", () => {
   });
 });
 
-describe("emitViewDdl — non-id parent join (parentJoinField)", () => {
-  test("uses parentJoinField instead of id when joining on email", () => {
+describe("emitViewDdl — non-id parent join (pkField)", () => {
+  test("uses pkField instead of id when joining on email", () => {
     const spec: ViewSpec = {
       viewName: "v_customer_summary",
       joinTree: {
@@ -98,8 +102,10 @@ describe("emitViewDdl — non-id parent join (parentJoinField)", () => {
             relationship: "purchases",
             targetEntity: "Purchase",
             alias: "p",
+            cardinality: "many",
             fkField: "customerEmail",
-            parentJoinField: "email",  // non-id join
+            pkField: "email",  // non-id join
+            referenceHolder: "target",
             children: [],
           },
         ],
@@ -124,5 +130,42 @@ describe("emitViewDdl — non-id parent join (parentJoinField)", () => {
     expect(sql).not.toMatch(/ON p\.customer_email = c\.id/);
     expect(sql).toContain("COUNT(DISTINCT p.id) AS purchase_count");
     expect(sql).toContain("GROUP BY c.id, c.email");
+  });
+});
+
+describe("emitViewDdl — belongs-to (reference on source)", () => {
+  test("emits target.pk = parent.fk when reference holder is source", () => {
+    const spec: ViewSpec = {
+      viewName: "v_purchase_summary",
+      joinTree: {
+        baseEntity: "Purchase",
+        baseAlias: "p",
+        joins: [
+          {
+            relationship: "program",
+            targetEntity: "Program",
+            alias: "p0",
+            cardinality: "one",
+            fkField: "programId",
+            pkField: "id",
+            referenceHolder: "source",
+            children: [],
+          },
+        ],
+      },
+      selectSpec: {
+        columns: [
+          { kind: "passthrough", fieldName: "id",           dbColAlias: "id",            sourceAlias: "p",  sourceColumn: "id" },
+          { kind: "passthrough", fieldName: "programTitle", dbColAlias: "program_title", sourceAlias: "p0", sourceColumn: "title" },
+        ],
+      },
+      groupBy: [],
+    };
+    const sql = emitViewDdl(spec, {
+      dialect: "sqlite",
+      baseTableName: "purchases",
+      joinTables: { Program: "programs" },
+    });
+    expect(sql).toMatch(/LEFT OUTER JOIN programs p0 ON p0\.id = p\.program_id/);
   });
 });

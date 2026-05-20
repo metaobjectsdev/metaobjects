@@ -20,7 +20,8 @@
             { "field.string": { "name": "title", "@required": true } },
             { "field.long": { "name": "authorId", "@required": true } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship.association": { "name": "author", "@cardinality": "one", "@objectRef": "User", "@fkField": "authorId" } }
+            { "identity.reference": { "name": "ref_author", "@fields": ["authorId"], "@references": "User" } },
+            { "relationship.association": { "name": "author", "@cardinality": "one", "@objectRef": "User" } }
           ]
         }
       }

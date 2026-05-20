@@ -1,28 +1,27 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "demo",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "User",
-          "subType": "entity",
           "children": [
-            { "field": { "name": "id", "subType": "long" } },
-            { "field": { "name": "email", "subType": "string", "@required": true } },
-            { "identity": { "name": "primary", "subType": "primary", "@fields": ["id"], "@generation": "increment" } }
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "email", "@required": true } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } }
           ]
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "Post",
-          "subType": "entity",
           "children": [
-            { "field": { "name": "id", "subType": "long" } },
-            { "field": { "name": "title", "subType": "string", "@required": true } },
-            { "field": { "name": "authorId", "subType": "long", "@required": true } },
-            { "identity": { "name": "primary", "subType": "primary", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship": { "name": "author", "subType": "association", "@cardinality": "one", "@objectRef": "User", "@fkField": "authorId" } }
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "title", "@required": true } },
+            { "field.long": { "name": "authorId", "@required": true } },
+            { "identity.primary":   { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
+            { "identity.reference": { "name": "ref_author", "@fields": ["authorId"], "@references": "User" } },
+            { "relationship.association": { "name": "author", "@cardinality": "one", "@objectRef": "User" } }
           ]
         }
       }

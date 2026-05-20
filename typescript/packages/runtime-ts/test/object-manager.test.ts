@@ -2,12 +2,13 @@ import { describe, test, expect, beforeEach } from "bun:test";
 import type { MetaData } from "@metaobjects/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP, TYPE_VIEW,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_BOOLEAN,
-         IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
+         IDENTITY_SUBTYPE_PRIMARY, IDENTITY_SUBTYPE_REFERENCE, OBJECT_SUBTYPE_ENTITY,
          RELATIONSHIP_SUBTYPE_ASSOCIATION,
          VIEW_SUBTYPE_TEXT,
          GENERATION_INCREMENT, CARDINALITY_ONE,
          IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
-         RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF, RELATIONSHIP_ATTR_FK_FIELD,
+         IDENTITY_REFERENCE_ATTR_REFERENCES,
+         RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF,
          FIELD_ATTR_REQUIRED } from "@metaobjects/metadata";
 import { meta } from "./_meta-build.js";
 import { ObjectManager } from "../src/object-manager.js";
@@ -261,10 +262,14 @@ function makePostWithAuthor(): MetaData {
   primary.setAttr(IDENTITY_ATTR_FIELDS, ["id"]);
   primary.setAttr(IDENTITY_ATTR_GENERATION, GENERATION_INCREMENT);
   post.addChild(primary);
+  // identity.reference establishes FK direction (Post.authorId → User).
+  const ref = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_REFERENCE), "ref_author");
+  ref.setAttr(IDENTITY_ATTR_FIELDS, ["authorId"]);
+  ref.setAttr(IDENTITY_REFERENCE_ATTR_REFERENCES, "User");
+  post.addChild(ref);
   const rel = meta(new TypeId(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION), "author");
   rel.setAttr(RELATIONSHIP_ATTR_CARDINALITY, CARDINALITY_ONE);
   rel.setAttr(RELATIONSHIP_ATTR_OBJECT_REF, "User");
-  rel.setAttr(RELATIONSHIP_ATTR_FK_FIELD, "authorId");
   post.addChild(rel);
   return post;
 }

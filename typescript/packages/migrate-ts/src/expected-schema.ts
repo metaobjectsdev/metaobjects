@@ -1,10 +1,12 @@
 import type { MetaData } from "@metaobjects/metadata";
 import {
-  TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP,
+  TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY,
   IDENTITY_ATTR_FIELDS,
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_UNIQUE,
   IDENTITY_SUBTYPE_PRIMARY,
+  IDENTITY_SUBTYPE_REFERENCE,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_UNIQUE,
@@ -22,10 +24,6 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
-  RELATIONSHIP_ATTR_CARDINALITY,
-  RELATIONSHIP_ATTR_OBJECT_REF,
-  RELATIONSHIP_ATTR_FK_FIELD,
-  CARDINALITY_ONE,
   resolveTableName, resolveColumnName,
 } from "@metaobjects/metadata";
 import type { SqlType } from "./sql-type.js";
@@ -178,27 +176,35 @@ function buildForeignKeys(
 ): FkDescriptor[] {
   const fks: FkDescriptor[] = [];
   for (const child of entity.ownChildren()) {
-    if (child.type !== TYPE_RELATIONSHIP) continue;
-    const cardinality = child.ownAttr(RELATIONSHIP_ATTR_CARDINALITY);
-    if (cardinality !== CARDINALITY_ONE) continue;
+    if (child.type !== TYPE_IDENTITY) continue;
+    if (child.subType !== IDENTITY_SUBTYPE_REFERENCE) continue;
 
-    const targetEntity = child.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF);
-    if (typeof targetEntity !== "string") continue;
+    const referencesRaw = child.ownAttr(IDENTITY_REFERENCE_ATTR_REFERENCES);
+    if (typeof referencesRaw !== "string") continue;
+    const dotIdx = referencesRaw.indexOf(".");
+    const targetEntity = dotIdx === -1 ? referencesRaw : referencesRaw.slice(0, dotIdx);
     const refTable = resolveTargetTable(targetEntity);
     if (!refTable) continue;
 
-    const fkFieldRaw = child.ownAttr(RELATIONSHIP_ATTR_FK_FIELD);
-    const fkFieldJsName = typeof fkFieldRaw === "string"
-      ? fkFieldRaw
-      : `${child.name}Id`;          // default: <relationshipName>Id
-    const fkField = findField(entity, fkFieldJsName);
-    const fkCol = fkField ? resolveColumnName(fkField) : toSnake(fkFieldJsName);
+    const fkFieldJsNames = readIdentityFields(child);
+    if (fkFieldJsNames.length === 0) continue;
+
+    const fkCols = fkFieldJsNames.map((jsName) => {
+      const fkField = findField(entity, jsName);
+      return fkField ? resolveColumnName(fkField) : toSnake(jsName);
+    });
+
+    // Target columns: explicit dotted suffix, else "id" (target's PK by convention).
+    const targetFieldList = dotIdx === -1
+      ? ["id"]
+      : referencesRaw.slice(dotIdx + 1).split(",").map((s) => s.trim()).filter(Boolean);
+    const refColumns = targetFieldList.length > 0 ? targetFieldList.map(toSnake) : ["id"];
 
     fks.push({
-      name: `${tableName}_${fkCol}_fk`,
-      columns: [fkCol],
+      name: `${tableName}_${fkCols[0]}_fk`,
+      columns: fkCols,
       refTable,
-      refColumns: ["id"],             // v0.1: assume PK is single "id" column on target
+      refColumns,
     });
   }
   return fks;

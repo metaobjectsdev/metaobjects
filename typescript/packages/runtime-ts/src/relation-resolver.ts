@@ -1,7 +1,10 @@
 import type { MetaData } from "@metaobjects/metadata";
 import {
-  TYPE_OBJECT, TYPE_RELATIONSHIP,
-  RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF, RELATIONSHIP_ATTR_FK_FIELD,
+  TYPE_OBJECT, TYPE_RELATIONSHIP, TYPE_IDENTITY,
+  IDENTITY_SUBTYPE_REFERENCE,
+  IDENTITY_ATTR_FIELDS,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
+  RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF,
   CARDINALITY_ONE, CARDINALITY_MANY,
 } from "@metaobjects/metadata";
 import { MetadataError } from "./errors.js";
@@ -22,10 +25,35 @@ export interface RelationDescriptor {
 }
 
 /**
+ * Find an identity.reference declared on `holder` whose @references targets `targetName`.
+ * Returns the FK field name (first field on the identity) or undefined.
+ */
+function findReferenceFkField(holder: MetaData, targetName: string): string | undefined {
+  for (const child of holder.ownChildren()) {
+    if (child.type !== TYPE_IDENTITY) continue;
+    if (child.subType !== IDENTITY_SUBTYPE_REFERENCE) continue;
+    const ref = child.ownAttr(IDENTITY_REFERENCE_ATTR_REFERENCES);
+    if (typeof ref !== "string") continue;
+    const dotIdx = ref.indexOf(".");
+    const entityName = dotIdx === -1 ? ref : ref.slice(0, dotIdx);
+    if (entityName !== targetName) continue;
+    const fields = child.ownAttr(IDENTITY_ATTR_FIELDS);
+    if (Array.isArray(fields) && fields.length > 0) return String(fields[0]);
+    if (typeof fields === "string") {
+      const first = fields.split(",")[0]?.trim();
+      if (first) return first;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Walks one-side (relationship children of `sourceEntity`) then many-side (relationship
  * children of any OTHER entity pointing to `sourceEntity`). The inverse-side relation name
  * is computed via the same convention as SP2's relation-resolver: variableNameFromEntity
  * (lower-camel + plural) of the declaring source.
+ *
+ * FK direction is sourced from identity.reference declarations, not relationship attrs.
  */
 export function resolveRelationDescriptor(
   sourceEntity: MetaData,
@@ -38,10 +66,16 @@ export function resolveRelationDescriptor(
     const card = child.ownAttr(RELATIONSHIP_ATTR_CARDINALITY);
     if (card !== CARDINALITY_ONE) continue;
     const targetEntityName = child.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-    const fkField = child.ownAttr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
-    if (!targetEntityName || !fkField) {
+    if (!targetEntityName) {
       throw new MetadataError(
-        `Relationship '${relationName}' on '${sourceEntity.name}' missing @objectRef or @fkField`,
+        `Relationship '${relationName}' on '${sourceEntity.name}' missing @objectRef`,
+        { entity: sourceEntity.name },
+      );
+    }
+    const fkField = findReferenceFkField(sourceEntity, targetEntityName);
+    if (!fkField) {
+      throw new MetadataError(
+        `Relationship '${relationName}' on '${sourceEntity.name}' has no identity.reference targeting '${targetEntityName}'`,
         { entity: sourceEntity.name },
       );
     }
@@ -71,10 +105,10 @@ export function resolveRelationDescriptor(
       if (targetEntityName !== sourceEntity.name) continue;
       const inverseName = inversePluralName(other.name);
       if (inverseName !== relationName) continue;
-      const fkField = child.ownAttr(RELATIONSHIP_ATTR_FK_FIELD) as string | undefined;
+      const fkField = findReferenceFkField(other, sourceEntity.name);
       if (!fkField) {
         throw new MetadataError(
-          `Inverse relationship for '${relationName}' on '${sourceEntity.name}' missing @fkField`,
+          `Inverse relationship for '${relationName}' on '${sourceEntity.name}': entity '${other.name}' has no identity.reference targeting '${sourceEntity.name}'`,
           { entity: sourceEntity.name },
         );
       }
