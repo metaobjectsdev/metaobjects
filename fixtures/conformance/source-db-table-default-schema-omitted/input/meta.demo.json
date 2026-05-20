@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "p3",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            { "source.dbTable": { "@name": "customers" } },
+            { "field.long":   { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}
