@@ -279,6 +279,7 @@ Preserve the following contracts exactly across all language ports:
 - Origin subtypes: `passthrough`, `aggregate`
 - Layout subtypes: `dataGrid`
 - Currency attrs: `@currency` (ISO 4217), `@locale` (BCP 47)
+- Schema attrs: `@schema` on `source[dbTable]` and `source[dbView]` (DB schema name; Postgres default `public`, SQLite rejects non-default values)
 
 **Wire format:**
 - Currency: integer minor units on the wire always. Float arithmetic for money is forbidden.
