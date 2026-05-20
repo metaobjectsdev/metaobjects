@@ -143,5 +143,6 @@ export {
   toSnakeCase, pluralize,
   resolveTableName, resolveColumnName,
   buildNameMap,
+  stripPackage,
 } from "./naming.js";
 export type { EntityNameMap } from "./naming.js";

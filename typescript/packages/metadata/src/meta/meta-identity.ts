@@ -13,6 +13,7 @@ import {
   IDENTITY_ATTR_UNIQUE,
   IDENTITY_REFERENCE_ATTR_REFERENCES,
 } from "../constants.js";
+import type { MetaRoot } from "./meta-root.js";
 
 /** Strongly-typed identity generation strategies. */
 export type IdentityGeneration = "increment" | "uuid" | "assigned";
@@ -106,5 +107,30 @@ export class MetaReferenceIdentity extends MetaIdentity {
       .split(",")
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
+  }
+
+  /**
+   * Resolve the target field on the referenced entity that this reference
+   * points at. Priority: explicit dotted-form `@references: "Entity.field"`
+   * override → target entity's primary identity field → "id" fallback.
+   *
+   * Returns undefined only if the target entity cannot be found in `root`.
+   * Centralizes the FK-target resolution rule used by projection view DDL,
+   * Drizzle schema emit, and migration schema comparison.
+   */
+  resolvedTargetPkField(root: MetaRoot): string | undefined {
+    const explicit = this.targetFields[0];
+    if (explicit !== undefined) return explicit;
+
+    const targetName = this.targetEntity;
+    if (targetName === undefined) return undefined;
+    const targetObj = root.findObject(targetName);
+    if (!targetObj) return undefined;
+
+    const primary = targetObj.primaryIdentity();
+    const fields = primary?.ownAttr(IDENTITY_ATTR_FIELDS) as string | string[] | undefined;
+    if (typeof fields === "string") return fields.split(",")[0]!.trim();
+    if (Array.isArray(fields) && fields.length > 0) return String(fields[0]).trim();
+    return "id";
   }
 }

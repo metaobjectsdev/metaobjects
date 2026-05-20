@@ -10,8 +10,9 @@ import {
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
   CARDINALITY_ONE,
+  stripPackage,
 } from "@metaobjects/metadata";
-import { variableNameFromEntity, stripPackage } from "./naming.js";
+import { variableNameFromEntity } from "./naming.js";
 import { isProjection } from "./projection/projection-detector.js";
 
 export interface RelationEntry {

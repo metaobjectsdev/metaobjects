@@ -8,7 +8,7 @@
 
 import type { MetaObject } from "./meta-object.js";
 import type { MetaReferenceIdentity } from "./meta-identity.js";
-import { PACKAGE_SEPARATOR } from "../constants.js";
+import { stripPackage } from "../naming.js";
 
 export interface ReferenceLookup {
   /** The entity whose identity.reference points at `other`. */
@@ -17,13 +17,6 @@ export interface ReferenceLookup {
   readonly other: MetaObject;
   /** The matching identity.reference declaration on `holder`. */
   readonly referenceIdentity: MetaReferenceIdentity;
-}
-
-/** Strip a package prefix ("pkg::Name" → "Name"). Returns the name unchanged if no separator. */
-function bareName(name: string | undefined): string {
-  if (!name) return "";
-  const idx = name.lastIndexOf(PACKAGE_SEPARATOR);
-  return idx === -1 ? name : name.slice(idx + PACKAGE_SEPARATOR.length);
 }
 
 /**
@@ -42,7 +35,7 @@ export function findReferenceBetween(
 ): ReferenceLookup | undefined {
   for (const [holder, other] of [[a, b], [b, a]] as const) {
     for (const ref of holder.referenceIdentities()) {
-      if (bareName(ref.targetEntity) === other.name) {
+      if (stripPackage(ref.targetEntity) === other.name) {
         return { holder, other, referenceIdentity: ref };
       }
     }

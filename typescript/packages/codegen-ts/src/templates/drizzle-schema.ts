@@ -137,14 +137,7 @@ function buildFkMapForEntity(obj: MetaObject, ctx: RenderContext): Map<string, F
     if (!targetName) continue;
     const targetObj = ctx.loadedRoot.findObject(targetName);
     if (!targetObj) continue;
-    const explicitPk = ref.targetFields[0];
-    const targetPkField = explicitPk ?? ((): string => {
-      const primary = targetObj.primaryIdentity();
-      const fields = primary?.ownAttr(IDENTITY_ATTR_FIELDS) as string | string[] | undefined;
-      if (typeof fields === "string") return fields.split(",")[0]!.trim();
-      if (Array.isArray(fields)) return String(fields[0]).trim();
-      return "id";
-    })();
+    const targetPkField = ref.resolvedTargetPkField(ctx.loadedRoot) ?? "id";
     result.set(fkField, {
       targetVarName: variableNameFromEntity(targetObj.name),
       targetEntityName: targetObj.name,

@@ -2,7 +2,21 @@ import type { MetaData } from "./meta/meta-data.js";
 import {
   TYPE_FIELD, TYPE_SOURCE, FIELD_ATTR_DB_COLUMN,
   SOURCE_SUBTYPE_DB_TABLE, SOURCE_DB_TABLE_ATTR_NAME,
+  PACKAGE_SEPARATOR,
 } from "./constants.js";
+
+/**
+ * Strip the package prefix from a metadata-qualified name
+ * (e.g. "pkg::Name" → "Name"). Returns the input unchanged if no
+ * package separator is present. Single canonical helper consumed by
+ * both find-reference (cross-entity lookup) and codegen-ts (FQN
+ * normalization in generated code).
+ */
+export function stripPackage(name: string | undefined): string {
+  if (!name) return "";
+  const idx = name.lastIndexOf(PACKAGE_SEPARATOR);
+  return idx === -1 ? name : name.slice(idx + PACKAGE_SEPARATOR.length);
+}
 
 export function toSnakeCase(s: string): string {
   return s

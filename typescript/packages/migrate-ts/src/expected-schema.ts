@@ -1,4 +1,4 @@
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData, MetaReferenceIdentity, MetaRoot } from "@metaobjects/metadata";
 import {
   TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY,
   IDENTITY_ATTR_FIELDS,
@@ -6,7 +6,6 @@ import {
   IDENTITY_ATTR_UNIQUE,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_REFERENCE,
-  IDENTITY_REFERENCE_ATTR_REFERENCES,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_UNIQUE,
@@ -58,7 +57,7 @@ export function buildExpectedSchema(
 
   // Pass 2: build full descriptors with FK resolution.
   const tables: TableDescriptor[] = entities.map(({ entity, tableName }) =>
-    buildTable(entity, tableName, resolveTargetTable),
+    buildTable(entity, tableName, resolveTargetTable, root as MetaRoot),
   );
 
   // Pass 3: dialect-specific SqlType normalization.
@@ -94,6 +93,7 @@ function buildTable(
   entity: MetaData,
   tableName: string,
   resolveTargetTable: (entityName: string) => string | undefined,
+  root: MetaRoot,
 ): TableDescriptor {
   let primaryKey: string[] = [];
   let pkIdentity: MetaData | undefined;
@@ -126,7 +126,7 @@ function buildTable(
     name: tableName,
     columns,
     indexes: buildSecondaryIndexes(entity, tableName),
-    foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable),
+    foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root),
     primaryKey,
   };
 }
@@ -173,16 +173,16 @@ function buildForeignKeys(
   entity: MetaData,
   tableName: string,
   resolveTargetTable: (entityName: string) => string | undefined,
+  root: MetaRoot,
 ): FkDescriptor[] {
   const fks: FkDescriptor[] = [];
   for (const child of entity.ownChildren()) {
     if (child.type !== TYPE_IDENTITY) continue;
     if (child.subType !== IDENTITY_SUBTYPE_REFERENCE) continue;
 
-    const referencesRaw = child.ownAttr(IDENTITY_REFERENCE_ATTR_REFERENCES);
-    if (typeof referencesRaw !== "string") continue;
-    const dotIdx = referencesRaw.indexOf(".");
-    const targetEntity = dotIdx === -1 ? referencesRaw : referencesRaw.slice(0, dotIdx);
+    const refChild = child as MetaReferenceIdentity;
+    const targetEntity = refChild.targetEntity;
+    if (targetEntity === undefined) continue;
     const refTable = resolveTargetTable(targetEntity);
     if (!refTable) continue;
 
@@ -194,11 +194,13 @@ function buildForeignKeys(
       return fkField ? resolveColumnName(fkField) : toSnake(jsName);
     });
 
-    // Target columns: explicit dotted suffix, else "id" (target's PK by convention).
-    const targetFieldList = dotIdx === -1
-      ? ["id"]
-      : referencesRaw.slice(dotIdx + 1).split(",").map((s) => s.trim()).filter(Boolean);
-    const refColumns = targetFieldList.length > 0 ? targetFieldList.map(toSnake) : ["id"];
+    // Target columns: prefer explicit multi-field dotted form, else delegate
+    // to MetaReferenceIdentity.resolvedTargetPkField (single field → target's
+    // primary identity → "id" fallback).
+    const explicitTargetFields = refChild.targetFields;
+    const refColumns = explicitTargetFields.length > 1
+      ? explicitTargetFields.map(toSnake)
+      : [toSnake(refChild.resolvedTargetPkField(root) ?? "id")];
 
     fks.push({
       name: `${tableName}_${fkCols[0]}_fk`,

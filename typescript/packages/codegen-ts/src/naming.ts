@@ -82,14 +82,3 @@ export function viewNameFromProjection(
 export function variableNameFromEntity(entityName: string): string {
   return pluralize(toCamelCase(entityName.charAt(0).toLowerCase() + entityName.slice(1)));
 }
-
-/**
- * Strip the package prefix from a metadata-qualified name (e.g.
- * "trainerWebsite::Program" → "Program"). Returns the input unchanged if no
- * package separator is present. Used when consuming @objectRef values that
- * carry the full FQN.
- */
-export function stripPackage(name: string): string {
-  const idx = name.lastIndexOf("::");
-  return idx >= 0 ? name.substring(idx + 2) : name;
-}

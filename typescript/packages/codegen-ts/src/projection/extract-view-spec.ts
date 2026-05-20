@@ -15,7 +15,6 @@ import {
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_CARDINALITY,
   CARDINALITY_ONE,
-  IDENTITY_ATTR_FIELDS,
   FIELD_ATTR_DB_COLUMN,
   findReferenceBetween,
   type AggregateFunction,
@@ -160,16 +159,7 @@ function buildJoinTree(
         const fkField = ref.referenceIdentity.fields[0];
         if (!fkField) break;
 
-        const pkOwner = ref.holder.name === currentObj.name ? target : (currentObj as MetaObject);
-        const primary = pkOwner.primaryIdentity();
-        const pkFields = primary?.ownAttr(IDENTITY_ATTR_FIELDS) as string | string[] | undefined;
-        const pkFieldDefault =
-          typeof pkFields === "string" ? pkFields.split(",")[0]!.trim()
-          : Array.isArray(pkFields)    ? String(pkFields[0]).trim()
-          :                              "id";
-
-        const targetFieldOverride = ref.referenceIdentity.targetFields[0];
-        const resolvedPkField = targetFieldOverride ?? pkFieldDefault;
+        const resolvedPkField = ref.referenceIdentity.resolvedTargetPkField(root) ?? "id";
 
         const referenceHolder: "source" | "target" =
           ref.holder.name === currentObj.name ? "source" : "target";
