@@ -6,6 +6,7 @@ import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
 import { applyStatus } from "./status.js";
 import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
+import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjects/metadata";
 
 export interface DiffArgs {
   expected: SchemaSnapshot;
@@ -45,7 +46,7 @@ const DEFAULT_IGNORE_TABLES: string[] = [
  * all tables to the same "public." prefix — harmless and preserves existing behavior.
  */
 function tableIdentity(table: { name: string; schema?: string }): string {
-  return (table.schema ?? "public") + "." + table.name;
+  return (table.schema ?? DEFAULT_DB_SCHEMA_POSTGRES) + "." + table.name;
 }
 
 /**

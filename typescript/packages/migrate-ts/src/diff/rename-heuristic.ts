@@ -4,6 +4,7 @@ import type {
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
+import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjects/metadata";
 
 const TABLE_RENAME_OVERLAP_THRESHOLD = 0.8;
 
@@ -100,7 +101,7 @@ export async function detectTableRenames(
  * Used by the table-rename heuristic to avoid pairing drops and creates across schemas.
  */
 function sameSchema(a: string | undefined, b: string | undefined): boolean {
-  return (a ?? "public") === (b ?? "public");
+  return (a ?? DEFAULT_DB_SCHEMA_POSTGRES) === (b ?? DEFAULT_DB_SCHEMA_POSTGRES);
 }
 
 function columnSetOverlap(a: ColumnDescriptor[], b: ColumnDescriptor[]): number {
@@ -143,7 +144,7 @@ export async function detectColumnRenames(
     column: ColumnDescriptor;
   };
   const keyOf = (table: string, schema: string | undefined): TableKey =>
-    (schema ?? "public") + "." + table;
+    (schema ?? DEFAULT_DB_SCHEMA_POSTGRES) + "." + table;
 
   const dropsByTable = new Map<TableKey, DropEntry[]>();
   const addsByTable = new Map<TableKey, AddEntry[]>();

@@ -3,6 +3,7 @@ import type {
   TableDescriptor, ColumnDefault, FkAction,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
+import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjects/metadata";
 
 const STAGE_ORDER: Record<Change["kind"], number> = {
   "create-table": 1,
@@ -169,7 +170,7 @@ function quote(ident: string): string {
  * default schema is `public`; undefined and "public" both mean "no prefix needed."
  */
 function quoteQualified(table: string, schema: string | undefined): string {
-  if (!schema || schema === "public") return quote(table);
+  if (!schema || schema === DEFAULT_DB_SCHEMA_POSTGRES) return quote(table);
   return quote(schema) + "." + quote(table);
 }
 
@@ -179,6 +180,6 @@ function quoteQualified(table: string, schema: string | undefined): string {
  * accepts the qualified form `"schema"."index"`.
  */
 function quoteIndexQualified(index: string, schema: string | undefined): string {
-  if (!schema || schema === "public") return quote(index);
+  if (!schema || schema === DEFAULT_DB_SCHEMA_POSTGRES) return quote(index);
   return quote(schema) + "." + quote(index);
 }
