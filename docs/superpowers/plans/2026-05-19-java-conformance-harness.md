@@ -1,3 +1,5 @@
+> **Superseded by `metaforge/docs/superpowers/plans/2026-05-19-java-h3b2-conformance-harness.md` (private). This file is the original draft and is no longer the source of truth.**
+
 # Java Conformance Harness Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
