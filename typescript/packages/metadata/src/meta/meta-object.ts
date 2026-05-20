@@ -17,10 +17,11 @@ import {
   OBJECT_SUBTYPE_VALUE,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
+  IDENTITY_SUBTYPE_REFERENCE,
   OBJECT_ATTR_JAVA_RUNTIME,
 } from "../constants.js";
 import type { MetaField } from "./meta-field.js";
-import type { MetaIdentity } from "./meta-identity.js";
+import type { MetaIdentity, MetaReferenceIdentity } from "./meta-identity.js";
 import type { MetaLayout } from "./meta-layout.js";
 import type { MetaRelationship } from "./meta-relationship.js";
 import type { MetaValidator } from "./meta-validator.js";
@@ -88,6 +89,15 @@ export class MetaObject extends MetaData {
   secondaryIdentities(): MetaIdentity[] {
     return this.cached("secondaryIdentities", () =>
       this.identities().filter((i) => i.subType === IDENTITY_SUBTYPE_SECONDARY),
+    );
+  }
+
+  /** Reference identities — fields on this entity that identify another entity. */
+  referenceIdentities(): MetaReferenceIdentity[] {
+    return this.cached("referenceIdentities", () =>
+      this.identities().filter((i): i is MetaReferenceIdentity =>
+        i.subType === IDENTITY_SUBTYPE_REFERENCE,
+      ),
     );
   }
 

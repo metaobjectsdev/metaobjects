@@ -24,6 +24,7 @@ import {
   VALIDATOR_SUBTYPE_ARRAY,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
+  IDENTITY_SUBTYPE_REFERENCE,
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
   // attr-subtype value-type constants
@@ -48,6 +49,7 @@ import {
   IDENTITY_ATTR_FIELDS,
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_UNIQUE,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
   GENERATION_VALUES,
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
@@ -278,6 +280,18 @@ const secondaryIdentityAttrs: AttrSchema[] = [
   },
 ];
 
+const referenceIdentityAttrs: AttrSchema[] = [
+  { ...identityFieldsAttr },
+  {
+    name: IDENTITY_REFERENCE_ATTR_REFERENCES,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: true,
+    description:
+      "Target of the reference. Bare entity name (e.g. 'Program') resolves to that entity's primary identity. " +
+      "Dotted forms ('Program.id' or 'Program.fieldA,fieldB') target an explicit field set on the entity.",
+  },
+];
+
 /** Attrs on origin.passthrough — @from is required. */
 const passthroughOriginAttrs: AttrSchema[] = [
   {
@@ -390,6 +404,7 @@ export const ORIGIN_ATTRS_MAP = new Map<string, AttrSchema[]>([
 export const IDENTITY_ATTRS_MAP = new Map<string, AttrSchema[]>([
   [IDENTITY_SUBTYPE_PRIMARY, [...primaryIdentityAttrs]],
   [IDENTITY_SUBTYPE_SECONDARY, [...secondaryIdentityAttrs]],
+  [IDENTITY_SUBTYPE_REFERENCE, [...referenceIdentityAttrs]],
 ]);
 
 /** Attrs per validator subtype. Required uses none; regex adds @pattern. */

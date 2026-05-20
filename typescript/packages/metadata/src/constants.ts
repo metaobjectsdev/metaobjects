@@ -233,10 +233,12 @@ export const VIEW_CURRENCY_ATTR_LOCALE_DEFAULT = "en-US";
 
 export const IDENTITY_SUBTYPE_PRIMARY = "primary";
 export const IDENTITY_SUBTYPE_SECONDARY = "secondary";
+export const IDENTITY_SUBTYPE_REFERENCE = "reference";
 
 export const IDENTITY_SUBTYPES = [
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
+  IDENTITY_SUBTYPE_REFERENCE,
 ] as const;
 export type IdentitySubType = (typeof IDENTITY_SUBTYPES)[number];
 
@@ -331,6 +333,8 @@ export const IDENTITY_ATTR_FIELDS = "fields";
 export const IDENTITY_ATTR_GENERATION = "generation";
 /** On secondary identities: true → uniqueIndex; false/absent → index. Defaults to true for back-compat. */
 export const IDENTITY_ATTR_UNIQUE = "unique";
+/** Identity-reference attr: target entity (bare or dotted `Entity.field` / `Entity.fA,fB`). */
+export const IDENTITY_REFERENCE_ATTR_REFERENCES = "references";
 
 // Relationship attrs
 export const RELATIONSHIP_ATTR_CARDINALITY = "cardinality";

@@ -30,6 +30,7 @@ import {
   MetaIdentity,
   MetaPrimaryIdentity,
   MetaSecondaryIdentity,
+  MetaReferenceIdentity,
 } from "./meta/meta-identity.js";
 import { MetaRelationship } from "./meta/meta-relationship.js";
 import { MetaLayout } from "./meta/meta-layout.js";
@@ -99,6 +100,7 @@ import {
   IDENTITY_SUBTYPES,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
+  IDENTITY_SUBTYPE_REFERENCE,
   RELATIONSHIP_SUBTYPES,
   LAYOUT_SUBTYPES,
   LAYOUT_SUBTYPE_DATA_GRID,
@@ -207,6 +209,7 @@ const VALIDATOR_CLASS_MAP = new Map<string, NodeConstructor>([
 const IDENTITY_CLASS_MAP = new Map<string, NodeConstructor>([
   [IDENTITY_SUBTYPE_PRIMARY, MetaPrimaryIdentity],
   [IDENTITY_SUBTYPE_SECONDARY, MetaSecondaryIdentity],
+  [IDENTITY_SUBTYPE_REFERENCE, MetaReferenceIdentity],
 ]);
 
 /** Map from origin subtype string → concrete node constructor. */
