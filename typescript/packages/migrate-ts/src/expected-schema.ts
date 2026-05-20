@@ -80,6 +80,17 @@ export function buildExpectedSchema(
     }
   }
 
+  // Dialect validation: SQLite has no schema concept; reject any non-default @schema.
+  if (opts?.dialect === "sqlite") {
+    for (const table of tables) {
+      if (table.schema !== undefined) {
+        throw new Error(
+          `sqlite does not support DB schemas; entity-table "${table.name}" declares @schema "${table.schema}"`,
+        );
+      }
+    }
+  }
+
   return { tables, views: [] };
 }
 
