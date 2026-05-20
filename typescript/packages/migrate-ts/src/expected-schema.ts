@@ -26,7 +26,7 @@ import {
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_FK_FIELD,
   CARDINALITY_ONE,
-  resolveTableName, resolveColumnName,
+  resolveTableName, resolveColumnName, resolveTableSchema,
 } from "@metaobjects/metadata";
 import type { SqlType } from "./sql-type.js";
 import type {
@@ -53,15 +53,23 @@ export function buildExpectedSchema(
   const entities: { entity: MetaData; tableName: string }[] = [];
   for (const child of root.ownChildren()) {
     if (child.type !== TYPE_OBJECT) continue;
-    entities.push({ entity: child, tableName: resolveTableName(child) });
+    entities.push({
+      entity: child,
+      tableName: resolveTableName(child),
+    });
   }
   const entityToTable = new Map(entities.map((e) => [e.entity.name, e.tableName]));
   const resolveTargetTable = (entityName: string) => entityToTable.get(entityName);
 
   // Pass 2: build full descriptors with FK resolution.
-  const tables: TableDescriptor[] = entities.map(({ entity, tableName }) =>
-    buildTable(entity, tableName, resolveTargetTable),
-  );
+  // Schema is resolved here (not stored in Pass 1) to avoid exactOptionalPropertyTypes
+  // issues with `string | undefined` vs `schema?: string`.
+  const tables: TableDescriptor[] = entities.map(({ entity, tableName }) => {
+    const t = buildTable(entity, tableName, resolveTargetTable);
+    const schema = resolveTableSchema(entity);
+    if (schema !== undefined) t.schema = schema;
+    return t;
+  });
 
   // Pass 3: dialect-specific SqlType normalization.
   if (opts?.dialect === "sqlite") {
