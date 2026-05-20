@@ -474,6 +474,14 @@ export const SOURCE_DB_VIEW_ATTR_NAME  = "name";
  *  in generic source accessors instead of the subtype-specific aliases above. */
 export const SOURCE_ATTR_NAME          = "name";
 
+/** Optional DB schema attr on source[dbTable] / source[dbView]. Postgres uses
+ *  this to namespace tables/views. SQLite has no schema concept and rejects
+ *  any non-default value. Default for Postgres: "public". */
+export const SOURCE_ATTR_SCHEMA = "schema";
+
+/** Default Postgres schema when @schema is omitted from a source. */
+export const DEFAULT_DB_SCHEMA_POSTGRES = "public";
+
 // ---------------------------------------------------------------------------
 // Origin type — field-level provenance (Project E).
 //
