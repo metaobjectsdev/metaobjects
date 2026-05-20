@@ -22,6 +22,12 @@ export interface SnapshotMeta {
 
 export interface TableDescriptor {
   name: string;                      // resolved db name (snake_case, plural)
+  /**
+   * DB schema this table lives in. Undefined for SQLite (no schema concept).
+   * For Postgres, undefined is normalized to "public" at SnapshotMeta boundaries;
+   * the diff and emit layers treat undefined === "public" as equivalent.
+   */
+  schema?: string;
   columns: ColumnDescriptor[];
   indexes: IndexDescriptor[];
   foreignKeys: FkDescriptor[];
@@ -60,6 +66,8 @@ export type FkAction = "cascade" | "set-null" | "restrict" | "no-action";
 
 export interface ViewDescriptor {
   name: string;
+  /** Same semantics as TableDescriptor.schema. */
+  schema?: string;
   // structural fields deferred to v0.3
 }
 
