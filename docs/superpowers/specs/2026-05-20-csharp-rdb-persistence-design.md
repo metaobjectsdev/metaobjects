@@ -1,7 +1,8 @@
-# C# RDB Persistence — Design (in progress, paused for csharp-adopter context)
+# C# RDB Persistence — Design (SUPERSEDED)
 
-**Status:** BRAINSTORM IN PROGRESS. Paused 2026-05-20.
-**Resumption context:** Continue on a session with direct access to the csharp-adopter C# codebase. The resumption sequence is documented at the bottom of this file.
+**Status:** SUPERSEDED 2026-05-20.
+**Successor:** `docs/superpowers/specs/2026-05-20-csharp-tool-and-metamodel-extensions-design.md`.
+**Why:** This brainstorm was paused pending direct access to the C# adopter codebase. The follow-up session validated the adopter context and reshaped the design substantially — single-tenant (no overlay vocabulary needed), reverse-engineering bootstrap (not greenfield), full EF Migrations replacement (not "EF coexistence first"), Postgres-only (not SqlServer-first as originally assumed). The successor spec replaces this one in full. Kept as historical record.
 
 ---
 
