@@ -20,20 +20,94 @@ TypeScript reference implementation is at v0.3 — Projects D–G shipped end-to
 
 Cross-language conformance fixtures live at `fixtures/conformance/` (45 fixtures + a `CAPABILITIES.json` manifest). See `spec/roadmap.md` for current + planned work.
 
-## Language, runtime, conventions
+## Monorepo layout
 
-- **Language**: this repo contains all language implementations under `typescript/`, `java/`, `python/`, `csharp/` directories.
+This repo holds all implementations of the standard, organized by deployment target → language/platform → framework integration:
+
+```
+metaobjects/
+├── spec/                          # canonical metamodel docs (target-agnostic)
+├── fixtures/conformance/          # cross-language test fixtures
+│
+├── server/                        # runs on a server
+│   ├── typescript/   java/   python/   csharp/
+│
+└── client/                        # runs on an end-user device
+    ├── web/                       # browser (TS-only — the browser is TS-native)
+    └── ios/  android/             # future
+```
+
+**TypeScript plays two distinct roles**, and the layout reflects that:
+- **Server-side TS** is a peer port to Java/Python/C# at `server/typescript/`.
+- **Universal web client TS** at `client/web/` is consumed by ALL backends (a Java backend serving React still uses the TS client packages).
+
+**Where does a new package go?**
+1. Server-side or client-side? → top-level dir.
+2. What language/platform? → second-level dir.
+3. What framework integration? → package name at the third level.
+
+Worked examples: a Drizzle TS-server integration → `server/typescript/packages/...`; an Angular browser integration → `client/web/packages/angular/`; future iOS SwiftUI → `client/ios/packages/swiftui/`.
+
+## TS package layout
+
+**Server-side** (`server/typescript/packages/`):
+- `metadata/` (`@metaobjects/metadata`) — metamodel loader, types, constants
+- `codegen-ts/` (`@metaobjects/codegen-ts`) — TS codegen engine
+- `runtime-ts/` (`@metaobjects/runtime-ts`) — Node-side runtime (Kysely, Drizzle, Fastify helpers)
+- `migrate-ts/` (`@metaobjects/migrate-ts`) — migration tooling
+- `sdk/` (`@metaobjects/sdk`) — workspace memory, path helpers
+- `cli/` (`@metaobjects/cli`, binary `meta`) — CLI commands: `init`, `gen`, `migrate`
+
+**Client-side / universal web** (`client/web/packages/`):
+- `runtime-web/` (`@metaobjects/runtime-web`) — framework-agnostic browser core (EntityFetcher contract, JSON shapes).
+- `tanstack/` (`@metaobjects/tanstack`) — TanStack React integration: codegen + runtime + dynamic.
+- Future: `angular/`, `svelte/`, `react-native/`.
+
+### Framework integration package anatomy
+
+Each framework integration (`tanstack`, future `angular`, etc.) is a **first-class package** combining codegen + runtime + future dynamic metadata-driven capabilities. They are NOT just code generators — naming with a `codegen-` prefix would lock them into one role.
+
+Multi-entry layout:
+
+```
+client/web/packages/tanstack/
+├── package.json                       # "name": "@metaobjects/tanstack"
+└── src/
+    ├── codegen/      # generators imported in metaobjects.config.ts
+    ├── runtime/      # providers, hooks, helpers imported in app code
+    ├── dynamic/      # future — metadata-driven runtime widgets
+    └── index.ts      # re-exports the stable runtime API
+```
+
+`package.json` exports map:
+
+```jsonc
+{
+  "exports": {
+    ".":         "./dist/index.js",
+    "./codegen": "./dist/codegen/index.js",
+    "./runtime": "./dist/runtime/index.js",
+    "./dynamic": "./dist/dynamic/index.js"
+  }
+}
+```
+
+Consumption:
+
+```ts
+// metaobjects.config.ts (server-only deps stay out of browser bundles)
+import { tanstackQuery, tanstackGrid } from "@metaobjects/tanstack/codegen";
+
+// React app
+import { EntityFetcherProvider, EntityGrid } from "@metaobjects/tanstack/runtime";
+```
+
+Mirrors `drizzle-orm` (multi-dialect entry points), `@tanstack/react-table` (state + helpers co-located), Apollo (client + cache + links).
+
+## Other conventions
+
 - **TS runtime**: Bun-first for development (zero-config TS, native test runner). Node-compatible for distribution; users install via npm/pnpm/bun without lock-in to Bun's runtime.
 - **Module system**: ESM only. No CommonJS, no transpile step required.
-- **TS package layout**: `typescript/packages/` — Bun/pnpm workspace.
-  - `metadata/` (`@metaobjects/metadata`) — metamodel loader, types, constants
-  - `codegen-ts/` (`@metaobjects/codegen-ts`) — TS codegen engine
-  - `codegen-ts-tanstack/` (`@metaobjects/codegen-ts-tanstack`) — TanStack Query + Table generators
-  - `runtime-ts/` (`@metaobjects/runtime-ts`) — Node-side runtime (Kysely, Drizzle, Fastify helpers)
-  - `runtime-ts-client/` (`@metaobjects/runtime-ts-client`) — browser-safe runtime (hooks, cell renderers, currency)
-  - `migrate-ts/` (`@metaobjects/migrate-ts`) — migration tooling
-  - `sdk/` (`@metaobjects/sdk`) — workspace memory, path helpers
-  - `cli/` (`@metaobjects/cli`, binary `meta`) — CLI commands: `init`, `gen`, `migrate`
 - **Storage format**: JSON files in `metaobjects/meta.<concept>.json` at project root. `.metaobjects/.gen-state/` (gitignored) holds the codegen merge base.
 - **Codegen substrate**: ts-poet for greenfield emit, ts-morph for in-place edits, Biome for format pass, `git merge-file --diff3` for hand-edit-preserving regen.
 - **Runtime substrate**: Kysely for TS (user-provided connection, async-only).
