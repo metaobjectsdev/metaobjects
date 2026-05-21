@@ -1,6 +1,7 @@
 {
   "name": "@metaobjects/cli",
   "version": "0.5.0",
+  "description": "CLI for MetaObjects: scaffold, codegen, migrate, and drift-detection commands.",
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./src/index.ts",
@@ -8,6 +9,7 @@
     "meta": "./bin/meta.ts"
   },
   "publishConfig": {
+    "access": "public",
     "bin": {
       "meta": "./dist/bin/meta.js"
     }
@@ -19,11 +21,21 @@
       "default": "./dist/src/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": ["dist", "src", "README.md"],
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p tsconfig.typecheck.json"
   },
+  "license": "Apache-2.0",
+  "author": "Doug Mealing <doug@dougmealing.com>",
+  "homepage": "https://metaobjects.dev",
+  "bugs": { "url": "https://github.com/metaobjectsdev/metaobjects/issues" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metaobjectsdev/metaobjects.git",
+    "directory": "server/typescript/packages/cli"
+  },
+  "keywords": ["metaobjects", "cli", "scaffold", "codegen", "drift-detection"],
   "dependencies": {
     "@metaobjects/sdk": "workspace:*",
     "@metaobjects/metadata": "workspace:*",

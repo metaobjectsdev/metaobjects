@@ -1,6 +1,7 @@
 {
   "name": "@metaobjects/metadata",
   "version": "0.5.0",
+  "description": "Metamodel loader, types, and constants for the MetaObjects standard.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./src/index.ts",
@@ -16,12 +17,23 @@
       "default": "./dist/core/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": ["dist", "src", "README.md"],
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p tsconfig.typecheck.json",
     "conformance:mutation": "stryker run"
   },
+  "license": "Apache-2.0",
+  "author": "Doug Mealing <doug@dougmealing.com>",
+  "homepage": "https://metaobjects.dev",
+  "bugs": { "url": "https://github.com/metaobjectsdev/metaobjects/issues" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metaobjectsdev/metaobjects.git",
+    "directory": "server/typescript/packages/metadata"
+  },
+  "keywords": ["metaobjects", "metadata", "schema", "loader", "typescript"],
+  "publishConfig": { "access": "public" },
   "dependencies": {
     "yaml": "^2.9.0"
   },

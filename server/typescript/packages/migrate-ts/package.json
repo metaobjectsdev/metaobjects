@@ -1,6 +1,7 @@
 {
   "name": "@metaobjects/migrate-ts",
   "version": "0.5.0",
+  "description": "Schema migration tooling for MetaObjects: diff metadata vs DB and emit SQL for Postgres and SQLite.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./src/index.ts",
@@ -11,11 +12,22 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": ["dist", "src", "README.md"],
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p tsconfig.typecheck.json"
   },
+  "license": "Apache-2.0",
+  "author": "Doug Mealing <doug@dougmealing.com>",
+  "homepage": "https://metaobjects.dev",
+  "bugs": { "url": "https://github.com/metaobjectsdev/metaobjects/issues" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metaobjectsdev/metaobjects.git",
+    "directory": "server/typescript/packages/migrate-ts"
+  },
+  "keywords": ["metaobjects", "migrate", "postgres", "sqlite", "schema-diff"],
+  "publishConfig": { "access": "public" },
   "dependencies": {
     "@metaobjects/metadata": "workspace:*"
   },
