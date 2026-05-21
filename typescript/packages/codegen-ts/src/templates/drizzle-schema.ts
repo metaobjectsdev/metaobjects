@@ -130,6 +130,10 @@ interface FkInfo {
 function buildFkMapForEntity(obj: MetaObject, ctx: RenderContext): Map<string, FkInfo> {
   const result = new Map<string, FkInfo>();
   for (const ref of obj.referenceIdentities()) {
+    // @enforce: false → logical-only reference. Skip the .references() emission;
+    // the column stays plain. Drizzle's relations() block (driven by
+    // relation-resolver) still includes the relationship for query navigation.
+    if (!ref.enforce) continue;
     const fkFieldNames = ref.fields;
     if (fkFieldNames.length === 0) continue;
     const fkField = fkFieldNames[0]!;

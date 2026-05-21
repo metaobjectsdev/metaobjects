@@ -309,4 +309,38 @@ describe("renderDrizzleSchema — secondary identity", () => {
     // Index callbacks use the (table) => ... param to avoid TS self-init issues.
     expect(out).toMatch(/\.on\(table\.firstName,\s*table\.lastName\)/);
   });
+
+  test("soft identity.reference (@enforce: false) omits .references()", () => {
+    const user = makeUser();
+    const post = makePost();
+    // FK field
+    const authorId = metaField(FIELD_SUBTYPE_LONG, "authorId");
+    authorId.setAttr("required", true);
+    post.addChild(authorId);
+    // identity.reference with @enforce: false → logical-only.
+    const ref = meta(new TypeId(TYPE_IDENTITY, "reference"), "ref_author");
+    ref.setAttr("fields", ["authorId"]);
+    ref.setAttr("references", "User");
+    ref.setAttr("enforce", false);
+    post.addChild(ref);
+    // relationship child stays (relations() block still emits it for query nav).
+    const rel = meta(new TypeId(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION), "author");
+    rel.setAttr("cardinality", "one");
+    rel.setAttr("objectRef", "User");
+    post.addChild(rel);
+
+    const root = makeRoot([user, post]);
+    const ctx = makeRenderContext({
+      dialect: "sqlite",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+    const out = renderDrizzleSchema(root.findObject("Post")!, ctx).toString();
+    // The FK column itself is still declared, but no .references() chain.
+    expect(out).toContain('integer("author_id")');
+    expect(out).not.toContain(".references(");
+  });
 });

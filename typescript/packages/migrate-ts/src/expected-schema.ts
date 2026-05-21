@@ -187,6 +187,8 @@ function buildForeignKeys(
 ): FkDescriptor[] {
   const fks: FkDescriptor[] = [];
   for (const refChild of entity.referenceIdentities()) {
+    // @enforce: false → logical-only reference; not a physical FK constraint.
+    if (!refChild.enforce) continue;
     const targetEntity = refChild.targetEntity;
     if (targetEntity === undefined) continue;
     const refTable = resolveTargetTable(targetEntity);

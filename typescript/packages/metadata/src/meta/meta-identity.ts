@@ -12,6 +12,7 @@ import {
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_UNIQUE,
   IDENTITY_REFERENCE_ATTR_REFERENCES,
+  IDENTITY_REFERENCE_ATTR_ENFORCE,
 } from "../constants.js";
 import type { MetaRoot } from "./meta-root.js";
 
@@ -90,6 +91,17 @@ export class MetaReferenceIdentity extends MetaIdentity {
     if (raw === undefined) return undefined;
     const dotIdx = raw.indexOf(".");
     return dotIdx === -1 ? raw : raw.slice(0, dotIdx);
+  }
+
+  /**
+   * Whether the reference is physically enforced by the backend.
+   * Default true (hard FK constraint emitted). Explicit `@enforce: false`
+   * marks the reference as logical-only — drizzle-schema skips `.references()`
+   * and migrate-ts's expected schema omits the FK descriptor. relations()
+   * block and projection JOIN inference are unaffected.
+   */
+  get enforce(): boolean {
+    return this.ownAttr(IDENTITY_REFERENCE_ATTR_ENFORCE) !== false;
   }
 
   /**

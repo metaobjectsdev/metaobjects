@@ -335,6 +335,8 @@ export const IDENTITY_ATTR_GENERATION = "generation";
 export const IDENTITY_ATTR_UNIQUE = "unique";
 /** Identity-reference attr: target entity (bare or dotted `Entity.field` / `Entity.fA,fB`). */
 export const IDENTITY_REFERENCE_ATTR_REFERENCES = "references";
+/** Identity-reference attr: physical-enforcement flag. Default true → hard FK constraint; false → logical-only reference. */
+export const IDENTITY_REFERENCE_ATTR_ENFORCE = "enforce";
 
 // Relationship attrs
 export const RELATIONSHIP_ATTR_CARDINALITY = "cardinality";

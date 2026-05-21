@@ -131,3 +131,89 @@ describe("buildExpectedSchema — indexes + FKs", () => {
     expect(programIdCol?.nullable).toBe(false);
   });
 });
+
+describe("buildExpectedSchema — identity.reference @enforce", () => {
+  async function loadInline(children: unknown[]) {
+    const json = JSON.stringify({ "metadata.root": { package: "test", children } });
+    const result = await new MetaDataLoader().load([new InMemorySource(json)]);
+    if (result.errors.length > 0) {
+      throw new Error(`Loader errors:\n${result.errors.map((e) => e.message).join("\n")}`);
+    }
+    return result.root;
+  }
+
+  test("hard reference produces an FkDescriptor", async () => {
+    const root = await loadInline([
+      {
+        "object.entity": {
+          name: "Program",
+          children: [
+            { "source.dbTable": { "@name": "programs" } },
+            { "field.long": { name: "id" } },
+            { "identity.primary": { "@fields": "id" } },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "Purchase",
+          children: [
+            { "source.dbTable": { "@name": "purchases" } },
+            { "field.long":   { name: "id" } },
+            { "field.long":   { name: "programId" } },
+            { "identity.primary":   { "@fields": "id" } },
+            { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
+          ],
+        },
+      },
+    ]);
+    const snapshot = buildExpectedSchema(root);
+    const purchases = snapshot.tables.find((t) => t.name === "purchases");
+    expect(purchases?.foreignKeys.length).toBe(1);
+    expect(purchases?.foreignKeys[0]).toMatchObject({
+      columns: ["program_id"],
+      refTable: "programs",
+    });
+  });
+
+  test("soft reference (@enforce: false) omits the FkDescriptor", async () => {
+    const root = await loadInline([
+      {
+        "object.entity": {
+          name: "Subscriber",
+          children: [
+            { "source.dbTable": { "@name": "subscribers" } },
+            { "field.long":   { name: "id" } },
+            { "field.string": { name: "email" } },
+            { "identity.primary":   { "@fields": "id" } },
+            { "identity.secondary": { "@fields": "email" } },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "Purchase",
+          children: [
+            { "source.dbTable": { "@name": "purchases" } },
+            { "field.long":   { name: "id" } },
+            { "field.string": { name: "customerEmail" } },
+            { "identity.primary":   { "@fields": "id" } },
+            {
+              "identity.reference": {
+                name: "ref_subscriber",
+                "@fields": "customerEmail",
+                "@references": "Subscriber.email",
+                "@enforce": false,
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    const snapshot = buildExpectedSchema(root);
+    const purchases = snapshot.tables.find((t) => t.name === "purchases");
+    expect(purchases?.foreignKeys.length).toBe(0);
+    // The FK column itself is still present.
+    expect(purchases?.columns.find((c) => c.name === "customer_email")).toBeDefined();
+  });
+});

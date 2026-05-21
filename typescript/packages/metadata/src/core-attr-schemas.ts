@@ -50,6 +50,7 @@ import {
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_UNIQUE,
   IDENTITY_REFERENCE_ATTR_REFERENCES,
+  IDENTITY_REFERENCE_ATTR_ENFORCE,
   GENERATION_VALUES,
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
@@ -273,6 +274,15 @@ const referenceIdentityAttrs: AttrSchema[] = [
     description:
       "Target of the reference. Bare entity name (e.g. 'Program') resolves to that entity's primary identity. " +
       "Dotted forms ('Program.id' or 'Program.fieldA,fieldB') target an explicit field set on the entity.",
+  },
+  {
+    name: IDENTITY_REFERENCE_ATTR_ENFORCE,
+    valueType: ATTR_SUBTYPE_BOOLEAN,
+    required: false,
+    description:
+      "When true (default), the backend physically enforces the reference (SQL FK constraint, " +
+      "document validation rule, graph edge guarantee). Set false to declare a logical reference " +
+      "for navigation/typing/codegen only — the value may dangle at the backend level.",
   },
 ];
 
