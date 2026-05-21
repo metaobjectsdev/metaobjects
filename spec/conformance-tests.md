@@ -34,7 +34,7 @@ Every fixture is a directory under `metaobjects/fixtures/conformance/`. Each fix
 ```
 
 **Exactly one** of `expected.json` or `expected-errors.json` must be present:
-- `expected.json` → the Loader is expected to succeed (no errors). The canonical serialized output of the loaded root MUST deep-equal this file.
+- `expected.json` → the Loader is expected to succeed (no errors). The canonical serialized output of the loaded root MUST deep-equal this file. The canonical shape is the **fused-key form** documented in [`wire-format.md`](wire-format.md) — every node is `{ "<type>.<subType>": <body> }`.
 - `expected-errors.json` → the Loader is expected to emit errors. The set of error messages MUST equal this list (compared as sorted sets — order-independent).
 
 `expected-warnings.json` is optional. When present, the set of warnings MUST equal this list. When absent on a happy-path fixture, warnings are asserted empty.
@@ -51,26 +51,37 @@ Kebab-case throughout. No leading numbers. Names persist forever across all lang
 
 The conformance test depends on **deterministic** serialization: the same metamodel must produce the same bytes in every language.
 
-### Key ordering within each node
+### Node encoding
+
+Every node is a one-key map of the form `{ "<type>.<subType>": <body> }`. The wrapper key
+fuses type and subType — there is **no separate `subType` body key** in the canonical form.
+Examples: `metadata.root`, `object.entity`, `field.long`, `identity.primary`,
+`source.dbView`, `origin.aggregate`.
+
+### Key ordering within each node body
 
 ```
-1. package          (if non-empty)
-2. name             (if non-empty)
-3. subType          (always — being explicit is never wrong)
-4. extends          (if set)
-5. isAbstract       (if true)
-6. @isArray         (if true — emitted with @ prefix, attr-like)
-7. inline @-attrs   (alphabetical order)
+1. name             (when non-empty)
+2. package          (when set)
+3. extends          (when set)
+4. abstract         (when true)
+5. overlay          (when true)
+6. isArray          (when true — structural, NOT an @-attr)
+7. @-prefixed attrs (alphabetical order within this section)
 8. children         (declaration order — NOT alphabetized)
 ```
+
+These are the **only** reserved structural keys. Everything else inside a body is either an
+`@`-prefixed attribute or invalid.
 
 ### Other rules
 
 - **2-space indent**. JSON output is pretty-printed.
 - **Trailing newline**. Output ends with exactly one `\n`.
-- **No implicit defaults**. If the parser would infer a value (e.g. `subType: "base"`), and the input metadata omits it, the canonical output ALSO omits it — UNLESS the field is `subType` itself, which is always emitted (because being explicit is never wrong).
-- **Attrs in alphabetical order**. Inline `@-attrs` within a single node are sorted alphabetically. Structural keys (`name`, `subType`, etc.) keep their documented order from the table above.
+- **No implicit defaults**. If the parser would infer a value, and the input metadata omits it, the canonical output ALSO omits it. (Subtype is fused into the wrapper key and is always present there.)
+- **`@`-attrs in alphabetical order**. Inline `@`-attrs within a single node are sorted alphabetically. Structural keys keep their documented order from the table above.
 - **Children in declaration order**. The order of children inside `children: [...]` reflects authoring order, not alphabetical order. Overlay merge appends; it does NOT re-sort.
+- **`@fields` normalization**. Authoring may write `"@fields": "id"` (scalar); canonical form is always the array form `"@fields": ["id"]`.
 
 ### Errors and warnings as message lists
 
@@ -102,9 +113,21 @@ for each subdirectory of fixtures/conformance/:
         assert result.warnings is empty
 ```
 
-## Java conformance runner (planned, H3)
+## C# conformance runner
 
-Same algorithm. Will live at `java/<module>/src/test/java/com/metaobjects/ConformanceTest.java`. Same fixtures, same canonical output. If the Java implementation produces a different canonical string for any fixture, that's a bug in Java's Loader or serializer — not in the fixture.
+Lives at `csharp/MetaObjects.Conformance.Tests/` and runs via `dotnet test`. Same fixture
+directory, same canonical output. Auto-discovers fixtures from
+`metaobjects/fixtures/conformance/` via `FixtureDiscovery`. If the C# implementation
+produces a different canonical string for any fixture, that's a bug in C#'s Loader or
+serializer — not in the fixture.
+
+## Java conformance runner (in progress, H3b)
+
+Same algorithm. H3a (loader-restructure) shipped 2026-05-19; H3b (conformance harness) is
+in progress. Will live at `java/<module>/src/test/java/com/metaobjects/ConformanceTest.java`.
+Same fixtures, same canonical output. If the Java implementation produces a different
+canonical string for any fixture, that's a bug in Java's Loader or serializer — not in the
+fixture.
 
 ## Adding a new fixture
 

@@ -19,7 +19,7 @@ import { kyselyDriver } from "@metaobjects/runtime-ts/drivers";
 import { Kysely } from "kysely";
 
 const loader = new FileMetaDataLoader();
-const { root } = await loader.loadFiles([".meta/memory/object/Post.json"]);
+const { root } = await loader.loadFiles(["metaobjects/meta.blog.json"]);
 
 const om = new ObjectManager({
   metadata: root,
@@ -58,7 +58,7 @@ const reloaded = await om.load(ref);
 
 ## Drivers
 
-Two drivers ship in v0.1:
+Two drivers ship today:
 
 - **`kyselyDriver({ db, dialect })`** — real DBs (SQLite via libsql/Turso, Postgres via node-postgres or Neon). User provides a Kysely instance.
 - **`inMemoryDriver({ seed?, pkFields? })`** — Map-backed; useful for unit tests, prototyping, and MCP tool sandboxing where data shouldn't persist.
@@ -85,13 +85,13 @@ type Filter =
   | { $and: [...] };                              // explicit AND
 ```
 
-`$or` and nested operators are deferred to v0.1.x.
+`$or` and nested operators are not yet shipped.
 
 ## Driver compatibility note
 
 Generated CRUD uses Kysely's `.returning()` API. Works on:
 
-- libsql / Turso (the trainer website's stack)
+- libsql / Turso
 - node-postgres (`pg`)
 - @neondatabase/serverless
 

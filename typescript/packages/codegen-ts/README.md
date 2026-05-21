@@ -16,7 +16,7 @@ import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { generate } from "@metaobjects/codegen-ts";
 
 const loader = new FileMetaDataLoader();
-const { root } = await loader.loadFiles([".meta/memory/object/Post.json"]);
+const { root } = await loader.loadFiles(["metaobjects/meta.blog.json"]);
 
 const result = await generate({
   metadata: root,
@@ -65,7 +65,7 @@ without it. Hand-customizations live in sibling `<Entity>.extra.ts` files
 Generated `<Entity>.queries.ts` files use Drizzle's `.returning()` API in
 `create*` and `update*` functions. This works on:
 
-- `libsql` / Turso (the trainer website's stack)
+- `libsql` / Turso
 - `node-postgres` (`pg`)
 - `@neondatabase/serverless`
 

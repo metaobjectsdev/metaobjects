@@ -1,8 +1,8 @@
 # @metaobjects/cli
 
-The MetaObjects CLI — scaffolds `.meta/`, runs codegen and migrations against MetaObjects metadata.
+The MetaObjects CLI — scaffolds `metaobjects/` + `.metaobjects/`, runs codegen and migrations against MetaObjects metadata.
 
-**Status:** v0.2.0 (pre-alpha).
+**Status:** v0.3. TS reference implementation with Projects D–G shipped end-to-end.
 
 ## Install
 
@@ -17,14 +17,14 @@ Optional driver peers (install the one matching your DB):
 ## Quick start
 
 ```bash
-# 1. Scaffold .meta/ in your repo
+# 1. Scaffold metaobjects/ + .metaobjects/ + metaobjects.config.ts
 meta init
 
 # 2. Author entity metadata
-$EDITOR .meta/memory/myapp.json    # see .meta/AGENTS.md for format
+$EDITOR metaobjects/meta.myapp.json    # see .metaobjects/AGENTS.md for format
 
-# 3. Generate TS code
-meta gen --out-dir ./src/db --dialect sqlite --db-import '~/server/db'
+# 3. Generate TS code (config-driven via metaobjects.config.ts)
+meta gen
 
 # 4. Diff metadata against your DB and emit migration SQL
 meta migrate --db file:./local.db --slug initial
@@ -34,7 +34,7 @@ meta migrate --db file:./local.db --slug initial
 
 ### `meta init`
 
-Scaffolds `.meta/` with `memory/`, `_pending/`, `config.json`, `README.md`, `.gitignore`, `AGENTS.md`, `CLAUDE.md`, `.gen-state/`.
+Scaffolds `metaobjects/` (visible entity declarations, with a placeholder `meta.common.json`), `.metaobjects/` (hidden tool state: `config.json`, `package.meta.json`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `.gen-state/`), and `metaobjects.config.ts` at the repo root.
 
 Flags:
 - `--force` — overwrite scaffold files (memory records preserved)
@@ -44,26 +44,22 @@ Flags:
 
 ### `meta gen [<entity>...]`
 
-Generates TS code (Drizzle schema, Zod validators, query helpers) from `.meta/memory/` entity metadata.
+Generates TS code (Drizzle schema, Zod validators, query helpers, TanStack Query hooks, etc.) from `metaobjects/` entity metadata. Generator wiring lives in `metaobjects.config.ts`; `meta gen` errors out if that file is missing.
 
 Flags:
-- `--out-dir <path>` (default `./src/db`)
-- `--dialect sqlite|postgres` (default `sqlite`)
-- `--db-import <path>` (default `~/db`)
-- `--merge overwrite|three-way` (default `overwrite`; three-way uses skip-existing semantics in v0.1)
-- `--dry-run` — informational; files still written in v0.1 (planned: no-write in v0.3)
+- `--dry-run` — informational; files still written (true no-write planned)
 
-Positional args filter entities by name.
+Positional args filter entities by name. All other knobs (`outDir`, `dialect`, `dbImport`, `extStyle`, `apiPrefix`, generator list) live in `metaobjects.config.ts`.
 
 ### `meta migrate`
 
-Diffs `.meta/memory/` metadata against a live DB and emits paired migration SQL files (per-migration subdirectories with `up.sql` and `down.sql`).
+Diffs `metaobjects/` metadata against a live DB and emits paired migration SQL files (per-migration subdirectories with `up.sql` and `down.sql`).
 
 Flags:
-- `--db <url>` (required or via `$DATABASE_URL` or `.meta/config.json`)
+- `--db <url>` (required or via `$DATABASE_URL` or `.metaobjects/config.json`)
   - Supported schemes: `file:`, `libsql:`, `postgres:`, `postgresql:`
 - `--dialect sqlite|postgres` — auto-detected from URL scheme
-- `--out-dir <path>` (default `./.meta/migrations`)
+- `--out-dir <path>` (default `./.metaobjects/migrations`)
 - `--slug <name>` — required when changes are pending (e.g., `add-user-shipping`)
 - `--allow <csv>` — destructive-change permissions: `drop-column,drop-table,type-change,drop-index,drop-fk,nullable-to-not-null`
 - `--on-ambiguous abort|rename|drop-add` (default `abort`) — non-interactive
@@ -71,19 +67,35 @@ Flags:
 
 ## Configuration
 
-Optional `.meta/config.json` provides defaults that CLI flags override:
+Two config files, by design:
+
+**`metaobjects.config.ts`** (at repo root) — generator wiring and codegen knobs, type-checked TS:
+
+```ts
+import { defineConfig } from "@metaobjects/cli";
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjects/codegen-ts/generators";
+
+export default defineConfig({
+  outDir: "packages/database/src/generated",
+  extStyle: "none",
+  dbImport: "../index",
+  dialect: "sqlite",
+  apiPrefix: "/api",
+  generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+});
+```
+
+**`.metaobjects/config.json`** — static project state parseable by non-TS tooling:
 
 ```json
 {
   "schema_version": 1,
-  "codegen": {
-    "outDir": "./src/db",
-    "dialect": "sqlite",
-    "dbImport": "~/server/db",
-    "mergeStrategy": "three-way"
-  },
+  "pending_in_git": true,
+  "confidence_thresholds": { "pending_promote": 0.8, "drift_warn": 0.7 },
+  "sources": [],
+  "extract": {},
   "migrate": {
-    "outDir": "./.meta/migrations",
+    "outDir": "./.metaobjects/migrations",
     "databaseUrl": "file:./local.db",
     "onAmbiguous": "abort",
     "allow": []
@@ -91,21 +103,19 @@ Optional `.meta/config.json` provides defaults that CLI flags override:
 }
 ```
 
-Precedence: CLI flag > env var (`DATABASE_URL` only) > config > built-in default.
+Precedence for `meta migrate`: CLI flag > env var (`DATABASE_URL` only) > `.metaobjects/config.json` > built-in default.
 
 ## Metadata format
 
-See `.meta/AGENTS.md` (scaffolded by `meta init`) for the metaobjects metamodel rules, the `@forge*` attribute namespace, the five descriptive top-level types (decision/principle/convention/glossary/failure), and worked examples. Deeper references:
+See `.metaobjects/AGENTS.md` (scaffolded by `meta init`) for the metaobjects metamodel rules, attribute conventions, and worked examples. Deeper references:
 
-- `@metaobjects/metadata` [METAMODEL.md](../metaobjects-metadata/METAMODEL.md) — full metaobjects metamodel reference
+- `@metaobjects/metadata` [METAMODEL.md](../metadata/METAMODEL.md) — full metaobjects metamodel reference
 - `@metaobjects/sdk` [FORGE-METADATA.md](../sdk/FORGE-METADATA.md) — MetaObjects metadata additions
 
-## What's not in v0.2
+## Not yet shipped
 
-- `meta migrate --apply` (deferred to v0.3) — emit only, no DB writes from CLI
+- `meta migrate --apply` — emit only, no DB writes from CLI
 - `meta gen --watch` (dropped) — re-run on demand
-- True 3-way merge in `meta gen` — codegen-ts v0.1 has overwrite/skip-existing only; true merge in v0.3
-- Cross-file `super:` resolution at the metadata-file level — Loader limitation; v0.3 follow-up
+- True 3-way merge in `meta gen` — codegen-ts has overwrite/skip-existing only
 - Module-reference DB connections — URL-only
-- TS-format config file (`.meta/config.ts`) — JSON only
 - Reified SDK APIs for adding/promoting descriptive records — hand-edit JSON for now

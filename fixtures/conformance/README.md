@@ -1,9 +1,20 @@
 # Conformance Corpus
 
-Language-neutral fixtures that define the metaobjects standard's behavior. Every
+Language-neutral fixtures that define the MetaObjects standard's behavior. Every
 language port runs every fixture through its own adapter. The corpus is the
-contract — see
-`metaforge/docs/superpowers/specs/2026-05-17-cross-language-conformance-harness-design.md`.
+contract — see [`spec/conformance-tests.md`](../../spec/conformance-tests.md).
+
+Fixtures use the canonical metadata format: every node is a one-key map
+`{ "<type>.<subType>": <body> }` (e.g. `object.entity`, `field.long`,
+`identity.primary`). Reserved structural body keys are `name`, `package`,
+`extends`, `abstract`, `overlay`, `isArray`, and `children`; everything else is
+an `@`-prefixed attribute in alphabetical order. `expected.json` and
+`expected-effective.json` are the authoritative reference for the shape — when
+in doubt, read one.
+
+Port status: TypeScript reference (v0.3) passes the full corpus; C# loader +
+conformance shipped; Java H3a (loader restructure) shipped 2026-05-19, H3b
+(conformance harness) in progress; Python planned.
 
 ## A scenario directory
 

@@ -2,7 +2,13 @@
 
 TypeScript implementation of the MetaObjects standard.
 
+**Status:** v0.3 — Projects D–G shipped end-to-end, 1784+ tests passing. Reference quality.
+
+The workspace is **Bun-first** for development (zero-config TS, native test runner). Distribution stays Node-compatible — consumers install via npm, pnpm, or bun without any runtime lock-in.
+
 ## Packages
+
+Each package lives under `typescript/packages/<name>/` and publishes under the `@metaobjects/` npm scope.
 
 | Package | Purpose |
 |---|---|
@@ -15,13 +21,14 @@ TypeScript implementation of the MetaObjects standard.
 | `@metaobjects/sdk` | Programmatic SDK (memory, paths, workspace) |
 | `@metaobjects/cli` | The `meta` CLI binary (`init`, `gen`, `migrate`) |
 | `@metaobjects/forge` | AI-collaboration capabilities (agent-docs, future MCP) |
+| `@metaobjects/conformance` | Cross-language conformance test runner |
 
 ## Getting started
 
 ```bash
-pnpm install
-pnpm build
-pnpm test
+bun install
+bun run build
+bun test
 ```
 
 ## CLI
@@ -47,3 +54,22 @@ my-project/
 │   └── .gen-state/
 └── metaobjects.config.ts    # generator wiring
 ```
+
+## Metadata format
+
+Metadata uses the canonical fused-key encoding: every node is a one-key map `{ "<type>.<subType>": <body> }`.
+
+```jsonc
+{ "metadata.root": {
+    "package": "acme::commerce",
+    "children": [
+      { "object.entity": { "name": "Program", "children": [
+        { "field.long": { "name": "id" }},
+        { "field.string": { "name": "title" }},
+        { "identity.primary": { "@fields": ["id"] }}
+      ]}}
+    ]
+}}
+```
+
+See [`../spec/metamodel.md`](../spec/metamodel.md) and [`../spec/wire-format.md`](../spec/wire-format.md) for the full format.

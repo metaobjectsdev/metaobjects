@@ -1,8 +1,10 @@
-# MetaObjects
+# MetaObjects — Java
 
-MetaObjects is a comprehensive suite of tools for **metadata-driven development**, providing sophisticated control over applications beyond traditional model-driven development techniques. Version 6.3.1+ features a **completely modular architecture** with revolutionary **fluent constraint system** and **native isArray property** designed for modern software development practices.
+MetaObjects is a comprehensive suite of tools for **metadata-driven development**, providing sophisticated control over applications beyond traditional model-driven development techniques. The Java implementation (v6.3.1, ~1,247 tests) pioneered the `MetaDataTypeProvider` model that the TypeScript implementation later adopted; it features a **completely modular architecture** with a **fluent constraint system** and **native `isArray` property** designed for modern software development practices.
 
-## 🚀 **Modern Modular Architecture (v6.3.1+)**
+**H3 convergence status (2026-05-21).** H3a (loader restructure) shipped 2026-05-19. H3b (cross-language conformance harness wired into Java + the canonical fused-key wire format) is **in progress**. The Java implementation is being folded from `metaobjects-core` into `metaobjects/java/` as the standard's Java port; it is **converged**, not rebuilt.
+
+## 🚀 **Modern Modular Architecture (v6.3.1)**
 
 MetaObjects Core has been refactored into **9 focused modules** that provide the foundation for metadata-driven development:
 
@@ -81,7 +83,7 @@ The following modules have been moved to separate projects for focused developme
 - **Type Safety** - Compile-time checking of constraint definitions with enhanced error reporting
 
 ### **🎲 Universal Array Support**
-- **@isArray Modifier** - Single universal modifier replaces array subtypes, eliminating type explosion
+- **`isArray` modifier** - Single universal modifier replaces array subtypes, eliminating type explosion
 - **Cross-Platform Ready** - Array types map cleanly to Java, C#, TypeScript
 - **Reduced Complexity** - 6 core field types instead of 12+ with unlimited array combinations
 
@@ -89,9 +91,9 @@ The following modules have been moved to separate projects for focused developme
 - **Metadata-Driven Development** - Define object structures, validation, and relationships through metadata
 - **Cross-Language Code Generation** - Generate Java, C#, TypeScript from metadata definitions
 - **Framework Integration** - Native support for Spring, OSGi frameworks
-- **JSON/XML Metadata** - Flexible metadata definition formats with inline attribute support
+- **Canonical fused-key wire format** - `{ "field.long": { "name": "id" } }` (type and subtype fused into the wrapper key) is the canonical on-disk shape. The Java parser still uses `MetaField.getMetaSubType()` and `SUBTYPE_*` constants internally; the wire format is the canonical contract enforced by the cross-language conformance harness. See `metaobjects/spec/wire-format.md`.
 - **OSGi Compatible** - Full bundle lifecycle support with WeakReference cleanup patterns
-- **Provider-Based Registration** - Clean service discovery with controlled loading order
+- **Provider-Based Registration** - Java's `MetaDataTypeProvider` (`ServiceLoader`-discovered) is the pioneering implementation of the type-provider model adopted across all language ports. New types, subtypes, and attributes are contributed by a provider — never by editing central registry files.
 
 ## 📚 **Documentation & Examples**
 
@@ -186,7 +188,7 @@ Build order: `metadata → codegen-* → maven-plugin → core → core-spring �
 - ✅ **Build performance**: Optimized Maven build configuration
 - ✅ **Working examples**: 3 complete example projects (basic, spring, osgi)
 - ✅ **Fluent constraint system**: Advanced constraint definitions with AttributeConstraintBuilder
-- ✅ **Universal @isArray**: Eliminates array subtype explosion while supporting all combinations
+- ✅ **Universal `isArray`**: Eliminates array subtype explosion while supporting all combinations
 - ✅ **OSGi compatibility**: Full bundle lifecycle support with WeakReference cleanup patterns
 
 **This represents a comprehensive modernization suitable for enterprise production environments while maintaining the sophisticated architectural patterns that make MetaObjects unique.**
@@ -203,18 +205,19 @@ The v5.2.0+ modular architecture maintains full backward compatibility while pro
 See [Migration Guide](MIGRATION.md) for detailed instructions.
 
 ## 🚀 **Release Notes**
-Current Development: **6.3.0-SNAPSHOT** (Fluent Constraint System + Universal @isArray)
+Current Development: **6.3.1-SNAPSHOT** (Fluent Constraint System + Universal `isArray` + H3 convergence in progress)
 Latest Stable Release: **6.2.5** (Maven Central Publishing Ready)
 
 **Major v6.3.1 Features:**
 - 🚀 **Revolutionary Fluent Constraint System** with AttributeConstraintBuilder API
-- 🎲 **Universal @isArray Modifier** eliminating array subtype explosion
+- 🎲 **Universal `isArray` modifier** eliminating array subtype explosion
 - 🔧 **Enhanced ConstraintEnforcer** with attribute-specific validation
 - 📊 **Comprehensive Constraints** with advanced validation patterns
-- 🏢 **Provider-Based Registration** with clean service discovery
+- 🏢 **Provider-Based Registration** with clean service discovery (`MetaDataTypeProvider` via `ServiceLoader`)
 - 🔒 **Security Updates** - All critical vulnerabilities resolved
 - 🏢 **Modular Architecture** - 9 focused, independent modules
 - 📚 **Working Examples** - Complete demonstration projects
+- 🔄 **H3 convergence (in progress)** - Cross-language conformance harness + canonical fused-key wire format alignment with the TypeScript port
 
 Click here for complete [Release Notes](RELEASE_NOTES.md).
 
