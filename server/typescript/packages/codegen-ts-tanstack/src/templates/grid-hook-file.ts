@@ -64,8 +64,8 @@ export function renderGridHookFile(entity: MetaObject, ctx: RenderContext): stri
   const SortingStateSym       = imp("t:SortingState@@tanstack/react-table");
   const PaginationStateSym    = imp("t:PaginationState@@tanstack/react-table");
   const ColumnFiltersStateSym = imp("t:ColumnFiltersState@@tanstack/react-table");
-  const useEntityFetcherSym = imp("useEntityFetcher@@metaobjects/runtime-ts-client");
-  const buildFilterQsSym    = imp("buildFilterQs@@metaobjects/runtime-ts-client");
+  const useEntityFetcherSym = imp("useEntityFetcher@@metaobjects/tanstack");
+  const buildFilterQsSym    = imp("buildFilterQs@@metaobjects/runtime-web");
 
   const entityImports: Code = code`
 import { ${entityName} } from ${JSON.stringify(entityModule)};

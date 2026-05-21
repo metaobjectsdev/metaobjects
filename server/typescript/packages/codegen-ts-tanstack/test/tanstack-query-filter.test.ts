@@ -52,7 +52,7 @@ describe("tanstackQuery — useEntities accepts typed filter", () => {
     const files = await tanstackQuery().generate(ctx);
     const file = files.find((f) => f.path === "Subscriber.hooks.ts")!;
     expect(file.content).toContain("buildFilterQs");
-    expect(file.content).toContain("@metaobjects/runtime-ts-client");
+    expect(file.content).toContain("@metaobjects/tanstack");
   });
 
   test("query-key factory uses SubscriberFilter type", async () => {

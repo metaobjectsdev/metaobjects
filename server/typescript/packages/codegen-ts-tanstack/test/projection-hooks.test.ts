@@ -176,11 +176,11 @@ describe("renderHooksFile — source-aware dispatch", () => {
       expect(out).not.toContain("useQueryClient");
     });
 
-    test("imports from @tanstack/react-query and @metaobjects/runtime-ts-client", async () => {
+    test("imports from @tanstack/react-query and @metaobjects/tanstack", async () => {
       const { projection, ctx } = await loadProjectionFixture();
       const out = renderHooksFile(projection, ctx);
       expect(out).toContain("@tanstack/react-query");
-      expect(out).toContain("@metaobjects/runtime-ts-client");
+      expect(out).toContain("@metaobjects/tanstack");
     });
 
     test("fetch URLs use $apiPrefix before $path", async () => {

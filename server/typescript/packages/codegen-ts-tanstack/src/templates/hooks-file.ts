@@ -16,7 +16,7 @@ import { GENERATED_HEADER, isProjection, pluralize, crossEntitySpecifier } from 
  *   - useUpdate<Entity>
  *   - useDelete<Entity>
  *
- * All hooks call useEntityFetcher() (from @metaobjects/runtime-ts-client) for
+ * All hooks call useEntityFetcher() (from @metaobjects/tanstack) for
  * the underlying HTTP. Mutations aggressively invalidate <entity>Keys.all().
  */
 export function renderHooksFile(entity: MetaObject, ctx: RenderContext): string {
@@ -49,8 +49,8 @@ function renderReadOnlyHooksFile(entity: MetaObject, entityModule: string): stri
   const useQuerySym = imp("useQuery@@tanstack/react-query");
   const useQueryOptionsSym = imp("t:UseQueryOptions@@tanstack/react-query");
   const useQueryResultSym = imp("t:UseQueryResult@@tanstack/react-query");
-  const useEntityFetcherSym = imp("useEntityFetcher@@metaobjects/runtime-ts-client");
-  const buildFilterQsSym = imp("buildFilterQs@@metaobjects/runtime-ts-client");
+  const useEntityFetcherSym = imp("useEntityFetcher@@metaobjects/tanstack");
+  const buildFilterQsSym = imp("buildFilterQs@@metaobjects/runtime-web");
 
   const entityImports: Code = code`
 import {
@@ -122,8 +122,8 @@ function renderFullHooksFile(entity: MetaObject, entityModule: string): string {
   const useMutationOptionsSym = imp("t:UseMutationOptions@@tanstack/react-query");
   const useQueryResultSym = imp("t:UseQueryResult@@tanstack/react-query");
   const useMutationResultSym = imp("t:UseMutationResult@@tanstack/react-query");
-  const useEntityFetcherSym = imp("useEntityFetcher@@metaobjects/runtime-ts-client");
-  const buildFilterQsSym = imp("buildFilterQs@@metaobjects/runtime-ts-client");
+  const useEntityFetcherSym = imp("useEntityFetcher@@metaobjects/tanstack");
+  const buildFilterQsSym = imp("buildFilterQs@@metaobjects/runtime-web");
 
   const entityImports: Code = code`
 import {
