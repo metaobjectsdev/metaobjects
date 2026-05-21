@@ -1,8 +1,10 @@
 # Polyglot Monorepo + Open/Commercial Split — Design (Project H1)
 
 **Date:** 2026-05-14
-**Status:** Draft
+**Status:** Shipped (2026-05-14)
 **Scope:** Establish a polyglot monorepo for the MetaObjects standard, migrate the TS implementation out of `metaforge/`, separate AI-collab code into `forge/`, scaffold directories for upcoming Java / Python / C# implementations and shared conformance fixtures.
+
+> **Note (2026-05-21):** H1 shipped 2026-05-14. This historical design doc preserves the original rename mapping tables that document what the H1 migration renamed FROM — those references to `@metaforge/*`, `metaforge.config.ts`, and `.metaforge/` are intentional historical record, not current state. Current naming is `@metaobjects/*`, `metaobjects.config.ts`, `.metaobjects/`. See git history for the original wording.
 
 **Builds on:** Projects D, E, F, G (complete TS reference implementation).
 

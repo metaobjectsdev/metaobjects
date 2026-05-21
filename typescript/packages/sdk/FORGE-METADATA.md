@@ -1,8 +1,10 @@
-# Meta Forge metadata reference
+# `@metaobjects/sdk` memory metadata reference
 
-This doc describes how **Meta Forge** extends the [metaobjects metamodel](../metaobjects-metadata/METAMODEL.md) with provenance attributes and descriptive memory types. If you're authoring `.meta/memory/*.json` files for a Meta-Forge-driven project, read this *and* `METAMODEL.md`.
+> **Note (2026-05-21):** This doc predates the H1 monorepo migration and the 2026-05-15 canonical-format change. Pending a deeper rewrite: the JSON examples below still use the OLD `{ "<type>": { "subType": "..." } }` form (current canonical is fused-key `{ "<type>.<subType>": {...} }`), and the `.meta/memory/` directory layout is now `.metaobjects/memory/`. The `@forge*` attribute names and the memory record types (`decision`, `principle`, `convention`, `glossary`, `failure`) are still accurate. See git history for full original wording.
 
-> **For agentic assistants:** the metaobjects rules in METAMODEL.md apply unchanged here — attribute uniqueness, inline-vs-child equivalence, `super`/overlay semantics, package paths. This doc only adds Meta-Forge-specific names.
+This doc describes how `@metaobjects/sdk` extends the [metaobjects metamodel](../metadata/METAMODEL.md) with provenance attributes and descriptive memory types. If you're authoring memory `.json` files for an SDK-driven project, read this *and* `METAMODEL.md`.
+
+> **For agentic assistants:** the metaobjects rules in METAMODEL.md apply unchanged here — attribute uniqueness, inline-vs-child equivalence, `extends`/overlay semantics, package paths. This doc only adds the memory-specific names.
 
 ## 1. The `@forge*` attribute namespace
 
@@ -47,7 +49,7 @@ Constants for these names live in `@metaobjects/sdk` as `FORGE_ATTR_CONFIDENCE`,
 | `glossary` | `base` | Domain-term definition |
 | `failure` | `base` | A recorded failure mode |
 
-A `.meta/memory/*.json` file can mix `object` children (entities, drive codegen + runtime) with `decision`/`principle`/etc. children (descriptive context for Claude's reasoning). `forge gen` and `forge migrate` walk only the `object` children; the descriptive types are visible to AI tooling and ignored by code generation.
+A `.meta/memory/*.json` file can mix `object` children (entities, drive codegen + runtime) with `decision`/`principle`/etc. children (descriptive context for Claude's reasoning). `meta gen` and `meta migrate` walk only the `object` children; the descriptive types are visible to AI tooling and ignored by code generation.
 
 ## 3. `.meta/memory/` layout
 
@@ -58,14 +60,14 @@ A `.meta/memory/*.json` file can mix `object` children (entities, drive codegen 
 │   ├── common.json                    optional — shared base fields/validators
 │   ├── <app>.json                     your entity package
 │   ├── <other-package>.json           split however you want
-│   └── _pending/<package>.json        proposed packages, ignored by forge gen/migrate
-├── migrations/                        written by forge migrate
+│   └── _pending/<package>.json        proposed packages, ignored by meta gen/migrate
+├── migrations/                        written by meta migrate
 ├── .gen-state/                        codegen merge base (gitignored)
-├── AGENTS.md                          scaffolded by forge init
+├── AGENTS.md                          scaffolded by meta init
 └── CLAUDE.md                          same content as AGENTS.md
 ```
 
-`forge gen` and `forge migrate` glob `memory/*.json` (non-recursive, top-level files only), excluding `_pending/`. Files inside packages are recombined by Loader cross-file using `super:` references.
+`meta gen` and `meta migrate` glob `memory/*.json` (non-recursive, top-level files only), excluding `_pending/`. Files inside packages are recombined by Loader cross-file using `super:` references.
 
 ## 4. Worked example — entity + decision in one file
 
@@ -118,6 +120,5 @@ A `.meta/memory/*.json` file can mix `object` children (entities, drive codegen 
 
 ## 6. See also
 
-- [`packages/metaobjects-metadata/METAMODEL.md`](../metaobjects-metadata/METAMODEL.md) — the underlying metaobjects rules
-- [SP5 design](../../docs/specs/2026-05-12-v0.2-sp5-cli-extensions-design.md) — full CLI spec
+- [`packages/metadata/METAMODEL.md`](../metadata/METAMODEL.md) — the underlying metaobjects rules
 - [`@metaobjects/sdk`'s `forge-types.ts`](src/forge-types.ts) — constants source of truth
