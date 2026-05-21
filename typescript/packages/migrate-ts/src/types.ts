@@ -142,6 +142,14 @@ export interface DiffResult {
 export interface EmitResult {
   up: string;
   down: string;
+  /**
+   * Tables rebuilt via the SQLite recreate-and-copy pattern. Empty for
+   * postgres (in-place ALTER). The CLI uses this to pre-drop only the
+   * views whose source tables are being recreated — SQLite's RENAME re-
+   * parses dependent view definitions and errors if any reference the
+   * mid-recreate source table.
+   */
+  recreatedTables: ReadonlySet<string>;
 }
 
 export type Dialect = "postgres" | "sqlite";

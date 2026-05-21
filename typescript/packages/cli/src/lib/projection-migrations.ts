@@ -14,6 +14,9 @@ import {
   type ViewMigrationsResult,
 } from "@metaobjects/migrate-ts";
 
+/** view-name → set of source-table names the view's SELECT depends on. */
+export type ProjectionViewDependencies = ReadonlyMap<string, ReadonlySet<string>>;
+
 export interface ProjectionMigrationsOpts {
   readonly metadata: MetaData;
   readonly dialect: "postgres" | "sqlite";
@@ -93,4 +96,45 @@ export function computeProjectionMigrations(
     allowBreaking: opts.allowBreaking ?? false,
     views,
   });
+}
+
+/**
+ * For each projection view, compute the set of source table names that the
+ * view's SELECT depends on (base entity + all joined entities). Used by the
+ * CLI to pre-drop only the views whose source tables are being recreated.
+ */
+export function computeProjectionViewDependencies(
+  opts: Pick<ProjectionMigrationsOpts, "metadata" | "columnNamingStrategy">,
+): ProjectionViewDependencies {
+  if (!(opts.metadata instanceof MetaRoot)) {
+    throw new Error("computeProjectionViewDependencies: opts.metadata must be a loaded MetaRoot.");
+  }
+  const root = opts.metadata;
+  const columnNamingStrategy = opts.columnNamingStrategy ?? "snake_case";
+
+  const tableByEntity: Record<string, string> = {};
+  for (const obj of root.objects()) {
+    tableByEntity[obj.name] = resolveTableName(obj);
+  }
+
+  const result = new Map<string, Set<string>>();
+  const projections = root.objects().filter(isProjection);
+
+  for (const projection of projections) {
+    const spec = extractViewSpec(projection, root, { columnNamingStrategy });
+    const tables = new Set<string>();
+    const baseTable = tableByEntity[spec.joinTree.baseEntity];
+    if (baseTable) tables.add(baseTable);
+    const walk = (joins: readonly typeof spec.joinTree.joins[number][]): void => {
+      for (const j of joins) {
+        const t = tableByEntity[j.targetEntity];
+        if (t) tables.add(t);
+        walk(j.children);
+      }
+    };
+    walk(spec.joinTree.joins);
+    result.set(spec.viewName, tables);
+  }
+
+  return result;
 }

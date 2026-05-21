@@ -18,8 +18,12 @@ import {
   type AmbiguousChange,
   type AmbiguousResolution,
   type Change,
+  type EmitResult,
 } from "@metaobjects/migrate-ts";
-import { computeProjectionMigrations } from "../lib/projection-migrations.js";
+import {
+  computeProjectionMigrations,
+  computeProjectionViewDependencies,
+} from "../lib/projection-migrations.js";
 
 // Map CLI allow tokens → migrate-ts AllowOptions field names
 const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
@@ -236,7 +240,7 @@ export async function migrateCommand(args: string[], cwd: string): Promise<numbe
       // no-op — output will say "No schema changes"
     } else {
       // Emit table SQL (may be empty if only views changed).
-      let tableSql: { up: string; down: string } | undefined;
+      let tableSql: EmitResult | undefined;
       if (hasTableChanges) {
         try {
           tableSql = emit(diffResult.changes, {
@@ -256,22 +260,38 @@ export async function migrateCommand(args: string[], cwd: string): Promise<numbe
 
       // Combine table + view SQL into a single migration if no errors.
       if (exitCode === 0) {
-        // Extract view names from the CREATE VIEW statements so we can drop them
-        // both at the top (before table changes) and in the down migration.
-        // Reason for the top-side drops: SQLite's ALTER TABLE ... RENAME re-parses
-        // dependent views and errors if their referenced source table is mid-
-        // recreate (the recreate-and-copy pattern temporarily drops then
-        // recreates the source table under its target name). Pre-dropping every
-        // dependent view lets the table recreate proceed; the viewUpSql block
-        // below recreates them fresh.
+        // Extract view names from the CREATE VIEW statements (used by both the
+        // pre-drop and down-migration paths below).
         const viewNames = viewResult.migrations
           .map((s) => {
             const m = /CREATE(?:\s+OR\s+REPLACE)?\s+VIEW\s+(\S+)/i.exec(s);
             return m ? m[1] : undefined;
           })
           .filter((n): n is string => Boolean(n));
-        const viewPreDropSql = hasTableChanges && viewNames.length > 0
-          ? viewNames.map((n) => `DROP VIEW IF EXISTS ${n};`).join("\n")
+
+        // Pre-drop dependent views, BUT only the ones whose source tables are
+        // being recreated. SQLite's ALTER TABLE ... RENAME re-parses dependent
+        // view definitions and errors if any of them reference a source table
+        // that's mid-recreate (the recreate-and-copy pattern temporarily drops
+        // the source table and creates __new_<table>, then RENAMEs). The
+        // viewUpSql block below recreates the dropped views fresh.
+        const recreatedTables = tableSql?.recreatedTables ?? new Set<string>();
+        const viewPreDropSql = recreatedTables.size > 0 && viewNames.length > 0
+          ? (() => {
+              const deps = computeProjectionViewDependencies({
+                metadata,
+                columnNamingStrategy,
+              });
+              const affected = viewNames.filter((n) => {
+                const sources = deps.get(n);
+                if (!sources) return false;
+                for (const t of sources) if (recreatedTables.has(t)) return true;
+                return false;
+              });
+              return affected.length > 0
+                ? affected.map((n) => `DROP VIEW IF EXISTS ${n};`).join("\n")
+                : "";
+            })()
           : "";
 
         const upParts = [viewPreDropSql, tableSql?.up, viewUpSql].filter(Boolean);

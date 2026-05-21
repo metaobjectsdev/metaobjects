@@ -21,7 +21,7 @@ export interface WriteMigrationResult {
 }
 
 export async function writeMigration(
-  result: EmitResult,
+  result: Pick<EmitResult, "up" | "down">,
   opts: WriteMigrationOptions,
 ): Promise<WriteMigrationResult> {
   const ts = formatTimestamp(opts.now ?? new Date());

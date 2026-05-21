@@ -88,7 +88,11 @@ export function renderSqlite(
     downStmts.push(renderDownNative(c));
   }
 
-  return { up: upStmts.join("\n\n"), down: [...downStmts].reverse().join("\n\n") };
+  return {
+    up: upStmts.join("\n\n"),
+    down: [...downStmts].reverse().join("\n\n"),
+    recreatedTables: recreateTables,
+  };
 }
 
 function changeTable(c: Change): string | undefined {

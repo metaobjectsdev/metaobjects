@@ -25,7 +25,11 @@ export function renderPostgres(changes: Change[]): EmitResult {
     downStmts.push(renderDown(c));
   }
   // Down runs in reverse order (so creates undo correctly w.r.t. FKs).
-  return { up: upStmts.join("\n\n"), down: [...downStmts].reverse().join("\n\n") };
+  return {
+    up: upStmts.join("\n\n"),
+    down: [...downStmts].reverse().join("\n\n"),
+    recreatedTables: new Set(), // postgres alters in place; no recreate-and-copy
+  };
 }
 
 function renderUp(c: Change): string {
