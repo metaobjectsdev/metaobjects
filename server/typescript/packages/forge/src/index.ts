@@ -1,12 +1,7 @@
-// Public API surface for @metaobjects/forge.
+// @metaobjects/forge — AI-collaboration capabilities (unpublished, repo-internal).
 //
-// AI-collaboration capabilities layered on the MetaObjects standard:
-// - agent-docs: generates `.metaobjects/CLAUDE.md` content for consumer projects
-//
-// Future:
-// - MCP server integration
-// - Claude Code hooks
-// - `forge ingest` (extractor-driven AI metadata authoring)
-// - `forge audit`, `forge serve`, `forge capture`
-
-export * from "./agent-docs/index.js";
+// The agent-docs generator moved to @metaobjects/sdk/agent-docs (H7a). This
+// package is retained for the future MCP server, Claude Code hooks installer,
+// and `forge ingest`/`audit`/`serve`/`capture` commands, and will carve out to
+// a separate repo per the H1 polyglot design. It is NOT published to npm.
+export {};

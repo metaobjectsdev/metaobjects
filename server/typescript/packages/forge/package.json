@@ -9,11 +9,6 @@
       "bun": "./src/index.ts",
       "types": "./src/index.ts",
       "default": "./dist/index.js"
-    },
-    "./agent-docs": {
-      "bun": "./src/agent-docs/index.ts",
-      "types": "./src/agent-docs/index.ts",
-      "default": "./dist/agent-docs/index.js"
     }
   },
   "files": ["dist", "src"],
