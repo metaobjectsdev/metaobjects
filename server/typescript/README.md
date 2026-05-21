@@ -8,9 +8,12 @@ TypeScript implementation of the MetaObjects standard.
 |---|---|
 | `@metaobjects/metadata` | Loader, registry, typed views |
 | `@metaobjects/codegen-ts` | Code generation (TS targets) |
+| `@metaobjects/codegen-ts-react` | React codegen (form-file generator) |
 | `@metaobjects/codegen-ts-tanstack` | TanStack hooks + grid codegen |
 | `@metaobjects/runtime-ts` | Server-side runtime (Node, Fastify integration) |
-| `@metaobjects/runtime-ts-client` | Browser runtime (React, TanStack hooks, currency, components) |
+| `@metaobjects/runtime-web` (under `client/web/`) | Browser core: currency, filter-qs, fetcher types |
+| `@metaobjects/react` (under `client/web/`) | React runtime: `useEntityForm`, `<CurrencyInput>` |
+| `@metaobjects/tanstack` (under `client/web/`) | TanStack runtime: `EntityFetcherProvider`, `<EntityGrid>` |
 | `@metaobjects/migrate-ts` | Database migration tooling |
 | `@metaobjects/sdk` | Programmatic SDK (memory, paths, workspace) |
 | `@metaobjects/cli` | The `meta` CLI binary (`init`, `gen`, `migrate`) |

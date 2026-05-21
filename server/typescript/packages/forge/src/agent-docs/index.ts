@@ -80,10 +80,10 @@ Use the constants when you need a STRING (filter object keys, registration argum
 
 ### 3. Forms: spread \`form.input.<field>\` from useEntityForm. One line per input.
 
-For React forms, use \`useEntityForm\` from \`@metaobjects/runtime-ts/react\`. It returns the standard React Hook Form surface plus a pre-bound \`.input\` accessor — one entry per field, ready to spread onto an \`<input>\`:
+For React forms, use \`useEntityForm\` from \`@metaobjects/react\`. It returns the standard React Hook Form surface plus a pre-bound \`.input\` accessor — one entry per field, ready to spread onto an \`<input>\`:
 
 \`\`\`tsx
-import { useEntityForm } from '@metaobjects/runtime-ts/react';
+import { useEntityForm } from '@metaobjects/react';
 import { Subscriber, SubscriberInsertSchema } from './generated/Subscriber';
 
 const form = useEntityForm(Subscriber, SubscriberInsertSchema);
@@ -233,7 +233,7 @@ When \`tanstackQuery()\` is in your \`metaobjects.config.ts\`, every entity gets
 \`\`\`tsx
 import { usePrograms, useCreateProgram } from "@your-pkg/database/generated/Program.hooks";
 import { programDefaultColumns, programDefaultGrid } from "@your-pkg/database/generated/Program.columns";
-import { EntityGrid } from "@metaobjects/runtime-ts/tanstack";
+import { EntityGrid } from "@metaobjects/tanstack";
 
 const { data, isLoading } = usePrograms();
 const create = useCreateProgram({ onSuccess: () => navigate("/programs") });
@@ -359,8 +359,8 @@ Storage stays as integer minor units (cents for USD). The generated \`<Entity>\`
 **Imports — use sub-paths in browser code:**
 
 \`\`\`tsx
-import { formatCurrency } from "@metaobjects/runtime-ts-client";
-import { CurrencyInput } from "@metaobjects/runtime-ts-client";
+import { formatCurrency } from "@metaobjects/runtime-web";
+import { CurrencyInput } from "@metaobjects/react";
 \`\`\`
 
 **Display:**
@@ -438,7 +438,7 @@ The fact that every metadata-derived value flows from \`Subscriber\` / \`Subscri
 ### Hand-written form using \`useEntityForm\`
 
 \`\`\`tsx
-import { useEntityForm } from '@metaobjects/runtime-ts/react';
+import { useEntityForm } from '@metaobjects/react';
 import { Subscriber, SubscriberInsertSchema, type Subscriber as Row } from './generated/Subscriber';
 
 export function SubscribeForm() {

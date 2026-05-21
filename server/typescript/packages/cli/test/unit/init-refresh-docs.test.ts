@@ -125,7 +125,7 @@ describe("currency fields in refreshed docs", () => {
       const claudeMd = readFileSync(join(tmp, ".metaobjects", "CLAUDE.md"), "utf-8");
       expect(claudeMd).toContain("Currency fields");
       expect(claudeMd).toContain("CurrencyInput");
-      expect(claudeMd).toContain("@metaobjects/runtime-ts-client");
+      expect(claudeMd).toContain("@metaobjects/react");
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
