@@ -8,10 +8,10 @@ The metamodel is the durable spine; generated code is the disposable artifact. S
 
 | Language | Status | Directory |
 |---|---|---|
-| TypeScript | Reference implementation | [`typescript/`](typescript/) |
-| Java | Planned (H3) | [`java/`](java/) |
+| TypeScript | Reference implementation (v0.3) | [`typescript/`](typescript/) |
+| Java | In progress (H3a shipped 2026-05-19; H3b active) | [`java/`](java/) |
 | Python | Planned | [`python/`](python/) |
-| C# | Planned | [`csharp/`](csharp/) |
+| C# | Loader + conformance shipped | [`csharp/`](csharp/) |
 
 ## What's in this repo
 
@@ -24,9 +24,11 @@ The metamodel is the durable spine; generated code is the disposable artifact. S
 
 ```bash
 cd typescript
-pnpm install
-pnpm build
+bun install
+bun test
 ```
+
+(Bun-first dev workflow; no separate build step. Typecheck across the workspace with `bun run --filter '*' typecheck`. Distribution artifacts remain Node-compatible — consumers can install via npm/pnpm/bun.)
 
 CLI binary: `meta`. Project config: `metaobjects.config.ts`. Project marker directory: `.metaobjects/`.
 
