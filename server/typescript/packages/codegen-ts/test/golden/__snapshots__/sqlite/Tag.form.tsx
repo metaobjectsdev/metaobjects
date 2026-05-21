@@ -3,7 +3,7 @@
 // Customize via Tag.extra.tsx (custom layouts, per-field components, etc.).
 import { Tag, TagInsertSchema } from "./Tag";
 import type { Tag as TagRow } from "./Tag";
-import { useEntityForm } from "@metaobjects/runtime-ts-client/react";
+import { useEntityForm } from "@metaobjects/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
 

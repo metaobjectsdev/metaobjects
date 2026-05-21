@@ -3,7 +3,7 @@
 // Customize via Program.extra.tsx (custom layouts, per-field components, etc.).
 import { Program, ProgramInsertSchema } from "./Program";
 import type { Program as ProgramRow } from "./Program";
-import { useEntityForm } from "@metaobjects/runtime-ts-client/react";
+import { useEntityForm } from "@metaobjects/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
 

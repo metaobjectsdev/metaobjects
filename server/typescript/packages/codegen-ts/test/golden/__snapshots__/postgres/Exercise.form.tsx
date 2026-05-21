@@ -3,7 +3,7 @@
 // Customize via Exercise.extra.tsx (custom layouts, per-field components, etc.).
 import { Exercise, ExerciseInsertSchema } from "./Exercise";
 import type { Exercise as ExerciseRow } from "./Exercise";
-import { useEntityForm } from "@metaobjects/runtime-ts-client/react";
+import { useEntityForm } from "@metaobjects/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
 

@@ -54,7 +54,7 @@ export const SubscriberUpdateSchema = z.object({
  *
  * Typical usage with the metaobjects React form helper:
  *
- *   import { useEntityForm } from '@metaobjects/runtime-ts-client/react';
+ *   import { useEntityForm } from '@metaobjects/react';
  *   const form = useEntityForm(Subscriber, SubscriberInsertSchema);
  *   <input {...form.input.id} />
  */

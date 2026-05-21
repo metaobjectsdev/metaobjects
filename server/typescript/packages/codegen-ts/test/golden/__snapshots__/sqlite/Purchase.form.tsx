@@ -3,7 +3,7 @@
 // Customize via Purchase.extra.tsx (custom layouts, per-field components, etc.).
 import { Purchase, PurchaseInsertSchema } from "./Purchase";
 import type { Purchase as PurchaseRow } from "./Purchase";
-import { useEntityForm } from "@metaobjects/runtime-ts-client/react";
+import { useEntityForm } from "@metaobjects/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
 

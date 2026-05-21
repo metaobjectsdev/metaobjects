@@ -3,7 +3,7 @@
 // Customize via WorkoutEvent.extra.tsx (custom layouts, per-field components, etc.).
 import { WorkoutEvent, WorkoutEventInsertSchema } from "./WorkoutEvent";
 import type { WorkoutEvent as WorkoutEventRow } from "./WorkoutEvent";
-import { useEntityForm } from "@metaobjects/runtime-ts-client/react";
+import { useEntityForm } from "@metaobjects/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
 

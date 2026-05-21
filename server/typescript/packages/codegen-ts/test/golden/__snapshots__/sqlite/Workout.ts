@@ -48,7 +48,7 @@ export const WorkoutUpdateSchema = z.object({
  *
  * Typical usage with the metaobjects React form helper:
  *
- *   import { useEntityForm } from '@metaobjects/runtime-ts-client/react';
+ *   import { useEntityForm } from '@metaobjects/react';
  *   const form = useEntityForm(Workout, WorkoutInsertSchema);
  *   <input {...form.input.id} />
  */

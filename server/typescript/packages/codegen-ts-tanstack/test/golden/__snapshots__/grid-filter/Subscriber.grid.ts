@@ -3,10 +3,8 @@
 import { Subscriber } from "./Subscriber";
 import type { Subscriber as SubscriberRow } from "./Subscriber";
 import { subscriberActiveFilter } from "./Subscriber.columns";
-import {
-  buildFilterQs,
-  useEntityFetcher,
-} from "@metaobjects/runtime-ts-client";
+import { buildFilterQs } from "@metaobjects/runtime-web";
+import { useEntityFetcher } from "@metaobjects/tanstack";
 import { useQuery } from "@tanstack/react-query";
 import type {
   ColumnFiltersState,

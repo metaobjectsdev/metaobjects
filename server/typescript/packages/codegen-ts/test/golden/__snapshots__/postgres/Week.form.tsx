@@ -3,7 +3,7 @@
 // Customize via Week.extra.tsx (custom layouts, per-field components, etc.).
 import { Week, WeekInsertSchema } from "./Week";
 import type { Week as WeekRow } from "./Week";
-import { useEntityForm } from "@metaobjects/runtime-ts-client/react";
+import { useEntityForm } from "@metaobjects/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
 

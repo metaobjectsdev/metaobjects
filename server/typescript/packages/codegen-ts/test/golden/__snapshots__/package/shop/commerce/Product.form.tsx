@@ -3,7 +3,7 @@
 // Customize via Product.extra.tsx (custom layouts, per-field components, etc.).
 import { Product, ProductInsertSchema } from "./Product";
 import type { Product as ProductRow } from "./Product";
-import { useEntityForm } from "@metaobjects/runtime-ts-client/react";
+import { useEntityForm } from "@metaobjects/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
 

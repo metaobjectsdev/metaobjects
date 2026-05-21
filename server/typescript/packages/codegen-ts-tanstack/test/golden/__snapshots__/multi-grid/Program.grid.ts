@@ -2,10 +2,8 @@
 // Source metadata: Program (Program)
 import { Program } from "./Program";
 import type { Program as ProgramRow } from "./Program";
-import {
-  buildFilterQs,
-  useEntityFetcher,
-} from "@metaobjects/runtime-ts-client";
+import { buildFilterQs } from "@metaobjects/runtime-web";
+import { useEntityFetcher } from "@metaobjects/tanstack";
 import { useQuery } from "@tanstack/react-query";
 import type {
   ColumnFiltersState,

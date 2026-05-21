@@ -3,7 +3,7 @@
 // Customize via Customer.extra.tsx (custom layouts, per-field components, etc.).
 import { Customer, CustomerInsertSchema } from "./Customer";
 import type { Customer as CustomerRow } from "./Customer";
-import { useEntityForm } from "@metaobjects/runtime-ts-client/react";
+import { useEntityForm } from "@metaobjects/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
 

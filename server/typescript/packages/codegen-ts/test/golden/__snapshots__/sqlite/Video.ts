@@ -47,7 +47,7 @@ export const VideoUpdateSchema = z.object({
  *
  * Typical usage with the metaobjects React form helper:
  *
- *   import { useEntityForm } from '@metaobjects/runtime-ts-client/react';
+ *   import { useEntityForm } from '@metaobjects/react';
  *   const form = useEntityForm(Video, VideoInsertSchema);
  *   <input {...form.input.id} />
  */

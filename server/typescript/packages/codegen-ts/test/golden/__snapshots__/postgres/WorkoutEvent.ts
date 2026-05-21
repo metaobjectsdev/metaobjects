@@ -60,7 +60,7 @@ export const WorkoutEventUpdateSchema = z.object({
  *
  * Typical usage with the metaobjects React form helper:
  *
- *   import { useEntityForm } from '@metaobjects/runtime-ts-client/react';
+ *   import { useEntityForm } from '@metaobjects/react';
  *   const form = useEntityForm(WorkoutEvent, WorkoutEventInsertSchema);
  *   <input {...form.input.id} />
  */

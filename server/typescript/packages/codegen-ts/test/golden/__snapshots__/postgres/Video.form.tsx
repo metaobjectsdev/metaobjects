@@ -3,7 +3,7 @@
 // Customize via Video.extra.tsx (custom layouts, per-field components, etc.).
 import { Video, VideoInsertSchema } from "./Video";
 import type { Video as VideoRow } from "./Video";
-import { useEntityForm } from "@metaobjects/runtime-ts-client/react";
+import { useEntityForm } from "@metaobjects/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
 

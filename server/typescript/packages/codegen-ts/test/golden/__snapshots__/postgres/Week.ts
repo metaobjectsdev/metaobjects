@@ -52,7 +52,7 @@ export const WeekUpdateSchema = z.object({
  *
  * Typical usage with the metaobjects React form helper:
  *
- *   import { useEntityForm } from '@metaobjects/runtime-ts-client/react';
+ *   import { useEntityForm } from '@metaobjects/react';
  *   const form = useEntityForm(Week, WeekInsertSchema);
  *   <input {...form.input.id} />
  */

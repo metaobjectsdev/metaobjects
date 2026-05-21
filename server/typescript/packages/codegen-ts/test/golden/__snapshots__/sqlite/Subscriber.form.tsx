@@ -3,7 +3,7 @@
 // Customize via Subscriber.extra.tsx (custom layouts, per-field components, etc.).
 import { Subscriber, SubscriberInsertSchema } from "./Subscriber";
 import type { Subscriber as SubscriberRow } from "./Subscriber";
-import { useEntityForm } from "@metaobjects/runtime-ts-client/react";
+import { useEntityForm } from "@metaobjects/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
 
