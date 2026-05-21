@@ -219,12 +219,17 @@ export async function migrateCommand(args: string[], cwd: string): Promise<numbe
       // metaobjects.config.ts absent or invalid — use default snake_case
     }
 
+    // Pull existing view CREATE SQL from the DB so unchanged views can be
+    // skipped (no DROP+CREATE noise when the body hasn't changed).
+    const existingViewSql = await readExistingViewSql(kysely.db, kysely.dialect);
+
     // Compute view migrations (projections) independently of table changes.
     const viewResult = computeProjectionMigrations({
       metadata,
       dialect: kysely.dialect,
       allowBreaking: false,
       columnNamingStrategy,
+      existingViewSql,
     });
     if (viewResult.errors.length > 0) {
       for (const err of viewResult.errors) log.error(err);
@@ -342,4 +347,44 @@ export async function migrateCommand(args: string[], cwd: string): Promise<numbe
 
   log.info(output);
   return exitCode;
+}
+
+/**
+ * Read existing view CREATE SQL from the DB. Returns an empty map on any
+ * introspection failure — the worst case is over-eager DROP+CREATE
+ * (the original behaviour), not data loss.
+ */
+async function readExistingViewSql(
+  // biome-ignore lint/suspicious/noExplicitAny: kysely raw query, dialect-dispatched
+  db: any,
+  dialect: "sqlite" | "postgres",
+): Promise<ReadonlyMap<string, string>> {
+  const result = new Map<string, string>();
+  try {
+    if (dialect === "sqlite") {
+      const { sql } = await import("kysely");
+      const rows = await sql<{ name: string; sql: string }>`
+        SELECT name, sql FROM sqlite_master WHERE type='view' AND name NOT LIKE 'sqlite_%'
+      `.execute(db);
+      for (const r of rows.rows) {
+        if (r.name && r.sql) result.set(r.name, r.sql);
+      }
+    } else {
+      const { sql } = await import("kysely");
+      const rows = await sql<{ name: string; def: string }>`
+        SELECT viewname AS name, definition AS def
+        FROM pg_views
+        WHERE schemaname = 'public'
+      `.execute(db);
+      for (const r of rows.rows) {
+        // Postgres pg_views.definition returns only the SELECT body, not the
+        // full "CREATE VIEW ... AS ...". Synthesize so comparison is apples-
+        // to-apples with what emitViewDdl produces.
+        if (r.name && r.def) result.set(r.name, `CREATE VIEW ${r.name} AS ${r.def}`);
+      }
+    }
+  } catch {
+    // ignore — empty map means over-eager recreate, same as before this fix
+  }
+  return result;
 }

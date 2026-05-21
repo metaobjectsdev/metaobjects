@@ -23,6 +23,18 @@ export interface ProjectionMigrationsOpts {
   readonly allowBreaking?: boolean;
   /** Column naming strategy forwarded to extractViewSpec. Defaults to "snake_case". */
   readonly columnNamingStrategy?: "snake_case" | "literal" | "kebab-case";
+  /**
+   * Existing view SQL keyed by view name (from sqlite_master.sql or
+   * pg_views.definition). When provided, projections whose emitted CREATE
+   * SQL matches the existing definition (whitespace-normalized) are skipped
+   * — no DROP+CREATE noise for unchanged views.
+   */
+  readonly existingViewSql?: ReadonlyMap<string, string>;
+}
+
+/** Collapse whitespace + strip trailing ";" for textual view-SQL comparison. */
+function normalizeViewSql(sql: string): string {
+  return sql.replace(/\s+/g, " ").replace(/;\s*$/, "").trim();
 }
 
 /**
@@ -77,13 +89,20 @@ export function computeProjectionMigrations(
       joinTables,
     });
 
+    // Skip if the existing DB view's CREATE SQL matches what we'd emit.
+    // Avoids the "every migration re-creates every view" noise when nothing
+    // about the view's body actually changed.
+    const existing = opts.existingViewSql?.get(spec.viewName);
+    if (existing !== undefined && normalizeViewSql(existing) === normalizeViewSql(createSql)) {
+      continue;
+    }
+
     views.push({
       viewName: spec.viewName,
       // prevShape intentionally absent — treated as "safe-append" by
       // computeViewMigrations (source-aware-diff.ts line 32). On Postgres
       // this rewrites the emitted "CREATE VIEW" to "CREATE OR REPLACE VIEW",
-      // so re-running migrate is idempotent. Future: introspect existing views
-      // via pg_views / sqlite_master for true safe-replace/breaking detection.
+      // so re-running migrate is idempotent.
       nextShape: {
         columns: spec.selectSpec.columns.map((c) => c.dbColAlias),
       },
