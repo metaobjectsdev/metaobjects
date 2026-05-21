@@ -1,8 +1,8 @@
-import "../setup.js";
+import "./setup.js";
 import { describe, test, expect, afterEach } from "bun:test";
 import { render, fireEvent, screen, cleanup } from "@testing-library/react";
 import React from "react";
-import { CurrencyInput } from "../../src/components/currency-input.js";
+import { CurrencyInput } from "../src/currency-input.js";
 
 afterEach(() => { cleanup(); });
 

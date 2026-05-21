@@ -7,7 +7,7 @@
 //
 // Usage:
 //
-//   import { useEntityForm } from '@metaobjects/runtime-ts/react';
+//   import { useEntityForm } from '@metaobjects/react';
 //   import { Subscriber, SubscriberInsertSchema } from './generated/Subscriber';
 //
 //   const form = useEntityForm(Subscriber, SubscriberInsertSchema);

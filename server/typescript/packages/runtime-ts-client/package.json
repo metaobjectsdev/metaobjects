@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@metaobjects/metadata": "workspace:*",
+    "@metaobjects/react": "workspace:*",
     "@metaobjects/runtime-web": "workspace:*",
     "qs": "^6.13.0"
   },

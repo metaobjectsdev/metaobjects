@@ -7,8 +7,9 @@ export {
   type InputAccessor,
   type UseEntityFormOptions,
   type UseEntityFormReturn,
-} from "./react/index.js";
-export { CurrencyInput, type CurrencyInputProps } from "./components/currency-input.js";
+  CurrencyInput,
+  type CurrencyInputProps,
+} from "@metaobjects/react";
 
 export {
   EntityFetcherProvider,
