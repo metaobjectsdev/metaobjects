@@ -1,11 +1,13 @@
-import type { MetaData, MetaReferenceIdentity, MetaRoot } from "@metaobjects/metadata";
+import type { MetaData, MetaObject, MetaReferenceIdentity, MetaRoot } from "@metaobjects/metadata";
 import {
-  TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY,
+  TYPE_OBJECT,
+  TYPE_SOURCE,
+  TYPE_VALIDATOR,
+  SOURCE_SUBTYPE_DB_VIEW,
+  VALIDATOR_SUBTYPE_REQUIRED,
   IDENTITY_ATTR_FIELDS,
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_UNIQUE,
-  IDENTITY_SUBTYPE_PRIMARY,
-  IDENTITY_SUBTYPE_REFERENCE,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_UNIQUE,
@@ -18,6 +20,7 @@ import {
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_BOOLEAN,
+  FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
@@ -47,10 +50,20 @@ export function buildExpectedSchema(
   opts?: BuildExpectedSchemaOptions,
 ): SchemaSnapshot {
   // Pass 1: collect entities + their resolved table names.
-  const entities: { entity: MetaData; tableName: string }[] = [];
+  // Skip:
+  //   - abstract objects (e.g., BaseEntity)
+  //   - value objects (no table backing)
+  //   - projections (source.dbView — handled by the view-diff pipeline, not table diff)
+  const entities: { entity: MetaObject; tableName: string }[] = [];
   for (const child of root.ownChildren()) {
     if (child.type !== TYPE_OBJECT) continue;
-    entities.push({ entity: child, tableName: resolveTableName(child) });
+    if (child.isAbstract) continue;
+    if (child.subType === "value") continue;
+    const hasViewSource = child.ownChildren().some(
+      (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_VIEW,
+    );
+    if (hasViewSource) continue;
+    entities.push({ entity: child as MetaObject, tableName: resolveTableName(child) });
   }
   const entityToTable = new Map(entities.map((e) => [e.entity.name, e.tableName]));
   const resolveTargetTable = (entityName: string) => entityToTable.get(entityName);
@@ -84,42 +97,40 @@ function normalizeForSqlite(sqlType: SqlType): SqlType {
     case "timestamp":
     case "date":
       return { kind: "text" };
+    case "integer":
+      // SQLite stores every INTEGER as a 64-bit value and Drizzle's int() emits
+      // plain "INTEGER" regardless of source bit-width. Collapse 32 → 64 so the
+      // expected snapshot matches what introspection sees.
+      return { kind: "integer", bits: 64 };
     default:
       return sqlType;
   }
 }
 
 function buildTable(
-  entity: MetaData,
+  entity: MetaObject,
   tableName: string,
   resolveTargetTable: (entityName: string) => string | undefined,
   root: MetaRoot,
 ): TableDescriptor {
-  let primaryKey: string[] = [];
-  let pkIdentity: MetaData | undefined;
-
-  // First pass: locate the primary identity so column construction can consult it.
-  for (const child of entity.ownChildren()) {
-    if (child.type === TYPE_IDENTITY && isPrimaryIdentity(child)) {
-      pkIdentity = child;
-      primaryKey = readIdentityFields(child).map((jsName) => {
-        const field = findField(entity, jsName);
-        return field ? resolveColumnName(field) : toSnake(jsName);
-      });
-      break;
-    }
-  }
+  // Use effective accessors so inherited fields/identities (from `extends:` /
+  // abstract bases like BaseEntity) are included.
+  const pkIdentity = entity.primaryIdentity();
 
   const pkJsNames = pkIdentity ? readIdentityFields(pkIdentity) : [];
   const pkGeneration = pkIdentity
     ? (pkIdentity.ownAttr(IDENTITY_ATTR_GENERATION) as string | undefined)
     : undefined;
 
+  const primaryKey = pkJsNames.map((jsName) => {
+    const field = findField(entity, jsName);
+    return field ? resolveColumnName(field) : toSnake(jsName);
+  });
+
   const columns: ColumnDescriptor[] = [];
-  for (const child of entity.ownChildren()) {
-    if (child.type !== TYPE_FIELD) continue;
-    const isPk = pkJsNames.includes(child.name);
-    columns.push(buildColumn(child, isPk, isPk ? pkGeneration : undefined));
+  for (const field of entity.fields()) {
+    const isPk = pkJsNames.includes(field.name);
+    columns.push(buildColumn(field, isPk, isPk ? pkGeneration : undefined));
   }
 
   return {
@@ -131,17 +142,16 @@ function buildTable(
   };
 }
 
-function buildSecondaryIndexes(entity: MetaData, tableName: string): IndexDescriptor[] {
+function buildSecondaryIndexes(entity: MetaObject, tableName: string): IndexDescriptor[] {
   const indexes: IndexDescriptor[] = [];
 
   // (a) Implicit unique indexes from @unique fields. Drizzle auto-creates these
   // on the DB side using the convention `<table>_<column>_unique` whenever a
   // column has `.unique()`. We mirror them in the expected schema so the diff
   // doesn't see them as drop-only on the actual side.
-  for (const child of entity.ownChildren()) {
-    if (child.type !== TYPE_FIELD) continue;
-    if (child.ownAttr(FIELD_ATTR_UNIQUE) !== true) continue;
-    const colName = resolveColumnName(child);
+  for (const field of entity.fields()) {
+    if (field.ownAttr(FIELD_ATTR_UNIQUE) !== true) continue;
+    const colName = resolveColumnName(field);
     indexes.push({
       name: `${tableName}_${colName}_unique`,
       columns: [colName],
@@ -150,18 +160,18 @@ function buildSecondaryIndexes(entity: MetaData, tableName: string): IndexDescri
   }
 
   // (b) Explicit secondary identities — unique-by-default, opt out with @unique: false.
-  for (const child of entity.ownChildren()) {
-    if (child.type !== TYPE_IDENTITY) continue;
-    if (isPrimaryIdentity(child)) continue;
-    const fieldNames = readIdentityFields(child);
+  // Drizzle emits the index using the identity's @name attr directly (no table
+  // prefix), so the expected name must match.
+  for (const identity of entity.secondaryIdentities()) {
+    const fieldNames = readIdentityFields(identity);
     if (fieldNames.length === 0) continue;
     const cols = fieldNames.map((jsName) => {
       const field = findField(entity, jsName);
       return field ? resolveColumnName(field) : toSnake(jsName);
     });
-    const uniqueAttr = child.ownAttr(IDENTITY_ATTR_UNIQUE);
+    const uniqueAttr = identity.ownAttr(IDENTITY_ATTR_UNIQUE);
     indexes.push({
-      name: `${tableName}_${toSnake(child.name)}`,
+      name: identity.name,
       columns: cols,
       unique: uniqueAttr !== false,
     });
@@ -170,23 +180,19 @@ function buildSecondaryIndexes(entity: MetaData, tableName: string): IndexDescri
 }
 
 function buildForeignKeys(
-  entity: MetaData,
+  entity: MetaObject,
   tableName: string,
   resolveTargetTable: (entityName: string) => string | undefined,
   root: MetaRoot,
 ): FkDescriptor[] {
   const fks: FkDescriptor[] = [];
-  for (const child of entity.ownChildren()) {
-    if (child.type !== TYPE_IDENTITY) continue;
-    if (child.subType !== IDENTITY_SUBTYPE_REFERENCE) continue;
-
-    const refChild = child as MetaReferenceIdentity;
+  for (const refChild of entity.referenceIdentities()) {
     const targetEntity = refChild.targetEntity;
     if (targetEntity === undefined) continue;
     const refTable = resolveTargetTable(targetEntity);
     if (!refTable) continue;
 
-    const fkFieldJsNames = readIdentityFields(child);
+    const fkFieldJsNames = readIdentityFields(refChild);
     if (fkFieldJsNames.length === 0) continue;
 
     const fkCols = fkFieldJsNames.map((jsName) => {
@@ -225,8 +231,13 @@ function buildColumn(
   isPk: boolean,
   pkGeneration: string | undefined,
 ): ColumnDescriptor {
-  const required = field.ownAttr(FIELD_ATTR_REQUIRED);
-  const isRequired = required === true || required === "true";
+  const requiredAttr = field.ownAttr(FIELD_ATTR_REQUIRED);
+  // BaseEntity-style metadata expresses required via a validator.required child;
+  // direct attr form is the alternative. Either signals NOT NULL.
+  const hasRequiredValidator = field.ownChildren().some(
+    (c) => c.type === TYPE_VALIDATOR && c.subType === VALIDATOR_SUBTYPE_REQUIRED,
+  );
+  const isRequired = requiredAttr === true || requiredAttr === "true" || hasRequiredValidator;
   const defaultRaw = field.ownAttr(FIELD_ATTR_DEFAULT);
 
   const col: ColumnDescriptor = {
@@ -255,7 +266,8 @@ function subtypeToSqlType(subType: string): SqlType {
     case FIELD_SUBTYPE_INT:
     case FIELD_SUBTYPE_SHORT:
     case FIELD_SUBTYPE_BYTE:      return { kind: "integer", bits: 32 };
-    case FIELD_SUBTYPE_LONG:      return { kind: "integer", bits: 64 };
+    case FIELD_SUBTYPE_LONG:
+    case FIELD_SUBTYPE_CURRENCY:  return { kind: "integer", bits: 64 };
     case FIELD_SUBTYPE_DOUBLE:
     case FIELD_SUBTYPE_FLOAT:     return { kind: "real" };
     case FIELD_SUBTYPE_DECIMAL:   return { kind: "numeric" };
@@ -267,10 +279,6 @@ function subtypeToSqlType(subType: string): SqlType {
     case FIELD_SUBTYPE_CLASS:     return { kind: "json" };
     default:                      return { kind: "text" }; // unknown → text fallback
   }
-}
-
-function isPrimaryIdentity(identity: MetaData): boolean {
-  return identity.subType === IDENTITY_SUBTYPE_PRIMARY;
 }
 
 function readIdentityFields(identity: MetaData): string[] {
@@ -285,9 +293,9 @@ function readIdentityFields(identity: MetaData): string[] {
   return [];
 }
 
-function findField(entity: MetaData, name: string): MetaData | undefined {
-  for (const child of entity.ownChildren()) {
-    if (child.type === TYPE_FIELD && child.name === name) return child;
+function findField(entity: MetaObject, name: string): MetaData | undefined {
+  for (const field of entity.fields()) {
+    if (field.name === name) return field;
   }
   return undefined;
 }

@@ -99,10 +99,10 @@ describe("buildExpectedSchema — indexes + FKs", () => {
     snapshot = buildExpectedSchema(metadata);
   });
 
-  test("secondary identity → unique index", () => {
+  test("secondary identity → unique index (name uses identity.name as-is — matches Drizzle emit)", () => {
     const programs = snapshot.tables.find((t) => t.name === "programs");
     expect(programs?.indexes).toEqual([
-      { name: "programs_unique_slug", columns: ["slug"], unique: true },
+      { name: "uniqueSlug", columns: ["slug"], unique: true },
     ]);
   });
 
