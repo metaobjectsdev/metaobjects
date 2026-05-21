@@ -52,57 +52,65 @@ Worked examples: a Drizzle TS-server integration → `server/typescript/packages
 
 **Server-side** (`server/typescript/packages/`):
 - `metadata/` (`@metaobjects/metadata`) — metamodel loader, types, constants
-- `codegen-ts/` (`@metaobjects/codegen-ts`) — TS codegen engine
+- `codegen-ts/` (`@metaobjects/codegen-ts`) — framework-neutral TS codegen engine (entityFile, queriesFile, routesFile, barrel)
+- `codegen-ts-react/` (`@metaobjects/codegen-ts-react`) — React codegen (formFile)
+- `codegen-ts-tanstack/` (`@metaobjects/codegen-ts-tanstack`) — TanStack codegen (tanstackQuery, tanstackGrid, tanstackGridHook)
 - `runtime-ts/` (`@metaobjects/runtime-ts`) — Node-side runtime (Kysely, Drizzle, Fastify helpers)
 - `migrate-ts/` (`@metaobjects/migrate-ts`) — migration tooling
 - `sdk/` (`@metaobjects/sdk`) — workspace memory, path helpers
 - `cli/` (`@metaobjects/cli`, binary `meta`) — CLI commands: `init`, `gen`, `migrate`
 
 **Client-side / universal web** (`client/web/packages/`):
-- `runtime-web/` (`@metaobjects/runtime-web`) — framework-agnostic browser core (EntityFetcher contract, JSON shapes).
-- `tanstack/` (`@metaobjects/tanstack`) — TanStack React integration: codegen + runtime + dynamic.
+- `runtime-web/` (`@metaobjects/runtime-web`) — pure framework-agnostic browser core (currency, filter-qs, EntityFetcher contract, GridConfig). Zero React, zero TanStack.
+- `react/` (`@metaobjects/react`) — React runtime: `useEntityForm`, `<CurrencyInput>`.
+- `tanstack/` (`@metaobjects/tanstack`) — TanStack runtime: `EntityFetcherProvider`, `<EntityGrid>`, default cell renderers.
 - Future: `angular/`, `svelte/`, `react-native/`.
 
-### Framework integration package anatomy
+### Framework integration: separate codegen and runtime packages
 
-Each framework integration (`tanstack`, future `angular`, etc.) is a **first-class package** combining codegen + runtime + future dynamic metadata-driven capabilities. They are NOT just code generators — naming with a `codegen-` prefix would lock them into one role.
+Each framework integration ships as a **pair** of packages — one for codegen (server-side, runs at `meta gen` time) and one for runtime (browser-side, runs in the user's app). Mirrors Prisma (`prisma` + `@prisma/client`), Apollo (`@apollo/codegen-cli` + `@apollo/client`), and Drizzle (`drizzle-kit` + `drizzle-orm`).
 
-Multi-entry layout:
+| Integration | Codegen | Runtime |
+|---|---|---|
+| React | `@metaobjects/codegen-ts-react` | `@metaobjects/react` |
+| TanStack (depends on React) | `@metaobjects/codegen-ts-tanstack` | `@metaobjects/tanstack` |
+
+Each codegen package emits imports that target its matching runtime package. Codegen packages live under `server/typescript/packages/` because they execute server-side, even though their output targets the browser. Runtime packages live under `client/web/packages/` and have zero Node-only deps.
+
+Two disjoint dependency trees:
 
 ```
-client/web/packages/tanstack/
-├── package.json                       # "name": "@metaobjects/tanstack"
-└── src/
-    ├── codegen/      # generators imported in metaobjects.config.ts
-    ├── runtime/      # providers, hooks, helpers imported in app code
-    ├── dynamic/      # future — metadata-driven runtime widgets
-    └── index.ts      # re-exports the stable runtime API
+Runtime side (browser):              Codegen side (server):
+
+  @metaobjects/runtime-web ←┐         @metaobjects/codegen-ts ←┐
+        ↑                    \              ↑                   \
+        └── @metaobjects/react ┐             ├── @metaobjects/codegen-ts-react
+                ↑               \            └── @metaobjects/codegen-ts-tanstack
+                └── @metaobjects/tanstack
 ```
 
-`package.json` exports map:
+Future framework integrations (Angular, Svelte, React Native) follow the same two-package pattern.
 
-```jsonc
-{
-  "exports": {
-    ".":         "./dist/index.js",
-    "./codegen": "./dist/codegen/index.js",
-    "./runtime": "./dist/runtime/index.js",
-    "./dynamic": "./dist/dynamic/index.js"
-  }
-}
-```
-
-Consumption:
+A user's `metaobjects.config.ts`:
 
 ```ts
-// metaobjects.config.ts (server-only deps stay out of browser bundles)
-import { tanstackQuery, tanstackGrid } from "@metaobjects/tanstack/codegen";
+import { defineConfig } from "@metaobjects/cli";
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjects/codegen-ts/generators";
+import { formFile } from "@metaobjects/codegen-ts-react";
+import { tanstackQuery, tanstackGrid } from "@metaobjects/codegen-ts-tanstack";
 
-// React app
-import { EntityFetcherProvider, EntityGrid } from "@metaobjects/tanstack/runtime";
+export default defineConfig({
+  generators: [entityFile(), queriesFile(), routesFile(), formFile(), tanstackQuery(), tanstackGrid(), barrel()],
+});
 ```
 
-Mirrors `drizzle-orm` (multi-dialect entry points), `@tanstack/react-table` (state + helpers co-located), Apollo (client + cache + links).
+A consumer's React component:
+
+```ts
+import { formatCurrency } from "@metaobjects/runtime-web";
+import { CurrencyInput, useEntityForm } from "@metaobjects/react";
+import { EntityFetcherProvider, EntityGrid } from "@metaobjects/tanstack";
+```
 
 ## Other conventions
 
@@ -255,7 +263,7 @@ const { data } = useSubscribers({
 
 **Server validation:** every request validated against the allowlist. Unknown field / disallowed op / invalid value → 400 with structured error code.
 
-**Architecture:** `parseFilterParams` (in `@metaobjects/runtime-ts/drizzle-fastify`) translates parsed qs into a Drizzle expression tree. `buildFilterQs` (in `@metaobjects/runtime-ts-client/tanstack`) serializes a typed filter object back to a bracketed qs URL.
+**Architecture:** `parseFilterParams` (in `@metaobjects/runtime-ts/drizzle-fastify`) translates parsed qs into a Drizzle expression tree. `buildFilterQs` (in `@metaobjects/runtime-web` and `@metaobjects/tanstack`) serializes a typed filter object back to a bracketed qs URL.
 
 ### Source-aware entities + projections (Project E)
 
@@ -306,8 +314,8 @@ const { data } = useSubscribers({
 **Runtime imports** (browser-safe sub-paths):
 
 ```tsx
-import { formatCurrency, parseCurrency } from "@metaobjects/runtime-ts-client/currency";
-import { CurrencyInput } from "@metaobjects/runtime-ts-client/components/currency-input";
+import { formatCurrency, parseCurrency } from "@metaobjects/runtime-web";
+import { CurrencyInput } from "@metaobjects/react";
 ```
 
 **Cross-language ports** must preserve the wire contract: integer minor-unit storage, `@currency` (ISO 4217), `@locale` (BCP 47) attrs.
@@ -331,7 +339,7 @@ import { CurrencyInput } from "@metaobjects/runtime-ts-client/components/currenc
 }}
 ```
 
-**Runtime surface (`@metaobjects/runtime-ts-client/tanstack`)**:
+**Runtime surface (`@metaobjects/runtime-web` and `@metaobjects/tanstack`)**:
 - `<EntityFetcherProvider value={fetcher}>` — supplies the fetcher function.
 - `<CellRendererProvider value={{...}}>` — renderer overrides keyed by view subtype.
 - `<EntityGrid columns={...} grid={...} data={...} />` — opinionated TanStack Table component.
