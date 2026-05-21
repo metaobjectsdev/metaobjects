@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { buildFilterQs } from "../../src/tanstack/filter-builder.js";
+import { buildFilterQs } from "../src/filter-qs.js";
 
 describe("buildFilterQs", () => {
   test("bare value", () => {

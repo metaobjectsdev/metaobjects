@@ -9,7 +9,7 @@ import {
   type ColumnFiltersState,
   type OnChangeFn,
 } from "@tanstack/react-table";
-import type { GridConfig } from "./types.js";
+import type { GridConfig } from "@metaobjects/runtime-web";
 import { useCellRenderers } from "./cell-renderer-provider.js";
 
 export interface EntityGridState {
