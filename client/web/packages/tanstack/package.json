@@ -1,0 +1,47 @@
+{
+  "name": "@metaobjects/tanstack",
+  "version": "0.4.0",
+  "description": "TanStack runtime for metaobjects: EntityFetcherProvider, EntityGrid, default cell renderers.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@metaobjects/runtime-web": "workspace:*",
+    "@metaobjects/react": "workspace:*"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": ">=5.90.0",
+    "@tanstack/react-table": ">=8.20.0",
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@tanstack/react-query": { "optional": true },
+    "@tanstack/react-table": { "optional": true },
+    "react": { "optional": true }
+  },
+  "devDependencies": {
+    "@tanstack/react-query": "^5.90.0",
+    "@tanstack/react-table": "^8.20.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/dom": "^10.0.0",
+    "@types/react": "^19.0.0",
+    "bun-types": "latest",
+    "jsdom": "^29.1.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.6.0"
+  }
+}

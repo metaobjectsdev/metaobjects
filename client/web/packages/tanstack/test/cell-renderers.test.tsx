@@ -1,11 +1,11 @@
 import { describe, test, expect } from "bun:test";
-import "../setup.js";
+import "./setup.js";
 import { renderHook } from "@testing-library/react";
 import {
   defaultCellRenderers,
   CellRendererProvider,
   useCellRenderers,
-} from "../../src/tanstack/index.js";
+} from "../src/index.js";
 
 const ctx = (value: unknown) => ({ getValue: () => value }) as any;
 

@@ -1,3 +1,4 @@
+// Public API surface for @metaobjects/tanstack.
 export { EntityFetcherProvider, useEntityFetcher } from "./entity-fetcher.js";
 export type { EntityFetcherProviderProps } from "./entity-fetcher.js";
 export type { EntityFetcher, GridConfig } from "@metaobjects/runtime-web";

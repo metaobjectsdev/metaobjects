@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import type { CellContext } from "@tanstack/react-table";
-import { defaultCellRenderers } from "../../src/tanstack/cell-renderers.js";
+import { defaultCellRenderers } from "../src/cell-renderers.js";
 
 function ctxFor(
   value: unknown,

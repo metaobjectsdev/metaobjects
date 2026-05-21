@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
-import "../setup.js";
+import "./setup.js";
 import { renderHook } from "@testing-library/react";
-import { EntityFetcherProvider, useEntityFetcher, type EntityFetcher } from "../../src/tanstack/index.js";
+import { EntityFetcherProvider, useEntityFetcher, type EntityFetcher } from "../src/index.js";
 import type { ReactNode } from "react";
 
 function Wrapper({ value, children }: { value: any; children: ReactNode }) {

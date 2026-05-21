@@ -53,6 +53,36 @@
         "typescript": "^5.6.0",
       },
     },
+    "../../client/web/packages/tanstack": {
+      "name": "@metaobjects/tanstack",
+      "version": "0.4.0",
+      "dependencies": {
+        "@metaobjects/react": "workspace:*",
+        "@metaobjects/runtime-web": "workspace:*",
+      },
+      "devDependencies": {
+        "@tanstack/react-query": "^5.90.0",
+        "@tanstack/react-table": "^8.20.0",
+        "@testing-library/dom": "^10.0.0",
+        "@testing-library/react": "^16.0.0",
+        "@types/react": "^19.0.0",
+        "bun-types": "latest",
+        "jsdom": "^29.1.1",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "typescript": "^5.6.0",
+      },
+      "peerDependencies": {
+        "@tanstack/react-query": ">=5.90.0",
+        "@tanstack/react-table": ">=8.20.0",
+        "react": ">=18.0.0",
+      },
+      "optionalPeers": [
+        "@tanstack/react-query",
+        "@tanstack/react-table",
+        "react",
+      ],
+    },
     "packages/cli": {
       "name": "@metaobjects/cli",
       "version": "0.2.0",
@@ -222,6 +252,7 @@
         "@metaobjects/metadata": "workspace:*",
         "@metaobjects/react": "workspace:*",
         "@metaobjects/runtime-web": "workspace:*",
+        "@metaobjects/tanstack": "workspace:*",
         "qs": "^6.13.0",
       },
       "devDependencies": {
@@ -492,6 +523,8 @@
     "@metaobjects/runtime-web": ["@metaobjects/runtime-web@workspace:../../client/web/packages/runtime-web"],
 
     "@metaobjects/sdk": ["@metaobjects/sdk@workspace:packages/sdk"],
+
+    "@metaobjects/tanstack": ["@metaobjects/tanstack@workspace:../../client/web/packages/tanstack"],
 
     "@neon-rs/load": ["@neon-rs/load@0.0.4", "", {}, "sha512-kTPhdZyTQxB+2wpiRcFWrDcejc4JI6tkPuS7UZCG4l6Zvc5kU/gGQ/ozvHTh1XR5tS+UlfAfGuPajjzQjCiHCw=="],
 

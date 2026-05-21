@@ -1,10 +1,10 @@
-import "../setup.js";
+import "./setup.js";
 import { describe, test, expect, mock } from "bun:test";
 import { render, fireEvent, screen } from "@testing-library/react";
-import { EntityGrid } from "../../src/tanstack/entity-grid.js";
+import { EntityGrid } from "../src/entity-grid.js";
 import type { ColumnDef } from "@tanstack/react-table";
-import type { EntityGridState } from "../../src/tanstack/entity-grid.js";
-import type { GridConfig } from "../../src/tanstack/types.js";
+import type { EntityGridState } from "../src/entity-grid.js";
+import type { GridConfig } from "@metaobjects/runtime-web";
 
 type Row = { id: number; name: string; active?: boolean };
 

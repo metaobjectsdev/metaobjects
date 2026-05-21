@@ -27,6 +27,7 @@
     "@metaobjects/metadata": "workspace:*",
     "@metaobjects/react": "workspace:*",
     "@metaobjects/runtime-web": "workspace:*",
+    "@metaobjects/tanstack": "workspace:*",
     "qs": "^6.13.0"
   },
   "peerDependencies": {
