@@ -1,7 +1,5 @@
 # MetaObjects — Claude Context
 
-> **Note**: This file is the seed for `metaobjects/CLAUDE.md` in the public repo created at Project H1. Until then it lives here as a staging artifact.
-
 ## What this project is
 
 MetaObjects is a **cross-language metadata standard** for declaring typed entity models that drive code generation, runtime metadata access, and drift detection — across TypeScript, Java, Python, and (eventually) C#.
@@ -18,9 +16,9 @@ Equal weight, shipping per-language:
 
 ## Status
 
-TypeScript reference implementation is at v0.3. Java port is in progress (H3 on the roadmap). **C# loader + conformance shipped** (loader, canonical serializer, and a `dotnet test` conformance runner that runs the full shared corpus; codegen + runtime remain out of scope for C#). Python is planned later.
+TypeScript reference implementation is at v0.3 — Projects D–G shipped end-to-end with 1784+ tests passing. Java port is in progress: H3a (loader restructure) shipped 2026-05-19; H3b (conformance harness) is active. **C# loader + conformance shipped** (loader, canonical serializer, and a `dotnet test` conformance runner that runs the full shared corpus; codegen + runtime remain out of scope for C#). Python is planned post-H3.
 
-See `spec/roadmap.md` for current + planned work.
+Cross-language conformance fixtures live at `fixtures/conformance/` (45 fixtures + a `CAPABILITIES.json` manifest). See `spec/roadmap.md` for current + planned work.
 
 ## Language, runtime, conventions
 
@@ -62,7 +60,7 @@ See `spec/roadmap.md` for current + planned work.
 
 ## File organization
 
-**Default convention**: one file per domain concept under `metaobjects/`. Multiple objects per file when they share a domain. Projections (`source[dbView]`) live inline with their base entity.
+**Default convention**: one file per domain concept under `metaobjects/`. Multiple objects per file when they share a domain. Projections (`source.dbView`) live inline with their base entity.
 
 ```
 project-root/
@@ -80,11 +78,11 @@ project-root/
 File-naming: `meta.<concept>.json`. Each file declares its `package`:
 
 ```jsonc
-{ "metadata": {
+{ "metadata.root": {
     "package": "myapp::commerce",
     "children": [
-      { "object": { "name": "Program", ... }},
-      { "object": { "name": "Purchase", ... }}
+      { "object.entity": { "name": "Program", ... }},
+      { "object.entity": { "name": "Purchase", ... }}
     ]
 }}
 ```
@@ -192,17 +190,16 @@ const { data } = useSubscribers({
 **Authoring a projection:**
 
 ```jsonc
-{ "object": {
+{ "object.entity": {
     "name": "ProgramSummary",
-    "subType": "entity",
     "extends": "Program",
     "children": [
-      { "source": { "subType": "dbView", "@name": "v_program_summary" }},
-      { "field": { "name": "weekCount", "subType": "int", "children": [
-        { "origin": { "subType": "aggregate",
+      { "source.dbView": { "@name": "v_program_summary" }},
+      { "field.int": { "name": "weekCount", "children": [
+        { "origin.aggregate": {
             "@agg": "count", "@of": "Week.id", "@via": "Program.weeks" }}
       ]}},
-      { "identity": { "subType": "primary", "@fields": "id" }}
+      { "identity.primary": { "@fields": ["id"] }}
     ]
 }}
 ```
@@ -218,15 +215,14 @@ const { data } = useSubscribers({
 
 ### Currency (Project F)
 
-`field[subType=currency]` declares "this column stores money as integer minor units."
+`field.currency` declares "this column stores money as integer minor units."
 
 ```jsonc
-{ "field": {
+{ "field.currency": {
     "name": "priceCents",
-    "subType": "currency",
     "@currency": "USD",
     "children": [
-      { "view": { "subType": "currency", "@locale": "en-US" }}
+      { "view.currency": { "@locale": "en-US" }}
     ]
 }}
 ```
@@ -247,18 +243,17 @@ import { CurrencyInput } from "@metaobjects/runtime-ts-client/components/currenc
 `@metaobjects/codegen-ts-tanstack` ships two generators:
 
 - `tanstackQuery()` — emits `<Entity>.hooks.ts` per entity (5 hooks: `useEntity`, `useEntities`, `useCreate/Update/Delete<Entity>`).
-- `tanstackGrid()` — emits `<Entity>.columns.tsx` per entity with a `layout[dataGrid]` child.
+- `tanstackGrid()` — emits `<Entity>.columns.tsx` per entity with a `layout.dataGrid` child.
 
 **Grid metadata:**
 
 ```jsonc
-{ "layout": {
-    "subType": "dataGrid",
+{ "layout.dataGrid": {
     "name": "default",
-    "@pageSize": 25,
+    "@columns": ["email", "firstName", "subscribed", "createdAt"],
     "@defaultSortField": "createdAt",
     "@defaultSortOrder": "desc",
-    "@columns": ["email", "firstName", "subscribed", "createdAt"]
+    "@pageSize": 25
 }}
 ```
 
@@ -332,7 +327,7 @@ meta migrate --dry-run                # preview without writing migration file
 The Bun workspace root is `typescript/`. Run `bun test` / `bun run` from `typescript/` (or a specific package directory) — **never from the repository root**. At the repo root there is no workspace `package.json`, so Bun scans the entire polyglot tree (`java/`, `python/`, `csharp/`, `fixtures/`, every `node_modules/`) and re-resolves `@metaobjects/*` imports per file — turning a ~3-second run into several minutes.
 
 ```
-cd typescript && bun test                          # whole TS monorepo (~3s, 1784 tests)
+cd typescript && bun test                          # whole TS monorepo (~3s, 1784+ tests)
 cd typescript && bun run --filter '*' typecheck    # whole monorepo typecheck
 cd typescript/packages/<pkg> && bun test           # a single package
 ```
