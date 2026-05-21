@@ -235,7 +235,7 @@ export function renderEntityConstants(obj: MetaObject, apiPrefix = ""): Code {
  *
  * Typical usage with the metaobjects React form helper:
  *
- *   import { useEntityForm } from '@metaobjects/runtime-ts-client/react';
+ *   import { useEntityForm } from '@metaobjects/react';
  *   const form = useEntityForm(${entityName}, ${entityName}InsertSchema);
  *   <input {...form.input.${
     fieldEntries[0]?.match(/^\s*(\w+):/)?.[1] ?? "fieldName"

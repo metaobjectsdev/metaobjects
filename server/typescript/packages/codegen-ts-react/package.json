@@ -1,6 +1,7 @@
 {
-  "name": "@metaobjects/codegen-ts",
-  "version": "0.1.0",
+  "name": "@metaobjects/codegen-ts-react",
+  "version": "0.4.0",
+  "description": "React codegen for metaobjects — emits <Entity>.form.tsx files using react-hook-form and @metaobjects/react helpers.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./src/index.ts",
@@ -9,35 +10,25 @@
       "bun": "./src/index.ts",
       "types": "./src/index.ts",
       "default": "./dist/index.js"
-    },
-    "./generators": {
-      "bun": "./src/generators/index.ts",
-      "types": "./src/generators/index.ts",
-      "default": "./dist/generators/index.js"
     }
   },
   "files": ["dist", "src"],
   "scripts": {
     "build": "tsc -p .",
-    "typecheck": "tsc -p tsconfig.typecheck.json"
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "bun test"
   },
   "dependencies": {
     "@metaobjects/metadata": "workspace:*",
+    "@metaobjects/codegen-ts": "workspace:*",
     "ts-poet": "^6.10.0"
   },
   "peerDependencies": {
-    "drizzle-orm": ">=0.36.0",
-    "zod": ">=3.23.0",
     "@biomejs/biome": ">=1.9.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
-    "@biomejs/js-api": "^0.7.0",
-    "@biomejs/wasm-nodejs": "^1.9.4",
-    "@metaobjects/codegen-ts-react": "workspace:*",
     "bun-types": "latest",
-    "drizzle-orm": "^0.36.0",
-    "typescript": "^5.6.0",
-    "zod": "^3.23.0"
+    "typescript": "^5.6.0"
   }
 }

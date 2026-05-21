@@ -4,7 +4,7 @@ import type { MetaObject } from "@metaobjects/metadata";
 import { FileMetaDataLoader } from "@metaobjects/metadata/core";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import { routesFile } from "../../src/generators/routes-file.js";
-import { formFile } from "../../src/generators/form-file.js";
+import { formFile } from "@metaobjects/codegen-ts-react";
 import { barrel } from "../../src/generators/barrel.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
@@ -81,7 +81,7 @@ describe("formFile()", () => {
     const files = await gen.generate(ctx);
     const f = files.find(f => f.path === "Post.form.tsx");
     expect(f).toBeDefined();
-    expect(f!.content).toContain("@metaobjects/runtime-ts-client/react");
+    expect(f!.content).toContain("@metaobjects/react");
     expect(f!.content).toContain("useEntityForm");
   });
 

@@ -1,7 +1,6 @@
 import type { MetaObject } from "@metaobjects/metadata";
-import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
-import { renderFormFile } from "../templates/form-file.js";
-import { entityOutputPath } from "../import-path.js";
+import { perEntity, type Generator, type GeneratorFactory, entityOutputPath } from "@metaobjects/codegen-ts";
+import { renderFormFile } from "./templates/form-file.js";
 
 export interface FormFileOpts {
   filter?: (entity: MetaObject) => boolean;

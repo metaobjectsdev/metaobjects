@@ -1,5 +1,5 @@
 // React form template — emits a per-entity Form component that delegates
-// to useEntityForm from @metaobjects/runtime-ts-client/react. The generated file
+// to useEntityForm from @metaobjects/react. The generated file
 // is ~25 lines: wire up the form, render each field's pre-bound input,
 // let the helper carry all metadata-derived attrs.
 //
@@ -23,9 +23,7 @@ import {
   IDENTITY_ATTR_FIELDS,
   FIELD_ATTR_DEFAULT,
 } from "@metaobjects/metadata";
-import { type RenderContext } from "../render-context.js";
-import { crossEntitySpecifier } from "../import-path.js";
-import { GENERATED_HEADER } from "../constants.js";
+import { type RenderContext, crossEntitySpecifier, GENERATED_HEADER } from "@metaobjects/codegen-ts";
 
 function primaryFieldNames(entity: MetaObject): Set<string> {
   const set = new Set<string>();
@@ -78,7 +76,7 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
 
   const ReactElementSym = imp("t:ReactElement@react");
   const SubmitHandlerSym = imp("t:SubmitHandler@react-hook-form");
-  const useEntityFormSym = imp("useEntityForm@@metaobjects/runtime-ts-client/react");
+  const useEntityFormSym = imp("useEntityForm@@metaobjects/react");
 
   // For each visible field, emit a label + input + error block.
   // The input gets every metadata-derived attr via {...form.input.<field>}.
