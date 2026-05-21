@@ -10,7 +10,7 @@
     "typecheck": "bun run --filter '*' typecheck",
     "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo"
   },
-  "workspaces": ["packages/*"],
+  "workspaces": ["packages/*", "../../client/web/packages/*"],
   "devDependencies": {
     "typescript": "^5.6.0"
   },
