@@ -256,15 +256,29 @@ export async function migrateCommand(args: string[], cwd: string): Promise<numbe
 
       // Combine table + view SQL into a single migration if no errors.
       if (exitCode === 0) {
-        const upParts = [tableSql?.up, viewUpSql].filter(Boolean);
-        const combinedUp = upParts.join("\n\n");
-        // Down SQL: DROP VIEW statements for any views we created.
-        const viewDownSql = viewResult.migrations
+        // Extract view names from the CREATE VIEW statements so we can drop them
+        // both at the top (before table changes) and in the down migration.
+        // Reason for the top-side drops: SQLite's ALTER TABLE ... RENAME re-parses
+        // dependent views and errors if their referenced source table is mid-
+        // recreate (the recreate-and-copy pattern temporarily drops then
+        // recreates the source table under its target name). Pre-dropping every
+        // dependent view lets the table recreate proceed; the viewUpSql block
+        // below recreates them fresh.
+        const viewNames = viewResult.migrations
           .map((s) => {
             const m = /CREATE(?:\s+OR\s+REPLACE)?\s+VIEW\s+(\S+)/i.exec(s);
-            return m ? `DROP VIEW IF EXISTS ${m[1]};` : "";
+            return m ? m[1] : undefined;
           })
-          .filter(Boolean)
+          .filter((n): n is string => Boolean(n));
+        const viewPreDropSql = hasTableChanges && viewNames.length > 0
+          ? viewNames.map((n) => `DROP VIEW IF EXISTS ${n};`).join("\n")
+          : "";
+
+        const upParts = [viewPreDropSql, tableSql?.up, viewUpSql].filter(Boolean);
+        const combinedUp = upParts.join("\n\n");
+        // Down SQL: DROP VIEW statements for any views we created.
+        const viewDownSql = viewNames
+          .map((n) => `DROP VIEW IF EXISTS ${n};`)
           .join("\n");
         const downParts = [viewDownSql, tableSql?.down].filter(Boolean);
         const combinedDown = downParts.join("\n\n");
