@@ -1,0 +1,29 @@
+# @metaobjects/metadata
+
+The metamodel loader, typed views, and constants for the MetaObjects standard. This is the foundation package every other `@metaobjects/*` package builds on — it parses `metaobjects/*.json` files into a typed object model, resolves `extends` and overlay merging, and exposes the 11-type vocabulary as named constants.
+
+## Install
+
+```bash
+pnpm add @metaobjects/metadata
+```
+
+## Usage
+
+```ts
+import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
+
+const json = `{ "metadata.root": { "package": "demo", "children": [] } }`;
+const result = await new MetaDataLoader().load([new InMemorySource(json)]);
+```
+
+The public loader API is `MetaDataLoader` + `InMemorySource`. A `MetaDataLoader` instance is single-use; construct a new one per load.
+
+## Links
+
+- [Spec](https://github.com/metaobjectsdev/metaobjects/tree/main/spec)
+- [Metamodel reference](https://github.com/metaobjectsdev/metaobjects/blob/main/spec/metamodel.md)
+
+## License
+
+Apache 2.0 — see [LICENSE](../../../../LICENSE) at the repo root.

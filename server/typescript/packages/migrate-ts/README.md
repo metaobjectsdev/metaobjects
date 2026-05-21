@@ -7,6 +7,12 @@ and emits paired `up.sql` + `down.sql` migration files.
 
 **Status:** v0.3. TS reference implementation; emits migration SQL but does not yet apply against the DB.
 
+## Install
+
+```bash
+pnpm add @metaobjects/migrate-ts
+```
+
 ## Quick start
 
 ```typescript
@@ -61,3 +67,7 @@ await writeMigration(sql, { dir: ".metaobjects/migrations", slug: "add-customer-
 - MySQL.
 - Data migrations (column-type changes that need data transformation: error with hint).
 - Multi-step migration scaffolding (add nullable → backfill → set notnull).
+
+## License
+
+Apache-2.0.
