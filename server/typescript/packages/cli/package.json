@@ -28,6 +28,7 @@
     "@metaobjects/sdk": "workspace:*",
     "@metaobjects/metadata": "workspace:*",
     "@metaobjects/codegen-ts": "workspace:*",
+    "@metaobjects/codegen-ts-react": "workspace:*",
     "@metaobjects/codegen-ts-tanstack": "workspace:*",
     "@metaobjects/migrate-ts": "workspace:*",
     "@metaobjects/forge": "workspace:*",

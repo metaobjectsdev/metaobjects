@@ -87,10 +87,11 @@
       "name": "@metaobjects/cli",
       "version": "0.2.0",
       "bin": {
-        "meta": "./dist/bin/meta.js",
+        "meta": "./bin/meta.ts",
       },
       "dependencies": {
         "@metaobjects/codegen-ts": "workspace:*",
+        "@metaobjects/codegen-ts-react": "workspace:*",
         "@metaobjects/codegen-ts-tanstack": "workspace:*",
         "@metaobjects/forge": "workspace:*",
         "@metaobjects/metadata": "workspace:*",

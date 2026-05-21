@@ -30,7 +30,7 @@
 - **H8 — TS consumer npm migration** (0.5 wk)
   First TS consumer switches from `link:` deps to published versions.
 - **H9 — Second consumer migration** (2-3 wk)
-  TS frontend adopts `@metaobjects/runtime-ts-client`.
+  TS frontend adopts `@metaobjects/runtime-web` + `@metaobjects/react` + `@metaobjects/tanstack`.
 - **H10 — Polyglot consumer migration** (3-4 wk)
   Java + TS consumer onto metaobjects (both layers).
 
