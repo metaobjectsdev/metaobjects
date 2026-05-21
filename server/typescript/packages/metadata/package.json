@@ -1,6 +1,6 @@
 {
   "name": "@metaobjects/metadata",
-  "version": "0.2.4",
+  "version": "0.5.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./src/index.ts",
