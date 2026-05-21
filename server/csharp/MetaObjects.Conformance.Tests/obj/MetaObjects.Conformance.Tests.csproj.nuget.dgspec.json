@@ -1,0 +1,133 @@
+{
+  "format": 1,
+  "restore": {
+    "/home/doug/Development/metaobjects/csharp/MetaObjects.Conformance.Tests/MetaObjects.Conformance.Tests.csproj": {}
+  },
+  "projects": {
+    "/home/doug/Development/metaobjects/csharp/MetaObjects.Conformance.Tests/MetaObjects.Conformance.Tests.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/home/doug/Development/metaobjects/csharp/MetaObjects.Conformance.Tests/MetaObjects.Conformance.Tests.csproj",
+        "projectName": "MetaObjects.Conformance.Tests",
+        "projectPath": "/home/doug/Development/metaobjects/csharp/MetaObjects.Conformance.Tests/MetaObjects.Conformance.Tests.csproj",
+        "packagesPath": "/home/doug/.nuget/packages/",
+        "outputPath": "/home/doug/Development/metaobjects/csharp/MetaObjects.Conformance.Tests/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/home/doug/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "/home/doug/Development/metaobjects/csharp/MetaObjects/MetaObjects.csproj": {
+                "projectPath": "/home/doug/Development/metaobjects/csharp/MetaObjects/MetaObjects.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Microsoft.NET.Test.Sdk": {
+              "target": "Package",
+              "version": "[17.11.1, )"
+            },
+            "xunit": {
+              "target": "Package",
+              "version": "[2.9.2, )"
+            },
+            "xunit.runner.visualstudio": {
+              "target": "Package",
+              "version": "[2.8.2, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/lib/dotnet/sdk/8.0.126/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "/home/doug/Development/metaobjects/csharp/MetaObjects/MetaObjects.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/home/doug/Development/metaobjects/csharp/MetaObjects/MetaObjects.csproj",
+        "projectName": "MetaObjects",
+        "projectPath": "/home/doug/Development/metaobjects/csharp/MetaObjects/MetaObjects.csproj",
+        "packagesPath": "/home/doug/.nuget/packages/",
+        "outputPath": "/home/doug/Development/metaobjects/csharp/MetaObjects/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/home/doug/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "allWarningsAsErrors": true,
+          "warnAsError": [
+            "NU1605"
+          ]
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/lib/dotnet/sdk/8.0.126/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

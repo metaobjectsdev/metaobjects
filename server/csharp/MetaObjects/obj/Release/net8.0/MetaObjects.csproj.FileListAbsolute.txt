@@ -1,0 +1,12 @@
+/home/doug/Development/metaobjects/csharp/MetaObjects/bin/Release/net8.0/MetaObjects.deps.json
+/home/doug/Development/metaobjects/csharp/MetaObjects/bin/Release/net8.0/MetaObjects.dll
+/home/doug/Development/metaobjects/csharp/MetaObjects/bin/Release/net8.0/MetaObjects.pdb
+/home/doug/Development/metaobjects/csharp/MetaObjects/obj/Release/net8.0/MetaObjects.GeneratedMSBuildEditorConfig.editorconfig
+/home/doug/Development/metaobjects/csharp/MetaObjects/obj/Release/net8.0/MetaObjects.AssemblyInfoInputs.cache
+/home/doug/Development/metaobjects/csharp/MetaObjects/obj/Release/net8.0/MetaObjects.AssemblyInfo.cs
+/home/doug/Development/metaobjects/csharp/MetaObjects/obj/Release/net8.0/MetaObjects.csproj.CoreCompileInputs.cache
+/home/doug/Development/metaobjects/csharp/MetaObjects/obj/Release/net8.0/MetaObjects.sourcelink.json
+/home/doug/Development/metaobjects/csharp/MetaObjects/obj/Release/net8.0/MetaObjects.dll
+/home/doug/Development/metaobjects/csharp/MetaObjects/obj/Release/net8.0/refint/MetaObjects.dll
+/home/doug/Development/metaobjects/csharp/MetaObjects/obj/Release/net8.0/MetaObjects.pdb
+/home/doug/Development/metaobjects/csharp/MetaObjects/obj/Release/net8.0/ref/MetaObjects.dll
