@@ -5,7 +5,8 @@ import com.metaobjects.registry.MetaDataTypeProvider;
 
 /**
  * Identity Types MetaData provider.
- * Registers distinct identity types (PrimaryIdentity, SecondaryIdentity) for object identification.
+ * Registers distinct identity types (PrimaryIdentity, SecondaryIdentity, ReferenceIdentity)
+ * for object identification and cross-entity reference declaration.
  * Depends on core-types for metadata.base inheritance.
  */
 public class IdentityTypesMetaDataProvider implements MetaDataTypeProvider {
@@ -15,6 +16,7 @@ public class IdentityTypesMetaDataProvider implements MetaDataTypeProvider {
         // Register distinct identity types
         PrimaryIdentity.registerTypes(registry);
         SecondaryIdentity.registerTypes(registry);
+        ReferenceIdentity.registerTypes(registry);
     }
 
     @Override
@@ -29,6 +31,6 @@ public class IdentityTypesMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String getDescription() {
-        return "Identity Types (primary, secondary) for object identification";
+        return "Identity Types (primary, secondary, reference) for object identification and cross-entity references";
     }
 }

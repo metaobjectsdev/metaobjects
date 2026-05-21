@@ -39,12 +39,21 @@ public abstract class MetaIdentity extends MetaData {
     /** Secondary key subtype - business identifiers, multiple allowed */
     public final static String SUBTYPE_SECONDARY = "secondary";
 
+    /** Reference subtype - this entity has fields whose value(s) identify an instance of another entity. */
+    public final static String SUBTYPE_REFERENCE = "reference";
+
     // === ESSENTIAL ATTRIBUTES ===
     /** Array of field names that comprise this identity */
     public final static String ATTR_FIELDS = "fields";
 
     /** Generation strategy for identity values */
     public final static String ATTR_GENERATION = "generation";
+
+    /** Reference identity: target entity (bare or dotted Entity.field / Entity.fA,fB form). */
+    public final static String ATTR_REFERENCES = "references";
+
+    /** Reference identity: physical-enforcement flag. Default true (hard FK constraint). */
+    public final static String ATTR_ENFORCE = "enforce";
 
     // === GENERATION STRATEGY CONSTANTS ===
     /** Auto-incrementing integer (database chooses implementation) */
@@ -146,6 +155,10 @@ public abstract class MetaIdentity extends MetaData {
 
     public boolean isSecondary() {
         return SUBTYPE_SECONDARY.equals(getSubType());
+    }
+
+    public boolean isReference() {
+        return SUBTYPE_REFERENCE.equals(getSubType());
     }
 
     public boolean hasGeneration() {
