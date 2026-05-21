@@ -1,0 +1,10 @@
+{
+  "extends": "../../../../server/typescript/tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "test", "node_modules"]
+}
