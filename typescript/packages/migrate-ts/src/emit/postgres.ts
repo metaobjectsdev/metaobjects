@@ -3,6 +3,7 @@ import type {
   TableDescriptor, ColumnDefault, FkAction,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
+import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjects/metadata";
 
 const STAGE_ORDER: Record<Change["kind"], number> = {
   "create-table": 1,
@@ -35,24 +36,24 @@ export function renderPostgres(changes: Change[]): EmitResult {
 function renderUp(c: Change): string {
   switch (c.kind) {
     case "create-table":           return renderCreateTable(c.table);
-    case "drop-table":             return `DROP TABLE ${quote(c.table)};`;
-    case "rename-table":           return `ALTER TABLE ${quote(c.from)} RENAME TO ${quote(c.to)};`;
-    case "add-column":             return `ALTER TABLE ${quote(c.table)} ADD COLUMN ${renderColumn(c.column)};`;
-    case "drop-column":            return `ALTER TABLE ${quote(c.table)} DROP COLUMN ${quote(c.column)};`;
-    case "rename-column":          return `ALTER TABLE ${quote(c.table)} RENAME COLUMN ${quote(c.from)} TO ${quote(c.to)};`;
-    case "change-column-type":     return `ALTER TABLE ${quote(c.table)} ALTER COLUMN ${quote(c.column)} TYPE ${pgType(c.to)};`;
+    case "drop-table":             return `DROP TABLE ${quoteQualified(c.table, c.schema)};`;
+    case "rename-table":           return `ALTER TABLE ${quoteQualified(c.from, c.schema)} RENAME TO ${quote(c.to)};`;
+    case "add-column":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD COLUMN ${renderColumn(c.column)};`;
+    case "drop-column":            return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP COLUMN ${quote(c.column)};`;
+    case "rename-column":          return `ALTER TABLE ${quoteQualified(c.table, c.schema)} RENAME COLUMN ${quote(c.from)} TO ${quote(c.to)};`;
+    case "change-column-type":     return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} TYPE ${pgType(c.to)};`;
     case "change-column-nullable":
       return c.to
-        ? `ALTER TABLE ${quote(c.table)} ALTER COLUMN ${quote(c.column)} DROP NOT NULL;`
-        : `ALTER TABLE ${quote(c.table)} ALTER COLUMN ${quote(c.column)} SET NOT NULL;`;
+        ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} DROP NOT NULL;`
+        : `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} SET NOT NULL;`;
     case "change-column-default":
       return c.to !== undefined
-        ? `ALTER TABLE ${quote(c.table)} ALTER COLUMN ${quote(c.column)} SET DEFAULT ${renderDefault(c.to)};`
-        : `ALTER TABLE ${quote(c.table)} ALTER COLUMN ${quote(c.column)} DROP DEFAULT;`;
-    case "add-index":              return renderCreateIndex(c.table, c.index);
-    case "drop-index":             return `DROP INDEX ${quote(c.index)};`;
-    case "add-fk":                 return renderAddFk(c.table, c.fk);
-    case "drop-fk":                return `ALTER TABLE ${quote(c.table)} DROP CONSTRAINT ${quote(c.fk)};`;
+        ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} SET DEFAULT ${renderDefault(c.to)};`
+        : `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} DROP DEFAULT;`;
+    case "add-index":              return renderCreateIndex(c.table, c.schema, c.index);
+    case "drop-index":             return `DROP INDEX ${quoteIndexQualified(c.index, c.schema)};`;
+    case "add-fk":                 return renderAddFk(c.table, c.schema, c.fk);
+    case "drop-fk":                return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.fk)};`;
     case "create-view":
     case "drop-view":
     case "replace-view":
@@ -63,24 +64,24 @@ function renderUp(c: Change): string {
 
 function renderDown(c: Change): string {
   switch (c.kind) {
-    case "create-table":           return `DROP TABLE ${quote(c.table.name)};`;
+    case "create-table":           return `DROP TABLE ${quoteQualified(c.table.name, c.table.schema)};`;
     case "drop-table":             return `-- WARNING: down migration cannot restore data\n-- TODO: restore table "${c.table}" structure manually`;
-    case "rename-table":           return `ALTER TABLE ${quote(c.to)} RENAME TO ${quote(c.from)};`;
-    case "add-column":             return `ALTER TABLE ${quote(c.table)} DROP COLUMN ${quote(c.column.name)};`;
+    case "rename-table":           return `ALTER TABLE ${quoteQualified(c.to, c.schema)} RENAME TO ${quote(c.from)};`;
+    case "add-column":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP COLUMN ${quote(c.column.name)};`;
     case "drop-column":            return `-- WARNING: down migration cannot restore data\n-- TODO: re-add dropped column "${c.column}" manually with original type/nullable/default`;
-    case "rename-column":          return `ALTER TABLE ${quote(c.table)} RENAME COLUMN ${quote(c.to)} TO ${quote(c.from)};`;
-    case "change-column-type":     return `ALTER TABLE ${quote(c.table)} ALTER COLUMN ${quote(c.column)} TYPE ${pgType(c.from)};`;
+    case "rename-column":          return `ALTER TABLE ${quoteQualified(c.table, c.schema)} RENAME COLUMN ${quote(c.to)} TO ${quote(c.from)};`;
+    case "change-column-type":     return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} TYPE ${pgType(c.from)};`;
     case "change-column-nullable":
       return c.from
-        ? `ALTER TABLE ${quote(c.table)} ALTER COLUMN ${quote(c.column)} DROP NOT NULL;`
-        : `ALTER TABLE ${quote(c.table)} ALTER COLUMN ${quote(c.column)} SET NOT NULL;`;
+        ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} DROP NOT NULL;`
+        : `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} SET NOT NULL;`;
     case "change-column-default":
       return c.from !== undefined
-        ? `ALTER TABLE ${quote(c.table)} ALTER COLUMN ${quote(c.column)} SET DEFAULT ${renderDefault(c.from)};`
-        : `ALTER TABLE ${quote(c.table)} ALTER COLUMN ${quote(c.column)} DROP DEFAULT;`;
-    case "add-index":              return `DROP INDEX ${quote(c.index.name)};`;
+        ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} SET DEFAULT ${renderDefault(c.from)};`
+        : `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} DROP DEFAULT;`;
+    case "add-index":              return `DROP INDEX ${quoteIndexQualified(c.index.name, c.schema)};`;
     case "drop-index":             return `-- WARNING: down migration cannot restore the original index definition`;
-    case "add-fk":                 return `ALTER TABLE ${quote(c.table)} DROP CONSTRAINT ${quote(c.fk.name)};`;
+    case "add-fk":                 return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.fk.name)};`;
     case "drop-fk":                return `-- WARNING: down migration cannot restore the original FK definition`;
     case "create-view":
     case "drop-view":
@@ -94,7 +95,7 @@ function renderCreateTable(t: TableDescriptor): string {
   if (t.primaryKey.length > 0) {
     colDefs.push(`  CONSTRAINT ${quote(t.name + "_pkey")} PRIMARY KEY (${t.primaryKey.map(quote).join(", ")})`);
   }
-  return `CREATE TABLE ${quote(t.name)} (\n${colDefs.join(",\n")}\n);`;
+  return `CREATE TABLE ${quoteQualified(t.name, t.schema)} (\n${colDefs.join(",\n")}\n);`;
 }
 
 function renderColumn(c: ColumnDescriptor): string {
@@ -134,15 +135,20 @@ function renderDefault(d: ColumnDefault): string {
   return `'${d.value.replace(/'/g, "''")}'`;
 }
 
-function renderCreateIndex(table: string, ix: IndexDescriptor): string {
+function renderCreateIndex(table: string, schema: string | undefined, ix: IndexDescriptor): string {
   const u = ix.unique ? "UNIQUE " : "";
-  return `CREATE ${u}INDEX ${quote(ix.name)} ON ${quote(table)} (${ix.columns.map(quote).join(", ")});`;
+  // Index name itself is unqualified in CREATE INDEX (Postgres places the index
+  // in the same schema as the table being indexed). Only the ON clause needs qualification.
+  return `CREATE ${u}INDEX ${quote(ix.name)} ON ${quoteQualified(table, schema)} (${ix.columns.map(quote).join(", ")});`;
 }
 
-function renderAddFk(table: string, fk: FkDescriptor): string {
-  let s = `ALTER TABLE ${quote(table)} ADD CONSTRAINT ${quote(fk.name)} `;
+function renderAddFk(table: string, schema: string | undefined, fk: FkDescriptor): string {
+  let s = `ALTER TABLE ${quoteQualified(table, schema)} ADD CONSTRAINT ${quote(fk.name)} `;
   s += `FOREIGN KEY (${fk.columns.map(quote).join(", ")}) `;
-  s += `REFERENCES ${quote(fk.refTable)} (${fk.refColumns.map(quote).join(", ")})`;
+  // v1 limitation: FkDescriptor does not carry the ref-table's schema today.
+  // Assume the referenced table lives in the same schema as the FK-owner.
+  // For cross-schema FKs, add `refSchema?` to FkDescriptor in a follow-up.
+  s += `REFERENCES ${quoteQualified(fk.refTable, schema)} (${fk.refColumns.map(quote).join(", ")})`;
   if (fk.onDelete) s += ` ON DELETE ${fkActionSql(fk.onDelete)}`;
   if (fk.onUpdate) s += ` ON UPDATE ${fkActionSql(fk.onUpdate)}`;
   return s + ";";
@@ -161,4 +167,23 @@ function quote(ident: string): string {
   // Conservative double-quoting; reject embedded quotes (defense).
   if (ident.includes('"')) throw new Error(`unsafe identifier: ${ident}`);
   return `"${ident}"`;
+}
+
+/**
+ * Quote a table identifier, prefixing the schema when non-default. The Postgres
+ * default schema is `public`; undefined and "public" both mean "no prefix needed."
+ */
+function quoteQualified(table: string, schema: string | undefined): string {
+  if (!schema || schema === DEFAULT_DB_SCHEMA_POSTGRES) return quote(table);
+  return quote(schema) + "." + quote(table);
+}
+
+/**
+ * Quote an index identifier for DROP INDEX, prefixing the schema when non-default.
+ * In Postgres, indexes live in the same schema as their owning table; DROP INDEX
+ * accepts the qualified form `"schema"."index"`.
+ */
+function quoteIndexQualified(index: string, schema: string | undefined): string {
+  if (!schema || schema === DEFAULT_DB_SCHEMA_POSTGRES) return quote(index);
+  return quote(schema) + "." + quote(index);
 }

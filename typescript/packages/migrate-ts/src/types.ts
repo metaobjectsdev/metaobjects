@@ -22,6 +22,12 @@ export interface SnapshotMeta {
 
 export interface TableDescriptor {
   name: string;                      // resolved db name (snake_case, plural)
+  /**
+   * DB schema this table lives in. Undefined for SQLite (no schema concept).
+   * For Postgres, undefined is normalized to "public" at SnapshotMeta boundaries;
+   * the diff and emit layers treat undefined === "public" as equivalent.
+   */
+  schema?: string;
   columns: ColumnDescriptor[];
   indexes: IndexDescriptor[];
   foreignKeys: FkDescriptor[];
@@ -60,6 +66,8 @@ export type FkAction = "cascade" | "set-null" | "restrict" | "no-action";
 
 export interface ViewDescriptor {
   name: string;
+  /** Same semantics as TableDescriptor.schema. */
+  schema?: string;
   // structural fields deferred to v0.3
 }
 
@@ -67,23 +75,34 @@ export interface ViewDescriptor {
 // Change union — produced by diff(), consumed by emit().
 // ---------------------------------------------------------------------------
 
+/**
+ * Every variant with a `table: string` (or `table: TableDescriptor`) field also
+ * carries an optional `schema?: string`. For the descriptor-bearing variants
+ * (create-table, drop-table source is just a name) the schema is redundant with
+ * `table.schema` but kept in parallel so the emit layer has a single, uniform
+ * place to read schema regardless of variant.
+ *
+ * For Postgres, undefined is treated as equivalent to "public" by both diff
+ * (table identity normalization) and emit (qualified-name suppression).
+ * SQLite has no schema concept; the field is always undefined there.
+ */
 export type Change =
-  | { kind: "create-table"; table: TableDescriptor; status: ChangeStatus }
-  | { kind: "drop-table"; table: string; status: ChangeStatus }
-  | { kind: "rename-table"; from: string; to: string; status: ChangeStatus }
-  | { kind: "add-column"; table: string; column: ColumnDescriptor; status: ChangeStatus }
-  | { kind: "drop-column"; table: string; column: string; status: ChangeStatus }
-  | { kind: "rename-column"; table: string; from: string; to: string; status: ChangeStatus }
-  | { kind: "change-column-type"; table: string; column: string;
+  | { kind: "create-table"; table: TableDescriptor; schema?: string; status: ChangeStatus }
+  | { kind: "drop-table"; table: string; schema?: string; status: ChangeStatus }
+  | { kind: "rename-table"; from: string; to: string; schema?: string; status: ChangeStatus }
+  | { kind: "add-column"; table: string; schema?: string; column: ColumnDescriptor; status: ChangeStatus }
+  | { kind: "drop-column"; table: string; schema?: string; column: string; status: ChangeStatus }
+  | { kind: "rename-column"; table: string; schema?: string; from: string; to: string; status: ChangeStatus }
+  | { kind: "change-column-type"; table: string; schema?: string; column: string;
       from: SqlType; to: SqlType; status: ChangeStatus }
-  | { kind: "change-column-nullable"; table: string; column: string;
+  | { kind: "change-column-nullable"; table: string; schema?: string; column: string;
       from: boolean; to: boolean; status: ChangeStatus }
-  | { kind: "change-column-default"; table: string; column: string;
+  | { kind: "change-column-default"; table: string; schema?: string; column: string;
       from?: ColumnDefault; to?: ColumnDefault; status: ChangeStatus }
-  | { kind: "add-index"; table: string; index: IndexDescriptor; status: ChangeStatus }
-  | { kind: "drop-index"; table: string; index: string; status: ChangeStatus }
-  | { kind: "add-fk"; table: string; fk: FkDescriptor; status: ChangeStatus }
-  | { kind: "drop-fk"; table: string; fk: string; status: ChangeStatus }
+  | { kind: "add-index"; table: string; schema?: string; index: IndexDescriptor; status: ChangeStatus }
+  | { kind: "drop-index"; table: string; schema?: string; index: string; status: ChangeStatus }
+  | { kind: "add-fk"; table: string; schema?: string; fk: FkDescriptor; status: ChangeStatus }
+  | { kind: "drop-fk"; table: string; schema?: string; fk: string; status: ChangeStatus }
   // Declared for v0.3, never produced in v0.1:
   | { kind: "create-view"; view: ViewDescriptor; status: ChangeStatus }
   | { kind: "drop-view"; view: string; status: ChangeStatus }

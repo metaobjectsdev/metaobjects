@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "package": "p3::api",
+    "children": [
+      {
+        "object.entity": {
+          "name": "CaseV1",
+          "children": [
+            { "source.dbView": { "@name": "cases_v1", "@schema": "p3_api" } },
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "case_number" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

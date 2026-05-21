@@ -26,7 +26,7 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
-  resolveTableName, resolveColumnName,
+  resolveTableName, resolveColumnName, resolveTableSchema,
 } from "@metaobjects/metadata";
 import type { SqlType } from "./sql-type.js";
 import type {
@@ -69,15 +69,31 @@ export function buildExpectedSchema(
   const resolveTargetTable = (entityName: string) => entityToTable.get(entityName);
 
   // Pass 2: build full descriptors with FK resolution.
-  const tables: TableDescriptor[] = entities.map(({ entity, tableName }) =>
-    buildTable(entity, tableName, resolveTargetTable, root as MetaRoot),
-  );
+  // Schema is resolved here (not stored in Pass 1) to avoid exactOptionalPropertyTypes
+  // issues with `string | undefined` vs `schema?: string`.
+  const tables: TableDescriptor[] = entities.map(({ entity, tableName }) => {
+    const t = buildTable(entity, tableName, resolveTargetTable, root as MetaRoot);
+    const schema = resolveTableSchema(entity);
+    if (schema !== undefined) t.schema = schema;
+    return t;
+  });
 
   // Pass 3: dialect-specific SqlType normalization.
   if (opts?.dialect === "sqlite") {
     for (const table of tables) {
       for (const col of table.columns) {
         col.sqlType = normalizeForSqlite(col.sqlType);
+      }
+    }
+  }
+
+  // Dialect validation: SQLite has no schema concept; reject any non-default @schema.
+  if (opts?.dialect === "sqlite") {
+    for (const table of tables) {
+      if (table.schema !== undefined) {
+        throw new Error(
+          `sqlite does not support DB schemas; entity-table "${table.name}" declares @schema "${table.schema}"`,
+        );
       }
     }
   }

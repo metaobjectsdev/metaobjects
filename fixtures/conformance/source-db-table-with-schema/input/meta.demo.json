@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "package": "p3",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            { "source.dbTable": { "@name": "Cases", "@schema": "public" } },
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "caseNumber" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

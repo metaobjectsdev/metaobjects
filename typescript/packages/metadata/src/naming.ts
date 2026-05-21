@@ -1,7 +1,8 @@
 import type { MetaData } from "./meta/meta-data.js";
 import {
   TYPE_FIELD, TYPE_SOURCE, FIELD_ATTR_DB_COLUMN,
-  SOURCE_SUBTYPE_DB_TABLE, SOURCE_DB_TABLE_ATTR_NAME,
+  SOURCE_SUBTYPE_DB_TABLE, SOURCE_SUBTYPE_DB_VIEW,
+  SOURCE_DB_TABLE_ATTR_NAME, SOURCE_ATTR_SCHEMA,
   PACKAGE_SEPARATOR,
 } from "./constants.js";
 
@@ -44,6 +45,23 @@ export function resolveColumnName(field: MetaData): string {
   const attr = field.ownAttr(FIELD_ATTR_DB_COLUMN);
   if (typeof attr === "string") return attr;
   return toSnakeCase(field.name);
+}
+
+/**
+ * Returns the DB schema declared on an entity's source[dbTable] or source[dbView] child,
+ * or undefined if no @schema attr is set or no source child exists. Callers decide what
+ * "undefined" means for their dialect — Postgres treats it as the default public schema,
+ * SQLite treats it as the only allowed value (no schema concept).
+ */
+export function resolveTableSchema(entity: MetaData): string | undefined {
+  const source = entity.ownChildren().find(
+    (c) => c.type === TYPE_SOURCE
+        && (c.subType === SOURCE_SUBTYPE_DB_TABLE || c.subType === SOURCE_SUBTYPE_DB_VIEW),
+  );
+  if (!source) return undefined;
+  const schema = source.ownAttr(SOURCE_ATTR_SCHEMA);
+  if (typeof schema === "string" && schema !== "") return schema;
+  return undefined;
 }
 
 /** Per-entity {jsName ↔ dbColumn} map. Built once per entity to avoid re-walking children on every row. */

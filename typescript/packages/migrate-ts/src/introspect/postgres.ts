@@ -39,17 +39,18 @@ export async function introspectPostgres(db: Kysely<Record<string, unknown>>): P
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const k = db as Kysely<any>;
 
-  const tableNames = await readTableNames(k);
+  const tableRefs = await readTableNames(k);
   const tables: TableDescriptor[] = [];
 
-  for (const tableName of tableNames) {
-    const columns = await readColumns(k, tableName);
-    const primaryKey = await readPrimaryKey(k, tableName);
+  for (const { schema, name } of tableRefs) {
+    const columns = await readColumns(k, schema, name);
+    const primaryKey = await readPrimaryKey(k, schema, name);
     tables.push({
-      name: tableName,
+      name,
+      schema,
       columns,
-      indexes: await readPgIndexes(k, tableName),
-      foreignKeys: await readPgForeignKeys(k, tableName),
+      indexes: await readPgIndexes(k, schema, name),
+      foreignKeys: await readPgForeignKeys(k, schema, name),
       primaryKey,
     });
   }
@@ -193,16 +194,22 @@ export function parsePgDefault(raw: string | null | undefined): ColumnDefault | 
 // Internal — raw SQL queries
 // ---------------------------------------------------------------------------
 
+interface SchemaTableRef {
+  schema: string;
+  name: string;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function readTableNames(k: Kysely<any>): Promise<string[]> {
-  const rows = await sql<{ table_name: string }>`
-    SELECT table_name
+async function readTableNames(k: Kysely<any>): Promise<SchemaTableRef[]> {
+  const rows = await sql<{ table_name: string; table_schema: string }>`
+    SELECT table_name, table_schema
     FROM information_schema.tables
-    WHERE table_schema = 'public'
+    WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+      AND table_schema NOT LIKE 'pg_%'
       AND table_type = 'BASE TABLE'
-    ORDER BY table_name
+    ORDER BY table_schema, table_name
   `.execute(k);
-  return rows.rows.map((r) => r.table_name);
+  return rows.rows.map((r) => ({ schema: r.table_schema, name: r.table_name }));
 }
 
 async function readPgViews(k: RawKysely): Promise<ViewDescriptor[]> {
@@ -210,10 +217,13 @@ async function readPgViews(k: RawKysely): Promise<ViewDescriptor[]> {
   // "relation views does not exist". We catch and return [] so other tests
   // still pass on pg-mem. Real PG (Postgres 16) handles this correctly.
   try {
-    const rows = await sql<{ table_name: string }>`
-      SELECT table_name FROM information_schema.views WHERE table_schema = 'public'
+    const rows = await sql<{ table_name: string; table_schema: string }>`
+      SELECT table_name, table_schema FROM information_schema.views
+      WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+        AND table_schema NOT LIKE 'pg_%'
+      ORDER BY table_schema, table_name
     `.execute(k);
-    return rows.rows.map((r) => ({ name: r.table_name }));
+    return rows.rows.map((r) => ({ name: r.table_name, schema: r.table_schema }));
   } catch {
     // pg-mem: information_schema.views not supported — return empty view list.
     return [];
@@ -230,7 +240,7 @@ interface RawColumn {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function readColumns(k: Kysely<any>, tableName: string): Promise<ColumnDescriptor[]> {
+async function readColumns(k: Kysely<any>, schema: string, tableName: string): Promise<ColumnDescriptor[]> {
   const rows = await sql<RawColumn>`
     SELECT
       column_name,
@@ -240,7 +250,7 @@ async function readColumns(k: Kysely<any>, tableName: string): Promise<ColumnDes
       is_nullable,
       column_default
     FROM information_schema.columns
-    WHERE table_schema = 'public'
+    WHERE table_schema = ${schema}
       AND table_name = ${tableName}
     ORDER BY ordinal_position
   `.execute(k);
@@ -273,7 +283,7 @@ async function readColumns(k: Kysely<any>, tableName: string): Promise<ColumnDes
 type RawKysely = Kysely<any>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function readPrimaryKey(k: Kysely<any>, tableName: string): Promise<string[]> {
+async function readPrimaryKey(k: Kysely<any>, schema: string, tableName: string): Promise<string[]> {
   // Uses information_schema only — avoids pg_attribute / pg_constraint joins
   // that are either missing or return empty in pg-mem.
   const rows = await sql<{ column_name: string; ordinal_position: number }>`
@@ -284,14 +294,14 @@ async function readPrimaryKey(k: Kysely<any>, tableName: string): Promise<string
       AND kcu.table_schema    = tc.table_schema
       AND kcu.table_name      = tc.table_name
     WHERE tc.constraint_type = 'PRIMARY KEY'
-      AND tc.table_schema    = 'public'
+      AND tc.table_schema    = ${schema}
       AND tc.table_name      = ${tableName}
     ORDER BY kcu.ordinal_position
   `.execute(k);
   return rows.rows.map((r) => r.column_name);
 }
 
-async function readPgIndexes(k: RawKysely, table: string): Promise<IndexDescriptor[]> {
+async function readPgIndexes(k: RawKysely, schema: string, table: string): Promise<IndexDescriptor[]> {
   // pg-mem gap: array_position() is not implemented, so this query throws on
   // pg-mem. We catch and return [] so non-index tests still pass against pg-mem.
   // Real PG (Postgres 16) handles this correctly.
@@ -314,7 +324,7 @@ async function readPgIndexes(k: RawKysely, table: string): Promise<IndexDescript
       JOIN pg_class t ON t.oid = ix.indrelid
       JOIN pg_namespace n ON n.oid = t.relnamespace
       JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
-      WHERE n.nspname = 'public'
+      WHERE n.nspname = ${schema}
         AND t.relname = ${table}
       ORDER BY i.relname, ordinal
     `.execute(k);
@@ -337,7 +347,7 @@ async function readPgIndexes(k: RawKysely, table: string): Promise<IndexDescript
     .map(([name, v]) => ({ name, columns: v.cols, unique: v.isUnique }));
 }
 
-async function readPgForeignKeys(k: RawKysely, table: string): Promise<FkDescriptor[]> {
+async function readPgForeignKeys(k: RawKysely, schema: string, table: string): Promise<FkDescriptor[]> {
   // pg-mem gap: information_schema.referential_constraints is not supported —
   // the query returns empty rows or throws. We catch and return [] so other
   // tests still pass on pg-mem. Real PG (Postgres 16) handles this correctly.
@@ -370,7 +380,7 @@ async function readPgForeignKeys(k: RawKysely, table: string): Promise<FkDescrip
         ON ccu.constraint_name = tc.constraint_name
         AND ccu.table_schema = tc.table_schema
       WHERE tc.constraint_type = 'FOREIGN KEY'
-        AND tc.table_schema = 'public'
+        AND tc.table_schema = ${schema}
         AND tc.table_name = ${table}
       ORDER BY tc.constraint_name, kcu.ordinal_position
     `.execute(k);

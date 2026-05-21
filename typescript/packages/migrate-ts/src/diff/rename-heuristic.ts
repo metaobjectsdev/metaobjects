@@ -4,6 +4,7 @@ import type {
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
+import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjects/metadata";
 
 const TABLE_RENAME_OVERLAP_THRESHOLD = 0.8;
 
@@ -21,13 +22,15 @@ export async function detectTableRenames(
   changes: Change[],
   onAmbiguous: AmbiguousCallback | undefined,
 ): Promise<void> {
-  const drops: { idx: number; tableName: string; columns: ColumnDescriptor[] }[] = [];
+  const drops: {
+    idx: number; tableName: string; schema: string | undefined; columns: ColumnDescriptor[];
+  }[] = [];
   const creates: { idx: number; table: TableDescriptor }[] = [];
 
   changes.forEach((c, idx) => {
     if (c.kind === "drop-table") {
       const aug = c as Change & { _columns?: ColumnDescriptor[] };
-      if (aug._columns) drops.push({ idx, tableName: c.table, columns: aug._columns });
+      if (aug._columns) drops.push({ idx, tableName: c.table, schema: c.schema, columns: aug._columns });
     } else if (c.kind === "create-table") {
       creates.push({ idx, table: c.table });
     }
@@ -43,6 +46,9 @@ export async function detectTableRenames(
     let bestCreate: typeof creates[number] | undefined;
     for (const create of creates) {
       if (indicesToRemove.has(create.idx)) continue;
+      // Only pair with creates in the SAME schema — cross-schema name collision
+      // is not a rename, it's a distinct entity.
+      if (!sameSchema(drop.schema, create.table.schema)) continue;
       const overlap = columnSetOverlap(drop.columns, create.table.columns);
       if (overlap > bestOverlap) {
         bestOverlap = overlap;
@@ -66,15 +72,14 @@ export async function detectTableRenames(
     if (resolution === "rename") {
       indicesToRemove.add(drop.idx);
       indicesToRemove.add(bestCreate.idx);
-      renamesToInsert.push({
-        afterIdx: drop.idx,
-        change: {
-          kind: "rename-table",
-          from: drop.tableName,
-          to: bestCreate.table.name,
-          status: { state: "allowed" },
-        },
-      });
+      const renameChange: Change = {
+        kind: "rename-table",
+        from: drop.tableName,
+        to: bestCreate.table.name,
+        ...(drop.schema !== undefined ? { schema: drop.schema } : {}),
+        status: { state: "allowed" },
+      };
+      renamesToInsert.push({ afterIdx: drop.idx, change: renameChange });
     }
   }
 
@@ -89,6 +94,14 @@ export async function detectTableRenames(
   }
   changes.length = 0;
   changes.push(...result);
+}
+
+/**
+ * Compare two schema strings, treating undefined as equivalent to "public" (Postgres default).
+ * Used by the table-rename heuristic to avoid pairing drops and creates across schemas.
+ */
+function sameSchema(a: string | undefined, b: string | undefined): boolean {
+  return (a ?? DEFAULT_DB_SCHEMA_POSTGRES) === (b ?? DEFAULT_DB_SCHEMA_POSTGRES);
 }
 
 function columnSetOverlap(a: ColumnDescriptor[], b: ColumnDescriptor[]): number {
@@ -118,37 +131,49 @@ export async function detectColumnRenames(
   changes: Change[],
   onAmbiguous: AmbiguousCallback | undefined,
 ): Promise<void> {
-  // Group drop-columns and add-columns by table.
+  // Group drop-columns and add-columns by (schema, table) — same table name in
+  // different schemas must not cross-pair. Key: schema-or-public . table.
   // Drop-columns carry side-channel _sqlType/_nullable fields added by diff().
-  const dropsByTable = new Map<
-    string,
-    { idx: number; column: string; sqlType: SqlType; nullable: boolean }[]
-  >();
-  const addsByTable = new Map<
-    string,
-    { idx: number; column: ColumnDescriptor }[]
-  >();
+  type TableKey = string;                  // "schema.table"; "public.<n>" if schema undefined
+  type DropEntry = {
+    idx: number; table: string; schema: string | undefined;
+    column: string; sqlType: SqlType; nullable: boolean;
+  };
+  type AddEntry = {
+    idx: number; table: string; schema: string | undefined;
+    column: ColumnDescriptor;
+  };
+  const keyOf = (table: string, schema: string | undefined): TableKey =>
+    (schema ?? DEFAULT_DB_SCHEMA_POSTGRES) + "." + table;
+
+  const dropsByTable = new Map<TableKey, DropEntry[]>();
+  const addsByTable = new Map<TableKey, AddEntry[]>();
 
   changes.forEach((c, idx) => {
     if (c.kind === "drop-column") {
       const aug = c as Change & { _sqlType?: SqlType; _nullable?: boolean };
       if (aug._sqlType !== undefined && aug._nullable !== undefined) {
-        let arr = dropsByTable.get(c.table);
-        if (!arr) { arr = []; dropsByTable.set(c.table, arr); }
-        arr.push({ idx, column: c.column, sqlType: aug._sqlType, nullable: aug._nullable });
+        const k = keyOf(c.table, c.schema);
+        let arr = dropsByTable.get(k);
+        if (!arr) { arr = []; dropsByTable.set(k, arr); }
+        arr.push({
+          idx, table: c.table, schema: c.schema,
+          column: c.column, sqlType: aug._sqlType, nullable: aug._nullable,
+        });
       }
     } else if (c.kind === "add-column") {
-      let arr = addsByTable.get(c.table);
-      if (!arr) { arr = []; addsByTable.set(c.table, arr); }
-      arr.push({ idx, column: c.column });
+      const k = keyOf(c.table, c.schema);
+      let arr = addsByTable.get(k);
+      if (!arr) { arr = []; addsByTable.set(k, arr); }
+      arr.push({ idx, table: c.table, schema: c.schema, column: c.column });
     }
   });
 
   const indicesToRemove = new Set<number>();
   const renamesToInsert: { afterIdx: number; change: Change }[] = [];
 
-  for (const [table, drops] of dropsByTable) {
-    const adds = addsByTable.get(table) ?? [];
+  for (const [k, drops] of dropsByTable) {
+    const adds = addsByTable.get(k) ?? [];
     for (const drop of drops) {
       // Find candidate adds matching same sqlType + same nullable + Levenshtein threshold.
       const candidates = adds.filter((a) =>
@@ -166,7 +191,7 @@ export async function detectColumnRenames(
 
       const q: AmbiguousChange = {
         kind: "possible-column-rename",
-        table,
+        table: drop.table,
         from: { name: drop.column, sqlType: drop.sqlType },
         to: { name: winner.column.name, sqlType: winner.column.sqlType },
       };
@@ -177,22 +202,21 @@ export async function detectColumnRenames(
 
       if (resolution === "abort") {
         throw new Error(
-          `diff aborted by onAmbiguous: possible rename ${table}.${drop.column} → ${table}.${winner.column.name}`,
+          `diff aborted by onAmbiguous: possible rename ${drop.table}.${drop.column} → ${drop.table}.${winner.column.name}`,
         );
       }
       if (resolution === "rename") {
         indicesToRemove.add(drop.idx);
         indicesToRemove.add(winner.idx);
-        renamesToInsert.push({
-          afterIdx: drop.idx,
-          change: {
-            kind: "rename-column",
-            table,
-            from: drop.column,
-            to: winner.column.name,
-            status: { state: "allowed" },
-          },
-        });
+        const renameChange: Change = {
+          kind: "rename-column",
+          table: drop.table,
+          ...(drop.schema !== undefined ? { schema: drop.schema } : {}),
+          from: drop.column,
+          to: winner.column.name,
+          status: { state: "allowed" },
+        };
+        renamesToInsert.push({ afterIdx: drop.idx, change: renameChange });
         // Remove winner from adds so it isn't paired again.
         const wIdx = adds.indexOf(winner);
         if (wIdx >= 0) adds.splice(wIdx, 1);

@@ -141,7 +141,7 @@ export type { AttrSchemaValidationResult } from "./attr-schema-validate.js";
 // share identical name resolution. See spec §4.1.
 export {
   toSnakeCase, pluralize,
-  resolveTableName, resolveColumnName,
+  resolveTableName, resolveColumnName, resolveTableSchema,
   buildNameMap,
   stripPackage,
 } from "./naming.js";
