@@ -5,7 +5,7 @@ Schema migration tool for MetaObjects-driven projects.
 Compares loaded MetaObjects metadata against a live Postgres or SQLite (libsql/Turso) database
 and emits paired `up.sql` + `down.sql` migration files.
 
-**Status:** v0.1.0 (pre-alpha). See [SP4 design](../../docs/specs/2026-05-11-v0.2-sp4-migrate-ts-design.md).
+**Status:** v0.3. TS reference implementation; emits migration SQL but does not yet apply against the DB.
 
 ## Quick start
 
@@ -39,7 +39,7 @@ if (result.blocked.length > 0) {
 
 // 4. Emit + write.
 const sql = emit(result.changes, { dialect: "sqlite", expectedSchema: expected, actualMeta: actual.meta });
-await writeMigration(sql, { dir: ".meta/migrations", slug: "add-customer-shipping" });
+await writeMigration(sql, { dir: ".metaobjects/migrations", slug: "add-customer-shipping" });
 ```
 
 ## Design
@@ -53,14 +53,11 @@ await writeMigration(sql, { dir: ".meta/migrations", slug: "add-customer-shippin
   + `onAmbiguous` callback — library doesn't prompt; CLI in SP5 wires the prompt.
 - Per-change-kind allow flags for destructive opt-in.
 
-## What's not in v0.1
+## Not yet shipped
 
-- `forge migrate --apply` (apply migrations against the DB).
+- `meta migrate --apply` (apply migrations against the DB).
 - Migration history table.
-- Db views — `SchemaSnapshot.views` field exists but is always empty; deferred to v0.3.
 - Triggers, generated columns, partial indexes, exclusion constraints, check constraints.
 - MySQL.
 - Data migrations (column-type changes that need data transformation: error with hint).
 - Multi-step migration scaffolding (add nullable → backfill → set notnull).
-
-See [SP4 design § Scope](../../docs/specs/2026-05-11-v0.2-sp4-migrate-ts-design.md#2-scope).
