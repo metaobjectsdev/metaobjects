@@ -123,7 +123,7 @@ describe("CurrencyInput — external value prop update", () => {
 
 describe("CurrencyInput — parse round-trip via underlying helpers", () => {
   test("parseCurrency('15.99') round-trips with onChange", async () => {
-    const { parseCurrency } = await import("../../src/currency.js");
+    const { parseCurrency } = await import("@metaobjects/runtime-web");
     expect(parseCurrency("15.99", "USD", "en-US")).toBe(1599);
   });
 });

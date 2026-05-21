@@ -1,6 +1,6 @@
 import type { CellContext } from "@tanstack/react-table";
 import type { ReactNode } from "react";
-import { formatCurrency } from "../currency.js";
+import { formatCurrency } from "@metaobjects/runtime-web";
 
 export type CellRenderer = (ctx: CellContext<any, any>) => ReactNode;
 

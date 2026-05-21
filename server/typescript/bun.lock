@@ -188,6 +188,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@metaobjects/metadata": "workspace:*",
+        "@metaobjects/runtime-web": "workspace:*",
         "qs": "^6.13.0",
       },
       "devDependencies": {

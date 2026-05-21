@@ -1,4 +1,4 @@
-export { formatCurrency, parseCurrency, minorUnitsFor } from "./currency.js";
+export { formatCurrency, parseCurrency, minorUnitsFor } from "@metaobjects/runtime-web";
 export {
   useEntityForm,
   type EntityFieldMeta,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { ReactElement, FocusEvent, ChangeEvent } from "react";
-import { formatCurrency, parseCurrency, minorUnitsFor } from "../currency.js";
+import { formatCurrency, parseCurrency, minorUnitsFor } from "@metaobjects/runtime-web";
 
 export interface CurrencyInputProps {
   /** Value in integer minor units (cents for USD). */
