@@ -1,4 +1,10 @@
 // Query concern constants — filter operators, sort order values.
+//
+// NOTE: `query` is NOT a metamodel node type — it has no subtype, schema, or
+// accessor. It's a cross-cutting vocabulary grouping for query/filter helpers
+// consumed by both core/field (@filterable/@sortable) and presentation/layout
+// (dataGrid @defaultSortOrder). Co-located here as the most foundational shared
+// home; intentional, not an incomplete migration.
 
 // ---------------------------------------------------------------------------
 // Filter operators (Project D) — shared source of truth across server +
