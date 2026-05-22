@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { queriesFile } from "../../src/generators/queries-file.js";
+import { entityFile } from "../../src/generators/entity-file.js";
 import { routesFile } from "../../src/generators/routes-file.js";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { barrel } from "../../src/generators/barrel.js";
@@ -106,5 +107,21 @@ describe("barrel()", () => {
     expect(idx.content).toContain(`export * from "./Post"`);
     expect(idx.content).not.toContain("queries");
     expect(idx.content).not.toContain("routes");
+  });
+});
+
+describe("factories — target wiring", () => {
+  test("entityFile sets emitsEntityModule and accepts target", () => {
+    expect(entityFile().emitsEntityModule).toBe(true);
+    expect(entityFile({ target: "model" }).target).toBe("model");
+  });
+  test("routesFile/queriesFile/barrel accept target", () => {
+    expect(routesFile({ target: "api" }).target).toBe("api");
+    expect(queriesFile({ target: "model" }).target).toBe("model");
+    expect(barrel({ target: "model" }).target).toBe("model");
+  });
+  test("target is undefined when unset (back-compat)", () => {
+    expect(entityFile().target).toBeUndefined();
+    expect(barrel().target).toBeUndefined();
   });
 });

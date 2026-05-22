@@ -6,6 +6,7 @@ import { entityOutputPath } from "../import-path.js";
 
 export interface QueriesFileOpts {
   filter?: (entity: MetaObject) => boolean;
+  target?: string;
 }
 
 export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generator {
@@ -23,6 +24,9 @@ export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generat
   };
   if (opts?.filter) {
     generator.filter = opts.filter;
+  }
+  if (opts?.target) {
+    generator.target = opts.target;
   }
   return generator;
 } as GeneratorFactory<QueriesFileOpts>;

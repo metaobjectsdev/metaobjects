@@ -6,11 +6,13 @@ import { entityOutputPath } from "../import-path.js";
 
 export interface EntityFileOpts {
   filter?: (entity: MetaObject) => boolean;
+  target?: string;
 }
 
 export const entityFile = function entityFile(opts?: EntityFileOpts): Generator {
   const generator: Generator = {
     name: "entity-file",
+    emitsEntityModule: true,
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("entity-file: renderContext is required (provided by runGen)");
@@ -23,6 +25,9 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
   };
   if (opts?.filter) {
     generator.filter = opts.filter;
+  }
+  if (opts?.target) {
+    generator.target = opts.target;
   }
   return generator;
 } as GeneratorFactory<EntityFileOpts>;

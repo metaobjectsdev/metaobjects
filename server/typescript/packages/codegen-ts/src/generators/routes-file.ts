@@ -6,6 +6,7 @@ import { entityOutputPath } from "../import-path.js";
 
 export interface RoutesFileOpts {
   filter?: (entity: MetaObject) => boolean;
+  target?: string;
 }
 
 /**
@@ -14,7 +15,7 @@ export interface RoutesFileOpts {
  */
 export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator {
   const userFilter = opts?.filter ?? (() => true);
-  return {
+  const generator: Generator = {
     name: "routes-file",
     // Always set: AND-composes metadata opt-out with optional user filter.
     filter: (e: MetaObject) => e.ownAttr("emitRoutes") !== false && userFilter(e),
@@ -28,4 +29,8 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
       };
     }),
   };
+  if (opts?.target) {
+    generator.target = opts.target;
+  }
+  return generator;
 } as GeneratorFactory<RoutesFileOpts>;
