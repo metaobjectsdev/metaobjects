@@ -17,6 +17,8 @@ import {
 } from "../../src/constants.js";
 import { TypeRegistry } from "../../src/registry.js";
 import { registerCoreTypes } from "../../src/core-types.js";
+import { MetaLayout } from "../../src/meta/meta-layout.js";
+import { TypeId } from "../../src/registry.js";
 
 describe("layout type constants", () => {
   test("TYPE_LAYOUT is 'layout'", () => {
@@ -81,5 +83,25 @@ describe("object child rules drop view, accept layout", () => {
     const childTypes = def!.childRules.map(r => r.childType);
     expect(childTypes).not.toContain(TYPE_VIEW);
     expect(childTypes).toContain(TYPE_LAYOUT);
+  });
+});
+
+describe("MetaLayout.filter accessor returns desugared object", () => {
+  test("filter returns the stored object when @filter is an object", () => {
+    const l = new MetaLayout(new TypeId(TYPE_LAYOUT, LAYOUT_SUBTYPE_DATA_GRID), "default");
+    const filterObj = { subscribed: { eq: true } };
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_FILTER, filterObj);
+    expect(l.filter).toEqual(filterObj);
+  });
+
+  test("filter returns undefined when @filter attr is absent", () => {
+    const l = new MetaLayout(new TypeId(TYPE_LAYOUT, LAYOUT_SUBTYPE_DATA_GRID), "default");
+    expect(l.filter).toBeUndefined();
+  });
+
+  test("filter returns undefined when @filter attr is a string (legacy — string is no longer valid)", () => {
+    const l = new MetaLayout(new TypeId(TYPE_LAYOUT, LAYOUT_SUBTYPE_DATA_GRID), "default");
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_FILTER, '{"subscribed":true}');
+    expect(l.filter).toBeUndefined();
   });
 });
