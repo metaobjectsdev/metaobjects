@@ -34,18 +34,14 @@ import { MetaRelationship } from "./meta/meta-relationship.js";
 import { MetaLayout } from "./meta/meta-layout.js";
 import { MetaSource } from "./meta/meta-source.js";
 import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin } from "./meta/meta-origin.js";
-import {
-  commonFieldAttrs,
-  currencyFieldAttr,
-  currencyViewAttrs,
-  objectAttrs,
-  relationshipAttrs,
-  identityFieldsAttr,
-  dataGridLayoutAttrs,
-  ORIGIN_ATTRS_MAP,
-  IDENTITY_ATTRS_MAP,
-  VALIDATOR_ATTRS_MAP,
-} from "./core-attr-schemas.js";
+import { commonFieldAttrs, currencyFieldAttr } from "./core/field/field-schema.js";
+import { objectAttrs } from "./core/object/object-schema.js";
+import { relationshipAttrs } from "./core/relationship/relationship-schema.js";
+import { identityFieldsAttr, IDENTITY_ATTRS_MAP } from "./core/identity/identity-schema.js";
+import { VALIDATOR_ATTRS_MAP } from "./core/validator/validator-schema.js";
+import { currencyViewAttrs } from "./presentation/view/view-schema.js";
+import { dataGridLayoutAttrs } from "./presentation/layout/layout-schema.js";
+import { ORIGIN_ATTRS_MAP } from "./persistence/origin/origin-schema.js";
 import {
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -92,10 +88,10 @@ import {
 } from "./persistence/origin/origin-constants.js";
 
 // ---------------------------------------------------------------------------
-// The per-(type, subType) attribute schemas live in ./core-attr-schemas.ts —
-// ~320 lines of pure declarative data. This file keeps only the registration
-// logic: the def() helper, the subtype→class dispatch maps, and
-// registerCoreTypes() itself.
+// The per-(type, subType) attribute schemas live in per-concern *-schema.ts
+// modules (e.g. core/field/field-schema.ts, persistence/origin/origin-schema.ts).
+// This file keeps only the registration logic: the def() helper, the
+// subtype→class dispatch maps, and registerCoreTypes() itself.
 // ---------------------------------------------------------------------------
 
 function wildcard(childType: string): ChildRule {
