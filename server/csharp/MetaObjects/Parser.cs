@@ -639,7 +639,7 @@ public static class Parser
             }
             out_[key] = DesugarClause(raw);
         }
-        return out_.AsReadOnly() as IReadOnlyDictionary<string, object?> ?? out_;
+        return out_.AsReadOnly();
     }
 
     private static IReadOnlyDictionary<string, object?> DesugarClause(object? raw)
@@ -647,18 +647,12 @@ public static class Parser
         // null → { isNull: true }
         if (raw is null)
             return new Dictionary<string, object?>(StringComparer.Ordinal)
-                { [Constants.FILTER_OP_IS_NULL] = (object?)true }.AsReadOnly()
-                as IReadOnlyDictionary<string, object?> ??
-                new Dictionary<string, object?>(StringComparer.Ordinal)
-                    { [Constants.FILTER_OP_IS_NULL] = true };
+                { [Constants.FILTER_OP_IS_NULL] = true }.AsReadOnly();
 
         // array → { in: [...] }
         if (raw is IReadOnlyList<object?> arr)
             return new Dictionary<string, object?>(StringComparer.Ordinal)
-                { [Constants.FILTER_OP_IN] = raw }
-                .AsReadOnly() as IReadOnlyDictionary<string, object?> ??
-                new Dictionary<string, object?>(StringComparer.Ordinal)
-                    { [Constants.FILTER_OP_IN] = raw };
+                { [Constants.FILTER_OP_IN] = raw }.AsReadOnly();
 
         // already-object → pass through (explicit op clause)
         if (raw is IReadOnlyDictionary<string, object?> obj)
@@ -666,10 +660,7 @@ public static class Parser
 
         // scalar (string/bool/long/double) → { eq: value }
         return new Dictionary<string, object?>(StringComparer.Ordinal)
-            { [Constants.FILTER_OP_EQ] = raw }
-            .AsReadOnly() as IReadOnlyDictionary<string, object?> ??
-            new Dictionary<string, object?>(StringComparer.Ordinal)
-                { [Constants.FILTER_OP_EQ] = raw };
+            { [Constants.FILTER_OP_EQ] = raw }.AsReadOnly();
     }
 
     // -----------------------------------------------------------------------

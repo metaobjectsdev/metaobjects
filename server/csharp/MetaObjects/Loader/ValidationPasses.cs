@@ -609,8 +609,9 @@ public static class ValidationPasses
     //
     // Numeric attr subtypes (int / long / double) map to either long or double
     // in C# (the parser stores JSON numbers as long when integral, double when
-    // fractional). String, class, properties → value is string. Boolean → bool.
+    // fractional). String, class → value is string. Boolean → bool.
     // stringarray → IReadOnlyList<string> (parser desugars bare strings).
+    // properties, filter → object-shaped (IReadOnlyDictionary<string, object?>).
     // base or anything unexpected → accept anything.
     // -------------------------------------------------------------------------
 
