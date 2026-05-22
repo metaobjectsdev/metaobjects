@@ -40,6 +40,9 @@
     <module>maven-plugin</module>
     <module>core</module>
     <module>core-spring</module>
+    <module>dynamic</module>
+    <module>om</module>
+    <module>omdb</module>
     <module>archetype</module>
     <module>examples</module>
   </modules>

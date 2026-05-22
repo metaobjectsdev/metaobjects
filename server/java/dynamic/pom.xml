@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                            http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.metaobjects</groupId>
+    <artifactId>metaobjects-dynamic</artifactId>
+    <version>6.2.6-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>metaobjects-dynamic-core</artifactId>
+  <packaging>bundle</packaging>
+
+  <name>MetaObjects :: Dynamic Core</name>
+  <description>
+    MetaObjects Dynamic Core provides runtime object construction capabilities
+    including DataObject and ValueObject implementations built on top of the
+    MetaObjects Core metadata framework.
+  </description>
+
+  <dependencies>
+    <!-- MetaObjects Core Dependencies -->
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-metadata</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-codegen-base</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-codegen-mustache</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Logging -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- Core Utilities -->
+    <dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
+    </dependency>
+
+    <!-- Testing -->
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-metadata</artifactId>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- Felix Bundle Plugin -->
+      <plugin>
+        <groupId>org.apache.felix</groupId>
+        <artifactId>maven-bundle-plugin</artifactId>
+        <configuration>
+          <instructions>
+            <Bundle-SymbolicName>${project.artifactId}</Bundle-SymbolicName>
+            <Bundle-Name>${project.name}</Bundle-Name>
+            <Export-Package>
+              com.metaobjects.object.data.*;version=${project.version},
+              com.metaobjects.object.value.*;version=${project.version}
+            </Export-Package>
+            <Import-Package>
+              com.metaobjects.*;version="[${metaobjects.core.version},${metaobjects.core.version}]",
+              *
+            </Import-Package>
+          </instructions>
+        </configuration>
+      </plugin>
+
+      <!-- Test JAR Plugin -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>${maven.jar.plugin.version}</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>test-jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
