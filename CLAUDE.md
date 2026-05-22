@@ -28,13 +28,14 @@ Cross-language conformance fixtures live at `fixtures/conformance/` (45 fixtures
 - **No absolute local paths.** Never commit a developer's home path (e.g. `/home/<user>/…` or a `~/`-rooted path). Use repo-relative paths or placeholders (`<repo-root>`, `<consumer-repo>`) in command examples.
 - **Scan the staged diff** for both of the above and genericize anything found before committing.
 
-A local pre-commit hook enforces this (`.githooks/pre-commit`). Activate it once per clone:
+A local pre-commit hook enforces this (`.githooks/pre-commit`). The committed hook names **no** private project: it enforces generic structural patterns (absolute home paths) and loads a private-name denylist from a path you configure (kept in a private repo, never here). One-time per clone:
 
 ```
 git config core.hooksPath .githooks
+git config hooks.denyListPath /path/to/your/private/denylist.txt
 ```
 
-It blocks commits whose added lines match the forbidden patterns (`git commit --no-verify` bypasses, discouraged). The published npm author email is the one allowed exception. When a new consumer/project name is worth guarding, add it to **both** this section and the hook's `PATTERNS`.
+It blocks commits whose added lines match (`git commit --no-verify` bypasses, discouraged); the npm author email is the one allowed exception. Guard a new private name by editing that private denylist (single source of truth) — never add real names to this public repo or the committed hook.
 
 ## Monorepo layout
 

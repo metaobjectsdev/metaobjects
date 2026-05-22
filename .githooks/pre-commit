@@ -23,9 +23,13 @@ PATTERNS='/home/[A-Za-z0-9._-]+/|~/Development'
 # Legitimate matches to ignore (e.g. the published npm author email).
 ALLOW='doug@dougmealing\.com'
 
-# Merge in private-name patterns from the untracked local denylist, if present.
+# Merge in private-name patterns from a denylist. Source priority:
+#   1) git config hooks.denyListPath  -> point at your private denylist file (kept in a private repo)
+#   2) .githooks/deny-list.local      -> untracked local file or symlink
+# If neither resolves, only the generic structural patterns above are enforced.
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
-DENY_FILE="$ROOT/.githooks/deny-list.local"
+DENY_FILE="$(git config --get hooks.denyListPath 2>/dev/null || true)"
+[ -z "$DENY_FILE" ] && DENY_FILE="$ROOT/.githooks/deny-list.local"
 if [ -f "$DENY_FILE" ]; then
   extra=$(grep -vE '^[[:space:]]*(#|$)' "$DENY_FILE" | paste -sd'|' -)
   [ -n "$extra" ] && PATTERNS="$PATTERNS|$extra"
