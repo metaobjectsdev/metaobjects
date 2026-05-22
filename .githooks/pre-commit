@@ -12,7 +12,12 @@ set -uo pipefail
 # Case-insensitive forbidden patterns. Keep in sync with CLAUDE.md.
 #  - other/private project names (and known abbreviations/derivations)
 #  - absolute local paths that leak a developer's home directory
-PATTERNS='party-?lore|sibling-app|acme-?website|\bmikes\b|@acme/|acme|trainer-website|draagon|csharp-adopter|sibling-project|/home/[A-Za-z0-9._-]+/|~/Development'
+# NOTES:
+#  - matches the separate "sibling-ai-project" project, NOT bare "draagon" — "com.draagon.meta"
+#    is this project's own legacy package namespace and is legitimate.
+#  - "trainer-website" is an accepted example-consumer name and is intentionally NOT guarded;
+#    "downstream-consumer" / "@acme/" / "acme" (a private consumer) ARE guarded.
+PATTERNS='party-?lore|sibling-app|acme-?website|\bmikes\b|@acme/|acme|sibling-ai-project|csharp-adopter|sibling-project|/home/[A-Za-z0-9._-]+/|~/Development'
 
 # Legitimate matches to ignore (e.g. the published npm author email).
 ALLOW='doug@dougmealing\.com'
