@@ -60,4 +60,14 @@ describe("validateDataGridFilterValues — load-time filter validation", () => {
     const count = await filterErrorCodes({ subscribed: { like: "x%" } });
     expect(count).toBeGreaterThanOrEqual(1);
   });
+
+  it("accepts an or composition over filterable fields (no ERR_BAD_ATTR_FILTER)", async () => {
+    const count = await filterErrorCodes({ or: [{ subscribed: true }, { status: ["a"] }] });
+    expect(count).toBe(0);
+  });
+
+  it("rejects an or composition containing a non-filterable field (ERR_BAD_ATTR_FILTER)", async () => {
+    const count = await filterErrorCodes({ or: [{ notFilterable: "x" }] });
+    expect(count).toBeGreaterThanOrEqual(1);
+  });
 });
