@@ -21,6 +21,13 @@ export default defineConfig({
 });
 ```
 
+`tanstackQuery`/`tanstackGrid`/`tanstackGridHook` each accept `{ target }` to route
+their output (hooks/columns/grids) to a named target such as the browser app — see
+`@metaobjectsdev/cli` README, "Multiple output targets". The generated files import
+the entity module from wherever `entityFile()` is routed (relative when same target,
+the entity-module target's `importBase` when not); the grid-hook imports its sibling
+`<Entity>.columns` from within its own target.
+
 ## Pairs with
 
 - Runtime: [`@metaobjectsdev/tanstack`](../../../../client/web/packages/tanstack) — generated hooks and columns import from here.

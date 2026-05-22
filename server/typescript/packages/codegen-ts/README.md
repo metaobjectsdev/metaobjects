@@ -55,6 +55,28 @@ codegen-ts overwrites files with the header but refuses to touch files
 without it. Hand-customizations live in sibling `<Entity>.extra.ts` files
 (for custom queries, derived-column indexes, etc. that metadata can't express).
 
+## Output targets
+
+Each generator can be routed to its own output directory via a named **target**
+(see the CLI's `defineConfig` — `@metaobjectsdev/cli` README, "Multiple output
+targets"). The runner gives every generator a `RenderContext` carrying its own
+`selfTarget` and the shared `entityModuleTarget` (where `entityFile()` output
+lives), then writes each emitted file under its target's `outDir` (collisions are
+keyed on the resolved full path, so the same filename in two targets is fine).
+
+Templates resolve the entity-module import through `entityModuleSpecifier(selfTarget,
+entityModuleTarget, pkg, name, extStyle)`:
+
+- **same target** → relative (`./Program`), honoring `extStyle`
+- **cross target** → extension-less package path from the entity-module target's
+  `importBase` (`@acme/database/generated/acme/commerce/Program`)
+
+Companion helpers: `siblingSpecifier` (same-target sibling module, e.g.
+`<Entity>.columns`) and `barrelModuleSpecifier` (barrel re-exports). A generator
+declares it produces the entity module with `emitsEntityModule: true` (set by
+`entityFile()`); the runner derives the entity-module target from it. With a single
+target, every specifier takes the relative branch, so output is unchanged.
+
 ## Dialects
 
 - `sqlite` — emits `sqliteTable`, `text`, `integer`, etc. from `drizzle-orm/sqlite-core`

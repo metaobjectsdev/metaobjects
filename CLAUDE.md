@@ -246,11 +246,28 @@ export default defineConfig({
 });
 ```
 
+**Per-target output directories.** Each generator can write to its own
+directory/package via a named `targets` registry + per-generator `target`, so
+generated code lands with its runtime concern (model → database package, routes →
+API app, hooks/forms/grids → web app). A target is `{ outDir, importBase?,
+outputLayout?, dbImport? }`; the top-level `outDir` is the implicit `default`
+(entity-module) target. Cross-target references to the entity module are emitted as
+extension-less `importBase` package paths (`@acme/database/generated/acme/commerce/Program`)
+while same-target references stay relative; the entity-module target must set
+`importBase` when any generator routes elsewhere. With no `targets`, output is
+byte-identical to a single-`outDir` project. Full config reference: `@metaobjectsdev/cli`
+README, "Multiple output targets".
+
 **Two config files, by design:**
 - `metaobjects.config.ts` (TypeScript) — generator wiring, type-checked.
 - `.metaobjects/config.json` (JSON) — static project state. Parseable by non-TS tooling (CI scripts, etc.).
 
-The runner `runGen()` (1) loads metadata, (2) precomputes `RenderContext` once, (3) runs each generator sequentially, (4) errors on duplicate output paths or any generator throw, (5) writes via three-way-merge logic.
+The runner `runGen()` (1) loads metadata, (2) resolves targets + derives the
+entity-module target, (3) precomputes shared render state once, (4) runs each
+generator with a per-target `RenderContext`, (5) errors on duplicate full output
+paths, unknown target, missing `importBase` for cross-target imports, or any
+generator throw, (6) writes each file under its target's `outDir` (overwriting only
+files carrying the `@generated` header; refusing others).
 
 ### Filter syntax + sort (Project D)
 

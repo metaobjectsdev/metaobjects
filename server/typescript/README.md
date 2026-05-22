@@ -48,5 +48,5 @@ my-project/
 ├── .metaobjects/            # tool state (gitignored: .gen-state/)
 │   ├── config.json
 │   └── .gen-state/
-└── metaobjects.config.ts    # generator wiring
+└── metaobjects.config.ts    # generator wiring + per-target output
 ```

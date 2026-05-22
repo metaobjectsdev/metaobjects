@@ -11,6 +11,13 @@
   C# Loader at `csharp/MetaObjects/` plus full conformance corpus green via
   `csharp/MetaObjects.Conformance.Tests/` (`dotnet test`). C# codegen + runtime are out
   of scope at this stage.
+- **Per-target output directories (TS codegen)** (2026-05-22)
+  Each generator routes to a named output target (`{ outDir, importBase?, outputLayout?,
+  dbImport? }`), so generated code lands with its runtime concern (model → database
+  package, routes → API app, hooks/forms/grids → web app). Cross-target entity-module
+  references emit as extension-less `importBase` package paths; same-target stays
+  relative; single-`outDir` projects are byte-identical. Design:
+  `docs/superpowers/specs/2026-05-21-per-target-output-dirs-design.md`.
 
 ## Active
 - **H3 — Java port (Loader + runtime + conformance)**

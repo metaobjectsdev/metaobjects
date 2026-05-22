@@ -21,6 +21,11 @@ export default defineConfig({
 });
 ```
 
+`formFile({ target })` routes the generated `.form.tsx` to a named output target
+(e.g. the browser app) — see `@metaobjectsdev/cli` README, "Multiple output
+targets". The form imports the entity module from wherever `entityFile()` is
+routed (relative when same target, the entity-module target's `importBase` when not).
+
 ## Pairs with
 
 - Runtime: [`@metaobjectsdev/react`](../../../../client/web/packages/react) — the generated forms import from here.

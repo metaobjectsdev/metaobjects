@@ -49,7 +49,7 @@ Generates TS code (Drizzle schema, Zod validators, query helpers, TanStack Query
 Flags:
 - `--dry-run` — informational; files still written (true no-write planned)
 
-Positional args filter entities by name. All other knobs (`outDir`, `dialect`, `dbImport`, `extStyle`, `apiPrefix`, generator list) live in `metaobjects.config.ts`.
+Positional args filter entities by name. All other knobs (`outDir`, `targets`, `dialect`, `dbImport`, `extStyle`, `apiPrefix`, generator list) live in `metaobjects.config.ts`.
 
 ### `meta migrate`
 
@@ -84,6 +84,65 @@ export default defineConfig({
   generators: [entityFile(), queriesFile(), routesFile(), barrel()],
 });
 ```
+
+### Multiple output targets
+
+By default every generator writes to `outDir`. To route each generator's output
+to a different directory/package — so generated code lands with its runtime
+concern — declare named **targets** and point generators at them with `target`:
+
+```ts
+import { defineConfig } from "@metaobjectsdev/cli";
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+import { formFile } from "@metaobjectsdev/codegen-ts-react";
+import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack";
+
+export default defineConfig({
+  // The top-level outDir is the implicit "default" target — it holds the entity
+  // modules (Drizzle + Zod), so it needs an importBase that other targets use to
+  // import them.
+  outDir: "packages/database/src/generated",
+  importBase: "@acme/database/generated",
+  dbImport: "../index",
+  dialect: "sqlite",
+  outputLayout: "package",
+  apiPrefix: "/api",
+
+  targets: {
+    // routes run on the server; import db from the database package
+    api: { outDir: "apps/api/src/generated", dbImport: "@acme/database" },
+    // hooks/forms/grids run in the browser
+    web: { outDir: "apps/web/src/generated" },
+  },
+
+  generators: [
+    entityFile(), queriesFile(), barrel(),     // → default (entity-module) target
+    routesFile({ target: "api" }),
+    formFile({ target: "web" }),
+    tanstackQuery({ target: "web" }),
+    tanstackGrid({ target: "web" }),
+  ],
+});
+```
+
+A **target** is `{ outDir, importBase?, outputLayout?, dbImport? }`. `outputLayout`
+and `dbImport` fall back to the top-level values; `importBase` does not inherit (it
+is each target's own identity). Generators with no `target` use the implicit
+`default` target (the top-level `outDir`).
+
+**How cross-target imports resolve.** Every generated artifact imports the entity
+module (queries, routes, hooks, columns, forms). When a generator's target differs
+from the entity-module target (the one holding `entityFile()` output), that import
+is emitted as an **extension-less package path** built from the entity-module
+target's `importBase` — e.g. `@acme/database/generated/acme/commerce/Program` —
+instead of a relative `./Program`. Same-target imports stay relative and honor
+`extStyle`. The entity-module target therefore **must** set `importBase` whenever
+any generator routes elsewhere (the runner errors with a fix-it message otherwise),
+and the package it lives in must expose those modules via its `exports` map (e.g.
+`"./generated/*": "./src/generated/*.ts"`).
+
+With no `targets` and no per-generator `target`, output is byte-identical to a
+single-`outDir` project.
 
 **`.metaobjects/config.json`** — static project state parseable by non-TS tooling:
 
