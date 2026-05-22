@@ -2,21 +2,15 @@
 import { TypeId, type AttrSchema, type ChildRule, type TypeDefinition, TypeRegistry } from "./registry.js";
 import type { MetaDataTypeProvider } from "./provider.js";
 import { dbProvider } from "./db/db-provider.js";
-import {
-  type DataType,
-  DATA_TYPE_BOOLEAN,
-  DATA_TYPE_INT,
-  DATA_TYPE_LONG,
-  DATA_TYPE_DOUBLE,
-  DATA_TYPE_STRING,
-  DATA_TYPE_DATE,
-  DATA_TYPE_OBJECT,
-} from "./data-type.js";
+import { type DataType } from "./data-type.js";
 import type { MetaData } from "./meta/meta-data.js";
 import { MetaRoot } from "./meta/meta-root.js";
 import { MetaObject } from "./meta/meta-object.js";
 import { MetaField } from "./meta/meta-field.js";
 import { MetaAttr } from "./meta/meta-attr.js";
+import { StringArrayAttr } from "./meta/meta-attr-stringarray.js";
+import { FilterAttr } from "./meta/meta-attr-filter.js";
+import { PropertiesAttr } from "./meta/meta-attr-properties.js";
 import {
   MetaValidator,
   MetaRequiredValidator,
@@ -60,33 +54,12 @@ import {
   TYPE_LAYOUT,
   TYPE_SOURCE,
   TYPE_ORIGIN,
-  SUBTYPE_BASE,
   SUBTYPE_ROOT,
   OBJECT_SUBTYPES,
   OBJECT_SUBTYPE_ENTITY,
   FIELD_SUBTYPES,
   FIELD_SUBTYPE_CURRENCY,
-  FIELD_SUBTYPE_STRING,
-  FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
-  FIELD_SUBTYPE_LONG,
-  FIELD_SUBTYPE_DOUBLE,
-  FIELD_SUBTYPE_FLOAT,
-  FIELD_SUBTYPE_DECIMAL,
-  FIELD_SUBTYPE_BOOLEAN,
-  FIELD_SUBTYPE_DATE,
-  FIELD_SUBTYPE_TIME,
-  FIELD_SUBTYPE_TIMESTAMP,
-  FIELD_SUBTYPE_OBJECT,
-  FIELD_SUBTYPE_CLASS,
   ATTR_SUBTYPES,
-  ATTR_SUBTYPE_STRING,
-  ATTR_SUBTYPE_INT,
-  ATTR_SUBTYPE_LONG,
-  ATTR_SUBTYPE_DOUBLE,
-  ATTR_SUBTYPE_BOOLEAN,
-  ATTR_SUBTYPE_CLASS,
   ATTR_SUBTYPE_PROPERTIES,
   ATTR_SUBTYPE_STRINGARRAY,
   ATTR_SUBTYPE_FILTER,
@@ -129,6 +102,11 @@ function wildcard(childType: string): ChildRule {
 
 type NodeConstructor = new (typeId: TypeId, name: string) => MetaData;
 
+/** A MetaAttr (sub)class constructor — narrower than NodeConstructor so the
+ *  factory can read `.dataType` off a probe instance. Assignable to
+ *  NodeConstructor since MetaAttr extends MetaData. */
+type AttrConstructor = new (typeId: TypeId, name: string) => MetaAttr;
+
 function def(
   type: string,
   subType: string,
@@ -153,51 +131,6 @@ function def(
   return definition;
 }
 
-/** Field subtype → DataType. Co-located with registration — a provider adding a
- *  field subtype supplies its own dataType the same way. */
-const FIELD_DATA_TYPE: Record<string, DataType> = {
-  [SUBTYPE_BASE]: DATA_TYPE_STRING,
-  [FIELD_SUBTYPE_STRING]: DATA_TYPE_STRING,
-  [FIELD_SUBTYPE_CLASS]: DATA_TYPE_STRING,
-  [FIELD_SUBTYPE_INT]: DATA_TYPE_INT,
-  [FIELD_SUBTYPE_SHORT]: DATA_TYPE_INT,
-  [FIELD_SUBTYPE_BYTE]: DATA_TYPE_INT,
-  [FIELD_SUBTYPE_LONG]: DATA_TYPE_LONG,
-  [FIELD_SUBTYPE_CURRENCY]: DATA_TYPE_LONG,
-  [FIELD_SUBTYPE_DOUBLE]: DATA_TYPE_DOUBLE,
-  [FIELD_SUBTYPE_FLOAT]: DATA_TYPE_DOUBLE,
-  [FIELD_SUBTYPE_DECIMAL]: DATA_TYPE_DOUBLE,
-  [FIELD_SUBTYPE_BOOLEAN]: DATA_TYPE_BOOLEAN,
-  [FIELD_SUBTYPE_DATE]: DATA_TYPE_DATE,
-  [FIELD_SUBTYPE_TIME]: DATA_TYPE_DATE,
-  [FIELD_SUBTYPE_TIMESTAMP]: DATA_TYPE_DATE,
-  [FIELD_SUBTYPE_OBJECT]: DATA_TYPE_OBJECT,
-};
-
-/** Attr subtype → DataType. */
-const ATTR_DATA_TYPE: Record<string, DataType> = {
-  [SUBTYPE_BASE]: DATA_TYPE_STRING,
-  [ATTR_SUBTYPE_STRING]: DATA_TYPE_STRING,
-  [ATTR_SUBTYPE_CLASS]: DATA_TYPE_STRING,
-  [ATTR_SUBTYPE_STRINGARRAY]: DATA_TYPE_STRING,
-  [ATTR_SUBTYPE_INT]: DATA_TYPE_INT,
-  [ATTR_SUBTYPE_LONG]: DATA_TYPE_LONG,
-  [ATTR_SUBTYPE_DOUBLE]: DATA_TYPE_DOUBLE,
-  [ATTR_SUBTYPE_BOOLEAN]: DATA_TYPE_BOOLEAN,
-  [ATTR_SUBTYPE_PROPERTIES]: DATA_TYPE_OBJECT,
-  [ATTR_SUBTYPE_FILTER]: DATA_TYPE_OBJECT,
-};
-
-/** Look up a subtype's DataType, failing loudly if the map omits it — a
- *  forgotten entry must not silently register as `string`. */
-function dataTypeFor(map: Record<string, DataType>, subType: string, kind: string): DataType {
-  const dt = map[subType];
-  if (dt === undefined) {
-    throw new Error(`registerCoreTypes: no DataType mapped for ${kind} subtype "${subType}"`);
-  }
-  return dt;
-}
-
 /** Map from validator subtype string → concrete node constructor. */
 const VALIDATOR_CLASS_MAP = new Map<string, NodeConstructor>([
   [VALIDATOR_SUBTYPE_REQUIRED, MetaRequiredValidator],
@@ -218,6 +151,15 @@ const IDENTITY_CLASS_MAP = new Map<string, NodeConstructor>([
 const ORIGIN_CLASS_MAP = new Map<string, NodeConstructor>([
   [ORIGIN_SUBTYPE_PASSTHROUGH, MetaPassthroughOrigin],
   [ORIGIN_SUBTYPE_AGGREGATE, MetaAggregateOrigin],
+]);
+
+/** Map from attr subtype string → concrete node constructor. Default (and the
+ *  scalar/string subtypes) → MetaAttr. This is the single "one registration
+ *  line per subtype" surface the Open-Closed proof targets. */
+const ATTR_CLASS_MAP = new Map<string, AttrConstructor>([
+  [ATTR_SUBTYPE_STRINGARRAY, StringArrayAttr],
+  [ATTR_SUBTYPE_FILTER, FilterAttr],
+  [ATTR_SUBTYPE_PROPERTIES, PropertiesAttr],
 ]);
 
 function registerCoreTypeDefs(registry: TypeRegistry): void {
@@ -263,15 +205,18 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
         : [...commonFieldAttrs];
     registry.register(
       def(TYPE_FIELD, subType, `Field of type ${subType}`, fieldRules, MetaField, fieldAttrs,
-        dataTypeFor(FIELD_DATA_TYPE, subType, "field")),
+        new MetaField(new TypeId(TYPE_FIELD, subType), "").dataType),
     );
   }
 
-  // attr — 9 subtypes, no children allowed
+  // attr — 9 subtypes, no children allowed. Each subtype's class owns its
+  // dataType (resolved by this.subType); we read it off a probe instance so the
+  // TypeDefinition.dataType contract (registry.find(...).dataType) still holds.
   for (const subType of ATTR_SUBTYPES) {
+    const AttrClass = ATTR_CLASS_MAP.get(subType) ?? MetaAttr;
+    const probeDataType = new AttrClass(new TypeId(TYPE_ATTR, subType), "").dataType;
     registry.register(
-      def(TYPE_ATTR, subType, `Attribute of type ${subType}`, [], MetaAttr,
-        [], dataTypeFor(ATTR_DATA_TYPE, subType, "attr")),
+      def(TYPE_ATTR, subType, `Attribute of type ${subType}`, [], AttrClass, [], probeDataType),
     );
   }
 
