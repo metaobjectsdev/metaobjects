@@ -60,7 +60,7 @@ public class AbstractOMDBTest {
                     .setVerbose( false ),
                 "test-db" );
             
-            xl.init(new LocalFileMetaDataSources( "meta.fruit.xml" ));
+            xl.init(new LocalFileMetaDataSources( "meta.fruit.json" ));
             
             // Register with both old and new mechanisms for compatibility
             xl.register();  // Old mechanism
