@@ -19,10 +19,6 @@ namespace MetaObjects;
 /// </summary>
 public static class SerializerJson
 {
-    // Java int range — used for distinguishing int vs long attr subtypes.
-    private const long JavaIntMax =  2_147_483_647L;
-    private const long JavaIntMin = -2_147_483_648L;
-
     // ---------------------------------------------------------------------------
     // Public API
     // ---------------------------------------------------------------------------
@@ -34,7 +30,7 @@ public static class SerializerJson
     /// </summary>
     public static string CanonicalSerialize(MetaData model)
     {
-        var nodeObj = SerializeNode(model, inlineAttrs: true, effective: false);
+        var nodeObj = SerializeNode(model, effective: false);
         var sorted = SortAttrKeys(nodeObj)!;
         return Stringify(sorted) + "\n";
     }
@@ -47,7 +43,7 @@ public static class SerializerJson
     /// </summary>
     public static string CanonicalSerializeEffective(MetaData model)
     {
-        var nodeObj = SerializeNode(model, inlineAttrs: true, effective: true);
+        var nodeObj = SerializeNode(model, effective: true);
         var sorted = SortAttrKeys(nodeObj)!;
         return Stringify(sorted) + "\n";
     }
@@ -69,28 +65,6 @@ public static class SerializerJson
     }
 
     // ---------------------------------------------------------------------------
-    // Infer attr subType from a runtime AttrValue (for child-node form)
-    // ---------------------------------------------------------------------------
-
-    private static string InferAttrSubType(object? value)
-    {
-        return value switch
-        {
-            IReadOnlyList<string> => Constants.ATTR_SUBTYPE_STRINGARRAY,
-            bool => Constants.ATTR_SUBTYPE_BOOLEAN,
-            long l => (l >= JavaIntMin && l <= JavaIntMax)
-                ? Constants.ATTR_SUBTYPE_INT
-                : Constants.ATTR_SUBTYPE_LONG,
-            double d => Number.IsIntegerDouble(d)
-                ? ((long)d >= JavaIntMin && (long)d <= JavaIntMax
-                    ? Constants.ATTR_SUBTYPE_INT
-                    : Constants.ATTR_SUBTYPE_LONG)
-                : Constants.ATTR_SUBTYPE_DOUBLE,
-            _ => Constants.ATTR_SUBTYPE_STRING,
-        };
-    }
-
-    // ---------------------------------------------------------------------------
     // Build the fused "type.subType" wrapper key
     // ---------------------------------------------------------------------------
 
@@ -101,15 +75,15 @@ public static class SerializerJson
     // Serialize a single node → { "<type>.<subType>": { ...body } }
     // ---------------------------------------------------------------------------
 
-    private static JsonObject SerializeNode(MetaData model, bool inlineAttrs, bool effective)
+    private static JsonObject SerializeNode(MetaData model, bool effective)
     {
-        var inner = SerializeNodeInner(model, inlineAttrs, effective);
+        var inner = SerializeNodeInner(model, effective);
         var wrapper = new JsonObject();
         wrapper.Add(FusedKey(model.Type, model.SubType), inner);
         return wrapper;
     }
 
-    private static JsonObject SerializeNodeInner(MetaData model, bool inlineAttrs, bool effective)
+    private static JsonObject SerializeNodeInner(MetaData model, bool effective)
     {
         // Canonical body-key order:
         //   1. name  2. package  3. extends  4. abstract
@@ -150,58 +124,23 @@ public static class SerializerJson
         var childList = effective ? model.Children() : model.OwnChildren();
         var attrMap = effective ? model.Attrs() : model.OwnAttrs();
 
-        // Walk children: structural children recurse; attr children emit either as
-        // inline @-attrs or as child {"attr.*": {...}} nodes.
-        var emittedAsChild = new HashSet<string>(StringComparer.Ordinal);
+        // Walk children: structural children recurse. Attrs are ALWAYS emitted
+        // inline as @-attrs (never as child {"attr.*": {...}} nodes), so attr-typed
+        // children are skipped here — the C# parser dual-stores each attr both as a
+        // child node and as a parent attr (Parser.cs:950-951), and the inline loop
+        // below emits it from attrMap.
         var serializedChildren = new JsonArray();
 
         foreach (var child in childList)
         {
-            if (child.Type != Constants.TYPE_ATTR)
-            {
-                serializedChildren.Add(SerializeNode(child, inlineAttrs, effective));
-                continue;
-            }
-
-            // Emit attr as child node form
-            var attrName = child.Name;
-            var attrValue = child.OwnAttr(Constants.RESERVED_KEY_VALUE);
-            var attrSubType = child.SubType != Constants.SUBTYPE_BASE
-                ? child.SubType
-                : InferAttrSubType(attrValue ?? "");
-
-            var attrBody = new JsonObject
-            {
-                { Constants.RESERVED_KEY_NAME, JsonValue.Create(attrName) },
-                { Constants.RESERVED_KEY_VALUE, AttrValueToJsonNode(attrValue) },
-            };
-            var attrWrapper = new JsonObject();
-            attrWrapper.Add(FusedKey(Constants.TYPE_ATTR, attrSubType), attrBody);
-            serializedChildren.Add(attrWrapper);
-            emittedAsChild.Add(attrName);
+            if (child.Type == Constants.TYPE_ATTR) continue;
+            serializedChildren.Add(SerializeNode(child, effective));
         }
 
-        // Inline @-attrs: emit attrs NOT already emitted as child nodes.
+        // Inline @-attrs — always emitted as @name; attrs have no child form.
         foreach (var (attrName, attrValue) in attrMap)
         {
-            if (emittedAsChild.Contains(attrName)) continue;
-
-            if (inlineAttrs)
-            {
-                obj.Add($"{Constants.ATTR_PREFIX}{attrName}", AttrValueToJsonNode(attrValue));
-            }
-            else
-            {
-                var subType = InferAttrSubType(attrValue);
-                var attrBody = new JsonObject
-                {
-                    { Constants.RESERVED_KEY_NAME, JsonValue.Create(attrName) },
-                    { Constants.RESERVED_KEY_VALUE, AttrValueToJsonNode(attrValue) },
-                };
-                var attrWrapper = new JsonObject();
-                attrWrapper.Add(FusedKey(Constants.TYPE_ATTR, subType), attrBody);
-                serializedChildren.Add(attrWrapper);
-            }
+            obj.Add($"{Constants.ATTR_PREFIX}{attrName}", AttrValueToJsonNode(attrValue));
         }
 
         // children — emit only if non-empty
