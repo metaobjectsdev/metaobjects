@@ -5,7 +5,6 @@ import com.metaobjects.MetaRoot;
 import com.metaobjects.io.json.CanonicalJsonSerializer;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.SharedRegistryTestBase;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.util.List;
@@ -32,16 +31,6 @@ import static org.junit.Assert.*;
  * </ol>
  */
 public class FilterAttributeTest extends SharedRegistryTestBase {
-
-    @Before
-    public void ensureFilterAttributeRegistered() {
-        // Force FilterAttribute class loading so its static registration fires
-        try {
-            new FilterAttribute("_boot_filter");
-        } catch (Exception ignored) {
-            // Registration errors are acceptable if already registered
-        }
-    }
 
     // -----------------------------------------------------------------------
     // Registration tests
@@ -372,5 +361,45 @@ public class FilterAttributeTest extends SharedRegistryTestBase {
                 json.contains("\"a\""));
         assertTrue("in array should contain \"b\", got: " + json,
                 json.contains("\"b\""));
+    }
+
+    // -----------------------------------------------------------------------
+    // Fix 1: integer overflow guard
+    // -----------------------------------------------------------------------
+
+    /**
+     * A JSON integer larger than Long.MAX_VALUE must NOT silently wrap to a
+     * negative long. It should come back as a Double instead.
+     */
+    @Test
+    public void hugeIntegerDoesNotWrapToNegativeLong() {
+        FilterAttribute attr = new FilterAttribute("hugeNum");
+        // 9999999999999999999 > Long.MAX_VALUE (9223372036854775807)
+        attr.setValueAsString("{\"hugeNum\":9999999999999999999}");
+
+        Map<String, Object> val = attr.getValue();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> clause = (Map<String, Object>) val.get("hugeNum");
+        Object eqVal = clause.get("eq");
+        assertNotNull("hugeNum clause must have an 'eq' value", eqVal);
+        assertTrue("Value exceeding Long.MAX_VALUE must be returned as Double, not Long",
+                eqVal instanceof Double);
+        // Confirm it is NOT a corrupted (negative) long
+        assertFalse("Value must not be a Long (which would silently wrap/corrupt)",
+                eqVal instanceof Long);
+    }
+
+    // -----------------------------------------------------------------------
+    // Fix 3: malformed JSON throws InvalidAttributeValueException
+    // -----------------------------------------------------------------------
+
+    /**
+     * Malformed JSON input must throw {@link InvalidAttributeValueException}
+     * (not a raw Gson exception leaking through the API).
+     */
+    @Test(expected = InvalidAttributeValueException.class)
+    public void malformedJsonThrowsInvalidAttributeValueException() {
+        FilterAttribute attr = new FilterAttribute("bad");
+        attr.setValueAsString("{not valid json at all");
     }
 }

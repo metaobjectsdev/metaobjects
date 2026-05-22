@@ -7,10 +7,13 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
+import com.google.gson.JsonSyntaxException;
 import com.metaobjects.DataTypes;
 import com.metaobjects.registry.MetaDataRegistry;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -97,8 +100,13 @@ public class FilterAttribute extends MetaAttribute<Map<String, Object>> {
             setValue(null);
             return;
         }
-        JsonElement el = JsonParser.parseString(json);
-        setValue(desugarElement(el));
+        try {
+            JsonElement el = JsonParser.parseString(json);
+            setValue(desugarElement(el));
+        } catch (JsonSyntaxException e) {
+            throw new InvalidAttributeValueException(
+                "Could not parse filter value as JSON [" + json + "]: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -132,6 +140,10 @@ public class FilterAttribute extends MetaAttribute<Map<String, Object>> {
     /**
      * Returns the desugared filter map serialized as a canonical JSON object string.
      * Returns an empty JSON object {@code {}} when the value is {@code null}.
+     *
+     * <p>Note: an absent/null filter serializes to {@code {}} by design, unlike
+     * {@link PropertiesAttribute#getValueAsString()} which returns {@code null}.
+     * This preserves a valid JSON object shape for downstream consumers.</p>
      */
     @Override
     public String getValueAsString() {
@@ -181,7 +193,7 @@ public class FilterAttribute extends MetaAttribute<Map<String, Object>> {
             if (COMPOSE_OR.equals(key) || COMPOSE_AND.equals(key)) {
                 // Composition: value must be an array of sub-filter objects; recurse.
                 if (raw.isJsonArray()) {
-                    java.util.List<Object> subFilters = new java.util.ArrayList<>();
+                    List<Object> subFilters = new ArrayList<>();
                     for (JsonElement sub : raw.getAsJsonArray()) {
                         if (sub.isJsonObject()) {
                             subFilters.add(desugarJsonObject(sub.getAsJsonObject()));
@@ -223,7 +235,7 @@ public class FilterAttribute extends MetaAttribute<Map<String, Object>> {
             return clause;
         }
         if (raw.isJsonArray()) {
-            java.util.List<Object> items = new java.util.ArrayList<>();
+            List<Object> items = new ArrayList<>();
             for (JsonElement item : raw.getAsJsonArray()) {
                 items.add(jsonElementToJava(item));
             }
@@ -271,9 +283,10 @@ public class FilterAttribute extends MetaAttribute<Map<String, Object>> {
             JsonPrimitive p = el.getAsJsonPrimitive();
             if (p.isBoolean()) return p.getAsBoolean();
             if (p.isNumber()) {
-                // Prefer Long for integer values, Double otherwise
+                // Prefer Long for integer values within long range; Double otherwise
                 double d = p.getAsDouble();
-                if (d == Math.floor(d) && !Double.isInfinite(d)) {
+                if (d == Math.floor(d) && !Double.isInfinite(d)
+                        && d >= (double) Long.MIN_VALUE && d <= (double) Long.MAX_VALUE) {
                     return p.getAsLong();
                 }
                 return d;
@@ -281,7 +294,7 @@ public class FilterAttribute extends MetaAttribute<Map<String, Object>> {
             return p.getAsString();
         }
         if (el.isJsonArray()) {
-            java.util.List<Object> list = new java.util.ArrayList<>();
+            List<Object> list = new ArrayList<>();
             for (JsonElement item : el.getAsJsonArray()) {
                 list.add(jsonElementToJava(item));
             }
