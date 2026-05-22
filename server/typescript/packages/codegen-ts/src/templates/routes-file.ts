@@ -1,5 +1,5 @@
 // Fastify route template — emits a per-entity routes file that delegates
-// CRUD verbs to helpers from @metaobjects/runtime-ts/drizzle-fastify.
+// CRUD verbs to helpers from @metaobjectsdev/runtime-ts/drizzle-fastify.
 //
 // Dispatch logic:
 //   isProjection(entity)  → mountReadOnlyCrudRoutes (GET list + GET :id only)
@@ -16,7 +16,7 @@
 // imported alongside the Zod schemas + constants from the sibling Entity.ts.
 
 import { code, imp } from "ts-poet";
-import type { MetaObject } from "@metaobjects/metadata";
+import type { MetaObject } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, relativeModuleSpecifier } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
@@ -48,7 +48,7 @@ export function renderRoutesFile(entity: MetaObject, ctx: RenderContext): string
     const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
     const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
     const mountReadOnlyCrudRoutesSym = imp(
-      "mountReadOnlyCrudRoutes@@metaobjects/runtime-ts/drizzle-fastify",
+      "mountReadOnlyCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify",
     );
 
     const literalImports = code`
@@ -68,7 +68,7 @@ import {
  *
  * Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.
  * Customize: register this as-is, or import individual route helpers from
- * @metaobjects/runtime-ts/drizzle-fastify.
+ * @metaobjectsdev/runtime-ts/drizzle-fastify.
  */
 export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   await fastify.register(async (instance) => {
@@ -90,7 +90,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
  *
  * Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.
  * Customize: register this as-is, or import individual route helpers from
- * @metaobjects/runtime-ts/drizzle-fastify.
+ * @metaobjectsdev/runtime-ts/drizzle-fastify.
  */
 export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   ${mountReadOnlyCrudRoutesSym}({
@@ -112,7 +112,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   const tableVar = variableNameFromEntity(entityName);
 
   const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
-  const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjects/runtime-ts/drizzle-fastify");
+  const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify");
 
   const literalImports = code`
 import { db } from ${JSON.stringify(dbImportSpec)};
@@ -133,7 +133,7 @@ import {
  *
  * Customize: register this as-is for stock CRUD, OR import the per-verb
  * helpers (mountListRoute, mountGetRoute, ...) from
- * @metaobjects/runtime-ts/drizzle-fastify and mix with your own handlers
+ * @metaobjectsdev/runtime-ts/drizzle-fastify and mix with your own handlers
  * (auth, side effects, etc.).
  */
 export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
@@ -158,7 +158,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
  *
  * Customize: register this as-is for stock CRUD, OR import the per-verb
  * helpers (mountListRoute, mountGetRoute, ...) from
- * @metaobjects/runtime-ts/drizzle-fastify and mix with your own handlers
+ * @metaobjectsdev/runtime-ts/drizzle-fastify and mix with your own handlers
  * (auth, side effects, etc.).
  */
 export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {

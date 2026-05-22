@@ -2,8 +2,8 @@ import {
   TYPE_SOURCE,
   SOURCE_SUBTYPE_DB_TABLE,
   SOURCE_SUBTYPE_DB_VIEW,
-} from "@metaobjects/metadata";
-import type { MetaData } from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 
 function hasSource(entity: MetaData, subType: string): boolean {
   return entity.ownChildren().some(

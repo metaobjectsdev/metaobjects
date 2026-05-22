@@ -20,9 +20,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { FileMetaDataLoader } from "@metaobjects/metadata/core";
-import { runGen, defineConfig } from "@metaobjects/codegen-ts";
-import { entityFile } from "@metaobjects/codegen-ts/generators";
+import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
+import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
+import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 import { tanstackGridHook } from "../../src/index.js";
 
 const SNAP = join(import.meta.dir, "__snapshots__");

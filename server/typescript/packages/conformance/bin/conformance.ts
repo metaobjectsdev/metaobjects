@@ -100,7 +100,7 @@ switch (subcommand) {
 
     // Import the TS oracle — public API only (no test helpers).
     const { MetaDataLoader, InMemorySource, canonicalSerialize } =
-      await import("@metaobjects/metadata");
+      await import("@metaobjectsdev/metadata");
 
     for (let i = 0; i < count; i++) {
       const seed = startSeed + i;

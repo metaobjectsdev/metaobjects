@@ -1,9 +1,9 @@
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_OBJECT, TYPE_FIELD,
   FIELD_SUBTYPE_INT, FIELD_SUBTYPE_SHORT, FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import type {
   PersistenceDriver, Row, WhereClause,
   InsertManySpec, UpdateManySpec, DeleteManySpec,
@@ -13,7 +13,7 @@ import {
   resolvePkFields, compileFilter,
   type Filter, type QueryOpts,
 } from "./query-builder.js";
-import { buildNameMap, resolveTableName, type EntityNameMap } from "@metaobjects/metadata";
+import { buildNameMap, resolveTableName, type EntityNameMap } from "@metaobjectsdev/metadata";
 import { coerceRowOnRead, coerceRowOnWrite } from "./type-coercer.js";
 import { decodeRef, encodeRef } from "./ref-codec.js";
 import { runValidators } from "./validator-runner.js";

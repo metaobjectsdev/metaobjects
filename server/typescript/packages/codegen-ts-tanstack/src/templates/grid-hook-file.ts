@@ -9,10 +9,10 @@
 //   <EntityGrid {...grid} columns={subscriberDefaultColumns} grid={subscriberDefaultGrid} />
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import type { MetaObject, MetaLayout } from "@metaobjects/metadata";
-import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjects/metadata";
-import type { RenderContext } from "@metaobjects/codegen-ts";
-import { GENERATED_HEADER, crossEntitySpecifier } from "@metaobjects/codegen-ts";
+import type { MetaObject, MetaLayout } from "@metaobjectsdev/metadata";
+import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
+import type { RenderContext } from "@metaobjectsdev/codegen-ts";
+import { GENERATED_HEADER, crossEntitySpecifier } from "@metaobjectsdev/codegen-ts";
 
 interface GridSpec {
   name: string;           // e.g. "default", "activeOnly"
@@ -64,8 +64,8 @@ export function renderGridHookFile(entity: MetaObject, ctx: RenderContext): stri
   const SortingStateSym       = imp("t:SortingState@@tanstack/react-table");
   const PaginationStateSym    = imp("t:PaginationState@@tanstack/react-table");
   const ColumnFiltersStateSym = imp("t:ColumnFiltersState@@tanstack/react-table");
-  const useEntityFetcherSym = imp("useEntityFetcher@@metaobjects/tanstack");
-  const buildFilterQsSym    = imp("buildFilterQs@@metaobjects/runtime-web");
+  const useEntityFetcherSym = imp("useEntityFetcher@@metaobjectsdev/tanstack");
+  const buildFilterQsSym    = imp("buildFilterQs@@metaobjectsdev/runtime-web");
 
   const entityImports: Code = code`
 import { ${entityName} } from ${JSON.stringify(entityModule)};

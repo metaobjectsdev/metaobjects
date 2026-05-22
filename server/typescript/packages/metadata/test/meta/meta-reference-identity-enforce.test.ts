@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
 
 async function load(children: unknown[]) {
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });

@@ -6,7 +6,7 @@ import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
 import { applyStatus } from "./status.js";
 import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
-import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjects/metadata";
+import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 
 export interface DiffArgs {
   expected: SchemaSnapshot;

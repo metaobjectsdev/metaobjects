@@ -8,7 +8,7 @@
 //   - Insert/Update types
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import { MetaField, MetaObject, type MetaRoot } from "@metaobjects/metadata";
+import { MetaField, MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
 import { extractViewSpec } from "../projection/extract-view-spec.js";
 import { columnNameFromField, toSnakeCase, pluralize } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";

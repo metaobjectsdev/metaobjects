@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaObject, MetaField } from "@metaobjects/metadata";
+import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import {
   TypeId,
   TYPE_IDENTITY,
@@ -9,7 +9,7 @@ import {
   IDENTITY_SUBTYPE_PRIMARY,
   OBJECT_SUBTYPE_ENTITY,
   VIEW_SUBTYPE_CURRENCY,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import { meta, metaObject, metaField } from "../_meta-build.js";
 import { renderEntityConstants } from "../../src/templates/entity-constants.js";
 

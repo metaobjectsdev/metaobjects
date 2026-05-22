@@ -69,7 +69,7 @@ import {
   type MetaDataFormat,
 } from "../src/index.js";
 
-describe("Public API surface — @metaobjects/metadata index", () => {
+describe("Public API surface — @metaobjectsdev/metadata index", () => {
   // ---------------------------------------------------------------------------
   // Concrete node classes (typed tree)
   // ---------------------------------------------------------------------------

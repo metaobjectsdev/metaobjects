@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { run } from "../../src/index.js";
 
 const FIXTURES = resolve(import.meta.dirname, "../fixtures");
-// Place temp dirs inside the monorepo so workspace packages (@metaobjects/*)
+// Place temp dirs inside the monorepo so workspace packages (@metaobjectsdev/*)
 // are resolvable by jiti when it loads metaobjects.config.ts.
 const WORKSPACE_TMP = resolve(import.meta.dirname, "../fixtures/__tmp__");
 
@@ -20,8 +20,8 @@ describe("meta gen --dry-run", () => {
     writeFileSync(
       join(root, "metaobjects.config.ts"),
       `
-import { defineConfig } from "@metaobjects/codegen-ts";
-import { entityFile } from "@metaobjects/codegen-ts/generators";
+import { defineConfig } from "@metaobjectsdev/codegen-ts";
+import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 export default defineConfig({
   outDir: ${JSON.stringify(outDir)},
   dialect: "sqlite",

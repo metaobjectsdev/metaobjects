@@ -4,7 +4,7 @@
 **Status:** Shipped (2026-05-14)
 **Scope:** Establish a polyglot monorepo for the MetaObjects standard, migrate the TS implementation out of `metaforge/`, separate AI-collab code into `forge/`, scaffold directories for upcoming Java / Python / C# implementations and shared conformance fixtures.
 
-> **Note (2026-05-21):** H1 shipped 2026-05-14. This historical design doc preserves the original rename mapping tables that document what the H1 migration renamed FROM — those references to `@metaforge/*`, `metaforge.config.ts`, and `.metaforge/` are intentional historical record, not current state. Current naming is `@metaobjects/*`, `metaobjects.config.ts`, `.metaobjects/`. See git history for the original wording.
+> **Note (2026-05-21):** H1 shipped 2026-05-14. This historical design doc preserves the original rename mapping tables that document what the H1 migration renamed FROM — those references to `@metaforge/*`, `metaforge.config.ts`, and `.metaforge/` are intentional historical record, not current state. Current naming is `@metaobjectsdev/*`, `metaobjects.config.ts`, `.metaobjects/`. See git history for the original wording.
 
 **Builds on:** Projects D, E, F, G (complete TS reference implementation).
 
@@ -46,7 +46,7 @@ The clean split (no `forge` references in the open standard):
 | SDK (memory, paths, workspace) | Future `forge audit`, `forge serve`, `forge capture` |
 | CLI binary `meta` with commands: `init`, `gen`, `migrate` | Future capabilities (out of public scope) |
 
-Downstream apps install BOTH `@metaobjects/*` (the standard, from npm) AND optionally `@forge/*` (AI-collab features). The two ecosystems are independently versioned.
+Downstream apps install BOTH `@metaobjectsdev/*` (the standard, from npm) AND optionally `@forge/*` (AI-collab features). The two ecosystems are independently versioned.
 
 ## Non-goals
 
@@ -83,14 +83,14 @@ metaobjects/
 │       └── README.md                  # "fixtures land here in H2"
 ├── typescript/
 │   ├── packages/
-│   │   ├── metadata/                  # @metaobjects/metadata
-│   │   ├── codegen-ts/                # @metaobjects/codegen-ts
-│   │   ├── codegen-ts-tanstack/       # @metaobjects/codegen-ts-tanstack
-│   │   ├── runtime-ts/                # @metaobjects/runtime-ts
-│   │   ├── runtime-ts-client/         # @metaobjects/runtime-ts-client
-│   │   ├── migrate-ts/                # @metaobjects/migrate-ts
-│   │   ├── sdk/                       # @metaobjects/sdk (renamed from @metaforge/sdk)
-│   │   └── cli/                       # @metaobjects/cli (renamed from @metaforge/cli; binary: `meta`)
+│   │   ├── metadata/                  # @metaobjectsdev/metadata
+│   │   ├── codegen-ts/                # @metaobjectsdev/codegen-ts
+│   │   ├── codegen-ts-tanstack/       # @metaobjectsdev/codegen-ts-tanstack
+│   │   ├── runtime-ts/                # @metaobjectsdev/runtime-ts
+│   │   ├── runtime-ts-client/         # @metaobjectsdev/runtime-ts-client
+│   │   ├── migrate-ts/                # @metaobjectsdev/migrate-ts
+│   │   ├── sdk/                       # @metaobjectsdev/sdk (renamed from @metaforge/sdk)
+│   │   └── cli/                       # @metaobjectsdev/cli (renamed from @metaforge/cli; binary: `meta`)
 │   ├── package.json                   # pnpm workspace root
 │   ├── pnpm-workspace.yaml
 │   ├── biome.json
@@ -113,7 +113,7 @@ metaobjects/
 ```
 forge/
 ├── packages/
-│   ├── cli/                           # @forge/cli — extends @metaobjects/cli with AI commands (mcp, ingest, install-hooks, audit, serve, capture)
+│   ├── cli/                           # @forge/cli — extends @metaobjectsdev/cli with AI commands (mcp, ingest, install-hooks, audit, serve, capture)
 │   └── agent-docs/                    # @forge/agent-docs — generates .meta/CLAUDE.md content (carved out of metaforge's CLI lib)
 ├── enterprise/                        # placeholder for future capabilities (not populated in H1)
 │   └── README.md
@@ -148,7 +148,7 @@ See `metaobjects/CLAUDE.md` for the full contributor context. `forge/CLAUDE.md` 
 | `packages/runtime-ts/` | `metaobjects/typescript/packages/runtime-ts/` |
 | `packages/runtime-ts-client/` | `metaobjects/typescript/packages/runtime-ts-client/` |
 | `packages/migrate-ts/` | `metaobjects/typescript/packages/migrate-ts/` |
-| `packages/sdk/` | `metaobjects/typescript/packages/sdk/` (renamed to `@metaobjects/sdk`) |
+| `packages/sdk/` | `metaobjects/typescript/packages/sdk/` (renamed to `@metaobjectsdev/sdk`) |
 | `packages/cli/src/commands/{init,gen,migrate}.ts` | `metaobjects/typescript/packages/cli/src/commands/` |
 | `packages/cli/src/lib/{args,config,kysely,load-forge-config,log,output,projection-migrations}.ts` | `metaobjects/typescript/packages/cli/src/lib/` |
 | `packages/cli/src/lib/agent-docs.ts` | `forge/packages/agent-docs/src/index.ts` |
@@ -164,8 +164,8 @@ See `metaobjects/CLAUDE.md` for the full contributor context. `forge/CLAUDE.md` 
 
 | Today | Tomorrow |
 |---|---|
-| `@metaforge/cli` package | `@metaobjects/cli` |
-| `@metaforge/sdk` package | `@metaobjects/sdk` |
+| `@metaforge/cli` package | `@metaobjectsdev/cli` |
+| `@metaforge/sdk` package | `@metaobjectsdev/sdk` |
 | Binary `forge` (in cli/bin/) | Binary `meta` |
 | Config file `metaforge.config.ts` | `metaobjects.config.ts` |
 | Project marker directory `.metaforge/` | `.metaobjects/` |
@@ -182,7 +182,7 @@ trainer-website is the only existing consumer and must be updated in lockstep wi
 
 | File | Change |
 |---|---|
-| `apps/api/package.json` | `link:../../../metaforge/packages/<name>` → `link:../../../metaobjects/typescript/packages/<name>`; rename `@metaforge/cli` and `@metaforge/sdk` deps to `@metaobjects/cli` and `@metaobjects/sdk` |
+| `apps/api/package.json` | `link:../../../metaforge/packages/<name>` → `link:../../../metaobjects/typescript/packages/<name>`; rename `@metaforge/cli` and `@metaforge/sdk` deps to `@metaobjectsdev/cli` and `@metaobjectsdev/sdk` |
 | `apps/web/package.json` | Same |
 | `packages/database/package.json` | Same |
 | `metaforge.config.ts` | Rename → `metaobjects.config.ts` |
@@ -190,7 +190,7 @@ trainer-website is the only existing consumer and must be updated in lockstep wi
 | `.metaforge/.gen-state/` | Moves to `.metaobjects/.gen-state/` |
 | `.metaforge/config.json` | Moves to `.metaobjects/config.json` |
 | Root `.gitignore` entries | `.metaforge/` → `.metaobjects/` |
-| Generated files | Imports already use `@metaobjects/runtime-ts-client` (post-G); no change. Regenerate after rename to update embedded `metaforge.config.ts` references in comments. |
+| Generated files | Imports already use `@metaobjectsdev/runtime-ts-client` (post-G); no change. Regenerate after rename to update embedded `metaforge.config.ts` references in comments. |
 | Any scripts in `package.json` that invoke `forge` | Invoke `meta` |
 | Hand-written admin pages | No change |
 
@@ -218,11 +218,11 @@ After all rewrites, `pnpm install && pnpm build && pnpm dev` should produce iden
 - **H6 — Forge AI commands implementation** (TBD)
   `forge mcp`, `forge install-hooks`, `forge ingest`, etc. Lives in `forge/`.
 - **H7 — npm publish** (1 wk)
-  First stable public release of `@metaobjects/*` packages; reflects polyglot reality (TS + Java).
+  First stable public release of `@metaobjectsdev/*` packages; reflects polyglot reality (TS + Java).
 - **H8 — trainer-website npm migration** (0.5 wk)
   Switch from `link:` deps to published npm versions.
 - **H9 — First Java consumer UI migration** (2-3 wk)
-  First Java consumer's TS frontend adopts `@metaobjects/runtime-ts-client`.
+  First Java consumer's TS frontend adopts `@metaobjectsdev/runtime-ts-client`.
 - **H10 — Polyglot consumer migration** (3-4 wk)
   Java backend + TS frontend onto metaobjects.
 

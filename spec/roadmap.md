@@ -2,7 +2,7 @@
 
 ## Shipped
 - **H1 — Polyglot monorepo migration** (2026-05-14)
-  TS code consolidated under `typescript/`; package names normalized to `@metaobjects/*`;
+  TS code consolidated under `typescript/`; package names normalized to `@metaobjectsdev/*`;
   CLI binary renamed to `meta`; config file `metaobjects.config.ts`; tool-state dir `.metaobjects/`.
 - **H2 — Shared conformance fixtures** (2026-05-15)
   Fixtures extracted into `fixtures/conformance/`; TS conformance runner; canonical
@@ -30,7 +30,7 @@
 - **H8 — TS consumer npm migration** (0.5 wk)
   First TS consumer switches from `link:` deps to published versions.
 - **H9 — Second consumer migration** (2-3 wk)
-  TS frontend adopts `@metaobjects/runtime-web` + `@metaobjects/react` + `@metaobjects/tanstack`.
+  TS frontend adopts `@metaobjectsdev/runtime-web` + `@metaobjectsdev/react` + `@metaobjectsdev/tanstack`.
 - **H10 — Polyglot consumer migration** (3-4 wk)
   Java + TS consumer onto metaobjects (both layers).
 

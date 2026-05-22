@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaField } from "@metaobjects/metadata";
-import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
+import type { MetaField } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
 import {
   inferViewKind,
   zodTypeFor,

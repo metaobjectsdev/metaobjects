@@ -56,7 +56,7 @@ This is a smell:
   (downstream-consumer, fixtures) is converted by hand as part of the work.
 - **D4 — Scope: both attrs together.** `attr.filter` (new, has a consumer) and
   `attr.properties` (Java parity, no consumer yet) ship in one project.
-- **D5 — `grid-filter-validate` relocation: move into `@metaobjects/metadata`.** Filter
+- **D5 — `grid-filter-validate` relocation: move into `@metaobjectsdev/metadata`.** Filter
   operators are a metamodel concept (`FILTER_OPS` / `OPS_BY_SUBTYPE` already live in
   `metadata/src/constants.ts`), so the validator belongs there. Codegen imports from
   metadata rather than owning the logic.
@@ -149,7 +149,7 @@ inherited `@filterable` fields are visible).
   (load-time covers it). Still emit the `<entity><Grid>Filter` const verbatim via
   `JSON.stringify(parsed, null, 2)`.
 - `grid-hook-file.ts`: untouched (`l.filter !== undefined` still works).
-- `grid-filter-validate.ts`: **moved** into `@metaobjects/metadata` (Decision D5); array →
+- `grid-filter-validate.ts`: **moved** into `@metaobjectsdev/metadata` (Decision D5); array →
   `in` validation added; codegen imports it from metadata.
 
 ### 5. Cross-language ports

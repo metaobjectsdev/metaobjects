@@ -71,7 +71,7 @@ describe("metaobjects.config.ts section in refreshed docs", () => {
     const claudeMd = readFileSync(join(cwd, ".metaobjects", "CLAUDE.md"), "utf8");
     expect(claudeMd).toContain("metaobjects.config.ts");
     expect(claudeMd).toContain("defineConfig");
-    expect(claudeMd).toContain("@metaobjects/codegen-ts/generators");
+    expect(claudeMd).toContain("@metaobjectsdev/codegen-ts/generators");
     expect(claudeMd).not.toContain("--out-dir");
   });
 });
@@ -125,7 +125,7 @@ describe("currency fields in refreshed docs", () => {
       const claudeMd = readFileSync(join(tmp, ".metaobjects", "CLAUDE.md"), "utf-8");
       expect(claudeMd).toContain("Currency fields");
       expect(claudeMd).toContain("CurrencyInput");
-      expect(claudeMd).toContain("@metaobjects/react");
+      expect(claudeMd).toContain("@metaobjectsdev/react");
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

@@ -7,7 +7,7 @@ import {
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_DECIMAL,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import { meta, metaField } from "./_meta-build.js";
 import { mapColumnType, type ColumnSpec } from "../src/column-mapper.js";
 

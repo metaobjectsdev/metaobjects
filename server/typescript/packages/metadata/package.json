@@ -1,5 +1,5 @@
 {
-  "name": "@metaobjects/metadata",
+  "name": "@metaobjectsdev/metadata",
   "version": "0.5.0",
   "description": "Metamodel loader, types, and constants for the MetaObjects standard.",
   "type": "module",
@@ -38,7 +38,7 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
-    "@metaobjects/conformance": "workspace:*",
+    "@metaobjectsdev/conformance": "workspace:*",
     "@stryker-mutator/core": "^9.6.1",
     "bun-types": "latest",
     "typescript": "^5.6.0"

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Decompose `@metaobjects/runtime-ts-client` into three runtime packages under `client/web/packages/` (runtime-web, react, tanstack), lift the form-file generator into a new `@metaobjects/codegen-ts-react` server-side package, update all in-tree consumers and CLAUDE.md, and delete `runtime-ts-client`. Single atomic PR; `bun test` from `server/typescript/` must remain at **2105 pass / 0 fail**.
+**Goal:** Decompose `@metaobjectsdev/runtime-ts-client` into three runtime packages under `client/web/packages/` (runtime-web, react, tanstack), lift the form-file generator into a new `@metaobjectsdev/codegen-ts-react` server-side package, update all in-tree consumers and CLAUDE.md, and delete `runtime-ts-client`. Single atomic PR; `bun test` from `server/typescript/` must remain at **2105 pass / 0 fail**.
 
 **Architecture:** Five-package split following the Prisma/Apollo/Drizzle convention — codegen and runtime as **separate** packages per framework integration. Two disjoint dep trees: runtime (browser, zero Node deps) and codegen (server, zero React deps). Workspace declaration in `server/typescript/package.json` extends with a relative glob `../../client/web/packages/*` to pick up the new runtime packages without moving the workspace root.
 
@@ -96,7 +96,7 @@ bun install
 ```
 Expected: install completes without "workspace pattern not found" or path errors. No client/web packages exist yet, so the glob just resolves to zero matches — that's fine, Bun should tolerate it.
 
-If Bun rejects ascending relative globs (rare but possible on older versions), fall back to: create a root `package.json` at `/home/doug/Development/metaobjects/package.json` with the same `"name": "@metaobjects/monorepo"` content plus `"workspaces": ["server/typescript/packages/*", "client/web/packages/*"]`, and remove the workspaces field from `server/typescript/package.json`. Update CLAUDE.md test-execution guidance accordingly in Task 13.
+If Bun rejects ascending relative globs (rare but possible on older versions), fall back to: create a root `package.json` at `/home/doug/Development/metaobjects/package.json` with the same `"name": "@metaobjectsdev/monorepo"` content plus `"workspaces": ["server/typescript/packages/*", "client/web/packages/*"]`, and remove the workspaces field from `server/typescript/package.json`. Update CLAUDE.md test-execution guidance accordingly in Task 13.
 
 - [ ] **Step 3: Commit.**
 
@@ -120,7 +120,7 @@ git commit -m "chore(workspace): extend bun workspace glob to client/web/package
 
 ```json
 {
-  "name": "@metaobjects/runtime-web",
+  "name": "@metaobjectsdev/runtime-web",
   "version": "0.4.0",
   "description": "Pure framework-agnostic browser core for metaobjects: currency, filter URL serialization, fetcher contract types.",
   "type": "module",
@@ -140,7 +140,7 @@ git commit -m "chore(workspace): extend bun workspace glob to client/web/package
     "test": "bun test"
   },
   "dependencies": {
-    "@metaobjects/metadata": "workspace:*",
+    "@metaobjectsdev/metadata": "workspace:*",
     "qs": "^6.13.0"
   },
   "devDependencies": {
@@ -190,7 +190,7 @@ ls /home/doug/Development/metaobjects/server/typescript/tsconfig.base.json
 - [ ] **Step 4: Create `src/index.ts` as an empty placeholder.**
 
 ```ts
-// Public API surface for @metaobjects/runtime-web.
+// Public API surface for @metaobjectsdev/runtime-web.
 // Sources populated in Tasks 3-4.
 export {};
 ```
@@ -198,7 +198,7 @@ export {};
 - [ ] **Step 5: Create `README.md`** (1-2 sentence stub).
 
 ```markdown
-# @metaobjects/runtime-web
+# @metaobjectsdev/runtime-web
 
 Pure framework-agnostic browser core for metaobjects: currency formatting, filter URL serialization, and fetcher contract types. Zero React, zero TanStack, zero Node-only deps.
 ```
@@ -210,7 +210,7 @@ cd /home/doug/Development/metaobjects/server/typescript
 bun install
 bun pm ls 2>&1 | grep runtime-web
 ```
-Expected: `@metaobjects/runtime-web@0.4.0` appears in workspace list.
+Expected: `@metaobjectsdev/runtime-web@0.4.0` appears in workspace list.
 
 - [ ] **Step 7: Typecheck the empty package.**
 
@@ -224,7 +224,7 @@ Expected: zero errors.
 
 ```
 git add client/web/packages/runtime-web/
-git commit -m "feat(runtime-web): scaffold empty @metaobjects/runtime-web package"
+git commit -m "feat(runtime-web): scaffold empty @metaobjectsdev/runtime-web package"
 ```
 
 ---
@@ -263,7 +263,7 @@ git mv server/typescript/packages/runtime-ts-client/test/currency.test.ts \
 import { expect, test, describe } from "bun:test";
 import { formatCurrency, parseCurrency, minorUnitsFor } from "../src/currency.js";
 
-describe("@metaobjects/runtime-web — currency", () => {
+describe("@metaobjectsdev/runtime-web — currency", () => {
   test("formatCurrency formats USD minor units", () => {
     expect(formatCurrency(1234, { currency: "USD", locale: "en-US" })).toBe("$12.34");
   });
@@ -286,7 +286,7 @@ describe("@metaobjects/runtime-web — currency", () => {
 - [ ] **Step 4: Update runtime-web's `src/index.ts`** to export currency:
 
 ```ts
-// Public API surface for @metaobjects/runtime-web.
+// Public API surface for @metaobjectsdev/runtime-web.
 export { formatCurrency, parseCurrency, minorUnitsFor } from "./currency.js";
 ```
 
@@ -299,14 +299,14 @@ export { formatCurrency, parseCurrency, minorUnitsFor } from "./currency.js";
 
 If you want runtime-ts-client to keep working during the transition (because some files in runtime-ts-client still import it internally), replace with:
 ```ts
-export { formatCurrency, parseCurrency, minorUnitsFor } from "@metaobjects/runtime-web";
+export { formatCurrency, parseCurrency, minorUnitsFor } from "@metaobjectsdev/runtime-web";
 ```
 
 - [ ] **Step 6: Add runtime-ts-client → runtime-web workspace dep so the temporary re-export resolves.**
 
 Open `server/typescript/packages/runtime-ts-client/package.json`, add to dependencies:
 ```json
-"@metaobjects/runtime-web": "workspace:*",
+"@metaobjectsdev/runtime-web": "workspace:*",
 ```
 
 - [ ] **Step 7: Run tests.**
@@ -374,7 +374,7 @@ In `client/web/packages/runtime-web/src/filter-qs.ts` and `client/web/packages/r
 - [ ] **Step 6: Update runtime-web's `src/index.ts`** to export the new modules:
 
 ```ts
-// Public API surface for @metaobjects/runtime-web.
+// Public API surface for @metaobjectsdev/runtime-web.
 export { formatCurrency, parseCurrency, minorUnitsFor } from "./currency.js";
 export { buildFilterQs } from "./filter-qs.js";
 export type { EntityFetcher, GridConfig, CellRenderer } from "./fetcher.js";
@@ -385,13 +385,13 @@ export type { EntityFetcher, GridConfig, CellRenderer } from "./fetcher.js";
 In `server/typescript/packages/runtime-ts-client/src/tanstack/index.ts`, replace the local re-exports with re-exports from runtime-web:
 
 ```ts
-export { buildFilterQs } from "@metaobjects/runtime-web";
-export type { EntityFetcher, GridConfig } from "@metaobjects/runtime-web";
-export type { CellRenderer } from "@metaobjects/runtime-web";
+export { buildFilterQs } from "@metaobjectsdev/runtime-web";
+export type { EntityFetcher, GridConfig } from "@metaobjectsdev/runtime-web";
+export type { CellRenderer } from "@metaobjectsdev/runtime-web";
 // ...rest of the file stays
 ```
 
-In any other file under `server/typescript/packages/runtime-ts-client/src/tanstack/*.tsx` that imports from `./types.js`, `./filter-builder.js`, or the `CellRenderer` type from `./cell-renderers.js`, update to import from `@metaobjects/runtime-web`. Use grep to find them:
+In any other file under `server/typescript/packages/runtime-ts-client/src/tanstack/*.tsx` that imports from `./types.js`, `./filter-builder.js`, or the `CellRenderer` type from `./cell-renderers.js`, update to import from `@metaobjectsdev/runtime-web`. Use grep to find them:
 
 ```
 cd /home/doug/Development/metaobjects/server/typescript/packages/runtime-ts-client/src/tanstack
@@ -427,7 +427,7 @@ git commit -m "feat(runtime-web): move filter-qs + fetcher contract types"
 
 ```json
 {
-  "name": "@metaobjects/react",
+  "name": "@metaobjectsdev/react",
   "version": "0.4.0",
   "description": "React runtime for metaobjects: useEntityForm hook and CurrencyInput component.",
   "type": "module",
@@ -447,7 +447,7 @@ git commit -m "feat(runtime-web): move filter-qs + fetcher contract types"
     "test": "bun test"
   },
   "dependencies": {
-    "@metaobjects/runtime-web": "workspace:*"
+    "@metaobjectsdev/runtime-web": "workspace:*"
   },
   "peerDependencies": {
     "@hookform/resolvers": ">=3.0.0",
@@ -493,7 +493,7 @@ git mv server/typescript/packages/runtime-ts-client/src/components/currency-inpu
 
 In `use-entity-form.tsx` and `currency-input.tsx`, any imports of `../currency.js` (relative path to old currency.ts) need to repoint:
 ```ts
-import { formatCurrency } from "@metaobjects/runtime-web";
+import { formatCurrency } from "@metaobjectsdev/runtime-web";
 ```
 
 - [ ] **Step 5: Move corresponding tests if they exist.**
@@ -506,7 +506,7 @@ If tests for `useEntityForm` or `CurrencyInput` exist there, `git mv` them into 
 - [ ] **Step 6: Write react package's `src/index.ts`:**
 
 ```ts
-// Public API surface for @metaobjects/react.
+// Public API surface for @metaobjectsdev/react.
 export {
   useEntityForm,
   type EntityFieldMeta,
@@ -523,7 +523,7 @@ export { CurrencyInput, type CurrencyInputProps } from "./currency-input.js";
 
 - [ ] **Step 7: Update runtime-ts-client to re-export from the new react package.**
 
-In `server/typescript/packages/runtime-ts-client/src/index.ts`, replace any local `./react/index.js` and `./components/currency-input.js` re-exports with re-exports from `@metaobjects/react`. Add `@metaobjects/react` to runtime-ts-client's `dependencies` (workspace:*).
+In `server/typescript/packages/runtime-ts-client/src/index.ts`, replace any local `./react/index.js` and `./components/currency-input.js` re-exports with re-exports from `@metaobjectsdev/react`. Add `@metaobjectsdev/react` to runtime-ts-client's `dependencies` (workspace:*).
 
 - [ ] **Step 8: Run tests + typecheck.**
 
@@ -531,7 +531,7 @@ In `server/typescript/packages/runtime-ts-client/src/index.ts`, replace any loca
 cd /home/doug/Development/metaobjects/server/typescript
 bun install
 bun test 2>&1 | tail -3
-bun run --filter '@metaobjects/react' typecheck
+bun run --filter '@metaobjectsdev/react' typecheck
 ```
 Expected: **2105 pass / 0 fail**, typecheck clean.
 
@@ -539,7 +539,7 @@ Expected: **2105 pass / 0 fail**, typecheck clean.
 
 ```
 git add -A
-git commit -m "feat(react): scaffold @metaobjects/react with useEntityForm + CurrencyInput"
+git commit -m "feat(react): scaffold @metaobjectsdev/react with useEntityForm + CurrencyInput"
 ```
 
 ---
@@ -555,7 +555,7 @@ git commit -m "feat(react): scaffold @metaobjects/react with useEntityForm + Cur
 
 ```json
 {
-  "name": "@metaobjects/tanstack",
+  "name": "@metaobjectsdev/tanstack",
   "version": "0.4.0",
   "description": "TanStack runtime for metaobjects: EntityFetcherProvider, EntityGrid, default cell renderers.",
   "type": "module",
@@ -575,8 +575,8 @@ git commit -m "feat(react): scaffold @metaobjects/react with useEntityForm + Cur
     "test": "bun test"
   },
   "dependencies": {
-    "@metaobjects/runtime-web": "workspace:*",
-    "@metaobjects/react": "workspace:*"
+    "@metaobjectsdev/runtime-web": "workspace:*",
+    "@metaobjectsdev/react": "workspace:*"
   },
   "peerDependencies": {
     "@tanstack/react-query": ">=5.90.0",
@@ -628,24 +628,24 @@ git mv server/typescript/packages/runtime-ts-client/src/tanstack/cell-renderers.
 
 - [ ] **Step 4: Fix imports inside the moved files.**
 
-Each moved file likely imported from `./types.js`, `./filter-builder.js`, `../currency.js`, etc. — all of which are now in `runtime-web`. Replace with `@metaobjects/runtime-web` imports. Some may have imported from `./cell-renderers.js` for the type — change to `@metaobjects/runtime-web` (since `CellRenderer` type lives there now per Task 4 step 4).
+Each moved file likely imported from `./types.js`, `./filter-builder.js`, `../currency.js`, etc. — all of which are now in `runtime-web`. Replace with `@metaobjectsdev/runtime-web` imports. Some may have imported from `./cell-renderers.js` for the type — change to `@metaobjectsdev/runtime-web` (since `CellRenderer` type lives there now per Task 4 step 4).
 
 - [ ] **Step 5: Move the existing tanstack `index.ts` content into tanstack package's `src/index.ts`:**
 
 ```ts
-// Public API surface for @metaobjects/tanstack.
+// Public API surface for @metaobjectsdev/tanstack.
 export { EntityFetcherProvider, useEntityFetcher } from "./entity-fetcher.js";
 export type { EntityFetcherProviderProps } from "./entity-fetcher.js";
-export type { EntityFetcher, GridConfig } from "@metaobjects/runtime-web";
+export type { EntityFetcher, GridConfig } from "@metaobjectsdev/runtime-web";
 export { defaultCellRenderers } from "./cell-renderers.js";
-export type { CellRenderer } from "@metaobjects/runtime-web";
+export type { CellRenderer } from "@metaobjectsdev/runtime-web";
 export {
   CellRendererProvider,
   useCellRenderers,
   type CellRendererProviderProps,
 } from "./cell-renderer-provider.js";
 export { EntityGrid, type EntityGridProps, type EntityGridState } from "./entity-grid.js";
-export { buildFilterQs } from "@metaobjects/runtime-web";
+export { buildFilterQs } from "@metaobjectsdev/runtime-web";
 ```
 
 - [ ] **Step 6: Move tanstack tests** (if any exist in runtime-ts-client/test) into `client/web/packages/tanstack/test/`.
@@ -659,10 +659,10 @@ export {
   EntityFetcherProvider,
   useEntityFetcher,
   // ...all the tanstack symbols
-} from "@metaobjects/tanstack";
+} from "@metaobjectsdev/tanstack";
 ```
 
-Add `@metaobjects/tanstack: workspace:*` to runtime-ts-client's `dependencies`.
+Add `@metaobjectsdev/tanstack: workspace:*` to runtime-ts-client's `dependencies`.
 
 Delete `server/typescript/packages/runtime-ts-client/src/tanstack/index.ts` (its content has been replaced by the tanstack package's index).
 
@@ -672,7 +672,7 @@ Delete `server/typescript/packages/runtime-ts-client/src/tanstack/index.ts` (its
 cd /home/doug/Development/metaobjects/server/typescript
 bun install
 bun test 2>&1 | tail -3
-bun run --filter '@metaobjects/tanstack' typecheck
+bun run --filter '@metaobjectsdev/tanstack' typecheck
 ```
 Expected: **2105 pass / 0 fail**.
 
@@ -680,7 +680,7 @@ Expected: **2105 pass / 0 fail**.
 
 ```
 git add -A
-git commit -m "feat(tanstack): scaffold @metaobjects/tanstack with EntityGrid + EntityFetcher + cell renderers"
+git commit -m "feat(tanstack): scaffold @metaobjectsdev/tanstack with EntityGrid + EntityFetcher + cell renderers"
 ```
 
 ---
@@ -698,9 +698,9 @@ git commit -m "feat(tanstack): scaffold @metaobjects/tanstack with EntityGrid + 
 
 ```json
 {
-  "name": "@metaobjects/codegen-ts-react",
+  "name": "@metaobjectsdev/codegen-ts-react",
   "version": "0.4.0",
-  "description": "React codegen for metaobjects — emits <Entity>.form.tsx files using react-hook-form and @metaobjects/react helpers.",
+  "description": "React codegen for metaobjects — emits <Entity>.form.tsx files using react-hook-form and @metaobjectsdev/react helpers.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./src/index.ts",
@@ -718,8 +718,8 @@ git commit -m "feat(tanstack): scaffold @metaobjects/tanstack with EntityGrid + 
     "test": "bun test"
   },
   "dependencies": {
-    "@metaobjects/metadata": "workspace:*",
-    "@metaobjects/codegen-ts": "workspace:*",
+    "@metaobjectsdev/metadata": "workspace:*",
+    "@metaobjectsdev/codegen-ts": "workspace:*",
     "ts-poet": "^6.10.0"
   },
   "peerDependencies": {
@@ -771,16 +771,16 @@ git mv server/typescript/packages/codegen-ts/src/templates/form-file.ts \
 
 - [ ] **Step 4: Update emitted import strings inside the moved template.**
 
-Open `server/typescript/packages/codegen-ts-react/src/templates/form-file.ts`. Find any line that emits an import string referencing `@metaobjects/runtime-ts-client`:
+Open `server/typescript/packages/codegen-ts-react/src/templates/form-file.ts`. Find any line that emits an import string referencing `@metaobjectsdev/runtime-ts-client`:
 
-- `"@metaobjects/runtime-ts-client/react"` → `"@metaobjects/react"`
-- `"@metaobjects/runtime-ts-client"` (for CurrencyInput) → `"@metaobjects/react"`
-- `"@metaobjects/runtime-ts-client"` (for formatCurrency) → `"@metaobjects/runtime-web"`
+- `"@metaobjectsdev/runtime-ts-client/react"` → `"@metaobjectsdev/react"`
+- `"@metaobjectsdev/runtime-ts-client"` (for CurrencyInput) → `"@metaobjectsdev/react"`
+- `"@metaobjectsdev/runtime-ts-client"` (for formatCurrency) → `"@metaobjectsdev/runtime-web"`
 
 Use grep to find every occurrence:
 
 ```
-grep -n "@metaobjects/runtime-ts-client" server/typescript/packages/codegen-ts-react/src/templates/form-file.ts
+grep -n "@metaobjectsdev/runtime-ts-client" server/typescript/packages/codegen-ts-react/src/templates/form-file.ts
 ```
 
 Apply the replacements. Also check `server/typescript/packages/codegen-ts-react/src/form-file.ts` for any embedded strings.
@@ -791,13 +791,13 @@ Read `server/typescript/packages/codegen-ts/src/templates/entity-constants.ts`. 
 
 If a single constant is used by both codegen-ts and codegen-ts-react, leave it in codegen-ts and have codegen-ts-react import it:
 ```ts
-import { ENTITY_CONST } from "@metaobjects/codegen-ts";
+import { ENTITY_CONST } from "@metaobjectsdev/codegen-ts";
 ```
 
 - [ ] **Step 6: Write codegen-ts-react's `src/index.ts`:**
 
 ```ts
-// Public API surface for @metaobjects/codegen-ts-react.
+// Public API surface for @metaobjectsdev/codegen-ts-react.
 export { formFile, type FormFileOpts } from "./form-file.js";
 ```
 
@@ -805,7 +805,7 @@ export { formFile, type FormFileOpts } from "./form-file.js";
 
 - [ ] **Step 7: Remove `formFile` from `codegen-ts/src/generators/index.ts`.**
 
-Open `server/typescript/packages/codegen-ts/src/generators/index.ts`. Remove any line re-exporting `formFile` or `FormFileOpts`. The generator factory now ships exclusively from `@metaobjects/codegen-ts-react`.
+Open `server/typescript/packages/codegen-ts/src/generators/index.ts`. Remove any line re-exporting `formFile` or `FormFileOpts`. The generator factory now ships exclusively from `@metaobjectsdev/codegen-ts-react`.
 
 - [ ] **Step 8: Move form-file tests.**
 
@@ -817,7 +817,7 @@ For each test file related to `form-file`:
 git mv server/typescript/packages/codegen-ts/test/generators/<file> \
        server/typescript/packages/codegen-ts-react/test/<file>
 ```
-Update test imports — `from "@metaobjects/codegen-ts/generators"` → `from "@metaobjects/codegen-ts-react"`.
+Update test imports — `from "@metaobjectsdev/codegen-ts/generators"` → `from "@metaobjectsdev/codegen-ts-react"`.
 
 - [ ] **Step 9: Audit codegen-ts/test/generators/factories.test.ts for form-file assertions.**
 
@@ -832,11 +832,11 @@ Remove any blocks that assert against the form-file factory; those move to a new
 cd /home/doug/Development/metaobjects/server/typescript
 bun install
 bun test 2>&1 | tail -3
-bun run --filter '@metaobjects/codegen-ts-react' typecheck
-bun run --filter '@metaobjects/codegen-ts' typecheck
+bun run --filter '@metaobjectsdev/codegen-ts-react' typecheck
+bun run --filter '@metaobjectsdev/codegen-ts' typecheck
 ```
 
-⚠️ At this point, the test count may **drop** because some golden snapshots reference the old `@metaobjects/runtime-ts-client/react` import in generated form files — they'll fail snapshot comparison. That's expected; the next task regenerates them.
+⚠️ At this point, the test count may **drop** because some golden snapshots reference the old `@metaobjectsdev/runtime-ts-client/react` import in generated form files — they'll fail snapshot comparison. That's expected; the next task regenerates them.
 
 If tests drop, record the new pass count. Goldens regenerate in Task 9.
 
@@ -844,7 +844,7 @@ If tests drop, record the new pass count. Goldens regenerate in Task 9.
 
 ```
 git add -A
-git commit -m "feat(codegen-ts-react): scaffold @metaobjects/codegen-ts-react and move form-file generator"
+git commit -m "feat(codegen-ts-react): scaffold @metaobjectsdev/codegen-ts-react and move form-file generator"
 ```
 
 ---
@@ -860,17 +860,17 @@ git commit -m "feat(codegen-ts-react): scaffold @metaobjects/codegen-ts-react an
 - [ ] **Step 1: Grep for the old package name in templates.**
 
 ```
-grep -rn "@metaobjects/runtime-ts-client" server/typescript/packages/codegen-ts-tanstack/src/
+grep -rn "@metaobjectsdev/runtime-ts-client" server/typescript/packages/codegen-ts-tanstack/src/
 ```
 
-- [ ] **Step 2: Replace every occurrence with `@metaobjects/tanstack`.**
+- [ ] **Step 2: Replace every occurrence with `@metaobjectsdev/tanstack`.**
 
-In every matched file, change the literal string `"@metaobjects/runtime-ts-client"` → `"@metaobjects/tanstack"`.
+In every matched file, change the literal string `"@metaobjectsdev/runtime-ts-client"` → `"@metaobjectsdev/tanstack"`.
 
 - [ ] **Step 3: Update test assertions.**
 
 ```
-grep -rn "@metaobjects/runtime-ts-client" server/typescript/packages/codegen-ts-tanstack/test/
+grep -rn "@metaobjectsdev/runtime-ts-client" server/typescript/packages/codegen-ts-tanstack/test/
 ```
 Replace in each matched file.
 
@@ -878,7 +878,7 @@ Replace in each matched file.
 
 ```
 cd /home/doug/Development/metaobjects/server/typescript
-bun test --filter '@metaobjects/codegen-ts-tanstack' 2>&1 | tail -5
+bun test --filter '@metaobjectsdev/codegen-ts-tanstack' 2>&1 | tail -5
 ```
 Expected: codegen-ts-tanstack's own tests pass. Golden snapshots in codegen-ts may still be out of date — that's the next task.
 
@@ -886,7 +886,7 @@ Expected: codegen-ts-tanstack's own tests pass. Golden snapshots in codegen-ts m
 
 ```
 git add server/typescript/packages/codegen-ts-tanstack/
-git commit -m "feat(codegen-ts-tanstack): retarget emitted imports to @metaobjects/tanstack"
+git commit -m "feat(codegen-ts-tanstack): retarget emitted imports to @metaobjectsdev/tanstack"
 ```
 
 ---
@@ -921,10 +921,10 @@ If no regen script exists, regenerate by running the generators against the fixt
 ```
 git diff --stat server/typescript/packages/codegen-ts/test/golden/
 ```
-Expected: many files changed, each with only import-string diffs (`@metaobjects/runtime-ts-client` → `@metaobjects/react` / `@metaobjects/tanstack` / `@metaobjects/runtime-web`). No structural or logic changes.
+Expected: many files changed, each with only import-string diffs (`@metaobjectsdev/runtime-ts-client` → `@metaobjectsdev/react` / `@metaobjectsdev/tanstack` / `@metaobjectsdev/runtime-web`). No structural or logic changes.
 
 ```
-git diff server/typescript/packages/codegen-ts/test/golden/ | grep "^[+-]" | grep -v "^[+-]\{3\}" | grep -v "@metaobjects/" | head
+git diff server/typescript/packages/codegen-ts/test/golden/ | grep "^[+-]" | grep -v "^[+-]\{3\}" | grep -v "@metaobjectsdev/" | head
 ```
 Expected output: empty (every changed line should be an import string). If non-import lines appear, investigate — something else regressed.
 
@@ -954,7 +954,7 @@ git commit -m "test(codegen-ts): regenerate golden snapshots after package renam
 
 ```
 cd /home/doug/Development/metaobjects
-grep -rln "@metaobjects/runtime-ts-client" --include="*.ts" --include="*.tsx" --include="*.json" \
+grep -rln "@metaobjectsdev/runtime-ts-client" --include="*.ts" --include="*.tsx" --include="*.json" \
   server/ client/ 2>/dev/null | grep -v node_modules | grep -v dist | grep -v "/runtime-ts-client/" | grep -v "/golden/"
 ```
 Expected: empty (no consumers remain). If anything matches, fix that file first.
@@ -977,7 +977,7 @@ Expected: **2105 pass / 0 fail** (or higher).
 - [ ] **Step 4: Commit.**
 
 ```
-git commit -m "refactor: delete @metaobjects/runtime-ts-client (split into runtime-web + react + tanstack)"
+git commit -m "refactor: delete @metaobjectsdev/runtime-ts-client (split into runtime-web + react + tanstack)"
 ```
 
 ---
@@ -994,27 +994,27 @@ git commit -m "refactor: delete @metaobjects/runtime-ts-client (split into runti
 
 Open `server/typescript/packages/cli/package.json`. Under `dependencies` add:
 ```json
-"@metaobjects/codegen-ts-react": "workspace:*",
+"@metaobjectsdev/codegen-ts-react": "workspace:*",
 ```
 
 - [ ] **Step 2: Update cli source + tests.**
 
 ```
-grep -n "@metaobjects/runtime-ts-client\|@metaobjects/codegen-ts-tanstack" \
+grep -n "@metaobjectsdev/runtime-ts-client\|@metaobjectsdev/codegen-ts-tanstack" \
   server/typescript/packages/cli/src/lib/load-metaobjects-config.ts \
   server/typescript/packages/cli/test/unit/load-metaobjects-config.test.ts \
   server/typescript/packages/cli/test/unit/init-refresh-docs.test.ts
 ```
 
 For every reference:
-- `@metaobjects/runtime-ts-client` → split per usage: `@metaobjects/react`, `@metaobjects/tanstack`, or `@metaobjects/runtime-web` (use the runtime-web mapping from Task 4-6).
-- `@metaobjects/codegen-ts-tanstack` stays as-is (package name unchanged).
-- Add new references to `@metaobjects/codegen-ts-react` where the CLI documents/scaffolds form generation.
+- `@metaobjectsdev/runtime-ts-client` → split per usage: `@metaobjectsdev/react`, `@metaobjectsdev/tanstack`, or `@metaobjectsdev/runtime-web` (use the runtime-web mapping from Task 4-6).
+- `@metaobjectsdev/codegen-ts-tanstack` stays as-is (package name unchanged).
+- Add new references to `@metaobjectsdev/codegen-ts-react` where the CLI documents/scaffolds form generation.
 
 - [ ] **Step 3: Update forge agent-docs.**
 
 ```
-grep -n "@metaobjects/runtime-ts-client\|@metaobjects/codegen-ts-tanstack" \
+grep -n "@metaobjectsdev/runtime-ts-client\|@metaobjectsdev/codegen-ts-tanstack" \
   server/typescript/packages/forge/src/agent-docs/index.ts
 ```
 Update the same way.
@@ -1048,15 +1048,15 @@ Open `CLAUDE.md`. Find the "## TS package layout" section. Replace the **Client-
 
 ```markdown
 **Client-side / universal web** (`client/web/packages/`):
-- `runtime-web/` (`@metaobjects/runtime-web`) — pure framework-agnostic core: currency, filter URL serialization, fetcher contract types. Zero React, zero TanStack.
-- `react/` (`@metaobjects/react`) — React runtime: `useEntityForm`, `<CurrencyInput>`.
-- `tanstack/` (`@metaobjects/tanstack`) — TanStack runtime: `EntityFetcherProvider`, `<EntityGrid>`, default cell renderers.
+- `runtime-web/` (`@metaobjectsdev/runtime-web`) — pure framework-agnostic core: currency, filter URL serialization, fetcher contract types. Zero React, zero TanStack.
+- `react/` (`@metaobjectsdev/react`) — React runtime: `useEntityForm`, `<CurrencyInput>`.
+- `tanstack/` (`@metaobjectsdev/tanstack`) — TanStack runtime: `EntityFetcherProvider`, `<EntityGrid>`, default cell renderers.
 - Future: `angular/`, `svelte/`, `react-native/`.
 ```
 
 Add to **Server-side** (`server/typescript/packages/`):
 ```markdown
-- `codegen-ts-react/` (`@metaobjects/codegen-ts-react`) — React codegen: `formFile()`.
+- `codegen-ts-react/` (`@metaobjectsdev/codegen-ts-react`) — React codegen: `formFile()`.
 ```
 
 (Keep `codegen-ts-tanstack/` where it already is in the list.)
@@ -1072,8 +1072,8 @@ Each framework integration ships as a **pair** of packages — one for codegen (
 
 | Integration | Codegen | Runtime |
 |---|---|---|
-| React | `@metaobjects/codegen-ts-react` | `@metaobjects/react` |
-| TanStack (depends on React) | `@metaobjects/codegen-ts-tanstack` | `@metaobjects/tanstack` |
+| React | `@metaobjectsdev/codegen-ts-react` | `@metaobjectsdev/react` |
+| TanStack (depends on React) | `@metaobjectsdev/codegen-ts-tanstack` | `@metaobjectsdev/tanstack` |
 
 Each codegen package emits imports that target its matching runtime package. Codegen packages live under `server/typescript/packages/` because they execute server-side, even though their output targets the browser. Runtime packages live under `client/web/packages/` and have zero Node-only deps.
 
@@ -1085,10 +1085,10 @@ Future framework integrations (Angular, Svelte, React Native) follow the same tw
 Find the example that uses `tanstackQuery`/`tanstackGrid` imports. Update to:
 
 ```ts
-import { defineConfig } from "@metaobjects/cli";
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjects/codegen-ts/generators";
-import { formFile } from "@metaobjects/codegen-ts-react";
-import { tanstackQuery, tanstackGrid } from "@metaobjects/codegen-ts-tanstack";
+import { defineConfig } from "@metaobjectsdev/cli";
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+import { formFile } from "@metaobjectsdev/codegen-ts-react";
+import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack";
 
 export default defineConfig({
   outDir: "packages/database/src/generated",
@@ -1148,7 +1148,7 @@ Expected: zero errors.
 
 ```
 cd /home/doug/Development/metaobjects
-grep -rln "@metaobjects/runtime-ts-client" --include="*.ts" --include="*.tsx" --include="*.json" --include="*.md" \
+grep -rln "@metaobjectsdev/runtime-ts-client" --include="*.ts" --include="*.tsx" --include="*.json" --include="*.md" \
   server/ client/ docs/ CLAUDE.md 2>/dev/null | grep -v node_modules | grep -v dist
 ```
 Expected: empty. Every reference to the old package is gone (except possibly historical mentions in `docs/superpowers/specs/` and `docs/superpowers/plans/`, which is fine).
@@ -1161,7 +1161,7 @@ bun init -y
 bun add file:/home/doug/Development/metaobjects/client/web/packages/runtime-web
 ls node_modules/ | sort
 ```
-Expected: `node_modules/` contains `@metaobjects/runtime-web`, `@metaobjects/metadata`, `qs`, and their non-React/non-Node-only transitive deps only. There should be **no `react`, no `ts-poet`, no `@biomejs/biome`, no `@tanstack/*`** in the resolved tree.
+Expected: `node_modules/` contains `@metaobjectsdev/runtime-web`, `@metaobjectsdev/metadata`, `qs`, and their non-React/non-Node-only transitive deps only. There should be **no `react`, no `ts-poet`, no `@biomejs/biome`, no `@tanstack/*`** in the resolved tree.
 
 If any of those appear: a dependency leaked into runtime-web. Track it down by `bun pm why <pkg>` and fix the dep declaration in the offending workspace package.
 

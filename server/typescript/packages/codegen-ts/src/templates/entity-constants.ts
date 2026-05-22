@@ -29,8 +29,8 @@
 // picks them up from this object automatically.
 
 import { code, type Code } from "ts-poet";
-import type { MetaData } from "@metaobjects/metadata";
-import { MetaObject, MetaField } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
+import { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import {
   VIEW_SUBTYPE_TEXT,
   VIEW_SUBTYPE_TEXTAREA,
@@ -49,8 +49,8 @@ import {
   VALIDATOR_ATTR_PATTERN,
   FIELD_ATTR_MAX_LENGTH,
   FIELD_ATTR_REQUIRED,
-} from "@metaobjects/metadata";
-import { resolveTableName, pluralize, toSnakeCase } from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
+import { resolveTableName, pluralize, toSnakeCase } from "@metaobjectsdev/metadata";
 import { inferViewKind, currencyMetaFor, labelFor } from "./field-meta.js";
 
 /** Convert a camelCase or PascalCase field name to a human-friendly label. */
@@ -235,7 +235,7 @@ export function renderEntityConstants(obj: MetaObject, apiPrefix = ""): Code {
  *
  * Typical usage with the metaobjects React form helper:
  *
- *   import { useEntityForm } from '@metaobjects/react';
+ *   import { useEntityForm } from '@metaobjectsdev/react';
  *   const form = useEntityForm(${entityName}, ${entityName}InsertSchema);
  *   <input {...form.input.${
     fieldEntries[0]?.match(/^\s*(\w+):/)?.[1] ?? "fieldName"

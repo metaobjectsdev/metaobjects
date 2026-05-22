@@ -3,7 +3,7 @@
 // Runs against InMemoryDriver (fast) — DB integration via driver-parity test.
 
 import { describe, test, expect, beforeEach } from "bun:test";
-import { FileMetaDataLoader } from "@metaobjects/metadata/core";
+import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { resolve } from "node:path";
 import { ObjectManager } from "../src/index.js";
 import { inMemoryDriver } from "../src/drivers/index.js";

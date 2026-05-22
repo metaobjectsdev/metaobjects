@@ -1,12 +1,12 @@
 // PK resolver — pre-pass over the loaded metadata to build a name → PK info map.
 // codegen uses this when emitting FK columns (per design §13 #2).
 
-import type { MetaRoot } from "@metaobjects/metadata";
+import type { MetaRoot } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_LONG,
   IDENTITY_ATTR_FIELDS,
   IDENTITY_ATTR_GENERATION,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 
 export interface PkInfo {
   /** Field name within the entity (e.g., "id"). */

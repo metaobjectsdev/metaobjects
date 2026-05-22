@@ -110,7 +110,7 @@ import {
   MetaData,
   TYPE_ATTR,
   CHILD_RULE_WILDCARD,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 
 /** Minimal concrete MetaData subclass used for all forge descriptive nodes. */
 class MetaForgeNode extends MetaData {}

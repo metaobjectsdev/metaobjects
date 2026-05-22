@@ -6,18 +6,18 @@ TypeScript implementation of the MetaObjects standard.
 
 | Package | Purpose |
 |---|---|
-| `@metaobjects/metadata` | Loader, registry, typed views |
-| `@metaobjects/codegen-ts` | Code generation (TS targets) |
-| `@metaobjects/codegen-ts-react` | React codegen (form-file generator) |
-| `@metaobjects/codegen-ts-tanstack` | TanStack hooks + grid codegen |
-| `@metaobjects/runtime-ts` | Server-side runtime (Node, Fastify integration) |
-| `@metaobjects/runtime-web` (under `client/web/`) | Browser core: currency, filter-qs, fetcher types |
-| `@metaobjects/react` (under `client/web/`) | React runtime: `useEntityForm`, `<CurrencyInput>` |
-| `@metaobjects/tanstack` (under `client/web/`) | TanStack runtime: `EntityFetcherProvider`, `<EntityGrid>` |
-| `@metaobjects/migrate-ts` | Database migration tooling |
-| `@metaobjects/sdk` | Programmatic SDK (memory, paths, workspace) |
-| `@metaobjects/cli` | The `meta` CLI binary (`init`, `gen`, `migrate`) |
-| `@metaobjects/forge` | AI-collaboration capabilities (agent-docs, future MCP) |
+| `@metaobjectsdev/metadata` | Loader, registry, typed views |
+| `@metaobjectsdev/codegen-ts` | Code generation (TS targets) |
+| `@metaobjectsdev/codegen-ts-react` | React codegen (form-file generator) |
+| `@metaobjectsdev/codegen-ts-tanstack` | TanStack hooks + grid codegen |
+| `@metaobjectsdev/runtime-ts` | Server-side runtime (Node, Fastify integration) |
+| `@metaobjectsdev/runtime-web` (under `client/web/`) | Browser core: currency, filter-qs, fetcher types |
+| `@metaobjectsdev/react` (under `client/web/`) | React runtime: `useEntityForm`, `<CurrencyInput>` |
+| `@metaobjectsdev/tanstack` (under `client/web/`) | TanStack runtime: `EntityFetcherProvider`, `<EntityGrid>` |
+| `@metaobjectsdev/migrate-ts` | Database migration tooling |
+| `@metaobjectsdev/sdk` | Programmatic SDK (memory, paths, workspace) |
+| `@metaobjectsdev/cli` | The `meta` CLI binary (`init`, `gen`, `migrate`) |
+| `@metaobjectsdev/forge` | AI-collaboration capabilities (agent-docs, future MCP) |
 
 ## Getting started
 

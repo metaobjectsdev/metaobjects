@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { log } from "./lib/log.js";
-export { defineConfig } from "@metaobjects/codegen-ts";
-export type { MetaobjectsGenConfig } from "@metaobjects/codegen-ts";
+export { defineConfig } from "@metaobjectsdev/codegen-ts";
+export type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
 const VERSION = "0.2.0";
 

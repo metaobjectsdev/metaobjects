@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_LONG } from "@metaobjects/metadata";
+import { FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_LONG } from "@metaobjectsdev/metadata";
 import { metaField } from "./_meta-build.js";
 import { mapColumnType, type ColumnSpec } from "../src/column-mapper.js";
 

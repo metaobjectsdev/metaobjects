@@ -4,7 +4,7 @@
 
 MetaObjects is a **cross-language metadata standard** for declaring typed entity models that drive code generation, runtime metadata access, and drift detection — across TypeScript, Java, Python, and (eventually) C#.
 
-The metamodel is the **durable spine**; generated code is the **disposable artifact**. Substrate is local-first: typed metadata lives in your repo, generated code is idiomatic per-language output that runs without any MetaObjects dependency at runtime. If `@metaobjects/*` disappears tomorrow, you keep working code.
+The metamodel is the **durable spine**; generated code is the **disposable artifact**. Substrate is local-first: typed metadata lives in your repo, generated code is idiomatic per-language output that runs without any MetaObjects dependency at runtime. If `@metaobjectsdev/*` disappears tomorrow, you keep working code.
 
 ## Three pillars
 
@@ -51,19 +51,19 @@ Worked examples: a Drizzle TS-server integration → `server/typescript/packages
 ## TS package layout
 
 **Server-side** (`server/typescript/packages/`):
-- `metadata/` (`@metaobjects/metadata`) — metamodel loader, types, constants
-- `codegen-ts/` (`@metaobjects/codegen-ts`) — framework-neutral TS codegen engine (entityFile, queriesFile, routesFile, barrel)
-- `codegen-ts-react/` (`@metaobjects/codegen-ts-react`) — React codegen (formFile)
-- `codegen-ts-tanstack/` (`@metaobjects/codegen-ts-tanstack`) — TanStack codegen (tanstackQuery, tanstackGrid, tanstackGridHook)
-- `runtime-ts/` (`@metaobjects/runtime-ts`) — Node-side runtime (Kysely, Drizzle, Fastify helpers)
-- `migrate-ts/` (`@metaobjects/migrate-ts`) — migration tooling
-- `sdk/` (`@metaobjects/sdk`) — workspace memory, path helpers
-- `cli/` (`@metaobjects/cli`, binary `meta`) — CLI commands: `init`, `gen`, `migrate`
+- `metadata/` (`@metaobjectsdev/metadata`) — metamodel loader, types, constants
+- `codegen-ts/` (`@metaobjectsdev/codegen-ts`) — framework-neutral TS codegen engine (entityFile, queriesFile, routesFile, barrel)
+- `codegen-ts-react/` (`@metaobjectsdev/codegen-ts-react`) — React codegen (formFile)
+- `codegen-ts-tanstack/` (`@metaobjectsdev/codegen-ts-tanstack`) — TanStack codegen (tanstackQuery, tanstackGrid, tanstackGridHook)
+- `runtime-ts/` (`@metaobjectsdev/runtime-ts`) — Node-side runtime (Kysely, Drizzle, Fastify helpers)
+- `migrate-ts/` (`@metaobjectsdev/migrate-ts`) — migration tooling
+- `sdk/` (`@metaobjectsdev/sdk`) — workspace memory, path helpers
+- `cli/` (`@metaobjectsdev/cli`, binary `meta`) — CLI commands: `init`, `gen`, `migrate`
 
 **Client-side / universal web** (`client/web/packages/`):
-- `runtime-web/` (`@metaobjects/runtime-web`) — pure framework-agnostic browser core (currency, filter-qs, EntityFetcher contract, GridConfig). Zero React, zero TanStack.
-- `react/` (`@metaobjects/react`) — React runtime: `useEntityForm`, `<CurrencyInput>`.
-- `tanstack/` (`@metaobjects/tanstack`) — TanStack runtime: `EntityFetcherProvider`, `<EntityGrid>`, default cell renderers.
+- `runtime-web/` (`@metaobjectsdev/runtime-web`) — pure framework-agnostic browser core (currency, filter-qs, EntityFetcher contract, GridConfig). Zero React, zero TanStack.
+- `react/` (`@metaobjectsdev/react`) — React runtime: `useEntityForm`, `<CurrencyInput>`.
+- `tanstack/` (`@metaobjectsdev/tanstack`) — TanStack runtime: `EntityFetcherProvider`, `<EntityGrid>`, default cell renderers.
 - Future: `angular/`, `svelte/`, `react-native/`.
 
 ### Framework integration: separate codegen and runtime packages
@@ -72,8 +72,8 @@ Each framework integration ships as a **pair** of packages — one for codegen (
 
 | Integration | Codegen | Runtime |
 |---|---|---|
-| React | `@metaobjects/codegen-ts-react` | `@metaobjects/react` |
-| TanStack (depends on React) | `@metaobjects/codegen-ts-tanstack` | `@metaobjects/tanstack` |
+| React | `@metaobjectsdev/codegen-ts-react` | `@metaobjectsdev/react` |
+| TanStack (depends on React) | `@metaobjectsdev/codegen-ts-tanstack` | `@metaobjectsdev/tanstack` |
 
 Each codegen package emits imports that target its matching runtime package. Codegen packages live under `server/typescript/packages/` because they execute server-side, even though their output targets the browser. Runtime packages live under `client/web/packages/` and have zero Node-only deps.
 
@@ -82,11 +82,11 @@ Two disjoint dependency trees:
 ```
 Runtime side (browser):              Codegen side (server):
 
-  @metaobjects/runtime-web ←┐         @metaobjects/codegen-ts ←┐
+  @metaobjectsdev/runtime-web ←┐         @metaobjectsdev/codegen-ts ←┐
         ↑                    \              ↑                   \
-        └── @metaobjects/react ┐             ├── @metaobjects/codegen-ts-react
-                ↑               \            └── @metaobjects/codegen-ts-tanstack
-                └── @metaobjects/tanstack
+        └── @metaobjectsdev/react ┐             ├── @metaobjectsdev/codegen-ts-react
+                ↑               \            └── @metaobjectsdev/codegen-ts-tanstack
+                └── @metaobjectsdev/tanstack
 ```
 
 Future framework integrations (Angular, Svelte, React Native) follow the same two-package pattern.
@@ -94,10 +94,10 @@ Future framework integrations (Angular, Svelte, React Native) follow the same tw
 A user's `metaobjects.config.ts`:
 
 ```ts
-import { defineConfig } from "@metaobjects/cli";
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjects/codegen-ts/generators";
-import { formFile } from "@metaobjects/codegen-ts-react";
-import { tanstackQuery, tanstackGrid } from "@metaobjects/codegen-ts-tanstack";
+import { defineConfig } from "@metaobjectsdev/cli";
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+import { formFile } from "@metaobjectsdev/codegen-ts-react";
+import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack";
 
 export default defineConfig({
   generators: [entityFile(), queriesFile(), routesFile(), formFile(), tanstackQuery(), tanstackGrid(), barrel()],
@@ -107,9 +107,9 @@ export default defineConfig({
 A consumer's React component:
 
 ```ts
-import { formatCurrency } from "@metaobjects/runtime-web";
-import { CurrencyInput, useEntityForm } from "@metaobjects/react";
-import { EntityFetcherProvider, EntityGrid } from "@metaobjects/tanstack";
+import { formatCurrency } from "@metaobjectsdev/runtime-web";
+import { CurrencyInput, useEntityForm } from "@metaobjectsdev/react";
+import { EntityFetcherProvider, EntityGrid } from "@metaobjectsdev/tanstack";
 ```
 
 ## Other conventions
@@ -194,12 +194,12 @@ export default defineConfig({
 
 ## Codegen architecture (Vite-style plugins)
 
-`@metaobjects/codegen-ts` follows a Vite-style plugin model.
+`@metaobjectsdev/codegen-ts` follows a Vite-style plugin model.
 
 **Core interface** — every emitter implements `Generator`:
 
 ```ts
-import type { Generator, GenContext, EmittedFile } from "@metaobjects/codegen-ts";
+import type { Generator, GenContext, EmittedFile } from "@metaobjectsdev/codegen-ts";
 
 interface Generator {
   name: string;                          // kebab-case; surfaces in diagnostics
@@ -210,13 +210,13 @@ interface Generator {
 
 Helpers `perEntity()` and `oncePerRun()` cover the common "file per entity" / "one-shot" cases.
 
-**Built-in factories**: `entityFile`, `queriesFile`, `routesFile`, `formFile`, `barrel` — re-exported from `@metaobjects/codegen-ts/generators`.
+**Built-in factories**: `entityFile`, `queriesFile`, `routesFile`, `formFile`, `barrel` — re-exported from `@metaobjectsdev/codegen-ts/generators`.
 
 **User wiring** (`metaobjects.config.ts`):
 
 ```ts
-import { defineConfig } from "@metaobjects/cli";
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjects/codegen-ts/generators";
+import { defineConfig } from "@metaobjectsdev/cli";
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "packages/database/src/generated",
@@ -263,7 +263,7 @@ const { data } = useSubscribers({
 
 **Server validation:** every request validated against the allowlist. Unknown field / disallowed op / invalid value → 400 with structured error code.
 
-**Architecture:** `parseFilterParams` (in `@metaobjects/runtime-ts/drizzle-fastify`) translates parsed qs into a Drizzle expression tree. `buildFilterQs` (in `@metaobjects/runtime-web` and `@metaobjects/tanstack`) serializes a typed filter object back to a bracketed qs URL.
+**Architecture:** `parseFilterParams` (in `@metaobjectsdev/runtime-ts/drizzle-fastify`) translates parsed qs into a Drizzle expression tree. `buildFilterQs` (in `@metaobjectsdev/runtime-web` and `@metaobjectsdev/tanstack`) serializes a typed filter object back to a bracketed qs URL.
 
 ### Source-aware entities + projections (Project E)
 
@@ -314,15 +314,15 @@ const { data } = useSubscribers({
 **Runtime imports** (browser-safe sub-paths):
 
 ```tsx
-import { formatCurrency, parseCurrency } from "@metaobjects/runtime-web";
-import { CurrencyInput } from "@metaobjects/react";
+import { formatCurrency, parseCurrency } from "@metaobjectsdev/runtime-web";
+import { CurrencyInput } from "@metaobjectsdev/react";
 ```
 
 **Cross-language ports** must preserve the wire contract: integer minor-unit storage, `@currency` (ISO 4217), `@locale` (BCP 47) attrs.
 
 ### TanStack codegen + metadata-driven grids (Project B)
 
-`@metaobjects/codegen-ts-tanstack` ships two generators:
+`@metaobjectsdev/codegen-ts-tanstack` ships two generators:
 
 - `tanstackQuery()` — emits `<Entity>.hooks.ts` per entity (5 hooks: `useEntity`, `useEntities`, `useCreate/Update/Delete<Entity>`).
 - `tanstackGrid()` — emits `<Entity>.columns.tsx` per entity with a `layout.dataGrid` child.
@@ -339,7 +339,7 @@ import { CurrencyInput } from "@metaobjects/react";
 }}
 ```
 
-**Runtime surface (`@metaobjects/runtime-web` and `@metaobjects/tanstack`)**:
+**Runtime surface (`@metaobjectsdev/runtime-web` and `@metaobjectsdev/tanstack`)**:
 - `<EntityFetcherProvider value={fetcher}>` — supplies the fetcher function.
 - `<CellRendererProvider value={{...}}>` — renderer overrides keyed by view subtype.
 - `<EntityGrid columns={...} grid={...} data={...} />` — opinionated TanStack Table component.
@@ -407,7 +407,7 @@ meta migrate --dry-run                # preview without writing migration file
 
 ## Running tests
 
-The Bun workspace root is `typescript/`. Run `bun test` / `bun run` from `typescript/` (or a specific package directory) — **never from the repository root**. At the repo root there is no workspace `package.json`, so Bun scans the entire polyglot tree (`java/`, `python/`, `csharp/`, `fixtures/`, every `node_modules/`) and re-resolves `@metaobjects/*` imports per file — turning a ~3-second run into several minutes.
+The Bun workspace root is `typescript/`. Run `bun test` / `bun run` from `typescript/` (or a specific package directory) — **never from the repository root**. At the repo root there is no workspace `package.json`, so Bun scans the entire polyglot tree (`java/`, `python/`, `csharp/`, `fixtures/`, every `node_modules/`) and re-resolves `@metaobjectsdev/*` imports per file — turning a ~3-second run into several minutes.
 
 ```
 cd typescript && bun test                          # whole TS monorepo (~3s, 1784+ tests)

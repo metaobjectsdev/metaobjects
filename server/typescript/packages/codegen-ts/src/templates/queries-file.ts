@@ -2,7 +2,7 @@
 // a complete <Entity>.queries.ts file with @generated header and correct imports.
 
 import { code, joinCode, type Code } from "ts-poet";
-import { MetaObject } from "@metaobjects/metadata";
+import { MetaObject } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, relativeModuleSpecifier } from "../import-path.js";
 import {

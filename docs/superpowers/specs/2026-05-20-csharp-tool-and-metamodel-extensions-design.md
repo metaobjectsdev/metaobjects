@@ -105,7 +105,7 @@ This is how a consumer codebase preserves the surface area its application depen
 Two TS deliverables make the cross-language story end-to-end:
 
 1. **`migrate-ts` view-DDL emit (Postgres)** — the introspect side already captures view names; the emit side currently declares the view change-kinds without producing them. Phase 3 of the adopter rollout needs this. Estimate: ~1 week of incremental work in `typescript/packages/migrate-ts/`.
-2. **`@metaobjects/codegen-ts` Drizzle `.existing()` generator** — a new codegen target that emits Drizzle schemas marked `.existing()` from projection metadata, alongside paired TypeScript frontend type aliases (camelCase conversion baked in). For TypeScript consumers of cross-repo metadata-defined views. Estimate: ~2 weeks.
+2. **`@metaobjectsdev/codegen-ts` Drizzle `.existing()` generator** — a new codegen target that emits Drizzle schemas marked `.existing()` from projection metadata, alongside paired TypeScript frontend type aliases (camelCase conversion baked in). For TypeScript consumers of cross-repo metadata-defined views. Estimate: ~2 weeks.
 
 Both extensions are general-purpose and benefit every TypeScript consumer that defines views via projection metadata, not only the specific adopter that motivated this design.
 

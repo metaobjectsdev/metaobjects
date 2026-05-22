@@ -1,7 +1,7 @@
 // v0.1 only handles SQLite's int↔boolean. Date/timestamp coercion (ISO string ↔ Date) is deferred.
 
-import type { MetaData } from "@metaobjects/metadata";
-import { TYPE_FIELD, FIELD_SUBTYPE_BOOLEAN } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
+import { TYPE_FIELD, FIELD_SUBTYPE_BOOLEAN } from "@metaobjectsdev/metadata";
 import type { Dialect, Row } from "./persistence-driver.js";
 
 export function coerceRowOnRead(entity: MetaData, row: Row, dialect: Dialect): Row {

@@ -1,8 +1,8 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD,
          FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
-         OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
+         OBJECT_SUBTYPE_ENTITY } from "@metaobjectsdev/metadata";
 import { meta } from "./_meta-build.js";
 import { coerceRowOnRead, coerceRowOnWrite } from "../src/type-coercer.js";
 

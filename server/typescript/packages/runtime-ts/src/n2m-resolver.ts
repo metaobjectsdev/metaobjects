@@ -1,14 +1,14 @@
 // Two-stage N:M: first query the join entity for FK pairs, then query the target entity for the rows.
 // The relationship declares @joinEntity + @joinFields: [sourceJoinField, targetJoinField].
 
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_OBJECT, TYPE_FIELD, TYPE_RELATIONSHIP,
   RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_JOIN_ENTITY, RELATIONSHIP_ATTR_JOIN_FIELDS,
   CARDINALITY_MANY,
   resolveColumnName,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
 import { buildSelectSpec, resolvePkFields } from "./query-builder.js";
 import type { SelectSpec, PrimitiveValue, Row } from "./persistence-driver.js";

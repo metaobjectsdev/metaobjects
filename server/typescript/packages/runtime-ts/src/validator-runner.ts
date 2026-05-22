@@ -1,7 +1,7 @@
 // Pure function: NEVER throws. ObjectManager wraps a non-ok result in a ValidationError on writes;
 // om.validate() returns the result directly.
 
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD, TYPE_VALIDATOR,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
@@ -10,7 +10,7 @@ import {
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
   VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_PATTERN,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import type { ValidationFailure } from "./errors.js";
 
 export type ValidationResult =

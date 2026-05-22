@@ -4,7 +4,7 @@
 // docs/superpowers/specs/2026-05-18-phase4d-package-output-placement-design.md.
 
 import { relative as posixRelative } from "node:path/posix";
-import { PACKAGE_SEPARATOR } from "@metaobjects/metadata";
+import { PACKAGE_SEPARATOR } from "@metaobjectsdev/metadata";
 import { withExt, type ExtStyle } from "./render-context.js";
 
 export type OutputLayout = "flat" | "package";

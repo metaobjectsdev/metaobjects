@@ -1,7 +1,7 @@
 // adapter.ts — the TypeScript port's ConformanceAdapter implementation.
 //
 // Binds the metadata package's typed-tree API to the neutral
-// ConformanceAdapter interface from @metaobjects/conformance.
+// ConformanceAdapter interface from @metaobjectsdev/conformance.
 
 import type {
   ConformanceAdapter,
@@ -9,8 +9,8 @@ import type {
   NodeHandle,
   NormalizedResult,
   TreeHandle,
-} from "@metaobjects/conformance";
-import { UnknownCapabilityError } from "@metaobjects/conformance";
+} from "@metaobjectsdev/conformance";
+import { UnknownCapabilityError } from "@metaobjectsdev/conformance";
 import type { MetaDataTypeProvider } from "../../src/provider.js";
 import { composeRegistry } from "../../src/provider.js";
 import { coreTypesProvider } from "../../src/core-types.js";

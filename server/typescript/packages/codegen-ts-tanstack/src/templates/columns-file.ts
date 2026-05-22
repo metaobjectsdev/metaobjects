@@ -1,5 +1,5 @@
 import { code, imp, joinCode, type Code } from "ts-poet";
-import type { MetaObject, MetaField } from "@metaobjects/metadata";
+import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_PAGE_SIZE,
@@ -10,9 +10,9 @@ import {
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
   FIELD_ATTR_FILTERABLE,
   opsForSubType,
-} from "@metaobjects/metadata";
-import type { RenderContext } from "@metaobjects/codegen-ts";
-import { GENERATED_HEADER, crossEntitySpecifier } from "@metaobjects/codegen-ts";
+} from "@metaobjectsdev/metadata";
+import type { RenderContext } from "@metaobjectsdev/codegen-ts";
+import { GENERATED_HEADER, crossEntitySpecifier } from "@metaobjectsdev/codegen-ts";
 import { validateGridFilter, type FilterAllowlist } from "../grid-filter-validate.js";
 
 interface ColumnSpec {

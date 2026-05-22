@@ -1,8 +1,8 @@
 import { test, expect, describe, beforeAll } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
-import type { MetaData } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
 import type { SchemaSnapshot, ColumnDescriptor } from "../../src/types.js";
 

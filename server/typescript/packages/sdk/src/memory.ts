@@ -1,11 +1,11 @@
 import { join } from "node:path";
 import { readdir, stat } from "node:fs/promises";
-import { FileMetaDataLoader } from "@metaobjects/metadata/core";
+import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import {
   TypeRegistry,
   registerCoreTypes,
   type MetaRoot,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import { registerForgeTypes } from "./forge-types.js";
 import { discoverWorkspace, resolveExtendsOrder } from "./workspace.js";
 

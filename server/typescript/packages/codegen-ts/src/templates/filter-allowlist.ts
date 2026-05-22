@@ -1,5 +1,5 @@
 import { code, type Code } from "ts-poet";
-import { MetaField, MetaObject } from "@metaobjects/metadata";
+import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
   FIELD_ATTR_FILTERABLE,
   FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
@@ -15,7 +15,7 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   opsForSubType,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import { sortableFields } from "./filter-shared.js";
 
 const NUMBER_SUBTYPES = new Set<string>([
@@ -51,7 +51,7 @@ export function renderFilterAllowlist(entity: MetaObject): Code {
   const fields = filterableFields(entity);
   if (fields.length === 0) {
     return code`
-import type { FilterAllowlist } from "@metaobjects/runtime-ts/drizzle-fastify";
+import type { FilterAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
 
 export const ${entity.name}FilterAllowlist = {} as const satisfies FilterAllowlist;
 `;
@@ -64,7 +64,7 @@ export const ${entity.name}FilterAllowlist = {} as const satisfies FilterAllowli
     })
     .join(",\n");
   return code`
-import type { FilterAllowlist } from "@metaobjects/runtime-ts/drizzle-fastify";
+import type { FilterAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
 
 export const ${entity.name}FilterAllowlist = {
 ${rows}
@@ -79,7 +79,7 @@ export function renderSortAllowlist(entity: MetaObject): Code {
   const sortable = sortableFields(entity);
   if (sortable.length === 0) {
     return code`
-import type { SortAllowlist } from "@metaobjects/runtime-ts/drizzle-fastify";
+import type { SortAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
 
 export const ${entity.name}SortAllowlist = {} as const satisfies SortAllowlist;
 `;
@@ -95,7 +95,7 @@ export const ${entity.name}SortAllowlist = {} as const satisfies SortAllowlist;
     })
     .join(",\n");
   return code`
-import type { SortAllowlist } from "@metaobjects/runtime-ts/drizzle-fastify";
+import type { SortAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
 
 export const ${entity.name}SortAllowlist = {
 ${rows}

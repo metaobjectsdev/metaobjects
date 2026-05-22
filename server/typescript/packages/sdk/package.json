@@ -1,5 +1,5 @@
 {
-  "name": "@metaobjects/sdk",
+  "name": "@metaobjectsdev/sdk",
   "version": "0.5.0",
   "description": "Workspace helpers and agent-docs utilities for MetaObjects projects.",
   "type": "module",
@@ -34,7 +34,7 @@
   "keywords": ["metaobjects", "sdk", "agent-docs", "workspace"],
   "publishConfig": { "access": "public" },
   "dependencies": {
-    "@metaobjects/metadata": "workspace:*",
+    "@metaobjectsdev/metadata": "workspace:*",
     "zod": "^3.23.0"
   },
   "devDependencies": {

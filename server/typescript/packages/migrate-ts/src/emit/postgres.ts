@@ -3,7 +3,7 @@ import type {
   TableDescriptor, ColumnDefault, FkAction,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
-import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjects/metadata";
+import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 
 const STAGE_ORDER: Record<Change["kind"], number> = {
   "create-table": 1,

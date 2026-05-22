@@ -12,10 +12,10 @@ import { describe, it, expect } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, relative } from "node:path";
-import { FileMetaDataLoader } from "@metaobjects/metadata/core";
+import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { runGen, defineConfig } from "../../src/index.js";
 import { entityFile, queriesFile, routesFile, barrel } from "../../src/generators/index.js";
-import { formFile } from "@metaobjects/codegen-ts-react";
+import { formFile } from "@metaobjectsdev/codegen-ts-react";
 
 const FIXTURE = resolve(import.meta.dir, "../fixtures/trainer-website-shape.json");
 const SNAP = join(import.meta.dir, "__snapshots__");

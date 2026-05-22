@@ -1,9 +1,9 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_VALIDATOR,
          FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_BOOLEAN,
          VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
-         OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
+         OBJECT_SUBTYPE_ENTITY } from "@metaobjectsdev/metadata";
 import { meta } from "./_meta-build.js";
 import { runValidators } from "../src/validator-runner.js";
 

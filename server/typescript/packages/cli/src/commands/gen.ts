@@ -3,9 +3,9 @@ import { resolveGenConfig } from "../lib/config.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { formatGenResult, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
 import { log } from "../lib/log.js";
-import { loadMemory } from "@metaobjects/sdk";
-import { runGen } from "@metaobjects/codegen-ts";
-import type { WriteStatus } from "@metaobjects/codegen-ts";
+import { loadMemory } from "@metaobjectsdev/sdk";
+import { runGen } from "@metaobjectsdev/codegen-ts";
+import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 
 function mapStatus(s: WriteStatus): GenFileStatus {
   switch (s) {

@@ -105,7 +105,7 @@ Expected: PASS
 
 - [ ] **Step 5: Typecheck (the union widening may surface call sites)**
 
-Run: `cd server/typescript && bun run --filter '@metaobjects/metadata' typecheck`
+Run: `cd server/typescript && bun run --filter '@metaobjectsdev/metadata' typecheck`
 Expected: PASS. If a switch over `AttrValue` now complains about an unhandled object case, note the file but do NOT fix yet — Tasks 4 and 8 cover validation and serialization. If typecheck fails in code unrelated to those, narrow with `typeof v === "object" && !Array.isArray(v)` guards at the failing site.
 
 - [ ] **Step 6: Commit**
@@ -778,7 +778,7 @@ Expected: PASS. The `@filter`-as-string assumption may break existing tests that
 
 - [ ] **Step 2: Typecheck the package**
 
-Run: `cd server/typescript && bun run --filter '@metaobjects/metadata' typecheck`
+Run: `cd server/typescript && bun run --filter '@metaobjectsdev/metadata' typecheck`
 Expected: PASS
 
 - [ ] **Step 3: Commit any test migrations**
@@ -837,7 +837,7 @@ git rm server/typescript/packages/codegen-ts-tanstack/src/grid-filter-validate.t
 
 - [ ] **Step 4: Typecheck**
 
-Run: `cd server/typescript && bun run --filter '@metaobjects/codegen-ts-tanstack' typecheck`
+Run: `cd server/typescript && bun run --filter '@metaobjectsdev/codegen-ts-tanstack' typecheck`
 Expected: PASS. If anything else imported `grid-filter-validate.js`, grep and remove those imports.
 
 - [ ] **Step 5: Commit**

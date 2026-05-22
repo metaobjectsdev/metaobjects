@@ -1,5 +1,5 @@
 {
-  "name": "@metaobjects/forge",
+  "name": "@metaobjectsdev/forge",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",

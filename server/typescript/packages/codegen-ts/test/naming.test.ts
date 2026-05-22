@@ -73,7 +73,7 @@ describe("variableNameFromEntity", () => {
   });
 });
 
-import { stripPackage } from "@metaobjects/metadata";
+import { stripPackage } from "@metaobjectsdev/metadata";
 
 describe("stripPackage", () => {
   test("strips package prefix from fully-qualified name", () => {

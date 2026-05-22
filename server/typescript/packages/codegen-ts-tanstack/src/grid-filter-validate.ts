@@ -1,5 +1,5 @@
 /**
- * Minimal local types mirroring FilterAllowlist from @metaobjects/runtime-ts/drizzle-fastify.
+ * Minimal local types mirroring FilterAllowlist from @metaobjectsdev/runtime-ts/drizzle-fastify.
  * Inlined so codegen-ts-tanstack doesn't need a runtime-ts dependency.
  */
 export interface FilterFieldRule {

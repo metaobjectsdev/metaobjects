@@ -1,9 +1,9 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
-         GENERATION_INCREMENT, GENERATION_UUID, GENERATION_ASSIGNED } from "@metaobjects/metadata";
+         GENERATION_INCREMENT, GENERATION_UUID, GENERATION_ASSIGNED } from "@metaobjectsdev/metadata";
 import { meta } from "./_meta-build.js";
 import { resolveIdentity, type IdentityResolution } from "../src/identity-strategy.js";
 import { ValidationError } from "../src/errors.js";

@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { TypeId, TYPE_IDENTITY, TYPE_VALIDATOR,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
-         VALIDATOR_SUBTYPE_REGEX } from "@metaobjects/metadata";
+         VALIDATOR_SUBTYPE_REGEX } from "@metaobjectsdev/metadata";
 import { meta, metaObject, metaField } from "../_meta-build.js";
 import { renderZodValidators } from "../../src/templates/zod-validators.js";
 

@@ -1,9 +1,9 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
          IDENTITY_SUBTYPE_PRIMARY, RELATIONSHIP_SUBTYPE_ASSOCIATION,
-         OBJECT_SUBTYPE_ENTITY, CARDINALITY_ONE } from "@metaobjects/metadata";
+         OBJECT_SUBTYPE_ENTITY, CARDINALITY_ONE } from "@metaobjectsdev/metadata";
 import { meta } from "./_meta-build.js";
 import {
   resolveRelationDescriptor,

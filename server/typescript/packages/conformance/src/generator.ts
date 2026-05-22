@@ -10,7 +10,7 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-// Intentionally a small subset for fixture generation — @metaobjects/metadata
+// Intentionally a small subset for fixture generation — @metaobjectsdev/metadata
 // exports the full FIELD_SUBTYPES array (including currency, date, object, etc.)
 // which is too broad for deterministic round-trip fixtures.  Keep this list in
 // sync with the generator's intent: only "safe" primitive types that the TS

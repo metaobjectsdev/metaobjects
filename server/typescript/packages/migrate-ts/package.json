@@ -1,5 +1,5 @@
 {
-  "name": "@metaobjects/migrate-ts",
+  "name": "@metaobjectsdev/migrate-ts",
   "version": "0.5.0",
   "description": "Schema migration tooling for MetaObjects: diff metadata vs DB and emit SQL for Postgres and SQLite.",
   "type": "module",
@@ -29,7 +29,7 @@
   "keywords": ["metaobjects", "migrate", "postgres", "sqlite", "schema-diff"],
   "publishConfig": { "access": "public" },
   "dependencies": {
-    "@metaobjects/metadata": "workspace:*"
+    "@metaobjectsdev/metadata": "workspace:*"
   },
   "peerDependencies": {
     "kysely": ">=0.27.0"

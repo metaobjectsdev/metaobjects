@@ -1,8 +1,8 @@
-# `@metaobjects/sdk` memory metadata reference
+# `@metaobjectsdev/sdk` memory metadata reference
 
 > **Note (2026-05-21):** This doc predates the H1 monorepo migration and the 2026-05-15 canonical-format change. Pending a deeper rewrite: the JSON examples below still use the OLD `{ "<type>": { "subType": "..." } }` form (current canonical is fused-key `{ "<type>.<subType>": {...} }`), and the `.meta/memory/` directory layout is now `.metaobjects/memory/`. The `@forge*` attribute names and the memory record types (`decision`, `principle`, `convention`, `glossary`, `failure`) are still accurate. See git history for full original wording.
 
-This doc describes how `@metaobjects/sdk` extends the [metaobjects metamodel](../metadata/METAMODEL.md) with provenance attributes and descriptive memory types. If you're authoring memory `.json` files for an SDK-driven project, read this *and* `METAMODEL.md`.
+This doc describes how `@metaobjectsdev/sdk` extends the [metaobjects metamodel](../metadata/METAMODEL.md) with provenance attributes and descriptive memory types. If you're authoring memory `.json` files for an SDK-driven project, read this *and* `METAMODEL.md`.
 
 > **For agentic assistants:** the metaobjects rules in METAMODEL.md apply unchanged here — attribute uniqueness, inline-vs-child equivalence, `extends`/overlay semantics, package paths. This doc only adds the memory-specific names.
 
@@ -35,11 +35,11 @@ Meta Forge stores provenance, confidence, and other knowledge-graph concerns as 
 | `@forgeWhatWasTried` | string | failure | What was attempted |
 | `@forgeWhyItFailed` | string | failure | Reason for failure |
 
-Constants for these names live in `@metaobjects/sdk` as `FORGE_ATTR_CONFIDENCE`, `FORGE_ATTR_SOURCE`, etc. Always import the constant rather than hard-coding the string.
+Constants for these names live in `@metaobjectsdev/sdk` as `FORGE_ATTR_CONFIDENCE`, `FORGE_ATTR_SOURCE`, etc. Always import the constant rather than hard-coding the string.
 
 ## 2. New top-level metadata types
 
-`@metaobjects/sdk`'s `registerForgeTypes(registry)` adds these to a `TypeRegistry`:
+`@metaobjectsdev/sdk`'s `registerForgeTypes(registry)` adds these to a `TypeRegistry`:
 
 | Type | Subtypes | Purpose |
 |---|---|---|
@@ -121,4 +121,4 @@ A `.meta/memory/*.json` file can mix `object` children (entities, drive codegen 
 ## 6. See also
 
 - [`packages/metadata/METAMODEL.md`](../metadata/METAMODEL.md) — the underlying metaobjects rules
-- [`@metaobjects/sdk`'s `forge-types.ts`](src/forge-types.ts) — constants source of truth
+- [`@metaobjectsdev/sdk`'s `forge-types.ts`](src/forge-types.ts) — constants source of truth

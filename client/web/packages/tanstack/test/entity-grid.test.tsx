@@ -4,7 +4,7 @@ import { render, fireEvent, screen } from "@testing-library/react";
 import { EntityGrid } from "../src/entity-grid.js";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { EntityGridState } from "../src/entity-grid.js";
-import type { GridConfig } from "@metaobjects/runtime-web";
+import type { GridConfig } from "@metaobjectsdev/runtime-web";
 
 type Row = { id: number; name: string; active?: boolean };
 

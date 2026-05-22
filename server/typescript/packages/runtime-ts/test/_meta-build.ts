@@ -30,7 +30,7 @@ import {
   MetaLayout,
   MetaSource,
   MetaOrigin,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 
 type NodeCtor = new (typeId: TypeId, name: string) => MetaData;
 

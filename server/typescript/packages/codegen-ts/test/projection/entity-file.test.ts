@@ -4,7 +4,7 @@
 //   - vanilla entities still go through the Drizzle-table path
 
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";

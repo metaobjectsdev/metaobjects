@@ -1,4 +1,4 @@
-# @metaobjects/cli
+# @metaobjectsdev/cli
 
 The MetaObjects CLI — scaffolds `metaobjects/` + `.metaobjects/`, runs codegen and migrations against MetaObjects metadata.
 
@@ -7,7 +7,7 @@ The MetaObjects CLI — scaffolds `metaobjects/` + `.metaobjects/`, runs codegen
 ## Install
 
 ```bash
-bun add -D @metaobjects/cli
+bun add -D @metaobjectsdev/cli
 ```
 
 Optional driver peers (install the one matching your DB):
@@ -72,8 +72,8 @@ Two config files, by design:
 **`metaobjects.config.ts`** (at repo root) — generator wiring and codegen knobs, type-checked TS:
 
 ```ts
-import { defineConfig } from "@metaobjects/cli";
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjects/codegen-ts/generators";
+import { defineConfig } from "@metaobjectsdev/cli";
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "packages/database/src/generated",
@@ -109,8 +109,8 @@ Precedence for `meta migrate`: CLI flag > env var (`DATABASE_URL` only) > `.meta
 
 See `.metaobjects/AGENTS.md` (scaffolded by `meta init`) for the metaobjects metamodel rules, attribute conventions, and worked examples. Deeper references:
 
-- `@metaobjects/metadata` [METAMODEL.md](../metadata/METAMODEL.md) — full metaobjects metamodel reference
-- `@metaobjects/sdk` [FORGE-METADATA.md](../sdk/FORGE-METADATA.md) — MetaObjects metadata additions
+- `@metaobjectsdev/metadata` [METAMODEL.md](../metadata/METAMODEL.md) — full metaobjects metamodel reference
+- `@metaobjectsdev/sdk` [FORGE-METADATA.md](../sdk/FORGE-METADATA.md) — MetaObjects metadata additions
 
 ## Not yet shipped
 

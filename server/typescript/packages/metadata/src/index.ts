@@ -1,4 +1,4 @@
-// Public API surface for @metaobjects/metadata v0.2.0
+// Public API surface for @metaobjectsdev/metadata v0.2.0
 //
 // Architecture: one typed tree of concrete node classes under src/meta/,
 // plus open type registry + JSON parser/serializer + Loader orchestration.

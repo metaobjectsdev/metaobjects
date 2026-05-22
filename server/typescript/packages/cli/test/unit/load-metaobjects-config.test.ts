@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { loadMetaobjectsConfig } from "../../src/lib/load-metaobjects-config.js";
 
-// Place temp dirs inside the monorepo so workspace packages (@metaobjects/*)
+// Place temp dirs inside the monorepo so workspace packages (@metaobjectsdev/*)
 // are resolvable by jiti when it loads the config file.
 const WORKSPACE_TMP = resolve("packages/cli/test/fixtures/__tmp__");
 
@@ -18,8 +18,8 @@ afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 describe("loadMetaobjectsConfig", () => {
   test("loads a TS config file and returns its default export", async () => {
     writeFileSync(join(tmp, "metaobjects.config.ts"), `
-      import { defineConfig } from "@metaobjects/codegen-ts";
-      import { entityFile, barrel } from "@metaobjects/codegen-ts/generators";
+      import { defineConfig } from "@metaobjectsdev/codegen-ts";
+      import { entityFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
       export default defineConfig({
         outDir: "out",
         extStyle: "none",
@@ -49,14 +49,14 @@ describe("loadMetaobjectsConfig", () => {
   });
 
   test("loads from a tmp dir outside the workspace (alias-only resolution path)", async () => {
-    // Place fixture in OS tmp so node_modules walk-up CANNOT find @metaobjects/codegen-ts.
+    // Place fixture in OS tmp so node_modules walk-up CANNOT find @metaobjectsdev/codegen-ts.
     // Only the jiti alias map can resolve the imports; this guards against the path math
     // being wrong in compiled-dist mode.
     const osTmp = mkdtempSync(join(tmpdir(), "metaobjects-config-external-"));
     try {
       writeFileSync(join(osTmp, "metaobjects.config.ts"), `
-        import { defineConfig } from "@metaobjects/cli";
-        import { entityFile, barrel } from "@metaobjects/codegen-ts/generators";
+        import { defineConfig } from "@metaobjectsdev/cli";
+        import { entityFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
         export default defineConfig({
           outDir: "out", extStyle: "none", dbImport: "../db", dialect: "sqlite",
           generators: [entityFile(), barrel()],
@@ -71,13 +71,13 @@ describe("loadMetaobjectsConfig", () => {
     }
   });
 
-  test("loads a config that imports from @metaobjects/codegen-ts-tanstack", async () => {
+  test("loads a config that imports from @metaobjectsdev/codegen-ts-tanstack", async () => {
     const osTmp = mkdtempSync(join(tmpdir(), "metaobjects-config-tanstack-"));
     try {
       writeFileSync(join(osTmp, "metaobjects.config.ts"), `
-        import { defineConfig } from "@metaobjects/cli";
-        import { entityFile, barrel } from "@metaobjects/codegen-ts/generators";
-        // import { tanstackQuery } from "@metaobjects/codegen-ts-tanstack";
+        import { defineConfig } from "@metaobjectsdev/cli";
+        import { entityFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+        // import { tanstackQuery } from "@metaobjectsdev/codegen-ts-tanstack";
         // ↑ The package re-exports nothing yet — covered fully in Tasks 8/9.
         // For now: confirm the alias loads without error.
         export default defineConfig({

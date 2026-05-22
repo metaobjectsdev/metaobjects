@@ -4,12 +4,12 @@
 //  assigned  → caller must provide PK.
 //  composite → always treated as 'assigned' regardless of the @generation hint.
 
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
   GENERATION_INCREMENT, GENERATION_UUID, GENERATION_ASSIGNED,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import { MetadataError, ValidationError } from "./errors.js";
 
 export type IdentityResolution =

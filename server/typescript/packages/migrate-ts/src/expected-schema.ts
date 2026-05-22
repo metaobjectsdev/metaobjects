@@ -1,4 +1,4 @@
-import type { MetaData, MetaObject, MetaReferenceIdentity, MetaRoot } from "@metaobjects/metadata";
+import type { MetaData, MetaObject, MetaReferenceIdentity, MetaRoot } from "@metaobjectsdev/metadata";
 import {
   TYPE_OBJECT,
   TYPE_SOURCE,
@@ -27,7 +27,7 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
   resolveTableName, resolveColumnName, resolveTableSchema,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
 import type {
   SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,

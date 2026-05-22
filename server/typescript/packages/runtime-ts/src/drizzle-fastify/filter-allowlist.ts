@@ -5,13 +5,13 @@
  */
 
 // FILTER_OPS, FilterOp, OPS_BY_SUBTYPE, and opsForSubType are canonical in
-// @metaobjects/metadata — import from there and re-export for backwards compat.
+// @metaobjectsdev/metadata — import from there and re-export for backwards compat.
 import {
   FILTER_OPS,
   OPS_BY_SUBTYPE,
   opsForSubType,
   type FilterOp,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 export { FILTER_OPS, OPS_BY_SUBTYPE, opsForSubType, type FilterOp };
 
 export type FilterSubType = "string" | "number" | "boolean" | "datetime";

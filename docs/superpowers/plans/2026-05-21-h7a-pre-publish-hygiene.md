@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Prepare the 11 publish-candidate TypeScript packages for a coordinated npm release — decouple `@metaobjects/cli` from `@metaobjects/forge` (relocating agent-docs into `@metaobjects/sdk/agent-docs`), unify all versions to 0.5.0, add standard npm metadata, write missing READMEs, and fix the stale conformance CI workflow. Zero npm interaction.
+**Goal:** Prepare the 11 publish-candidate TypeScript packages for a coordinated npm release — decouple `@metaobjectsdev/cli` from `@metaobjectsdev/forge` (relocating agent-docs into `@metaobjectsdev/sdk/agent-docs`), unify all versions to 0.5.0, add standard npm metadata, write missing READMEs, and fix the stale conformance CI workflow. Zero npm interaction.
 
-**Architecture:** Mostly mechanical config + docs work over existing package.json files, plus one source relocation (forge agent-docs → sdk sub-path). No new runtime behavior. Success = existing test suite stays at 2105 pass / 0 fail, `bun run --filter '*' build` succeeds, and no `@metaobjects/forge` references remain in publish-candidate packages.
+**Architecture:** Mostly mechanical config + docs work over existing package.json files, plus one source relocation (forge agent-docs → sdk sub-path). No new runtime behavior. Success = existing test suite stays at 2105 pass / 0 fail, `bun run --filter '*' build` succeeds, and no `@metaobjectsdev/forge` references remain in publish-candidate packages.
 
 **Tech Stack:** Bun 1.3.8 workspaces, TypeScript 5.6, tsc for build, GitHub Actions (conformance workflow).
 
@@ -119,7 +119,7 @@ Verify the file starts with `export const AGENT_DOCS_BODY = \`` and ends with th
 Create `server/typescript/packages/sdk/src/agent-docs/index.ts`:
 
 ```ts
-// Public surface for @metaobjects/sdk/agent-docs.
+// Public surface for @metaobjectsdev/sdk/agent-docs.
 export { AGENT_DOCS_BODY } from "./body.js";
 export {
   computeContentHash,
@@ -160,7 +160,7 @@ Expected: exit 0. If `createHash` import errors, confirm `@types/node` or `bun-t
 ```
 cd /home/doug/Development/metaobjects
 git add server/typescript/packages/sdk/
-git commit -m "feat(sdk): add @metaobjects/sdk/agent-docs (relocated from forge)"
+git commit -m "feat(sdk): add @metaobjectsdev/sdk/agent-docs (relocated from forge)"
 ```
 
 ---
@@ -178,20 +178,20 @@ git commit -m "feat(sdk): add @metaobjects/sdk/agent-docs (relocated from forge)
 In `server/typescript/packages/cli/src/commands/init.ts`, line 7, change:
 
 ```ts
-import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "@metaobjects/forge/agent-docs";
+import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "@metaobjectsdev/forge/agent-docs";
 ```
 to:
 ```ts
-import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "@metaobjects/sdk/agent-docs";
+import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "@metaobjectsdev/sdk/agent-docs";
 ```
 
 - [ ] **Step 2: Remove the forge dependency from cli/package.json.**
 
 In `server/typescript/packages/cli/package.json`, delete the line:
 ```json
-"@metaobjects/forge": "workspace:*",
+"@metaobjectsdev/forge": "workspace:*",
 ```
-from `dependencies`. (Confirm `@metaobjects/sdk` is already a dependency — it is.)
+from `dependencies`. (Confirm `@metaobjectsdev/sdk` is already a dependency — it is.)
 
 - [ ] **Step 3: Delete the relocated forge source + update forge barrel.**
 
@@ -203,9 +203,9 @@ git rm server/typescript/packages/forge/src/agent-docs/index.ts
 Then replace `server/typescript/packages/forge/src/index.ts` content with:
 
 ```ts
-// @metaobjects/forge — AI-collaboration capabilities (unpublished, repo-internal).
+// @metaobjectsdev/forge — AI-collaboration capabilities (unpublished, repo-internal).
 //
-// The agent-docs generator moved to @metaobjects/sdk/agent-docs (FR/H7a). This
+// The agent-docs generator moved to @metaobjectsdev/sdk/agent-docs (FR/H7a). This
 // package is retained for the future MCP server, Claude Code hooks installer,
 // and `forge ingest`/`audit`/`serve`/`capture` commands, and will carve out to
 // a separate repo per the H1 polyglot design. It is NOT published to npm.
@@ -234,7 +234,7 @@ Expected: `2105 pass / 5 skip / 0 fail`.
 
 ```
 cd /home/doug/Development/metaobjects
-grep -rn "@metaobjects/forge" server/typescript/packages/cli/ 2>/dev/null | grep -v node_modules | grep -v dist
+grep -rn "@metaobjectsdev/forge" server/typescript/packages/cli/ 2>/dev/null | grep -v node_modules | grep -v dist
 ```
 Expected: empty.
 
@@ -242,7 +242,7 @@ Expected: empty.
 
 ```
 git add server/typescript/packages/cli/ server/typescript/packages/forge/
-git commit -m "refactor(cli): consume agent-docs from @metaobjects/sdk, drop forge dep"
+git commit -m "refactor(cli): consume agent-docs from @metaobjectsdev/sdk, drop forge dep"
 ```
 
 ---
@@ -316,32 +316,32 @@ Common values (identical across all 11):
 
 Per-package `repository` (note the `directory` differs) and `keywords`:
 
-- [ ] **Step 1: `@metaobjects/metadata`** — add to `server/typescript/packages/metadata/package.json`:
+- [ ] **Step 1: `@metaobjectsdev/metadata`** — add to `server/typescript/packages/metadata/package.json`:
 ```jsonc
 "repository": { "type": "git", "url": "https://github.com/metaobjectsdev/metaobjects.git", "directory": "server/typescript/packages/metadata" },
 "keywords": ["metaobjects", "metadata", "schema", "loader", "typescript"]
 ```
 plus the common values above.
 
-- [ ] **Step 2: `@metaobjects/codegen-ts`** — `directory: "server/typescript/packages/codegen-ts"`, `keywords: ["metaobjects", "codegen", "drizzle", "zod", "fastify", "typescript"]` + common. **For `cli` only** there is a `publishConfig.bin`; codegen-ts has no bin — `publishConfig` is just `{ "access": "public" }`.
+- [ ] **Step 2: `@metaobjectsdev/codegen-ts`** — `directory: "server/typescript/packages/codegen-ts"`, `keywords: ["metaobjects", "codegen", "drizzle", "zod", "fastify", "typescript"]` + common. **For `cli` only** there is a `publishConfig.bin`; codegen-ts has no bin — `publishConfig` is just `{ "access": "public" }`.
 
-- [ ] **Step 3: `@metaobjects/codegen-ts-react`** — `directory: "server/typescript/packages/codegen-ts-react"`, `keywords: ["metaobjects", "codegen", "react", "forms", "react-hook-form"]` + common.
+- [ ] **Step 3: `@metaobjectsdev/codegen-ts-react`** — `directory: "server/typescript/packages/codegen-ts-react"`, `keywords: ["metaobjects", "codegen", "react", "forms", "react-hook-form"]` + common.
 
-- [ ] **Step 4: `@metaobjects/codegen-ts-tanstack`** — `directory: "server/typescript/packages/codegen-ts-tanstack"`, `keywords: ["metaobjects", "codegen", "tanstack", "react-query", "react-table"]` + common.
+- [ ] **Step 4: `@metaobjectsdev/codegen-ts-tanstack`** — `directory: "server/typescript/packages/codegen-ts-tanstack"`, `keywords: ["metaobjects", "codegen", "tanstack", "react-query", "react-table"]` + common.
 
-- [ ] **Step 5: `@metaobjects/runtime-ts`** — `directory: "server/typescript/packages/runtime-ts"`, `keywords: ["metaobjects", "runtime", "fastify", "drizzle", "kysely"]` + common.
+- [ ] **Step 5: `@metaobjectsdev/runtime-ts`** — `directory: "server/typescript/packages/runtime-ts"`, `keywords: ["metaobjects", "runtime", "fastify", "drizzle", "kysely"]` + common.
 
-- [ ] **Step 6: `@metaobjects/migrate-ts`** — `directory: "server/typescript/packages/migrate-ts"`, `keywords: ["metaobjects", "migrate", "postgres", "sqlite", "schema-diff"]` + common.
+- [ ] **Step 6: `@metaobjectsdev/migrate-ts`** — `directory: "server/typescript/packages/migrate-ts"`, `keywords: ["metaobjects", "migrate", "postgres", "sqlite", "schema-diff"]` + common.
 
-- [ ] **Step 7: `@metaobjects/sdk`** — `directory: "server/typescript/packages/sdk"`, `keywords: ["metaobjects", "sdk", "agent-docs", "workspace"]` + common.
+- [ ] **Step 7: `@metaobjectsdev/sdk`** — `directory: "server/typescript/packages/sdk"`, `keywords: ["metaobjects", "sdk", "agent-docs", "workspace"]` + common.
 
-- [ ] **Step 8: `@metaobjects/cli`** — `directory: "server/typescript/packages/cli"`, `keywords: ["metaobjects", "cli", "scaffold", "codegen", "drift-detection"]` + common. **Preserve the existing `publishConfig.bin`** by merging: `"publishConfig": { "access": "public", "bin": { "meta": "./dist/bin/meta.js" } }`.
+- [ ] **Step 8: `@metaobjectsdev/cli`** — `directory: "server/typescript/packages/cli"`, `keywords: ["metaobjects", "cli", "scaffold", "codegen", "drift-detection"]` + common. **Preserve the existing `publishConfig.bin`** by merging: `"publishConfig": { "access": "public", "bin": { "meta": "./dist/bin/meta.js" } }`.
 
-- [ ] **Step 9: `@metaobjects/runtime-web`** — `directory: "client/web/packages/runtime-web"`, `keywords: ["metaobjects", "runtime", "browser", "currency", "filter"]` + common.
+- [ ] **Step 9: `@metaobjectsdev/runtime-web`** — `directory: "client/web/packages/runtime-web"`, `keywords: ["metaobjects", "runtime", "browser", "currency", "filter"]` + common.
 
-- [ ] **Step 10: `@metaobjects/react`** — `directory: "client/web/packages/react"`, `keywords: ["metaobjects", "react", "react-hook-form", "forms", "currency-input"]` + common.
+- [ ] **Step 10: `@metaobjectsdev/react`** — `directory: "client/web/packages/react"`, `keywords: ["metaobjects", "react", "react-hook-form", "forms", "currency-input"]` + common.
 
-- [ ] **Step 11: `@metaobjects/tanstack`** — `directory: "client/web/packages/tanstack"`, `keywords: ["metaobjects", "tanstack", "react-query", "react-table", "entity-grid"]` + common.
+- [ ] **Step 11: `@metaobjectsdev/tanstack`** — `directory: "client/web/packages/tanstack"`, `keywords: ["metaobjects", "tanstack", "react-query", "react-table", "entity-grid"]` + common.
 
 - [ ] **Step 12: Validate every package.json parses.**
 
@@ -381,20 +381,20 @@ git commit -m "chore(release): add npm publish metadata to all publish-candidate
 - [ ] **Step 1: `metadata/README.md`:**
 
 ```markdown
-# @metaobjects/metadata
+# @metaobjectsdev/metadata
 
-The metamodel loader, typed views, and constants for the MetaObjects standard. This is the foundation package every other `@metaobjects/*` package builds on — it parses `metaobjects/*.json` files into a typed object model, resolves `extends` and overlay merging, and exposes the 11-type vocabulary as named constants.
+The metamodel loader, typed views, and constants for the MetaObjects standard. This is the foundation package every other `@metaobjectsdev/*` package builds on — it parses `metaobjects/*.json` files into a typed object model, resolves `extends` and overlay merging, and exposes the 11-type vocabulary as named constants.
 
 ## Install
 
 \`\`\`bash
-pnpm add @metaobjects/metadata
+pnpm add @metaobjectsdev/metadata
 \`\`\`
 
 ## Usage
 
 \`\`\`ts
-import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
 
 const json = `{ "metadata.root": { "package": "demo", "children": [] } }`;
 const result = await new MetaDataLoader().load([new InMemorySource(json)]);
@@ -415,14 +415,14 @@ Apache 2.0 — see [LICENSE](../../../../LICENSE) at the repo root.
 - [ ] **Step 2: `codegen-ts-react/README.md`:**
 
 ```markdown
-# @metaobjects/codegen-ts-react
+# @metaobjectsdev/codegen-ts-react
 
-React codegen for MetaObjects. Provides the `formFile()` generator, which emits a per-entity `<Entity>.form.tsx` using `react-hook-form` and the `useEntityForm` / `<CurrencyInput>` helpers from `@metaobjects/react`.
+React codegen for MetaObjects. Provides the `formFile()` generator, which emits a per-entity `<Entity>.form.tsx` using `react-hook-form` and the `useEntityForm` / `<CurrencyInput>` helpers from `@metaobjectsdev/react`.
 
 ## Install
 
 \`\`\`bash
-pnpm add -D @metaobjects/codegen-ts-react
+pnpm add -D @metaobjectsdev/codegen-ts-react
 \`\`\`
 
 ## Usage
@@ -430,8 +430,8 @@ pnpm add -D @metaobjects/codegen-ts-react
 In your `metaobjects.config.ts`:
 
 \`\`\`ts
-import { defineConfig } from "@metaobjects/cli";
-import { formFile } from "@metaobjects/codegen-ts-react";
+import { defineConfig } from "@metaobjectsdev/cli";
+import { formFile } from "@metaobjectsdev/codegen-ts-react";
 
 export default defineConfig({
   generators: [formFile()],
@@ -440,7 +440,7 @@ export default defineConfig({
 
 ## Pairs with
 
-- Runtime: [`@metaobjects/react`](../../../../client/web/packages/react) — the generated forms import from here.
+- Runtime: [`@metaobjectsdev/react`](../../../../client/web/packages/react) — the generated forms import from here.
 
 ## Links
 
@@ -454,14 +454,14 @@ Apache 2.0 — see [LICENSE](../../../../LICENSE) at the repo root.
 - [ ] **Step 3: `codegen-ts-tanstack/README.md`:**
 
 ```markdown
-# @metaobjects/codegen-ts-tanstack
+# @metaobjectsdev/codegen-ts-tanstack
 
 TanStack codegen for MetaObjects. Provides `tanstackQuery()` (per-entity `<Entity>.hooks.ts` — 5 React Query hooks), `tanstackGrid()` (`<Entity>.columns.tsx` for `@tanstack/react-table`), and `tanstackGridHook()`.
 
 ## Install
 
 \`\`\`bash
-pnpm add -D @metaobjects/codegen-ts-tanstack
+pnpm add -D @metaobjectsdev/codegen-ts-tanstack
 \`\`\`
 
 ## Usage
@@ -469,8 +469,8 @@ pnpm add -D @metaobjects/codegen-ts-tanstack
 In your `metaobjects.config.ts`:
 
 \`\`\`ts
-import { defineConfig } from "@metaobjects/cli";
-import { tanstackQuery, tanstackGrid } from "@metaobjects/codegen-ts-tanstack";
+import { defineConfig } from "@metaobjectsdev/cli";
+import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack";
 
 export default defineConfig({
   generators: [tanstackQuery(), tanstackGrid()],
@@ -479,7 +479,7 @@ export default defineConfig({
 
 ## Pairs with
 
-- Runtime: [`@metaobjects/tanstack`](../../../../client/web/packages/tanstack) — generated hooks and columns import from here.
+- Runtime: [`@metaobjectsdev/tanstack`](../../../../client/web/packages/tanstack) — generated hooks and columns import from here.
 
 ## Links
 
@@ -493,20 +493,20 @@ Apache 2.0 — see [LICENSE](../../../../LICENSE) at the repo root.
 - [ ] **Step 4: `sdk/README.md`:**
 
 ```markdown
-# @metaobjects/sdk
+# @metaobjectsdev/sdk
 
 Programmatic SDK for MetaObjects: workspace memory records, path resolution, project config loading, and the agent-docs reference content. Consumed by the `meta` CLI and by AI-collaboration tooling (MCP exposers, codegen prompts).
 
 ## Install
 
 \`\`\`bash
-pnpm add @metaobjects/sdk
+pnpm add @metaobjectsdev/sdk
 \`\`\`
 
 ## Usage
 
 \`\`\`ts
-import { resolveMetaRoot, loadConfig } from "@metaobjects/sdk";
+import { resolveMetaRoot, loadConfig } from "@metaobjectsdev/sdk";
 
 const metaRoot = await resolveMetaRoot(process.cwd());
 const config = await loadConfig(metaRoot);
@@ -515,7 +515,7 @@ const config = await loadConfig(metaRoot);
 The canonical agent reference docs (scaffolded by \`meta init\`) are available via a sub-path:
 
 \`\`\`ts
-import { AGENT_DOCS_BODY, withContentHash } from "@metaobjects/sdk/agent-docs";
+import { AGENT_DOCS_BODY, withContentHash } from "@metaobjectsdev/sdk/agent-docs";
 \`\`\`
 
 ## Links
@@ -611,7 +611,7 @@ Expected: runtime-web 30, react 12, tanstack 29 — all 0 fail.
 
 ```
 cd /home/doug/Development/metaobjects
-grep -rn "@metaobjects/forge" \
+grep -rn "@metaobjectsdev/forge" \
   server/typescript/packages/{metadata,codegen-ts,codegen-ts-react,codegen-ts-tanstack,runtime-ts,migrate-ts,sdk,cli}/ \
   client/web/packages/ 2>/dev/null | grep -v node_modules | grep -v dist
 ```
@@ -629,7 +629,7 @@ Expected: 12 `ok:` lines.
 - [ ] **Step 7: npm scope availability check (operational, non-blocking).**
 
 ```
-npm view @metaobjects/metadata version 2>&1 | head -3
+npm view @metaobjectsdev/metadata version 2>&1 | head -3
 ```
 Expected: a 404 / "not found" (scope is unclaimed/available) OR an existing version (someone has it — flag to the user immediately, this changes H7c). Record the result.
 

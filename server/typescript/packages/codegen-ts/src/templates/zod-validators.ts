@@ -4,7 +4,7 @@
 //                 UPDATE → onCreate fields omitted entirely; onUpdate gets same transform
 
 import { code, imp, type Code } from "ts-poet";
-import { MetaObject, MetaField } from "@metaobjects/metadata";
+import { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
@@ -15,7 +15,7 @@ import {
   FIELD_ATTR_AUTO_SET, AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE,
   VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_PATTERN,
   GENERATION_INCREMENT, GENERATION_UUID,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 
 export function renderZodValidators(obj: MetaObject): Code {
   const z = imp("z@zod");

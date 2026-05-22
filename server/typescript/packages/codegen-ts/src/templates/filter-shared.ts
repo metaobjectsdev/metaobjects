@@ -3,8 +3,8 @@
 // Both must agree on which fields are sortable; keeping them in sync via this shared
 // helper prevents client/server mismatches.
 
-import { MetaField, MetaObject } from "@metaobjects/metadata";
-import { FIELD_ATTR_FILTERABLE, FIELD_ATTR_SORTABLE } from "@metaobjects/metadata";
+import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
+import { FIELD_ATTR_FILTERABLE, FIELD_ATTR_SORTABLE } from "@metaobjectsdev/metadata";
 
 /**
  * Returns true if the given field should be included in sort operations.

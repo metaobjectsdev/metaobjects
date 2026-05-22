@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import type { MetaData, MetaObject } from "@metaobjects/metadata";
-import { MetaRoot } from "@metaobjects/metadata";
+import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
+import { MetaRoot } from "@metaobjectsdev/metadata";
 import type { Generator, GenContext, EmittedFile } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
 import { normalizeConfig } from "./metaobjects-config.js";

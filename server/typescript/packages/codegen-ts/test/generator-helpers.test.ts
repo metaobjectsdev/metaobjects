@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import type { MetaObject, MetaRoot } from "@metaobjects/metadata";
-import { FileMetaDataLoader } from "@metaobjects/metadata/core";
+import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
+import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { perEntity, oncePerRun, type GenContext } from "../src/generator.js";
 
 const SINGLE_ENTITY_FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");

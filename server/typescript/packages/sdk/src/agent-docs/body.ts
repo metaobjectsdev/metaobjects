@@ -74,10 +74,10 @@ Use the constants when you need a STRING (filter object keys, registration argum
 
 ### 3. Forms: spread \`form.input.<field>\` from useEntityForm. One line per input.
 
-For React forms, use \`useEntityForm\` from \`@metaobjects/react\`. It returns the standard React Hook Form surface plus a pre-bound \`.input\` accessor — one entry per field, ready to spread onto an \`<input>\`:
+For React forms, use \`useEntityForm\` from \`@metaobjectsdev/react\`. It returns the standard React Hook Form surface plus a pre-bound \`.input\` accessor — one entry per field, ready to spread onto an \`<input>\`:
 
 \`\`\`tsx
-import { useEntityForm } from '@metaobjects/react';
+import { useEntityForm } from '@metaobjectsdev/react';
 import { Subscriber, SubscriberInsertSchema } from './generated/Subscriber';
 
 const form = useEntityForm(Subscriber, SubscriberInsertSchema);
@@ -92,7 +92,7 @@ The same Zod schema (\`SubscriberInsertSchema\`) validates on the server (in Fas
 
 ### 4. Routes: use the generated \`<Entity>.routes.ts\` for stock CRUD. Hand-write only what's custom.
 
-\`meta gen\` emits a per-entity routes file that mounts the 5 standard verbs via \`mountCrudRoutes\` from \`@metaobjects/runtime-ts/drizzle-fastify\`. The runtime is plain Drizzle + Zod — no extra ORM.
+\`meta gen\` emits a per-entity routes file that mounts the 5 standard verbs via \`mountCrudRoutes\` from \`@metaobjectsdev/runtime-ts/drizzle-fastify\`. The runtime is plain Drizzle + Zod — no extra ORM.
 
 For custom flows (Stripe webhooks, side effects, auth-gated actions), hand-write the route — but import the entity constants + generated Zod schema. The boilerplate (CRUD, validation, 404 mapping, pagination) lives in the helper; your hand-written code is just the business logic.
 
@@ -194,10 +194,10 @@ Rule of thumb: rules that protect data integrity → field. Rules that improve i
 \`meta gen\` reads \`metaobjects.config.ts\` at the project root. This is where you declare which generators run and their options. It is TypeScript, type-checked, and imported via \`jiti\` at run time.
 
 \`\`\`ts
-import { defineConfig } from "@metaobjects/cli";
+import { defineConfig } from "@metaobjectsdev/cli";
 import {
   entityFile, queriesFile, routesFile, /* formFile, */ barrel,
-} from "@metaobjects/codegen-ts/generators";
+} from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir:   "packages/database/src/generated",
@@ -214,7 +214,7 @@ export default defineConfig({
 });
 \`\`\`
 
-3rd-party generator example: \`import { tanstackQuery } from "@metaobjects/codegen-ts-tanstack"; // then add tanstackQuery({ ... }) to the generators array\`
+3rd-party generator example: \`import { tanstackQuery } from "@metaobjectsdev/codegen-ts-tanstack"; // then add tanstackQuery({ ... }) to the generators array\`
 
 Filters live on the generator entry: \`routesFile({ filter: e => e.name !== "AuditLog" })\`
 
@@ -227,7 +227,7 @@ When \`tanstackQuery()\` is in your \`metaobjects.config.ts\`, every entity gets
 \`\`\`tsx
 import { usePrograms, useCreateProgram } from "@your-pkg/database/generated/Program.hooks";
 import { programDefaultColumns, programDefaultGrid } from "@your-pkg/database/generated/Program.columns";
-import { EntityGrid } from "@metaobjects/tanstack";
+import { EntityGrid } from "@metaobjectsdev/tanstack";
 
 const { data, isLoading } = usePrograms();
 const create = useCreateProgram({ onSuccess: () => navigate("/programs") });
@@ -353,8 +353,8 @@ Storage stays as integer minor units (cents for USD). The generated \`<Entity>\`
 **Imports — use sub-paths in browser code:**
 
 \`\`\`tsx
-import { formatCurrency } from "@metaobjects/runtime-web";
-import { CurrencyInput } from "@metaobjects/react";
+import { formatCurrency } from "@metaobjectsdev/runtime-web";
+import { CurrencyInput } from "@metaobjectsdev/react";
 \`\`\`
 
 **Display:**
@@ -390,7 +390,7 @@ After \`meta gen\`, you get one barrel + per-entity files in your configured \`o
 |---|---|---|
 | \`<Entity>.ts\` | Drizzle table, relations(), inferred types, Zod insert/update schemas, and the rich \`<Entity>\` constants block (per-field objects with name, label, view, htmlType, rules, etc.) | Never. Regenerate. |
 | \`<Entity>.queries.ts\` | Typed query helpers (\`findUserById\`, \`listUsers\`, \`createUser\`, ...) using prepared statements | Never. Regenerate. |
-| \`<Entity>.routes.ts\` | Fastify CRUD plugin delegating to \`mountCrudRoutes\` from \`@metaobjects/runtime-ts/drizzle-fastify\` (5 verbs, Zod validation, 404/204 mapping, Drizzle-direct under the hood) | Never. Regenerate. |
+| \`<Entity>.routes.ts\` | Fastify CRUD plugin delegating to \`mountCrudRoutes\` from \`@metaobjectsdev/runtime-ts/drizzle-fastify\` (5 verbs, Zod validation, 404/204 mapping, Drizzle-direct under the hood) | Never. Regenerate. |
 | \`<Entity>.form.tsx\` | React form using \`useEntityForm\` + the entity constants. **OPT-IN at project level:** add \`formFile()\` to \`generators\` in \`metaobjects.config.ts\`. Opt out per-entity via \`@emitForm: false\`. | Never. Regenerate. |
 | \`index.ts\` | Barrel re-exporting every entity file | Never. Regenerate. |
 
@@ -432,7 +432,7 @@ The fact that every metadata-derived value flows from \`Subscriber\` / \`Subscri
 ### Hand-written form using \`useEntityForm\`
 
 \`\`\`tsx
-import { useEntityForm } from '@metaobjects/react';
+import { useEntityForm } from '@metaobjectsdev/react';
 import { Subscriber, SubscriberInsertSchema, type Subscriber as Row } from './generated/Subscriber';
 
 export function SubscribeForm() {
@@ -474,7 +474,7 @@ Full inventory in \`packages/sdk/FORGE-METADATA.md\`.
 
 ### New top-level types
 
-Registered by \`@metaobjects/sdk\` into the TypeRegistry:
+Registered by \`@metaobjectsdev/sdk\` into the TypeRegistry:
 
 | Type | Purpose |
 |---|---|

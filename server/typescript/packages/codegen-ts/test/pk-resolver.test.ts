@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { TypeId, TYPE_IDENTITY,
          FIELD_SUBTYPE_LONG,
          IDENTITY_SUBTYPE_PRIMARY,
-         OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
+         OBJECT_SUBTYPE_ENTITY } from "@metaobjectsdev/metadata";
 import { meta, metaRoot, metaObject, metaField } from "./_meta-build.js";
 import { buildPkMap, type PkInfo } from "../src/pk-resolver.js";
 

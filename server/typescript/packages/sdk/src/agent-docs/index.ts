@@ -1,4 +1,4 @@
-// Public surface for @metaobjects/sdk/agent-docs.
+// Public surface for @metaobjectsdev/sdk/agent-docs.
 export { AGENT_DOCS_BODY } from "./body.js";
 export {
   computeContentHash,

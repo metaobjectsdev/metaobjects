@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
 import { extractViewSpec } from "../../src/projection/extract-view-spec.js";
 
 // ---------------------------------------------------------------------------

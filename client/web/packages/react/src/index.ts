@@ -1,4 +1,4 @@
-// Public API surface for @metaobjects/react.
+// Public API surface for @metaobjectsdev/react.
 export {
   useEntityForm,
   type EntityFieldMeta,

@@ -1,4 +1,4 @@
-import type { MetaObject } from "@metaobjects/metadata";
+import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderEntityFile } from "../templates/entity-file.js";
 import { formatTs } from "../format.js";

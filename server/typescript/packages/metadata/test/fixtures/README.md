@@ -1,6 +1,6 @@
 # Test fixtures
 
-These JSON files are **canonical conformance fixtures** sourced from the Java metaobjects-core implementation. They exist here as local copies to support round-trip parity testing of the TypeScript port (`@metaobjects/metadata`).
+These JSON files are **canonical conformance fixtures** sourced from the Java metaobjects-core implementation. They exist here as local copies to support round-trip parity testing of the TypeScript port (`@metaobjectsdev/metadata`).
 
 ## Source of truth
 

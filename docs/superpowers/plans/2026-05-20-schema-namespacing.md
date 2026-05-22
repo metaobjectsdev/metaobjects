@@ -4,7 +4,7 @@
 
 **Goal:** Enable metadata to declare which Postgres schema each table/view lives in, and have the metadata loader + migrate-ts pipeline (build-expected, introspect, diff, emit) honor it end-to-end. Establish a `@schema` attribute on `source[dbTable]` and `source[dbView]`, defaulting to `"public"` for Postgres. Add cross-language conformance fixtures.
 
-**Architecture:** Add a `SOURCE_ATTR_SCHEMA` constant + `resolveTableSchema()` helper in `@metaobjects/metadata`. Extend `TableDescriptor` and `ViewDescriptor` in `@metaobjects/migrate-ts` with a `schema?: string` field. Update Postgres introspect to scan all non-system schemas, update diff to key tables on `"<schema>.<table>"`, update Postgres emit to produce schema-qualified DDL. SQLite path explicitly rejects non-default schemas. Conformance fixtures land under `fixtures/conformance/`.
+**Architecture:** Add a `SOURCE_ATTR_SCHEMA` constant + `resolveTableSchema()` helper in `@metaobjectsdev/metadata`. Extend `TableDescriptor` and `ViewDescriptor` in `@metaobjectsdev/migrate-ts` with a `schema?: string` field. Update Postgres introspect to scan all non-system schemas, update diff to key tables on `"<schema>.<table>"`, update Postgres emit to produce schema-qualified DDL. SQLite path explicitly rejects non-default schemas. Conformance fixtures land under `fixtures/conformance/`.
 
 **Tech Stack:** TypeScript 5.x (Bun-first), Vitest test runner, pg-mem + optional real Postgres for introspect tests, named constants for all metamodel strings (per `CLAUDE.md`).
 
@@ -74,7 +74,7 @@ export const DEFAULT_DB_SCHEMA_POSTGRES = "public";
 Run from the `typescript/` directory:
 
 ```bash
-cd typescript && bun run --filter '@metaobjects/metadata' typecheck
+cd typescript && bun run --filter '@metaobjectsdev/metadata' typecheck
 ```
 
 Expected: exits 0 with no type errors.
@@ -287,7 +287,7 @@ export interface ViewDescriptor {
 - [ ] **Step 2: Verify it still compiles**
 
 ```bash
-cd typescript && bun run --filter '@metaobjects/migrate-ts' typecheck
+cd typescript && bun run --filter '@metaobjectsdev/migrate-ts' typecheck
 ```
 
 Expected: exits 0. (Existing call sites that construct `TableDescriptor` without `schema` should still compile because the field is optional.)
@@ -313,7 +313,7 @@ Create `typescript/packages/migrate-ts/test/expected-schema-schema-aware.test.ts
 
 ```typescript
 import { describe, it, expect } from "vitest";
-import { loadFromString } from "@metaobjects/metadata";
+import { loadFromString } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../src/expected-schema.js";
 
 describe("buildExpectedSchema — schema-aware", () => {
@@ -665,7 +665,7 @@ Create `typescript/packages/migrate-ts/test/emit-postgres-schema-namespacing.tes
 
 ```typescript
 import { describe, it, expect } from "vitest";
-import { loadFromString } from "@metaobjects/metadata";
+import { loadFromString } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../src/expected-schema.js";
 import { diff } from "../src/diff/index.js";
 import { emit } from "../src/emit/index.js";
@@ -733,7 +733,7 @@ Create `typescript/packages/migrate-ts/test/emit-sqlite-schema-rejected.test.ts`
 
 ```typescript
 import { describe, it, expect } from "vitest";
-import { loadFromString } from "@metaobjects/metadata";
+import { loadFromString } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../src/expected-schema.js";
 
 describe("buildExpectedSchema (sqlite) — schema rejection", () => {

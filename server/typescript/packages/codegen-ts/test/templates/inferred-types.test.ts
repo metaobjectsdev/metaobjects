@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
+import { OBJECT_SUBTYPE_ENTITY } from "@metaobjectsdev/metadata";
 import { metaObject } from "../_meta-build.js";
 import { renderInferredTypes } from "../../src/templates/inferred-types.js";
 

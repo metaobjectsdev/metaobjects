@@ -1,17 +1,17 @@
-# @metaobjects/metadata
+# @metaobjectsdev/metadata
 
-The metamodel loader, typed views, and constants for the MetaObjects standard. This is the foundation package every other `@metaobjects/*` package builds on — it parses `metaobjects/*.json` files into a typed object model, resolves `extends` and overlay merging, and exposes the 11-type vocabulary as named constants.
+The metamodel loader, typed views, and constants for the MetaObjects standard. This is the foundation package every other `@metaobjectsdev/*` package builds on — it parses `metaobjects/*.json` files into a typed object model, resolves `extends` and overlay merging, and exposes the 11-type vocabulary as named constants.
 
 ## Install
 
 ```bash
-pnpm add @metaobjects/metadata
+pnpm add @metaobjectsdev/metadata
 ```
 
 ## Usage
 
 ```ts
-import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
 
 const json = `{ "metadata.root": { "package": "demo", "children": [] } }`;
 const result = await new MetaDataLoader().load([new InMemorySource(json)]);

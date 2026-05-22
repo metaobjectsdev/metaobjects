@@ -7,7 +7,7 @@
 // getters (properties), not methods — the plan's illustrative code assumed
 // `isRequired()` / `maxLength()`. Bound here as property reads.
 
-import type { NormalizedResult } from "@metaobjects/conformance";
+import type { NormalizedResult } from "@metaobjectsdev/conformance";
 import type { MetaData } from "../../src/meta/meta-data.js";
 import { MetaObject } from "../../src/meta/meta-object.js";
 import { MetaField } from "../../src/meta/meta-field.js";

@@ -1,4 +1,4 @@
-# @metaobjects/migrate-ts
+# @metaobjectsdev/migrate-ts
 
 Schema migration tool for MetaObjects-driven projects.
 
@@ -10,7 +10,7 @@ and emits paired `up.sql` + `down.sql` migration files.
 ## Install
 
 ```bash
-pnpm add @metaobjects/migrate-ts
+pnpm add @metaobjectsdev/migrate-ts
 ```
 
 ## Quick start
@@ -18,10 +18,10 @@ pnpm add @metaobjects/migrate-ts
 ```typescript
 import { Kysely } from "kysely";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
-import { FileMetaDataLoader } from "@metaobjects/metadata/core";
+import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import {
   buildExpectedSchema, introspectSqlite, diff, emit, writeMigration,
-} from "@metaobjects/migrate-ts";
+} from "@metaobjectsdev/migrate-ts";
 
 // 1. Load metadata.
 const { root: metadata } = await new FileMetaDataLoader().loadDirectory("./metaobjects");

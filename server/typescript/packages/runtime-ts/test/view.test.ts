@@ -1,10 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_VIEW, TYPE_VALIDATOR,
          FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_LONG,
          VIEW_SUBTYPE_TEXT, VIEW_SUBTYPE_TEXTAREA, VIEW_SUBTYPE_HIDDEN,
          VALIDATOR_SUBTYPE_REQUIRED,
-         OBJECT_SUBTYPE_ENTITY } from "@metaobjects/metadata";
+         OBJECT_SUBTYPE_ENTITY } from "@metaobjectsdev/metadata";
 import { meta } from "./_meta-build.js";
 import { viewFieldNames, fieldViewSpec, entityViewSpec } from "../src/view.js";
 import { MetadataError } from "../src/errors.js";

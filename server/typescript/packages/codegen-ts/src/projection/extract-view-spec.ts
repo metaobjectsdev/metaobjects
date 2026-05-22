@@ -18,8 +18,8 @@ import {
   FIELD_ATTR_DB_COLUMN,
   findReferenceBetween,
   type AggregateFunction,
-} from "@metaobjects/metadata";
-import { type MetaData, type MetaRoot, MetaObject } from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
+import { type MetaData, type MetaRoot, MetaObject } from "@metaobjectsdev/metadata";
 import {
   columnNameFromField,
   viewNameFromProjection,

@@ -33,7 +33,7 @@ import static com.metaobjects.object.MetaObject.ATTR_DESCRIPTION;
  *   references that may dangle at the backend level.
  *
  * Parallel to TypeScript's {@code MetaReferenceIdentity} in
- * {@code @metaobjects/metadata}.
+ * {@code @metaobjectsdev/metadata}.
  */
 public class ReferenceIdentity extends MetaIdentity {
 

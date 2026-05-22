@@ -1,4 +1,4 @@
-// Public API surface for @metaobjects/codegen-ts.
+// Public API surface for @metaobjectsdev/codegen-ts.
 //
 // Architecture: Vite-style plugin model.
 // See docs/superpowers/specs/2026-05-12-pluggable-generators-design.md.

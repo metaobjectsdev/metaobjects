@@ -3,16 +3,16 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@metaobjects/monorepo",
+      "name": "@metaobjectsdev/monorepo",
       "devDependencies": {
         "typescript": "^5.6.0",
       },
     },
     "../../client/web/packages/react": {
-      "name": "@metaobjects/react",
-      "version": "0.4.0",
+      "name": "@metaobjectsdev/react",
+      "version": "0.5.0",
       "dependencies": {
-        "@metaobjects/runtime-web": "workspace:*",
+        "@metaobjectsdev/runtime-web": "workspace:*",
       },
       "devDependencies": {
         "@hookform/resolvers": "^3.10.0",
@@ -41,10 +41,10 @@
       ],
     },
     "../../client/web/packages/runtime-web": {
-      "name": "@metaobjects/runtime-web",
-      "version": "0.4.0",
+      "name": "@metaobjectsdev/runtime-web",
+      "version": "0.5.0",
       "dependencies": {
-        "@metaobjects/metadata": "workspace:*",
+        "@metaobjectsdev/metadata": "workspace:*",
         "qs": "^6.13.0",
       },
       "devDependencies": {
@@ -54,11 +54,11 @@
       },
     },
     "../../client/web/packages/tanstack": {
-      "name": "@metaobjects/tanstack",
-      "version": "0.4.0",
+      "name": "@metaobjectsdev/tanstack",
+      "version": "0.5.0",
       "dependencies": {
-        "@metaobjects/react": "workspace:*",
-        "@metaobjects/runtime-web": "workspace:*",
+        "@metaobjectsdev/react": "workspace:*",
+        "@metaobjectsdev/runtime-web": "workspace:*",
       },
       "devDependencies": {
         "@tanstack/react-query": "^5.90.0",
@@ -84,18 +84,18 @@
       ],
     },
     "packages/cli": {
-      "name": "@metaobjects/cli",
-      "version": "0.2.0",
+      "name": "@metaobjectsdev/cli",
+      "version": "0.5.0",
       "bin": {
         "meta": "./bin/meta.ts",
       },
       "dependencies": {
-        "@metaobjects/codegen-ts": "workspace:*",
-        "@metaobjects/codegen-ts-react": "workspace:*",
-        "@metaobjects/codegen-ts-tanstack": "workspace:*",
-        "@metaobjects/metadata": "workspace:*",
-        "@metaobjects/migrate-ts": "workspace:*",
-        "@metaobjects/sdk": "workspace:*",
+        "@metaobjectsdev/codegen-ts": "workspace:*",
+        "@metaobjectsdev/codegen-ts-react": "workspace:*",
+        "@metaobjectsdev/codegen-ts-tanstack": "workspace:*",
+        "@metaobjectsdev/metadata": "workspace:*",
+        "@metaobjectsdev/migrate-ts": "workspace:*",
+        "@metaobjectsdev/sdk": "workspace:*",
         "jiti": "^2.4.0",
       },
       "devDependencies": {
@@ -120,17 +120,17 @@
       ],
     },
     "packages/codegen-ts": {
-      "name": "@metaobjects/codegen-ts",
-      "version": "0.1.0",
+      "name": "@metaobjectsdev/codegen-ts",
+      "version": "0.5.0",
       "dependencies": {
-        "@metaobjects/metadata": "workspace:*",
+        "@metaobjectsdev/metadata": "workspace:*",
         "ts-poet": "^6.10.0",
       },
       "devDependencies": {
         "@biomejs/biome": "^1.9.0",
         "@biomejs/js-api": "^0.7.0",
         "@biomejs/wasm-nodejs": "^1.9.4",
-        "@metaobjects/codegen-ts-react": "workspace:*",
+        "@metaobjectsdev/codegen-ts-react": "workspace:*",
         "bun-types": "latest",
         "drizzle-orm": "^0.36.0",
         "typescript": "^5.6.0",
@@ -143,11 +143,11 @@
       },
     },
     "packages/codegen-ts-react": {
-      "name": "@metaobjects/codegen-ts-react",
-      "version": "0.4.0",
+      "name": "@metaobjectsdev/codegen-ts-react",
+      "version": "0.5.0",
       "dependencies": {
-        "@metaobjects/codegen-ts": "workspace:*",
-        "@metaobjects/metadata": "workspace:*",
+        "@metaobjectsdev/codegen-ts": "workspace:*",
+        "@metaobjectsdev/metadata": "workspace:*",
         "ts-poet": "^6.10.0",
       },
       "devDependencies": {
@@ -160,11 +160,11 @@
       },
     },
     "packages/codegen-ts-tanstack": {
-      "name": "@metaobjects/codegen-ts-tanstack",
-      "version": "0.1.0",
+      "name": "@metaobjectsdev/codegen-ts-tanstack",
+      "version": "0.5.0",
       "dependencies": {
-        "@metaobjects/codegen-ts": "workspace:*",
-        "@metaobjects/metadata": "workspace:*",
+        "@metaobjectsdev/codegen-ts": "workspace:*",
+        "@metaobjectsdev/metadata": "workspace:*",
         "ts-poet": "^6.10.0",
       },
       "devDependencies": {
@@ -177,13 +177,13 @@
       },
     },
     "packages/conformance": {
-      "name": "@metaobjects/conformance",
+      "name": "@metaobjectsdev/conformance",
       "version": "0.1.0",
       "bin": {
         "conformance": "./bin/conformance.ts",
       },
       "dependencies": {
-        "@metaobjects/metadata": "workspace:*",
+        "@metaobjectsdev/metadata": "workspace:*",
       },
       "devDependencies": {
         "bun-types": "latest",
@@ -191,7 +191,7 @@
       },
     },
     "packages/forge": {
-      "name": "@metaobjects/forge",
+      "name": "@metaobjectsdev/forge",
       "version": "0.1.0",
       "devDependencies": {
         "bun-types": "latest",
@@ -199,23 +199,23 @@
       },
     },
     "packages/metadata": {
-      "name": "@metaobjects/metadata",
-      "version": "0.2.4",
+      "name": "@metaobjectsdev/metadata",
+      "version": "0.5.0",
       "dependencies": {
         "yaml": "^2.9.0",
       },
       "devDependencies": {
-        "@metaobjects/conformance": "workspace:*",
+        "@metaobjectsdev/conformance": "workspace:*",
         "@stryker-mutator/core": "^9.6.1",
         "bun-types": "latest",
         "typescript": "^5.6.0",
       },
     },
     "packages/migrate-ts": {
-      "name": "@metaobjects/migrate-ts",
-      "version": "0.1.0",
+      "name": "@metaobjectsdev/migrate-ts",
+      "version": "0.5.0",
       "dependencies": {
-        "@metaobjects/metadata": "workspace:*",
+        "@metaobjectsdev/metadata": "workspace:*",
       },
       "devDependencies": {
         "@libsql/kysely-libsql": "^0.4.1",
@@ -231,10 +231,10 @@
       },
     },
     "packages/runtime-ts": {
-      "name": "@metaobjects/runtime-ts",
-      "version": "0.1.0",
+      "name": "@metaobjectsdev/runtime-ts",
+      "version": "0.5.0",
       "dependencies": {
-        "@metaobjects/metadata": "workspace:*",
+        "@metaobjectsdev/metadata": "workspace:*",
         "qs": "^6.13.0",
       },
       "devDependencies": {
@@ -264,10 +264,10 @@
       ],
     },
     "packages/sdk": {
-      "name": "@metaobjects/sdk",
-      "version": "0.2.0",
+      "name": "@metaobjectsdev/sdk",
+      "version": "0.5.0",
       "dependencies": {
-        "@metaobjects/metadata": "workspace:*",
+        "@metaobjectsdev/metadata": "workspace:*",
         "zod": "^3.23.0",
       },
       "devDependencies": {
@@ -475,31 +475,31 @@
 
     "@libsql/win32-x64-msvc": ["@libsql/win32-x64-msvc@0.4.7", "", { "os": "win32", "cpu": "x64" }, "sha512-7pJzOWzPm6oJUxml+PCDRzYQ4A1hTMHAciTAHfFK4fkbDZX33nWPVG7Y3vqdKtslcwAzwmrNDc6sXy2nwWnbiw=="],
 
-    "@metaobjects/cli": ["@metaobjects/cli@workspace:packages/cli"],
+    "@metaobjectsdev/cli": ["@metaobjectsdev/cli@workspace:packages/cli"],
 
-    "@metaobjects/codegen-ts": ["@metaobjects/codegen-ts@workspace:packages/codegen-ts"],
+    "@metaobjectsdev/codegen-ts": ["@metaobjectsdev/codegen-ts@workspace:packages/codegen-ts"],
 
-    "@metaobjects/codegen-ts-react": ["@metaobjects/codegen-ts-react@workspace:packages/codegen-ts-react"],
+    "@metaobjectsdev/codegen-ts-react": ["@metaobjectsdev/codegen-ts-react@workspace:packages/codegen-ts-react"],
 
-    "@metaobjects/codegen-ts-tanstack": ["@metaobjects/codegen-ts-tanstack@workspace:packages/codegen-ts-tanstack"],
+    "@metaobjectsdev/codegen-ts-tanstack": ["@metaobjectsdev/codegen-ts-tanstack@workspace:packages/codegen-ts-tanstack"],
 
-    "@metaobjects/conformance": ["@metaobjects/conformance@workspace:packages/conformance"],
+    "@metaobjectsdev/conformance": ["@metaobjectsdev/conformance@workspace:packages/conformance"],
 
-    "@metaobjects/forge": ["@metaobjects/forge@workspace:packages/forge"],
+    "@metaobjectsdev/forge": ["@metaobjectsdev/forge@workspace:packages/forge"],
 
-    "@metaobjects/metadata": ["@metaobjects/metadata@workspace:packages/metadata"],
+    "@metaobjectsdev/metadata": ["@metaobjectsdev/metadata@workspace:packages/metadata"],
 
-    "@metaobjects/migrate-ts": ["@metaobjects/migrate-ts@workspace:packages/migrate-ts"],
+    "@metaobjectsdev/migrate-ts": ["@metaobjectsdev/migrate-ts@workspace:packages/migrate-ts"],
 
-    "@metaobjects/react": ["@metaobjects/react@workspace:../../client/web/packages/react"],
+    "@metaobjectsdev/react": ["@metaobjectsdev/react@workspace:../../client/web/packages/react"],
 
-    "@metaobjects/runtime-ts": ["@metaobjects/runtime-ts@workspace:packages/runtime-ts"],
+    "@metaobjectsdev/runtime-ts": ["@metaobjectsdev/runtime-ts@workspace:packages/runtime-ts"],
 
-    "@metaobjects/runtime-web": ["@metaobjects/runtime-web@workspace:../../client/web/packages/runtime-web"],
+    "@metaobjectsdev/runtime-web": ["@metaobjectsdev/runtime-web@workspace:../../client/web/packages/runtime-web"],
 
-    "@metaobjects/sdk": ["@metaobjects/sdk@workspace:packages/sdk"],
+    "@metaobjectsdev/sdk": ["@metaobjectsdev/sdk@workspace:packages/sdk"],
 
-    "@metaobjects/tanstack": ["@metaobjects/tanstack@workspace:../../client/web/packages/tanstack"],
+    "@metaobjectsdev/tanstack": ["@metaobjectsdev/tanstack@workspace:../../client/web/packages/tanstack"],
 
     "@neon-rs/load": ["@neon-rs/load@0.0.4", "", {}, "sha512-kTPhdZyTQxB+2wpiRcFWrDcejc4JI6tkPuS7UZCG4l6Zvc5kU/gGQ/ozvHTh1XR5tS+UlfAfGuPajjzQjCiHCw=="],
 
@@ -995,13 +995,13 @@
 
     "@libsql/kysely-libsql/@libsql/client": ["@libsql/client@0.8.1", "", { "dependencies": { "@libsql/core": "^0.8.1", "@libsql/hrana-client": "^0.6.2", "js-base64": "^3.7.5", "libsql": "^0.3.10", "promise-limit": "^2.7.0" } }, "sha512-xGg0F4iTDFpeBZ0r4pA6icGsYa5rG6RAG+i/iLDnpCAnSuTqEWMDdPlVseiq4Z/91lWI9jvvKKiKpovqJ1kZWA=="],
 
-    "@metaobjects/react/zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
+    "@metaobjectsdev/react/zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
 
-    "@metaobjects/runtime-ts/@libsql/client": ["@libsql/client@0.15.15", "", { "dependencies": { "@libsql/core": "^0.15.14", "@libsql/hrana-client": "^0.7.0", "js-base64": "^3.7.5", "libsql": "^0.5.22", "promise-limit": "^2.7.0" } }, "sha512-twC0hQxPNHPKfeOv3sNT6u2pturQjLcI+CnpTM0SjRpocEGgfiZ7DWKXLNnsothjyJmDqEsBQJ5ztq9Wlu470w=="],
+    "@metaobjectsdev/runtime-ts/@libsql/client": ["@libsql/client@0.15.15", "", { "dependencies": { "@libsql/core": "^0.15.14", "@libsql/hrana-client": "^0.7.0", "js-base64": "^3.7.5", "libsql": "^0.5.22", "promise-limit": "^2.7.0" } }, "sha512-twC0hQxPNHPKfeOv3sNT6u2pturQjLcI+CnpTM0SjRpocEGgfiZ7DWKXLNnsothjyJmDqEsBQJ5ztq9Wlu470w=="],
 
-    "@metaobjects/runtime-ts/drizzle-orm": ["drizzle-orm@0.45.2", "", { "peerDependencies": { "@aws-sdk/client-rds-data": ">=3", "@cloudflare/workers-types": ">=4", "@electric-sql/pglite": ">=0.2.0", "@libsql/client": ">=0.10.0", "@libsql/client-wasm": ">=0.10.0", "@neondatabase/serverless": ">=0.10.0", "@op-engineering/op-sqlite": ">=2", "@opentelemetry/api": "^1.4.1", "@planetscale/database": ">=1.13", "@prisma/client": "*", "@tidbcloud/serverless": "*", "@types/better-sqlite3": "*", "@types/pg": "*", "@types/sql.js": "*", "@upstash/redis": ">=1.34.7", "@vercel/postgres": ">=0.8.0", "@xata.io/client": "*", "better-sqlite3": ">=7", "bun-types": "*", "expo-sqlite": ">=14.0.0", "gel": ">=2", "knex": "*", "kysely": "*", "mysql2": ">=2", "pg": ">=8", "postgres": ">=3", "sql.js": ">=1", "sqlite3": ">=5" }, "optionalPeers": ["@aws-sdk/client-rds-data", "@cloudflare/workers-types", "@electric-sql/pglite", "@libsql/client", "@libsql/client-wasm", "@neondatabase/serverless", "@op-engineering/op-sqlite", "@opentelemetry/api", "@planetscale/database", "@prisma/client", "@tidbcloud/serverless", "@types/better-sqlite3", "@types/pg", "@types/sql.js", "@upstash/redis", "@vercel/postgres", "@xata.io/client", "better-sqlite3", "bun-types", "expo-sqlite", "gel", "knex", "kysely", "mysql2", "pg", "postgres", "sql.js", "sqlite3"] }, "sha512-kY0BSaTNYWnoDMVoyY8uxmyHjpJW1geOmBMdSSicKo9CIIWkSxMIj2rkeSR51b8KAPB7m+qysjuHme5nKP+E5Q=="],
+    "@metaobjectsdev/runtime-ts/drizzle-orm": ["drizzle-orm@0.45.2", "", { "peerDependencies": { "@aws-sdk/client-rds-data": ">=3", "@cloudflare/workers-types": ">=4", "@electric-sql/pglite": ">=0.2.0", "@libsql/client": ">=0.10.0", "@libsql/client-wasm": ">=0.10.0", "@neondatabase/serverless": ">=0.10.0", "@op-engineering/op-sqlite": ">=2", "@opentelemetry/api": "^1.4.1", "@planetscale/database": ">=1.13", "@prisma/client": "*", "@tidbcloud/serverless": "*", "@types/better-sqlite3": "*", "@types/pg": "*", "@types/sql.js": "*", "@upstash/redis": ">=1.34.7", "@vercel/postgres": ">=0.8.0", "@xata.io/client": "*", "better-sqlite3": ">=7", "bun-types": "*", "expo-sqlite": ">=14.0.0", "gel": ">=2", "knex": "*", "kysely": "*", "mysql2": ">=2", "pg": ">=8", "postgres": ">=3", "sql.js": ">=1", "sqlite3": ">=5" }, "optionalPeers": ["@aws-sdk/client-rds-data", "@cloudflare/workers-types", "@electric-sql/pglite", "@libsql/client", "@libsql/client-wasm", "@neondatabase/serverless", "@op-engineering/op-sqlite", "@opentelemetry/api", "@planetscale/database", "@prisma/client", "@tidbcloud/serverless", "@types/better-sqlite3", "@types/pg", "@types/sql.js", "@upstash/redis", "@vercel/postgres", "@xata.io/client", "better-sqlite3", "bun-types", "expo-sqlite", "gel", "knex", "kysely", "mysql2", "pg", "postgres", "sql.js", "sqlite3"] }, "sha512-kY0BSaTNYWnoDMVoyY8uxmyHjpJW1geOmBMdSSicKo9CIIWkSxMIj2rkeSR51b8KAPB7m+qysjuHme5nKP+E5Q=="],
 
-    "@metaobjects/runtime-ts/zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
+    "@metaobjectsdev/runtime-ts/zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
 
     "@stryker-mutator/instrumenter/semver": ["semver@7.7.4", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA=="],
 
@@ -1033,9 +1033,9 @@
 
     "@libsql/kysely-libsql/@libsql/client/libsql": ["libsql@0.3.19", "", { "dependencies": { "@neon-rs/load": "^0.0.4", "detect-libc": "2.0.2", "libsql": "^0.3.15" }, "optionalDependencies": { "@libsql/darwin-arm64": "0.3.19", "@libsql/darwin-x64": "0.3.19", "@libsql/linux-arm64-gnu": "0.3.19", "@libsql/linux-arm64-musl": "0.3.19", "@libsql/linux-x64-gnu": "0.3.19", "@libsql/linux-x64-musl": "0.3.19", "@libsql/win32-x64-msvc": "0.3.19" }, "os": [ "linux", "win32", "darwin", ], "cpu": [ "x64", "arm64", ] }, "sha512-Aj5cQ5uk/6fHdmeW0TiXK42FqUlwx7ytmMLPSaUQPin5HKKKuUPD62MAbN4OEweGBBI7q1BekoEN4gPUEL6MZA=="],
 
-    "@metaobjects/runtime-ts/@libsql/client/@libsql/core": ["@libsql/core@0.15.15", "", { "dependencies": { "js-base64": "^3.7.5" } }, "sha512-C88Z6UKl+OyuKKPwz224riz02ih/zHYI3Ho/LAcVOgjsunIRZoBw7fjRfaH9oPMmSNeQfhGklSG2il1URoOIsA=="],
+    "@metaobjectsdev/runtime-ts/@libsql/client/@libsql/core": ["@libsql/core@0.15.15", "", { "dependencies": { "js-base64": "^3.7.5" } }, "sha512-C88Z6UKl+OyuKKPwz224riz02ih/zHYI3Ho/LAcVOgjsunIRZoBw7fjRfaH9oPMmSNeQfhGklSG2il1URoOIsA=="],
 
-    "@metaobjects/runtime-ts/@libsql/client/libsql": ["libsql@0.5.29", "", { "dependencies": { "@neon-rs/load": "^0.0.4", "detect-libc": "2.0.2" }, "optionalDependencies": { "@libsql/darwin-arm64": "0.5.29", "@libsql/darwin-x64": "0.5.29", "@libsql/linux-arm-gnueabihf": "0.5.29", "@libsql/linux-arm-musleabihf": "0.5.29", "@libsql/linux-arm64-gnu": "0.5.29", "@libsql/linux-arm64-musl": "0.5.29", "@libsql/linux-x64-gnu": "0.5.29", "@libsql/linux-x64-musl": "0.5.29", "@libsql/win32-x64-msvc": "0.5.29" }, "os": [ "linux", "win32", "darwin", ], "cpu": [ "arm", "x64", "arm64", ] }, "sha512-8lMP8iMgiBzzoNbAPQ59qdVcj6UaE/Vnm+fiwX4doX4Narook0a4GPKWBEv+CR8a1OwbfkgL18uBfBjWdF0Fzg=="],
+    "@metaobjectsdev/runtime-ts/@libsql/client/libsql": ["libsql@0.5.29", "", { "dependencies": { "@neon-rs/load": "^0.0.4", "detect-libc": "2.0.2" }, "optionalDependencies": { "@libsql/darwin-arm64": "0.5.29", "@libsql/darwin-x64": "0.5.29", "@libsql/linux-arm-gnueabihf": "0.5.29", "@libsql/linux-arm-musleabihf": "0.5.29", "@libsql/linux-arm64-gnu": "0.5.29", "@libsql/linux-arm64-musl": "0.5.29", "@libsql/linux-x64-gnu": "0.5.29", "@libsql/linux-x64-musl": "0.5.29", "@libsql/win32-x64-msvc": "0.5.29" }, "os": [ "linux", "win32", "darwin", ], "cpu": [ "arm", "x64", "arm64", ] }, "sha512-8lMP8iMgiBzzoNbAPQ59qdVcj6UaE/Vnm+fiwX4doX4Narook0a4GPKWBEv+CR8a1OwbfkgL18uBfBjWdF0Fzg=="],
 
     "@libsql/kysely-libsql/@libsql/client/@libsql/hrana-client/@libsql/isomorphic-fetch": ["@libsql/isomorphic-fetch@0.2.5", "", {}, "sha512-8s/B2TClEHms2yb+JGpsVRTPBfy1ih/Pq6h6gvyaNcYnMVJvgQRY7wAa8U2nD0dppbCuDU5evTNMEhrQ17ZKKg=="],
 
@@ -1053,18 +1053,18 @@
 
     "@libsql/kysely-libsql/@libsql/client/libsql/@libsql/win32-x64-msvc": ["@libsql/win32-x64-msvc@0.3.19", "", { "os": "win32", "cpu": "x64" }, "sha512-ay1X9AobE4BpzG0XPw1gplyLZPGHIgJOovvW23gUrukRegiUP62uzhpRbKNogLlUOynyXeq//prHgPXiebUfWg=="],
 
-    "@metaobjects/runtime-ts/@libsql/client/libsql/@libsql/darwin-arm64": ["@libsql/darwin-arm64@0.5.29", "", { "os": "darwin", "cpu": "arm64" }, "sha512-K+2RIB1OGFPYQbfay48GakLhqf3ArcbHqPFu7EZiaUcRgFcdw8RoltsMyvbj5ix2fY0HV3Q3Ioa/ByvQdaSM0A=="],
+    "@metaobjectsdev/runtime-ts/@libsql/client/libsql/@libsql/darwin-arm64": ["@libsql/darwin-arm64@0.5.29", "", { "os": "darwin", "cpu": "arm64" }, "sha512-K+2RIB1OGFPYQbfay48GakLhqf3ArcbHqPFu7EZiaUcRgFcdw8RoltsMyvbj5ix2fY0HV3Q3Ioa/ByvQdaSM0A=="],
 
-    "@metaobjects/runtime-ts/@libsql/client/libsql/@libsql/darwin-x64": ["@libsql/darwin-x64@0.5.29", "", { "os": "darwin", "cpu": "x64" }, "sha512-OtT+KFHsKFy1R5FVadr8FJ2Bb1mghtXTyJkxv0trocq7NuHntSki1eUbxpO5ezJesDvBlqFjnWaYYY516QNLhQ=="],
+    "@metaobjectsdev/runtime-ts/@libsql/client/libsql/@libsql/darwin-x64": ["@libsql/darwin-x64@0.5.29", "", { "os": "darwin", "cpu": "x64" }, "sha512-OtT+KFHsKFy1R5FVadr8FJ2Bb1mghtXTyJkxv0trocq7NuHntSki1eUbxpO5ezJesDvBlqFjnWaYYY516QNLhQ=="],
 
-    "@metaobjects/runtime-ts/@libsql/client/libsql/@libsql/linux-arm64-gnu": ["@libsql/linux-arm64-gnu@0.5.29", "", { "os": "linux", "cpu": "arm64" }, "sha512-gURBqaiXIGGwFNEaUj8Ldk7Hps4STtG+31aEidCk5evMMdtsdfL3HPCpvys+ZF/tkOs2MWlRWoSq7SOuCE9k3w=="],
+    "@metaobjectsdev/runtime-ts/@libsql/client/libsql/@libsql/linux-arm64-gnu": ["@libsql/linux-arm64-gnu@0.5.29", "", { "os": "linux", "cpu": "arm64" }, "sha512-gURBqaiXIGGwFNEaUj8Ldk7Hps4STtG+31aEidCk5evMMdtsdfL3HPCpvys+ZF/tkOs2MWlRWoSq7SOuCE9k3w=="],
 
-    "@metaobjects/runtime-ts/@libsql/client/libsql/@libsql/linux-arm64-musl": ["@libsql/linux-arm64-musl@0.5.29", "", { "os": "linux", "cpu": "arm64" }, "sha512-fwgYZ0H8mUkyVqXZHF3mT/92iIh1N94Owi/f66cPVNsk9BdGKq5gVpoKO+7UxaNzuEH1roJp2QEwsCZMvBLpqg=="],
+    "@metaobjectsdev/runtime-ts/@libsql/client/libsql/@libsql/linux-arm64-musl": ["@libsql/linux-arm64-musl@0.5.29", "", { "os": "linux", "cpu": "arm64" }, "sha512-fwgYZ0H8mUkyVqXZHF3mT/92iIh1N94Owi/f66cPVNsk9BdGKq5gVpoKO+7UxaNzuEH1roJp2QEwsCZMvBLpqg=="],
 
-    "@metaobjects/runtime-ts/@libsql/client/libsql/@libsql/linux-x64-gnu": ["@libsql/linux-x64-gnu@0.5.29", "", { "os": "linux", "cpu": "x64" }, "sha512-y14V0vY0nmMC6G0pHeJcEarcnGU2H6cm21ZceRkacWHvQAEhAG0latQkCtoS2njFOXiYIg+JYPfAoWKbi82rkg=="],
+    "@metaobjectsdev/runtime-ts/@libsql/client/libsql/@libsql/linux-x64-gnu": ["@libsql/linux-x64-gnu@0.5.29", "", { "os": "linux", "cpu": "x64" }, "sha512-y14V0vY0nmMC6G0pHeJcEarcnGU2H6cm21ZceRkacWHvQAEhAG0latQkCtoS2njFOXiYIg+JYPfAoWKbi82rkg=="],
 
-    "@metaobjects/runtime-ts/@libsql/client/libsql/@libsql/linux-x64-musl": ["@libsql/linux-x64-musl@0.5.29", "", { "os": "linux", "cpu": "x64" }, "sha512-gquqwA/39tH4pFl+J9n3SOMSymjX+6kZ3kWgY3b94nXFTwac9bnFNMffIomgvlFaC4ArVqMnOZD3nuJ3H3VO1w=="],
+    "@metaobjectsdev/runtime-ts/@libsql/client/libsql/@libsql/linux-x64-musl": ["@libsql/linux-x64-musl@0.5.29", "", { "os": "linux", "cpu": "x64" }, "sha512-gquqwA/39tH4pFl+J9n3SOMSymjX+6kZ3kWgY3b94nXFTwac9bnFNMffIomgvlFaC4ArVqMnOZD3nuJ3H3VO1w=="],
 
-    "@metaobjects/runtime-ts/@libsql/client/libsql/@libsql/win32-x64-msvc": ["@libsql/win32-x64-msvc@0.5.29", "", { "os": "win32", "cpu": "x64" }, "sha512-4/0CvEdhi6+KjMxMaVbFM2n2Z44escBRoEYpR+gZg64DdetzGnYm8mcNLcoySaDJZNaBd6wz5DNdgRmcI4hXcg=="],
+    "@metaobjectsdev/runtime-ts/@libsql/client/libsql/@libsql/win32-x64-msvc": ["@libsql/win32-x64-msvc@0.5.29", "", { "os": "win32", "cpu": "x64" }, "sha512-4/0CvEdhi6+KjMxMaVbFM2n2Z44escBRoEYpR+gZg64DdetzGnYm8mcNLcoySaDJZNaBd6wz5DNdgRmcI4hXcg=="],
   }
 }

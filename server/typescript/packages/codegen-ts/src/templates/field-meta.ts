@@ -3,7 +3,7 @@
 //
 // All helpers take a MetaField node.
 
-import { MetaField } from "@metaobjects/metadata";
+import { MetaField } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
@@ -27,7 +27,7 @@ import {
   FIELD_ATTR_CURRENCY_DEFAULT,
   VIEW_CURRENCY_ATTR_LOCALE,
   VIEW_CURRENCY_ATTR_LOCALE_DEFAULT,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 
 // ---------------------------------------------------------------------------
 // inferViewKind

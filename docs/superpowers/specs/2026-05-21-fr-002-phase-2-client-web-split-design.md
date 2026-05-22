@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-21
 **Status:** Design (ready for implementation plan)
-**Scope:** Decompose `@metaobjects/runtime-ts-client` into three runtime packages under `client/web/packages/`, lift the form-file generator into its own `@metaobjects/codegen-ts-react` package, and update all in-tree consumers + CLAUDE.md. Single atomic PR.
+**Scope:** Decompose `@metaobjectsdev/runtime-ts-client` into three runtime packages under `client/web/packages/`, lift the form-file generator into its own `@metaobjectsdev/codegen-ts-react` package, and update all in-tree consumers + CLAUDE.md. Single atomic PR.
 
 ## Background
 
@@ -20,8 +20,8 @@ After Phase 2 ships:
 
 1. Browser-side runtime lives under [client/web/packages/](../../../client/web/packages/) as three packages: `runtime-web` (pure core), `react` (React layer), `tanstack` (TanStack layer).
 2. Server-side codegen lives under [server/typescript/packages/](../../../server/typescript/packages/) as three packages: `codegen-ts` (framework-neutral, unchanged role), `codegen-ts-react` (new, owns the form-file generator), `codegen-ts-tanstack` (unchanged location, emits updated imports).
-3. `@metaobjects/runtime-ts-client` is deleted. Its contents have moved to one of the three new runtime packages.
-4. `@metaobjects/codegen-ts/templates/form-file.ts` is deleted from codegen-ts. The generator moves to `codegen-ts-react`.
+3. `@metaobjectsdev/runtime-ts-client` is deleted. Its contents have moved to one of the three new runtime packages.
+4. `@metaobjectsdev/codegen-ts/templates/form-file.ts` is deleted from codegen-ts. The generator moves to `codegen-ts-react`.
 5. All in-tree consumers (cli, forge, generator tests, golden snapshots, CLAUDE.md) point at the new packages.
 6. `bun test` from `server/typescript/` = 2105 pass / 0 fail (baseline preserved).
 
@@ -32,33 +32,33 @@ After Phase 2 ships:
 - **npm publishing.** Deferred to H7. All packages remain workspace-internal until then.
 - **C# / Java / Python ports of the runtime packages.** TS-only restructure.
 - **Renaming `codegen-ts-tanstack`.** The existing name follows the `codegen-ts-<framework>` convention. Renaming would be churn for no gain.
-- **Generator API changes.** The `Generator` / `GenContext` / `EmittedFile` contracts from `@metaobjects/codegen-ts` stay identical. New packages just provide additional `Generator` implementations.
+- **Generator API changes.** The `Generator` / `GenContext` / `EmittedFile` contracts from `@metaobjectsdev/codegen-ts` stay identical. New packages just provide additional `Generator` implementations.
 
 ## Target package layout
 
 ```
 metaobjects/
 ├── server/typescript/packages/
-│   ├── codegen-ts/                       # @metaobjects/codegen-ts (framework-neutral)
+│   ├── codegen-ts/                       # @metaobjectsdev/codegen-ts (framework-neutral)
 │   │   └── (entityFile, queriesFile, routesFile, barrel)
-│   ├── codegen-ts-react/                 # @metaobjects/codegen-ts-react (NEW)
+│   ├── codegen-ts-react/                 # @metaobjectsdev/codegen-ts-react (NEW)
 │   │   └── (formFile)
-│   └── codegen-ts-tanstack/              # @metaobjects/codegen-ts-tanstack (existing)
+│   └── codegen-ts-tanstack/              # @metaobjectsdev/codegen-ts-tanstack (existing)
 │       └── (tanstackQuery, tanstackGrid, tanstackGridHook)
 │
 └── client/web/packages/
-    ├── runtime-web/                      # @metaobjects/runtime-web
+    ├── runtime-web/                      # @metaobjectsdev/runtime-web
     │   └── src/
     │       ├── currency.ts               # formatCurrency, parseCurrency, minorUnitsFor
     │       ├── filter-qs.ts              # buildFilterQs
     │       ├── fetcher.ts                # EntityFetcher interface + CellRenderer<T> types
     │       └── index.ts
-    ├── react/                            # @metaobjects/react
+    ├── react/                            # @metaobjectsdev/react
     │   └── src/
     │       ├── use-entity-form.tsx       # useEntityForm + types
     │       ├── currency-input.tsx        # <CurrencyInput>
     │       └── index.ts
-    └── tanstack/                         # @metaobjects/tanstack
+    └── tanstack/                         # @metaobjectsdev/tanstack
         └── src/
             ├── entity-fetcher.tsx        # EntityFetcherProvider + useEntityFetcher
             ├── cell-renderer-provider.tsx
@@ -76,21 +76,21 @@ Two disjoint trees, no cross-edges:
 ```
 Runtime side (browser):              Codegen side (server):
 
-  @metaobjects/runtime-web ←┐         @metaobjects/codegen-ts ←┐
+  @metaobjectsdev/runtime-web ←┐         @metaobjectsdev/codegen-ts ←┐
         ↑                    \              ↑                   \
-        └── @metaobjects/react ┐             ├── @metaobjects/codegen-ts-react
-                ↑               \            └── @metaobjects/codegen-ts-tanstack
-                └── @metaobjects/tanstack
+        └── @metaobjectsdev/react ┐             ├── @metaobjectsdev/codegen-ts-react
+                ↑               \            └── @metaobjectsdev/codegen-ts-tanstack
+                └── @metaobjectsdev/tanstack
 ```
 
 | Package | `dependencies` | `peerDependencies` (all optional) |
 |---|---|---|
-| `runtime-web` | `@metaobjects/metadata`, `qs` | — |
-| `react` | `@metaobjects/runtime-web` | `react`, `react-hook-form`, `@hookform/resolvers`, `zod` |
-| `tanstack` | `@metaobjects/runtime-web`, `@metaobjects/react` | `react`, `@tanstack/react-query`, `@tanstack/react-table` |
-| `codegen-ts` | `@metaobjects/metadata`, `ts-poet` | `@biomejs/biome` |
-| `codegen-ts-react` | `@metaobjects/metadata`, `@metaobjects/codegen-ts`, `ts-poet` | `@biomejs/biome` |
-| `codegen-ts-tanstack` | `@metaobjects/metadata`, `@metaobjects/codegen-ts`, `ts-poet` | `@biomejs/biome` |
+| `runtime-web` | `@metaobjectsdev/metadata`, `qs` | — |
+| `react` | `@metaobjectsdev/runtime-web` | `react`, `react-hook-form`, `@hookform/resolvers`, `zod` |
+| `tanstack` | `@metaobjectsdev/runtime-web`, `@metaobjectsdev/react` | `react`, `@tanstack/react-query`, `@tanstack/react-table` |
+| `codegen-ts` | `@metaobjectsdev/metadata`, `ts-poet` | `@biomejs/biome` |
+| `codegen-ts-react` | `@metaobjectsdev/metadata`, `@metaobjectsdev/codegen-ts`, `ts-poet` | `@biomejs/biome` |
+| `codegen-ts-tanstack` | `@metaobjectsdev/metadata`, `@metaobjectsdev/codegen-ts`, `ts-poet` | `@biomejs/biome` |
 
 Bun workspace globs in `server/typescript/package.json` and a new `client/web/package.json` (or root) declare the new package locations. The exact workspace declaration follows whatever pattern already works for `server/typescript/packages/*`; Phase 1 verified the glob-relative workspace mechanism survives the deeper directory.
 
@@ -120,11 +120,11 @@ Generators emit hard-coded import strings into generated files. These strings up
 
 | Generator | Was emitting | Now emits |
 |---|---|---|
-| `codegen-ts-react/form-file` | `import { useEntityForm } from "@metaobjects/runtime-ts-client/react";` | `import { useEntityForm } from "@metaobjects/react";` |
-| `codegen-ts-react/form-file` | `import { CurrencyInput } from "@metaobjects/runtime-ts-client";` | `import { CurrencyInput } from "@metaobjects/react";` |
-| `codegen-ts-tanstack/hooks-file` | `import { ... } from "@metaobjects/runtime-ts-client";` | `import { ... } from "@metaobjects/tanstack";` |
-| `codegen-ts-tanstack/grid-hook-file` | same | same — points at `@metaobjects/tanstack` |
-| `codegen-ts/entity-constants` *(currency JSDoc)* | references `@metaobjects/runtime-ts-client` | references `@metaobjects/runtime-web` (for `formatCurrency`) |
+| `codegen-ts-react/form-file` | `import { useEntityForm } from "@metaobjectsdev/runtime-ts-client/react";` | `import { useEntityForm } from "@metaobjectsdev/react";` |
+| `codegen-ts-react/form-file` | `import { CurrencyInput } from "@metaobjectsdev/runtime-ts-client";` | `import { CurrencyInput } from "@metaobjectsdev/react";` |
+| `codegen-ts-tanstack/hooks-file` | `import { ... } from "@metaobjectsdev/runtime-ts-client";` | `import { ... } from "@metaobjectsdev/tanstack";` |
+| `codegen-ts-tanstack/grid-hook-file` | same | same — points at `@metaobjectsdev/tanstack` |
+| `codegen-ts/entity-constants` *(currency JSDoc)* | references `@metaobjectsdev/runtime-ts-client` | references `@metaobjectsdev/runtime-web` (for `formatCurrency`) |
 
 The import-string constants currently centralized in [server/typescript/packages/codegen-ts/src/templates/entity-constants.ts](../../../server/typescript/packages/codegen-ts/src/templates/entity-constants.ts) split: framework-neutral ones stay in `codegen-ts`; form-related move to `codegen-ts-react`; tanstack-related already live in (or move to) `codegen-ts-tanstack`.
 
@@ -132,13 +132,13 @@ The import-string constants currently centralized in [server/typescript/packages
 
 Files that need editing in this PR (non-generated):
 
-- [server/typescript/packages/cli/package.json](../../../server/typescript/packages/cli/package.json) — add `@metaobjects/codegen-ts-react` workspace dep so it's available for user `metaobjects.config.ts` files.
+- [server/typescript/packages/cli/package.json](../../../server/typescript/packages/cli/package.json) — add `@metaobjectsdev/codegen-ts-react` workspace dep so it's available for user `metaobjects.config.ts` files.
 - [server/typescript/packages/cli/src/lib/load-metaobjects-config.ts](../../../server/typescript/packages/cli/src/lib/load-metaobjects-config.ts) + [test/unit/load-metaobjects-config.test.ts](../../../server/typescript/packages/cli/test/unit/load-metaobjects-config.test.ts) — update any string refs to old package names if present.
 - [server/typescript/packages/cli/test/unit/init-refresh-docs.test.ts](../../../server/typescript/packages/cli/test/unit/init-refresh-docs.test.ts) — same.
 - [server/typescript/packages/forge/src/agent-docs/index.ts](../../../server/typescript/packages/forge/src/agent-docs/index.ts) — agent-docs string refs.
 - [server/typescript/packages/codegen-ts/src/templates/form-file.ts](../../../server/typescript/packages/codegen-ts/src/templates/form-file.ts) — **deleted**, moved to codegen-ts-react.
 - [server/typescript/packages/codegen-ts/src/templates/entity-constants.ts](../../../server/typescript/packages/codegen-ts/src/templates/entity-constants.ts) — split, form-related strings moved.
-- [server/typescript/packages/codegen-ts/src/generators/](../../../server/typescript/packages/codegen-ts/src/generators/) — remove the `formFile` factory re-export (callers import it from `@metaobjects/codegen-ts-react`).
+- [server/typescript/packages/codegen-ts/src/generators/](../../../server/typescript/packages/codegen-ts/src/generators/) — remove the `formFile` factory re-export (callers import it from `@metaobjectsdev/codegen-ts-react`).
 - [server/typescript/packages/codegen-ts/test/generators/factories.test.ts](../../../server/typescript/packages/codegen-ts/test/generators/factories.test.ts) — drop form-file assertions; move to codegen-ts-react test.
 - [server/typescript/packages/codegen-ts-tanstack/test/projection-hooks.test.ts](../../../server/typescript/packages/codegen-ts-tanstack/test/projection-hooks.test.ts) + [tanstack-query-filter.test.ts](../../../server/typescript/packages/codegen-ts-tanstack/test/tanstack-query-filter.test.ts) — assertions on emitted imports update to new package names.
 - All golden snapshots in [server/typescript/packages/codegen-ts/test/golden/](../../../server/typescript/packages/codegen-ts/test/golden/) — regenerated (one diff per `.form.tsx` and per `.hooks.ts` / `.columns.tsx` / `.grid.ts`).
@@ -151,7 +151,7 @@ Phase 2 is complete when **all** of these pass from a clean checkout:
 1. `cd server/typescript && bun install` — workspace resolves cleanly. New packages discovered by the workspace glob.
 2. `cd server/typescript && bun test` — **2105 pass / 0 fail** (baseline preserved from Phase 1).
 3. `cd server/typescript && bun run --filter '*' typecheck` — zero errors.
-4. Golden snapshot diffs are reviewed and committed — every `.form.tsx` now imports from `@metaobjects/react`, every `.hooks.ts` / `.columns.tsx` from `@metaobjects/tanstack`, every currency JSDoc from `@metaobjects/runtime-web`.
+4. Golden snapshot diffs are reviewed and committed — every `.form.tsx` now imports from `@metaobjectsdev/react`, every `.hooks.ts` / `.columns.tsx` from `@metaobjectsdev/tanstack`, every currency JSDoc from `@metaobjectsdev/runtime-web`.
 5. **Install-tree spot-check:** in a scratch directory, `pnpm init -y && pnpm add file:./client/web/packages/runtime-web` — the resulting `node_modules` contains no `react`, no `ts-poet`, no `@biomejs/biome`. Confirms runtime-web's purity.
 6. Conformance fixtures still pass — `bun test` includes the conformance corpus.
 
@@ -186,4 +186,4 @@ If any intermediate step fails, fix it before continuing — the PR is atomic, b
 
 ## Migration notes
 
-This is a coordinated breaking change with no deprecation window. The package `@metaobjects/runtime-ts-client` ceases to exist when Phase 2 merges; downstream consumers (downstream-consumer, future trainer-website on another machine) must follow their FR before they can build against the new metaobjects `main`.
+This is a coordinated breaking change with no deprecation window. The package `@metaobjectsdev/runtime-ts-client` ceases to exist when Phase 2 merges; downstream consumers (downstream-consumer, future trainer-website on another machine) must follow their FR before they can build against the new metaobjects `main`.

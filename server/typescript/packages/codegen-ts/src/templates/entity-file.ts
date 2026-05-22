@@ -6,7 +6,7 @@
 //   vanilla / write-through entity → Drizzle table path
 
 import { joinCode, type Code } from "ts-poet";
-import type { MetaObject } from "@metaobjects/metadata";
+import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
 import { renderDrizzleSchema } from "./drizzle-schema.js";
 import { renderInferredTypes } from "./inferred-types.js";

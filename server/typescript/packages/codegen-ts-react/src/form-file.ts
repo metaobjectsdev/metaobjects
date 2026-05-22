@@ -1,5 +1,5 @@
-import type { MetaObject } from "@metaobjects/metadata";
-import { perEntity, type Generator, type GeneratorFactory, entityOutputPath } from "@metaobjects/codegen-ts";
+import type { MetaObject } from "@metaobjectsdev/metadata";
+import { perEntity, type Generator, type GeneratorFactory, entityOutputPath } from "@metaobjectsdev/codegen-ts";
 import { renderFormFile } from "./templates/form-file.js";
 
 export interface FormFileOpts {

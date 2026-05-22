@@ -1,9 +1,9 @@
 import { describe, test, expect } from "bun:test";
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_SOURCE,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_BOOLEAN,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
-         SOURCE_SUBTYPE_DB_TABLE, SOURCE_DB_TABLE_ATTR_NAME } from "@metaobjects/metadata";
+         SOURCE_SUBTYPE_DB_TABLE, SOURCE_DB_TABLE_ATTR_NAME } from "@metaobjectsdev/metadata";
 import { meta } from "./_meta-build.js";
 import {
   compileFilter, buildSelectSpec, buildInsertSpec, buildUpdateSpec,

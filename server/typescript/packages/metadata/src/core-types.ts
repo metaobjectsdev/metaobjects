@@ -368,7 +368,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
 /**
  * The core metaobjects metamodel — the seven base types (object, field, attr,
  * validator, view, identity, relationship) plus layout / source / origin and
- * the metadata root. One provider per package: this is `@metaobjects/metadata`'s.
+ * the metadata root. One provider per package: this is `@metaobjectsdev/metadata`'s.
  */
 export const coreTypesProvider: MetaDataTypeProvider = {
   id: "metaobjects-core-types",

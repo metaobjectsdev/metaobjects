@@ -1,10 +1,10 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { FileMetaDataLoader } from "@metaobjects/metadata/core";
+import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { tanstackQuery } from "../src/tanstack-query.js";
-import { makeRenderContext } from "@metaobjects/codegen-ts";
-import { buildPkMap, buildRelationMap } from "@metaobjects/codegen-ts";
-import type { GenContext } from "@metaobjects/codegen-ts";
+import { makeRenderContext } from "@metaobjectsdev/codegen-ts";
+import { buildPkMap, buildRelationMap } from "@metaobjectsdev/codegen-ts";
+import type { GenContext } from "@metaobjectsdev/codegen-ts";
 
 const FIXTURE = resolve(import.meta.dir, "..", "..", "codegen-ts", "test", "fixtures", "filter-fixture.json");
 
@@ -52,7 +52,7 @@ describe("tanstackQuery — useEntities accepts typed filter", () => {
     const files = await tanstackQuery().generate(ctx);
     const file = files.find((f) => f.path === "Subscriber.hooks.ts")!;
     expect(file.content).toContain("buildFilterQs");
-    expect(file.content).toContain("@metaobjects/tanstack");
+    expect(file.content).toContain("@metaobjectsdev/tanstack");
   });
 
   test("query-key factory uses SubscriberFilter type", async () => {

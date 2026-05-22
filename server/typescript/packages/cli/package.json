@@ -1,5 +1,5 @@
 {
-  "name": "@metaobjects/cli",
+  "name": "@metaobjectsdev/cli",
   "version": "0.5.0",
   "description": "CLI for MetaObjects: scaffold, codegen, migrate, and drift-detection commands.",
   "type": "module",
@@ -37,12 +37,12 @@
   },
   "keywords": ["metaobjects", "cli", "scaffold", "codegen", "drift-detection"],
   "dependencies": {
-    "@metaobjects/sdk": "workspace:*",
-    "@metaobjects/metadata": "workspace:*",
-    "@metaobjects/codegen-ts": "workspace:*",
-    "@metaobjects/codegen-ts-react": "workspace:*",
-    "@metaobjects/codegen-ts-tanstack": "workspace:*",
-    "@metaobjects/migrate-ts": "workspace:*",
+    "@metaobjectsdev/sdk": "workspace:*",
+    "@metaobjectsdev/metadata": "workspace:*",
+    "@metaobjectsdev/codegen-ts": "workspace:*",
+    "@metaobjectsdev/codegen-ts-react": "workspace:*",
+    "@metaobjectsdev/codegen-ts-tanstack": "workspace:*",
+    "@metaobjectsdev/migrate-ts": "workspace:*",
     "jiti": "^2.4.0"
   },
   "peerDependencies": {

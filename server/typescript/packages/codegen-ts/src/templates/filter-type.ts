@@ -3,7 +3,7 @@
 // datetimes get eq/ne/gt/gte/lt/lte/in.
 
 import { code, type Code } from "ts-poet";
-import { MetaField, MetaObject } from "@metaobjects/metadata";
+import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
   FIELD_ATTR_FILTERABLE,
   FIELD_SUBTYPE_BOOLEAN,
@@ -15,7 +15,7 @@ import {
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DECIMAL,
   opsForSubType,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import { isSortableField } from "./filter-shared.js";
 
 const NUMBER_SUBTYPES = new Set<string>([

@@ -4,7 +4,7 @@
 //   - vanilla entities still emit mountCrudRoutes + table var import
 
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
 import { renderRoutesFile } from "../../src/templates/routes-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
@@ -191,10 +191,10 @@ describe("renderRoutesFile — source-aware dispatch", () => {
       expect(out).toContain("programSummaryRoutes");
     });
 
-    test("imports from @metaobjects/runtime-ts/drizzle-fastify", async () => {
+    test("imports from @metaobjectsdev/runtime-ts/drizzle-fastify", async () => {
       const { projection, ctx } = await loadProjectionFixture();
       const out = renderRoutesFile(projection, ctx);
-      expect(out).toContain("@metaobjects/runtime-ts/drizzle-fastify");
+      expect(out).toContain("@metaobjectsdev/runtime-ts/drizzle-fastify");
     });
   });
 

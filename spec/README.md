@@ -10,7 +10,7 @@ A typed metadata standard for declaring entity models, identities, relationships
 - **Runtime loaders** that read the metadata at runtime to drive CRUD, validation, relationships, dynamic admin UIs, and LLM tool registration.
 - **Drift checks** that flag divergence between code and metadata via compile-time breakage in the type checker and through `meta migrate` against live databases.
 
-The substrate is local-first: typed metadata lives in your repo at `metaobjects/`, generated code is idiomatic per-language output that runs **without any MetaObjects dependency at runtime**. If `@metaobjects/*` packages disappeared tomorrow, your generated code keeps working.
+The substrate is local-first: typed metadata lives in your repo at `metaobjects/`, generated code is idiomatic per-language output that runs **without any MetaObjects dependency at runtime**. If `@metaobjectsdev/*` packages disappeared tomorrow, your generated code keeps working.
 
 ## The metamodel in one paragraph
 

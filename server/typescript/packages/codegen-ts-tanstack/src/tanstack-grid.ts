@@ -1,6 +1,6 @@
-import type { MetaObject } from "@metaobjects/metadata";
-import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjects/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath } from "@metaobjects/codegen-ts";
+import type { MetaObject } from "@metaobjectsdev/metadata";
+import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath } from "@metaobjectsdev/codegen-ts";
 import { renderColumnsFile } from "./templates/columns-file.js";
 
 export interface TanstackGridOpts {

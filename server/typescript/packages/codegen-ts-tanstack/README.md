@@ -1,11 +1,11 @@
-# @metaobjects/codegen-ts-tanstack
+# @metaobjectsdev/codegen-ts-tanstack
 
 TanStack codegen for MetaObjects. Provides `tanstackQuery()` (per-entity `<Entity>.hooks.ts` — 5 React Query hooks), `tanstackGrid()` (`<Entity>.columns.tsx` for `@tanstack/react-table`), and `tanstackGridHook()`.
 
 ## Install
 
 ```bash
-pnpm add -D @metaobjects/codegen-ts-tanstack
+pnpm add -D @metaobjectsdev/codegen-ts-tanstack
 ```
 
 ## Usage
@@ -13,8 +13,8 @@ pnpm add -D @metaobjects/codegen-ts-tanstack
 In your `metaobjects.config.ts`:
 
 ```ts
-import { defineConfig } from "@metaobjects/cli";
-import { tanstackQuery, tanstackGrid } from "@metaobjects/codegen-ts-tanstack";
+import { defineConfig } from "@metaobjectsdev/cli";
+import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack";
 
 export default defineConfig({
   generators: [tanstackQuery(), tanstackGrid()],
@@ -23,7 +23,7 @@ export default defineConfig({
 
 ## Pairs with
 
-- Runtime: [`@metaobjects/tanstack`](../../../../client/web/packages/tanstack) — generated hooks and columns import from here.
+- Runtime: [`@metaobjectsdev/tanstack`](../../../../client/web/packages/tanstack) — generated hooks and columns import from here.
 
 ## Links
 

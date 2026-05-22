@@ -1,6 +1,6 @@
 // RenderContext — cross-cutting state passed to every template.
 
-import type { MetaRoot } from "@metaobjects/metadata";
+import type { MetaRoot } from "@metaobjectsdev/metadata";
 import type { Dialect } from "./column-mapper.js";
 import type { PkInfo } from "./pk-resolver.js";
 import type { RelationMap } from "./relation-resolver.js";

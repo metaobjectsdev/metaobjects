@@ -3,11 +3,11 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti";
-import type { MetaobjectsGenConfig } from "@metaobjects/codegen-ts";
+import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
 const CONFIG_FILE = "metaobjects.config.ts";
 
-// Resolve @metaobjects/codegen-ts from the CLI's own node_modules so that
+// Resolve @metaobjectsdev/codegen-ts from the CLI's own node_modules so that
 // metaobjects.config.ts (which lives in the user's project) can import it even
 // when the user's project has no direct dependency on the package.
 //
@@ -26,23 +26,23 @@ const _require = createRequire(import.meta.url);
 // unrebuilt dist/.
 //
 // The three workspace deps resolve through the CLI's own node_modules.
-// @metaobjects/cli is this package itself, so it resolves directly from
+// @metaobjectsdev/cli is this package itself, so it resolves directly from
 // _cliDir rather than through node_modules (which would be a non-existent
 // self-referential symlink).
 const CLI_PKG_PATHS: Record<string, { dist: string; src: string }> = {
-  "@metaobjects/codegen-ts": {
-    dist: "node_modules/@metaobjects/codegen-ts/dist/index.js",
-    src: "node_modules/@metaobjects/codegen-ts/src/index.ts",
+  "@metaobjectsdev/codegen-ts": {
+    dist: "node_modules/@metaobjectsdev/codegen-ts/dist/index.js",
+    src: "node_modules/@metaobjectsdev/codegen-ts/src/index.ts",
   },
-  "@metaobjects/codegen-ts/generators": {
-    dist: "node_modules/@metaobjects/codegen-ts/dist/generators/index.js",
-    src: "node_modules/@metaobjects/codegen-ts/src/generators/index.ts",
+  "@metaobjectsdev/codegen-ts/generators": {
+    dist: "node_modules/@metaobjectsdev/codegen-ts/dist/generators/index.js",
+    src: "node_modules/@metaobjectsdev/codegen-ts/src/generators/index.ts",
   },
-  "@metaobjects/codegen-ts-tanstack": {
-    dist: "node_modules/@metaobjects/codegen-ts-tanstack/dist/index.js",
-    src: "node_modules/@metaobjects/codegen-ts-tanstack/src/index.ts",
+  "@metaobjectsdev/codegen-ts-tanstack": {
+    dist: "node_modules/@metaobjectsdev/codegen-ts-tanstack/dist/index.js",
+    src: "node_modules/@metaobjectsdev/codegen-ts-tanstack/src/index.ts",
   },
-  "@metaobjects/cli": {
+  "@metaobjectsdev/cli": {
     dist: "dist/src/index.js",
     src: "src/index.ts",
   },
@@ -63,17 +63,17 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
       `metaobjects.config.ts not found at ${fullPath}. Run 'meta init' to scaffold one.`,
     );
   }
-  // Use import.meta.url as base so jiti resolves workspace deps (@metaobjects/*)
+  // Use import.meta.url as base so jiti resolves workspace deps (@metaobjectsdev/*)
   // from the CLI's own node_modules, not from the user's project root.
   // The alias map redirects codegen-ts imports to the CLI's own copy so that
-  // user projects don't need @metaobjects/codegen-ts as a direct dependency.
+  // user projects don't need @metaobjectsdev/codegen-ts as a direct dependency.
   const jiti = createJiti(import.meta.url, {
     interopDefault: true,
     alias: {
-      "@metaobjects/codegen-ts": resolveCliPkg("@metaobjects/codegen-ts"),
-      "@metaobjects/codegen-ts/generators": resolveCliPkg("@metaobjects/codegen-ts/generators"),
-      "@metaobjects/codegen-ts-tanstack": resolveCliPkg("@metaobjects/codegen-ts-tanstack"),
-      "@metaobjects/cli": resolveCliPkg("@metaobjects/cli"),
+      "@metaobjectsdev/codegen-ts": resolveCliPkg("@metaobjectsdev/codegen-ts"),
+      "@metaobjectsdev/codegen-ts/generators": resolveCliPkg("@metaobjectsdev/codegen-ts/generators"),
+      "@metaobjectsdev/codegen-ts-tanstack": resolveCliPkg("@metaobjectsdev/codegen-ts-tanstack"),
+      "@metaobjectsdev/cli": resolveCliPkg("@metaobjectsdev/cli"),
     },
   });
   const raw = (await jiti.import(fullPath)) as MetaobjectsGenConfig | { default: MetaobjectsGenConfig };

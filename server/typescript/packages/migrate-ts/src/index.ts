@@ -1,4 +1,4 @@
-// Public API surface for @metaobjects/migrate-ts v0.1.0
+// Public API surface for @metaobjectsdev/migrate-ts v0.1.0
 //
 // Architecture: pure pipeline — buildExpectedSchema(metadata) +
 // introspect(db, dialect) → SchemaSnapshot; diff(expected, actual, opts)

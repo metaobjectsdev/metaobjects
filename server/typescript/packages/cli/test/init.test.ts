@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { init, initCommand } from "../src/commands/init.js";
-import { saveConfig, ConfigSchema } from "@metaobjects/sdk";
+import { saveConfig, ConfigSchema } from "@metaobjectsdev/sdk";
 
 let cwd: string;
 beforeEach(() => {

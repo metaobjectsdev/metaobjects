@@ -1,4 +1,4 @@
-import type { AggregateFunction } from "@metaobjects/metadata";
+import type { AggregateFunction } from "@metaobjectsdev/metadata";
 
 /** One node in the JOIN tree. `alias` is an auto-generated unique short alias. */
 export interface JoinNode {

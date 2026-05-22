@@ -1,10 +1,10 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import type { MetaObject } from "@metaobjects/metadata";
-import { FileMetaDataLoader } from "@metaobjects/metadata/core";
+import type { MetaObject } from "@metaobjectsdev/metadata";
+import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import { routesFile } from "../../src/generators/routes-file.js";
-import { formFile } from "@metaobjects/codegen-ts-react";
+import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { barrel } from "../../src/generators/barrel.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
@@ -61,7 +61,7 @@ describe("routesFile()", () => {
     const f = files.find(f => f.path === "Post.routes.ts");
     expect(f).toBeDefined();
     expect(f!.content).toContain("mountCrudRoutes");
-    expect(f!.content).toContain("@metaobjects/runtime-ts/drizzle-fastify");
+    expect(f!.content).toContain("@metaobjectsdev/runtime-ts/drizzle-fastify");
   });
 
   test("respects user-provided filter", async () => {
@@ -81,7 +81,7 @@ describe("formFile()", () => {
     const files = await gen.generate(ctx);
     const f = files.find(f => f.path === "Post.form.tsx");
     expect(f).toBeDefined();
-    expect(f!.content).toContain("@metaobjects/react");
+    expect(f!.content).toContain("@metaobjectsdev/react");
     expect(f!.content).toContain("useEntityForm");
   });
 

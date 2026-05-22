@@ -1,10 +1,10 @@
 import { mkdir, writeFile, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { basename } from "node:path";
-import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "@metaobjects/sdk";
+import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "@metaobjectsdev/sdk";
 import { parseInitArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
-import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "@metaobjects/sdk/agent-docs";
+import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "@metaobjectsdev/sdk/agent-docs";
 
 const META_COMMON_JSON = JSON.stringify(
   {
@@ -20,14 +20,14 @@ const META_COMMON_JSON = JSON.stringify(
 const METAOBJECTS_GITIGNORE_BODY = `.gen-state/
 `;
 
-const FORGE_CONFIG_BODY = `import { defineConfig } from "@metaobjects/cli";
+const FORGE_CONFIG_BODY = `import { defineConfig } from "@metaobjectsdev/cli";
 import {
   entityFile,
   queriesFile,
   routesFile,
   // formFile,        // opt-in: emit React form components
   barrel,
-} from "@metaobjects/codegen-ts/generators";
+} from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir:    "./src/db",

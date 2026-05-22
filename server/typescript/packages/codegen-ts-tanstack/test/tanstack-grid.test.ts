@@ -1,9 +1,9 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { FileMetaDataLoader } from "@metaobjects/metadata/core";
+import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { tanstackGrid } from "../src/tanstack-grid.js";
-import { makeRenderContext, buildPkMap, buildRelationMap } from "@metaobjects/codegen-ts";
-import type { GenContext } from "@metaobjects/codegen-ts";
+import { makeRenderContext, buildPkMap, buildRelationMap } from "@metaobjectsdev/codegen-ts";
+import type { GenContext } from "@metaobjectsdev/codegen-ts";
 
 const FIXTURE        = resolve(import.meta.dir, "fixtures", "single-entity.json");
 const MULTI_GRID     = resolve(import.meta.dir, "fixtures", "multi-grid-entity.json");
@@ -96,7 +96,7 @@ describe("tanstackGrid() factory", () => {
 
   test("grid with invalid @filter fails codegen with clear error", async () => {
     // Build a fixture inline with an invalid filter: email.gte is disallowed for string fields.
-    const { MetaObject, MetaField, MetaLayout, TypeId, TYPE_OBJECT: T_OBJ, TYPE_FIELD: T_FIELD, TYPE_LAYOUT: T_LAYOUT, OBJECT_SUBTYPE_ENTITY, FIELD_SUBTYPE_STRING, LAYOUT_SUBTYPE_DATA_GRID } = await import("@metaobjects/metadata");
+    const { MetaObject, MetaField, MetaLayout, TypeId, TYPE_OBJECT: T_OBJ, TYPE_FIELD: T_FIELD, TYPE_LAYOUT: T_LAYOUT, OBJECT_SUBTYPE_ENTITY, FIELD_SUBTYPE_STRING, LAYOUT_SUBTYPE_DATA_GRID } = await import("@metaobjectsdev/metadata");
     const entity: any = new MetaObject(new TypeId(T_OBJ, OBJECT_SUBTYPE_ENTITY), "Subscriber");
 
     const emailField: any = new MetaField(new TypeId(T_FIELD, FIELD_SUBTYPE_STRING), "email");
@@ -116,7 +116,7 @@ describe("tanstackGrid() factory", () => {
   test("respects @emitTanstack: false per entity", async () => {
     // Same approach as the freeze workaround in B-T8 — construct a fresh entity.
     // Use MetaData directly. Import what's needed.
-    const { MetaObject, TypeId, TYPE_OBJECT: T_OBJ, OBJECT_SUBTYPE_ENTITY } = await import("@metaobjects/metadata");
+    const { MetaObject, TypeId, TYPE_OBJECT: T_OBJ, OBJECT_SUBTYPE_ENTITY } = await import("@metaobjectsdev/metadata");
     const fakeEntity: any = new MetaObject(new TypeId(T_OBJ, OBJECT_SUBTYPE_ENTITY), "Subscriber");
     fakeEntity.setAttr("emitTanstack", false);
     expect(tanstackGrid().filter?.(fakeEntity)).toBe(false);

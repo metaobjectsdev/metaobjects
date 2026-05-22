@@ -3,13 +3,13 @@
 // plus the relations() block auto-emitted at the end.
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import { MetaObject, MetaField } from "@metaobjects/metadata";
+import { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import {
   IDENTITY_SUBTYPE_SECONDARY, FIELD_SUBTYPE_LONG,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION, IDENTITY_ATTR_UNIQUE,
   GENERATION_INCREMENT, GENERATION_UUID,
   FIELD_ATTR_AUTO_SET,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier } from "../import-path.js";
 import { mapColumnType } from "../column-mapper.js";

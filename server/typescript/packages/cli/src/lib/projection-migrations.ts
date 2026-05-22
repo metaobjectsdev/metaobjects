@@ -2,17 +2,17 @@ import {
   resolveTableName,
   MetaRoot,
   type MetaData,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import {
   isProjection,
   extractViewSpec,
   emitViewDdl,
-} from "@metaobjects/codegen-ts";
+} from "@metaobjectsdev/codegen-ts";
 import {
   computeViewMigrations,
   type ViewMigrationInput,
   type ViewMigrationsResult,
-} from "@metaobjects/migrate-ts";
+} from "@metaobjectsdev/migrate-ts";
 
 /** view-name → set of source-table names the view's SELECT depends on. */
 export type ProjectionViewDependencies = ReadonlyMap<string, ReadonlySet<string>>;

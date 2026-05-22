@@ -1,4 +1,4 @@
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_OBJECT, TYPE_RELATIONSHIP, TYPE_IDENTITY,
   IDENTITY_SUBTYPE_REFERENCE,
@@ -6,7 +6,7 @@ import {
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF,
   CARDINALITY_ONE, CARDINALITY_MANY,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
 import {
   buildSelectSpec, resolvePkFields,

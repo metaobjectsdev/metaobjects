@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeAll } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
-import type { MetaData } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../src/expected-schema.js";
 import { diff } from "../src/diff/index.js";
 import { emit } from "../src/emit/index.js";

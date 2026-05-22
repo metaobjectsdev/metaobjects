@@ -1,4 +1,4 @@
-# @metaobjects/runtime-ts
+# @metaobjectsdev/runtime-ts
 
 Runtime metadata layer — CRUD, validation, relationship traversal, and view introspection driven by MetaObjects metadata.
 
@@ -7,15 +7,15 @@ Part of the [MetaObjects](https://github.com/metaobjectsdev/metaobjects) monorep
 ## Install
 
 ```bash
-npm install @metaobjects/runtime-ts @metaobjects/metadata kysely
+npm install @metaobjectsdev/runtime-ts @metaobjectsdev/metadata kysely
 ```
 
 ## Usage
 
 ```typescript
-import { FileMetaDataLoader } from "@metaobjects/metadata/core";
-import { ObjectManager } from "@metaobjects/runtime-ts";
-import { kyselyDriver } from "@metaobjects/runtime-ts/drivers";
+import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
+import { ObjectManager } from "@metaobjectsdev/runtime-ts";
+import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { Kysely } from "kysely";
 
 const loader = new FileMetaDataLoader();
@@ -64,7 +64,7 @@ Two drivers ship today:
 - **`inMemoryDriver({ seed?, pkFields? })`** — Map-backed; useful for unit tests, prototyping, and MCP tool sandboxing where data shouldn't persist.
 
 ```typescript
-import { inMemoryDriver } from "@metaobjects/runtime-ts/drivers";
+import { inMemoryDriver } from "@metaobjectsdev/runtime-ts/drivers";
 
 const driver = inMemoryDriver({
   seed: { posts: [{ id: 1, title: "Hello" }] },

@@ -14,7 +14,7 @@ This work is grouped into H7a so it can ship and be verified without committing 
 
 After H7a ships:
 
-1. `@metaobjects/cli` no longer depends on `@metaobjects/forge`. The agent-docs source (markdown body + content-hash helpers) lives in `@metaobjects/sdk/agent-docs` (sub-path export). `@metaobjects/forge` becomes unreferenced inside the repo and stays unpublished, awaiting H1's eventual carve-out to a separate repo.
+1. `@metaobjectsdev/cli` no longer depends on `@metaobjectsdev/forge`. The agent-docs source (markdown body + content-hash helpers) lives in `@metaobjectsdev/sdk/agent-docs` (sub-path export). `@metaobjectsdev/forge` becomes unreferenced inside the repo and stays unpublished, awaiting H1's eventual carve-out to a separate repo.
 2. All 11 publish-candidate packages report `version: "0.5.0"`. Heterogeneous versions (0.1.0 through 0.4.0) collapse into a single line.
 3. Every publish-candidate `package.json` carries the standard set of npm-publish metadata (`license`, `repository.directory`, `homepage`, `bugs`, `keywords`, `publishConfig.access`, tightened `files`).
 4. The four packages currently missing READMEs (`metadata`, `codegen-ts-react`, `codegen-ts-tanstack`, `sdk`) have them.
@@ -36,8 +36,8 @@ After H7a ships:
 
 ## Non-goals (out of all of H7)
 
-- Publishing `@metaobjects/forge`. Forge stays unpublished. When forge's H1 carve-out happens later (separate repo), forge ships on its own timeline.
-- Publishing `@metaobjects/conformance`. Internal test package; not for consumers.
+- Publishing `@metaobjectsdev/forge`. Forge stays unpublished. When forge's H1 carve-out happens later (separate repo), forge ships on its own timeline.
+- Publishing `@metaobjectsdev/conformance`. Internal test package; not for consumers.
 - Per-package `LICENSE` files. The root [LICENSE](../../../LICENSE) (Apache 2.0) plus `"license": "Apache-2.0"` (SPDX identifier) in each pkg.json is sufficient for npm and is the modern convention.
 - Renaming any package.
 - Changing the package layout decided in FR-002 Phase 2.
@@ -48,23 +48,23 @@ Eleven packages get published when H7c fires:
 
 | Package | Location | Role |
 |---|---|---|
-| `@metaobjects/metadata` | `server/typescript/packages/metadata` | Metamodel loader, types, constants |
-| `@metaobjects/codegen-ts` | `server/typescript/packages/codegen-ts` | Framework-neutral codegen engine |
-| `@metaobjects/codegen-ts-react` | `server/typescript/packages/codegen-ts-react` | React form-file generator |
-| `@metaobjects/codegen-ts-tanstack` | `server/typescript/packages/codegen-ts-tanstack` | TanStack hooks + grid codegen |
-| `@metaobjects/runtime-ts` | `server/typescript/packages/runtime-ts` | Node-side runtime (Kysely, Drizzle, Fastify helpers) |
-| `@metaobjects/migrate-ts` | `server/typescript/packages/migrate-ts` | Migration tooling |
-| `@metaobjects/sdk` | `server/typescript/packages/sdk` | Programmatic SDK (memory, paths, agent-docs after H7a) |
-| `@metaobjects/cli` | `server/typescript/packages/cli` | The `meta` CLI binary |
-| `@metaobjects/runtime-web` | `client/web/packages/runtime-web` | Pure browser core |
-| `@metaobjects/react` | `client/web/packages/react` | React runtime |
-| `@metaobjects/tanstack` | `client/web/packages/tanstack` | TanStack runtime |
+| `@metaobjectsdev/metadata` | `server/typescript/packages/metadata` | Metamodel loader, types, constants |
+| `@metaobjectsdev/codegen-ts` | `server/typescript/packages/codegen-ts` | Framework-neutral codegen engine |
+| `@metaobjectsdev/codegen-ts-react` | `server/typescript/packages/codegen-ts-react` | React form-file generator |
+| `@metaobjectsdev/codegen-ts-tanstack` | `server/typescript/packages/codegen-ts-tanstack` | TanStack hooks + grid codegen |
+| `@metaobjectsdev/runtime-ts` | `server/typescript/packages/runtime-ts` | Node-side runtime (Kysely, Drizzle, Fastify helpers) |
+| `@metaobjectsdev/migrate-ts` | `server/typescript/packages/migrate-ts` | Migration tooling |
+| `@metaobjectsdev/sdk` | `server/typescript/packages/sdk` | Programmatic SDK (memory, paths, agent-docs after H7a) |
+| `@metaobjectsdev/cli` | `server/typescript/packages/cli` | The `meta` CLI binary |
+| `@metaobjectsdev/runtime-web` | `client/web/packages/runtime-web` | Pure browser core |
+| `@metaobjectsdev/react` | `client/web/packages/react` | React runtime |
+| `@metaobjectsdev/tanstack` | `client/web/packages/tanstack` | TanStack runtime |
 
-`@metaobjects/forge` and `@metaobjects/conformance` are deliberately not in this list.
+`@metaobjectsdev/forge` and `@metaobjectsdev/conformance` are deliberately not in this list.
 
 ## Design
 
-### 1. Decouple `@metaobjects/cli` from `@metaobjects/forge` via SDK relocation
+### 1. Decouple `@metaobjectsdev/cli` from `@metaobjectsdev/forge` via SDK relocation
 
 **Why SDK, not CLI.** The conventional answer for init-scaffolding content (Prisma, ESLint, Drizzle-kit pattern) is the CLI package. That convention applies when SDK is purely runtime. MetaObjects' SDK isn't — `sdk/src/forge-types.ts` already exists and its module comment explicitly says it's the source of truth for "codegen prompts, MCP exposers" alongside CLI usage. The SDK is the open shared programmatic surface for content that multiple consumers (CLI today; MCP server, programmatic tools, the metaobjects.dev website tomorrow) need. Agent-docs content fits that pattern: it is not CLI-specific config-template scaffolding; it is canonical reference content.
 
@@ -92,39 +92,39 @@ The single 592-line forge file holds the markdown body plus the content-hash hel
 }
 ```
 
-`@metaobjects/cli/src/commands/init.ts` swaps its single import:
+`@metaobjectsdev/cli/src/commands/init.ts` swaps its single import:
 
 ```ts
 // before:
-import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "@metaobjects/forge/agent-docs";
+import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "@metaobjectsdev/forge/agent-docs";
 // after:
-import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "@metaobjects/sdk/agent-docs";
+import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "@metaobjectsdev/sdk/agent-docs";
 ```
 
-`@metaobjects/cli/package.json` drops `"@metaobjects/forge": "workspace:*"` from `dependencies`.
+`@metaobjectsdev/cli/package.json` drops `"@metaobjectsdev/forge": "workspace:*"` from `dependencies`.
 
-`@metaobjects/forge` becomes unreferenced. The package stays in the repo and stays unpublished, in line with H1's design intent that forge ultimately lives in a separate repo. Forge's own `forge/src/agent-docs/index.ts` is **deleted** (the content has moved); `forge/src/index.ts` either becomes empty or the package gets a top-level deprecation note pointing at `@metaobjects/sdk/agent-docs`.
+`@metaobjectsdev/forge` becomes unreferenced. The package stays in the repo and stays unpublished, in line with H1's design intent that forge ultimately lives in a separate repo. Forge's own `forge/src/agent-docs/index.ts` is **deleted** (the content has moved); `forge/src/index.ts` either becomes empty or the package gets a top-level deprecation note pointing at `@metaobjectsdev/sdk/agent-docs`.
 
 ### 2. Unify versions to 0.5.0
 
 | Package | Current | New |
 |---|---|---|
-| `@metaobjects/metadata` | 0.2.4 | 0.5.0 |
-| `@metaobjects/codegen-ts` | 0.1.0 | 0.5.0 |
-| `@metaobjects/codegen-ts-react` | 0.4.0 | 0.5.0 |
-| `@metaobjects/codegen-ts-tanstack` | 0.1.0 | 0.5.0 |
-| `@metaobjects/runtime-ts` | 0.1.0 | 0.5.0 |
-| `@metaobjects/migrate-ts` | 0.1.0 | 0.5.0 |
-| `@metaobjects/sdk` | 0.2.0 | 0.5.0 |
-| `@metaobjects/cli` | 0.2.0 | 0.5.0 |
-| `@metaobjects/runtime-web` | 0.4.0 | 0.5.0 |
-| `@metaobjects/react` | 0.4.0 | 0.5.0 |
-| `@metaobjects/tanstack` | 0.4.0 | 0.5.0 |
+| `@metaobjectsdev/metadata` | 0.2.4 | 0.5.0 |
+| `@metaobjectsdev/codegen-ts` | 0.1.0 | 0.5.0 |
+| `@metaobjectsdev/codegen-ts-react` | 0.4.0 | 0.5.0 |
+| `@metaobjectsdev/codegen-ts-tanstack` | 0.1.0 | 0.5.0 |
+| `@metaobjectsdev/runtime-ts` | 0.1.0 | 0.5.0 |
+| `@metaobjectsdev/migrate-ts` | 0.1.0 | 0.5.0 |
+| `@metaobjectsdev/sdk` | 0.2.0 | 0.5.0 |
+| `@metaobjectsdev/cli` | 0.2.0 | 0.5.0 |
+| `@metaobjectsdev/runtime-web` | 0.4.0 | 0.5.0 |
+| `@metaobjectsdev/react` | 0.4.0 | 0.5.0 |
+| `@metaobjectsdev/tanstack` | 0.4.0 | 0.5.0 |
 
 `server/typescript/package.json` (the workspace root) also bumps to 0.5.0 to match.
 
-`@metaobjects/forge` stays at 0.1.0 (not touched, not published).
-`@metaobjects/conformance` is an internal package; its version is not part of this unification.
+`@metaobjectsdev/forge` stays at 0.1.0 (not touched, not published).
+`@metaobjectsdev/conformance` is an internal package; its version is not part of this unification.
 
 ### 3. Per-package metadata
 
@@ -132,7 +132,7 @@ Every publish-candidate `package.json` carries this exact set of fields (added i
 
 ```jsonc
 {
-  "name":        "@metaobjects/<pkg>",
+  "name":        "@metaobjectsdev/<pkg>",
   "version":     "0.5.0",
   "description": "<one-line>",                      // present on most; fill in missing
   "license":     "Apache-2.0",                      // SPDX identifier
@@ -172,7 +172,7 @@ Per-package keyword examples (final list assembled during implementation):
 - `sdk`: `metaobjects, sdk, agent-docs, workspace`
 - `cli`: `metaobjects, cli, scaffold, codegen, drift-detection`
 
-**Preserve existing structure.** The `@metaobjects/cli` `package.json` already has `publishConfig.bin` rewriting `bin/meta.ts` → `dist/bin/meta.js` for the binary path post-build. Keep that. Also keep all existing `peerDependencies` blocks unchanged.
+**Preserve existing structure.** The `@metaobjectsdev/cli` `package.json` already has `publishConfig.bin` rewriting `bin/meta.ts` → `dist/bin/meta.js` for the binary path post-build. Keep that. Also keep all existing `peerDependencies` blocks unchanged.
 
 **`files` field tightening.** The current convention in this repo is `["dist", "src", "README.md"]` for runtime packages and `["dist", "src"]` for some others. Standardize on `["dist", "src", "README.md"]` everywhere (drops nothing currently shipped; adds README to packages that haven't been). Reject anything outside that — never ship `test/`, `tsconfig*.json`, or `*.tsbuildinfo`.
 
@@ -183,14 +183,14 @@ Write a 30-50 line README for each of: `metadata`, `codegen-ts-react`, `codegen-
 Each follows this template:
 
 ```markdown
-# @metaobjects/<pkg>
+# @metaobjectsdev/<pkg>
 
 <One-paragraph description: what this package is, who consumes it, why it exists.>
 
 ## Install
 
 \`\`\`bash
-pnpm add @metaobjects/<pkg>
+pnpm add @metaobjectsdev/<pkg>
 \`\`\`
 
 ## Usage
@@ -233,8 +233,8 @@ H7a is complete when **all** of these pass on the feature branch:
 - `cd server/typescript && bun test` + per-client-web-pkg `bun test` = baseline `2105 pass / 0 fail` preserved.
 - `bun run --filter '*' build` succeeds. Every package produces `dist/` with `.js` + `.d.ts` files.
 - `bun run --filter '*' typecheck` clean.
-- No `@metaobjects/runtime-ts-client` references anywhere (carry-over check from FR-002 Phase 2).
-- No `@metaobjects/forge` references in any publish-candidate package's `dependencies` or source code.
+- No `@metaobjectsdev/runtime-ts-client` references anywhere (carry-over check from FR-002 Phase 2).
+- No `@metaobjectsdev/forge` references in any publish-candidate package's `dependencies` or source code.
 - CI conformance workflow runs green on the feature branch.
 - Every publish-candidate `package.json` has all required fields per Section 3.
 - Every publish-candidate package has a README.
@@ -254,7 +254,7 @@ If a step's verification fails, fix it before continuing.
 
 ## Open questions
 
-- **`@metaobjects` scope availability on npm.** Operational prereq for H7c, not blocking H7a. Should be confirmed during H7a so we know early if the scope is taken (in which case `@metaobjects-dev` or another scope is needed). Run `npm view @metaobjects/metadata` and `npm org ls metaobjects` early.
+- **`@metaobjects` scope availability on npm.** Operational prereq for H7c, not blocking H7a. Should be confirmed during H7a so we know early if the scope is taken (in which case `@metaobjects-dev` or another scope is needed). Run `npm view @metaobjectsdev/metadata` and `npm org ls metaobjects` early.
 - **Author field.** Current proposal: `"Doug Mealing <doug@dougmealing.com>"`. If you'd rather use `"metaobjectsdev <hello@metaobjects.dev>"` or similar org-style, swap before publish.
 - **`homepage = https://metaobjects.dev`.** Assumes that domain points somewhere (or will by H7c). If the domain isn't live, fall back to `https://github.com/metaobjectsdev/metaobjects`.
 - **forge/src/index.ts contents post-decouple.** Three options: (a) leave file with whatever empty/placeholder content remains, (b) delete the file (forge becomes a directory with no `src/index.ts`), (c) replace with a deprecation comment pointing at SDK. Implementation can pick during PR.

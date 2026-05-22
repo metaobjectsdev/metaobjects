@@ -1,7 +1,7 @@
 // Tests for $apiPrefix emission in entity-constants + routes-file.
 
 import { describe, test, expect } from "bun:test";
-import type { MetaObject, MetaRoot } from "@metaobjects/metadata";
+import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import {
   TypeId,
   TYPE_IDENTITY,
@@ -11,7 +11,7 @@ import {
   OBJECT_SUBTYPE_ENTITY,
   MetaDataLoader,
   InMemorySource,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import { meta, metaRoot, metaObject, metaField } from "../_meta-build.js";
 import { renderEntityConstants } from "../../src/templates/entity-constants.js";
 import { renderRoutesFile } from "../../src/templates/routes-file.js";

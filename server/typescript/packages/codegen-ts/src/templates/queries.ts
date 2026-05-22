@@ -2,8 +2,8 @@
 // Each returns a ts-poet Code block; composed into a file by queries-file.ts.
 
 import { code, imp, type Code } from "ts-poet";
-import type { MetaObject } from "@metaobjects/metadata";
-import { IDENTITY_ATTR_FIELDS } from "@metaobjects/metadata";
+import type { MetaObject } from "@metaobjectsdev/metadata";
+import { IDENTITY_ATTR_FIELDS } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
 import { variableNameFromEntity, toSnakeCase, pluralize } from "../naming.js";
 

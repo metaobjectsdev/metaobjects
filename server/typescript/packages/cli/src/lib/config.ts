@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ConfigSchema, type Config, DEFAULT_METAOBJECTS_DIR } from "@metaobjects/sdk";
+import { ConfigSchema, type Config, DEFAULT_METAOBJECTS_DIR } from "@metaobjectsdev/sdk";
 import type { GenFlags, MigrateFlags } from "./args.js";
 
 // ---------------------------------------------------------------------------

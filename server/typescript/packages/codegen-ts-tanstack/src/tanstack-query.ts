@@ -1,5 +1,5 @@
-import type { MetaObject } from "@metaobjects/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath } from "@metaobjects/codegen-ts";
+import type { MetaObject } from "@metaobjectsdev/metadata";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath } from "@metaobjectsdev/codegen-ts";
 import { renderHooksFile } from "./templates/hooks-file.js";
 
 export interface TanstackQueryOpts {

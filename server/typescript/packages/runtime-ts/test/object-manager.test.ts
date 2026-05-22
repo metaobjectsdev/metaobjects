@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP, TYPE_VIEW,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_BOOLEAN,
          IDENTITY_SUBTYPE_PRIMARY, IDENTITY_SUBTYPE_REFERENCE, OBJECT_SUBTYPE_ENTITY,
@@ -9,7 +9,7 @@ import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_RELATIONSHIP, TYPE
          IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
          IDENTITY_REFERENCE_ATTR_REFERENCES,
          RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF,
-         FIELD_ATTR_REQUIRED } from "@metaobjects/metadata";
+         FIELD_ATTR_REQUIRED } from "@metaobjectsdev/metadata";
 import { meta } from "./_meta-build.js";
 import { ObjectManager } from "../src/object-manager.js";
 import { inMemoryDriver } from "../src/drivers/in-memory-driver.js";

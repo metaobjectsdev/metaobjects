@@ -4,9 +4,9 @@
 //   - vanilla entities still emit all 5 hooks (read + create/update/delete)
 
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
 import { renderHooksFile } from "../src/templates/hooks-file.js";
-import { makeRenderContext, buildPkMap, buildRelationMap } from "@metaobjects/codegen-ts";
+import { makeRenderContext, buildPkMap, buildRelationMap } from "@metaobjectsdev/codegen-ts";
 
 // ---------------------------------------------------------------------------
 // Shared fixture loader
@@ -176,11 +176,11 @@ describe("renderHooksFile — source-aware dispatch", () => {
       expect(out).not.toContain("useQueryClient");
     });
 
-    test("imports from @tanstack/react-query and @metaobjects/tanstack", async () => {
+    test("imports from @tanstack/react-query and @metaobjectsdev/tanstack", async () => {
       const { projection, ctx } = await loadProjectionFixture();
       const out = renderHooksFile(projection, ctx);
       expect(out).toContain("@tanstack/react-query");
-      expect(out).toContain("@metaobjects/tanstack");
+      expect(out).toContain("@metaobjectsdev/tanstack");
     });
 
     test("fetch URLs use $apiPrefix before $path", async () => {

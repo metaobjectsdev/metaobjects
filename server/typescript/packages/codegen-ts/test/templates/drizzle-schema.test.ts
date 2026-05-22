@@ -1,10 +1,10 @@
 // packages/codegen-ts/test/templates/drizzle-schema.test.ts
 import { describe, test, expect } from "bun:test";
-import type { MetaObject, MetaRoot } from "@metaobjects/metadata";
+import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { TypeId, TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION,
          FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_INT,
          FIELD_SUBTYPE_TIMESTAMP, IDENTITY_SUBTYPE_PRIMARY, IDENTITY_SUBTYPE_SECONDARY,
-         OBJECT_SUBTYPE_ENTITY, TYPE_FIELD, TYPE_IDENTITY } from "@metaobjects/metadata";
+         OBJECT_SUBTYPE_ENTITY, TYPE_FIELD, TYPE_IDENTITY } from "@metaobjectsdev/metadata";
 import { meta, metaRoot, metaObject, metaField } from "../_meta-build.js";
 import { renderDrizzleSchema } from "../../src/templates/drizzle-schema.js";
 import { renderEntityFile } from "../../src/templates/entity-file.js";

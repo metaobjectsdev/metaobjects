@@ -5,13 +5,13 @@
 //
 // Reads identity.reference declarations to determine the physical reference side.
 
-import type { MetaRoot } from "@metaobjects/metadata";
+import type { MetaRoot } from "@metaobjectsdev/metadata";
 import {
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
   CARDINALITY_ONE,
   stripPackage,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import { variableNameFromEntity } from "./naming.js";
 import { isProjection } from "./projection/projection-detector.js";
 

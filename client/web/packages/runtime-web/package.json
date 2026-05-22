@@ -1,5 +1,5 @@
 {
-  "name": "@metaobjects/runtime-web",
+  "name": "@metaobjectsdev/runtime-web",
   "version": "0.5.0",
   "description": "Pure framework-agnostic browser core for metaobjects: currency, filter URL serialization, fetcher contract types.",
   "type": "module",
@@ -30,7 +30,7 @@
   "keywords": ["metaobjects", "runtime", "browser", "currency", "filter"],
   "publishConfig": { "access": "public" },
   "dependencies": {
-    "@metaobjects/metadata": "workspace:*",
+    "@metaobjectsdev/metadata": "workspace:*",
     "qs": "^6.13.0"
   },
   "devDependencies": {

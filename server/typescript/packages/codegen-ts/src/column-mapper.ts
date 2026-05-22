@@ -1,7 +1,7 @@
 // Field-type → Drizzle column type mapping. Per design §6.
 // Uses the typed MetaField.validators() accessor (effective — includes inherited) for all validator checks.
 
-import type { MetaField } from "@metaobjects/metadata";
+import type { MetaField } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
@@ -24,7 +24,7 @@ import {
   FIELD_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
   VALIDATOR_ATTR_MAX,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
 import type { Dialect, ColumnNamingStrategy } from "./metaobjects-config.js";
 

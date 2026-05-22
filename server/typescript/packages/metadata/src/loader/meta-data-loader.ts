@@ -157,7 +157,7 @@ export class MetaDataLoader {
   /**
    * Parse one source's raw content into a ParseResult. The base loader handles
    * JSON only; a non-JSON format throws. Subclasses override this seam to add
-   * formats — e.g. FileMetaDataLoader (in @metaobjects/metadata/core) adds YAML.
+   * formats — e.g. FileMetaDataLoader (in @metaobjectsdev/metadata/core) adds YAML.
    * This keeps the browser-safe base loader free of the YAML parser.
    */
   protected parseSource(
@@ -170,7 +170,7 @@ export class MetaDataLoader {
     }
     throw new Error(
       `MetaDataLoader parses JSON only; format "${source.format}" for source ` +
-        `"${source.id}" requires FileMetaDataLoader (from @metaobjects/metadata/core)`,
+        `"${source.id}" requires FileMetaDataLoader (from @metaobjectsdev/metadata/core)`,
     );
   }
 

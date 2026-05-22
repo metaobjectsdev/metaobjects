@@ -1,5 +1,5 @@
 {
-  "name": "@metaobjects/codegen-ts-tanstack",
+  "name": "@metaobjectsdev/codegen-ts-tanstack",
   "version": "0.5.0",
   "description": "TanStack codegen for metaobjects — emits hooks and column definitions for TanStack Query and Table.",
   "type": "module",
@@ -29,8 +29,8 @@
   "keywords": ["metaobjects", "codegen", "tanstack", "react-query", "react-table"],
   "publishConfig": { "access": "public" },
   "dependencies": {
-    "@metaobjects/metadata": "workspace:*",
-    "@metaobjects/codegen-ts": "workspace:*",
+    "@metaobjectsdev/metadata": "workspace:*",
+    "@metaobjectsdev/codegen-ts": "workspace:*",
     "ts-poet": "^6.10.0"
   },
   "peerDependencies": {

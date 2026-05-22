@@ -1,17 +1,17 @@
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD, TYPE_IDENTITY,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_ATTR_FIELDS,
   resolveTableName, resolveColumnName,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
 import type {
   WhereClause, OrderBy, PrimitiveValue, Row,
   SelectSpec, InsertSpec, UpdateSpec, DeleteSpec, CountSpec,
 } from "./persistence-driver.js";
 
-export { resolveTableName } from "@metaobjects/metadata";
+export { resolveTableName } from "@metaobjectsdev/metadata";
 
 export type Filter = Record<string, FilterValue> | { $and: Filter[] };
 

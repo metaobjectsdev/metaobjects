@@ -5,7 +5,7 @@ import { resolveMigrateConfig } from "../lib/config.js";
 import { formatMigrateResult, type BlockedEntry, type AmbiguousEntry } from "../lib/output.js";
 import { buildKyselyFromUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
-import { loadMemory } from "@metaobjects/sdk";
+import { loadMemory } from "@metaobjectsdev/sdk";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import {
   buildExpectedSchema,
@@ -19,7 +19,7 @@ import {
   type AmbiguousResolution,
   type Change,
   type EmitResult,
-} from "@metaobjects/migrate-ts";
+} from "@metaobjectsdev/migrate-ts";
 import {
   computeProjectionMigrations,
   computeProjectionViewDependencies,

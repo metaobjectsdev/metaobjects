@@ -13,7 +13,7 @@ describe("meta init scaffolds metaobjects.config.ts", () => {
     const result = await init({ cwd: tmp, quiet: true });
     expect(existsSync(join(tmp, "metaobjects.config.ts"))).toBe(true);
     const body = readFileSync(join(tmp, "metaobjects.config.ts"), "utf-8");
-    expect(body).toContain(`import { defineConfig } from "@metaobjects/cli"`);
+    expect(body).toContain(`import { defineConfig } from "@metaobjectsdev/cli"`);
     expect(body).toContain(`entityFile()`);
     expect(body).toContain(`queriesFile()`);
     expect(body).toContain(`routesFile()`);

@@ -1,5 +1,5 @@
 {
-  "name": "@metaobjects/react",
+  "name": "@metaobjectsdev/react",
   "version": "0.5.0",
   "description": "React runtime for metaobjects: useEntityForm hook and CurrencyInput component.",
   "type": "module",
@@ -30,7 +30,7 @@
   "keywords": ["metaobjects", "react", "react-hook-form", "forms", "currency-input"],
   "publishConfig": { "access": "public" },
   "dependencies": {
-    "@metaobjects/runtime-web": "workspace:*"
+    "@metaobjectsdev/runtime-web": "workspace:*"
   },
   "peerDependencies": {
     "@hookform/resolvers": ">=3.0.0",

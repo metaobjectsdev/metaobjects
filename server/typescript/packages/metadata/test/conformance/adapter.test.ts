@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { UnknownCapabilityError } from "@metaobjects/conformance";
+import { UnknownCapabilityError } from "@metaobjectsdev/conformance";
 import { tsAdapter } from "./adapter.js";
 
 // test/conformance/adapter.test.ts is 5 levels below the repo root:

@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { generateMetadata } from "../src/generator.js";
-import { MetaDataLoader, InMemorySource } from "@metaobjects/metadata";
+import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
 
 test("the same seed produces the same metadata (deterministic)", () => {
   const a = generateMetadata(42);

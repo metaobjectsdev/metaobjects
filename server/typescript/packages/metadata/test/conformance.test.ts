@@ -1,6 +1,6 @@
 // Auto-discovering conformance test runner.
 //
-// Drives the @metaobjects/conformance engine through the TS adapter. Every
+// Drives the @metaobjectsdev/conformance engine through the TS adapter. Every
 // scenario directory under the repo-root corpus (fixtures/conformance/)
 // becomes a `lint:` test and a `conformance:` test. Adding a fixture
 // directory adds tests automatically — no code change required.
@@ -17,7 +17,7 @@ import {
   lintFixture,
   classifyAgainstLedger,
   loadLedger,
-} from "@metaobjects/conformance";
+} from "@metaobjectsdev/conformance";
 import { tsAdapter } from "./conformance/adapter.js";
 
 // METAOBJECTS_CONFORMANCE_CORPUS env override lets mutation-testing sandboxes

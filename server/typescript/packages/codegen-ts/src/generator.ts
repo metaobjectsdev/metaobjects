@@ -1,4 +1,4 @@
-import type { MetaObject, MetaRoot } from "@metaobjects/metadata";
+import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "./render-context.js";
 import type { ResolvedGenConfig } from "./metaobjects-config.js";
 

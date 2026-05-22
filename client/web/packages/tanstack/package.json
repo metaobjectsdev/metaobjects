@@ -1,5 +1,5 @@
 {
-  "name": "@metaobjects/tanstack",
+  "name": "@metaobjectsdev/tanstack",
   "version": "0.5.0",
   "description": "TanStack runtime for metaobjects: EntityFetcherProvider, EntityGrid, default cell renderers.",
   "type": "module",
@@ -30,8 +30,8 @@
   "keywords": ["metaobjects", "tanstack", "react-query", "react-table", "entity-grid"],
   "publishConfig": { "access": "public" },
   "dependencies": {
-    "@metaobjects/runtime-web": "workspace:*",
-    "@metaobjects/react": "workspace:*"
+    "@metaobjectsdev/runtime-web": "workspace:*",
+    "@metaobjectsdev/react": "workspace:*"
   },
   "peerDependencies": {
     "@tanstack/react-query": ">=5.90.0",

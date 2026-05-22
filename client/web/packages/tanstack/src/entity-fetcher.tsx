@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
-import type { EntityFetcher } from "@metaobjects/runtime-web";
+import type { EntityFetcher } from "@metaobjectsdev/runtime-web";
 
 const EntityFetcherContext = createContext<EntityFetcher | null>(null);
 

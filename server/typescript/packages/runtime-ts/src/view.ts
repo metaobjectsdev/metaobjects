@@ -1,9 +1,9 @@
-import type { MetaData } from "@metaobjects/metadata";
+import type { MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD, TYPE_VIEW, TYPE_VALIDATOR,
   VALIDATOR_SUBTYPE_REQUIRED,
   FIELD_ATTR_REQUIRED,
-} from "@metaobjects/metadata";
+} from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
 
 export interface FieldViewSpec {
