@@ -45,10 +45,12 @@ export class MetaLayout extends MetaData {
     return this.ownAttr(LAYOUT_DATA_GRID_ATTR_FILTERABLE) === true;
   }
 
-  /** A JSON-encoded preset filter string for the dataGrid layout. */
-  get filter(): string | undefined {
+  /** The desugared preset filter object for the dataGrid layout, or undefined. */
+  get filter(): Record<string, unknown> | undefined {
     const v = this.ownAttr(LAYOUT_DATA_GRID_ATTR_FILTER);
-    return typeof v === "string" ? v : undefined;
+    return typeof v === "object" && v !== null && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : undefined;
   }
 
   /** The ordered list of field names to display as columns in the dataGrid layout. */

@@ -14,6 +14,7 @@ import {
   TYPE_OBJECT, TYPE_FIELD, TYPE_LAYOUT, TYPE_IDENTITY, TYPE_ORIGIN, TYPE_RELATIONSHIP,
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
+  LAYOUT_DATA_GRID_ATTR_FILTER,
   FIELD_ATTR_FILTERABLE,
   FIELD_ATTR_DB_INDEXED,
   IDENTITY_ATTR_FIELDS,
@@ -24,6 +25,9 @@ import {
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
   RELATIONSHIP_ATTR_OBJECT_REF,
+  FILTER_COMPOSE_OR,
+  FILTER_COMPOSE_AND,
+  opsForSubType,
 } from "../constants.js";
 
 // ---------------------------------------------------------------------------
@@ -272,4 +276,82 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
     }
   }
   return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Layout dataGrid @filter value validation
+//
+// Runs after extends: resolution (so inherited @filterable fields are visible)
+// and after parse-time desugaring (so every clause is canonical { op: value }).
+// Builds the allowlist from @filterable fields using OPS_BY_SUBTYPE, then checks
+// every filtered field is filterable and every op is allowed for its subtype.
+// ---------------------------------------------------------------------------
+
+export function validateDataGridFilterValues(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+    const effective = obj.children();
+    const allow = new Map<string, readonly string[]>();
+    for (const f of effective.filter((c) => c.type === TYPE_FIELD)) {
+      if (f.ownAttr(FIELD_ATTR_FILTERABLE) === true) {
+        allow.set(f.name, opsForSubType(f.subType));
+      }
+    }
+    for (const layout of effective.filter(
+      (c) => c.type === TYPE_LAYOUT && c.subType === LAYOUT_SUBTYPE_DATA_GRID,
+    )) {
+      const filter = layout.ownAttr(LAYOUT_DATA_GRID_ATTR_FILTER);
+      // Type errors (e.g. legacy string form) are reported by validateAttrSchema.
+      if (typeof filter !== "object" || filter === null || Array.isArray(filter)) continue;
+      checkFilterClauses(filter as Record<string, unknown>, allow, obj.name, layout.name, errors);
+    }
+  }
+  return errors;
+}
+
+function checkFilterClauses(
+  filter: Record<string, unknown>,
+  allow: Map<string, readonly string[]>,
+  entityName: string,
+  layoutName: string,
+  errors: ParseError[],
+): void {
+  for (const [key, clause] of Object.entries(filter)) {
+    if (key === FILTER_COMPOSE_OR || key === FILTER_COMPOSE_AND) {
+      if (Array.isArray(clause)) {
+        for (const sub of clause) {
+          if (typeof sub === "object" && sub !== null && !Array.isArray(sub)) {
+            checkFilterClauses(sub as Record<string, unknown>, allow, entityName, layoutName, errors);
+          }
+        }
+      }
+      continue;
+    }
+    const allowedOps = allow.get(key);
+    if (allowedOps === undefined) {
+      errors.push(
+        new ParseError(
+          `dataGrid layout "${layoutName}" on entity "${entityName}" has @filter over ` +
+            `non-filterable field "${key}". Filterable fields: ${[...allow.keys()].join(", ") || "(none)"}`,
+          { code: "ERR_BAD_ATTR_FILTER" },
+        ),
+      );
+      continue;
+    }
+    // After parse-time desugaring (normalizeFilterAttr), every non-composition field clause
+    // is canonical { op: value } — a bare scalar should not reach here; the object guard is defensive.
+    if (typeof clause === "object" && clause !== null && !Array.isArray(clause)) {
+      for (const op of Object.keys(clause)) {
+        if (!allowedOps.includes(op)) {
+          errors.push(
+            new ParseError(
+              `dataGrid layout "${layoutName}" on entity "${entityName}" @filter uses disallowed ` +
+                `op "${key}.${op}". Allowed ops for "${key}": ${allowedOps.join(", ")}`,
+              { code: "ERR_BAD_ATTR_FILTER" },
+            ),
+          );
+        }
+      }
+    }
+  }
 }

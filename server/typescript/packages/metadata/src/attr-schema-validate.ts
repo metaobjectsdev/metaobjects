@@ -31,6 +31,7 @@ import {
   ATTR_SUBTYPE_BOOLEAN,
   ATTR_SUBTYPE_CLASS,
   ATTR_SUBTYPE_PROPERTIES,
+  ATTR_SUBTYPE_FILTER,
   ATTR_SUBTYPE_STRINGARRAY,
 } from "./constants.js";
 
@@ -45,7 +46,8 @@ export interface AttrSchemaValidationResult {
 //
 // Numeric attr subtypes (int / long / double) all map to JS `number`. There is
 // no separate short/byte/float/decimal attr subtype — ATTR_SUBTYPES has exactly
-// the 9 entries below. `class` and `properties` are string-shaped on the wire.
+// the 9 entries below. `class` is string-shaped on the wire; `properties` and
+// `filter` are object-shaped (validated via OBJECT_ATTR_SUBTYPES).
 //
 // `stringarray` requires a real string[]. A single bare field name
 // (e.g. `"@fields": "id"`) is the degenerate one-element authoring form, but
@@ -62,7 +64,11 @@ const NUMERIC_ATTR_SUBTYPES: ReadonlySet<AttrSubType> = new Set([
 const STRING_ATTR_SUBTYPES: ReadonlySet<AttrSubType> = new Set([
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_CLASS,
+]);
+
+const OBJECT_ATTR_SUBTYPES: ReadonlySet<AttrSubType> = new Set([
   ATTR_SUBTYPE_PROPERTIES,
+  ATTR_SUBTYPE_FILTER,
 ]);
 
 /** Returns true when `value`'s runtime type matches the declared attr subtype. */
@@ -80,6 +86,9 @@ function valueMatchesType(value: AttrValue, valueType: AttrSubType): boolean {
     // Must be a real string[]; the parser already desugared bare strings.
     return Array.isArray(value) && value.every((el) => typeof el === "string");
   }
+  if (OBJECT_ATTR_SUBTYPES.has(valueType)) {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
   // SUBTYPE_BASE or any unexpected subtype — accept anything (no constraint).
   return true;
 }
@@ -87,6 +96,7 @@ function valueMatchesType(value: AttrValue, valueType: AttrSubType): boolean {
 /** Human-readable name of an attr value's runtime type, for error messages. */
 function runtimeTypeName(value: AttrValue): string {
   if (Array.isArray(value)) return "array";
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) return "object";
   return typeof value;
 }
 

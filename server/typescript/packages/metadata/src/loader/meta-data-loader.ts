@@ -15,7 +15,7 @@ import { composeRegistry } from "../provider.js";
 import { TYPE_METADATA, SUBTYPE_ROOT } from "../constants.js";
 import { ParseError } from "../errors.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues } from "./validation-passes.js";
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
 import { validateAttrSchema } from "../attr-schema-validate.js";
@@ -275,7 +275,10 @@ export class MetaDataLoader {
       // aggregate.@of, and .@via relationship chains.
       errors.push(...validateOriginPaths(root));
 
-      // Seventh pass: attribute-schema validation (Phase A3) — checks each
+      // Seventh pass: @filter value validation — fields filterable + ops allowed per subtype.
+      errors.push(...validateDataGridFilterValues(root));
+
+      // Eighth pass: attribute-schema validation (Phase A3) — checks each
       // node's @-attributes against its (type, subType) AttrSchema: required
       // attrs present, declared attrs well-typed, allowedValues honored.
       const attrSchemaResult = validateAttrSchema(root, this._registry);

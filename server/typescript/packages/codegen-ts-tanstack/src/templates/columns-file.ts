@@ -8,12 +8,9 @@ import {
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
   LAYOUT_DATA_GRID_ATTR_FILTER,
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
-  FIELD_ATTR_FILTERABLE,
-  opsForSubType,
 } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts";
 import { GENERATED_HEADER, crossEntitySpecifier } from "@metaobjectsdev/codegen-ts";
-import { validateGridFilter, type FilterAllowlist } from "../grid-filter-validate.js";
 
 interface ColumnSpec {
   id:        string;
@@ -30,22 +27,8 @@ interface GridSpec {
   defaultSortField?:  string;
   defaultSortOrder?:  "asc" | "desc";
   filterable:         boolean;
-  filter?:            string;   // raw JSON-encoded @filter string from metadata
+  filter?:            Record<string, unknown>;   // desugared, load-time-validated @filter object
   columns:            ColumnSpec[];
-}
-
-/**
- * Build a FilterAllowlist from the entity's @filterable fields.
- * Mirrors the logic in codegen-ts's renderFilterAllowlist — used here at codegen time
- * to validate @filter values on data-grid views.
- */
-function buildAllowlistForEntity(entity: MetaObject): FilterAllowlist {
-  const result: Record<string, { ops: readonly string[]; subType: string; leadingWildcard: boolean }> = {};
-  // fields() is effective (own + inherited via extends:/super:).
-  for (const f of entity.fields().filter((c) => c.ownAttr(FIELD_ATTR_FILTERABLE) === true)) {
-    result[f.name] = { ops: opsForSubType(f.subType), subType: f.subType, leadingWildcard: false };
-  }
-  return result as FilterAllowlist;
 }
 
 function humanize(s: string): string {
@@ -114,7 +97,9 @@ function extractGrids(entity: MetaObject): GridSpec[] {
     };
     if (typeof sortField === "string") grid.defaultSortField = sortField;
     if (sortOrder === "asc" || sortOrder === "desc") grid.defaultSortOrder = sortOrder;
-    if (typeof filterAttr === "string" && filterAttr.length > 0) grid.filter = filterAttr;
+    if (typeof filterAttr === "object" && filterAttr !== null && !Array.isArray(filterAttr)) {
+      grid.filter = filterAttr as Record<string, unknown>;
+    }
     grids.push(grid);
   }
   return grids;
@@ -140,9 +125,6 @@ export function renderColumnsFile(entity: MetaObject, ctx: RenderContext): strin
 
   const ColumnDefSym = imp("t:ColumnDef@@tanstack/react-table");
 
-  // Build allowlist once per entity (same for all grids).
-  const entityAllowlist = buildAllowlistForEntity(entity);
-
   // Track whether any grid emits a filter const so we know to import <Entity>Filter.
   let hasFilterConst = false;
 
@@ -167,25 +149,14 @@ ${colsLines},
 ];
 `;
 
-    // Emit per-grid filter const when @filter is set on the data-grid view.
+    // Emit per-grid filter const when @filter is set. The value is already a
+    // desugared, load-time-validated object — emit it verbatim.
     let filterConstCode: Code | null = null;
     if (grid.filter !== undefined) {
-      let parsed: Record<string, unknown>;
-      try {
-        parsed = JSON.parse(grid.filter);
-      } catch (err) {
-        throw new Error(
-          `[grid-filter] ${entityName}.${grid.name} @filter is not valid JSON: ${(err as Error).message}`,
-        );
-      }
-      const errors = validateGridFilter(parsed, entityAllowlist, `${entityName}.${grid.name}`);
-      if (errors.length > 0) {
-        throw new Error(errors.join("\n"));
-      }
       const filterConstName = `${lcEntity}${capitalize(grid.name)}Filter`;
       hasFilterConst = true;
       filterConstCode = code`
-export const ${filterConstName}: ${entityName}Filter = ${JSON.stringify(parsed, null, 2)};
+export const ${filterConstName}: ${entityName}Filter = ${JSON.stringify(grid.filter, null, 2)};
 `;
     }
 

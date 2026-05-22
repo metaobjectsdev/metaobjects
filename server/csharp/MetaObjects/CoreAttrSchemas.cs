@@ -247,9 +247,9 @@ public static class CoreAttrSchemas
 
         new AttrSchema(
             Name: Constants.LAYOUT_DATA_GRID_ATTR_FILTER,
-            ValueType: Constants.ATTR_SUBTYPE_STRING,
+            ValueType: Constants.ATTR_SUBTYPE_FILTER,
             Required: false,
-            Description: "JSON-encoded preset filter applied to the grid at the metadata level."),
+            Description: "Structured preset filter object applied to the grid at the metadata level. Desugared to canonical { field: { op: value } } form at parse time."),
 
         new AttrSchema(
             Name: Constants.LAYOUT_DATA_GRID_ATTR_COLUMNS,

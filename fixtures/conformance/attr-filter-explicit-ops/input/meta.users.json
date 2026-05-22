@@ -1,0 +1,58 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Subscriber",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt",
+                "@filterable": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "status",
+                "@filterable": true
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": ["id"]
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "byCreatedAt",
+                "@fields": ["createdAt"]
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "byStatus",
+                "@fields": ["status"]
+              }
+            },
+            {
+              "layout.dataGrid": {
+                "name": "default",
+                "@columns": ["createdAt", "status"],
+                "@filter": {
+                  "createdAt": { "gte": "2024-01-01" },
+                  "status": { "like": "act%" }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

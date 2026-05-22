@@ -110,6 +110,7 @@ public static class CoreTypes
         [Constants.ATTR_SUBTYPE_DOUBLE]        = DataType.Double,
         [Constants.ATTR_SUBTYPE_BOOLEAN]       = DataType.Boolean,
         [Constants.ATTR_SUBTYPE_PROPERTIES]    = DataType.Object,
+        [Constants.ATTR_SUBTYPE_FILTER]        = DataType.Object,
     };
 
     // -------------------------------------------------------------------------

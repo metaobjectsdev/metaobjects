@@ -231,8 +231,22 @@ public static class SerializerJson
                 : JsonValue.Create(d),
             IReadOnlyList<string> arr =>
                 new JsonArray(arr.Select(s => (JsonNode?)JsonValue.Create(s)).ToArray()),
+            IReadOnlyDictionary<string, object?> obj =>
+                AttrObjectToJsonNode(obj),
+            IReadOnlyList<object?> arr =>
+                new JsonArray(arr.Select(item => AttrValueToJsonNode(item)).ToArray()),
             _ => JsonValue.Create(value?.ToString()),
         };
+    }
+
+    private static JsonObject AttrObjectToJsonNode(IReadOnlyDictionary<string, object?> obj)
+    {
+        var jsonObj = new JsonObject();
+        foreach (var (key, val) in obj)
+        {
+            jsonObj.Add(key, AttrValueToJsonNode(val));
+        }
+        return jsonObj;
     }
 
     // ---------------------------------------------------------------------------

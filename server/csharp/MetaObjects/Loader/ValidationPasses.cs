@@ -432,6 +432,102 @@ public static class ValidationPasses
         return new AttrSchemaValidationResult(errors.AsReadOnly(), []);
     }
 
+    // =========================================================================
+    // Pass 7: ValidateDataGridFilterValues
+    //   - @filter over a non-@filterable field → ERR_BAD_ATTR_FILTER
+    //   - @filter uses a disallowed op for the field subtype → ERR_BAD_ATTR_FILTER
+    //
+    // Runs after extends: resolution (so inherited @filterable fields are visible)
+    // and after parse-time desugaring (every clause is canonical { op: value }).
+    //
+    // Ported from typescript/packages/metadata/src/loader/validation-passes.ts
+    // validateDataGridFilterValues + checkFilterClauses.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateDataGridFilterValues(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        foreach (var obj in root.OwnChildren()
+                     .Where(c => c.Type == Constants.TYPE_OBJECT))
+        {
+            // Use Children() (effective) so inherited @filterable fields are visible.
+            var effective = obj.Children();
+
+            // Build allowlist: field name → allowed ops for its subtype.
+            var allow = new Dictionary<string, string[]>(StringComparer.Ordinal);
+            foreach (var f in effective.Where(c => c.Type == Constants.TYPE_FIELD))
+            {
+                if (f.OwnAttr(Constants.FIELD_ATTR_FILTERABLE) is true)
+                {
+                    allow[f.Name] = Constants.OpsForSubType(f.SubType);
+                }
+            }
+
+            foreach (var layout in effective.Where(
+                c => c.Type == Constants.TYPE_LAYOUT &&
+                     c.SubType == Constants.LAYOUT_SUBTYPE_DATA_GRID))
+            {
+                var filter = layout.OwnAttr(Constants.LAYOUT_DATA_GRID_ATTR_FILTER);
+                // Type errors (e.g. legacy string form) are reported by ValidateAttrSchema.
+                if (filter is not IReadOnlyDictionary<string, object?> filterObj) continue;
+                CheckFilterClauses(filterObj, allow, obj.Name, layout.Name, errors);
+            }
+        }
+
+        return errors.AsReadOnly();
+    }
+
+    private static void CheckFilterClauses(
+        IReadOnlyDictionary<string, object?> filter,
+        Dictionary<string, string[]> allow,
+        string entityName,
+        string layoutName,
+        List<MetaError> errors)
+    {
+        foreach (var (key, clause) in filter)
+        {
+            if (key == Constants.FILTER_COMPOSE_OR || key == Constants.FILTER_COMPOSE_AND)
+            {
+                if (clause is IReadOnlyList<object?> subList)
+                {
+                    foreach (var sub in subList)
+                    {
+                        if (sub is IReadOnlyDictionary<string, object?> subFilter)
+                            CheckFilterClauses(subFilter, allow, entityName, layoutName, errors);
+                    }
+                }
+                continue;
+            }
+
+            if (!allow.TryGetValue(key, out var allowedOps))
+            {
+                errors.Add(new MetaError(
+                    $"dataGrid layout \"{layoutName}\" on entity \"{entityName}\" has @filter over " +
+                    $"non-filterable field \"{key}\". Filterable fields: " +
+                    $"{(allow.Count > 0 ? string.Join(", ", allow.Keys) : "(none)")}",
+                    ErrorCode.ERR_BAD_ATTR_FILTER));
+                continue;
+            }
+
+            // After parse-time desugaring, every non-composition field clause is
+            // canonical { op: value }. The object guard below is defensive.
+            if (clause is IReadOnlyDictionary<string, object?> clauseObj)
+            {
+                foreach (var op in clauseObj.Keys)
+                {
+                    if (!allowedOps.Contains(op))
+                    {
+                        errors.Add(new MetaError(
+                            $"dataGrid layout \"{layoutName}\" on entity \"{entityName}\" @filter uses disallowed " +
+                            $"op \"{key}.{op}\". Allowed ops for \"{key}\": {string.Join(", ", allowedOps)}",
+                            ErrorCode.ERR_BAD_ATTR_FILTER));
+                    }
+                }
+            }
+        }
+    }
+
     private static void WalkAttrSchema(
         MetaData node,
         TypeRegistry registry,
@@ -513,8 +609,9 @@ public static class ValidationPasses
     //
     // Numeric attr subtypes (int / long / double) map to either long or double
     // in C# (the parser stores JSON numbers as long when integral, double when
-    // fractional). String, class, properties → value is string. Boolean → bool.
+    // fractional). String, class → value is string. Boolean → bool.
     // stringarray → IReadOnlyList<string> (parser desugars bare strings).
+    // properties, filter → object-shaped (IReadOnlyDictionary<string, object?>).
     // base or anything unexpected → accept anything.
     // -------------------------------------------------------------------------
 
@@ -523,8 +620,7 @@ public static class ValidationPasses
         return valueType switch
         {
             Constants.ATTR_SUBTYPE_STRING or
-            Constants.ATTR_SUBTYPE_CLASS or
-            Constants.ATTR_SUBTYPE_PROPERTIES => value is string,
+            Constants.ATTR_SUBTYPE_CLASS => value is string,
 
             Constants.ATTR_SUBTYPE_INT or
             Constants.ATTR_SUBTYPE_LONG => value is long or int,
@@ -538,6 +634,12 @@ public static class ValidationPasses
                 value is IReadOnlyList<string> ||
                 (value is IReadOnlyList<object?> ol && ol.All(e => e is string)),
 
+            Constants.ATTR_SUBTYPE_PROPERTIES or
+            Constants.ATTR_SUBTYPE_FILTER =>
+                // Object-typed attrs must be a dictionary (not string, not array).
+                // A string @filter value is the legacy form → fails this check → ERR_BAD_ATTR_VALUE.
+                value is IReadOnlyDictionary<string, object?>,
+
             _ => true, // SUBTYPE_BASE or unknown → accept anything
         };
     }
@@ -549,6 +651,7 @@ public static class ValidationPasses
             null => "null",
             IReadOnlyList<string> => "array",
             IReadOnlyList<object?> => "array",
+            IReadOnlyDictionary<string, object?> => "object",
             string => "string",
             bool => "boolean",
             long or int => "number",

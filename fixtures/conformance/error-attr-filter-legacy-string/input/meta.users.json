@@ -1,0 +1,43 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Subscriber",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "subscribed",
+                "@filterable": true
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": ["id"]
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "bySubscribed",
+                "@fields": ["subscribed"]
+              }
+            },
+            {
+              "layout.dataGrid": {
+                "name": "default",
+                "@columns": ["subscribed"],
+                "@filter": "{\"subscribed\":true}"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

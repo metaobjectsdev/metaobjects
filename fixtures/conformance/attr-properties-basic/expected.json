@@ -1,0 +1,35 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Subscriber",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "attr.properties": {
+                "name": "config",
+                "value": {
+                  "owner": "growth",
+                  "tier": "gold"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

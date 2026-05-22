@@ -94,25 +94,6 @@ describe("tanstackGrid() factory", () => {
     expect(file.content).toMatch(/import type \{[^}]*SubscriberFilter[^}]*\} from "\.\/Subscriber"/);
   });
 
-  test("grid with invalid @filter fails codegen with clear error", async () => {
-    // Build a fixture inline with an invalid filter: email.gte is disallowed for string fields.
-    const { MetaObject, MetaField, MetaLayout, TypeId, TYPE_OBJECT: T_OBJ, TYPE_FIELD: T_FIELD, TYPE_LAYOUT: T_LAYOUT, OBJECT_SUBTYPE_ENTITY, FIELD_SUBTYPE_STRING, LAYOUT_SUBTYPE_DATA_GRID } = await import("@metaobjectsdev/metadata");
-    const entity: any = new MetaObject(new TypeId(T_OBJ, OBJECT_SUBTYPE_ENTITY), "Subscriber");
-
-    const emailField: any = new MetaField(new TypeId(T_FIELD, FIELD_SUBTYPE_STRING), "email");
-    emailField.setAttr("filterable", true);
-    entity.addChild(emailField);
-
-    const gridLayout: any = new MetaLayout(new TypeId(T_LAYOUT, LAYOUT_SUBTYPE_DATA_GRID), "active");
-    // email.gte is disallowed for string fields (strings don't support gte)
-    gridLayout.setAttr("filter", JSON.stringify({ email: { gte: "x" } }));
-    entity.addChild(gridLayout);
-
-    const { renderColumnsFile } = await import("../src/templates/columns-file.js");
-    const fakeCtx: any = {};
-    expect(() => renderColumnsFile(entity, fakeCtx)).toThrow(/email\.gte/);
-  });
-
   test("respects @emitTanstack: false per entity", async () => {
     // Same approach as the freeze workaround in B-T8 — construct a fresh entity.
     // Use MetaData directly. Import what's needed.

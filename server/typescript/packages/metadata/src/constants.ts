@@ -110,7 +110,7 @@ export const FIELD_SUBTYPES = [
 export type FieldSubType = (typeof FIELD_SUBTYPES)[number];
 
 // ---------------------------------------------------------------------------
-// Attr subtypes (9)
+// Attr subtypes (10)
 // ---------------------------------------------------------------------------
 
 export const ATTR_SUBTYPE_STRING = "string";
@@ -121,6 +121,7 @@ export const ATTR_SUBTYPE_BOOLEAN = "boolean";
 export const ATTR_SUBTYPE_CLASS = "class";
 export const ATTR_SUBTYPE_PROPERTIES = "properties";
 export const ATTR_SUBTYPE_STRINGARRAY = "stringarray";
+export const ATTR_SUBTYPE_FILTER = "filter";
 
 export const ATTR_SUBTYPES = [
   SUBTYPE_BASE,
@@ -132,6 +133,7 @@ export const ATTR_SUBTYPES = [
   ATTR_SUBTYPE_CLASS,
   ATTR_SUBTYPE_PROPERTIES,
   ATTR_SUBTYPE_STRINGARRAY,
+  ATTR_SUBTYPE_FILTER,
 ] as const;
 export type AttrSubType = (typeof ATTR_SUBTYPES)[number];
 
@@ -425,8 +427,19 @@ export type CardinalityValue = (typeof CARDINALITY_VALUES)[number];
 // validation all import from here.
 // ---------------------------------------------------------------------------
 
+// Individual operator constants — used by the parse-time desugar in
+// parser-core.ts. Must stay in sync with FILTER_OPS below.
+export const FILTER_OP_EQ = "eq";
+export const FILTER_OP_NE = "ne";
+export const FILTER_OP_IN = "in";
+export const FILTER_OP_IS_NULL = "isNull";
+
+// Composition-key constants — used by desugarFilterObject in parser-core.ts.
+export const FILTER_COMPOSE_OR = "or";
+export const FILTER_COMPOSE_AND = "and";
+
 export const FILTER_OPS = [
-  "eq", "ne", "gt", "gte", "lt", "lte", "in", "like", "isNull",
+  FILTER_OP_EQ, FILTER_OP_NE, "gt", "gte", "lt", "lte", FILTER_OP_IN, "like", FILTER_OP_IS_NULL,
 ] as const;
 export type FilterOp = (typeof FILTER_OPS)[number];
 

@@ -694,10 +694,10 @@ describe("MetaLayout — typed dataGrid accessors", () => {
     expect(l.filterable).toBe(false);
   });
 
-  it("filter returns the @filter preset-filter JSON string", () => {
+  it("filter returns the @filter preset-filter object", () => {
     const l = makeLayout(LAYOUT_SUBTYPE_DATA_GRID, "default");
-    l.setAttr(LAYOUT_DATA_GRID_ATTR_FILTER, '{"subscribed":true}');
-    expect(l.filter).toBe('{"subscribed":true}');
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_FILTER, { subscribed: { eq: true } });
+    expect(l.filter).toEqual({ subscribed: { eq: true } });
   });
 
   it("filter returns undefined when attr is absent", () => {
@@ -722,13 +722,13 @@ describe("MetaLayout — typed dataGrid accessors", () => {
     l.setAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD, "createdAt");
     l.setAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER, "desc");
     l.setAttr(LAYOUT_DATA_GRID_ATTR_FILTERABLE, true);
-    l.setAttr(LAYOUT_DATA_GRID_ATTR_FILTER, '{"active":true}');
+    l.setAttr(LAYOUT_DATA_GRID_ATTR_FILTER, { active: { eq: true } });
     l.setAttr(LAYOUT_DATA_GRID_ATTR_COLUMNS, ["id", "email", "createdAt"]);
     expect(l.pageSize).toBe(25);
     expect(l.defaultSortField).toBe("createdAt");
     expect(l.defaultSortOrder).toBe("desc");
     expect(l.filterable).toBe(true);
-    expect(l.filter).toBe('{"active":true}');
+    expect(l.filter).toEqual({ active: { eq: true } });
     expect(l.columns).toEqual(["id", "email", "createdAt"]);
   });
 });

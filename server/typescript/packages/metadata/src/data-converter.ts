@@ -12,6 +12,7 @@ import {
   DATA_TYPE_INT,
   DATA_TYPE_LONG,
   DATA_TYPE_DOUBLE,
+  DATA_TYPE_OBJECT,
 } from "./data-type.js";
 
 /**
@@ -35,7 +36,14 @@ export function convertToDataType(dataType: DataType, raw: unknown): AttrValue {
       return toInteger(raw);
     case DATA_TYPE_DOUBLE:
       return toDouble(raw);
-    // string, object (properties attr), date (unreachable for attrs) — string form
+    case DATA_TYPE_OBJECT:
+      // Object-typed attrs (filter / properties) store the object verbatim.
+      // A non-object (e.g. a legacy JSON string) is returned as-is so the
+      // attr-schema pass can reject it with ERR_BAD_ATTR_VALUE.
+      return (typeof raw === "object" && raw !== null)
+        ? (raw as AttrValue)
+        : String(raw);
+    // string, date (unreachable for attrs) — string form
     default:
       return String(raw);
   }

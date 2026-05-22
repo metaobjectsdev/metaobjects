@@ -21,6 +21,7 @@
     "ERR_OVERLAY_NO_TARGET": "An overlay node has no existing target to merge into.",
     "ERR_MALFORMED_YAML": "The YAML metadata input is not valid YAML, or cannot be desugared into canonical metadata.",
     "ERR_INVALID_ORIGIN": "A field origin (passthrough/aggregate) declares an invalid path or attribute.",
+    "ERR_BAD_ATTR_FILTER": "A dataGrid @filter references a non-filterable field or uses an op disallowed for the field's subtype.",
     "ERR_UNKNOWN": "An internal loader error with no stable error code."
   }
 }

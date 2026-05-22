@@ -117,7 +117,7 @@ public static class Constants
     ];
 
     // ---------------------------------------------------------------------------
-    // Attr subtypes (9)
+    // Attr subtypes (10)
     // ---------------------------------------------------------------------------
 
     public const string ATTR_SUBTYPE_STRING      = "string";
@@ -128,6 +128,7 @@ public static class Constants
     public const string ATTR_SUBTYPE_CLASS       = "class";
     public const string ATTR_SUBTYPE_PROPERTIES  = "properties";
     public const string ATTR_SUBTYPE_STRINGARRAY = "stringarray";
+    public const string ATTR_SUBTYPE_FILTER      = "filter";
 
     public static readonly string[] ATTR_SUBTYPES =
     [
@@ -140,6 +141,7 @@ public static class Constants
         ATTR_SUBTYPE_CLASS,
         ATTR_SUBTYPE_PROPERTIES,
         ATTR_SUBTYPE_STRINGARRAY,
+        ATTR_SUBTYPE_FILTER,
     ];
 
     // ---------------------------------------------------------------------------
@@ -435,9 +437,20 @@ public static class Constants
     // validation all import from here.
     // ---------------------------------------------------------------------------
 
+    // Individual operator constants — used by the parse-time desugar in Parser.cs.
+    // Must stay in sync with FILTER_OPS below.
+    public const string FILTER_OP_EQ      = "eq";
+    public const string FILTER_OP_NE      = "ne";
+    public const string FILTER_OP_IN      = "in";
+    public const string FILTER_OP_IS_NULL = "isNull";
+
+    // Composition-key constants — used by DesugarFilterObject in Parser.cs.
+    public const string FILTER_COMPOSE_OR  = "or";
+    public const string FILTER_COMPOSE_AND = "and";
+
     public static readonly string[] FILTER_OPS =
     [
-        "eq", "ne", "gt", "gte", "lt", "lte", "in", "like", "isNull",
+        FILTER_OP_EQ, FILTER_OP_NE, "gt", "gte", "lt", "lte", FILTER_OP_IN, "like", FILTER_OP_IS_NULL,
     ];
 
     public static readonly Dictionary<string, string[]> OPS_BY_SUBTYPE = new Dictionary<string, string[]>
