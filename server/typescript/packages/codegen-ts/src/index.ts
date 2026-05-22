@@ -34,8 +34,8 @@ export { formatTs } from "./format.js";
 
 export { pluralize, columnNameFromField, tableNameFromEntity, viewNameFromProjection } from "./naming.js";
 
-export { packageToPath, entityOutputPath, crossEntitySpecifier, barrelEntrySpecifier, relativeModuleSpecifier } from "./import-path.js";
-export type { OutputLayout } from "./import-path.js";
+export { packageToPath, entityOutputPath, crossEntitySpecifier, barrelEntrySpecifier, relativeModuleSpecifier, entityModuleSpecifier, siblingSpecifier, barrelModuleSpecifier } from "./import-path.js";
+export type { OutputLayout, ResolvedTarget } from "./import-path.js";
 
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 export { extractViewSpec } from "./projection/extract-view-spec.js";

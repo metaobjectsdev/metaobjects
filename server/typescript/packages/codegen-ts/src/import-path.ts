@@ -79,3 +79,75 @@ export function relativeModuleSpecifier(
   const extra = "../".repeat(depth);
   return moduleSpec.startsWith("./") ? extra + moduleSpec.slice(2) : extra + moduleSpec;
 }
+
+/** A fully-resolved output destination. Import-identity belongs to the
+ *  destination, not the generator. */
+export interface ResolvedTarget {
+  name: string;
+  outDir: string;
+  /** Package-specifier prefix others use to import modules produced here.
+   *  Required only when another target imports from this one. */
+  importBase: string | undefined;
+  outputLayout: OutputLayout;
+  dbImport: string;
+}
+
+/** importBase + (package path when package layout) + entity, extension-less. */
+function crossTargetEntityPath(
+  entityTarget: ResolvedTarget,
+  entityPkg: string | undefined,
+  entityName: string,
+): string {
+  const base = entityTarget.importBase;
+  if (base === undefined) {
+    throw new Error(
+      `Cannot emit cross-target import: target "${entityTarget.name}" has no importBase. ` +
+      `Set importBase on the target that holds the entity modules.`,
+    );
+  }
+  const pkgPath = entityTarget.outputLayout === "package" ? packageToPath(entityPkg) : "";
+  return pkgPath === "" ? `${base}/${entityName}` : `${base}/${pkgPath}/${entityName}`;
+}
+
+/** Specifier to import entity `entityName` (in `entityPkg`, produced into
+ *  `entityTarget`) from a file emitted into `selfTarget`. Same target → relative
+ *  (extStyle honored); cross target → extension-less importBase path. */
+export function entityModuleSpecifier(
+  selfTarget: ResolvedTarget,
+  entityTarget: ResolvedTarget,
+  entityPkg: string | undefined,
+  entityName: string,
+  extStyle: ExtStyle,
+): string {
+  if (selfTarget.name === entityTarget.name) {
+    return crossEntitySpecifier(entityTarget.outputLayout, entityPkg, entityPkg, entityName, extStyle);
+  }
+  return crossTargetEntityPath(entityTarget, entityPkg, entityName);
+}
+
+/** A same-target sibling module (e.g. "<Entity>.columns"). Always relative,
+ *  package-layout aware, extStyle honored. */
+export function siblingSpecifier(
+  selfTarget: ResolvedTarget,
+  entityPkg: string | undefined,
+  basename: string,
+  extStyle: ExtStyle,
+): string {
+  return crossEntitySpecifier(selfTarget.outputLayout, entityPkg, entityPkg, basename, extStyle);
+}
+
+/** Barrel re-export specifier. Barrel sits at its target root, so same-target
+ *  uses fromPkg=undefined (barrelEntrySpecifier); cross-target is the
+ *  extension-less importBase path. */
+export function barrelModuleSpecifier(
+  selfTarget: ResolvedTarget,
+  entityTarget: ResolvedTarget,
+  entityPkg: string | undefined,
+  entityName: string,
+  extStyle: ExtStyle,
+): string {
+  if (selfTarget.name === entityTarget.name) {
+    return barrelEntrySpecifier(entityTarget.outputLayout, entityPkg, entityName, extStyle);
+  }
+  return crossTargetEntityPath(entityTarget, entityPkg, entityName);
+}
