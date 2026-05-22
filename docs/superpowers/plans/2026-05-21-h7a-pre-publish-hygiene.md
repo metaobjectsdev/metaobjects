@@ -42,14 +42,14 @@
 - [ ] **Baseline:**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript && bun install && bun test 2>&1 | tail -3
+cd <repo-root>/server/typescript && bun install && bun test 2>&1 | tail -3
 ```
 Expected: `2105 pass / 5 skip / 0 fail` (server side; the client/web packages add 71 more across their own dirs).
 
 - [ ] **Branch:**
 
 ```
-cd /home/doug/Development/metaobjects && git checkout -b feat/h7a-pre-publish-hygiene
+cd <repo-root> && git checkout -b feat/h7a-pre-publish-hygiene
 ```
 
 ---
@@ -99,7 +99,7 @@ export function isUnmodified(fileBody: string): boolean {
 The `AGENT_DOCS_BODY` constant is `forge/src/agent-docs/index.ts` lines 8-568 (a single template literal). Move it verbatim — do NOT edit the markdown content in this task (content updates, including any "Meta Forge" → "MetaObjects" rebrand, are a separate concern). Use a shell extraction to avoid hand-copying 560 lines:
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 mkdir -p server/typescript/packages/sdk/src/agent-docs
 # Extract lines 8-568 (the AGENT_DOCS_BODY export) into body.ts
 sed -n '8,568p' server/typescript/packages/forge/src/agent-docs/index.ts \
@@ -151,14 +151,14 @@ Open `server/typescript/packages/sdk/package.json`. Find the `exports` map and a
 - [ ] **Step 5: Typecheck the sdk package.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript/packages/sdk && bun run typecheck
+cd <repo-root>/server/typescript/packages/sdk && bun run typecheck
 ```
 Expected: exit 0. If `createHash` import errors, confirm `@types/node` or `bun-types` is in sdk devDeps (it should be — bun-types covers node).
 
 - [ ] **Step 6: Commit.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git add server/typescript/packages/sdk/
 git commit -m "feat(sdk): add @metaobjectsdev/sdk/agent-docs (relocated from forge)"
 ```
@@ -196,7 +196,7 @@ from `dependencies`. (Confirm `@metaobjectsdev/sdk` is already a dependency — 
 - [ ] **Step 3: Delete the relocated forge source + update forge barrel.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git rm server/typescript/packages/forge/src/agent-docs/index.ts
 ```
 
@@ -217,7 +217,7 @@ Also remove the now-broken `./agent-docs` export from `forge/package.json`'s `ex
 - [ ] **Step 4: Reinstall + run the CLI's init-docs test.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 bun install
 bun test packages/cli/test/unit/init-refresh-docs.test.ts 2>&1 | tail -5
 ```
@@ -233,7 +233,7 @@ Expected: `2105 pass / 5 skip / 0 fail`.
 - [ ] **Step 6: Verify no forge references remain in cli.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 grep -rn "@metaobjectsdev/forge" server/typescript/packages/cli/ 2>/dev/null | grep -v node_modules | grep -v dist
 ```
 Expected: empty.
@@ -276,7 +276,7 @@ Do NOT touch `server/typescript/packages/forge/package.json` (stays 0.1.0, unpub
 - [ ] **Step 2: Reinstall (updates workspace version refs in lockfile).**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript && bun install 2>&1 | tail -3
+cd <repo-root>/server/typescript && bun install 2>&1 | tail -3
 ```
 Expected: clean. `workspace:*` deps don't pin a version, so no dependency edits are needed — they resolve to 0.5.0 automatically.
 
@@ -290,7 +290,7 @@ Expected: `2105 pass / 0 fail`.
 - [ ] **Step 4: Commit.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git add -A
 git commit -m "chore(release): unify all publish-candidate packages to 0.5.0"
 ```
@@ -346,7 +346,7 @@ plus the common values above.
 - [ ] **Step 12: Validate every package.json parses.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 for f in server/typescript/packages/{metadata,codegen-ts,codegen-ts-react,codegen-ts-tanstack,runtime-ts,migrate-ts,sdk,cli}/package.json client/web/packages/{runtime-web,react,tanstack}/package.json; do
   bun -e "JSON.parse(require('fs').readFileSync('$f','utf8')); console.log('ok: $f')" || echo "PARSE FAIL: $f"
 done
@@ -363,7 +363,7 @@ Expected: clean install, `2105 pass / 0 fail`.
 - [ ] **Step 14: Commit.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git add -A
 git commit -m "chore(release): add npm publish metadata to all publish-candidate packages"
 ```
@@ -534,7 +534,7 @@ Open each of `codegen-ts/README.md`, `runtime-ts/README.md`, `migrate-ts/README.
 - [ ] **Step 6: Commit.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git add -A
 git commit -m "docs(packages): add READMEs for metadata, codegen-ts-react, codegen-ts-tanstack, sdk"
 ```
@@ -558,7 +558,7 @@ cd typescript/packages/  → cd server/typescript/packages/
 There are four references: three `cd typescript && bun install` (one per job) and one each for `packages/conformance` (fixture-lint job) and `packages/metadata` (conformance job). Verify with:
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 grep -n "cd typescript" .github/workflows/conformance.yml
 ```
 Expected after edit: empty (no bare `cd typescript`; all are `cd server/typescript`).
@@ -577,7 +577,7 @@ git commit -m "ci: fix conformance workflow paths after FR-002 server/ move"
 - [ ] **Step 1: Clean install + full build.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 rm -rf node_modules && bun install
 bun run --filter '*' build 2>&1 | tail -20
 ```
@@ -586,7 +586,7 @@ Expected: every package builds; no errors. Each publish-candidate produces a `di
 - [ ] **Step 2: Verify dist outputs exist for publish-candidates.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 for p in server/typescript/packages/{metadata,codegen-ts,codegen-ts-react,codegen-ts-tanstack,runtime-ts,migrate-ts,sdk,cli} client/web/packages/{runtime-web,react,tanstack}; do
   test -f "$p/dist/index.js" && echo "ok: $p/dist/index.js" || echo "MISSING dist: $p"
 done
@@ -603,14 +603,14 @@ Expected: `2105 pass / 0 fail`, typecheck clean.
 - [ ] **Step 4: Client/web tests.**
 
 ```
-for p in /home/doug/Development/metaobjects/client/web/packages/{runtime-web,react,tanstack}; do echo "=== $p ==="; (cd "$p" && bun test 2>&1 | tail -3); done
+for p in <repo-root>/client/web/packages/{runtime-web,react,tanstack}; do echo "=== $p ==="; (cd "$p" && bun test 2>&1 | tail -3); done
 ```
 Expected: runtime-web 30, react 12, tanstack 29 — all 0 fail.
 
 - [ ] **Step 5: Assert no forge references in publish-candidates.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 grep -rn "@metaobjectsdev/forge" \
   server/typescript/packages/{metadata,codegen-ts,codegen-ts-react,codegen-ts-tanstack,runtime-ts,migrate-ts,sdk,cli}/ \
   client/web/packages/ 2>/dev/null | grep -v node_modules | grep -v dist
@@ -636,7 +636,7 @@ Expected: a 404 / "not found" (scope is unclaimed/available) OR an existing vers
 - [ ] **Step 8: Push the branch.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git push -u origin feat/h7a-pre-publish-hygiene
 ```
 Confirm the conformance CI workflow runs green on the pushed branch (check `gh run list --branch feat/h7a-pre-publish-hygiene`).

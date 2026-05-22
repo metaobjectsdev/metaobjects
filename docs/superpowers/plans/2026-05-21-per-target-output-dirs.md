@@ -1451,14 +1451,14 @@ git commit -m "test(cli): end-to-end multi-target gen; rebuild dists"
 
 ---
 
-## Task 12: Downstream verification in downstream-consumer (verify only — do NOT commit)
+## Task 12: Downstream verification in the consumer repo (verify only — do NOT commit)
 
-**Files:** none in this repo. Work in `/home/doug/Development/downstream-consumer` without committing.
+**Files:** none in this repo. Work in the downstream consumer repo without committing.
 
-- [ ] **Step 1: Snapshot current state** — note `git status` in downstream-consumer so any edits can be reverted:
+- [ ] **Step 1: Snapshot current state** — note `git status` in the consumer repo so any edits can be reverted:
 
 ```bash
-cd /home/doug/Development/downstream-consumer && git status
+cd <consumer-repo> && git status
 ```
 
 - [ ] **Step 2: Edit `metaobjects.config.ts`** to route the three targets:
@@ -1492,7 +1492,7 @@ export default defineConfig({
 - [ ] **Step 4: Regenerate + build**
 
 ```bash
-cd /home/doug/Development/downstream-consumer
+cd <consumer-repo>
 pnpm -F @acme/database meta:gen
 pnpm build
 ```
@@ -1500,10 +1500,10 @@ Expected: gen writes entity/queries to `packages/database`, routes to `apps/api`
 
 - [ ] **Step 5: Confirm the dependency-graph win** — the database package no longer needs react/tanstack/fastify (it only emits Drizzle + Zod now). Verify no `.tsx`/`.routes.ts`/`.hooks.ts` remain under `packages/database/src/generated`.
 
-- [ ] **Step 6: Revert downstream-consumer changes (do not commit)**
+- [ ] **Step 6: Revert consumer-repo changes (do not commit)**
 
 ```bash
-cd /home/doug/Development/downstream-consumer && git checkout -- . && git clean -fd  # restore generated tree + config
+cd <consumer-repo> && git checkout -- . && git clean -fd  # restore generated tree + config
 ```
 (Confirm with `git status` that the working tree matches Step 1.)
 

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+#
+# metaobjects is a PUBLIC repository.
+# Block commits that leak private/other-project names or absolute local paths.
+# See CLAUDE.md -> "Public repository hygiene".
+#
+# Activate (one-time, per clone):  git config core.hooksPath .githooks
+# Bypass (discouraged):            git commit --no-verify
+#
+set -uo pipefail
+
+# Case-insensitive forbidden patterns. Keep in sync with CLAUDE.md.
+#  - other/private project names (and known abbreviations/derivations)
+#  - absolute local paths that leak a developer's home directory
+PATTERNS='party-?lore|sibling-app|acme-?website|\bmikes\b|@acme/|acme|trainer-website|draagon|csharp-adopter|sibling-project|/home/[A-Za-z0-9._-]+/|~/Development'
+
+# Legitimate matches to ignore (e.g. the published npm author email).
+ALLOW='doug@dougmealing\.com'
+
+# Scan only newly-ADDED staged lines, attributed to their file.
+hits=$(git diff --cached --diff-filter=ACM -U0 --no-color 2>/dev/null | awk '
+  /^\+\+\+ /              { f=$2; sub(/^b\//,"",f); next }
+  # skip the hook itself (its PATTERNS line legitimately lists the forbidden words)
+  /^\+/ && !/^\+\+\+/     { if (f !~ /^\.githooks\//) print f "\t" substr($0,2) }
+' | grep -Ei "$PATTERNS" | grep -vEi "$ALLOW")
+
+if [ -n "$hits" ]; then
+  echo "" >&2
+  echo "  commit blocked — possible private/other-project or local-path leak (metaobjects is PUBLIC):" >&2
+  echo "$hits" | sed 's/^/      /' >&2
+  echo "" >&2
+  echo "  Genericize the references (e.g. 'a downstream consumer', '<repo-root>')" >&2
+  echo "  — see CLAUDE.md -> Public repository hygiene." >&2
+  echo "  False positive? Bypass with:  git commit --no-verify" >&2
+  echo "" >&2
+  exit 1
+fi
+exit 0

@@ -53,7 +53,7 @@ This is a smell:
 - **D3 — Migration: hard break.** The loader rejects the old escaped-string `@filter` with a
   clear error pointing to the new object syntax. Aligns with the project's
   "no backwards-compat hacks" rule and v0.x pre-stable status. In-repo metadata
-  (downstream-consumer, fixtures) is converted by hand as part of the work.
+  (the downstream consumer, fixtures) is converted by hand as part of the work.
 - **D4 — Scope: both attrs together.** `attr.filter` (new, has a consumer) and
   `attr.properties` (Java parity, no consumer yet) ship in one project.
 - **D5 — `grid-filter-validate` relocation: move into `@metaobjectsdev/metadata`.** Filter
@@ -177,7 +177,7 @@ Update `CAPABILITIES.json` and `ERROR-CODES.json` accordingly.
 ### 7. Migration (hard break)
 
 The loader rejects the old escaped-string `@filter` with an error naming the new object
-syntax. Convert downstream-consumer's `meta.*.json` and in-repo fixtures by hand.
+syntax. Convert the downstream consumer's `meta.*.json` and in-repo fixtures by hand.
 
 ## Testing (TDD, tests first)
 

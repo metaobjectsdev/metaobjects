@@ -117,7 +117,7 @@ Before slicing in: verify the assumptions this plan depends on. Do NOT skip — 
 
 - [ ] **Step 1: Confirm baseline `mvn test` is green on `java/metadata` and `java/core`**
 
-Run: `cd /home/doug/Development/metaobjects/java && mvn -pl metadata,core test`
+Run: `cd <repo-root>/java && mvn -pl metadata,core test`
 Expected: BUILD SUCCESS for both modules.
 
 If `metadata`/`core` tests fail at baseline, **stop and escalate** — this plan assumes the existing pipeline works. The wider Java build may have unrelated failures (the survey noted `codegen-base` has unrelated failures); only the `metadata` and `core` modules matter here.
@@ -147,13 +147,13 @@ If it FAILS with a whitespace/escaping/number-formatting diff, the serializer is
 
 - [ ] **Step 3: Confirm Gson + JUnit 5 are already on the test classpath**
 
-Run: `cd /home/doug/Development/metaobjects/java/metadata && mvn dependency:tree -DskipTests | grep -E "(gson|junit-jupiter)" | head -10`
+Run: `cd <repo-root>/java/metadata && mvn dependency:tree -DskipTests | grep -E "(gson|junit-jupiter)" | head -10`
 
 Expected: both `com.google.code.gson:gson` and `org.junit.jupiter:junit-jupiter` appear. They almost certainly do (the existing parser/serializer use Gson; H3b tests presumably use JUnit 5). If either is missing, add the missing dep to `java/metadata/pom.xml` as a `test`-scope dependency before continuing.
 
 - [ ] **Step 4: Note the JUnit version**
 
-Run: `cd /home/doug/Development/metaobjects/java/metadata && mvn dependency:tree -DskipTests | grep -E "junit-jupiter"`
+Run: `cd <repo-root>/java/metadata && mvn dependency:tree -DskipTests | grep -E "junit-jupiter"`
 
 Record: JUnit version (e.g. 5.10.x). Use the matching `@ParameterizedTest` + `@MethodSource` API throughout this plan.
 
@@ -187,13 +187,13 @@ public record ValidationResult(List<String> errors, List<String> warnings) {
 
 - [ ] **Step 2: Confirm the project compiles**
 
-Run: `cd /home/doug/Development/metaobjects/java/metadata && mvn -DskipTests compile`
+Run: `cd <repo-root>/java/metadata && mvn -DskipTests compile`
 Expected: BUILD SUCCESS.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /home/doug/Development/metaobjects && git add java/metadata/src/main/java/com/metaobjects/loader/validation/ && git commit -m "feat(java): ValidationResult carrier for loader validation passes
+cd <repo-root> && git add java/metadata/src/main/java/com/metaobjects/loader/validation/ && git commit -m "feat(java): ValidationResult carrier for loader validation passes
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
@@ -254,7 +254,7 @@ class SubtypeRulesValidatorTest {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `cd /home/doug/Development/metaobjects/java/metadata && mvn -pl metadata test -Dtest=SubtypeRulesValidatorTest`
+Run: `cd <repo-root>/java/metadata && mvn -pl metadata test -Dtest=SubtypeRulesValidatorTest`
 Expected: FAIL (compile error — `SubtypeRulesValidator` does not exist).
 
 - [ ] **Step 3: Implement `SubtypeRulesValidator.java`**
@@ -304,13 +304,13 @@ The exact method names on Java `MetaData` (`children()` vs `getChildren()`, `sub
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `cd /home/doug/Development/metaobjects/java/metadata && mvn -pl metadata test -Dtest=SubtypeRulesValidatorTest`
+Run: `cd <repo-root>/java/metadata && mvn -pl metadata test -Dtest=SubtypeRulesValidatorTest`
 Expected: PASS, 3 tests green.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/doug/Development/metaobjects && git add java/metadata && git commit -m "feat(java): subtype-rules validation pass
+cd <repo-root> && git add java/metadata && git commit -m "feat(java): subtype-rules validation pass
 
 Port of typescript/packages/metadata/src/subtype-rules.ts.
 Value objects with primary identity → ERR_SUBTYPE_RULE_VIOLATION.
@@ -598,7 +598,7 @@ public final class CorpusRoot {
 
 - [ ] **Step 2: Confirm it compiles**
 
-Run: `cd /home/doug/Development/metaobjects/java/metadata && mvn -DskipTests test-compile`. Expected: BUILD SUCCESS.
+Run: `cd <repo-root>/java/metadata && mvn -DskipTests test-compile`. Expected: BUILD SUCCESS.
 
 - [ ] **Step 3: Commit**
 
@@ -938,7 +938,7 @@ JUnit 5's `Fixture` parameter needs `toString()` for the `{0}` placeholder — J
 
 - [ ] **Step 2: Run the full corpus**
 
-Run: `cd /home/doug/Development/metaobjects/java && mvn -pl metadata test -Dtest=ConformanceTest`
+Run: `cd <repo-root>/java && mvn -pl metadata test -Dtest=ConformanceTest`
 Expected: every `lint` test passes (the corpus is clean — the C# / TS harnesses both verified this). The `conformance` tests fail for fixtures that aren't yet handled by Java. Note the OBSERVED failing set.
 
 Since Slice 1 already ported the five validation passes, the expected failing set is small — most/all fixtures should pass at this point except the script-only check on `extends-abstract-base` (which is silently skipped, so it still passes via the `expected.json` check). Realistic expectation: **0 failures**, ledger stays empty.
@@ -956,7 +956,7 @@ Update `src/test/resources/conformance-expected-failures.json` to contain `{"lan
 
 - [ ] **Step 4: Confirm the wider test suite still passes**
 
-Run: `cd /home/doug/Development/metaobjects/java && mvn -pl metadata test`
+Run: `cd <repo-root>/java && mvn -pl metadata test`
 Expected: ALL Java metadata tests pass, including the new conformance theories.
 
 - [ ] **Step 5: Commit**
@@ -1173,7 +1173,7 @@ For each operation in the parsed script: navigate the path; if null → failed c
 
 - [ ] **Step 3: Run the full corpus**
 
-Run: `cd /home/doug/Development/metaobjects/java && mvn -pl metadata test`
+Run: `cd <repo-root>/java && mvn -pl metadata test`
 Expected: ALL conformance tests pass, ledger remains empty. `extends-abstract-base` now actually runs its 5 script operations (the C# review confirmed these are not tautological — they genuinely exercise super-chain inheritance).
 
 If the script check fails for `extends-abstract-base`, the binding is wrong — fix the binding. **Do not edit the fixture.** Read `extends-abstract-base/script.json` + `expected.json` + the binding code to debug.

@@ -1085,7 +1085,7 @@ git commit -m "test(conformance): add attr.filter error fixtures; gate C# as kno
 
 ---
 
-### Task 15: Migrate in-repo metadata (downstream-consumer + any others)
+### Task 15: Migrate in-repo metadata (the downstream consumer + any others)
 
 **Files:** project metadata files using string `@filter`.
 
@@ -1098,9 +1098,9 @@ This finds the escaped-string form (object form has `"@filter": {`).
 
 For each match, replace the escaped JSON string with the equivalent object. Example — `"@filter": "{\"subscribed\":true}"` becomes `"@filter": { "subscribed": true }`. (Authoring shorthand is fine; the loader desugars.)
 
-- [ ] **Step 3: Verify downstream-consumer loads clean**
+- [ ] **Step 3: Verify the downstream consumer loads clean**
 
-If downstream-consumer has a load/gen check, run it (e.g. its `meta gen --dry-run`). Expected: no `ERR_BAD_ATTR_VALUE` / `ERR_BAD_ATTR_FILTER`.
+If the downstream consumer has a load/gen check, run it (e.g. its `meta gen --dry-run`). Expected: no `ERR_BAD_ATTR_VALUE` / `ERR_BAD_ATTR_FILTER`.
 
 - [ ] **Step 4: Commit**
 
@@ -1210,7 +1210,7 @@ git commit -m "feat(java): add FilterAttribute + canonical attr.filter/propertie
 - `attr.filter` restricted to `layout.dataGrid` (D2) → only the dataGrid `@filter` schema entry is retyped; no other node gets the attr. ✓
 - `grid-filter-validate` lives in metadata (D5) → superseded by load-time pass; codegen file deleted (Task 10). ✓
 - Cross-language fixtures (TS/Java/C#) → Tasks 13, 14, 16, 17. ✓
-- Migrate downstream-consumer → Task 15. ✓
+- Migrate the downstream consumer → Task 15. ✓
 - CAPABILITIES.json / ERROR-CODES.json updates → Task 14. ✓
 
 **Placeholder scan:** No "TBD"/"implement later". The few "confirm the API name" notes point at concrete grep targets (loader entry points, ledger field) because exact private method names weren't read during planning — each carries the fallback to grep existing tests, and the assertion/contract is always spelled out.

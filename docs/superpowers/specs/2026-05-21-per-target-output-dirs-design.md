@@ -7,7 +7,7 @@
 ## Problem
 
 metaobjects codegen emits every artifact type to a single `outDir`. A consuming
-project (downstream-consumer) therefore has its Drizzle schema, Fastify route handlers,
+project (a downstream consumer) therefore has its Drizzle schema, Fastify route handlers,
 **and** React hooks/forms/columns all generated into one package
 (`packages/database/src/generated/`). That "database" package consequently depends
 on react, @tanstack/react-query, react-table, react-hook-form, and ships `.tsx`
@@ -50,7 +50,7 @@ is the core of the work — not just adding an `outDir` string.
   files — but those are entity→entity, always within the entity-module target, so
   they stay relative. The one same-target sibling import that is *not* the entity
   file is grid-hook → `Program.columns` (both in the web target).
-- **Cross-package import format is already proven.** The downstream-consumer web/api apps
+- **Cross-package import format is already proven.** The reference web/api consumer apps
   already import generated modules from the database package as **extension-less
   package paths**, resolved via `moduleResolution: "bundler"` against the database
   package's `exports` map (`"./generated/*": "./src/generated/*.ts"`):
@@ -269,7 +269,7 @@ Rebuild dists for `codegen-ts`, `codegen-ts-react`, `codegen-ts-tanstack`, and `
 
 ## Downstream validation (verify only — do NOT commit there)
 
-In `/home/doug/Development/downstream-consumer`, route:
+In the downstream consumer repo, route:
 
 - entity/queries → `packages/database/src/generated`
 - routes → `apps/api/src/generated`

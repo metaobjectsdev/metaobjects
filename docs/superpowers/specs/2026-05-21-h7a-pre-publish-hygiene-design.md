@@ -6,7 +6,7 @@
 
 ## Background
 
-The metaobjects repo has not yet shipped any TypeScript package to npm. The current workspace builds via `bun install` + `link:` paths in downstream consumers (downstream-consumer). To make a coordinated first npm release (planned at 0.5.0, marking the post-polyglot-split milestone), the workspace needs preparation work that doesn't touch npm itself: decoupling a publish-blocking dependency, unifying heterogeneous package versions, filling in standard pkg.json metadata, and fixing stale CI paths.
+The metaobjects repo has not yet shipped any TypeScript package to npm. The current workspace builds via `bun install` + `link:` paths in downstream consumers. To make a coordinated first npm release (planned at 0.5.0, marking the post-polyglot-split milestone), the workspace needs preparation work that doesn't touch npm itself: decoupling a publish-blocking dependency, unifying heterogeneous package versions, filling in standard pkg.json metadata, and fixing stale CI paths.
 
 This work is grouped into H7a so it can ship and be verified without committing to the publish event. H7b (changesets adoption) and H7c (first publish) follow.
 
@@ -32,7 +32,7 @@ After H7a ships:
 - Claiming the `@metaobjects` scope on npm.
 - Enabling 2FA on the publishing account.
 - The actual publish (0.5.0-rc.1 → `next`, then 0.5.0 → `latest`).
-- Per-consumer (downstream-consumer) migration to npm-installed versions.
+- Per-consumer (downstream consumer) migration to npm-installed versions.
 
 ## Non-goals (out of all of H7)
 
@@ -265,5 +265,5 @@ This spec does NOT cover:
 
 - The H7b changesets adoption (separate spec).
 - The H7c first publish (separate spec).
-- downstream-consumer migration from `link:` to npm-installed versions (downstream consumer concern, addressed when H7c ships).
+- Downstream consumer migration from `link:` to npm-installed versions (downstream consumer concern, addressed when H7c ships).
 - Java / Python / C# packages. TS-only.

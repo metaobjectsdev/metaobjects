@@ -170,7 +170,7 @@ Expected: `Build succeeded`, 0 errors.
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /home/doug/Development/metaobjects && git add -A csharp \
+cd <repo-root> && git add -A csharp \
   && git commit -m "chore(csharp): restructure spike into MetaObjects solution + test project"
 ```
 

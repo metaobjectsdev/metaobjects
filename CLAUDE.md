@@ -20,6 +20,22 @@ TypeScript reference implementation is at v0.3 — Projects D–G shipped end-to
 
 Cross-language conformance fixtures live at `fixtures/conformance/` (45 fixtures + a `CAPABILITIES.json` manifest). See `spec/roadmap.md` for current + planned work.
 
+## Public repository hygiene
+
+**This repository is PUBLIC.** Never commit references to other/private projects or to a developer's local environment. In any committed file — specs, plans, code, docs, fixtures — before every commit:
+
+- **No other-project names.** Do not name private or sibling consumer projects. Use generic terms: "a downstream consumer", "the reference web consumer", "a C# adopter", "a sibling project".
+- **No absolute local paths.** Never commit a developer's home path (e.g. `/home/<user>/…` or a `~/`-rooted path). Use repo-relative paths or placeholders (`<repo-root>`, `<consumer-repo>`) in command examples.
+- **Scan the staged diff** for both of the above and genericize anything found before committing.
+
+A local pre-commit hook enforces this (`.githooks/pre-commit`). Activate it once per clone:
+
+```
+git config core.hooksPath .githooks
+```
+
+It blocks commits whose added lines match the forbidden patterns (`git commit --no-verify` bypasses, discouraged). The published npm author email is the one allowed exception. When a new consumer/project name is worth guarding, add it to **both** this section and the hook's `PATTERNS`.
+
 ## Monorepo layout
 
 This repo holds all implementations of the standard, organized by deployment target → language/platform → framework integration:

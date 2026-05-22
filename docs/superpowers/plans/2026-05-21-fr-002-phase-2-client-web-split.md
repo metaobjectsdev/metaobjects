@@ -10,7 +10,7 @@
 
 **Companion docs:**
 - Spec: [docs/superpowers/specs/2026-05-21-fr-002-phase-2-client-web-split-design.md](../specs/2026-05-21-fr-002-phase-2-client-web-split-design.md)
-- Downstream FR: `~/Development/downstream-consumer/specs/FR-002-metaobjects-pkg-migration/spec.md`
+- Downstream FR: the downstream consumer's own migration spec
 
 ---
 
@@ -58,7 +58,7 @@
 - [ ] **Baseline test count** — confirm starting state:
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 bun install
 bun test 2>&1 | tail -3
 ```
@@ -67,7 +67,7 @@ Expected: **2105 pass / 0 fail** (the baseline cited in spec). Record exact numb
 - [ ] **Create feature branch:**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git checkout -b feat/fr-002-phase-2-client-web-split
 ```
 
@@ -91,12 +91,12 @@ Open `server/typescript/package.json` and replace the `workspaces` array:
 - [ ] **Step 2: Verify Bun accepts the relative glob.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 bun install
 ```
 Expected: install completes without "workspace pattern not found" or path errors. No client/web packages exist yet, so the glob just resolves to zero matches — that's fine, Bun should tolerate it.
 
-If Bun rejects ascending relative globs (rare but possible on older versions), fall back to: create a root `package.json` at `/home/doug/Development/metaobjects/package.json` with the same `"name": "@metaobjectsdev/monorepo"` content plus `"workspaces": ["server/typescript/packages/*", "client/web/packages/*"]`, and remove the workspaces field from `server/typescript/package.json`. Update CLAUDE.md test-execution guidance accordingly in Task 13.
+If Bun rejects ascending relative globs (rare but possible on older versions), fall back to: create a root `package.json` at `<repo-root>/package.json` with the same `"name": "@metaobjectsdev/monorepo"` content plus `"workspaces": ["server/typescript/packages/*", "client/web/packages/*"]`, and remove the workspaces field from `server/typescript/package.json`. Update CLAUDE.md test-execution guidance accordingly in Task 13.
 
 - [ ] **Step 3: Commit.**
 
@@ -172,7 +172,7 @@ git commit -m "chore(workspace): extend bun workspace glob to client/web/package
 Note: relative `extends` path goes up four levels (runtime-web → packages → web → client → metaobjects → server/typescript/tsconfig.base.json). Adjust if `tsconfig.base.json` lives elsewhere — confirm before writing:
 
 ```
-ls /home/doug/Development/metaobjects/server/typescript/tsconfig.base.json
+ls <repo-root>/server/typescript/tsconfig.base.json
 ```
 
 - [ ] **Step 3: Create `tsconfig.typecheck.json`** (mirror what other packages use).
@@ -206,7 +206,7 @@ Pure framework-agnostic browser core for metaobjects: currency formatting, filte
 - [ ] **Step 6: Verify workspace resolution.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 bun install
 bun pm ls 2>&1 | grep runtime-web
 ```
@@ -215,7 +215,7 @@ Expected: `@metaobjectsdev/runtime-web@0.4.0` appears in workspace list.
 - [ ] **Step 7: Typecheck the empty package.**
 
 ```
-cd /home/doug/Development/metaobjects/client/web/packages/runtime-web
+cd <repo-root>/client/web/packages/runtime-web
 bun run typecheck
 ```
 Expected: zero errors.
@@ -238,14 +238,14 @@ git commit -m "feat(runtime-web): scaffold empty @metaobjectsdev/runtime-web pac
 - [ ] **Step 1: Check whether currency tests exist in runtime-ts-client.**
 
 ```
-ls /home/doug/Development/metaobjects/server/typescript/packages/runtime-ts-client/test/ 2>/dev/null
+ls <repo-root>/server/typescript/packages/runtime-ts-client/test/ 2>/dev/null
 ```
 If `currency.test.ts` exists, it moves with the source. If not, write a smoke test from scratch.
 
 - [ ] **Step 2: Move the source file.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git mv server/typescript/packages/runtime-ts-client/src/currency.ts \
        client/web/packages/runtime-web/src/currency.ts
 ```
@@ -312,7 +312,7 @@ Open `server/typescript/packages/runtime-ts-client/package.json`, add to depende
 - [ ] **Step 7: Run tests.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 bun install     # pick up the new workspace dep
 bun test 2>&1 | tail -3
 ```
@@ -337,9 +337,9 @@ git commit -m "feat(runtime-web): move currency module from runtime-ts-client"
 - [ ] **Step 1: Read the source files to confirm what's type-only vs implementation.**
 
 ```
-cat /home/doug/Development/metaobjects/server/typescript/packages/runtime-ts-client/src/tanstack/types.ts
-cat /home/doug/Development/metaobjects/server/typescript/packages/runtime-ts-client/src/tanstack/filter-builder.ts
-cat /home/doug/Development/metaobjects/server/typescript/packages/runtime-ts-client/src/tanstack/cell-renderers.ts
+cat <repo-root>/server/typescript/packages/runtime-ts-client/src/tanstack/types.ts
+cat <repo-root>/server/typescript/packages/runtime-ts-client/src/tanstack/filter-builder.ts
+cat <repo-root>/server/typescript/packages/runtime-ts-client/src/tanstack/cell-renderers.ts
 ```
 
 `types.ts` is pure types — moves whole.
@@ -349,7 +349,7 @@ cat /home/doug/Development/metaobjects/server/typescript/packages/runtime-ts-cli
 - [ ] **Step 2: Move filter-builder → filter-qs.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git mv server/typescript/packages/runtime-ts-client/src/tanstack/filter-builder.ts \
        client/web/packages/runtime-web/src/filter-qs.ts
 ```
@@ -394,14 +394,14 @@ export type { CellRenderer } from "@metaobjectsdev/runtime-web";
 In any other file under `server/typescript/packages/runtime-ts-client/src/tanstack/*.tsx` that imports from `./types.js`, `./filter-builder.js`, or the `CellRenderer` type from `./cell-renderers.js`, update to import from `@metaobjectsdev/runtime-web`. Use grep to find them:
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript/packages/runtime-ts-client/src/tanstack
+cd <repo-root>/server/typescript/packages/runtime-ts-client/src/tanstack
 grep -ln 'from "\./types\|from "\./filter-builder\|CellRenderer' *.tsx *.ts
 ```
 
 - [ ] **Step 8: Run tests.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 bun test 2>&1 | tail -3
 ```
 Expected: still **2105 pass / 0 fail**.
@@ -482,7 +482,7 @@ git commit -m "feat(runtime-web): move filter-qs + fetcher contract types"
 - [ ] **Step 3: Move the React sources.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git mv server/typescript/packages/runtime-ts-client/src/react/index.tsx \
        client/web/packages/react/src/use-entity-form.tsx
 git mv server/typescript/packages/runtime-ts-client/src/components/currency-input.tsx \
@@ -499,7 +499,7 @@ import { formatCurrency } from "@metaobjectsdev/runtime-web";
 - [ ] **Step 5: Move corresponding tests if they exist.**
 
 ```
-ls /home/doug/Development/metaobjects/server/typescript/packages/runtime-ts-client/test/ 2>/dev/null
+ls <repo-root>/server/typescript/packages/runtime-ts-client/test/ 2>/dev/null
 ```
 If tests for `useEntityForm` or `CurrencyInput` exist there, `git mv` them into `client/web/packages/react/test/`.
 
@@ -528,7 +528,7 @@ In `server/typescript/packages/runtime-ts-client/src/index.ts`, replace any loca
 - [ ] **Step 8: Run tests + typecheck.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 bun install
 bun test 2>&1 | tail -3
 bun run --filter '@metaobjectsdev/react' typecheck
@@ -608,7 +608,7 @@ git commit -m "feat(react): scaffold @metaobjectsdev/react with useEntityForm + 
 - [ ] **Step 3: Move tanstack runtime sources.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git mv server/typescript/packages/runtime-ts-client/src/tanstack/entity-fetcher.tsx \
        client/web/packages/tanstack/src/entity-fetcher.tsx
 git mv server/typescript/packages/runtime-ts-client/src/tanstack/cell-renderer-provider.tsx \
@@ -669,7 +669,7 @@ Delete `server/typescript/packages/runtime-ts-client/src/tanstack/index.ts` (its
 - [ ] **Step 8: Run tests + typecheck.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 bun install
 bun test 2>&1 | tail -3
 bun run --filter '@metaobjectsdev/tanstack' typecheck
@@ -761,7 +761,7 @@ git commit -m "feat(tanstack): scaffold @metaobjectsdev/tanstack with EntityGrid
 - [ ] **Step 3: Move the form-file generator + template.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git mv server/typescript/packages/codegen-ts/src/generators/form-file.ts \
        server/typescript/packages/codegen-ts-react/src/form-file.ts
 mkdir -p server/typescript/packages/codegen-ts-react/src/templates
@@ -810,7 +810,7 @@ Open `server/typescript/packages/codegen-ts/src/generators/index.ts`. Remove any
 - [ ] **Step 8: Move form-file tests.**
 
 ```
-ls /home/doug/Development/metaobjects/server/typescript/packages/codegen-ts/test/generators/ | grep -i form
+ls <repo-root>/server/typescript/packages/codegen-ts/test/generators/ | grep -i form
 ```
 For each test file related to `form-file`:
 ```
@@ -829,7 +829,7 @@ Remove any blocks that assert against the form-file factory; those move to a new
 - [ ] **Step 10: Run tests + typecheck.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 bun install
 bun test 2>&1 | tail -3
 bun run --filter '@metaobjectsdev/codegen-ts-react' typecheck
@@ -877,7 +877,7 @@ Replace in each matched file.
 - [ ] **Step 4: Run codegen-ts-tanstack tests.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 bun test --filter '@metaobjectsdev/codegen-ts-tanstack' 2>&1 | tail -5
 ```
 Expected: codegen-ts-tanstack's own tests pass. Golden snapshots in codegen-ts may still be out of date — that's the next task.
@@ -899,7 +899,7 @@ git commit -m "feat(codegen-ts-tanstack): retarget emitted imports to @metaobjec
 - [ ] **Step 1: Identify the snapshot regeneration command.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript/packages/codegen-ts
+cd <repo-root>/server/typescript/packages/codegen-ts
 cat package.json | grep -A 1 '"scripts"'
 ```
 The golden tests should have an update mechanism. In Bun, snapshot tests use `expect(...).toMatchSnapshot()` and regenerate with `bun test --update-snapshots`. If the goldens are file-based fixtures (not Bun snapshots), find the regen script.
@@ -931,7 +931,7 @@ Expected output: empty (every changed line should be an import string). If non-i
 - [ ] **Step 4: Run full test suite.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 bun test 2>&1 | tail -3
 ```
 Expected: **2105 pass / 0 fail** (baseline restored, possibly higher if the new packages added tests).
@@ -953,7 +953,7 @@ git commit -m "test(codegen-ts): regenerate golden snapshots after package renam
 - [ ] **Step 1: Verify nothing inside `server/` still imports from runtime-ts-client.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 grep -rln "@metaobjectsdev/runtime-ts-client" --include="*.ts" --include="*.tsx" --include="*.json" \
   server/ client/ 2>/dev/null | grep -v node_modules | grep -v dist | grep -v "/runtime-ts-client/" | grep -v "/golden/"
 ```
@@ -968,7 +968,7 @@ git rm -r server/typescript/packages/runtime-ts-client/
 - [ ] **Step 3: Verify install + tests.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 bun install
 bun test 2>&1 | tail -3
 ```
@@ -1022,7 +1022,7 @@ Update the same way.
 - [ ] **Step 4: Run tests.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 bun install
 bun test 2>&1 | tail -3
 ```
@@ -1124,7 +1124,7 @@ git commit -m "docs(claude-md): five-package split convention + updated TS layou
 - [ ] **Step 1: Clean install from scratch.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 rm -rf node_modules
 bun install
 ```
@@ -1147,7 +1147,7 @@ Expected: zero errors.
 - [ ] **Step 4: Confirm no stale references remain.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 grep -rln "@metaobjectsdev/runtime-ts-client" --include="*.ts" --include="*.tsx" --include="*.json" --include="*.md" \
   server/ client/ docs/ CLAUDE.md 2>/dev/null | grep -v node_modules | grep -v dist
 ```
@@ -1158,7 +1158,7 @@ Expected: empty. Every reference to the old package is gone (except possibly his
 ```
 cd /tmp && rm -rf rw-check && mkdir rw-check && cd rw-check
 bun init -y
-bun add file:/home/doug/Development/metaobjects/client/web/packages/runtime-web
+bun add file:<repo-root>/client/web/packages/runtime-web
 ls node_modules/ | sort
 ```
 Expected: `node_modules/` contains `@metaobjectsdev/runtime-web`, `@metaobjectsdev/metadata`, `qs`, and their non-React/non-Node-only transitive deps only. There should be **no `react`, no `ts-poet`, no `@biomejs/biome`, no `@tanstack/*`** in the resolved tree.
@@ -1168,7 +1168,7 @@ If any of those appear: a dependency leaked into runtime-web. Track it down by `
 - [ ] **Step 6: Git status check.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git status
 git log --oneline main..HEAD
 ```
@@ -1190,6 +1190,6 @@ This refactor is large, but every step has a verification command. If any step's
 
 If a step's listed file paths don't exist (e.g., a `currency.test.ts` file presumed to exist isn't there), document the deviation in the commit message and either write a fresh smoke test (per Task 3 step 3) or skip the move sub-step for that file.
 
-The relative workspace glob `../../client/web/packages/*` is the primary approach. If Bun rejects it at Task 1 step 2, fall back to a root `package.json` at `/home/doug/Development/metaobjects/` and remove the workspaces field from `server/typescript/package.json`. The fallback must also include the test-execution warning ("don't `bun test` from repo root") in CLAUDE.md.
+The relative workspace glob `../../client/web/packages/*` is the primary approach. If Bun rejects it at Task 1 step 2, fall back to a root `package.json` at `<repo-root>/` and remove the workspaces field from `server/typescript/package.json`. The fallback must also include the test-execution warning ("don't `bun test` from repo root") in CLAUDE.md.
 
 Goldens regenerate cleanly only if the import-string updates in Tasks 7-8 are complete. If Task 9's diff includes non-import changes, those signal a regression — investigate before committing the goldens.

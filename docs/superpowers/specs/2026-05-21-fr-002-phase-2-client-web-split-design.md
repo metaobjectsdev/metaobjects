@@ -27,7 +27,7 @@ After Phase 2 ships:
 
 ## Non-goals
 
-- **Downstream consumer migration.** downstream-consumer (and any other site linking the workspace) updates separately. The downstream-consumer FR is already written at `downstream-consumer/specs/FR-002-metaobjects-pkg-migration/spec.md`.
+- **Downstream consumer migration.** A downstream consumer (and any other site linking the workspace) updates separately. The downstream consumer's own migration spec is already written.
 - **`dynamic/` layer.** Metadata-driven runtime behavior (CRUD, validation, admin UIs driven by metadata at runtime) is a **server-side** concept and is out of scope. No client-side `dynamic/` directories or exports are created.
 - **npm publishing.** Deferred to H7. All packages remain workspace-internal until then.
 - **C# / Java / Python ports of the runtime packages.** TS-only restructure.
@@ -174,7 +174,7 @@ If any intermediate step fails, fix it before continuing — the PR is atomic, b
 
 ## Out of scope (revisited)
 
-- downstream-consumer migration — covered by `downstream-consumer/specs/FR-002-metaobjects-pkg-migration/spec.md`. downstream-consumer needs to land its Step 1 (Phase 1 path fix) **before** this Phase 2 PR merges to avoid compounding breakage; Step 2 (Phase 2 package updates) lands **after**.
+- Downstream consumer migration — covered by the downstream consumer's own migration spec. The consumer needs to land its Step 1 (Phase 1 path fix) **before** this Phase 2 PR merges to avoid compounding breakage; Step 2 (Phase 2 package updates) lands **after**.
 - Server-side `dynamic/` layer — metadata-driven runtime DB stuff. Separate future work; nothing about it is decided in this doc.
 - Renaming `codegen-ts-tanstack` — it already follows the convention.
 - Java / Python / C# parity for the runtime-web concept — when those ports add web-client integrations, they'll have their own `client/web/<lang>/` directory (or similar).
@@ -186,4 +186,4 @@ If any intermediate step fails, fix it before continuing — the PR is atomic, b
 
 ## Migration notes
 
-This is a coordinated breaking change with no deprecation window. The package `@metaobjectsdev/runtime-ts-client` ceases to exist when Phase 2 merges; downstream consumers (downstream-consumer, future trainer-website on another machine) must follow their FR before they can build against the new metaobjects `main`.
+This is a coordinated breaking change with no deprecation window. The package `@metaobjectsdev/runtime-ts-client` ceases to exist when Phase 2 merges; downstream consumers (a downstream consumer, and a future sibling project on another machine) must follow their FR before they can build against the new metaobjects `main`.
