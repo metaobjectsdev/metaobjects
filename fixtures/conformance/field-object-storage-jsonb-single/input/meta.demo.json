@@ -1,0 +1,28 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.value": {
+          "name": "WorkflowConfig",
+          "children": [
+            { "field.string":  { "name": "mode" } },
+            { "field.boolean": { "name": "verbose" } },
+            { "field.int":     { "name": "maxRetries" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            { "source.dbTable": { "@name": "programs" } },
+            { "field.long":   { "name": "id" } },
+            { "field.object": { "name": "workflowConfig", "@objectRef": "WorkflowConfig", "@storage": "jsonb" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}
