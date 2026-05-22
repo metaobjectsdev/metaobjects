@@ -2,7 +2,16 @@ import { TypeId } from "../registry.js";
 import { PACKAGE_SEPARATOR } from "../constants.js";
 import type { DataType } from "../data-type.js";
 
-export type AttrValue = string | number | boolean | string[];
+export type AttrValue = string | number | boolean | string[] | AttrObject;
+
+/**
+ * Object-shaped attr value (for `attr.filter` / `attr.properties`). Values are
+ * arbitrary JSON so a filter can hold nested `{ op: value }` clauses (including
+ * scalar arrays for `in` and `null` for `isNull`). Scalar/string[] attrs keep
+ * their existing arms — this arm is reached only by object-typed attr subtypes.
+ */
+export type AttrObject = { readonly [key: string]: AttrJson };
+export type AttrJson = string | number | boolean | null | AttrJson[] | AttrObject;
 
 export abstract class MetaData {
   readonly typeId: TypeId;
