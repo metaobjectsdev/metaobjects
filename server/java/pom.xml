@@ -190,6 +190,28 @@
       </dependency>
       <dependency>
         <groupId>com.metaobjects</groupId>
+        <artifactId>metaobjects-dynamic-core</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.metaobjects</groupId>
+        <artifactId>metaobjects-dynamic-core</artifactId>
+        <version>${project.version}</version>
+        <type>test-jar</type>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.metaobjects</groupId>
+        <artifactId>metaobjects-om</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.metaobjects</groupId>
+        <artifactId>metaobjects-omdb</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.metaobjects</groupId>
         <artifactId>metaobjects-maven-plugin</artifactId>
         <version>${project.version}</version>
       </dependency>
@@ -199,6 +221,38 @@
         <groupId>com.metaobjects</groupId>
         <artifactId>archetype</artifactId>
         <version>${project.version}</version>
+      </dependency>
+
+      <!-- Logging (managed so child modules can omit <version>) -->
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-classic</artifactId>
+        <version>${logback.version}</version>
+      </dependency>
+
+      <!-- Testing (managed so child modules can omit <version>) -->
+      <dependency>
+        <groupId>junit</groupId>
+        <artifactId>junit</artifactId>
+        <version>${junit.version}</version>
+        <scope>test</scope>
+      </dependency>
+
+      <!-- Utilities -->
+      <dependency>
+        <groupId>com.google.code.gson</groupId>
+        <artifactId>gson</artifactId>
+        <version>2.13.2</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-lang3</artifactId>
+        <version>3.18.0</version>
       </dependency>
 
       <!-- External Dependencies -->

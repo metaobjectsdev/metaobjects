@@ -7,8 +7,8 @@
 
   <parent>
     <groupId>com.metaobjects</groupId>
-    <artifactId>metaobjects-dynamic</artifactId>
-    <version>6.2.6-SNAPSHOT</version>
+    <artifactId>metaobjects</artifactId>
+    <version>6.3.1-SNAPSHOT</version>
   </parent>
 
   <artifactId>metaobjects-dynamic-core</artifactId>
@@ -103,7 +103,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
-        <version>${maven.jar.plugin.version}</version>
+        <version>${jar.plugin.version}</version>
         <executions>
           <execution>
             <goals>
