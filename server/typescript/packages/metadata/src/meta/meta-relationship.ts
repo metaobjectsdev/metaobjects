@@ -8,7 +8,7 @@ import {
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_JOIN_ENTITY,
   RELATIONSHIP_ATTR_JOIN_FIELDS,
-} from "../constants.js";
+} from "../core/relationship/relationship-constants.js";
 
 export class MetaRelationship extends MetaData {
   get cardinality(): string | undefined {

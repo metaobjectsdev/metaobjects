@@ -94,7 +94,7 @@ import {
   ORIGIN_AGGREGATE_ATTR_VIA,
   SUBTYPE_BASE,
   RESERVED_KEY_VALUE,
-} from "../../src/constants.js";
+} from "../../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

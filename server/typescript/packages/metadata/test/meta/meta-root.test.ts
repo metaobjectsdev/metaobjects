@@ -12,7 +12,7 @@ import {
   OBJECT_SUBTYPE_ENTITY,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_LONG,
-} from "../../src/constants.js";
+} from "../../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

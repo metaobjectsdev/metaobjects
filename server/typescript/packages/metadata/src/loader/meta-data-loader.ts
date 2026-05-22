@@ -12,7 +12,7 @@ import { MetaRoot } from "../meta/meta-root.js";
 import { TypeId, TypeRegistry } from "../registry.js";
 import { coreProviders } from "../core-types.js";
 import { composeRegistry } from "../provider.js";
-import { TYPE_METADATA, SUBTYPE_ROOT } from "../constants.js";
+import { TYPE_METADATA, SUBTYPE_ROOT } from "../shared/base-types.js";
 import { ParseError } from "../errors.js";
 import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues } from "./validation-passes.js";

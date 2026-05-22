@@ -1,10 +1,13 @@
 import type { MetaData } from "./meta/meta-data.js";
+import { TYPE_FIELD, TYPE_SOURCE } from "./shared/base-types.js";
+import { PACKAGE_SEPARATOR } from "./shared/structural.js";
+import { FIELD_ATTR_DB_COLUMN } from "./persistence/db/db-constants.js";
 import {
-  TYPE_FIELD, TYPE_SOURCE, FIELD_ATTR_DB_COLUMN,
-  SOURCE_SUBTYPE_DB_TABLE, SOURCE_SUBTYPE_DB_VIEW,
-  SOURCE_DB_TABLE_ATTR_NAME, SOURCE_ATTR_SCHEMA,
-  PACKAGE_SEPARATOR,
-} from "./constants.js";
+  SOURCE_SUBTYPE_DB_TABLE,
+  SOURCE_SUBTYPE_DB_VIEW,
+  SOURCE_DB_TABLE_ATTR_NAME,
+  SOURCE_ATTR_SCHEMA,
+} from "./persistence/source/source-constants.js";
 
 /**
  * Strip the package prefix from a metadata-qualified name

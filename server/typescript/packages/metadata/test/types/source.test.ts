@@ -8,7 +8,7 @@ import {
   SOURCE_DB_VIEW_ATTR_NAME,
   SUBTYPE_BASE,
   TYPE_OBJECT,
-} from "../../src/constants.js";
+} from "../../src/index.js";
 import { TypeRegistry } from "../../src/registry.js";
 import { registerCoreTypes } from "../../src/core-types.js";
 

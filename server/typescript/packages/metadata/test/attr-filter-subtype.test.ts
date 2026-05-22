@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { composeRegistry } from "../src/provider.js";
 import { coreProviders } from "../src/core-types.js";
-import { TYPE_ATTR, ATTR_SUBTYPE_FILTER, ATTR_SUBTYPES } from "../src/constants.js";
+import { TYPE_ATTR, ATTR_SUBTYPE_FILTER, ATTR_SUBTYPES } from "../src/index.js";
 import { DATA_TYPE_OBJECT } from "../src/data-type.js";
 
 describe("attr.filter subtype", () => {

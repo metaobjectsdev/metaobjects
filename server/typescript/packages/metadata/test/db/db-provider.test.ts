@@ -11,7 +11,7 @@ import {
   FIELD_ATTR_DB_COLUMN,
   FIELD_ATTR_DB_INDEXED,
   SOURCE_ATTR_NAME,
-} from "../../src/constants.js";
+} from "../../src/index.js";
 
 describe("dbProvider", () => {
   it("composed with core, field subtypes carry @dbColumn and @db.indexed", () => {

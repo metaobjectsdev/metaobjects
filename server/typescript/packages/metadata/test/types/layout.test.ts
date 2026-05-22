@@ -14,7 +14,7 @@ import {
   FIELD_ATTR_DB_INDEXED,
   SUBTYPE_BASE,
   VIEW_SUBTYPES,
-} from "../../src/constants.js";
+} from "../../src/index.js";
 import { TypeRegistry } from "../../src/registry.js";
 import { registerCoreTypes } from "../../src/core-types.js";
 import { MetaLayout } from "../../src/meta/meta-layout.js";

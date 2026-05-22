@@ -1,5 +1,7 @@
 import type { AttrValue, MetaData } from "./meta/meta-data.js";
-import { type AttrSubType, CHILD_RULE_WILDCARD, SUBTYPE_BASE, TYPE_ATTR } from "./constants.js";
+import { SUBTYPE_BASE, TYPE_ATTR } from "./shared/base-types.js";
+import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
+import { type AttrSubType } from "./core/attr/attr-constants.js";
 import type { DataType } from "./data-type.js";
 import { MetaModelError } from "./errors.js";
 

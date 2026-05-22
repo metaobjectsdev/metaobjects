@@ -19,7 +19,7 @@ import {
   RESERVED_KEY_NAME,
   RESERVED_KEY_IS_ARRAY,
   TYPE_SUBTYPE_SEPARATOR,
-} from "../constants.js";
+} from "../shared/structural.js";
 
 const ARRAY_SUFFIX = "[]";
 

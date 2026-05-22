@@ -21,7 +21,7 @@ import {
   FIELD_ATTR_PRECISION,
   FIELD_ATTR_SCALE,
   SUBTYPE_BASE,
-} from "../../src/constants.js";
+} from "../../src/index.js";
 import {
   DATA_TYPE_BOOLEAN,
   DATA_TYPE_INT,

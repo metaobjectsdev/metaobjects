@@ -59,32 +59,37 @@ import {
   TYPE_SOURCE,
   TYPE_ORIGIN,
   SUBTYPE_ROOT,
-  OBJECT_SUBTYPES,
-  OBJECT_SUBTYPE_ENTITY,
-  FIELD_SUBTYPES,
-  FIELD_SUBTYPE_CURRENCY,
-  ATTR_SUBTYPES,
+} from "./shared/base-types.js";
+import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
+import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY } from "./core/object/object-constants.js";
+import { FIELD_SUBTYPES, FIELD_SUBTYPE_CURRENCY } from "./core/field/field-constants.js";
+import { ATTR_SUBTYPES } from "./core/attr/attr-constants.js";
+import {
   VALIDATOR_SUBTYPES,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   VALIDATOR_SUBTYPE_REGEX,
   VALIDATOR_SUBTYPE_NUMERIC,
   VALIDATOR_SUBTYPE_ARRAY,
+} from "./core/validator/validator-constants.js";
+import {
   VIEW_SUBTYPES,
   VIEW_SUBTYPE_CURRENCY,
+} from "./presentation/view/view-constants.js";
+import {
   IDENTITY_SUBTYPES,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
   IDENTITY_SUBTYPE_REFERENCE,
-  RELATIONSHIP_SUBTYPES,
-  LAYOUT_SUBTYPES,
-  LAYOUT_SUBTYPE_DATA_GRID,
-  SOURCE_SUBTYPES,
+} from "./core/identity/identity-constants.js";
+import { RELATIONSHIP_SUBTYPES } from "./core/relationship/relationship-constants.js";
+import { LAYOUT_SUBTYPES, LAYOUT_SUBTYPE_DATA_GRID } from "./presentation/layout/layout-constants.js";
+import { SOURCE_SUBTYPES } from "./persistence/source/source-constants.js";
+import {
   ORIGIN_SUBTYPES,
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
-  CHILD_RULE_WILDCARD,
-} from "./constants.js";
+} from "./persistence/origin/origin-constants.js";
 
 // ---------------------------------------------------------------------------
 // The per-(type, subType) attribute schemas live in ./core-attr-schemas.ts —

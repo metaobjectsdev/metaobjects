@@ -9,7 +9,7 @@ import {
   SOURCE_ATTR_NAME,
   SOURCE_SUBTYPE_DB_TABLE,
   SOURCE_SUBTYPE_DB_VIEW,
-} from "../constants.js";
+} from "../persistence/source/source-constants.js";
 
 export class MetaSource extends MetaData {
   /** The SQL table or view name (value of @name attr on the source child). */

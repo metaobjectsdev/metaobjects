@@ -11,7 +11,7 @@ import {
   VALIDATOR_ATTR_PATTERN,
   VALIDATOR_ATTR_MIN,
   VALIDATOR_ATTR_MAX,
-} from "../constants.js";
+} from "../core/validator/validator-constants.js";
 
 export class MetaValidator extends MetaData {
   /**

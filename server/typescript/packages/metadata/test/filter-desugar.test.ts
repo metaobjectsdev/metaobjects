@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemorySource } from "../src/loader/meta-data-source.js";
-import { LAYOUT_DATA_GRID_ATTR_FILTER, TYPE_OBJECT, TYPE_LAYOUT } from "../src/constants.js";
+import { LAYOUT_DATA_GRID_ATTR_FILTER, TYPE_OBJECT, TYPE_LAYOUT } from "../src/index.js";
 
 async function loadGridFilter(filter: unknown): Promise<unknown> {
   const doc = {

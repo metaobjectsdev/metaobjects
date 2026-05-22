@@ -12,7 +12,7 @@
 // The old resolveSupers() multi-pass walker has been deleted.
 
 import type { MetaData } from "./meta/meta-data.js";
-import { PACKAGE_SEPARATOR, PACKAGE_PARENT } from "./constants.js";
+import { PACKAGE_SEPARATOR, PACKAGE_PARENT } from "./shared/structural.js";
 
 // ---------------------------------------------------------------------------
 // Tree search helper

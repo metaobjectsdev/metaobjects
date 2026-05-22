@@ -16,13 +16,15 @@ import {
   RESERVED_KEY_ABSTRACT,
   RESERVED_KEY_IS_ARRAY,
   RESERVED_KEY_CHILDREN,
+} from "./shared/structural.js";
+import {
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_INT,
   ATTR_SUBTYPE_LONG,
   ATTR_SUBTYPE_DOUBLE,
   ATTR_SUBTYPE_BOOLEAN,
   ATTR_SUBTYPE_STRINGARRAY,
-} from "./constants.js";
+} from "./core/attr/attr-constants.js";
 
 // ---------------------------------------------------------------------------
 // Public API

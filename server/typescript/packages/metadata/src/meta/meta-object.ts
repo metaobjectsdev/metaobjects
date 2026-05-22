@@ -11,14 +11,20 @@ import {
   TYPE_VALIDATOR,
   TYPE_SOURCE,
   TYPE_LAYOUT,
+} from "../shared/base-types.js";
+import {
   SOURCE_SUBTYPE_DB_TABLE,
   SOURCE_DB_TABLE_ATTR_NAME,
+} from "../persistence/source/source-constants.js";
+import {
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
+} from "../core/object/object-constants.js";
+import {
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
   IDENTITY_SUBTYPE_REFERENCE,
-} from "../constants.js";
+} from "../core/identity/identity-constants.js";
 import type { MetaField } from "./meta-field.js";
 import type { MetaIdentity, MetaReferenceIdentity } from "./meta-identity.js";
 import type { MetaLayout } from "./meta-layout.js";

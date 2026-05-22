@@ -4,7 +4,7 @@ import {
   AUTO_SET_ON_CREATE,
   AUTO_SET_ON_UPDATE,
   AUTO_SET_VALUES,
-} from "../src/constants.js";
+} from "../src/index.js";
 
 describe("@autoSet constants", () => {
   test("FIELD_ATTR_AUTO_SET is 'autoSet'", () => {

@@ -18,7 +18,7 @@ import { loadAndExportJson } from "../src/core/export-json.js";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemorySource } from "../src/loader/meta-data-source.js";
 import { canonicalSerialize } from "../src/serializer-json.js";
-import { TYPE_METADATA, SUBTYPE_ROOT } from "../src/constants.js";
+import { TYPE_METADATA, SUBTYPE_ROOT } from "../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures directory (repo root relative)

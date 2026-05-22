@@ -11,24 +11,37 @@
 import type { MetaData } from "../meta/meta-data.js";
 import { ParseError } from "../errors.js";
 import {
-  TYPE_OBJECT, TYPE_FIELD, TYPE_LAYOUT, TYPE_IDENTITY, TYPE_ORIGIN, TYPE_RELATIONSHIP,
+  TYPE_OBJECT,
+  TYPE_FIELD,
+  TYPE_LAYOUT,
+  TYPE_IDENTITY,
+  TYPE_ORIGIN,
+  TYPE_RELATIONSHIP,
+} from "../shared/base-types.js";
+import {
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
   LAYOUT_DATA_GRID_ATTR_FILTER,
+} from "../presentation/layout/layout-constants.js";
+import {
   FIELD_ATTR_FILTERABLE,
-  FIELD_ATTR_DB_INDEXED,
-  IDENTITY_ATTR_FIELDS,
+} from "../core/field/field-constants.js";
+import { FIELD_ATTR_DB_INDEXED } from "../persistence/db/db-constants.js";
+import { IDENTITY_ATTR_FIELDS } from "../core/identity/identity-constants.js";
+import {
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_PASSTHROUGH_ATTR_FROM,
   ORIGIN_PASSTHROUGH_ATTR_VIA,
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
-  RELATIONSHIP_ATTR_OBJECT_REF,
+} from "../persistence/origin/origin-constants.js";
+import { RELATIONSHIP_ATTR_OBJECT_REF } from "../core/relationship/relationship-constants.js";
+import {
   FILTER_COMPOSE_OR,
   FILTER_COMPOSE_AND,
   opsForSubType,
-} from "../constants.js";
+} from "../core/query/query-constants.js";
 
 // ---------------------------------------------------------------------------
 // Layout dataGrid @defaultSortField validation

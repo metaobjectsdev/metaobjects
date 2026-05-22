@@ -6,10 +6,12 @@ import type { AttrSchema } from "../registry.js";
 import {
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_BOOLEAN,
+} from "../core/attr/attr-constants.js";
+import {
   FIELD_ATTR_DB_COLUMN,
   FIELD_ATTR_DB_INDEXED,
-  SOURCE_ATTR_NAME,
-} from "../constants.js";
+} from "../persistence/db/db-constants.js";
+import { SOURCE_ATTR_NAME } from "../persistence/source/source-constants.js";
 
 /** `@dbColumn` — column-name override; on every field subtype. */
 export const dbColumnSchema: AttrSchema = {

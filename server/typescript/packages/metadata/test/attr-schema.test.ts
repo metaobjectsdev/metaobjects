@@ -35,7 +35,7 @@ import {
   ATTR_SUBTYPE_INT,
   ATTR_SUBTYPE_BOOLEAN,
   ATTR_SUBTYPE_STRINGARRAY,
-} from "../src/constants.js";
+} from "../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

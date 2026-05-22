@@ -6,13 +6,12 @@
 
 import type { MetaDataTypeProvider } from "../provider.js";
 import type { TypeRegistry } from "../registry.js";
+import { TYPE_FIELD, TYPE_SOURCE } from "../shared/base-types.js";
+import { FIELD_SUBTYPES } from "../core/field/field-constants.js";
 import {
-  TYPE_FIELD,
-  TYPE_SOURCE,
-  FIELD_SUBTYPES,
   SOURCE_SUBTYPE_DB_TABLE,
   SOURCE_SUBTYPE_DB_VIEW,
-} from "../constants.js";
+} from "../persistence/source/source-constants.js";
 import { dbColumnSchema, dbIndexedSchema, sourceNameSchema } from "./db-attr-schemas.js";
 
 export const dbProvider: MetaDataTypeProvider = {

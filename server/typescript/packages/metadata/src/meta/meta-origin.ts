@@ -15,7 +15,7 @@ import {
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
   type AggregateFunction,
-} from "../constants.js";
+} from "../persistence/origin/origin-constants.js";
 
 export class MetaOrigin extends MetaData {}
 

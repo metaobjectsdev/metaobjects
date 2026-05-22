@@ -19,16 +19,16 @@ import {
 } from "../data-type.js";
 import { convertToDataType, toAttrValue } from "../data-converter.js";
 import { registerFallbackAttrClass } from "../attr-class-map.js";
+import { SUBTYPE_BASE } from "../shared/base-types.js";
+import { RESERVED_KEY_VALUE } from "../shared/structural.js";
 import {
-  RESERVED_KEY_VALUE,
-  SUBTYPE_BASE,
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_CLASS,
   ATTR_SUBTYPE_INT,
   ATTR_SUBTYPE_LONG,
   ATTR_SUBTYPE_DOUBLE,
   ATTR_SUBTYPE_BOOLEAN,
-} from "../constants.js";
+} from "../core/attr/attr-constants.js";
 
 /** A value-level validation finding, surfaced by the attr-schema pass. */
 export interface ValueError {

@@ -19,7 +19,7 @@ import {
   DATA_TYPE_DATE,
   DATA_TYPE_OBJECT,
 } from "./data-type.js";
-import { TYPE_OBJECT } from "./constants.js";
+import { TYPE_OBJECT } from "./shared/base-types.js";
 
 const TYPE_DISCRIMINATOR = "@type";
 

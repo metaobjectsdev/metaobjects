@@ -9,7 +9,7 @@ import {
   VALIDATOR_SUBTYPE_REQUIRED,
   TYPE_METADATA,
   SUBTYPE_ROOT,
-} from "../../src/constants.js";
+} from "../../src/index.js";
 
 describe("MetaDataLoader — default registry", () => {
   it("a loader with no supplied registry is composed from the core providers", () => {

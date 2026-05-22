@@ -41,7 +41,7 @@ import {
   RESERVED_KEY_CHILDREN,
   ATTR_PREFIX,
   TYPE_SUBTYPE_SEPARATOR,
-} from "../src/constants.js";
+} from "../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

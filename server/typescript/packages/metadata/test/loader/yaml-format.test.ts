@@ -3,7 +3,7 @@ import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
 import { FileMetaDataLoader } from "../../src/core/file-meta-data-loader.js";
 import { InMemorySource } from "../../src/loader/meta-data-source.js";
 import { FileSource } from "../../src/core/file-source.js";
-import { TYPE_METADATA } from "../../src/constants.js";
+import { TYPE_METADATA } from "../../src/index.js";
 
 test("loader: dispatches a yaml-format source through parseYaml", async () => {
   const yaml = `

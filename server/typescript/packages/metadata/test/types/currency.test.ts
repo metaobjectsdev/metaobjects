@@ -8,7 +8,7 @@ import {
   VIEW_CURRENCY_ATTR_LOCALE,
   TYPE_FIELD,
   TYPE_VIEW,
-} from "../../src/constants.js";
+} from "../../src/index.js";
 import { TypeRegistry } from "../../src/registry.js";
 import { registerCoreTypes } from "../../src/core-types.js";
 

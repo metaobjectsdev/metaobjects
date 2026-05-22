@@ -31,6 +31,13 @@ import { inferAttrSubType } from "./serializer-json.js";
 import { ParseError, type ErrorCode } from "./errors.js";
 import { resolveSuperRef } from "./super-resolve.js";
 import {
+  TYPE_ATTR,
+  TYPE_FIELD,
+  TYPE_OBJECT,
+  TYPE_VALIDATOR,
+  SUBTYPE_BASE,
+} from "./shared/base-types.js";
+import {
   RESERVED_KEYS,
   RESERVED_KEY_NAME,
   RESERVED_KEY_PACKAGE,
@@ -43,14 +50,9 @@ import {
   JSON_KEY_SCHEMA,
   ATTR_PREFIX,
   TYPE_SUBTYPE_SEPARATOR,
-  TYPE_ATTR,
-  TYPE_FIELD,
-  TYPE_OBJECT,
-  TYPE_VALIDATOR,
-  SUBTYPE_BASE,
   PACKAGE_SEPARATOR,
-  ATTR_SUBTYPE_PROPERTIES,
-} from "./constants.js";
+} from "./shared/structural.js";
+import { ATTR_SUBTYPE_PROPERTIES } from "./core/attr/attr-constants.js";
 import type { AttrValue } from "./meta/meta-data.js";
 
 // ---------------------------------------------------------------------------

@@ -6,14 +6,14 @@
 import { MetaAttr, type ValueError, runtimeTypeName } from "./meta-attr.js";
 import { type AttrValue, type AttrObject, type AttrJson } from "./meta-data.js";
 import { DATA_TYPE_OBJECT, type DataType } from "../data-type.js";
+import { ATTR_SUBTYPE_FILTER } from "../core/attr/attr-constants.js";
 import {
-  ATTR_SUBTYPE_FILTER,
   FILTER_OP_EQ,
   FILTER_OP_IN,
   FILTER_OP_IS_NULL,
   FILTER_COMPOSE_OR,
   FILTER_COMPOSE_AND,
-} from "../constants.js";
+} from "../core/query/query-constants.js";
 import { registerAttrClass } from "../attr-class-map.js";
 
 export class FilterAttr extends MetaAttr {

@@ -27,7 +27,7 @@ import {
   FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_DOUBLE,
   ATTR_SUBTYPE_STRING, ATTR_SUBTYPE_INT, ATTR_SUBTYPE_PROPERTIES,
-} from "../src/constants.js";
+} from "../src/index.js";
 
 describe("core dataType registration", () => {
   function coreRegistry(): TypeRegistry {

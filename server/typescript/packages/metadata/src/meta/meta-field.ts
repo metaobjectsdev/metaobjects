@@ -16,10 +16,8 @@ import {
   DATA_TYPE_OBJECT,
 } from "../data-type.js";
 import { convertToDataType } from "../data-converter.js";
+import { TYPE_VALIDATOR, TYPE_VIEW, SUBTYPE_BASE } from "../shared/base-types.js";
 import {
-  TYPE_VALIDATOR,
-  TYPE_VIEW,
-  SUBTYPE_BASE,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_INT,
@@ -35,7 +33,6 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
-  FIELD_ATTR_DB_COLUMN,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
@@ -43,8 +40,9 @@ import {
   FIELD_ATTR_PRECISION,
   FIELD_ATTR_SCALE,
   FIELD_ATTR_OBJECT_REF,
-  VALIDATOR_SUBTYPE_REQUIRED,
-} from "../constants.js";
+} from "../core/field/field-constants.js";
+import { FIELD_ATTR_DB_COLUMN } from "../persistence/db/db-constants.js";
+import { VALIDATOR_SUBTYPE_REQUIRED } from "../core/validator/validator-constants.js";
 import type { MetaValidator } from "./meta-validator.js";
 import type { MetaView } from "./meta-view.js";
 

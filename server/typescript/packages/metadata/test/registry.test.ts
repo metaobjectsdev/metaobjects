@@ -30,7 +30,7 @@ import {
   IDENTITY_SUBTYPES,
   RELATIONSHIP_SUBTYPES,
   LAYOUT_SUBTYPES,
-} from "../src/constants.js";
+} from "../src/index.js";
 
 // Stub factory used throughout tests — Task 3 will provide the real MetaData.
 const stubFactory = (): MetaData => null as unknown as MetaData;

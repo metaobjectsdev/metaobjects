@@ -17,7 +17,7 @@ import {
   FIELD_SUBTYPE_LONG,
   ATTR_SUBTYPE_BOOLEAN,
   IDENTITY_SUBTYPE_PRIMARY,
-} from "../src/constants.js";
+} from "../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

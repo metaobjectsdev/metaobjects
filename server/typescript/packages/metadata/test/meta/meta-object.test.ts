@@ -24,7 +24,7 @@ import {
   RELATIONSHIP_SUBTYPE_ASSOCIATION,
   IDENTITY_ATTR_FIELDS,
   LAYOUT_SUBTYPE_DATA_GRID,
-} from "../../src/constants.js";
+} from "../../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

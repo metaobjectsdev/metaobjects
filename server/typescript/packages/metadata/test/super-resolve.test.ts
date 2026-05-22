@@ -10,7 +10,7 @@ import { MetaRoot } from "../src/meta/meta-root.js";
 import type { MetaData } from "../src/meta/meta-data.js";
 import { TypeId } from "../src/registry.js";
 import { resolveSuperRef } from "../src/super-resolve.js";
-import { TYPE_METADATA, TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, SUBTYPE_ROOT } from "../src/constants.js";
+import { TYPE_METADATA, TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, SUBTYPE_ROOT } from "../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

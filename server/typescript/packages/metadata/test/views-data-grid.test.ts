@@ -11,7 +11,7 @@ import {
   LAYOUT_DATA_GRID_ATTR_PAGE_SIZE, LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD, LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER,
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
   OBJECT_SUBTYPE_ENTITY, FIELD_SUBTYPE_STRING,
-} from "../src/constants.js";
+} from "../src/index.js";
 import { FileMetaDataLoader } from "../src/core/file-meta-data-loader.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

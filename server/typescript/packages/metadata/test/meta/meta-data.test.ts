@@ -5,7 +5,7 @@ import {
   TYPE_FIELD,
   TYPE_OBJECT,
   FIELD_SUBTYPE_STRING,
-} from "../../src/constants.js";
+} from "../../src/index.js";
 
 // MetaData is abstract — a minimal concrete subclass is the smallest thing
 // that exercises the shared base-node behavior. The construction API is

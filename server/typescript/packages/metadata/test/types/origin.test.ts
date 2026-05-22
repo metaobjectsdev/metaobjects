@@ -13,7 +13,7 @@ import {
   SUBTYPE_BASE,
   TYPE_FIELD,
   TYPE_ATTR,
-} from "../../src/constants.js";
+} from "../../src/index.js";
 import { TypeRegistry } from "../../src/registry.js";
 import { registerCoreTypes } from "../../src/core-types.js";
 

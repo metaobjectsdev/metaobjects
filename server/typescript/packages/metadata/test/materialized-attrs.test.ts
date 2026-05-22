@@ -7,7 +7,7 @@ import {
   TYPE_OBJECT,
   OBJECT_SUBTYPE_ENTITY,
   ATTR_SUBTYPE_STRINGARRAY,
-} from "../src/constants.js";
+} from "../src/index.js";
 
 function obj(name = "Subscriber"): MetaObject {
   return new MetaObject(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), name);

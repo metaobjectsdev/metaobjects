@@ -13,7 +13,7 @@ import {
   IDENTITY_ATTR_UNIQUE,
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   IDENTITY_REFERENCE_ATTR_ENFORCE,
-} from "../constants.js";
+} from "../core/identity/identity-constants.js";
 import type { MetaRoot } from "./meta-root.js";
 
 /** Strongly-typed identity generation strategies. */

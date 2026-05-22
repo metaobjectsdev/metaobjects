@@ -12,7 +12,7 @@ import {
   ATTR_SUBTYPE_STRINGARRAY,
   ATTR_SUBTYPE_FILTER,
   ATTR_SUBTYPE_PROPERTIES,
-} from "../src/constants.js";
+} from "../src/index.js";
 import {
   DATA_TYPE_STRING,
   DATA_TYPE_INT,
@@ -108,7 +108,7 @@ import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN,
-} from "../src/constants.js";
+} from "../src/index.js";
 import { DATA_TYPE_LONG } from "../src/data-type.js";
 
 describe("MetaField.dataType resolves by subtype (no central map)", () => {

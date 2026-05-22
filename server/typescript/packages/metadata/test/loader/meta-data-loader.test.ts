@@ -8,7 +8,7 @@ import { ParseError } from "../../src/errors.js";
 import {
   TYPE_METADATA, SUBTYPE_ROOT,
   TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY,
-} from "../../src/constants.js";
+} from "../../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Lifecycle skeleton (pre-load)

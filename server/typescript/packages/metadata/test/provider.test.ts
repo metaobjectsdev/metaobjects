@@ -12,7 +12,7 @@ import {
   OBJECT_SUBTYPE_ENTITY,
   FIELD_SUBTYPE_STRING,
   ATTR_SUBTYPE_STRING,
-} from "../src/constants.js";
+} from "../src/index.js";
 
 function recordingProvider(
   id: string,

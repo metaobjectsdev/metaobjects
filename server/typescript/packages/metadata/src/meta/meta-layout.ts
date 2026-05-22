@@ -12,8 +12,8 @@ import {
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
   LAYOUT_DATA_GRID_ATTR_FILTER,
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
-  type SortOrderValue,
-} from "../constants.js";
+} from "../presentation/layout/layout-constants.js";
+import type { SortOrderValue } from "../core/query/query-constants.js";
 
 export class MetaLayout extends MetaData {
   /** The number of rows per page for the dataGrid layout. */

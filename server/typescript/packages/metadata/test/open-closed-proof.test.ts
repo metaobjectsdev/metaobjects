@@ -35,7 +35,7 @@ import { registerAttrClass } from "../src/attr-class-map.js";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemorySource } from "../src/loader/meta-data-source.js";
 import { canonicalSerialize } from "../src/serializer-json.js";
-import { TYPE_ATTR, TYPE_FIELD, TYPE_OBJECT, type AttrSubType } from "../src/constants.js";
+import { TYPE_ATTR, TYPE_FIELD, TYPE_OBJECT, type AttrSubType } from "../src/index.js";
 import { DATA_TYPE_STRING, type DataType } from "../src/data-type.js";
 import type { AttrValue } from "../src/meta/meta-data.js";
 

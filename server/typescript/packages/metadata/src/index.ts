@@ -22,7 +22,20 @@ import type { MetaSource } from "./meta/meta-source.js";
 import type { MetaOrigin } from "./meta/meta-origin.js";
 
 // Constants — type names, subtype names, reserved keys, separators
-export * from "./constants.js";
+export * from "./shared/base-types.js";
+export * from "./shared/structural.js";
+export * from "./core/object/object-constants.js";
+export * from "./core/field/field-constants.js";
+export * from "./core/attr/attr-constants.js";
+export * from "./core/validator/validator-constants.js";
+export * from "./core/identity/identity-constants.js";
+export * from "./core/relationship/relationship-constants.js";
+export * from "./core/query/query-constants.js";
+export * from "./persistence/source/source-constants.js";
+export * from "./persistence/origin/origin-constants.js";
+export * from "./persistence/db/db-constants.js";
+export * from "./presentation/view/view-constants.js";
+export * from "./presentation/layout/layout-constants.js";
 
 // MetaData node base — abstract class; also exports AttrValue
 export { MetaData } from "./meta/meta-data.js";

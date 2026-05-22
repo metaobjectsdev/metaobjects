@@ -3,7 +3,7 @@ import {
   FILTER_OPS,
   OPS_BY_SUBTYPE,
   type FilterOp,
-} from "../src/constants.js";
+} from "../src/index.js";
 
 describe("FILTER_OPS — the 8 operator names", () => {
   test("matches the canonical Project D set", () => {

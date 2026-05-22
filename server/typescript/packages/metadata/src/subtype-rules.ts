@@ -6,13 +6,12 @@
 
 import type { MetaData } from "./meta/meta-data.js";
 import { ParseError } from "./errors.js";
+import { TYPE_OBJECT, TYPE_IDENTITY } from "./shared/base-types.js";
+import { IDENTITY_SUBTYPE_PRIMARY } from "./core/identity/identity-constants.js";
 import {
-  TYPE_OBJECT,
-  TYPE_IDENTITY,
-  IDENTITY_SUBTYPE_PRIMARY,
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
-} from "./constants.js";
+} from "./core/object/object-constants.js";
 
 export interface SubtypeRuleResult {
   errors: ParseError[];
