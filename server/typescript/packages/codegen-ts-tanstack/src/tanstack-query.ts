@@ -4,6 +4,7 @@ import { renderHooksFile } from "./templates/hooks-file.js";
 
 export interface TanstackQueryOpts {
   filter?: (entity: MetaObject) => boolean;
+  target?: string;
 }
 
 /**
@@ -15,7 +16,7 @@ export interface TanstackQueryOpts {
  */
 export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): Generator {
   const userFilter = opts?.filter ?? (() => true);
-  return {
+  const generator: Generator = {
     name: "tanstack-query",
     // AND-composes metadata opt-out with optional user filter.
     filter: (e: MetaObject) => e.ownAttr("emitTanstack") !== false && userFilter(e),
@@ -31,4 +32,8 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
       };
     }),
   };
+  if (opts?.target) {
+    generator.target = opts.target;
+  }
+  return generator;
 } as GeneratorFactory<TanstackQueryOpts | void>;

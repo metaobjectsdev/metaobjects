@@ -5,6 +5,7 @@ import { renderGridHookFile } from "./templates/grid-hook-file.js";
 
 export interface TanstackGridHookOpts {
   filter?: (entity: MetaObject) => boolean;
+  target?: string;
 }
 
 function hasDataGridLayout(entity: MetaObject): boolean {
@@ -21,7 +22,7 @@ function hasDataGridLayout(entity: MetaObject): boolean {
  */
 export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHookOpts): Generator {
   const userFilter = opts?.filter ?? (() => true);
-  return {
+  const generator: Generator = {
     name: "tanstack-grid-hook",
     // AND-composes opt-out, user filter, and dataGrid layout presence.
     filter: (e: MetaObject) =>
@@ -42,4 +43,8 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
       };
     }),
   };
+  if (opts?.target) {
+    generator.target = opts.target;
+  }
+  return generator;
 } as GeneratorFactory<TanstackGridHookOpts | void>;

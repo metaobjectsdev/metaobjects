@@ -5,6 +5,7 @@ import { renderColumnsFile } from "./templates/columns-file.js";
 
 export interface TanstackGridOpts {
   filter?: (entity: MetaObject) => boolean;
+  target?: string;
 }
 
 function hasDataGridLayout(entity: MetaObject): boolean {
@@ -19,7 +20,7 @@ function hasDataGridLayout(entity: MetaObject): boolean {
  */
 export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Generator {
   const userFilter = opts?.filter ?? (() => true);
-  return {
+  const generator: Generator = {
     name: "tanstack-grid",
     // Always set: AND-composes opt-out, user filter, and dataGrid layout presence.
     filter: (e: MetaObject) =>
@@ -36,4 +37,8 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
       };
     }),
   };
+  if (opts?.target) {
+    generator.target = opts.target;
+  }
+  return generator;
 } as GeneratorFactory<TanstackGridOpts | void>;

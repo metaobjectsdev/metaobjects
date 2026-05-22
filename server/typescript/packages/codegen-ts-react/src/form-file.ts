@@ -4,6 +4,7 @@ import { renderFormFile } from "./templates/form-file.js";
 
 export interface FormFileOpts {
   filter?: (entity: MetaObject) => boolean;
+  target?: string;
 }
 
 /**
@@ -13,7 +14,7 @@ export interface FormFileOpts {
  */
 export const formFile = function formFile(opts?: FormFileOpts): Generator {
   const userFilter = opts?.filter ?? (() => true);
-  return {
+  const generator: Generator = {
     name: "form-file",
     // Always set: AND-composes metadata opt-out with optional user filter.
     filter: (e: MetaObject) => e.ownAttr("emitForm") !== false && userFilter(e),
@@ -27,4 +28,8 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
       };
     }),
   };
+  if (opts?.target) {
+    generator.target = opts.target;
+  }
+  return generator;
 } as GeneratorFactory<FormFileOpts>;
