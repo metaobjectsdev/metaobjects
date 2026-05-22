@@ -29,9 +29,23 @@ server/java/**/target/
 server/typescript/**/dist/
 server/typescript/**/node_modules/
 
-# C# build output
-server/csharp/**/bin/
-server/csharp/**/obj/
+# C# / .NET build output. The `bin/` and `obj/` patterns are scoped to csharp
+# subtrees only (TS packages use `bin/` for executable scripts like
+# `server/typescript/packages/cli/bin/meta.ts` — must not be ignored).
+# The file-extension patterns below are safe anywhere — no non-.NET project
+# produces these.
+**/csharp/**/bin/
+**/csharp/**/obj/
+*.dll
+*.pdb
+*.exe
+*.suo
+*.user
+.vs/
+[Tt]est[Rr]esults/
+[Bb]uild[Ll]og.*
+*.nupkg
+*.snupkg
 
 # Python
 __pycache__/
