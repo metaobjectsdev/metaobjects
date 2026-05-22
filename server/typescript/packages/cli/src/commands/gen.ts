@@ -1,3 +1,4 @@
+import { relative } from "node:path";
 import { parseGenArgs } from "../lib/args.js";
 import { resolveGenConfig } from "../lib/config.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
@@ -59,15 +60,22 @@ export async function genCommand(args: string[], cwd: string): Promise<number> {
 
   for (const w of result.warnings) { log.warn(w); }
 
+  // result.files[].path is the absolute full path from decideAndWrite. With
+  // per-target output, show each path relative to the project root so files in
+  // different targets are distinguishable.
   const files: GenFileEntry[] = result.files.map((f) => ({
-    path: f.path.split("/").pop() ?? f.path,
+    path: relative(projectRoot, f.path),
     status: mapStatus(f.status),
     info: "",
   }));
 
+  const targetDirs = Array.from(new Set(
+    (forgeConfig.targets ? Object.values(forgeConfig.targets).map((t) => t.outDir) : [])
+      .concat([forgeConfig.outDir]),
+  ));
   const output = formatGenResult({
     files,
-    outDir: forgeConfig.outDir,
+    outDir: targetDirs.length > 1 ? targetDirs.join(", ") : forgeConfig.outDir,
     dialect: forgeConfig.dialect,
     dryRun: cliConfig.dryRun,
     warnings: [],
