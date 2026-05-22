@@ -22,11 +22,9 @@ export class FilterAttr extends MetaAttr {
   }
 
   override coerce(raw: unknown): AttrValue {
-    // Object stored verbatim; a non-object (e.g. a legacy JSON string) is
-    // returned as-is so validateValue rejects it.
-    return typeof raw === "object" && raw !== null && !Array.isArray(raw)
-      ? (raw as AttrValue)
-      : (raw as AttrValue);
+    // Stored verbatim: an object is the canonical shape; a non-object (e.g. a
+    // legacy JSON string) is passed through unchanged so validateValue rejects it.
+    return raw as AttrValue;
   }
 
   override desugar(value: AttrValue): AttrValue {
