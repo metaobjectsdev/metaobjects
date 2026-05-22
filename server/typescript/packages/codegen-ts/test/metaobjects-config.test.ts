@@ -1,6 +1,52 @@
 import { describe, test, expect, expectTypeOf } from "bun:test";
-import { defineConfig, normalizeConfig, type MetaobjectsGenConfig, type ResolvedGenConfig } from "../src/metaobjects-config.js";
+import { defineConfig, normalizeConfig, resolveTargets, DEFAULT_TARGET_NAME, type MetaobjectsGenConfig, type ResolvedGenConfig } from "../src/metaobjects-config.js";
 import type { Generator } from "../src/generator.js";
+
+describe("resolveTargets", () => {
+  const base = { outDir: "db/gen", extStyle: "none" as const, dbImport: "../index", dialect: "sqlite" as const, generators: [] };
+
+  test("synthesizes a 'default' target from top-level fields", () => {
+    const t = resolveTargets({ ...base, importBase: "@mf/db/generated", outputLayout: "package" });
+    expect(t[DEFAULT_TARGET_NAME]).toEqual({
+      name: "default", outDir: "db/gen", importBase: "@mf/db/generated",
+      outputLayout: "package", dbImport: "../index",
+    });
+  });
+
+  test("default target: outputLayout defaults to 'flat', importBase undefined", () => {
+    const t = resolveTargets({ ...base });
+    expect(t.default.outputLayout).toBe("flat");
+    expect(t.default.importBase).toBeUndefined();
+  });
+
+  test("named targets resolve; outputLayout + dbImport fall back to top-level, importBase does NOT inherit", () => {
+    const t = resolveTargets({
+      ...base, outputLayout: "package", importBase: "@mf/db/generated",
+      targets: {
+        api: { outDir: "api/gen", dbImport: "@mf/database" },
+        web: { outDir: "web/gen" },
+      },
+    });
+    expect(t.api).toEqual({ name: "api", outDir: "api/gen", importBase: undefined, outputLayout: "package", dbImport: "@mf/database" });
+    expect(t.web).toEqual({ name: "web", outDir: "web/gen", importBase: undefined, outputLayout: "package", dbImport: "../index" });
+  });
+
+  test("named target may override outputLayout + importBase", () => {
+    const t = resolveTargets({ ...base, targets: { x: { outDir: "x", outputLayout: "package", importBase: "@x/gen" } } });
+    expect(t.x.outputLayout).toBe("package");
+    expect(t.x.importBase).toBe("@x/gen");
+  });
+});
+
+describe("normalizeConfig — targets", () => {
+  test("normalized config carries resolved targets incl. default", () => {
+    const c = normalizeConfig(defineConfig({
+      outDir: "db/gen", extStyle: "none", dbImport: "../index", dialect: "sqlite",
+      targets: { api: { outDir: "api/gen" } }, generators: [],
+    }));
+    expect(Object.keys(c.targets).sort()).toEqual(["api", "default"]);
+  });
+});
 
 describe("defineConfig", () => {
   test("returns the config unchanged (identity for runtime; type inference at compile time)", () => {
