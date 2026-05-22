@@ -233,6 +233,9 @@ public class MetaDataLoader
             var attrResult = ValidationPasses.ValidateAttrSchema(root, _registry);
             errors.AddRange(attrResult.Errors);
             warnings.AddRange(attrResult.Warnings);
+
+            // Pass 7: dataGrid @filter value validation (field filterable + op allowed)
+            errors.AddRange(ValidationPasses.ValidateDataGridFilterValues(root));
         }
 
         // If nothing parsed successfully, synthesize an empty root so callers

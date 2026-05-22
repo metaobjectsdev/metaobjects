@@ -583,6 +583,96 @@ public static class Parser
     }
 
     // -----------------------------------------------------------------------
+    // filter desugar — normalize an attr.filter value to canonical
+    // { field: { op: value } } form at parse time. Three rules:
+    //   scalar v    → { eq: v }
+    //   array  [..] → { in: [..] }
+    //   null        → { isNull: true }
+    // Explicit { op: value } clauses pass through. or/and composition keys
+    // recurse into their sub-filter arrays.
+    //
+    // Mirrors normalizeFilterAttr / desugarFilterObject / desugarClause in
+    // typescript/packages/metadata/src/parser-core.ts.
+    // -----------------------------------------------------------------------
+
+    private static object? NormalizeFilterAttr(
+        string type,
+        string subType,
+        string attrName,
+        object? value,
+        TypeRegistry registry)
+    {
+        AttrSchema? spec = registry.AttrsOf(type, subType).FirstOrDefault(a => a.Name == attrName);
+        if (spec is null || spec.ValueType != Constants.ATTR_SUBTYPE_FILTER) return value;
+        // Only IReadOnlyDictionary (an already-parsed object) gets desugared.
+        // A string (legacy form) is returned as-is for attr-schema to reject.
+        if (value is not IReadOnlyDictionary<string, object?> filterObj) return value;
+        return DesugarFilterObject(filterObj);
+    }
+
+    private static IReadOnlyDictionary<string, object?> DesugarFilterObject(
+        IReadOnlyDictionary<string, object?> filter)
+    {
+        var out_ = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var (key, raw) in filter)
+        {
+            if (key == Constants.FILTER_COMPOSE_OR || key == Constants.FILTER_COMPOSE_AND)
+            {
+                // Recurse into each sub-filter in the array.
+                if (raw is IReadOnlyList<object?> subList)
+                {
+                    var desugaredList = new List<object?>(subList.Count);
+                    foreach (var sub in subList)
+                    {
+                        if (sub is IReadOnlyDictionary<string, object?> subFilter)
+                            desugaredList.Add(DesugarFilterObject(subFilter));
+                        else
+                            desugaredList.Add(sub);
+                    }
+                    out_[key] = desugaredList.AsReadOnly();
+                }
+                else
+                {
+                    out_[key] = raw;
+                }
+                continue;
+            }
+            out_[key] = DesugarClause(raw);
+        }
+        return out_.AsReadOnly() as IReadOnlyDictionary<string, object?> ?? out_;
+    }
+
+    private static IReadOnlyDictionary<string, object?> DesugarClause(object? raw)
+    {
+        // null → { isNull: true }
+        if (raw is null)
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
+                { [Constants.FILTER_OP_IS_NULL] = (object?)true }.AsReadOnly()
+                as IReadOnlyDictionary<string, object?> ??
+                new Dictionary<string, object?>(StringComparer.Ordinal)
+                    { [Constants.FILTER_OP_IS_NULL] = true };
+
+        // array → { in: [...] }
+        if (raw is IReadOnlyList<object?> arr)
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
+                { [Constants.FILTER_OP_IN] = raw }
+                .AsReadOnly() as IReadOnlyDictionary<string, object?> ??
+                new Dictionary<string, object?>(StringComparer.Ordinal)
+                    { [Constants.FILTER_OP_IN] = raw };
+
+        // already-object → pass through (explicit op clause)
+        if (raw is IReadOnlyDictionary<string, object?> obj)
+            return obj;
+
+        // scalar (string/bool/long/double) → { eq: value }
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+            { [Constants.FILTER_OP_EQ] = raw }
+            .AsReadOnly() as IReadOnlyDictionary<string, object?> ??
+            new Dictionary<string, object?>(StringComparer.Ordinal)
+                { [Constants.FILTER_OP_EQ] = raw };
+    }
+
+    // -----------------------------------------------------------------------
     // applyInlineAttrsAndUnknownKeys — apply @-prefixed attrs, warn on unknowns.
     //
     // Called for both fresh creates AND merge-into-existing paths. Does NOT
@@ -650,6 +740,9 @@ public static class Parser
             // A bare string for a declared stringArray attr → one-element array.
             object? normalized = NormalizeStringArrayAttr(
                 model.Type, model.SubType, attrName, value, st.Registry);
+            // An object-valued filter attr → canonical { field: { op: value } } form.
+            normalized = NormalizeFilterAttr(
+                model.Type, model.SubType, attrName, normalized, st.Registry);
             model.SetAttr(attrName, normalized);
         }
     }
@@ -856,8 +949,11 @@ public static class Parser
             : new MetaRoot(new TypeId(attrType, resolvedSubType), attrName);
 
         // A bare string for a declared stringArray attr → one-element array.
+        // An object-valued filter attr → canonical { field: { op: value } } form.
         object? normalized = NormalizeStringArrayAttr(
             parent.Type, parent.SubType, attrName, value, st.Registry);
+        normalized = NormalizeFilterAttr(
+            parent.Type, parent.SubType, attrName, normalized, st.Registry);
 
         attrModel.SetAttr(Constants.RESERVED_KEY_VALUE, normalized);
         parent.AddChild(attrModel);

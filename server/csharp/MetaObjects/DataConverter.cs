@@ -119,6 +119,8 @@ public static class DataConverter
         if (!typeDirected)
         {
             // toAttrValue — no type-directed coercion; return the JSON scalar as-is.
+            // Objects are NOT stored here (toAttrValue is for undeclared attrs which
+            // must be scalars). Mirrors TS toAttrValue which throws on non-scalar.
             return element.ValueKind switch
             {
                 JsonValueKind.String  => element.GetString()!,
@@ -137,11 +139,81 @@ public static class DataConverter
             DataType.Int     => ToInteger(element, fnName),
             DataType.Long    => ToInteger(element, fnName),
             DataType.Double  => ToDouble(element, fnName),
-            // String, Object, Date — string form (mirrors TS `default: String(raw)`).
+            DataType.Object  => ToAttrObject(element),
+            // String, Date — string form (mirrors TS `default: String(raw)`).
             _ => element.ValueKind == JsonValueKind.String
                     ? element.GetString()!
                     : element.GetRawText(),
         };
+    }
+
+    // -------------------------------------------------------------------------
+    // ToAttrObject — mirror TS DATA_TYPE_OBJECT handling:
+    //   JSON object → IReadOnlyDictionary<string, object?> (verbatim, recursive)
+    //   non-object  → raw string (returned as-is so attr-schema can reject it)
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Parse a JSON element as an object-typed attr value.
+    /// A JSON object is stored as <see cref="IReadOnlyDictionary{string, object?}"/>.
+    /// A non-object (e.g. a legacy JSON string) is returned as-is so the
+    /// attr-schema pass can reject it with ERR_BAD_ATTR_VALUE.
+    /// Mirrors TS <c>DATA_TYPE_OBJECT</c> case in <c>convertToDataType</c>.
+    /// </summary>
+    public static object ToAttrObject(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            // Not an object — return raw string so attr-schema validation can flag it.
+            return element.ValueKind == JsonValueKind.String
+                ? element.GetString()!
+                : element.GetRawText();
+        }
+        return JsonElementToAttrObject(element);
+    }
+
+    /// <summary>
+    /// Recursively convert a JSON object element to
+    /// <see cref="IReadOnlyDictionary{string, object?}"/>, with values
+    /// converted to the same attr-safe types (string, long, double, bool,
+    /// IReadOnlyList&lt;string&gt;, or nested dict).
+    /// </summary>
+    internal static IReadOnlyDictionary<string, object?> JsonElementToAttrObject(JsonElement obj)
+    {
+        var dict = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (JsonProperty prop in obj.EnumerateObject())
+        {
+            dict[prop.Name] = JsonElementToAttrJson(prop.Value);
+        }
+        return dict.AsReadOnly() as IReadOnlyDictionary<string, object?> ?? dict;
+    }
+
+    /// <summary>
+    /// Convert a JSON element to an attr-safe value (the C# equivalent of TS AttrJson).
+    /// </summary>
+    private static object? JsonElementToAttrJson(JsonElement el)
+    {
+        return el.ValueKind switch
+        {
+            JsonValueKind.Null      => null,
+            JsonValueKind.True      => (object)true,
+            JsonValueKind.False     => false,
+            JsonValueKind.String    => el.GetString()!,
+            JsonValueKind.Number    => ParseNumber(el),
+            JsonValueKind.Array     => JsonElementToAttrArray(el),
+            JsonValueKind.Object    => JsonElementToAttrObject(el),
+            _                       => el.GetRawText(),
+        };
+    }
+
+    private static IReadOnlyList<object?> JsonElementToAttrArray(JsonElement arr)
+    {
+        var list = new List<object?>(arr.GetArrayLength());
+        foreach (JsonElement el in arr.EnumerateArray())
+        {
+            list.Add(JsonElementToAttrJson(el));
+        }
+        return list.AsReadOnly();
     }
 
     // -------------------------------------------------------------------------
