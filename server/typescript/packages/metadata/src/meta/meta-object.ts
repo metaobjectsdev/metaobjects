@@ -18,7 +18,6 @@ import {
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
   IDENTITY_SUBTYPE_REFERENCE,
-  OBJECT_ATTR_JAVA_RUNTIME,
 } from "../constants.js";
 import type { MetaField } from "./meta-field.js";
 import type { MetaIdentity, MetaReferenceIdentity } from "./meta-identity.js";
@@ -35,11 +34,6 @@ export class MetaObject extends MetaData {
       const name = source?.ownAttr(SOURCE_DB_TABLE_ATTR_NAME);
       return typeof name === "string" && name !== "" ? name : undefined;
     });
-  }
-
-  get javaRuntime(): string | undefined {
-    const v = this.ownAttr(OBJECT_ATTR_JAVA_RUNTIME);
-    return typeof v === "string" ? v : undefined;
   }
 
   isEntity(): boolean {

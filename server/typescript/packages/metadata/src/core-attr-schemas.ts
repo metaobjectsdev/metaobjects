@@ -62,8 +62,6 @@ import {
   VALIDATOR_ATTR_MAX,
   AUTO_SET_VALUES,
   SORT_ORDER_VALUES,
-  OBJECT_JAVA_RUNTIME_VALUES,
-  OBJECT_ATTR_JAVA_RUNTIME,
   ORIGIN_PASSTHROUGH_ATTR_FROM,
   ORIGIN_PASSTHROUGH_ATTR_VIA,
   ORIGIN_AGGREGATE_ATTR_AGG,
@@ -188,16 +186,7 @@ export const currencyViewAttrs: AttrSchema[] = [
 ];
 
 /** Attrs common to every object subtype. */
-export const objectAttrs: AttrSchema[] = [
-  {
-    name: OBJECT_ATTR_JAVA_RUNTIME,
-    valueType: ATTR_SUBTYPE_STRING,
-    required: false,
-    allowedValues: [...OBJECT_JAVA_RUNTIME_VALUES],
-    description:
-      "Java runtime materialization strategy for this object (pojo / map / proxy). Ignored by non-Java implementations.",
-  },
-];
+export const objectAttrs: AttrSchema[] = [];
 
 /** Attrs common to every relationship subtype. */
 export const relationshipAttrs: AttrSchema[] = [

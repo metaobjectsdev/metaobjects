@@ -57,8 +57,6 @@ export type MetadataSubType = (typeof METADATA_SUBTYPES)[number];
 //   - entity : persistent record (typically has @primary identity)
 //   - value  : value-object (no identity; equality by content)
 //
-// Java runtime strategies (pojo/map/proxy) live on @javaRuntime, not subType.
-
 export const OBJECT_SUBTYPE_ENTITY = "entity";
 export const OBJECT_SUBTYPE_VALUE = "value";
 
@@ -384,18 +382,6 @@ export const SORT_ORDER_DESC = "desc";
 export const SORT_ORDER_VALUES = [SORT_ORDER_ASC, SORT_ORDER_DESC] as const;
 export type SortOrderValue = (typeof SORT_ORDER_VALUES)[number];
 
-// Java runtime materialization strategies (values for @javaRuntime on objects)
-export const OBJECT_JAVA_RUNTIME_POJO  = "pojo";
-export const OBJECT_JAVA_RUNTIME_MAP   = "map";
-export const OBJECT_JAVA_RUNTIME_PROXY = "proxy";
-
-export const OBJECT_JAVA_RUNTIME_VALUES = [
-  OBJECT_JAVA_RUNTIME_POJO,
-  OBJECT_JAVA_RUNTIME_MAP,
-  OBJECT_JAVA_RUNTIME_PROXY,
-] as const;
-export type ObjectJavaRuntimeValue = (typeof OBJECT_JAVA_RUNTIME_VALUES)[number];
-
 // Validator attr keys (used by codegen-ts when reading validator children)
 export const VALIDATOR_ATTR_PATTERN = "pattern";
 export const VALIDATOR_ATTR_MIN = "min";
@@ -461,10 +447,6 @@ export const OPS_BY_SUBTYPE: Readonly<Record<string, readonly FilterOp[]>> = {
 export function opsForSubType(subType: string): readonly FilterOp[] {
   return OPS_BY_SUBTYPE[subType] ?? [];
 }
-
-// Object-level attrs
-/** Java runtime strategy for an object. Values: "pojo" | "map" | "proxy". */
-export const OBJECT_ATTR_JAVA_RUNTIME = "javaRuntime";
 
 // ---------------------------------------------------------------------------
 // Source type — declares where an object's data lives (Project E).

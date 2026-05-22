@@ -113,23 +113,6 @@ describe("MetaObject.dbTable", () => {
 });
 
 // ---------------------------------------------------------------------------
-// MetaObject.javaRuntime
-// ---------------------------------------------------------------------------
-
-describe("MetaObject.javaRuntime", () => {
-  it("returns the @javaRuntime attr when set", () => {
-    const obj = makeObject("User");
-    obj.setAttr("javaRuntime", "pojo");
-    expect(obj.javaRuntime).toBe("pojo");
-  });
-
-  it("returns undefined when not set", () => {
-    const obj = makeObject("User");
-    expect(obj.javaRuntime).toBeUndefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
 // MetaObject.fields / ownFields
 // ---------------------------------------------------------------------------
 
