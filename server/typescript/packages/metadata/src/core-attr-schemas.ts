@@ -35,7 +35,7 @@ import {
   ATTR_SUBTYPE_FILTER,
   // attr-name constants
   FIELD_ATTR_OBJECT_REF,
-  FIELD_OBJECT_ATTR_STORAGE,
+  FIELD_ATTR_STORAGE,
   STORAGE_VALUES,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_UNIQUE,
@@ -92,7 +92,7 @@ export const commonFieldAttrs: AttrSchema[] = [
       "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization.",
   },
   {
-    name: FIELD_OBJECT_ATTR_STORAGE,
+    name: FIELD_ATTR_STORAGE,
     valueType: ATTR_SUBTYPE_STRING,
     required: false,
     allowedValues: [...STORAGE_VALUES],

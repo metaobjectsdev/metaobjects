@@ -19,7 +19,7 @@ import {
   FIELD_ATTR_FILTERABLE,
   FIELD_ATTR_DB_INDEXED,
   FIELD_ATTR_OBJECT_REF,
-  FIELD_OBJECT_ATTR_STORAGE,
+  FIELD_ATTR_STORAGE,
   STORAGE_FLATTENED,
   IDENTITY_ATTR_FIELDS,
   ORIGIN_SUBTYPE_PASSTHROUGH,
@@ -300,7 +300,7 @@ export function validateFieldObjectStorage(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
     for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
-      const storage = field.ownAttr(FIELD_OBJECT_ATTR_STORAGE);
+      const storage = field.ownAttr(FIELD_ATTR_STORAGE);
       if (storage === undefined || storage === null) continue;
       const objectRef = field.ownAttr(FIELD_ATTR_OBJECT_REF);
       if (typeof objectRef !== "string" || objectRef.length === 0) {

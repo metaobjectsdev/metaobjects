@@ -27,7 +27,7 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
   FIELD_ATTR_OBJECT_REF,
-  FIELD_OBJECT_ATTR_STORAGE,
+  FIELD_ATTR_STORAGE,
   STORAGE_FLATTENED,
   resolveTableName, resolveColumnName, resolveTableSchema,
 } from "@metaobjectsdev/metadata";
@@ -151,7 +151,7 @@ function buildTable(
     const isPk = pkJsNames.includes(field.name);
     if (
       field.subType === FIELD_SUBTYPE_OBJECT &&
-      field.ownAttr(FIELD_OBJECT_ATTR_STORAGE) === STORAGE_FLATTENED
+      field.ownAttr(FIELD_ATTR_STORAGE) === STORAGE_FLATTENED
     ) {
       // Flattened storage: expand nested value-object fields as prefixed columns.
       // The parent field.object itself does NOT produce its own column.

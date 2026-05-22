@@ -54,7 +54,7 @@ Locate the existing field-attrs section (search for `FIELD_ATTR_OBJECT_REF`). Ju
 ```typescript
 /** Storage strategy for an object-typed field. Meaningful only when @objectRef is set.
  *  Cross-language metamodel attr — every port must accept and round-trip it. */
-export const FIELD_OBJECT_ATTR_STORAGE = "storage";
+export const FIELD_ATTR_STORAGE = "storage";
 
 /** @storage "flattened" — nested object's columns expand into the parent table,
  *  each prefixed by the parent field's DB name (EF OwnsOne pattern). Requires
@@ -104,13 +104,13 @@ git commit -m "feat(metadata): add FIELD_OBJECT_ATTR_STORAGE + STORAGE_* value c
 
 - [ ] **Step 1: Update imports + add the `@storage` attr-schema entry**
 
-Open `server/typescript/packages/metadata/src/core-attr-schemas.ts`. Find the imports block at the top. Add `FIELD_OBJECT_ATTR_STORAGE` and `STORAGE_VALUES` to the existing `from "./constants.js"` import:
+Open `server/typescript/packages/metadata/src/core-attr-schemas.ts`. Find the imports block at the top. Add `FIELD_ATTR_STORAGE` and `STORAGE_VALUES` to the existing `from "./constants.js"` import:
 
 ```typescript
 import {
   // ... existing imports
   FIELD_ATTR_OBJECT_REF,
-  FIELD_OBJECT_ATTR_STORAGE,
+  FIELD_ATTR_STORAGE,
   STORAGE_VALUES,
   // ... existing imports
 } from "./constants.js";
@@ -120,7 +120,7 @@ Find the `commonFieldAttrs` definition (search for `commonFieldAttrs: AttrSchema
 
 ```typescript
   {
-    name: FIELD_OBJECT_ATTR_STORAGE,
+    name: FIELD_ATTR_STORAGE,
     valueType: ATTR_SUBTYPE_STRING,
     required: false,
     allowedValues: [...STORAGE_VALUES],
@@ -175,7 +175,7 @@ Read `core-attr-schemas.ts` from the top to find how cross-attribute validation 
  * Called by the loader's validation pass.
  */
 export function validateFieldObjectStorage(field: MetaData): ValidationError[] {
-  const storage = field.ownAttr(FIELD_OBJECT_ATTR_STORAGE);
+  const storage = field.ownAttr(FIELD_ATTR_STORAGE);
   if (storage === undefined || storage === null) return [];
   const objectRef = field.ownAttr(FIELD_ATTR_OBJECT_REF);
   const errors: ValidationError[] = [];
@@ -520,7 +520,7 @@ function fieldsToColumns(entity: MetaData, root: MetaRoot): ColumnDescriptor[] {
 }
 
 function readStorage(field: MetaData): string | undefined {
-  const v = field.ownAttr(FIELD_OBJECT_ATTR_STORAGE);
+  const v = field.ownAttr(FIELD_ATTR_STORAGE);
   return typeof v === "string" ? v : undefined;
 }
 

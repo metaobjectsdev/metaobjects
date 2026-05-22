@@ -373,7 +373,7 @@ export const FIELD_ATTR_OBJECT_REF = "objectRef";
 
 /** Storage strategy for an object-typed field. Meaningful only when @objectRef is set.
  *  Cross-language metamodel attr — every port must accept and round-trip it. */
-export const FIELD_OBJECT_ATTR_STORAGE = "storage";
+export const FIELD_ATTR_STORAGE = "storage";
 
 /** @storage "flattened" — nested object's columns expand into the parent table,
  *  each prefixed by the parent field's DB name (EF OwnsOne pattern). Requires
