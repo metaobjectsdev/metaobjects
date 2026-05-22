@@ -5,6 +5,10 @@
       {
         "object.entity": {
           "name": "Subscriber",
+          "@config": {
+            "owner": "growth",
+            "tier": "gold"
+          },
           "children": [
             {
               "field.long": {
@@ -16,15 +20,6 @@
                 "@fields": [
                   "id"
                 ]
-              }
-            },
-            {
-              "attr.properties": {
-                "name": "config",
-                "value": {
-                  "owner": "growth",
-                  "tier": "gold"
-                }
               }
             }
           ]

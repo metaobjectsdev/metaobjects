@@ -18,7 +18,6 @@ import {
   ATTR_SUBTYPE_BOOLEAN,
   IDENTITY_SUBTYPE_PRIMARY,
 } from "../src/constants.js";
-import { MetaAttr } from "../src/meta/meta-attr.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -436,11 +435,11 @@ describe("parseJson — reserved keys", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. Child {"attr": {...}} nodes — dual storage
+// 6. Child {"attr": {...}} nodes — materialized into MetaAttr instances
 // ---------------------------------------------------------------------------
 
-describe("parseJson — attr child nodes (dual storage)", () => {
-  it("attr child is stored as a structural child of type attr", () => {
+describe("parseJson — attr child nodes (materialized instances)", () => {
+  it("attr child materializes a MetaAttr instance (not a structural child)", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
       "metadata.root": {
@@ -458,10 +457,12 @@ describe("parseJson — attr child nodes (dual storage)", () => {
     });
     const { root } = parseJson(input, { registry });
     const obj = root.ownChildren()[0]!;
-    const attrChildren = obj.ownChildrenOfType("attr");
-    expect(attrChildren.length).toBe(1);
-    expect(attrChildren[0]!.name).toBe("isKey");
-    expect(attrChildren[0]!.type).toBe(TYPE_ATTR);
+    // Attrs are no longer structural children — they live on the instance map.
+    expect(obj.ownChildrenOfType("attr").length).toBe(0);
+    const inst = obj.ownMetaAttr("isKey");
+    expect(inst).toBeDefined();
+    expect(inst!.name).toBe("isKey");
+    expect(inst!.type).toBe(TYPE_ATTR);
   });
 
   it("attr child's value is also set on the parent via setAttr", () => {
@@ -486,7 +487,7 @@ describe("parseJson — attr child nodes (dual storage)", () => {
     expect(obj.ownAttr("isKey")).toBe(true);
   });
 
-  it("attr child structural model has subType matching declared subType", () => {
+  it("attr child instance has subType matching declared subType", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
       "field.long": {
@@ -497,11 +498,11 @@ describe("parseJson — attr child nodes (dual storage)", () => {
       },
     });
     const { root } = parseJson(input, { registry });
-    const attrChild = root.ownChildrenOfType("attr")[0]!;
-    expect(attrChild.subType).toBe(ATTR_SUBTYPE_BOOLEAN);
+    const attrInst = root.ownMetaAttr("isKey")!;
+    expect(attrInst.subType).toBe(ATTR_SUBTYPE_BOOLEAN);
   });
 
-  it("attr child structural model stores the value in its own attr map", () => {
+  it("attr child instance stores the desugared value", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
       "field.long": {
@@ -512,9 +513,9 @@ describe("parseJson — attr child nodes (dual storage)", () => {
       },
     });
     const { root } = parseJson(input, { registry });
-    const attrChild = root.ownChildrenOfType("attr")[0]!;
-    // The attr node itself holds the value in its attr map
-    expect(attrChild.ownAttr("value")).toBe(true);
+    const attrInst = root.ownMetaAttr("isKey")!;
+    // The instance itself holds the value.
+    expect(attrInst.value).toBe(true);
   });
 
   it("multiple attr children are all stored correctly", () => {
@@ -531,8 +532,7 @@ describe("parseJson — attr child nodes (dual storage)", () => {
     const { root } = parseJson(input, { registry });
     expect(root.ownAttr("isKey")).toBe(true);
     expect(root.ownAttr("maxValue")).toBe(9999);
-    const attrKids = root.ownChildrenOfType("attr");
-    expect(attrKids.length).toBe(2);
+    expect(root.ownMetaAttrs().length).toBe(2);
   });
 
   it("integer attr child value is coerced to number on parent", () => {
@@ -872,11 +872,11 @@ describe("parseJson — fruitbasket fixture round-trip", () => {
 
   it("id field has an 'isKey' attr child that sets parent.ownAttr('isKey') = true", () => {
     const idField = result.root.ownChildren()[0]!;
-    // attr child dual storage
+    // attr child materializes into a MetaAttr instance on the field.
     expect(idField.ownAttr("isKey")).toBe(true);
-    const attrKids = idField.ownChildrenOfType("attr");
-    expect(attrKids.length).toBe(1);
-    expect(attrKids[0]!.name).toBe("isKey");
+    const inst = idField.ownMetaAttr("isKey");
+    expect(inst).toBeDefined();
+    expect(inst!.name).toBe("isKey");
   });
 
   it("Basket object has subType entity", () => {
@@ -1151,13 +1151,11 @@ describe("parseJson — deeply nested children", () => {
     expect(Array.isArray(parentValue)).toBe(true);
     expect(parentValue).toEqual(["id"]);
 
-    // Child MetaAttr node must carry the same desugared array (dual-storage consistency).
-    const attrNode = identity.ownChildrenOfType(TYPE_ATTR).find(
-      (c) => c.name === "fields",
-    ) as MetaAttr | undefined;
-    expect(attrNode).toBeDefined();
-    expect(Array.isArray(attrNode!.value)).toBe(true);
-    expect(attrNode!.value).toEqual(["id"]);
+    // The materialized MetaAttr instance carries the same desugared array.
+    const attrInst = identity.ownMetaAttr("fields");
+    expect(attrInst).toBeDefined();
+    expect(Array.isArray(attrInst!.value)).toBe(true);
+    expect(attrInst!.value).toEqual(["id"]);
   });
 
   it("stringArray attr with numeric-looking string value is NOT coerced to number — yields ['123']", () => {

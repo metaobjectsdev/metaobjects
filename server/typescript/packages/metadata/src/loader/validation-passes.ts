@@ -338,7 +338,7 @@ function checkFilterClauses(
       );
       continue;
     }
-    // After parse-time desugaring (normalizeFilterAttr), every non-composition field clause
+    // After parse-time desugaring (FilterAttr.desugar), every non-composition field clause
     // is canonical { op: value } — a bare scalar should not reach here; the object guard is defensive.
     if (typeof clause === "object" && clause !== null && !Array.isArray(clause)) {
       for (const op of Object.keys(clause)) {

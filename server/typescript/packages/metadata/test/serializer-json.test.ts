@@ -30,9 +30,6 @@ import {
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_BOOLEAN,
-  ATTR_SUBTYPE_BOOLEAN,
-  ATTR_SUBTYPE_STRING,
-  ATTR_SUBTYPE_INT,
   IDENTITY_SUBTYPE_PRIMARY,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
@@ -42,7 +39,6 @@ import {
   RESERVED_KEY_ABSTRACT,
   RESERVED_KEY_IS_ARRAY,
   RESERVED_KEY_CHILDREN,
-  RESERVED_KEY_VALUE,
   ATTR_PREFIX,
   TYPE_SUBTYPE_SEPARATOR,
 } from "../src/constants.js";
@@ -492,73 +488,13 @@ describe("serializeJson — reserved key order", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 9. Attr child node preservation (no double-emit)
+// 9. Attrs always emit inline (D5)
 // ---------------------------------------------------------------------------
 
-describe("serializeJson — attr child node preservation", () => {
-  it("emits attr child as child node ONLY when it was stored as dual (child + parent attr)", () => {
-    // Mimic what the parser does: add both a child attr model AND setAttr on parent
+describe("serializeJson — attrs always emit inline (D5)", () => {
+  it("an attr set via setAttr emits as inline @name, never a child node", () => {
     const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Item");
-
-    // Dual-storage: structural child
-    const attrChild = makeModel(TYPE_ATTR, ATTR_SUBTYPE_BOOLEAN, "isKey");
-    attrChild.setAttr(RESERVED_KEY_VALUE, true);
-    obj.addChild(attrChild);
-
-    // Dual-storage: also on the parent
-    obj.setAttr("isKey", true);
-
-    const root = makeModel(TYPE_METADATA, SUBTYPE_ROOT, "");
-    root.addChild(obj);
-
-    const json = serializeJson(root);
-    const parsed = JSON.parse(json);
-    const objData = childAt(bodyOf(parsed, TYPE_METADATA, SUBTYPE_ROOT), 0).body;
-
-    // Should NOT have inline @isKey
-    expect(objData[`${ATTR_PREFIX}isKey`]).toBeUndefined();
-
-    // Should have children containing the attr child
-    const children = childrenOf(objData);
-    expect(Array.isArray(children)).toBe(true);
-    expect(children!.length).toBe(1);
-
-    // attr child wrapper key fuses type+subType: "attr.boolean"
-    const attr = childAt(objData, 0);
-    expect(attr.key).toBe(fused(TYPE_ATTR, ATTR_SUBTYPE_BOOLEAN));
-    expect(attr.body[RESERVED_KEY_NAME]).toBe("isKey");
-    expect(attr.body[RESERVED_KEY_VALUE]).toBe(true);
-  });
-
-  it("emits attr with string subType for string attr child", () => {
-    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Item");
-
-    const attrChild = makeModel(TYPE_ATTR, ATTR_SUBTYPE_STRING, "label");
-    attrChild.setAttr(RESERVED_KEY_VALUE, "my label");
-    obj.addChild(attrChild);
-    obj.setAttr("label", "my label");
-
-    const root = makeModel(TYPE_METADATA, SUBTYPE_ROOT, "");
-    root.addChild(obj);
-
-    const json = serializeJson(root);
-    const parsed = JSON.parse(json);
-    const objData = childAt(bodyOf(parsed, TYPE_METADATA, SUBTYPE_ROOT), 0).body;
-
-    // No inline @label
-    expect(objData[`${ATTR_PREFIX}label`]).toBeUndefined();
-
-    const attr = childAt(objData, 0);
-    expect(attr.key).toBe(fused(TYPE_ATTR, ATTR_SUBTYPE_STRING));
-    expect(attr.body[RESERVED_KEY_NAME]).toBe("label");
-    expect(attr.body[RESERVED_KEY_VALUE]).toBe("my label");
-  });
-
-  it("emits inline @attr for attrs that have NO matching child", () => {
-    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Item");
-    // Only set via setAttr — no structural child
     obj.setAttr("dbTable", "item_t");
-
     const root = makeModel(TYPE_METADATA, SUBTYPE_ROOT, "");
     root.addChild(obj);
 
@@ -566,71 +502,8 @@ describe("serializeJson — attr child node preservation", () => {
     const parsed = JSON.parse(json);
     const objData = childAt(bodyOf(parsed, TYPE_METADATA, SUBTYPE_ROOT), 0).body;
 
-    // Inline form
     expect(objData[`${ATTR_PREFIX}dbTable`]).toBe("item_t");
-    // No children for this attr
     expect(childrenOf(objData)).toBeUndefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 10. inlineAttrs: false option
-// ---------------------------------------------------------------------------
-
-describe("serializeJson — inlineAttrs: false option", () => {
-  it("emits attrs as child attr nodes when inlineAttrs is false", () => {
-    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Item");
-    obj.setAttr("foo", "bar");
-
-    const root = makeModel(TYPE_METADATA, SUBTYPE_ROOT, "");
-    root.addChild(obj);
-
-    const json = serializeJson(root, { inlineAttrs: false });
-    const parsed = JSON.parse(json);
-    const objData = childAt(bodyOf(parsed, TYPE_METADATA, SUBTYPE_ROOT), 0).body;
-
-    // Should NOT have inline @foo
-    expect(objData[`${ATTR_PREFIX}foo`]).toBeUndefined();
-
-    // Should have children with the attr node (fused "attr.string" key)
-    const children = childrenOf(objData);
-    expect(Array.isArray(children)).toBe(true);
-    const attr = childAt(objData, 0);
-    expect(attr.key).toBe(fused(TYPE_ATTR, ATTR_SUBTYPE_STRING));
-    expect(attr.body[RESERVED_KEY_NAME]).toBe("foo");
-    expect(attr.body[RESERVED_KEY_VALUE]).toBe("bar");
-  });
-
-  it("infers int subType for integer number values", () => {
-    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Item");
-    obj.setAttr("count", 42);
-
-    const root = makeModel(TYPE_METADATA, SUBTYPE_ROOT, "");
-    root.addChild(obj);
-
-    const json = serializeJson(root, { inlineAttrs: false });
-    const parsed = JSON.parse(json);
-    const objData = childAt(bodyOf(parsed, TYPE_METADATA, SUBTYPE_ROOT), 0).body;
-
-    const attr = childAt(objData, 0);
-    expect(attr.key).toBe(fused(TYPE_ATTR, ATTR_SUBTYPE_INT));
-    expect(attr.body[RESERVED_KEY_VALUE]).toBe(42);
-  });
-
-  it("infers boolean subType for boolean values", () => {
-    const obj = makeModel(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, "Item");
-    obj.setAttr("active", true);
-
-    const root = makeModel(TYPE_METADATA, SUBTYPE_ROOT, "");
-    root.addChild(obj);
-
-    const json = serializeJson(root, { inlineAttrs: false });
-    const parsed = JSON.parse(json);
-    const objData = childAt(bodyOf(parsed, TYPE_METADATA, SUBTYPE_ROOT), 0).body;
-
-    const attr = childAt(objData, 0);
-    expect(attr.key).toBe(fused(TYPE_ATTR, ATTR_SUBTYPE_BOOLEAN));
-    expect(attr.body[RESERVED_KEY_VALUE]).toBe(true);
   });
 });
 
@@ -646,13 +519,11 @@ describe("serializeJson — round-trip semantic equality (built model)", () => {
     const root = makeModel(TYPE_METADATA, SUBTYPE_ROOT, "");
     root.setPackage("test::roundtrip");
 
-    // Common abstract field
+    // Common abstract field. Attrs are stored on the node (D5: never a child),
+    // so set isKey via setAttr — it canonicalizes to inline @isKey.
     const idField = makeModel(TYPE_FIELD, FIELD_SUBTYPE_LONG, "id");
     idField.setPackage("test::common");
     idField.setIsAbstract(true);
-    const isKeyAttr = makeModel(TYPE_ATTR, ATTR_SUBTYPE_BOOLEAN, "isKey");
-    isKeyAttr.setAttr(RESERVED_KEY_VALUE, true);
-    idField.addChild(isKeyAttr);
     idField.setAttr("isKey", true);
     root.addChild(idField);
 

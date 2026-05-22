@@ -1,6 +1,9 @@
 import { TypeId } from "../registry.js";
-import { PACKAGE_SEPARATOR } from "../constants.js";
+import { PACKAGE_SEPARATOR, RESERVED_KEY_VALUE, TYPE_ATTR } from "../constants.js";
 import type { DataType } from "../data-type.js";
+import type { MetaAttr } from "./meta-attr.js";
+import { inferAttrSubType } from "../serializer-json.js";
+import { attrClassFor } from "../attr-class-map.js";
 
 export type AttrValue = string | number | boolean | string[] | AttrObject;
 
@@ -35,8 +38,16 @@ export abstract class MetaData {
    */
   isMerge: boolean = false;
 
-  // Internal storage
-  private _attrs = new Map<string, AttrValue>();
+  // Internal storage — attributes as MetaAttr instances, name-indexed and
+  // insertion-ordered. NOT in _children (attrs never appear in ownChildren()).
+  private _attrNodes = new Map<string, MetaAttr>();
+  // A MetaAttr's own scalar/array/object value is a terminal stored under the
+  // reserved "value" key. It is NOT materialized as a nested MetaAttr (that
+  // would recurse forever — every node would build a child to hold its value,
+  // which would build a child, ...). Read via ownAttr(RESERVED_KEY_VALUE) /
+  // MetaAttr.value; set via setAttr(RESERVED_KEY_VALUE, ...).
+  private _ownValue?: AttrValue;
+  private _ownValueSet = false;
   private _children: MetaData[] = [];
   private _parent?: MetaData;
   private _frozen: boolean = false;
@@ -183,26 +194,73 @@ export abstract class MetaData {
 
   setAttr(name: string, value: AttrValue): void {
     this._assertNotFrozen();
-    this._attrs.set(name, value);
+    // The reserved "value" key is a node's own terminal value (e.g. a MetaAttr's
+    // value). It is stored directly, never materialized as a nested MetaAttr —
+    // doing so would recurse forever (each node would build a child to hold its
+    // value). See _ownValue.
+    if (name === RESERVED_KEY_VALUE) {
+      this._ownValue = value;
+      this._ownValueSet = true;
+      return;
+    }
+    const existing = this._attrNodes.get(name);
+    if (existing !== undefined) {
+      existing.setAttr(RESERVED_KEY_VALUE, value);
+      return;
+    }
+    // Resolve the attr's class. A declared subtype isn't known here (this is the
+    // node, not the registry), so infer from the value shape — same rule the
+    // serializer uses. The parser, which DOES know the declared subtype, builds
+    // the instance directly via setMetaAttr (below).
+    const subType = inferAttrSubType(value);
+    const AttrClass = attrClassFor(subType);
+    const node = new AttrClass(new TypeId(TYPE_ATTR, subType), name);
+    node.setAttr(RESERVED_KEY_VALUE, value);
+    this._attrNodes.set(name, node);
+  }
+
+  /** Attach a pre-built MetaAttr instance (the parser path, which knows the
+   *  declared subtype). Replaces any existing attr of the same name. */
+  setMetaAttr(node: MetaAttr): void {
+    this._assertNotFrozen();
+    this._attrNodes.set(node.name, node);
   }
 
   /** Own (locally declared) attr value for `name`, or undefined — excludes inherited. */
   ownAttr(name: string): AttrValue | undefined {
-    return this._attrs.get(name);
+    if (name === RESERVED_KEY_VALUE) {
+      return this._ownValueSet ? this._ownValue : undefined;
+    }
+    return this._attrNodes.get(name)?.value;
   }
 
-  /**
-   * Own (locally declared) attrs — a cached map; excludes attrs inherited via extends.
-   * Do not cast to `Map` and mutate — the same reference is returned on every call
-   * after freeze, so a mutation would corrupt subsequent reads.
-   */
+  /** Own (locally declared) MetaAttr instance for `name`, or undefined. */
+  ownMetaAttr(name: string): MetaAttr | undefined {
+    return this._attrNodes.get(name);
+  }
+
+  /** Own MetaAttr instances, insertion-ordered, frozen; excludes inherited. */
+  ownMetaAttrs(): readonly MetaAttr[] {
+    return this.cached("ownMetaAttrs", () => Object.freeze([...this._attrNodes.values()]));
+  }
+
+  /** Own (locally declared) attr value map; excludes inherited. Cached. */
   ownAttrs(): ReadonlyMap<string, AttrValue> {
-    return this.cached("ownAttrs", () => new Map(this._attrs));
+    return this.cached("ownAttrs", () => {
+      const m = new Map<string, AttrValue>();
+      for (const [name, node] of this._attrNodes) {
+        if (node.value !== undefined) m.set(name, node.value);
+      }
+      return m;
+    });
   }
 
   /** True if `name` is an own (locally declared) attr — excludes inherited. */
   ownHasAttr(name: string): boolean {
-    return this._attrs.has(name);
+    if (name === RESERVED_KEY_VALUE) {
+      return this._ownValueSet;
+    }
+    return this._attrNodes.has(name);
   }
 
   // ---------------------------------------------------------------------------
@@ -315,13 +373,19 @@ export abstract class MetaData {
   // ---------------------------------------------------------------------------
 
   private _effectiveAttrs(visited: Set<MetaData>): Map<string, AttrValue> {
+    const ownValues = (): Map<string, AttrValue> => {
+      const m = new Map<string, AttrValue>();
+      for (const [name, node] of this._attrNodes) {
+        if (node.value !== undefined) m.set(name, node.value);
+      }
+      return m;
+    };
     if (this._superData === undefined || visited.has(this._superData)) {
-      return new Map(this._attrs);
+      return ownValues();
     }
     visited.add(this._superData);
-    // Start with the super chain's effective attrs, then override with own.
     const result = this._superData._effectiveAttrs(visited);
-    for (const [k, v] of this._attrs) {
+    for (const [k, v] of ownValues()) {
       result.set(k, v);
     }
     return result;

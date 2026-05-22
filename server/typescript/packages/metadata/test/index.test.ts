@@ -203,7 +203,7 @@ describe("Public API surface — @metaobjectsdev/metadata index", () => {
 
   test("SerializeOptions type is accepted", () => {
     const m = new MetaRoot(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "r");
-    const opts: SerializeOptions = { indent: 0, inlineAttrs: true };
+    const opts: SerializeOptions = { indent: 0 };
     const json = serializeJson(m, opts);
     expect(typeof json).toBe("string");
   });

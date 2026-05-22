@@ -434,7 +434,7 @@ export const FILTER_OP_NE = "ne";
 export const FILTER_OP_IN = "in";
 export const FILTER_OP_IS_NULL = "isNull";
 
-// Composition-key constants — used by desugarFilterObject in parser-core.ts.
+// Composition-key constants — used by desugarFilterObject in meta-attr-filter.ts.
 export const FILTER_COMPOSE_OR = "or";
 export const FILTER_COMPOSE_AND = "and";
 

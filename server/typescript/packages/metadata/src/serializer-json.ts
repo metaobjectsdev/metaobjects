@@ -8,7 +8,6 @@
 
 import type { MetaData, AttrValue } from "./meta/meta-data.js";
 import {
-  TYPE_ATTR,
   ATTR_PREFIX,
   TYPE_SUBTYPE_SEPARATOR,
   RESERVED_KEY_NAME,
@@ -17,14 +16,12 @@ import {
   RESERVED_KEY_ABSTRACT,
   RESERVED_KEY_IS_ARRAY,
   RESERVED_KEY_CHILDREN,
-  RESERVED_KEY_VALUE,
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_INT,
   ATTR_SUBTYPE_LONG,
   ATTR_SUBTYPE_DOUBLE,
   ATTR_SUBTYPE_BOOLEAN,
   ATTR_SUBTYPE_STRINGARRAY,
-  SUBTYPE_BASE,
 } from "./constants.js";
 
 // ---------------------------------------------------------------------------
@@ -32,17 +29,14 @@ import {
 // ---------------------------------------------------------------------------
 
 export interface SerializeOptions {
-  /** Prefer inline @-attrs over child {"attr.*": {...}} nodes when type is unambiguous. Default true. */
-  inlineAttrs?: boolean;
   /** Pretty-print indent. 0 = no whitespace. Default 2. */
   indent?: number;
 }
 
 export function serializeJson(model: MetaData, opts?: SerializeOptions): string {
-  const inlineAttrs = opts?.inlineAttrs ?? true;
   const indent = opts?.indent ?? 2;
 
-  const nodeObj = serializeNode(model, inlineAttrs, false);
+  const nodeObj = serializeNode(model, false);
   return JSON.stringify(nodeObj, null, indent === 0 ? undefined : indent);
 }
 
@@ -77,16 +71,14 @@ function fusedKey(type: string, subType: string): string {
 
 function serializeNode(
   model: MetaData,
-  inlineAttrs: boolean,
   effective: boolean,
 ): Record<string, unknown> {
-  const inner = serializeNodeInner(model, inlineAttrs, effective);
+  const inner = serializeNodeInner(model, effective);
   return { [fusedKey(model.type, model.subType)]: inner };
 }
 
 function serializeNodeInner(
   model: MetaData,
-  inlineAttrs: boolean,
   effective: boolean,
 ): Record<string, unknown> {
   // Canonical body-key order:
@@ -127,57 +119,20 @@ function serializeNodeInner(
   const childList = effective ? model.children() : model.ownChildren();
   const attrMap = effective ? model.attrs() : model.ownAttrs();
 
-  // Walk children: structural children recurse; attr children emit either as
-  // inline @-attrs or as child {"attr.*": {...}} nodes.
-  const emittedAsChild = new Set<string>();
   const serializedChildren: Record<string, unknown>[] = [];
-
   for (const child of childList) {
-    if (child.type !== TYPE_ATTR) {
-      serializedChildren.push(serializeNode(child, inlineAttrs, effective));
-      continue;
-    }
-
-    // Emit attr as child node form
-    const attrName = child.name;
-    const attrValue = child.ownAttr(RESERVED_KEY_VALUE);
-    const attrSubType =
-      child.subType !== SUBTYPE_BASE ? child.subType : inferAttrSubType(attrValue ?? "");
-
-    if (attrValue === undefined) {
-      console.warn(`[serializer-json] attr child "${attrName}" has no value attr — emitting null`);
-    }
-
-    serializedChildren.push({
-      [fusedKey(TYPE_ATTR, attrSubType)]: {
-        [RESERVED_KEY_NAME]: attrName,
-        [RESERVED_KEY_VALUE]: attrValue === undefined ? null : attrValue,
-      },
-    });
-    emittedAsChild.add(attrName);
+    // Attrs never appear in children(); only structural nodes recurse.
+    serializedChildren.push(serializeNode(child, effective));
   }
 
-  // Inline @-attrs: emit attrs NOT already emitted as child nodes.
+  // Attrs ALWAYS emit inline @name (D5 — attrs have no children, one canonical form).
   for (const [attrName, attrValue] of attrMap) {
-    if (emittedAsChild.has(attrName)) continue;
-
-    if (inlineAttrs) {
-      obj[`${ATTR_PREFIX}${attrName}`] = attrValue;
-    } else {
-      serializedChildren.push({
-        [fusedKey(TYPE_ATTR, inferAttrSubType(attrValue))]: {
-          [RESERVED_KEY_NAME]: attrName,
-          [RESERVED_KEY_VALUE]: attrValue,
-        },
-      });
-    }
+    obj[`${ATTR_PREFIX}${attrName}`] = attrValue;
   }
 
-  // children — emit only if non-empty
   if (serializedChildren.length > 0) {
     obj[RESERVED_KEY_CHILDREN] = serializedChildren;
   }
-
   return obj;
 }
 
@@ -193,7 +148,7 @@ function serializeNodeInner(
 // ---------------------------------------------------------------------------
 
 export function canonicalSerialize(model: MetaData): string {
-  const raw = serializeJson(model, { inlineAttrs: true, indent: 2 });
+  const raw = serializeJson(model, { indent: 2 });
 
   const parsed = JSON.parse(raw) as unknown;
   const sorted = sortAttrKeys(parsed);
@@ -209,7 +164,7 @@ export function canonicalSerialize(model: MetaData): string {
  * Used by the conformance harness's expected-effective fixtures.
  */
 export function canonicalSerializeEffective(model: MetaData): string {
-  const nodeObj = serializeNode(model, true, true);
+  const nodeObj = serializeNode(model, true);
   const raw = JSON.stringify(nodeObj, null, 2);
 
   const parsed = JSON.parse(raw) as unknown;

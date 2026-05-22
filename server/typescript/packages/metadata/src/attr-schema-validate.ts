@@ -8,96 +8,32 @@
 //   1. Required attrs present       — every AttrSchema with required:true must
 //                                      have a matching attr on the node.
 //   2. Declared attrs well-typed    — for each @-attr ON the node that IS in the
-//                                      schema, its runtime value type must match
-//                                      the schema's valueType (an attr subtype).
+//                                      schema, its value must satisfy the
+//                                      MetaAttr instance's own validateValue.
 //   3. allowedValues honored        — declared attrs with a non-empty
 //                                      allowedValues set must hold a member value.
 //   4. Undeclared attrs             — NOT an error, NOT a warning (open policy).
 //
 // `default` values are NOT auto-applied — A3 is pure validation, not mutation.
 //
+// Checks 2+3 dispatch to the materialized MetaAttr instance: each attr is a
+// MetaAttr that owns validateValue(value): ValueError[] (resolved by its
+// subType, which the parser chose from the declared valueType). The central
+// value-shape helper + the per-shape subtype sets are gone — value-shape
+// knowledge now lives on the instance. The pass maps each ValueError to a
+// ParseError with the unchanged ERR_BAD_ATTR_VALUE code, so conformance
+// fixtures stay green.
+//
 // Modeled on src/subtype-rules.ts: a recursive walk producing an
 // { errors, warnings } result. All A3 findings are ERRORS; warnings stays [].
 
-import type { AttrValue, MetaData } from "./meta/meta-data.js";
+import type { MetaData } from "./meta/meta-data.js";
 import { ParseError } from "./errors.js";
 import type { AttrSchema, TypeRegistry } from "./registry.js";
-import {
-  type AttrSubType,
-  ATTR_SUBTYPE_STRING,
-  ATTR_SUBTYPE_INT,
-  ATTR_SUBTYPE_LONG,
-  ATTR_SUBTYPE_DOUBLE,
-  ATTR_SUBTYPE_BOOLEAN,
-  ATTR_SUBTYPE_CLASS,
-  ATTR_SUBTYPE_PROPERTIES,
-  ATTR_SUBTYPE_FILTER,
-  ATTR_SUBTYPE_STRINGARRAY,
-} from "./constants.js";
 
 export interface AttrSchemaValidationResult {
   errors: ParseError[];
   warnings: string[];
-}
-
-// ---------------------------------------------------------------------------
-// attr-subtype → runtime-type check
-// ---------------------------------------------------------------------------
-//
-// Numeric attr subtypes (int / long / double) all map to JS `number`. There is
-// no separate short/byte/float/decimal attr subtype — ATTR_SUBTYPES has exactly
-// the 9 entries below. `class` is string-shaped on the wire; `properties` and
-// `filter` are object-shaped (validated via OBJECT_ATTR_SUBTYPES).
-//
-// `stringarray` requires a real string[]. A single bare field name
-// (e.g. `"@fields": "id"`) is the degenerate one-element authoring form, but
-// the parser now desugars it to a one-element array before A3 runs (see
-// normalizeStringArrayAttr in parser-json.ts). By the time A3 validates, every
-// stringArray attr is already an array — so a bare string here is invalid.
-
-const NUMERIC_ATTR_SUBTYPES: ReadonlySet<AttrSubType> = new Set([
-  ATTR_SUBTYPE_INT,
-  ATTR_SUBTYPE_LONG,
-  ATTR_SUBTYPE_DOUBLE,
-]);
-
-const STRING_ATTR_SUBTYPES: ReadonlySet<AttrSubType> = new Set([
-  ATTR_SUBTYPE_STRING,
-  ATTR_SUBTYPE_CLASS,
-]);
-
-const OBJECT_ATTR_SUBTYPES: ReadonlySet<AttrSubType> = new Set([
-  ATTR_SUBTYPE_PROPERTIES,
-  ATTR_SUBTYPE_FILTER,
-]);
-
-/** Returns true when `value`'s runtime type matches the declared attr subtype. */
-function valueMatchesType(value: AttrValue, valueType: AttrSubType): boolean {
-  if (STRING_ATTR_SUBTYPES.has(valueType)) {
-    return typeof value === "string";
-  }
-  if (NUMERIC_ATTR_SUBTYPES.has(valueType)) {
-    return typeof value === "number";
-  }
-  if (valueType === ATTR_SUBTYPE_BOOLEAN) {
-    return typeof value === "boolean";
-  }
-  if (valueType === ATTR_SUBTYPE_STRINGARRAY) {
-    // Must be a real string[]; the parser already desugared bare strings.
-    return Array.isArray(value) && value.every((el) => typeof el === "string");
-  }
-  if (OBJECT_ATTR_SUBTYPES.has(valueType)) {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-  }
-  // SUBTYPE_BASE or any unexpected subtype — accept anything (no constraint).
-  return true;
-}
-
-/** Human-readable name of an attr value's runtime type, for error messages. */
-function runtimeTypeName(value: AttrValue): string {
-  if (Array.isArray(value)) return "array";
-  if (value !== null && typeof value === "object" && !Array.isArray(value)) return "object";
-  return typeof value;
 }
 
 // ---------------------------------------------------------------------------
@@ -163,32 +99,30 @@ function validateNode(
   }
 
   // --- Checks 2 + 3: declared attrs on the node are well-typed + in range ---
-  for (const [attrName, value] of node.ownAttrs()) {
-    const spec = byName.get(attrName);
+  for (const inst of node.ownMetaAttrs()) {
+    const spec = byName.get(inst.name);
     if (spec === undefined) continue; // undeclared attr → open policy: ignore.
+    const value = inst.value;
+    if (value === undefined) continue;
 
-    // Check 2: value runtime type matches the declared valueType.
-    // When valueType is absent (declared-but-untyped, e.g. @default), skip the
-    // type check — any AttrValue is valid, by design.
-    if (spec.valueType !== undefined && !valueMatchesType(value, spec.valueType)) {
-      errors.push(
-        new ParseError(
-          `${nodeLabel(node)} attribute '@${attrName}' must be of type ` +
-            `'${spec.valueType}' but got ${runtimeTypeName(value)}`,
-          { code: "ERR_BAD_ATTR_VALUE" },
-        ),
-      );
-      // Skip the allowedValues check when the type is already wrong —
-      // a type mismatch makes the membership comparison meaningless.
-      continue;
+    // Check 2: the instance validates its own value shape. When the declared
+    // valueType is absent (e.g. @default), skip — any AttrValue is valid.
+    if (spec.valueType !== undefined) {
+      const valueErrors = inst.validateValue(value);
+      if (valueErrors.length > 0) {
+        for (const ve of valueErrors) {
+          errors.push(new ParseError(`${nodeLabel(node)} ${ve.message}`, { code: "ERR_BAD_ATTR_VALUE" }));
+        }
+        continue; // type wrong → skip allowedValues
+      }
     }
 
-    // Check 3: allowedValues membership.
+    // Check 3: allowedValues membership (unchanged).
     if (spec.allowedValues !== undefined && spec.allowedValues.length > 0) {
       if (!spec.allowedValues.includes(value)) {
         errors.push(
           new ParseError(
-            `${nodeLabel(node)} attribute '@${attrName}' has value ` +
+            `${nodeLabel(node)} attribute '@${inst.name}' has value ` +
               `'${String(value)}' which is not one of the allowed values: ` +
               `${spec.allowedValues.map((v) => String(v)).join(", ")}`,
             { code: "ERR_BAD_ATTR_VALUE" },
