@@ -1,6 +1,6 @@
 package com.metaobjects.generator.mustache;
 
-import com.metaobjects.loader.simple.SimpleLoader;
+import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Before;
@@ -26,7 +26,7 @@ public class ValueObjectTemplateGeneratorTest extends SharedRegistryTestBase {
     public TemporaryFolder tempFolder = new TemporaryFolder();
 
     private MustacheTemplateGenerator generator;
-    private SimpleLoader loader;
+    private MetaDataLoader loader;
     private File outputDir;
 
     @Before
@@ -34,7 +34,7 @@ public class ValueObjectTemplateGeneratorTest extends SharedRegistryTestBase {
         generator = new MustacheTemplateGenerator();
 
         // Create and initialize loader
-        loader = new SimpleLoader("test-loader");
+        loader = new MetaDataLoader("test-loader");
         loader.setSourceURIs(Arrays.asList(
             URIHelper.toURI("model:resource:mustache-test-metadata.json")
         ));
