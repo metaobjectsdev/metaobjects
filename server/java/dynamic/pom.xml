@@ -92,7 +92,7 @@
               com.metaobjects.object.value.*;version=${project.version}
             </Export-Package>
             <Import-Package>
-              com.metaobjects.*;version="[${metaobjects.core.version},${metaobjects.core.version}]",
+              com.metaobjects.*,
               *
             </Import-Package>
           </instructions>
