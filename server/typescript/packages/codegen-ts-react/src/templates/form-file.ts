@@ -23,7 +23,7 @@ import {
   IDENTITY_ATTR_FIELDS,
   FIELD_ATTR_DEFAULT,
 } from "@metaobjectsdev/metadata";
-import { type RenderContext, crossEntitySpecifier, GENERATED_HEADER } from "@metaobjectsdev/codegen-ts";
+import { type RenderContext, entityModuleSpecifier, GENERATED_HEADER } from "@metaobjectsdev/codegen-ts";
 
 function primaryFieldNames(entity: MetaObject): Set<string> {
   const set = new Set<string>();
@@ -62,12 +62,11 @@ function visibleFields(entity: MetaObject): string[] {
 
 export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
-  // Same-entity sibling import (the entity's own file). Passing the entity's
-  // package as both from/to resolves to "./Entity" — its file shares this
-  // file's package directory.
-  const entityFileSpec = crossEntitySpecifier(
-    ctx.outputLayout,
-    entity.package,
+  // Import the entity's own file. Same target → relative "./Entity"; cross
+  // target → importBase-qualified package path.
+  const entityFileSpec = entityModuleSpecifier(
+    ctx.selfTarget,
+    ctx.entityModuleTarget,
     entity.package,
     entityName,
     ctx.extStyle,

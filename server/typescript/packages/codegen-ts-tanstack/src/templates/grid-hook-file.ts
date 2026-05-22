@@ -12,7 +12,7 @@ import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject, MetaLayout } from "@metaobjectsdev/metadata";
 import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts";
-import { GENERATED_HEADER, crossEntitySpecifier } from "@metaobjectsdev/codegen-ts";
+import { GENERATED_HEADER, entityModuleSpecifier, siblingSpecifier } from "@metaobjectsdev/codegen-ts";
 
 interface GridSpec {
   name: string;           // e.g. "default", "activeOnly"
@@ -48,10 +48,11 @@ export function renderGridHookFile(entity: MetaObject, ctx: RenderContext): stri
 
   if (grids.length === 0) return "";
 
-  // Sibling-entity import (same package — resolves to "./<Entity>").
-  const entityModule = crossEntitySpecifier(
-    ctx.outputLayout,
-    entity.package,
+  // Import the entity's own file. Same target → relative "./Entity"; cross
+  // target → importBase-qualified package path.
+  const entityModule = entityModuleSpecifier(
+    ctx.selfTarget,
+    ctx.entityModuleTarget,
     entity.package,
     entityName,
     ctx.extStyle,
@@ -77,9 +78,12 @@ import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityMo
     .filter((g) => g.hasFilterPreset)
     .map((g) => `${lcEntity}${capitalize(g.name)}Filter`);
 
+  // Columns file is a same-target sibling of the grid-hook (both emitted to
+  // selfTarget) — always relative, package-layout aware.
+  const columnsModule = siblingSpecifier(ctx.selfTarget, entity.package, `${entityName}.columns`, ctx.extStyle);
   const filterPresetImportCode: Code =
     filterPresetImports.length > 0
-      ? code`import { ${filterPresetImports.join(", ")} } from "./${entityName}.columns";\n`
+      ? code`import { ${filterPresetImports.join(", ")} } from ${JSON.stringify(columnsModule)};\n`
       : code``;
 
   const sections: Code[] = grids.map((grid) => {

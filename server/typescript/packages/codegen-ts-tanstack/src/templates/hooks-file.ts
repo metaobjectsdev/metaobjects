@@ -1,7 +1,7 @@
 import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts";
-import { GENERATED_HEADER, isProjection, pluralize, crossEntitySpecifier } from "@metaobjectsdev/codegen-ts";
+import { GENERATED_HEADER, isProjection, pluralize, entityModuleSpecifier } from "@metaobjectsdev/codegen-ts";
 
 /**
  * Render <Entity>.hooks.ts — query-key factory + 2 query hooks + (for non-projections) 3 mutation hooks.
@@ -20,12 +20,11 @@ import { GENERATED_HEADER, isProjection, pluralize, crossEntitySpecifier } from 
  * the underlying HTTP. Mutations aggressively invalidate <entity>Keys.all().
  */
 export function renderHooksFile(entity: MetaObject, ctx: RenderContext): string {
-  // Same-entity sibling import (the entity's own file). Same package as this
-  // file, so it resolves to "./Entity" — routed through the shared helper so
-  // extStyle and package layout are applied consistently with the core generators.
-  const entityModule = crossEntitySpecifier(
-    ctx.outputLayout,
-    entity.package,
+  // Import the entity's own file. Same target → relative "./Entity"; cross
+  // target → importBase-qualified package path.
+  const entityModule = entityModuleSpecifier(
+    ctx.selfTarget,
+    ctx.entityModuleTarget,
     entity.package,
     entity.name,
     ctx.extStyle,

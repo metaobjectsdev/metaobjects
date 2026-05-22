@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "package": "shop::commerce",
+          "@emitForm": true,
+          "children": [
+            { "field.long": { "name": "id", "children": [
+              { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+            ] } },
+            { "field.string": { "name": "title", "@required": true } }
+          ]
+        }
+      }
+    ]
+  }
+}

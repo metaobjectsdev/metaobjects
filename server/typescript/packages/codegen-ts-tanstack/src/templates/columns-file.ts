@@ -10,7 +10,7 @@ import {
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
 } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts";
-import { GENERATED_HEADER, crossEntitySpecifier } from "@metaobjectsdev/codegen-ts";
+import { GENERATED_HEADER, entityModuleSpecifier } from "@metaobjectsdev/codegen-ts";
 
 interface ColumnSpec {
   id:        string;
@@ -169,11 +169,11 @@ export const ${filterConstName}: ${entityName}Filter = ${JSON.stringify(grid.fil
     `// ${GENERATED_HEADER}-tanstack — DO NOT EDIT.\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n`;
 
-  // Same-entity sibling import (the entity's own file) — routed through the
-  // shared helper so extStyle and package layout match the core generators.
-  const entityModule = crossEntitySpecifier(
-    ctx.outputLayout,
-    entity.package,
+  // Import the entity's own file. Same target → relative "./Entity"; cross
+  // target → importBase-qualified package path.
+  const entityModule = entityModuleSpecifier(
+    ctx.selfTarget,
+    ctx.entityModuleTarget,
     entity.package,
     entityName,
     ctx.extStyle,
