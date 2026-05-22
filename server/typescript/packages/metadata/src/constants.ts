@@ -371,6 +371,30 @@ export const FIELD_ATTR_AUTO_SET = "autoSet";
  *  spelling as the relationship `@objectRef` — Java's single ATTR_OBJECT_REF. */
 export const FIELD_ATTR_OBJECT_REF = "objectRef";
 
+/** Storage strategy for an object-typed field. Meaningful only when @objectRef is set.
+ *  Cross-language metamodel attr — every port must accept and round-trip it. */
+export const FIELD_OBJECT_ATTR_STORAGE = "storage";
+
+/** @storage "flattened" — nested object's columns expand into the parent table,
+ *  each prefixed by the parent field's DB name (EF OwnsOne pattern). Requires
+ *  the parent field.object to have isArray=false; arrays-of-values must use jsonb. */
+export const STORAGE_FLATTENED = "flattened";
+
+/** @storage "jsonb" — the nested value (or array of values when isArray=true) lives
+ *  in a single jsonb column. The structure is typed by metadata; storage is opaque. */
+export const STORAGE_JSONB = "jsonb";
+
+/** @storage "subdocument" — document-store-native nested document. No Postgres
+ *  column is emitted for this; codegen targets like Mongo render it inline. */
+export const STORAGE_SUBDOCUMENT = "subdocument";
+
+export const STORAGE_VALUES = [
+  STORAGE_FLATTENED,
+  STORAGE_JSONB,
+  STORAGE_SUBDOCUMENT,
+] as const;
+export type StorageValue = (typeof STORAGE_VALUES)[number];
+
 export const AUTO_SET_ON_CREATE = "onCreate";
 export const AUTO_SET_ON_UPDATE = "onUpdate";
 
