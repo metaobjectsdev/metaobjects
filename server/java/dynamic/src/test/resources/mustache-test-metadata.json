@@ -1,0 +1,136 @@
+{
+  "metadata.root": {
+    "package": "com_example_model",
+    "children": [
+      {
+        "object.pojo": {
+          "name": "User",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "username",
+                "children": [
+                  {
+                    "validator.required": {
+                      "name": "required"
+                    }
+                  },
+                  {
+                    "validator.length": {
+                      "name": "length",
+                      "@max": 50
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "email",
+                "children": [
+                  {
+                    "validator.required": {
+                      "name": "required"
+                    }
+                  },
+                  {
+                    "validator.length": {
+                      "name": "length",
+                      "@max": 255
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.int": {
+                "name": "age"
+              }
+            },
+            {
+              "field.date": {
+                "name": "createdAt"
+              }
+            },
+            {
+              "field.string": {
+                "name": "tags",
+                "@isArray": true
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": ["id"]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.pojo": {
+          "name": "Product",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "children": [
+                  {
+                    "validator.required": {
+                      "name": "required"
+                    }
+                  },
+                  {
+                    "validator.length": {
+                      "name": "length",
+                      "@max": 100
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.double": {
+                "name": "price",
+                "children": [
+                  {
+                    "validator.required": {
+                      "name": "required"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "notes",
+                "children": [
+                  {
+                    "validator.length": {
+                      "name": "length",
+                      "@max": 1000
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": ["id"]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

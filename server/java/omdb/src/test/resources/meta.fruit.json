@@ -1,0 +1,51 @@
+{
+  "metadata.root": {
+    "package": "produce",
+    "children": [
+      {
+        "object.value": {
+          "name": "Basket",
+          "package": "container",
+          "@object": "com.metaobjects.object.value.ValueObject",
+          "@dbTable": "BASKET",
+          "children": [
+            {
+              "field.long": {
+                "name": "id",
+                "@dbColumn": "id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "apples",
+                "@dbColumn": "apples"
+              }
+            },
+            {
+              "field.int": {
+                "name": "oranges",
+                "@dbColumn": "oranges"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "primary",
+                "@fields": ["id"],
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "FullBasketView",
+          "extends": "container::Basket",
+          "@object": "com.metaobjects.object.value.ValueObject",
+          "@dbView": "FULL_BASKET_VIEW",
+          "@dbViewSQL": "SELECT B.* FROM BASKET B WHERE b.apples+b.oranges > 10"
+        }
+      }
+    ]
+  }
+}

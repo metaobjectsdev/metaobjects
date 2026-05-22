@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.metaobjects</groupId>
   <artifactId>metaobjects</artifactId>
-  <version>6.3.1-SNAPSHOT</version>
+  <version>7.0.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>MetaObjects Core</name>
   <description>Universal metadata-driven development platform</description>
@@ -40,6 +40,9 @@
     <module>maven-plugin</module>
     <module>core</module>
     <module>core-spring</module>
+    <module>dynamic</module>
+    <module>om</module>
+    <module>omdb</module>
     <module>archetype</module>
     <module>examples</module>
   </modules>
@@ -66,7 +69,7 @@
     <xerces.version>2.12.2</xerces.version>
     <xml.apis.version>2.0.2</xml.apis.version>
     <!-- DB Properties -->
-    <derby.version>10.9.1.0</derby.version>
+    <derby.version>10.17.1.0</derby.version>
     <!-- J2EE Properties -->
     <javaee.api.version>6.0</javaee.api.version>
     <!--
@@ -187,6 +190,28 @@
       </dependency>
       <dependency>
         <groupId>com.metaobjects</groupId>
+        <artifactId>metaobjects-dynamic-core</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.metaobjects</groupId>
+        <artifactId>metaobjects-dynamic-core</artifactId>
+        <version>${project.version}</version>
+        <type>test-jar</type>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.metaobjects</groupId>
+        <artifactId>metaobjects-om</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.metaobjects</groupId>
+        <artifactId>metaobjects-omdb</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.metaobjects</groupId>
         <artifactId>metaobjects-maven-plugin</artifactId>
         <version>${project.version}</version>
       </dependency>
@@ -196,6 +221,38 @@
         <groupId>com.metaobjects</groupId>
         <artifactId>archetype</artifactId>
         <version>${project.version}</version>
+      </dependency>
+
+      <!-- Logging (managed so child modules can omit <version>) -->
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-classic</artifactId>
+        <version>${logback.version}</version>
+      </dependency>
+
+      <!-- Testing (managed so child modules can omit <version>) -->
+      <dependency>
+        <groupId>junit</groupId>
+        <artifactId>junit</artifactId>
+        <version>${junit.version}</version>
+        <scope>test</scope>
+      </dependency>
+
+      <!-- Utilities -->
+      <dependency>
+        <groupId>com.google.code.gson</groupId>
+        <artifactId>gson</artifactId>
+        <version>2.13.2</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-lang3</artifactId>
+        <version>3.18.0</version>
       </dependency>
 
       <!-- External Dependencies -->
