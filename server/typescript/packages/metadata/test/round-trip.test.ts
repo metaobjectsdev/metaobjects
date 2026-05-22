@@ -320,13 +320,14 @@ describe("Multi-file dependency order: common → vehicle → overlay", () => {
 // ===========================================================================
 
 describe("Inline-vs-child attr round-trip: valid-complete-metadata.json", () => {
-  // This fixture has BOTH forms:
+  // This fixture has BOTH authoring forms on input:
   //   - inline @-attrs: "@required": true, "@maxLength": 50, "@generation": "increment"
   //   - child {"attr":{...}} nodes: {"attr": {"name": "format", "subType": "string", "value": "yyyy-MM-dd"}}
   //
-  // After round-trip, semantics must be preserved. The serializer prefers inline form
-  // for type-inferrable attrs, so child-form inputs may come back as inline outputs;
-  // that's acceptable as long as the attr value (via setAttr) is preserved.
+  // Both forms materialize into MetaAttr instances on the node (never children),
+  // and the serializer canonicalizes EVERY attr to inline @name (D5) — so child-form
+  // inputs come back as inline outputs. After round-trip, semantics must be preserved:
+  // the attr value (via ownAttr) is identical regardless of input form.
 
   it("User object is present after parse", async () => {
     const { root } = await loadFixture("valid-complete-metadata.json");
