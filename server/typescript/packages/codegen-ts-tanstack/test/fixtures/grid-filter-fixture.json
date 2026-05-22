@@ -43,7 +43,7 @@
                 "name": "active",
                 "@pageSize": 25,
                 "@filterable": true,
-                "@filter": "{\"subscribed\":true}",
+                "@filter": { "subscribed": true },
                 "@columns": ["email", "subscribed"]
               }
             }
