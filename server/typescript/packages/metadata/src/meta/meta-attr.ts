@@ -18,6 +18,7 @@ import {
   DATA_TYPE_BOOLEAN,
 } from "../data-type.js";
 import { convertToDataType } from "../data-converter.js";
+import { registerFallbackAttrClass } from "../attr-class-map.js";
 import {
   RESERVED_KEY_VALUE,
   SUBTYPE_BASE,
@@ -110,3 +111,8 @@ export function runtimeTypeName(value: AttrValue): string {
   if (value !== null && typeof value === "object") return "object";
   return typeof value;
 }
+
+// Register the base MetaAttr as the fallback for unmapped (scalar/string) attr
+// subtypes. Subclasses register their own subtype in their module (see
+// meta-attr-stringarray / -filter / -properties).
+registerFallbackAttrClass(MetaAttr);

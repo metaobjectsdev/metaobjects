@@ -7,10 +7,14 @@ import type { MetaData } from "./meta/meta-data.js";
 import { MetaRoot } from "./meta/meta-root.js";
 import { MetaObject } from "./meta/meta-object.js";
 import { MetaField } from "./meta/meta-field.js";
-import { MetaAttr } from "./meta/meta-attr.js";
-import { StringArrayAttr } from "./meta/meta-attr-stringarray.js";
-import { FilterAttr } from "./meta/meta-attr-filter.js";
-import { PropertiesAttr } from "./meta/meta-attr-properties.js";
+import { attrClassFor, type NodeConstructor } from "./attr-class-map.js";
+// Import the attr subclasses for their self-registration side effect (each
+// registers its subtype → class into attr-class-map at module load), so
+// attrClassFor resolves the right class below. The base MetaAttr (the fallback)
+// registers itself; importing a subclass transitively loads meta-attr.ts.
+import "./meta/meta-attr-stringarray.js";
+import "./meta/meta-attr-filter.js";
+import "./meta/meta-attr-properties.js";
 import {
   MetaValidator,
   MetaRequiredValidator,
@@ -60,9 +64,6 @@ import {
   FIELD_SUBTYPES,
   FIELD_SUBTYPE_CURRENCY,
   ATTR_SUBTYPES,
-  ATTR_SUBTYPE_PROPERTIES,
-  ATTR_SUBTYPE_STRINGARRAY,
-  ATTR_SUBTYPE_FILTER,
   VALIDATOR_SUBTYPES,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
@@ -99,13 +100,6 @@ function wildcard(childType: string): ChildRule {
     childName: CHILD_RULE_WILDCARD,
   };
 }
-
-type NodeConstructor = new (typeId: TypeId, name: string) => MetaData;
-
-/** A MetaAttr (sub)class constructor — narrower than NodeConstructor so the
- *  factory can read `.dataType` off a probe instance. Assignable to
- *  NodeConstructor since MetaAttr extends MetaData. */
-type AttrConstructor = new (typeId: TypeId, name: string) => MetaAttr;
 
 function def(
   type: string,
@@ -153,14 +147,10 @@ const ORIGIN_CLASS_MAP = new Map<string, NodeConstructor>([
   [ORIGIN_SUBTYPE_AGGREGATE, MetaAggregateOrigin],
 ]);
 
-/** Map from attr subtype string → concrete node constructor. Default (and the
- *  scalar/string subtypes) → MetaAttr. This is the single "one registration
- *  line per subtype" surface the Open-Closed proof targets. */
-const ATTR_CLASS_MAP = new Map<string, AttrConstructor>([
-  [ATTR_SUBTYPE_STRINGARRAY, StringArrayAttr],
-  [ATTR_SUBTYPE_FILTER, FilterAttr],
-  [ATTR_SUBTYPE_PROPERTIES, PropertiesAttr],
-]);
+// ATTR_CLASS_MAP + attrClassFor live in the leaf module ./attr-class-map.ts
+// (imported above) so MetaData.setAttr can resolve an attr subclass without
+// importing this module — that import created a module-eval cycle. They are
+// re-exported from the package index for the same public surface.
 
 function registerCoreTypeDefs(registry: TypeRegistry): void {
   // metadata — 1 subtype (the document root: metadata.root)
@@ -213,7 +203,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   // dataType (resolved by this.subType); we read it off a probe instance so the
   // TypeDefinition.dataType contract (registry.find(...).dataType) still holds.
   for (const subType of ATTR_SUBTYPES) {
-    const AttrClass = ATTR_CLASS_MAP.get(subType) ?? MetaAttr;
+    const AttrClass = attrClassFor(subType);
     const probeDataType = new AttrClass(new TypeId(TYPE_ATTR, subType), "").dataType;
     registry.register(
       def(TYPE_ATTR, subType, `Attribute of type ${subType}`, [], AttrClass, [], probeDataType),
