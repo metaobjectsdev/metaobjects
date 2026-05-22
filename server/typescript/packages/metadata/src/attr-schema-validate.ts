@@ -46,7 +46,8 @@ export interface AttrSchemaValidationResult {
 //
 // Numeric attr subtypes (int / long / double) all map to JS `number`. There is
 // no separate short/byte/float/decimal attr subtype — ATTR_SUBTYPES has exactly
-// the 9 entries below. `class` and `properties` are string-shaped on the wire.
+// the 9 entries below. `class` is string-shaped on the wire; `properties` and
+// `filter` are object-shaped (validated via OBJECT_ATTR_SUBTYPES).
 //
 // `stringarray` requires a real string[]. A single bare field name
 // (e.g. `"@fields": "id"`) is the degenerate one-element authoring form, but
@@ -95,7 +96,7 @@ function valueMatchesType(value: AttrValue, valueType: AttrSubType): boolean {
 /** Human-readable name of an attr value's runtime type, for error messages. */
 function runtimeTypeName(value: AttrValue): string {
   if (Array.isArray(value)) return "array";
-  if (value !== null && typeof value === "object") return "object";
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) return "object";
   return typeof value;
 }
 
