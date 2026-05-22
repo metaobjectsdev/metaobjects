@@ -9,6 +9,7 @@ A typed metadata standard for declaring entity models, identities, relationships
 - **Code generators** that emit idiomatic per-language code (Drizzle/Zod + Fastify on TypeScript, JOOQ/Spring on Java, Pydantic/FastAPI on Python).
 - **Runtime loaders** that read the metadata at runtime to drive CRUD, validation, relationships, dynamic admin UIs, and LLM tool registration.
 - **Drift checks** that flag divergence between code and metadata via compile-time breakage in the type checker and through `meta migrate` against live databases.
+- **Prompt construction** *(the fourth pillar — planned for 7.0.0)* that treats LLM prompts as governed metadata: a typed payload declared as a projection, external provider-resolved prompt text, byte-identical cross-language render, and build-time prompt↔payload drift detection. See the FR-004 design doc under [`../docs/superpowers/specs/`](../docs/superpowers/specs/).
 
 The substrate is local-first: typed metadata lives in your repo at `metaobjects/`, generated code is idiomatic per-language output that runs **without any MetaObjects dependency at runtime**. If `@metaobjectsdev/*` packages disappeared tomorrow, your generated code keeps working.
 

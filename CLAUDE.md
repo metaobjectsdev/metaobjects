@@ -6,17 +6,20 @@ MetaObjects is a **cross-language metadata standard** for declaring typed entity
 
 The metamodel is the **durable spine**; generated code is the **disposable artifact**. Substrate is local-first: typed metadata lives in your repo, generated code is idiomatic per-language output that runs without any MetaObjects dependency at runtime. If `@metaobjectsdev/*` disappears tomorrow, you keep working code.
 
-## Three pillars
+## Four pillars
 
-Equal weight, shipping per-language:
+Equal weight. Three ship per-language today; the fourth is committed for 7.0.0:
 
 1. **Codegen** — emit idiomatic per-language code (Drizzle/Zod + Fastify for TS, JOOQ/Spring for Java, Pydantic/FastAPI for Python). Hand-edit-preserving regen via three-way merge.
 2. **Runtime metadata** — load metadata at runtime, drive behavior dynamically (CRUD, validation, relationships, dynamic admin UIs, LLM tool registration). On Kysely (TS), SQLAlchemy Core (Python), modernized JDBC/jOOQ (Java).
 3. **Drift detection** — catch divergence between code and metadata. Quality-of-life on top of codegen + runtime.
+4. **Prompt construction** *(landing in 7.0.0)* — the prompt is code too. Declare a prompt's payload as a typed projection, keep its text external and provider-resolved, render it byte-identically across languages, and catch prompt↔payload drift at build time. Applies the same three disciplines (codegen / runtime / drift) to the artifacts that drive the AI itself. Designed in `docs/superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md`; depends on the FR-003 projection substrate.
 
 ## Status
 
 TypeScript reference implementation is at v0.3 — Projects D–G shipped end-to-end with 1784+ tests passing. Java port is in progress: H3a (loader restructure) shipped 2026-05-19; H3b (conformance harness) is active. **C# loader + conformance shipped** (loader, canonical serializer, and a `dotnet test` conformance runner that runs the full shared corpus; codegen + runtime remain out of scope for C#). Python is planned post-H3.
+
+The 7.0.0 line is specced: FR-003 brings the Java OMDB persistence engine, metadata-driven schema migration, and dynamic projections onto current core; FR-004 builds the fourth pillar (cross-language prompt construction) on top of FR-003's projections. Both are design-stage plan-of-record (`docs/superpowers/specs/2026-05-22-fr-003-*` and `*-fr-004-*`), not yet implemented.
 
 Cross-language conformance fixtures live at `fixtures/conformance/` (45 fixtures + a `CAPABILITIES.json` manifest). See `spec/roadmap.md` for current + planned work.
 
