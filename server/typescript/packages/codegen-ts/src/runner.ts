@@ -3,7 +3,8 @@ import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
 import { MetaRoot } from "@metaobjectsdev/metadata";
 import type { Generator, GenContext, EmittedFile } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
-import { normalizeConfig } from "./metaobjects-config.js";
+import { normalizeConfig, DEFAULT_TARGET_NAME } from "./metaobjects-config.js";
+import type { ResolvedTarget } from "./import-path.js";
 import { buildPkMap } from "./pk-resolver.js";
 import { buildRelationMap } from "./relation-resolver.js";
 import { makeRenderContext } from "./render-context.js";
@@ -66,40 +67,73 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     return { files: [], warnings };
   }
 
-  // 2. Build the shared RenderContext (computed once per run).
+  // 2. Resolve targets + entity-module target.
   const config = normalizeConfig(opts.config);
+  const targets = config.targets;
+  const targetOf = (g: Generator): ResolvedTarget => {
+    const name = g.target ?? DEFAULT_TARGET_NAME;
+    const t = targets[name];
+    if (!t) {
+      throw new Error(
+        `Generator "${g.name}" references unknown target "${name}". ` +
+        `Valid targets: ${Object.keys(targets).join(", ")}.`,
+      );
+    }
+    return t;
+  };
+  // Validate all target references up front.
+  for (const g of config.generators) targetOf(g);
+
+  const entityGen = config.generators.find((g) => g.emitsEntityModule);
+  const entityModuleTarget = entityGen ? targetOf(entityGen) : targets[DEFAULT_TARGET_NAME]!;
+
+  const needsCrossTarget = config.generators.some(
+    (g) => (g.target ?? DEFAULT_TARGET_NAME) !== entityModuleTarget.name,
+  );
+  if (needsCrossTarget && entityModuleTarget.importBase === undefined) {
+    throw new Error(
+      `Target "${entityModuleTarget.name}" holds the entity modules that other ` +
+      `targets import, but has no importBase. Set importBase on it (e.g. ` +
+      `"@your-pkg/database/generated").`,
+    );
+  }
+
+  // 3. Build shared render state once.
   const pkMap = buildPkMap(root);
   const relationMap = buildRelationMap(root);
   const packageOf = new Map<string, string | undefined>(
     root.objects().map((o) => [o.name, o.package]),
   );
-  const renderContext = makeRenderContext({
-    dialect: config.dialect,
-    loadedRoot: root,
-    outDir: config.outDir,
-    dbImport: config.dbImport,
-    extStyle: config.extStyle,
-    columnNamingStrategy: config.columnNamingStrategy,
-    apiPrefix: config.apiPrefix,
-    outputLayout: config.outputLayout,
-    pkMap,
-    relationMap,
-    packageOf,
-  });
 
-  // 3. Run each generator sequentially.
-  const emitted: EmittedFile[] = [];
+  // 4. Run each generator with a per-target render context; collect with full path.
+  const emitted: { fullPath: string; content: string; generatedBy: string }[] = [];
   for (const generator of config.generators) {
+    const selfTarget = targetOf(generator);
+    const renderContext = makeRenderContext({
+      dialect: config.dialect,
+      loadedRoot: root,
+      outDir: selfTarget.outDir,
+      dbImport: selfTarget.dbImport,
+      extStyle: config.extStyle,
+      columnNamingStrategy: config.columnNamingStrategy,
+      apiPrefix: config.apiPrefix,
+      outputLayout: selfTarget.outputLayout,
+      pkMap,
+      relationMap,
+      packageOf,
+      selfTarget,
+      entityModuleTarget,
+    });
     const ctx: GenContext = {
       entities: safeEntities,
       loadedRoot: root,
       matches: (e) => generator.filter?.(e) ?? true,
       config: {
-        outDir: config.outDir,
+        outDir: selfTarget.outDir,
         extStyle: config.extStyle,
-        dbImport: config.dbImport,
+        dbImport: selfTarget.dbImport,
         dialect: config.dialect,
-        outputLayout: config.outputLayout,
+        outputLayout: selfTarget.outputLayout,
       },
       renderContext,
       warn: (msg) => warnings.push(`[${generator.name}] ${msg}`),
@@ -114,27 +148,27 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     }
 
     for (const file of files) {
-      const collision = emitted.find((prev) => prev.path === file.path);
+      const fullPath = join(selfTarget.outDir, file.path);
+      const collision = emitted.find((prev) => prev.fullPath === fullPath);
       if (collision) {
         throw new Error(
-          `Output path collision: "${file.path}" emitted by both ` +
+          `Output path collision: "${fullPath}" emitted by both ` +
           `"${collision.generatedBy}" and "${generator.name}". ` +
           `Adjust one generator's filter or output path.`,
         );
       }
-      emitted.push({ ...file, generatedBy: generator.name });
+      emitted.push({ fullPath, content: file.content, generatedBy: generator.name });
     }
   }
 
-  // 4. Write phase.
+  // 5. Write phase.
   const writes: WriteResult[] = [];
   for (const file of emitted) {
-    const fullPath = join(config.outDir, file.path);
-    const result = decideAndWrite(fullPath, file.content, strategy);
+    const result = decideAndWrite(file.fullPath, file.content, strategy);
     writes.push(result);
     if (result.status === "refused") {
       warnings.push(
-        `Refused to overwrite ${fullPath}: file exists without @generated header. ` +
+        `Refused to overwrite ${file.fullPath}: file exists without @generated header. ` +
         `Move to a different outDir, delete the file, or add the header to opt in.`,
       );
     }

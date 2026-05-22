@@ -80,7 +80,7 @@ describe("runGen — error paths", () => {
         generators: [a, b],
       }),
       metadata: root,
-    })).rejects.toThrow(/Output path collision.*"Post\.ts".*alpha.*beta/);
+    })).rejects.toThrow(/Output path collision.*Post\.ts".*alpha.*beta/);
   });
 
   test("generator throws -> error prefixed with [generator.name]", async () => {
@@ -103,5 +103,65 @@ describe("runGen — error paths", () => {
     // regex literal is present — survives renames of the identifier.
     const src = readFileSync(resolve(import.meta.dir, "..", "src", "runner.ts"), "utf-8");
     expect(src).toContain("/^[A-Za-z_][A-Za-z0-9_]*$/");
+  });
+});
+
+describe("runGen — multi-target", () => {
+  test("routes each generator's files to its target outDir; collision scoped per full path", async () => {
+    const loader = new FileMetaDataLoader();
+    const { root } = await loader.loadFiles([FIXTURE]);
+    const apiDir = join(tmp, "api");
+
+    const entity: Generator = {
+      name: "entity-file", emitsEntityModule: true,
+      generate: perEntity((e) => ({ path: `${e.name}.ts`, content: "// entity" })),
+    };
+    const routes: Generator = {
+      name: "routes-file", target: "api",
+      generate: perEntity((e) => ({ path: `${e.name}.ts`, content: "// routes" })),
+    };
+
+    const result = await runGen({
+      config: defineConfig({
+        outDir: tmp, extStyle: "none", dbImport: "../index", dialect: "sqlite",
+        importBase: "@mf/db/generated",
+        targets: { api: { outDir: apiDir } },
+        generators: [entity, routes],
+      }),
+      metadata: root,
+    });
+
+    // same relative path "Post.ts" in two targets is NOT a collision
+    expect(result.warnings).toEqual([]);
+    expect(result.files.map((f) => f.path).sort()).toEqual([
+      join(apiDir, "Post.ts"), join(tmp, "Post.ts"),
+    ].sort());
+    expect(readFileSync(join(tmp, "Post.ts"), "utf-8")).toContain("// entity");
+    expect(readFileSync(join(apiDir, "Post.ts"), "utf-8")).toContain("// routes");
+  });
+
+  test("unknown target name → throws listing valid targets", async () => {
+    const loader = new FileMetaDataLoader();
+    const { root } = await loader.loadFiles([FIXTURE]);
+    const g: Generator = { name: "x", target: "nope", generate: perEntity((e) => ({ path: `${e.name}.ts`, content: "" })) };
+    await expect(runGen({
+      config: defineConfig({ outDir: tmp, extStyle: "none", dbImport: "../index", dialect: "sqlite", generators: [g] }),
+      metadata: root,
+    })).rejects.toThrow(/unknown target "nope".*default/);
+  });
+
+  test("cross-target without importBase on entity-module target → throws", async () => {
+    const loader = new FileMetaDataLoader();
+    const { root } = await loader.loadFiles([FIXTURE]);
+    const entity: Generator = { name: "entity-file", emitsEntityModule: true, generate: perEntity((e) => ({ path: `${e.name}.ts`, content: "" })) };
+    const routes: Generator = { name: "routes-file", target: "api", generate: perEntity((e) => ({ path: `${e.name}.routes.ts`, content: "" })) };
+    await expect(runGen({
+      config: defineConfig({
+        outDir: tmp, extStyle: "none", dbImport: "../index", dialect: "sqlite",
+        targets: { api: { outDir: join(tmp, "api") } }, // no importBase anywhere
+        generators: [entity, routes],
+      }),
+      metadata: root,
+    })).rejects.toThrow(/importBase/);
   });
 });
