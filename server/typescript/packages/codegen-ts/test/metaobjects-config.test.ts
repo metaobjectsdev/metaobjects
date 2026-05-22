@@ -15,8 +15,8 @@ describe("resolveTargets", () => {
 
   test("default target: outputLayout defaults to 'flat', importBase undefined", () => {
     const t = resolveTargets({ ...base });
-    expect(t.default.outputLayout).toBe("flat");
-    expect(t.default.importBase).toBeUndefined();
+    expect(t.default!.outputLayout).toBe("flat");
+    expect(t.default!.importBase).toBeUndefined();
   });
 
   test("named targets resolve; outputLayout + dbImport fall back to top-level, importBase does NOT inherit", () => {
@@ -33,8 +33,8 @@ describe("resolveTargets", () => {
 
   test("named target may override outputLayout + importBase", () => {
     const t = resolveTargets({ ...base, targets: { x: { outDir: "x", outputLayout: "package", importBase: "@x/gen" } } });
-    expect(t.x.outputLayout).toBe("package");
-    expect(t.x.importBase).toBe("@x/gen");
+    expect(t.x!.outputLayout).toBe("package");
+    expect(t.x!.importBase).toBe("@x/gen");
   });
 });
 

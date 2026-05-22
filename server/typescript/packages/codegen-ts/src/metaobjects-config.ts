@@ -41,8 +41,11 @@ export interface MetaobjectsGenConfig extends ResolvedGenConfig {
   importBase?: string;
 }
 
-/** MetaobjectsGenConfig after applying defaults. All fields required. */
-export interface NormalizedMetaobjectsGenConfig extends MetaobjectsGenConfig {
+/** MetaobjectsGenConfig after applying defaults. All fields required.
+ *  `targets` is Omitted from the base so it can narrow from the user-facing
+ *  TargetConfig to the fully-resolved ResolvedTarget (incompatible under
+ *  exactOptionalPropertyTypes otherwise). */
+export interface NormalizedMetaobjectsGenConfig extends Omit<MetaobjectsGenConfig, "targets"> {
   columnNamingStrategy: ColumnNamingStrategy;
   apiPrefix: string;
   outputLayout: OutputLayout;

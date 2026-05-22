@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
 import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
-import { perEntity, oncePerRun, type GenContext } from "../src/generator.js";
+import { perEntity, oncePerRun, type GenContext, type Generator } from "../src/generator.js";
 
 const SINGLE_ENTITY_FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 
@@ -59,5 +59,13 @@ describe("oncePerRun helper", () => {
     expect(invocations).toBe(1);
     expect(files.length).toBe(1);
     expect(files[0]!.path).toBe("index.ts");
+  });
+});
+
+describe("Generator interface — target fields", () => {
+  test("accepts optional target + emitsEntityModule", () => {
+    const g: Generator = { name: "x", generate: async () => [], target: "web", emitsEntityModule: true };
+    expect(g.target).toBe("web");
+    expect(g.emitsEntityModule).toBe(true);
   });
 });

@@ -33,6 +33,11 @@ export interface Generator {
   /** Optional per-entity filter applied via ctx.matches inside generate(). */
   filter?: (entity: MetaObject) => boolean;
   generate: (ctx: GenContext) => EmittedFile[] | Promise<EmittedFile[]>;
+  /** Named output target (registry key). Defaults to "default". */
+  target?: string;
+  /** Marks the generator that produces entity modules — the runner uses its
+   *  target as the entity-module target for cross-target import resolution. */
+  emitsEntityModule?: boolean;
 }
 
 export type GeneratorFactory<TOpts = void> = TOpts extends void
