@@ -295,7 +295,7 @@ Illegal combinations like \`useSubscribers({ subscribed: { gte: true } })\` fail
 
 \`\`\`jsonc
 { "layout": { "subType": "dataGrid", "name": "active",
-    "@filter": "{\\"subscribed\\":true}",
+    "@filter": { "subscribed": true },
     "@columns": ["email", "firstName", "subscribed"] }}
 \`\`\`
 
