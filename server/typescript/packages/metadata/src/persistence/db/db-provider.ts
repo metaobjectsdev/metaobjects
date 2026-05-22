@@ -2,7 +2,6 @@
 // attributes (@dbColumn, @db.indexed on fields; @name on source.dbTable /
 // source.dbView) by extending the core-registered types. Mirrors Java's
 // CoreDBMetaDataProvider (com.metaobjects.database).
-// See docs/superpowers/specs/2026-05-18-phase4b-db-provider-design.md.
 
 import type { MetaDataTypeProvider } from "../../provider.js";
 import type { TypeRegistry } from "../../registry.js";
@@ -12,7 +11,7 @@ import {
   SOURCE_SUBTYPE_DB_TABLE,
   SOURCE_SUBTYPE_DB_VIEW,
 } from "../source/source-constants.js";
-import { dbColumnSchema, dbIndexedSchema, sourceNameSchema } from "./db-attr-schemas.js";
+import { dbColumnSchema, dbIndexedSchema, sourceNameSchema } from "./db-schema.js";
 
 export const dbProvider: MetaDataTypeProvider = {
   id: "metaobjects-db",

@@ -1,6 +1,5 @@
 // DB-domain attribute schemas — registered by dbProvider (db-provider.ts),
 // not the core metamodel.
-// See docs/superpowers/specs/2026-05-18-phase4b-db-provider-design.md.
 
 import type { AttrSchema } from "../../registry.js";
 import {

@@ -1,7 +1,7 @@
 // Identity concern constants — subtypes, attr keys, and generation strategy values.
 
 // ---------------------------------------------------------------------------
-// Identity subtypes (2 — NO base; Java doesn't register one)
+// Identity subtypes (3: primary, secondary, reference — NO base; Java doesn't register one)
 // ---------------------------------------------------------------------------
 
 export const IDENTITY_SUBTYPE_PRIMARY = "primary";

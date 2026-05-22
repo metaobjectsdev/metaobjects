@@ -15,9 +15,14 @@
 
 // Individual operator constants — used by the parse-time desugar in
 // parser-core.ts. Must stay in sync with FILTER_OPS below.
-export const FILTER_OP_EQ = "eq";
-export const FILTER_OP_NE = "ne";
-export const FILTER_OP_IN = "in";
+export const FILTER_OP_EQ      = "eq";
+export const FILTER_OP_NE      = "ne";
+export const FILTER_OP_GT      = "gt";
+export const FILTER_OP_GTE     = "gte";
+export const FILTER_OP_LT      = "lt";
+export const FILTER_OP_LTE     = "lte";
+export const FILTER_OP_IN      = "in";
+export const FILTER_OP_LIKE    = "like";
 export const FILTER_OP_IS_NULL = "isNull";
 
 // Composition-key constants — used by desugarFilterObject in meta-attr-filter.ts.
@@ -25,23 +30,24 @@ export const FILTER_COMPOSE_OR = "or";
 export const FILTER_COMPOSE_AND = "and";
 
 export const FILTER_OPS = [
-  FILTER_OP_EQ, FILTER_OP_NE, "gt", "gte", "lt", "lte", FILTER_OP_IN, "like", FILTER_OP_IS_NULL,
+  FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE,
+  FILTER_OP_IN, FILTER_OP_LIKE, FILTER_OP_IS_NULL,
 ] as const;
 export type FilterOp = (typeof FILTER_OPS)[number];
 
 export const OPS_BY_SUBTYPE: Readonly<Record<string, readonly FilterOp[]>> = {
-  string:    ["eq", "ne", "in", "like", "isNull"],
-  int:       ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"],
-  short:     ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"],
-  byte:      ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"],
-  long:      ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"],
-  double:    ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"],
-  float:     ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"],
-  decimal:   ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"],
-  boolean:   ["eq", "isNull"],
-  date:      ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"],
-  time:      ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"],
-  timestamp: ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"],
+  string:    [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_IN, FILTER_OP_LIKE, FILTER_OP_IS_NULL],
+  int:       [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
+  short:     [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
+  byte:      [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
+  long:      [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
+  double:    [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
+  float:     [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
+  decimal:   [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
+  boolean:   [FILTER_OP_EQ, FILTER_OP_IS_NULL],
+  date:      [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
+  time:      [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
+  timestamp: [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
 } as const;
 
 export function opsForSubType(subType: string): readonly FilterOp[] {

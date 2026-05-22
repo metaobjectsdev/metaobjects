@@ -1,8 +1,8 @@
 // Public API surface for @metaobjectsdev/metadata v0.2.0
 //
-// Architecture: one typed tree of concrete node classes under src/meta/,
-// plus open type registry + JSON parser/serializer + Loader orchestration.
-// Java-pattern aligned.
+// Architecture: one typed tree of concrete node classes organized under
+// src/{core,persistence,presentation}/<concern>/, plus open type registry
+// + JSON parser/serializer + Loader orchestration. Java-pattern aligned.
 //
 // See docs/strategy/2026-05-09-northstar-v4.md and
 // docs/specs/2026-05-09-v0.2-ts-pillar.md for context.
@@ -41,10 +41,13 @@ export * from "./presentation/layout/layout-constants.js";
 export { MetaData } from "./shared/meta-data.js";
 export type { AttrValue } from "./shared/meta-data.js";
 
-// Concrete node classes
+// Shared node classes
 export { MetaRoot } from "./shared/meta-root.js";
+
+// Core node classes
 export { MetaObject } from "./core/object/meta-object.js";
 export { MetaField } from "./core/field/meta-field.js";
+export { MetaAttr } from "./core/attr/meta-attr.js";
 // Identity: base + subtype-specific
 export {
   MetaIdentity,
@@ -55,6 +58,9 @@ export {
 export type { IdentityGeneration } from "./core/identity/meta-identity.js";
 // Relationship
 export { MetaRelationship } from "./core/relationship/meta-relationship.js";
+// Cross-entity reference lookup
+export { findReferenceBetween } from "./core/relationship/find-reference.js";
+export type { ReferenceLookup } from "./core/relationship/find-reference.js";
 // Validator: base + subtype-specific
 export {
   MetaValidator,
@@ -64,14 +70,8 @@ export {
   MetaNumericValidator,
   MetaArrayValidator,
 } from "./core/validator/meta-validator.js";
-// Cross-entity reference lookup
-export { findReferenceBetween } from "./core/relationship/find-reference.js";
-export type { ReferenceLookup } from "./core/relationship/find-reference.js";
 
-// Other node classes
-export { MetaView } from "./presentation/view/meta-view.js";
-export { MetaAttr } from "./core/attr/meta-attr.js";
-export { MetaLayout } from "./presentation/layout/meta-layout.js";
+// Persistence node classes
 export { MetaSource } from "./persistence/source/meta-source.js";
 // Origin: base + subtype-specific
 export {
@@ -80,12 +80,16 @@ export {
   MetaAggregateOrigin,
 } from "./persistence/origin/meta-origin.js";
 
+// Presentation node classes
+export { MetaView } from "./presentation/view/meta-view.js";
+export { MetaLayout } from "./presentation/layout/meta-layout.js";
+
 // AnyMeta — union of all concrete node types.
-// Defined here (not in src/meta/) to avoid a circular import: each concrete
-// class file imports MetaData from meta-data.ts; a shared any-meta.ts would
-// need to import all of them, and they'd need to import it — creating a
-// cycle. index.ts is the natural resolution point: it already re-exports
-// every class.
+// Defined here (not in a shared concern folder) to avoid a circular import:
+// each concrete class file imports MetaData from meta-data.ts; a shared
+// any-meta.ts would need to import all of them, and they'd need to import it
+// — creating a cycle. index.ts is the natural resolution point: it already
+// re-exports every class.
 export type AnyMeta =
   | MetaRoot
   | MetaObject

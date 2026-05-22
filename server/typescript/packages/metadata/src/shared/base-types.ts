@@ -1,7 +1,7 @@
 // Base type vocabulary — the 11 registered base types + universal/metadata subtypes.
 
 // ---------------------------------------------------------------------------
-// Base type names (the 8 registered base types — Java metaobjects-core vocabulary)
+// Base type names (the 11 registered base types — Java metaobjects-core vocabulary)
 // ---------------------------------------------------------------------------
 
 export const TYPE_METADATA = "metadata";
