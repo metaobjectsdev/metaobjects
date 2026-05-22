@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
  * <li><strong>REMOVED attr.stringarray:</strong> Use StringAttribute with @isArray=true instead</li>
  * <li><strong>attr.class:</strong> Class attributes</li>
  * <li><strong>attr.properties:</strong> Properties attributes</li>
+ * <li><strong>attr.filter:</strong> Filter constraint attributes (object-valued, owns desugar)</li>
  * </ul>
  *
  * <strong>Array Support:</strong>
@@ -54,6 +55,7 @@ public class AttributeTypesMetaDataProvider implements MetaDataTypeProvider {
         // StringArrayAttribute removed - use StringAttribute with @isArray instead
         ClassAttribute.registerTypes(registry);
         PropertiesAttribute.registerTypes(registry);
+        FilterAttribute.registerTypes(registry);
 
         log.debug("Attribute types registered via provider");
     }
