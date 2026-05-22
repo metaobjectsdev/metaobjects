@@ -1,6 +1,8 @@
 package com.metaobjects.attr;
 
 import com.metaobjects.DataTypes;
+import com.metaobjects.MetaRoot;
+import com.metaobjects.io.json.CanonicalJsonSerializer;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Before;
@@ -310,5 +312,65 @@ public class FilterAttributeTest extends SharedRegistryTestBase {
         FilterAttribute attr = new FilterAttribute("nullFilter");
         attr.setValue(null);
         assertEquals("{}", attr.getValueAsString());
+    }
+
+    // -----------------------------------------------------------------------
+    // Canonical serializer round-trip: FilterAttribute emits a JSON object,
+    // NOT a quoted string like "{subscribed={eq=true}}"
+    // -----------------------------------------------------------------------
+
+    /**
+     * Full canonical round-trip:
+     * <ol>
+     *   <li>Build a FilterAttribute with shorthand input
+     *       {@code {"subscribed":true,"status":["a","b"]}}.</li>
+     *   <li>Attach it to a MetaRoot and serialize via
+     *       {@link CanonicalJsonSerializer#canonicalSerialize}.</li>
+     *   <li>Assert that the emitted {@code @filter} value is a JSON object
+     *       {@code {"subscribed":{"eq":true},"status":{"in":["a","b"]}}}
+     *       — not a quoted Java-Map toString like
+     *       {@code "{subscribed={eq=true}, ...}"}.</li>
+     * </ol>
+     */
+    @Test
+    public void canonicalSerializerEmitsFilterAsJsonObject() {
+        // Build the attribute — shorthand desugar fires inside setValueAsString
+        FilterAttribute attr = new FilterAttribute("filter");
+        attr.setValueAsString("{\"subscribed\":true,\"status\":[\"a\",\"b\"]}");
+
+        // Attach to a MetaRoot so the serializer has a tree to walk
+        MetaRoot root = new MetaRoot("test::roundtrip");
+        root.addMetaAttr(attr);
+
+        String json = CanonicalJsonSerializer.canonicalSerialize(root);
+
+        // Must contain the key
+        assertTrue("@filter key must be present in serialized output, got: " + json,
+                json.contains("\"@filter\""));
+
+        // Must NOT be a quoted string (the broken form before this fix)
+        assertFalse("@filter value must NOT be a quoted Java-Map toString, got: " + json,
+                json.contains("\"@filter\": \"{"));
+
+        // Must be a JSON object — begins with { in the output
+        // Look for the pattern:  "@filter": {
+        assertTrue("@filter value must be a JSON object (not a quoted string), got: " + json,
+                json.contains("\"@filter\": {"));
+
+        // Assert desugared content: subscribed → {eq: true}
+        assertTrue("subscribed should appear as a field in the filter object, got: " + json,
+                json.contains("\"subscribed\""));
+        assertTrue("subscribed should be desugared to {eq: true}, got: " + json,
+                json.contains("\"eq\": true"));
+
+        // Assert desugared content: status → {in: ["a","b"]}
+        assertTrue("status should appear as a field in the filter object, got: " + json,
+                json.contains("\"status\""));
+        assertTrue("status should be desugared to {in: [...]}, got: " + json,
+                json.contains("\"in\""));
+        assertTrue("in array should contain \"a\", got: " + json,
+                json.contains("\"a\""));
+        assertTrue("in array should contain \"b\", got: " + json,
+                json.contains("\"b\""));
     }
 }

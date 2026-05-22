@@ -1,10 +1,12 @@
 package com.metaobjects.io.json;
 
+import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
+import com.metaobjects.DataTypes;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
@@ -75,6 +77,14 @@ public final class CanonicalJsonSerializer {
 
     /** Separator between type and subType in the fused node key. */
     private static final String TYPE_SUBTYPE_SEPARATOR = ".";
+
+    /**
+     * Shared Gson instance for OBJECT-datatype attribute serialization.
+     * Used only in {@link #attrValueToJson} to convert Map values to JsonElement.
+     * Plain Gson (no pretty-printing) — pretty-printing is applied by
+     * {@link #toCanonicalString} over the full tree, not per-attribute.
+     */
+    private static final Gson GSON = new Gson();
 
     /** Prefix for inline @-attributes. */
     private static final String ATTR_PREFIX = "@";
@@ -446,6 +456,13 @@ public final class CanonicalJsonSerializer {
      *       serializes its single value as a one-element JSON array.</li>
      *   <li>A {@link com.metaobjects.attr.StringArrayAttribute} (whose value is a
      *       {@code List<String>}) serializes as a JSON array.</li>
+     *   <li>OBJECT-datatype attrs (e.g. {@code attr.filter}) whose value is a
+     *       {@link java.util.Map} serialize as a JSON object via {@code Gson.toJsonTree}.
+     *       This covers nested Maps and List values inside the map (e.g. the
+     *       {@code {in: [...]} } form produced by {@code FilterAttribute} desugar).
+     *       {@link com.metaobjects.attr.PropertiesAttribute} is NOT affected — it
+     *       declares {@link com.metaobjects.DataTypes#CUSTOM}, not OBJECT, and does
+     *       not reach this branch.</li>
      *   <li>Boolean, int/long, double values map to their JSON primitive types.</li>
      *   <li>Everything else serializes as a JSON string.</li>
      * </ul>
@@ -453,6 +470,16 @@ public final class CanonicalJsonSerializer {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static JsonElement attrValueToJson(MetaAttribute attr) {
         Object value = attr.getValue();
+
+        // OBJECT-datatype attr with a Map value: emit as a JSON object.
+        // Guard: DataTypes.OBJECT ensures only attrs that explicitly declare object
+        // semantics (e.g. FilterAttribute) take this path. PropertiesAttribute uses
+        // DataTypes.CUSTOM and is unaffected. Gson.toJsonTree handles nested
+        // Maps/Lists/primitives natively, so the full desugared filter structure
+        // ({field: {op: value}, ...}) round-trips correctly.
+        if (attr.getDataType() == DataTypes.OBJECT && value instanceof Map) {
+            return GSON.toJsonTree(value);
+        }
 
         // StringArrayAttribute: value is List<String>
         if (value instanceof List) {
