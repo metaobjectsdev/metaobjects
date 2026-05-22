@@ -3,7 +3,7 @@
 // Extends MetaData directly: no model wrapper, no metaOf() indirection.
 // Children are already concrete typed nodes; accessors filter by type constant.
 
-import { MetaData, type AttrValue } from "./meta-data.js";
+import { MetaData, type AttrValue } from "../../shared/meta-data.js";
 import {
   type DataType,
   type DataTypeAware,
@@ -14,9 +14,9 @@ import {
   DATA_TYPE_BOOLEAN,
   DATA_TYPE_DATE,
   DATA_TYPE_OBJECT,
-} from "../data-type.js";
-import { convertToDataType } from "../data-converter.js";
-import { TYPE_VALIDATOR, TYPE_VIEW, SUBTYPE_BASE } from "../shared/base-types.js";
+} from "../../data-type.js";
+import { convertToDataType } from "../../data-converter.js";
+import { TYPE_VALIDATOR, TYPE_VIEW, SUBTYPE_BASE } from "../../shared/base-types.js";
 import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_CLASS,
@@ -40,11 +40,11 @@ import {
   FIELD_ATTR_PRECISION,
   FIELD_ATTR_SCALE,
   FIELD_ATTR_OBJECT_REF,
-} from "../core/field/field-constants.js";
-import { FIELD_ATTR_DB_COLUMN } from "../persistence/db/db-constants.js";
-import { VALIDATOR_SUBTYPE_REQUIRED } from "../core/validator/validator-constants.js";
-import type { MetaValidator } from "./meta-validator.js";
-import type { MetaView } from "./meta-view.js";
+} from "./field-constants.js";
+import { FIELD_ATTR_DB_COLUMN } from "../../persistence/db/db-constants.js";
+import { VALIDATOR_SUBTYPE_REQUIRED } from "../validator/validator-constants.js";
+import type { MetaValidator } from "../validator/meta-validator.js";
+import type { MetaView } from "../../presentation/view/meta-view.js";
 
 /** Field subtype → DataType. Co-located with the class — a provider adding a
  *  field subtype supplies its own dataType the same way. */

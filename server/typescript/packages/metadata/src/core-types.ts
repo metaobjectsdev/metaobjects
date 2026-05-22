@@ -1,20 +1,20 @@
 // registerCoreTypes() — Java's 7 base types (plus metadata wrapper) and their subtypes
 import { TypeId, type AttrSchema, type ChildRule, type TypeDefinition, TypeRegistry } from "./registry.js";
 import type { MetaDataTypeProvider } from "./provider.js";
-import { dbProvider } from "./db/db-provider.js";
+import { dbProvider } from "./persistence/db/db-provider.js";
 import { type DataType } from "./data-type.js";
-import type { MetaData } from "./meta/meta-data.js";
-import { MetaRoot } from "./meta/meta-root.js";
-import { MetaObject } from "./meta/meta-object.js";
-import { MetaField } from "./meta/meta-field.js";
+import type { MetaData } from "./shared/meta-data.js";
+import { MetaRoot } from "./shared/meta-root.js";
+import { MetaObject } from "./core/object/meta-object.js";
+import { MetaField } from "./core/field/meta-field.js";
 import { attrClassFor, type NodeConstructor } from "./attr-class-map.js";
 // Import the attr subclasses for their self-registration side effect (each
 // registers its subtype → class into attr-class-map at module load), so
 // attrClassFor resolves the right class below. The base MetaAttr (the fallback)
 // registers itself; importing a subclass transitively loads meta-attr.ts.
-import "./meta/meta-attr-stringarray.js";
-import "./meta/meta-attr-filter.js";
-import "./meta/meta-attr-properties.js";
+import "./core/attr/meta-attr-stringarray.js";
+import "./core/attr/meta-attr-filter.js";
+import "./core/attr/meta-attr-properties.js";
 import {
   MetaValidator,
   MetaRequiredValidator,
@@ -22,18 +22,18 @@ import {
   MetaRegexValidator,
   MetaNumericValidator,
   MetaArrayValidator,
-} from "./meta/meta-validator.js";
-import { MetaView } from "./meta/meta-view.js";
+} from "./core/validator/meta-validator.js";
+import { MetaView } from "./presentation/view/meta-view.js";
 import {
   MetaIdentity,
   MetaPrimaryIdentity,
   MetaSecondaryIdentity,
   MetaReferenceIdentity,
-} from "./meta/meta-identity.js";
-import { MetaRelationship } from "./meta/meta-relationship.js";
-import { MetaLayout } from "./meta/meta-layout.js";
-import { MetaSource } from "./meta/meta-source.js";
-import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin } from "./meta/meta-origin.js";
+} from "./core/identity/meta-identity.js";
+import { MetaRelationship } from "./core/relationship/meta-relationship.js";
+import { MetaLayout } from "./presentation/layout/meta-layout.js";
+import { MetaSource } from "./persistence/source/meta-source.js";
+import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin } from "./persistence/origin/meta-origin.js";
 import { commonFieldAttrs, currencyFieldAttr } from "./core/field/field-schema.js";
 import { objectAttrs } from "./core/object/object-schema.js";
 import { relationshipAttrs } from "./core/relationship/relationship-schema.js";

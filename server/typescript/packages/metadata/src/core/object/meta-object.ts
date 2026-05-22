@@ -3,7 +3,7 @@
 // Extends MetaData directly: no model wrapper, no metaOf() indirection.
 // Children are already concrete typed nodes; accessors filter by type constant.
 
-import { MetaData } from "./meta-data.js";
+import { MetaData } from "../../shared/meta-data.js";
 import {
   TYPE_FIELD,
   TYPE_IDENTITY,
@@ -11,25 +11,25 @@ import {
   TYPE_VALIDATOR,
   TYPE_SOURCE,
   TYPE_LAYOUT,
-} from "../shared/base-types.js";
+} from "../../shared/base-types.js";
 import {
   SOURCE_SUBTYPE_DB_TABLE,
   SOURCE_DB_TABLE_ATTR_NAME,
-} from "../persistence/source/source-constants.js";
+} from "../../persistence/source/source-constants.js";
 import {
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
-} from "../core/object/object-constants.js";
+} from "./object-constants.js";
 import {
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
   IDENTITY_SUBTYPE_REFERENCE,
-} from "../core/identity/identity-constants.js";
-import type { MetaField } from "./meta-field.js";
-import type { MetaIdentity, MetaReferenceIdentity } from "./meta-identity.js";
-import type { MetaLayout } from "./meta-layout.js";
-import type { MetaRelationship } from "./meta-relationship.js";
-import type { MetaValidator } from "./meta-validator.js";
+} from "../identity/identity-constants.js";
+import type { MetaField } from "../field/meta-field.js";
+import type { MetaIdentity, MetaReferenceIdentity } from "../identity/meta-identity.js";
+import type { MetaLayout } from "../../presentation/layout/meta-layout.js";
+import type { MetaRelationship } from "../relationship/meta-relationship.js";
+import type { MetaValidator } from "../validator/meta-validator.js";
 
 export class MetaObject extends MetaData {
   get dbTable(): string | undefined {

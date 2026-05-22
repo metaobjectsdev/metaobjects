@@ -5,7 +5,7 @@
 // Replaces the deleted value-coerce.ts. See
 // docs/superpowers/specs/2026-05-17-data-converter-design.md.
 
-import type { AttrValue } from "./meta/meta-data.js";
+import type { AttrValue } from "./shared/meta-data.js";
 import {
   type DataType,
   DATA_TYPE_BOOLEAN,

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { TypeId } from "../../src/registry.js";
-import { MetaData } from "../../src/meta/meta-data.js";
-import { MetaField } from "../../src/meta/meta-field.js";
+import { MetaData } from "../../src/shared/meta-data.js";
+import { MetaField } from "../../src/core/field/meta-field.js";
 import {
   TYPE_FIELD,
   TYPE_VALIDATOR,

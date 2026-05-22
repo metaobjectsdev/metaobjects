@@ -29,15 +29,15 @@
 import { describe, it, expect } from "bun:test";
 import { TypeId, TypeRegistry, type AttrSchema } from "../src/registry.js";
 import { registerCoreTypes } from "../src/core-types.js";
-import { MetaAttr, type ValueError } from "../src/meta/meta-attr.js";
-import { MetaField } from "../src/meta/meta-field.js";
+import { MetaAttr, type ValueError } from "../src/core/attr/meta-attr.js";
+import { MetaField } from "../src/core/field/meta-field.js";
 import { registerAttrClass } from "../src/attr-class-map.js";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemorySource } from "../src/loader/meta-data-source.js";
 import { canonicalSerialize } from "../src/serializer-json.js";
 import { TYPE_ATTR, TYPE_FIELD, TYPE_OBJECT, type AttrSubType } from "../src/index.js";
 import { DATA_TYPE_STRING, type DataType } from "../src/data-type.js";
-import type { AttrValue } from "../src/meta/meta-data.js";
+import type { AttrValue } from "../src/shared/meta-data.js";
 
 // ===========================================================================
 // The ENTIRE cost of a new value-shaped attr subtype: one class.

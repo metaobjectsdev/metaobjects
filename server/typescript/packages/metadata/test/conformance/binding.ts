@@ -8,9 +8,9 @@
 // `isRequired()` / `maxLength()`. Bound here as property reads.
 
 import type { NormalizedResult } from "@metaobjectsdev/conformance";
-import type { MetaData } from "../../src/meta/meta-data.js";
-import { MetaObject } from "../../src/meta/meta-object.js";
-import { MetaField } from "../../src/meta/meta-field.js";
+import type { MetaData } from "../../src/shared/meta-data.js";
+import { MetaObject } from "../../src/core/object/meta-object.js";
+import { MetaField } from "../../src/core/field/meta-field.js";
 import { canonicalSerialize } from "../../src/serializer-json.js";
 
 type CapabilityArgs = Record<string, string | number | boolean>;

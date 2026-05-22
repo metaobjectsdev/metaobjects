@@ -2,13 +2,13 @@
 //
 // Extends MetaData directly: no model wrapper, no metaOf() indirection.
 
-import { MetaData } from "./meta-data.js";
+import { MetaData } from "../../shared/meta-data.js";
 import {
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_JOIN_ENTITY,
   RELATIONSHIP_ATTR_JOIN_FIELDS,
-} from "../core/relationship/relationship-constants.js";
+} from "./relationship-constants.js";
 
 export class MetaRelationship extends MetaData {
   get cardinality(): string | undefined {

@@ -4,7 +4,7 @@
 //   - entity objects SHOULD have a primary identity, unless @isAbstract (warning)
 //   - base objects have no rule (template, may or may not have identity)
 
-import type { MetaData } from "./meta/meta-data.js";
+import type { MetaData } from "./shared/meta-data.js";
 import { ParseError } from "./errors.js";
 import { TYPE_OBJECT, TYPE_IDENTITY } from "./shared/base-types.js";
 import { IDENTITY_SUBTYPE_PRIMARY } from "./core/identity/identity-constants.js";

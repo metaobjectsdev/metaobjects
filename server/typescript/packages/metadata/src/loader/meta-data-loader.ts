@@ -7,8 +7,8 @@
 // Java MetaDataLoader lifecycle phases: UNINITIALIZED → LOADING → LOADED → ERROR.
 // Reads call _checkStateForRead() to enforce "loaded before read."
 
-import type { MetaData } from "../meta/meta-data.js";
-import { MetaRoot } from "../meta/meta-root.js";
+import type { MetaData } from "../shared/meta-data.js";
+import { MetaRoot } from "../shared/meta-root.js";
 import { TypeId, TypeRegistry } from "../registry.js";
 import { coreProviders } from "../core-types.js";
 import { composeRegistry } from "../provider.js";

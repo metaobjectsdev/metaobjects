@@ -8,7 +8,7 @@
 // Private:  _findObject, _findField, _findRelationship,
 //           _validateFromPath, _validateViaPath  (helpers, not exported).
 
-import type { MetaData } from "../meta/meta-data.js";
+import type { MetaData } from "../shared/meta-data.js";
 import { ParseError } from "../errors.js";
 import {
   TYPE_OBJECT,

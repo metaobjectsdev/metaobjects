@@ -3,7 +3,7 @@
 //
 // Extends MetaData directly: no model wrapper, no metaOf() indirection.
 
-import { MetaData } from "./meta-data.js";
+import { MetaData } from "../../shared/meta-data.js";
 import {
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
@@ -13,8 +13,8 @@ import {
   IDENTITY_ATTR_UNIQUE,
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   IDENTITY_REFERENCE_ATTR_ENFORCE,
-} from "../core/identity/identity-constants.js";
-import type { MetaRoot } from "./meta-root.js";
+} from "./identity-constants.js";
+import type { MetaRoot } from "../../shared/meta-root.js";
 
 /** Strongly-typed identity generation strategies. */
 export type IdentityGeneration = "increment" | "uuid" | "assigned";

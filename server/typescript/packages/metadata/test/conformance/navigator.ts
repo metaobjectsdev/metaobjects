@@ -2,7 +2,7 @@
 // MetaData tree. A path segment is `type:name`, or `type[subType]` for a
 // nameless node.
 
-import type { MetaData } from "../../src/meta/meta-data.js";
+import type { MetaData } from "../../src/shared/meta-data.js";
 
 function matchSegment(node: MetaData, segment: string): boolean {
   const bracket = segment.match(/^([a-z]+)\[([a-zA-Z]+)\]$/);

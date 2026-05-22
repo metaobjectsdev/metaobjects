@@ -2,8 +2,8 @@ import { describe, it, expect } from "bun:test";
 import { TypeRegistry } from "../src/registry.js";
 import { registerCoreTypes } from "../src/core-types.js";
 import { parseJson } from "../src/parser-json.js";
-import type { MetaObject } from "../src/meta/meta-object.js";
-import type { MetaField } from "../src/meta/meta-field.js";
+import type { MetaObject } from "../src/core/object/meta-object.js";
+import type { MetaField } from "../src/core/field/meta-field.js";
 
 function loadRoot(json: string) {
   const registry = new TypeRegistry();

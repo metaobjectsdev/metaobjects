@@ -3,7 +3,7 @@
 //
 // Extends MetaData directly: no model wrapper, no metaOf() indirection.
 
-import { MetaData } from "./meta-data.js";
+import { MetaData } from "../../shared/meta-data.js";
 import {
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
@@ -11,7 +11,7 @@ import {
   VALIDATOR_ATTR_PATTERN,
   VALIDATOR_ATTR_MIN,
   VALIDATOR_ATTR_MAX,
-} from "../core/validator/validator-constants.js";
+} from "./validator-constants.js";
 
 export class MetaValidator extends MetaData {
   /**

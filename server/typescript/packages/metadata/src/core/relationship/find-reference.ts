@@ -6,9 +6,9 @@
 // across projection codegen, Drizzle schema emit, relations() blocks, and
 // migration schema comparison.
 
-import type { MetaObject } from "./meta-object.js";
-import type { MetaReferenceIdentity } from "./meta-identity.js";
-import { stripPackage } from "../naming.js";
+import type { MetaObject } from "../object/meta-object.js";
+import type { MetaReferenceIdentity } from "../identity/meta-identity.js";
+import { stripPackage } from "../../naming.js";
 
 export interface ReferenceLookup {
   /** The entity whose identity.reference points at `other`. */

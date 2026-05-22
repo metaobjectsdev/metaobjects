@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { FileMetaDataLoader } from "../src/core/file-meta-data-loader.js";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemorySource } from "../src/loader/meta-data-source.js";
-import type { MetaData } from "../src/meta/meta-data.js";
+import type { MetaData } from "../src/shared/meta-data.js";
 import { serializeJson } from "../src/serializer-json.js";
 import {
   TYPE_METADATA,

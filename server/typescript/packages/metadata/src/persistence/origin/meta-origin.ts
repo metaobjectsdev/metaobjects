@@ -7,7 +7,7 @@
 //
 // Extends MetaData directly: no model wrapper, no metaOf() indirection.
 
-import { MetaData } from "./meta-data.js";
+import { MetaData } from "../../shared/meta-data.js";
 import {
   ORIGIN_PASSTHROUGH_ATTR_FROM,
   ORIGIN_PASSTHROUGH_ATTR_VIA,
@@ -15,7 +15,7 @@ import {
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
   type AggregateFunction,
-} from "../persistence/origin/origin-constants.js";
+} from "./origin-constants.js";
 
 export class MetaOrigin extends MetaData {}
 

@@ -6,7 +6,7 @@
 //   1. name      2. package   3. extends   4. abstract
 //   5. overlay   6. isArray   7. @-attrs (alphabetical)   8. children
 
-import type { MetaData, AttrValue } from "./meta/meta-data.js";
+import type { MetaData, AttrValue } from "./shared/meta-data.js";
 import {
   ATTR_PREFIX,
   TYPE_SUBTYPE_SEPARATOR,

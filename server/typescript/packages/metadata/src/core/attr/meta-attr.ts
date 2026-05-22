@@ -7,7 +7,7 @@
 // differs. Adding a new value-shaped attr subtype is one subclass + one
 // registration line in core-types.ts (ATTR_CLASS_MAP) — zero central edits.
 
-import { MetaData, type AttrValue } from "./meta-data.js";
+import { MetaData, type AttrValue } from "../../shared/meta-data.js";
 import {
   type DataType,
   type DataTypeAware,
@@ -16,11 +16,11 @@ import {
   DATA_TYPE_LONG,
   DATA_TYPE_DOUBLE,
   DATA_TYPE_BOOLEAN,
-} from "../data-type.js";
-import { convertToDataType, toAttrValue } from "../data-converter.js";
-import { registerFallbackAttrClass } from "../attr-class-map.js";
-import { SUBTYPE_BASE } from "../shared/base-types.js";
-import { RESERVED_KEY_VALUE } from "../shared/structural.js";
+} from "../../data-type.js";
+import { convertToDataType, toAttrValue } from "../../data-converter.js";
+import { registerFallbackAttrClass } from "../../attr-class-map.js";
+import { SUBTYPE_BASE } from "../../shared/base-types.js";
+import { RESERVED_KEY_VALUE } from "../../shared/structural.js";
 import {
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_CLASS,
@@ -28,7 +28,7 @@ import {
   ATTR_SUBTYPE_LONG,
   ATTR_SUBTYPE_DOUBLE,
   ATTR_SUBTYPE_BOOLEAN,
-} from "../core/attr/attr-constants.js";
+} from "./attr-constants.js";
 
 /** A value-level validation finding, surfaced by the attr-schema pass. */
 export interface ValueError {

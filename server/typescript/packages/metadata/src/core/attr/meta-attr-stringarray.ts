@@ -4,10 +4,10 @@
 // from parser-core.ts `normalizeStringArrayAttr`.
 
 import { MetaAttr, type ValueError, runtimeTypeName } from "./meta-attr.js";
-import { type AttrValue } from "./meta-data.js";
-import { DATA_TYPE_STRING, type DataType } from "../data-type.js";
-import { registerAttrClass } from "../attr-class-map.js";
-import { ATTR_SUBTYPE_STRINGARRAY } from "../core/attr/attr-constants.js";
+import { type AttrValue } from "../../shared/meta-data.js";
+import { DATA_TYPE_STRING, type DataType } from "../../data-type.js";
+import { registerAttrClass } from "../../attr-class-map.js";
+import { ATTR_SUBTYPE_STRINGARRAY } from "./attr-constants.js";
 
 export class StringArrayAttr extends MetaAttr {
   override get dataType(): DataType {

@@ -1,9 +1,9 @@
 import { describe, it, expect } from "bun:test";
 import { composeRegistry, type MetaDataTypeProvider } from "../src/provider.js";
 import { coreTypesProvider, coreProviders, registerCoreTypes } from "../src/core-types.js";
-import { dbProvider } from "../src/db/db-provider.js";
+import { dbProvider } from "../src/persistence/db/db-provider.js";
 import { TypeRegistry, TypeId } from "../src/registry.js";
-import { MetaField } from "../src/meta/meta-field.js";
+import { MetaField } from "../src/core/field/meta-field.js";
 import {
   TYPE_FIELD,
   TYPE_OBJECT,

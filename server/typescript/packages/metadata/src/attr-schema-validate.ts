@@ -27,7 +27,7 @@
 // Modeled on src/subtype-rules.ts: a recursive walk producing an
 // { errors, warnings } result. All A3 findings are ERRORS; warnings stays [].
 
-import type { MetaData } from "./meta/meta-data.js";
+import type { MetaData } from "./shared/meta-data.js";
 import { ParseError } from "./errors.js";
 import type { AttrSchema, TypeRegistry } from "./registry.js";
 

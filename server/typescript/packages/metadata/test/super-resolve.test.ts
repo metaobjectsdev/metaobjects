@@ -5,9 +5,9 @@
 // immediate resolution during parse). This file only tests the reference lookup.
 
 import { describe, it, expect } from "bun:test";
-import { MetaObject } from "../src/meta/meta-object.js";
-import { MetaRoot } from "../src/meta/meta-root.js";
-import type { MetaData } from "../src/meta/meta-data.js";
+import { MetaObject } from "../src/core/object/meta-object.js";
+import { MetaRoot } from "../src/shared/meta-root.js";
+import type { MetaData } from "../src/shared/meta-data.js";
 import { TypeId } from "../src/registry.js";
 import { resolveSuperRef } from "../src/super-resolve.js";
 import { TYPE_METADATA, TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY, SUBTYPE_ROOT } from "../src/index.js";

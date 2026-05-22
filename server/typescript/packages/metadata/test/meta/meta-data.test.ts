@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "bun:test";
-import { MetaData } from "../../src/meta/meta-data.js";
+import { MetaData } from "../../src/shared/meta-data.js";
 import { TypeId } from "../../src/registry.js";
 import {
   TYPE_FIELD,

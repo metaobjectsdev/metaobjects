@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
-import { MetaReferenceIdentity } from "../../src/meta/meta-identity.js";
+import { MetaReferenceIdentity } from "../../src/core/identity/meta-identity.js";
 
 async function load(children: unknown[]) {
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });

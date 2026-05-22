@@ -12,8 +12,8 @@
 // dependency-free leaf.
 
 import type { TypeId } from "./registry.js";
-import type { MetaData } from "./meta/meta-data.js";
-import type { MetaAttr } from "./meta/meta-attr.js";
+import type { MetaData } from "./shared/meta-data.js";
+import type { MetaAttr } from "./core/attr/meta-attr.js";
 
 /** A general node constructor — kept assignable from AttrConstructor. */
 export type NodeConstructor = new (typeId: TypeId, name: string) => MetaData;

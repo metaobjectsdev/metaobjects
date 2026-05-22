@@ -1,4 +1,4 @@
-import type { MetaData } from "./meta/meta-data.js";
+import type { MetaData } from "./shared/meta-data.js";
 import { TYPE_FIELD, TYPE_SOURCE } from "./shared/base-types.js";
 import { PACKAGE_SEPARATOR } from "./shared/structural.js";
 import { FIELD_ATTR_DB_COLUMN } from "./persistence/db/db-constants.js";

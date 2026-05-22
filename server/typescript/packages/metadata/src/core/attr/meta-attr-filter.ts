@@ -4,17 +4,17 @@
 // `normalizeFilterAttr` / `desugarFilterObject` / `desugarClause`.
 
 import { MetaAttr, type ValueError, runtimeTypeName } from "./meta-attr.js";
-import { type AttrValue, type AttrObject, type AttrJson } from "./meta-data.js";
-import { DATA_TYPE_OBJECT, type DataType } from "../data-type.js";
-import { ATTR_SUBTYPE_FILTER } from "../core/attr/attr-constants.js";
+import { type AttrValue, type AttrObject, type AttrJson } from "../../shared/meta-data.js";
+import { DATA_TYPE_OBJECT, type DataType } from "../../data-type.js";
+import { ATTR_SUBTYPE_FILTER } from "./attr-constants.js";
 import {
   FILTER_OP_EQ,
   FILTER_OP_IN,
   FILTER_OP_IS_NULL,
   FILTER_COMPOSE_OR,
   FILTER_COMPOSE_AND,
-} from "../core/query/query-constants.js";
-import { registerAttrClass } from "../attr-class-map.js";
+} from "../query/query-constants.js";
+import { registerAttrClass } from "../../attr-class-map.js";
 
 export class FilterAttr extends MetaAttr {
   override get dataType(): DataType {

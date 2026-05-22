@@ -1,9 +1,9 @@
 import { describe, it, expect } from "bun:test";
 import { TypeId } from "../src/registry.js";
-import { MetaAttr } from "../src/meta/meta-attr.js";
-import { StringArrayAttr } from "../src/meta/meta-attr-stringarray.js";
-import { FilterAttr } from "../src/meta/meta-attr-filter.js";
-import { PropertiesAttr } from "../src/meta/meta-attr-properties.js";
+import { MetaAttr } from "../src/core/attr/meta-attr.js";
+import { StringArrayAttr } from "../src/core/attr/meta-attr-stringarray.js";
+import { FilterAttr } from "../src/core/attr/meta-attr-filter.js";
+import { PropertiesAttr } from "../src/core/attr/meta-attr-properties.js";
 import {
   TYPE_ATTR,
   ATTR_SUBTYPE_STRING,
@@ -101,7 +101,7 @@ describe("PropertiesAttr", () => {
   });
 });
 
-import { MetaField } from "../src/meta/meta-field.js";
+import { MetaField } from "../src/core/field/meta-field.js";
 import {
   TYPE_FIELD,
   FIELD_SUBTYPE_INT,

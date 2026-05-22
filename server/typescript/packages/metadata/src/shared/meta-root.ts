@@ -4,9 +4,9 @@
 // Children are already concrete typed nodes; accessors filter by type constant.
 
 import { MetaData } from "./meta-data.js";
-import { TYPE_OBJECT, TYPE_FIELD } from "../shared/base-types.js";
-import type { MetaObject } from "./meta-object.js";
-import type { MetaField } from "./meta-field.js";
+import { TYPE_OBJECT, TYPE_FIELD } from "./base-types.js";
+import type { MetaObject } from "../core/object/meta-object.js";
+import type { MetaField } from "../core/field/meta-field.js";
 
 export class MetaRoot extends MetaData {
   /** Object entities defined at this root level. */

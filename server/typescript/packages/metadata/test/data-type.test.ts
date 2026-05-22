@@ -1,8 +1,8 @@
 import { describe, it, expect } from "bun:test";
 import { DATA_TYPES, DATA_TYPE_STRING, DATA_TYPE_OBJECT, type DataType } from "../src/data-type.js";
 import { TypeId } from "../src/registry.js";
-import { MetaField } from "../src/meta/meta-field.js";
-import { MetaAttr } from "../src/meta/meta-attr.js";
+import { MetaField } from "../src/core/field/meta-field.js";
+import { MetaAttr } from "../src/core/attr/meta-attr.js";
 
 describe("DataType", () => {
   it("DATA_TYPES is the closed set of coarse value types", () => {

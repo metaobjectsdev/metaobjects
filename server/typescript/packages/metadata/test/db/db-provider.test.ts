@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { composeRegistry } from "../../src/provider.js";
 import { coreTypesProvider } from "../../src/core-types.js";
-import { dbProvider } from "../../src/db/db-provider.js";
+import { dbProvider } from "../../src/persistence/db/db-provider.js";
 import {
   TYPE_FIELD,
   TYPE_SOURCE,

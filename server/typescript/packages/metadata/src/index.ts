@@ -7,19 +7,19 @@
 // See docs/strategy/2026-05-09-northstar-v4.md and
 // docs/specs/2026-05-09-v0.2-ts-pillar.md for context.
 
-// AnyMeta imports — kept here (not in src/meta/) to avoid circular imports.
+// AnyMeta imports — kept here (not in src/shared/ or concern folders) to avoid circular imports.
 // See the AnyMeta comment below for full explanation.
-import type { MetaRoot } from "./meta/meta-root.js";
-import type { MetaObject } from "./meta/meta-object.js";
-import type { MetaField } from "./meta/meta-field.js";
-import type { MetaIdentity } from "./meta/meta-identity.js";
-import type { MetaRelationship } from "./meta/meta-relationship.js";
-import type { MetaValidator } from "./meta/meta-validator.js";
-import type { MetaView } from "./meta/meta-view.js";
-import type { MetaAttr } from "./meta/meta-attr.js";
-import type { MetaLayout } from "./meta/meta-layout.js";
-import type { MetaSource } from "./meta/meta-source.js";
-import type { MetaOrigin } from "./meta/meta-origin.js";
+import type { MetaRoot } from "./shared/meta-root.js";
+import type { MetaObject } from "./core/object/meta-object.js";
+import type { MetaField } from "./core/field/meta-field.js";
+import type { MetaIdentity } from "./core/identity/meta-identity.js";
+import type { MetaRelationship } from "./core/relationship/meta-relationship.js";
+import type { MetaValidator } from "./core/validator/meta-validator.js";
+import type { MetaView } from "./presentation/view/meta-view.js";
+import type { MetaAttr } from "./core/attr/meta-attr.js";
+import type { MetaLayout } from "./presentation/layout/meta-layout.js";
+import type { MetaSource } from "./persistence/source/meta-source.js";
+import type { MetaOrigin } from "./persistence/origin/meta-origin.js";
 
 // Constants — type names, subtype names, reserved keys, separators
 export * from "./shared/base-types.js";
@@ -38,23 +38,23 @@ export * from "./presentation/view/view-constants.js";
 export * from "./presentation/layout/layout-constants.js";
 
 // MetaData node base — abstract class; also exports AttrValue
-export { MetaData } from "./meta/meta-data.js";
-export type { AttrValue } from "./meta/meta-data.js";
+export { MetaData } from "./shared/meta-data.js";
+export type { AttrValue } from "./shared/meta-data.js";
 
 // Concrete node classes
-export { MetaRoot } from "./meta/meta-root.js";
-export { MetaObject } from "./meta/meta-object.js";
-export { MetaField } from "./meta/meta-field.js";
+export { MetaRoot } from "./shared/meta-root.js";
+export { MetaObject } from "./core/object/meta-object.js";
+export { MetaField } from "./core/field/meta-field.js";
 // Identity: base + subtype-specific
 export {
   MetaIdentity,
   MetaPrimaryIdentity,
   MetaSecondaryIdentity,
   MetaReferenceIdentity,
-} from "./meta/meta-identity.js";
-export type { IdentityGeneration } from "./meta/meta-identity.js";
+} from "./core/identity/meta-identity.js";
+export type { IdentityGeneration } from "./core/identity/meta-identity.js";
 // Relationship
-export { MetaRelationship } from "./meta/meta-relationship.js";
+export { MetaRelationship } from "./core/relationship/meta-relationship.js";
 // Validator: base + subtype-specific
 export {
   MetaValidator,
@@ -63,22 +63,22 @@ export {
   MetaRegexValidator,
   MetaNumericValidator,
   MetaArrayValidator,
-} from "./meta/meta-validator.js";
+} from "./core/validator/meta-validator.js";
 // Cross-entity reference lookup
-export { findReferenceBetween } from "./meta/find-reference.js";
-export type { ReferenceLookup } from "./meta/find-reference.js";
+export { findReferenceBetween } from "./core/relationship/find-reference.js";
+export type { ReferenceLookup } from "./core/relationship/find-reference.js";
 
 // Other node classes
-export { MetaView } from "./meta/meta-view.js";
-export { MetaAttr } from "./meta/meta-attr.js";
-export { MetaLayout } from "./meta/meta-layout.js";
-export { MetaSource } from "./meta/meta-source.js";
+export { MetaView } from "./presentation/view/meta-view.js";
+export { MetaAttr } from "./core/attr/meta-attr.js";
+export { MetaLayout } from "./presentation/layout/meta-layout.js";
+export { MetaSource } from "./persistence/source/meta-source.js";
 // Origin: base + subtype-specific
 export {
   MetaOrigin,
   MetaPassthroughOrigin,
   MetaAggregateOrigin,
-} from "./meta/meta-origin.js";
+} from "./persistence/origin/meta-origin.js";
 
 // AnyMeta — union of all concrete node types.
 // Defined here (not in src/meta/) to avoid a circular import: each concrete
@@ -103,7 +103,7 @@ export type AnyMeta =
 export { TypeId, TypeRegistry, childRuleMatches } from "./registry.js";
 export type { AttrSchema, ChildRule, TypeDefinition } from "./registry.js";
 export { registerCoreTypes, coreTypesProvider, coreProviders } from "./core-types.js";
-export { dbProvider } from "./db/db-provider.js";
+export { dbProvider } from "./persistence/db/db-provider.js";
 
 // Type provider model
 export { composeRegistry } from "./provider.js";

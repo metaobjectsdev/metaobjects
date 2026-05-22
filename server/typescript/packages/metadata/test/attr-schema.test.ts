@@ -2,7 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { TypeId, TypeRegistry, type AttrSchema } from "../src/registry.js";
 import { registerCoreTypes, coreProviders } from "../src/core-types.js";
 import { composeRegistry } from "../src/provider.js";
-import type { MetaData } from "../src/meta/meta-data.js";
+import type { MetaData } from "../src/shared/meta-data.js";
 import {
   TYPE_FIELD,
   TYPE_OBJECT,

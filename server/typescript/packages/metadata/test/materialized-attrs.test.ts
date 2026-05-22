@@ -1,8 +1,8 @@
 import { describe, it, expect } from "bun:test";
 import { TypeId } from "../src/registry.js";
-import { MetaObject } from "../src/meta/meta-object.js";
-import { MetaAttr } from "../src/meta/meta-attr.js";
-import { StringArrayAttr } from "../src/meta/meta-attr-stringarray.js";
+import { MetaObject } from "../src/core/object/meta-object.js";
+import { MetaAttr } from "../src/core/attr/meta-attr.js";
+import { StringArrayAttr } from "../src/core/attr/meta-attr-stringarray.js";
 import {
   TYPE_OBJECT,
   OBJECT_SUBTYPE_ENTITY,

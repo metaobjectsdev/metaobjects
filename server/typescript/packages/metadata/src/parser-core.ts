@@ -24,9 +24,9 @@
 //   the nearest ancestor with a package.
 
 import { TypeId, TypeRegistry } from "./registry.js";
-import type { MetaData } from "./meta/meta-data.js";
-import { MetaRoot } from "./meta/meta-root.js";
-import { MetaAttr } from "./meta/meta-attr.js";
+import type { MetaData } from "./shared/meta-data.js";
+import { MetaRoot } from "./shared/meta-root.js";
+import { MetaAttr } from "./core/attr/meta-attr.js";
 import { inferAttrSubType } from "./serializer-json.js";
 import { ParseError, type ErrorCode } from "./errors.js";
 import { resolveSuperRef } from "./super-resolve.js";
@@ -53,7 +53,7 @@ import {
   PACKAGE_SEPARATOR,
 } from "./shared/structural.js";
 import { ATTR_SUBTYPE_PROPERTIES } from "./core/attr/attr-constants.js";
-import type { AttrValue } from "./meta/meta-data.js";
+import type { AttrValue } from "./shared/meta-data.js";
 
 // ---------------------------------------------------------------------------
 // Public API

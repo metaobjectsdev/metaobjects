@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { TypeId, TypeRegistry, childRuleMatches } from "../src/registry.js";
 import { registerCoreTypes } from "../src/core-types.js";
-import type { MetaData } from "../src/meta/meta-data.js";
+import type { MetaData } from "../src/shared/meta-data.js";
 import {
   TYPE_FIELD,
   TYPE_OBJECT,

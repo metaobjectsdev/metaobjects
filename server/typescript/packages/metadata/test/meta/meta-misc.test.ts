@@ -16,16 +16,16 @@ import { describe, it, expect } from "bun:test";
 import { TypeId } from "../../src/registry.js";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
 import { InMemorySource } from "../../src/loader/meta-data-source.js";
-import { MetaData } from "../../src/meta/meta-data.js";
-import { MetaRoot } from "../../src/meta/meta-root.js";
-import { MetaObject } from "../../src/meta/meta-object.js";
-import { MetaField } from "../../src/meta/meta-field.js";
+import { MetaData } from "../../src/shared/meta-data.js";
+import { MetaRoot } from "../../src/shared/meta-root.js";
+import { MetaObject } from "../../src/core/object/meta-object.js";
+import { MetaField } from "../../src/core/field/meta-field.js";
 import {
   MetaIdentity,
   MetaPrimaryIdentity,
   MetaSecondaryIdentity,
-} from "../../src/meta/meta-identity.js";
-import { MetaRelationship } from "../../src/meta/meta-relationship.js";
+} from "../../src/core/identity/meta-identity.js";
+import { MetaRelationship } from "../../src/core/relationship/meta-relationship.js";
 import {
   MetaValidator,
   MetaRequiredValidator,
@@ -33,16 +33,16 @@ import {
   MetaRegexValidator,
   MetaNumericValidator,
   MetaArrayValidator,
-} from "../../src/meta/meta-validator.js";
-import { MetaView } from "../../src/meta/meta-view.js";
-import { MetaAttr } from "../../src/meta/meta-attr.js";
-import { MetaLayout } from "../../src/meta/meta-layout.js";
-import { MetaSource } from "../../src/meta/meta-source.js";
+} from "../../src/core/validator/meta-validator.js";
+import { MetaView } from "../../src/presentation/view/meta-view.js";
+import { MetaAttr } from "../../src/core/attr/meta-attr.js";
+import { MetaLayout } from "../../src/presentation/layout/meta-layout.js";
+import { MetaSource } from "../../src/persistence/source/meta-source.js";
 import {
   MetaOrigin,
   MetaPassthroughOrigin,
   MetaAggregateOrigin,
-} from "../../src/meta/meta-origin.js";
+} from "../../src/persistence/origin/meta-origin.js";
 import {
   TYPE_OBJECT,
   TYPE_IDENTITY,

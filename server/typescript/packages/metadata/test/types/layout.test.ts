@@ -17,7 +17,7 @@ import {
 } from "../../src/index.js";
 import { TypeRegistry } from "../../src/registry.js";
 import { registerCoreTypes } from "../../src/core-types.js";
-import { MetaLayout } from "../../src/meta/meta-layout.js";
+import { MetaLayout } from "../../src/presentation/layout/meta-layout.js";
 import { TypeId } from "../../src/registry.js";
 
 describe("layout type constants", () => {

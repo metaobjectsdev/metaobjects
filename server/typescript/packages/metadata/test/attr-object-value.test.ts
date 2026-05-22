@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import type { AttrValue, AttrObject } from "../src/meta/meta-data.js";
+import type { AttrValue, AttrObject } from "../src/shared/meta-data.js";
 
 describe("AttrValue object arm", () => {
   it("accepts a nested object as a valid AttrValue", () => {

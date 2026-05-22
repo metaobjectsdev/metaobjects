@@ -7,9 +7,9 @@
 // for malformed instance data, and there is no validation (settled in the
 // spec — Java's object reader does not validate either).
 
-import type { MetaData } from "./meta/meta-data.js";
-import type { MetaObject } from "./meta/meta-object.js";
-import type { MetaField } from "./meta/meta-field.js";
+import type { MetaData } from "./shared/meta-data.js";
+import type { MetaObject } from "./core/object/meta-object.js";
+import type { MetaField } from "./core/field/meta-field.js";
 import {
   DATA_TYPE_BOOLEAN,
   DATA_TYPE_INT,

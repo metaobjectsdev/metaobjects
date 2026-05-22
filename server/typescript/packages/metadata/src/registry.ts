@@ -1,4 +1,4 @@
-import type { AttrValue, MetaData } from "./meta/meta-data.js";
+import type { AttrValue, MetaData } from "./shared/meta-data.js";
 import { SUBTYPE_BASE, TYPE_ATTR } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
 import { type AttrSubType } from "./core/attr/attr-constants.js";

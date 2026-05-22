@@ -2,16 +2,16 @@
 // not the core metamodel.
 // See docs/superpowers/specs/2026-05-18-phase4b-db-provider-design.md.
 
-import type { AttrSchema } from "../registry.js";
+import type { AttrSchema } from "../../registry.js";
 import {
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_BOOLEAN,
-} from "../core/attr/attr-constants.js";
+} from "../../core/attr/attr-constants.js";
 import {
   FIELD_ATTR_DB_COLUMN,
   FIELD_ATTR_DB_INDEXED,
-} from "../persistence/db/db-constants.js";
-import { SOURCE_ATTR_NAME } from "../persistence/source/source-constants.js";
+} from "./db-constants.js";
+import { SOURCE_ATTR_NAME } from "../source/source-constants.js";
 
 /** `@dbColumn` — column-name override; on every field subtype. */
 export const dbColumnSchema: AttrSchema = {

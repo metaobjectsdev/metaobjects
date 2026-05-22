@@ -1,8 +1,8 @@
 import { TypeId } from "../registry.js";
-import { TYPE_ATTR } from "../shared/base-types.js";
-import { PACKAGE_SEPARATOR, RESERVED_KEY_VALUE } from "../shared/structural.js";
+import { TYPE_ATTR } from "./base-types.js";
+import { PACKAGE_SEPARATOR, RESERVED_KEY_VALUE } from "./structural.js";
 import type { DataType } from "../data-type.js";
-import type { MetaAttr } from "./meta-attr.js";
+import type { MetaAttr } from "../core/attr/meta-attr.js";
 import { inferAttrSubType } from "../serializer-json.js";
 import { attrClassFor } from "../attr-class-map.js";
 
