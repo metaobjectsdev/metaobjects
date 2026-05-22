@@ -15,7 +15,7 @@ import { composeRegistry } from "../provider.js";
 import { TYPE_METADATA, SUBTYPE_ROOT } from "../constants.js";
 import { ParseError } from "../errors.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage } from "./validation-passes.js";
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
 import { validateAttrSchema } from "../attr-schema-validate.js";
@@ -284,6 +284,10 @@ export class MetaDataLoader {
       const attrSchemaResult = validateAttrSchema(root, this._registry);
       errors.push(...attrSchemaResult.errors);
       warnings.push(...attrSchemaResult.warnings);
+
+      // Ninth pass: @storage cross-attribute validation — @storage requires
+      // @objectRef, and @storage "flattened" forbids isArray=true.
+      errors.push(...validateFieldObjectStorage(root));
     }
 
     // If nothing parsed successfully, synthesize an empty root so callers

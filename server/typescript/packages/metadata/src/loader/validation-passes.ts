@@ -4,7 +4,8 @@
 // warnings. No loader state is read or written — these are pure functions.
 //
 // Exported: validateDataGridSortFields, validateFilterableHasIndex,
-//           validateOriginPaths  (called by MetaDataLoader.load() in order).
+//           validateOriginPaths, validateDataGridFilterValues,
+//           validateFieldObjectStorage  (called by MetaDataLoader.load() in order).
 // Private:  _findObject, _findField, _findRelationship,
 //           _validateFromPath, _validateViaPath  (helpers, not exported).
 
@@ -17,6 +18,9 @@ import {
   LAYOUT_DATA_GRID_ATTR_FILTER,
   FIELD_ATTR_FILTERABLE,
   FIELD_ATTR_DB_INDEXED,
+  FIELD_ATTR_OBJECT_REF,
+  FIELD_OBJECT_ATTR_STORAGE,
+  STORAGE_FLATTENED,
   IDENTITY_ATTR_FIELDS,
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
@@ -272,6 +276,48 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           }
           _validateViaPath(via, root, obj.name, field.name, errors);
         }
+      }
+    }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// @storage cross-attribute validation
+//
+// Rules:
+//   1. @storage requires @objectRef to be present (storage is meaningless
+//      without a referenced object type).
+//   2. @storage "flattened" requires isArray to be absent or false (cannot
+//      flatten a variable-length array into a fixed column set).
+//
+// Only field.object nodes carry @storage in practice, but the check is applied
+// to every field node that has @storage set — matching the permissive "check
+// what's there" model used by the other validation passes.
+// ---------------------------------------------------------------------------
+
+export function validateFieldObjectStorage(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+    for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
+      const storage = field.ownAttr(FIELD_OBJECT_ATTR_STORAGE);
+      if (storage === undefined || storage === null) continue;
+      const objectRef = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+      if (typeof objectRef !== "string" || objectRef.length === 0) {
+        errors.push(
+          new ParseError(
+            `field "${obj.name}.${field.name}" sets @storage but has no @objectRef`,
+            { code: "ERR_STORAGE_WITHOUT_OBJECT_REF" },
+          ),
+        );
+      }
+      if (storage === STORAGE_FLATTENED && field.isArray === true) {
+        errors.push(
+          new ParseError(
+            `field "${obj.name}.${field.name}" sets @storage "flattened" with isArray=true; flattened storage requires a single nested value`,
+            { code: "ERR_STORAGE_FLATTENED_ARRAY" },
+          ),
+        );
       }
     }
   }
