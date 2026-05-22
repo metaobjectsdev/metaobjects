@@ -25,11 +25,13 @@ __tmp__/
 # Per-language conventions
 typescript/**/dist/
 typescript/**/node_modules/
-java/**/target/
+server/java/**/target/
+server/typescript/**/dist/
+server/typescript/**/node_modules/
 
 # C# build output
-csharp/**/bin/
-csharp/**/obj/
+server/csharp/**/bin/
+server/csharp/**/obj/
 
 # Python
 __pycache__/
