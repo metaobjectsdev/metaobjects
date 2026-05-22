@@ -1,0 +1,90 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Subscriber",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "subscribed",
+                "@filterable": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "status",
+                "@filterable": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "deletedAt",
+                "@filterable": true
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "bySubscribed",
+                "@fields": [
+                  "subscribed"
+                ]
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "byStatus",
+                "@fields": [
+                  "status"
+                ]
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "byDeletedAt",
+                "@fields": [
+                  "deletedAt"
+                ]
+              }
+            },
+            {
+              "layout.dataGrid": {
+                "name": "active",
+                "@columns": [
+                  "status"
+                ],
+                "@filter": {
+                  "subscribed": {
+                    "eq": true
+                  },
+                  "status": {
+                    "in": [
+                      "active",
+                      "pending"
+                    ]
+                  },
+                  "deletedAt": {
+                    "isNull": true
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
