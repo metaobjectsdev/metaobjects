@@ -100,3 +100,25 @@ describe("PropertiesAttr", () => {
     expect(p().desugar({ owner: "growth" })).toEqual({ owner: "growth" });
   });
 });
+
+import { MetaField } from "../src/meta/meta-field.js";
+import {
+  TYPE_FIELD,
+  FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_STRING,
+  FIELD_SUBTYPE_CURRENCY,
+  FIELD_SUBTYPE_BOOLEAN,
+} from "../src/constants.js";
+import { DATA_TYPE_LONG } from "../src/data-type.js";
+
+describe("MetaField.dataType resolves by subtype (no central map)", () => {
+  it("int → DATA_TYPE_INT, currency → DATA_TYPE_LONG, string → DATA_TYPE_STRING", () => {
+    expect(new MetaField(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "n").dataType).toBe(DATA_TYPE_INT);
+    expect(new MetaField(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_CURRENCY), "c").dataType).toBe(DATA_TYPE_LONG);
+    expect(new MetaField(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "s").dataType).toBe(DATA_TYPE_STRING);
+  });
+  it("coerce honors the field subtype", () => {
+    expect(new MetaField(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "n").coerce("7")).toBe(7);
+    expect(new MetaField(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_BOOLEAN), "b").coerce("true")).toBe(true);
+  });
+});

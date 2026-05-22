@@ -4,11 +4,37 @@
 // Children are already concrete typed nodes; accessors filter by type constant.
 
 import { MetaData, type AttrValue } from "./meta-data.js";
-import { type DataType, type DataTypeAware, DATA_TYPE_STRING } from "../data-type.js";
+import {
+  type DataType,
+  type DataTypeAware,
+  DATA_TYPE_STRING,
+  DATA_TYPE_INT,
+  DATA_TYPE_LONG,
+  DATA_TYPE_DOUBLE,
+  DATA_TYPE_BOOLEAN,
+  DATA_TYPE_DATE,
+  DATA_TYPE_OBJECT,
+} from "../data-type.js";
 import { convertToDataType } from "../data-converter.js";
 import {
   TYPE_VALIDATOR,
   TYPE_VIEW,
+  SUBTYPE_BASE,
+  FIELD_SUBTYPE_STRING,
+  FIELD_SUBTYPE_CLASS,
+  FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_SHORT,
+  FIELD_SUBTYPE_BYTE,
+  FIELD_SUBTYPE_LONG,
+  FIELD_SUBTYPE_CURRENCY,
+  FIELD_SUBTYPE_DOUBLE,
+  FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_DECIMAL,
+  FIELD_SUBTYPE_BOOLEAN,
+  FIELD_SUBTYPE_DATE,
+  FIELD_SUBTYPE_TIME,
+  FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_DB_COLUMN,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_UNIQUE,
@@ -22,10 +48,36 @@ import {
 import type { MetaValidator } from "./meta-validator.js";
 import type { MetaView } from "./meta-view.js";
 
+/** Field subtype → DataType. Co-located with the class — a provider adding a
+ *  field subtype supplies its own dataType the same way. */
+const FIELD_DATA_TYPE: Readonly<Record<string, DataType>> = {
+  [SUBTYPE_BASE]: DATA_TYPE_STRING,
+  [FIELD_SUBTYPE_STRING]: DATA_TYPE_STRING,
+  [FIELD_SUBTYPE_CLASS]: DATA_TYPE_STRING,
+  [FIELD_SUBTYPE_INT]: DATA_TYPE_INT,
+  [FIELD_SUBTYPE_SHORT]: DATA_TYPE_INT,
+  [FIELD_SUBTYPE_BYTE]: DATA_TYPE_INT,
+  [FIELD_SUBTYPE_LONG]: DATA_TYPE_LONG,
+  [FIELD_SUBTYPE_CURRENCY]: DATA_TYPE_LONG,
+  [FIELD_SUBTYPE_DOUBLE]: DATA_TYPE_DOUBLE,
+  [FIELD_SUBTYPE_FLOAT]: DATA_TYPE_DOUBLE,
+  [FIELD_SUBTYPE_DECIMAL]: DATA_TYPE_DOUBLE,
+  [FIELD_SUBTYPE_BOOLEAN]: DATA_TYPE_BOOLEAN,
+  [FIELD_SUBTYPE_DATE]: DATA_TYPE_DATE,
+  [FIELD_SUBTYPE_TIME]: DATA_TYPE_DATE,
+  [FIELD_SUBTYPE_TIMESTAMP]: DATA_TYPE_DATE,
+  [FIELD_SUBTYPE_OBJECT]: DATA_TYPE_OBJECT,
+};
+
 export class MetaField extends MetaData implements DataTypeAware {
   /** The coarse value-type classification for this field's subtype. */
   get dataType(): DataType {
-    return this._dataType ?? DATA_TYPE_STRING;
+    return FIELD_DATA_TYPE[this.subType] ?? this._dataType ?? DATA_TYPE_STRING;
+  }
+
+  /** Coerce a raw value toward this field's DataType (Java DataConverter parity). */
+  coerce(raw: unknown): AttrValue {
+    return convertToDataType(this.dataType, raw);
   }
 
   /** The target object name for an object-typed field (the `@objectRef` attr). */
@@ -59,7 +111,7 @@ export class MetaField extends MetaData implements DataTypeAware {
     return this.cached("defaultValue", () => {
       const raw = this.ownAttr(FIELD_ATTR_DEFAULT);
       if (raw === undefined) return undefined;
-      return convertToDataType(this.dataType, raw);
+      return this.coerce(raw);
     });
   }
 
