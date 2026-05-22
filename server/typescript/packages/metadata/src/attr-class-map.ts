@@ -53,8 +53,11 @@ export function attrClassFor(subType: string): AttrConstructor {
   const ctor = ATTR_CLASS_MAP.get(subType) ?? fallbackAttrClass;
   if (ctor === undefined) {
     throw new Error(
-      `No attr class registered for subType '${subType}' and no fallback set ` +
-        `(meta-attr.ts must register the base MetaAttr as fallback at load).`,
+      `Attr classes are not registered (no fallback set, and no class for subType '${subType}'). ` +
+        `The MetaAttr subclasses self-register as a module side-effect; a deep direct import that ` +
+        `bypasses the package entry can run MetaData.setAttr before they load. ` +
+        `Import the package entry ("@metaobjectsdev/metadata") or register the core types ` +
+        `(registerCoreTypes) before constructing/loading metadata.`,
     );
   }
   return ctor;

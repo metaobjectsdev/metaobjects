@@ -26,8 +26,8 @@
 import { TypeId, TypeRegistry } from "./registry.js";
 import type { MetaData } from "./meta/meta-data.js";
 import { MetaRoot } from "./meta/meta-root.js";
-import { convertToDataType, toAttrValue } from "./data-converter.js";
-import { DATA_TYPE_STRING } from "./data-type.js";
+import { MetaAttr } from "./meta/meta-attr.js";
+import { inferAttrSubType } from "./serializer-json.js";
 import { ParseError, type ErrorCode } from "./errors.js";
 import { resolveSuperRef } from "./super-resolve.js";
 import {
@@ -49,15 +49,9 @@ import {
   TYPE_VALIDATOR,
   SUBTYPE_BASE,
   PACKAGE_SEPARATOR,
-  ATTR_SUBTYPE_STRINGARRAY,
-  ATTR_SUBTYPE_FILTER,
-  FILTER_OP_EQ,
-  FILTER_OP_IN,
-  FILTER_OP_IS_NULL,
-  FILTER_COMPOSE_OR,
-  FILTER_COMPOSE_AND,
+  ATTR_SUBTYPE_PROPERTIES,
 } from "./constants.js";
-import type { AttrValue, AttrObject, AttrJson } from "./meta/meta-data.js";
+import type { AttrValue } from "./meta/meta-data.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -553,85 +547,6 @@ function applyReservedKeys(
 }
 
 // ---------------------------------------------------------------------------
-// stringArray desugar — normalize a bare-string value for a declared
-// stringArray-typed @-attr into a one-element array.
-//
-// A single string is the degenerate one-element form of a `stringArray` attr
-// (every fixture authors `"@fields": "id"`, not `["id"]`). Since the parser is
-// registry-aware, it desugars at parse time so that stringArray attrs are
-// ALWAYS arrays in the loaded tree. This fixes MetaIdentity.fields /
-// MetaRelationship.joinFields (which do `Array.isArray(f) ? f : []` and so
-// returned [] for the single-string form) and keeps the canonical serialized
-// form consistent.
-//
-// Only a `string` value is wrapped. Already-array values are left as-is;
-// non-string scalars (number/boolean) are left as-is so A3's type validation
-// can flag them — the parser does NOT coerce non-strings. Undeclared attrs
-// (no matching AttrSchema) are also left as-is.
-// ---------------------------------------------------------------------------
-
-function normalizeStringArrayAttr(
-  type: string,
-  subType: string,
-  attrName: string,
-  value: AttrValue,
-  registry: TypeRegistry,
-): AttrValue {
-  if (typeof value !== "string") return value;
-  const spec = registry.attrsOf(type, subType).find((s) => s.name === attrName);
-  if (spec === undefined || spec.valueType !== ATTR_SUBTYPE_STRINGARRAY) return value;
-  return [value];
-}
-
-// ---------------------------------------------------------------------------
-// filter desugar — normalize an `attr.filter` value to canonical
-// `{ field: { op: value } }` form at parse time. Three rules:
-//   scalar v    → { eq: v }
-//   array  [..] → { in: [..] }
-//   null        → { isNull: true }
-// Explicit `{ op: value }` clauses pass through. `or`/`and` composition keys
-// recurse into their sub-filter arrays.
-// ---------------------------------------------------------------------------
-
-function normalizeFilterAttr(
-  type: string,
-  subType: string,
-  attrName: string,
-  value: AttrValue,
-  registry: TypeRegistry,
-): AttrValue {
-  const spec = registry.attrsOf(type, subType).find((s) => s.name === attrName);
-  if (spec === undefined || spec.valueType !== ATTR_SUBTYPE_FILTER) return value;
-  if (typeof value !== "object" || Array.isArray(value)) return value;
-  return desugarFilterObject(value as AttrObject);
-}
-
-function desugarFilterObject(filter: AttrObject): AttrObject {
-  const out: Record<string, AttrJson> = {};
-  for (const [key, raw] of Object.entries(filter)) {
-    if (key === FILTER_COMPOSE_OR || key === FILTER_COMPOSE_AND) {
-      out[key] = Array.isArray(raw)
-        ? raw.map((sub: AttrJson) =>
-            typeof sub === "object" && sub !== null && !Array.isArray(sub)
-              ? desugarFilterObject(sub as AttrObject)
-              : sub,
-          )
-        : (raw as AttrJson);
-      continue;
-    }
-    out[key] = desugarClause(raw);
-  }
-  return out;
-}
-
-function desugarClause(raw: AttrJson): AttrObject {
-  if (raw === null) return { [FILTER_OP_IS_NULL]: true };
-  if (Array.isArray(raw)) return { [FILTER_OP_IN]: raw };
-  if (typeof raw === "object") return raw as AttrObject;
-  return { [FILTER_OP_EQ]: raw };
-}
-
-// ---------------------------------------------------------------------------
 // applyInlineAttrsAndUnknownKeys — apply @-prefixed attrs and warn about unknowns
 //
 // Called for both fresh creates AND merge-into-existing paths.
@@ -661,37 +576,63 @@ function applyInlineAttrsAndUnknownKeys(
       continue;
     }
 
-    // Inline attribute (@-prefixed)
+    // Inline attribute (@-prefixed) — materialize into a MetaAttr instance.
     const attrName = key.slice(ATTR_PREFIX.length);
     const rawVal = nodeData[key];
 
-    const attrSpec = registry.attrsOf(model.type, model.subType).find((s) => s.name === attrName);
-
-    let value: AttrValue;
     try {
-      if (attrSpec !== undefined && attrSpec.valueType !== undefined) {
-        // Declared attr with a concrete value-type — convert toward that DataType.
-        const dataType = registry.find(TYPE_ATTR, attrSpec.valueType)?.dataType ?? DATA_TYPE_STRING;
-        value = convertToDataType(dataType, rawVal);
-      } else {
-        // Undeclared @-attr OR declared-but-untyped (valueType absent, e.g. @default)
-        // — store the value type-preserved, exactly as the JSON author wrote it.
-        value = toAttrValue(rawVal);
-      }
+      const attr = materializeAttr(model, attrName, rawVal, registry);
+      model.setMetaAttr(attr);
     } catch (err) {
       reportProblem(
         `Failed to convert attribute "${ATTR_PREFIX}${attrName}" at ${path}: ${(err as Error).message}`,
         strict, warnings, source, path, "ERR_BAD_ATTR_VALUE",
       );
-      continue;
     }
-
-    // A bare string for a declared stringArray attr → one-element array.
-    let normalized = normalizeStringArrayAttr(model.type, model.subType, attrName, value, registry);
-    // An object-valued filter attr → canonical { field: { op: value } } form.
-    normalized = normalizeFilterAttr(model.type, model.subType, attrName, normalized, registry);
-    model.setAttr(attrName, normalized);
   }
+}
+
+// ---------------------------------------------------------------------------
+// materializeAttr — build a single attr into the right MetaAttr subclass:
+// declared subtype from the owner's AttrSchema (if any), else inferred from the
+// value shape. The instance coerces + desugars its own value.
+// ---------------------------------------------------------------------------
+
+function materializeAttr(
+  owner: MetaData,
+  attrName: string,
+  rawVal: unknown,
+  registry: TypeRegistry,
+): MetaAttr {
+  const attrSpec = registry.attrsOf(owner.type, owner.subType).find((s) => s.name === attrName);
+  let subType: string;
+  if (attrSpec !== undefined && attrSpec.valueType !== undefined) {
+    subType = attrSpec.valueType;
+  } else {
+    // Undeclared or declared-but-untyped (@default): preserve the author's shape.
+    subType = inferUndeclaredAttrSubType(rawVal);
+  }
+  const def = registry.find(TYPE_ATTR, subType);
+  const node = (def !== undefined
+    ? def.factory(def.typeId, attrName)
+    : new MetaAttr(new TypeId(TYPE_ATTR, subType), attrName)) as MetaAttr;
+  const coerced = node.coerce(rawVal);
+  const desugared = node.desugar(coerced);
+  node.setAttr(RESERVED_KEY_VALUE, desugared);
+  return node;
+}
+
+// Undeclared attr → pick the subtype from the value's runtime shape, preserving
+// type (a numeric string stays string). Wraps inferAttrSubType (scalar/array
+// rule, incl. the int/long/double range split) with the object + null-reject
+// branches that predate object attrs: a plain object → properties; null /
+// undefined are not valid undeclared attr values.
+function inferUndeclaredAttrSubType(raw: unknown): string {
+  if (raw === null || raw === undefined) {
+    throw new Error(`${raw === null ? "null" : "undefined"} is not a valid attr value`);
+  }
+  if (typeof raw === "object" && !Array.isArray(raw)) return ATTR_SUBTYPE_PROPERTIES;
+  return inferAttrSubType(raw as AttrValue);
 }
 
 // ---------------------------------------------------------------------------
@@ -804,15 +745,16 @@ function processChildren(
 }
 
 // ---------------------------------------------------------------------------
-// Attr child node — dual-storage: structural child + parent.setAttr
+// Attr child node — materialize into a MetaAttr instance (NOT a child).
 // ---------------------------------------------------------------------------
 //
 // A typed attr is encoded as { "attr.<subType>": { "name": ..., "value": ... } }
 // inside a node's children array. The subType is fused into the wrapper key.
 //
-// The TS port stores BOTH:
-//   1. A structural node of type "attr" with the appropriate subType
-//   2. The value set on the parent via setAttr(name, coercedValue)
+// The instance coerces + desugars toward its OWN subtype (the wrapper key's
+// subType, e.g. attr.stringarray) — StringArrayAttr.coerce wraps the bare
+// string, FilterAttr.desugar normalizes. The attr is attached via setMetaAttr,
+// never addChild: attrs are no longer structural children (D2/D5).
 
 function parseAttrChild(
   parent: MetaData,
@@ -851,16 +793,14 @@ function parseAttrChild(
       : SUBTYPE_BASE;
   const attrDef = registry.find(attrType, resolvedSubType);
 
-  let value: AttrValue;
+  const node = (attrDef !== undefined
+    ? attrDef.factory(attrDef.typeId, attrName)
+    : new MetaAttr(new TypeId(attrType, resolvedSubType), attrName)) as MetaAttr;
+
   try {
-    // SUBTYPE_BASE is the polymorphic/unconstrained marker — store type-preserved.
-    // For all other subtypes, convert toward the DataType of the registered subtype.
-    if (resolvedSubType === SUBTYPE_BASE) {
-      value = toAttrValue(attrValue);
-    } else {
-      const dataType = attrDef?.dataType ?? DATA_TYPE_STRING;
-      value = convertToDataType(dataType, attrValue);
-    }
+    const coerced = node.coerce(attrValue);
+    const desugared = node.desugar(coerced);
+    node.setAttr(RESERVED_KEY_VALUE, desugared);
   } catch (err) {
     reportProblem(
       `Failed to convert attr child "${attrName}" value at ${path}: ${(err as Error).message}`,
@@ -869,28 +809,5 @@ function parseAttrChild(
     return;
   }
 
-  const attrModel = attrDef !== undefined
-    ? attrDef.factory(attrDef.typeId, attrName)
-    : new MetaRoot(new TypeId(attrType, resolvedSubType), attrName);
-
-  // A bare string for a declared stringArray attr → one-element array.
-  // An object-valued filter attr → canonical { field: { op: value } } form.
-  let normalized = normalizeStringArrayAttr(
-    parent.type,
-    parent.subType,
-    attrName,
-    value,
-    registry,
-  );
-  normalized = normalizeFilterAttr(
-    parent.type,
-    parent.subType,
-    attrName,
-    normalized,
-    registry,
-  );
-
-  attrModel.setAttr(RESERVED_KEY_VALUE, normalized);
-  parent.addChild(attrModel);
-  parent.setAttr(attrName, normalized);
+  parent.setMetaAttr(node);
 }

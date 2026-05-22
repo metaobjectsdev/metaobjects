@@ -17,7 +17,7 @@ import {
   DATA_TYPE_DOUBLE,
   DATA_TYPE_BOOLEAN,
 } from "../data-type.js";
-import { convertToDataType } from "../data-converter.js";
+import { convertToDataType, toAttrValue } from "../data-converter.js";
 import { registerFallbackAttrClass } from "../attr-class-map.js";
 import {
   RESERVED_KEY_VALUE,
@@ -63,8 +63,15 @@ export class MetaAttr extends MetaData implements DataTypeAware {
    * Coerce a raw parsed value toward this attr's value shape. The base handles
    * the scalar subtypes (string / class / int / long / double / boolean) by
    * delegating to convertToDataType. Subclasses override for array/object shapes.
+   *
+   * SUBTYPE_BASE is the polymorphic/unconstrained marker (e.g. an `attr.base`
+   * child node, or an untyped `@default`): the value is stored type-preserved,
+   * never stringified — mirroring validateValue, which accepts any type for base.
    */
   coerce(raw: unknown): AttrValue {
+    if (this.subType === SUBTYPE_BASE) {
+      return toAttrValue(raw);
+    }
     return convertToDataType(this.dataType, raw);
   }
 
