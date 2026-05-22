@@ -5,7 +5,7 @@ import type { Dialect } from "./column-mapper.js";
 import type { PkInfo } from "./pk-resolver.js";
 import type { RelationMap } from "./relation-resolver.js";
 import type { ColumnNamingStrategy } from "./metaobjects-config.js";
-import type { OutputLayout } from "./import-path.js";
+import type { OutputLayout, ResolvedTarget } from "./import-path.js";
 
 /**
  * How to format cross-entity import specifiers in generated files.
@@ -41,6 +41,10 @@ export interface RenderContext {
   apiPrefix: string;
   /** Output layout mode: "flat" (default) — all files in outDir; "package" — sub-paths from entity metadata package. */
   outputLayout: OutputLayout;
+  /** The target THIS generator emits to (drives path layout + same-target imports). */
+  selfTarget: ResolvedTarget;
+  /** Where entity files live (drives cross-target entity imports). */
+  entityModuleTarget: ResolvedTarget;
   pkMap: Map<string, PkInfo>;
   /** Pre-pass relation map for FK + relations() block emission. */
   relationMap: RelationMap;
@@ -49,13 +53,15 @@ export interface RenderContext {
 }
 
 /** Optional shape — `extStyle`, `omImport`, `columnNamingStrategy`, `apiPrefix`, `outputLayout`, and `packageOf` default if omitted. `packageOf` defaults to an empty Map (correct for flat layout; `runGen` always provides the real map). */
-export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "apiPrefix" | "outputLayout" | "packageOf"> & {
+export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "apiPrefix" | "outputLayout" | "packageOf" | "selfTarget" | "entityModuleTarget"> & {
   extStyle?: ExtStyle;
   omImport?: string;
   columnNamingStrategy?: ColumnNamingStrategy;
   apiPrefix?: string;
   outputLayout?: OutputLayout;
   packageOf?: Map<string, string | undefined>;
+  selfTarget?: ResolvedTarget;
+  entityModuleTarget?: ResolvedTarget;
 };
 
 /** Append the configured extension to a cross-entity module specifier. */
@@ -65,13 +71,23 @@ export function withExt(spec: string, style: ExtStyle): string {
 
 /** Thin factory; applies sensible defaults for fields the caller may omit. */
 export function makeRenderContext(opts: RenderContextInput): RenderContext {
+  const outputLayout = opts.outputLayout ?? "flat";
+  const defaultTarget: ResolvedTarget = opts.selfTarget ?? {
+    name: "default",
+    outDir: opts.outDir,
+    importBase: undefined,
+    outputLayout,
+    dbImport: opts.dbImport,
+  };
   return {
     ...opts,
     extStyle: opts.extStyle ?? "none",
     omImport: opts.omImport ?? "../index",
     columnNamingStrategy: opts.columnNamingStrategy ?? "snake_case",
     apiPrefix: opts.apiPrefix ?? "",
-    outputLayout: opts.outputLayout ?? "flat",
+    outputLayout,
     packageOf: opts.packageOf ?? new Map(),
+    selfTarget: defaultTarget,
+    entityModuleTarget: opts.entityModuleTarget ?? defaultTarget,
   };
 }
