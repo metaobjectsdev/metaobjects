@@ -15,7 +15,8 @@ export const barrel = function barrel(opts?: BarrelOpts): Generator {
         renderBarrel(
           entities.map((e) => ({ name: e.name, package: e.package })),
           ctx.renderContext!.extStyle,
-          ctx.renderContext!.selfTarget.outputLayout,
+          ctx.renderContext!.selfTarget,
+          ctx.renderContext!.entityModuleTarget,
         ),
       ),
     })),

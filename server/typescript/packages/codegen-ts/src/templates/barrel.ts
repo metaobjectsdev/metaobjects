@@ -2,7 +2,7 @@
 
 import { GENERATED_HEADER } from "../constants.js";
 import { type ExtStyle } from "../render-context.js";
-import { barrelEntrySpecifier, type OutputLayout } from "../import-path.js";
+import { barrelModuleSpecifier, type ResolvedTarget } from "../import-path.js";
 
 export interface BarrelEntry {
   name: string;
@@ -11,12 +11,13 @@ export interface BarrelEntry {
 
 export function renderBarrel(
   entries: BarrelEntry[],
-  extStyle: ExtStyle = "none",
-  layout: OutputLayout = "flat",
+  extStyle: ExtStyle,
+  selfTarget: ResolvedTarget,
+  entityModuleTarget: ResolvedTarget,
 ): string {
   const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
   const exports = sorted
-    .map((e) => `export * from ${JSON.stringify(barrelEntrySpecifier(layout, e.package, e.name, extStyle))};`)
+    .map((e) => `export * from ${JSON.stringify(barrelModuleSpecifier(selfTarget, entityModuleTarget, e.package, e.name, extStyle))};`)
     .join("\n");
   return `// ${GENERATED_HEADER} — DO NOT EDIT.\n${exports}\n`;
 }

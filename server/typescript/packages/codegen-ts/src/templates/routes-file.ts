@@ -18,7 +18,7 @@
 import { code, imp } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
-import { crossEntitySpecifier, relativeModuleSpecifier } from "../import-path.js";
+import { entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { variableNameFromEntity } from "../naming.js";
 import { isProjection } from "../projection/projection-detector.js";
@@ -26,12 +26,11 @@ import { isProjection } from "../projection/projection-detector.js";
 export function renderRoutesFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
   const handlerName = `${entityName.charAt(0).toLowerCase()}${entityName.slice(1)}Routes`;
-  // Same-entity sibling import (the entity's own file). Passing the entity's
-  // package as both from/to resolves to "./Entity" — its file shares this
-  // file's package directory.
-  const entityFileSpec = crossEntitySpecifier(
-    ctx.outputLayout,
-    entity.package,
+  // Import the entity's own file. Same target → relative "./Entity"; cross
+  // target → importBase-qualified package path.
+  const entityFileSpec = entityModuleSpecifier(
+    ctx.selfTarget,
+    ctx.entityModuleTarget,
     entity.package,
     entityName,
     ctx.extStyle,

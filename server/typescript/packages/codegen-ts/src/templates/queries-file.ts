@@ -4,7 +4,7 @@
 import { code, joinCode, type Code } from "ts-poet";
 import { MetaObject } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
-import { crossEntitySpecifier, relativeModuleSpecifier } from "../import-path.js";
+import { entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
 import {
   renderFindByIdFn,
   renderListFn,
@@ -17,12 +17,11 @@ import { GENERATED_HEADER } from "../constants.js";
 
 export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   const entityName = obj.name;
-  // Same-entity sibling import (the entity's own file). Passing the entity's
-  // package as both from/to resolves to "./Entity" — its file shares this
-  // file's package directory.
-  const entityFileName = crossEntitySpecifier(
-    ctx.outputLayout,
-    obj.package,
+  // Import the entity's own file. Same target → relative "./Entity"; cross
+  // target → importBase-qualified package path.
+  const entityFileName = entityModuleSpecifier(
+    ctx.selfTarget,
+    ctx.entityModuleTarget,
     obj.package,
     entityName,
     ctx.extStyle,
