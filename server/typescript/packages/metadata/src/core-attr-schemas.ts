@@ -32,6 +32,7 @@ import {
   ATTR_SUBTYPE_INT,
   ATTR_SUBTYPE_BOOLEAN,
   ATTR_SUBTYPE_STRINGARRAY,
+  ATTR_SUBTYPE_FILTER,
   // attr-name constants
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_REQUIRED,
@@ -359,9 +360,9 @@ export const dataGridLayoutAttrs: AttrSchema[] = [
   },
   {
     name: LAYOUT_DATA_GRID_ATTR_FILTER,
-    valueType: ATTR_SUBTYPE_STRING,
+    valueType: ATTR_SUBTYPE_FILTER,
     required: false,
-    description: "JSON-encoded preset filter applied to the grid at the metadata level.",
+    description: "Structured preset filter object applied to the grid at the metadata level. Desugared to canonical { field: { op: value } } form at parse time.",
   },
   {
     name: LAYOUT_DATA_GRID_ATTR_COLUMNS,

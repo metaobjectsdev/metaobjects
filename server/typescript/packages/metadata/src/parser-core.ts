@@ -50,8 +50,9 @@ import {
   SUBTYPE_BASE,
   PACKAGE_SEPARATOR,
   ATTR_SUBTYPE_STRINGARRAY,
+  ATTR_SUBTYPE_FILTER,
 } from "./constants.js";
-import type { AttrValue } from "./meta/meta-data.js";
+import type { AttrValue, AttrObject, AttrJson } from "./meta/meta-data.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -578,6 +579,54 @@ function normalizeStringArrayAttr(
 }
 
 // ---------------------------------------------------------------------------
+// filter desugar — normalize an `attr.filter` value to canonical
+// `{ field: { op: value } }` form at parse time. Three rules:
+//   scalar v    → { eq: v }
+//   array  [..] → { in: [..] }
+//   null        → { isNull: true }
+// Explicit `{ op: value }` clauses pass through. `or`/`and` composition keys
+// recurse into their sub-filter arrays.
+// ---------------------------------------------------------------------------
+
+function normalizeFilterAttr(
+  type: string,
+  subType: string,
+  attrName: string,
+  value: AttrValue,
+  registry: TypeRegistry,
+): AttrValue {
+  const spec = registry.attrsOf(type, subType).find((s) => s.name === attrName);
+  if (spec === undefined || spec.valueType !== ATTR_SUBTYPE_FILTER) return value;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
+  return desugarFilterObject(value as AttrObject);
+}
+
+function desugarFilterObject(filter: AttrObject): AttrObject {
+  const out: Record<string, AttrJson> = {};
+  for (const [key, raw] of Object.entries(filter)) {
+    if (key === "or" || key === "and") {
+      out[key] = Array.isArray(raw)
+        ? raw.map((sub: AttrJson) =>
+            typeof sub === "object" && sub !== null && !Array.isArray(sub)
+              ? desugarFilterObject(sub as AttrObject)
+              : sub,
+          )
+        : (raw as AttrJson);
+      continue;
+    }
+    out[key] = desugarClause(raw);
+  }
+  return out;
+}
+
+function desugarClause(raw: AttrJson): AttrObject {
+  if (raw === null) return { isNull: true };
+  if (Array.isArray(raw)) return { in: raw };
+  if (typeof raw === "object") return raw as AttrObject;
+  return { eq: raw };
+}
+
+// ---------------------------------------------------------------------------
 // applyInlineAttrsAndUnknownKeys — apply @-prefixed attrs and warn about unknowns
 //
 // Called for both fresh creates AND merge-into-existing paths.
@@ -633,7 +682,9 @@ function applyInlineAttrsAndUnknownKeys(
     }
 
     // A bare string for a declared stringArray attr → one-element array.
-    const normalized = normalizeStringArrayAttr(model.type, model.subType, attrName, value, registry);
+    let normalized = normalizeStringArrayAttr(model.type, model.subType, attrName, value, registry);
+    // An object-valued filter attr → canonical { field: { op: value } } form.
+    normalized = normalizeFilterAttr(model.type, model.subType, attrName, normalized, registry);
     model.setAttr(attrName, normalized);
   }
 }
