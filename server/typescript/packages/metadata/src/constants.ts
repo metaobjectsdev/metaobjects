@@ -1,53 +1,7 @@
-// ---------------------------------------------------------------------------
-// Base type names (the 8 registered base types — Java metaobjects-core vocabulary)
-// ---------------------------------------------------------------------------
+export * from "./shared/base-types.js";
+export * from "./shared/structural.js";
 
-export const TYPE_METADATA = "metadata";
-export const TYPE_OBJECT = "object";
-export const TYPE_FIELD = "field";
-export const TYPE_ATTR = "attr";
-export const TYPE_VALIDATOR = "validator";
-export const TYPE_VIEW = "view";
-export const TYPE_IDENTITY = "identity";
-export const TYPE_RELATIONSHIP = "relationship";
-export const TYPE_LAYOUT = "layout";
-export const TYPE_SOURCE = "source";
-export const TYPE_ORIGIN = "origin";
-
-export const BASE_TYPES = [
-  TYPE_METADATA,
-  TYPE_OBJECT,
-  TYPE_FIELD,
-  TYPE_ATTR,
-  TYPE_VALIDATOR,
-  TYPE_VIEW,
-  TYPE_IDENTITY,
-  TYPE_RELATIONSHIP,
-  TYPE_LAYOUT,
-  TYPE_SOURCE,
-  TYPE_ORIGIN,
-] as const;
-export type BaseType = (typeof BASE_TYPES)[number];
-
-// ---------------------------------------------------------------------------
-// Universal subtype
-// ---------------------------------------------------------------------------
-
-export const SUBTYPE_BASE = "base";
-
-// ---------------------------------------------------------------------------
-// Metadata subtypes (1)
-// ---------------------------------------------------------------------------
-
-/**
- * The metadata document root subtype. The root node is `metadata.root` in the
- * canonical format. (Distinct from the universal SUBTYPE_BASE — the redesigned
- * format spec confirms the root subtype is `root`, not `base`.)
- */
-export const SUBTYPE_ROOT = "root";
-
-export const METADATA_SUBTYPES = [SUBTYPE_ROOT] as const;
-export type MetadataSubType = (typeof METADATA_SUBTYPES)[number];
+import { SUBTYPE_BASE } from "./shared/base-types.js";
 
 // ---------------------------------------------------------------------------
 // Object subtypes (cross-language, conceptual)
@@ -258,66 +212,6 @@ export const RELATIONSHIP_SUBTYPES = [
 ] as const;
 export type RelationshipSubType = (typeof RELATIONSHIP_SUBTYPES)[number];
 
-// ---------------------------------------------------------------------------
-// Reserved structural body keys (redesigned format — NOT @-prefixed, NOT attrs)
-//
-// Every node body is a map whose only permitted non-@ keys are these. The
-// canonical body-key order is: name, package, extends, abstract, overlay,
-// isArray, @-attrs (alphabetical), children.
-// ---------------------------------------------------------------------------
-
-export const RESERVED_KEY_NAME = "name";
-export const RESERVED_KEY_PACKAGE = "package";
-export const RESERVED_KEY_EXTENDS = "extends";   // the supertype reference
-export const RESERVED_KEY_ABSTRACT = "abstract"; // true → the node is abstract
-export const RESERVED_KEY_OVERLAY = "overlay";   // true → re-opens an existing same-named node
-export const RESERVED_KEY_IS_ARRAY = "isArray";  // true → the node is an array
-export const RESERVED_KEY_CHILDREN = "children";
-
-/** attr-child-node body key carrying the typed value. */
-export const RESERVED_KEY_VALUE = "value";
-
-export const RESERVED_KEYS = new Set<string>([
-  RESERVED_KEY_NAME,
-  RESERVED_KEY_PACKAGE,
-  RESERVED_KEY_EXTENDS,
-  RESERVED_KEY_ABSTRACT,
-  RESERVED_KEY_OVERLAY,
-  RESERVED_KEY_IS_ARRAY,
-  RESERVED_KEY_CHILDREN,
-  RESERVED_KEY_VALUE,
-]);
-
-// ---------------------------------------------------------------------------
-// JSON document special keys (top-level, ignored during wrapper-key detection)
-// ---------------------------------------------------------------------------
-
-export const JSON_KEY_SCHEMA = "$schema";
-
-// ---------------------------------------------------------------------------
-// Inline attribute prefix + fused type.subType key separator
-// ---------------------------------------------------------------------------
-
-export const ATTR_PREFIX = "@";
-
-/** Separator fusing type and subType in a node's wrapper key (`object.entity`). */
-export const TYPE_SUBTYPE_SEPARATOR = ".";
-
-// ---------------------------------------------------------------------------
-// Package path conventions
-// ---------------------------------------------------------------------------
-
-/** Separator between package segments and between package and name. */
-export const PACKAGE_SEPARATOR = "::";
-
-/** Relative-reference "go up one level" marker. */
-export const PACKAGE_PARENT = "..";
-
-// ---------------------------------------------------------------------------
-// Wildcard for child-rule matching
-// ---------------------------------------------------------------------------
-
-export const CHILD_RULE_WILDCARD = "*";
 
 // ---------------------------------------------------------------------------
 // Codegen / runtime attribute keys
