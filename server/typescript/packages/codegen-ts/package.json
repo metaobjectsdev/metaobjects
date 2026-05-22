@@ -4,20 +4,20 @@
   "description": "TypeScript codegen engine for MetaObjects — emits Drizzle, Zod, and Fastify artifacts.",
   "type": "module",
   "main": "./dist/index.js",
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "bun": "./src/index.ts",
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./generators": {
       "bun": "./src/generators/index.ts",
-      "types": "./src/generators/index.ts",
+      "types": "./dist/generators/index.d.ts",
       "default": "./dist/generators/index.js"
     }
   },
-  "files": ["dist", "src", "README.md"],
+  "files": ["dist", "src", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p tsconfig.typecheck.json"

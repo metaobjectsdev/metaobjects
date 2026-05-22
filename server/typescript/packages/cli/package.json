@@ -4,24 +4,21 @@
   "description": "CLI for MetaObjects: scaffold, codegen, migrate, and drift-detection commands.",
   "type": "module",
   "main": "./dist/src/index.js",
-  "types": "./src/index.ts",
+  "types": "./dist/src/index.d.ts",
   "bin": {
-    "meta": "./bin/meta.ts"
+    "meta": "./dist/bin/meta.js"
   },
   "publishConfig": {
-    "access": "public",
-    "bin": {
-      "meta": "./dist/bin/meta.js"
-    }
+    "access": "public"
   },
   "exports": {
     ".": {
       "bun": "./src/index.ts",
-      "types": "./src/index.ts",
+      "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
     }
   },
-  "files": ["dist", "src", "README.md"],
+  "files": ["dist", "src", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p tsconfig.typecheck.json"
