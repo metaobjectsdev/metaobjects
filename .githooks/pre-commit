@@ -1,31 +1,39 @@
 #!/usr/bin/env bash
 #
 # metaobjects is a PUBLIC repository.
-# Block commits that leak private/other-project names or absolute local paths.
-# See CLAUDE.md -> "Public repository hygiene".
+# Block commits that leak absolute local paths, or private/other-project names.
+#
+# IMPORTANT: this committed hook names NO private project. The structural
+# patterns below are generic (home paths). Private project names live ONLY in an
+# UNTRACKED local denylist so the guard itself never becomes a leak:
+#
+#     .githooks/deny-list.local      (gitignored; one regex per line; you create it)
+#     .githooks/deny-list.example    (committed template, placeholders only)
 #
 # Activate (one-time, per clone):  git config core.hooksPath .githooks
+#                                  cp .githooks/deny-list.example .githooks/deny-list.local
+#                                  # then edit deny-list.local with the real names
 # Bypass (discouraged):            git commit --no-verify
 #
 set -uo pipefail
 
-# Case-insensitive forbidden patterns. Keep in sync with CLAUDE.md.
-#  - other/private project names (and known abbreviations/derivations)
-#  - absolute local paths that leak a developer's home directory
-# NOTES:
-#  - matches the separate "sibling-ai-project" project, NOT bare "draagon" — "com.draagon.meta"
-#    is this project's own legacy package namespace and is legitimate.
-#  - "trainer-website" is an accepted example-consumer name and is intentionally NOT guarded;
-#    "downstream-consumer" / "@acme/" / "acme" (a private consumer) ARE guarded.
-PATTERNS='party-?lore|sibling-app|acme-?website|\bmikes\b|@acme/|acme|sibling-ai-project|csharp-adopter|sibling-project|/home/[A-Za-z0-9._-]+/|~/Development'
+# Generic, non-sensitive structural patterns — safe to commit (name no project):
+PATTERNS='/home/[A-Za-z0-9._-]+/|~/Development'
 
 # Legitimate matches to ignore (e.g. the published npm author email).
 ALLOW='doug@dougmealing\.com'
 
-# Scan only newly-ADDED staged lines, attributed to their file.
+# Merge in private-name patterns from the untracked local denylist, if present.
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+DENY_FILE="$ROOT/.githooks/deny-list.local"
+if [ -f "$DENY_FILE" ]; then
+  extra=$(grep -vE '^[[:space:]]*(#|$)' "$DENY_FILE" | paste -sd'|' -)
+  [ -n "$extra" ] && PATTERNS="$PATTERNS|$extra"
+fi
+
+# Scan only newly-ADDED staged lines, attributed to their file; skip the hooks dir.
 hits=$(git diff --cached --diff-filter=ACM -U0 --no-color 2>/dev/null | awk '
   /^\+\+\+ /              { f=$2; sub(/^b\//,"",f); next }
-  # skip the hook itself (its PATTERNS line legitimately lists the forbidden words)
   /^\+/ && !/^\+\+\+/     { if (f !~ /^\.githooks\//) print f "\t" substr($0,2) }
 ' | grep -Ei "$PATTERNS" | grep -vEi "$ALLOW")
 
