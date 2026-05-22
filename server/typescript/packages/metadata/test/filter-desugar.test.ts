@@ -54,4 +54,9 @@ describe("filter desugaring", () => {
   it("explicit op object is left unchanged", async () => {
     expect(await loadGridFilter({ status: { like: "a%" } })).toEqual({ status: { like: "a%" } });
   });
+  it("or composition desugars each branch", async () => {
+    expect(
+      await loadGridFilter({ or: [{ status: "active" }, { deletedAt: null }] }),
+    ).toEqual({ or: [{ status: { eq: "active" } }, { deletedAt: { isNull: true } }] });
+  });
 });

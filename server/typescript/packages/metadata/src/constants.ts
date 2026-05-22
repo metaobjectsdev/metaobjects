@@ -427,8 +427,19 @@ export type CardinalityValue = (typeof CARDINALITY_VALUES)[number];
 // validation all import from here.
 // ---------------------------------------------------------------------------
 
+// Individual operator constants — used by the parse-time desugar in
+// parser-core.ts. Must stay in sync with FILTER_OPS below.
+export const FILTER_OP_EQ = "eq";
+export const FILTER_OP_NE = "ne";
+export const FILTER_OP_IN = "in";
+export const FILTER_OP_IS_NULL = "isNull";
+
+// Composition-key constants — used by desugarFilterObject in parser-core.ts.
+export const FILTER_COMPOSE_OR = "or";
+export const FILTER_COMPOSE_AND = "and";
+
 export const FILTER_OPS = [
-  "eq", "ne", "gt", "gte", "lt", "lte", "in", "like", "isNull",
+  FILTER_OP_EQ, FILTER_OP_NE, "gt", "gte", "lt", "lte", FILTER_OP_IN, "like", FILTER_OP_IS_NULL,
 ] as const;
 export type FilterOp = (typeof FILTER_OPS)[number];
 

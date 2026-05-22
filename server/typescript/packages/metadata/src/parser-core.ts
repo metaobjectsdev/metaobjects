@@ -51,6 +51,11 @@ import {
   PACKAGE_SEPARATOR,
   ATTR_SUBTYPE_STRINGARRAY,
   ATTR_SUBTYPE_FILTER,
+  FILTER_OP_EQ,
+  FILTER_OP_IN,
+  FILTER_OP_IS_NULL,
+  FILTER_COMPOSE_OR,
+  FILTER_COMPOSE_AND,
 } from "./constants.js";
 import type { AttrValue, AttrObject, AttrJson } from "./meta/meta-data.js";
 
@@ -597,14 +602,14 @@ function normalizeFilterAttr(
 ): AttrValue {
   const spec = registry.attrsOf(type, subType).find((s) => s.name === attrName);
   if (spec === undefined || spec.valueType !== ATTR_SUBTYPE_FILTER) return value;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
+  if (typeof value !== "object" || Array.isArray(value)) return value;
   return desugarFilterObject(value as AttrObject);
 }
 
 function desugarFilterObject(filter: AttrObject): AttrObject {
   const out: Record<string, AttrJson> = {};
   for (const [key, raw] of Object.entries(filter)) {
-    if (key === "or" || key === "and") {
+    if (key === FILTER_COMPOSE_OR || key === FILTER_COMPOSE_AND) {
       out[key] = Array.isArray(raw)
         ? raw.map((sub: AttrJson) =>
             typeof sub === "object" && sub !== null && !Array.isArray(sub)
@@ -620,10 +625,10 @@ function desugarFilterObject(filter: AttrObject): AttrObject {
 }
 
 function desugarClause(raw: AttrJson): AttrObject {
-  if (raw === null) return { isNull: true };
-  if (Array.isArray(raw)) return { in: raw };
+  if (raw === null) return { [FILTER_OP_IS_NULL]: true };
+  if (Array.isArray(raw)) return { [FILTER_OP_IN]: raw };
   if (typeof raw === "object") return raw as AttrObject;
-  return { eq: raw };
+  return { [FILTER_OP_EQ]: raw };
 }
 
 // ---------------------------------------------------------------------------
@@ -869,11 +874,19 @@ function parseAttrChild(
     : new MetaRoot(new TypeId(attrType, resolvedSubType), attrName);
 
   // A bare string for a declared stringArray attr → one-element array.
-  const normalized = normalizeStringArrayAttr(
+  // An object-valued filter attr → canonical { field: { op: value } } form.
+  let normalized = normalizeStringArrayAttr(
     parent.type,
     parent.subType,
     attrName,
     value,
+    registry,
+  );
+  normalized = normalizeFilterAttr(
+    parent.type,
+    parent.subType,
+    attrName,
+    normalized,
     registry,
   );
 
