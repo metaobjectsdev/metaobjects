@@ -27,11 +27,12 @@ public class CoreObjectsMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public void registerTypes(MetaDataRegistry registry) {
-        // Register the DataMetaObject and ValueMetaObject types first
-        com.metaobjects.object.data.DataMetaObject.registerTypes(registry);
-        com.metaobjects.object.value.ValueMetaObject.registerTypes(registry);
+        // object.value is now owned by the metadata module (ValueMetaObject).
+        // object.data has no fixture coverage and is no longer registered here.
+        // Both subtype registrations have been removed to avoid duplicate-registration
+        // collisions when dynamic is on the classpath alongside metadata.
 
-        // Then register additional attributes for existing types
+        // Register additional attributes for existing base types
         DataObjectExtensions.registerDataObjectAttributes(registry);
         ValueObjectExtensions.registerValueObjectAttributes(registry);
     }
