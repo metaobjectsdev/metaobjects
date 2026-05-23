@@ -1,0 +1,8 @@
+[
+  { "name": "displayName" },
+  { "name": "postCount" },
+  { "name": "posts", "fields": [
+    { "name": "title" },
+    { "name": "tags", "fields": [{ "name": "name" }] }
+  ] }
+]
