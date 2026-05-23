@@ -8,15 +8,47 @@ if (args.Length == 0)
     Console.Error.WriteLine(
         "usage: meta <command> [options]\n" +
         "  commands:\n" +
-        "    verify <metadataDir> --templates <root>   drift-check templates against their payloads");
+        "    gen <metadataDir> --out <dir> --namespace <ns>   generate EF Core code from metadata\n" +
+        "    verify <metadataDir> --templates <root>          drift-check templates against their payloads");
     return 2;
 }
 
 return args[0] switch
 {
+    "gen" => RunGen(args[1..]),
     "verify" => RunVerify(args[1..]),
     _ => Unknown(args[0]),
 };
+
+static int RunGen(string[] rest)
+{
+    string? metadataDir = null;
+    string? outDir = null;
+    string ns = "Generated";
+    for (int i = 0; i < rest.Length; i++)
+    {
+        if (rest[i] == "--out" && i + 1 < rest.Length) outDir = rest[++i];
+        else if (rest[i] == "--namespace" && i + 1 < rest.Length) ns = rest[++i];
+        else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
+    }
+    if (metadataDir is null || outDir is null)
+    {
+        Console.Error.WriteLine("usage: meta gen <metadataDir> --out <dir> [--namespace <ns>]");
+        return 2;
+    }
+
+    var outcome = GenCommand.Run(metadataDir, outDir, ns);
+    if (!outcome.Ok)
+    {
+        foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
+        Console.Error.WriteLine("meta gen: FAILED (metadata did not load cleanly)");
+        return 1;
+    }
+    foreach (var f in outcome.Result!.Files) Console.WriteLine($"  {f.Status}: {f.Path}");
+    foreach (var w in outcome.Result!.Warnings) Console.Error.WriteLine($"  warning: {w}");
+    Console.WriteLine($"meta gen: {outcome.Result!.Files.Count(f => f.Status == "written")} file(s) written");
+    return 0;
+}
 
 static int Unknown(string cmd)
 {
