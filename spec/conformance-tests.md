@@ -29,13 +29,13 @@ Every fixture is a directory under `metaobjects/fixtures/conformance/`. Each fix
 │   ├── meta.foo.json
 │   └── meta.bar.json            # multiple files for overlay/multi-file scenarios
 ├── expected.json                # happy-path: canonical metamodel
-├── expected-errors.json         # error case: array of error message strings
+├── expected-errors.json         # error case: array of {"code": "ERR_*"} objects
 └── expected-warnings.json       # optional: array of warning message strings
 ```
 
 **Exactly one** of `expected.json` or `expected-errors.json` must be present:
 - `expected.json` → the Loader is expected to succeed (no errors). The canonical serialized output of the loaded root MUST deep-equal this file. The canonical shape is the **fused-key form** documented in [`wire-format.md`](wire-format.md) — every node is `{ "<type>.<subType>": <body> }`.
-- `expected-errors.json` → the Loader is expected to emit errors. The set of error messages MUST equal this list (compared as sorted sets — order-independent).
+- `expected-errors.json` → the Loader is expected to emit errors. It is a JSON array of objects, each `{ "code": "ERR_*" }` (a stable `ErrorCode`; message text is NOT compared — it is Tier-2 idiomatic per language). The set of emitted error **codes** MUST equal the set of `code` values in this list (compared as sorted sets — order-independent).
 
 `expected-warnings.json` is optional. When present, the set of warnings MUST equal this list. When absent on a happy-path fixture, warnings are asserted empty.
 
@@ -83,9 +83,12 @@ These are the **only** reserved structural keys. Everything else inside a body i
 - **Children in declaration order**. The order of children inside `children: [...]` reflects authoring order, not alphabetical order. Overlay merge appends; it does NOT re-sort.
 - **`@fields` normalization**. Authoring may write `"@fields": "id"` (scalar); canonical form is always the array form `"@fields": ["id"]`.
 
-### Errors and warnings as message lists
+### Errors and warnings as sorted sets
 
-Errors and warnings are compared as **sorted string lists** to avoid ordering issues across validation passes. Each error/warning is its own line. The list is sorted alphabetically before comparison.
+Errors are compared as **sorted sets of `code` values** (the `code` field of each
+`expected-errors.json` object), and warnings as **sorted sets of message strings**, to avoid
+ordering issues across validation passes. Each is sorted before comparison. Error *message text*
+is never compared — only the stable `ErrorCode`; message wording is Tier-2 (idiomatic per language).
 
 ## TS conformance runner
 

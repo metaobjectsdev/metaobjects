@@ -28,6 +28,15 @@
   A real TS consumer migrated off `link:` filesystem deps onto the published `^0.5.0` packages and
   builds clean end-to-end — validating the published dist, `.d.ts` types, and runtime imports
   through a real pnpm install (which is what surfaced the `cli@0.5.1` fix).
+- **Python loader + conformance — Phase 1** (2026-05-23)
+  First Python implementation at `server/python/` (uv + src-layout + pytest, zero runtime deps):
+  metadata loader, canonical serializer, and a pytest conformance runner over the shared corpus.
+  Built on the current TS/Java Open-Closed extensibility model (ADR-0002/0003/0004) — colocated
+  constants, behavior-on-the-class typed nodes, decorator self-registration + `compose_registry` —
+  **not** the stale C# central-dispatch shape. First corpus slice green; remaining fixtures tracked
+  honestly as known-gaps in an expected-failures ledger. Codegen + runtime out of scope. Design:
+  `docs/superpowers/specs/2026-05-23-python-loader-conformance-design.md`; porting method +
+  contracts: `spec/cross-language-porting-guide.md`.
 
 ## Active
 - **H3 — Java port (Loader + runtime + conformance)**
@@ -61,7 +70,9 @@
   Java + TS consumer onto metaobjects (both layers).
 
 ## Future (sketched)
-- Python port (post-H3)
+- Python loader — Phase 2/3: complete loader parity (deferred super-resolution + effective
+  accessors, multi-file overlay merge, the validation passes, and the remaining metamodel subtypes
+  — relationship/source/origin/view/layout/validator/currency). Then Python codegen + runtime.
 - Forms codegen revival (deferred from earlier)
 - Date / case transforms
 - Materialized views, federated entities, search-index sources
