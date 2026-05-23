@@ -107,6 +107,29 @@ If only one package changed (e.g. a `cli` bugfix), bump just that package, `rm b
 install`, verify, and `bun publish` it — the others stay at their current version. Tag scoped
 (e.g. `cli-v0.5.1`).
 
+## Other language ecosystems (Java / C# / Python)
+
+This guide is **TypeScript / npm-specific** — its gotchas (`workspace:*`, `bun publish`, lockfile
+re-pinning) do not transfer. Each language ships through a different registry with its own tooling,
+auth, signing, and failure modes, so **each gets its own release guide, written when it does its
+first real release** — like this one. The npm rules above were only learned by actually publishing;
+don't pre-write speculative procedures for ecosystems that aren't shipping yet.
+
+What to expect per ecosystem:
+
+| Language | Registry | Tooling | Gotchas to anticipate |
+|---|---|---|---|
+| Java | Maven Central (Sonatype Central Portal) | `mvn deploy` / Gradle publish | GPG-signed artifacts; `groupId` ownership verification; staging → release promotion; javadoc + sources jars required |
+| Python | PyPI | `uv build` / `python -m build` + `twine` | sdist + wheel; `pyproject.toml` metadata; prefer **OIDC trusted publishing** over long-lived tokens |
+| C# | NuGet.org | `dotnet pack` + `dotnet nuget push` | API key; symbols / source-link. **Loader + conformance only today — nothing consumer-facing to publish yet** |
+
+**Versions are not unified across languages** — TS is on `0.5.x`, the Java module line is on the
+`7.0.0` track, C# is at v0.3 conformance parity. Don't force one number. The cross-language contract
+is the **conformance corpus + [`fixtures/conformance/CAPABILITIES.json`](../fixtures/conformance/CAPABILITIES.json)**:
+each release states which capabilities/conformance level it satisfies, and *that* manifest — not a
+shared version — is the coordination point. (Generated code runs without any MetaObjects runtime, so
+a language only publishes the libraries it actually ships: runtime helpers, and codegen where it exists.)
+
 ## Public-repo hygiene
 
 This repo is public. Before committing release changes, ensure no local paths or private/consumer
