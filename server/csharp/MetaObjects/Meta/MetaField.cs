@@ -25,6 +25,20 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
         }
     }
 
+    /// <summary>
+    /// Storage strategy for an object-typed field (the <c>@storage</c> attr):
+    /// <c>flattened</c> / <c>jsonb</c> / <c>subdocument</c>, or null when absent
+    /// (a relational target treats absent as single-jsonb-column, per back-compat).
+    /// </summary>
+    public string? Storage
+    {
+        get
+        {
+            var v = OwnAttr(FIELD_ATTR_STORAGE);
+            return v is string s ? s : null;
+        }
+    }
+
     /// <summary>Column name override (the <c>@dbColumn</c> attr).</summary>
     public string? DbColumn
     {
