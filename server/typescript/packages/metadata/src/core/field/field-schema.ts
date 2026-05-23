@@ -6,6 +6,7 @@ import {
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_INT,
   ATTR_SUBTYPE_BOOLEAN,
+  ATTR_SUBTYPE_STRINGARRAY,
 } from "../attr/attr-constants.js";
 import { SORT_ORDER_VALUES } from "../query/query-constants.js";
 import {
@@ -25,6 +26,7 @@ import {
   FIELD_ATTR_CURRENCY_DEFAULT,
   FIELD_ATTR_AUTO_SET,
   AUTO_SET_VALUES,
+  FIELD_ATTR_VALUES,
 } from "./field-constants.js";
 
 /** Attrs common to every field subtype (codegen-ts column mapper + Project D filter/sort). */
@@ -132,4 +134,13 @@ export const currencyFieldAttr: AttrSchema = {
   default: FIELD_ATTR_CURRENCY_DEFAULT,
   description:
     "ISO 4217 currency code for a currency-subtype field. Storage is integer minor units; defaults to 'USD' when omitted.",
+};
+
+/** The @values attr — only on field.enum. Required string array. */
+export const enumFieldAttr: AttrSchema = {
+  name: FIELD_ATTR_VALUES,
+  valueType: ATTR_SUBTYPE_STRINGARRAY,
+  required: true,
+  description:
+    "Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string.",
 };
