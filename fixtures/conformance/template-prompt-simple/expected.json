@@ -22,14 +22,9 @@
         }
       },
       {
-        "prompt.fragment": {
-          "name": "combatRules",
-          "@textRef": "common/combat-rules"
-        }
-      },
-      {
-        "prompt.template": {
+        "template.prompt": {
           "name": "npcTurn",
+          "@format": "xml",
           "@payloadRef": "NpcPromptPayload",
           "@textRef": "npc/turn"
         }

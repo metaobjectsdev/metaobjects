@@ -42,9 +42,9 @@ import { VALIDATOR_ATTRS_MAP } from "./core/validator/validator-schema.js";
 import { currencyViewAttrs } from "./presentation/view/view-schema.js";
 import { dataGridLayoutAttrs } from "./presentation/layout/layout-schema.js";
 import { ORIGIN_ATTRS_MAP } from "./persistence/origin/origin-schema.js";
-import { MetaPrompt } from "./prompt/meta-prompt.js";
-import { PROMPT_ATTRS_MAP } from "./prompt/prompt-schema.js";
-import { PROMPT_SUBTYPES } from "./prompt/prompt-constants.js";
+import { MetaTemplate } from "./template/meta-template.js";
+import { TEMPLATE_ATTRS_MAP } from "./template/template-schema.js";
+import { TEMPLATE_SUBTYPES } from "./template/template-constants.js";
 import {
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -57,7 +57,7 @@ import {
   TYPE_LAYOUT,
   TYPE_SOURCE,
   TYPE_ORIGIN,
-  TYPE_PROMPT,
+  TYPE_TEMPLATE,
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
@@ -165,7 +165,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
       wildcard(TYPE_FIELD),
       wildcard(TYPE_ATTR),
       wildcard(TYPE_VALIDATOR),
-      wildcard(TYPE_PROMPT),
+      wildcard(TYPE_TEMPLATE),
     ], MetaRoot),
   );
 
@@ -273,14 +273,14 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     );
   }
 
-  // prompt — LLM prompt construction (FR-004). template + fragment; attr-only
-  // children. A single MetaPrompt class backs all subtypes (mirrors source);
-  // per-subtype attr schemas drive validation (template requires @payloadRef +
-  // @textRef; fragment requires @textRef).
-  for (const subType of PROMPT_SUBTYPES) {
-    const promptAttrs = PROMPT_ATTRS_MAP.get(subType) ?? [];
+  // template — renderable text artifacts (FR-004). prompt + output; attr-only
+  // children. A single MetaTemplate class backs both subtypes (mirrors source);
+  // per-subtype attr schemas drive validation (both require @payloadRef +
+  // @textRef; @format is a closed enum; template.prompt adds the LLM overlay).
+  for (const subType of TEMPLATE_SUBTYPES) {
+    const templateAttrs = TEMPLATE_ATTRS_MAP.get(subType) ?? [];
     registry.register(
-      def(TYPE_PROMPT, subType, `Prompt (${subType})`, [wildcard(TYPE_ATTR)], MetaPrompt, promptAttrs),
+      def(TYPE_TEMPLATE, subType, `Template (${subType})`, [wildcard(TYPE_ATTR)], MetaTemplate, templateAttrs),
     );
   }
 

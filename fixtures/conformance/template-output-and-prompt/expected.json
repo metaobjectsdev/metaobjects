@@ -22,9 +22,17 @@
         }
       },
       {
-        "prompt.template": {
+        "template.output": {
+          "name": "npcCard",
+          "@format": "html",
+          "@payloadRef": "NpcPromptPayload",
+          "@textRef": "card/npc"
+        }
+      },
+      {
+        "template.prompt": {
           "name": "npcTurn",
-          "@outputFormat": "xml",
+          "@format": "xml",
           "@payloadRef": "NpcPromptPayload",
           "@textRef": "npc/turn"
         }

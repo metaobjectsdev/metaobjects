@@ -2,7 +2,7 @@
 
 // ---------------------------------------------------------------------------
 // Base type names (the registered base types — Java metaobjects-core vocabulary,
-// plus `prompt`, the TS-first FR-004 addition for prompt construction)
+// plus `template`, the TS-first FR-004 addition for prompt construction)
 // ---------------------------------------------------------------------------
 
 export const TYPE_METADATA = "metadata";
@@ -16,7 +16,7 @@ export const TYPE_RELATIONSHIP = "relationship";
 export const TYPE_LAYOUT = "layout";
 export const TYPE_SOURCE = "source";
 export const TYPE_ORIGIN = "origin";
-export const TYPE_PROMPT = "prompt";
+export const TYPE_TEMPLATE = "template";
 
 export const BASE_TYPES = [
   TYPE_METADATA,
@@ -30,7 +30,7 @@ export const BASE_TYPES = [
   TYPE_LAYOUT,
   TYPE_SOURCE,
   TYPE_ORIGIN,
-  TYPE_PROMPT,
+  TYPE_TEMPLATE,
 ] as const;
 export type BaseType = (typeof BASE_TYPES)[number];
 
