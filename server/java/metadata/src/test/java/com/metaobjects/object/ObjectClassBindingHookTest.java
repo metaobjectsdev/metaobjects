@@ -73,14 +73,8 @@ public class ObjectClassBindingHookTest {
         // FQN that maps to no class via convention ("unbound::NoSuchClass" → "unbound.NoSuchClass")
         PojoMetaObject mo = PojoMetaObject.create("unbound::NoSuchClass");
 
-        try {
-            Class<?> c = mo.getObjectClass();
-            // If convention unexpectedly resolved a class, the registry path is still
-            // not broken — just report the class for diagnostics.
-            assertNotNull(c); // acceptable: name-convention found something
-        } catch (ClassNotFoundException | com.metaobjects.InvalidMetaDataException e) {
-            // Expected: neither attr, registry, nor convention could resolve a class.
-            // This is exactly the prior behavior — the test accepts either outcome.
-        }
+        // Neither @object attr, registry binding, nor convention can resolve the class →
+        // createClassFromMetaDataName(true) throws InvalidMetaDataException.
+        assertThrows(com.metaobjects.InvalidMetaDataException.class, mo::getObjectClass);
     }
 }

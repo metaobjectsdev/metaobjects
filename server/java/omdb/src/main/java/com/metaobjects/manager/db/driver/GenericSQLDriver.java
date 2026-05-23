@@ -64,6 +64,8 @@ public class GenericSQLDriver implements DatabaseDriver {
 
     private static final Logger log = LoggerFactory.getLogger(GenericSQLDriver.class);
     private ObjectManagerDB mManager = null;
+    /** Memoized Gson per loader — building Gson iterates all MetaObjects (O(N)); cache it. */
+    private final java.util.Map<MetaDataLoader, Gson> gsonCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * Returns true if the field is declared as a jsonb column via {@code @dbType="jsonb"}.
@@ -79,12 +81,14 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
-     * Builds a {@link Gson} instance with the metaobjects metadata-driven adapters
-     * registered for all MetaObjects known to the provided loader.  Each call creates
-     * a new instance; callers may cache at a higher scope if desired.
+     * Returns a memoized {@link Gson} instance with the metaobjects metadata-driven adapters
+     * registered for all MetaObjects known to the provided loader.  Building the Gson iterates
+     * all MetaObjects in the loader (O(N)); the result is cached per loader instance so the
+     * cost is paid only once per {@link MetaDataLoader}.
      */
     private Gson buildGson(MetaDataLoader loader) {
-        return MetaObjectGsonInitializer.getBuilderWithAdapters(loader).create();
+        return gsonCache.computeIfAbsent(loader,
+                l -> MetaObjectGsonInitializer.getBuilderWithAdapters(l).create());
     }
 
     /**
@@ -152,10 +156,12 @@ public class GenericSQLDriver implements DatabaseDriver {
         }
     }
 
-    /** Expands a field's {@code @objectRef} to a canonical FQN, mirroring {@link MetaDataUtil#getObjectRef}. */
-    private String resolveObjectRefFqn(MetaField f) {
-        String refName = f.getMetaAttr(MetaDataUtil.ATTR_OBJECT_REF).getValueAsString();
-        return MetaDataUtil.expandPackageForMetaDataRef(MetaDataUtil.findPackageForMetaData(f), refName);
+    /**
+     * Returns the canonical FQN for the field's {@code @objectRef}, reusing the cached
+     * {@link MetaDataUtil#getObjectRef} resolution rather than duplicating the expansion logic.
+     */
+    private String resolveObjectRefFqn(MetaField f) throws MetaDataNotFoundException {
+        return MetaDataUtil.getObjectRef(f).getName();
     }
 
     /**
@@ -2019,10 +2025,11 @@ public class GenericSQLDriver implements DatabaseDriver {
         } else if (f instanceof com.metaobjects.field.StringField) {
             f.setString(o, rs.getString(j));
         } else if (isJsonbField(f)) {
-            // jsonb: read JSON text from column, deserialize via metadata-driven deserializer.
-            // JsonObjectReader consults the binding registry via MetaObject.getObjectClass() /
-            // newInstance(): returns a typed POJO when bound, or the MetaObject's declared class
-            // (e.g. ValueObject) when no explicit binding is registered.
+            // jsonb: read JSON text from column, deserialize via deserializeJsonb().
+            // Step 1 consults ObjectClassRegistry for a bound class (registry wins for
+            // explicit POJO bindings); step 2 falls back to MetaObjectDeserializer which
+            // returns the MetaObject's declared class (e.g. ValueObject) when no binding
+            // is registered.
             String json = rs.getString(j);
             if (json == null || rs.wasNull()) {
                 f.setObject(o, null);
