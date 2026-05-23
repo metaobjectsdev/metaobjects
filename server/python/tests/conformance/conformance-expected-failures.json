@@ -7,19 +7,12 @@
     "error-attr-missing-required",
     "error-attr-wrong-type",
     "error-data-grid-bad-sort-field",
-    "error-extends-nonexistent",
     "error-origin-bad-aggregate-fn",
     "error-origin-bad-via-path",
-    "error-prompt-template-missing-payload-ref",
-    "extends-abstract-base",
-    "extends-cross-file",
-    "loader-basic-multi-file-same-package",
-    "overlay-attr-last-writer-wins",
-    "overlay-merge-flag-explicit",
-    "overlay-same-object-different-files",
-    "prompt-fragment-and-template",
-    "prompt-template-simple",
+    "error-template-prompt-missing-payload-ref",
     "subtype-entity-missing-primary-warning",
+    "template-output-and-prompt",
+    "template-prompt-simple",
     "warning-filterable-no-index"
   ]
 }

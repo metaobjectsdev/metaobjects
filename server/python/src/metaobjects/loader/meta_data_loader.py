@@ -1,4 +1,4 @@
-"""Filesystem loader: discover -> parse -> freeze. (Merge/super/validation: later phases.)"""
+"""Filesystem loader: discover -> parse -> merge -> freeze."""
 from __future__ import annotations
 
 import json
@@ -12,6 +12,8 @@ from ..meta.meta_root import MetaRoot
 from ..parser import parse_document
 from ..provider import Provider, compose_registry
 from ..shared.base_types import SUBTYPE_ROOT, TYPE_METADATA
+from ..super_resolve import resolve_supers
+from .merge import merge_roots
 
 
 @dataclass
@@ -25,6 +27,7 @@ def load_directory(input_dir: str, providers: list[Provider] | None = None) -> L
     registry = compose_registry(providers if providers is not None else [core_provider])
     result = LoadResult(root=MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, ""))
 
+    roots: list[MetaData] = []
     files = sorted(Path(input_dir).glob("*.json"), key=lambda p: p.name)
     for path in files:
         try:
@@ -36,7 +39,11 @@ def load_directory(input_dir: str, providers: list[Provider] | None = None) -> L
         result.errors.extend(parsed.errors)
         result.warnings.extend(parsed.warnings)
         if not parsed.errors:
-            result.root = parsed.root  # Phase-1: last good root wins (single-file fixtures)
+            roots.append(parsed.root)
+
+    if roots:
+        result.root = merge_roots(roots, result.errors)
+        resolve_supers(result.root, result.errors)
 
     result.root.freeze()
     return result

@@ -5,10 +5,12 @@ import json
 
 import pytest
 
-from .conformance_adapter import load_fixture
+from .capabilities import invoke
+from .conformance_adapter import load_fixture, load_fixture_result
 from .corpus import corpus_root
 from .expected_failures import classify
 from .fixture_discovery import Fixture, discover_fixtures
+from .navigator import navigate
 
 _FIXTURES = discover_fixtures(corpus_root())
 
@@ -42,11 +44,31 @@ def _run_checks(fix: Fixture) -> tuple[bool, str]:
     elif fix.has_expected and not tree_blocked and warnings:
         failures.append(f"unexpected warnings: {warnings}")
 
-    # Phase 1 does not run script.json (navigate/invoke) checks. A fixture that
-    # declares one is therefore not fully verified — count it as a tracked gap so
-    # its green status can't imply a capability we haven't checked yet (Phase 2).
     if fix.has_script:
-        failures.append("script.json checks not implemented (Phase 2)")
+        script = json.loads((fix.dir / "script.json").read_text())
+        result = load_fixture_result(fix.input_dir)
+        root = result.root
+        for i, op in enumerate(script.get("operations", [])):
+            path: list[str] = op["navigate"]
+            cap: str = op["invoke"]
+            args: dict[str, object] = op.get("args", {})
+            expected: dict[str, object] = op["expect"]
+
+            node = navigate(root, path)
+            if node is None:
+                failures.append(f"script op {i}: navigate {path!r} resolved to None")
+                continue
+
+            try:
+                actual = invoke(node, cap, args)
+            except (ValueError, TypeError) as exc:
+                failures.append(f"script op {i}: invoke {cap!r} raised {exc}")
+                continue
+
+            if actual != expected:
+                failures.append(
+                    f"script op {i} ({cap!r}): expected {expected!r}, got {actual!r}"
+                )
 
     return (not failures), "; ".join(failures)
 
