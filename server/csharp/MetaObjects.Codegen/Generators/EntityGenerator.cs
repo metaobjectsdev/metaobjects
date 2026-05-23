@@ -69,7 +69,7 @@ public sealed class EntityGenerator : IGenerator
             sb.AppendLine($"[PrimaryKey({names})]");
         }
         if (!isProjection)
-            sb.AppendLine($"[Table(\"{entity.DbTable ?? entity.Name}\")]");
+            sb.AppendLine($"[Table(\"{CSharpNaming.Table(entity)}\")]");
         sb.AppendLine($"public class {className}");
         sb.AppendLine("{");
 
@@ -147,7 +147,7 @@ public sealed class EntityGenerator : IGenerator
         {
             if (pkFields.Count == 1 && pkFields[0] == field.Name)
                 sb.AppendLine("    [Key]");
-            sb.AppendLine($"    [Column(\"{field.DbColumn ?? field.Name}\")]");
+            sb.AppendLine($"    [Column(\"{CSharpNaming.Column(field)}\")]");
             if (baseType == "string" && field.MaxLength is long max)
                 sb.AppendLine($"    [MaxLength({max})]");
             if (required && !isValue)

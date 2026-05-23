@@ -70,6 +70,11 @@ public sealed class DbContextGenerator : IGenerator
     // nested scalar to "{parentCol}_{nestedCol}"; every other storage collapses to one
     // json column (.ToJson) — matching PostgresSchema's table DDL. null (with a warning)
     // when @objectRef can't be resolved.
+    //
+    // KNOWN GAP: a @required non-flattened object field gets a NOT NULL jsonb column in
+    // PostgresSchema's DDL, but .ToJson here does not mark the owned navigation required,
+    // so EF models it nullable — a gen↔migrate nullability mismatch. Deferred until the
+    // exact EF Core required-owned-JSON mapping can be validated against a live provider.
     private string? OwnedTypeConfig(MetaObject entity, MetaField field, GenContext ctx)
     {
         if (field.ObjectRef is not { } oref || ctx.Root.FindObject(CSharpNaming.StripPkg(oref)) is not { } vo)
@@ -79,7 +84,7 @@ public sealed class DbContextGenerator : IGenerator
         }
         var owner = CSharpNaming.Pascal(entity.Name);
         var nav = CSharpNaming.Pascal(field.Name);
-        var parentCol = field.DbColumn ?? field.Name;
+        var parentCol = CSharpNaming.Column(field);
 
         if (field.Storage != STORAGE_FLATTENED)
             return $"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson(\"{parentCol}\"));";
@@ -89,7 +94,7 @@ public sealed class DbContextGenerator : IGenerator
         sb.AppendLine("        {");
         foreach (var nf in vo.Fields().Where(n => CSharpNaming.ScalarFor(n.SubType) is not null))
         {
-            var nestedCol = $"{parentCol}_{nf.DbColumn ?? nf.Name}";
+            var nestedCol = $"{parentCol}_{CSharpNaming.Column(nf)}";
             sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)}).HasColumnName(\"{nestedCol}\");");
         }
         sb.Append("        });");

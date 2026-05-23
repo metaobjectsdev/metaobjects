@@ -15,6 +15,15 @@
 // different relationships can't fan-out/double-count (the reason TS needs
 // COUNT(DISTINCT), which still mis-sums SUM/AVG across joins). View DDL is a
 // generated artifact, not a conformance-pinned invariant — the SQL form is free.
+//
+// DIVERGENCE from Migrate/PostgresEmit (the incremental-migration engine): this
+// full-CREATE emitter uses unquoted identifiers, lowercase types (varchar/integer/
+// jsonb), an unnamed inline PRIMARY KEY, and "{table}_{name}_uniq" index names;
+// PostgresEmit uses quoted idents, UPPERCASE types, a "{table}_pkey" constraint, and
+// raw index names. The two MUST be reconciled before introspection-driven migration
+// goes live (else a diff sees spurious churn) — preferably by retiring this CREATE
+// TABLE in favor of routing full-CREATE through the snapshot+emit pipeline. Tracked
+// in the csharp-migration-pipeline-status memory.
 
 using System.Text;
 using MetaObjects.Meta;
@@ -47,8 +56,6 @@ public static class PostgresSchema
         _ => "text",
     };
 
-    private static string Col(MetaField f) => f.DbColumn ?? f.Name;
-
     /// <summary>
     /// CREATE TABLE for a writable entity: scalar columns + object-field storage
     /// (@storage flattened → prefixed columns; else a single jsonb column) + PK +
@@ -57,7 +64,7 @@ public static class PostgresSchema
     /// </summary>
     public static string CreateTable(MetaObject entity, MetaRoot root)
     {
-        var table = entity.DbTable ?? entity.Name;
+        var table = CSharpNaming.Table(entity);
         var pk = entity.PrimaryIdentity();
 
         var lines = new List<string>();
@@ -66,7 +73,7 @@ public static class PostgresSchema
             if (CSharpNaming.ScalarFor(f.SubType) is not null)
             {
                 var notNull = CSharpNaming.IsRequired(entity, f) ? " NOT NULL" : string.Empty;
-                lines.Add($"  {Col(f)} {PgType(f)}{notNull}");
+                lines.Add($"  {CSharpNaming.Column(f)} {PgType(f)}{notNull}");
             }
             else if (f.SubType == FIELD_SUBTYPE_OBJECT)
             {
@@ -108,16 +115,16 @@ public static class PostgresSchema
         if (f.Storage == STORAGE_FLATTENED && f.ObjectRef is { } oref &&
             root.FindObject(CSharpNaming.StripPkg(oref)) is { } nested)
         {
-            var prefix = Col(f) + "_";
+            var prefix = CSharpNaming.Column(f) + "_";
             foreach (var nf in nested.Fields().Where(n => CSharpNaming.ScalarFor(n.SubType) is not null))
             {
                 var notNull = CSharpNaming.IsRequired(nested, nf) ? " NOT NULL" : string.Empty;
-                yield return $"  {prefix}{Col(nf)} {PgType(nf)}{notNull}";
+                yield return $"  {prefix}{CSharpNaming.Column(nf)} {PgType(nf)}{notNull}";
             }
             yield break;
         }
         var topNotNull = CSharpNaming.IsRequired(entity, f) ? " NOT NULL" : string.Empty;
-        yield return $"  {Col(f)} jsonb{topNotNull}";
+        yield return $"  {CSharpNaming.Column(f)} jsonb{topNotNull}";
     }
 
     // A table-level FOREIGN KEY constraint for an enforced reference identity.
@@ -135,8 +142,8 @@ public static class PostgresSchema
             ? fk.TargetFields.Select(tf => ResolveColumn(target, tf)).ToList()
             : [ResolveColumn(target, ResolvedTargetPkField(target, fk))];
 
-        var name = $"{entity.DbTable ?? entity.Name}_{fkCols[0]}_fk";
-        var refTable = target.DbTable ?? target.Name;
+        var name = $"{CSharpNaming.Table(entity)}_{fkCols[0]}_fk";
+        var refTable = CSharpNaming.Table(target);
         return $"  CONSTRAINT {name} FOREIGN KEY ({string.Join(", ", fkCols)}) " +
                $"REFERENCES {refTable} ({string.Join(", ", refCols)})";
     }
@@ -175,7 +182,7 @@ public static class PostgresSchema
                 var (ent, field) = SplitDot(from);
                 baseEntity ??= CSharpNaming.StripPkg(ent);
                 if (CSharpNaming.StripPkg(ent) != baseEntity) { blocked = "passthrough from multiple base entities"; break; }
-                cols.Add($"  {ResolveColumn(root.FindObject(baseEntity), field)} AS {Col(f)}");
+                cols.Add($"  {ResolveColumn(root.FindObject(baseEntity), field)} AS {CSharpNaming.Column(f)}");
             }
             // passthrough WITH via → forward a field from a to-one related entity (correlated subquery).
             else if (origin is MetaPassthroughOrigin ptv && ptv.Via is { } pvia && ptv.From is { } pfrom &&
@@ -187,7 +194,7 @@ public static class PostgresSchema
                 if (ToOneFk(root, baseEntity, relName) is not { } fk)
                 { blocked = $"unresolved to-one FK for @via \"{pvia}\" (base needs an identity.reference)"; break; }
                 var srcCol = ResolveColumn(fk.Target, SplitDot(pfrom).Tail);
-                cols.Add($"  (SELECT {T}.{srcCol} FROM {fk.TargetTable} {T} WHERE {T}.{fk.TargetKeyCol} = {BaseTable()}.{fk.BaseFkCol}) AS {Col(f)}");
+                cols.Add($"  (SELECT {T}.{srcCol} FROM {fk.TargetTable} {T} WHERE {T}.{fk.TargetKeyCol} = {BaseTable()}.{fk.BaseFkCol}) AS {CSharpNaming.Column(f)}");
             }
             // aggregate → count/sum/... over a to-many relationship (correlated subquery).
             else if (origin is MetaAggregateOrigin agg && agg.Agg is { } aggFn && agg.Of is { } of && agg.Via is { } via &&
@@ -199,7 +206,7 @@ public static class PostgresSchema
                 if (ToManyFk(root, baseEntity, relName) is not { } fk)
                 { blocked = $"unresolved to-many FK for @via \"{via}\" (target needs an identity.reference back to {baseEntity})"; break; }
                 var ofCol = ResolveColumn(fk.Target, SplitDot(of).Tail);
-                cols.Add($"  (SELECT {aggFn}({T}.{ofCol}) FROM {fk.TargetTable} {T} WHERE {T}.{fk.FkCol} = {BaseTable()}.{fk.ParentCol}) AS {Col(f)}");
+                cols.Add($"  (SELECT {aggFn}({T}.{ofCol}) FROM {fk.TargetTable} {T} WHERE {T}.{fk.FkCol} = {BaseTable()}.{fk.ParentCol}) AS {CSharpNaming.Column(f)}");
             }
             // collection → array of nested view-objects over a to-many relationship (json_agg).
             else if (origin is MetaCollectionOrigin coll && coll.Via is { } cvia && cvia.Contains('.') && f.ObjectRef is { } objRef)
@@ -214,7 +221,7 @@ public static class PostgresSchema
                     .Where(nf => CSharpNaming.ScalarFor(nf.SubType) is not null)
                     .Select(nf => $"'{nf.Name}', {T}.{ResolveColumn(fk.Target, nf.Name)}");
                 cols.Add($"  (SELECT coalesce(json_agg(json_build_object({string.Join(", ", pairs)})), '[]'::json) " +
-                         $"FROM {fk.TargetTable} {T} WHERE {T}.{fk.FkCol} = {BaseTable()}.{fk.ParentCol}) AS {Col(f)}");
+                         $"FROM {fk.TargetTable} {T} WHERE {T}.{fk.FkCol} = {BaseTable()}.{fk.ParentCol}) AS {CSharpNaming.Column(f)}");
             }
             else
             {
@@ -271,7 +278,7 @@ public static class PostgresSchema
             : baseObj.PrimaryIdentity()?.Fields.FirstOrDefault();
         if (parentField is null) return null;
 
-        return (target, target.DbTable ?? target.Name, fkCol, ResolveColumn(baseObj, parentField));
+        return (target, CSharpNaming.Table(target), fkCol, ResolveColumn(baseObj, parentField));
     }
 
     // Resolve a to-one relationship to the FK that lives on the *base* entity:
@@ -293,7 +300,7 @@ public static class PostgresSchema
             : target.PrimaryIdentity()?.Fields.FirstOrDefault();
         if (targetKeyField is null) return null;
 
-        return (target, target.DbTable ?? target.Name, ResolveColumn(target, targetKeyField), baseFkCol);
+        return (target, CSharpNaming.Table(target), ResolveColumn(target, targetKeyField), baseFkCol);
     }
 
     /// <summary>Full schema DDL: tables for writable entities, then views for projections.</summary>

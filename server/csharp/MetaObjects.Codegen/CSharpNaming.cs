@@ -48,6 +48,18 @@ public static class CSharpNaming
         name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
 
     /// <summary>
+    /// The DB table name for an entity: the <c>dbTable</c> source override, else the
+    /// raw object name. Shared so the schema DDL and the [Table] annotation agree.
+    /// </summary>
+    public static string Table(MetaObject entity) => entity.DbTable ?? entity.Name;
+
+    /// <summary>
+    /// The DB column name for a field: the <c>@dbColumn</c> override, else the raw
+    /// field name. Shared so the schema DDL and the [Column] annotation agree.
+    /// </summary>
+    public static string Column(MetaField field) => field.DbColumn ?? field.Name;
+
+    /// <summary>
     /// The bare object name from a possibly package-qualified reference (the segment
     /// after the last <c>::</c>), for resolving an <c>@objectRef</c>/<c>@references</c>
     /// against <see cref="MetaRoot.FindObject"/>. Shared by the schema + generators.
