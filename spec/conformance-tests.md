@@ -145,6 +145,110 @@ fixture.
    - Adjust `expected.json` to match actual canonical output (most common).
    - File an issue: the Loader's behavior on this input might be wrong.
 
+## Sibling corpora: render and verify
+
+The corpus above (`fixtures/conformance/`) covers **Loader** behavior. Two
+**sibling corpora** cover the FR-004 render/prompt tier. Each is a separate
+top-level directory with its own per-engine runner: a port runs a sibling corpus
+only once it implements that engine, exactly as it runs the loader corpus once it
+has a Loader. They are **not** gated by `conformance-expected-failures.json` —
+that ledger is loader-corpus only.
+
+- **`fixtures/render-conformance/`** — byte-exact render output. Run by TS and C#.
+- **`fixtures/verify-conformance/`** — template drift-check output (below).
+
+### Verify-conformance corpus
+
+`verify` is the build-time drift gate: it parses a template's text and
+cross-checks every `{{var}}`, `{{#section}}`, and `{{> partial}}` against the
+*declared field tree* of the template's payload view-object — catching "a renamed
+field silently broke a prompt". This corpus is the cross-language oracle for that
+check: the same (payload-tree + template + options) MUST produce the same set of
+drift findings in every port that implements `verify`.
+
+Each fixture is a directory under `fixtures/verify-conformance/`:
+
+```
+<fixture-name>/
+├── payload.json              # required — the payload FIELD-TREE (declared shape, not data)
+├── template.mustache         # required — the template text whose vars are checked
+├── partials/<name>.mustache  # optional — partial bodies, referenced as `partials/<name>`
+├── options.json              # optional — { "requiredSlots"?: string[], "provider"?: "with" | "without" }
+└── expected-drift.json       # required — array of { "code", "path" } findings (compared as a sorted multiset)
+```
+
+- **`payload.json`** is a `PayloadField[]` — the recursive field tree a port
+  derives from an `object.value` view-object. A node *with* a `fields` array is a
+  context-pushing field (object / array-of-object); a node *without* is a scalar:
+
+  ```json
+  [
+    { "name": "displayName" },
+    { "name": "posts", "fields": [
+      { "name": "title" },
+      { "name": "tags", "fields": [{ "name": "name" }] }
+    ] }
+  ]
+  ```
+
+  (This differs from `render-conformance`'s `payload.json`, which holds render
+  *data*. Here it is the declared *shape*.)
+
+- **`template.mustache`** is the entry template. Whitespace/literal text is
+  irrelevant to drift — `verify` reads only tag structure, not output.
+
+- **`partials/`** holds partial bodies; `partials/tone.mustache` is resolvable as
+  `{{> partials/tone}}`. Same convention as `render-conformance`.
+
+- **`options.json`** (optional):
+  - `requiredSlots` — slot names that MUST be referenced; an unreferenced one
+    yields `ERR_REQUIRED_SLOT_UNUSED` (a warning-level finding).
+  - `provider` — `"with"` passes a partial provider (built from `partials/`,
+    possibly an empty map); `"without"` passes none, so `{{> ...}}` partials are
+    not checked. **Default**: `"with"` iff a `partials/` directory exists, else
+    `"without"`. The *unresolved-partial* case sets `"provider": "with"` with no
+    `partials/` directory — an empty provider resolves nothing, so a
+    `{{> ...}}` reference becomes `ERR_PARTIAL_UNRESOLVED`.
+
+- **`expected-drift.json`** is a JSON array of `{ "code": "ERR_*", "path": "..." }`,
+  where `code` is one of the three verify codes in
+  [`ERROR-CODES.json`](../fixtures/conformance/ERROR-CODES.json)
+  (`ERR_VAR_NOT_ON_PAYLOAD`, `ERR_PARTIAL_UNRESOLVED`, `ERR_REQUIRED_SLOT_UNUSED`),
+  and `path` is the offending variable path, partial ref, or slot name. The list
+  is compared as a **sorted multiset by `(code, path)`** — order-independent (a
+  port's template-walk order is its own business, and ports need not sort the same
+  way, only consistently within themselves), but duplicates are significant. Author
+  the array sorted for readability (the runner sorts before comparing, so emit/author
+  order is not asserted). An empty array `[]` means "no drift".
+
+Fixture naming: `verify-<scenario>`, kebab-case (both clean and drift scenarios —
+unlike the loader corpus, a verify fixture is not inherently an error case, so the
+`error-` prefix does not apply).
+
+#### Verify-conformance runner
+
+Lives at `server/typescript/packages/render/test/verify-conformance.test.ts`.
+Per fixture directory:
+
+```
+fields   = parse payload.json                       # PayloadField[]
+template = read template.mustache
+opts     = parse options.json (if present)
+provider = (opts.provider ?? (partials/ exists ? "with" : "without")) == "with"
+             ? InMemoryProvider built from partials/   # empty map if no partials/
+             : none
+actual   = verify(template, fields, { provider, requiredSlots: opts.requiredSlots })
+
+assert every expected code is a known verify code              # typo guard
+assert sortByCodePath(actual) == sortByCodePath(expected-drift.json)
+assert verify(...) is identical across two runs                # determinism
+```
+
+Adding a fixture directory adds a test automatically — no code change required.
+Other ports (Java/Python/C#) run this corpus once they implement `verify`; until
+then they simply do not run it, exactly as Python/Java do not run
+`render-conformance` today.
+
 ## What this suite does not test
 
 - Codegen output (Drizzle for TS, jOOQ for Java) — covered by per-language unit tests.

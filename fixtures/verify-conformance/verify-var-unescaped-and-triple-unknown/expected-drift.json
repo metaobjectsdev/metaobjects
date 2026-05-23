@@ -1,0 +1,4 @@
+[
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "alsoNope" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "nope" }
+]
