@@ -1,5 +1,7 @@
 {
   "fixtures": [
+    "error-field-object-storage-flattened-array",
+    "error-field-object-storage-no-object-ref",
     "error-template-prompt-missing-payload-ref",
     "origin-collection-simple",
     "template-output-and-prompt",

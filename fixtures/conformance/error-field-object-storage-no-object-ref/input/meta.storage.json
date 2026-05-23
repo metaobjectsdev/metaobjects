@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "package": "test",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "source.dbTable": { "@name": "orders" } },
+            { "field.object": { "name": "addr", "@storage": "flattened" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}
