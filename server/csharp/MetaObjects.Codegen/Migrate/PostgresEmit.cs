@@ -5,6 +5,12 @@
 //
 // Ported from typescript/packages/migrate-ts/src/emit/postgres.ts. The SQLite
 // recreate-and-copy path and its `recreatedTables` set are out of scope here.
+//
+// NOTE: this emitter's identifier conventions (quoted idents, UPPERCASE types,
+// "{table}_pkey" PK constraint, raw index names) differ from the full-CREATE
+// Schema/PostgresSchema. They must be reconciled before introspection-driven
+// migration ships (see that file's header + the csharp-migration-pipeline-status
+// memory) — ideally by routing full-CREATE through this pipeline too.
 
 using System.Text;
 using static MetaObjects.Persistence.Source.SourceConstants;
