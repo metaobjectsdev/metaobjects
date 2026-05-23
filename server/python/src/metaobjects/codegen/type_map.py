@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.field import field_constants as fc
+from metaobjects.shared.structural import KEY_IS_ARRAY
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,12 @@ _SCALAR: dict[str, PyType] = {
 }
 
 
+def field_is_array(field: MetaField) -> bool:
+    """Array-ness from either form: the node property (programmatic build) or the
+    `@isArray` attr (how metadata loads from JSON — the conformance-fixture form)."""
+    return field.is_array or field.attr(KEY_IS_ARRAY) is True
+
+
 def py_type_for(field: MetaField) -> PyType:
     """The (non-optional) Python annotation for a field, wrapping arrays in list[...]."""
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
@@ -36,6 +43,6 @@ def py_type_for(field: MetaField) -> PyType:
         base = PyType(str(ref)) if ref else PyType("object")
     else:
         base = _SCALAR.get(field.sub_type, PyType("str"))
-    if field.is_array:
+    if field_is_array(field):
         return PyType(f"list[{base.expr}]", base.imports)
     return base

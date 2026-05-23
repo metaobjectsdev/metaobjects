@@ -45,3 +45,10 @@ def test_is_array_wraps_in_list():
     assert pt.expr == "list[str]"
     pt2 = py_type_for(_field(fc.FIELD_SUBTYPE_OBJECT, object_ref="PostBrief", is_array=True))
     assert pt2.expr == "list[PostBrief]"
+
+
+def test_is_array_via_attr_form():
+    # `@isArray` loads as an attr (not the node property) — the conformance-fixture form.
+    f = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_STRING, "x")
+    f.set_attr("isArray", True)
+    assert py_type_for(f).expr == "list[str]"
