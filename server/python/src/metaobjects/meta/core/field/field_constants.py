@@ -29,3 +29,9 @@ FIELD_SUBTYPES = (
     FIELD_SUBTYPE_CLASS,
     FIELD_SUBTYPE_CURRENCY,
 )
+
+# Reserved field attribute names (read by codegen; open attrs at load time).
+FIELD_ATTR_REQUIRED = "required"
+FIELD_ATTR_MAX_LENGTH = "maxLength"
+FIELD_ATTR_OBJECT_REF = "objectRef"
+FIELD_ATTR_DEFAULT = "default"
