@@ -36,11 +36,13 @@
 - **H5 — First Java consumer migration** (3-4 wk)
   Real-world consumer adopts metaobjects-emitted Java; validates the Java path end-to-end.
 - **H6 — Prompt construction: the fourth pillar** (7.0.0)
-  Treat LLM prompts as governed metadata, applying the three disciplines (codegen / runtime / drift)
-  to the artifacts that drive the AI itself. A prompt's payload is declared as a typed projection
-  (reusing the FR-003 projection substrate); its text is external and provider-resolved; a logic-less
-  Mustache render engine produces byte-identical output across TS/Java/Python/C#; and `verify` catches
-  prompt↔payload drift (and payload bloat) at build time. Designed in
+  Make an LLM prompt a declared, deterministic, testable artifact instead of a string assembled
+  imperatively and scattered across services. A prompt's payload is declared as a typed projection
+  (reusing the FR-003 substrate, so payload bloat is a diff); its text is external and provider-resolved;
+  a logic-less Mustache engine renders deterministically — snapshot-testable in CI, byte-stable so a
+  whitespace/ordering change can't break exact-prefix prompt caching, and `verify`'d at build time so a
+  renamed field can't silently degrade a prompt. The render is conformance-gated, so the guarantee holds
+  in every language port (and an eval harness renders exactly what prod ships). Designed in
   `docs/superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md`. Depends on
   FR-003 shipping (≥ 7.0.0-M1). MCP / metadata-graph exposure is where this pillar heads next.
 - **H7 — npm publish** (1 wk)
