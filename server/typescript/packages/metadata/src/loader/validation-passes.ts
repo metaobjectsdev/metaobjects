@@ -17,7 +17,12 @@ import {
   TYPE_IDENTITY,
   TYPE_ORIGIN,
   TYPE_RELATIONSHIP,
+  TYPE_TEMPLATE,
 } from "../shared/base-types.js";
+import {
+  TEMPLATE_ATTR_PAYLOAD_REF,
+  TEMPLATE_ATTR_REQUIRED_SLOTS,
+} from "../template/template-constants.js";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
@@ -64,6 +69,52 @@ export function validateDataGridSortFields(root: MetaData): ParseError[] {
             `dataGrid layout "${layout.name}" on entity "${obj.name}" has @defaultSortField "${sortField}" ` +
             `but no such field exists on "${obj.name}". Available fields: ${[...fieldNames].join(", ")}`,
             { code: "ERR_BAD_DEFAULT_SORT_FIELD" },
+          ),
+        );
+      }
+    }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// template.* @payloadRef / @requiredSlots validation (FR-004 Plan #3, T2)
+//
+// Metadata-internal half of `verify` — runs at load time (no provider needed):
+//   - @payloadRef resolves to a known object (the payload view-object)
+//   - every @requiredSlots entry is a real field on that payload
+// The template-text half (every {{var}} resolves to a payload field) needs the
+// external template text via a provider, so it lives in the build-time
+// `meta verify` step, not here.
+// ---------------------------------------------------------------------------
+
+export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const tmpl of root.ownChildren().filter((c) => c.type === TYPE_TEMPLATE)) {
+    const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+    if (typeof payloadRef !== "string") continue; // absence handled by the required-attr schema check
+    const payload = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === payloadRef);
+    if (!payload) {
+      errors.push(
+        new ParseError(
+          `template "${tmpl.name}" @payloadRef "${payloadRef}" does not resolve to a known object in this model`,
+          { code: "ERR_INVALID_TEMPLATE" },
+        ),
+      );
+      continue;
+    }
+    const fieldNames = new Set(
+      payload.children().filter((c) => c.type === TYPE_FIELD).map((f) => f.name),
+    );
+    const slots = tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_SLOTS);
+    const slotList = Array.isArray(slots) ? slots : typeof slots === "string" ? [slots] : [];
+    for (const slot of slotList) {
+      if (typeof slot === "string" && !fieldNames.has(slot)) {
+        errors.push(
+          new ParseError(
+            `template "${tmpl.name}" @requiredSlots "${slot}" is not a field on payload "${payloadRef}". ` +
+            `Available fields: ${[...fieldNames].join(", ")}`,
+            { code: "ERR_INVALID_TEMPLATE" },
           ),
         );
       }

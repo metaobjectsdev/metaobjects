@@ -27,6 +27,7 @@ describe("template.* metatype", () => {
 
   test("loads template.prompt + template.output with no errors", async () => {
     const { errors } = await load([
+      { "object.value": { name: "AuthorBrief", children: [{ "field.string": { name: "displayName" } }] } },
       {
         "template.output": {
           name: "digest",

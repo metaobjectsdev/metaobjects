@@ -15,7 +15,7 @@ import { composeRegistry } from "../provider.js";
 import { TYPE_METADATA, SUBTYPE_ROOT } from "../shared/base-types.js";
 import { ParseError } from "../errors.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues, validateTemplatePayloadRefs } from "./validation-passes.js";
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
 import { validateAttrSchema } from "../attr-schema-validate.js";
@@ -277,6 +277,10 @@ export class MetaDataLoader {
 
       // Seventh pass: @filter value validation — fields filterable + ops allowed per subtype.
       errors.push(...validateDataGridFilterValues(root));
+
+      // template.* validation — @payloadRef resolves to a known object;
+      // @requiredSlots are real fields on it (FR-004 Plan #3, T2).
+      errors.push(...validateTemplatePayloadRefs(root));
 
       // Eighth pass: attribute-schema validation (Phase A3) — checks each
       // node's @-attributes against its (type, subType) AttrSchema: required
