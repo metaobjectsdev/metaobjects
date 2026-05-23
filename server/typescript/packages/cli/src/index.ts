@@ -1,9 +1,33 @@
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { log } from "./lib/log.js";
 export { defineConfig } from "@metaobjectsdev/codegen-ts";
 export type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
-const VERSION = "0.2.0";
+// Derive the version from the CLI's own package.json so it never goes stale.
+// The compiled entry is dist/src/index.js while package.json sits at the package
+// root, so walk up from the module location until @metaobjectsdev/cli's manifest.
+function readCliVersion(): string {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 6; i++) {
+    const candidate = join(dir, "package.json");
+    if (existsSync(candidate)) {
+      try {
+        const pkg = JSON.parse(readFileSync(candidate, "utf8")) as { name?: string; version?: string };
+        if (pkg.name === "@metaobjectsdev/cli" && pkg.version) return pkg.version;
+      } catch {
+        // not our manifest / unreadable — keep walking up
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return "0.0.0";
+}
+
+const VERSION = readCliVersion();
 
 const HELP_TEXT = `meta — MetaObjects CLI (v${VERSION})
 

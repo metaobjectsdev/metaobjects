@@ -1,7 +1,7 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`snapshot stability help output is stable 1`] = `
-"meta — MetaObjects CLI (v0.2.0)
+exports[`snapshot stability help output is stable (version-normalized) 1`] = `
+"meta — MetaObjects CLI (vX.Y.Z)
 
 USAGE:
   meta <command> [flags]
@@ -41,5 +41,3 @@ Other commands (ingest, mcp, serve, install-hooks, audit, capture, promote)
 ship in later sub-projects. See https://metaobjects.com for docs.
 "
 `;
-
-exports[`snapshot stability version output is stable 1`] = `"0.2.0"`;

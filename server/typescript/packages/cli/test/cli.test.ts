@@ -79,7 +79,7 @@ describe("run() — top-level dispatcher", () => {
 });
 
 describe("snapshot stability", () => {
-  test("help output is stable", async () => {
+  test("help output is stable (version-normalized)", async () => {
     const captured: string[] = [];
     const origLog = console.log;
     console.log = (msg: string) => { captured.push(msg); };
@@ -88,10 +88,12 @@ describe("snapshot stability", () => {
     } finally {
       console.log = origLog;
     }
-    expect(captured.join("\n")).toMatchSnapshot();
+    // Normalize the dynamic version so the snapshot tracks help structure, not the release number.
+    const normalized = captured.join("\n").replace(/\(v[^)]+\)/, "(vX.Y.Z)");
+    expect(normalized).toMatchSnapshot();
   });
 
-  test("version output is stable", async () => {
+  test("version output is a valid semver", async () => {
     const captured: string[] = [];
     const origLog = console.log;
     console.log = (msg: string) => { captured.push(msg); };
@@ -100,6 +102,6 @@ describe("snapshot stability", () => {
     } finally {
       console.log = origLog;
     }
-    expect(captured.join("\n")).toMatchSnapshot();
+    expect(captured.join("\n").trim()).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
   });
 });
