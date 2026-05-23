@@ -10,7 +10,6 @@
     "ERR_UNRESOLVED_SUPER": "An extends/super reference names a node that does not exist.",
     "ERR_INVALID_SUBTYPE_CHILD": "A child node type/subType is not permitted under its parent.",
     "ERR_UNKNOWN_ATTR": "An attribute name is not declared on the node's type.",
-    "ERR_RESERVED_ATTR": "A reserved structural keyword (name/package/extends/abstract/overlay/isArray/children/value) was written as an @-prefixed attribute; reserved words must be bare (ADR-0006).",
     "ERR_MISSING_REQUIRED_ATTR": "A required attribute is absent from the node.",
     "ERR_BAD_ATTR_VALUE": "An attribute value fails its declared schema (type/range).",
     "ERR_BAD_DEFAULT_SORT_FIELD": "A layout @defaultSortField names a field absent from the entity.",
