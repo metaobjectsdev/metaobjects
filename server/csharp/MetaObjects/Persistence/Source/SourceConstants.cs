@@ -32,4 +32,16 @@ public static class SourceConstants
     /// in generic source accessors instead of the subtype-specific aliases above.
     /// </summary>
     public const string SOURCE_ATTR_NAME          = "name";
+
+    /// <summary>
+    /// Optional DB schema attr on source[dbTable] / source[dbView]. Postgres uses
+    /// this to namespace tables/views. SQLite has no schema concept and rejects
+    /// any non-default value at the migrate-emit boundary. Default for Postgres: "public".
+    /// Free-form name (not an enum); carried through the loader. Cross-language
+    /// metamodel vocabulary per CLAUDE.md "Cross-language porting".
+    /// </summary>
+    public const string SOURCE_ATTR_SCHEMA = "schema";
+
+    /// <summary>Default Postgres schema when @schema is omitted from a source.</summary>
+    public const string DEFAULT_DB_SCHEMA_POSTGRES = "public";
 }
