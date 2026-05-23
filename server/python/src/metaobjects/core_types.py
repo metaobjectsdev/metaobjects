@@ -34,7 +34,7 @@ from .meta.presentation.layout.meta_layout import MetaLayout
 from .meta.presentation.view.meta_view import MetaView
 from .meta.presentation.view.view_constants import VIEW_SUBTYPES
 from .provider import Provider
-from .registry import AttrSchema, ChildRule, TypeDefinition
+from .registry import AttrSchema, ChildRule, NodeFactory, TypeDefinition
 from .shared.base_types import (
     SUBTYPE_BASE,
     SUBTYPE_ROOT,
@@ -52,117 +52,121 @@ from .shared.base_types import (
 
 core_provider = Provider("metaobjects-core-types")
 
+
+def _register_subtypes(
+    provider: Provider,
+    type_name: str,
+    subtypes: tuple[str, ...],
+    factory: NodeFactory,
+    child_rules: list[ChildRule] | None = None,
+    attrs: list[AttrSchema] | None = None,
+) -> None:
+    """Register one TypeDefinition per subtype. Centralises loop boilerplate only —
+    all type knowledge (subtypes tuple, node class, child rules) stays with the caller."""
+    for sub in subtypes:
+        provider.add(
+            TypeDefinition(
+                type=type_name,
+                sub_type=sub,
+                factory=factory,
+                child_rules=list(child_rules) if child_rules else [],
+                attrs=list(attrs) if attrs else [],
+            )
+        )
+
+
 # metadata.root
 core_provider.add(
     TypeDefinition(
         type=TYPE_METADATA,
         sub_type=SUBTYPE_ROOT,
-        factory=lambda t, s, n: MetaRoot(t, s, n),
+        factory=MetaRoot,
         child_rules=[ChildRule(TYPE_OBJECT, "*")],
     )
 )
 
 # object.* (entity, value)
-for _sub in OBJECT_SUBTYPES:
-    core_provider.add(
-        TypeDefinition(
-            type=TYPE_OBJECT,
-            sub_type=_sub,
-            factory=lambda t, s, n: MetaObject(t, s, n),
-            child_rules=[
-                ChildRule(TYPE_FIELD, "*"),
-                ChildRule(TYPE_IDENTITY, "*"),
-                ChildRule(TYPE_ATTR, "*"),
-                ChildRule(TYPE_SOURCE, "*"),
-                ChildRule(TYPE_RELATIONSHIP, "*"),
-                ChildRule(TYPE_LAYOUT, "*"),
-            ],
-        )
-    )
+_register_subtypes(
+    core_provider,
+    TYPE_OBJECT,
+    OBJECT_SUBTYPES,
+    factory=MetaObject,
+    child_rules=[
+        ChildRule(TYPE_FIELD, "*"),
+        ChildRule(TYPE_IDENTITY, "*"),
+        ChildRule(TYPE_ATTR, "*"),
+        ChildRule(TYPE_SOURCE, "*"),
+        ChildRule(TYPE_RELATIONSHIP, "*"),
+        ChildRule(TYPE_LAYOUT, "*"),
+    ],
+)
 
 # field.* (one factory, data_type by subtype)
-for _sub in fc.FIELD_SUBTYPES:
-    core_provider.add(
-        TypeDefinition(
-            type=TYPE_FIELD,
-            sub_type=_sub,
-            factory=lambda t, s, n: MetaField(t, s, n),
-            child_rules=[
-                ChildRule(TYPE_ATTR, "*"),
-                ChildRule(TYPE_ORIGIN, "*"),
-                ChildRule(TYPE_VIEW, "*"),
-            ],
-        )
-    )
+_register_subtypes(
+    core_provider,
+    TYPE_FIELD,
+    fc.FIELD_SUBTYPES,
+    factory=MetaField,
+    child_rules=[
+        ChildRule(TYPE_ATTR, "*"),
+        ChildRule(TYPE_ORIGIN, "*"),
+        ChildRule(TYPE_VIEW, "*"),
+    ],
+)
 
 # attr.* (factory resolved per subtype via the attr-class map at parse time)
-for _sub in ATTR_SUBTYPES:
-    core_provider.add(
-        TypeDefinition(
-            type=TYPE_ATTR,
-            sub_type=_sub,
-            factory=(lambda t, s, n: attr_class_for(s)(t, s, n)),
-        )
-    )
+_register_subtypes(
+    core_provider,
+    TYPE_ATTR,
+    ATTR_SUBTYPES,
+    factory=lambda t, s, n: attr_class_for(s)(t, s, n),
+)
 
 # identity.* (primary/secondary); @fields is a required stringArray
-_identity_attrs = [
-    AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRINGARRAY, required=True)
-]
-for _sub in IDENTITY_SUBTYPES:
-    core_provider.add(
-        TypeDefinition(
-            type=TYPE_IDENTITY,
-            sub_type=_sub,
-            factory=lambda t, s, n: MetaIdentity(t, s, n),
-            attrs=list(_identity_attrs),
-            child_rules=[ChildRule(TYPE_ATTR, "*")],
-        )
-    )
+_register_subtypes(
+    core_provider,
+    TYPE_IDENTITY,
+    IDENTITY_SUBTYPES,
+    factory=MetaIdentity,
+    attrs=[AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRINGARRAY, required=True)],
+    child_rules=[ChildRule(TYPE_ATTR, "*")],
+)
 
 # relationship.* (base, association, aggregation, composition)
-for _sub in RELATIONSHIP_SUBTYPES:
-    core_provider.add(
-        TypeDefinition(
-            type=TYPE_RELATIONSHIP,
-            sub_type=_sub,
-            factory=lambda t, s, n: MetaRelationship(t, s, n),
-            child_rules=[ChildRule(TYPE_ATTR, "*")],
-        )
-    )
+_register_subtypes(
+    core_provider,
+    TYPE_RELATIONSHIP,
+    RELATIONSHIP_SUBTYPES,
+    factory=MetaRelationship,
+    child_rules=[ChildRule(TYPE_ATTR, "*")],
+)
 
 # source.* (base, dbTable, dbView); @name + @schema flow through as base attrs
-for _sub in SOURCE_SUBTYPES:
-    core_provider.add(
-        TypeDefinition(
-            type=TYPE_SOURCE,
-            sub_type=_sub,
-            factory=lambda t, s, n: MetaSource(t, s, n),
-            child_rules=[ChildRule(TYPE_ATTR, "*")],
-        )
-    )
+_register_subtypes(
+    core_provider,
+    TYPE_SOURCE,
+    SOURCE_SUBTYPES,
+    factory=MetaSource,
+    child_rules=[ChildRule(TYPE_ATTR, "*")],
+)
 
 # origin.* (base, passthrough, aggregate); @from/@via/@agg/@of flow through as base attrs
-for _sub in ORIGIN_SUBTYPES:
-    core_provider.add(
-        TypeDefinition(
-            type=TYPE_ORIGIN,
-            sub_type=_sub,
-            factory=lambda t, s, n: MetaOrigin(t, s, n),
-            child_rules=[ChildRule(TYPE_ATTR, "*")],
-        )
-    )
+_register_subtypes(
+    core_provider,
+    TYPE_ORIGIN,
+    ORIGIN_SUBTYPES,
+    factory=MetaOrigin,
+    child_rules=[ChildRule(TYPE_ATTR, "*")],
+)
 
 # view.* (base, text, textarea, date, currency); @locale flows through as a base attr
-for _sub in VIEW_SUBTYPES:
-    core_provider.add(
-        TypeDefinition(
-            type=TYPE_VIEW,
-            sub_type=_sub,
-            factory=lambda t, s, n: MetaView(t, s, n),
-            child_rules=[ChildRule(TYPE_ATTR, "*")],
-        )
-    )
+_register_subtypes(
+    core_provider,
+    TYPE_VIEW,
+    VIEW_SUBTYPES,
+    factory=MetaView,
+    child_rules=[ChildRule(TYPE_ATTR, "*")],
+)
 
 # layout.* (base, dataGrid); @columns is a stringArray — scalar desugars to array;
 # @filter is a FilterAttr — shorthand values desugar to op-objects
@@ -176,7 +180,7 @@ for _sub in LAYOUT_SUBTYPES:
         TypeDefinition(
             type=TYPE_LAYOUT,
             sub_type=_sub,
-            factory=lambda t, s, n: MetaLayout(t, s, n),
+            factory=MetaLayout,
             attrs=_attrs,
             child_rules=[ChildRule(TYPE_ATTR, "*")],
         )
