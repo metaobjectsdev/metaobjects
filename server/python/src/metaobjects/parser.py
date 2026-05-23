@@ -20,8 +20,6 @@ from .shared.structural import (
     KEY_VALUE,
 )
 
-_RESERVED = {KEY_NAME, KEY_PACKAGE, KEY_EXTENDS, KEY_ABSTRACT, KEY_IS_ARRAY, KEY_CHILDREN}
-
 
 @dataclass
 class ParseResult:
