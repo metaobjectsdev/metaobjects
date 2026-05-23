@@ -345,6 +345,33 @@ describe("field.enum — @values content validation", () => {
     expect(badAttrErrors).toHaveLength(0);
   });
 
+  it("emits ERR_BAD_ATTR_VALUE for an empty @values array", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "test",
+        children: [
+          {
+            "object.entity": {
+              name: "Order",
+              children: [
+                { "field.long": { name: "id" } },
+                {
+                  "field.enum": {
+                    name: "status",
+                    "@values": [],
+                  },
+                },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const codes = errors.map((e) => (e as { code?: string }).code);
+    expect(codes).toContain("ERR_BAD_ATTR_VALUE");
+  });
+
   it("does NOT emit an error for underscore-prefixed members (valid identifiers)", async () => {
     const { errors } = await load({
       "metadata.root": {

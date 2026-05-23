@@ -148,27 +148,38 @@ function validateNode(
   if (node.type === TYPE_FIELD && node.subType === FIELD_SUBTYPE_ENUM) {
     const rawValues = node.ownAttrs().get(FIELD_ATTR_VALUES);
     if (Array.isArray(rawValues)) {
-      const seen = new Set<string>();
-      for (const member of rawValues) {
-        if (typeof member !== "string") continue; // already rejected by Check 2
-        if (!ENUM_MEMBER_PATTERN.test(member)) {
-          errors.push(
-            new ParseError(
-              `${nodeLabel(node)} attribute '@${FIELD_ATTR_VALUES}' member '${member}' ` +
-                `is not a valid identifier (must match ^[A-Za-z_][A-Za-z0-9_]*$). ` +
-                `Non-identifier-safe member strings require a symbol↔value mapping (deferred).`,
-              { code: "ERR_BAD_ATTR_VALUE" },
-            ),
-          );
-        } else if (seen.has(member)) {
-          errors.push(
-            new ParseError(
-              `${nodeLabel(node)} attribute '@${FIELD_ATTR_VALUES}' has duplicate member '${member}'.`,
-              { code: "ERR_BAD_ATTR_VALUE" },
-            ),
-          );
-        } else {
-          seen.add(member);
+      if (rawValues.length === 0) {
+        errors.push(
+          new ParseError(
+            `${nodeLabel(node)} must declare at least one value in '@${FIELD_ATTR_VALUES}'.`,
+            { code: "ERR_BAD_ATTR_VALUE" },
+          ),
+        );
+      } else {
+        const seen = new Set<string>();
+        for (const member of rawValues) {
+          // Defensive: StringArrayAttr coerce already stringifies every element,
+          // so non-strings won't occur here.
+          if (typeof member !== "string") continue;
+          if (!ENUM_MEMBER_PATTERN.test(member)) {
+            errors.push(
+              new ParseError(
+                `${nodeLabel(node)} attribute '@${FIELD_ATTR_VALUES}' member '${member}' ` +
+                  `is not a valid identifier (must match ${ENUM_MEMBER_PATTERN.source}). ` +
+                  `Non-identifier-safe member strings require a symbol↔value mapping (deferred).`,
+                { code: "ERR_BAD_ATTR_VALUE" },
+              ),
+            );
+          } else if (seen.has(member)) {
+            errors.push(
+              new ParseError(
+                `${nodeLabel(node)} attribute '@${FIELD_ATTR_VALUES}' has duplicate member '${member}'.`,
+                { code: "ERR_BAD_ATTR_VALUE" },
+              ),
+            );
+          } else {
+            seen.add(member);
+          }
         }
       }
     }
