@@ -26,6 +26,11 @@
       <version>${kotlin.version}</version>
     </dependency>
     <dependency>
+      <groupId>org.jetbrains.kotlinx</groupId>
+      <artifactId>kotlinx-coroutines-jdk8</artifactId>
+      <version>1.9.0</version>
+    </dependency>
+    <dependency>
       <groupId>com.metaobjects</groupId>
       <artifactId>metaobjects-omdb</artifactId>
       <version>${project.version}</version>
