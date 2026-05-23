@@ -14,6 +14,8 @@ from .meta.core.identity.identity_constants import (
 from .meta.core.identity.meta_identity import MetaIdentity
 from .meta.core.object.meta_object import MetaObject
 from .meta.core.object.object_constants import OBJECT_SUBTYPES
+from .meta.core.relationship.meta_relationship import MetaRelationship
+from .meta.core.relationship.relationship_constants import RELATIONSHIP_SUBTYPES
 from .meta.meta_root import MetaRoot
 from .meta.persistence.source.meta_source import MetaSource
 from .meta.persistence.source.source_constants import SOURCE_SUBTYPES
@@ -27,6 +29,7 @@ from .shared.base_types import (
     TYPE_IDENTITY,
     TYPE_METADATA,
     TYPE_OBJECT,
+    TYPE_RELATIONSHIP,
     TYPE_SOURCE,
 )
 
@@ -54,6 +57,7 @@ for _sub in OBJECT_SUBTYPES:
                 ChildRule(TYPE_IDENTITY, "*"),
                 ChildRule(TYPE_ATTR, "*"),
                 ChildRule(TYPE_SOURCE, "*"),
+                ChildRule(TYPE_RELATIONSHIP, "*"),
             ],
         )
     )
@@ -90,6 +94,17 @@ for _sub in IDENTITY_SUBTYPES:
             sub_type=_sub,
             factory=lambda t, s, n: MetaIdentity(t, s, n),
             attrs=list(_identity_attrs),
+            child_rules=[ChildRule(TYPE_ATTR, "*")],
+        )
+    )
+
+# relationship.* (base, association, aggregation, composition)
+for _sub in RELATIONSHIP_SUBTYPES:
+    core_provider.add(
+        TypeDefinition(
+            type=TYPE_RELATIONSHIP,
+            sub_type=_sub,
+            factory=lambda t, s, n: MetaRelationship(t, s, n),
             child_rules=[ChildRule(TYPE_ATTR, "*")],
         )
     )

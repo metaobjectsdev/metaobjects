@@ -16,7 +16,6 @@
     "error-origin-bad-aggregate-fn",
     "error-origin-bad-via-path",
     "error-prompt-template-missing-payload-ref",
-    "error-unknown-relationship-subtype",
     "extends-abstract-base",
     "extends-cross-file",
     "layout-data-grid-basic",
@@ -31,7 +30,6 @@
     "overlay-same-object-different-files",
     "prompt-fragment-and-template",
     "prompt-template-simple",
-    "relationship-one-to-many",
     "source-db-view-projection",
     "subtype-entity-missing-primary-warning",
     "warning-filterable-no-index"
