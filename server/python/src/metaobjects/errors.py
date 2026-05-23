@@ -26,6 +26,11 @@ class ErrorCode(str, Enum):
     ERR_MALFORMED_YAML = "ERR_MALFORMED_YAML"
     ERR_INVALID_ORIGIN = "ERR_INVALID_ORIGIN"
     ERR_BAD_ATTR_FILTER = "ERR_BAD_ATTR_FILTER"
+    # Cross-language vocabulary for features other ports added (FR-003 storage, FR-004 template);
+    # the Python loader does not emit these yet, but the enum tracks the shared corpus codes.
+    ERR_INVALID_TEMPLATE = "ERR_INVALID_TEMPLATE"
+    ERR_STORAGE_FLATTENED_ARRAY = "ERR_STORAGE_FLATTENED_ARRAY"
+    ERR_STORAGE_WITHOUT_OBJECT_REF = "ERR_STORAGE_WITHOUT_OBJECT_REF"
     ERR_UNKNOWN = "ERR_UNKNOWN"
 
 

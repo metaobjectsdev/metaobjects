@@ -1,6 +1,7 @@
 {
   "fixtures": [
     "error-template-prompt-missing-payload-ref",
+    "origin-collection-simple",
     "template-output-and-prompt",
     "template-prompt-simple"
   ]
