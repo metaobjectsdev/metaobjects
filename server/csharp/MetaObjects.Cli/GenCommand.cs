@@ -18,9 +18,9 @@ public static class GenCommand
         public bool Ok => LoadErrors.Count == 0 && Result is not null;
     }
 
-    /// <summary>The default generator set (data layer). Extended as more generators land.</summary>
+    /// <summary>The default generator set. Extended as more generators land.</summary>
     public static IReadOnlyList<IGenerator> DefaultGenerators() =>
-        [new EntityGenerator(), new DbContextGenerator()];
+        [new EntityGenerator(), new DbContextGenerator(), new RoutesGenerator()];
 
     public static Outcome Run(string metadataDir, string outDir, string ns)
     {

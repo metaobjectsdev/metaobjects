@@ -31,21 +31,9 @@ public sealed class DbContextGenerator : IGenerator
         sb.AppendLine("    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }");
         sb.AppendLine();
         foreach (var name in entities)
-            sb.AppendLine($"    public DbSet<{name}> {Pluralize(name)} {{ get; set; }} = default!;");
+            sb.AppendLine($"    public DbSet<{name}> {CSharpNaming.Pluralize(name)} {{ get; set; }} = default!;");
         sb.AppendLine("}");
 
         yield return new EmittedFile("AppDbContext.g.cs", sb.ToString());
-    }
-
-    // Cosmetic DbSet property pluralization (the table name comes from [Table]).
-    private static string Pluralize(string name)
-    {
-        if (name.EndsWith("s", StringComparison.Ordinal) || name.EndsWith("x", StringComparison.Ordinal) ||
-            name.EndsWith("z", StringComparison.Ordinal) || name.EndsWith("ch", StringComparison.Ordinal) ||
-            name.EndsWith("sh", StringComparison.Ordinal))
-            return name + "es";
-        if (name.Length > 1 && name.EndsWith("y", StringComparison.Ordinal) && !"aeiou".Contains(name[^2]))
-            return name[..^1] + "ies";
-        return name + "s";
     }
 }
