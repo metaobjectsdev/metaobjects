@@ -38,17 +38,16 @@ Within a node body, keys appear in this exact order in the canonical form:
 3. `extends` — when set
 4. `abstract` — when `true`
 5. `overlay` — when `true`
-6. `isArray` — when `true`
-7. inline attributes (bare) — alphabetical order within this section
-   (e.g. `currency`, `default`, `fields`, `locale`, `objectRef`, `schema`)
+6. `isArray` — when `true` (structural, NOT an `@`-attr)
+7. `@`-prefixed attributes — alphabetical order within this section
+   (e.g. `@currency`, `@dbColumn`, `@default`, `@fields`, `@locale`, `@objectRef`)
 8. `children` — when non-empty (declaration order, NOT alphabetized)
 
-All keys are **bare — there is no `@` sigil** (ADR-0006). The reserved structural keywords are
-exactly the closed set listed above (1–6, 8); **any other bare key is an inline attribute**.
-Classification is reserved-set membership, so no marker is needed. An `@`-prefixed key is
-rejected (`ERR_AT_PREFIX_KEY`) in every language port — keys are bare; write `schema`, not
-`@schema`. Array-ness is the bare reserved `isArray` (or, in YAML, the `[]` key-suffix sugar);
-never a sigiled key.
+The reserved structural keys are exactly those listed above. In **canonical JSON**, everything
+else is an `@`-prefixed attribute; `@`-prefixing a reserved word (e.g. `@isArray`) is invalid
+(`ERR_RESERVED_ATTR`). **YAML authoring is sigil-free** (ADR-0006): the same closed reserved set
+is bare, every other key is a bare attribute, and the desugar re-adds the `@` when lowering to
+this canonical form. Array-ness is the bare reserved `isArray` (YAML: the `[]` key-suffix sugar).
 
 ## Package + file organization
 

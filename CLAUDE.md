@@ -404,7 +404,7 @@ Preserve the following contracts exactly across all language ports:
 - Dotted-path syntax for `@via`: `"Program.weeks"` or `"Program.weeks.workouts"`.
 - Dotted-path syntax for `@of`: `"Week.id"`.
 - Package segments: `::` separator — `acme::common::id`.
-- Metadata keys are **bare — no `@` sigil** (ADR-0006). Reserved structural keywords are a closed set (`name`/`package`/`extends`/`abstract`/`overlay`/`isArray`/`children`/`value`); any other bare key is an inline attribute (classified by reserved-set membership). An `@`-prefixed key is rejected (`ERR_AT_PREFIX_KEY`) — write `schema`, not `@schema`. Array-ness is the bare reserved `isArray` (YAML: the `[]` key-suffix sugar). See [ADR-0006](spec/decisions/ADR-0006-reserved-keywords-vs-inline-attributes.md).
+- **Canonical JSON:** reserved structural keywords are bare (`name`/`package`/`extends`/`abstract`/`overlay`/`isArray`/`children`/`value`); inline attributes are `@`-prefixed. `@`-prefixing a reserved word (e.g. `@isArray`) is invalid (`ERR_RESERVED_ATTR`). **YAML authoring is sigil-free** — bare attrs; the desugar re-adds `@` when lowering to canonical JSON; canonical JSON is the sole cross-language interchange (YAML is a TS-only front-end). See [ADR-0006](spec/decisions/ADR-0006-ai-first-yaml-authoring.md).
 
 **Loader pipeline:**
 - `extends:` resolution happens after all files are loaded (deferred, not eager).
