@@ -102,8 +102,8 @@ public class AllMetaDataTypesRegistrationTest extends SharedRegistryTestBase {
 
     @Test
     public void testObjectTypesRegistered() {
-        // Verify object types are registered (entity/value are the declared subtypes;
-        // pojo/map/proxy are resolver-selected representations, not registered subtypes — ADR-0005)
+        // Verify object types are registered (entity/value are the only declared subtypes;
+        // pojo/map/proxy are retired — representation is a built-in hybrid + @objectAdapter hook, ADR-0005)
         assertTrue("entity object type should be registered",
                   sharedRegistry.isRegistered("object", "entity"));
         assertTrue("value object type should be registered",

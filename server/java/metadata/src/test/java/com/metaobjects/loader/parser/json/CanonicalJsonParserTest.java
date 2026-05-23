@@ -63,9 +63,9 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
     /**
      * Step 1 / 4: Reads a canonical single-entity document.
      *
-     * <p>Uses {@code object.entity} (the declared semantic subtype). The loader's
-     * representation resolver picks the backing impl (ValueMetaObject by default);
-     * {@code object.map} is no longer a registered subtype — ADR-0005.</p>
+     * <p>Uses {@code object.entity} (a declared semantic subtype, backed by
+     * {@code EntityMetaObject}); {@code object.map} is no longer a registered
+     * subtype — ADR-0005.</p>
      */
     @Test
     public void readsCanonicalSingleEntity() {

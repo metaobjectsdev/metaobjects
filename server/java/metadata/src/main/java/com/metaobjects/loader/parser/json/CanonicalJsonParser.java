@@ -10,7 +10,6 @@ import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.parser.BaseMetaDataParser;
 import com.metaobjects.loader.parser.MetaDataFileParser;
-import com.metaobjects.object.MetaObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

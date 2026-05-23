@@ -198,9 +198,9 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
         try {
             return method.invoke(obj);
         } catch (InvocationTargetException e) {
-            throw new RuntimeException("Invocation Target Exception setting field [" + f + "] on object [" + obj.getClass() + "]: " + e.getMessage(), e);
+            throw new RuntimeException("Invocation Target Exception reading field [" + f + "] on object [" + obj.getClass() + "]: " + e.getMessage(), e);
         } catch (IllegalAccessException e) {
-            throw new RuntimeException("Illegal Access Exception setting field [" + f + "] on object [" + obj.getClass() + "]: " + e.getMessage(), e);
+            throw new RuntimeException("Illegal Access Exception reading field [" + f + "] on object [" + obj.getClass() + "]: " + e.getMessage(), e);
         }
     }
 
@@ -257,6 +257,9 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
                 ? getValueWithReflection(f, obj)
                 : ((DataObjectBase) obj)._getObjectAttribute(f.getName());
         }
+        if (obj instanceof java.util.Map) {
+            return ((java.util.Map<?, ?>) obj).get(f.getName());
+        }
         return getValueWithReflection(f, obj);
     }
 
@@ -268,6 +271,12 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
         if (obj instanceof DataObjectBase) {
             if (hasSetterMethod(f, obj.getClass())) setValueWithReflection(f, obj, value);
             else ((DataObjectBase) obj)._setObjectAttribute(f.getName(), value);
+            return;
+        }
+        if (obj instanceof java.util.Map) {
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> m = (java.util.Map<String, Object>) obj;
+            m.put(f.getName(), value);
             return;
         }
         setValueWithReflection(f, obj, value);
