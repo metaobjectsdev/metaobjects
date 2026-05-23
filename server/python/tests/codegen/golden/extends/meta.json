@@ -1,0 +1,8 @@
+{ "metadata.root": { "package": "acme::common", "children": [
+  { "object.entity": { "name": "BaseEntity", "abstract": true, "children": [
+    { "field.int": { "name": "id", "@required": true } }
+  ]}},
+  { "object.entity": { "name": "Program", "extends": "BaseEntity", "children": [
+    { "field.string": { "name": "name", "@required": true } }
+  ]}}
+]}}

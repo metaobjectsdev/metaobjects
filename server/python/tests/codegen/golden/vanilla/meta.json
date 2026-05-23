@@ -1,0 +1,6 @@
+{ "metadata.root": { "package": "acme::users", "children": [
+  { "object.entity": { "name": "Subscriber", "children": [
+    { "field.string": { "name": "email", "@required": true, "@maxLength": 200 } },
+    { "field.boolean": { "name": "subscribed" } }
+  ]}}
+]}}
