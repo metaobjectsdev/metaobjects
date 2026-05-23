@@ -77,14 +77,7 @@ public sealed class EntityGenerator : IGenerator
 
         // Nested enum declarations (before the class properties, as C# enum members
         // must be declared before they are referenced by property types).
-        var enumDecls = new List<string>();
-        foreach (var field in entity.Fields())
-        {
-            if (field.SubType == FIELD_SUBTYPE_ENUM)
-            {
-                if (EmitNestedEnum(entity, field) is { } decl) enumDecls.Add(decl);
-            }
-        }
+        var enumDecls = CollectEnumDecls(entity);
 
         // Members in declared order: scalar columns + enum-typed props + (entities only) owned-type navs.
         var members = new List<string>();
@@ -96,7 +89,7 @@ public sealed class EntityGenerator : IGenerator
             }
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
             {
-                members.Add(EnumProperty(entity, field, pkFields));
+                members.Add(EnumProperty(entity, field));
             }
             else if (field.SubType == FIELD_SUBTYPE_OBJECT)
             {
@@ -139,14 +132,7 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine($"public class {className}");
         sb.AppendLine("{");
 
-        var enumDeclsVo = new List<string>();
-        foreach (var field in vo.Fields())
-        {
-            if (field.SubType == FIELD_SUBTYPE_ENUM)
-            {
-                if (EmitNestedEnum(vo, field) is { } decl) enumDeclsVo.Add(decl);
-            }
-        }
+        var enumDeclsVo = CollectEnumDecls(vo);
 
         var members = new List<string>();
         foreach (var field in vo.Fields())
@@ -154,7 +140,7 @@ public sealed class EntityGenerator : IGenerator
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
                 members.Add(ScalarProperty(vo, field, [], withAttributes: false));
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
-                members.Add(EnumProperty(vo, field, []));
+                members.Add(EnumProperty(vo, field));
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx) is { } nav)
                 members.Add(nav);
         }
@@ -170,21 +156,28 @@ public sealed class EntityGenerator : IGenerator
         return new EmittedFile($"{className}.g.cs", sb.ToString());
     }
 
-    // A nested C# enum declaration for an enum-subtype field.
-    // Returns null when the field has no resolvable @values (warns instead of crashing).
-    // The enum name uses the abstract super's name when the field extends one (so all
-    // fields extending the same abstract enum share one C# enum type).
-    private static string? EmitNestedEnum(MetaObject entity, MetaField field)
+    // Collects nested C# enum declarations for all enum-subtype fields on an object,
+    // deduplicating by type name so two fields that extend the same abstract enum emit
+    // only one declaration (prevents CS0102 "already contains a definition for '<Name>'").
+    private static List<string> CollectEnumDecls(MetaObject owner)
     {
-        var values = field.EffectiveEnumValues;
-        if (values is null || values.Count == 0) return null;
-        var typeName = CSharpNaming.EnumTypeName(entity, field);
-        var members = string.Join(", ", values);
-        return $"    public enum {typeName} {{ {members} }}";
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var decls = new List<string>();
+        foreach (var field in owner.Fields())
+        {
+            if (field.SubType != FIELD_SUBTYPE_ENUM) continue;
+            var values = field.EffectiveEnumValues;
+            if (values is null || values.Count == 0) continue;
+            var typeName = CSharpNaming.EnumTypeName(owner, field);
+            if (!seen.Add(typeName)) continue;   // skip duplicate type names
+            var members = string.Join(", ", values);
+            decls.Add($"    public enum {typeName} {{ {members} }}");
+        }
+        return decls;
     }
 
     // A property for an enum-subtype field. The property type is the nested enum name.
-    private static string EnumProperty(MetaObject entity, MetaField field, IReadOnlyList<string> pkFields)
+    private static string EnumProperty(MetaObject entity, MetaField field)
     {
         var typeName = CSharpNaming.EnumTypeName(entity, field);
         var propName = CSharpNaming.Pascal(field.Name);

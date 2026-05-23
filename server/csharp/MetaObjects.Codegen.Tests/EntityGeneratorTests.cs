@@ -232,6 +232,50 @@ public class EntityGeneratorTests
     }
 
     [Fact]
+    public void Two_fields_extending_same_abstract_enum_emit_declaration_exactly_once()
+    {
+        // Regression: without dedup, two fields both resolving to "OrderStatus" produce
+        // two `public enum OrderStatus { ... }` declarations → CS0102 (duplicate type).
+        // Field names differ from the abstract name so the property names don't shadow
+        // the nested enum type (avoiding a separate CS0102 from property/type collision).
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "field.enum": { "name": "OrderStatus", "abstract": true, "@values": ["DRAFT", "PUBLISHED"] } },
+          { "object.entity": { "name": "Order", "children": [
+            { "source.dbTable": { "@name": "orders" } },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "currentStatus",  "extends": "OrderStatus" } },
+            { "field.enum": { "name": "previousStatus", "extends": "OrderStatus" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemorySource(model, id: "m.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = EnumCtx(r.Root);
+        var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
+
+        // Exactly one enum declaration, not two.
+        var occurrences = System.Text.RegularExpressions.Regex.Matches(src, @"public enum OrderStatus").Count;
+        Assert.Equal(1, occurrences);
+
+        // Both properties exist and are typed by the shared enum.
+        Assert.Contains("public OrderStatus? CurrentStatus { get; set; }", src);
+        Assert.Contains("public OrderStatus? PreviousStatus { get; set; }", src);
+
+        // Output must compile cleanly (no CS0102).
+        var tree = CSharpSyntaxTree.ParseText(src, new CSharpParseOptions(LanguageVersion.CSharp12));
+        var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator).Where(p => p.Length > 0)
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
+        var comp = CSharpCompilation.Create("enumdedup_" + Guid.NewGuid().ToString("N"),
+            [tree], refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
+        Assert.True(errors.Count == 0, "deduped enum entity should compile, got: " + string.Join("; ", errors));
+    }
+
+    [Fact]
     public void Runner_writes_generated_files_but_refuses_handwritten()
     {
         var dir = Path.Combine(Path.GetTempPath(), "mo-gen-" + Guid.NewGuid().ToString("N"));
