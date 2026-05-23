@@ -2,7 +2,7 @@
   "metadata.root": {
     "children": [
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "User",
           "package": "example",
           "@dbTable": "users",
@@ -58,7 +58,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Product",
           "package": "example",
           "@description": "Product value object for template testing",

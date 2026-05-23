@@ -3,7 +3,7 @@
     "package": "blog",
     "children": [
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Author",
           "@dbTable": "authors",
           "children": [
@@ -57,7 +57,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "AuthorProfile",
           "@dbTable": "author_profiles",
           "children": [
@@ -100,7 +100,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "BlogPost",
           "@dbTable": "blog_posts",
           "children": [
@@ -183,7 +183,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Comment",
           "@dbTable": "comments",
           "children": [
@@ -251,7 +251,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Tag",
           "@dbTable": "tags",
           "children": [
@@ -289,7 +289,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Category",
           "@dbTable": "categories",
           "children": [

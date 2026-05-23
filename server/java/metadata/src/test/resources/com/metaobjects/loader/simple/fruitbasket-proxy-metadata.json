@@ -29,7 +29,7 @@
         }
       },
       {
-        "object.proxy": {
+        "object.entity": {
           "name": "Basket",
           "@object": "com.metaobjects.test.proxy.fruitbasket.Basket",
           "children": [
@@ -105,7 +105,7 @@
         }
       },
       {
-        "object.proxy": {
+        "object.entity": {
           "name": "BasketToFruit",
           "@object": "com.metaobjects.test.proxy.fruitbasket.BasketToFruit",
           "children": [
@@ -155,7 +155,7 @@
         }
       },
       {
-        "object.proxy": {
+        "object.entity": {
           "name": "Fruit",
           "abstract": true,
           "@object": "com.metaobjects.test.proxy.fruitbasket.Fruit",
@@ -216,7 +216,7 @@
         }
       },
       {
-        "object.proxy": {
+        "object.entity": {
           "name": "Apple",
           "extends": "Fruit",
           "@object": "com.metaobjects.test.proxy.fruitbasket.Apple",
@@ -235,14 +235,14 @@
         }
       },
       {
-        "object.proxy": {
+        "object.entity": {
           "name": "Macintosh",
           "extends": "Apple",
           "@object": "com.metaobjects.test.proxy.fruitbasket.Macintosh"
         }
       },
       {
-        "object.proxy": {
+        "object.entity": {
           "name": "Orange",
           "extends": "Fruit",
           "@object": "com.metaobjects.test.proxy.fruitbasket.Orange",

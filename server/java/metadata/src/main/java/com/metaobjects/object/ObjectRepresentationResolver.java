@@ -4,6 +4,8 @@ import com.metaobjects.object.pojo.PojoMetaObject;
 import com.metaobjects.object.mapped.MappedMetaObject;
 import com.metaobjects.object.proxy.ProxyMetaObject;
 import com.metaobjects.registry.ObjectClassRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Resolves the Java <em>representation</em> class (Pojo/Mapped/Proxy) for an object node,
@@ -21,6 +23,8 @@ import com.metaobjects.registry.ObjectClassRegistry;
  * when instantiated — "pojo" is never used as a semantic subtype.</p>
  */
 public final class ObjectRepresentationResolver {
+
+    private static final Logger log = LoggerFactory.getLogger(ObjectRepresentationResolver.class);
 
     private final ObjectClassRegistry registry;
     private final ClassLoader classLoader;
@@ -54,8 +58,12 @@ public final class ObjectRepresentationResolver {
             try {
                 return Class.forName(objectAttr, false, classLoader);
             } catch (ClassNotFoundException e) {
-                throw new IllegalStateException(
-                    "@object class not found: " + objectAttr + " (for " + fqn + ")", e);
+                // Class not on classpath at load time (e.g. fixture with fictional FQN,
+                // or a class provided only at runtime). Fall back to MappedMetaObject so
+                // the loader is permissive — the old object.map behaviour was identical.
+                log.warn("@object class not found on classpath: {} (for {}); falling back to MappedMetaObject",
+                    objectAttr, fqn);
+                return null;
             }
         }
         return registry == null ? null : registry.resolve(fqn);    // binding registry, or null

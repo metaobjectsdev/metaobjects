@@ -29,7 +29,7 @@
         }
       },
       {
-        "object.map": {
+        "object.entity": {
           "name": "Basket",
           "@object": "com.metaobjects.loader.simple.fruitbasket.Basket",
           "children": [
@@ -89,7 +89,7 @@
         }
       },
       {
-        "object.map": {
+        "object.entity": {
           "name": "Fruit",
           "abstract": true,
           "@object": "com.metaobjects.loader.simple.fruitbasket.Fruit",
@@ -125,7 +125,7 @@
         }
       },
       {
-        "object.map": {
+        "object.entity": {
           "name": "Apple",
           "extends": "Fruit",
           "@object": "com.metaobjects.loader.simple.fruitbasket.Apple",
@@ -144,14 +144,14 @@
         }
       },
       {
-        "object.map": {
+        "object.entity": {
           "name": "Macintosh",
           "extends": "Apple",
           "@object": "com.metaobjects.loader.simple.fruitbasket.Macintosh"
         }
       },
       {
-        "object.map": {
+        "object.entity": {
           "name": "Orange",
           "extends": "Fruit",
           "@object": "com.metaobjects.loader.simple.fruitbasket.Orange",

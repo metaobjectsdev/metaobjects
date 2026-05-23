@@ -2,7 +2,7 @@
 <metadata package="test_schema_validation">
   <children>
     <child>
-      <object name="User" subType="pojo" dbTable="users" hasAuditing="true">
+      <object name="User" subType="entity" dbTable="users" hasAuditing="true">
         <children>
           <child>
             <field name="id" subType="int" required="true" dbColumn="user_id" isPrimaryKey="true" dbNullable="false">

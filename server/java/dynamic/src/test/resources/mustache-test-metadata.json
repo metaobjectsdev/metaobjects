@@ -3,7 +3,7 @@
     "package": "com_example_model",
     "children": [
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "User",
           "children": [
             {
@@ -72,7 +72,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Product",
           "children": [
             {
