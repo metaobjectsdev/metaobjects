@@ -38,4 +38,12 @@ public class ObjectClassRegistryTest {
             fail("expected a conflict to be rejected");
         } catch (IllegalStateException expected) { /* domain-sliced providers must not clash */ }
     }
+
+    @Test
+    public void same_class_reregistration_is_idempotent() {
+        ObjectClassRegistry reg = new ObjectClassRegistry();
+        reg.register(() -> java.util.Map.of("a::B", Disposition.class));
+        reg.register(() -> java.util.Map.of("a::B", Disposition.class)); // same class again — must NOT throw
+        assertEquals(Disposition.class, reg.resolve("a::B"));
+    }
 }

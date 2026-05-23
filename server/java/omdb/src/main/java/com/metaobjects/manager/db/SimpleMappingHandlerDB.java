@@ -7,6 +7,7 @@ import java.util.Properties;
 
 import com.metaobjects.DataTypes;
 import com.metaobjects.MetaDataNotFoundException;
+import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
@@ -247,14 +248,11 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 		}		
 	}
 	
-	/** Attribute name for DB type override (e.g. "jsonb"). */
-	protected static final String ATTR_DB_TYPE = "dbType";
-
 	/** Returns true if the field is declared as a jsonb column via {@code @dbType="jsonb"}. */
 	protected boolean isJsonbField(MetaField mf) {
 		try {
-			return mf.hasMetaAttr(ATTR_DB_TYPE)
-				&& "jsonb".equals(mf.getMetaAttr(ATTR_DB_TYPE).getValueAsString());
+			return mf.hasMetaAttr(CoreDBMetaDataProvider.DB_TYPE)
+				&& "jsonb".equals(mf.getMetaAttr(CoreDBMetaDataProvider.DB_TYPE).getValueAsString());
 		} catch (Exception e) {
 			return false;
 		}

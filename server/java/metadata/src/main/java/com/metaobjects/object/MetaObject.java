@@ -340,6 +340,13 @@ public abstract class MetaObject extends MetaData {
      *   <li>Process-global {@link com.metaobjects.registry.ObjectClassRegistry} keyed by FQN</li>
      *   <li>Name-convention: {@code pkg::Name} → {@code pkg.Name}</li>
      * </ol>
+     *
+     * <p><strong>Caching:</strong> the resolved class is cached per MetaObject instance.
+     * The binding registry ({@link com.metaobjects.registry.ObjectClassRegistry#global()}) must
+     * therefore be configured <em>before</em> the first call to this method on any given instance.
+     * In production this holds naturally — the registry is discovered once at startup.
+     * Tests that alter the global registry should use fresh MetaObject instances to avoid
+     * observing a stale cached result.</p>
      */
     public Class<?> getObjectClass() throws ClassNotFoundException {
 

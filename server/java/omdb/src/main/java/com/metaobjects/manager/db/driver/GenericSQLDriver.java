@@ -33,6 +33,7 @@ import com.metaobjects.util.MetaDataUtil;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
+import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.manager.QueryOptions;
 import com.metaobjects.manager.db.DatabaseDriver;
@@ -64,17 +65,14 @@ public class GenericSQLDriver implements DatabaseDriver {
     private static final Logger log = LoggerFactory.getLogger(GenericSQLDriver.class);
     private ObjectManagerDB mManager = null;
 
-    /** Attribute name for DB type override (e.g. "jsonb"). */
-    private static final String ATTR_DB_TYPE = "dbType";
-
     /**
      * Returns true if the field is declared as a jsonb column via {@code @dbType="jsonb"}.
      * Uses the attr model so jsonb detection works even without a dedicated {@code JsonbField} class.
      */
     protected boolean isJsonbField(MetaField f) {
         try {
-            return f.hasMetaAttr(ATTR_DB_TYPE)
-                && "jsonb".equals(f.getMetaAttr(ATTR_DB_TYPE).getValueAsString());
+            return f.hasMetaAttr(CoreDBMetaDataProvider.DB_TYPE)
+                && "jsonb".equals(f.getMetaAttr(CoreDBMetaDataProvider.DB_TYPE).getValueAsString());
         } catch (Exception e) {
             return false;
         }
