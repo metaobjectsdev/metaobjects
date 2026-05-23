@@ -1,6 +1,4 @@
 {
   "language": "csharp",
-  "fixtures": [
-    "origin-collection-simple"
-  ]
+  "fixtures": []
 }

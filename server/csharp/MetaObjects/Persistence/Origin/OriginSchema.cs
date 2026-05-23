@@ -47,9 +47,18 @@ public static class OriginSchema
             Description: "Dotted relationship path from the base entity to the aggregated rows (e.g. 'Program.weeks' or 'Program.weeks.workouts')."),
     ];
 
+    private static readonly IReadOnlyList<AttrSchema> CollectionOriginAttrs =
+    [
+        new AttrSchema(
+            Name: OriginConstants.ORIGIN_COLLECTION_ATTR_VIA,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: true,
+            Description: "Dotted relationship path the collection walks to produce an array of nested view-objects (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection (e.g. '*.User')."),
+    ];
+
     /// <summary>
-    /// Attrs per origin subtype. base has none; passthrough and aggregate carry
-    /// their respective attrs.
+    /// Attrs per origin subtype. base has none; passthrough, aggregate, and
+    /// collection carry their respective attrs.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<AttrSchema>> OriginAttrsMap =
         new Dictionary<string, IReadOnlyList<AttrSchema>>
@@ -57,5 +66,6 @@ public static class OriginSchema
             [BaseTypes.SUBTYPE_BASE]                       = [],
             [OriginConstants.ORIGIN_SUBTYPE_PASSTHROUGH]   = [.. PassthroughOriginAttrs],
             [OriginConstants.ORIGIN_SUBTYPE_AGGREGATE]     = [.. AggregateOriginAttrs],
+            [OriginConstants.ORIGIN_SUBTYPE_COLLECTION]    = [.. CollectionOriginAttrs],
         };
 }
