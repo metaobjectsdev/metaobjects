@@ -9,7 +9,7 @@ import { joinCode, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
 import { renderDrizzleSchema } from "./drizzle-schema.js";
-import { renderInferredTypes } from "./inferred-types.js";
+import { renderInferredTypes, renderEnumTypeAliases } from "./inferred-types.js";
 import { renderZodValidators } from "./zod-validators.js";
 import { renderEntityConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
@@ -29,9 +29,11 @@ export function renderEntityFile(entity: MetaObject, ctx: RenderContext): string
   }
 
   // --- Vanilla / write-through entity path ---
+  const enumAliases = renderEnumTypeAliases(entity);
   const sections: Code[] = [
     renderDrizzleSchema(entity, ctx),
     renderInferredTypes(entity),
+    ...(enumAliases !== null ? [enumAliases] : []),
     renderZodValidators(entity),
     renderEntityConstants(entity, ctx.apiPrefix),
     renderFilterAllowlist(entity),

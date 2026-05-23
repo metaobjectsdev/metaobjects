@@ -1,7 +1,8 @@
 import { describe, test, expect } from "bun:test";
 import { TypeId, TYPE_IDENTITY,
-         FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
-         IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY } from "@metaobjectsdev/metadata";
+         FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_ENUM,
+         IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
+         MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
 import { meta, metaRoot, metaObject, metaField } from "../_meta-build.js";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
@@ -10,6 +11,71 @@ import { buildRelationMap } from "../../src/relation-resolver.js";
 import { GENERATED_HEADER } from "../../src/constants.js";
 
 describe("renderEntityFile", () => {
+  test("inline field.enum emits named type alias <Entity><FieldPascal>", () => {
+    const root = metaRoot();
+    const order = metaObject(OBJECT_SUBTYPE_ENTITY, "Order");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    order.addChild(id);
+    const status = metaField(FIELD_SUBTYPE_ENUM, "status");
+    status.setAttr("values", ["DRAFT", "PUBLISHED"]);
+    order.addChild(status);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    order.addChild(primary);
+    root.addChild(order);
+
+    const ctx = makeRenderContext({
+      dialect: "sqlite",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+
+    const out = renderEntityFile(order, ctx);
+    expect(out).toContain('export type OrderStatus = "DRAFT" | "PUBLISHED";');
+  });
+
+  test("field.enum extends abstract — emits type alias using super field name", async () => {
+    const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+      "metadata.root": {
+        "package": "acme",
+        "children": [
+          { "field.enum": { "name": "Status", "abstract": true, "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"] } },
+          {
+            "object.entity": {
+              "name": "Order",
+              "children": [
+                { "field.long": { "name": "id" } },
+                { "field.enum": { "name": "status", "extends": "Status" } },
+                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+              ]
+            }
+          }
+        ]
+      }
+    }))]);
+    expect(result.errors).toEqual([]);
+    const root = result.root;
+    const order = root.objects()[0]!;
+
+    const ctx = makeRenderContext({
+      dialect: "sqlite",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+
+    const out = renderEntityFile(order, ctx);
+    // The type alias should use "Status" (the abstract super's name), not "OrderStatus"
+    expect(out).toContain('export type Status = "DRAFT" | "PUBLISHED" | "ARCHIVED";');
+    expect(out).not.toContain("export type OrderStatus");
+  });
+
   test("emits @generated header + table + types + validators", () => {
     const root = metaRoot();
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");

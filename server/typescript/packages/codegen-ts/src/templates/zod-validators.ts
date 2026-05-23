@@ -99,7 +99,8 @@ function zodFieldExpr(field: MetaField): string {
       base = "z.string()";
       break;
     case FIELD_SUBTYPE_ENUM: {
-      const values = field.ownAttr(FIELD_ATTR_VALUES);
+      // Use effective attr (own or inherited via extends) for @values.
+      const values = field.ownAttr(FIELD_ATTR_VALUES) ?? field.attr(FIELD_ATTR_VALUES);
       base = Array.isArray(values)
         ? `z.enum([${values.map((v) => JSON.stringify(String(v))).join(", ")}])`
         : "z.string()";

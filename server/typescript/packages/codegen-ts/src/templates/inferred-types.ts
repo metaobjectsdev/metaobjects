@@ -1,8 +1,10 @@
-// Inferred types template — emits Drizzle's InferSelectModel / InferInsertModel type aliases.
+// Inferred types template — emits Drizzle's InferSelectModel / InferInsertModel type aliases,
+// plus named union types for field.enum fields.
 
 import { code, imp, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { variableNameFromEntity } from "../naming.js";
+import { FIELD_SUBTYPE_ENUM, FIELD_ATTR_VALUES } from "@metaobjectsdev/metadata";
+import { variableNameFromEntity, toPascalCase } from "../naming.js";
 
 export function renderInferredTypes(entity: MetaObject): Code {
   const varName = variableNameFromEntity(entity.name);
@@ -13,4 +15,38 @@ export type ${entity.name} = ${selectSym}<typeof ${varName}>;
 export type ${entity.name}Insert = ${insertSym}<typeof ${varName}>;
 export type ${entity.name}Update = Partial<${entity.name}Insert>;
 `;
+}
+
+/**
+ * Emit one `export type <Name> = "A" | "B";` line per field.enum field on the entity.
+ * - If the field extends an abstract field.enum (super), use the super field's PascalCase name.
+ * - Otherwise use `<Entity><FieldPascal>` for inline enums.
+ * Returns null if the entity has no enum fields.
+ */
+export function renderEnumTypeAliases(entity: MetaObject): Code | null {
+  // De-duplicate by type-alias name — multiple fields can extend the same abstract enum.
+  const seen = new Set<string>();
+  const lines: string[] = [];
+
+  for (const field of entity.fields()) {
+    if (field.subType !== FIELD_SUBTYPE_ENUM) continue;
+
+    // Prefer effective attr (own or inherited via extends) for @values.
+    const values = field.attr(FIELD_ATTR_VALUES);
+    if (!Array.isArray(values)) continue;
+
+    // Derive the type-alias name.
+    const superField = field.resolveSuper();
+    const typeName = superField !== undefined
+      ? toPascalCase(superField.name)
+      : `${entity.name}${toPascalCase(field.name)}`;
+
+    if (seen.has(typeName)) continue;
+    seen.add(typeName);
+
+    const union = values.map((v) => JSON.stringify(String(v))).join(" | ");
+    lines.push(`export type ${typeName} = ${union};`);
+  }
+
+  return lines.length > 0 ? code`${lines.join("\n")}` : null;
 }
