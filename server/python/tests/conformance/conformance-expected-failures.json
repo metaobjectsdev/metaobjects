@@ -2,7 +2,6 @@
   "fixtures": [
     "error-attr-filter-bad-field",
     "error-attr-filter-bad-op",
-    "error-data-grid-bad-sort-field",
     "error-origin-bad-via-path",
     "error-template-prompt-missing-payload-ref",
     "subtype-entity-missing-primary-warning",

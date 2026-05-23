@@ -8,8 +8,14 @@ Warning strings are byte-identical to the expected-warnings fixtures.
 from __future__ import annotations
 
 from ..errors import ErrorCode, MetaError
+from ..meta.core.object.meta_object import MetaObject
 from ..meta.meta_data import MetaData
 from ..registry import AttrSchema, TypeRegistry
+from ..shared.base_types import TYPE_LAYOUT, TYPE_OBJECT
+from ..meta.presentation.layout.layout_constants import (
+    LAYOUT_ATTR_DEFAULT_SORT_FIELD,
+    LAYOUT_SUBTYPE_DATA_GRID,
+)
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -27,6 +33,7 @@ def run_validations(
     Passes are designed to be additive: later tasks add passes here.
     """
     _validate_attr_schema(root, registry, errors)
+    _validate_datagrid_sort_fields(root, errors)
 
 
 # ---------------------------------------------------------------------------
@@ -145,3 +152,41 @@ def _validate_attr_schema(
                             ErrorCode.ERR_BAD_ATTR_VALUE,
                         )
                     )
+
+
+# ---------------------------------------------------------------------------
+# Pass: dataGrid @defaultSortField validation
+# ---------------------------------------------------------------------------
+# For each object.* node, check each layout.dataGrid child: if @defaultSortField
+# is set and not in the object's effective field names → ERR_BAD_DEFAULT_SORT_FIELD.
+
+
+def _validate_datagrid_sort_fields(
+    root: MetaData,
+    errors: list[MetaError],
+) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_OBJECT:
+            continue
+        if not isinstance(node, MetaObject):
+            continue
+
+        field_names: set[str] = {f.name for f in node.fields()}
+
+        for child in node.children():
+            if child.type != TYPE_LAYOUT or child.sub_type != LAYOUT_SUBTYPE_DATA_GRID:
+                continue
+            sort_field = child.attr(LAYOUT_ATTR_DEFAULT_SORT_FIELD)
+            if sort_field is None:
+                continue
+            if not isinstance(sort_field, str):
+                continue
+            if sort_field not in field_names:
+                errors.append(
+                    MetaError(
+                        f"{_node_label(node)} layout.dataGrid '{child.name}' references "
+                        f"@defaultSortField='{sort_field}' which is not a field on this object "
+                        f"(known fields: {sorted(field_names)})",
+                        ErrorCode.ERR_BAD_DEFAULT_SORT_FIELD,
+                    )
+                )
