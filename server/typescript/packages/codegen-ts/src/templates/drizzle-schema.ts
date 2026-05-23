@@ -12,7 +12,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier } from "../import-path.js";
-import { mapColumnType } from "../column-mapper.js";
+import { mapColumnType, type ColumnSpec } from "../column-mapper.js";
 import { tableNameFromEntity, variableNameFromEntity, columnNameFromField } from "../naming.js";
 import { renderRelationsBlock } from "./relations-block.js";
 
@@ -62,11 +62,21 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   }
 
   const columnLines: Code[] = [];
+  // Collect CHECK constraints for enum columns; emitted as table-level check() callbacks.
+  const checkConstraints: Array<{ name: string; expr: string }> = [];
   for (const child of obj.fields()) {
     const isPk = pkFieldNames.has(child.name);
     const isUnique = uniqueFieldNames.has(child.name) && !isPk;
     const fkInfo = fkMap.get(child.name);
     columnLines.push(renderColumn(child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique, obj.package));
+    // Collect CHECK constraints from the column spec.
+    const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy);
+    if (spec.checkConstraint !== undefined) {
+      checkConstraints.push({
+        name: `chk_${tableName}_${spec.dbName}`,
+        expr: spec.checkConstraint,
+      });
+    }
   }
 
   // Build all table callback entries
@@ -91,6 +101,13 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     // the table referencing itself inside its own initializer (TS7022/TS7024).
     const cols = fields.map((f) => `table.${f}`).join(", ");
     callbackEntries.push(code`${indexSym}(${JSON.stringify(indexName)}).on(${cols})`);
+  }
+
+  // Emit table-level CHECK constraints for enum fields.
+  for (const { name, expr } of checkConstraints) {
+    const checkSym = imp(`check@${importModule}`);
+    const sqlSym = imp("sql@drizzle-orm");
+    callbackEntries.push(code`${checkSym}(${JSON.stringify(name)}, ${sqlSym}\`${expr}\`)`);
   }
 
   let tableBlock: Code;

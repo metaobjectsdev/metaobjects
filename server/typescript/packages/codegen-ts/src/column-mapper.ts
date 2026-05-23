@@ -16,6 +16,8 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
+  FIELD_SUBTYPE_ENUM,
+  FIELD_ATTR_VALUES,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   FIELD_ATTR_MAX_LENGTH,
@@ -89,6 +91,8 @@ export interface ColumnSpec {
   importModule: string;
   /** Optional leading line-comment for the generated column (e.g., type-fallback notice). */
   leadingComment?: string;
+  /** Optional CHECK constraint expression for the column (e.g., `status IN ('A', 'B')`). */
+  checkConstraint?: string;
 }
 
 /** Resolve max length from validator.length child or @maxLength attr.
@@ -157,6 +161,7 @@ export function mapColumnType(
         case FIELD_SUBTYPE_TIME:
         case FIELD_SUBTYPE_TIMESTAMP:
         case FIELD_SUBTYPE_STRING:
+        case FIELD_SUBTYPE_ENUM:
         case FIELD_SUBTYPE_CLASS:
         case FIELD_SUBTYPE_OBJECT:
         default:
@@ -206,6 +211,7 @@ export function mapColumnType(
         }
         break;
       }
+      case FIELD_SUBTYPE_ENUM:
       case FIELD_SUBTYPE_CLASS:
       case FIELD_SUBTYPE_OBJECT:
       default:
@@ -262,5 +268,18 @@ export function mapColumnType(
   if (fnOptions !== undefined) result.fnOptions = fnOptions;
   if (defaultExpr !== undefined) result.defaultExpr = defaultExpr;
   if (leadingComment !== undefined) result.leadingComment = leadingComment;
+
+  // Enum fields: emit a CHECK constraint listing the valid member values.
+  if (subType === FIELD_SUBTYPE_ENUM && !isArray) {
+    // Use effective attr (own or inherited via extends).
+    const values = (field.ownAttr(FIELD_ATTR_VALUES) ?? field.attr(FIELD_ATTR_VALUES));
+    if (Array.isArray(values) && values.length > 0) {
+      const list = values
+        .map((v) => `'${String(v).replace(/'/g, "''")}'`)
+        .join(", ");
+      result.checkConstraint = `${dbName} IN (${list})`;
+    }
+  }
+
   return result;
 }
