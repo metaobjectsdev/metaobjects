@@ -423,6 +423,10 @@ These are the load-bearing principles that have emerged through implementation. 
 
 - **"Validated by spike" ≠ "right design".** A spike proves a technique works under a specific test. It doesn't prove it is the best production choice. Always ask "what's the UX cost?" alongside "does this work?"
 
+- **Bind metadata→native types at build time, never runtime reflection.** Resolving an object's native class/module from its FQN must happen in generated code (static imports for data-oriented ports; a domain-sliced, FQN-keyed registry for OO ports), not via `Class.forName`/`Type.GetType`/`importlib` — runtime reflection is impossible in TS and breaks under GraalVM native-image / .NET AOT. See [ADR-0001](spec/decisions/ADR-0001-cross-language-type-binding.md).
+
+- **Record significant cross-cutting decisions as ADRs.** Durable, cross-language/cross-feature architectural contracts live in `spec/decisions/` (Nygard format). Consult them before changing a cross-language contract; add a new ADR when you make one. Feature-level decisions stay in the FR spec; this file holds only the one-line rule + the pointer.
+
 ## Coding discipline (TS)
 
 - **Named constants for metamodel strings — always.** Type names, subtype names, reserved JSON keys, special attribute names, structural separators, and wildcards live in `packages/metadata/src/constants.ts` — import and use them. Gets you compile-time typo safety.

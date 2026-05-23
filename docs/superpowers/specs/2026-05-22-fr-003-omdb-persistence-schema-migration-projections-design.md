@@ -50,19 +50,19 @@ The required modules — `metadata`, `core`, `codegen-*`, `maven-plugin`, `core-
 ### 2. Spring-transaction-aware connection
 `ObjectConnectionDB(Connection)` already accepts an externally-owned connection. Ship (likely in `metaobjects-core-spring`) a thin adapter that wraps `DataSourceUtils.getConnection(dataSource)` and does **not** close the connection (Spring owns the lifecycle), so OMDB operations join the caller's active `@Transactional` scope — including `REQUIRES_NEW` and pessimistic boundaries. No second, out-of-transaction connection.
 
-### 3. jsonb fields modelled as value objects (opt-in)
-A jsonb column may be either opaque JSON **or** declare a nested MetaObject as its value type:
+### 3. jsonb fields modelled as typed value objects (opt-in)
+A jsonb column may be either opaque JSON **or** declare a nested MetaObject as its value type. When modelled, the value is a **code-generated, mutable, typed POJO** (the default — real objects, IDE/type-safe), with `ValueObject` (the dynamic Map container) as the **fallback** for intentionally-open/dynamic shapes:
 
 ```jsonc
 // opaque
 { "field.object": { "name": "rawConfig", "@dbColumn": "raw_config", "@dbType": "jsonb" }}
 
-// modelled — value is a (list/map of) ValueObject(s)
+// modelled — value is a generated typed POJO (list/map per cardinality)
 { "field.object": { "name": "dispositions", "@dbColumn": "dispositions",
     "@dbType": "jsonb", "@objectRef": "Disposition", "@isArray": true, "@keyedBy": "subjectId" }}
 ```
 
-`PostgresDriver` gains a jsonb column type + a Jackson-backed value converter that reads the field's referenced MetaObject to (de)serialize `ValueObject` ⇄ jsonb. Cardinality via `@isArray` (List) and optional `@keyedBy` (Map). This shares one modelling path with projections (below).
+`PostgresDriver` gains a jsonb column type + a Jackson-backed converter that resolves the field's referenced MetaObject to its **bound Java class** (via the binding registry, §8 / ADR-0001) and (de)serializes the typed POJO ⇄ jsonb; cardinality via `@isArray` (`List<T>`) and optional `@keyedBy` (`Map<K,T>`); `ValueObject` when no class is bound. **Mutability matters:** these objects are read-modify-write (e.g. `realm.getMechanics().setX(…)`), not read-only DTOs — so generated jsonb value types are **mutable POJOs**, not immutable records. Because in-place mutation leaves the parent's field reference unchanged (so OMDB's dirty-field check can't detect it), **jsonb fields are always (re)serialized on `updateObject`** (deep-compare is a later optimization). This shares one modelling path with projections (below).
 
 ### 4. Metadata-driven schema migration (decoupled `meta migrate`)
 Extend `MetaClassDBValidatorService` + drivers from *create-if-missing* to a **diff-and-converge** engine: add tables/columns/indexes/FKs/sequences/views and additive ALTERs (widen type, add nullable/defaulted column). Surface it through a cross-language-aligned verb set, **not** as boot-time auto-apply:
@@ -78,10 +78,13 @@ A consuming app adopts its existing schema as the baseline; metadata must reprod
 A projection is `object.value`/`object.entity` + `source.dbView`, with fields carrying `origin.passthrough` (cross-entity ref) or `origin.aggregate` (`count`/`sum`/`avg`/`min`/`max` via dotted `@via`/`@of`). OMDB already creates views from `ViewDef` and verifies read mappings; add the **origin→`CREATE VIEW` SQL deriver** so view SQL is generated when expressible, falling back to explicit `dbViewSQL` only when it is not. Projection results materialize as `ValueObject`s (the same container used for opaque/value-object reads), so consumers can blend projected DB data with app-side values.
 
 ### 6. Codegen templates
-Mustache templates/generators (build-time, via the maven-plugin) for: entity base classes (POJO mapped via `PojoMetaObject`, no business logic), per-entity SQL-name constants (`Tables`/`Columns` — keep residual native SQL rename-safe + drift-checkable), projection value-object classes, and an OMDB-backed repository base (CRUD via `Expression`/`QueryOptions`; advanced queries via `dbViewSQL`/`executeQuery`). Generated artifacts carry no business logic; consumers extend them.
+Mustache templates/generators (build-time, via the maven-plugin) for: entity base classes (POJO mapped via `PojoMetaObject`, no business logic), per-entity SQL-name constants (`Tables`/`Columns` — keep residual native SQL rename-safe + drift-checkable), **typed mutable jsonb value-object POJOs** (§3), projection value-object classes, an OMDB-backed repository base (CRUD via `Expression`/`QueryOptions`; advanced queries via `dbViewSQL`/`executeQuery`), and **one `MetaDataTypeProvider` per generated package that registers its `FQN → class` bindings** (§8 / ADR-0001), `ServiceLoader`-discovered. Generated artifacts carry no business logic; consumers extend them.
 
 ### 7. Conformance fixtures
 Extend the existing `source-*`/`origin-*` corpus to cover the new vocabulary surfaced here (`@generation`, `@previousName`, jsonb value-object fields, projection origin→view derivation at the **metamodel** level). A full migration-output conformance corpus (byte-identical SQL across languages) is flagged **future** (consistent with the C# design); v1 asserts vocabulary + loader/serializer parity and diff *determinism* per language.
+
+### 8. Metadata→Java-class binding registry (per ADR-0001)
+OMDB instantiates **typed objects** — entities, jsonb value-objects (§3), and projection results — by resolving a MetaObject's FQN to its concrete Java class. Per **[ADR-0001](../../../spec/decisions/ADR-0001-cross-language-type-binding.md)**, this is a **build-time, domain-sliced, FQN-keyed registry — never runtime reflection** (`Class.forName` is AOT/native-image-hostile; the cross-language contract forbids it). Java realization: codegen emits **one `MetaDataTypeProvider` per generated package** that registers its `FQN → Class` bindings; `ServiceLoader` discovers and merges them across packages/jars (the same mechanism core already uses for its 8 type providers). OMDB consults the merged registry to pick the class for `newInstance()`/jsonb deserialization, falling back to `ValueObject` when no class is bound. This FR builds the **runtime registry contract** (the registry API + OMDB consulting it, tested with hand-registered bindings); the codegen that *emits* the per-package providers ships with the codegen templates (§6). The deferred metadata overlay (`@object` FQN map) is replaced by this generated, compile-checked registration — and never reappears as a hand-maintained file.
 
 ## Versioning & compatibility
 
