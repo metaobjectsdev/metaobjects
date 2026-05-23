@@ -85,6 +85,12 @@ describe("zodTypeFor", () => {
   test("timestamp → z.string() (ISO format)", async () => {
     expect(zodTypeFor(await loadField({ "field.timestamp": { name: "f" }}))).toBe("z.string()");
   });
+  test("enum field with @values → z.enum([...]) form", async () => {
+    const result = zodTypeFor(await loadField({
+      "field.enum": { name: "status", "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"] }
+    }));
+    expect(result).toBe('z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"])');
+  });
 });
 
 describe("currencyMetaFor", () => {

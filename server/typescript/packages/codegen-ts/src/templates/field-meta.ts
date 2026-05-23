@@ -18,6 +18,8 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_CURRENCY,
+  FIELD_SUBTYPE_ENUM,
+  FIELD_ATTR_VALUES,
   VIEW_SUBTYPE_TEXT,
   VIEW_SUBTYPE_DATE,
   VIEW_SUBTYPE_NUMBER,
@@ -96,6 +98,14 @@ export function zodTypeFor(field: MetaField): string {
     case FIELD_SUBTYPE_FLOAT:
     case FIELD_SUBTYPE_DECIMAL:
       return "z.number()";
+    case FIELD_SUBTYPE_ENUM: {
+      // Use effective attr (own or inherited via extends) for @values.
+      const values = field.ownAttr(FIELD_ATTR_VALUES) ?? field.attr(FIELD_ATTR_VALUES);
+      if (Array.isArray(values)) {
+        return `z.enum([${values.map((v) => JSON.stringify(String(v))).join(", ")}])`;
+      }
+      return "z.string()";
+    }
     default:
       return "z.unknown()";
   }
