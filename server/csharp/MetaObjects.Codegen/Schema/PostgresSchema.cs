@@ -73,42 +73,102 @@ public static class PostgresSchema
         return sb.ToString();
     }
 
-    /// <summary>CREATE VIEW for a projection; best-effort SELECT from passthrough origins.</summary>
+    /// <summary>
+    /// CREATE VIEW for a projection. Derives the SELECT from field origins:
+    /// passthrough (single base) → a plain column; aggregate (@agg/@of/@via) → a
+    /// correlated subquery whose FK is resolved from an identity.reference on the
+    /// target entity. Multi-base, @via passthrough, collection, or an unresolvable
+    /// FK leave the view as a TODO comment (+ warning) rather than wrong SQL.
+    /// </summary>
     public static string CreateView(MetaObject projection, MetaRoot root, Action<string> warn)
     {
         var view = projection.DbView!;
         var cols = new List<string>();
         string? baseEntity = null;
-        bool complex = false;
+        string? blocked = null;
 
         foreach (var f in projection.Fields().Where(f => CSharpNaming.ScalarFor(f.SubType) is not null))
         {
             var origin = f.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN);
+
             if (origin is MetaPassthroughOrigin pt && pt.Via is null && pt.From is { } from && from.Contains('.'))
             {
-                var dot = from.IndexOf('.');
-                var ent = from[..dot];
-                var srcCol = from[(dot + 1)..];
-                baseEntity ??= ent;
-                if (ent != baseEntity) { complex = true; break; }
-                cols.Add($"  {srcCol} AS {Col(f)}");
+                var (ent, field) = SplitDot(from);
+                baseEntity ??= StripPkg(ent);
+                if (StripPkg(ent) != baseEntity) { blocked = "passthrough from multiple base entities"; break; }
+                cols.Add($"  {ResolveColumn(root.FindObject(baseEntity), field)} AS {Col(f)}");
+            }
+            else if (origin is MetaAggregateOrigin agg &&
+                     agg.Agg is { } aggFn && agg.Of is { } of && agg.Via is { } via &&
+                     of.Contains('.') && via.Contains('.'))
+            {
+                var (baseEnt, relName) = SplitDot(via);
+                baseEntity ??= StripPkg(baseEnt);
+                if (StripPkg(baseEnt) != baseEntity) { blocked = "aggregate over a different base entity"; break; }
+                var sub = AggregateSubquery(root, baseEntity, relName, aggFn, of);
+                if (sub is null) { blocked = $"unresolved FK for @via \"{via}\" (target needs an identity.reference back to {baseEntity})"; break; }
+                cols.Add($"  {sub} AS {Col(f)}");
             }
             else
             {
-                complex = true; // aggregate / @via / collection / no origin -> needs join/agg SQL
+                blocked = origin is MetaCollectionOrigin ? "collection origin (nested array)" : "field has no resolvable origin";
                 break;
             }
         }
 
-        if (complex || baseEntity is null || cols.Count == 0)
+        if (blocked is not null || baseEntity is null || cols.Count == 0)
         {
-            warn($"meta migrate: view \"{view}\" needs aggregate/relationship-path SQL — emitted as TODO.");
-            return $"-- TODO CREATE VIEW {view}: derive SELECT from aggregate/@via/collection origins\n" +
-                   $"--      (passthrough-from-single-base views are generated; this projection needs join/aggregate SQL).\n";
+            warn($"meta migrate: view \"{view}\" not generated — {blocked ?? "no derivable columns"}.");
+            return $"-- TODO CREATE VIEW {view}: {blocked ?? "no derivable columns"}\n";
         }
 
         var baseTable = root.FindObject(baseEntity)?.DbTable ?? baseEntity;
         return $"CREATE VIEW {view} AS\nSELECT\n{string.Join(",\n", cols)}\nFROM {baseTable};\n";
+    }
+
+    private static (string Head, string Tail) SplitDot(string s)
+    {
+        var i = s.IndexOf('.');
+        return (s[..i], s[(i + 1)..]);
+    }
+
+    private static string StripPkg(string s)
+    {
+        var i = s.LastIndexOf("::", StringComparison.Ordinal);
+        return i < 0 ? s : s[(i + 2)..];
+    }
+
+    private static string ResolveColumn(MetaObject? obj, string fieldName) =>
+        obj?.Fields().FirstOrDefault(f => f.Name == fieldName)?.DbColumn ?? fieldName;
+
+    // Build a correlated-subquery aggregate over a to-many relationship, resolving
+    // the FK from an identity.reference on the target entity.
+    private static string? AggregateSubquery(MetaRoot root, string baseEntity, string relName, string aggFn, string of)
+    {
+        var baseObj = root.FindObject(baseEntity);
+        var rel = baseObj?.Relationships().FirstOrDefault(r => r.Name == relName);
+        if (baseObj is null || rel?.ObjectRef is not { } objRef) return null;
+        var targetEntity = StripPkg(objRef);
+        var targetObj = root.FindObject(targetEntity);
+        if (targetObj is null) return null;
+
+        var fkRef = targetObj.ReferenceIdentities()
+            .FirstOrDefault(r => r.TargetEntity is { } te && StripPkg(te) == baseEntity);
+        if (fkRef is null || fkRef.Fields.Count == 0) return null;
+
+        var fkCol = ResolveColumn(targetObj, fkRef.Fields[0]);
+        var parentField = fkRef.TargetFields.Count > 0
+            ? fkRef.TargetFields[0]
+            : baseObj.PrimaryIdentity()?.Fields.FirstOrDefault();
+        if (parentField is null) return null;
+        var parentCol = ResolveColumn(baseObj, parentField);
+
+        var ofCol = ResolveColumn(targetObj, SplitDot(of).Tail);
+        var targetTable = targetObj.DbTable ?? targetEntity;
+        var baseTable = baseObj.DbTable ?? baseEntity;
+
+        return $"(SELECT {aggFn}({targetTable}.{ofCol}) FROM {targetTable} " +
+               $"WHERE {targetTable}.{fkCol} = {baseTable}.{parentCol})";
     }
 
     /// <summary>Full schema DDL: tables for writable entities, then views for projections.</summary>
