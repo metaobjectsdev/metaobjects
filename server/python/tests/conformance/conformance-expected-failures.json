@@ -1,9 +1,7 @@
 {
   "fixtures": [
     "error-template-prompt-missing-payload-ref",
-    "subtype-entity-missing-primary-warning",
     "template-output-and-prompt",
-    "template-prompt-simple",
-    "warning-filterable-no-index"
+    "template-prompt-simple"
   ]
 }

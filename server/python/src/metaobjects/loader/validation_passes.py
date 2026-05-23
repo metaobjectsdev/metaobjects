@@ -11,7 +11,7 @@ from ..errors import ErrorCode, MetaError
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.meta_data import MetaData
 from ..registry import AttrSchema, TypeRegistry
-from ..shared.base_types import TYPE_FIELD, TYPE_LAYOUT, TYPE_OBJECT, TYPE_ORIGIN, TYPE_RELATIONSHIP
+from ..shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_LAYOUT, TYPE_OBJECT, TYPE_ORIGIN, TYPE_RELATIONSHIP
 from ..meta.presentation.layout.layout_constants import (
     LAYOUT_ATTR_DEFAULT_SORT_FIELD,
     LAYOUT_ATTR_FILTER,
@@ -25,6 +25,8 @@ from ..meta.persistence.origin.origin_constants import (
     ORIGIN_SUBTYPE_PASSTHROUGH,
 )
 from ..meta.core.relationship.relationship_constants import RELATIONSHIP_ATTR_OBJECT_REF
+from ..meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE
+from ..meta.core.identity.identity_constants import IDENTITY_ATTR_FIELDS
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -45,6 +47,8 @@ def run_validations(
     _validate_datagrid_sort_fields(root, errors)
     _validate_datagrid_filter_values(root, errors)
     _validate_origin_paths(root, errors)
+    _validate_subtype_rules(root, errors, warnings)
+    _validate_filterable_has_index(root, warnings)
 
 
 # ---------------------------------------------------------------------------
@@ -493,3 +497,87 @@ def _validate_origin_paths(
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str):
                     _validate_via_path(via, ctx, object_index, errors)
+
+
+# ---------------------------------------------------------------------------
+# Pass: subtype-rules
+# ---------------------------------------------------------------------------
+# object.entity with no effective primary identity and not abstract → warning.
+# object.value with a primary identity → ERR_SUBTYPE_RULE_VIOLATION (error).
+
+
+def _validate_subtype_rules(
+    root: MetaData,
+    errors: list[MetaError],
+    warnings: list[str],
+) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_OBJECT:
+            continue
+        if not isinstance(node, MetaObject):
+            continue
+
+        if node.sub_type == OBJECT_SUBTYPE_ENTITY:
+            # Concrete (non-abstract) entity with no primary identity → warning.
+            if not node.is_abstract and node.primary_identity() is None:
+                warnings.append(
+                    f"entity object '{node.name}' has no primary identity "
+                    f"(add an identity child or mark @isAbstract: true)"
+                )
+
+        elif node.sub_type == OBJECT_SUBTYPE_VALUE:
+            # value object should NOT have a primary identity.
+            if node.primary_identity() is not None:
+                errors.append(
+                    MetaError(
+                        f"{_node_label(node)} is a value object but declares a primary identity",
+                        ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
+                    )
+                )
+
+
+# ---------------------------------------------------------------------------
+# Pass: filterable-without-index
+# ---------------------------------------------------------------------------
+# For each field with @filterable: true that is NOT part of any identity (@fields)
+# on its owning object AND has no @db.indexed: true → warning.
+
+
+def _identity_field_names(obj: MetaObject) -> set[str]:
+    """Return the set of field names covered by ANY identity on *obj* (effective)."""
+    covered: set[str] = set()
+    for child in obj.effective_children():
+        if child.type != TYPE_IDENTITY:
+            continue
+        fields_val = child.attr(IDENTITY_ATTR_FIELDS)
+        if isinstance(fields_val, list):
+            covered.update(str(f) for f in fields_val)
+        elif isinstance(fields_val, str):
+            covered.add(fields_val)
+    return covered
+
+
+def _validate_filterable_has_index(
+    root: MetaData,
+    warnings: list[str],
+) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_OBJECT:
+            continue
+        if not isinstance(node, MetaObject):
+            continue
+
+        covered = _identity_field_names(node)
+
+        for field in node.fields():
+            if field.attr("filterable") is not True:
+                continue
+            if field.name in covered:
+                continue
+            if field.attr("db.indexed") is True:
+                continue
+            warnings.append(
+                f'[filterable-without-index] field "{node.name}.{field.name}" has @filterable: true '
+                f"but is not part of any identity. Filtering on this field will sequential-scan. "
+                f"Add @db.indexed: true to the field (when supported), or remove @filterable: true."
+            )
