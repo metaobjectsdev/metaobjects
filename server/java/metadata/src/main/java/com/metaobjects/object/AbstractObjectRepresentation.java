@@ -297,8 +297,11 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
     // OBJECT CLASS / PRODUCES (lifted from DataMetaObject)
 
     /**
-     * Retrieves the object class of an object, falling back to the default runtime
-     * class when no {@code @object} attr and no name-convention class resolve.
+     * Retrieves the object class for this representation. Resolution precedence follows
+     * ADR-0001: {@code @object} attr → {@link com.metaobjects.registry.ObjectClassRegistry}
+     * (FQN-keyed binding) → name-convention. Unlike the base {@link MetaObject}, an unresolved
+     * class is not an error — it falls back to {@link #getDefaultObjectClass()} (the map-backed
+     * runtime), so dynamic/unbound objects still work.
      */
     @Override
     public Class<?> getObjectClass() throws ClassNotFoundException {
@@ -307,6 +310,9 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
 
         if (hasObjectAttr())
             c = getObjectClassFromAttr();
+
+        if (c == null)
+            c = com.metaobjects.registry.ObjectClassRegistry.global().resolve(getName());
 
         if (c == null)
             c = createClassFromMetaDataName( false );
