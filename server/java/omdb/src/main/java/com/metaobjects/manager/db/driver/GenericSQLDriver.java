@@ -24,6 +24,10 @@ import org.slf4j.LoggerFactory;
 
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.MetaDataException;
+import com.metaobjects.MetaDataNotFoundException;
+import com.metaobjects.manager.db.JsonbConverter;
+import com.metaobjects.registry.ObjectClassRegistry;
+import com.metaobjects.util.MetaDataUtil;
 
 import com.metaobjects.field.MetaField;
 import com.metaobjects.manager.QueryOptions;
@@ -55,6 +59,47 @@ public class GenericSQLDriver implements DatabaseDriver {
 
     private static final Logger log = LoggerFactory.getLogger(GenericSQLDriver.class);
     private ObjectManagerDB mManager = null;
+
+    /** Attribute name for DB type override (e.g. "jsonb"). */
+    private static final String ATTR_DB_TYPE = "dbType";
+
+    /** Attribute name for the nested value-object reference. */
+    private static final String ATTR_OBJECT_REF = "objectRef";
+
+    /** Reusable Jackson bridge for jsonb serialization / deserialization. */
+    private final JsonbConverter jsonbConverter = new JsonbConverter();
+
+    /**
+     * Returns true if the field is declared as a jsonb column via {@code @dbType="jsonb"}.
+     * Uses the attr model so jsonb detection works even without a dedicated {@code JsonbField} class.
+     */
+    protected boolean isJsonbField(MetaField f) {
+        try {
+            return f.hasMetaAttr(ATTR_DB_TYPE)
+                && "jsonb".equals(f.getMetaAttr(ATTR_DB_TYPE).getValueAsString());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Resolves the target Java class for a jsonb field using the {@code @objectRef} attribute.
+     * Resolution: ObjectClassRegistry binding for the referenced MetaObject's FQN; null = use Map fallback.
+     *
+     * @param f the jsonb MetaField
+     * @return the bound class, or null if no binding is registered
+     */
+    protected Class<?> resolveJsonbClass(MetaField f) {
+        try {
+            if (!f.hasMetaAttr(ATTR_OBJECT_REF)) return null;
+            String ref = f.getMetaAttr(ATTR_OBJECT_REF).getValueAsString();
+            if (ref == null || ref.isEmpty()) return null;
+            // Look up the referenced MetaObject and consult the registry for its bound class
+            return ObjectClassRegistry.global().resolve(ref);
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     /**
      * This is to handle arguments for the constructed SQL query to ensure
@@ -1615,6 +1660,13 @@ public class GenericSQLDriver implements DatabaseDriver {
             } else {
                 s.setString(j, value.toString());
             }
+        } else if (isJsonbField(f)) {
+            // jsonb: serialize value to JSON text; Derby stores as VARCHAR/CLOB
+            if (value == null) {
+                s.setNull(j, Types.VARCHAR);
+            } else {
+                s.setString(j, jsonbConverter.toJson(value));
+            }
         } else if (f instanceof com.metaobjects.field.ObjectField) {
             //if ( value == null )
             //  s.setNull( j, Types.BLOB );
@@ -1909,6 +1961,20 @@ public class GenericSQLDriver implements DatabaseDriver {
             f.setDouble(o, rs.wasNull() ? null : dv);
         } else if (f instanceof com.metaobjects.field.StringField) {
             f.setString(o, rs.getString(j));
+        } else if (isJsonbField(f)) {
+            // jsonb: read JSON text from column, deserialize to typed class or Map fallback
+            String json = rs.getString(j);
+            if (json == null || rs.wasNull()) {
+                f.setObject(o, null);
+            } else {
+                Class<?> targetClass = resolveJsonbClass(f);
+                if (targetClass != null) {
+                    f.setObject(o, jsonbConverter.fromJson(json, targetClass));
+                } else {
+                    // Fallback: deserialize to Map (Jackson returns LinkedHashMap)
+                    f.setObject(o, jsonbConverter.fromJson(json, Map.class));
+                }
+            }
         } else if (f instanceof com.metaobjects.field.ObjectField) {
             f.setObject(o, rs.getObject(j));
         } else {

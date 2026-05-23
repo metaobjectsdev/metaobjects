@@ -247,7 +247,22 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 		}		
 	}
 	
+	/** Attribute name for DB type override (e.g. "jsonb"). */
+	protected static final String ATTR_DB_TYPE = "dbType";
+
+	/** Returns true if the field is declared as a jsonb column via {@code @dbType="jsonb"}. */
+	protected boolean isJsonbField(MetaField mf) {
+		try {
+			return mf.hasMetaAttr(ATTR_DB_TYPE)
+				&& "jsonb".equals(mf.getMetaAttr(ATTR_DB_TYPE).getValueAsString());
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
 	protected int getSQLType( MetaField mf ) {
+		// jsonb fields are stored as text (VARCHAR/CLOB) — no native jsonb on Derby
+		if (isJsonbField(mf)) return Types.VARCHAR;
 		switch( mf.getDataType() )
 		{
 		case BOOLEAN: return Types.BIT;
@@ -265,6 +280,8 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	}
 
 	protected int getSQLLength( MetaField mf ) {
+		// jsonb: store as CLOB (length > Derby's VARCHAR max of 32672 triggers CLOB in DerbyDriver)
+		if (isJsonbField(mf)) return 65536;
 		// TODO:  Support length on metafield as validator or attribute
 		switch( mf.getDataType() )
 		{
