@@ -25,7 +25,13 @@ The conformance suite (`spec/conformance-tests.md`) is explicit: **runtime / Obj
 
 - **Metadata vocabulary** — `source.dbTable`/`source.dbView`, `origin.passthrough`/`origin.aggregate`, `object.entity`/`object.value`/`object.base`, the `@db*` attrs (already in core + fixtures for `source-*` and `origin-*`).
 - **Identity strategy** — `@generation: "increment" | "uuid" | "assigned"` on the primary identity drives who produces the PK (driver / runtime / caller). Java must honor the same vocabulary.
-- **Migration semantics** — deterministic diffs, forward-only emission, `@previousName` as the rename hint (rename is never inferred from a diff — that path is silent data loss), dry-run/verify before apply.
+- **Migration semantics** — *shared* contract: deterministic diffs, a destructive-by-default-blocked policy (drops/narrowing need explicit opt-in), and verify-before-apply. **Two mechanisms are not yet aligned across ports** (see *Cross-language migration divergences* below): up-only vs. up+down emission, and how renames are detected.
+
+**Cross-language migration divergences (v1 — flagged for convergence, decided neither here nor by this FR).** The shipped TS reference (`server/typescript/packages/migrate-ts/`) and the Java v1 engine differ in two places. Both are deliberate, not silent drift:
+1. **Down migrations.** `migrate-ts` `emit()` produces **both** `up.sql` and a best-effort `down.sql` (`write-migration.ts`). Java v1 emits **`up` only** (`EmitResult.down` exists but is empty, for shape parity). Java down-migration generation is *deferred* — it is **not** "the cross-language convention."
+2. **Rename detection.** `migrate-ts` *infers* renames via a column-overlap **heuristic** (`detectColumnRenames`/`detectTableRenames`) gated by an interactive `onAmbiguous` callback (default resolution: drop+add). Java v1 uses the explicit **`@previousName`** hint instead — deterministic and CI-friendly for a build-time Maven goal, where no interactive callback fits. Both ports model the same `rename-table`/`rename-column` change kinds, so either mechanism is additive.
+
+A candidate convergence (both ports honoring `@previousName` explicit-wins with the heuristic as fallback; and a shared decision on `down` emission) is an **open cross-language question** (see Open questions) — out of scope for this FR.
 
 This FR also heeds the lessons recorded in the C# persistence design: **harvest** OMDB's dialect drivers, expression API, bulk-ops, explicit transaction control, and schema-generation engine; **avoid deepening** its known anti-patterns (mapping state cached on `MetaObject` instances; `parseField()` if/else type ladders; mandatory manual `getConnection()`/`releaseConnection()` lifecycle), and — most importantly — **do not bolt migration application into the CRUD runtime**. The schema engine is reused, but it is surfaced through a decoupled `meta migrate` verb set, not auto-applied as a side effect of persistence.
 
@@ -70,7 +76,7 @@ Extend `MetaClassDBValidatorService` + drivers from *create-if-missing* to a **d
 - `emit` — diff metadata vs. a target DB → forward-only SQL script (reviewable artifact; doubles as SQL-visibility for debugging).
 - `verify` — drift detection, non-zero exit on drift (CI gate).
 - `diff` — human-readable diff, writes nothing.
-- `apply` — execute (additive changes safe to auto-apply; **destructive/ambiguous changes — drop, rename, narrowing — require `@previousName` or an explicit hand-authored step, never inferred**; data migrations get an explicit hook).
+- `apply` — execute (additive changes safe to auto-apply; **destructive changes — drop, narrowing — are blocked unless explicitly opted in (`AllowOptions`); renames are driven by the `@previousName` hint, never inferred in Java** — the TS reference instead infers renames heuristically, see *Cross-language migration divergences*; data migrations get an explicit hook).
 
 A consuming app adopts its existing schema as the baseline; metadata must reproduce it exactly (schema-equivalence) before any external migration tool is retired.
 
@@ -99,12 +105,12 @@ OMDB instantiates **typed objects** — entities, jsonb value-objects (§3), and
 - NoSQL (`omnosql`) port.
 - A from-scratch TS-mirror runtime rewrite for Java — OMDB-derived `ObjectManager` is the intentional Java-idiomatic runtime.
 - EF/Drizzle-style entity-class codegen *targets* beyond the POJO/repository bases above.
-- Down migrations (forward-only, matching the cross-language convention).
+- Down-migration *generation* for Java (v1 emits forward-only `up`; `EmitResult.down` is reserved but empty). NB: the TS reference *does* emit a best-effort `down.sql`, so this is a deferred Java divergence, **not** a cross-language convention — see *Cross-language migration divergences*.
 - Byte-identical cross-language migration SQL corpus (future).
 
 ## Open questions (resolve during planning)
 1. **Apply model:** boot-time auto-converge vs. emit-and-apply-via-tool. (The cross-language direction favors decoupled/reviewed; a consumer may still opt into auto-apply of additive-only changes in dev.)
-2. **Destructive-change policy:** `@previousName` rename hints + explicit data-migration steps — required gating before `apply` will touch a drop/narrowing.
+2. **Destructive-change policy + cross-language rename/`down` convergence:** Java v1 gates drops/narrowing behind explicit `AllowOptions` opt-in and drives renames via `@previousName` + explicit data-migration steps. **Open:** whether to converge with the shipped TS reference, which infers renames via a heuristic + `onAmbiguous` callback and emits a best-effort `down.sql`. Candidate end-state: both ports honor `@previousName` (explicit-wins) with the heuristic as fallback, plus a shared decision on `down` emission. (See *Cross-language migration divergences*.)
 3. **jsonb converter details:** registration point, null/empty handling, `@keyedBy` map semantics.
 4. **UUID modelling:** dedicated `uuid` field subtype vs. `field` + `@dbType=uuid` attr (cross-language vocabulary decision).
 5. **v1 ALTER aggressiveness:** which additive ALTERs are in scope; where the line to "emit a script for a human" sits.
