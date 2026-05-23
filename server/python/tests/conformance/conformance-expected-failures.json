@@ -3,7 +3,6 @@
     "attr-filter-explicit-ops",
     "attr-filter-shorthand",
     "attr-properties-basic",
-    "currency-default-usd",
     "currency-explicit-jpy",
     "currency-precedence-field-vs-view",
     "error-attr-bad-allowed-value",
