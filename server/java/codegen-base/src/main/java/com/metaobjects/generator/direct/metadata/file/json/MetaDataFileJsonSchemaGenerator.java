@@ -102,10 +102,6 @@ public class MetaDataFileJsonSchemaGenerator extends SingleJsonDirectGeneratorBa
             .optionalAttribute(JSON_TITLE, "string")
             .optionalAttribute(JSON_DESCRIPTION, "string");
 
-        registry.findType("object", "pojo")
-            .optionalAttribute(JSON_TITLE, "string")
-            .optionalAttribute(JSON_DESCRIPTION, "string");
-
         // Field-level JSON Schema attributes
         registry.findType("field", "base")
             .optionalAttribute(JSON_TITLE, "string")

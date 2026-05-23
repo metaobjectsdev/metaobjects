@@ -21,7 +21,7 @@ public class CoreObjectsMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String[] getDependencies() {
-        // Depends on object-types since it extends object.base and object.pojo
+        // Depends on object-types since it extends object.base
         return new String[]{"object-types"};
     }
 
@@ -55,9 +55,6 @@ public class CoreObjectsMetaDataProvider implements MetaDataTypeProvider {
                 .optionalAttribute(DATA_VALIDATION_MODE, "string")
                 .optionalAttribute(DATA_DEFAULT_VALUES, "string");
 
-            registry.findType("object", "pojo")
-                .optionalAttribute(DATA_BUILDER_CLASS, "string")
-                .optionalAttribute(DATA_IMMUTABLE, "boolean");
         }
     }
 
@@ -82,9 +79,6 @@ public class CoreObjectsMetaDataProvider implements MetaDataTypeProvider {
                 .optionalAttribute(VALUE_TOSTRING_FORMAT, "string")
                 .optionalAttribute(VALUE_EXTENSIONS_ENABLED, "boolean");
 
-            registry.findType("object", "pojo")
-                .optionalAttribute(VALUE_OBJECT_TYPE, "string")
-                .optionalAttribute(VALUE_EQUALS_BY, "string");
         }
     }
 

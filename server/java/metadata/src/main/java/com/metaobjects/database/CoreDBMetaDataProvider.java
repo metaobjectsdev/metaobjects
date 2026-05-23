@@ -11,8 +11,6 @@ import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.identity.SecondaryIdentity;
 import com.metaobjects.object.MetaObject;
-import com.metaobjects.object.pojo.PojoMetaObject;
-import com.metaobjects.object.pojo.PojoObject;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataTypeProvider;
 
@@ -83,10 +81,6 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
             .optionalAttribute(DB_TABLE, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_INDEX, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_UNIQUE, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(PREVIOUS_NAME, StringAttribute.SUBTYPE_STRING);
-
-        registry.findType(MetaObject.TYPE_OBJECT, PojoMetaObject.SUBTYPE_POJO)
-            .optionalAttribute(DB_TABLE, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(PREVIOUS_NAME, StringAttribute.SUBTYPE_STRING);
 
         // Field-level database attributes
