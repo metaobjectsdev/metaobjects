@@ -21,7 +21,7 @@ public sealed record TypeId(string Type, string SubType)
 
 /// <summary>
 /// Declares which child (type, subType, name) combinations are legal under a
-/// parent node. Any field set to <see cref="Constants.CHILD_RULE_WILDCARD"/>
+/// parent node. Any field set to <see cref="MetaObjects.Shared.Structural.CHILD_RULE_WILDCARD"/>
 /// ("*") matches any value.
 /// </summary>
 public sealed record ChildRule(string ChildType, string ChildSubType, string ChildName);
@@ -33,7 +33,7 @@ public sealed record ChildRule(string ChildType, string ChildSubType, string Chi
 /// <summary>
 /// Declares one attribute that a (type, subType) node may carry.
 /// <para>
-/// <paramref name="ValueType"/> must not be <see cref="Constants.SUBTYPE_BASE"/>
+/// <paramref name="ValueType"/> must not be <see cref="MetaObjects.Shared.BaseTypes.SUBTYPE_BASE"/>
 /// ("base"). Polymorphic attrs (e.g. <c>@default</c>) must omit
 /// <paramref name="ValueType"/> (pass <see langword="null"/>).
 /// </para>
@@ -113,7 +113,7 @@ public sealed class TypeRegistry
     /// <summary>
     /// Register a new type definition. Throws <see cref="InvalidOperationException"/>
     /// on a duplicate (type, subType) or on an attr whose
-    /// <see cref="AttrSchema.ValueType"/> is <see cref="Constants.SUBTYPE_BASE"/>.
+    /// <see cref="AttrSchema.ValueType"/> is <see cref="MetaObjects.Shared.BaseTypes.SUBTYPE_BASE"/>.
     /// </summary>
     public void Register(TypeDefinition def)
     {
@@ -129,11 +129,11 @@ public sealed class TypeRegistry
         // Reject SUBTYPE_BASE as an attr valueType — see TS comment for rationale.
         foreach (AttrSchema attr in def.Attributes)
         {
-            if (attr.ValueType == Constants.SUBTYPE_BASE)
+            if (attr.ValueType == SUBTYPE_BASE)
             {
                 throw new InvalidOperationException(
                     $"TypeRegistry.Register: attr \"{attr.Name}\" on \"{key}\" declares " +
-                    $"valueType \"{Constants.SUBTYPE_BASE}\", which is not valid for attrs. " +
+                    $"valueType \"{SUBTYPE_BASE}\", which is not valid for attrs. " +
                     $"Use no valueType (null) for a polymorphic/untyped attr.");
             }
         }
@@ -219,11 +219,11 @@ public sealed class TypeRegistry
 
         foreach (AttrSchema attr in attributes ?? [])
         {
-            if (attr.ValueType == Constants.SUBTYPE_BASE)
+            if (attr.ValueType == SUBTYPE_BASE)
             {
                 throw new InvalidOperationException(
                     $"TypeRegistry.Extend: attr \"{attr.Name}\" being added to \"{type}.{subType}\" " +
-                    $"declares valueType \"{Constants.SUBTYPE_BASE}\", which is not valid for attrs. " +
+                    $"declares valueType \"{SUBTYPE_BASE}\", which is not valid for attrs. " +
                     $"Use no valueType (null) for a polymorphic/untyped attr.");
             }
 
@@ -260,7 +260,7 @@ public static class ChildRuleHelper
         string childType,
         string childSubType,
         string childName) =>
-        (rule.ChildType == Constants.CHILD_RULE_WILDCARD || rule.ChildType == childType) &&
-        (rule.ChildSubType == Constants.CHILD_RULE_WILDCARD || rule.ChildSubType == childSubType) &&
-        (rule.ChildName == Constants.CHILD_RULE_WILDCARD || rule.ChildName == childName);
+        (rule.ChildType == CHILD_RULE_WILDCARD || rule.ChildType == childType) &&
+        (rule.ChildSubType == CHILD_RULE_WILDCARD || rule.ChildSubType == childSubType) &&
+        (rule.ChildName == CHILD_RULE_WILDCARD || rule.ChildName == childName);
 }

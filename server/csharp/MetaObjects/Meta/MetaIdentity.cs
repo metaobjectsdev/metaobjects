@@ -16,7 +16,7 @@ public class MetaIdentity(TypeId typeId, string name) : MetaData(typeId, name)
     {
         get
         {
-            var f = OwnAttr(Constants.IDENTITY_ATTR_FIELDS);
+            var f = OwnAttr(IDENTITY_ATTR_FIELDS);
             return f is IReadOnlyList<string> list ? list : [];
         }
     }
@@ -25,13 +25,13 @@ public class MetaIdentity(TypeId typeId, string name) : MetaData(typeId, name)
     /// Whether the identity enforces uniqueness.
     /// Defaults to <see langword="true"/>; explicit <c>@unique: false</c> makes it a non-unique index.
     /// </summary>
-    public bool Unique => OwnAttr(Constants.IDENTITY_ATTR_UNIQUE) is not false;
+    public bool Unique => OwnAttr(IDENTITY_ATTR_UNIQUE) is not false;
 
     /// <summary>True when this identity's subtype is <c>primary</c>.</summary>
-    public bool IsPrimary() => SubType == Constants.IDENTITY_SUBTYPE_PRIMARY;
+    public bool IsPrimary() => SubType == IDENTITY_SUBTYPE_PRIMARY;
 
     /// <summary>True when this identity's subtype is <c>secondary</c>.</summary>
-    public bool IsSecondary() => SubType == Constants.IDENTITY_SUBTYPE_SECONDARY;
+    public bool IsSecondary() => SubType == IDENTITY_SUBTYPE_SECONDARY;
 
     /// <summary>True when this identity is composite (more than one field).</summary>
     public bool IsComposite() => Fields.Count > 1;
@@ -48,7 +48,7 @@ public class MetaPrimaryIdentity(TypeId typeId, string name) : MetaIdentity(type
     {
         get
         {
-            var v = OwnAttr(Constants.IDENTITY_ATTR_GENERATION);
+            var v = OwnAttr(IDENTITY_ATTR_GENERATION);
             return v is string s ? s : null;
         }
     }

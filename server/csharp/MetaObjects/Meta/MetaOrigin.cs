@@ -25,7 +25,7 @@ public class MetaPassthroughOrigin(TypeId typeId, string name) : MetaOrigin(type
     {
         get
         {
-            var v = OwnAttr(Constants.ORIGIN_PASSTHROUGH_ATTR_FROM);
+            var v = OwnAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
             return v is string s ? s : null;
         }
     }
@@ -35,7 +35,7 @@ public class MetaPassthroughOrigin(TypeId typeId, string name) : MetaOrigin(type
     {
         get
         {
-            var v = OwnAttr(Constants.ORIGIN_PASSTHROUGH_ATTR_VIA);
+            var v = OwnAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
             return v is string s ? s : null;
         }
     }
@@ -52,7 +52,7 @@ public class MetaAggregateOrigin(TypeId typeId, string name) : MetaOrigin(typeId
     {
         get
         {
-            var v = OwnAttr(Constants.ORIGIN_AGGREGATE_ATTR_AGG);
+            var v = OwnAttr(ORIGIN_AGGREGATE_ATTR_AGG);
             return v is string s ? s : null;
         }
     }
@@ -62,7 +62,7 @@ public class MetaAggregateOrigin(TypeId typeId, string name) : MetaOrigin(typeId
     {
         get
         {
-            var v = OwnAttr(Constants.ORIGIN_AGGREGATE_ATTR_OF);
+            var v = OwnAttr(ORIGIN_AGGREGATE_ATTR_OF);
             return v is string s ? s : null;
         }
     }
@@ -72,7 +72,7 @@ public class MetaAggregateOrigin(TypeId typeId, string name) : MetaOrigin(typeId
     {
         get
         {
-            var v = OwnAttr(Constants.ORIGIN_AGGREGATE_ATTR_VIA);
+            var v = OwnAttr(ORIGIN_AGGREGATE_ATTR_VIA);
             return v is string s ? s : null;
         }
     }

@@ -54,7 +54,7 @@ The durable cross-language contract:
    | **Java** | static `registerTypes(registry)` per class | one `MetaDataTypeProvider` per package, auto-discovered + dependency-sorted via `ServiceLoader` (SPI) |
    | **TS** | per-concern registration; attr subclasses self-register into a dependency-free class map (breaks a module-eval cycle) | explicit `composeRegistry([...])`; one composed `coreTypesProvider` |
    | **Python** | decorator self-registration onto a domain provider (`@provider.register`) | explicit `compose_registry([...])`; entry-point discovery is a documented future extension that does not change the seam |
-   | **C#** | (stale) central registration | to migrate onto the provider model when next touched |
+   | **C#** | central `RegisterCoreTypeDefs` consuming per-concern schemas (mirrors TS) | explicit `Provider.ComposeRegistry([...])`; one composed `CoreTypes.CoreTypesProvider` |
 
 5. **Registry-level attribute inheritance** (`inheritsFrom(type, subType)`) is supported so a
    subtype need not re-declare its base's attributes — reinforcing ADR-0002's low
@@ -92,7 +92,10 @@ The durable cross-language contract:
 - **Java** — shipped: per-package providers via `ServiceLoader`, dependency-sorted. Reference.
 - **TS** — shipped: `MetaDataTypeProvider` + `composeRegistry`; one composed core provider
   (plus a db provider). Attr subclasses self-register via a dependency-free class map.
-- **C#** — **stale**: central registration; migrate onto the provider model when next touched.
+- **C#** — shipped: `IMetaDataTypeProvider` + `Provider.ComposeRegistry` (topo-sorted,
+  with `ERR_PROVIDER_*` codes); one composed `CoreTypes.CoreTypesProvider`. Single core
+  provider for the loader+conformance milestone (no fixture exercises multi-provider
+  composition).
 - **Python** — adopting from the start: decorator self-registration + explicit
   `compose_registry`; single core provider for the loader+conformance milestone; entry-point
   discovery deferred (no consumer needs it yet, and no fixture exercises multi-provider

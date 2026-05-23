@@ -52,21 +52,21 @@ public static class ValidationPasses
         List<MetaError> errors,
         List<string> warnings)
     {
-        if (model.Type == Constants.TYPE_OBJECT)
+        if (model.Type == TYPE_OBJECT)
         {
             // Use Children() (effective) so inherited identities count.
             bool hasPrimary = model.Children().Any(
-                c => c.Type == Constants.TYPE_IDENTITY &&
-                     c.SubType == Constants.IDENTITY_SUBTYPE_PRIMARY);
+                c => c.Type == TYPE_IDENTITY &&
+                     c.SubType == IDENTITY_SUBTYPE_PRIMARY);
 
-            if (model.SubType == Constants.OBJECT_SUBTYPE_VALUE && hasPrimary)
+            if (model.SubType == OBJECT_SUBTYPE_VALUE && hasPrimary)
             {
                 errors.Add(new MetaError(
                     $"value object '{model.Fqn()}' must not have a primary identity " +
                     "(use subType: \"entity\" for records with identity)",
                     ErrorCode.ERR_SUBTYPE_RULE_VIOLATION));
             }
-            else if (model.SubType == Constants.OBJECT_SUBTYPE_ENTITY &&
+            else if (model.SubType == OBJECT_SUBTYPE_ENTITY &&
                      !hasPrimary &&
                      !model.IsAbstract)
             {
@@ -96,22 +96,22 @@ public static class ValidationPasses
         var errors = new List<MetaError>();
 
         foreach (var obj in root.OwnChildren()
-                     .Where(c => c.Type == Constants.TYPE_OBJECT))
+                     .Where(c => c.Type == TYPE_OBJECT))
         {
             // Use Children() (effective) so inherited fields are visible when
             // validating @defaultSortField references.
             var effective = obj.Children();
             var fieldNames = new HashSet<string>(
                 effective
-                    .Where(c => c.Type == Constants.TYPE_FIELD)
+                    .Where(c => c.Type == TYPE_FIELD)
                     .Select(f => f.Name),
                 StringComparer.Ordinal);
 
             foreach (var layout in effective.Where(
-                c => c.Type == Constants.TYPE_LAYOUT &&
-                     c.SubType == Constants.LAYOUT_SUBTYPE_DATA_GRID))
+                c => c.Type == TYPE_LAYOUT &&
+                     c.SubType == LAYOUT_SUBTYPE_DATA_GRID))
             {
-                var sortField = layout.OwnAttr(Constants.LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
+                var sortField = layout.OwnAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
                 if (sortField is string sf && !fieldNames.Contains(sf))
                 {
                     errors.Add(new MetaError(
@@ -140,16 +140,16 @@ public static class ValidationPasses
         var warnings = new List<string>();
 
         foreach (var obj in root.OwnChildren()
-                     .Where(c => c.Type == Constants.TYPE_OBJECT))
+                     .Where(c => c.Type == TYPE_OBJECT))
         {
             // Use Children() (effective) so inherited fields and identities are included.
             var effective = obj.Children();
 
             // Build the set of field names covered by any identity on this object.
             var indexedFieldNames = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var identity in effective.Where(c => c.Type == Constants.TYPE_IDENTITY))
+            foreach (var identity in effective.Where(c => c.Type == TYPE_IDENTITY))
             {
-                var fields = identity.OwnAttr(Constants.IDENTITY_ATTR_FIELDS);
+                var fields = identity.OwnAttr(IDENTITY_ATTR_FIELDS);
                 if (fields is string singleField)
                 {
                     // Bare string (pre-desugar): split on comma.
@@ -175,11 +175,11 @@ public static class ValidationPasses
                 }
             }
 
-            foreach (var field in effective.Where(c => c.Type == Constants.TYPE_FIELD))
+            foreach (var field in effective.Where(c => c.Type == TYPE_FIELD))
             {
-                var filterable = field.OwnAttr(Constants.FIELD_ATTR_FILTERABLE);
+                var filterable = field.OwnAttr(FIELD_ATTR_FILTERABLE);
                 if (filterable is not true) continue;
-                if (field.OwnAttr(Constants.FIELD_ATTR_DB_INDEXED) is true) continue;
+                if (field.OwnAttr(FIELD_ATTR_DB_INDEXED) is true) continue;
                 if (indexedFieldNames.Contains(field.Name)) continue;
 
                 warnings.Add(
@@ -207,17 +207,17 @@ public static class ValidationPasses
         var errors = new List<MetaError>();
 
         foreach (var obj in root.OwnChildren()
-                     .Where(c => c.Type == Constants.TYPE_OBJECT))
+                     .Where(c => c.Type == TYPE_OBJECT))
         {
             foreach (var field in obj.OwnChildren()
-                         .Where(c => c.Type == Constants.TYPE_FIELD))
+                         .Where(c => c.Type == TYPE_FIELD))
             {
                 foreach (var origin in field.OwnChildren()
-                             .Where(c => c.Type == Constants.TYPE_ORIGIN))
+                             .Where(c => c.Type == TYPE_ORIGIN))
                 {
-                    if (origin.SubType == Constants.ORIGIN_SUBTYPE_PASSTHROUGH)
+                    if (origin.SubType == ORIGIN_SUBTYPE_PASSTHROUGH)
                     {
-                        var from = origin.OwnAttr(Constants.ORIGIN_PASSTHROUGH_ATTR_FROM);
+                        var from = origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
                         if (from is not string fromStr || fromStr == "")
                         {
                             errors.Add(new MetaError(
@@ -228,15 +228,15 @@ public static class ValidationPasses
                         ValidateFromPath(fromStr, root, obj.Name, field.Name, errors,
                             "origin.passthrough.@from");
 
-                        var via = origin.OwnAttr(Constants.ORIGIN_PASSTHROUGH_ATTR_VIA);
+                        var via = origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
                         if (via is string viaStr && viaStr != "")
                         {
                             ValidateViaPath(viaStr, root, obj.Name, field.Name, errors);
                         }
                     }
-                    else if (origin.SubType == Constants.ORIGIN_SUBTYPE_AGGREGATE)
+                    else if (origin.SubType == ORIGIN_SUBTYPE_AGGREGATE)
                     {
-                        var of = origin.OwnAttr(Constants.ORIGIN_AGGREGATE_ATTR_OF);
+                        var of = origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_OF);
                         if (of is not string ofStr || ofStr == "")
                         {
                             errors.Add(new MetaError(
@@ -247,7 +247,7 @@ public static class ValidationPasses
                         ValidateFromPath(ofStr, root, obj.Name, field.Name, errors,
                             "origin.aggregate.@of");
 
-                        var via = origin.OwnAttr(Constants.ORIGIN_AGGREGATE_ATTR_VIA);
+                        var via = origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_VIA);
                         if (via is not string viaStr || viaStr == "")
                         {
                             errors.Add(new MetaError(
@@ -272,7 +272,7 @@ public static class ValidationPasses
     private static MetaData? FindObject(MetaData root, string name)
     {
         return root.OwnChildren()
-            .FirstOrDefault(c => c.Type == Constants.TYPE_OBJECT && c.Name == name);
+            .FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == name);
     }
 
     // -------------------------------------------------------------------------
@@ -283,7 +283,7 @@ public static class ValidationPasses
     {
         // Use Children() so inherited fields (via extends) are included.
         return obj.Children()
-            .FirstOrDefault(c => c.Type == Constants.TYPE_FIELD && c.Name == name);
+            .FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == name);
     }
 
     // -------------------------------------------------------------------------
@@ -294,7 +294,7 @@ public static class ValidationPasses
     {
         // Use Children() so inherited relationships (via extends) are included.
         return obj.Children()
-            .FirstOrDefault(c => c.Type == Constants.TYPE_RELATIONSHIP && c.Name == name);
+            .FirstOrDefault(c => c.Type == TYPE_RELATIONSHIP && c.Name == name);
     }
 
     // -------------------------------------------------------------------------
@@ -388,7 +388,7 @@ public static class ValidationPasses
                 return;
             }
 
-            var refTarget = rel.OwnAttr(Constants.RELATIONSHIP_ATTR_OBJECT_REF);
+            var refTarget = rel.OwnAttr(RELATIONSHIP_ATTR_OBJECT_REF);
             if (refTarget is not string refStr || refStr == "")
             {
                 errors.Add(new MetaError(
@@ -449,26 +449,26 @@ public static class ValidationPasses
         var errors = new List<MetaError>();
 
         foreach (var obj in root.OwnChildren()
-                     .Where(c => c.Type == Constants.TYPE_OBJECT))
+                     .Where(c => c.Type == TYPE_OBJECT))
         {
             // Use Children() (effective) so inherited @filterable fields are visible.
             var effective = obj.Children();
 
             // Build allowlist: field name → allowed ops for its subtype.
             var allow = new Dictionary<string, string[]>(StringComparer.Ordinal);
-            foreach (var f in effective.Where(c => c.Type == Constants.TYPE_FIELD))
+            foreach (var f in effective.Where(c => c.Type == TYPE_FIELD))
             {
-                if (f.OwnAttr(Constants.FIELD_ATTR_FILTERABLE) is true)
+                if (f.OwnAttr(FIELD_ATTR_FILTERABLE) is true)
                 {
-                    allow[f.Name] = Constants.OpsForSubType(f.SubType);
+                    allow[f.Name] = OpsForSubType(f.SubType);
                 }
             }
 
             foreach (var layout in effective.Where(
-                c => c.Type == Constants.TYPE_LAYOUT &&
-                     c.SubType == Constants.LAYOUT_SUBTYPE_DATA_GRID))
+                c => c.Type == TYPE_LAYOUT &&
+                     c.SubType == LAYOUT_SUBTYPE_DATA_GRID))
             {
-                var filter = layout.OwnAttr(Constants.LAYOUT_DATA_GRID_ATTR_FILTER);
+                var filter = layout.OwnAttr(LAYOUT_DATA_GRID_ATTR_FILTER);
                 // Type errors (e.g. legacy string form) are reported by ValidateAttrSchema.
                 if (filter is not IReadOnlyDictionary<string, object?> filterObj) continue;
                 CheckFilterClauses(filterObj, allow, obj.Name, layout.Name, errors);
@@ -487,7 +487,7 @@ public static class ValidationPasses
     {
         foreach (var (key, clause) in filter)
         {
-            if (key == Constants.FILTER_COMPOSE_OR || key == Constants.FILTER_COMPOSE_AND)
+            if (key == FILTER_COMPOSE_OR || key == FILTER_COMPOSE_AND)
             {
                 if (clause is IReadOnlyList<object?> subList)
                 {
@@ -619,23 +619,23 @@ public static class ValidationPasses
     {
         return valueType switch
         {
-            Constants.ATTR_SUBTYPE_STRING or
-            Constants.ATTR_SUBTYPE_CLASS => value is string,
+            ATTR_SUBTYPE_STRING or
+            ATTR_SUBTYPE_CLASS => value is string,
 
-            Constants.ATTR_SUBTYPE_INT or
-            Constants.ATTR_SUBTYPE_LONG => value is long or int,
+            ATTR_SUBTYPE_INT or
+            ATTR_SUBTYPE_LONG => value is long or int,
 
-            Constants.ATTR_SUBTYPE_DOUBLE => value is double or float or long or int,
+            ATTR_SUBTYPE_DOUBLE => value is double or float or long or int,
 
-            Constants.ATTR_SUBTYPE_BOOLEAN => value is bool,
+            ATTR_SUBTYPE_BOOLEAN => value is bool,
 
-            Constants.ATTR_SUBTYPE_STRINGARRAY =>
+            ATTR_SUBTYPE_STRINGARRAY =>
                 // Must be a real string list; the parser already desugared bare strings.
                 value is IReadOnlyList<string> ||
                 (value is IReadOnlyList<object?> ol && ol.All(e => e is string)),
 
-            Constants.ATTR_SUBTYPE_PROPERTIES or
-            Constants.ATTR_SUBTYPE_FILTER =>
+            ATTR_SUBTYPE_PROPERTIES or
+            ATTR_SUBTYPE_FILTER =>
                 // Object-typed attrs must be a dictionary (not string, not array).
                 // A string @filter value is the legacy form → fails this check → ERR_BAD_ATTR_VALUE.
                 value is IReadOnlyDictionary<string, object?>,
@@ -658,5 +658,48 @@ public static class ValidationPasses
             double or float => "number",
             _ => value.GetType().Name,
         };
+    }
+
+    // =========================================================================
+    // Pass 8: ValidateFieldObjectStorage
+    //   Cross-attribute validation for @storage on field.object:
+    //     - @storage requires @objectRef on the same field → ERR_STORAGE_WITHOUT_OBJECT_REF
+    //     - @storage "flattened" requires isArray=false (cannot flatten a
+    //       variable-length array) → ERR_STORAGE_FLATTENED_ARRAY
+    //
+    // Ported from validateFieldObjectStorage in
+    // typescript/packages/metadata/src/loader/validation-passes.ts.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateFieldObjectStorage(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            foreach (var field in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
+            {
+                var storage = field.OwnAttr(FIELD_ATTR_STORAGE);
+                if (storage is null) continue;
+
+                var objectRef = field.OwnAttr(FIELD_ATTR_OBJECT_REF);
+                if (objectRef is not string refStr || refStr.Length == 0)
+                {
+                    errors.Add(new MetaError(
+                        $"field \"{obj.Name}.{field.Name}\" sets @storage but has no @objectRef",
+                        ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF));
+                }
+
+                if (storage is string st && st == STORAGE_FLATTENED && field.IsArray)
+                {
+                    errors.Add(new MetaError(
+                        $"field \"{obj.Name}.{field.Name}\" sets @storage \"flattened\" with isArray=true; " +
+                        "flattened storage requires a single nested value",
+                        ErrorCode.ERR_STORAGE_FLATTENED_ARRAY));
+                }
+            }
+        }
+
+        return errors.AsReadOnly();
     }
 }

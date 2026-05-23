@@ -18,7 +18,7 @@ public class MetaValidator(TypeId typeId, string name) : MetaData(typeId, name)
     {
         get
         {
-            var v = OwnAttr(Constants.VALIDATOR_ATTR_MIN);
+            var v = OwnAttr(VALIDATOR_ATTR_MIN);
             return v is long l ? l : null;
         }
     }
@@ -30,19 +30,19 @@ public class MetaValidator(TypeId typeId, string name) : MetaData(typeId, name)
     {
         get
         {
-            var v = OwnAttr(Constants.VALIDATOR_ATTR_MAX);
+            var v = OwnAttr(VALIDATOR_ATTR_MAX);
             return v is long l ? l : null;
         }
     }
 
     /// <summary>True when this validator's subtype is <c>required</c>.</summary>
-    public bool IsRequired() => SubType == Constants.VALIDATOR_SUBTYPE_REQUIRED;
+    public bool IsRequired() => SubType == VALIDATOR_SUBTYPE_REQUIRED;
 
     /// <summary>True when this validator's subtype is <c>length</c>.</summary>
-    public bool IsLength() => SubType == Constants.VALIDATOR_SUBTYPE_LENGTH;
+    public bool IsLength() => SubType == VALIDATOR_SUBTYPE_LENGTH;
 
     /// <summary>True when this validator's subtype is <c>regex</c>.</summary>
-    public bool IsRegex() => SubType == Constants.VALIDATOR_SUBTYPE_REGEX;
+    public bool IsRegex() => SubType == VALIDATOR_SUBTYPE_REGEX;
 }
 
 /// <summary>Required validator (no extra attrs; subtype class exists for <c>is</c> narrowing).</summary>
@@ -59,7 +59,7 @@ public class MetaRegexValidator(TypeId typeId, string name) : MetaValidator(type
     {
         get
         {
-            var v = OwnAttr(Constants.VALIDATOR_ATTR_PATTERN);
+            var v = OwnAttr(VALIDATOR_ATTR_PATTERN);
             return v is string s ? s : null;
         }
     }

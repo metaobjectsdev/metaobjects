@@ -69,7 +69,7 @@ public static class SerializerJson
     // ---------------------------------------------------------------------------
 
     private static string FusedKey(string type, string subType)
-        => $"{type}{Constants.TYPE_SUBTYPE_SEPARATOR}{subType}";
+        => $"{type}{TYPE_SUBTYPE_SEPARATOR}{subType}";
 
     // ---------------------------------------------------------------------------
     // Serialize a single node → { "<type>.<subType>": { ...body } }
@@ -94,29 +94,29 @@ public static class SerializerJson
 
         if (model.Name != "")
         {
-            obj.Add(Constants.RESERVED_KEY_NAME, JsonValue.Create(model.Name));
+            obj.Add(RESERVED_KEY_NAME, JsonValue.Create(model.Name));
         }
 
         if (model.Package is not null && model.Package != "")
         {
-            obj.Add(Constants.RESERVED_KEY_PACKAGE, JsonValue.Create(model.Package));
+            obj.Add(RESERVED_KEY_PACKAGE, JsonValue.Create(model.Package));
         }
 
         if (model.SuperRef is not null)
         {
-            obj.Add(Constants.RESERVED_KEY_EXTENDS, JsonValue.Create(model.SuperRef));
+            obj.Add(RESERVED_KEY_EXTENDS, JsonValue.Create(model.SuperRef));
         }
 
         if (model.IsAbstract)
         {
-            obj.Add(Constants.RESERVED_KEY_ABSTRACT, JsonValue.Create(true));
+            obj.Add(RESERVED_KEY_ABSTRACT, JsonValue.Create(true));
         }
 
         // NOTE: overlay is NOT serialized (authoring-time directive only).
 
         if (model.IsArray)
         {
-            obj.Add(Constants.RESERVED_KEY_IS_ARRAY, JsonValue.Create(true));
+            obj.Add(RESERVED_KEY_IS_ARRAY, JsonValue.Create(true));
         }
 
         // In effective mode use Children()/Attrs() (own + inherited via super chain);
@@ -133,20 +133,20 @@ public static class SerializerJson
 
         foreach (var child in childList)
         {
-            if (child.Type == Constants.TYPE_ATTR) continue;
+            if (child.Type == TYPE_ATTR) continue;
             serializedChildren.Add(SerializeNode(child, effective));
         }
 
         // Inline @-attrs — always emitted as @name; attrs have no child form.
         foreach (var (attrName, attrValue) in attrMap)
         {
-            obj.Add($"{Constants.ATTR_PREFIX}{attrName}", AttrValueToJsonNode(attrValue));
+            obj.Add($"{ATTR_PREFIX}{attrName}", AttrValueToJsonNode(attrValue));
         }
 
         // children — emit only if non-empty
         if (serializedChildren.Count > 0)
         {
-            obj.Add(Constants.RESERVED_KEY_CHILDREN, serializedChildren);
+            obj.Add(RESERVED_KEY_CHILDREN, serializedChildren);
         }
 
         return obj;
@@ -213,7 +213,7 @@ public static class SerializerJson
 
             foreach (var kvp in obj)
             {
-                if (kvp.Key.StartsWith(Constants.ATTR_PREFIX, StringComparison.Ordinal))
+                if (kvp.Key.StartsWith(ATTR_PREFIX, StringComparison.Ordinal))
                     attrKeys.Add(kvp.Key);
                 else
                     structuralKeys.Add(kvp.Key);
@@ -222,12 +222,12 @@ public static class SerializerJson
             attrKeys.Sort(StringComparer.Ordinal);
 
             var result = new JsonObject();
-            bool hasChildren = structuralKeys.Contains(Constants.RESERVED_KEY_CHILDREN);
+            bool hasChildren = structuralKeys.Contains(RESERVED_KEY_CHILDREN);
 
             // Structural keys first (excluding children), preserving insertion order
             foreach (var k in structuralKeys)
             {
-                if (k == Constants.RESERVED_KEY_CHILDREN) continue;
+                if (k == RESERVED_KEY_CHILDREN) continue;
                 result.Add(k, SortAttrKeys(obj[k]?.DeepClone()));
             }
 
@@ -240,8 +240,8 @@ public static class SerializerJson
             // children last
             if (hasChildren)
             {
-                result.Add(Constants.RESERVED_KEY_CHILDREN,
-                    SortAttrKeys(obj[Constants.RESERVED_KEY_CHILDREN]?.DeepClone()));
+                result.Add(RESERVED_KEY_CHILDREN,
+                    SortAttrKeys(obj[RESERVED_KEY_CHILDREN]?.DeepClone()));
             }
 
             return result;

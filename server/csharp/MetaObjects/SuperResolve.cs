@@ -61,21 +61,21 @@ internal static class SuperResolve
         // ---------------------------------------------------------------------
         // 1. Absolute reference: leading "::"
         // ---------------------------------------------------------------------
-        if (reference.StartsWith(Constants.PACKAGE_SEPARATOR, StringComparison.Ordinal))
+        if (reference.StartsWith(PACKAGE_SEPARATOR, StringComparison.Ordinal))
         {
-            string absolutePath = reference[Constants.PACKAGE_SEPARATOR.Length..];
+            string absolutePath = reference[PACKAGE_SEPARATOR.Length..];
             return FindInTree(root, absolutePath);
         }
 
         // ---------------------------------------------------------------------
         // 2. Relative reference: one or more leading "..::"
         // ---------------------------------------------------------------------
-        if (reference.StartsWith(Constants.PACKAGE_PARENT + Constants.PACKAGE_SEPARATOR,
+        if (reference.StartsWith(PACKAGE_PARENT + PACKAGE_SEPARATOR,
                 StringComparison.Ordinal))
         {
             string[] parts = Split(reference);
             int levels = 0;
-            while (levels < parts.Length && parts[levels] == Constants.PACKAGE_PARENT)
+            while (levels < parts.Length && parts[levels] == PACKAGE_PARENT)
             {
                 levels++;
             }
@@ -88,7 +88,7 @@ internal static class SuperResolve
             }
 
             IEnumerable<string> allParts = pkgParts.Take(pkgParts.Length - levels).Concat(remainder);
-            return FindInTree(root, string.Join(Constants.PACKAGE_SEPARATOR, allParts));
+            return FindInTree(root, string.Join(PACKAGE_SEPARATOR, allParts));
         }
 
         // ---------------------------------------------------------------------
@@ -98,7 +98,7 @@ internal static class SuperResolve
         if (contextPackage != "")
         {
             MetaData? found = FindInTree(root,
-                $"{contextPackage}{Constants.PACKAGE_SEPARATOR}{reference}");
+                $"{contextPackage}{PACKAGE_SEPARATOR}{reference}");
             if (found is not null) return found;
         }
         return FindInTree(root, reference);
@@ -109,7 +109,7 @@ internal static class SuperResolve
     /// <c>String.prototype.split</c> on a multi-char separator.
     /// </summary>
     private static string[] Split(string value) =>
-        value.Split(Constants.PACKAGE_SEPARATOR, StringSplitOptions.None);
+        value.Split(PACKAGE_SEPARATOR, StringSplitOptions.None);
 
     // -----------------------------------------------------------------------
     // Deferred resolution — second pass after all files parsed
