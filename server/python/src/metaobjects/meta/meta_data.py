@@ -32,19 +32,8 @@ class MetaData:
         return self._frozen
 
     def fqn(self) -> str:
+        """Own FQN: ``package::name`` if own package is set, else just ``name``."""
         return self.name if not self.package else f"{self.package}{PACKAGE_SEP}{self.name}"
-
-    def effective_package(self) -> Optional[str]:
-        node: Optional[MetaData] = self
-        while node is not None:
-            if node.package:
-                return node.package
-            node = node.parent
-        return None
-
-    def effective_fqn(self) -> str:
-        pkg = self.effective_package()
-        return self.name if not pkg else f"{pkg}{PACKAGE_SEP}{self.name}"
 
     def _require_mutable(self) -> None:
         if self._frozen:
@@ -67,43 +56,50 @@ class MetaData:
         return list(self._attr_nodes.values())
 
     def attr(self, name: str) -> object:
+        """Own attr value for *name*, or ``None``."""
         node = self._attr_nodes.get(name)
         return getattr(node, "value", None) if node is not None else None
+
+    def own_attrs(self) -> dict[str, object]:
+        """Own attr value map — excludes inherited attrs."""
+        return {
+            name: getattr(node, "value", None)
+            for name, node in self._attr_nodes.items()
+            if getattr(node, "value", None) is not None
+        }
+
+    def attrs(self) -> dict[str, object]:
+        """Effective attr value map: own + inherited via super chain (own wins on key conflict).
+
+        Cycle-guarded and cached.
+        """
+        return self._cached("attrs", lambda: self._effective_attrs_inner({self}))
+
+    def _effective_attrs_inner(self, visited: "set[MetaData]") -> dict[str, object]:
+        """Compute effective attrs with cycle detection via *visited* set."""
+        if self.super_data is None or self.super_data in visited:
+            return self.own_attrs()
+        visited.add(self.super_data)
+        result = self.super_data._effective_attrs_inner(visited)
+        # own attrs override super
+        result.update(self.own_attrs())
+        return result
 
     def add_child(self, child: "MetaData") -> None:
         self._require_mutable()
         child.parent = self
         self._children.append(child)
 
-    def children(self) -> list["MetaData"]:
+    def own_children(self) -> list["MetaData"]:
+        """Own (locally declared) children — excludes children inherited via extends."""
         return list(self._children)
 
-    def effective_children(
-        self, _visited: "set[MetaData] | None" = None
-    ) -> list["MetaData"]:
-        """Return own children merged with super chain (own shadowing super on type+name).
+    def children(self) -> list["MetaData"]:
+        """Effective children: own + inherited via the super chain, own shadowing super on (type, name).
 
-        ``_visited`` is an internal parameter used to detect cycles in the super
-        chain (e.g. A.super_data = B, B.super_data = A).  Callers must not pass it;
-        the public contract is zero-argument.  When a cycle is detected the repeated
-        node contributes no further super children — the call returns gracefully
-        rather than raising ``RecursionError``.
-
-        Result is cached after the first call on a frozen node (top-level only).
+        Cycle-guarded and cached (after freeze).
         """
-        # -----------------------------------------------------------------------
-        # Top-level call (public contract): use the memoisation cache.
-        # -----------------------------------------------------------------------
-        if _visited is None:
-            def _compute_top() -> list[MetaData]:
-                return self._effective_children_inner({self})
-
-            return self._cached("effective_children", _compute_top)
-
-        # -----------------------------------------------------------------------
-        # Recursive call (cycle-aware): bypass the cache — visited is path-specific.
-        # -----------------------------------------------------------------------
-        return self._effective_children_inner(_visited)
+        return self._cached("children", lambda: self._effective_children_inner({self}))
 
     def _effective_children_inner(
         self, visited: "set[MetaData]"
@@ -114,7 +110,7 @@ class MetaData:
             result: list[MetaData] = list(self._children)
         else:
             visited.add(self.super_data)
-            result = self.super_data.effective_children(visited)
+            result = self.super_data._effective_children_inner(visited)
             for own in self._children:
                 idx = next(
                     (i for i, c in enumerate(result)

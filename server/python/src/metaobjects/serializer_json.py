@@ -40,7 +40,7 @@ def _body(node: MetaData) -> dict[str, object]:
     for attr in sorted(node.own_meta_attrs(), key=lambda a: a.name):
         body[f"{ATTR_PREFIX}{attr.name}"] = _normalize(getattr(attr, "value", None))
 
-    children = node.children()
+    children = node.own_children()
     if children:
         body[KEY_CHILDREN] = [_to_canonical(c) for c in children]
     return body

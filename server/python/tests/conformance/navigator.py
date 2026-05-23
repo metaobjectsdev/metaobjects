@@ -17,7 +17,7 @@ def navigate(root: MetaData, path_segments: list[str]) -> MetaData | None:
             return None
         type_part, name_part = segment.split(":", 1)
         matched = next(
-            (c for c in current.children() if c.type == type_part and c.name == name_part),
+            (c for c in current.own_children() if c.type == type_part and c.name == name_part),
             None,
         )
         if matched is None:
