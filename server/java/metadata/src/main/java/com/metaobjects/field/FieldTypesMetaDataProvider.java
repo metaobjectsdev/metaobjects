@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
  * <li><strong>field.timestamp:</strong> Timestamp fields</li>
  * <li><strong>field.object:</strong> Object fields with object reference support</li>
  * <li><strong>field.class:</strong> Class fields for class type references</li>
+ * <li><strong>field.enum:</strong> Enum fields with a required {@code @values} member set</li>
  * </ul>
  *
  * <strong>Universal Array Support:</strong>:
@@ -61,6 +62,7 @@ public class FieldTypesMetaDataProvider implements MetaDataTypeProvider {
         // Additional field types
         ObjectField.registerTypes(registry);
         ClassField.registerTypes(registry);
+        EnumField.registerTypes(registry);
 
         log.debug("Field types registered via provider");
     }
