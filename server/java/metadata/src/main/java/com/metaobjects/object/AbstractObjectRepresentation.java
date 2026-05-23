@@ -20,9 +20,8 @@ import java.util.List;
 /**
  * Shared base for the two object representations (entity / value).
  *
- * <p>Consolidates the {@code PojoMetaObject} reflection accessors and the
- * {@code DataMetaObject} live-object hybrid into one base (ADR-0005). Value access
- * resolves in this order:</p>
+ * <p>Consolidates reflection-based accessors and the live-object map hybrid into one
+ * base (ADR-0005). Value access resolves in this order:</p>
  * <ol>
  *   <li>An {@code @objectAdapter} (a Java-only extension seam, an FQN of an
  *       {@link ObjectAdapter}) — when present, all access delegates to it.</li>
@@ -46,15 +45,14 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
     public static final String ATTR_ISSTRICT = "isStrict";
     private static final String CACHE_ADAPTER = "objectAdapterInstance";
 
-    // Reflection method caches (lifted from PojoMetaObject)
-    public final static String CACHE_PARAM_GETTER_METHOD = "getterMethod";
-    public final static String CACHE_PARAM_SETTER_METHOD = "setterMethod";
+    // Reflection method caches (getter/setter Method, and has-getter/setter miss bypass)
+    private static final String CACHE_PARAM_GETTER_METHOD = "getterMethod";
+    private static final String CACHE_PARAM_SETTER_METHOD = "setterMethod";
+    private static final String CACHE_PARAM_HAS_GETTER_METHOD = "hasGetterMethod";
+    private static final String CACHE_PARAM_HAS_SETTER_METHOD = "hasSetterMethod";
 
-    // Has-method caches (lifted from DataMetaObject) — bypasses repeated reflection misses
-    public final static String CACHE_PARAM_HAS_GETTER_METHOD = "hasGetterMethod";
-    public final static String CACHE_PARAM_HAS_SETTER_METHOD = "hasSetterMethod";
-
-    public final static List<String> ignoreGetterFieldNames = Arrays.asList( "class", "metaData" );
+    /** Bean accessors to skip so the hybrid falls through to the attribute bag rather than matching getClass()/getMetaData(). */
+    private static final List<String> IGNORE_GETTER_FIELD_NAMES = Arrays.asList("class", "metaData");
 
     protected AbstractObjectRepresentation(String subType, String name) {
         super(subType, name);
@@ -64,7 +62,7 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
     protected abstract Class<?> getDefaultObjectClass();
 
     ////////////////////////////////////////////////////
-    // REFLECTION HELPERS (lifted from PojoMetaObject)
+    // REFLECTION HELPERS
 
     /**
      * Uppercase the first character of the field name
@@ -111,14 +109,13 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
     /**
      * Retrieve GET Method.
      *
-     * <p>Folds in DataMetaObject's override: returns null for the
-     * {@link #ignoreGetterFieldNames} (e.g. {@code class}, {@code metaData}) so the
-     * hybrid falls through to the dynamic attribute bag instead of matching a
-     * spurious {@code getClass()} / {@code getMetaData()}.</p>
+     * <p>Returns null for the {@link #IGNORE_GETTER_FIELD_NAMES} (e.g. {@code class},
+     * {@code metaData}) so the hybrid falls through to the dynamic attribute bag instead
+     * of matching a spurious {@code getClass()} / {@code getMetaData()}.</p>
      */
     protected Method retrieveGetterMethod(MetaField f, Class<?> objClass) //throws MetaException
     {
-        if ( ignoreGetterFieldNames.contains( f.getName() )) return null;
+        if ( IGNORE_GETTER_FIELD_NAMES.contains( f.getName() )) return null;
 
         Method method = (Method) f.getCacheValue(CACHE_PARAM_GETTER_METHOD + "." + objClass.getName());
         if (method == null) {
@@ -181,10 +178,8 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
             throw new InvalidValueException("Setter expected class [" + c.getName() + "] but value was of type [" + val.getClass() + "]");
         }
 
-        Object[] arglist = new Object[1];
-        arglist[0] = val;
         try {
-            method.invoke(obj, arglist);
+            method.invoke(obj, val);
         } catch (InvocationTargetException e) {
             throw new RuntimeException("Invocation Target Exception setting field [" + f + "] on object [" + obj.getClass() + "]: " + e.getMessage(), e);
         } catch (IllegalAccessException e) {
@@ -192,10 +187,7 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
         }
     }
 
-    /**
-     * Reads a field via reflection (the getter). Renamed from PojoMetaObject's
-     * misnamed {@code setValueWithReflection(MetaField,Object)} for clarity.
-     */
+    /** Reads a field via reflection (the getter). */
     protected Object getValueWithReflection(MetaField f, Object obj) {
 
         if (obj == null)
@@ -204,7 +196,7 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
         Method method = retrieveGetterMethod(f, obj.getClass());
 
         try {
-            return method.invoke(obj); //, new Object[0]);
+            return method.invoke(obj);
         } catch (InvocationTargetException e) {
             throw new RuntimeException("Invocation Target Exception setting field [" + f + "] on object [" + obj.getClass() + "]: " + e.getMessage(), e);
         } catch (IllegalAccessException e) {
@@ -213,56 +205,44 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
     }
 
     ////////////////////////////////////////////////////
-    // HAS-METHOD HELPERS (lifted from DataMetaObject)
+    // HAS-METHOD HELPERS
 
     protected boolean hasGetterMethod(MetaField f, Class<?> objClass) {
 
-        // Try the cache value first
-        Boolean b = (Boolean) f.getCacheValue(CACHE_PARAM_HAS_GETTER_METHOD + "." + objClass.getName());
-        if (b != null) {
-            return b.booleanValue();
+        String cacheKey = CACHE_PARAM_HAS_GETTER_METHOD + "." + objClass.getName();
+        Boolean cached = (Boolean) f.getCacheValue(cacheKey);
+        if (cached != null) {
+            return cached.booleanValue();
         }
 
-        // Now try to actually get the method
-        Method m = null;
+        boolean exists;
         try {
-            m = retrieveGetterMethod(f, objClass);
+            exists = retrieveGetterMethod(f, objClass) != null;
         } catch (NoSuchMethodError e) {
+            exists = false;
         }
 
-        // Return whether the getter existed
-        if (m != null) {
-            f.setCacheValue(CACHE_PARAM_HAS_GETTER_METHOD + "." + objClass.getName(), Boolean.TRUE);
-            return true;
-        } else {
-            f.setCacheValue(CACHE_PARAM_HAS_GETTER_METHOD + "." + objClass.getName(), Boolean.FALSE);
-            return false;
-        }
+        f.setCacheValue(cacheKey, exists);
+        return exists;
     }
 
     protected boolean hasSetterMethod(MetaField f, Class<?> objClass) {
 
-        // Try the cache value first
-        Boolean b = (Boolean) f.getCacheValue(CACHE_PARAM_HAS_SETTER_METHOD + "." + objClass.getName());
-        if (b != null) {
-            return b.booleanValue();
+        String cacheKey = CACHE_PARAM_HAS_SETTER_METHOD + "." + objClass.getName();
+        Boolean cached = (Boolean) f.getCacheValue(cacheKey);
+        if (cached != null) {
+            return cached.booleanValue();
         }
 
-        // Now try to actually get the method
-        Method m = null;
+        boolean exists;
         try {
-            m = retrieveSetterMethod(f, objClass);
+            exists = retrieveSetterMethod(f, objClass) != null;
         } catch (NoSuchMethodError e) {
+            exists = false;
         }
 
-        // Return whether the setter existed
-        if (m != null) {
-            f.setCacheValue(CACHE_PARAM_HAS_SETTER_METHOD + "." + objClass.getName(), Boolean.TRUE);
-            return true;
-        } else {
-            f.setCacheValue(CACHE_PARAM_HAS_SETTER_METHOD + "." + objClass.getName(), Boolean.FALSE);
-            return false;
-        }
+        f.setCacheValue(cacheKey, exists);
+        return exists;
     }
 
     ////////////////////////////////////////////////////
@@ -294,7 +274,7 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
     }
 
     ////////////////////////////////////////////////////
-    // OBJECT CLASS / PRODUCES (lifted from DataMetaObject)
+    // OBJECT CLASS / PRODUCES
 
     /**
      * Retrieves the object class for this representation. Resolution precedence follows
@@ -351,7 +331,7 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
         return false;
     }
 
-    /** PojoMetaObject's class-equality produces() check, used as the DataObjectBase fallback. */
+    /** Class-equality produces() check, used as the DataObjectBase fallback when no object name is set. */
     private boolean producesByClass(Object obj) {
         try {
             return obj.getClass().equals( getObjectClass() );
