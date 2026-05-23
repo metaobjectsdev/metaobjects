@@ -17,14 +17,18 @@ public sealed class EntityGenerator : PerEntityGenerator
 {
     public override string Name => "entity-generator";
 
-    protected override bool Filter(MetaObject entity) => entity.IsEntity();
+    // Generate for tables (object.entity) and read-only projections (any object
+    // with a dbView). Plain value objects with no source are skipped.
+    protected override bool Filter(MetaObject entity) => entity.IsEntity() || entity.DbView is not null;
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx)
     {
         var className = CSharpNaming.Pascal(entity.Name);
-        var table = entity.DbTable ?? entity.Name;
         var pk = entity.PrimaryIdentity();
         var pkFields = pk?.Fields ?? [];
+        // Read-only projections map to a view (configured in the DbContext via
+        // .ToView); they carry no [Table]. Tables / write-through carry [Table].
+        var isProjection = entity.IsReadOnlyProjection();
 
         var scalarFields = entity.Fields()
             .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null)
@@ -49,7 +53,8 @@ public sealed class EntityGenerator : PerEntityGenerator
             var names = string.Join(", ", pkFields.Select(f => $"nameof({CSharpNaming.Pascal(f)})"));
             sb.AppendLine($"[PrimaryKey({names})]");
         }
-        sb.AppendLine($"[Table(\"{table}\")]");
+        if (!isProjection)
+            sb.AppendLine($"[Table(\"{entity.DbTable ?? entity.Name}\")]");
         sb.AppendLine($"public class {className}");
         sb.AppendLine("{");
 
