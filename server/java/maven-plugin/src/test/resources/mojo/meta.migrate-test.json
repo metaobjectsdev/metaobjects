@@ -1,0 +1,35 @@
+{
+  "metadata.root": {
+    "package": "test::migrate",
+    "children": [
+      {
+        "object.value": {
+          "name": "Widget",
+          "@object": "com.metaobjects.object.value.ValueObject",
+          "@dbTable": "widget",
+          "children": [
+            {
+              "field.long": {
+                "name": "id",
+                "@dbColumn": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label",
+                "@dbColumn": "label"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "primary",
+                "@fields": ["id"],
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

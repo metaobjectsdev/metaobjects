@@ -42,6 +42,9 @@ import { VALIDATOR_ATTRS_MAP } from "./core/validator/validator-schema.js";
 import { currencyViewAttrs } from "./presentation/view/view-schema.js";
 import { dataGridLayoutAttrs } from "./presentation/layout/layout-schema.js";
 import { ORIGIN_ATTRS_MAP } from "./persistence/origin/origin-schema.js";
+import { MetaTemplate } from "./template/meta-template.js";
+import { TEMPLATE_ATTRS_MAP } from "./template/template-schema.js";
+import { TEMPLATE_SUBTYPES } from "./template/template-constants.js";
 import {
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -54,6 +57,7 @@ import {
   TYPE_LAYOUT,
   TYPE_SOURCE,
   TYPE_ORIGIN,
+  TYPE_TEMPLATE,
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
@@ -161,6 +165,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
       wildcard(TYPE_FIELD),
       wildcard(TYPE_ATTR),
       wildcard(TYPE_VALIDATOR),
+      wildcard(TYPE_TEMPLATE),
     ], MetaRoot),
   );
 
@@ -265,6 +270,17 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     const originAttrs = ORIGIN_ATTRS_MAP.get(subType) ?? [];
     registry.register(
       def(TYPE_ORIGIN, subType, `Origin (${subType})`, [wildcard(TYPE_ATTR)], NodeClass, originAttrs),
+    );
+  }
+
+  // template — renderable text artifacts (FR-004). prompt + output; attr-only
+  // children. A single MetaTemplate class backs both subtypes (mirrors source);
+  // per-subtype attr schemas drive validation (both require @payloadRef +
+  // @textRef; @format is a closed enum; template.prompt adds the LLM overlay).
+  for (const subType of TEMPLATE_SUBTYPES) {
+    const templateAttrs = TEMPLATE_ATTRS_MAP.get(subType) ?? [];
+    registry.register(
+      def(TYPE_TEMPLATE, subType, `Template (${subType})`, [wildcard(TYPE_ATTR)], MetaTemplate, templateAttrs),
     );
   }
 

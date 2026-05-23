@@ -19,3 +19,6 @@ Write one when a decision is **cross-cutting** (affects more than one language p
 
 ## Index
 - [ADR-0001 — Cross-language metadata→native-type binding](ADR-0001-cross-language-type-binding.md) — *Accepted*
+- [ADR-0002 — Open-Closed typed nodes (subtype behavior on the class)](ADR-0002-open-closed-typed-nodes.md) — *Accepted*
+- [ADR-0003 — Metamodel constants colocation](ADR-0003-metamodel-constants-colocation.md) — *Accepted*
+- [ADR-0004 — Provider-based type registration & composition](ADR-0004-provider-based-type-registration.md) — *Accepted*

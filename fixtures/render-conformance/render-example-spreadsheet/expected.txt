@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="Summary">
+  <Table>
+   <Row><Cell><Data ss:Type="String">Entity</Data></Cell><Cell><Data ss:Type="String">Rows</Data></Cell></Row>
+   <Row><Cell><Data ss:Type="String">Posts</Data></Cell><Cell><Data ss:Type="Number">2</Data></Cell></Row>
+  </Table>
+ </Worksheet>
+ <Worksheet ss:Name="Posts">
+  <Table>
+   <Row><Cell><Data ss:Type="String">Title</Data></Cell></Row>
+   <Row><Cell><Data ss:Type="String">'=SUM(A1)</Data></Cell></Row>
+   <Row><Cell><Data ss:Type="String">Bernoulli &amp; Loops</Data></Cell></Row>
+  </Table>
+ </Worksheet>
+</Workbook>

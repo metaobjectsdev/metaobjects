@@ -2059,4 +2059,11 @@ public class GenericSQLDriver implements DatabaseDriver {
     public String toString() {
         return getClass().getSimpleName();
     }
+
+    // --- MigrationSqlRenderer default: subclasses override for supported dialects ---
+    @Override
+    public String render(com.metaobjects.manager.db.migrate.Change change) {
+        throw new UnsupportedOperationException(
+            getClass().getSimpleName() + " does not implement migration render for " + change.kind());
+    }
 }

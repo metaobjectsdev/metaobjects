@@ -33,6 +33,7 @@ export * from "./core/relationship/relationship-constants.js";
 export * from "./core/query/query-constants.js";
 export * from "./persistence/source/source-constants.js";
 export * from "./persistence/origin/origin-constants.js";
+export * from "./template/template-constants.js";
 export * from "./persistence/db/db-constants.js";
 export * from "./presentation/view/view-constants.js";
 export * from "./presentation/layout/layout-constants.js";
@@ -79,6 +80,8 @@ export {
   MetaPassthroughOrigin,
   MetaAggregateOrigin,
 } from "./persistence/origin/meta-origin.js";
+// Template: single class backs both subtypes (FR-004)
+export { MetaTemplate } from "./template/meta-template.js";
 
 // Presentation node classes
 export { MetaView } from "./presentation/view/meta-view.js";

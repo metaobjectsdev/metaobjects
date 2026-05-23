@@ -1,0 +1,34 @@
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Npc",
+          "children": [
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "name"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "template.prompt": {
+          "name": "npcTurn",
+          "@format": "xml",
+          "@payloadRef": "NpcPromptPayload",
+          "@textRef": "npc/turn"
+        }
+      }
+    ]
+  }
+}

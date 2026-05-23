@@ -1,0 +1,25 @@
+"""Attribute subtype vocabulary (colocated with the attr node — ADR-0003)."""
+from ....shared.base_types import SUBTYPE_BASE  # noqa: F401 (re-export convenience)
+
+ATTR_SUBTYPE_STRING = "string"
+ATTR_SUBTYPE_INT = "int"
+ATTR_SUBTYPE_LONG = "long"
+ATTR_SUBTYPE_DOUBLE = "double"
+ATTR_SUBTYPE_BOOLEAN = "boolean"
+ATTR_SUBTYPE_STRINGARRAY = "stringArray"
+ATTR_SUBTYPE_FILTER = "filter"
+ATTR_SUBTYPE_PROPERTIES = "properties"
+ATTR_SUBTYPE_CLASS = "class"
+
+ATTR_SUBTYPES = (
+    SUBTYPE_BASE,
+    ATTR_SUBTYPE_STRING,
+    ATTR_SUBTYPE_INT,
+    ATTR_SUBTYPE_LONG,
+    ATTR_SUBTYPE_DOUBLE,
+    ATTR_SUBTYPE_BOOLEAN,
+    ATTR_SUBTYPE_STRINGARRAY,
+    ATTR_SUBTYPE_FILTER,
+    ATTR_SUBTYPE_PROPERTIES,
+    ATTR_SUBTYPE_CLASS,
+)

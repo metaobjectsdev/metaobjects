@@ -1,9 +1,43 @@
 # FR-004 — Cross-language prompt construction: typed prompt value-objects, a Mustache render engine, provider-resolved prompt text & render conformance
 
 **Date:** 2026-05-22
-**Status:** Design (north-star; implementation plan deferred until FR-003 lands)
+**Status:** Design — **revised 2026-05-23** (see *Design revision* below, which supersedes the original §1–§9 body where noted). Foundation landed: a TS metatype slice (loader + conformance) shipped as `prompt.*`, generalized to `template.*` in Plan #2. Render engine + examples = Plan #2; `verify` = Plan #3.
 **Target version:** `7.0.0` (developed as `7.0.0-SNAPSHOT`; consumes FR-003 projections — see *Dependencies*)
 **Scope:** Make LLM prompt construction a first-class MetaObjects capability. Declare a prompt's **input payload** as a projection value-object (Layer 1, reusing FR-003), declare the prompt's **text + composition** as first-class `prompt.*` metadata (Layer 2), and ship a **logic-less Mustache render engine** that turns `(payload VO) + (provider-resolved template text) → final prompt string`, byte-identical across TS/Java/Python/C#. Prompt text is **external-only**, addressed by a backend- and locale-agnostic **logical reference**; a runtime-configured **provider** resolves the backend (filesystem / NoSQL / RDB), the locale, and any A/B / dynamic / evolutionary selection. This is roadmap **H6 (AI-collaboration capabilities)**. The first consumers are server-side Java and (later) Python applications; each consumer's adoption is tracked in its own repository.
+
+## Design revision — 2026-05-23 (authoritative; supersedes the original body where noted)
+
+Implementation planning (and a build of the TS metatype slice) refined the design. Where this section conflicts with the original §1–§9 body below (written 2026-05-22), **this section wins**. The original body is preserved for provenance.
+
+**Framing — general engine, prompt is the first specialization.** The fourth pillar is *positioned* as "prompt construction" (the use case + the drift/cache/eval pain), but it is *built* as a general, LLM-agnostic **`template` metatype + render engine**. The mechanism (typed payload → provider-resolved text → deterministic render + drift `verify`) is generic; almost nothing is intrinsically prompt-specific. Name the pillar by use case; name the metatype by mechanism.
+
+**R1 — Metatype is `template.*`, two subtypes (supersedes §2's `prompt.*`).** Base type `template`:
+- `template.prompt` — LLM-targeted. Prompt-overlay attrs: `@maxTokens`, `@requiredSlots`, `@model`. The designated home for any future *structured-prompt* (POML-style message/role/tool) divergence.
+- `template.output` — every other rendered artifact (email, export, docs, config). One behavior + a format knob.
+
+Generic attrs on both: `@payloadRef` *(req)*, `@textRef` *(req)*, `@format`, `@maxChars`, `@owner`, `@since`. **Format is the `@format` attribute** (closed `allowedValues`: `text|html|xml|csv|json|markdown|spreadsheet|…`), **never a subtype** — escaping/whitespace is keyed off `@format` by the engine (R7), so a new format costs one escaper + one enum value, not a new subtype + cross-language port. **Test for any future subtype:** it must carry behavior *beyond* `@format`; the only anticipated growth is prompt-family (chat/conversation/tool-schema), which folds into `template.prompt`. (`@outputFormat` from §2 → `@format`.)
+
+**R2 — The fragment node is dropped (supersedes §2 `prompt.fragment` + the §4 partial-node model).** Fragments are pure provider-resolved partials (`{{> group/source }}`) resolved through the provider; `verify` checks partial resolution via the provider. No `template.fragment` node. (Re-add a *governed* fragment node only if per-fragment ownership is later needed.)
+
+**R3 — 2-layer addressing; sections removed (resolves open questions #1, #2, #7).** `@textRef` is a 2-layer logical reference **`group/source`** (folder/file · table/key · collection/document). The L3 "section" concept and the section-addressable text format are **dropped** — one fragment per addressable unit; reuse via whole-unit partials. An optional L3 can be added later, non-breaking, only if file sprawl proves real.
+
+**R4 — Payload is a nested view-object, not a flat dbView projection (supersedes/refines §1).** `@payloadRef` points at a nested `object.value` view-object built from `origin.passthrough` + `origin.aggregate` + a **new `origin.collection`** (a relationship-derived array of nested VOs; `@via` a relationship, with an optional wildcard selector for package-spanning collections). A view-object MAY be dbView-backed (flat) or relationship-assembled (nested). The **assembler** (view-object metadata → a materialized payload object at runtime) is **out of scope** here (host-side; rides FR-003); render conformance supplies payload fixtures directly.
+
+**R5 — Render engine: logic-less Mustache (not Handlebars), in `@metaobjectsdev/render` (refines §4, §8).** `render(template, payload, provider) → string`. Mustache is chosen over Handlebars/Jinja specifically for its **published cross-language spec + conformance suite** (the byte-identical oracle). Pin spec-conformant lib versions per port (mustache.js / mustache.java / pystache / Stubble); the partial-resolver hook is the per-port integration seam. Shape aligns with Dotprompt/Prompty (frontmatter metadata + a templating body); the divergence is Mustache-for-determinism.
+
+**R6 — Determinism contract (new; first-class conformance).** (a) **Arrays only** for iteration — no object-key iteration (engine sorts or rejects). (b) **No locale/number/date formatting in the engine** — primitives are pre-formatted on the payload; pinned canonical primitive stringify. (c) **Pinned trailing-newline + Mustache standalone-tag whitespace.** Each gets a dedicated render-conformance fixture.
+
+**R7 — Format-driven escaping, engine-owned (new).** `@format` drives escaping via the engine's open-closed **escaper registry** (`Map<format → escaper>`), *not* the Mustache lib's default, so it is identical across ports. `{{var}}` escapes per format; `{{{var}}}` is the raw escape hatch. The escape set is pinned in conformance.
+
+**R8 — Formula-injection neutralization (new).** The `csv`/`spreadsheet` escapers neutralize leading `= + - @ \t \r` (OWASP CSV-injection). Dedicated conformance fixture.
+
+**R9 — Codegen-vs-render boundary (new; durable contract — ADR candidate).** The render engine does **not** replace AST codegen (ts-poet/ts-morph, hand-edit-preserving 3-way merge, idiomatic-per-language). Render is reused only for genuinely *text-ish* generation (view DDL, config, docs, `llms.txt`). Entity metadata stays target-agnostic; generator wiring stays in `metaobjects.config.ts`. Codegen and templates **compose** — codegen emits a typed template handle + payload VO class *for* a template — they do not merge. (Prompts/emails are byte-identical-cross-language by design; code is idiomatic-divergent by design — opposite requirements, so one engine can't serve both.)
+
+**R10 — Scope & docs-from-metadata (future direction; not built now).** Template scope = what its *payload* spans; node placement (under `metadata.root` vs as an `object` child) is organizational. Package-spanning payloads use `origin.collection` with a wildcard selector — the `oncePerRun` analog of per-entity codegen. Generating documentation from metadata is a natural `template.output` use. None of this is built in the first slice (the engine is scope-agnostic; payloads are fixtures); recorded so the door stays open.
+
+**Plan sequencing.** Plan #2 = Phase A (this spec amendment + loader refactor `prompt.*`→`template.{prompt,output}`, drop fragment, `@outputFormat`→`@format`, add `origin.collection`) + Phase B (`@metaobjectsdev/render` engine + render-conformance + 3 examples: complex prompt / HTML email / SpreadsheetML export over the `trainerWebsite` test entities). **`verify`** (generic var↔payload drift + prompt profile: required-slots, budget, output-tag preservation) → **Plan #3**. The TS slice is built first; the Java render engine + a first-consumer dogfood follow.
+
+**Open-question disposition.** #1 (section grammar) and #7 (`prompt.section` node) — dropped (R3). #2 (L3 required vs whole-source) — resolved: 2-layer, no L3 (R3). #3 (variant/locale via overlay vs provider) — provider, unchanged. #4 (partial recursion) — engine depth bound + cycle guard. #5 (caching) — per-provider. #6 (slot type-fidelity) — `verify`-time, Plan #3.
 
 ## Background
 

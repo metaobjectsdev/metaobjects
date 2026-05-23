@@ -1,0 +1,9 @@
+{
+  "summary": [
+    { "entity": "Posts", "rows": 2 }
+  ],
+  "posts": [
+    { "title": "=SUM(A1)" },
+    { "title": "Bernoulli & Loops" }
+  ]
+}

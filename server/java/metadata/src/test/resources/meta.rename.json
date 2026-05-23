@@ -1,0 +1,13 @@
+{ "metadata.root": {
+    "package": "myapp::commerce",
+    "children": [
+      { "object.pojo": {
+          "name": "Program",
+          "@dbTable": "program",
+          "@previousName": "offering",
+          "children": [
+            { "field.string": { "name": "title", "@dbColumn": "title", "@previousName": "name" }}
+          ]
+      }}
+    ]
+}}
