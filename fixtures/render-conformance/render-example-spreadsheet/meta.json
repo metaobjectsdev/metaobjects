@@ -1,0 +1,1 @@
+{ "format": "spreadsheet", "note": "SpreadsheetML workbook: a summary worksheet + a posts worksheet; exercises xml-escaping + formula-injection guard" }

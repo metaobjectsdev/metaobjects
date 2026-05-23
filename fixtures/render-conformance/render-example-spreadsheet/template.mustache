@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="Summary">
+  <Table>
+   <Row><Cell><Data ss:Type="String">Entity</Data></Cell><Cell><Data ss:Type="String">Rows</Data></Cell></Row>
+{{#summary}}
+   <Row><Cell><Data ss:Type="String">{{entity}}</Data></Cell><Cell><Data ss:Type="Number">{{rows}}</Data></Cell></Row>
+{{/summary}}
+  </Table>
+ </Worksheet>
+ <Worksheet ss:Name="Posts">
+  <Table>
+   <Row><Cell><Data ss:Type="String">Title</Data></Cell></Row>
+{{#posts}}
+   <Row><Cell><Data ss:Type="String">{{title}}</Data></Cell></Row>
+{{/posts}}
+  </Table>
+ </Worksheet>
+</Workbook>
