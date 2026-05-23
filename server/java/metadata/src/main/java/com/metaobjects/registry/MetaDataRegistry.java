@@ -274,34 +274,6 @@ public class MetaDataRegistry {
     }
     
     /**
-     * Construct an object <em>representation</em> instance (Pojo/Mapped/Proxy) with an explicit
-     * semantic subType (entity/value), via the protected {@code (String subType, String name)}
-     * ctor. Used by the loader for resolver-driven object representation (ADR-0005); the generic
-     * {@link #createInstance} path can't reach the protected ctor (it only finds public ctors,
-     * which would yield the representation's own subType — "pojo"/"map" — not the semantic one).
-     *
-     * @param <T> Expected MetaData type
-     * @param repClass Resolver-chosen representation class (Pojo/Mapped/Proxy)
-     * @param subType Semantic subType to stamp on the instance (entity/value)
-     * @param name Instance name (typically the canonical FQN)
-     * @return New representation instance carrying {@code subType}
-     */
-    @SuppressWarnings("unchecked")
-    public <T extends MetaData> T createObjectInstance(
-            Class<? extends MetaObject> repClass, String subType, String name) {
-        try {
-            Constructor<? extends MetaObject> ctor =
-                repClass.getDeclaredConstructor(String.class, String.class);
-            ctor.setAccessible(true);
-            return (T) ctor.newInstance(subType, name);
-        } catch (Exception e) {
-            throw new MetaDataException(
-                "Failed to construct object representation " + repClass.getName()
-                + " [subType=" + subType + ", name=" + name + "]", e);
-        }
-    }
-
-    /**
      * Get type definition by type and subtype
      *
      * @param type Primary type

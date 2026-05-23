@@ -10,7 +10,6 @@ import com.metaobjects.constraint.UniquenessConstraint;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.identity.PrimaryIdentity;
-import com.metaobjects.object.mapped.MappedMetaObject;
 import com.metaobjects.identity.SecondaryIdentity;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -95,6 +94,11 @@ public abstract class MetaObject extends MetaData {
             def.optionalAttributeWithConstraints(ATTR_OBJECT).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.optionalAttributeWithConstraints(ATTR_OBJECT_REF).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
+            // Java-only runtime hint (never in the conformance corpus): the FQN of an
+            // ObjectAdapter that takes over value access. Inherited by entity + value.
+            def.optionalAttributeWithConstraints(com.metaobjects.object.AbstractObjectRepresentation.ATTR_OBJECT_ADAPTER)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
             // OBJECTS CONTAIN FIELDS (any field type, any name)
             def.optionalChild(MetaField.TYPE_FIELD, "*", "*");
 
@@ -127,27 +131,25 @@ public abstract class MetaObject extends MetaData {
 
     /**
      * Register the semantic object subtypes {@code object.entity} and {@code object.value}
-     * (ADR-0005). These have no dedicated implementation class — the loader instantiates the
-     * resolver-chosen <em>representation</em> class (Pojo/Mapped/Proxy) and stamps it with the
-     * semantic subType ({@code entity}/{@code value}). The nominal implementation class below
-     * ({@link MappedMetaObject}, the unbound default) is only used if someone calls
-     * {@code createInstance("object","entity",..)} directly — the loader path bypasses it via
-     * {@link com.metaobjects.object.ObjectRepresentationResolver} +
-     * {@link com.metaobjects.registry.MetaDataRegistry#createObjectInstance}.
+     * (ADR-0005). Each is backed by its own implementation class
+     * ({@link EntityMetaObject} / {@link ValueMetaObject}), whose public 1-arg {@code (String name)}
+     * ctor stamps the correct semantic subType. The generic
+     * {@link com.metaobjects.registry.MetaDataRegistry#createInstance} path constructs them
+     * directly — no per-node representation resolver is needed.
      *
      * <p>Both inherit base object's attr + child rules via {@code inheritsFrom(object, base)}.</p>
      *
      * <p>Called by ObjectTypesMetaDataProvider after {@link #registerTypes(MetaDataRegistry)}.</p>
      */
     public static void registerEntityValueTypes(MetaDataRegistry registry) {
-        registry.registerType(MappedMetaObject.class, def -> def
+        registry.registerType(EntityMetaObject.class, def -> def
             .type(TYPE_OBJECT).subType(SUBTYPE_ENTITY)
-            .description("Entity object (persistent identity) — representation resolved per ADR-0005")
+            .description("Entity object (persistent identity) — value access via the reflection/map hybrid")
             .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE));
 
-        registry.registerType(MappedMetaObject.class, def -> def
+        registry.registerType(ValueMetaObject.class, def -> def
             .type(TYPE_OBJECT).subType(SUBTYPE_VALUE)
-            .description("Value object (no identity) — representation resolved per ADR-0005")
+            .description("Value object (no identity) — value access via the reflection/map hybrid")
             .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE));
 
         if (log != null) {

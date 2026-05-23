@@ -10,9 +10,7 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
-import com.metaobjects.object.ObjectRepresentationResolver;
 import com.metaobjects.registry.MetaDataRegistry;
-import com.metaobjects.registry.ObjectClassRegistry;
 import com.metaobjects.registry.TypeDefinition;
 import com.metaobjects.registry.ChildRequirement;
 import com.metaobjects.relationship.MetaRelationship;
@@ -252,7 +250,7 @@ public abstract class BaseMetaDataParser {
                                                 MetaData parent, String typeName, String subTypeName,
                                                 String name, String packageName, String superName,
                                                 Boolean isAbstract, Boolean isInterface, String implementsArray,
-                                                Boolean isOverlay, String objectClassRef ) {
+                                                Boolean isOverlay ) {
 
         if ( subTypeName != null && subTypeName.equals("*")) subTypeName = null;
 
@@ -365,7 +363,7 @@ public abstract class BaseMetaDataParser {
             MetaData superData = getSuperMetaData(parent, typeName, name, packageName, superName);
 
             // Create the new MetaData using registry
-            md = createNewMetaData(isRoot, parent, typeName, subTypeName, name, packageName, superData, objectClassRef);
+            md = createNewMetaData(isRoot, parent, typeName, subTypeName, name, packageName, superData);
 
             // Add to the parent metadata
             parent.addChild(md);
@@ -481,7 +479,7 @@ public abstract class BaseMetaDataParser {
 
     /** Create new MetaData */
     /** v6.0.0: Create MetaData using registry system instead of TypesConfig */
-    protected MetaData createNewMetaData(boolean isRoot, MetaData parent, String typeName, String subTypeName, String name, String packageName, MetaData superData, String objectClassRef) {
+    protected MetaData createNewMetaData(boolean isRoot, MetaData parent, String typeName, String subTypeName, String name, String packageName, MetaData superData) {
 
         if (subTypeName != null && subTypeName.isEmpty()) subTypeName = null;
 
@@ -503,23 +501,6 @@ public abstract class BaseMetaDataParser {
             fullname = packageName + MetaDataLoader.PKG_SEPARATOR + name;
         } else {
             fullname = name;
-        }
-
-        // ADR-0005: object.entity / object.value are semantic subtypes with no dedicated impl
-        // class. Pick the Java *representation* (Pojo/Mapped/Proxy) via the resolver and stamp
-        // it with the semantic subType — bypassing the generic createInstance path (which can
-        // only reach public ctors and would yield the representation's own "pojo"/"map" subType).
-        if (MetaObject.TYPE_OBJECT.equals(typeName)
-                && (MetaObject.SUBTYPE_ENTITY.equals(subTypeName) || MetaObject.SUBTYPE_VALUE.equals(subTypeName))) {
-            ObjectRepresentationResolver resolver = new ObjectRepresentationResolver(
-                ObjectClassRegistry.global(), getClass().getClassLoader());
-            Class<? extends MetaObject> repClass = resolver.resolve(fullname, objectClassRef);
-            MetaData md = getTypeRegistry().createObjectInstance(repClass, subTypeName, fullname);
-            if (md == null) {
-                throw new MetaDataException("MetaData [type=" + typeName + "][subType=" + subTypeName + "][name=" + name
-                        + "] could not be created by registry in file [" + getFilename() + "]");
-            }
-            return md;
         }
 
         MetaData newMetaData = getTypeRegistry().createInstance(typeName, subTypeName, fullname);
