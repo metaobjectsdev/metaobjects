@@ -702,4 +702,57 @@ public static class ValidationPasses
 
         return errors.AsReadOnly();
     }
+
+    // =========================================================================
+    // Pass 9: ValidateTemplatePayloadRefs
+    //   - @payloadRef must resolve to a known object in the model -> ERR_INVALID_TEMPLATE
+    //   - every @requiredSlots entry must be a field on that payload -> ERR_INVALID_TEMPLATE
+    //
+    // Pure metadata cross-references (no provider, no I/O) — the load-time half of
+    // the prompt drift guarantee (FR-004). Ported from validateTemplatePayloadRefs
+    // in typescript/packages/metadata/src/loader/validation-passes.ts.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateTemplatePayloadRefs(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        foreach (var tmpl in root.OwnChildren().Where(c => c.Type == TYPE_TEMPLATE))
+        {
+            if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) continue;
+
+            var payload = root.OwnChildren()
+                .FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
+            if (payload is null)
+            {
+                errors.Add(new MetaError(
+                    $"template \"{tmpl.Name}\" @payloadRef \"{payloadRef}\" does not resolve to a known object in this model",
+                    ErrorCode.ERR_INVALID_TEMPLATE));
+                continue;
+            }
+
+            // Use Children() (effective) so inherited payload fields are visible.
+            var fieldNames = new HashSet<string>(
+                payload.Children().Where(c => c.Type == TYPE_FIELD).Select(f => f.Name),
+                StringComparer.Ordinal);
+
+            IEnumerable<string> slotList = tmpl.OwnAttr(TEMPLATE_ATTR_REQUIRED_SLOTS) switch
+            {
+                IReadOnlyList<string> ss => ss,
+                IReadOnlyList<object?> os => os.OfType<string>(),
+                string s => [s],
+                _ => [],
+            };
+            foreach (var slot in slotList)
+            {
+                if (!fieldNames.Contains(slot))
+                    errors.Add(new MetaError(
+                        $"template \"{tmpl.Name}\" @requiredSlots \"{slot}\" is not a field on payload " +
+                        $"\"{payloadRef}\". Available fields: {string.Join(", ", fieldNames)}",
+                        ErrorCode.ERR_INVALID_TEMPLATE));
+            }
+        }
+
+        return errors.AsReadOnly();
+    }
 }

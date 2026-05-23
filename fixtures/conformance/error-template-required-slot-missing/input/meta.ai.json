@@ -3,20 +3,10 @@
     "package": "acme::ai",
     "children": [
       {
-        "object.entity": {
-          "name": "Npc",
-          "children": [
-            { "field.string": { "name": "name" } },
-            { "identity.primary": { "@fields": "name" } }
-          ]
-        }
-      },
-      {
         "object.value": {
           "name": "NpcPromptPayload",
           "children": [
-            { "field.string": { "name": "name" } },
-            { "field.string": { "name": "mood" } }
+            { "field.string": { "name": "name" } }
           ]
         }
       },
@@ -25,7 +15,8 @@
           "name": "npcTurn",
           "@payloadRef": "NpcPromptPayload",
           "@textRef": "npc/turn",
-          "@format": "xml"
+          "@format": "xml",
+          "@requiredSlots": ["name", "notAField"]
         }
       }
     ]

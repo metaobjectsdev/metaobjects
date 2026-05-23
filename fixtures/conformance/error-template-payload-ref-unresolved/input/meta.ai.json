@@ -12,15 +12,6 @@
         }
       },
       {
-        "object.value": {
-          "name": "NpcPromptPayload",
-          "children": [
-            { "field.string": { "name": "name" } },
-            { "field.string": { "name": "mood" } }
-          ]
-        }
-      },
-      {
         "template.prompt": {
           "name": "npcTurn",
           "@payloadRef": "NpcPromptPayload",
