@@ -444,12 +444,14 @@ meta migrate --dry-run                # preview without writing migration file
 
 ## Running tests
 
-The Bun workspace root is `typescript/`. Run `bun test` / `bun run` from `typescript/` (or a specific package directory) — **never from the repository root**. At the repo root there is no workspace `package.json`, so Bun scans the entire polyglot tree (`java/`, `python/`, `csharp/`, `fixtures/`, every `node_modules/`) and re-resolves `@metaobjectsdev/*` imports per file — turning a ~3-second run into several minutes.
+The Bun workspace root is the **repository root** (`/package.json`), which globs `server/typescript/packages/*` and `client/web/packages/*`. Java/Python/C# live outside the JS workspace (not globbed). Run `bun install` **once at the repo root**. Run `bun test` **scoped** — `cd server/typescript && bun test` for the server suite (this also picks up `server/typescript/bunfig.toml`'s test preload), and per-package for `client/web`. **Never run a bare `bun test` at the repo root**: it walks `java/`, `python/`, `csharp/`, and `fixtures/` looking for test files, turning a ~3-second run into minutes.
 
 ```
-cd typescript && bun test                          # whole TS monorepo (~3s, 1784+ tests)
-cd typescript && bun run --filter '*' typecheck    # whole monorepo typecheck
-cd typescript/packages/<pkg> && bun test           # a single package
+bun install                                        # once, at the repo root
+cd server/typescript && bun test                   # server suite (~3s, 2123 tests)
+cd client/web/packages/<pkg> && bun test           # a single client package
+bun run --filter '*' typecheck                     # whole workspace, from repo root
+bun run --filter '*' build                         # whole workspace, from repo root
 ```
 
 ## How to contribute
