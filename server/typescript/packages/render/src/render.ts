@@ -1,6 +1,7 @@
 import Mustache from "mustache";
 import type { Provider } from "./provider.js";
 import { ESCAPERS, type RenderFormat } from "./escapers.js";
+import { verify, ERR_REQUIRED_SLOT_UNUSED, type PayloadField } from "./verify.js";
 
 const MAX_DEPTH = 32;
 const PARTIAL = /\{\{>\s*([^}\s]+)\s*\}\}/g;
@@ -30,12 +31,29 @@ export interface RenderOptions {
   provider: Provider;
   /** Output format; drives escaping. Defaults to "text" (raw). */
   format?: RenderFormat;
+  /**
+   * Fail-closed guard for dynamic/generated text: when given a payload field
+   * tree, the RESOLVED template is `verify`'d before rendering and a drifted
+   * variant throws — instead of silently rendering nothing.
+   */
+  verify?: PayloadField[];
 }
 
 /** Deterministic, logic-less render: (template + payload + provider) → string. */
 export function render(o: RenderOptions): string {
   const body = o.template ?? (o.ref !== undefined ? o.provider.resolve(o.ref) : undefined);
   if (body === undefined) throw new Error(`unresolved ref: ${o.ref ?? "(none)"}`);
+
+  if (o.verify !== undefined) {
+    const drift = verify(body, o.verify, { provider: o.provider }).filter(
+      (e) => e.code !== ERR_REQUIRED_SLOT_UNUSED,
+    );
+    if (drift.length > 0) {
+      throw new Error(
+        `render verify failed: ${drift.map((e) => `${e.code} (${e.path})`).join(", ")}`,
+      );
+    }
+  }
 
   const expanded = expand(body, o.provider, o.ref !== undefined ? [o.ref] : []);
   const escaper = ESCAPERS[o.format ?? "text"];

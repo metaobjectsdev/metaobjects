@@ -69,3 +69,29 @@ describe("render engine", () => {
     expect(render(opts)).toBe("1|2|3|");
   });
 });
+
+// The fail-closed guard for dynamic/generated text (FR-004 Plan #3, T6): given a
+// payload field tree via `verify`, render() checks the RESOLVED text before
+// emitting and rejects a drifted variant, instead of silently rendering nothing.
+describe("render — verify-on-resolve guard", () => {
+  const author = [{ name: "displayName" }, { name: "postCount" }];
+
+  test("a clean template renders normally with the guard on", () => {
+    expect(
+      render({ template: "Hi {{displayName}}.", payload: { displayName: "Ada" }, provider: P({}), verify: author }),
+    ).toBe("Hi Ada.");
+  });
+
+  test("a drifted variable throws before rendering", () => {
+    expect(() =>
+      render({ template: "Hi {{notARealField}}.", payload: {}, provider: P({}), verify: author }),
+    ).toThrow(/ERR_VAR_NOT_ON_PAYLOAD/);
+  });
+
+  test("the guard checks the provider-resolved text (dynamic provider)", () => {
+    const p = P({ "g/dynamic": "{{ghostField}}" });
+    expect(() => render({ ref: "g/dynamic", payload: {}, provider: p, verify: author })).toThrow(
+      /ERR_VAR_NOT_ON_PAYLOAD/,
+    );
+  });
+});

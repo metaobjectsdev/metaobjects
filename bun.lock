@@ -95,6 +95,7 @@
         "@metaobjectsdev/codegen-ts-tanstack": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
         "@metaobjectsdev/migrate-ts": "workspace:*",
+        "@metaobjectsdev/render": "workspace:*",
         "@metaobjectsdev/sdk": "workspace:*",
         "jiti": "^2.4.0",
       },
@@ -131,6 +132,7 @@
       "devDependencies": {
         "@biomejs/biome": "^1.9.0",
         "@metaobjectsdev/codegen-ts-react": "workspace:*",
+        "@metaobjectsdev/render": "workspace:*",
         "bun-types": "latest",
         "drizzle-orm": "^0.36.0",
         "typescript": "^5.6.0",

@@ -36,6 +36,7 @@
   "dependencies": {
     "@metaobjectsdev/sdk": "workspace:*",
     "@metaobjectsdev/metadata": "workspace:*",
+    "@metaobjectsdev/render": "workspace:*",
     "@metaobjectsdev/codegen-ts": "workspace:*",
     "@metaobjectsdev/codegen-ts-react": "workspace:*",
     "@metaobjectsdev/codegen-ts-tanstack": "workspace:*",

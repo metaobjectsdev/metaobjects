@@ -78,6 +78,29 @@ export function parseExportArgs(argv: string[]): ExportFlags {
 }
 
 // ---------------------------------------------------------------------------
+// verify flags
+// ---------------------------------------------------------------------------
+
+export interface VerifyFlags {
+  /** Directory (relative to cwd) holding provider-resolved template text. */
+  prompts: string | undefined;
+}
+
+export function parseVerifyArgs(argv: string[]): VerifyFlags {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      prompts: { type: "string" },
+    },
+    strict: true,
+    allowPositionals: false,
+  });
+  return {
+    prompts: values.prompts,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // migrate flags
 // ---------------------------------------------------------------------------
 
