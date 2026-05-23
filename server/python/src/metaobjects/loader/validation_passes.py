@@ -11,12 +11,20 @@ from ..errors import ErrorCode, MetaError
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.meta_data import MetaData
 from ..registry import AttrSchema, TypeRegistry
-from ..shared.base_types import TYPE_LAYOUT, TYPE_OBJECT
+from ..shared.base_types import TYPE_FIELD, TYPE_LAYOUT, TYPE_OBJECT, TYPE_ORIGIN, TYPE_RELATIONSHIP
 from ..meta.presentation.layout.layout_constants import (
     LAYOUT_ATTR_DEFAULT_SORT_FIELD,
     LAYOUT_ATTR_FILTER,
     LAYOUT_SUBTYPE_DATA_GRID,
 )
+from ..meta.persistence.origin.origin_constants import (
+    ORIGIN_ATTR_FROM,
+    ORIGIN_ATTR_OF,
+    ORIGIN_ATTR_VIA,
+    ORIGIN_SUBTYPE_AGGREGATE,
+    ORIGIN_SUBTYPE_PASSTHROUGH,
+)
+from ..meta.core.relationship.relationship_constants import RELATIONSHIP_ATTR_OBJECT_REF
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -36,6 +44,7 @@ def run_validations(
     _validate_attr_schema(root, registry, errors)
     _validate_datagrid_sort_fields(root, errors)
     _validate_datagrid_filter_values(root, errors)
+    _validate_origin_paths(root, errors)
 
 
 # ---------------------------------------------------------------------------
@@ -289,3 +298,198 @@ def _validate_datagrid_filter_values(
                                 ErrorCode.ERR_BAD_ATTR_FILTER,
                             )
                         )
+
+
+# ---------------------------------------------------------------------------
+# Pass: origin @from / @of / @via path validation
+# ---------------------------------------------------------------------------
+# For each field node that has an origin.passthrough or origin.aggregate child,
+# validate that the dotted references resolve against the known object index.
+#
+# @from (passthrough) / @of (aggregate): "Entity.fieldName"
+#   - The entity must exist in the tree; the field must exist on that entity.
+#
+# @via (optional on passthrough, required on aggregate): "Entity.rel1[.rel2...]"
+#   - Split on "."; first segment is the entity name (must exist in index).
+#   - Each subsequent segment is a relationship name on the current entity;
+#     the relationship's @objectRef names the next entity (must exist in index);
+#     advance the current-entity pointer.
+#   - Any missing entity/relationship → ERR_INVALID_ORIGIN.
+
+
+def _build_object_index(root: MetaData) -> dict[str, MetaObject]:
+    """Return a name → MetaObject index of all top-level objects in *root*."""
+    index: dict[str, MetaObject] = {}
+    for child in root.children():
+        if child.type == TYPE_OBJECT and isinstance(child, MetaObject):
+            if child.name:
+                index[child.name] = child
+    return index
+
+
+def _relationships_by_name(obj: MetaObject) -> dict[str, MetaData]:
+    """Return a name → node map of all relationship children on *obj* (effective)."""
+    result: dict[str, MetaData] = {}
+    for child in obj.effective_children():
+        if child.type == TYPE_RELATIONSHIP and child.name:
+            result[child.name] = child
+    return result
+
+
+def _validate_entity_field_ref(
+    ref: str,
+    attr_name: str,
+    context: str,
+    object_index: dict[str, MetaObject],
+    errors: list[MetaError],
+) -> bool:
+    """Validate a dotted 'Entity.fieldName' reference.
+
+    Appends ERR_INVALID_ORIGIN to *errors* if invalid; returns True if valid.
+    *attr_name* is used only for the error message text; *context* identifies the
+    origin node for diagnostic purposes.
+    """
+    parts = ref.split(".", 1)
+    if len(parts) != 2:
+        errors.append(
+            MetaError(
+                f"{context} @{attr_name}='{ref}' must be in 'EntityName.fieldName' format",
+                ErrorCode.ERR_INVALID_ORIGIN,
+            )
+        )
+        return False
+    entity_name, field_name = parts
+    entity = object_index.get(entity_name)
+    if entity is None:
+        errors.append(
+            MetaError(
+                f"{context} @{attr_name}='{ref}' references unknown entity '{entity_name}'",
+                ErrorCode.ERR_INVALID_ORIGIN,
+            )
+        )
+        return False
+    field_names = {f.name for f in entity.fields()}
+    if field_name not in field_names:
+        errors.append(
+            MetaError(
+                f"{context} @{attr_name}='{ref}' references field '{field_name}' which does "
+                f"not exist on entity '{entity_name}' (known fields: {sorted(field_names)})",
+                ErrorCode.ERR_INVALID_ORIGIN,
+            )
+        )
+        return False
+    return True
+
+
+def _validate_via_path(
+    via: str,
+    context: str,
+    object_index: dict[str, MetaObject],
+    errors: list[MetaError],
+) -> bool:
+    """Validate a dotted relationship path 'Entity.rel1[.rel2...]'.
+
+    Returns True if valid; appends ERR_INVALID_ORIGIN and returns False if not.
+    """
+    segments = via.split(".")
+    if len(segments) < 2:
+        errors.append(
+            MetaError(
+                f"{context} @via='{via}' must be in 'EntityName.relName[.relName...]' format",
+                ErrorCode.ERR_INVALID_ORIGIN,
+            )
+        )
+        return False
+
+    # First segment: starting entity
+    current_name = segments[0]
+    current_entity = object_index.get(current_name)
+    if current_entity is None:
+        errors.append(
+            MetaError(
+                f"{context} @via='{via}' references unknown entity '{current_name}'",
+                ErrorCode.ERR_INVALID_ORIGIN,
+            )
+        )
+        return False
+
+    # Remaining segments: relationship hops
+    for rel_name in segments[1:]:
+        rels = _relationships_by_name(current_entity)
+        rel_node = rels.get(rel_name)
+        if rel_node is None:
+            errors.append(
+                MetaError(
+                    f"{context} @via='{via}' — entity '{current_entity.name}' has no "
+                    f"relationship '{rel_name}' (known relationships: {sorted(rels)})",
+                    ErrorCode.ERR_INVALID_ORIGIN,
+                )
+            )
+            return False
+
+        # Advance to the referenced entity
+        obj_ref = rel_node.attr(RELATIONSHIP_ATTR_OBJECT_REF)
+        if not isinstance(obj_ref, str):
+            errors.append(
+                MetaError(
+                    f"{context} @via='{via}' — relationship '{rel_name}' on entity "
+                    f"'{current_entity.name}' has no @objectRef",
+                    ErrorCode.ERR_INVALID_ORIGIN,
+                )
+            )
+            return False
+
+        next_entity = object_index.get(obj_ref)
+        if next_entity is None:
+            errors.append(
+                MetaError(
+                    f"{context} @via='{via}' — relationship '{rel_name}' on entity "
+                    f"'{current_entity.name}' references unknown entity '{obj_ref}'",
+                    ErrorCode.ERR_INVALID_ORIGIN,
+                )
+            )
+            return False
+
+        current_entity = next_entity
+
+    return True
+
+
+def _validate_origin_paths(
+    root: MetaData,
+    errors: list[MetaError],
+) -> None:
+    """Validate @from/@of/@via dotted-path attrs on origin.passthrough and
+    origin.aggregate nodes.
+
+    Errors use ERR_INVALID_ORIGIN. Only validates; does NOT alter the tree.
+    """
+    object_index = _build_object_index(root)
+
+    for node in _walk(root):
+        if node.type != TYPE_FIELD:
+            continue
+        for origin in node.children():
+            if origin.type != TYPE_ORIGIN:
+                continue
+            ctx = f"field '{node.name}' origin.{origin.sub_type}"
+
+            if origin.sub_type == ORIGIN_SUBTYPE_PASSTHROUGH:
+                from_ref = origin.attr(ORIGIN_ATTR_FROM)
+                if isinstance(from_ref, str):
+                    _validate_entity_field_ref(
+                        from_ref, ORIGIN_ATTR_FROM, ctx, object_index, errors
+                    )
+                via = origin.attr(ORIGIN_ATTR_VIA)
+                if isinstance(via, str):
+                    _validate_via_path(via, ctx, object_index, errors)
+
+            elif origin.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
+                of_ref = origin.attr(ORIGIN_ATTR_OF)
+                if isinstance(of_ref, str):
+                    _validate_entity_field_ref(
+                        of_ref, ORIGIN_ATTR_OF, ctx, object_index, errors
+                    )
+                via = origin.attr(ORIGIN_ATTR_VIA)
+                if isinstance(via, str):
+                    _validate_via_path(via, ctx, object_index, errors)

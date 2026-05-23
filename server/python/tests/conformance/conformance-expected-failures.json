@@ -1,6 +1,5 @@
 {
   "fixtures": [
-    "error-origin-bad-via-path",
     "error-template-prompt-missing-payload-ref",
     "subtype-entity-missing-primary-warning",
     "template-output-and-prompt",
