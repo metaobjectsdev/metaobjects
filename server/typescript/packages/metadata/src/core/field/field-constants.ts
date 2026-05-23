@@ -110,3 +110,10 @@ export const FIELD_ATTR_CURRENCY_DEFAULT = "USD";
 
 /** Member symbols of an enum-subtype field. Required, string array. */
 export const FIELD_ATTR_VALUES = "values";
+
+/**
+ * Pattern every enum member must satisfy: a legal identifier in all target
+ * languages (TS union member, Java/C#/Python enum member). Ensures symbol ==
+ * stored string with no name↔value divergence.
+ */
+export const ENUM_MEMBER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;

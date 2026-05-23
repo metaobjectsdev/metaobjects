@@ -229,3 +229,148 @@ describe("field.enum — missing @values", () => {
     expect(codes).toContain("ERR_MISSING_REQUIRED_ATTR");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Negative: @values content validation (identifier-safety + duplicates)
+// ---------------------------------------------------------------------------
+
+describe("field.enum — @values content validation", () => {
+  it("emits ERR_BAD_ATTR_VALUE for a non-identifier-safe member (kebab-case)", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "test",
+        children: [
+          {
+            "object.entity": {
+              name: "Order",
+              children: [
+                { "field.long": { name: "id" } },
+                {
+                  "field.enum": {
+                    name: "status",
+                    "@values": ["in-progress"],
+                  },
+                },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const codes = errors.map((e) => (e as { code?: string }).code);
+    expect(codes).toContain("ERR_BAD_ATTR_VALUE");
+  });
+
+  it("emits ERR_BAD_ATTR_VALUE for a member with a leading digit", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "test",
+        children: [
+          {
+            "object.entity": {
+              name: "Order",
+              children: [
+                { "field.long": { name: "id" } },
+                {
+                  "field.enum": {
+                    name: "level",
+                    "@values": ["1ST", "2ND"],
+                  },
+                },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const codes = errors.map((e) => (e as { code?: string }).code);
+    expect(codes).toContain("ERR_BAD_ATTR_VALUE");
+  });
+
+  it("emits ERR_BAD_ATTR_VALUE for duplicate members", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "test",
+        children: [
+          {
+            "object.entity": {
+              name: "Order",
+              children: [
+                { "field.long": { name: "id" } },
+                {
+                  "field.enum": {
+                    name: "status",
+                    "@values": ["ACTIVE", "ACTIVE"],
+                  },
+                },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const codes = errors.map((e) => (e as { code?: string }).code);
+    expect(codes).toContain("ERR_BAD_ATTR_VALUE");
+  });
+
+  it("does NOT emit an error for valid identifier-safe members", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "test",
+        children: [
+          {
+            "object.entity": {
+              name: "Order",
+              children: [
+                { "field.long": { name: "id" } },
+                {
+                  "field.enum": {
+                    name: "status",
+                    "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"],
+                  },
+                },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const badAttrErrors = errors.filter(
+      (e) => (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE",
+    );
+    expect(badAttrErrors).toHaveLength(0);
+  });
+
+  it("does NOT emit an error for underscore-prefixed members (valid identifiers)", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "test",
+        children: [
+          {
+            "object.entity": {
+              name: "Item",
+              children: [
+                { "field.long": { name: "id" } },
+                {
+                  "field.enum": {
+                    name: "type",
+                    "@values": ["_DEFAULT", "A", "B_C"],
+                  },
+                },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const badAttrErrors = errors.filter(
+      (e) => (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE",
+    );
+    expect(badAttrErrors).toHaveLength(0);
+  });
+});
