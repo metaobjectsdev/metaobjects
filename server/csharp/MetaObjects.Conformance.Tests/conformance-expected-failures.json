@@ -1,4 +1,8 @@
 {
   "language": "csharp",
-  "fixtures": []
+  "fixtures": [
+    "prompt-template-simple",
+    "prompt-fragment-and-template",
+    "error-prompt-template-missing-payload-ref"
+  ]
 }
