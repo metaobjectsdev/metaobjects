@@ -24,6 +24,26 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
         return n is string s && s != "" ? s : null;
     });
 
+    /// <summary>
+    /// The SQL view name from the first <c>source[dbView]</c> child, or null when
+    /// none is declared. Uses effective <see cref="MetaData.Children"/> (a source
+    /// node can be inherited via the super chain).
+    /// </summary>
+    public string? DbView => Cached("dbView", () =>
+    {
+        var source = Children().FirstOrDefault(
+            c => c.Type == TYPE_SOURCE && c.SubType == SOURCE_SUBTYPE_DB_VIEW);
+        var n = source?.OwnAttr(SOURCE_DB_VIEW_ATTR_NAME);
+        return n is string s && s != "" ? s : null;
+    });
+
+    /// <summary>
+    /// True when this object is a read-only projection: it has a <c>dbView</c>
+    /// source and no <c>dbTable</c> (queries target the view; there is nothing to
+    /// write). Write-through objects (both dbTable + dbView) are not read-only.
+    /// </summary>
+    public bool IsReadOnlyProjection() => DbView is not null && DbTable is null;
+
     /// <summary>True when the object's subtype is <c>entity</c>.</summary>
     public bool IsEntity() => SubType == OBJECT_SUBTYPE_ENTITY;
 
