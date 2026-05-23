@@ -1,0 +1,36 @@
+{
+  "metadata.root": {
+    "package": "myapp::commerce",
+    "children": [
+      {
+        "object.value": {
+          "name": "Program",
+          "@object": "com.metaobjects.object.value.ValueObject",
+          "@dbTable": "program",
+          "children": [
+            {
+              "field.long": {
+                "name": "id",
+                "@dbColumn": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title",
+                "@dbColumn": "title",
+                "@previousName": "name"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "primary",
+                "@fields": ["id"],
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
