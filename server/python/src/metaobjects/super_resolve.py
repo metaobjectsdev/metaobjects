@@ -52,9 +52,10 @@ def _resolve(
 
     Resolution forms:
     - absolute ``::pkg::Name``  → strip leading ``::``, look up ``pkg::Name``.
-    - relative ``..::rest``     → drop one trailing package segment per leading
-                                  ``..::`` from context, then try
-                                  ``reducedCtx::rest`` then bare ``rest``.
+    - relative ``..::rest``     → count leading ``..::`` levels; if levels exceed
+                                  context depth or remainder is empty → ``None``
+                                  (→ ERR_UNRESOLVED_SUPER); else look up
+                                  ``reducedCtx::rest`` (mirrors TS exactly).
     - bare/qualified ``Name``   → try ``context::ref`` first, then bare ``ref``.
     """
     abs_prefix = PACKAGE_SEP  # "::"
@@ -64,14 +65,16 @@ def _resolve(
         return index.get(ref[len(abs_prefix):])
 
     if ref.startswith(rel_prefix):                          # relative ..::rest
-        segs = (context_pkg or "").split(PACKAGE_SEP) if context_pkg else []
-        rest = ref
-        while rest.startswith(rel_prefix):
-            rest = rest[len(rel_prefix):]
-            segs = segs[:-1]
-        reduced = PACKAGE_SEP.join(segs)
-        qualified = f"{reduced}{PACKAGE_SEP}{rest}" if reduced else rest
-        return index.get(qualified) or index.get(rest)
+        parts = ref.split(PACKAGE_SEP)
+        levels = 0
+        while levels < len(parts) and parts[levels] == "..":
+            levels += 1
+        pkg_parts = context_pkg.split(PACKAGE_SEP) if context_pkg else []
+        remainder = parts[levels:]
+        if len(pkg_parts) < levels or len(remainder) == 0:
+            return None
+        all_parts = pkg_parts[: len(pkg_parts) - levels] + remainder
+        return index.get(PACKAGE_SEP.join(all_parts))
 
     # bare or pkg-qualified (no leading :: / ..)
     if context_pkg:

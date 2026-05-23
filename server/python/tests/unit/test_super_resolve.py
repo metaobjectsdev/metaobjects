@@ -131,3 +131,55 @@ def test_resolve_skips_already_resolved() -> None:
     # No errors, and super_data still points to base
     assert errors == []
     assert sub.super_data is base
+
+
+# ---------------------------------------------------------------------------
+# (f) relative ..:: ref — resolves correctly against reduced context (Fix 2)
+# ---------------------------------------------------------------------------
+
+def test_resolve_relative_ref_resolves_against_reduced_context() -> None:
+    """``..::pkg::Name`` from context ``acme::sub`` should resolve to ``acme::pkg::Name``."""
+    # Build a root that owns acme::pkg::Base
+    root = _root("acme")
+    pkg_node = _node("object", "entity", "PkgRoot")   # just a container
+    pkg_node.package = "acme::pkg"
+    base = _node("object", "entity", "Base")
+    pkg_node.add_child(base)
+    root.add_child(pkg_node)
+
+    # Sub lives in acme::sub and refers up one level then into pkg
+    sub_container = _node("object", "entity", "SubRoot")
+    sub_container.package = "acme::sub"
+    sub = _node("object", "entity", "Sub")
+    sub.super_ref = "..::pkg::Base"   # one level up from acme::sub → acme, then ::pkg::Base
+    sub_container.add_child(sub)
+    root.add_child(sub_container)
+
+    errors: list[MetaError] = []
+    resolve_supers(root, errors)
+
+    assert errors == [], f"expected no errors, got {errors}"
+    assert sub.super_data is base
+
+
+# ---------------------------------------------------------------------------
+# (g) over-deep relative ref → None → ERR_UNRESOLVED_SUPER (Fix 2)
+# ---------------------------------------------------------------------------
+
+def test_resolve_over_deep_relative_ref_emits_error() -> None:
+    """More ``..::`` levels than context segments → unresolved → ERR_UNRESOLVED_SUPER."""
+    root = _root("acme")
+    base = _node("object", "entity", "Base")
+    root.add_child(base)
+
+    # Context has 1 segment ("acme"); three levels up is impossible
+    sub = _node("object", "entity", "Sub")
+    sub.super_ref = "..::..::..::Base"
+    root.add_child(sub)
+
+    errors: list[MetaError] = []
+    resolve_supers(root, errors)
+
+    assert len(errors) == 1
+    assert errors[0].code == ErrorCode.ERR_UNRESOLVED_SUPER
+    assert sub.super_data is None
