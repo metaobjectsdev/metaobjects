@@ -25,8 +25,8 @@ describe("origin type constants", () => {
     expect(ORIGIN_SUBTYPE_PASSTHROUGH).toBe("passthrough");
     expect(ORIGIN_SUBTYPE_AGGREGATE).toBe("aggregate");
   });
-  test("ORIGIN_SUBTYPES contains base + passthrough + aggregate", () => {
-    expect(ORIGIN_SUBTYPES).toEqual([SUBTYPE_BASE, "passthrough", "aggregate"]);
+  test("ORIGIN_SUBTYPES contains base + passthrough + aggregate + collection", () => {
+    expect(ORIGIN_SUBTYPES).toEqual([SUBTYPE_BASE, "passthrough", "aggregate", "collection"]);
   });
   test("passthrough attrs are camelCase", () => {
     expect(ORIGIN_PASSTHROUGH_ATTR_FROM).toBe("from");
