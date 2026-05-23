@@ -24,3 +24,4 @@ Write one when a decision is **cross-cutting** (affects more than one language p
 - [ADR-0004 — Provider-based type registration & composition](ADR-0004-provider-based-type-registration.md) — *Accepted*
 - [ADR-0005 — Object representation: entity/value semantics + binding-resolved representation (OO ports)](ADR-0005-object-representation-binding.md) — *Accepted*
 - [ADR-0006 — Reserved structural keywords vs `@`-prefixed inline attributes](ADR-0006-reserved-keywords-vs-inline-attributes.md) — *Proposed*
+- [ADR-0007 — Source metatype v2: storage-paradigm subtypes, logical names, multi-source, per-subtype physical addresses](ADR-0007-source-v2-paradigm-subtypes-multisource.md) — *Proposed*
