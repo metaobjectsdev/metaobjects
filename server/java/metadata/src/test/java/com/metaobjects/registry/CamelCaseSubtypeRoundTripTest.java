@@ -80,7 +80,7 @@ public class CamelCaseSubtypeRoundTripTest extends SharedRegistryTestBase {
 
     @BeforeClass
     public static void registerFizzBuzz() {
-        // Boot standard types so that field.base, object.pojo, etc. are present.
+        // Boot standard types so that field.base, object.entity, etc. are present.
         // SharedRegistryTestBase.initializeSharedRegistry() is called by the JUnit
         // runner before this @BeforeClass; we add our test-only type on top.
         try {
@@ -110,14 +110,14 @@ public class CamelCaseSubtypeRoundTripTest extends SharedRegistryTestBase {
 
     private static final String CANONICAL_CORRECT_CASE =
         "{ \"metadata.root\": { \"package\": \"t::x\", \"children\": [" +
-        "  { \"object.pojo\": { \"name\": \"X\", \"children\": [" +
+        "  { \"object.entity\": { \"name\": \"X\", \"children\": [" +
         "    { \"field.fizzBuzz\": { \"name\": \"f\" } }" +
         "  ] } }" +
         "] } }";
 
     private static final String CANONICAL_WRONG_CASE =
         "{ \"metadata.root\": { \"package\": \"t::x\", \"children\": [" +
-        "  { \"object.pojo\": { \"name\": \"X\", \"children\": [" +
+        "  { \"object.entity\": { \"name\": \"X\", \"children\": [" +
         "    { \"field.fizzbuzz\": { \"name\": \"f\" } }" +
         "  ] } }" +
         "] } }";

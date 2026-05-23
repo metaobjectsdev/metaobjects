@@ -347,7 +347,7 @@ public class UnifiedFieldRegistryTest {
                 "package": "test::alltypes",
                 "children": [
                   {
-                    "object.pojo": {
+                    "object.entity": {
                       "name": "AllFieldTypesTest",
                       "children": [
                         {
@@ -397,7 +397,7 @@ public class UnifiedFieldRegistryTest {
                 "package": "test::withattributes",
                 "children": [
                   {
-                    "object.pojo": {
+                    "object.entity": {
                       "name": "FieldsWithAttributesTest",
                       "children": [
                         {
@@ -438,7 +438,7 @@ public class UnifiedFieldRegistryTest {
                 "package": "test::constraints",
                 "children": [
                   {
-                    "object.pojo": {
+                    "object.entity": {
                       "name": "ConstraintTest",
                       "children": [
                         {

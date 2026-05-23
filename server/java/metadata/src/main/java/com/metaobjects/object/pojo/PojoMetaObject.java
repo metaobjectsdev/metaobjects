@@ -11,20 +11,20 @@ import com.metaobjects.InvalidValueException;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.ValidationResult;
-import com.metaobjects.attr.StringAttribute;
-// Constraint registration now handled by consolidated MetaDataRegistry
-import com.metaobjects.constraint.PlacementConstraint;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.object.MetaObject;
-import com.metaobjects.registry.MetaDataRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static com.metaobjects.object.MetaObject.SUBTYPE_BASE;
 import java.lang.reflect.*;
 
 /**
- * MetaObject that supports POJO objects with unified registry registration.
+ * MetaObject that supports POJO objects via reflection-based field access.
+ *
+ * <p>Not a registered subtype. {@code object.pojo} is retired (ADR-0005);
+ * this class survives only as a resolver-selected representation impl. Its
+ * public {@code (String name)} ctor stamps the semantic subType {@code entity}
+ * — representation is orthogonal to the semantic subtype.</p>
  *
  * @version 6.0
  */
@@ -33,87 +33,15 @@ public class PojoMetaObject extends MetaObject
 {
     private static final Logger log = LoggerFactory.getLogger(PojoMetaObject.class);
 
-    public final static String SUBTYPE_POJO = "pojo";
-    public final static String ATTR_CLASS_NAME = "className";
-    public final static String ATTR_PACKAGE_NAME = "packageName";
-
     public final static String CACHE_PARAM_GETTER_METHOD = "getterMethod";
     public final static String CACHE_PARAM_SETTER_METHOD = "setterMethod";
 
     /**
-     * Register PojoMetaObject type and constraints with registry.
-     * Called by ObjectTypesMetaDataProvider during service discovery.
-     */
-    public static void registerTypes(MetaDataRegistry registry) {
-        registry.registerType(PojoMetaObject.class, def -> def
-            .type(TYPE_OBJECT).subType(SUBTYPE_POJO)
-            .description("POJO MetaObject with reflection-based field access")
-
-            // INHERIT FROM BASE OBJECT
-            .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE)
-
-            // POJO-SPECIFIC ATTRIBUTES ONLY (base attributes inherited)
-            .optionalAttribute(ATTR_CLASS_NAME, "string")
-            .optionalAttribute(ATTR_PACKAGE_NAME, "string")
-
-            // TEST-SPECIFIC ATTRIBUTES (for codegen tests)
-            .optionalAttribute("dbTable", "string")
-            .optionalAttribute("hasAuditing", "boolean")
-            .optionalAttribute("hasJpa", "boolean")
-            .optionalAttribute("hasValidation", "boolean")
-            .optionalAttribute("implements", "string")
-
-            // CHILD REQUIREMENTS INHERITED FROM BASE OBJECT:
-            // - All field types (field.*)
-            // - Other objects (object.*)
-            // - Keys (key.*)
-            // - Attributes (attr.*)
-            // - Validators (validator.*)
-            // - Views (view.*)
-        );
-
-        // Register PojoMetaObject-specific constraints using consolidated registry
-        setupPojoMetaObjectConstraints(registry);
-    }
-    
-    /**
-     * Setup PojoMetaObject-specific constraints using consolidated registry
-     *
-     * @param registry The MetaDataRegistry to use for constraint registration
-     */
-    private static void setupPojoMetaObjectConstraints(MetaDataRegistry registry) {
-        try {
-            // PLACEMENT CONSTRAINT: POJO objects CAN have className attribute
-            registry.addConstraint(new PlacementConstraint(
-                "pojoobject.classname.placement",
-                "POJO objects can have className attribute",
-                "object.pojo",            // Parent pattern
-                "attr.string[className]", // Child pattern
-                true                      // Allowed
-            ));
-
-            // PLACEMENT CONSTRAINT: POJO objects CAN have packageName attribute
-            registry.addConstraint(new PlacementConstraint(
-                "pojoobject.packagename.placement",
-                "POJO objects can have packageName attribute",
-                "object.pojo",              // Parent pattern
-                "attr.string[packageName]", // Child pattern
-                true                        // Allowed
-            ));
-
-            // Registered PojoMetaObject-specific constraints using consolidated registry
-
-        } catch (Exception e) {
-            // Failed to register PojoMetaObject constraints - logging not available during provider registration
-            throw new RuntimeException("Failed to register PojoMetaObject constraints", e);
-        }
-    }
-
-    /**
-     * Constructs a bean MetaClass
+     * Constructs a bean MetaClass with the semantic subType {@code entity}
+     * (representation is orthogonal to the semantic subtype — ADR-0005).
      */
     public PojoMetaObject( String name ) {
-        super( SUBTYPE_POJO, name );
+        super( MetaObject.SUBTYPE_ENTITY, name );
     }
 
     /**

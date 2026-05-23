@@ -140,7 +140,7 @@ public class MetaRelationshipIntegrationTest {
         assertNotNull("Relationship type should be registered", relDef);
 
         // Verify that objects can contain relationships (placement constraint)
-        TypeDefinition objDef = registry.getTypeDefinition("object", "pojo");
+        TypeDefinition objDef = registry.getTypeDefinition("object", "entity");
         assertNotNull("Object type should be registered", objDef);
 
         // Create a relationship and verify it can be added to an object

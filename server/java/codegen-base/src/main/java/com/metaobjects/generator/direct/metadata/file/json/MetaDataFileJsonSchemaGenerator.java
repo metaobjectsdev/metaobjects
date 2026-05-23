@@ -100,7 +100,13 @@ public class MetaDataFileJsonSchemaGenerator extends SingleJsonDirectGeneratorBa
             .optionalAttribute(JSON_SCHEMA_VERSION, "string")
             .optionalAttribute(JSON_SCHEMA_ID, "string")
             .optionalAttribute(JSON_TITLE, "string")
-            .optionalAttribute(JSON_DESCRIPTION, "string");
+            .optionalAttribute(JSON_DESCRIPTION, "string")
+            // Codegen object-level flags (template conditionals). Formerly registered on
+            // object.pojo; moved to object.base so the entity/value subtypes inherit them
+            // after the pojo/proxy/map subtype registrations were retired (ADR-0005).
+            .optionalAttribute("hasAuditing", "boolean")
+            .optionalAttribute("hasJpa", "boolean")
+            .optionalAttribute("hasValidation", "boolean");
 
         // Field-level JSON Schema attributes
         registry.findType("field", "base")

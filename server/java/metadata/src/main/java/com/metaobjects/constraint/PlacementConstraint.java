@@ -12,7 +12,7 @@ import com.metaobjects.object.MetaObject;
  *
  * Pattern syntax:
  * - "field.*" - any field subtype
- * - "object.pojo" - specific object.pojo type
+ * - "object.entity" - specific object.entity type
  * - "attr.string[maxLength]" - specific attr.string with name "maxLength"
  * - "*" - matches anything
  *

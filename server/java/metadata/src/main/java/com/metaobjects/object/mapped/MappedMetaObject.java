@@ -4,17 +4,18 @@ import com.metaobjects.MetaDataException;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.MetaObjectAware;
-import com.metaobjects.util.DataConverter;
-import com.metaobjects.registry.MetaDataRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static com.metaobjects.object.MetaObject.SUBTYPE_BASE;
-import javax.sound.midi.MetaEventListener;
 import java.util.Map;
 
 /**
- * MappedMetaObject with unified registry registration for Map-based objects.
+ * Map-based MetaObject with key-value field access.
+ *
+ * <p>Not a registered subtype. {@code object.map} is retired (ADR-0005); this
+ * class survives only as a resolver-selected representation impl. Its public
+ * {@code (String name)} ctor stamps the semantic subType {@code entity} —
+ * representation is orthogonal to the semantic subtype.</p>
  *
  * @version 6.0
  */
@@ -22,40 +23,14 @@ public class MappedMetaObject extends MetaObject
 {
     private static final Logger log = LoggerFactory.getLogger(MappedMetaObject.class);
 
-    public final static String OBJECT_SUBTYPE = "map";
     private String metaObjectKey = "metaObject";
 
     /**
-     * Register MappedMetaObject type with registry.
-     * Called by ObjectTypesMetaDataProvider during service discovery.
+     * Constructs a Map-based MetaObject with the semantic subType {@code entity}
+     * (representation is orthogonal to the semantic subtype — ADR-0005).
      */
-    public static void registerTypes(MetaDataRegistry registry) {
-        registry.registerType(MappedMetaObject.class, def -> def
-            .type(TYPE_OBJECT).subType(OBJECT_SUBTYPE)
-            .description("Map-based MetaObject with key-value field access")
-
-            // INHERIT FROM BASE OBJECT
-            .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE)
-
-            // NO MAP-SPECIFIC ATTRIBUTES (only uses inherited base attributes)
-
-            // TEST-SPECIFIC ATTRIBUTES (for codegen tests)
-            .optionalAttribute("implements", "string")
-
-            // CHILD REQUIREMENTS INHERITED FROM BASE OBJECT:
-            // - All field types (field.*)
-            // - Other objects (object.*)
-            // - Keys (key.*)
-            // - Attributes (attr.*)
-            // - Validators (validator.*)
-            // - Views (view.*)
-        );
-
-        log.debug("Registered MappedMetaObject type with unified registry");
-    }
-
     public MappedMetaObject(String name) {
-        super(OBJECT_SUBTYPE,name);
+        super(MetaObject.SUBTYPE_ENTITY, name);
     }
 
     protected MappedMetaObject(String subType, String name) {

@@ -1,14 +1,12 @@
 package com.metaobjects.object;
 
-import com.metaobjects.object.mapped.MappedMetaObject;
-import com.metaobjects.object.pojo.PojoMetaObject;
-import com.metaobjects.object.proxy.ProxyMetaObject;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataTypeProvider;
 
 /**
  * Object Types MetaData provider with priority 5.
- * Registers base MetaObject and all concrete object types after core base types are available.
+ * Registers the base object type and the entity/value semantic subtypes; the representation
+ * classes (Pojo/Mapped/Proxy) are resolver-selected at load time, not registered subtypes (ADR-0005).
  */
 public class ObjectTypesMetaDataProvider implements MetaDataTypeProvider {
 
@@ -19,14 +17,9 @@ public class ObjectTypesMetaDataProvider implements MetaDataTypeProvider {
 
         // Semantic subtypes (ADR-0005): object.entity / object.value. No dedicated impl class —
         // the loader instantiates the resolver-chosen representation (Pojo/Mapped/Proxy).
+        // The Pojo/Mapped/Proxy subtypes are NO LONGER registered; those classes survive only
+        // as resolver-selected representation impls.
         MetaObject.registerEntityValueTypes(registry);
-
-        // THEN: Register concrete object types that inherit from object.base.
-        // pojo/proxy/map remain registered for coexistence; they are retired in a later task
-        // once fixtures migrate to entity/value.
-        PojoMetaObject.registerTypes(registry);
-        ProxyMetaObject.registerTypes(registry);
-        MappedMetaObject.registerTypes(registry);
     }
 
     @Override
@@ -42,6 +35,6 @@ public class ObjectTypesMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String getDescription() {
-        return "Object Types MetaData Provider - Registers MetaObject and concrete object implementations";
+        return "Object Types MetaData Provider - Registers the base object type and the entity/value semantic subtypes (representations are resolver-selected, not registered subtypes)";
     }
 }

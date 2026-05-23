@@ -29,7 +29,7 @@ public class PreviousNameAttrTest extends SharedRegistryTestBase {
 
     @Test
     public void object_and_field_load_previousName_without_constraint_violation() {
-        // Must not throw — attr is registered + allowed on object.pojo and field.string
+        // Must not throw — attr is registered + allowed on object.entity and field.string
         MetaDataLoader loader = load();
 
         MetaObject program = loader.getMetaObjectByName("myapp::commerce::Program");

@@ -4,23 +4,26 @@ import com.metaobjects.InvalidMetaDataException;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
-// Constraint registration now handled by consolidated MetaDataRegistry
-import com.metaobjects.constraint.PlacementConstraint;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.MetaObjectAware;
 import com.metaobjects.object.pojo.PojoMetaObject;
-import com.metaobjects.registry.MetaDataRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static com.metaobjects.object.MetaObject.SUBTYPE_BASE;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 
 /**
- * ProxyMetaObject with unified registry registration for proxy-based objects.
+ * Proxy MetaObject with dynamic-proxy field access.
+ *
+ * <p>Not a registered subtype. {@code object.proxy} is retired (ADR-0005);
+ * this class survives only as a resolver-selected representation impl (the
+ * resolver picks it for {@code object.entity} nodes whose {@code @object}
+ * names an interface). Its public {@code (String name)} ctor stamps the
+ * semantic subType {@code entity} via the inherited Pojo ctor — representation
+ * is orthogonal to the semantic subtype.</p>
  *
  * @version 6.0
  */
@@ -28,66 +31,15 @@ public class ProxyMetaObject extends PojoMetaObject
 {
     private static final Logger log = LoggerFactory.getLogger(ProxyMetaObject.class);
 
-    public final static String OBJECT_SUBTYPE = "proxy";
     public final static String ATTR_PROXYOBJECT = "proxyObject";
-    public final static String ATTR_INTERFACE_NAME = "interfaceName";
 
     /**
-     * Register ProxyMetaObject type and constraints with registry.
-     * Called by ObjectTypesMetaDataProvider during service discovery.
+     * Constructs a Proxy MetaObject. The inherited Pojo ctor stamps the
+     * semantic subType {@code entity} (representation is orthogonal to the
+     * semantic subtype — ADR-0005).
      */
-    public static void registerTypes(MetaDataRegistry registry) {
-        registry.registerType(ProxyMetaObject.class, def -> def
-            .type(TYPE_OBJECT).subType(OBJECT_SUBTYPE)
-            .description("Proxy MetaObject with dynamic proxy field access")
-
-            // INHERIT FROM BASE OBJECT
-            .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE)
-
-            // PROXY-SPECIFIC ATTRIBUTES ONLY (base attributes inherited)
-            .optionalAttribute(ATTR_PROXYOBJECT, "string")
-            .optionalAttribute(ATTR_INTERFACE_NAME, "string")
-
-            // CHILD REQUIREMENTS INHERITED FROM BASE OBJECT:
-            // - All field types (field.*)
-            // - Other objects (object.*)
-            // - Keys (key.*)
-            // - Attributes (attr.*)
-            // - Validators (validator.*)
-            // - Views (view.*)
-        );
-
-        log.debug("Registered ProxyMetaObject type with unified registry");
-
-        // Register ProxyMetaObject-specific constraints using consolidated registry
-        setupProxyMetaObjectConstraints(registry);
-    }
-    
-    /**
-     * Setup ProxyMetaObject-specific constraints using consolidated registry
-     *
-     * @param registry The MetaDataRegistry to use for constraint registration
-     */
-    private static void setupProxyMetaObjectConstraints(MetaDataRegistry registry) {
-        try {
-            // PLACEMENT CONSTRAINT: ProxyMetaObject CAN have interfaceName attribute
-            registry.addConstraint(new PlacementConstraint(
-                "proxyobject.interfacename.placement",
-                "ProxyMetaObject can have interfaceName attribute",
-                "object.proxy",               // Parent pattern
-                "attr.string[interfaceName]", // Child pattern
-                true                          // Allowed
-            ));
-
-            log.debug("Registered ProxyMetaObject-specific constraints using consolidated registry");
-
-        } catch (Exception e) {
-            log.error("Failed to register ProxyMetaObject constraints", e);
-        }
-    }
-
     public ProxyMetaObject(String name) {
-        super(OBJECT_SUBTYPE,name);
+        super(name);
     }
 
     protected ProxyMetaObject(String subType, String name) {

@@ -10,6 +10,7 @@ import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.identity.PrimaryIdentity;
+import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.mapped.MappedMetaObject;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import com.metaobjects.validator.LengthValidator;
@@ -60,7 +61,11 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
     private MetaRoot buildSingleEntityRoot() {
         MetaRoot root = new MetaRoot("acme::commerce");
 
-        MappedMetaObject product = MappedMetaObject.create("acme::commerce::Product");
+        // Build an object.entity node backed by the Mapped representation (the resolver
+        // default). createObjectInstance stamps the semantic subType "entity" rather than
+        // the representation's own "map" — see MetaDataRegistry#createObjectInstance.
+        MappedMetaObject product = getSharedRegistry().createObjectInstance(
+                MappedMetaObject.class, MetaObject.SUBTYPE_ENTITY, "acme::commerce::Product");
 
         LongField idField = new LongField("id");
         StringField nameField = new StringField("name");
@@ -75,11 +80,10 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
     // -----------------------------------------------------------------------
     // Test 1 — canonical output structure for a root + object + fields.
     //
-    // NOTE: The conformance corpus fixture uses "object.entity" (registered in
-    // the canonical reader, Task 2). This test uses "object.map" (MappedMetaObject,
-    // registered in the current module) to verify the serializer produces the
-    // correct structural output. The full "object.entity" + identity byte-level
-    // conformance test is left to Task 4 (fixture migration).
+    // NOTE: The node is built as "object.entity" (the declared semantic subtype),
+    // matching the conformance corpus fixture exactly. The backing representation is
+    // MappedMetaObject (the resolver default), but the serialized subtype is "entity"
+    // because createObjectInstance stamps the semantic subType — ADR-0005.
     // -----------------------------------------------------------------------
     @Test
     public void testSingleEntityCanonicalOutput() {
@@ -87,15 +91,15 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
 
         String actual = CanonicalJsonSerializer.canonicalSerialize(root);
 
-        // Expected output using "object.map" (MappedMetaObject's registered subtype).
-        // Structure mirrors the conformance fixture exactly; object subtype differs.
+        // Expected output using "object.entity" (the declared semantic subtype),
+        // matching the conformance fixture byte-for-byte.
         String expected =
             "{\n" +
             "  \"metadata.root\": {\n" +
             "    \"package\": \"acme::commerce\",\n" +
             "    \"children\": [\n" +
             "      {\n" +
-            "        \"object.map\": {\n" +
+            "        \"object.entity\": {\n" +
             "          \"name\": \"Product\",\n" +
             "          \"children\": [\n" +
             "            {\n" +

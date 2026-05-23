@@ -591,7 +591,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      *   <li>A key with a {@code .} → text before is type; text after is subType.</li>
      * </ul>
      *
-     * @param key the fused type key, e.g. {@code "object.map"}, {@code "metadata.root"}
+     * @param key the fused type key, e.g. {@code "object.entity"}, {@code "metadata.root"}
      * @return a {@link SplitKey} with the resolved type and subType
      */
     private SplitKey splitTypeKey(String key) {

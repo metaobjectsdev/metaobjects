@@ -77,8 +77,8 @@ public class UnifiedRegistrySchemaIntegrationTest {
                   registry.acceptsChild("field", "string", "attr", "string", "pattern"));
         assertTrue("Registry should have IntegerField type", 
                   registry.acceptsChild("field", "int", "attr", "int", "maxValue"));
-        assertTrue("Registry should have MetaObject type", 
-                  registry.acceptsChild("object", "pojo", "field", "string", "testField"));
+        assertTrue("Registry should have MetaObject type",
+                  registry.acceptsChild("object", "entity", "field", "string", "testField"));
         
         // Test constraint enforcement
         String description = registry.getSupportedChildrenDescription("field", "string");
@@ -218,8 +218,9 @@ public class UnifiedRegistrySchemaIntegrationTest {
                       registry.acceptsChild("field", fieldType, "attr", "string", "testAttr"));
         }
         
-        // Object types that should be supported  
-        String[] expectedObjectTypes = {"pojo", "proxy", "map"};
+        // Object types that should be supported (the registered semantic subtypes;
+        // pojo/proxy/map are resolver-selected representations, not registered subtypes — ADR-0005)
+        String[] expectedObjectTypes = {"entity", "value"};
         for (String objectType : expectedObjectTypes) {
             assertTrue("Registry should support object type: " + objectType,
                       registry.acceptsChild("object", objectType, "field", "string", "testField"));
