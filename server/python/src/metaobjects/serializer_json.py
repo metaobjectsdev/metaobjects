@@ -52,4 +52,6 @@ def _normalize(value: object) -> object:
         return int(value)
     if isinstance(value, list):
         return [_normalize(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _normalize(v) for k, v in value.items()}
     return value
