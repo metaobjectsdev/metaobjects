@@ -15,7 +15,7 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
     {
         get
         {
-            var v = OwnAttr(Constants.RELATIONSHIP_ATTR_CARDINALITY);
+            var v = OwnAttr(RELATIONSHIP_ATTR_CARDINALITY);
             return v is string s ? s : null;
         }
     }
@@ -25,7 +25,7 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
     {
         get
         {
-            var v = OwnAttr(Constants.RELATIONSHIP_ATTR_OBJECT_REF);
+            var v = OwnAttr(RELATIONSHIP_ATTR_OBJECT_REF);
             return v is string s ? s : null;
         }
     }
@@ -35,7 +35,7 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
     {
         get
         {
-            var v = OwnAttr(Constants.RELATIONSHIP_ATTR_FK_FIELD);
+            var v = OwnAttr(RELATIONSHIP_ATTR_FK_FIELD);
             return v is string s ? s : null;
         }
     }
@@ -45,7 +45,7 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
     {
         get
         {
-            var v = OwnAttr(Constants.RELATIONSHIP_ATTR_JOIN_ENTITY);
+            var v = OwnAttr(RELATIONSHIP_ATTR_JOIN_ENTITY);
             return v is string s ? s : null;
         }
     }
@@ -55,7 +55,7 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
     {
         get
         {
-            var f = OwnAttr(Constants.RELATIONSHIP_ATTR_JOIN_FIELDS);
+            var f = OwnAttr(RELATIONSHIP_ATTR_JOIN_FIELDS);
             return f is IReadOnlyList<string> list ? list : [];
         }
     }

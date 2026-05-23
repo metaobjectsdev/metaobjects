@@ -265,5 +265,5 @@ public class MetaDataLoader
     // -------------------------------------------------------------------------
 
     private static MetaRoot MakeSyntheticRoot() =>
-        new MetaRoot(new TypeId(Constants.TYPE_METADATA, Constants.SUBTYPE_ROOT), "");
+        new MetaRoot(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
 }

@@ -35,7 +35,7 @@ public class MetaRoot(TypeId typeId, string name) : MetaData(typeId, name)
     {
         return Cached($"findObject:{name}", () =>
         {
-            var child = OwnChildByTypeAndName(Constants.TYPE_OBJECT, name);
+            var child = OwnChildByTypeAndName(TYPE_OBJECT, name);
             return child as MetaObject;
         });
     }

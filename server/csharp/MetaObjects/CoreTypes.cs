@@ -9,6 +9,14 @@
 // extension lives in a separate (future) provider.
 
 using MetaObjects.Meta;
+using MetaObjects.Core.Object;
+using MetaObjects.Core.Field;
+using MetaObjects.Core.Validator;
+using MetaObjects.Core.Identity;
+using MetaObjects.Core.Relationship;
+using MetaObjects.Persistence.Origin;
+using MetaObjects.Presentation.View;
+using MetaObjects.Presentation.Layout;
 
 namespace MetaObjects;
 
@@ -36,8 +44,8 @@ public static class CoreTypes
     private static ChildRule Wildcard(string childType) =>
         new ChildRule(
             ChildType: childType,
-            ChildSubType: Constants.CHILD_RULE_WILDCARD,
-            ChildName: Constants.CHILD_RULE_WILDCARD);
+            ChildSubType: CHILD_RULE_WILDCARD,
+            ChildName: CHILD_RULE_WILDCARD);
 
     // -------------------------------------------------------------------------
     // def() helper — builds a TypeDefinition with the factory wired up
@@ -77,22 +85,22 @@ public static class CoreTypes
 
     private static readonly Dictionary<string, DataType> FieldDataType = new()
     {
-        [Constants.SUBTYPE_BASE]            = DataType.String,
-        [Constants.FIELD_SUBTYPE_STRING]    = DataType.String,
-        [Constants.FIELD_SUBTYPE_CLASS]     = DataType.String,
-        [Constants.FIELD_SUBTYPE_INT]       = DataType.Int,
-        [Constants.FIELD_SUBTYPE_SHORT]     = DataType.Int,
-        [Constants.FIELD_SUBTYPE_BYTE]      = DataType.Int,
-        [Constants.FIELD_SUBTYPE_LONG]      = DataType.Long,
-        [Constants.FIELD_SUBTYPE_CURRENCY]  = DataType.Long,
-        [Constants.FIELD_SUBTYPE_DOUBLE]    = DataType.Double,
-        [Constants.FIELD_SUBTYPE_FLOAT]     = DataType.Double,
-        [Constants.FIELD_SUBTYPE_DECIMAL]   = DataType.Double,
-        [Constants.FIELD_SUBTYPE_BOOLEAN]   = DataType.Boolean,
-        [Constants.FIELD_SUBTYPE_DATE]      = DataType.Date,
-        [Constants.FIELD_SUBTYPE_TIME]      = DataType.Date,
-        [Constants.FIELD_SUBTYPE_TIMESTAMP] = DataType.Date,
-        [Constants.FIELD_SUBTYPE_OBJECT]    = DataType.Object,
+        [SUBTYPE_BASE]            = DataType.String,
+        [FIELD_SUBTYPE_STRING]    = DataType.String,
+        [FIELD_SUBTYPE_CLASS]     = DataType.String,
+        [FIELD_SUBTYPE_INT]       = DataType.Int,
+        [FIELD_SUBTYPE_SHORT]     = DataType.Int,
+        [FIELD_SUBTYPE_BYTE]      = DataType.Int,
+        [FIELD_SUBTYPE_LONG]      = DataType.Long,
+        [FIELD_SUBTYPE_CURRENCY]  = DataType.Long,
+        [FIELD_SUBTYPE_DOUBLE]    = DataType.Double,
+        [FIELD_SUBTYPE_FLOAT]     = DataType.Double,
+        [FIELD_SUBTYPE_DECIMAL]   = DataType.Double,
+        [FIELD_SUBTYPE_BOOLEAN]   = DataType.Boolean,
+        [FIELD_SUBTYPE_DATE]      = DataType.Date,
+        [FIELD_SUBTYPE_TIME]      = DataType.Date,
+        [FIELD_SUBTYPE_TIMESTAMP] = DataType.Date,
+        [FIELD_SUBTYPE_OBJECT]    = DataType.Object,
     };
 
     // -------------------------------------------------------------------------
@@ -101,16 +109,16 @@ public static class CoreTypes
 
     private static readonly Dictionary<string, DataType> AttrDataType = new()
     {
-        [Constants.SUBTYPE_BASE]               = DataType.String,
-        [Constants.ATTR_SUBTYPE_STRING]        = DataType.String,
-        [Constants.ATTR_SUBTYPE_CLASS]         = DataType.String,
-        [Constants.ATTR_SUBTYPE_STRINGARRAY]   = DataType.String,
-        [Constants.ATTR_SUBTYPE_INT]           = DataType.Int,
-        [Constants.ATTR_SUBTYPE_LONG]          = DataType.Long,
-        [Constants.ATTR_SUBTYPE_DOUBLE]        = DataType.Double,
-        [Constants.ATTR_SUBTYPE_BOOLEAN]       = DataType.Boolean,
-        [Constants.ATTR_SUBTYPE_PROPERTIES]    = DataType.Object,
-        [Constants.ATTR_SUBTYPE_FILTER]        = DataType.Object,
+        [SUBTYPE_BASE]               = DataType.String,
+        [ATTR_SUBTYPE_STRING]        = DataType.String,
+        [ATTR_SUBTYPE_CLASS]         = DataType.String,
+        [ATTR_SUBTYPE_STRINGARRAY]   = DataType.String,
+        [ATTR_SUBTYPE_INT]           = DataType.Int,
+        [ATTR_SUBTYPE_LONG]          = DataType.Long,
+        [ATTR_SUBTYPE_DOUBLE]        = DataType.Double,
+        [ATTR_SUBTYPE_BOOLEAN]       = DataType.Boolean,
+        [ATTR_SUBTYPE_PROPERTIES]    = DataType.Object,
+        [ATTR_SUBTYPE_FILTER]        = DataType.Object,
     };
 
     // -------------------------------------------------------------------------
@@ -136,11 +144,11 @@ public static class CoreTypes
 
     private static readonly Dictionary<string, Func<TypeId, string, MetaData>> ValidatorClassMap = new()
     {
-        [Constants.VALIDATOR_SUBTYPE_REQUIRED] = (tid, n) => new MetaRequiredValidator(tid, n),
-        [Constants.VALIDATOR_SUBTYPE_LENGTH]   = (tid, n) => new MetaLengthValidator(tid, n),
-        [Constants.VALIDATOR_SUBTYPE_REGEX]    = (tid, n) => new MetaRegexValidator(tid, n),
-        [Constants.VALIDATOR_SUBTYPE_NUMERIC]  = (tid, n) => new MetaNumericValidator(tid, n),
-        [Constants.VALIDATOR_SUBTYPE_ARRAY]    = (tid, n) => new MetaArrayValidator(tid, n),
+        [VALIDATOR_SUBTYPE_REQUIRED] = (tid, n) => new MetaRequiredValidator(tid, n),
+        [VALIDATOR_SUBTYPE_LENGTH]   = (tid, n) => new MetaLengthValidator(tid, n),
+        [VALIDATOR_SUBTYPE_REGEX]    = (tid, n) => new MetaRegexValidator(tid, n),
+        [VALIDATOR_SUBTYPE_NUMERIC]  = (tid, n) => new MetaNumericValidator(tid, n),
+        [VALIDATOR_SUBTYPE_ARRAY]    = (tid, n) => new MetaArrayValidator(tid, n),
     };
 
     // -------------------------------------------------------------------------
@@ -149,8 +157,8 @@ public static class CoreTypes
 
     private static readonly Dictionary<string, Func<TypeId, string, MetaData>> IdentityClassMap = new()
     {
-        [Constants.IDENTITY_SUBTYPE_PRIMARY]   = (tid, n) => new MetaPrimaryIdentity(tid, n),
-        [Constants.IDENTITY_SUBTYPE_SECONDARY] = (tid, n) => new MetaSecondaryIdentity(tid, n),
+        [IDENTITY_SUBTYPE_PRIMARY]   = (tid, n) => new MetaPrimaryIdentity(tid, n),
+        [IDENTITY_SUBTYPE_SECONDARY] = (tid, n) => new MetaSecondaryIdentity(tid, n),
     };
 
     // -------------------------------------------------------------------------
@@ -159,8 +167,8 @@ public static class CoreTypes
 
     private static readonly Dictionary<string, Func<TypeId, string, MetaData>> OriginClassMap = new()
     {
-        [Constants.ORIGIN_SUBTYPE_PASSTHROUGH] = (tid, n) => new MetaPassthroughOrigin(tid, n),
-        [Constants.ORIGIN_SUBTYPE_AGGREGATE]   = (tid, n) => new MetaAggregateOrigin(tid, n),
+        [ORIGIN_SUBTYPE_PASSTHROUGH] = (tid, n) => new MetaPassthroughOrigin(tid, n),
+        [ORIGIN_SUBTYPE_AGGREGATE]   = (tid, n) => new MetaAggregateOrigin(tid, n),
     };
 
     // -------------------------------------------------------------------------
@@ -172,14 +180,14 @@ public static class CoreTypes
         // metadata — 1 subtype (the document root: metadata.root)
         registry.Register(
             Def(
-                Constants.TYPE_METADATA,
-                Constants.SUBTYPE_ROOT,
+                TYPE_METADATA,
+                SUBTYPE_ROOT,
                 "Root metadata document",
                 [
-                    Wildcard(Constants.TYPE_OBJECT),
-                    Wildcard(Constants.TYPE_FIELD),
-                    Wildcard(Constants.TYPE_ATTR),
-                    Wildcard(Constants.TYPE_VALIDATOR),
+                    Wildcard(TYPE_OBJECT),
+                    Wildcard(TYPE_FIELD),
+                    Wildcard(TYPE_ATTR),
+                    Wildcard(TYPE_VALIDATOR),
                 ],
                 (tid, n) => new MetaRoot(tid, n),
                 []));
@@ -187,44 +195,44 @@ public static class CoreTypes
         // object — 3 subtypes (base, entity, value)
         List<ChildRule> objectRules =
         [
-            Wildcard(Constants.TYPE_FIELD),
-            Wildcard(Constants.TYPE_IDENTITY),
-            Wildcard(Constants.TYPE_RELATIONSHIP),
-            Wildcard(Constants.TYPE_VALIDATOR),
-            Wildcard(Constants.TYPE_LAYOUT),
-            Wildcard(Constants.TYPE_SOURCE),
-            Wildcard(Constants.TYPE_ATTR),
+            Wildcard(TYPE_FIELD),
+            Wildcard(TYPE_IDENTITY),
+            Wildcard(TYPE_RELATIONSHIP),
+            Wildcard(TYPE_VALIDATOR),
+            Wildcard(TYPE_LAYOUT),
+            Wildcard(TYPE_SOURCE),
+            Wildcard(TYPE_ATTR),
         ];
-        foreach (string subType in Constants.OBJECT_SUBTYPES)
+        foreach (string subType in OBJECT_SUBTYPES)
         {
             registry.Register(
                 Def(
-                    Constants.TYPE_OBJECT,
+                    TYPE_OBJECT,
                     subType,
                     $"Object/entity ({subType})",
                     new List<ChildRule>(objectRules),
                     (tid, n) => new MetaObject(tid, n),
-                    CoreAttrSchemas.ObjectAttrs.ToList()));
+                    ObjectSchema.ObjectAttrs.ToList()));
         }
 
         // field — 16 subtypes (base + 15)
         List<ChildRule> fieldRules =
         [
-            Wildcard(Constants.TYPE_VALIDATOR),
-            Wildcard(Constants.TYPE_VIEW),
-            Wildcard(Constants.TYPE_ATTR),
-            Wildcard(Constants.TYPE_ORIGIN),
+            Wildcard(TYPE_VALIDATOR),
+            Wildcard(TYPE_VIEW),
+            Wildcard(TYPE_ATTR),
+            Wildcard(TYPE_ORIGIN),
         ];
-        foreach (string subType in Constants.FIELD_SUBTYPES)
+        foreach (string subType in FIELD_SUBTYPES)
         {
             List<AttrSchema> fieldAttrs =
-                subType == Constants.FIELD_SUBTYPE_CURRENCY
-                    ? [.. CoreAttrSchemas.CommonFieldAttrs, CoreAttrSchemas.CurrencyFieldAttr]
-                    : CoreAttrSchemas.CommonFieldAttrs.ToList();
+                subType == FIELD_SUBTYPE_CURRENCY
+                    ? [.. FieldSchema.CommonFieldAttrs, FieldSchema.CurrencyFieldAttr]
+                    : FieldSchema.CommonFieldAttrs.ToList();
 
             registry.Register(
                 Def(
-                    Constants.TYPE_FIELD,
+                    TYPE_FIELD,
                     subType,
                     $"Field of type {subType}",
                     new List<ChildRule>(fieldRules),
@@ -234,11 +242,11 @@ public static class CoreTypes
         }
 
         // attr — 9 subtypes (base + 8), no children allowed
-        foreach (string subType in Constants.ATTR_SUBTYPES)
+        foreach (string subType in ATTR_SUBTYPES)
         {
             registry.Register(
                 Def(
-                    Constants.TYPE_ATTR,
+                    TYPE_ATTR,
                     subType,
                     $"Attribute of type {subType}",
                     [],
@@ -248,8 +256,8 @@ public static class CoreTypes
         }
 
         // validator — 6 subtypes (base + 5); dispatch to subtype-specific class
-        List<ChildRule> validatorRules = [Wildcard(Constants.TYPE_ATTR)];
-        foreach (string subType in Constants.VALIDATOR_SUBTYPES)
+        List<ChildRule> validatorRules = [Wildcard(TYPE_ATTR)];
+        foreach (string subType in VALIDATOR_SUBTYPES)
         {
             Func<TypeId, string, MetaData> nodeFactory =
                 ValidatorClassMap.TryGetValue(subType, out var vf)
@@ -257,13 +265,13 @@ public static class CoreTypes
                     : (tid, n) => new MetaValidator(tid, n);
 
             IReadOnlyList<AttrSchema> validatorAttrs =
-                CoreAttrSchemas.ValidatorAttrsMap.TryGetValue(subType, out var va)
+                ValidatorSchema.ValidatorAttrsMap.TryGetValue(subType, out var va)
                     ? va
                     : [];
 
             registry.Register(
                 Def(
-                    Constants.TYPE_VALIDATOR,
+                    TYPE_VALIDATOR,
                     subType,
                     $"Validator ({subType})",
                     new List<ChildRule>(validatorRules),
@@ -272,56 +280,56 @@ public static class CoreTypes
         }
 
         // view — 14 subtypes (base + 13); only attr children
-        foreach (string subType in Constants.VIEW_SUBTYPES)
+        foreach (string subType in VIEW_SUBTYPES)
         {
             List<AttrSchema> viewAttrs =
-                subType == Constants.VIEW_SUBTYPE_CURRENCY
-                    ? CoreAttrSchemas.CurrencyViewAttrs.ToList()
+                subType == VIEW_SUBTYPE_CURRENCY
+                    ? ViewSchema.CurrencyViewAttrs.ToList()
                     : [];
 
             registry.Register(
                 Def(
-                    Constants.TYPE_VIEW,
+                    TYPE_VIEW,
                     subType,
                     $"View ({subType})",
-                    [Wildcard(Constants.TYPE_ATTR)],
+                    [Wildcard(TYPE_ATTR)],
                     (tid, n) => new MetaView(tid, n),
                     viewAttrs));
         }
 
         // layout — 2 subtypes (base + dataGrid); only attr children
-        foreach (string subType in Constants.LAYOUT_SUBTYPES)
+        foreach (string subType in LAYOUT_SUBTYPES)
         {
             List<AttrSchema> layoutAttrs =
-                subType == Constants.LAYOUT_SUBTYPE_DATA_GRID
-                    ? CoreAttrSchemas.DataGridLayoutAttrs.ToList()
+                subType == LAYOUT_SUBTYPE_DATA_GRID
+                    ? LayoutSchema.DataGridLayoutAttrs.ToList()
                     : [];
 
             registry.Register(
                 Def(
-                    Constants.TYPE_LAYOUT,
+                    TYPE_LAYOUT,
                     subType,
                     $"Layout ({subType})",
-                    [Wildcard(Constants.TYPE_ATTR)],
+                    [Wildcard(TYPE_ATTR)],
                     (tid, n) => new MetaLayout(tid, n),
                     layoutAttrs));
         }
 
         // source — 3 subtypes (base + dbTable + dbView); only attr children
-        foreach (string subType in Constants.SOURCE_SUBTYPES)
+        foreach (string subType in SOURCE_SUBTYPES)
         {
             registry.Register(
                 Def(
-                    Constants.TYPE_SOURCE,
+                    TYPE_SOURCE,
                     subType,
                     $"Source ({subType})",
-                    [Wildcard(Constants.TYPE_ATTR)],
+                    [Wildcard(TYPE_ATTR)],
                     (tid, n) => new MetaSource(tid, n),
                     []));
         }
 
         // origin — 3 subtypes (base + passthrough + aggregate); dispatch to subtype class
-        foreach (string subType in Constants.ORIGIN_SUBTYPES)
+        foreach (string subType in ORIGIN_SUBTYPES)
         {
             Func<TypeId, string, MetaData> nodeFactory =
                 OriginClassMap.TryGetValue(subType, out var originFactory)
@@ -329,22 +337,22 @@ public static class CoreTypes
                     : (tid, n) => new MetaOrigin(tid, n);
 
             IReadOnlyList<AttrSchema> originAttrs =
-                CoreAttrSchemas.OriginAttrsMap.TryGetValue(subType, out var oa)
+                OriginSchema.OriginAttrsMap.TryGetValue(subType, out var oa)
                     ? oa
                     : [];
 
             registry.Register(
                 Def(
-                    Constants.TYPE_ORIGIN,
+                    TYPE_ORIGIN,
                     subType,
                     $"Origin ({subType})",
-                    [Wildcard(Constants.TYPE_ATTR)],
+                    [Wildcard(TYPE_ATTR)],
                     nodeFactory,
                     originAttrs.ToList()));
         }
 
         // identity — 2 subtypes (primary + secondary — NO base); dispatch to subtype class
-        foreach (string subType in Constants.IDENTITY_SUBTYPES)
+        foreach (string subType in IDENTITY_SUBTYPES)
         {
             Func<TypeId, string, MetaData> nodeFactory =
                 IdentityClassMap.TryGetValue(subType, out var idf)
@@ -352,38 +360,38 @@ public static class CoreTypes
                     : (tid, n) => new MetaIdentity(tid, n);
 
             IReadOnlyList<AttrSchema> idAttrs =
-                CoreAttrSchemas.IdentityAttrsMap.TryGetValue(subType, out var ia)
+                IdentitySchema.IdentityAttrsMap.TryGetValue(subType, out var ia)
                     ? ia
-                    : [CoreAttrSchemas.IdentityFieldsAttr];
+                    : [IdentitySchema.IdentityFieldsAttr];
 
             registry.Register(
                 Def(
-                    Constants.TYPE_IDENTITY,
+                    TYPE_IDENTITY,
                     subType,
                     $"Identity ({subType})",
-                    [Wildcard(Constants.TYPE_ATTR)],
+                    [Wildcard(TYPE_ATTR)],
                     nodeFactory,
                     idAttrs.ToList()));
         }
 
         // relationship — 4 subtypes (base + association + aggregation + composition)
-        foreach (string subType in Constants.RELATIONSHIP_SUBTYPES)
+        foreach (string subType in RELATIONSHIP_SUBTYPES)
         {
             registry.Register(
                 Def(
-                    Constants.TYPE_RELATIONSHIP,
+                    TYPE_RELATIONSHIP,
                     subType,
                     $"Relationship ({subType})",
-                    [Wildcard(Constants.TYPE_ATTR)],
+                    [Wildcard(TYPE_ATTR)],
                     (tid, n) => new MetaRelationship(tid, n),
-                    CoreAttrSchemas.RelationshipAttrs.ToList()));
+                    RelationshipSchema.RelationshipAttrs.ToList()));
         }
 
         // Default subTypes for authoring sugar.
         // metadata has exactly one subtype (root) — unambiguous.
         // object defaults to entity, the common case.
-        registry.SetDefaultSubType(Constants.TYPE_METADATA, Constants.SUBTYPE_ROOT);
-        registry.SetDefaultSubType(Constants.TYPE_OBJECT, Constants.OBJECT_SUBTYPE_ENTITY);
+        registry.SetDefaultSubType(TYPE_METADATA, SUBTYPE_ROOT);
+        registry.SetDefaultSubType(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY);
     }
 
     // -------------------------------------------------------------------------

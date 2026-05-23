@@ -13,7 +13,7 @@ namespace MetaObjects.Meta;
 public class MetaAttr(TypeId typeId, string name) : MetaData(typeId, name), IDataTypeAware
 {
     /// <summary>The declared value on this attr node (the <c>value</c> reserved key).</summary>
-    public object? Value => OwnAttr(Constants.RESERVED_KEY_VALUE);
+    public object? Value => OwnAttr(RESERVED_KEY_VALUE);
 
     /// <summary>The coarse value-type classification for this attribute's subtype.</summary>
     public DataType DataType => DataTypeValue ?? global::MetaObjects.DataType.String;

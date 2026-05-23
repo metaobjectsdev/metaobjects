@@ -155,24 +155,24 @@ public static class Parser
     private static string DefaultSubTypeFor(string type, TypeRegistry registry)
     {
         IReadOnlyList<string> subs = registry.AllSubTypesOf(type);
-        string candidate = subs.Count > 0 ? subs[0] : Constants.SUBTYPE_BASE;
-        if (!registry.Has(type, candidate) && registry.Has(type, Constants.SUBTYPE_BASE))
+        string candidate = subs.Count > 0 ? subs[0] : SUBTYPE_BASE;
+        if (!registry.Has(type, candidate) && registry.Has(type, SUBTYPE_BASE))
         {
-            return Constants.SUBTYPE_BASE;
+            return SUBTYPE_BASE;
         }
         return candidate;
     }
 
     private static SplitKey SplitTypeKey(string key, TypeRegistry registry)
     {
-        int dotIdx = key.IndexOf(Constants.TYPE_SUBTYPE_SEPARATOR, StringComparison.Ordinal);
+        int dotIdx = key.IndexOf(TYPE_SUBTYPE_SEPARATOR, StringComparison.Ordinal);
         if (dotIdx < 0)
         {
             // Bare type, no fused subType — resolve via the registry default.
             return new SplitKey(key, DefaultSubTypeFor(key, registry), false);
         }
         string type = key[..dotIdx];
-        string subType = key[(dotIdx + Constants.TYPE_SUBTYPE_SEPARATOR.Length)..];
+        string subType = key[(dotIdx + TYPE_SUBTYPE_SEPARATOR.Length)..];
         // Malformed keys are not validated here — they fall through to the
         // downstream registry.Has() check which reports them.
         return new SplitKey(type, subType, true);
@@ -189,7 +189,7 @@ public static class Parser
     private static string ExpandPackageForPath(string basePkg, string pkgPath)
     {
         if (basePkg.Length == 0 ||
-            !pkgPath.StartsWith(Constants.PACKAGE_SEPARATOR, StringComparison.Ordinal))
+            !pkgPath.StartsWith(PACKAGE_SEPARATOR, StringComparison.Ordinal))
         {
             return pkgPath;
         }
@@ -224,7 +224,7 @@ public static class Parser
         var wrapperKeys = new List<string>();
         foreach (JsonProperty prop in parsed.EnumerateObject())
         {
-            if (prop.Name != Constants.JSON_KEY_SCHEMA)
+            if (prop.Name != JSON_KEY_SCHEMA)
             {
                 wrapperKeys.Add(prop.Name);
             }
@@ -274,7 +274,7 @@ public static class Parser
             // The JSON root's own package/super/reserved-keys are not re-applied
             // to the existing root. BUT: children from the NEW JSON should inherit
             // from the NEW root's package, not the existing root's.
-            string contextPkg = TryGetString(rootData, Constants.RESERVED_KEY_PACKAGE)
+            string contextPkg = TryGetString(rootData, RESERVED_KEY_PACKAGE)
                 ?? opts.IntoRoot.Package ?? "";
             ParseNodeInto(rootData, opts.IntoRoot, opts.IntoRoot, contextPkg, st, rootKey);
             return new ParseResult(opts.IntoRoot, st.Warnings, st.Errors);
@@ -319,21 +319,21 @@ public static class Parser
         // --- Look up type in registry ---
         if (!st.Registry.Has(type, subType))
         {
-            if (st.Registry.Has(type, Constants.SUBTYPE_BASE))
+            if (st.Registry.Has(type, SUBTYPE_BASE))
             {
-                subType = Constants.SUBTYPE_BASE;
+                subType = SUBTYPE_BASE;
             }
             else
             {
                 string msg = $"Unknown type \"{type}.{subType}\" — not registered";
                 st.Errors.Add(new MetaError(msg, ErrorCode.ERR_UNKNOWN_TYPE, st.Source, path));
-                string fallbackName = TryGetString(nodeData, Constants.RESERVED_KEY_NAME) ?? "";
+                string fallbackName = TryGetString(nodeData, RESERVED_KEY_NAME) ?? "";
                 return new MetaRoot(new TypeId(type, subType), fallbackName);
             }
         }
 
         // --- Determine name ---
-        string name = TryGetString(nodeData, Constants.RESERVED_KEY_NAME) ?? "";
+        string name = TryGetString(nodeData, RESERVED_KEY_NAME) ?? "";
 
         // --- Create the model ---
         TypeDefinition def = st.Registry.Find(type, subType)!;
@@ -353,14 +353,14 @@ public static class Parser
         {
             bool shouldInherit = false;
 
-            if (type == Constants.TYPE_FIELD && parentType != Constants.TYPE_OBJECT)
+            if (type == TYPE_FIELD && parentType != TYPE_OBJECT)
             {
                 shouldInherit = true;
             }
-            else if (type == Constants.TYPE_VALIDATOR &&
-                     parentType == Constants.TYPE_FIELD && parent is not null)
+            else if (type == TYPE_VALIDATOR &&
+                     parentType == TYPE_FIELD && parent is not null)
             {
-                shouldInherit = parent.Fqn().Contains(Constants.PACKAGE_SEPARATOR, StringComparison.Ordinal);
+                shouldInherit = parent.Fqn().Contains(PACKAGE_SEPARATOR, StringComparison.Ordinal);
             }
 
             if (shouldInherit)
@@ -450,10 +450,10 @@ public static class Parser
         string path)
     {
         // Only `overlay: true` re-opens an existing node.
-        bool isOverlayNode = TryGetBool(nodeData, Constants.RESERVED_KEY_OVERLAY) == true;
+        bool isOverlayNode = TryGetBool(nodeData, RESERVED_KEY_OVERLAY) == true;
 
         // Determine name (needed for the lookup). Lookup key is (type, name).
-        string name = TryGetString(nodeData, Constants.RESERVED_KEY_NAME) ?? "";
+        string name = TryGetString(nodeData, RESERVED_KEY_NAME) ?? "";
 
         // Look up an existing child with (type, name). Skip unnamed nodes —
         // they are always distinct (e.g. inline validators, anonymous attrs).
@@ -501,12 +501,12 @@ public static class Parser
         string contextPkg)
     {
         // package
-        if (nodeData.TryGetProperty(Constants.RESERVED_KEY_PACKAGE, out JsonElement rawPkg))
+        if (nodeData.TryGetProperty(RESERVED_KEY_PACKAGE, out JsonElement rawPkg))
         {
             if (rawPkg.ValueKind != JsonValueKind.String)
             {
                 ReportProblem(
-                    $"\"{Constants.RESERVED_KEY_PACKAGE}\" must be a string at {path}",
+                    $"\"{RESERVED_KEY_PACKAGE}\" must be a string at {path}",
                     st, path, ErrorCode.ERR_BAD_ATTR_VALUE);
             }
             else
@@ -516,12 +516,12 @@ public static class Parser
         }
 
         // extends — store the raw supertype ref; resolution happens after this call.
-        if (nodeData.TryGetProperty(Constants.RESERVED_KEY_EXTENDS, out JsonElement rawExtends))
+        if (nodeData.TryGetProperty(RESERVED_KEY_EXTENDS, out JsonElement rawExtends))
         {
             if (rawExtends.ValueKind != JsonValueKind.String)
             {
                 ReportProblem(
-                    $"\"{Constants.RESERVED_KEY_EXTENDS}\" must be a string at {path}",
+                    $"\"{RESERVED_KEY_EXTENDS}\" must be a string at {path}",
                     st, path, ErrorCode.ERR_UNRESOLVED_SUPER);
             }
             else
@@ -531,12 +531,12 @@ public static class Parser
         }
 
         // abstract — structural key (true → abstract node)
-        if (nodeData.TryGetProperty(Constants.RESERVED_KEY_ABSTRACT, out JsonElement rawAbstract))
+        if (nodeData.TryGetProperty(RESERVED_KEY_ABSTRACT, out JsonElement rawAbstract))
         {
             if (rawAbstract.ValueKind != JsonValueKind.True && rawAbstract.ValueKind != JsonValueKind.False)
             {
                 ReportProblem(
-                    $"\"{Constants.RESERVED_KEY_ABSTRACT}\" must be a boolean at {path}",
+                    $"\"{RESERVED_KEY_ABSTRACT}\" must be a boolean at {path}",
                     st, path, ErrorCode.ERR_BAD_ATTR_VALUE);
             }
             else
@@ -546,12 +546,12 @@ public static class Parser
         }
 
         // isArray — structural key (true → array node)
-        if (nodeData.TryGetProperty(Constants.RESERVED_KEY_IS_ARRAY, out JsonElement rawIsArray))
+        if (nodeData.TryGetProperty(RESERVED_KEY_IS_ARRAY, out JsonElement rawIsArray))
         {
             if (rawIsArray.ValueKind != JsonValueKind.True && rawIsArray.ValueKind != JsonValueKind.False)
             {
                 ReportProblem(
-                    $"\"{Constants.RESERVED_KEY_IS_ARRAY}\" must be a boolean at {path}",
+                    $"\"{RESERVED_KEY_IS_ARRAY}\" must be a boolean at {path}",
                     st, path, ErrorCode.ERR_BAD_ATTR_VALUE);
             }
             else
@@ -578,7 +578,7 @@ public static class Parser
     {
         if (value is not string s) return value;
         AttrSchema? spec = registry.AttrsOf(type, subType).FirstOrDefault(a => a.Name == attrName);
-        if (spec is null || spec.ValueType != Constants.ATTR_SUBTYPE_STRINGARRAY) return value;
+        if (spec is null || spec.ValueType != ATTR_SUBTYPE_STRINGARRAY) return value;
         return new List<string> { s }.AsReadOnly();
     }
 
@@ -603,7 +603,7 @@ public static class Parser
         TypeRegistry registry)
     {
         AttrSchema? spec = registry.AttrsOf(type, subType).FirstOrDefault(a => a.Name == attrName);
-        if (spec is null || spec.ValueType != Constants.ATTR_SUBTYPE_FILTER) return value;
+        if (spec is null || spec.ValueType != ATTR_SUBTYPE_FILTER) return value;
         // Only IReadOnlyDictionary (an already-parsed object) gets desugared.
         // A string (legacy form) is returned as-is for attr-schema to reject.
         if (value is not IReadOnlyDictionary<string, object?> filterObj) return value;
@@ -616,7 +616,7 @@ public static class Parser
         var out_ = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var (key, raw) in filter)
         {
-            if (key == Constants.FILTER_COMPOSE_OR || key == Constants.FILTER_COMPOSE_AND)
+            if (key == FILTER_COMPOSE_OR || key == FILTER_COMPOSE_AND)
             {
                 // Recurse into each sub-filter in the array.
                 if (raw is IReadOnlyList<object?> subList)
@@ -647,12 +647,12 @@ public static class Parser
         // null → { isNull: true }
         if (raw is null)
             return new Dictionary<string, object?>(StringComparer.Ordinal)
-                { [Constants.FILTER_OP_IS_NULL] = true }.AsReadOnly();
+                { [FILTER_OP_IS_NULL] = true }.AsReadOnly();
 
         // array → { in: [...] }
         if (raw is IReadOnlyList<object?> arr)
             return new Dictionary<string, object?>(StringComparer.Ordinal)
-                { [Constants.FILTER_OP_IN] = raw }.AsReadOnly();
+                { [FILTER_OP_IN] = raw }.AsReadOnly();
 
         // already-object → pass through (explicit op clause)
         if (raw is IReadOnlyDictionary<string, object?> obj)
@@ -660,7 +660,7 @@ public static class Parser
 
         // scalar (string/bool/long/double) → { eq: value }
         return new Dictionary<string, object?>(StringComparer.Ordinal)
-            { [Constants.FILTER_OP_EQ] = raw }.AsReadOnly();
+            { [FILTER_OP_EQ] = raw }.AsReadOnly();
     }
 
     // -----------------------------------------------------------------------
@@ -681,21 +681,21 @@ public static class Parser
             string key = prop.Name;
 
             // Skip all reserved structural keys.
-            if (Constants.RESERVED_KEYS.Contains(key)) continue;
+            if (RESERVED_KEYS.Contains(key)) continue;
 
-            if (!key.StartsWith(Constants.ATTR_PREFIX, StringComparison.Ordinal))
+            if (!key.StartsWith(ATTR_PREFIX, StringComparison.Ordinal))
             {
                 string displayName = model.Name != ""
                     ? $"{model.Type}.{model.SubType} '{model.Name}'"
                     : $"{model.Type}.{model.SubType}";
                 ReportProblem(
-                    $"Unknown key '{key}' on {displayName} at {path} (must be reserved or {Constants.ATTR_PREFIX}-prefixed)",
+                    $"Unknown key '{key}' on {displayName} at {path} (must be reserved or {ATTR_PREFIX}-prefixed)",
                     st, path, ErrorCode.ERR_UNKNOWN_ATTR);
                 continue;
             }
 
             // Inline attribute (@-prefixed).
-            string attrName = key[Constants.ATTR_PREFIX.Length..];
+            string attrName = key[ATTR_PREFIX.Length..];
             JsonElement rawVal = prop.Value;
 
             AttrSchema? attrSpec = st.Registry
@@ -709,7 +709,7 @@ public static class Parser
                 {
                     // Declared attr with a concrete value-type — convert toward
                     // that DataType.
-                    DataType dataType = st.Registry.Find(Constants.TYPE_ATTR, attrSpec.ValueType)?.DataType
+                    DataType dataType = st.Registry.Find(TYPE_ATTR, attrSpec.ValueType)?.DataType
                         ?? DataType.String;
                     value = DataConverter.ConvertToDataType(dataType, rawVal);
                 }
@@ -723,7 +723,7 @@ public static class Parser
             catch (FormatException err)
             {
                 ReportProblem(
-                    $"Failed to convert attribute \"{Constants.ATTR_PREFIX}{attrName}\" at {path}: {err.Message}",
+                    $"Failed to convert attribute \"{ATTR_PREFIX}{attrName}\" at {path}: {err.Message}",
                     st, path, ErrorCode.ERR_BAD_ATTR_VALUE);
                 continue;
             }
@@ -750,7 +750,7 @@ public static class Parser
         ParseState st,
         string path)
     {
-        if (!nodeData.TryGetProperty(Constants.RESERVED_KEY_CHILDREN, out JsonElement rawChildren))
+        if (!nodeData.TryGetProperty(RESERVED_KEY_CHILDREN, out JsonElement rawChildren))
         {
             return;
         }
@@ -760,7 +760,7 @@ public static class Parser
             // Reuses ERR_TOP_LEVEL_NOT_OBJECT per TS parity — the code is overloaded
             // for "structural shape violation" generally, not just the root level.
             ReportProblem(
-                $"\"{Constants.RESERVED_KEY_CHILDREN}\" must be an array at {path}",
+                $"\"{RESERVED_KEY_CHILDREN}\" must be an array at {path}",
                 st, path, ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT);
             return;
         }
@@ -768,7 +768,7 @@ public static class Parser
         int i = 0;
         foreach (JsonElement childEntry in rawChildren.EnumerateArray())
         {
-            string childPath = $"{path}.{Constants.RESERVED_KEY_CHILDREN}[{i}]";
+            string childPath = $"{path}.{RESERVED_KEY_CHILDREN}[{i}]";
             i++;
 
             if (childEntry.ValueKind != JsonValueKind.Object)
@@ -831,9 +831,9 @@ public static class Parser
             // to an unregistered default falls back to base.
             if (!st.Registry.Has(childType, childSubType))
             {
-                if (!explicitSubType && st.Registry.Has(childType, Constants.SUBTYPE_BASE))
+                if (!explicitSubType && st.Registry.Has(childType, SUBTYPE_BASE))
                 {
-                    childSubType = Constants.SUBTYPE_BASE;
+                    childSubType = SUBTYPE_BASE;
                 }
                 else
                 {
@@ -849,7 +849,7 @@ public static class Parser
             }
 
             // --- Special handling for "attr" child nodes ---
-            if (childType == Constants.TYPE_ATTR)
+            if (childType == TYPE_ATTR)
             {
                 ParseAttrChild(parent, childType, childSubType, childData, st, childNodePath);
             }
@@ -885,13 +885,13 @@ public static class Parser
         ParseState st,
         string path)
     {
-        string? attrName = TryGetString(attrData, Constants.RESERVED_KEY_NAME);
-        bool hasValue = attrData.TryGetProperty(Constants.RESERVED_KEY_VALUE, out JsonElement attrValue);
+        string? attrName = TryGetString(attrData, RESERVED_KEY_NAME);
+        bool hasValue = attrData.TryGetProperty(RESERVED_KEY_VALUE, out JsonElement attrValue);
 
         if (string.IsNullOrEmpty(attrName))
         {
             ReportProblem(
-                $"attr child at {path} requires a non-empty \"{Constants.RESERVED_KEY_NAME}\" string",
+                $"attr child at {path} requires a non-empty \"{RESERVED_KEY_NAME}\" string",
                 st, path, ErrorCode.ERR_MISSING_REQUIRED_ATTR);
             return;
         }
@@ -899,16 +899,16 @@ public static class Parser
         if (!hasValue)
         {
             ReportProblem(
-                $"attr child \"{attrName}\" at {path} is missing \"{Constants.RESERVED_KEY_VALUE}\"",
+                $"attr child \"{attrName}\" at {path} is missing \"{RESERVED_KEY_VALUE}\"",
                 st, path, ErrorCode.ERR_MISSING_REQUIRED_ATTR);
             return;
         }
 
         // Resolve the attr node's own subtype (fall back to base if unregistered).
         string resolvedSubType =
-            st.Registry.Has(attrType, attrSubType) || !st.Registry.Has(attrType, Constants.SUBTYPE_BASE)
+            st.Registry.Has(attrType, attrSubType) || !st.Registry.Has(attrType, SUBTYPE_BASE)
                 ? attrSubType
-                : Constants.SUBTYPE_BASE;
+                : SUBTYPE_BASE;
         TypeDefinition? attrDef = st.Registry.Find(attrType, resolvedSubType);
 
         object? value;
@@ -917,7 +917,7 @@ public static class Parser
             // SUBTYPE_BASE is the polymorphic/unconstrained marker — store
             // type-preserved. For all other subtypes, convert toward the
             // DataType of the registered subtype.
-            if (resolvedSubType == Constants.SUBTYPE_BASE)
+            if (resolvedSubType == SUBTYPE_BASE)
             {
                 value = DataConverter.ToAttrValue(attrValue);
             }
@@ -946,7 +946,7 @@ public static class Parser
         normalized = NormalizeFilterAttr(
             parent.Type, parent.SubType, attrName, normalized, st.Registry);
 
-        attrModel.SetAttr(Constants.RESERVED_KEY_VALUE, normalized);
+        attrModel.SetAttr(RESERVED_KEY_VALUE, normalized);
         parent.AddChild(attrModel);
         parent.SetAttr(attrName, normalized);
     }
