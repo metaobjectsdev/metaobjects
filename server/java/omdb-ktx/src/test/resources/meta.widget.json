@@ -1,0 +1,41 @@
+{
+  "metadata.root": {
+    "package": "ktx",
+    "children": [
+      {
+        "object.value": {
+          "name": "Widget",
+          "@object": "com.metaobjects.object.value.ValueObject",
+          "@dbTable": "WIDGET",
+          "children": [
+            {
+              "field.long": {
+                "name": "id",
+                "@dbColumn": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@dbColumn": "name"
+              }
+            },
+            {
+              "field.int": {
+                "name": "quantity",
+                "@dbColumn": "quantity"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "primary",
+                "@fields": ["id"],
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
