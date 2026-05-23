@@ -139,12 +139,9 @@ public abstract class DataObjectBase implements Serializable, MetaObjectAware, V
 
         metaObject = mo;
 
-        // Set the values configured on the DataMetaObject
-        if ( mo instanceof DataMetaObject ) {
-            DataMetaObject dmo = (DataMetaObject) mo;
-            this.allowExtensions = dmo.allowExtensions();
-            this.enforceStrictness = dmo.isStrict();
-        }
+        // Pull extension/strictness config from the MetaObject (representations override the defaults)
+        this.allowExtensions = mo.allowExtensions();
+        this.enforceStrictness = mo.isStrict();
 
         // Flag that we have metadata set
         hasMetaData = true;

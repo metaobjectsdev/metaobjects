@@ -369,6 +369,18 @@ public abstract class MetaObject extends MetaData {
     }
 
     /**
+     * Whether this object permits attributes beyond its declared fields.
+     * Default false; overridden by representations that read the @allowExtensions attr.
+     */
+    public boolean allowExtensions() { return false; }
+
+    /**
+     * Whether unknown-field access is rejected.
+     * Default true; overridden by representations that read the @isStrict attr.
+     */
+    public boolean isStrict() { return true; }
+
+    /**
      * Retrieves the object class of an object, or null if one is not specified.
      *
      * <p>Resolution order (ADR-0001):</p>
