@@ -113,6 +113,7 @@ class TestDb private constructor(
                     val prefix = "objectref://"
                     require(refStr.startsWith(prefix)) { "Invalid object reference [$refStr]" }
                     val rest = refStr.removePrefix(prefix)
+                    // Simplified parse: safe because MetaObject FQNs use the '::' package separator, never '/'.
                     val slashIdx = rest.indexOf('/')
                     require(slashIdx >= 0) { "Invalid object reference [$refStr]" }
                     val fqn = rest.substring(0, slashIdx)
