@@ -1,0 +1,28 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.value": {
+          "name": "ContactInfo",
+          "children": [
+            { "field.string": { "name": "phone" } },
+            { "field.string": { "name": "email" } },
+            { "field.string": { "name": "preferredMethod" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Patient",
+          "children": [
+            { "source.dbTable": { "@name": "patients" } },
+            { "field.long":   { "name": "id" } },
+            { "field.object": { "name": "contactInfos", "isArray": true, "@objectRef": "ContactInfo", "@storage": "jsonb" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

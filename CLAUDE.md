@@ -394,6 +394,7 @@ Preserve the following contracts exactly across all language ports:
 - Layout subtypes: `dataGrid`
 - Currency attrs: `@currency` (ISO 4217), `@locale` (BCP 47)
 - Schema attrs: `@schema` on `source[dbTable]` and `source[dbView]` (DB schema name; Postgres default `public`, SQLite rejects non-default values)
+- Storage attrs: `@storage` on `field.object` (with `@objectRef`) — values `flattened` / `jsonb` / `subdocument`. Unifies "owned types" (flattened storage) and "structured JSONB" (jsonb storage). Defaults to single-jsonb-column when absent (back-compat).
 
 **Wire format:**
 - Currency: integer minor units on the wire always. Float arithmetic for money is forbidden.

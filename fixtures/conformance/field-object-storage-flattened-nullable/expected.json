@@ -1,0 +1,60 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.value": {
+          "name": "AddressOptional",
+          "children": [
+            {
+              "field.string": {
+                "name": "street"
+              }
+            },
+            {
+              "field.string": {
+                "name": "city"
+              }
+            },
+            {
+              "field.string": {
+                "name": "postalCode"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Person",
+          "children": [
+            {
+              "source.dbTable": {
+                "@name": "people"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "homeAddress",
+                "@objectRef": "AddressOptional",
+                "@storage": "flattened"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
