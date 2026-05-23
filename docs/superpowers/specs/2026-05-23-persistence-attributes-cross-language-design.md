@@ -1,0 +1,139 @@
+# Persistence attributes — consolidated cross-language vocabulary (per level, per source subtype)
+
+- **Date:** 2026-05-23
+- **Status:** Design — plan-of-record for the full persistence-attribute set.
+- **Companion to:** [source v2 spec](2026-05-23-source-v2-paradigm-subtypes-multisource-design.md) + [ADR-0007](../../../spec/decisions/ADR-0007-source-v2-paradigm-subtypes-multisource.md). Obeys [ADR-0006](../../../spec/decisions/ADR-0006-reserved-keywords-vs-inline-attributes.md) (reserved words bare; everything here is an `@`-attr).
+- **Goal:** pull together every persistence concept already in TS (Drizzle/migrate/runtime), Java (ObjectManagerDB), and C# (EF Core) into **one normalized vocabulary**, fill the gaps (explicit referential actions, soft-delete, concurrency), and pin which attrs apply per source subtype.
+
+## 1. Archaeology — what already exists (and diverges)
+
+| Concept | TS | Java (OMDB) | C# | normalized |
+|--|--|--|--|--|
+| field physical name | `@dbColumn` | `dbColumn` | `@dbColumn` | **`@column`** (per-subtype: `@field`/`@property`/…) |
+| not-null | `@required` | `required`/`dbNullable` | `@required` | **`@required`** |
+| max length | `@maxLength` | `dbLength` | `@maxLength` | **`@maxLength`** |
+| precision/scale | `@precision`/`@scale` | `dbPrecision`/`dbScale` | `@precision`/`@scale` | **`@precision`/`@scale`** |
+| unique | `@unique` | `dbUnique`/`isUnique` | `@unique` | **`@unique`** |
+| index | `@db.indexed` | `dbIndex`/`isIndex` | `@db.indexed` | **`@indexed`** |
+| default | `@default` | `defaultValue` | `@default` | **`@default`** |
+| auto timestamp | `@autoSet: onCreate\|onUpdate` | `auto: create\|update` | `@autoSet` | **`@autoSet`** |
+| PK generation | identity `@generation` | identity `generation` + `dbSequenceName` | `@generation` | **`@generation`** (+ `@sequence`) |
+| db type override | (`@db.*`) | `dbType` (e.g. jsonb) | — | **`@columnType`** |
+| object storage | `@storage`+`@objectRef` | `dbType=jsonb` | `@storage`+`@objectRef` (EF owned) | **`@storage`+`@objectRef`** |
+| rename hint | (migrate) | `previousName` | `@previousName` | **`@previousName`** |
+| relationship lifecycle | subtype assoc/aggr/comp | subtype + `jpaCascade` | subtype | subtype **+ explicit `@onDelete`/`@onUpdate`** |
+| FK enforcement | (implicit) | `enforce` | (implicit) | **`@enforce`** |
+| fetch strategy | — | `jpaFetch` | — | **`@fetch`** (eager/lazy) |
+| table name | `@name`→`@table` | `dbTable` | `@name`→`@table` | **`@table`** (source v2) |
+| composite index/unique | (per-field) | object `dbIndex`/`dbUnique` | — | **source `@indexes`/`@uniques`** |
+| concurrency | — | `dbAllowDirtyWrite`/`dbDirtyWriteCheckField` | — | **`@version` field** |
+| read-only | dbView subtype | `isViewOnly`/`dbView` | dbView subtype | **`@kind`-derived** (source v2) |
+
+**Normalization rules:** drop the `db`/`jpa` prefixes and the `@db.*` namespace (legacy Java/TS) — they fragment one concept across spellings. The *paradigm* is already carried by the source subtype, so attrs are bare and paradigm-neutral where the concept generalizes, and per-subtype only where the concept genuinely differs (physical name).
+
+## 2. Field-level attributes (`field.*`)
+
+| attr | values | applies to | meaning |
+|--|--|--|--|
+| `@column` / `@field` / `@property` / … | string | all | physical address in the record (per source subtype; §source-v2) |
+| `@required` | bool | all | NOT NULL / required |
+| `@maxLength` | int | string | varchar(N) / max length |
+| `@precision` / `@scale` | int | decimal | numeric(p,s) |
+| `@default` | literal \| sqlExpr (`now`, `CURRENT_TIMESTAMP`, `uuid()`) | all | column default |
+| `@unique` | bool | all | single-column unique |
+| `@indexed` | bool \| index-name | all | create an index |
+| `@autoSet` | `onCreate` \| `onUpdate` | date/timestamp | auto-managed timestamp (createdAt/updatedAt) |
+| `@columnType` | string | all | escape hatch: explicit physical type (e.g. `jsonb`, `citext`) |
+| `@storage` | `flattened` \| `jsonb` \| `subdocument` | object (`@objectRef`) | nested-object storage strategy (see §6) |
+| `@objectRef` | object name | object | the nested/referenced object |
+| `@filterable` / `@sortable` | bool | all | query-layer (Project D) |
+| `@previousName` | string | all | migration rename hint |
+
+## 3. Identity-level attributes (`identity.*`)
+
+| attr | values | meaning |
+|--|--|--|
+| `@fields` | string[] | the field(s) forming the identity |
+| `@generation` | `increment` \| `uuid` \| `assigned` \| `sequence` \| `identity` | PK generation strategy |
+| `@sequence` | string | sequence name (when `@generation: sequence`) |
+| `@unique` | bool | secondary identity ⇒ unique constraint |
+
+Subtypes: `primary` (one; the PK), `secondary` (business/alt keys), **`reference`** (FK fields → another entity; from Java) with `@references` (target `Entity`/`Entity.id`) + `@enforce` (physical FK on/off).
+
+## 4. Relationship-level attributes (`relationship.*`) — incl. the new referential actions
+
+Subtypes carry **default** lifecycle; explicit attrs **override**:
+
+| attr | values | default (from subtype) | meaning |
+|--|--|--|--|
+| `@objectRef` | object name | — | target entity |
+| `@cardinality` | `one` \| `many` | — | relationship cardinality |
+| **`@onDelete`** | `cascade` \| `restrict` \| `setNull` \| `setDefault` \| `noAction` | composition→`cascade`, aggregation→`setNull`, association→`restrict` | **referential action on parent delete (NEW)** |
+| **`@onUpdate`** | (same set) | `cascade` | **referential action on key update (NEW)** |
+| `@enforce` | bool | `true` | physical FK constraint vs logical-only |
+| `@fetch` | `eager` \| `lazy` | `lazy` | load strategy (codegen/runtime hint) |
+| `@joinEntity` / `@joinFields` | string / string[] | — | N:M join table |
+
+**Defaults-from-subtype** keep the common case zero-config (a `composition` cascades, an `association` restricts), while `@onDelete`/`@onUpdate` make it explicit and overridable — the Prisma model, but seeded from our richer lifecycle subtypes. Caveats we adopt from Prisma: `setNull` requires an optional (nullable) relation; `setDefault` requires a column default and is unsupported on MySQL — `verify`/migrate flags these.
+
+## 5. Source/object-level attributes
+
+| attr | level | meaning |
+|--|--|--|
+| `@table`/`@collection`/… | source | physical object name (source v2) |
+| `@schema` | source.rdb | DB schema/namespace |
+| `@kind` | source | object kind; drives read-only (source v2) |
+| `@role` | source | multi-source role (source v2) |
+| `@indexes` | source/object | composite indexes (multi-column) |
+| `@uniques` | source/object | composite unique constraints |
+| `@version` | field/object | optimistic-lock version column (replaces Java dirty-write) |
+| `@softDelete` | object | soft-delete mode: a `deletedAt` timestamp (or `deleted` flag) + read-filter; distinct from DB `@onDelete` |
+
+## 6. Object storage (`@storage`) — answer to "the C# jsonb thing"
+
+On a `field.object` (with `@objectRef`):
+
+| `@storage` | relational (rdb) | document | meaning |
+|--|--|--|--|
+| `flattened` | nested columns expand into the parent table, prefixed (EF Core `OwnsOne`); `isArray` forbidden | n/a | owned/embedded, one set of columns |
+| `jsonb` | a single `jsonb` column holds the structured value (or array when `isArray`) | native nested | typed-by-metadata, opaque storage |
+| `subdocument` | (no relational column emitted) | native nested document | document-store-native |
+
+Absent ⇒ default single-jsonb-column (back-compat). Validation: `flattened` + `isArray` ⇒ `ERR_STORAGE_FLATTENED_ARRAY`; `@storage` without `@objectRef` ⇒ `ERR_STORAGE_WITHOUT_OBJECT_REF` (both exist).
+
+## 7. Per-source-subtype applicability
+
+Most attrs are **rdb**-centric. Applicability deltas:
+
+| attr group | rdb | document | event | keyValue | graph | search | vector | timeSeries |
+|--|--|--|--|--|--|--|--|--|
+| `@required`/`@default`/`@unique` | ✓ | ✓ | (schema) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `@maxLength`/`@precision`/`@scale` | ✓ | — | — | — | — | — | — | — |
+| `@indexed`/`@indexes`/`@uniques` | ✓ | ✓ | — | `@gsi` | ✓ | (mapping) | — | ✓ |
+| `@autoSet` | ✓ | ✓ | (event time) | ✓ | ✓ | ✓ | — | `@timeColumn` |
+| `@generation` | ✓ | ✓ (`_id`) | — | `@partitionKey` | ✓ | ✓ | ✓ | — |
+| `@onDelete`/`@onUpdate`/`@enforce` | ✓ | (app-level) | — | — | ✓ (edges) | — | — | — |
+| `@storage` | ✓ (jsonb/flattened) | subdocument | — | — | — | — | — | — |
+| `@version`/`@softDelete` | ✓ | ✓ | — | ✓ | ✓ | — | — | — |
+| paradigm-specific | `@schema` | `@database` | `@keySchema`/`@valueSchema`/`@partitions` | `@partitionKey`/`@sortKey`/`@ttl` | `@from`/`@to` | `@mappingsRef` | `@dimensions`/`@metric` | `@retention`/`@tags` |
+
+## 8. What's new vs. today (the gaps we're filling)
+
+1. **Explicit `@onDelete`/`@onUpdate` referential actions** (cascade/restrict/setNull/setDefault/noAction), defaulted from the relationship subtype, overridable — replacing the implicit, driver-hardcoded behavior in all three ports.
+2. **`@enforce`** (physical vs logical FK) and **`@fetch`** promoted from Java-only to the cross-language vocabulary.
+3. **`@softDelete`** and **`@version`** as first-class declarations (today: ad-hoc / Java-only dirty-write).
+4. **`@generation: sequence`/`identity`** + `@sequence` (Java had `dbSequenceName`; generalize).
+5. **Normalized names** — Java `db*`/`jpa*` and TS `@db.*` collapse into the bare cross-language set above.
+
+## 9. Open questions
+
+- `@onDelete` default for **aggregation** — `setNull` vs `restrict`? (Prisma defaults required→restrict; our aggregation = shared ownership ⇒ `setNull` feels right but needs the relation optional.) Resolve in review.
+- `@softDelete` granularity — object-level mode only, or per-relationship cascade-of-soft-delete? (Start object-level; defer cascade-soft-delete.)
+- `@version` representation — a dedicated `@version` field marker vs an object-level `@optimisticLock: <field>`. (Lean: a field-level `@version: true`.)
+- Which attrs are **conformance-gated** (loader/serializer round-trip) vs **codegen-only** (golden tests). Referential actions + storage round-trip in metadata; physical-type escape hatches are codegen-only.
+
+## 10. Research
+
+- Prisma referential actions: `Cascade`/`Restrict`/`NoAction`/`SetNull`/`SetDefault`; defaults ON DELETE RESTRICT (required) / ON UPDATE CASCADE; `SetNull` needs optional relation; `SetDefault` unsupported on MySQL. ([Prisma referential actions](https://www.prisma.io/docs/orm/prisma-schema/data-model/relations/referential-actions))
+- Soft delete is an application/middleware pattern (`deletedAt`/`deleted` + read-filter), not a DB referential action. ([Prisma soft-delete](https://www.prisma.io/docs/orm/prisma-client/client-extensions/middleware/soft-delete-middleware))
+- JPA cascade types (ALL/PERSIST/MERGE/REMOVE/…) + fetch (EAGER/LAZY) informed `@onDelete`/`@fetch` (Java `jpaCascade`/`jpaFetch`).

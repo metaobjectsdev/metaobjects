@@ -5,6 +5,7 @@
 - **Decision record:** [ADR-0007](../../../spec/decisions/ADR-0007-source-v2-paradigm-subtypes-multisource.md) (the durable contract); this spec is the detailed design + migration + rollout.
 - **Supersedes:** FR-003 / Project E `source.dbTable` / `source.dbView`.
 - **Related:** [ADR-0006](../../../spec/decisions/ADR-0006-reserved-keywords-vs-inline-attributes.md) (reserved keywords vs `@`-attrs — resolved here for `source`), ADR-0002 (subtype behavior), ADR-0004 (per-subtype attr schemas).
+- **Companion:** [persistence attributes spec](2026-05-23-persistence-attributes-cross-language-design.md) — the full per-level, per-subtype attribute vocabulary (field/identity/relationship/source), including the new explicit `@onDelete`/`@onUpdate` referential actions, `@storage`, `@softDelete`, `@version`.
 
 ## 1. Model (the rules)
 
