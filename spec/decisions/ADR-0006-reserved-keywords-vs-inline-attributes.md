@@ -75,6 +75,26 @@ from *either* form — masking the incoherence rather than resolving it. They ca
   intended — such documents were already semantically wrong. Only the one in-repo fixture is
   affected; downstream consumers using the documented bare form are unaffected.
 
+## YAML (both renderings — "one structure, two renderings")
+
+JSON and YAML authoring funnel through the **same** `buildTree`/`parser-core`, and the
+`ERR_RESERVED_ATTR` check lives there (not in the JSON front-end), so **this rule applies
+identically to YAML**. Two YAML specifics:
+
+- **Arrays are the idiomatic `[]` key-suffix sugar.** The YAML desugar turns `field.object[]:`
+  into the reserved structural `isArray: true`. So YAML authors express collections with no
+  sigil and never write `@isArray` — naturally compliant.
+- **An `@`-prefixed key must be quoted in YAML** (`"@table": products`), because `@` is a YAML
+  reserved indicator. This is functional, but across the attr-heavy source-v2 / persistence
+  designs (`@table`, `@kind`, `@role`, `@onDelete`, …) it's verbose.
+
+**Open question (deferred, not part of this ADR's core rule):** add a *fifth* YAML desugar rule
+so inline attributes may be written **bare** in YAML — the desugar prefixes `@` to any key not
+in the reserved set (the set is closed and known to the registry), keeping YAML clean
+(`table: products`) while the canonical form keeps the `@` distinction. This would make YAML
+first-class-ergonomic without weakening the namespace rule. Flagged for decision; **YAML
+conformance fixtures** (the corpus is JSON-only today) should land with it.
+
 ## Alternatives considered
 
 - **Normalize silently** (`@isArray` → bare `isArray`). Rejected: it keeps two accepted
