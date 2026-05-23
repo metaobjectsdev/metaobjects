@@ -94,6 +94,7 @@ public static class CoreTypes
         [FIELD_SUBTYPE_BYTE]      = DataType.Int,
         [FIELD_SUBTYPE_LONG]      = DataType.Long,
         [FIELD_SUBTYPE_CURRENCY]  = DataType.Long,
+        [FIELD_SUBTYPE_ENUM]      = DataType.String,
         [FIELD_SUBTYPE_DOUBLE]    = DataType.Double,
         [FIELD_SUBTYPE_FLOAT]     = DataType.Double,
         [FIELD_SUBTYPE_DECIMAL]   = DataType.Double,
@@ -232,7 +233,9 @@ public static class CoreTypes
             List<AttrSchema> fieldAttrs =
                 subType == FIELD_SUBTYPE_CURRENCY
                     ? [.. FieldSchema.CommonFieldAttrs, FieldSchema.CurrencyFieldAttr]
-                    : FieldSchema.CommonFieldAttrs.ToList();
+                    : subType == FIELD_SUBTYPE_ENUM
+                        ? [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr]
+                        : FieldSchema.CommonFieldAttrs.ToList();
 
             registry.Register(
                 Def(

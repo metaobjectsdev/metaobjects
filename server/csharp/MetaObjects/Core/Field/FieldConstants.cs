@@ -33,6 +33,7 @@ public static class FieldConstants
     public const string FIELD_SUBTYPE_OBJECT    = "object";
     public const string FIELD_SUBTYPE_CLASS     = "class";
     public const string FIELD_SUBTYPE_CURRENCY  = "currency";
+    public const string FIELD_SUBTYPE_ENUM      = "enum";
 
     public static readonly string[] FIELD_SUBTYPES =
     [
@@ -52,6 +53,7 @@ public static class FieldConstants
         FIELD_SUBTYPE_OBJECT,
         FIELD_SUBTYPE_CLASS,
         FIELD_SUBTYPE_CURRENCY,
+        FIELD_SUBTYPE_ENUM,
     ];
 
     // -----------------------------------------------------------------------
@@ -111,6 +113,24 @@ public static class FieldConstants
     public const string AUTO_SET_ON_UPDATE = "onUpdate";
 
     public static readonly string[] AUTO_SET_VALUES = [AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE];
+
+    // -----------------------------------------------------------------------
+    // Enum attrs (on enum-subtype fields)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Member symbols of an enum-subtype field. Required; each must match
+    /// <see cref="ENUM_MEMBER_PATTERN"/>; no duplicates.
+    /// </summary>
+    public const string FIELD_ATTR_VALUES = "values";
+
+    /// <summary>
+    /// Regex pattern each enum member symbol must satisfy: must start with
+    /// a letter or underscore, followed by letters, digits, or underscores.
+    /// Keeps symbol == stored value with no name/value divergence.
+    /// Mirrors TS ENUM_MEMBER_PATTERN.
+    /// </summary>
+    public const string ENUM_MEMBER_PATTERN = "^[A-Za-z_][A-Za-z0-9_]*$";
 
     // -----------------------------------------------------------------------
     // Currency attrs (on currency-subtype fields)
