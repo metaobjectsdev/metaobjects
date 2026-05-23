@@ -17,6 +17,7 @@
     "error-origin-bad-aggregate-fn",
     "error-origin-bad-via-path",
     "error-unknown-relationship-subtype",
+    "extends-abstract-base",
     "extends-cross-file",
     "layout-data-grid-basic",
     "layout-data-grid-multiple-named",

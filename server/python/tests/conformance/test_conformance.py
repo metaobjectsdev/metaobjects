@@ -42,6 +42,12 @@ def _run_checks(fix: Fixture) -> tuple[bool, str]:
     elif fix.has_expected and not tree_blocked and warnings:
         failures.append(f"unexpected warnings: {warnings}")
 
+    # Phase 1 does not run script.json (navigate/invoke) checks. A fixture that
+    # declares one is therefore not fully verified — count it as a tracked gap so
+    # its green status can't imply a capability we haven't checked yet (Phase 2).
+    if fix.has_script:
+        failures.append("script.json checks not implemented (Phase 2)")
+
     return (not failures), "; ".join(failures)
 
 
