@@ -239,6 +239,9 @@ public class MetaDataLoader
 
             // Pass 8: @storage cross-attribute validation on field.object
             errors.AddRange(ValidationPasses.ValidateFieldObjectStorage(root));
+
+            // Pass 9: template @payloadRef / @requiredSlots resolution
+            errors.AddRange(ValidationPasses.ValidateTemplatePayloadRefs(root));
         }
 
         // If nothing parsed successfully, synthesize an empty root so callers

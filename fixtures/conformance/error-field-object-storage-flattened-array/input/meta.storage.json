@@ -1,0 +1,26 @@
+{
+  "metadata.root": {
+    "package": "test",
+    "children": [
+      {
+        "object.value": {
+          "name": "Address",
+          "children": [
+            { "field.string": { "name": "street" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "source.dbTable": { "@name": "orders" } },
+            { "field.object": { "name": "addrs", "isArray": true, "@objectRef": "Address", "@storage": "flattened" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

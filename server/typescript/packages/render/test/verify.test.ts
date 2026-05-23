@@ -4,6 +4,7 @@ import {
   ERR_VAR_NOT_ON_PAYLOAD,
   ERR_PARTIAL_UNRESOLVED,
   ERR_REQUIRED_SLOT_UNUSED,
+  ERR_OUTPUT_TAG_MISSING,
   type PayloadField,
 } from "../src/index.js";
 import { InMemoryProvider } from "../src/index.js";
@@ -153,5 +154,78 @@ describe("verify — required slots", () => {
     expect(verify("{{#posts}}{{title}}{{/posts}}", authorBrief, { requiredSlots: ["posts"] })).toEqual(
       [],
     );
+  });
+});
+
+describe("verify — required output tags (@requiredTags)", () => {
+  const payload: PayloadField[] = [{ name: "content" }];
+
+  test("no requiredTags → no tag check runs", () => {
+    expect(verify("plain text, no tags", payload)).toEqual([]);
+  });
+
+  test("an empty requiredTags list checks nothing", () => {
+    expect(verify("plain text", payload, { requiredTags: [] })).toEqual([]);
+  });
+
+  test("a tag present as both <tag> and </tag> produces no drift", () => {
+    expect(
+      verify("<answer>{{content}}</answer>", payload, { requiredTags: ["answer"] }),
+    ).toEqual([]);
+  });
+
+  test("an opening tag may carry attributes (prefix match)", () => {
+    expect(
+      verify('<answer tone="warm">{{content}}</answer>', payload, { requiredTags: ["answer"] }),
+    ).toEqual([]);
+  });
+
+  test("a missing opening tag → ERR_OUTPUT_TAG_MISSING carrying the tag name", () => {
+    expect(verify("{{content}}</answer>", payload, { requiredTags: ["answer"] })).toEqual([
+      { code: ERR_OUTPUT_TAG_MISSING, path: "answer" },
+    ]);
+  });
+
+  test("a missing closing tag → ERR_OUTPUT_TAG_MISSING", () => {
+    expect(verify("<answer>{{content}}", payload, { requiredTags: ["answer"] })).toEqual([
+      { code: ERR_OUTPUT_TAG_MISSING, path: "answer" },
+    ]);
+  });
+
+  test("a self-closing tag does not satisfy (no closing form)", () => {
+    expect(verify("<answer/>", payload, { requiredTags: ["answer"] })).toEqual([
+      { code: ERR_OUTPUT_TAG_MISSING, path: "answer" },
+    ]);
+  });
+
+  test("the open-tag prefix does not over-match a longer tag name", () => {
+    expect(verify("<answers>{{content}}</answers>", payload, { requiredTags: ["answer"] })).toEqual([
+      { code: ERR_OUTPUT_TAG_MISSING, path: "answer" },
+    ]);
+  });
+
+  test("each missing tag is reported independently", () => {
+    const errs = verify("<answer>{{content}}</answer>", payload, {
+      requiredTags: ["answer", "reasoning"],
+    });
+    expect(errs).toEqual([{ code: ERR_OUTPUT_TAG_MISSING, path: "reasoning" }]);
+  });
+
+  test("a tag supplied by a resolved partial counts as present", () => {
+    const provider = new InMemoryProvider({ "g/ans": "<answer>{{content}}</answer>" });
+    expect(verify("{{> g/ans}}", payload, { provider, requiredTags: ["answer"] })).toEqual([]);
+  });
+
+  test("a tag whose open and close straddle the body/partial boundary is satisfied", () => {
+    const provider = new InMemoryProvider({ "g/close": "{{content}}</answer>" });
+    expect(verify("<answer>{{> g/close}}", payload, { provider, requiredTags: ["answer"] })).toEqual(
+      [],
+    );
+  });
+
+  test("without a provider, a tag living only in a partial is reported missing", () => {
+    expect(verify("{{> g/ans}}", payload, { requiredTags: ["answer"] })).toEqual([
+      { code: ERR_OUTPUT_TAG_MISSING, path: "answer" },
+    ]);
   });
 });

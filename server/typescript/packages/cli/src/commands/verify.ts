@@ -18,10 +18,18 @@ import {
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_REQUIRED_SLOTS,
+  TEMPLATE_ATTR_REQUIRED_TAGS,
 } from "@metaobjectsdev/metadata";
 import { verify, ERR_REQUIRED_SLOT_UNUSED, ERR_PARTIAL_UNRESOLVED } from "@metaobjectsdev/render";
 
 const DEFAULT_PROMPTS_DIR = "prompts";
+
+/** Coerce a string-array attr (array, or a single string) into a string[]. */
+function attrAsStringArray(attr: unknown): string[] {
+  if (Array.isArray(attr)) return attr.filter((s): s is string => typeof s === "string");
+  if (typeof attr === "string") return [attr];
+  return [];
+}
 
 export async function verifyCommand(args: string[], cwd: string): Promise<number> {
   let flags;
@@ -74,14 +82,10 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
     }
 
     const fieldTree = derivePayloadFieldTree(root, payloadRef);
-    const slotsAttr = tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_SLOTS);
-    const requiredSlots = Array.isArray(slotsAttr)
-      ? slotsAttr.filter((s): s is string => typeof s === "string")
-      : typeof slotsAttr === "string"
-        ? [slotsAttr]
-        : [];
+    const requiredSlots = attrAsStringArray(tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_SLOTS));
+    const requiredTags = attrAsStringArray(tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_TAGS));
 
-    const drift = verify(text, fieldTree, { provider, requiredSlots });
+    const drift = verify(text, fieldTree, { provider, requiredSlots, requiredTags });
     checked++;
     for (const e of drift) {
       if (e.code === ERR_REQUIRED_SLOT_UNUSED) {

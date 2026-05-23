@@ -25,6 +25,7 @@
     "ERR_VAR_NOT_ON_PAYLOAD": "Build-time verify: a template variable references a field the (contextual) payload view-object does not declare.",
     "ERR_PARTIAL_UNRESOLVED": "Build-time verify: a template partial ({{> group/source}}) does not resolve in the configured provider.",
     "ERR_REQUIRED_SLOT_UNUSED": "Build-time verify (warning): a template's declared @requiredSlots slot is never referenced by the template text.",
+    "ERR_OUTPUT_TAG_MISSING": "Build-time verify: a template declares @requiredTags but its text (including provider-resolved partials) omits a required output tag's opening (<tag) or closing (</tag>) form. path = the tag name.",
     "ERR_BAD_ATTR_FILTER": "A dataGrid @filter references a non-filterable field or uses an op disallowed for the field's subtype.",
     "ERR_STORAGE_FLATTENED_ARRAY": "@storage \"flattened\" cannot be combined with isArray=true.",
     "ERR_STORAGE_WITHOUT_OBJECT_REF": "@storage was set on a field that has no @objectRef.",

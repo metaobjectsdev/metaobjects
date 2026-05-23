@@ -6,7 +6,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "mypy>=1.10"]
+dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6", "pydantic>=2"]
 
 [build-system]
 requires = ["hatchling"]
@@ -23,3 +23,6 @@ pythonpath = ["src"]
 python_version = "3.11"
 strict = true
 files = ["src/metaobjects", "tests"]
+# Golden expected files are generated-code fixtures (relative imports resolve only
+# as an emitted package); they are validated by the golden + import-check tests, not mypy.
+exclude = ["tests/codegen/golden/"]

@@ -95,3 +95,38 @@ describe("render — verify-on-resolve guard", () => {
     );
   });
 });
+
+// The output-budget guard (prompt-verify extensions, slice #2): rendered length is
+// data-dependent (only knowable after rendering), so the @maxChars budget is a
+// render-time throw, not a verify-time static check.
+describe("render — maxChars output budget", () => {
+  test("output within the budget renders normally", () => {
+    expect(
+      render({ template: "Hi {{name}}.", payload: { name: "Ada" }, provider: P({}), maxChars: 100 }),
+    ).toBe("Hi Ada.");
+  });
+
+  test("output exactly at the budget is allowed", () => {
+    // "Hi Ada." is 7 chars.
+    expect(
+      render({ template: "Hi {{name}}.", payload: { name: "Ada" }, provider: P({}), maxChars: 7 }),
+    ).toBe("Hi Ada.");
+  });
+
+  test("output exceeding the budget throws", () => {
+    expect(() =>
+      render({ template: "Hi {{name}}.", payload: { name: "Ada" }, provider: P({}), maxChars: 6 }),
+    ).toThrow(/maxChars/);
+  });
+
+  test("the error reports the budget and the actual length", () => {
+    expect(() =>
+      render({ template: "{{name}}", payload: { name: "abcdef" }, provider: P({}), maxChars: 3 }),
+    ).toThrow(/6.*3|3.*6/);
+  });
+
+  test("no maxChars means no budget check", () => {
+    const long = "x".repeat(10_000);
+    expect(render({ template: "{{x}}", payload: { x: long }, provider: P({}) })).toBe(long);
+  });
+});

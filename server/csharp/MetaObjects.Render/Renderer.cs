@@ -29,6 +29,12 @@ public sealed record RenderRequest
     public required IProvider Provider { get; init; }
     /// <summary>Output format; drives escaping. Defaults to "text" (raw).</summary>
     public string Format { get; init; } = Escapers.FORMAT_TEXT;
+    /// <summary>
+    /// Fail-closed guard for dynamic/generated text: when given a payload field
+    /// tree, the RESOLVED template is verified before rendering and a drifted
+    /// variant throws — instead of silently rendering nothing.
+    /// </summary>
+    public IReadOnlyList<PayloadField>? Verify { get; init; }
 }
 
 /// <summary>The logic-less, deterministic MetaObjects render engine.</summary>
@@ -66,6 +72,18 @@ public static partial class Renderer
             ?? (request.Ref is not null ? request.Provider.Resolve(request.Ref) : null);
         if (body is null)
             throw new RenderException($"unresolved ref: {request.Ref ?? "(none)"}");
+
+        if (request.Verify is not null)
+        {
+            var drift = MetaObjects.Render.Verify
+                .Check(body, request.Verify, new VerifyOptions { Provider = request.Provider })
+                .Where(e => e.Code != MetaObjects.Render.Verify.ERR_REQUIRED_SLOT_UNUSED)
+                .ToList();
+            if (drift.Count > 0)
+                throw new RenderException(
+                    "render verify failed: " +
+                    string.Join(", ", drift.Select(e => $"{e.Code} ({e.Path})")));
+        }
 
         var startPath = request.Ref is not null ? new[] { request.Ref } : [];
         string expanded = Expand(body, request.Provider, startPath);
