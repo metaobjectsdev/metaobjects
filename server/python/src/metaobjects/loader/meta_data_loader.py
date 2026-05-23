@@ -12,6 +12,7 @@ from ..meta.meta_root import MetaRoot
 from ..parser import parse_document
 from ..provider import Provider, compose_registry
 from ..shared.base_types import SUBTYPE_ROOT, TYPE_METADATA
+from ..super_resolve import resolve_supers
 from .merge import merge_roots
 
 
@@ -42,6 +43,7 @@ def load_directory(input_dir: str, providers: list[Provider] | None = None) -> L
 
     if roots:
         result.root = merge_roots(roots, result.errors)
+        resolve_supers(result.root, result.errors)
 
     result.root.freeze()
     return result

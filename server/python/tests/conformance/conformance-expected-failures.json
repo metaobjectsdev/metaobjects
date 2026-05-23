@@ -7,7 +7,6 @@
     "error-attr-missing-required",
     "error-attr-wrong-type",
     "error-data-grid-bad-sort-field",
-    "error-extends-nonexistent",
     "error-origin-bad-aggregate-fn",
     "error-origin-bad-via-path",
     "error-prompt-template-missing-payload-ref",
