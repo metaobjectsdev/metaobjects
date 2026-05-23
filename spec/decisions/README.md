@@ -23,3 +23,5 @@ Write one when a decision is **cross-cutting** (affects more than one language p
 - [ADR-0003 — Metamodel constants colocation](ADR-0003-metamodel-constants-colocation.md) — *Accepted*
 - [ADR-0004 — Provider-based type registration & composition](ADR-0004-provider-based-type-registration.md) — *Accepted*
 - [ADR-0005 — Object representation: entity/value semantics + binding-resolved representation (OO ports)](ADR-0005-object-representation-binding.md) — *Accepted*
+- [ADR-0006 — AI-first YAML authoring (sigil-free YAML; JSON stays canonical)](ADR-0006-ai-first-yaml-authoring.md) — *Proposed*
+- [ADR-0007 — Source metatype v2: storage-paradigm subtypes, logical names, multi-source, per-subtype physical addresses](ADR-0007-source-v2-paradigm-subtypes-multisource.md) — *Proposed*

@@ -43,8 +43,11 @@ Within a node body, keys appear in this exact order in the canonical form:
    (e.g. `@currency`, `@dbColumn`, `@default`, `@fields`, `@locale`, `@objectRef`)
 8. `children` — when non-empty (declaration order, NOT alphabetized)
 
-The reserved structural keys are exactly those listed above. Everything else inside a body
-is either an `@`-prefixed attribute or invalid.
+The reserved structural keys are exactly those listed above. In **canonical JSON**, everything
+else is an `@`-prefixed attribute; `@`-prefixing a reserved word (e.g. `@isArray`) is invalid
+(`ERR_RESERVED_ATTR`). **YAML authoring is sigil-free** (ADR-0006): the same closed reserved set
+is bare, every other key is a bare attribute, and the desugar re-adds the `@` when lowering to
+this canonical form. Array-ness is the bare reserved `isArray` (YAML: the `[]` key-suffix sugar).
 
 ## Package + file organization
 
