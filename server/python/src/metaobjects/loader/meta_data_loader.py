@@ -32,7 +32,7 @@ def load_directory(input_dir: str, providers: list[Provider] | None = None) -> L
     files = sorted(Path(input_dir).glob("*.json"), key=lambda p: p.name)
     for path in files:
         try:
-            doc = json.loads(path.read_text())
+            doc = json.loads(path.read_text(encoding="utf-8-sig"))
         except json.JSONDecodeError as exc:
             result.errors.append(MetaError(str(exc), ErrorCode.ERR_MALFORMED_JSON, path.name))
             continue
