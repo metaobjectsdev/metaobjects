@@ -1,0 +1,6 @@
+{
+  "rows": [
+    { "name": "Alice", "value": "100" },
+    { "name": "=cmd()", "value": "a,b" }
+  ]
+}

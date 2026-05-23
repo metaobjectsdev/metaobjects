@@ -12,11 +12,11 @@
         }
       },
       {
-        "prompt.template": {
+        "template.prompt": {
           "name": "npcTurn",
           "@payloadRef": "NpcPromptPayload",
           "@textRef": "npc/turn",
-          "@outputFormat": "xml"
+          "@format": "xml"
         }
       }
     ]

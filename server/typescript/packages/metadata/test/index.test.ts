@@ -37,7 +37,7 @@ import {
   TYPE_RELATIONSHIP,
   TYPE_LAYOUT,
   TYPE_SOURCE,
-  TYPE_PROMPT,
+  TYPE_TEMPLATE,
   BASE_TYPES,
   SUBTYPE_BASE,
   SUBTYPE_ROOT,
@@ -308,7 +308,7 @@ describe("Public API surface — @metaobjectsdev/metadata index", () => {
     expect(BASE_TYPES).toContain(TYPE_FIELD);
     expect(BASE_TYPES).toContain(TYPE_LAYOUT);
     expect(BASE_TYPES).toContain(TYPE_SOURCE);
-    expect(BASE_TYPES).toContain(TYPE_PROMPT);
+    expect(BASE_TYPES).toContain(TYPE_TEMPLATE);
   });
 
   test("SUBTYPE_BASE is 'base'", () => {

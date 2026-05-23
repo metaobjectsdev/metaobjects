@@ -1,0 +1,8 @@
+{
+  "displayName": "Ada Lovelace",
+  "postCount": 2,
+  "posts": [
+    { "title": "Notes on the Engine", "tags": [{ "name": "compute" }, { "name": "history" }] },
+    { "title": "Bernoulli & Loops", "tags": [{ "name": "math" }] }
+  ]
+}

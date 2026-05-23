@@ -1,0 +1,10 @@
+<prompt>
+{{> partials/tone }}
+  <author name="{{displayName}}" posts="{{postCount}}"/>
+  <posts>
+{{#posts}}
+    <post title="{{title}}">{{#tags}}<tag>{{name}}</tag>{{/tags}}</post>
+{{/posts}}
+  </posts>
+  <task>Suggest the next 3 content topics.</task>
+</prompt>

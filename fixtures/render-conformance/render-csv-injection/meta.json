@@ -1,0 +1,1 @@
+{ "format": "csv", "note": "CSV safety: formula-injection neutralization + comma quoting" }
