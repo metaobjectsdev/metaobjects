@@ -32,11 +32,7 @@
     "prompt-fragment-and-template",
     "prompt-template-simple",
     "relationship-one-to-many",
-    "source-db-table-default-schema-omitted",
-    "source-db-table-explicit",
-    "source-db-table-with-schema",
     "source-db-view-projection",
-    "source-db-view-with-schema",
     "subtype-entity-missing-primary-warning",
     "warning-filterable-no-index"
   ]
