@@ -7,7 +7,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      - run: cd server/typescript && bun install
+      - run: bun install
       - run: cd server/typescript/packages/conformance && bun bin/conformance.ts lint ../../../../fixtures/conformance
 
   conformance:
@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      - run: cd server/typescript && bun install
+      - run: bun install
       - name: TypeScript conformance
         if: matrix.language == 'typescript'
         run: cd server/typescript/packages/metadata && bun test test/conformance.test.ts
@@ -31,5 +31,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      - run: cd server/typescript && bun install
+      - run: bun install
       - run: cd server/typescript/packages/metadata && bun run conformance:mutation
