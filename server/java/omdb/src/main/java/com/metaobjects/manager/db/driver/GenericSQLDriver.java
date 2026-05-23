@@ -25,9 +25,13 @@ import org.slf4j.LoggerFactory;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaDataNotFoundException;
-import com.metaobjects.manager.db.JsonbConverter;
+import com.metaobjects.io.object.gson.MetaObjectDeserializer;
+import com.metaobjects.io.object.gson.MetaObjectGsonInitializer;
+import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.registry.ObjectClassRegistry;
 import com.metaobjects.util.MetaDataUtil;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 
 import com.metaobjects.field.MetaField;
 import com.metaobjects.manager.QueryOptions;
@@ -63,12 +67,6 @@ public class GenericSQLDriver implements DatabaseDriver {
     /** Attribute name for DB type override (e.g. "jsonb"). */
     private static final String ATTR_DB_TYPE = "dbType";
 
-    /** Attribute name for the nested value-object reference. */
-    private static final String ATTR_OBJECT_REF = "objectRef";
-
-    /** Reusable Jackson bridge for jsonb serialization / deserialization. */
-    private final JsonbConverter jsonbConverter = new JsonbConverter();
-
     /**
      * Returns true if the field is declared as a jsonb column via {@code @dbType="jsonb"}.
      * Uses the attr model so jsonb detection works even without a dedicated {@code JsonbField} class.
@@ -83,21 +81,86 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
-     * Resolves the target Java class for a jsonb field using the {@code @objectRef} attribute.
-     * Resolution: ObjectClassRegistry binding for the referenced MetaObject's FQN; null = use Map fallback.
-     *
-     * @param f the jsonb MetaField
-     * @return the bound class, or null if no binding is registered
+     * Builds a {@link Gson} instance with the metaobjects metadata-driven adapters
+     * registered for all MetaObjects known to the provided loader.  Each call creates
+     * a new instance; callers may cache at a higher scope if desired.
      */
-    protected Class<?> resolveJsonbClass(MetaField f) {
+    private Gson buildGson(MetaDataLoader loader) {
+        return MetaObjectGsonInitializer.getBuilderWithAdapters(loader).create();
+    }
+
+    /**
+     * Serializes a jsonb field value to a JSON string using the metaobjects
+     * metadata-driven {@link Gson} (from {@link MetaObjectGsonInitializer}).
+     * <ul>
+     *   <li>A {@code ValueObject} value is serialized via the registered
+     *       {@code MetaObjectSerializer} (writes {@code @type}).</li>
+     *   <li>A registry-bound POJO (e.g. a hand-written class) is serialized
+     *       via Gson's default reflection.</li>
+     *   <li>A plain {@code Map} or other value falls through to Gson's default
+     *       reflection serialization.</li>
+     * </ul>
+     *
+     * @param f     the jsonb MetaField (provides the {@link MetaDataLoader})
+     * @param value the object to serialize
+     * @return JSON string
+     */
+    protected String serializeJsonb(MetaField f, Object value) {
         try {
-            if (!f.hasMetaAttr(ATTR_OBJECT_REF)) return null;
-            String ref = f.getMetaAttr(ATTR_OBJECT_REF).getValueAsString();
-            if (ref == null || ref.isEmpty()) return null;
-            // Look up the referenced MetaObject and consult the registry for its bound class
-            return ObjectClassRegistry.global().resolve(ref);
+            return buildGson(f.getLoader()).toJson(value);
         } catch (Exception e) {
-            return null;
+            throw new IllegalStateException("jsonb serialize failed for field [" + f + "]: " + e, e);
+        }
+    }
+
+    /**
+     * Deserializes a jsonb JSON string to a typed object.
+     * <p>
+     * Resolution order for the target class:
+     * <ol>
+     *   <li>If the field has an {@code @objectRef} attribute and the
+     *       {@link ObjectClassRegistry} has a binding for that name, deserialize
+     *       using Gson's default reflection into the bound class (registry wins for
+     *       explicit POJO bindings).</li>
+     *   <li>Otherwise, use {@link JsonObjectReader} with the referenced
+     *       {@link MetaObject}; this returns a {@code ValueObject} (or whichever
+     *       class the MetaObject declares via its {@code @object} attribute).</li>
+     * </ol>
+     *
+     * @param f    the jsonb MetaField (carries {@code @objectRef} and the loader)
+     * @param json the JSON string read from the database column
+     * @return deserialized object
+     */
+    protected Object deserializeJsonb(MetaField f, String json) {
+        try {
+            // Step 1: check explicit registry binding (typed POJO path)
+            if (MetaDataUtil.hasObjectRef(f)) {
+                String refName = f.getMetaAttr(MetaDataUtil.ATTR_OBJECT_REF).getValueAsString();
+                // expand relative refs the same way MetaDataUtil.getObjectRef does
+                String fqn = MetaDataUtil.expandPackageForMetaDataRef(
+                        MetaDataUtil.findPackageForMetaData(f), refName);
+                Class<?> bound = ObjectClassRegistry.global().resolve(fqn);
+                if (bound != null) {
+                    return buildGson(f.getLoader()).fromJson(json, bound);
+                }
+            }
+            // Step 2: fall back to metadata-driven deserialization via a per-MetaObject
+            // Gson instance.  We register MetaObjectDeserializer(refMo) directly — this
+            // variant does not require an @type field in the JSON, so plain JSON written
+            // by Gson's default reflection (e.g. a Map) round-trips cleanly.
+            MetaObject refMo = MetaDataUtil.getObjectRef(f);
+            Class<?> refClass;
+            try {
+                refClass = refMo.getObjectClass();
+            } catch (ClassNotFoundException e) {
+                throw new IllegalStateException("Cannot resolve class for MetaObject [" + refMo + "]: " + e, e);
+            }
+            Gson fallbackGson = new GsonBuilder()
+                    .registerTypeAdapter(refClass, new MetaObjectDeserializer(refMo))
+                    .create();
+            return fallbackGson.fromJson(json, refClass);
+        } catch (Exception e) {
+            throw new IllegalStateException("jsonb deserialize failed for field [" + f + "]: " + e, e);
         }
     }
 
@@ -1661,11 +1724,11 @@ public class GenericSQLDriver implements DatabaseDriver {
                 s.setString(j, value.toString());
             }
         } else if (isJsonbField(f)) {
-            // jsonb: serialize value to JSON text; Derby stores as VARCHAR/CLOB
+            // jsonb: serialize value to JSON text via metadata-driven serializer; Derby stores as VARCHAR/CLOB
             if (value == null) {
                 s.setNull(j, Types.VARCHAR);
             } else {
-                s.setString(j, jsonbConverter.toJson(value));
+                s.setString(j, serializeJsonb(f, value));
             }
         } else if (f instanceof com.metaobjects.field.ObjectField) {
             //if ( value == null )
@@ -1962,18 +2025,15 @@ public class GenericSQLDriver implements DatabaseDriver {
         } else if (f instanceof com.metaobjects.field.StringField) {
             f.setString(o, rs.getString(j));
         } else if (isJsonbField(f)) {
-            // jsonb: read JSON text from column, deserialize to typed class or Map fallback
+            // jsonb: read JSON text from column, deserialize via metadata-driven deserializer.
+            // JsonObjectReader consults the binding registry via MetaObject.getObjectClass() /
+            // newInstance(): returns a typed POJO when bound, or the MetaObject's declared class
+            // (e.g. ValueObject) when no explicit binding is registered.
             String json = rs.getString(j);
             if (json == null || rs.wasNull()) {
                 f.setObject(o, null);
             } else {
-                Class<?> targetClass = resolveJsonbClass(f);
-                if (targetClass != null) {
-                    f.setObject(o, jsonbConverter.fromJson(json, targetClass));
-                } else {
-                    // Fallback: deserialize to Map (Jackson returns LinkedHashMap)
-                    f.setObject(o, jsonbConverter.fromJson(json, Map.class));
-                }
+                f.setObject(o, deserializeJsonb(f, json));
             }
         } else if (f instanceof com.metaobjects.field.ObjectField) {
             f.setObject(o, rs.getObject(j));

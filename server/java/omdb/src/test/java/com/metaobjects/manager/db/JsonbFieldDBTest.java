@@ -238,12 +238,13 @@ public class JsonbFieldDBTest {
         assertNotNull("prefs field should not be null", prefsObj);
         assertFalse("prefs should NOT be a Prefs instance without binding",
             prefsObj instanceof Prefs);
-        assertTrue("prefs should be a Map without binding, got: " + prefsObj.getClass().getName(),
-            prefsObj instanceof Map);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> fallbackMap = (Map<String, Object>) prefsObj;
-        assertEquals("solarized", fallbackMap.get("theme"));
-        // Jackson deserializes numbers to Integer by default
-        assertEquals(12, ((Number) fallbackMap.get("fontSize")).intValue());
+        // The metadata-driven deserializer always returns a ValueObject when
+        // no explicit class binding is registered (it uses the MetaObject's
+        // declared @object class, which for jsonbtest::Prefs is ValueObject).
+        assertTrue("prefs should be a ValueObject without binding, got: " + prefsObj.getClass().getName(),
+            prefsObj instanceof ValueObject);
+        ValueObject fallbackVo = (ValueObject) prefsObj;
+        assertEquals("solarized", fallbackVo.getString("theme"));
+        assertEquals(12, ((Number) fallbackVo.getObject("fontSize")).intValue());
     }
 }
