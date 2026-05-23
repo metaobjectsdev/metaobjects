@@ -10,7 +10,6 @@
     "error-origin-bad-aggregate-fn",
     "error-origin-bad-via-path",
     "error-prompt-template-missing-payload-ref",
-    "extends-abstract-base",
     "prompt-fragment-and-template",
     "prompt-template-simple",
     "subtype-entity-missing-primary-warning",
