@@ -760,7 +760,7 @@ public class MetaDataHtmlDocumentationWriter extends GeneratorIOWriter<MetaDataH
         writer.println("                <h3>Creating Custom Object Types</h3>");
         writer.println("                <div class=\"code-block\">");
         writer.println("@MetaDataType(type = \"object\", subType = \"auditable\", description = \"Object with audit trails\")");
-        writer.println("public class AuditableObject extends PojoMetaObject {");
+        writer.println("public class AuditableObject extends EntityMetaObject {");
         writer.println("    ");
         writer.println("    static {");
         writer.println("        MetaDataRegistry.registerType(AuditableObject.class, def -> def");

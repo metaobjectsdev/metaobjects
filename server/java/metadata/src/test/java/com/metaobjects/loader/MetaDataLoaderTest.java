@@ -1,14 +1,16 @@
 package com.metaobjects.loader;
 
 import com.metaobjects.InvalidMetaDataException;
+import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.StringField;
+import com.metaobjects.object.AbstractObjectRepresentation;
 import com.metaobjects.object.MetaObject;
-import com.metaobjects.object.mapped.MappedMetaObject;
+import com.metaobjects.object.ValueMetaObject;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.junit.After;
@@ -33,7 +35,10 @@ public class MetaDataLoaderTest {
         tempLoader.register();
         tempLoader.getRoot().addChild( StringAttribute.create( "hello", "world" ));
         
-        MappedMetaObject foo = MappedMetaObject.create("foo");
+        ValueMetaObject foo = ValueMetaObject.create("foo");
+        // Non-strict so an undeclared key (testMap's "bad") is ignored-with-warning
+        // rather than rejected — matching the old free-form map behavior.
+        foo.addChild(BooleanAttribute.create(AbstractObjectRepresentation.ATTR_ISSTRICT, false));
         IntegerField bar = IntegerField.create( "bar", 5 );
         bar.addMetaAttr( IntAttribute.create("length", 10));
         bar.addMetaAttr( StringAttribute.create("abc", "def"));
@@ -102,7 +107,7 @@ public class MetaDataLoaderTest {
         //         .length = 11
 
         MetaObject mo = loader.getMetaObjectByName( "foo" );
-        MetaObject baby = MappedMetaObject.create("fooBaby");
+        MetaObject baby = ValueMetaObject.create("fooBaby");
         baby.setSuperObject( mo );
 
         // Create an overlay for bar and length
@@ -132,7 +137,7 @@ public class MetaDataLoaderTest {
         //         .length = 11
 
         MetaObject mo = loader.getMetaObjectByName( "foo" );
-        MetaObject baby = MappedMetaObject.create("fooBaby");
+        MetaObject baby = ValueMetaObject.create("fooBaby");
         baby.setSuperObject( mo );
 
         // Create an overlay for bar and length
@@ -181,7 +186,7 @@ public class MetaDataLoaderTest {
         MetaAttribute defVal = bar.getMetaAttr( MetaField.ATTR_DEFAULT_VALUE );
 
         Exception ex = null;
-        try { foo.addChild( MappedMetaObject.create("foo2")); }  catch( Exception e ) {ex=e;}
+        try { foo.addChild( ValueMetaObject.create("foo2")); }  catch( Exception e ) {ex=e;}
         assertEquals( "Exception on add MetaObject to MetaObject", true, ex.getClass().isAssignableFrom(InvalidMetaDataException.class ));
 
         try { bar.addChild( StringField.create("bar2", "error")); } catch( Exception e ) {ex=e;}

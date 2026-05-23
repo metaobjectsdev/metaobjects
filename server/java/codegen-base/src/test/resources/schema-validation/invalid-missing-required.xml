@@ -2,7 +2,7 @@
 <metadata package="test_missing_required">
   <children>
     <child>
-      <object subType="pojo">
+      <object subType="entity">
         <children>
           <child>
             <field subType="string"/>

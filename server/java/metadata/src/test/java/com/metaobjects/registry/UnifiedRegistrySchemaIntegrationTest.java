@@ -2,7 +2,7 @@ package com.metaobjects.registry;
 
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.IntegerField;
-import com.metaobjects.object.pojo.PojoMetaObject;
+import com.metaobjects.object.EntityMetaObject;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.attr.BooleanAttribute;
@@ -59,7 +59,7 @@ public class UnifiedRegistrySchemaIntegrationTest {
             new StringField("testString");
             new IntegerField("testInt");
             new com.metaobjects.field.TimestampField("testTimestamp");  // Trigger TimestampField registration
-            new PojoMetaObject("testObject");
+            new EntityMetaObject("testObject");
             new StringAttribute("testStringAttr");
             new IntAttribute("testIntAttr");
         } catch (Exception e) {
@@ -77,8 +77,8 @@ public class UnifiedRegistrySchemaIntegrationTest {
                   registry.acceptsChild("field", "string", "attr", "string", "pattern"));
         assertTrue("Registry should have IntegerField type", 
                   registry.acceptsChild("field", "int", "attr", "int", "maxValue"));
-        assertTrue("Registry should have MetaObject type", 
-                  registry.acceptsChild("object", "pojo", "field", "string", "testField"));
+        assertTrue("Registry should have MetaObject type",
+                  registry.acceptsChild("object", "entity", "field", "string", "testField"));
         
         // Test constraint enforcement
         String description = registry.getSupportedChildrenDescription("field", "string");
@@ -110,7 +110,7 @@ public class UnifiedRegistrySchemaIntegrationTest {
         // Test that the constraint system works with the unified registry
         
         // Create a valid metadata structure
-        PojoMetaObject userObject = new PojoMetaObject("User");
+        EntityMetaObject userObject = new EntityMetaObject("User");
         StringField emailField = new StringField("email");
         BooleanAttribute requiredAttr = new BooleanAttribute("required");
         
@@ -218,8 +218,9 @@ public class UnifiedRegistrySchemaIntegrationTest {
                       registry.acceptsChild("field", fieldType, "attr", "string", "testAttr"));
         }
         
-        // Object types that should be supported  
-        String[] expectedObjectTypes = {"pojo", "proxy", "map"};
+        // Object types that should be supported (the only registered semantic subtypes;
+        // pojo/proxy/map are retired — representation is a built-in hybrid + @objectAdapter hook, ADR-0005)
+        String[] expectedObjectTypes = {"entity", "value"};
         for (String objectType : expectedObjectTypes) {
             assertTrue("Registry should support object type: " + objectType,
                       registry.acceptsChild("object", objectType, "field", "string", "testField"));

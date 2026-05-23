@@ -3,7 +3,7 @@
     "package": "domain",
     "children": [
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "User",
           "children": [
             {
@@ -54,7 +54,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Order",
           "children": [
             {
@@ -120,7 +120,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "OrderItem",
           "children": [
             {

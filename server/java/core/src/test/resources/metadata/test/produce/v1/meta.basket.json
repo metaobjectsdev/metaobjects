@@ -3,7 +3,7 @@
     "package": "produce::v1::container",
     "children": [
       {
-        "object.map": {
+        "object.entity": {
           "name": "Basket",
           "children": [
             {
@@ -82,7 +82,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "package": "..::fruit",
           "name": "Fruit",
           "overlay": true,

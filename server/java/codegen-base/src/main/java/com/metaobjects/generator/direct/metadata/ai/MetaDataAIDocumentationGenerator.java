@@ -170,10 +170,6 @@ public class MetaDataAIDocumentationGenerator extends SingleJsonDirectGeneratorB
             .optionalAttribute(AI_EXTENSION_GUIDANCE, "string")
             .optionalAttribute(AI_CROSS_LANGUAGE_INFO, "string");
 
-        registry.findType("object", "pojo")
-            .optionalAttribute(AI_DESCRIPTION, "string")
-            .optionalAttribute(AI_BUSINESS_RULE, "string");
-
         // Field-level AI Documentation attributes
         registry.findType("field", "base")
             .optionalAttribute(AI_DESCRIPTION, "string")

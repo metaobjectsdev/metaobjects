@@ -249,7 +249,7 @@ public abstract class BaseMetaDataParser {
     protected MetaData createOrOverlayMetaData( boolean isRoot,
                                                 MetaData parent, String typeName, String subTypeName,
                                                 String name, String packageName, String superName,
-                                                Boolean isAbstract, Boolean isInterface, String implementsArray, 
+                                                Boolean isAbstract, Boolean isInterface, String implementsArray,
                                                 Boolean isOverlay ) {
 
         if ( subTypeName != null && subTypeName.equals("*")) subTypeName = null;

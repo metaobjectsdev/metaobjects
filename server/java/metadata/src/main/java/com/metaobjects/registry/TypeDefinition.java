@@ -208,6 +208,12 @@ public class TypeDefinition {
      * @return ChildRequirement if found, null otherwise
      */
     public ChildRequirement getChildRequirement(String childName) {
+        // A null name has no named requirement (immutable requirement maps reject
+        // null keys; treat absence of a name as "no direct/inherited named match").
+        if (childName == null) {
+            return null;
+        }
+
         // Check direct requirements first (they override inherited)
         ChildRequirement direct = childRequirements.get(childName);
         if (direct != null) {
@@ -227,8 +233,10 @@ public class TypeDefinition {
      * @return true if this type accepts the specified child
      */
     public boolean acceptsChild(String childType, String childSubType, String childName) {
-        // NAMESPACE SEPARATION SUPPORT: Check direct named requirement for EXACT type match
-        ChildRequirement namedReq = childRequirements.get(childName);
+        // NAMESPACE SEPARATION SUPPORT: Check direct named requirement for EXACT type match.
+        // A null childName has no named requirement and must not be used as a map key
+        // (the requirement maps are immutable and reject null keys); fall through to wildcards.
+        ChildRequirement namedReq = childName == null ? null : childRequirements.get(childName);
         if (namedReq != null && namedReq.matches(childType, childSubType, childName)) {
             return true;
         }
@@ -242,7 +250,7 @@ public class TypeDefinition {
         }
 
         // NAMESPACE SEPARATION SUPPORT: Check inherited named requirement for EXACT type match
-        ChildRequirement inheritedNamedReq = inheritedChildRequirements.get(childName);
+        ChildRequirement inheritedNamedReq = childName == null ? null : inheritedChildRequirements.get(childName);
         if (inheritedNamedReq != null && inheritedNamedReq.matches(childType, childSubType, childName)) {
             return true;
         }

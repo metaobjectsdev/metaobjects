@@ -250,10 +250,6 @@ public class XMLObjectWriter extends XMLMetaDataWriter {
             .optionalAttribute(XML_NAMESPACE, "string")
             .optionalAttribute(XML_WRAPPER_ELEMENT, "string");
 
-        registry.findType("object", "pojo")
-            .optionalAttribute(XML_ELEMENT_NAME, "string")
-            .optionalAttribute(XML_WRAPPER_ELEMENT, "string");
-
         // Field-level XML attributes
         registry.findType("field", "base")
             .optionalAttribute(XML_ELEMENT_NAME, "string")

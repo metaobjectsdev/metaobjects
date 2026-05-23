@@ -4,7 +4,7 @@ import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.object.MetaObject;
-import com.metaobjects.object.pojo.PojoMetaObject;
+import com.metaobjects.object.ValueMetaObject;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Test;
 
@@ -50,7 +50,7 @@ public class ValueObjectTests extends SharedRegistryTestBase {
     @Test
     public void testArrayFieldsWithMetaData() {
         // Create a MetaObject with array fields
-        PojoMetaObject metaObject = new PojoMetaObject("TestObject");
+        ValueMetaObject metaObject = new ValueMetaObject("TestObject");
 
         // Create regular string field
         StringField nameField = new StringField("name");

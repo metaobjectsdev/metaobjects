@@ -3,7 +3,7 @@
     "package": "produce::v1::fruit",
     "children": [
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Fruit",
           "abstract": true,
           "@object": "com.metaobjects.test.produce.v1.Fruit",
@@ -40,7 +40,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Apple",
           "extends": "Fruit",
           "@object": "com.metaobjects.test.produce.v1.Apple",
@@ -69,14 +69,14 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Macintosh",
           "extends": "Apple",
           "@object": "com.metaobjects.test.produce.v1.Macintosh"
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Orange",
           "extends": "Fruit",
           "@object": "com.metaobjects.test.produce.v1.Orange",

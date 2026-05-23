@@ -3,7 +3,7 @@
     "package": "acme",
     "children": [
       {
-        "object.map": {
+        "object.entity": {
           "name": "Garage",
           "package": "acme::garage",
           "@object": "com.acme.garage.Garage",
@@ -63,7 +63,7 @@
         }
       },
       {
-        "object.map": {
+        "object.entity": {
           "name": "Vehicle",
           "package": "acme::vehicle",
           "abstract": true,
@@ -144,7 +144,7 @@
         }
       },
       {
-        "object.map": {
+        "object.entity": {
           "name": "Car",
           "package": "acme::vehicle::car",
           "extends": "acme::vehicle::Vehicle",
@@ -215,7 +215,7 @@
         }
       },
       {
-        "object.map": {
+        "object.entity": {
           "name": "Truck",
           "package": "acme::vehicle::truck",
           "extends": "acme::vehicle::Vehicle",
@@ -265,7 +265,7 @@
         }
       },
       {
-        "object.map": {
+        "object.entity": {
           "name": "Motorcycle",
           "package": "acme::vehicle::motorcycle",
           "extends": "acme::vehicle::Vehicle",
@@ -310,7 +310,7 @@
         }
       },
       {
-        "object.map": {
+        "object.entity": {
           "name": "Porsche",
           "package": "acme::vehicle::car::luxury",
           "extends": "acme::vehicle::car::Car",

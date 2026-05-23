@@ -2,7 +2,7 @@ package com.metaobjects.registry;
 
 import com.metaobjects.field.*;
 import com.metaobjects.attr.*;
-import com.metaobjects.object.pojo.PojoMetaObject;
+import com.metaobjects.object.EntityMetaObject;
 import java.util.Map;
 import java.util.HashMap;
 import org.junit.After;
@@ -331,7 +331,7 @@ public class StaticRegistrationTest extends SharedRegistryTestBase {
             new DoubleField("testDouble");
             new BooleanField("testBoolean");
             new DateField("testDate");
-            new PojoMetaObject("testObject");
+            new EntityMetaObject("testObject");
             new StringAttribute("testStringAttr");
             new IntAttribute("testIntAttr");
             new BooleanAttribute("testBoolAttr");

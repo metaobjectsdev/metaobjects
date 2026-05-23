@@ -1,7 +1,7 @@
 { "metadata.root": {
     "package": "myapp::commerce",
     "children": [
-      { "object.pojo": {
+      { "object.entity": {
           "name": "Program",
           "@dbTable": "program",
           "@previousName": "offering",

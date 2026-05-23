@@ -128,10 +128,6 @@ public abstract class XMLMetaDataWriter extends MetaDataWriter {
             .optionalAttribute(XML_META_SCHEMA_LOCATION, "string")
             .optionalAttribute(XML_META_VERSION, "string");
 
-        registry.findType("object", "pojo")
-            .optionalAttribute(XML_META_ELEMENT_NAME, "string")
-            .optionalAttribute(XML_META_NAMESPACE, "string");
-
         // Field-level XML metadata attributes
         registry.findType("field", "base")
             .optionalAttribute(XML_META_ELEMENT_NAME, "string")
