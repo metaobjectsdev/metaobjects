@@ -1,0 +1,7 @@
+{ "metadata.root": {
+    "package": "myapp::commerce",
+    "children": [
+      { "object.entity": { "name": "Program", "children": [ { "field.long": { "name": "id" } } ] } },
+      { "object.value":  { "name": "Money",   "children": [ { "field.long": { "name": "cents" } } ] } }
+    ]
+}}

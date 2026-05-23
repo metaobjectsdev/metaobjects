@@ -10,6 +10,7 @@ import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.parser.BaseMetaDataParser;
 import com.metaobjects.loader.parser.MetaDataFileParser;
+import com.metaobjects.object.MetaObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -368,6 +369,13 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             name = subType;
         }
 
+        // ADR-0005: the inline @object FQN (a Java class) drives resolver-based representation
+        // selection for object.entity/value nodes. Read it here (only meaningful for object
+        // nodes) and thread it to the base parser; non-object types pass null.
+        String objectClassRef = MetaObject.TYPE_OBJECT.equals(type)
+            ? getStringOrNull(body, JSON_ATTR_PREFIX + MetaObject.ATTR_OBJECT)
+            : null;
+
         // Create or overlay the MetaData via the format-agnostic base method.
         // Note: we do NOT pass isAbstract to createOrOverlayMetaData — the base
         // method uses it for naming validation only; the actual abstract flag is
@@ -384,7 +392,8 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             /*isAbstract=*/ null,   // set below via attribute
             /*isInterface=*/ null,
             /*implementsArray=*/ null,
-            isOverlay
+            isOverlay,
+            objectClassRef
         );
 
         if (md == null) {

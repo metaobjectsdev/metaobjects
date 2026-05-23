@@ -10,6 +10,7 @@ import com.metaobjects.constraint.UniquenessConstraint;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.identity.PrimaryIdentity;
+import com.metaobjects.object.mapped.MappedMetaObject;
 import com.metaobjects.identity.SecondaryIdentity;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -39,6 +40,12 @@ public abstract class MetaObject extends MetaData {
 
     /** Base object subtype for inheritance */
     public static final String SUBTYPE_BASE = "base";
+
+    /** Semantic subtype: an entity object (persistent identity). Representation resolved per ADR-0005. */
+    public static final String SUBTYPE_ENTITY = "entity";
+
+    /** Semantic subtype: a value object (no identity). Representation resolved per ADR-0005. */
+    public static final String SUBTYPE_VALUE = "value";
 
     // === OBJECT-LEVEL ATTRIBUTE NAME CONSTANTS ===
     // These apply to ALL object types and are inherited by concrete object implementations
@@ -116,6 +123,36 @@ public abstract class MetaObject extends MetaData {
 
         // Register cross-cutting object constraints using consolidated registry
         registerCrossCuttingObjectConstraints(registry);
+    }
+
+    /**
+     * Register the semantic object subtypes {@code object.entity} and {@code object.value}
+     * (ADR-0005). These have no dedicated implementation class — the loader instantiates the
+     * resolver-chosen <em>representation</em> class (Pojo/Mapped/Proxy) and stamps it with the
+     * semantic subType ({@code entity}/{@code value}). The nominal implementation class below
+     * ({@link MappedMetaObject}, the unbound default) is only used if someone calls
+     * {@code createInstance("object","entity",..)} directly — the loader path bypasses it via
+     * {@link com.metaobjects.object.ObjectRepresentationResolver} +
+     * {@link com.metaobjects.registry.MetaDataRegistry#createObjectInstance}.
+     *
+     * <p>Both inherit base object's attr + child rules via {@code inheritsFrom(object, base)}.</p>
+     *
+     * <p>Called by ObjectTypesMetaDataProvider after {@link #registerTypes(MetaDataRegistry)}.</p>
+     */
+    public static void registerEntityValueTypes(MetaDataRegistry registry) {
+        registry.registerType(MappedMetaObject.class, def -> def
+            .type(TYPE_OBJECT).subType(SUBTYPE_ENTITY)
+            .description("Entity object (persistent identity) — representation resolved per ADR-0005")
+            .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE));
+
+        registry.registerType(MappedMetaObject.class, def -> def
+            .type(TYPE_OBJECT).subType(SUBTYPE_VALUE)
+            .description("Value object (no identity) — representation resolved per ADR-0005")
+            .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE));
+
+        if (log != null) {
+            log.debug("Registered semantic object subtypes object.entity and object.value (ADR-0005)");
+        }
     }
 
     /**

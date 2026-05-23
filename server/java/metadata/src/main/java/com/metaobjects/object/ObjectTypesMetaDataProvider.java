@@ -17,7 +17,13 @@ public class ObjectTypesMetaDataProvider implements MetaDataTypeProvider {
         // FIRST: Register the base object type that all others inherit from
         MetaObject.registerTypes(registry);
 
-        // THEN: Register concrete object types that inherit from object.base
+        // Semantic subtypes (ADR-0005): object.entity / object.value. No dedicated impl class —
+        // the loader instantiates the resolver-chosen representation (Pojo/Mapped/Proxy).
+        MetaObject.registerEntityValueTypes(registry);
+
+        // THEN: Register concrete object types that inherit from object.base.
+        // pojo/proxy/map remain registered for coexistence; they are retired in a later task
+        // once fixtures migrate to entity/value.
         PojoMetaObject.registerTypes(registry);
         ProxyMetaObject.registerTypes(registry);
         MappedMetaObject.registerTypes(registry);
