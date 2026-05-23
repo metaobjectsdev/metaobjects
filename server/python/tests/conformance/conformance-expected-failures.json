@@ -21,16 +21,11 @@
     "layout-data-grid-basic",
     "layout-data-grid-multiple-named",
     "loader-basic-multi-file-same-package",
-    "origin-aggregate-count",
-    "origin-aggregate-sum",
-    "origin-multi-level-via",
-    "origin-passthrough-simple",
     "overlay-attr-last-writer-wins",
     "overlay-merge-flag-explicit",
     "overlay-same-object-different-files",
     "prompt-fragment-and-template",
     "prompt-template-simple",
-    "source-db-view-projection",
     "subtype-entity-missing-primary-warning",
     "warning-filterable-no-index"
   ]

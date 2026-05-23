@@ -17,6 +17,8 @@ from .meta.core.object.object_constants import OBJECT_SUBTYPES
 from .meta.core.relationship.meta_relationship import MetaRelationship
 from .meta.core.relationship.relationship_constants import RELATIONSHIP_SUBTYPES
 from .meta.meta_root import MetaRoot
+from .meta.persistence.origin.meta_origin import MetaOrigin
+from .meta.persistence.origin.origin_constants import ORIGIN_SUBTYPES
 from .meta.persistence.source.meta_source import MetaSource
 from .meta.persistence.source.source_constants import SOURCE_SUBTYPES
 from .provider import Provider
@@ -29,6 +31,7 @@ from .shared.base_types import (
     TYPE_IDENTITY,
     TYPE_METADATA,
     TYPE_OBJECT,
+    TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
     TYPE_SOURCE,
 )
@@ -69,7 +72,7 @@ for _sub in fc.FIELD_SUBTYPES:
             type=TYPE_FIELD,
             sub_type=_sub,
             factory=lambda t, s, n: MetaField(t, s, n),
-            child_rules=[ChildRule(TYPE_ATTR, "*")],
+            child_rules=[ChildRule(TYPE_ATTR, "*"), ChildRule(TYPE_ORIGIN, "*")],
         )
     )
 
@@ -116,6 +119,17 @@ for _sub in SOURCE_SUBTYPES:
             type=TYPE_SOURCE,
             sub_type=_sub,
             factory=lambda t, s, n: MetaSource(t, s, n),
+            child_rules=[ChildRule(TYPE_ATTR, "*")],
+        )
+    )
+
+# origin.* (base, passthrough, aggregate); @from/@via/@agg/@of flow through as base attrs
+for _sub in ORIGIN_SUBTYPES:
+    core_provider.add(
+        TypeDefinition(
+            type=TYPE_ORIGIN,
+            sub_type=_sub,
+            factory=lambda t, s, n: MetaOrigin(t, s, n),
             child_rules=[ChildRule(TYPE_ATTR, "*")],
         )
     )
