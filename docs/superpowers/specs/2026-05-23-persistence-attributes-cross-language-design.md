@@ -68,13 +68,17 @@ Subtypes carry **default** lifecycle; explicit attrs **override**:
 |--|--|--|--|
 | `@objectRef` | object name | — | target entity |
 | `@cardinality` | `one` \| `many` | — | relationship cardinality |
-| **`@onDelete`** | `cascade` \| `restrict` \| `setNull` \| `setDefault` \| `noAction` | composition→`cascade`, aggregation→`setNull`, association→`restrict` | **referential action on parent delete (NEW)** |
-| **`@onUpdate`** | (same set) | `cascade` | **referential action on key update (NEW)** |
+| **`@onDelete`** | `cascade` \| `set-null` \| `restrict` \| `no-action` | composition→`cascade`, aggregation→`set-null`, association→`restrict` | **referential action on parent delete (NEW)** |
+| **`@onUpdate`** | (same `FkAction` set) | `cascade` | **referential action on key update (NEW)** |
 | `@enforce` | bool | `true` | physical FK constraint vs logical-only |
 | `@fetch` | `eager` \| `lazy` | `lazy` | load strategy (codegen/runtime hint) |
 | `@joinEntity` / `@joinFields` | string / string[] | — | N:M join table |
 
-**Defaults-from-subtype** keep the common case zero-config (a `composition` cascades, an `association` restricts), while `@onDelete`/`@onUpdate` make it explicit and overridable — the Prisma model, but seeded from our richer lifecycle subtypes. Caveats we adopt from Prisma: `setNull` requires an optional (nullable) relation; `setDefault` requires a column default and is unsupported on MySQL — `verify`/migrate flags these.
+**The value set is the existing `FkAction` union — `cascade | set-null | restrict | no-action`** ([migrate-ts `types.ts:65`](../../../server/typescript/packages/migrate-ts/src/types.ts)), kebab-case, **no `setDefault`** (the emitters don't carry it; MySQL doesn't support it). The authoring value === the `FkDescriptor` value, so it threads straight through with no translation layer.
+
+**`@onDelete` and `@autoSet` are different axes on different metatypes — do NOT unify them.** `@autoSet: onCreate|onUpdate` is a one-off *field* write-fill on a timestamp column; `@onDelete`/`@onUpdate` are *relationship* referential actions. There is no general "behavior on write" infrastructure and we are not inventing one — folding these into a single lifecycle hook would be over-engineering.
+
+**Defaults-from-subtype** keep the common case zero-config (a `composition` cascades; an `association` restricts) while `@onDelete`/`@onUpdate` expose and override that intent. Note this is a *small new inference* — today the metadata→schema side leaves the action unset (FKs emit no action clause); we add the derive-from-subtype default + the explicit override. Caveat: `set-null` requires an optional (nullable) relation; `verify`/migrate flags violations.
 
 ## 5. Source/object-level attributes
 
@@ -119,7 +123,7 @@ Most attrs are **rdb**-centric. Applicability deltas:
 
 ## 8. What's new vs. today (the gaps we're filling)
 
-1. **Explicit `@onDelete`/`@onUpdate` referential actions** (cascade/restrict/setNull/setDefault/noAction), defaulted from the relationship subtype, overridable — replacing the implicit, driver-hardcoded behavior in all three ports.
+1. **Explicit `@onDelete`/`@onUpdate` referential actions** — **low effort, high value: the plumbing already exists end-to-end and only the authoring attribute is missing.** The `FkAction` union (`cascade|set-null|restrict|no-action`), `FkDescriptor.onDelete/onUpdate`, the DDL **emit** (`migrate-ts/src/emit/{postgres,sqlite}.ts`), **introspect**, and **diff** are all built (TS confirmed; C# `PostgresEmit.cs` per the same design). What's absent is the `@onDelete`/`@onUpdate` attr on the relationship schema and threading its value into the expected-schema `FkDescriptor` (today that field is left unset → FKs emit no action clause). So the task is: add the two attrs (`allowedValues = FkAction`), thread them in, add a conformance fixture. Exposing intent, not building plumbing.
 2. **`@enforce`** (physical vs logical FK) and **`@fetch`** promoted from Java-only to the cross-language vocabulary.
 3. **`@softDelete`** and **`@version`** as first-class declarations (today: ad-hoc / Java-only dirty-write).
 4. **`@generation: sequence`/`identity`** + `@sequence` (Java had `dbSequenceName`; generalize).
@@ -127,13 +131,13 @@ Most attrs are **rdb**-centric. Applicability deltas:
 
 ## 9. Open questions
 
-- `@onDelete` default for **aggregation** — `setNull` vs `restrict`? (Prisma defaults required→restrict; our aggregation = shared ownership ⇒ `setNull` feels right but needs the relation optional.) Resolve in review.
+- `@onDelete` default for **aggregation** — `set-null` vs `restrict`? (Prisma defaults required→restrict; our aggregation = shared ownership ⇒ `set-null` feels right but needs the relation optional.) Resolve in review.
 - `@softDelete` granularity — object-level mode only, or per-relationship cascade-of-soft-delete? (Start object-level; defer cascade-soft-delete.)
 - `@version` representation — a dedicated `@version` field marker vs an object-level `@optimisticLock: <field>`. (Lean: a field-level `@version: true`.)
 - Which attrs are **conformance-gated** (loader/serializer round-trip) vs **codegen-only** (golden tests). Referential actions + storage round-trip in metadata; physical-type escape hatches are codegen-only.
 
 ## 10. Research
 
-- Prisma referential actions: `Cascade`/`Restrict`/`NoAction`/`SetNull`/`SetDefault`; defaults ON DELETE RESTRICT (required) / ON UPDATE CASCADE; `SetNull` needs optional relation; `SetDefault` unsupported on MySQL. ([Prisma referential actions](https://www.prisma.io/docs/orm/prisma-schema/data-model/relations/referential-actions))
+- Prisma referential actions: `Cascade`/`Restrict`/`NoAction`/`SetNull`/`SetDefault`; defaults ON DELETE RESTRICT (required) / ON UPDATE CASCADE; `SetNull` needs optional relation; `SetDefault` unsupported on MySQL. ([Prisma referential actions](https://www.prisma.io/docs/orm/prisma-schema/data-model/relations/referential-actions)) — **we adopt the existing 4-value `FkAction` (`cascade|set-null|restrict|no-action`), omitting `setDefault`** to match what the emitters already carry.
 - Soft delete is an application/middleware pattern (`deletedAt`/`deleted` + read-filter), not a DB referential action. ([Prisma soft-delete](https://www.prisma.io/docs/orm/prisma-client/client-extensions/middleware/soft-delete-middleware))
 - JPA cascade types (ALL/PERSIST/MERGE/REMOVE/…) + fetch (EAGER/LAZY) informed `@onDelete`/`@fetch` (Java `jpaCascade`/`jpaFetch`).
