@@ -10,6 +10,8 @@ import {
 import { SORT_ORDER_VALUES } from "../query/query-constants.js";
 import {
   FIELD_ATTR_OBJECT_REF,
+  FIELD_ATTR_STORAGE,
+  STORAGE_VALUES,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
@@ -33,6 +35,18 @@ export const commonFieldAttrs: AttrSchema[] = [
     required: false,
     description:
       "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization.",
+  },
+  {
+    name: FIELD_ATTR_STORAGE,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    allowedValues: [...STORAGE_VALUES],
+    description:
+      "Storage strategy for an object-typed field (set with @objectRef). " +
+      "\"flattened\" expands the nested value into prefixed columns on the parent " +
+      "table. \"jsonb\" stores the structured value in a single jsonb column " +
+      "(supports isArray=true for arrays of values). \"subdocument\" is a hint for " +
+      "document-store codegen targets and emits no Postgres column.",
   },
   {
     name: FIELD_ATTR_REQUIRED,

@@ -26,6 +26,9 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
+  FIELD_ATTR_OBJECT_REF,
+  FIELD_ATTR_STORAGE,
+  STORAGE_FLATTENED,
   resolveTableName, resolveColumnName, resolveTableSchema,
 } from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
@@ -146,7 +149,16 @@ function buildTable(
   const columns: ColumnDescriptor[] = [];
   for (const field of entity.fields()) {
     const isPk = pkJsNames.includes(field.name);
-    columns.push(buildColumn(field, isPk, isPk ? pkGeneration : undefined));
+    if (
+      field.subType === FIELD_SUBTYPE_OBJECT &&
+      field.ownAttr(FIELD_ATTR_STORAGE) === STORAGE_FLATTENED
+    ) {
+      // Flattened storage: expand nested value-object fields as prefixed columns.
+      // The parent field.object itself does NOT produce its own column.
+      columns.push(...flattenObjectField(field, root));
+    } else {
+      columns.push(buildColumn(field, isPk, isPk ? pkGeneration : undefined));
+    }
   }
 
   return {
@@ -234,6 +246,28 @@ function buildForeignKeys(
     });
   }
   return fks;
+}
+
+/**
+ * Expand a `field.object @storage "flattened"` into one ColumnDescriptor per
+ * nested field of the referenced value-object, prefixed by the parent field's
+ * resolved column name + underscore.
+ *
+ * EF OwnsOne pattern: no JSON column for the parent itself; each nested field
+ * becomes `<parent_col>_<nested_col>` in the owning entity's table.
+ */
+function flattenObjectField(field: MetaData, root: MetaRoot): ColumnDescriptor[] {
+  const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+  if (typeof ref !== "string" || ref.length === 0) return [];
+  const targetObject = root.findObject(ref);
+  if (targetObject === undefined) return [];
+  const prefix = resolveColumnName(field) + "_";
+  const cols: ColumnDescriptor[] = [];
+  for (const nested of targetObject.fields()) {
+    const inner = buildColumn(nested, /* isPk */ false, /* pkGeneration */ undefined);
+    cols.push({ ...inner, name: prefix + inner.name });
+  }
+  return cols;
 }
 
 const EXPR_DEFAULT_PATTERNS = [
