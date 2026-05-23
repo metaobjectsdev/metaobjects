@@ -77,3 +77,22 @@ public class MetaAggregateOrigin(TypeId typeId, string name) : MetaOrigin(typeId
         }
     }
 }
+
+/// <summary>
+/// Collection origin — the (array) field's value is a relationship-derived array
+/// of nested view-objects (FR-004 R4). Carries <c>@via</c> (required): the dotted
+/// relationship path the collection walks (e.g. <c>"Author.posts"</c>), or a
+/// wildcard-prefixed selector for a package-spanning collection (e.g. <c>"*.User"</c>).
+/// </summary>
+public class MetaCollectionOrigin(TypeId typeId, string name) : MetaOrigin(typeId, name)
+{
+    /// <summary>The dotted relationship path (or wildcard selector) this collection is sourced from.</summary>
+    public string? Via
+    {
+        get
+        {
+            var v = OwnAttr(ORIGIN_COLLECTION_ATTR_VIA);
+            return v is string s ? s : null;
+        }
+    }
+}

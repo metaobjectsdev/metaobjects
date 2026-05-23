@@ -17,6 +17,7 @@ using MetaObjects.Core.Relationship;
 using MetaObjects.Persistence.Origin;
 using MetaObjects.Presentation.View;
 using MetaObjects.Presentation.Layout;
+using MetaObjects.Template;
 
 namespace MetaObjects;
 
@@ -169,6 +170,7 @@ public static class CoreTypes
     {
         [ORIGIN_SUBTYPE_PASSTHROUGH] = (tid, n) => new MetaPassthroughOrigin(tid, n),
         [ORIGIN_SUBTYPE_AGGREGATE]   = (tid, n) => new MetaAggregateOrigin(tid, n),
+        [ORIGIN_SUBTYPE_COLLECTION]  = (tid, n) => new MetaCollectionOrigin(tid, n),
     };
 
     // -------------------------------------------------------------------------
@@ -188,6 +190,7 @@ public static class CoreTypes
                     Wildcard(TYPE_FIELD),
                     Wildcard(TYPE_ATTR),
                     Wildcard(TYPE_VALIDATOR),
+                    Wildcard(TYPE_TEMPLATE),
                 ],
                 (tid, n) => new MetaRoot(tid, n),
                 []));
@@ -385,6 +388,26 @@ public static class CoreTypes
                     [Wildcard(TYPE_ATTR)],
                     (tid, n) => new MetaRelationship(tid, n),
                     RelationshipSchema.RelationshipAttrs.ToList()));
+        }
+
+        // template — fourth-pillar metatype (FR-004). prompt + output; attr-only
+        // children. A single MetaTemplate class backs both subtypes (mirrors source);
+        // per-subtype attr schemas drive validation (both require @payloadRef +
+        // @textRef; @format is a closed enum). Reference resolution (@payloadRef) is
+        // render-time verify scope, NOT load-time — so no payload-resolution pass here.
+        foreach (string subType in TEMPLATE_SUBTYPES)
+        {
+            IReadOnlyList<AttrSchema> templateAttrs =
+                TemplateSchema.TemplateAttrsMap.TryGetValue(subType, out var ta) ? ta : [];
+
+            registry.Register(
+                Def(
+                    TYPE_TEMPLATE,
+                    subType,
+                    $"Template ({subType})",
+                    [Wildcard(TYPE_ATTR)],
+                    (tid, n) => new MetaTemplate(tid, n),
+                    templateAttrs.ToList()));
         }
 
         // Default subTypes for authoring sugar.

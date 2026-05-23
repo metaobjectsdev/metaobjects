@@ -23,3 +23,4 @@ global using static MetaObjects.Persistence.Origin.OriginConstants;
 global using static MetaObjects.Persistence.Db.DbConstants;
 global using static MetaObjects.Presentation.View.ViewConstants;
 global using static MetaObjects.Presentation.Layout.LayoutConstants;
+global using static MetaObjects.Template.TemplateConstants;
