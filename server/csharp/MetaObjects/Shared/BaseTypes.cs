@@ -27,6 +27,8 @@ public static class BaseTypes
     public const string TYPE_LAYOUT       = "layout";
     public const string TYPE_SOURCE       = "source";
     public const string TYPE_ORIGIN       = "origin";
+    /// <summary>The fourth-pillar metatype: a renderable text artifact (FR-004).</summary>
+    public const string TYPE_TEMPLATE     = "template";
 
     public static readonly string[] BASE_TYPES =
     [
@@ -41,6 +43,7 @@ public static class BaseTypes
         TYPE_LAYOUT,
         TYPE_SOURCE,
         TYPE_ORIGIN,
+        TYPE_TEMPLATE,
     ];
 
     // -----------------------------------------------------------------------
