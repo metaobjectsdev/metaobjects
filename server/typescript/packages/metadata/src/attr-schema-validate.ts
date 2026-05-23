@@ -156,11 +156,10 @@ function validateNode(
           ),
         );
       } else {
+        // rawValues is the only array variant of AttrValue, so each member is a
+        // string (StringArrayAttr.coerce stringifies every element on load).
         const seen = new Set<string>();
         for (const member of rawValues) {
-          // Defensive: StringArrayAttr coerce already stringifies every element,
-          // so non-strings won't occur here.
-          if (typeof member !== "string") continue;
           if (!ENUM_MEMBER_PATTERN.test(member)) {
             errors.push(
               new ParseError(
