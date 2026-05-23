@@ -332,7 +332,21 @@ public abstract class MetaObject extends MetaData {
     }
 
     /**
-     * Retrieves the object class of an object, or null if one is not specified
+     * Retrieves the object class of an object, or null if one is not specified.
+     *
+     * <p>Resolution order (ADR-0001):</p>
+     * <ol>
+     *   <li>{@code @object} attribute</li>
+     *   <li>Process-global {@link com.metaobjects.registry.ObjectClassRegistry} keyed by FQN</li>
+     *   <li>Name-convention: {@code pkg::Name} → {@code pkg.Name}</li>
+     * </ol>
+     *
+     * <p><strong>Caching:</strong> the resolved class is cached per MetaObject instance.
+     * The binding registry ({@link com.metaobjects.registry.ObjectClassRegistry#global()}) must
+     * therefore be configured <em>before</em> the first call to this method on any given instance.
+     * In production this holds naturally — the registry is discovered once at startup.
+     * Tests that alter the global registry should use fresh MetaObject instances to avoid
+     * observing a stale cached result.</p>
      */
     public Class<?> getObjectClass() throws ClassNotFoundException {
 
@@ -340,10 +354,12 @@ public abstract class MetaObject extends MetaData {
         Class<?> c = (Class<?>) getCacheValue(CACHE_KEY );
         if ( c == null ) {
 
-            c = null;
-
             if (hasObjectAttr()) {
                 c = getObjectClassFromAttr();
+            }
+
+            if (c == null) {
+                c = com.metaobjects.registry.ObjectClassRegistry.global().resolve(getName());
             }
 
             if (c == null)

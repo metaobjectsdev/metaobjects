@@ -39,6 +39,23 @@
             <version>6.2.11</version>
         </dependency>
         
+        <!-- Spring JDBC + TX (transaction-aware ObjectConnection bridge) -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
+            <version>6.2.11</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+            <version>6.2.11</version>
+        </dependency>
+        <!-- OMDB: ObjectConnectionDB base class for SpringObjectConnections -->
+        <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-omdb</artifactId>
+        </dependency>
+
         <!-- Test Dependencies -->
         <dependency>
             <groupId>junit</groupId>
@@ -57,6 +74,13 @@
             <artifactId>metaobjects-metadata</artifactId>
             <version>${project.version}</version>
             <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <!-- Embedded H2 for transaction integration tests -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>2.2.224</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -79,6 +103,7 @@
                             com.metaobjects.*,
                             org.springframework.*,
                             org.slf4j.*,
+                            javax.sql.*,
                             *
                         </Import-Package>
                     </instructions>

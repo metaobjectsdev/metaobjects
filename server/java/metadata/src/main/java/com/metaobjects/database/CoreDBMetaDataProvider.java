@@ -39,6 +39,10 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
     public static final String DB_PRECISION = "dbPrecision";
     public static final String DB_SCALE = "dbScale";
     public static final String DB_AUTO_INCREMENT = "dbAutoIncrement";
+    public static final String DB_TYPE = "dbType";
+
+    /** {@code @dbType} value that marks a field as a JSON document column. */
+    public static final String DB_TYPE_JSONB = "jsonb";
 
     // Identity-specific database attributes
     public static final String DB_SEQUENCE_NAME = "dbSequenceName";
@@ -90,7 +94,8 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
             .optionalAttribute(DB_UNIQUE, BooleanAttribute.SUBTYPE_BOOLEAN)
             .optionalAttribute(DB_LENGTH, IntAttribute.SUBTYPE_INT)
             .optionalAttribute(DB_PRECISION, IntAttribute.SUBTYPE_INT)
-            .optionalAttribute(DB_SCALE, IntAttribute.SUBTYPE_INT);
+            .optionalAttribute(DB_SCALE, IntAttribute.SUBTYPE_INT)
+            .optionalAttribute(DB_TYPE, StringAttribute.SUBTYPE_STRING);
 
         // String field specific
         registry.findType(MetaField.TYPE_FIELD, StringAttribute.SUBTYPE_STRING)

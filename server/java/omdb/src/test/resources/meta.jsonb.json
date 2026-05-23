@@ -1,0 +1,57 @@
+{
+  "metadata.root": {
+    "package": "jsonbtest",
+    "children": [
+      {
+        "object.value": {
+          "name": "Item",
+          "@object": "com.metaobjects.object.value.ValueObject",
+          "@dbTable": "JSONB_ITEM",
+          "children": [
+            {
+              "field.long": {
+                "name": "id",
+                "@dbColumn": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "prefs",
+                "@dbColumn": "prefs",
+                "@dbType": "jsonb",
+                "@objectRef": "jsonbtest::Prefs"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "primary",
+                "@fields": ["id"],
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Prefs",
+          "@object": "com.metaobjects.object.value.ValueObject",
+          "children": [
+            {
+              "field.string": {
+                "name": "theme",
+                "@dbColumn": "theme"
+              }
+            },
+            {
+              "field.int": {
+                "name": "fontSize",
+                "@dbColumn": "fontSize"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
