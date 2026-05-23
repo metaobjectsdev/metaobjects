@@ -16,6 +16,7 @@ from .shared.structural import (
     KEY_EXTENDS,
     KEY_IS_ARRAY,
     KEY_NAME,
+    KEY_OVERLAY,
     KEY_PACKAGE,
     KEY_VALUE,
 )
@@ -73,6 +74,7 @@ def _build(
     if body_dict.get(KEY_EXTENDS):
         node.super_ref = str(body_dict[KEY_EXTENDS])
     node.is_abstract = bool(body_dict.get(KEY_ABSTRACT, False))
+    node.is_overlay = bool(body_dict.get(KEY_OVERLAY, False))
     node.is_array = bool(body_dict.get(KEY_IS_ARRAY, False))
 
     for key, value in body_dict.items():

@@ -19,6 +19,7 @@ class MetaData:
         self.super_ref: Optional[str] = None
         self.super_data: Optional[MetaData] = None
         self.is_abstract = False
+        self.is_overlay = False
         self.is_array = False
         self.parent: Optional[MetaData] = None
         self._attr_nodes: dict[str, MetaData] = {}  # name -> MetaAttr instance
