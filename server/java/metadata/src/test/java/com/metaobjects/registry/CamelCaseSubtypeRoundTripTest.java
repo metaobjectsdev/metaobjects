@@ -9,7 +9,7 @@ import com.metaobjects.field.PrimitiveField;
 import com.metaobjects.io.json.CanonicalJsonSerializer;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.parser.json.CanonicalJsonParser;
-import com.metaobjects.object.pojo.PojoMetaObject;
+import com.metaobjects.object.EntityMetaObject;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -84,7 +84,7 @@ public class CamelCaseSubtypeRoundTripTest extends SharedRegistryTestBase {
         // SharedRegistryTestBase.initializeSharedRegistry() is called by the JUnit
         // runner before this @BeforeClass; we add our test-only type on top.
         try {
-            new PojoMetaObject("_boot_pojo");
+            new EntityMetaObject("_boot_entity");
         } catch (Exception ignored) {
             // may already be registered — that is fine
         }

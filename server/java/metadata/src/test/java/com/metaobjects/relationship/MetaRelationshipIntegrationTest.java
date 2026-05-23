@@ -4,7 +4,7 @@ import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.field.StringField;
-import com.metaobjects.object.pojo.PojoMetaObject;
+import com.metaobjects.object.EntityMetaObject;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.TypeDefinition;
 import org.junit.Before;
@@ -22,7 +22,7 @@ import static org.junit.Assert.*;
 public class MetaRelationshipIntegrationTest {
 
     private MetaDataRegistry registry;
-    private PojoMetaObject testObject;
+    private EntityMetaObject testObject;
 
     @Before
     public void setUp() {
@@ -30,7 +30,7 @@ public class MetaRelationshipIntegrationTest {
         registry = MetaDataRegistry.getInstance();
 
         // Create a test MetaObject for relationship testing
-        testObject = new PojoMetaObject("TestUser");
+        testObject = new EntityMetaObject("TestUser");
 
         // Add some test fields
         StringField nameField = new StringField("name");
@@ -219,13 +219,13 @@ public class MetaRelationshipIntegrationTest {
         // Test that relationships work with MetaObject inheritance
 
         // Create a base object with a relationship
-        PojoMetaObject baseUser = new PojoMetaObject("BaseUser");
+        EntityMetaObject baseUser = new EntityMetaObject("BaseUser");
         CompositionRelationship baseRel = new CompositionRelationship("baseProfile");
         addRelationshipAttributes(baseRel, "Profile", "one", "profileId");
         baseUser.addRelationship(baseRel);
 
         // Create a derived object that inherits from base
-        PojoMetaObject adminUser = new PojoMetaObject("AdminUser");
+        EntityMetaObject adminUser = new EntityMetaObject("AdminUser");
         adminUser.setSuperObject(baseUser);
 
         // Add a specific relationship to derived object

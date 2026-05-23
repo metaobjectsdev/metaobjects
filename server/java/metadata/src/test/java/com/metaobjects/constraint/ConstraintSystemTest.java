@@ -3,7 +3,7 @@ package com.metaobjects.constraint;
 import com.metaobjects.*;
 import com.metaobjects.field.StringField;
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.object.pojo.PojoMetaObject;
+import com.metaobjects.object.EntityMetaObject;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -42,7 +42,7 @@ public class ConstraintSystemTest {
      */
     @Test
     public void testNamingPatternConstraintEnforcement() {
-        PojoMetaObject metaObject = new PojoMetaObject("testObject");
+        EntityMetaObject metaObject = new EntityMetaObject("testObject");
         
         try {
             // Valid names should work
@@ -65,7 +65,7 @@ public class ConstraintSystemTest {
      */
     @Test
     public void testNamingPatternConstraintViolation() {
-        PojoMetaObject metaObject = new PojoMetaObject("testObject");
+        EntityMetaObject metaObject = new EntityMetaObject("testObject");
         
         try {
             // Invalid name starting with number should be rejected
@@ -98,7 +98,7 @@ public class ConstraintSystemTest {
             // Field should require a name
             StringField field = new StringField(null); // Invalid - no name
             
-            PojoMetaObject metaObject = new PojoMetaObject("testObject");
+            EntityMetaObject metaObject = new EntityMetaObject("testObject");
             metaObject.addMetaField(field);
             loader.getRoot().addChild(metaObject);
             
@@ -116,7 +116,7 @@ public class ConstraintSystemTest {
      */
     @Test
     public void testDataTypeConstraintEnforcement() {
-        PojoMetaObject metaObject = new PojoMetaObject("testObject");
+        EntityMetaObject metaObject = new EntityMetaObject("testObject");
         StringField field = new StringField("testField");
         
         // Fields should have data types enforced by constraints
@@ -139,7 +139,7 @@ public class ConstraintSystemTest {
     public void testValidMetadataConstruction() {
         try {
             // Create a valid metadata structure
-            PojoMetaObject metaObject = new PojoMetaObject("User");
+            EntityMetaObject metaObject = new EntityMetaObject("User");
             
             StringField nameField = new StringField("name");
             StringField emailField = new StringField("email"); 
@@ -166,7 +166,7 @@ public class ConstraintSystemTest {
      */
     @Test
     public void testFieldUniquenessConstraint() {
-        PojoMetaObject metaObject = new PojoMetaObject("testObject");
+        EntityMetaObject metaObject = new EntityMetaObject("testObject");
         
         try {
             StringField field1 = new StringField("duplicateName");
@@ -192,7 +192,7 @@ public class ConstraintSystemTest {
     @Test
     public void testConstraintErrorMessages() {
         try {
-            PojoMetaObject metaObject = new PojoMetaObject("testObject");
+            EntityMetaObject metaObject = new EntityMetaObject("testObject");
             StringField invalidField = new StringField("123invalid"); // Starts with number
             
             metaObject.addMetaField(invalidField);
@@ -220,7 +220,7 @@ public class ConstraintSystemTest {
     @Test
     public void testConstraintEnforcementDuringConstruction() {
         // The constraint system should enforce rules during addChild(), not during validate()
-        PojoMetaObject metaObject = new PojoMetaObject("testObject");
+        EntityMetaObject metaObject = new EntityMetaObject("testObject");
         
         try {
             // Invalid field name should be rejected immediately when added to object

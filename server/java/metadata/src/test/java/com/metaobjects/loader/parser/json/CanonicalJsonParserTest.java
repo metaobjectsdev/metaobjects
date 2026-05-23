@@ -6,7 +6,7 @@ import com.metaobjects.field.*;
 import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.io.json.CanonicalJsonSerializer;
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.object.mapped.MappedMetaObject;
+import com.metaobjects.object.ValueMetaObject;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Before;
@@ -41,7 +41,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
             new BooleanAttribute("testBoolAttr");
             new DoubleAttribute("testDoubleAttr");
             new LongAttribute("testLongAttr");
-            MappedMetaObject.create("setup::Boot");
+            ValueMetaObject.create("setup::Boot");
         } catch (Exception e) {
             // Ignore registration errors — types may already be registered
         }
@@ -64,7 +64,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
      * Step 1 / 4: Reads a canonical single-entity document.
      *
      * <p>Uses {@code object.entity} (the declared semantic subtype). The loader's
-     * representation resolver picks the backing impl (MappedMetaObject by default);
+     * representation resolver picks the backing impl (ValueMetaObject by default);
      * {@code object.map} is no longer a registered subtype — ADR-0005.</p>
      */
     @Test

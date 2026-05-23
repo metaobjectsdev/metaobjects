@@ -28,8 +28,8 @@ public class SchemaReviewTest {
             Class.forName("com.metaobjects.field.DateField");
             Class.forName("com.metaobjects.field.TimestampField");
             Class.forName("com.metaobjects.object.MetaObject");
-            Class.forName("com.metaobjects.object.pojo.PojoMetaObject");
-            Class.forName("com.metaobjects.object.proxy.ProxyMetaObject");
+            Class.forName("com.metaobjects.object.EntityMetaObject");
+            Class.forName("com.metaobjects.object.ValueMetaObject");
             Class.forName("com.metaobjects.attr.StringAttribute");
             Class.forName("com.metaobjects.attr.IntAttribute");
             Class.forName("com.metaobjects.attr.BooleanAttribute");

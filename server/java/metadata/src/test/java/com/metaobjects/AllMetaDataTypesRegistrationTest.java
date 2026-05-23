@@ -3,9 +3,8 @@ package com.metaobjects;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import com.metaobjects.field.*;
-import com.metaobjects.object.pojo.PojoMetaObject;
-import com.metaobjects.object.mapped.MappedMetaObject;
-import com.metaobjects.object.proxy.ProxyMetaObject;
+import com.metaobjects.object.EntityMetaObject;
+import com.metaobjects.object.ValueMetaObject;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.attr.BooleanAttribute;
@@ -45,9 +44,8 @@ public class AllMetaDataTypesRegistrationTest extends SharedRegistryTestBase {
             new ClassField("testClass");
             
             // Object types
-            new PojoMetaObject("testPojo");
-            new MappedMetaObject("testMapped");
-            new ProxyMetaObject("testProxy");
+            new EntityMetaObject("testEntity");
+            new ValueMetaObject("testValue");
             
             // Attribute types
             new StringAttribute("testStringAttr");

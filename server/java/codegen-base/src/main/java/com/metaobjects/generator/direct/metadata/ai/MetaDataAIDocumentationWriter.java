@@ -399,19 +399,19 @@ public class MetaDataAIDocumentationWriter extends JsonDirectWriter<MetaDataAIDo
         JsonObject javaMapping = new JsonObject();
         javaMapping.addProperty("fieldString", "StringField.class");
         javaMapping.addProperty("fieldInt", "IntegerField.class");
-        javaMapping.addProperty("objectPojo", "PojoMetaObject.class");
+        javaMapping.addProperty("objectEntity", "EntityMetaObject.class");
         typeMappings.add("java", javaMapping);
 
         JsonObject csharpMapping = new JsonObject();
         csharpMapping.addProperty("fieldString", "StringField");
         csharpMapping.addProperty("fieldInt", "IntegerField");
-        csharpMapping.addProperty("objectPojo", "PojoMetaObject");
+        csharpMapping.addProperty("objectEntity", "EntityMetaObject");
         typeMappings.add("csharp", csharpMapping);
 
         JsonObject tsMapping = new JsonObject();
         tsMapping.addProperty("fieldString", "StringFieldType");
         tsMapping.addProperty("fieldInt", "IntegerFieldType");
-        tsMapping.addProperty("objectPojo", "PojoMetaObjectType");
+        tsMapping.addProperty("objectEntity", "EntityMetaObjectType");
         typeMappings.add("typescript", tsMapping);
 
         crossLang.add("languageMappings", typeMappings);

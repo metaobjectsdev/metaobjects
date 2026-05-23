@@ -20,6 +20,11 @@ public class ValueMetaObject extends AbstractObjectRepresentation {
     protected ValueMetaObject(String subType, String name) { super(subType, name); }
     @Override protected Class<?> getDefaultObjectClass() { return ValueObject.class; }
 
+    /** Manually create a {@code ValueMetaObject} with the given fully-qualified name. */
+    public static ValueMetaObject create(String name) {
+        return new ValueMetaObject(name);
+    }
+
     /**
      * Builds an ad-hoc {@code ValueMetaObject} from a comma-separated template of
      * {@code name:type} field declarations (e.g. {@code "id:int, name:string"}).

@@ -11,7 +11,7 @@ import com.metaobjects.field.LongField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.object.MetaObject;
-import com.metaobjects.object.mapped.MappedMetaObject;
+import com.metaobjects.object.ValueMetaObject;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import com.metaobjects.validator.LengthValidator;
 import com.metaobjects.validator.RegexValidator;
@@ -141,7 +141,7 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
     public void testIsAbstractEmittedAsReservedKey() {
         MetaRoot root = new MetaRoot("test::pkg");
 
-        MappedMetaObject abstractObj = MappedMetaObject.create("test::pkg::BaseEntity");
+        ValueMetaObject abstractObj = ValueMetaObject.create("test::pkg::BaseEntity");
         abstractObj.addMetaAttr(BooleanAttribute.create(MetaData.ATTR_IS_ABSTRACT, true));
         root.addChild(abstractObj);
 
@@ -159,7 +159,7 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
     public void testIsArrayEmittedAsReservedKeyForField() {
         MetaRoot root = new MetaRoot("test::pkg");
 
-        MappedMetaObject obj = MappedMetaObject.create("test::pkg::Widget");
+        ValueMetaObject obj = ValueMetaObject.create("test::pkg::Widget");
         StringField tagsField = new StringField("tags");
         tagsField.setArray(true);
         obj.addMetaField(tagsField);
@@ -196,7 +196,7 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
     @Test
     public void testAttrsInAlphabeticalOrder() {
         MetaRoot root = new MetaRoot("test::pkg");
-        MappedMetaObject obj = MappedMetaObject.create("test::pkg::Foo");
+        ValueMetaObject obj = ValueMetaObject.create("test::pkg::Foo");
 
         PrimaryIdentity pk = new PrimaryIdentity("primary1");
         pk.addMetaAttr(StringAttribute.create("zzz", "last"));
@@ -219,11 +219,11 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
     public void testExtendsEmittedWhenSuperDataSet() {
         MetaRoot root = new MetaRoot("test::pkg");
 
-        MappedMetaObject baseEntity = MappedMetaObject.create("test::pkg::BaseEntity");
+        ValueMetaObject baseEntity = ValueMetaObject.create("test::pkg::BaseEntity");
         baseEntity.addMetaAttr(BooleanAttribute.create(MetaData.ATTR_IS_ABSTRACT, true));
         root.addChild(baseEntity);
 
-        MappedMetaObject product = MappedMetaObject.create("test::pkg::Product");
+        ValueMetaObject product = ValueMetaObject.create("test::pkg::Product");
         product.setSuperData(baseEntity);
         root.addChild(product);
 
@@ -251,11 +251,11 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
     public void testCanonicalSerializeEffectiveIncludesInheritedAttrs() {
         MetaRoot root = new MetaRoot("test::pkg");
 
-        MappedMetaObject base = MappedMetaObject.create("test::pkg::Base");
+        ValueMetaObject base = ValueMetaObject.create("test::pkg::Base");
         base.addMetaAttr(StringAttribute.create("baseAttr", "baseValue"));
         root.addChild(base);
 
-        MappedMetaObject child = MappedMetaObject.create("test::pkg::Child");
+        ValueMetaObject child = ValueMetaObject.create("test::pkg::Child");
         child.setSuperData(base);
         root.addChild(child);
 
@@ -274,7 +274,7 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
         // Root is "acme::core"; child object lives in "acme::commerce" (different package).
         MetaRoot root = new MetaRoot("acme::core");
 
-        MappedMetaObject product = MappedMetaObject.create("acme::commerce::Product");
+        ValueMetaObject product = ValueMetaObject.create("acme::commerce::Product");
         root.addChild(product);
 
         String json = CanonicalJsonSerializer.canonicalSerialize(root);
@@ -296,11 +296,11 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
         MetaRoot root = new MetaRoot("acme::commerce");
 
         // Base is in a DIFFERENT package from the root/Derived.
-        MappedMetaObject base = MappedMetaObject.create("other::pkg::Base");
+        ValueMetaObject base = ValueMetaObject.create("other::pkg::Base");
         base.addMetaAttr(BooleanAttribute.create(MetaData.ATTR_IS_ABSTRACT, true));
         root.addChild(base);
 
-        MappedMetaObject derived = MappedMetaObject.create("acme::commerce::Derived");
+        ValueMetaObject derived = ValueMetaObject.create("acme::commerce::Derived");
         derived.setSuperData(base);
         root.addChild(derived);
 
@@ -324,11 +324,11 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
     public void testExtendsEmittedAsShortNameWhenSamePackage() {
         MetaRoot root = new MetaRoot("test::pkg");
 
-        MappedMetaObject base = MappedMetaObject.create("test::pkg::Base");
+        ValueMetaObject base = ValueMetaObject.create("test::pkg::Base");
         base.addMetaAttr(BooleanAttribute.create(MetaData.ATTR_IS_ABSTRACT, true));
         root.addChild(base);
 
-        MappedMetaObject derived = MappedMetaObject.create("test::pkg::Derived");
+        ValueMetaObject derived = ValueMetaObject.create("test::pkg::Derived");
         derived.setSuperData(base);
         root.addChild(derived);
 
@@ -352,7 +352,7 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
     @Test
     public void testAuthoredValidatorNameEndingInDigitIsEmitted() {
         MetaRoot root = new MetaRoot("test::pkg");
-        MappedMetaObject obj = MappedMetaObject.create("test::pkg::Widget");
+        ValueMetaObject obj = ValueMetaObject.create("test::pkg::Widget");
 
         // RegexValidator subType = "regex"; name "length2" ends in digit but does NOT
         // match the expected auto-generated pattern "regex<N>".

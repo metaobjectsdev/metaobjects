@@ -2,7 +2,7 @@ package com.metaobjects.registry;
 
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.IntegerField;
-import com.metaobjects.object.pojo.PojoMetaObject;
+import com.metaobjects.object.EntityMetaObject;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.attr.BooleanAttribute;
@@ -59,7 +59,7 @@ public class UnifiedRegistrySchemaIntegrationTest {
             new StringField("testString");
             new IntegerField("testInt");
             new com.metaobjects.field.TimestampField("testTimestamp");  // Trigger TimestampField registration
-            new PojoMetaObject("testObject");
+            new EntityMetaObject("testObject");
             new StringAttribute("testStringAttr");
             new IntAttribute("testIntAttr");
         } catch (Exception e) {
@@ -110,7 +110,7 @@ public class UnifiedRegistrySchemaIntegrationTest {
         // Test that the constraint system works with the unified registry
         
         // Create a valid metadata structure
-        PojoMetaObject userObject = new PojoMetaObject("User");
+        EntityMetaObject userObject = new EntityMetaObject("User");
         StringField emailField = new StringField("email");
         BooleanAttribute requiredAttr = new BooleanAttribute("required");
         
