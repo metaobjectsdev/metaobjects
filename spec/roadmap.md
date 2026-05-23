@@ -7,10 +7,12 @@
 - **H2 — Shared conformance fixtures** (2026-05-15)
   Fixtures extracted into `fixtures/conformance/`; TS conformance runner; canonical
   serializer (fused-key form); format documented in `spec/conformance-tests.md`.
-- **C# loader + conformance** (shipped at v0.3 parity)
+- **C# full-stack target** (loader + conformance shipped; codegen/runtime in progress)
   C# Loader at `csharp/MetaObjects/` plus full conformance corpus green via
-  `csharp/MetaObjects.Conformance.Tests/` (`dotnet test`). C# codegen + runtime are out
-  of scope at this stage.
+  `csharp/MetaObjects.Conformance.Tests/` (`dotnet test`) — metadata layer fully caught
+  up (empty expected-failures ledger). C# is a first-class full-stack port: the FR-004
+  render engine (`MetaObjects.Render`) + payload-VO codegen (`MetaObjects.Codegen`) +
+  `verify` ship; the CLI, full codegen, runtime, and migrate tiers are being built out.
 - **Per-target output directories (TS codegen)** (2026-05-22)
   Each generator routes to a named output target (`{ outDir, importBase?, outputLayout?,
   dbImport? }`), so generated code lands with its runtime concern (model → database
