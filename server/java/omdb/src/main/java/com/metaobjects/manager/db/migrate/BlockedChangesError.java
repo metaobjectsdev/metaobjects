@@ -25,6 +25,7 @@ public class BlockedChangesError extends RuntimeException {
         for (Change c : blocked) {
             String key = c.sortKey();
             String locator = key.substring(key.indexOf(':') + 1);   // drop the phase prefix -> "table:detail"
+            if (locator.endsWith(":")) locator = locator.substring(0, locator.length() - 1); // table-level: no trailing detail
             sb.append("\n  - ").append(c.kind()).append(" on ").append(locator)
               .append(": pass ").append(ENABLE_FLAG.getOrDefault(c.kind(), "(no flag enables this)"));
         }

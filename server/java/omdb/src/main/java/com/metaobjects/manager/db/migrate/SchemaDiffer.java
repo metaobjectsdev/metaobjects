@@ -38,10 +38,12 @@ public final class SchemaDiffer {
                 changes.add(new Change.DropTable(a.name(), a.schema()));
             }
         }
-        // views: create when absent (origin->SQL derivation is Plan 4; here SQL is whatever the descriptor carries)
-        Set<String> liveNames = new HashSet<>(act.keySet());
+        // views: create when absent (origin->SQL derivation is Plan 4; here SQL is whatever the descriptor carries).
+        // NB: actualTableNames holds actual TABLE names only — v1 does not introspect actual views, so an
+        // expected view is treated as absent (always created) unless a table already occupies its name.
+        Set<String> actualTableNames = new HashSet<>(act.keySet());
         for (ViewDescriptor v : expected.views()) {
-            if (!liveNames.contains(v.name().toLowerCase())) changes.add(new Change.CreateView(v));
+            if (!actualTableNames.contains(v.name().toLowerCase())) changes.add(new Change.CreateView(v));
         }
 
         // NB: TS diff() relies on pass-generation order; Java adds an explicit, stable phase-sort

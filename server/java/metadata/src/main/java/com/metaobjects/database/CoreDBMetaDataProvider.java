@@ -52,7 +52,6 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
     /** Rename hint: the prior name of this object/field, so migration emits RENAME (not drop+add). */
     public static final String PREVIOUS_NAME = "previousName";
 
-
     @Override
     public String getProviderId() {
         return "database-extensions";
