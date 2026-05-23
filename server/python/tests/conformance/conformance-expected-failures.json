@@ -9,10 +9,10 @@
     "error-data-grid-bad-sort-field",
     "error-origin-bad-aggregate-fn",
     "error-origin-bad-via-path",
-    "error-prompt-template-missing-payload-ref",
-    "prompt-fragment-and-template",
-    "prompt-template-simple",
+    "error-template-prompt-missing-payload-ref",
     "subtype-entity-missing-primary-warning",
+    "template-output-and-prompt",
+    "template-prompt-simple",
     "warning-filterable-no-index"
   ]
 }
