@@ -21,10 +21,12 @@ TypeScript implementation of the MetaObjects standard.
 
 ## Getting started
 
+Bun workspace — the workspace root is the **repository root** (run `bun install` there, not here).
+
 ```bash
-pnpm install
-pnpm build
-pnpm test
+bun install                          # once, at the repo root
+bun test                             # the server suite (from this directory)
+bun run --filter '*' typecheck       # whole workspace (from the repo root)
 ```
 
 ## CLI
@@ -36,6 +38,12 @@ meta init           # scaffold a new project
 meta gen            # generate code from metadata
 meta migrate        # database migrations
 ```
+
+## Releasing
+
+Publishing these packages to npm: see [docs/RELEASING.md](../../docs/RELEASING.md) — the
+RC → smoke-test → promote procedure plus the must-know gotchas (publish with `bun publish`,
+`rm bun.lock && bun install` after every version bump, runtime imports must be `dependencies`).
 
 ## Project layout in a consumer
 

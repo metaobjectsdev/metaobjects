@@ -35,6 +35,10 @@ CLI binary: `meta`. Project config: `metaobjects.config.ts`. Project marker dire
 
 See [`spec/roadmap.md`](spec/roadmap.md) for current + planned work.
 
+## Releasing
+
+Publishing the TypeScript packages to npm: see [`docs/RELEASING.md`](docs/RELEASING.md).
+
 ## License
 
 Apache 2.0 (see [LICENSE](LICENSE)).
