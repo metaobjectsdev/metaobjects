@@ -332,7 +332,14 @@ public abstract class MetaObject extends MetaData {
     }
 
     /**
-     * Retrieves the object class of an object, or null if one is not specified
+     * Retrieves the object class of an object, or null if one is not specified.
+     *
+     * <p>Resolution order (ADR-0001):</p>
+     * <ol>
+     *   <li>{@code @object} attribute</li>
+     *   <li>Process-global {@link com.metaobjects.registry.ObjectClassRegistry} keyed by FQN</li>
+     *   <li>Name-convention: {@code pkg::Name} → {@code pkg.Name}</li>
+     * </ol>
      */
     public Class<?> getObjectClass() throws ClassNotFoundException {
 
@@ -344,6 +351,10 @@ public abstract class MetaObject extends MetaData {
 
             if (hasObjectAttr()) {
                 c = getObjectClassFromAttr();
+            }
+
+            if (c == null) {
+                c = com.metaobjects.registry.ObjectClassRegistry.global().resolve(getName());
             }
 
             if (c == null)
