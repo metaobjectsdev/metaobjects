@@ -204,3 +204,93 @@ def test_invalid_passthrough_from_unknown_entity() -> None:
     assert ErrorCode.ERR_INVALID_ORIGIN in codes, (
         f"Expected ERR_INVALID_ORIGIN in {codes}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Tests: missing required origin attrs emit ERR_INVALID_ORIGIN (TS parity)
+# ---------------------------------------------------------------------------
+# The TS reference emits ERR_INVALID_ORIGIN for a *missing* required attr
+# IN ADDITION to the attr-schema pass's ERR_MISSING_REQUIRED_ATTR.
+
+
+def _build_aggregate_tree_missing_attrs() -> MetaData:
+    """Build a minimal tree with an origin.aggregate node that has NO @of or @via."""
+    from metaobjects.meta.core.field.meta_field import MetaField
+    from metaobjects.meta.core.object.meta_object import MetaObject
+
+    root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "")
+
+    program = MetaObject(TYPE_OBJECT, "entity", "Program")
+    prog_id = MetaField(TYPE_FIELD, "long", "id")
+    program.add_child(prog_id)
+    root.add_child(program)
+
+    summary = MetaObject(TYPE_OBJECT, "entity", "ProgramSummary")
+    field = MetaField(TYPE_FIELD, "int", "weekCount")
+    # origin.aggregate with neither @of nor @via set
+    origin = MetaData(TYPE_ORIGIN, "aggregate", "")
+    field.add_child(origin)
+    summary.add_child(field)
+    root.add_child(summary)
+
+    return root
+
+
+def _build_passthrough_tree_missing_from() -> MetaData:
+    """Build a minimal tree with an origin.passthrough node that has NO @from."""
+    from metaobjects.meta.core.field.meta_field import MetaField
+    from metaobjects.meta.core.object.meta_object import MetaObject
+
+    root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "")
+
+    program = MetaObject(TYPE_OBJECT, "entity", "Program")
+    prog_id = MetaField(TYPE_FIELD, "long", "id")
+    program.add_child(prog_id)
+    root.add_child(program)
+
+    summary = MetaObject(TYPE_OBJECT, "entity", "ProgramSummary")
+    field = MetaField(TYPE_FIELD, "string", "displayTitle")
+    # origin.passthrough with no @from
+    origin = MetaData(TYPE_ORIGIN, "passthrough", "")
+    field.add_child(origin)
+    summary.add_child(field)
+    root.add_child(summary)
+
+    return root
+
+
+def test_aggregate_missing_of_emits_err_invalid_origin() -> None:
+    """An origin.aggregate with no @of must emit ERR_INVALID_ORIGIN.
+
+    ERR_MISSING_REQUIRED_ATTR may also be present (from the attr-schema pass);
+    this test only asserts that ERR_INVALID_ORIGIN is included too (TS parity).
+    """
+    root = _build_aggregate_tree_missing_attrs()
+    errors, _ = _errors_and_warnings(root)
+    codes = [e.code for e in errors]
+    assert ErrorCode.ERR_INVALID_ORIGIN in codes, (
+        f"Expected ERR_INVALID_ORIGIN for missing @of; got codes: {codes}"
+    )
+
+
+def test_aggregate_missing_via_emits_err_invalid_origin() -> None:
+    """An origin.aggregate with no @via must emit ERR_INVALID_ORIGIN."""
+    root = _build_aggregate_tree_missing_attrs()
+    errors, _ = _errors_and_warnings(root)
+    codes = [e.code for e in errors]
+    # Both @of and @via are missing — ERR_INVALID_ORIGIN should appear at least once
+    invalid_origin_errors = [e for e in errors if e.code == ErrorCode.ERR_INVALID_ORIGIN]
+    assert len(invalid_origin_errors) >= 2, (
+        f"Expected at least 2 ERR_INVALID_ORIGIN errors (one for @of, one for @via); "
+        f"got: {invalid_origin_errors}"
+    )
+
+
+def test_passthrough_missing_from_emits_err_invalid_origin() -> None:
+    """An origin.passthrough with no @from must emit ERR_INVALID_ORIGIN."""
+    root = _build_passthrough_tree_missing_from()
+    errors, _ = _errors_and_warnings(root)
+    codes = [e.code for e in errors]
+    assert ErrorCode.ERR_INVALID_ORIGIN in codes, (
+        f"Expected ERR_INVALID_ORIGIN for missing @from; got codes: {codes}"
+    )
