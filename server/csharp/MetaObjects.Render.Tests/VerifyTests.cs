@@ -122,6 +122,54 @@ public class VerifyTests
     [Fact] public void Required_slot_via_section_counts_as_used() =>
         Assert.Empty(Verify.Check("{{#posts}}{{title}}{{/posts}}", AuthorBrief, new VerifyOptions { RequiredSlots = ["posts"] }));
 
+    // --- required output tags (@requiredTags) ---
+
+    private static readonly IReadOnlyList<PayloadField> Content = [new PayloadField("content")];
+
+    [Fact] public void No_required_tags_no_check() =>
+        Assert.Empty(Verify.Check("plain text, no tags", Content));
+
+    [Fact] public void Empty_required_tags_checks_nothing() =>
+        Assert.Empty(Verify.Check("plain text", Content, new VerifyOptions { RequiredTags = [] }));
+
+    [Fact] public void Tag_present_as_open_and_close_no_drift() =>
+        Assert.Empty(Verify.Check("<answer>{{content}}</answer>", Content, new VerifyOptions { RequiredTags = ["answer"] }));
+
+    [Fact] public void Opening_tag_may_carry_attributes() =>
+        Assert.Empty(Verify.Check("<answer tone=\"warm\">{{content}}</answer>", Content, new VerifyOptions { RequiredTags = ["answer"] }));
+
+    [Fact] public void Missing_open_tag_is_drift() =>
+        Assert.Equal(new VerifyError(Verify.ERR_OUTPUT_TAG_MISSING, "answer"),
+            Assert.Single(Verify.Check("{{content}}</answer>", Content, new VerifyOptions { RequiredTags = ["answer"] })));
+
+    [Fact] public void Missing_close_tag_is_drift() =>
+        Assert.Equal(new VerifyError(Verify.ERR_OUTPUT_TAG_MISSING, "answer"),
+            Assert.Single(Verify.Check("<answer>{{content}}", Content, new VerifyOptions { RequiredTags = ["answer"] })));
+
+    [Fact] public void Self_closing_tag_does_not_satisfy() =>
+        Assert.Equal(new VerifyError(Verify.ERR_OUTPUT_TAG_MISSING, "answer"),
+            Assert.Single(Verify.Check("<answer/>", Content, new VerifyOptions { RequiredTags = ["answer"] })));
+
+    [Fact] public void Open_tag_prefix_does_not_overmatch_longer_name() =>
+        Assert.Equal(new VerifyError(Verify.ERR_OUTPUT_TAG_MISSING, "answer"),
+            Assert.Single(Verify.Check("<answers>{{content}}</answers>", Content, new VerifyOptions { RequiredTags = ["answer"] })));
+
+    [Fact] public void Each_missing_tag_reported_independently() =>
+        Assert.Equal(new VerifyError(Verify.ERR_OUTPUT_TAG_MISSING, "reasoning"),
+            Assert.Single(Verify.Check("<answer>{{content}}</answer>", Content, new VerifyOptions { RequiredTags = ["answer", "reasoning"] })));
+
+    [Fact] public void Tag_supplied_by_resolved_partial_counts_as_present() =>
+        Assert.Empty(Verify.Check("{{> g/ans}}", Content,
+            new VerifyOptions { Provider = P(new() { ["g/ans"] = "<answer>{{content}}</answer>" }), RequiredTags = ["answer"] }));
+
+    [Fact] public void Tag_straddling_body_and_partial_boundary_is_satisfied() =>
+        Assert.Empty(Verify.Check("<answer>{{> g/close}}", Content,
+            new VerifyOptions { Provider = P(new() { ["g/close"] = "{{content}}</answer>" }), RequiredTags = ["answer"] }));
+
+    [Fact] public void Without_provider_tag_only_in_partial_is_missing() =>
+        Assert.Equal(new VerifyError(Verify.ERR_OUTPUT_TAG_MISSING, "answer"),
+            Assert.Single(Verify.Check("{{> g/ans}}", Content, new VerifyOptions { RequiredTags = ["answer"] })));
+
     // --- render verify-on-resolve guard (render.test.ts) ---
 
     private static readonly IReadOnlyList<PayloadField> Author =

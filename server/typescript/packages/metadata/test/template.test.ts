@@ -49,6 +49,44 @@ describe("template.* metatype", () => {
     expect(errors).toEqual([]);
   });
 
+  test("@requiredTags is accepted on both template.output and template.prompt", async () => {
+    const { errors } = await load([
+      { "object.value": { name: "P", children: [{ "field.string": { name: "content" } }] } },
+      {
+        "template.output": {
+          name: "report",
+          "@payloadRef": "P",
+          "@textRef": "out/report",
+          "@requiredTags": ["answer"],
+        },
+      },
+      {
+        "template.prompt": {
+          name: "strategy",
+          "@payloadRef": "P",
+          "@textRef": "prompt/strategy",
+          "@requiredTags": ["answer", "reasoning"],
+        },
+      },
+    ]);
+    expect(errors).toEqual([]);
+  });
+
+  test("@requiredTags declared as a string array rejects a non-array value", async () => {
+    const { errors } = await load([
+      { "object.value": { name: "P", children: [{ "field.string": { name: "content" } }] } },
+      {
+        "template.output": {
+          name: "report",
+          "@payloadRef": "P",
+          "@textRef": "out/report",
+          "@requiredTags": 42,
+        },
+      },
+    ]);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
   test("round-trips template nodes through the canonical serializer", async () => {
     const { root } = await load([
       { "template.prompt": { name: "strategy", "@payloadRef": "P", "@textRef": "prompt/strategy", "@format": "xml" } },

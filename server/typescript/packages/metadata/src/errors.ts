@@ -9,10 +9,11 @@
 // Cross-language conformance consumers should not expect these codes from the TS adapter.
 //
 // FR-004 build-time `verify` codes (ERR_VAR_NOT_ON_PAYLOAD, ERR_PARTIAL_UNRESOLVED,
-// ERR_REQUIRED_SLOT_UNUSED) are emitted by `meta verify` / the zero-core-dependency
-// @metaobjectsdev/render engine — NOT by the loader. They are registered here (and in
-// fixtures/conformance/ERROR-CODES.json) only to keep the code vocabulary single-sourced
-// across languages; render re-declares them locally to avoid importing this package.
+// ERR_REQUIRED_SLOT_UNUSED, ERR_OUTPUT_TAG_MISSING) are emitted by `meta verify` / the
+// zero-core-dependency @metaobjectsdev/render engine — NOT by the loader. They are
+// registered here (and in fixtures/conformance/ERROR-CODES.json) only to keep the code
+// vocabulary single-sourced across languages; render re-declares them locally to avoid
+// importing this package.
 export const ERROR_CODES = [
   "ERR_TOP_LEVEL_NOT_OBJECT",
   "ERR_UNKNOWN_TYPE",
@@ -38,6 +39,7 @@ export const ERROR_CODES = [
   "ERR_VAR_NOT_ON_PAYLOAD",
   "ERR_PARTIAL_UNRESOLVED",
   "ERR_REQUIRED_SLOT_UNUSED",
+  "ERR_OUTPUT_TAG_MISSING",
   "ERR_BAD_ATTR_FILTER",
   "ERR_STORAGE_FLATTENED_ARRAY",
   "ERR_STORAGE_WITHOUT_OBJECT_REF",

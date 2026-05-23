@@ -9,7 +9,7 @@ namespace MetaObjects.Render.Tests;
 ///   payload.json         the payload FIELD-TREE (PayloadField[], declared shape — not render data)
 ///   template.mustache    the template text whose vars are drift-checked
 ///   partials/*.mustache  optional partial bodies, referenced as `partials/&lt;name&gt;`
-///   options.json         optional { "requiredSlots"?: string[], "provider"?: "with" | "without" }
+///   options.json         optional { "requiredSlots"?, "requiredTags"?: string[], "provider"?: "with" | "without" }
 ///   expected-drift.json  array of { "code", "path" } findings (compared as a sorted multiset)
 /// The same (payload-tree + template + options) MUST yield the same drift set in TS and C#.
 /// Mirrors typescript/packages/render/test/verify-conformance.test.ts and the sibling
@@ -17,13 +17,14 @@ namespace MetaObjects.Render.Tests;
 /// </summary>
 public class VerifyConformanceTests
 {
-    // The three stable verify codes a fixture may legitimately expect
+    // The stable verify codes a fixture may legitimately expect
     // (documented in fixtures/conformance/ERROR-CODES.json). Anything else is a typo.
     private static readonly HashSet<string> VerifyCodes = new(StringComparer.Ordinal)
     {
         Verify.ERR_VAR_NOT_ON_PAYLOAD,
         Verify.ERR_PARTIAL_UNRESOLVED,
         Verify.ERR_REQUIRED_SLOT_UNUSED,
+        Verify.ERR_OUTPUT_TAG_MISSING,
     };
 
     private static string CorpusRoot()
@@ -87,8 +88,9 @@ public class VerifyConformanceTests
             File.ReadAllText(Path.Combine(dir, "payload.json"))).RootElement);
         var template = File.ReadAllText(Path.Combine(dir, "template.mustache"));
 
-        // options.json (optional): requiredSlots + provider toggle.
+        // options.json (optional): requiredSlots + requiredTags + provider toggle.
         string[]? requiredSlots = null;
+        string[]? requiredTags = null;
         string? providerMode = null;
         var optionsPath = Path.Combine(dir, "options.json");
         if (File.Exists(optionsPath))
@@ -96,6 +98,8 @@ public class VerifyConformanceTests
             var opts = JsonDocument.Parse(File.ReadAllText(optionsPath)).RootElement;
             if (opts.TryGetProperty("requiredSlots", out var rs) && rs.ValueKind == JsonValueKind.Array)
                 requiredSlots = rs.EnumerateArray().Select(e => e.GetString()!).ToArray();
+            if (opts.TryGetProperty("requiredTags", out var rt) && rt.ValueKind == JsonValueKind.Array)
+                requiredTags = rt.EnumerateArray().Select(e => e.GetString()!).ToArray();
             if (opts.TryGetProperty("provider", out var p) && p.ValueKind == JsonValueKind.String)
                 providerMode = p.GetString();
         }
@@ -115,7 +119,7 @@ public class VerifyConformanceTests
         foreach (var e in expected)
             Assert.Contains(e.Code, VerifyCodes);
 
-        var options = new VerifyOptions { Provider = provider, RequiredSlots = requiredSlots };
+        var options = new VerifyOptions { Provider = provider, RequiredSlots = requiredSlots, RequiredTags = requiredTags };
         var actual = Verify.Check(template, fields, options);
 
         Assert.Equal(Sorted(expected), Sorted(actual));

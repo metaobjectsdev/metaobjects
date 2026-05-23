@@ -37,6 +37,12 @@ export interface RenderOptions {
    * variant throws — instead of silently rendering nothing.
    */
   verify?: PayloadField[];
+  /**
+   * Output budget in characters. Rendered length is data-dependent (only knowable
+   * after rendering), so this is a render-time guard: a result longer than
+   * `maxChars` throws. (Token budgets are out of scope — model-specific tokenizer.)
+   */
+  maxChars?: number;
 }
 
 /** Deterministic, logic-less render: (template + payload + provider) → string. */
@@ -60,9 +66,15 @@ export function render(o: RenderOptions): string {
 
   const prev = Mustache.escape;
   Mustache.escape = (v: unknown) => escaper(typeof v === "string" ? v : String(v));
+  let result: string;
   try {
-    return Mustache.render(expanded, o.payload, {});
+    result = Mustache.render(expanded, o.payload, {});
   } finally {
     Mustache.escape = prev;
   }
+
+  if (o.maxChars !== undefined && result.length > o.maxChars) {
+    throw new Error(`render exceeded maxChars budget: ${result.length} > ${o.maxChars}`);
+  }
+  return result;
 }

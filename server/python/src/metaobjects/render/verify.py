@@ -29,8 +29,14 @@ ERR_VAR_NOT_ON_PAYLOAD = "ERR_VAR_NOT_ON_PAYLOAD"
 ERR_PARTIAL_UNRESOLVED = "ERR_PARTIAL_UNRESOLVED"
 #: A declared @requiredSlots slot is never referenced by the template (warning).
 ERR_REQUIRED_SLOT_UNUSED = "ERR_REQUIRED_SLOT_UNUSED"
+#: A declared @requiredTags output tag is absent from the template text.
+ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING"
 
 _MAX_DEPTH = 32
+#: An opening tag is ``<tag`` immediately followed by ``>`` or XML whitespace, so
+#: attributes are allowed (``<answer foo="1">``) but a longer name is not over-matched
+#: (``<answers>`` does not satisfy ``answer``).
+_TAG_OPEN_DELIMS = frozenset((">", " ", "\t", "\n", "\r"))
 
 
 @dataclass(frozen=True)
@@ -160,12 +166,32 @@ def _resolve(stack: list[list[PayloadField]], path: str) -> PayloadField | None:
     return current
 
 
+def _has_open_tag(text: str, tag: str) -> bool:
+    """Whether ``text`` contains an opening form of ``tag`` (see ``_TAG_OPEN_DELIMS``)."""
+    needle = f"<{tag}"
+    i = text.find(needle)
+    while i != -1:
+        after = i + len(needle)
+        if after < len(text) and text[after] in _TAG_OPEN_DELIMS:
+            return True
+        i = text.find(needle, i + 1)
+    return False
+
+
+def _has_close_tag(text: str, tag: str) -> bool:
+    """A closing tag is the exact literal ``</tag>``. A self-closing ``<tag/>`` has no
+    such form, so it never satisfies a required tag — these wrap content a parser reads.
+    """
+    return f"</{tag}>" in text
+
+
 def verify(
     template_text: str,
     fields: list[PayloadField],
     *,
     provider: Provider | None = None,
     required_slots: list[str] | None = None,
+    required_tags: list[str] | None = None,
 ) -> list[VerifyError]:
     """Walk a Mustache template's tokens against a payload field tree, returning a
     list of drift findings. Context-sensitive: a section ``{{#posts}}…{{/posts}}``
@@ -174,6 +200,10 @@ def verify(
     errors: list[VerifyError] = []
     root = fields
     referenced_at_root: set[str] = set()
+    # The static text the output-tag check scans: the body plus every
+    # provider-resolved partial body, collected during the single walk below
+    # (no second resolution pass).
+    static_texts: list[str] = [template_text]
 
     def walk(
         tokens: list[_Token], stack: list[list[PayloadField]], seen: list[str]
@@ -214,6 +244,7 @@ def verify(
                 if body is None:
                     errors.append(VerifyError(ERR_PARTIAL_UNRESOLVED, tok.value))
                     continue
+                static_texts.append(body)
                 walk(_tokenize(body), stack, [*seen, tok.value])
 
     walk(_tokenize(template_text), [root], [])
@@ -221,5 +252,15 @@ def verify(
     for slot in required_slots or []:
         if slot not in referenced_at_root:
             errors.append(VerifyError(ERR_REQUIRED_SLOT_UNUSED, slot))
+
+    if required_tags:
+        # Scan body + resolved partials as one joined string: the open and close
+        # forms are located independently, so a tag may legitimately straddle the
+        # boundary. The "\n" separator only blocks a spurious tag spliced together
+        # from two fragments (a real tag is always contiguous within one body).
+        haystack = "\n".join(static_texts)
+        for tag in required_tags:
+            if not _has_open_tag(haystack, tag) or not _has_close_tag(haystack, tag):
+                errors.append(VerifyError(ERR_OUTPUT_TAG_MISSING, tag))
 
     return errors

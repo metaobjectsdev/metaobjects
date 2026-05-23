@@ -30,6 +30,15 @@ public static class VerifyCommand
         public bool Ok => LoadErrors.Count == 0 && Errors.Count == 0 && UnresolvedText.Count == 0;
     }
 
+    /// <summary>Coerce a string-array attr (array, or a single string) into a string list.</summary>
+    private static IReadOnlyList<string> AsStringList(object? attr) => attr switch
+    {
+        IReadOnlyList<string> ss => ss.ToList(),
+        IReadOnlyList<object?> os => os.OfType<string>().ToList(),
+        string s => [s],
+        _ => [],
+    };
+
     public static Outcome Run(string metadataDir, string templatesRoot)
     {
         var load = new FileMetaDataLoader().LoadDirectory(metadataDir);
@@ -55,15 +64,15 @@ public static class VerifyCommand
             }
 
             var fields = PayloadCodegen.BuildPayloadFieldTree(load.Root, payloadRef);
-            IReadOnlyList<string> requiredSlots = tmpl.OwnAttr(TEMPLATE_ATTR_REQUIRED_SLOTS) switch
-            {
-                IReadOnlyList<string> ss => ss.ToList(),
-                IReadOnlyList<object?> os => os.OfType<string>().ToList(),
-                string s => [s],
-                _ => [],
-            };
+            var requiredSlots = AsStringList(tmpl.OwnAttr(TEMPLATE_ATTR_REQUIRED_SLOTS));
+            var requiredTags = AsStringList(tmpl.OwnAttr(TEMPLATE_ATTR_REQUIRED_TAGS));
 
-            var verifyOptions = new VerifyOptions { Provider = provider, RequiredSlots = requiredSlots };
+            var verifyOptions = new VerifyOptions
+            {
+                Provider = provider,
+                RequiredSlots = requiredSlots,
+                RequiredTags = requiredTags,
+            };
             foreach (var e in Verify.Check(text, fields, verifyOptions))
             {
                 var drift = new Drift(tmpl.Name, e.Code, e.Path);

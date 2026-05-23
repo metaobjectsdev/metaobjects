@@ -18,6 +18,8 @@ export const ERR_VAR_NOT_ON_PAYLOAD = "ERR_VAR_NOT_ON_PAYLOAD";
 export const ERR_PARTIAL_UNRESOLVED = "ERR_PARTIAL_UNRESOLVED";
 /** A declared @requiredSlots slot is never referenced by the template (warning). */
 export const ERR_REQUIRED_SLOT_UNUSED = "ERR_REQUIRED_SLOT_UNUSED";
+/** A declared @requiredTags output tag is absent from the template text. */
+export const ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING";
 
 /**
  * A plain field-tree node mirroring an `object.value` view-object's field walk.
@@ -40,6 +42,12 @@ export interface VerifyOptions {
   provider?: Provider;
   /** Slots that MUST be referenced; an unused one is reported as a warning. */
   requiredSlots?: string[];
+  /**
+   * Output tags the rendered text is contracted to contain. Each must appear as
+   * both an opening form (`<tag` followed by `>` or whitespace, so attributes are
+   * allowed) and a closing `</tag>` — across the body AND resolved partials.
+   */
+  requiredTags?: string[];
 }
 
 const MAX_DEPTH = 32;
@@ -77,6 +85,26 @@ function parse(text: string): Token[] {
   return Mustache.parse(text) as unknown as Token[];
 }
 
+// An opening tag is `<tag` immediately followed by `>` or XML whitespace, so
+// attributes are allowed (`<answer foo="1">`) but a longer name is not over-matched
+// (`<answers>` does not satisfy `answer`).
+const TAG_OPEN_DELIMS = new Set([">", " ", "\t", "\n", "\r"]);
+
+function hasOpenTag(text: string, tag: string): boolean {
+  const needle = `<${tag}`;
+  for (let i = text.indexOf(needle); i !== -1; i = text.indexOf(needle, i + 1)) {
+    const next = text[i + needle.length];
+    if (next !== undefined && TAG_OPEN_DELIMS.has(next)) return true;
+  }
+  return false;
+}
+
+// A closing tag is the exact literal `</tag>`. A self-closing `<tag/>` has no such
+// form, so it never satisfies a required tag — these wrap content a parser reads.
+function hasCloseTag(text: string, tag: string): boolean {
+  return text.includes(`</${tag}>`);
+}
+
 /**
  * Walk a Mustache template's tokens against a payload field tree, returning a
  * list of drift errors. Context-sensitive: a section `{{#posts}}…{{/posts}}`
@@ -91,6 +119,10 @@ export function verify(
   const provider = opts?.provider;
   const root = fields;
   const referencedAtRoot = new Set<string>();
+  // The static text the output-tag check scans: the body plus every
+  // provider-resolved partial body, collected during the single walk below
+  // (no second resolution pass).
+  const staticTexts: string[] = [templateText];
 
   function walk(tokens: Token[], stack: Stack, seen: readonly string[]): void {
     const atRoot = stack.length === 1 && stack[0] === root;
@@ -138,6 +170,7 @@ export function verify(
             errors.push({ code: ERR_PARTIAL_UNRESOLVED, path: value });
             break;
           }
+          staticTexts.push(text);
           walk(parse(text), stack, [...seen, value]);
           break;
         }
@@ -151,6 +184,20 @@ export function verify(
 
   for (const slot of opts?.requiredSlots ?? []) {
     if (!referencedAtRoot.has(slot)) errors.push({ code: ERR_REQUIRED_SLOT_UNUSED, path: slot });
+  }
+
+  const requiredTags = opts?.requiredTags ?? [];
+  if (requiredTags.length > 0) {
+    // Scan body + resolved partials as one joined string: the open and close
+    // forms are located independently, so a tag may legitimately straddle the
+    // boundary. The "\n" separator only blocks a spurious tag spliced together
+    // from two fragments (a real tag is always contiguous within one body).
+    const haystack = staticTexts.join("\n");
+    for (const tag of requiredTags) {
+      if (!hasOpenTag(haystack, tag) || !hasCloseTag(haystack, tag)) {
+        errors.push({ code: ERR_OUTPUT_TAG_MISSING, path: tag });
+      }
+    }
   }
 
   return errors;
