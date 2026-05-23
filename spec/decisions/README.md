@@ -23,3 +23,4 @@ Write one when a decision is **cross-cutting** (affects more than one language p
 - [ADR-0003 — Metamodel constants colocation](ADR-0003-metamodel-constants-colocation.md) — *Accepted*
 - [ADR-0004 — Provider-based type registration & composition](ADR-0004-provider-based-type-registration.md) — *Accepted*
 - [ADR-0005 — Object representation: entity/value semantics + binding-resolved representation (OO ports)](ADR-0005-object-representation-binding.md) — *Accepted*
+- [ADR-0006 — Reserved structural keywords vs `@`-prefixed inline attributes](ADR-0006-reserved-keywords-vs-inline-attributes.md) — *Proposed*

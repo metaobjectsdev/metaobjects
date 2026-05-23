@@ -46,6 +46,12 @@ Within a node body, keys appear in this exact order in the canonical form:
 The reserved structural keys are exactly those listed above. Everything else inside a body
 is either an `@`-prefixed attribute or invalid.
 
+The two namespaces are **disjoint** (ADR-0006): reserved structural keywords are *always* bare
+and `@` is *exclusively* the inline-attribute namespace. Applying the `@` sigil to a reserved
+keyword — e.g. `@isArray`, `@abstract` — is a hard load error (`ERR_RESERVED_ATTR`) in every
+language port. Array-ness in particular is structural: a field is a collection iff its bare
+`isArray` keyword is `true`; it is never expressed as an attribute.
+
 ## Package + file organization
 
 Multiple objects per file when they share a domain. Projections live inline with their
