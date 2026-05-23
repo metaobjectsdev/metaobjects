@@ -5,6 +5,7 @@
       {
         "field.enum": {
           "name": "Status",
+          "package": "acme",
           "abstract": true,
           "@values": [
             "DRAFT",
