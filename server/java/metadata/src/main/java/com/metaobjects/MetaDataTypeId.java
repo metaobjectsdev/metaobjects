@@ -39,9 +39,8 @@ public record MetaDataTypeId(String type, String subType) implements Serializabl
             throw new IllegalArgumentException("SubType cannot be empty");
         }
         
-        // Normalize to lowercase for consistency
-        type = type.trim().toLowerCase();
-        subType = subType.trim().toLowerCase();
+        type = type.trim();
+        subType = subType.trim();
     }
     
     /**
@@ -65,8 +64,8 @@ public record MetaDataTypeId(String type, String subType) implements Serializabl
         String[] parts = pattern.split("\\.");
         if (parts.length != 2) return false;
         
-        String patternType = parts[0].trim().toLowerCase();
-        String patternSubType = parts[1].trim().toLowerCase();
+        String patternType = parts[0].trim();
+        String patternSubType = parts[1].trim();
         
         boolean typeMatches = "*".equals(patternType) || type.equals(patternType);
         boolean subTypeMatches = "*".equals(patternSubType) || subType.equals(patternSubType);
@@ -101,7 +100,7 @@ public record MetaDataTypeId(String type, String subType) implements Serializabl
         Objects.requireNonNull(type, "Type cannot be null");
         Objects.requireNonNull(subType, "SubType cannot be null");
         
-        return new MetaDataTypeId(type.trim().toLowerCase(), subType.trim().toLowerCase());
+        return new MetaDataTypeId(type.trim(), subType.trim());
     }
     
     /**
