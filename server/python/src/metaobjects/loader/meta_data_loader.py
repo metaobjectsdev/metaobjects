@@ -14,6 +14,7 @@ from ..provider import Provider, compose_registry
 from ..shared.base_types import SUBTYPE_ROOT, TYPE_METADATA
 from ..super_resolve import resolve_supers
 from .merge import merge_roots
+from .validation_passes import run_validations
 
 
 @dataclass
@@ -45,5 +46,6 @@ def load_directory(input_dir: str, providers: list[Provider] | None = None) -> L
         result.root = merge_roots(roots, result.errors)
         resolve_supers(result.root, result.errors)
 
+    run_validations(result.root, registry, result.errors, result.warnings)
     result.root.freeze()
     return result

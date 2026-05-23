@@ -6,14 +6,19 @@ from .attr_class_map import attr_class_for
 from .meta.core.attr import meta_attr as _attr  # noqa: F401
 from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_FILTER,
+    ATTR_SUBTYPE_INT,
+    ATTR_SUBTYPE_STRING,
     ATTR_SUBTYPE_STRINGARRAY,
     ATTR_SUBTYPES,
 )
 from .meta.core.field import field_constants as fc
 from .meta.core.field.meta_field import MetaField
 from .meta.core.identity.identity_constants import (
+    GENERATION_VALUES,
     IDENTITY_ATTR_FIELDS,
-    IDENTITY_SUBTYPES,
+    IDENTITY_ATTR_GENERATION,
+    IDENTITY_SUBTYPE_PRIMARY,
+    IDENTITY_SUBTYPE_SECONDARY,
 )
 from .meta.core.identity.meta_identity import MetaIdentity
 from .meta.core.object.meta_object import MetaObject
@@ -22,11 +27,21 @@ from .meta.core.relationship.meta_relationship import MetaRelationship
 from .meta.core.relationship.relationship_constants import RELATIONSHIP_SUBTYPES
 from .meta.meta_root import MetaRoot
 from .meta.persistence.origin.meta_origin import MetaOrigin
-from .meta.persistence.origin.origin_constants import ORIGIN_SUBTYPES
+from .meta.persistence.origin.origin_constants import (
+    ORIGIN_ATTR_AGG,
+    ORIGIN_ATTR_FROM,
+    ORIGIN_ATTR_OF,
+    ORIGIN_ATTR_VIA,
+    ORIGIN_SUBTYPE_AGGREGATE,
+    ORIGIN_SUBTYPE_PASSTHROUGH,
+)
 from .meta.persistence.source.meta_source import MetaSource
 from .meta.persistence.source.source_constants import SOURCE_SUBTYPES
 from .meta.presentation.layout.layout_constants import (
     LAYOUT_ATTR_COLUMNS,
+    LAYOUT_ATTR_DEFAULT_SORT_FIELD,
+    LAYOUT_ATTR_DEFAULT_SORT_ORDER,
+    LAYOUT_ATTR_PAGE_SIZE,
     LAYOUT_SUBTYPES,
     LAYOUT_SUBTYPE_DATA_GRID,
 )
@@ -122,14 +137,34 @@ _register_subtypes(
     factory=lambda t, s, n: attr_class_for(s)(t, s, n),
 )
 
-# identity.* (primary/secondary); @fields is a required stringArray
-_register_subtypes(
-    core_provider,
-    TYPE_IDENTITY,
-    IDENTITY_SUBTYPES,
-    factory=MetaIdentity,
-    attrs=[AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRINGARRAY, required=True)],
-    child_rules=[ChildRule(TYPE_ATTR, "*")],
+# identity.primary — @fields required stringArray; @generation optional with allowed values
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_IDENTITY,
+        sub_type=IDENTITY_SUBTYPE_PRIMARY,
+        factory=MetaIdentity,
+        attrs=[
+            AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRINGARRAY, required=True),
+            AttrSchema(
+                name=IDENTITY_ATTR_GENERATION,
+                value_type=ATTR_SUBTYPE_STRING,
+                required=False,
+                allowed_values=GENERATION_VALUES,
+            ),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+
+# identity.secondary — @fields required stringArray
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_IDENTITY,
+        sub_type=IDENTITY_SUBTYPE_SECONDARY,
+        factory=MetaIdentity,
+        attrs=[AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRINGARRAY, required=True)],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
 )
 
 # relationship.* (base, association, aggregation, composition)
@@ -150,13 +185,49 @@ _register_subtypes(
     child_rules=[ChildRule(TYPE_ATTR, "*")],
 )
 
-# origin.* (base, passthrough, aggregate); @from/@via/@agg/@of flow through as base attrs
-_register_subtypes(
-    core_provider,
-    TYPE_ORIGIN,
-    ORIGIN_SUBTYPES,
-    factory=MetaOrigin,
-    child_rules=[ChildRule(TYPE_ATTR, "*")],
+# origin.base — no schema (pass-through container)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_ORIGIN,
+        sub_type=SUBTYPE_BASE,
+        factory=MetaOrigin,
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+
+# origin.passthrough — @from required, @via optional
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_ORIGIN,
+        sub_type=ORIGIN_SUBTYPE_PASSTHROUGH,
+        factory=MetaOrigin,
+        attrs=[
+            AttrSchema(name=ORIGIN_ATTR_FROM, value_type=ATTR_SUBTYPE_STRING, required=True),
+            AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=False),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+
+# origin.aggregate — @agg, @of, @via all required; @agg has allowed values
+_AGG_ALLOWED = ("count", "sum", "avg", "min", "max")
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_ORIGIN,
+        sub_type=ORIGIN_SUBTYPE_AGGREGATE,
+        factory=MetaOrigin,
+        attrs=[
+            AttrSchema(
+                name=ORIGIN_ATTR_AGG,
+                value_type=ATTR_SUBTYPE_STRING,
+                required=True,
+                allowed_values=_AGG_ALLOWED,
+            ),
+            AttrSchema(name=ORIGIN_ATTR_OF, value_type=ATTR_SUBTYPE_STRING, required=True),
+            AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=True),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
 )
 
 # view.* (base, text, textarea, date, currency); @locale flows through as a base attr
@@ -172,6 +243,13 @@ _register_subtypes(
 # @filter is a FilterAttr — shorthand values desugar to op-objects
 _layout_datagrid_attrs = [
     AttrSchema(name=LAYOUT_ATTR_COLUMNS, value_type=ATTR_SUBTYPE_STRINGARRAY),
+    AttrSchema(name=LAYOUT_ATTR_DEFAULT_SORT_FIELD, value_type=ATTR_SUBTYPE_STRING),
+    AttrSchema(
+        name=LAYOUT_ATTR_DEFAULT_SORT_ORDER,
+        value_type=ATTR_SUBTYPE_STRING,
+        allowed_values=("asc", "desc"),
+    ),
+    AttrSchema(name=LAYOUT_ATTR_PAGE_SIZE, value_type=ATTR_SUBTYPE_INT),
     AttrSchema(name="filter", value_type=ATTR_SUBTYPE_FILTER),
 ]
 for _sub in LAYOUT_SUBTYPES:
