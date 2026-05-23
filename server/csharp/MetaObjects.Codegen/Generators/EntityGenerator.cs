@@ -7,6 +7,8 @@
 // @required + primary-identity membership. Object-typed fields on entities become
 // owned-type navigation properties (the column mapping — flattened vs. jsonb — is
 // configured in the DbContext); the referenced value object is emitted as a POCO.
+// Enum-typed fields emit a nested C# enum + a property typed by it; EF Core
+// HasConversion<string>() is wired in the DbContext.
 // Object-typed fields on read-only projections (collection origins) are not mapped
 // here — that is a separate projection-materialization concern.
 
@@ -73,13 +75,28 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine($"public class {className}");
         sb.AppendLine("{");
 
-        // Members in declared order: scalar columns + (entities only) owned-type navs.
+        // Nested enum declarations (before the class properties, as C# enum members
+        // must be declared before they are referenced by property types).
+        var enumDecls = new List<string>();
+        foreach (var field in entity.Fields())
+        {
+            if (field.SubType == FIELD_SUBTYPE_ENUM)
+            {
+                if (EmitNestedEnum(entity, field) is { } decl) enumDecls.Add(decl);
+            }
+        }
+
+        // Members in declared order: scalar columns + enum-typed props + (entities only) owned-type navs.
         var members = new List<string>();
         foreach (var field in entity.Fields())
         {
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
             {
                 members.Add(ScalarProperty(entity, field, pkFields, withAttributes: true));
+            }
+            else if (field.SubType == FIELD_SUBTYPE_ENUM)
+            {
+                members.Add(EnumProperty(entity, field, pkFields));
             }
             else if (field.SubType == FIELD_SUBTYPE_OBJECT)
             {
@@ -94,6 +111,11 @@ public sealed class EntityGenerator : IGenerator
             }
         }
 
+        if (enumDecls.Count > 0)
+        {
+            sb.Append(string.Join("\n", enumDecls));
+            sb.AppendLine();
+        }
         sb.Append(string.Join("\n", members));
         sb.AppendLine();
         sb.AppendLine("}");
@@ -117,19 +139,59 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine($"public class {className}");
         sb.AppendLine("{");
 
+        var enumDeclsVo = new List<string>();
+        foreach (var field in vo.Fields())
+        {
+            if (field.SubType == FIELD_SUBTYPE_ENUM)
+            {
+                if (EmitNestedEnum(vo, field) is { } decl) enumDeclsVo.Add(decl);
+            }
+        }
+
         var members = new List<string>();
         foreach (var field in vo.Fields())
         {
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
                 members.Add(ScalarProperty(vo, field, [], withAttributes: false));
+            else if (field.SubType == FIELD_SUBTYPE_ENUM)
+                members.Add(EnumProperty(vo, field, []));
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx) is { } nav)
                 members.Add(nav);
         }
 
+        if (enumDeclsVo.Count > 0)
+        {
+            sb.Append(string.Join("\n", enumDeclsVo));
+            sb.AppendLine();
+        }
         sb.Append(string.Join("\n", members));
         sb.AppendLine();
         sb.AppendLine("}");
         return new EmittedFile($"{className}.g.cs", sb.ToString());
+    }
+
+    // A nested C# enum declaration for an enum-subtype field.
+    // Returns null when the field has no resolvable @values (warns instead of crashing).
+    // The enum name uses the abstract super's name when the field extends one (so all
+    // fields extending the same abstract enum share one C# enum type).
+    private static string? EmitNestedEnum(MetaObject entity, MetaField field)
+    {
+        var values = field.EffectiveEnumValues;
+        if (values is null || values.Count == 0) return null;
+        var typeName = CSharpNaming.EnumTypeName(entity, field);
+        var members = string.Join(", ", values);
+        return $"    public enum {typeName} {{ {members} }}";
+    }
+
+    // A property for an enum-subtype field. The property type is the nested enum name.
+    private static string EnumProperty(MetaObject entity, MetaField field, IReadOnlyList<string> pkFields)
+    {
+        var typeName = CSharpNaming.EnumTypeName(entity, field);
+        var propName = CSharpNaming.Pascal(field.Name);
+        var required = CSharpNaming.IsRequired(entity, field);
+        var colAttr = $"    [Column(\"{CSharpNaming.Column(field)}\")]";
+        var type = required ? typeName : typeName + "?";
+        return $"{colAttr}\n    public {type} {propName} {{ get; set; }}";
     }
 
     // A scalar property. withAttributes adds the EF mapping annotations ([Key] for a
