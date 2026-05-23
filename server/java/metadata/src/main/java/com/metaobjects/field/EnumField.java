@@ -7,6 +7,9 @@
 package com.metaobjects.field;
 
 import com.metaobjects.DataTypes;
+import com.metaobjects.MetaData;
+import com.metaobjects.MetaDataException;
+import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 import org.slf4j.Logger;
@@ -105,6 +108,77 @@ public class EnumField extends PrimitiveField<String> {
 
         } catch (Exception e) {
             log.error("Failed to register EnumField type with unified registry", e);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Post-parse validation hook — called by CanonicalJsonParser after the
+    // full field.enum node (attributes + children) has been built.
+    // -----------------------------------------------------------------------
+
+    /**
+     * Post-parse validation for a freshly-built {@code field.enum} node.
+     *
+     * <p>Enforces the cross-language {@code @values} contract at load time:</p>
+     * <ol>
+     *   <li>Missing {@code @values} → throws with {@code ERR_MISSING_REQUIRED_ATTR}</li>
+     *   <li>Empty / non-identifier member / duplicate → throws with {@code ERR_BAD_ATTR_VALUE}</li>
+     * </ol>
+     *
+     * <p>Called from {@code CanonicalJsonParser.processNode()} after the node's
+     * attributes and children have been processed, so {@code @values} is already
+     * set on the node.  Mirrors the TS and C# loader validation that fires at the
+     * equivalent point in those pipelines.</p>
+     *
+     * @param enumNode the {@code field.enum} node to validate; ignored if not
+     *                 type=field / subtype=enum
+     * @param filename the source filename — included in error messages
+     * @throws MetaDataException with code {@code ERR_MISSING_REQUIRED_ATTR} if
+     *         {@code @values} is absent, or {@code ERR_BAD_ATTR_VALUE} if the
+     *         members fail the identifier / uniqueness contract
+     */
+    public static void validateNodeAfterParse(MetaData enumNode, String filename) {
+        if (enumNode == null) return;
+        if (!TYPE_FIELD.equals(enumNode.getType()) || !SUBTYPE_ENUM.equals(enumNode.getSubType())) return;
+
+        // Abstract nodes may intentionally omit @values (e.g. abstract base enums).
+        if (enumNode.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT, false)) {
+            return;
+        }
+
+        // A concrete field.enum that extends an abstract base enum inherits @values
+        // through the super data chain. If no @values is found anywhere in the chain,
+        // defer: the abstract base will be validated separately when it is processed.
+        if (enumNode.getSuperData() != null && !enumNode.hasMetaAttr(ATTR_VALUES, true)) {
+            return;
+        }
+
+        // Required-attribute check for nodes with no super (or super with no @values resolved above).
+        if (!enumNode.hasMetaAttr(ATTR_VALUES, true)) {
+            throw new MetaDataException(
+                "ERR_MISSING_REQUIRED_ATTR: field.enum '" + enumNode.getName()
+                    + "' is missing required @values attribute in file [" + filename + "]");
+        }
+
+        // Content check: delegate to validateEnumValues for the shared contract.
+        // includeParentData=true so inherited @values from a super is also content-validated.
+        MetaAttribute<?> valuesAttr;
+        try {
+            @SuppressWarnings("unchecked")
+            MetaAttribute<?> attr = (MetaAttribute<?>) enumNode.getMetaAttr(ATTR_VALUES, true);
+            valuesAttr = attr;
+        } catch (Exception e) {
+            // hasMetaAttr returned true above, so this path should not occur in practice.
+            throw new MetaDataException(
+                "ERR_MISSING_REQUIRED_ATTR: field.enum '" + enumNode.getName()
+                    + "' could not read @values attribute in file [" + filename + "]", e);
+        }
+
+        if (!validateEnumValues(valuesAttr.getValue())) {
+            throw new MetaDataException(
+                "ERR_BAD_ATTR_VALUE: field.enum '" + enumNode.getName()
+                    + "' @values must be a non-empty list of identifier-safe, unique members"
+                    + " (e.g. [\"DRAFT\",\"PUBLISHED\"]) in file [" + filename + "]");
         }
     }
 

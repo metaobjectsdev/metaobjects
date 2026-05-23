@@ -7,6 +7,7 @@ import com.google.gson.JsonParser;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.attr.MetaAttribute;
+import com.metaobjects.field.EnumField;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.parser.BaseMetaDataParser;
 import com.metaobjects.loader.parser.MetaDataFileParser;
@@ -415,6 +416,11 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                 processChildrenArray(md, childrenEl.getAsJsonArray(), false);
             }
         }
+
+        // Post-parse per-type validation — fires AFTER the node's attributes and
+        // children are fully set.  Each type validator is a no-op for types it
+        // doesn't own, so the dispatch is O(1) and format-agnostic.
+        EnumField.validateNodeAfterParse(md, getFilename());
     }
 
     /**

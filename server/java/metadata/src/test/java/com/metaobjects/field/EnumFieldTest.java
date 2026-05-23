@@ -1,6 +1,7 @@
 package com.metaobjects.field;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
@@ -364,5 +365,156 @@ public class EnumFieldTest extends SharedRegistryTestBase {
         assertTrue("@values array must contain DRAFT", json.contains("\"DRAFT\""));
         assertTrue("@values array must contain PUBLISHED", json.contains("\"PUBLISHED\""));
         assertTrue("@values array must contain ARCHIVED", json.contains("\"ARCHIVED\""));
+    }
+
+    // -----------------------------------------------------------------------
+    // TDD full-load validation tests — tests 11-15
+    // These test that the LOADER enforces @values constraints (not just the
+    // static validateEnumValues helper). They must FAIL before wiring and
+    // PASS after.
+    // -----------------------------------------------------------------------
+
+    /** Shared canonical template for a field.enum with a replaceable @values JSON snippet. */
+    private String enumEntityCanonical(String valuesJson) {
+        return "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+               "  { \"object.entity\": { \"name\": \"Order\", \"children\": [" +
+               "    { \"field.long\": { \"name\": \"id\" } }," +
+               "    { \"field.enum\": { \"name\": \"status\"" +
+               (valuesJson != null ? ", \"@values\": " + valuesJson : "") +
+               " } }," +
+               "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
+               "  ] } }" +
+               "] } }";
+    }
+
+    /**
+     * Full-load test: loading a {@code field.enum} with NO {@code @values} attribute
+     * must raise {@link MetaDataException} referencing the missing-required-attr contract
+     * ({@code ERR_MISSING_REQUIRED_ATTR}).
+     *
+     * <p>This is the Java equivalent of the {@code error-enum-missing-values} conformance
+     * fixture; TS and C# both emit {@code ERR_MISSING_REQUIRED_ATTR} for this case.</p>
+     */
+    @Test
+    public void fullLoad_missingValues_raisesError() {
+        String canonical = enumEntityCanonical(null);
+        MetaDataLoader loader = newTestLoader();
+        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "enum-missing-values-test.json");
+        try {
+            parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+            fail("Expected MetaDataException for missing @values (ERR_MISSING_REQUIRED_ATTR)");
+        } catch (MetaDataException e) {
+            assertTrue(
+                "Exception message must reference the missing-required-attr contract or @values: " + e.getMessage(),
+                e.getMessage().contains("ERR_MISSING_REQUIRED_ATTR")
+                    || e.getMessage().contains("values")
+                    || e.getMessage().contains("required"));
+        }
+    }
+
+    /**
+     * Full-load test: loading a {@code field.enum} with {@code @values: []} (empty array)
+     * must raise {@link MetaDataException} referencing the bad-attr-value contract
+     * ({@code ERR_BAD_ATTR_VALUE}).
+     */
+    @Test
+    public void fullLoad_emptyValues_raisesError() {
+        String canonical = enumEntityCanonical("[]");
+        MetaDataLoader loader = newTestLoader();
+        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "enum-empty-values-test.json");
+        try {
+            parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+            fail("Expected MetaDataException for empty @values (ERR_BAD_ATTR_VALUE)");
+        } catch (MetaDataException e) {
+            assertTrue(
+                "Exception message must reference the bad-attr-value contract or @values: " + e.getMessage(),
+                e.getMessage().contains("ERR_BAD_ATTR_VALUE")
+                    || e.getMessage().contains("values")
+                    || e.getMessage().contains("empty"));
+        }
+    }
+
+    /**
+     * Full-load test: loading a {@code field.enum} with a non-identifier member
+     * ({@code "in-progress"} contains a hyphen) must raise {@link MetaDataException}
+     * referencing the bad-attr-value contract ({@code ERR_BAD_ATTR_VALUE}).
+     */
+    @Test
+    public void fullLoad_nonIdentifierMember_raisesError() {
+        String canonical = enumEntityCanonical("[\"VALID\", \"in-progress\"]");
+        MetaDataLoader loader = newTestLoader();
+        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "enum-bad-member-test.json");
+        try {
+            parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+            fail("Expected MetaDataException for non-identifier @values member (ERR_BAD_ATTR_VALUE)");
+        } catch (MetaDataException e) {
+            assertTrue(
+                "Exception message must reference the bad-attr-value contract or @values: " + e.getMessage(),
+                e.getMessage().contains("ERR_BAD_ATTR_VALUE")
+                    || e.getMessage().contains("values")
+                    || e.getMessage().contains("identifier")
+                    || e.getMessage().contains("member"));
+        }
+    }
+
+    /**
+     * Full-load test: loading a {@code field.enum} with duplicate members
+     * ({@code ["A", "A"]}) must raise {@link MetaDataException} referencing the
+     * bad-attr-value contract ({@code ERR_BAD_ATTR_VALUE}).
+     */
+    @Test
+    public void fullLoad_duplicateMembers_raisesError() {
+        String canonical = enumEntityCanonical("[\"A\", \"A\"]");
+        MetaDataLoader loader = newTestLoader();
+        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "enum-duplicate-members-test.json");
+        try {
+            parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+            fail("Expected MetaDataException for duplicate @values members (ERR_BAD_ATTR_VALUE)");
+        } catch (MetaDataException e) {
+            assertTrue(
+                "Exception message must reference the bad-attr-value contract or @values: " + e.getMessage(),
+                e.getMessage().contains("ERR_BAD_ATTR_VALUE")
+                    || e.getMessage().contains("values")
+                    || e.getMessage().contains("duplicate"));
+        }
+    }
+
+    /**
+     * Full-load test: loading a valid {@code field.enum} with a 3-element {@code @values}
+     * array succeeds and produces a {@link List} of <strong>3 distinct</strong> elements.
+     *
+     * <p>This guards the Fix(a) coverage gap: {@link StringAttribute#setValueAsString}
+     * must call {@link MetaAttribute#setArray} BEFORE {@code setValueAsString} so that
+     * {@code "DRAFT,PUBLISHED,ARCHIVED"} is parsed into a 3-element list, not stored
+     * as a single joined string.</p>
+     */
+    @Test
+    public void fullLoad_validValues_produces3DistinctElements() {
+        String canonical = enumEntityCanonical("[\"DRAFT\", \"PUBLISHED\", \"ARCHIVED\"]");
+        MetaDataLoader loader = newTestLoader();
+        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "enum-valid-values-test.json");
+        parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+
+        MetaData order = loader.getRoot().getChildOfType("object", "acme::Order");
+        assertNotNull("Order entity must be present", order);
+
+        MetaData statusField = order.getChildOfType("field", "status");
+        assertNotNull("status field must be present", statusField);
+        assertEquals("status must have subtype 'enum'", EnumField.SUBTYPE_ENUM, statusField.getSubType());
+
+        MetaAttribute<?> valuesAttr = (MetaAttribute<?>) statusField.getMetaAttr(EnumField.ATTR_VALUES);
+        assertNotNull("@values attribute must exist", valuesAttr);
+        assertTrue("@values must be isArray=true", valuesAttr.isArray());
+
+        Object raw = valuesAttr.getValue();
+        assertNotNull("@values raw value must not be null", raw);
+        assertTrue("@values raw value must be a List, not a bare string", raw instanceof List);
+
+        @SuppressWarnings("unchecked")
+        List<String> members = (List<String>) raw;
+        assertEquals("@values list must have exactly 3 distinct elements (not a joined string)", 3, members.size());
+        assertTrue("members must contain DRAFT",     members.contains("DRAFT"));
+        assertTrue("members must contain PUBLISHED", members.contains("PUBLISHED"));
+        assertTrue("members must contain ARCHIVED",  members.contains("ARCHIVED"));
     }
 }
