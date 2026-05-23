@@ -1,0 +1,8 @@
+"""Reserved structural body keys (NOT @-attrs). Documented order in conformance-tests.md."""
+KEY_NAME = "name"
+KEY_PACKAGE = "package"
+KEY_EXTENDS = "extends"
+KEY_ABSTRACT = "abstract"
+KEY_OVERLAY = "overlay"
+KEY_IS_ARRAY = "isArray"
+KEY_CHILDREN = "children"
