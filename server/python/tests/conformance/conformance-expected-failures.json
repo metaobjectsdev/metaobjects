@@ -1,7 +1,5 @@
 {
   "fixtures": [
-    "attr-filter-shorthand",
-    "attr-properties-basic",
     "error-attr-bad-allowed-value",
     "error-attr-filter-bad-field",
     "error-attr-filter-bad-op",

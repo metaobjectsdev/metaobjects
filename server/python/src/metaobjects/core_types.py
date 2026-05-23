@@ -4,7 +4,11 @@ from __future__ import annotations
 # Importing the attr module triggers its attr-class self-registration (side effect).
 from .attr_class_map import attr_class_for
 from .meta.core.attr import meta_attr as _attr  # noqa: F401
-from .meta.core.attr.attr_constants import ATTR_SUBTYPE_STRINGARRAY, ATTR_SUBTYPES
+from .meta.core.attr.attr_constants import (
+    ATTR_SUBTYPE_FILTER,
+    ATTR_SUBTYPE_STRINGARRAY,
+    ATTR_SUBTYPES,
+)
 from .meta.core.field import field_constants as fc
 from .meta.core.field.meta_field import MetaField
 from .meta.core.identity.identity_constants import (
@@ -160,9 +164,11 @@ for _sub in VIEW_SUBTYPES:
         )
     )
 
-# layout.* (base, dataGrid); @columns is a stringArray — scalar desugars to array
+# layout.* (base, dataGrid); @columns is a stringArray — scalar desugars to array;
+# @filter is a FilterAttr — shorthand values desugar to op-objects
 _layout_datagrid_attrs = [
     AttrSchema(name=LAYOUT_ATTR_COLUMNS, value_type=ATTR_SUBTYPE_STRINGARRAY),
+    AttrSchema(name="filter", value_type=ATTR_SUBTYPE_FILTER),
 ]
 for _sub in LAYOUT_SUBTYPES:
     _attrs = list(_layout_datagrid_attrs) if _sub == LAYOUT_SUBTYPE_DATA_GRID else []

@@ -8,7 +8,7 @@ from .errors import ErrorCode, MetaError
 from .meta.meta_data import MetaData
 from .meta.meta_root import MetaRoot
 from .registry import TypeRegistry
-from .shared.base_types import SUBTYPE_ROOT, TYPE_METADATA
+from .shared.base_types import SUBTYPE_ROOT, TYPE_ATTR, TYPE_METADATA
 from .shared.separators import ATTR_PREFIX, FUSED_KEY_SEP
 from .shared.structural import (
     KEY_ABSTRACT,
@@ -17,6 +17,7 @@ from .shared.structural import (
     KEY_IS_ARRAY,
     KEY_NAME,
     KEY_PACKAGE,
+    KEY_VALUE,
 )
 
 _RESERVED = {KEY_NAME, KEY_PACKAGE, KEY_EXTENDS, KEY_ABSTRACT, KEY_IS_ARRAY, KEY_CHILDREN}
@@ -83,11 +84,45 @@ def _build(
             node.set_attr(attr_name, value, sub_type=schema.value_type if schema else None)
 
     for cw, cbody in _iter_children(body_dict):
-        child = _build(cw, cbody, registry, source, result)
-        if child is not None:
-            node.add_child(child)
+        child_type, _, child_sub = cw.partition(FUSED_KEY_SEP)
+        if child_type == TYPE_ATTR:
+            _parse_attr_child(node, child_sub, cbody, registry, source, result)
+        else:
+            child = _build(cw, cbody, registry, source, result)
+            if child is not None:
+                node.add_child(child)
 
     return node
+
+
+def _parse_attr_child(
+    parent: MetaData,
+    sub_type: str,
+    body: object,
+    registry: TypeRegistry,
+    source: str,
+    result: ParseResult,
+) -> None:
+    """Handle a typed attr child: { "attr.<sub>": { "name": ..., "value": ... } }.
+
+    Attaches via set_attr (not add_child) — attrs are not structural children.
+    Uses the child's own sub_type to pick the correct attr class (coerce + desugar).
+    """
+    body_dict: dict[str, object] = body if isinstance(body, dict) else {}
+    attr_name = body_dict.get(KEY_NAME)
+    if not isinstance(attr_name, str) or not attr_name:
+        result.errors.append(
+            MetaError(
+                f"attr child requires a non-empty 'name'",
+                ErrorCode.ERR_MISSING_REQUIRED_ATTR,
+                source,
+            )
+        )
+        return
+    raw_value = body_dict.get(KEY_VALUE)
+    # Resolve the attr sub_type; fall back to base if unregistered.
+    resolved_sub = sub_type if registry.find(TYPE_ATTR, sub_type) is not None else None
+    parent.set_attr(attr_name, raw_value, sub_type=resolved_sub)
 
 
 def _iter_children(body: dict[str, object]) -> list[tuple[str, object]]:
