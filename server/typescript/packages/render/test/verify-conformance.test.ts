@@ -7,6 +7,7 @@ import {
   ERR_VAR_NOT_ON_PAYLOAD,
   ERR_PARTIAL_UNRESOLVED,
   ERR_REQUIRED_SLOT_UNUSED,
+  ERR_OUTPUT_TAG_MISSING,
   type PayloadField,
   type VerifyError,
   type VerifyOptions,
@@ -18,23 +19,25 @@ import {
 //                        shape (NOT render data, unlike render-conformance)
 //   template.mustache    the template text whose {{vars}} are drift-checked
 //   partials/*.mustache  optional partial bodies, referenced as `partials/<name>`
-//   options.json         optional { requiredSlots?: string[]; provider?: "with" | "without" }
+//   options.json         optional { requiredSlots?, requiredTags?: string[]; provider?: "with" | "without" }
 //   expected-drift.json  array of { code, path } findings (compared as a sorted multiset)
 // The same (payload-tree + template + options) MUST yield expected-drift.json in
 // every language port that implements `verify`. Mirrors render-conformance.test.ts.
 const CORPUS = join(import.meta.dir, "../../../../../fixtures/verify-conformance");
 
-// The closed set of codes a verify fixture may legitimately expect — the three
-// stable verify ErrorCodes (documented in fixtures/conformance/ERROR-CODES.json).
+// The closed set of codes a verify fixture may legitimately expect — the stable
+// verify ErrorCodes (documented in fixtures/conformance/ERROR-CODES.json).
 // A fixture expecting anything else is a typo, caught per-fixture below.
 const VERIFY_CODES = new Set<string>([
   ERR_VAR_NOT_ON_PAYLOAD,
   ERR_PARTIAL_UNRESOLVED,
   ERR_REQUIRED_SLOT_UNUSED,
+  ERR_OUTPUT_TAG_MISSING,
 ]);
 
 interface FixtureOptions {
   requiredSlots?: string[];
+  requiredTags?: string[];
   provider?: "with" | "without";
 }
 
@@ -88,6 +91,7 @@ describe("verify-conformance corpus", () => {
       const verifyOpts: VerifyOptions = {
         ...(mode === "with" ? { provider: providerFromPartials(dir) } : {}),
         ...(opts.requiredSlots ? { requiredSlots: opts.requiredSlots } : {}),
+        ...(opts.requiredTags ? { requiredTags: opts.requiredTags } : {}),
       };
 
       const actual = verify(template, fields, verifyOpts);

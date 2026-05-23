@@ -104,7 +104,7 @@ public abstract class DataObjectBase implements Serializable, MetaObjectAware, V
      * Return the name of the object
      * @return the object name
      */
-    protected String _getObjectName() {
+    public String _getObjectName() {
         return objectName;
     }
 
@@ -139,12 +139,9 @@ public abstract class DataObjectBase implements Serializable, MetaObjectAware, V
 
         metaObject = mo;
 
-        // Set the values configured on the DataMetaObject
-        if ( mo instanceof DataMetaObject ) {
-            DataMetaObject dmo = (DataMetaObject) mo;
-            this.allowExtensions = dmo.allowExtensions();
-            this.enforceStrictness = dmo.isStrict();
-        }
+        // Pull extension/strictness config from the MetaObject (representations override the defaults)
+        this.allowExtensions = mo.allowExtensions();
+        this.enforceStrictness = mo.isStrict();
 
         // Flag that we have metadata set
         hasMetaData = true;
@@ -264,7 +261,7 @@ public abstract class DataObjectBase implements Serializable, MetaObjectAware, V
     /**
      * Sets an attribute of the MetaObject
      */
-    protected void _setObjectAttribute(String name, Object value ) {
+    public void _setObjectAttribute(String name, Object value ) {
 
         // Do not store invalid field values
         if (!isValidFieldName( name )) return;
@@ -358,7 +355,7 @@ public abstract class DataObjectBase implements Serializable, MetaObjectAware, V
     /**
      * Retrieves an attribute of the MetaObject
      */
-    protected Object _getObjectAttribute(String name) {
+    public Object _getObjectAttribute(String name) {
 
         if (!isValidFieldName( name )) return null;
 

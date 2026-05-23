@@ -110,6 +110,40 @@ describe("meta verify", () => {
     }
   });
 
+  test("exit 1 and reports ERR_OUTPUT_TAG_MISSING when a @requiredTags tag is absent", async () => {
+    const metaWithTags = {
+      "metadata.root": {
+        package: "acme::ai",
+        children: [
+          { "object.value": { name: "Brief", children: [{ "field.string": { name: "displayName" } }] } },
+          {
+            "template.prompt": {
+              name: "taggedPrompt",
+              "@payloadRef": "Brief",
+              "@textRef": "prompt/strategy",
+              "@requiredTags": ["answer"],
+            },
+          },
+        ],
+      },
+    };
+    const tmp = mkdtempSync(join(tmpdir(), "metaobjects-verify-tags-"));
+    mkdirSync(join(tmp, "metaobjects"), { recursive: true });
+    writeFileSync(join(tmp, "metaobjects", "meta.ai.json"), JSON.stringify(metaWithTags), "utf8");
+    mkdirSync(join(tmp, "prompts", "prompt"), { recursive: true });
+    // Text references the variable cleanly but omits the contracted <answer> tag.
+    writeFileSync(join(tmp, "prompts", "prompt", "strategy.mustache"), "Hi {{displayName}}.", "utf8");
+    try {
+      expect(await run(["verify", "--cwd", tmp])).toBe(1);
+      const all = [...out, ...err].join("\n");
+      expect(all).toContain("ERR_OUTPUT_TAG_MISSING");
+      expect(all).toContain("answer");
+      expect(all).toContain("taggedPrompt");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test("a custom --prompts dir is honored", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "metaobjects-verify-custom-"));
     mkdirSync(join(tmp, "metaobjects"), { recursive: true });

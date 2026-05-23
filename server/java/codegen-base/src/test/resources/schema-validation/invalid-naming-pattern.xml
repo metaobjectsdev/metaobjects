@@ -2,7 +2,7 @@
 <metadata package="test.invalid.naming">
   <children>
     <child>
-      <object name="User::Invalid" subType="pojo">
+      <object name="User::Invalid" subType="entity">
         <children>
           <child>
             <field name="field-with-dash" subType="string"/>

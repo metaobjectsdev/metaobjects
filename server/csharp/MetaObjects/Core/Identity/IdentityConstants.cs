@@ -14,11 +14,14 @@ public static class IdentityConstants
 {
     public const string IDENTITY_SUBTYPE_PRIMARY   = "primary";
     public const string IDENTITY_SUBTYPE_SECONDARY = "secondary";
+    /// <summary>A foreign-key reference: local @fields hold the FK pointing at @references (FR-003).</summary>
+    public const string IDENTITY_SUBTYPE_REFERENCE = "reference";
 
     public static readonly string[] IDENTITY_SUBTYPES =
     [
         IDENTITY_SUBTYPE_PRIMARY,
         IDENTITY_SUBTYPE_SECONDARY,
+        IDENTITY_SUBTYPE_REFERENCE,
     ];
 
     // Identity attrs
@@ -26,6 +29,12 @@ public static class IdentityConstants
     public const string IDENTITY_ATTR_GENERATION = "generation";
     /// <summary>On secondary identities: true → uniqueIndex; false/absent → index. Defaults to true for back-compat.</summary>
     public const string IDENTITY_ATTR_UNIQUE     = "unique";
+
+    // identity.reference attrs
+    /// <summary>Target of the reference: bare entity (→ its primary identity) or dotted Entity.field[,field].</summary>
+    public const string IDENTITY_REFERENCE_ATTR_REFERENCES = "references";
+    /// <summary>Physical-enforcement flag. Default true → hard FK constraint; false → logical-only reference.</summary>
+    public const string IDENTITY_REFERENCE_ATTR_ENFORCE    = "enforce";
 
     // Identity generation strategies (values for IDENTITY_ATTR_GENERATION)
     public const string GENERATION_INCREMENT = "increment";

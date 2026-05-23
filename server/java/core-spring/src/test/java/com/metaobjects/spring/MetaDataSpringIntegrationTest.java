@@ -66,7 +66,7 @@ public class MetaDataSpringIntegrationTest {
                 writer.write("    \"package\": \"test\",\n");
                 writer.write("    \"children\": [\n");
                 writer.write("      {\n");
-                writer.write("        \"object.pojo\": {\n");
+                writer.write("        \"object.entity\": {\n");
                 writer.write("          \"name\": \"TestObject\",\n");
                 writer.write("          \"children\": [\n");
                 writer.write("            {\n");

@@ -3,7 +3,7 @@
     "package": "example",
     "children": [
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "User",
           "@dbTable": "users",
           "children": [
@@ -68,7 +68,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Product",
           "@dbTable": "products",
           "children": [

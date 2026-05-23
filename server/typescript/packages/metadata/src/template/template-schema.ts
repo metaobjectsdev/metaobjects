@@ -22,6 +22,7 @@ import {
   TEMPLATE_ATTR_MAX_CHARS,
   TEMPLATE_ATTR_OWNER,
   TEMPLATE_ATTR_SINCE,
+  TEMPLATE_ATTR_REQUIRED_TAGS,
   TEMPLATE_ATTR_MAX_TOKENS,
   TEMPLATE_ATTR_REQUIRED_SLOTS,
   TEMPLATE_ATTR_MODEL,
@@ -67,6 +68,12 @@ const genericAttrs: AttrSchema[] = [
     valueType: ATTR_SUBTYPE_STRING,
     required: false,
     description: "Governance: the version this template was introduced in.",
+  },
+  {
+    name: TEMPLATE_ATTR_REQUIRED_TAGS,
+    valueType: ATTR_SUBTYPE_STRINGARRAY,
+    required: false,
+    description: "Output tags the rendered text must contain (drives the verify output-tag check).",
   },
 ];
 

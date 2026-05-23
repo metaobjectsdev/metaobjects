@@ -29,6 +29,10 @@ export const TEMPLATE_ATTR_FORMAT = "format";
 export const TEMPLATE_ATTR_MAX_CHARS = "maxChars";
 export const TEMPLATE_ATTR_OWNER = "owner";
 export const TEMPLATE_ATTR_SINCE = "since";
+// Output tags the rendered text must contain (drives the verify output-tag check).
+// Generic — not prompt-only: any rendered artifact (email, export, prompt) can
+// carry a tag contract a downstream parser depends on.
+export const TEMPLATE_ATTR_REQUIRED_TAGS = "requiredTags";
 
 // Prompt-overlay attrs (template.prompt only).
 export const TEMPLATE_ATTR_MAX_TOKENS = "maxTokens";

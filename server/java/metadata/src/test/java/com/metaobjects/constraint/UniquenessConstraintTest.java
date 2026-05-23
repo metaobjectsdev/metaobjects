@@ -3,7 +3,7 @@ package com.metaobjects.constraint;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.object.MetaObject;
-import com.metaobjects.object.pojo.PojoMetaObject;
+import com.metaobjects.object.EntityMetaObject;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Test;
 
@@ -70,7 +70,7 @@ public class UniquenessConstraintTest extends SharedRegistryTestBase {
             "object", "*"
         );
 
-        PojoMetaObject metaObject = new PojoMetaObject("TestObject");
+        EntityMetaObject metaObject = new EntityMetaObject("TestObject");
         assertTrue("Should apply to MetaObject", constraint.appliesTo(metaObject));
 
         StringField field = new StringField("testField");
@@ -85,7 +85,7 @@ public class UniquenessConstraintTest extends SharedRegistryTestBase {
             "object", "*"
         );
 
-        PojoMetaObject metaObject = new PojoMetaObject("TestObject");
+        EntityMetaObject metaObject = new EntityMetaObject("TestObject");
 
         // Add fields with unique names
         StringField field1 = new StringField("firstName");
@@ -111,7 +111,7 @@ public class UniquenessConstraintTest extends SharedRegistryTestBase {
         );
 
         // Create a test object that will simulate having duplicate field names
-        PojoMetaObject metaObject = new PojoMetaObject("TestObject");
+        EntityMetaObject metaObject = new EntityMetaObject("TestObject");
 
         // Add unique fields first
         StringField field1 = new StringField("firstName");
@@ -150,7 +150,7 @@ public class UniquenessConstraintTest extends SharedRegistryTestBase {
             "object", "*"
         );
 
-        PojoMetaObject metaObject = new PojoMetaObject("EmptyObject");
+        EntityMetaObject metaObject = new EntityMetaObject("EmptyObject");
 
         // No fields added - should be valid
         constraint.validate(metaObject, null);
@@ -159,7 +159,7 @@ public class UniquenessConstraintTest extends SharedRegistryTestBase {
     @Test
     public void testValidationWithMultipleDuplicates() {
         // Test with multiple duplicates using simulated data
-        PojoMetaObject metaObject = new PojoMetaObject("TestObject");
+        EntityMetaObject metaObject = new EntityMetaObject("TestObject");
 
         // Create a constraint that simulates multiple duplicates
         UniquenessConstraint testConstraint = new UniquenessConstraint(
@@ -193,7 +193,7 @@ public class UniquenessConstraintTest extends SharedRegistryTestBase {
             "test values"
         );
 
-        PojoMetaObject metaObject = new PojoMetaObject("TestObject");
+        EntityMetaObject metaObject = new EntityMetaObject("TestObject");
 
         try {
             customConstraint.validate(metaObject, null);
@@ -230,7 +230,7 @@ public class UniquenessConstraintTest extends SharedRegistryTestBase {
     @Test
     public void testRealMetaObjectFieldUniquenessValidation() throws Exception {
         // Test with a real MetaObject to ensure the constraint works with the actual registry
-        PojoMetaObject testObject = new PojoMetaObject("RealTestObject");
+        EntityMetaObject testObject = new EntityMetaObject("RealTestObject");
 
         // Add unique fields with names that don't conflict with reserved attributes
         StringField field1 = new StringField("userId");

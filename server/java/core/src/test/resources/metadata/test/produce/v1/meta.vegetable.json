@@ -3,7 +3,7 @@
     "package": "produce::v1::vegetable",
     "children": [
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Vegetable",
           "abstract": true,
           "@object": "com.metaobjects.test.produce.v1.Vegetable",
@@ -40,7 +40,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Tomato",
           "extends": "Vegetable",
           "@object": "com.metaobjects.test.produce.v1.Tomato"

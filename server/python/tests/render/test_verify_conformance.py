@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 
 from metaobjects.render import (
+    ERR_OUTPUT_TAG_MISSING,
     ERR_PARTIAL_UNRESOLVED,
     ERR_REQUIRED_SLOT_UNUSED,
     ERR_VAR_NOT_ON_PAYLOAD,
@@ -25,10 +26,15 @@ from metaobjects.render import (
     verify,
 )
 
-# The three stable verify codes a fixture may legitimately expect
+# The stable verify codes a fixture may legitimately expect
 # (documented in fixtures/conformance/ERROR-CODES.json). Anything else is a typo.
 _VERIFY_CODES = frozenset(
-    {ERR_VAR_NOT_ON_PAYLOAD, ERR_PARTIAL_UNRESOLVED, ERR_REQUIRED_SLOT_UNUSED}
+    {
+        ERR_VAR_NOT_ON_PAYLOAD,
+        ERR_PARTIAL_UNRESOLVED,
+        ERR_REQUIRED_SLOT_UNUSED,
+        ERR_OUTPUT_TAG_MISSING,
+    }
 )
 
 
@@ -88,8 +94,9 @@ def test_verify_conformance(name: str) -> None:
     for e in expected:
         assert e.code in _VERIFY_CODES, f"unknown verify code {e.code!r}"
 
-    # options.json (optional): requiredSlots + provider toggle.
+    # options.json (optional): requiredSlots + requiredTags + provider toggle.
     required_slots: list[str] | None = None
+    required_tags: list[str] | None = None
     provider_mode: str | None = None
     options_path = fixture_dir / "options.json"
     if options_path.is_file():
@@ -97,6 +104,9 @@ def test_verify_conformance(name: str) -> None:
         slots = opts.get("requiredSlots")
         if isinstance(slots, list):
             required_slots = [str(s) for s in slots]
+        tags = opts.get("requiredTags")
+        if isinstance(tags, list):
+            required_tags = [str(s) for s in tags]
         mode = opts.get("provider")
         if isinstance(mode, str):
             provider_mode = mode
@@ -111,10 +121,22 @@ def test_verify_conformance(name: str) -> None:
     )
     provider = _provider_from_partials(fixture_dir) if use_provider == "with" else None
 
-    actual = verify(template, fields, provider=provider, required_slots=required_slots)
+    actual = verify(
+        template,
+        fields,
+        provider=provider,
+        required_slots=required_slots,
+        required_tags=required_tags,
+    )
     assert sorted(actual, key=_key) == sorted(expected, key=_key)
     # Determinism: identical across runs.
     assert (
-        verify(template, fields, provider=provider, required_slots=required_slots)
+        verify(
+            template,
+            fields,
+            provider=provider,
+            required_slots=required_slots,
+            required_tags=required_tags,
+        )
         == actual
     )

@@ -3,7 +3,7 @@
     "package": "produce::v1",
     "children": [
       {
-        "object.map": {
+        "object.entity": {
           "package": "::container::ext",
           "name": "ProduceExt",
           "children": [
@@ -22,7 +22,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "package": "::fruit",
           "name": "Apple",
           "overlay": true,
@@ -36,7 +36,7 @@
         }
       },
       {
-        "object.map": {
+        "object.entity": {
           "package": "::container",
           "name": "Basket",
           "overlay": true,

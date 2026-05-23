@@ -29,12 +29,20 @@ public static class CodegenRunner
 
         Directory.CreateDirectory(config.OutDir);
         var results = new List<WriteResult>();
+        // Two generators (or a name collision between an entity and a value-object
+        // POCO) writing the same path would silently clobber each other; error
+        // instead, mirroring codegen-ts's runGen duplicate-path check.
+        var emitted = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var generator in generators)
         {
             foreach (var file in generator.Generate(ctx))
             {
                 var full = Path.GetFullPath(Path.Combine(config.OutDir, file.Path));
+                if (!emitted.TryAdd(full, generator.Name))
+                    throw new InvalidOperationException(
+                        $"duplicate generated output path \"{file.Path}\" — emitted by both " +
+                        $"\"{emitted[full]}\" and \"{generator.Name}\".");
                 if (File.Exists(full) && !File.ReadAllText(full).Contains(GeneratedMarker, StringComparison.Ordinal))
                 {
                     warnings.Add($"refusing to overwrite hand-written file: {file.Path}");

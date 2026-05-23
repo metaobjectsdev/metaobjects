@@ -2,7 +2,7 @@ package com.metaobjects.manager.exp.parser;
 
 import java.text.DateFormat;
 
-import com.metaobjects.object.pojo.PojoMetaObject;
+import com.metaobjects.object.EntityMetaObject;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.DateField;
@@ -260,7 +260,7 @@ public class ExpressionParser
 
   public static void main( String [] args ) throws ExpressionParseError
   {
-    MetaObject mc = new PojoMetaObject("test");
+    MetaObject mc = new EntityMetaObject("test");
     MetaField a = new LongField("id");
     MetaField b = new StringField("name");
     MetaField c = new IntegerField("value");

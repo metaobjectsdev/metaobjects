@@ -160,6 +160,7 @@ public static class CoreTypes
     {
         [IDENTITY_SUBTYPE_PRIMARY]   = (tid, n) => new MetaPrimaryIdentity(tid, n),
         [IDENTITY_SUBTYPE_SECONDARY] = (tid, n) => new MetaSecondaryIdentity(tid, n),
+        [IDENTITY_SUBTYPE_REFERENCE] = (tid, n) => new MetaReferenceIdentity(tid, n),
     };
 
     // -------------------------------------------------------------------------

@@ -104,8 +104,8 @@ public abstract class SharedRegistryTestBase {
 
             // Object classes
             Class.forName("com.metaobjects.object.MetaObject");
-            Class.forName("com.metaobjects.object.pojo.PojoMetaObject");
-            Class.forName("com.metaobjects.object.proxy.ProxyMetaObject");
+            Class.forName("com.metaobjects.object.EntityMetaObject");
+            Class.forName("com.metaobjects.object.ValueMetaObject");
 
             // Validator classes
             Class.forName("com.metaobjects.validator.RequiredValidator");

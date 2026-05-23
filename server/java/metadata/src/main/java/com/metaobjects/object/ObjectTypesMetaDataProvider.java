@@ -1,14 +1,13 @@
 package com.metaobjects.object;
 
-import com.metaobjects.object.mapped.MappedMetaObject;
-import com.metaobjects.object.pojo.PojoMetaObject;
-import com.metaobjects.object.proxy.ProxyMetaObject;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataTypeProvider;
 
 /**
  * Object Types MetaData provider with priority 5.
- * Registers base MetaObject and all concrete object types after core base types are available.
+ * Registers the base object type and the entity/value semantic subtypes, each backed by its
+ * own implementation class ({@link EntityMetaObject} / {@link ValueMetaObject}); value access
+ * uses the shared reflection/map hybrid with an optional {@code @objectAdapter} seam (ADR-0005).
  */
 public class ObjectTypesMetaDataProvider implements MetaDataTypeProvider {
 
@@ -17,10 +16,9 @@ public class ObjectTypesMetaDataProvider implements MetaDataTypeProvider {
         // FIRST: Register the base object type that all others inherit from
         MetaObject.registerTypes(registry);
 
-        // THEN: Register concrete object types that inherit from object.base
-        PojoMetaObject.registerTypes(registry);
-        ProxyMetaObject.registerTypes(registry);
-        MappedMetaObject.registerTypes(registry);
+        // Semantic subtypes (ADR-0005): object.entity / object.value, each backed by a dedicated
+        // impl class. The registry constructs them directly — no per-node representation resolver.
+        MetaObject.registerEntityValueTypes(registry);
     }
 
     @Override
@@ -36,6 +34,6 @@ public class ObjectTypesMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String getDescription() {
-        return "Object Types MetaData Provider - Registers MetaObject and concrete object implementations";
+        return "Object Types MetaData Provider - Registers the base object type and the entity/value semantic subtypes (each backed by a dedicated implementation class)";
     }
 }

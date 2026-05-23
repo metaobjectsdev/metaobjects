@@ -2,7 +2,7 @@
   "metadata.root": {
     "children": [
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "User",
           "package": "com_example_model",
           "@dbTable": "users",
@@ -79,7 +79,7 @@
         }
       },
       {
-        "object.pojo": {
+        "object.entity": {
           "name": "Product",
           "package": "com_example_model",
           "@dbTable": "products",

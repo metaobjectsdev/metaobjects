@@ -121,6 +121,15 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
                 .ToArray());
     }
 
+    /// <summary>All reference identities (foreign keys) — the FK-resolution source for codegen/migrate.</summary>
+    public IReadOnlyList<MetaReferenceIdentity> ReferenceIdentities()
+    {
+        return Cached("referenceIdentities", () =>
+            (IReadOnlyList<MetaReferenceIdentity>)Identities()
+                .OfType<MetaReferenceIdentity>()
+                .ToArray());
+    }
+
     // -------------------------------------------------------------------------
     // Relationships
     // -------------------------------------------------------------------------

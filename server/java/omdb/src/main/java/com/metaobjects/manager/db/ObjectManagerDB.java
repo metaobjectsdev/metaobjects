@@ -1211,7 +1211,7 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
                 // Get the result class, try it from the cache first
                 resultClass = templateCache.get(templateClassname);
                 if (resultClass == null) {
-                    resultClass = ValueMetaObject.createFromTemplate(templateClassname, classTemplate);
+                    resultClass = com.metaobjects.object.ValueMetaObject.createFromTemplate(templateClassname, classTemplate);
                     templateCache.put(templateClassname, resultClass);
                 }
             } else*/

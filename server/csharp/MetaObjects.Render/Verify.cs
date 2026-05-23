@@ -30,6 +30,13 @@ public sealed record VerifyOptions
     public IProvider? Provider { get; init; }
     /// <summary>Slots that MUST be referenced; an unused one is reported as a warning.</summary>
     public IReadOnlyList<string>? RequiredSlots { get; init; }
+    /// <summary>
+    /// Output tags the rendered text is contracted to contain. Each must appear as
+    /// both an opening form (<c>&lt;tag</c> followed by <c>&gt;</c> or whitespace, so
+    /// attributes are allowed) and a closing <c>&lt;/tag&gt;</c> — across the body AND
+    /// resolved partials.
+    /// </summary>
+    public IReadOnlyList<string>? RequiredTags { get; init; }
 }
 
 /// <summary>Template-side drift check against a payload field tree.</summary>
@@ -41,6 +48,8 @@ public static class Verify
     public const string ERR_PARTIAL_UNRESOLVED = "ERR_PARTIAL_UNRESOLVED";
     /// <summary>A declared @requiredSlots slot is never referenced by the template (warning).</summary>
     public const string ERR_REQUIRED_SLOT_UNUSED = "ERR_REQUIRED_SLOT_UNUSED";
+    /// <summary>A declared @requiredTags output tag is absent from the template text.</summary>
+    public const string ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING";
 
     private const int MaxDepth = 32;
 
@@ -139,6 +148,10 @@ public static class Verify
         var provider = options?.Provider;
         var root = fields;
         var referencedAtRoot = new HashSet<string>(StringComparer.Ordinal);
+        // The static text the output-tag check scans: the body plus every
+        // provider-resolved partial body, collected during the single walk below
+        // (no second resolution pass).
+        var staticTexts = new List<string> { templateText };
 
         void Walk(IReadOnlyList<Tok> tokens, List<IReadOnlyList<PayloadField>> stack, List<string> seen)
         {
@@ -185,6 +198,7 @@ public static class Verify
                             errors.Add(new VerifyError(ERR_PARTIAL_UNRESOLVED, p.Value));
                             break;
                         }
+                        staticTexts.Add(text);
                         Walk(Tokenize(text), stack, new List<string>(seen) { p.Value });
                         break;
                 }
@@ -197,6 +211,41 @@ public static class Verify
             if (!referencedAtRoot.Contains(slot))
                 errors.Add(new VerifyError(ERR_REQUIRED_SLOT_UNUSED, slot));
 
+        var requiredTags = options?.RequiredTags ?? [];
+        if (requiredTags.Count > 0)
+        {
+            // Scan body + resolved partials as one joined string: the open and close
+            // forms are located independently, so a tag may legitimately straddle the
+            // boundary. The "\n" separator only blocks a spurious tag spliced together
+            // from two fragments (a real tag is always contiguous within one body).
+            var haystack = string.Join('\n', staticTexts);
+            foreach (var tag in requiredTags)
+                if (!HasOpenTag(haystack, tag) || !HasCloseTag(haystack, tag))
+                    errors.Add(new VerifyError(ERR_OUTPUT_TAG_MISSING, tag));
+        }
+
         return errors;
     }
+
+    // An opening tag is `<tag` immediately followed by `>` or XML whitespace, so
+    // attributes are allowed (`<answer foo="1">`) but a longer name is not over-matched
+    // (`<answers>` does not satisfy `answer`).
+    private static readonly char[] TagOpenDelims = ['>', ' ', '\t', '\n', '\r'];
+
+    private static bool HasOpenTag(string text, string tag)
+    {
+        var needle = "<" + tag;
+        for (int i = text.IndexOf(needle, StringComparison.Ordinal); i >= 0;
+             i = text.IndexOf(needle, i + 1, StringComparison.Ordinal))
+        {
+            int after = i + needle.Length;
+            if (after < text.Length && Array.IndexOf(TagOpenDelims, text[after]) >= 0) return true;
+        }
+        return false;
+    }
+
+    // A closing tag is the exact literal `</tag>`. A self-closing `<tag/>` has no such
+    // form, so it never satisfies a required tag — these wrap content a parser reads.
+    private static bool HasCloseTag(string text, string tag) =>
+        text.Contains("</" + tag + ">", StringComparison.Ordinal);
 }

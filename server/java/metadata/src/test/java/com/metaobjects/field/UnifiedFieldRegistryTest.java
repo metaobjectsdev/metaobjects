@@ -1,7 +1,7 @@
 package com.metaobjects.field;
 
 import com.metaobjects.registry.MetaDataRegistry;
-import com.metaobjects.object.pojo.PojoMetaObject;
+import com.metaobjects.object.EntityMetaObject;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.attr.BooleanAttribute;
@@ -64,7 +64,7 @@ public class UnifiedFieldRegistryTest {
             new DoubleField("testDouble");           // New registration
             new BooleanField("testBoolean");         // New registration
             new DateField("testDate");               // New registration
-            new PojoMetaObject("testObject");        // Object type
+            new EntityMetaObject("testObject");      // Object type
             new StringAttribute("testStringAttr");   // Attribute type
             new IntAttribute("testIntAttr");         // Attribute type
             new BooleanAttribute("testBoolAttr");    // Attribute type
@@ -347,7 +347,7 @@ public class UnifiedFieldRegistryTest {
                 "package": "test::alltypes",
                 "children": [
                   {
-                    "object.pojo": {
+                    "object.entity": {
                       "name": "AllFieldTypesTest",
                       "children": [
                         {
@@ -397,7 +397,7 @@ public class UnifiedFieldRegistryTest {
                 "package": "test::withattributes",
                 "children": [
                   {
-                    "object.pojo": {
+                    "object.entity": {
                       "name": "FieldsWithAttributesTest",
                       "children": [
                         {
@@ -438,7 +438,7 @@ public class UnifiedFieldRegistryTest {
                 "package": "test::constraints",
                 "children": [
                   {
-                    "object.pojo": {
+                    "object.entity": {
                       "name": "ConstraintTest",
                       "children": [
                         {

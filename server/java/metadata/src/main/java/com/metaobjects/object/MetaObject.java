@@ -40,6 +40,12 @@ public abstract class MetaObject extends MetaData {
     /** Base object subtype for inheritance */
     public static final String SUBTYPE_BASE = "base";
 
+    /** Semantic subtype: an entity object (persistent identity). Representation resolved per ADR-0005. */
+    public static final String SUBTYPE_ENTITY = "entity";
+
+    /** Semantic subtype: a value object (no identity). Representation resolved per ADR-0005. */
+    public static final String SUBTYPE_VALUE = "value";
+
     // === OBJECT-LEVEL ATTRIBUTE NAME CONSTANTS ===
     // These apply to ALL object types and are inherited by concrete object implementations
     // ATTR_IS_ABSTRACT is imported from MetaData (universal attribute)
@@ -88,6 +94,11 @@ public abstract class MetaObject extends MetaData {
             def.optionalAttributeWithConstraints(ATTR_OBJECT).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.optionalAttributeWithConstraints(ATTR_OBJECT_REF).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
+            // Java-only runtime hint (never in the conformance corpus): the FQN of an
+            // ObjectAdapter that takes over value access. Inherited by entity + value.
+            def.optionalAttributeWithConstraints(com.metaobjects.object.AbstractObjectRepresentation.ATTR_OBJECT_ADAPTER)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
             // OBJECTS CONTAIN FIELDS (any field type, any name)
             def.optionalChild(MetaField.TYPE_FIELD, "*", "*");
 
@@ -116,6 +127,34 @@ public abstract class MetaObject extends MetaData {
 
         // Register cross-cutting object constraints using consolidated registry
         registerCrossCuttingObjectConstraints(registry);
+    }
+
+    /**
+     * Register the semantic object subtypes {@code object.entity} and {@code object.value}
+     * (ADR-0005). Each is backed by its own implementation class
+     * ({@link EntityMetaObject} / {@link ValueMetaObject}), whose public 1-arg {@code (String name)}
+     * ctor stamps the correct semantic subType. The generic
+     * {@link com.metaobjects.registry.MetaDataRegistry#createInstance} path constructs them
+     * directly — no per-node representation resolver is needed.
+     *
+     * <p>Both inherit base object's attr + child rules via {@code inheritsFrom(object, base)}.</p>
+     *
+     * <p>Called by ObjectTypesMetaDataProvider after {@link #registerTypes(MetaDataRegistry)}.</p>
+     */
+    public static void registerEntityValueTypes(MetaDataRegistry registry) {
+        registry.registerType(EntityMetaObject.class, def -> def
+            .type(TYPE_OBJECT).subType(SUBTYPE_ENTITY)
+            .description("Entity object (persistent identity) — value access via the reflection/map hybrid")
+            .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE));
+
+        registry.registerType(ValueMetaObject.class, def -> def
+            .type(TYPE_OBJECT).subType(SUBTYPE_VALUE)
+            .description("Value object (no identity) — value access via the reflection/map hybrid")
+            .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE));
+
+        if (log != null) {
+            log.debug("Registered semantic object subtypes object.entity and object.value (ADR-0005)");
+        }
     }
 
     /**
@@ -330,6 +369,18 @@ public abstract class MetaObject extends MetaData {
         }
         return c;
     }
+
+    /**
+     * Whether this object permits attributes beyond its declared fields.
+     * Default false; overridden by representations that read the @allowExtensions attr.
+     */
+    public boolean allowExtensions() { return false; }
+
+    /**
+     * Whether unknown-field access is rejected.
+     * Default true; overridden by representations that read the @isStrict attr.
+     */
+    public boolean isStrict() { return true; }
 
     /**
      * Retrieves the object class of an object, or null if one is not specified.

@@ -6,7 +6,7 @@ import com.metaobjects.field.*;
 import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.io.json.CanonicalJsonSerializer;
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.object.mapped.MappedMetaObject;
+import com.metaobjects.object.ValueMetaObject;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Before;
@@ -41,7 +41,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
             new BooleanAttribute("testBoolAttr");
             new DoubleAttribute("testDoubleAttr");
             new LongAttribute("testLongAttr");
-            MappedMetaObject.create("setup::Boot");
+            ValueMetaObject.create("setup::Boot");
         } catch (Exception e) {
             // Ignore registration errors — types may already be registered
         }
@@ -63,14 +63,15 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
     /**
      * Step 1 / 4: Reads a canonical single-entity document.
      *
-     * <p>Uses {@code object.map} (MappedMetaObject) because Java's default registry
-     * registers that subtype. {@code object.entity} is a post-H3b gap — do NOT use it.</p>
+     * <p>Uses {@code object.entity} (a declared semantic subtype, backed by
+     * {@code EntityMetaObject}); {@code object.map} is no longer a registered
+     * subtype — ADR-0005.</p>
      */
     @Test
     public void readsCanonicalSingleEntity() {
         String canonical =
             "{ \"metadata.root\": { \"package\": \"acme::commerce\", \"children\": [" +
-            "  { \"object.map\": { \"name\": \"Product\", \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"Product\", \"children\": [" +
             "    { \"field.long\": { \"name\": \"id\" } }," +
             "    { \"field.string\": { \"name\": \"name\" } }," +
             "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
@@ -82,7 +83,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
         parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
 
         MetaData product = loader.getRoot().getChildOfType("object", "acme::commerce::Product");
-        assertEquals("map", product.getSubType());
+        assertEquals("entity", product.getSubType());
         assertEquals("long", product.getChildOfType("field", "id").getSubType());
         assertEquals("string", product.getChildOfType("field", "name").getSubType());
         // Identity nodes get the document package prefix (same as other non-field children)
@@ -98,10 +99,10 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
     public void readsExtendsInheritance() {
         String canonical =
             "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
-            "  { \"object.map\": { \"name\": \"BaseProduct\", \"abstract\": true, \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"BaseProduct\", \"abstract\": true, \"children\": [" +
             "    { \"field.string\": { \"name\": \"title\" } }" +
             "  ] } }," +
-            "  { \"object.map\": { \"name\": \"ConcreteProduct\", \"extends\": \"BaseProduct\", \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"ConcreteProduct\", \"extends\": \"BaseProduct\", \"children\": [" +
             "    { \"field.long\": { \"name\": \"id\" } }" +
             "  ] } }" +
             "] } }";
@@ -112,7 +113,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
 
         MetaData concrete = loader.getRoot().getChildOfType("object", "acme::ConcreteProduct");
         assertNotNull("ConcreteProduct should exist", concrete);
-        assertEquals("ConcreteProduct should be subType map", "map", concrete.getSubType());
+        assertEquals("ConcreteProduct should be subType entity", "entity", concrete.getSubType());
 
         // Verify super relationship is set
         MetaData base = loader.getRoot().getChildOfType("object", "acme::BaseProduct");
@@ -128,7 +129,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
     public void readsAbstractNode() {
         String canonical =
             "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
-            "  { \"object.map\": { \"name\": \"AbstractBase\", \"abstract\": true, \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"AbstractBase\", \"abstract\": true, \"children\": [" +
             "    { \"field.string\": { \"name\": \"code\" } }" +
             "  ] } }" +
             "] } }";
@@ -150,7 +151,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
     public void readsAttrValueTypes() {
         String canonical =
             "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
-            "  { \"object.map\": { \"name\": \"Config\", \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"Config\", \"children\": [" +
             "    { \"field.string\": { \"name\": \"desc\"," +
             "      \"@pattern\": \"^[a-z]+$\"," +
             "      \"@maxLength\": 100," +
@@ -199,7 +200,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
         // Load the base document first
         String baseCanonical =
             "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
-            "  { \"object.map\": { \"name\": \"Order\", \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"Order\", \"children\": [" +
             "    { \"field.long\": { \"name\": \"id\" } }" +
             "  ] } }" +
             "] } }";
@@ -211,7 +212,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
         // Load an overlay document that adds a field to Order
         String overlayCanonical =
             "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
-            "  { \"object.map\": { \"name\": \"Order\", \"overlay\": true, \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"Order\", \"overlay\": true, \"children\": [" +
             "    { \"field.string\": { \"name\": \"status\" } }" +
             "  ] } }" +
             "] } }";
@@ -233,7 +234,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
         // Include a child so we can verify parsing actually ran, not just parse the root
         String canonical =
             "{ \"metadata.root\": { \"package\": \"bom::test\", \"children\": [" +
-            "  { \"object.map\": { \"name\": \"BomEntity\", \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"BomEntity\", \"children\": [" +
             "    { \"field.string\": { \"name\": \"title\" } }" +
             "  ] } }" +
             "] } }";
@@ -261,7 +262,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
     public void deserializesBareStringAsArrayForIdentityFields() {
         String canonical =
             "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
-            "  { \"object.map\": { \"name\": \"Item\", \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"Item\", \"children\": [" +
             "    { \"field.long\": { \"name\": \"id\" } }," +
             "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
             "  ] } }" +
@@ -299,7 +300,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
     public void readsAttrChildNode() {
         String canonical =
             "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
-            "  { \"object.map\": { \"name\": \"Config\", \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"Config\", \"children\": [" +
             "    { \"field.string\": { \"name\": \"label\", \"children\": [" +
             "      { \"attr.string\": { \"name\": \"pattern\", \"value\": \"^[a-z]+$\" } }," +
             "      { \"attr.int\": { \"name\": \"maxLength\", \"value\": 64 } }" +
@@ -343,7 +344,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
     public void attrChildNodeHonorsDeclaredSubtypeOverValueInference() {
         String canonical =
             "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
-            "  { \"object.map\": { \"name\": \"Product\", \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"Product\", \"children\": [" +
             "    { \"field.string\": { \"name\": \"code\", \"children\": [" +
             "      { \"attr.string\": { \"name\": \"code\", \"value\": \"64\" } }" +
             "    ] } }" +
