@@ -5,6 +5,8 @@
 - **Companion to:** [source v2 spec](2026-05-23-source-v2-paradigm-subtypes-multisource-design.md) + [ADR-0007](../../../spec/decisions/ADR-0007-source-v2-paradigm-subtypes-multisource.md). Obeys [ADR-0006](../../../spec/decisions/ADR-0006-reserved-keywords-vs-inline-attributes.md) (reserved words bare; everything here is an `@`-attr).
 - **Goal:** pull together every persistence concept already in TS (Drizzle/migrate/runtime), Java (ObjectManagerDB), and C# (EF Core) into **one normalized vocabulary**, fill the gaps (explicit referential actions, soft-delete, concurrency), and pin which attrs apply per source subtype.
 
+> **Notation (per revised [ADR-0006](../../../spec/decisions/ADR-0006-reserved-keywords-vs-inline-attributes.md)):** metadata keys are **bare — no `@` sigil**. Every `@`-prefixed name in this doc (`@column`, `@onDelete`, `@storage`, …) is the bare key (`column`, `onDelete`, `storage`); the `@` is dropped metamodel-wide and shown here only until normalization.
+
 ## 1. Archaeology — what already exists (and diverges)
 
 | Concept | TS | Java (OMDB) | C# | normalized |

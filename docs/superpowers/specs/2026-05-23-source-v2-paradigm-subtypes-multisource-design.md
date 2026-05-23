@@ -7,6 +7,8 @@
 - **Related:** [ADR-0006](../../../spec/decisions/ADR-0006-reserved-keywords-vs-inline-attributes.md) (reserved keywords vs `@`-attrs — resolved here for `source`), ADR-0002 (subtype behavior), ADR-0004 (per-subtype attr schemas).
 - **Companion:** [persistence attributes spec](2026-05-23-persistence-attributes-cross-language-design.md) — the full per-level, per-subtype attribute vocabulary (field/identity/relationship/source), including the new explicit `@onDelete`/`@onUpdate` referential actions, `@storage`, `@softDelete`, `@version`.
 
+> **Notation (per revised [ADR-0006](../../../spec/decisions/ADR-0006-reserved-keywords-vs-inline-attributes.md)):** metadata keys are **bare — no `@` sigil**. Where this doc writes `@table`, `@kind`, `@role`, `@onDelete`, etc., read them as the bare keys `table`, `kind`, `role`, `onDelete`; the `@` is dropped metamodel-wide. The tables retain the `@`-form only until this doc is normalized in implementation.
+
 ## 1. Model (the rules)
 
 A `source` declares **where an object's data physically lives**. Rules:

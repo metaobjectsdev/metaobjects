@@ -404,7 +404,7 @@ Preserve the following contracts exactly across all language ports:
 - Dotted-path syntax for `@via`: `"Program.weeks"` or `"Program.weeks.workouts"`.
 - Dotted-path syntax for `@of`: `"Week.id"`.
 - Package segments: `::` separator — `acme::common::id`.
-- Reserved structural keywords (`name`/`package`/`extends`/`abstract`/`overlay`/`isArray`/`children`/`value`) are bare; `@` is exclusively the inline-attribute namespace. `@`-prefixing a reserved word (e.g. `@isArray`) is a hard error (`ERR_RESERVED_ATTR`). Array-ness is the structural `isArray`, never an attr. See [ADR-0006](spec/decisions/ADR-0006-reserved-keywords-vs-inline-attributes.md).
+- Metadata keys are **bare — no `@` sigil** (ADR-0006). Reserved structural keywords are a closed set (`name`/`package`/`extends`/`abstract`/`overlay`/`isArray`/`children`/`value`); any other bare key is an inline attribute (classified by reserved-set membership). An `@`-prefixed key is rejected (`ERR_AT_PREFIX_KEY`) — write `schema`, not `@schema`. Array-ness is the bare reserved `isArray` (YAML: the `[]` key-suffix sugar). See [ADR-0006](spec/decisions/ADR-0006-reserved-keywords-vs-inline-attributes.md).
 
 **Loader pipeline:**
 - `extends:` resolution happens after all files are loaded (deferred, not eager).

@@ -38,19 +38,17 @@ Within a node body, keys appear in this exact order in the canonical form:
 3. `extends` — when set
 4. `abstract` — when `true`
 5. `overlay` — when `true`
-6. `isArray` — when `true` (structural, NOT an `@`-attr)
-7. `@`-prefixed attributes — alphabetical order within this section
-   (e.g. `@currency`, `@dbColumn`, `@default`, `@fields`, `@locale`, `@objectRef`)
+6. `isArray` — when `true`
+7. inline attributes (bare) — alphabetical order within this section
+   (e.g. `currency`, `default`, `fields`, `locale`, `objectRef`, `schema`)
 8. `children` — when non-empty (declaration order, NOT alphabetized)
 
-The reserved structural keys are exactly those listed above. Everything else inside a body
-is either an `@`-prefixed attribute or invalid.
-
-The two namespaces are **disjoint** (ADR-0006): reserved structural keywords are *always* bare
-and `@` is *exclusively* the inline-attribute namespace. Applying the `@` sigil to a reserved
-keyword — e.g. `@isArray`, `@abstract` — is a hard load error (`ERR_RESERVED_ATTR`) in every
-language port. Array-ness in particular is structural: a field is a collection iff its bare
-`isArray` keyword is `true`; it is never expressed as an attribute.
+All keys are **bare — there is no `@` sigil** (ADR-0006). The reserved structural keywords are
+exactly the closed set listed above (1–6, 8); **any other bare key is an inline attribute**.
+Classification is reserved-set membership, so no marker is needed. An `@`-prefixed key is
+rejected (`ERR_AT_PREFIX_KEY`) in every language port — keys are bare; write `schema`, not
+`@schema`. Array-ness is the bare reserved `isArray` (or, in YAML, the `[]` key-suffix sugar);
+never a sigiled key.
 
 ## Package + file organization
 
