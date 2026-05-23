@@ -41,6 +41,26 @@ def test_run_gen_skips_unsafe_names_with_warning(tmp_path: Path) -> None:
     assert any("unsafe name" in w for w in result.warnings)
 
 
+def test_run_gen_refuses_handwritten_file(tmp_path: Path) -> None:
+    root = _load(tmp_path / "meta", {"metadata.root": {"package": "acme", "children": [
+        {"object.entity": {"name": "Subscriber", "children": [{"field.string": {"name": "x"}}]}},
+    ]}})
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "Subscriber.py").write_text("# hand written, no marker\nx = 1\n")
+    result = run_gen(GenConfig(out_dir=str(out)), root, generators=[entity_model()])
+    assert [w[1] for w in result.files] == ["refused"]
+    assert any("Refused to overwrite" in w for w in result.warnings)
+    assert "hand written" in (out / "Subscriber.py").read_text()  # untouched
+
+
+def test_run_gen_warns_when_no_entities(tmp_path: Path) -> None:
+    root = _load(tmp_path / "meta", {"metadata.root": {"package": "acme", "children": []}})
+    result = run_gen(GenConfig(out_dir=str(tmp_path / "out")), root, generators=[entity_model()])
+    assert result.files == []
+    assert any("No entities to generate" in w for w in result.warnings)
+
+
 def test_run_gen_errors_on_path_collision(tmp_path: Path) -> None:
     root = _load(tmp_path / "meta", {"metadata.root": {"package": "acme", "children": [
         {"object.entity": {"name": "A", "children": [{"field.string": {"name": "x"}}]}},

@@ -62,6 +62,15 @@ def run_gen(
     if entity_filter is not None:
         objs = [o for o in objs if o.name in entity_filter]
 
+    if not objs:
+        reason = (
+            "no object children match the provided entity_filter"
+            if entity_filter is not None
+            else "root has no object children"
+        )
+        result.warnings.append(f"No entities to generate — {reason}.")
+        return result
+
     safe: list[MetaObject] = []
     for o in objs:
         if not _VALID_NAME.match(o.name):

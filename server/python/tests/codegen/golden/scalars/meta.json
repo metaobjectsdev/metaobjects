@@ -1,0 +1,11 @@
+{ "metadata.root": { "package": "acme::report", "children": [
+  { "object.value": { "name": "Metric", "children": [
+    { "field.string": { "name": "label" } }
+  ]}},
+  { "object.value": { "name": "Report", "children": [
+    { "field.timestamp": { "name": "generatedAt", "@required": true } },
+    { "field.decimal": { "name": "total", "@required": true } },
+    { "field.currency": { "name": "revenue", "@required": true } },
+    { "field.object": { "name": "metrics", "@objectRef": "Metric", "@isArray": true } }
+  ]}}
+]}}

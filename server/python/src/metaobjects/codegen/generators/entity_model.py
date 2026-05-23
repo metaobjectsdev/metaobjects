@@ -4,6 +4,7 @@ from __future__ import annotations
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.field import field_constants as fc
+from metaobjects.shared.separators import PACKAGE_SEP
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.type_map import py_type_for
 from metaobjects.codegen.format import ruff_format
@@ -18,17 +19,33 @@ def _field_line(field: MetaField, imports: set[str]) -> tuple[str, bool]:
         ref = field.attr(fc.FIELD_ATTR_OBJECT_REF)
         if ref:
             imports.add(f"from .{ref} import {ref}")
-    ann = pt.expr
     required = field.attr(fc.FIELD_ATTR_REQUIRED) is True
     max_len = field.attr(fc.FIELD_ATTR_MAX_LENGTH)
+    # bool is an int subclass, so `@maxLength: true` must not be read as a length.
     uses_field = isinstance(max_len, int) and not isinstance(max_len, bool)
-    if required:
-        if uses_field:
-            return f"    {field.name}: {ann} = Field(max_length={max_len})", True
-        return f"    {field.name}: {ann}", False
-    if uses_field:
-        return f"    {field.name}: {ann} | None = Field(default=None, max_length={max_len})", True
-    return f"    {field.name}: {ann} | None = None", False
+
+    annotation = pt.expr if required else f"{pt.expr} | None"
+    if required and uses_field:
+        assignment = f" = Field(max_length={max_len})"
+    elif required:
+        assignment = ""
+    elif uses_field:
+        assignment = f" = Field(default=None, max_length={max_len})"
+    else:
+        assignment = " = None"
+
+    return f"    {field.name}: {annotation}{assignment}", uses_field
+
+
+def _effective_fqn(entity: MetaObject) -> str:
+    """`package::name`, resolving the package from the nearest ancestor that carries
+    one (objects inherit the file/root package). Falls back to the bare name."""
+    pkg = entity.package
+    parent = entity.parent
+    while pkg is None and parent is not None:
+        pkg = parent.package
+        parent = parent.parent
+    return f"{pkg}{PACKAGE_SEP}{entity.name}" if pkg else entity.name
 
 
 def render_entity_model(entity: MetaObject) -> str:
@@ -55,7 +72,7 @@ def render_entity_model(entity: MetaObject) -> str:
         pyd_names.append("Field")
 
     parts: list[str] = [
-        generated_header(entity.name, entity.fqn()),
+        generated_header(entity.name, _effective_fqn(entity)),
         "from __future__ import annotations",
         "",
     ]
