@@ -14,6 +14,7 @@ from ..registry import AttrSchema, TypeRegistry
 from ..shared.base_types import TYPE_LAYOUT, TYPE_OBJECT
 from ..meta.presentation.layout.layout_constants import (
     LAYOUT_ATTR_DEFAULT_SORT_FIELD,
+    LAYOUT_ATTR_FILTER,
     LAYOUT_SUBTYPE_DATA_GRID,
 )
 
@@ -34,6 +35,7 @@ def run_validations(
     """
     _validate_attr_schema(root, registry, errors)
     _validate_datagrid_sort_fields(root, errors)
+    _validate_datagrid_filter_values(root, errors)
 
 
 # ---------------------------------------------------------------------------
@@ -190,3 +192,100 @@ def _validate_datagrid_sort_fields(
                         ErrorCode.ERR_BAD_DEFAULT_SORT_FIELD,
                     )
                 )
+
+
+# ---------------------------------------------------------------------------
+# Ops-per-field-subtype allow-table (from query-constants.ts)
+# ---------------------------------------------------------------------------
+# string         → eq, ne, in, like, isNull
+# boolean        → eq, isNull
+# numerics + temporal → eq, ne, gt, gte, lt, lte, in, isNull
+
+_OPS_STRING: frozenset[str] = frozenset({"eq", "ne", "in", "like", "isNull"})
+_OPS_BOOLEAN: frozenset[str] = frozenset({"eq", "isNull"})
+_OPS_NUMERIC_TEMPORAL: frozenset[str] = frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"})
+
+_NUMERIC_TEMPORAL_SUBTYPES: frozenset[str] = frozenset(
+    {"int", "short", "byte", "long", "double", "float", "decimal", "date", "time", "timestamp"}
+)
+
+
+def ops_for_subtype(field_subtype: str) -> frozenset[str]:
+    """Return the set of allowed filter operators for a given field subtype.
+
+    Mirrors the ops-per-subtype allow-table from query-constants.ts.
+    """
+    if field_subtype == "string":
+        return _OPS_STRING
+    if field_subtype == "boolean":
+        return _OPS_BOOLEAN
+    if field_subtype in _NUMERIC_TEMPORAL_SUBTYPES:
+        return _OPS_NUMERIC_TEMPORAL
+    # Unknown/extension subtypes: allow the full union (open policy).
+    return _OPS_STRING | _OPS_NUMERIC_TEMPORAL
+
+
+# ---------------------------------------------------------------------------
+# Pass: dataGrid @filter field + op validation
+# ---------------------------------------------------------------------------
+# For each object.* node, build a filterable map from effective fields.
+# For each layout.dataGrid child's @filter dict: check that each referenced
+# field is filterable and that each operator is allowed for that field's subtype.
+
+
+def _validate_datagrid_filter_values(
+    root: MetaData,
+    errors: list[MetaError],
+) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_OBJECT:
+            continue
+        if not isinstance(node, MetaObject):
+            continue
+
+        # Build filterable map: field_name → allowed ops set
+        filterable: dict[str, frozenset[str]] = {
+            f.name: ops_for_subtype(f.sub_type)
+            for f in node.fields()
+            if f.attr("filterable") is True
+        }
+
+        for child in node.children():
+            if child.type != TYPE_LAYOUT or child.sub_type != LAYOUT_SUBTYPE_DATA_GRID:
+                continue
+            filter_value = child.attr(LAYOUT_ATTR_FILTER)
+            if filter_value is None:
+                continue
+            if not isinstance(filter_value, dict):
+                # Type check handled by attr-schema pass (ERR_BAD_ATTR_VALUE).
+                continue
+
+            for field_name, clause in filter_value.items():
+                if field_name not in filterable:
+                    errors.append(
+                        MetaError(
+                            f"{_node_label(node)} layout.dataGrid '{child.name}' @filter "
+                            f"references field '{field_name}' which is not a filterable field "
+                            f"on this object",
+                            ErrorCode.ERR_BAD_ATTR_FILTER,
+                        )
+                    )
+                    continue
+
+                allowed_ops = filterable[field_name]
+                if not isinstance(clause, dict):
+                    # Shorthand (scalar/list/null) desugared to op-object by FilterAttr;
+                    # if still not a dict here, skip (attr-schema pass covers type errors).
+                    continue
+                for op in clause:
+                    if op not in allowed_ops:
+                        field_obj = node.find_field(field_name)
+                        sub = field_obj.sub_type if field_obj is not None else "?"
+                        errors.append(
+                            MetaError(
+                                f"{_node_label(node)} layout.dataGrid '{child.name}' @filter "
+                                f"uses operator '{op}' on field '{field_name}' which is not "
+                                f"allowed for field subtype '{sub}'",
+                                ErrorCode.ERR_BAD_ATTR_FILTER,
+                            )
+                        )
