@@ -111,7 +111,11 @@ public sealed interface Change {
 
     /** allowed | blocked (+ reason). Port of migrate-ts ChangeStatus. */
     record ChangeStatus(String state, String blockedReason) {
+        public static final String STATE_BLOCKED = "blocked";
         public static final ChangeStatus ALLOWED = new ChangeStatus("allowed", null);
-        public static ChangeStatus blocked(String reason) { return new ChangeStatus("blocked", reason); }
+        public static ChangeStatus blocked(String reason) { return new ChangeStatus(STATE_BLOCKED, reason); }
+
+        /** True when this change is blocked (destructive/lossy and not explicitly allowed). */
+        public boolean isBlocked() { return STATE_BLOCKED.equals(state); }
     }
 }

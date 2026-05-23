@@ -103,12 +103,16 @@ public final class ExpectedSchemaBuilder {
 
     private MetaField<?> fieldForColumn(MetaObject mc, String column) {
         for (MetaField<?> mf : mc.getMetaFields()) {
-            String col = mf.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN)
-                ? mf.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN).getValueAsString()
-                : mf.getName();
-            if (column.equalsIgnoreCase(col)) return mf;
+            if (column.equalsIgnoreCase(columnNameOf(mf))) return mf;
         }
         return null;
+    }
+
+    /** The field's column name: {@code @dbColumn} when present, otherwise the field name. */
+    private static String columnNameOf(MetaField<?> mf) {
+        return mf.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN)
+            ? mf.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN).getValueAsString()
+            : mf.getName();
     }
 
     private void harvestRenameHints(MetaObject mc, RenameHints hints) {
@@ -127,10 +131,7 @@ public final class ExpectedSchemaBuilder {
         // Column-level renames
         for (MetaField<?> mf : mc.getMetaFields()) {
             if (mf.hasMetaAttr(CoreDBMetaDataProvider.PREVIOUS_NAME)) {
-                String col = mf.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN)
-                    ? mf.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN).getValueAsString()
-                    : mf.getName();
-                hints.addColumnRename(table, col,
+                hints.addColumnRename(table, columnNameOf(mf),
                     mf.getMetaAttr(CoreDBMetaDataProvider.PREVIOUS_NAME).getValueAsString());
             }
         }

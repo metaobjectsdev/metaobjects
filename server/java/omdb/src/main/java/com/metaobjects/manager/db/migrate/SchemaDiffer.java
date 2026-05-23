@@ -52,7 +52,7 @@ public final class SchemaDiffer {
         // multi-schema identity (null<->"public" normalization) lands with the Postgres dialect work.
         changes.sort(Comparator.comparing(Change::sortKey));
         ChangeStatusRules.applyStatus(changes, allow);
-        return new DiffResult(changes, changes.stream().filter(c -> "blocked".equals(c.status().state())).toList());
+        return new DiffResult(changes, changes.stream().filter(c -> c.status().isBlocked()).toList());
     }
 
     private void diffColumns(TableDescriptor e, TableDescriptor a, RenameHints hints, List<Change> changes) {

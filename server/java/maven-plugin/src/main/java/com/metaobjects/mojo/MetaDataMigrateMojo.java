@@ -188,7 +188,7 @@ public class MetaDataMigrateMojo extends AbstractMojo {
         } else {
             getLog().info("Schema diff (" + changes.size() + " change(s)):");
             for (Change ch : changes) {
-                String blocked = "blocked".equals(ch.status().state())
+                String blocked = ch.status().isBlocked()
                     ? "  [BLOCKED: " + ch.status().blockedReason() + "]"
                     : "";
                 getLog().info("  " + ch.kind() + "  " + ch.sortKey() + blocked);
