@@ -686,17 +686,10 @@ public static class ValidationPasses
 
     private static void WalkEnumValues(MetaData node, List<MetaError> errors)
     {
-        if (node.Type == TYPE_FIELD && node.SubType == FIELD_SUBTYPE_ENUM)
+        if (node is MetaField { SubType: FIELD_SUBTYPE_ENUM } field)
         {
-            // Use OwnAttr — @values is own on each field (not inherited for content checks).
-            var raw = node.OwnAttr(FIELD_ATTR_VALUES);
-
-            IReadOnlyList<string>? members = raw switch
-            {
-                IReadOnlyList<string> ss => ss,
-                IReadOnlyList<object?> os => os.OfType<string>().ToList(),
-                _ => null,
-            };
+            // Own @values only — content rules apply per-field, not via extends: inheritance.
+            var members = field.EnumValues;
 
             if (members is not null)
             {
@@ -704,7 +697,7 @@ public static class ValidationPasses
                 if (members.Count == 0)
                 {
                     errors.Add(new MetaError(
-                        $"field.enum '{node.Name}' @values must not be empty",
+                        $"field.enum '{field.Name}' @values must not be empty",
                         ErrorCode.ERR_BAD_ATTR_VALUE));
                 }
                 else
@@ -715,7 +708,7 @@ public static class ValidationPasses
                         if (!EnumMemberRegex.IsMatch(member))
                         {
                             errors.Add(new MetaError(
-                                $"field.enum '{node.Name}' @values member \"{member}\" is not a valid identifier " +
+                                $"field.enum '{field.Name}' @values member \"{member}\" is not a valid identifier " +
                                 $"(must match {ENUM_MEMBER_PATTERN})",
                                 ErrorCode.ERR_BAD_ATTR_VALUE));
                         }
@@ -728,7 +721,7 @@ public static class ValidationPasses
                         if (!seen.Add(member))
                         {
                             errors.Add(new MetaError(
-                                $"field.enum '{node.Name}' @values contains duplicate member \"{member}\"",
+                                $"field.enum '{field.Name}' @values contains duplicate member \"{member}\"",
                                 ErrorCode.ERR_BAD_ATTR_VALUE));
                             break; // one duplicate error per field is enough
                         }
