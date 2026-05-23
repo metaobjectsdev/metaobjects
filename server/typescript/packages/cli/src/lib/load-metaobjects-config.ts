@@ -19,13 +19,11 @@ const _thisFile = fileURLToPath(import.meta.url);
 const _isCompiled = _thisFile.includes("/dist/");
 const _cliDir = resolve(_thisFile, _isCompiled ? "../../../.." : "../../..");
 const _require = createRequire(import.meta.url);
-// Each aliased specifier maps to a compiled-output path and a TS-source path,
-// relative to _cliDir. When running from compiled output we resolve into the
-// package's dist/; when running TS source directly (bun test, `meta` run from
-// the workspace) we resolve into src/ so the CLI never depends on a stale,
-// unrebuilt dist/.
+// Fallback layout for each codegen specifier (relative to _cliDir), used only
+// when standard module resolution can't locate it. Compiled output lives in
+// dist/; un-compiled runs (bun test, `meta` from the workspace) use src/ so the
+// CLI never depends on a stale, unrebuilt dist/.
 //
-// The three workspace deps resolve through the CLI's own node_modules.
 // @metaobjectsdev/cli is this package itself, so it resolves directly from
 // _cliDir rather than through node_modules (which would be a non-existent
 // self-referential symlink).
@@ -38,6 +36,10 @@ const CLI_PKG_PATHS: Record<string, { dist: string; src: string }> = {
     dist: "node_modules/@metaobjectsdev/codegen-ts/dist/generators/index.js",
     src: "node_modules/@metaobjectsdev/codegen-ts/src/generators/index.ts",
   },
+  "@metaobjectsdev/codegen-ts-react": {
+    dist: "node_modules/@metaobjectsdev/codegen-ts-react/dist/index.js",
+    src: "node_modules/@metaobjectsdev/codegen-ts-react/src/index.ts",
+  },
   "@metaobjectsdev/codegen-ts-tanstack": {
     dist: "node_modules/@metaobjectsdev/codegen-ts-tanstack/dist/index.js",
     src: "node_modules/@metaobjectsdev/codegen-ts-tanstack/src/index.ts",
@@ -48,12 +50,33 @@ const CLI_PKG_PATHS: Record<string, { dist: string; src: string }> = {
   },
 };
 
+// Resolve a codegen specifier to an absolute path for jiti's alias map, so a
+// user's metaobjects.config.ts can import @metaobjectsdev/codegen-ts* without
+// declaring it directly — the CLI's own copy is used.
+//
+// Standard module resolution is tried first: it follows whatever node_modules
+// layout exists — npm (flat), pnpm (deps as siblings in the virtual store,
+// NOT nested under the CLI dir), or bun — and honors the package's export
+// conditions. The CLI_PKG_PATHS fallback only kicks in when a specifier isn't
+// require-resolvable from the CLI module.
 function resolveCliPkg(specifier: string): string {
   const paths = CLI_PKG_PATHS[specifier];
-  if (paths !== undefined) {
+  // The cli self-reference always points at this package's own entry, never a
+  // (possibly absent) self-referential node_modules symlink.
+  if (specifier === "@metaobjectsdev/cli" && paths !== undefined) {
     return resolve(_cliDir, _isCompiled ? paths.dist : paths.src);
   }
-  return _require.resolve(specifier);
+  try {
+    return _require.resolve(specifier);
+  } catch {
+    if (paths !== undefined) {
+      const candidate = resolve(_cliDir, _isCompiled ? paths.dist : paths.src);
+      if (existsSync(candidate)) return candidate;
+    }
+    throw new Error(
+      `metaobjects: could not resolve ${specifier} from the CLI — try reinstalling @metaobjectsdev/cli.`,
+    );
+  }
 }
 
 export async function loadMetaobjectsConfig(projectRoot: string): Promise<MetaobjectsGenConfig> {
@@ -72,6 +95,7 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
     alias: {
       "@metaobjectsdev/codegen-ts": resolveCliPkg("@metaobjectsdev/codegen-ts"),
       "@metaobjectsdev/codegen-ts/generators": resolveCliPkg("@metaobjectsdev/codegen-ts/generators"),
+      "@metaobjectsdev/codegen-ts-react": resolveCliPkg("@metaobjectsdev/codegen-ts-react"),
       "@metaobjectsdev/codegen-ts-tanstack": resolveCliPkg("@metaobjectsdev/codegen-ts-tanstack"),
       "@metaobjectsdev/cli": resolveCliPkg("@metaobjectsdev/cli"),
     },
