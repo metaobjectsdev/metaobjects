@@ -21,6 +21,14 @@ from .meta.persistence.origin.meta_origin import MetaOrigin
 from .meta.persistence.origin.origin_constants import ORIGIN_SUBTYPES
 from .meta.persistence.source.meta_source import MetaSource
 from .meta.persistence.source.source_constants import SOURCE_SUBTYPES
+from .meta.presentation.layout.layout_constants import (
+    LAYOUT_ATTR_COLUMNS,
+    LAYOUT_SUBTYPES,
+    LAYOUT_SUBTYPE_DATA_GRID,
+)
+from .meta.presentation.layout.meta_layout import MetaLayout
+from .meta.presentation.view.meta_view import MetaView
+from .meta.presentation.view.view_constants import VIEW_SUBTYPES
 from .provider import Provider
 from .registry import AttrSchema, ChildRule, TypeDefinition
 from .shared.base_types import (
@@ -29,11 +37,13 @@ from .shared.base_types import (
     TYPE_ATTR,
     TYPE_FIELD,
     TYPE_IDENTITY,
+    TYPE_LAYOUT,
     TYPE_METADATA,
     TYPE_OBJECT,
     TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
     TYPE_SOURCE,
+    TYPE_VIEW,
 )
 
 core_provider = Provider("metaobjects-core-types")
@@ -61,6 +71,7 @@ for _sub in OBJECT_SUBTYPES:
                 ChildRule(TYPE_ATTR, "*"),
                 ChildRule(TYPE_SOURCE, "*"),
                 ChildRule(TYPE_RELATIONSHIP, "*"),
+                ChildRule(TYPE_LAYOUT, "*"),
             ],
         )
     )
@@ -72,7 +83,11 @@ for _sub in fc.FIELD_SUBTYPES:
             type=TYPE_FIELD,
             sub_type=_sub,
             factory=lambda t, s, n: MetaField(t, s, n),
-            child_rules=[ChildRule(TYPE_ATTR, "*"), ChildRule(TYPE_ORIGIN, "*")],
+            child_rules=[
+                ChildRule(TYPE_ATTR, "*"),
+                ChildRule(TYPE_ORIGIN, "*"),
+                ChildRule(TYPE_VIEW, "*"),
+            ],
         )
     )
 
@@ -130,6 +145,33 @@ for _sub in ORIGIN_SUBTYPES:
             type=TYPE_ORIGIN,
             sub_type=_sub,
             factory=lambda t, s, n: MetaOrigin(t, s, n),
+            child_rules=[ChildRule(TYPE_ATTR, "*")],
+        )
+    )
+
+# view.* (base, text, textarea, date, currency); @locale flows through as a base attr
+for _sub in VIEW_SUBTYPES:
+    core_provider.add(
+        TypeDefinition(
+            type=TYPE_VIEW,
+            sub_type=_sub,
+            factory=lambda t, s, n: MetaView(t, s, n),
+            child_rules=[ChildRule(TYPE_ATTR, "*")],
+        )
+    )
+
+# layout.* (base, dataGrid); @columns is a stringArray — scalar desugars to array
+_layout_datagrid_attrs = [
+    AttrSchema(name=LAYOUT_ATTR_COLUMNS, value_type=ATTR_SUBTYPE_STRINGARRAY),
+]
+for _sub in LAYOUT_SUBTYPES:
+    _attrs = list(_layout_datagrid_attrs) if _sub == LAYOUT_SUBTYPE_DATA_GRID else []
+    core_provider.add(
+        TypeDefinition(
+            type=TYPE_LAYOUT,
+            sub_type=_sub,
+            factory=lambda t, s, n: MetaLayout(t, s, n),
+            attrs=_attrs,
             child_rules=[ChildRule(TYPE_ATTR, "*")],
         )
     )

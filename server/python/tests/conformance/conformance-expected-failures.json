@@ -1,10 +1,7 @@
 {
   "fixtures": [
-    "attr-filter-explicit-ops",
     "attr-filter-shorthand",
     "attr-properties-basic",
-    "currency-explicit-jpy",
-    "currency-precedence-field-vs-view",
     "error-attr-bad-allowed-value",
     "error-attr-filter-bad-field",
     "error-attr-filter-bad-op",
@@ -18,8 +15,6 @@
     "error-prompt-template-missing-payload-ref",
     "extends-abstract-base",
     "extends-cross-file",
-    "layout-data-grid-basic",
-    "layout-data-grid-multiple-named",
     "loader-basic-multi-file-same-package",
     "overlay-attr-last-writer-wins",
     "overlay-merge-flag-explicit",
