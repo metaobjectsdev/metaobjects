@@ -1,0 +1,19 @@
+{ "metadata.root": {
+    "package": "test::adapter",
+    "children": [
+      { "object.entity": {
+          "name": "Widget",
+          "@objectAdapter": "com.metaobjects.object.ObjectAdapterHookTest$SentinelAdapter",
+          "children": [ { "field.long": { "name": "id" } } ]
+      }},
+      { "object.value": {
+          "name": "Money",
+          "children": [ { "field.long": { "name": "cents" } } ]
+      }},
+      { "object.entity": {
+          "name": "Broken",
+          "@objectAdapter": "com.does.not.Exist",
+          "children": [ { "field.long": { "name": "id" } } ]
+      }}
+    ]
+}}
