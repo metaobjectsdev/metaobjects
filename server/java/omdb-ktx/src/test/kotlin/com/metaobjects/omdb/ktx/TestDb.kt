@@ -27,6 +27,7 @@ import javax.sql.DataSource
 class TestDb private constructor(
     val omdb: ObjectManagerDB,
     val registry: MetaDataLoaderRegistry,
+    val dataSource: DataSource,
     private val dbName: String,
     private val loader: FileMetaDataLoader,
 ) {
@@ -114,7 +115,7 @@ class TestDb private constructor(
             vs.setMetaDataLoaderRegistry(registry)
             vs.init()
 
-            return TestDb(omdb, registry, dbName, loader)
+            return TestDb(omdb, registry, ds, dbName, loader)
         }
     }
 }
