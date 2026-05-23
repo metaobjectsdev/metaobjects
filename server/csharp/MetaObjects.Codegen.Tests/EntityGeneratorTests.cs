@@ -89,6 +89,24 @@ public class EntityGeneratorTests
     }
 
     [Fact]
+    public void Routes_generator_emits_crud_endpoints()
+    {
+        var ctx = Ctx(Load());
+        var file = Assert.Single(new RoutesGenerator().Generate(ctx));
+        Assert.Equal("SubscriberRoutes.g.cs", file.Path);
+        var src = file.Content;
+
+        Assert.Contains("public static class SubscriberRoutes", src);
+        Assert.Contains("public static IEndpointRouteBuilder MapSubscriberRoutes(this IEndpointRouteBuilder app, string prefix = \"/api\")", src);
+        Assert.Contains("app.MapGet(prefix + \"/subscribers\", async (AppDbContext db) =>", src);
+        Assert.Contains("app.MapGet(prefix + \"/subscribers/{id}\", async (long id, AppDbContext db) =>", src);
+        Assert.Contains("db.Subscribers.FindAsync(id)", src);
+        Assert.Contains("app.MapPost(prefix + \"/subscribers\", async (Subscriber input, AppDbContext db) =>", src);
+        Assert.Contains("app.MapPut(prefix + \"/subscribers/{id}\", async (long id, Subscriber input, AppDbContext db) =>", src);
+        Assert.Contains("app.MapDelete(prefix + \"/subscribers/{id}\", async (long id, AppDbContext db) =>", src);
+    }
+
+    [Fact]
     public void Runner_writes_generated_files_but_refuses_handwritten()
     {
         var dir = Path.Combine(Path.GetTempPath(), "mo-gen-" + Guid.NewGuid().ToString("N"));

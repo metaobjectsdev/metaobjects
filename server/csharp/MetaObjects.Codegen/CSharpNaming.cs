@@ -48,6 +48,22 @@ public static class CSharpNaming
         name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
 
     /// <summary>
+    /// Cosmetic pluralization for a DbSet property name + the route collection
+    /// segment (the table name itself comes from [Table]). Shared so the DbContext
+    /// and routes generators agree.
+    /// </summary>
+    public static string Pluralize(string name)
+    {
+        if (name.EndsWith("s", StringComparison.Ordinal) || name.EndsWith("x", StringComparison.Ordinal) ||
+            name.EndsWith("z", StringComparison.Ordinal) || name.EndsWith("ch", StringComparison.Ordinal) ||
+            name.EndsWith("sh", StringComparison.Ordinal))
+            return name + "es";
+        if (name.Length > 1 && name.EndsWith("y", StringComparison.Ordinal) && !"aeiou".Contains(name[^2]))
+            return name[..^1] + "ies";
+        return name + "s";
+    }
+
+    /// <summary>
     /// Whether a field is non-nullable in the generated entity: explicitly @required,
     /// or part of the primary identity.
     /// </summary>
