@@ -12,6 +12,7 @@
 
 using System.Text;
 using MetaObjects.Meta;
+using MetaObjects.Render;
 using static MetaObjects.Shared.BaseTypes;
 using static MetaObjects.Shared.Structural;
 using static MetaObjects.Core.Field.FieldConstants;
@@ -90,6 +91,31 @@ public static class PayloadCodegen
         var output = new List<string>();
         EmitRecord(root, voName, new HashSet<string>(StringComparer.Ordinal), output);
         return string.Join("\n\n", output) + "\n";
+    }
+
+    /// <summary>
+    /// Derive the verify field tree (the input to <c>Verify.Check</c>) from an
+    /// object.value view-object: scalars become leaves, object-ref fields recurse
+    /// into nested element trees. This is the metadata→verify bridge a `meta verify`
+    /// command uses to drift-check a template against its @payloadRef.
+    /// </summary>
+    public static IReadOnlyList<PayloadField> BuildPayloadFieldTree(MetaData root, string voName) =>
+        BuildTree(root, voName, new HashSet<string>(StringComparer.Ordinal));
+
+    private static IReadOnlyList<PayloadField> BuildTree(MetaData root, string voName, HashSet<string> visiting)
+    {
+        var vo = FindObject(root, voName);
+        if (vo is null || !visiting.Add(voName)) return [];
+        var fields = new List<PayloadField>();
+        foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
+        {
+            if (f.SubType == FIELD_SUBTYPE_OBJECT && f.OwnAttr(FIELD_ATTR_OBJECT_REF) is string refName)
+                fields.Add(new PayloadField(f.Name, BuildTree(root, refName, visiting)));
+            else
+                fields.Add(new PayloadField(f.Name));
+        }
+        visiting.Remove(voName);
+        return fields;
     }
 
     private static string Pascal(string s) =>
