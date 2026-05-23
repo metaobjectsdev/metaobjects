@@ -113,19 +113,19 @@ def _validate_attr_schema(
     errors: list[MetaError],
 ) -> None:
     for node in _walk(root):
-        schemas: list[AttrSchema] = registry.effective_attrs(node.type, node.sub_type)
+        schemas: list[AttrSchema] = registry.attrs_of(node.type, node.sub_type)
         if not schemas:
             continue
 
         schema_by_name: dict[str, AttrSchema] = {s.name: s for s in schemas}
 
-        # --- Check 1: required attrs must be present (uses effective attrs so an
-        #     inherited attr from the super chain satisfies the requirement) ---
-        effective_attrs = node.attrs()
+        # --- Check 1: required attrs must be present (uses node.attrs() = effective,
+        #     so an inherited attr from the super chain satisfies the requirement) ---
+        present_attrs = node.attrs()
         for schema in schemas:
             if not schema.required:
                 continue
-            if schema.name not in effective_attrs:
+            if schema.name not in present_attrs:
                 errors.append(
                     MetaError(
                         f"{_node_label(node)} is missing required attribute '@{schema.name}'",

@@ -16,25 +16,19 @@ def test_register_and_find() -> None:
     assert reg.find("field", "missing") is None
 
 
-def test_inherits_from_merges_attrs() -> None:
+def test_attrs_of_returns_declared_attrs() -> None:
     reg = TypeRegistry()
-    reg.register(
-        TypeDefinition(
-            type="field",
-            sub_type="base",
-            factory=lambda t, s, n: None,
-            attrs=[AttrSchema(name="required", value_type="boolean")],
-        )
-    )
     reg.register(
         TypeDefinition(
             type="field",
             sub_type="string",
             factory=lambda t, s, n: None,
-            attrs=[AttrSchema(name="maxLength", value_type="int")],
-            inherits_from=("field", "base"),
+            attrs=[
+                AttrSchema(name="required", value_type="boolean"),
+                AttrSchema(name="maxLength", value_type="int"),
+            ],
         )
     )
-    effective = reg.effective_attrs("field", "string")
-    names = {a.name for a in effective}
+    names = {a.name for a in reg.attrs_of("field", "string")}
     assert names == {"required", "maxLength"}
+    assert reg.attrs_of("field", "unregistered") == []

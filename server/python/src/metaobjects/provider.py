@@ -25,7 +25,6 @@ class Provider:
         sub_type = getattr(cls, "SUBTYPE")
         attrs: list[AttrSchema] = list(getattr(cls, "ATTRS", []))
         child_rules: list[ChildRule] = list(getattr(cls, "CHILD_RULES", []))
-        inherits_from = getattr(cls, "INHERITS_FROM", None)
 
         def factory(t: str, s: str, n: str, _cls: T = cls) -> object:
             return _cls(t, s, n)
@@ -37,7 +36,6 @@ class Provider:
                 factory=factory,
                 attrs=attrs,
                 child_rules=child_rules,
-                inherits_from=inherits_from,
             )
         )
         return cls

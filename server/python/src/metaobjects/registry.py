@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Callable
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,6 @@ class TypeDefinition:
     factory: NodeFactory
     attrs: list[AttrSchema] = field(default_factory=list)
     child_rules: list[ChildRule] = field(default_factory=list)
-    inherits_from: Optional[tuple[str, str]] = None
 
     @property
     def key(self) -> tuple[str, str]:
@@ -51,21 +50,14 @@ class TypeRegistry:
     def has_type(self, type_: str) -> bool:
         return any(t == type_ for (t, _s) in self._defs)
 
-    def effective_attrs(self, type_: str, sub_type: str) -> list[AttrSchema]:
-        """Own attrs plus those inherited via inherits_from; own wins on name conflict."""
+    def attrs_of(self, type_: str, sub_type: str) -> list[AttrSchema]:
+        """The declared attribute schemas for a (type, subType), or [] if unregistered.
+        Mirrors the TS registry's attrsOf()."""
         definition = self.find(type_, sub_type)
-        if definition is None:
-            return []
-        by_name: dict[str, AttrSchema] = {}
-        if definition.inherits_from is not None:
-            for attr in self.effective_attrs(*definition.inherits_from):
-                by_name[attr.name] = attr
-        for attr in definition.attrs:
-            by_name[attr.name] = attr
-        return list(by_name.values())
+        return list(definition.attrs) if definition is not None else []
 
     def attr_schema(self, type_: str, sub_type: str, attr_name: str) -> AttrSchema | None:
-        for attr in self.effective_attrs(type_, sub_type):
+        for attr in self.attrs_of(type_, sub_type):
             if attr.name == attr_name:
                 return attr
         return None
