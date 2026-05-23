@@ -7,8 +7,10 @@ namespace MetaObjects.Codegen.Tests;
 
 public class PostgresSchemaTests
 {
-    // Week + Program (tables). Week.fkProgram is the FK (identity.reference) and
-    // Week.program is the to-one navigation back to Program.
+    // Week + Program + Tag (tables). Week.fkProgram is the FK (identity.reference)
+    // and Week.program is the to-one navigation back to Program; Tag.fkProgramLogical
+    // is a logical-only (@enforce: false) reference. Program.homeAddress is a
+    // @storage flattened object field; Program.config is a default (jsonb) object.
     //   ProgramView      — passthrough projection (plain columns).
     //   ProgramStat      — aggregate (count over Program.weeks -> correlated subquery).
     //   WeekDetail       — passthrough-@via (forwards Program.title via Week.program).
@@ -23,10 +25,23 @@ public class PostgresSchemaTests
         { "identity.reference": { "name": "fkProgram", "@fields": "programId", "@references": "Program" } },
         { "relationship.association": { "name": "program", "@objectRef": "Program", "@cardinality": "one" } }
       ]}},
+      { "object.entity": { "name": "Tag", "children": [
+        { "source.dbTable": { "@name": "tags" } },
+        { "field.long": { "name": "id" } },
+        { "field.long": { "name": "programId" } },
+        { "identity.primary": { "@fields": "id" } },
+        { "identity.reference": { "name": "fkProgramLogical", "@fields": "programId", "@references": "Program", "@enforce": false } }
+      ]}},
+      { "object.value": { "name": "Address", "children": [
+        { "field.string": { "name": "street", "@required": true, "@maxLength": 120 } },
+        { "field.string": { "name": "city", "@maxLength": 80 } }
+      ]}},
       { "object.entity": { "name": "Program", "children": [
         { "source.dbTable": { "@name": "programs" } },
         { "field.long":   { "name": "id" } },
         { "field.string": { "name": "title", "@required": true, "@maxLength": 200 } },
+        { "field.object": { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened" } },
+        { "field.object": { "name": "config", "@objectRef": "Address" } },
         { "relationship.aggregation": { "name": "weeks", "@objectRef": "Week", "@cardinality": "many" } },
         { "identity.primary": { "@fields": "id" } },
         { "identity.secondary": { "name": "byTitle", "@fields": "title", "@unique": true } }
@@ -78,6 +93,44 @@ public class PostgresSchemaTests
         Assert.Contains("PRIMARY KEY (id)", sql);
         Assert.Contains("CREATE UNIQUE INDEX programs_byTitle_uniq ON programs (title);", sql);
         Assert.Contains("CREATE TABLE weeks (", sql);
+    }
+
+    [Fact]
+    public void CreateTable_emits_foreign_key_for_enforced_reference()
+    {
+        var sql = PostgresSchema.BuildSchema(Load());
+        // Week.fkProgram (@enforce default true) -> a physical FK to programs.id.
+        Assert.Contains(
+            "CONSTRAINT weeks_programId_fk FOREIGN KEY (programId) REFERENCES programs (id)",
+            sql);
+    }
+
+    [Fact]
+    public void CreateTable_omits_foreign_key_for_logical_only_reference()
+    {
+        var sql = PostgresSchema.BuildSchema(Load());
+        Assert.Contains("CREATE TABLE tags (", sql);
+        // Tag.fkProgramLogical is @enforce: false -> no physical FK constraint.
+        Assert.DoesNotContain("CONSTRAINT tags_", sql);
+    }
+
+    [Fact]
+    public void Flattened_object_field_expands_to_prefixed_columns()
+    {
+        var sql = PostgresSchema.BuildSchema(Load());
+        // Program.homeAddress @storage flattened -> Address fields as "homeAddress_*";
+        // the parent object emits no column of its own.
+        Assert.Contains("homeAddress_street varchar(120) NOT NULL", sql);
+        Assert.Contains("homeAddress_city varchar(80)", sql);
+        Assert.DoesNotContain("homeAddress jsonb", sql);
+    }
+
+    [Fact]
+    public void Default_object_field_collapses_to_jsonb_column()
+    {
+        var sql = PostgresSchema.BuildSchema(Load());
+        // Program.config has no @storage -> single jsonb column (back-compat default).
+        Assert.Contains("config jsonb", sql);
     }
 
     [Fact]

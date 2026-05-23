@@ -49,23 +49,40 @@ public static class PostgresSchema
 
     private static string Col(MetaField f) => f.DbColumn ?? f.Name;
 
-    /// <summary>CREATE TABLE for a writable entity (columns + PK + NOT NULL + UNIQUE).</summary>
-    public static string CreateTable(MetaObject entity)
+    /// <summary>
+    /// CREATE TABLE for a writable entity: scalar columns + object-field storage
+    /// (@storage flattened → prefixed columns; else a single jsonb column) + PK +
+    /// NOT NULL + UNIQUE indexes + FOREIGN KEY constraints (from enforced
+    /// identity.reference children).
+    /// </summary>
+    public static string CreateTable(MetaObject entity, MetaRoot root)
     {
         var table = entity.DbTable ?? entity.Name;
         var pk = entity.PrimaryIdentity();
         var pkCols = (pk?.Fields ?? []).ToHashSet(StringComparer.Ordinal);
 
         var lines = new List<string>();
-        foreach (var f in entity.Fields().Where(f => CSharpNaming.ScalarFor(f.SubType) is not null))
+        foreach (var f in entity.Fields())
         {
-            var notNull = CSharpNaming.IsRequired(entity, f) ? " NOT NULL" : string.Empty;
-            lines.Add($"  {Col(f)} {PgType(f)}{notNull}");
+            if (CSharpNaming.ScalarFor(f.SubType) is not null)
+            {
+                var notNull = CSharpNaming.IsRequired(entity, f) ? " NOT NULL" : string.Empty;
+                lines.Add($"  {Col(f)} {PgType(f)}{notNull}");
+            }
+            else if (f.SubType == FIELD_SUBTYPE_OBJECT)
+            {
+                lines.AddRange(ObjectFieldColumns(entity, f, root));
+            }
         }
         if (pk is not null && pk.Fields.Count > 0)
         {
             var cols = entity.Fields().Where(f => pkCols.Contains(f.Name)).Select(Col);
             lines.Add($"  PRIMARY KEY ({string.Join(", ", cols)})");
+        }
+        // FOREIGN KEY constraints from enforced identity.reference children.
+        foreach (var fk in entity.ReferenceIdentities().Where(r => r.Enforce))
+        {
+            if (ForeignKeyClause(entity, fk, root) is { } clause) lines.Add(clause);
         }
 
         var sb = new StringBuilder();
@@ -81,6 +98,55 @@ public static class PostgresSchema
         }
         return sb.ToString();
     }
+
+    // Columns for an object-typed field. @storage flattened expands each nested
+    // scalar field as "{parentCol}_{nestedCol}" (the parent emits no column of its
+    // own); every other storage (jsonb / subdocument / absent) collapses to one
+    // jsonb column — a relational target can't materialize a document store inline.
+    private static IEnumerable<string> ObjectFieldColumns(MetaObject entity, MetaField f, MetaRoot root)
+    {
+        if (f.Storage == STORAGE_FLATTENED && f.ObjectRef is { } oref &&
+            root.FindObject(StripPkg(oref)) is { } nested)
+        {
+            var prefix = Col(f) + "_";
+            foreach (var nf in nested.Fields().Where(n => CSharpNaming.ScalarFor(n.SubType) is not null))
+            {
+                var notNull = CSharpNaming.IsRequired(nested, nf) ? " NOT NULL" : string.Empty;
+                yield return $"  {prefix}{Col(nf)} {PgType(nf)}{notNull}";
+            }
+            yield break;
+        }
+        var topNotNull = CSharpNaming.IsRequired(entity, f) ? " NOT NULL" : string.Empty;
+        yield return $"  {Col(f)} jsonb{topNotNull}";
+    }
+
+    // A table-level FOREIGN KEY constraint for an enforced reference identity.
+    // FK columns keep the reference's declared @fields order; target columns are
+    // the explicit dotted @references fields (multi-col) or the target's primary
+    // identity (single-col / bare form), falling back to "id".
+    private static string? ForeignKeyClause(MetaObject entity, MetaReferenceIdentity fk, MetaRoot root)
+    {
+        if (fk.TargetEntity is not { } targetName || fk.Fields.Count == 0) return null;
+        var target = root.FindObject(StripPkg(targetName));
+        if (target is null) return null;
+
+        var fkCols = fk.Fields.Select(js => ResolveColumn(entity, js)).ToList();
+        var refCols = fk.TargetFields.Count > 1
+            ? fk.TargetFields.Select(tf => ResolveColumn(target, tf)).ToList()
+            : [ResolveColumn(target, ResolvedTargetPkField(target, fk))];
+
+        var name = $"{entity.DbTable ?? entity.Name}_{fkCols[0]}_fk";
+        var refTable = target.DbTable ?? target.Name;
+        return $"  CONSTRAINT {name} FOREIGN KEY ({string.Join(", ", fkCols)}) " +
+               $"REFERENCES {refTable} ({string.Join(", ", refCols)})";
+    }
+
+    // The single target column a reference resolves to: the lone explicit @references
+    // field, else the target's primary-identity first field, else "id".
+    private static string ResolvedTargetPkField(MetaObject target, MetaReferenceIdentity fk) =>
+        fk.TargetFields.Count == 1
+            ? fk.TargetFields[0]
+            : target.PrimaryIdentity()?.Fields.FirstOrDefault() ?? "id";
 
     /// <summary>
     /// CREATE VIEW for a projection. Derives the SELECT from field origins:
@@ -242,7 +308,7 @@ public static class PostgresSchema
         foreach (var e in root.Objects().Where(o => o.IsEntity() && !o.IsReadOnlyProjection())
                      .OrderBy(o => o.Name, StringComparer.Ordinal))
         {
-            sb.AppendLine(CreateTable(e));
+            sb.AppendLine(CreateTable(e, root));
         }
         foreach (var p in root.Objects().Where(o => o.IsReadOnlyProjection())
                      .OrderBy(o => o.Name, StringComparer.Ordinal))
