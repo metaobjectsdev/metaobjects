@@ -3,8 +3,9 @@
 
 import { code, imp, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { FIELD_SUBTYPE_ENUM, FIELD_ATTR_VALUES } from "@metaobjectsdev/metadata";
+import { FIELD_SUBTYPE_ENUM } from "@metaobjectsdev/metadata";
 import { variableNameFromEntity, toPascalCase } from "../naming.js";
+import { enumValues } from "../enum-meta.js";
 
 export function renderInferredTypes(entity: MetaObject): Code {
   const varName = variableNameFromEntity(entity.name);
@@ -31,9 +32,8 @@ export function renderEnumTypeAliases(entity: MetaObject): Code | null {
   for (const field of entity.fields()) {
     if (field.subType !== FIELD_SUBTYPE_ENUM) continue;
 
-    // Prefer effective attr (own or inherited via extends) for @values.
-    const values = field.attr(FIELD_ATTR_VALUES);
-    if (!Array.isArray(values)) continue;
+    const values = enumValues(field);
+    if (values === undefined) continue;
 
     // Derive the type-alias name.
     const superField = field.resolveSuper();
@@ -44,7 +44,7 @@ export function renderEnumTypeAliases(entity: MetaObject): Code | null {
     if (seen.has(typeName)) continue;
     seen.add(typeName);
 
-    const union = values.map((v) => JSON.stringify(String(v))).join(" | ");
+    const union = values.map((v) => JSON.stringify(v)).join(" | ");
     lines.push(`export type ${typeName} = ${union};`);
   }
 

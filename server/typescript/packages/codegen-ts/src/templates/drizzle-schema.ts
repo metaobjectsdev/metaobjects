@@ -68,9 +68,10 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     const isPk = pkFieldNames.has(child.name);
     const isUnique = uniqueFieldNames.has(child.name) && !isPk;
     const fkInfo = fkMap.get(child.name);
-    columnLines.push(renderColumn(child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique, obj.package));
-    // Collect CHECK constraints from the column spec.
+    // Compute the column spec once per field and reuse it for both the column
+    // line and the CHECK collection.
     const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy);
+    columnLines.push(renderColumn(spec, child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique, obj.package));
     if (spec.checkConstraint !== undefined) {
       checkConstraints.push({
         name: `chk_${tableName}_${spec.dbName}`,
@@ -191,6 +192,7 @@ function inlineObjectLiteral(obj: Record<string, unknown>): string {
 
 /** Render one column line (field name + Drizzle column expression). */
 function renderColumn(
+  spec: ColumnSpec,
   field: MetaField,
   ctx: RenderContext,
   isPk: boolean,
@@ -200,7 +202,6 @@ function renderColumn(
   isUnique: boolean = false,
   entityPackage: string | undefined = undefined,
 ): Code {
-  const spec = mapColumnType(field, ctx.dialect, ctx.columnNamingStrategy);
   const fnSym = imp(`${spec.fnName}@${spec.importModule}`);
 
   const dbNameLit = JSON.stringify(spec.dbName);

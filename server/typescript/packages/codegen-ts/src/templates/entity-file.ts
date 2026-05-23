@@ -20,6 +20,8 @@ import { renderProjectionDecl } from "./projection-decl.js";
 
 export function renderEntityFile(entity: MetaObject, ctx: RenderContext): string {
   // --- Projection path (read-only: view-backed entity with no table source) ---
+  // Projections intentionally get the z.enum() validator but NOT a named enum
+  // type alias — emitting aliases here is a deliberate v1 scope decision.
   if (isProjection(entity)) {
     return renderProjectionDecl(entity, ctx.loadedRoot, {
       columnNamingStrategy: ctx.columnNamingStrategy,

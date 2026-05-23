@@ -9,7 +9,7 @@ import {
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
-  FIELD_SUBTYPE_ENUM, FIELD_ATTR_VALUES,
+  FIELD_SUBTYPE_ENUM,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
@@ -17,6 +17,7 @@ import {
   VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_PATTERN,
   GENERATION_INCREMENT, GENERATION_UUID,
 } from "@metaobjectsdev/metadata";
+import { enumValues, zodEnumExpr } from "../enum-meta.js";
 
 export function renderZodValidators(obj: MetaObject): Code {
   const z = imp("z@zod");
@@ -99,11 +100,8 @@ function zodFieldExpr(field: MetaField): string {
       base = "z.string()";
       break;
     case FIELD_SUBTYPE_ENUM: {
-      // Use effective attr (own or inherited via extends) for @values.
-      const values = field.ownAttr(FIELD_ATTR_VALUES) ?? field.attr(FIELD_ATTR_VALUES);
-      base = Array.isArray(values)
-        ? `z.enum([${values.map((v) => JSON.stringify(String(v))).join(", ")}])`
-        : "z.string()";
+      const values = enumValues(field);
+      base = values !== undefined ? zodEnumExpr(values) : "z.string()";
       break;
     }
     case FIELD_SUBTYPE_STRING:

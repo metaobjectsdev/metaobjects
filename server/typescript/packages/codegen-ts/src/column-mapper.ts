@@ -17,7 +17,6 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_ENUM,
-  FIELD_ATTR_VALUES,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   FIELD_ATTR_MAX_LENGTH,
@@ -28,6 +27,7 @@ import {
   VALIDATOR_ATTR_MAX,
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
+import { enumValues } from "./enum-meta.js";
 import type { Dialect, ColumnNamingStrategy } from "./metaobjects-config.js";
 
 export type { Dialect };
@@ -271,11 +271,13 @@ export function mapColumnType(
 
   // Enum fields: emit a CHECK constraint listing the valid member values.
   if (subType === FIELD_SUBTYPE_ENUM && !isArray) {
-    // Use effective attr (own or inherited via extends).
-    const values = (field.ownAttr(FIELD_ATTR_VALUES) ?? field.attr(FIELD_ATTR_VALUES));
-    if (Array.isArray(values) && values.length > 0) {
+    const values = enumValues(field);
+    if (values !== undefined && values.length > 0) {
+      // Single-quote escaping is belt-and-suspenders: the loader's
+      // ENUM_MEMBER_PATTERN already rejects quote-bearing members (members are
+      // validated to be identifier-safe), so this never fires in practice.
       const list = values
-        .map((v) => `'${String(v).replace(/'/g, "''")}'`)
+        .map((v) => `'${v.replace(/'/g, "''")}'`)
         .join(", ");
       result.checkConstraint = `${dbName} IN (${list})`;
     }
