@@ -3,9 +3,18 @@
 //
 // Column + table names mirror the EF Core generators ([Table]/[Column] use the
 // dbTable/dbColumn override or the raw name), so the generated entities map onto
-// this schema. View SELECTs are derived from field origins for the common case
-// (passthrough from a single base, no relationship hop); aggregate / @via /
-// collection origins are flagged as a TODO rather than emitting incorrect SQL.
+// this schema. View SELECTs are derived from field origins: passthrough (plain
+// column), passthrough-@via (to-one correlated subquery), aggregate (to-many
+// correlated subquery), and collection (json_agg over a to-many). FK columns are
+// resolved from identity.reference; an unresolvable origin leaves a TODO comment
+// (+ warning) rather than emitting incorrect SQL.
+//
+// Shape note: aggregates use a correlated subquery per origin, not the TS
+// reference's LEFT JOIN + GROUP BY (view-ddl-emit.ts). Both produce the same view
+// rows; subqueries scope each to-many independently, so multiple aggregates over
+// different relationships can't fan-out/double-count (the reason TS needs
+// COUNT(DISTINCT), which still mis-sums SUM/AVG across joins). View DDL is a
+// generated artifact, not a conformance-pinned invariant — the SQL form is free.
 
 using System.Text;
 using MetaObjects.Meta;
@@ -86,11 +95,15 @@ public static class PostgresSchema
         var cols = new List<string>();
         string? baseEntity = null;
         string? blocked = null;
+        const string T = "t"; // target alias inside correlated subqueries (self-reference safe)
 
-        foreach (var f in projection.Fields().Where(f => CSharpNaming.ScalarFor(f.SubType) is not null))
+        string BaseTable() => root.FindObject(baseEntity!)?.DbTable ?? baseEntity!;
+
+        foreach (var f in projection.Fields())
         {
             var origin = f.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN);
 
+            // passthrough, no via → a plain column off the single base.
             if (origin is MetaPassthroughOrigin pt && pt.Via is null && pt.From is { } from && from.Contains('.'))
             {
                 var (ent, field) = SplitDot(from);
@@ -98,20 +111,48 @@ public static class PostgresSchema
                 if (StripPkg(ent) != baseEntity) { blocked = "passthrough from multiple base entities"; break; }
                 cols.Add($"  {ResolveColumn(root.FindObject(baseEntity), field)} AS {Col(f)}");
             }
-            else if (origin is MetaAggregateOrigin agg &&
-                     agg.Agg is { } aggFn && agg.Of is { } of && agg.Via is { } via &&
+            // passthrough WITH via → forward a field from a to-one related entity (correlated subquery).
+            else if (origin is MetaPassthroughOrigin ptv && ptv.Via is { } pvia && ptv.From is { } pfrom &&
+                     pvia.Contains('.') && pfrom.Contains('.'))
+            {
+                var (baseEnt, relName) = SplitDot(pvia);
+                baseEntity ??= StripPkg(baseEnt);
+                if (StripPkg(baseEnt) != baseEntity) { blocked = "passthrough via a different base entity"; break; }
+                if (ToOneFk(root, baseEntity, relName) is not { } fk)
+                { blocked = $"unresolved to-one FK for @via \"{pvia}\" (base needs an identity.reference)"; break; }
+                var srcCol = ResolveColumn(fk.Target, SplitDot(pfrom).Tail);
+                cols.Add($"  (SELECT {T}.{srcCol} FROM {fk.TargetTable} {T} WHERE {T}.{fk.TargetKeyCol} = {BaseTable()}.{fk.BaseFkCol}) AS {Col(f)}");
+            }
+            // aggregate → count/sum/... over a to-many relationship (correlated subquery).
+            else if (origin is MetaAggregateOrigin agg && agg.Agg is { } aggFn && agg.Of is { } of && agg.Via is { } via &&
                      of.Contains('.') && via.Contains('.'))
             {
                 var (baseEnt, relName) = SplitDot(via);
                 baseEntity ??= StripPkg(baseEnt);
                 if (StripPkg(baseEnt) != baseEntity) { blocked = "aggregate over a different base entity"; break; }
-                var sub = AggregateSubquery(root, baseEntity, relName, aggFn, of);
-                if (sub is null) { blocked = $"unresolved FK for @via \"{via}\" (target needs an identity.reference back to {baseEntity})"; break; }
-                cols.Add($"  {sub} AS {Col(f)}");
+                if (ToManyFk(root, baseEntity, relName) is not { } fk)
+                { blocked = $"unresolved to-many FK for @via \"{via}\" (target needs an identity.reference back to {baseEntity})"; break; }
+                var ofCol = ResolveColumn(fk.Target, SplitDot(of).Tail);
+                cols.Add($"  (SELECT {aggFn}({T}.{ofCol}) FROM {fk.TargetTable} {T} WHERE {T}.{fk.FkCol} = {BaseTable()}.{fk.ParentCol}) AS {Col(f)}");
+            }
+            // collection → array of nested view-objects over a to-many relationship (json_agg).
+            else if (origin is MetaCollectionOrigin coll && coll.Via is { } cvia && cvia.Contains('.') && f.ObjectRef is { } objRef)
+            {
+                var (baseEnt, relName) = SplitDot(cvia);
+                baseEntity ??= StripPkg(baseEnt);
+                if (StripPkg(baseEnt) != baseEntity) { blocked = "collection over a different base entity"; break; }
+                var nested = root.FindObject(StripPkg(objRef));
+                if (ToManyFk(root, baseEntity, relName) is not { } fk || nested is null)
+                { blocked = $"unresolved collection @via \"{cvia}\" / @objectRef \"{objRef}\""; break; }
+                var pairs = nested.Fields()
+                    .Where(nf => CSharpNaming.ScalarFor(nf.SubType) is not null)
+                    .Select(nf => $"'{nf.Name}', {T}.{ResolveColumn(fk.Target, nf.Name)}");
+                cols.Add($"  (SELECT coalesce(json_agg(json_build_object({string.Join(", ", pairs)})), '[]'::json) " +
+                         $"FROM {fk.TargetTable} {T} WHERE {T}.{fk.FkCol} = {BaseTable()}.{fk.ParentCol}) AS {Col(f)}");
             }
             else
             {
-                blocked = origin is MetaCollectionOrigin ? "collection origin (nested array)" : "field has no resolvable origin";
+                blocked = "field has no resolvable origin";
                 break;
             }
         }
@@ -122,8 +163,7 @@ public static class PostgresSchema
             return $"-- TODO CREATE VIEW {view}: {blocked ?? "no derivable columns"}\n";
         }
 
-        var baseTable = root.FindObject(baseEntity)?.DbTable ?? baseEntity;
-        return $"CREATE VIEW {view} AS\nSELECT\n{string.Join(",\n", cols)}\nFROM {baseTable};\n";
+        return $"CREATE VIEW {view} AS\nSELECT\n{string.Join(",\n", cols)}\nFROM {BaseTable()};\n";
     }
 
     private static (string Head, string Tail) SplitDot(string s)
@@ -141,34 +181,54 @@ public static class PostgresSchema
     private static string ResolveColumn(MetaObject? obj, string fieldName) =>
         obj?.Fields().FirstOrDefault(f => f.Name == fieldName)?.DbColumn ?? fieldName;
 
-    // Build a correlated-subquery aggregate over a to-many relationship, resolving
-    // the FK from an identity.reference on the target entity.
-    private static string? AggregateSubquery(MetaRoot root, string baseEntity, string relName, string aggFn, string of)
+    // Resolve a to-many relationship to the FK that lives on the *target* entity:
+    // the target carries an identity.reference back to the base. Used by aggregate
+    // and collection origins (subquery scans the target, filtered by the base PK).
+    private static (MetaObject Target, string TargetTable, string FkCol, string ParentCol)? ToManyFk(
+        MetaRoot root, string baseEntity, string relName)
     {
         var baseObj = root.FindObject(baseEntity);
         var rel = baseObj?.Relationships().FirstOrDefault(r => r.Name == relName);
         if (baseObj is null || rel?.ObjectRef is not { } objRef) return null;
-        var targetEntity = StripPkg(objRef);
-        var targetObj = root.FindObject(targetEntity);
-        if (targetObj is null) return null;
+        var target = root.FindObject(StripPkg(objRef));
+        if (target is null) return null;
 
-        var fkRef = targetObj.ReferenceIdentities()
+        var fkRef = target.ReferenceIdentities()
             .FirstOrDefault(r => r.TargetEntity is { } te && StripPkg(te) == baseEntity);
         if (fkRef is null || fkRef.Fields.Count == 0) return null;
 
-        var fkCol = ResolveColumn(targetObj, fkRef.Fields[0]);
+        var fkCol = ResolveColumn(target, fkRef.Fields[0]);
         var parentField = fkRef.TargetFields.Count > 0
             ? fkRef.TargetFields[0]
             : baseObj.PrimaryIdentity()?.Fields.FirstOrDefault();
         if (parentField is null) return null;
-        var parentCol = ResolveColumn(baseObj, parentField);
 
-        var ofCol = ResolveColumn(targetObj, SplitDot(of).Tail);
-        var targetTable = targetObj.DbTable ?? targetEntity;
-        var baseTable = baseObj.DbTable ?? baseEntity;
+        return (target, target.DbTable ?? target.Name, fkCol, ResolveColumn(baseObj, parentField));
+    }
 
-        return $"(SELECT {aggFn}({targetTable}.{ofCol}) FROM {targetTable} " +
-               $"WHERE {targetTable}.{fkCol} = {baseTable}.{parentCol})";
+    // Resolve a to-one relationship to the FK that lives on the *base* entity:
+    // the base carries an identity.reference at the target. Used by passthrough-@via
+    // origins (subquery selects from the target, joined on the base's FK column).
+    private static (MetaObject Target, string TargetTable, string TargetKeyCol, string BaseFkCol)? ToOneFk(
+        MetaRoot root, string baseEntity, string relName)
+    {
+        var baseObj = root.FindObject(baseEntity);
+        var rel = baseObj?.Relationships().FirstOrDefault(r => r.Name == relName);
+        if (baseObj is null || rel?.ObjectRef is not { } objRef) return null;
+        var target = root.FindObject(StripPkg(objRef));
+        if (target is null) return null;
+
+        var fkRef = baseObj.ReferenceIdentities()
+            .FirstOrDefault(r => r.TargetEntity is { } te && StripPkg(te) == StripPkg(objRef));
+        if (fkRef is null || fkRef.Fields.Count == 0) return null;
+
+        var baseFkCol = ResolveColumn(baseObj, fkRef.Fields[0]);
+        var targetKeyField = fkRef.TargetFields.Count > 0
+            ? fkRef.TargetFields[0]
+            : target.PrimaryIdentity()?.Fields.FirstOrDefault();
+        if (targetKeyField is null) return null;
+
+        return (target, target.DbTable ?? target.Name, ResolveColumn(target, targetKeyField), baseFkCol);
     }
 
     /// <summary>Full schema DDL: tables for writable entities, then views for projections.</summary>

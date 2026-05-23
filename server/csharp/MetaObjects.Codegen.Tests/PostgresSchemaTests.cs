@@ -7,8 +7,12 @@ namespace MetaObjects.Codegen.Tests;
 
 public class PostgresSchemaTests
 {
-    // Week + Program (tables); Week.fkProgram is the FK (identity.reference).
-    // ProgramView (passthrough projection); ProgramStat (aggregate -> correlated subquery).
+    // Week + Program (tables). Week.fkProgram is the FK (identity.reference) and
+    // Week.program is the to-one navigation back to Program.
+    //   ProgramView      — passthrough projection (plain columns).
+    //   ProgramStat      — aggregate (count over Program.weeks -> correlated subquery).
+    //   WeekDetail       — passthrough-@via (forwards Program.title via Week.program).
+    //   ProgramWithWeeks — collection (json_agg of Week rows via Program.weeks).
     private const string Model = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Week", "children": [
@@ -16,7 +20,8 @@ public class PostgresSchemaTests
         { "field.long": { "name": "id" } },
         { "field.long": { "name": "programId" } },
         { "identity.primary": { "@fields": "id" } },
-        { "identity.reference": { "name": "fkProgram", "@fields": "programId", "@references": "Program" } }
+        { "identity.reference": { "name": "fkProgram", "@fields": "programId", "@references": "Program" } },
+        { "relationship.association": { "name": "program", "@objectRef": "Program", "@cardinality": "one" } }
       ]}},
       { "object.entity": { "name": "Program", "children": [
         { "source.dbTable": { "@name": "programs" } },
@@ -35,6 +40,20 @@ public class PostgresSchemaTests
         { "source.dbView": { "@name": "v_program_stat" } },
         { "field.int": { "name": "weekCount", "children": [
           { "origin.aggregate": { "@agg": "count", "@of": "Week.id", "@via": "Program.weeks" } }
+        ]}}
+      ]}},
+      { "object.value": { "name": "WeekDetail", "children": [
+        { "source.dbView": { "@name": "v_week_detail" } },
+        { "field.long":   { "name": "id", "children": [ { "origin.passthrough": { "@from": "Week.id" } } ] } },
+        { "field.string": { "name": "programTitle", "children": [
+          { "origin.passthrough": { "@from": "Program.title", "@via": "Week.program" } }
+        ]}}
+      ]}},
+      { "object.value": { "name": "ProgramWithWeeks", "children": [
+        { "source.dbView": { "@name": "v_program_weeks" } },
+        { "field.long":   { "name": "id", "children": [ { "origin.passthrough": { "@from": "Program.id" } } ] } },
+        { "field.object": { "name": "weeks", "@objectRef": "Week", "children": [
+          { "origin.collection": { "@via": "Program.weeks" } }
         ]}}
       ]}}
     ]}}
@@ -76,9 +95,37 @@ public class PostgresSchemaTests
     {
         var sql = PostgresSchema.BuildSchema(Load());
         Assert.Contains("CREATE VIEW v_program_stat AS", sql);
-        // FK resolved from Week.fkProgram (identity.reference @fields programId -> Program.id).
+        // FK resolved from Week.fkProgram (identity.reference @fields programId -> Program.id);
+        // target aliased "t" so the subquery is self-reference safe.
         Assert.Contains(
-            "(SELECT count(weeks.id) FROM weeks WHERE weeks.programId = programs.id) AS weekCount",
+            "(SELECT count(t.id) FROM weeks t WHERE t.programId = programs.id) AS weekCount",
+            sql);
+        Assert.Contains("FROM programs;", sql);
+    }
+
+    [Fact]
+    public void Passthrough_via_projection_forwards_to_one_field_via_base_fk()
+    {
+        var sql = PostgresSchema.BuildSchema(Load());
+        Assert.Contains("CREATE VIEW v_week_detail AS", sql);
+        Assert.Contains("id AS id", sql);
+        // Week.program -> Program.title: FK lives on the base (Week.programId -> Program.id),
+        // so the subquery selects from the target keyed by the base FK column.
+        Assert.Contains(
+            "(SELECT t.title FROM programs t WHERE t.id = weeks.programId) AS programTitle",
+            sql);
+        Assert.Contains("FROM weeks;", sql);
+    }
+
+    [Fact]
+    public void Collection_projection_emits_json_agg_of_nested_rows()
+    {
+        var sql = PostgresSchema.BuildSchema(Load());
+        Assert.Contains("CREATE VIEW v_program_weeks AS", sql);
+        // json_agg over the to-many (Week back-references Program via programId).
+        Assert.Contains(
+            "(SELECT coalesce(json_agg(json_build_object('id', t.id, 'programId', t.programId)), '[]'::json) " +
+            "FROM weeks t WHERE t.programId = programs.id) AS weeks",
             sql);
         Assert.Contains("FROM programs;", sql);
     }
