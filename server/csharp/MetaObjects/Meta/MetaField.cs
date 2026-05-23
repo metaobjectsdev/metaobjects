@@ -20,7 +20,7 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     {
         get
         {
-            var v = OwnAttr(Constants.FIELD_ATTR_OBJECT_REF);
+            var v = OwnAttr(FIELD_ATTR_OBJECT_REF);
             return v is string s ? s : null;
         }
     }
@@ -30,13 +30,13 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     {
         get
         {
-            var v = OwnAttr(Constants.FIELD_ATTR_DB_COLUMN);
+            var v = OwnAttr(FIELD_ATTR_DB_COLUMN);
             return v is string s ? s : null;
         }
     }
 
     /// <summary>Raw default attr value (the <c>@default</c> attr).</summary>
-    public object? Default => OwnAttr(Constants.FIELD_ATTR_DEFAULT);
+    public object? Default => OwnAttr(FIELD_ATTR_DEFAULT);
 
     /// <summary>
     /// The default value for this field, converted to the field's own DataType.
@@ -47,7 +47,7 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     {
         return Cached("defaultValue", () =>
         {
-            var raw = OwnAttr(Constants.FIELD_ATTR_DEFAULT);
+            var raw = OwnAttr(FIELD_ATTR_DEFAULT);
             if (raw is null) return null;
             return DataConverter.ConvertToDataType(DataType, raw);
         });
@@ -58,7 +58,7 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     {
         get
         {
-            var v = OwnAttr(Constants.FIELD_ATTR_MAX_LENGTH);
+            var v = OwnAttr(FIELD_ATTR_MAX_LENGTH);
             return v is long l ? l : null;
         }
     }
@@ -68,7 +68,7 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     {
         get
         {
-            var v = OwnAttr(Constants.FIELD_ATTR_PRECISION);
+            var v = OwnAttr(FIELD_ATTR_PRECISION);
             return v is long l ? l : null;
         }
     }
@@ -78,13 +78,13 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     {
         get
         {
-            var v = OwnAttr(Constants.FIELD_ATTR_SCALE);
+            var v = OwnAttr(FIELD_ATTR_SCALE);
             return v is long l ? l : null;
         }
     }
 
     /// <summary>True if <c>@unique: true</c> is set on the field itself (column-level unique).</summary>
-    public bool Unique => OwnAttr(Constants.FIELD_ATTR_UNIQUE) is true;
+    public bool Unique => OwnAttr(FIELD_ATTR_UNIQUE) is true;
 
     /// <summary>
     /// True if the field is required (NOT NULL).
@@ -95,7 +95,7 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     {
         get
         {
-            if (OwnAttr(Constants.FIELD_ATTR_REQUIRED) is true) return true;
+            if (OwnAttr(FIELD_ATTR_REQUIRED) is true) return true;
             return Validators().Any(v => v.IsRequired());
         }
     }

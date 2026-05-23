@@ -57,13 +57,13 @@ def run_validations(
 
 
 def _walk(root: MetaData) -> list[MetaData]:
-    """Return all nodes in the tree (BFS order, including root)."""
+    """Return all authored nodes in the tree (BFS order, including root)."""
     result: list[MetaData] = []
     queue: list[MetaData] = [root]
     while queue:
         node = queue.pop(0)
         result.append(node)
-        queue.extend(node.children())
+        queue.extend(node.own_children())
     return result
 
 
@@ -113,22 +113,19 @@ def _validate_attr_schema(
     errors: list[MetaError],
 ) -> None:
     for node in _walk(root):
-        schemas: list[AttrSchema] = registry.effective_attrs(node.type, node.sub_type)
+        schemas: list[AttrSchema] = registry.attrs_of(node.type, node.sub_type)
         if not schemas:
             continue
 
         schema_by_name: dict[str, AttrSchema] = {s.name: s for s in schemas}
 
-        # --- Check 1: required attrs must be present ---
+        # --- Check 1: required attrs must be present (uses node.attrs() = effective,
+        #     so an inherited attr from the super chain satisfies the requirement) ---
+        present_attrs = node.attrs()
         for schema in schemas:
             if not schema.required:
                 continue
-            # node.attr() checks OWN attrs only — there is no effective/inherited
-            # attr accessor today.  Effective required-attr resolution (satisfying
-            # a requirement via an inherited attr from the super chain) is deferred:
-            # no conformance fixture currently inherits a required attr, so this
-            # own-only check is sufficient until that fixture is added.
-            if node.attr(schema.name) is None:
+            if schema.name not in present_attrs:
                 errors.append(
                     MetaError(
                         f"{_node_label(node)} is missing required attribute '@{schema.name}'",
@@ -328,7 +325,7 @@ def _validate_datagrid_filter_values(
 def _build_object_index(root: MetaData) -> dict[str, MetaObject]:
     """Return a name → MetaObject index of all top-level objects in *root*."""
     index: dict[str, MetaObject] = {}
-    for child in root.children():
+    for child in root.own_children():
         if child.type == TYPE_OBJECT and isinstance(child, MetaObject):
             if child.name:
                 index[child.name] = child
@@ -338,7 +335,7 @@ def _build_object_index(root: MetaData) -> dict[str, MetaObject]:
 def _relationships_by_name(obj: MetaObject) -> dict[str, MetaData]:
     """Return a name → node map of all relationship children on *obj* (effective)."""
     result: dict[str, MetaData] = {}
-    for child in obj.effective_children():
+    for child in obj.children():
         if child.type == TYPE_RELATIONSHIP and child.name:
             result[child.name] = child
     return result
@@ -571,7 +568,7 @@ def _validate_subtype_rules(
 def _identity_field_names(obj: MetaObject) -> set[str]:
     """Return the set of field names covered by ANY identity on *obj* (effective)."""
     covered: set[str] = set()
-    for child in obj.effective_children():
+    for child in obj.children():
         if child.type != TYPE_IDENTITY:
             continue
         fields_val = child.attr(IDENTITY_ATTR_FIELDS)

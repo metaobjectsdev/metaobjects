@@ -84,7 +84,7 @@ def test_effective_children_includes_super_children_after_resolution() -> None:
     assert errors == []
     assert sub.super_data is base
 
-    eff = sub.effective_children()
+    eff = sub.children()
     names = [c.name for c in eff]
     # baseId is inherited, ownField is own
     assert "baseId" in names
@@ -96,8 +96,10 @@ def test_effective_children_includes_super_children_after_resolution() -> None:
 # ---------------------------------------------------------------------------
 
 def test_resolve_absolute_ref() -> None:
+    """Absolute ref '::acme::Base' finds a node whose own fqn() is 'acme::Base'."""
     root = _root("acme")
     base = _node("object", "entity", "Base")
+    base.package = "acme"   # own package → fqn() = "acme::Base"
     root.add_child(base)
 
     sub = _node("object", "entity", "Sub")
@@ -138,14 +140,17 @@ def test_resolve_skips_already_resolved() -> None:
 # ---------------------------------------------------------------------------
 
 def test_resolve_relative_ref_resolves_against_reduced_context() -> None:
-    """``..::pkg::Name`` from context ``acme::sub`` should resolve to ``acme::pkg::Name``."""
-    # Build a root that owns acme::pkg::Base
+    """``..::pkg::Base`` from context ``acme::sub`` resolves to ``acme::pkg::Base``.
+
+    The FQN index is keyed by node.fqn() (own), so the base node needs an
+    explicit own package of "acme::pkg" so that fqn() = "acme::pkg::Base".
+    """
     root = _root("acme")
-    pkg_node = _node("object", "entity", "PkgRoot")   # just a container
-    pkg_node.package = "acme::pkg"
+
+    # Base lives in acme::pkg — must have its own package set so fqn()="acme::pkg::Base"
     base = _node("object", "entity", "Base")
-    pkg_node.add_child(base)
-    root.add_child(pkg_node)
+    base.package = "acme::pkg"
+    root.add_child(base)
 
     # Sub lives in acme::sub and refers up one level then into pkg
     sub_container = _node("object", "entity", "SubRoot")

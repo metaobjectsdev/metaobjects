@@ -19,26 +19,16 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
     public string? DbTable => Cached("dbTable", () =>
     {
         var source = Children().FirstOrDefault(
-            c => c.Type == Constants.TYPE_SOURCE && c.SubType == Constants.SOURCE_SUBTYPE_DB_TABLE);
-        var n = source?.OwnAttr(Constants.SOURCE_DB_TABLE_ATTR_NAME);
+            c => c.Type == TYPE_SOURCE && c.SubType == SOURCE_SUBTYPE_DB_TABLE);
+        var n = source?.OwnAttr(SOURCE_DB_TABLE_ATTR_NAME);
         return n is string s && s != "" ? s : null;
     });
 
-    /// <summary>Java runtime materialization strategy from <c>@javaRuntime</c>.</summary>
-    public string? JavaRuntime
-    {
-        get
-        {
-            var v = OwnAttr(Constants.OBJECT_ATTR_JAVA_RUNTIME);
-            return v is string s ? s : null;
-        }
-    }
-
     /// <summary>True when the object's subtype is <c>entity</c>.</summary>
-    public bool IsEntity() => SubType == Constants.OBJECT_SUBTYPE_ENTITY;
+    public bool IsEntity() => SubType == OBJECT_SUBTYPE_ENTITY;
 
     /// <summary>True when the object's subtype is <c>value</c>.</summary>
-    public bool IsValue() => SubType == Constants.OBJECT_SUBTYPE_VALUE;
+    public bool IsValue() => SubType == OBJECT_SUBTYPE_VALUE;
 
     // -------------------------------------------------------------------------
     // Fields
@@ -99,7 +89,7 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
     public MetaIdentity? PrimaryIdentity()
     {
         return Cached("primaryIdentity", () =>
-            Identities().FirstOrDefault(i => i.SubType == Constants.IDENTITY_SUBTYPE_PRIMARY));
+            Identities().FirstOrDefault(i => i.SubType == IDENTITY_SUBTYPE_PRIMARY));
     }
 
     /// <summary>All secondary identities.</summary>
@@ -107,7 +97,7 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
     {
         return Cached("secondaryIdentities", () =>
             (IReadOnlyList<MetaIdentity>)Identities()
-                .Where(i => i.SubType == Constants.IDENTITY_SUBTYPE_SECONDARY)
+                .Where(i => i.SubType == IDENTITY_SUBTYPE_SECONDARY)
                 .ToArray());
     }
 

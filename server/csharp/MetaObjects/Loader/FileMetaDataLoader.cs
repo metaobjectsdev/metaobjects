@@ -82,7 +82,7 @@ public class FileMetaDataLoader : MetaDataLoader
             // "error" so the post-load contract is satisfied.
             SetState("error");
             var emptyRoot = new MetaRoot(
-                new TypeId(Constants.TYPE_METADATA, Constants.SUBTYPE_ROOT), "");
+                new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
             if (Freeze) emptyRoot.Freeze();
             var dirError = new MetaError(
                 $"Failed to read directory \"{dir}\": {ex.Message}",

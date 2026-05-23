@@ -236,6 +236,9 @@ public class MetaDataLoader
 
             // Pass 7: dataGrid @filter value validation (field filterable + op allowed)
             errors.AddRange(ValidationPasses.ValidateDataGridFilterValues(root));
+
+            // Pass 8: @storage cross-attribute validation on field.object
+            errors.AddRange(ValidationPasses.ValidateFieldObjectStorage(root));
         }
 
         // If nothing parsed successfully, synthesize an empty root so callers
@@ -265,5 +268,5 @@ public class MetaDataLoader
     // -------------------------------------------------------------------------
 
     private static MetaRoot MakeSyntheticRoot() =>
-        new MetaRoot(new TypeId(Constants.TYPE_METADATA, Constants.SUBTYPE_ROOT), "");
+        new MetaRoot(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
 }

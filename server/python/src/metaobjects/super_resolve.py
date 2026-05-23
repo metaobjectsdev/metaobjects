@@ -1,4 +1,11 @@
-"""Deferred super/extends resolution over the merged tree (2nd pass, pre-freeze)."""
+"""Deferred super/extends resolution over the merged tree (2nd pass, pre-freeze).
+
+Mirrors TS ``resolveDeferredSupers`` in super-resolve.ts:
+- Walk the tree over own_children(), tracking an inherited context package.
+- Build the FQN index keyed by node.fqn() (own).
+- For each node with an unresolved super_ref, resolve using
+  ``effective_pkg = node.package or inherited_context_pkg``.
+"""
 from __future__ import annotations
 
 from .errors import ErrorCode, MetaError
@@ -14,35 +21,47 @@ def resolve_supers(root: MetaData, errors: list[MetaError]) -> None:
     Already-resolved nodes (super_data is not None) are skipped (idempotent).
     """
     index = _build_index(root)
-    for node in _walk(root):
-        if node.super_ref and node.super_data is None:
-            target = _resolve(node.super_ref, node.effective_package(), index)
-            if target is None:
-                errors.append(MetaError(
-                    f"the SuperClass '{node.super_ref}' does not exist "
-                    f"(referenced by {node.effective_fqn()})",
-                    ErrorCode.ERR_UNRESOLVED_SUPER,
-                    path=node.effective_fqn(),
-                ))
-            else:
-                node.super_data = target
+    _walk(root, "", index, errors)
 
 
-def _walk(node: MetaData) -> list[MetaData]:
-    """Return node + all descendants in pre-order."""
-    out = [node]
-    for c in node.children():
-        out.extend(_walk(c))
-    return out
+def _walk(
+    node: MetaData,
+    ctx_pkg: str,
+    index: dict[str, MetaData],
+    errors: list[MetaError],
+) -> None:
+    """Visit *node* then recurse over own_children(), carrying an inherited context package."""
+    if node.super_ref and node.super_data is None:
+        effective_pkg = node.package or ctx_pkg or None
+        target = _resolve(node.super_ref, effective_pkg, index)
+        if target is None:
+            errors.append(MetaError(
+                f"the SuperClass '{node.super_ref}' does not exist "
+                f"(referenced by {node.fqn()})",
+                ErrorCode.ERR_UNRESOLVED_SUPER,
+                path=node.fqn(),
+            ))
+        else:
+            node.super_data = target
+
+    # The context package for children is this node's own package, if set, else inherit.
+    next_ctx = node.package or ctx_pkg
+    for child in node.own_children():
+        _walk(child, next_ctx, index, errors)
 
 
 def _build_index(root: MetaData) -> dict[str, MetaData]:
-    """Build an effective_fqn → node index over the whole merged tree."""
+    """Build a fqn() → node index over the whole merged tree (own_children walk)."""
     idx: dict[str, MetaData] = {}
-    for node in _walk(root):
-        if node.name:
-            idx.setdefault(node.effective_fqn(), node)
+    _index_walk(root, idx)
     return idx
+
+
+def _index_walk(node: MetaData, idx: dict[str, MetaData]) -> None:
+    if node.name:
+        idx.setdefault(node.fqn(), node)
+    for child in node.own_children():
+        _index_walk(child, idx)
 
 
 def _resolve(

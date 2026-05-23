@@ -63,9 +63,9 @@ public class ChildRequirement {
                           Predicate<MetaData> parentMatcher, Predicate<MetaData> childMatcher,
                           BiPredicate<MetaData, Object> valueValidator, String constraintId, String validationDescription) {
         this.name = name != null ? name : "*";
-        // Normalize types to lowercase for consistency with MetaDataTypeId
-        this.expectedType = expectedType != null ? expectedType.toLowerCase() : "*";
-        this.expectedSubType = expectedSubType != null ? expectedSubType.toLowerCase() : "*";
+        // Types are stored verbatim; matching is case-sensitive against the canonical vocabulary
+        this.expectedType = expectedType != null ? expectedType : "*";
+        this.expectedSubType = expectedSubType != null ? expectedSubType : "*";
         this.required = required;
         this.parentMatcher = parentMatcher;
         this.childMatcher = childMatcher;

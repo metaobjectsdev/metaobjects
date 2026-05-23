@@ -103,7 +103,7 @@ public abstract class MetaData
     {
         if (_package is not null)
         {
-            return $"{_package}{Constants.PACKAGE_SEPARATOR}{Name}";
+            return $"{_package}{PACKAGE_SEPARATOR}{Name}";
         }
         return Name;
     }

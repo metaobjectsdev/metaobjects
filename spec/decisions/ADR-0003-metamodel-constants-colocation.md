@@ -94,8 +94,10 @@ behavior change.
 - **Java** — always colocated (constants on the type class). Reference shape.
 - **TS** — refactored from the two monoliths into per-concern modules grouped by layer
   (`docs/superpowers/specs/2026-05-21-metadata-constants-colocation-design.md`).
-- **C#** — **stale**: still has the `Constants.cs` monolith. Migrate when next touched; do
-  not mirror it for new ports.
+- **C#** — shipped: per-concern modules under `Shared/`, `Core/*`, `Persistence/*`,
+  `Presentation/*` (`<Concern>Constants.cs` + `<Concern>Schema.cs`); the `Constants.cs` +
+  `CoreAttrSchemas.cs` monoliths are deleted. A `GlobalUsings.cs` `global using static`
+  barrel preserves the bare-name import surface.
 - **Python** — adopting colocation from the start; a package-root barrel preserves
   convenient imports.
 

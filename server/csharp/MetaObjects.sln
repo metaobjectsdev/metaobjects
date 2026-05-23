@@ -7,6 +7,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MetaObjects", "MetaObjects\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MetaObjects.Conformance.Tests", "MetaObjects.Conformance.Tests\MetaObjects.Conformance.Tests.csproj", "{F4CB2029-C741-4C95-8726-9CA18C1F7665}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MetaObjects.Render", "MetaObjects.Render\MetaObjects.Render.csproj", "{E16A0249-DF42-417B-8999-EC7CA8FB800E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MetaObjects.Render.Tests", "MetaObjects.Render.Tests\MetaObjects.Render.Tests.csproj", "{678C688B-8BCA-4848-8E9D-7D4B3030CA73}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +28,13 @@ Global
 		{F4CB2029-C741-4C95-8726-9CA18C1F7665}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F4CB2029-C741-4C95-8726-9CA18C1F7665}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F4CB2029-C741-4C95-8726-9CA18C1F7665}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E16A0249-DF42-417B-8999-EC7CA8FB800E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E16A0249-DF42-417B-8999-EC7CA8FB800E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E16A0249-DF42-417B-8999-EC7CA8FB800E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E16A0249-DF42-417B-8999-EC7CA8FB800E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{678C688B-8BCA-4848-8E9D-7D4B3030CA73}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{678C688B-8BCA-4848-8E9D-7D4B3030CA73}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{678C688B-8BCA-4848-8E9D-7D4B3030CA73}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{678C688B-8BCA-4848-8E9D-7D4B3030CA73}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

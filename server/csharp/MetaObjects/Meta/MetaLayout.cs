@@ -15,7 +15,7 @@ public class MetaLayout(TypeId typeId, string name) : MetaData(typeId, name)
     {
         get
         {
-            var v = OwnAttr(Constants.LAYOUT_DATA_GRID_ATTR_PAGE_SIZE);
+            var v = OwnAttr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE);
             return v is long l ? l : null;
         }
     }
@@ -25,7 +25,7 @@ public class MetaLayout(TypeId typeId, string name) : MetaData(typeId, name)
     {
         get
         {
-            var v = OwnAttr(Constants.LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
+            var v = OwnAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
             return v is string s ? s : null;
         }
     }
@@ -38,7 +38,7 @@ public class MetaLayout(TypeId typeId, string name) : MetaData(typeId, name)
     {
         get
         {
-            var v = OwnAttr(Constants.LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
+            var v = OwnAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
             return v is string s ? s : null;
         }
     }
@@ -47,14 +47,14 @@ public class MetaLayout(TypeId typeId, string name) : MetaData(typeId, name)
     /// True when <c>@filterable: true</c> is set on the dataGrid layout.
     /// Defaults to <see langword="false"/> when the attr is absent.
     /// </summary>
-    public bool Filterable => OwnAttr(Constants.LAYOUT_DATA_GRID_ATTR_FILTERABLE) is true;
+    public bool Filterable => OwnAttr(LAYOUT_DATA_GRID_ATTR_FILTERABLE) is true;
 
     /// <summary>A JSON-encoded preset filter string for the dataGrid layout.</summary>
     public string? Filter
     {
         get
         {
-            var v = OwnAttr(Constants.LAYOUT_DATA_GRID_ATTR_FILTER);
+            var v = OwnAttr(LAYOUT_DATA_GRID_ATTR_FILTER);
             return v is string s ? s : null;
         }
     }
@@ -64,7 +64,7 @@ public class MetaLayout(TypeId typeId, string name) : MetaData(typeId, name)
     {
         get
         {
-            var c = OwnAttr(Constants.LAYOUT_DATA_GRID_ATTR_COLUMNS);
+            var c = OwnAttr(LAYOUT_DATA_GRID_ATTR_COLUMNS);
             return c is IReadOnlyList<string> list ? list : [];
         }
     }

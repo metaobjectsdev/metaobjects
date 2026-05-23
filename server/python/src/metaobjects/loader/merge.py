@@ -20,9 +20,9 @@ def _merge_into(target: MetaData, src: MetaData, errors: list[MetaError]) -> Non
     for attr in src.own_meta_attrs():
         target.set_attr(attr.name, getattr(attr, "value", None), sub_type=attr.sub_type)
     # children: merge by (type, name), else append
-    for sc in src.children():
+    for sc in src.own_children():
         tc = next(
-            (c for c in target.children() if c.type == sc.type and c.name == sc.name),
+            (c for c in target.own_children() if c.type == sc.type and c.name == sc.name),
             None,
         )
         if tc is not None:
@@ -31,9 +31,9 @@ def _merge_into(target: MetaData, src: MetaData, errors: list[MetaError]) -> Non
             if getattr(sc, "is_overlay", False):
                 errors.append(
                     MetaError(
-                        f"overlay node '{sc.effective_fqn()}' has no merge target",
+                        f"overlay node '{sc.fqn()}' has no merge target",
                         ErrorCode.ERR_OVERLAY_NO_TARGET,
-                        path=sc.effective_fqn(),
+                        path=sc.fqn(),
                     )
                 )
             sc.parent = target

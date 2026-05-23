@@ -16,7 +16,7 @@ public class MetaSource(TypeId typeId, string name) : MetaData(typeId, name)
     {
         get
         {
-            var v = OwnAttr(Constants.SOURCE_ATTR_NAME);
+            var v = OwnAttr(SOURCE_ATTR_NAME);
             return v is string s ? s : null;
         }
     }
@@ -26,12 +26,12 @@ public class MetaSource(TypeId typeId, string name) : MetaData(typeId, name)
     /// Explicitly defined rather than derived from <see cref="IsReadOnly"/> so it
     /// remains correct if a third source subtype is added in the future.
     /// </summary>
-    public bool IsWritable() => SubType == Constants.SOURCE_SUBTYPE_DB_TABLE;
+    public bool IsWritable() => SubType == SOURCE_SUBTYPE_DB_TABLE;
 
     /// <summary>
     /// True when this source is a <c>dbView</c> (read-only projection).
     /// Explicitly defined rather than derived from <see cref="IsWritable"/> so it
     /// remains correct if a third source subtype is added in the future.
     /// </summary>
-    public bool IsReadOnly() => SubType == Constants.SOURCE_SUBTYPE_DB_VIEW;
+    public bool IsReadOnly() => SubType == SOURCE_SUBTYPE_DB_VIEW;
 }
