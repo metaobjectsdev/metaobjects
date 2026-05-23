@@ -4,18 +4,19 @@ from pathlib import Path
 import pytest
 
 from metaobjects.loader.meta_data_loader import load_directory
+from metaobjects.meta.meta_data import MetaData
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.runner import run_gen
 from metaobjects.codegen.generators.entity_model import entity_model
 
 
-def _load(meta_dir: Path, doc: dict):
+def _load(meta_dir: Path, doc: dict[str, object]) -> MetaData:
     meta_dir.mkdir(parents=True, exist_ok=True)
     (meta_dir / "meta.json").write_text(json.dumps(doc))
     return load_directory(str(meta_dir)).root
 
 
-def test_run_gen_writes_a_model_per_entity(tmp_path: Path):
+def test_run_gen_writes_a_model_per_entity(tmp_path: Path) -> None:
     root = _load(tmp_path / "meta", {"metadata.root": {"package": "acme", "children": [
         {"object.entity": {"name": "Subscriber", "children": [
             {"field.string": {"name": "email", "@required": True}},
@@ -28,7 +29,7 @@ def test_run_gen_writes_a_model_per_entity(tmp_path: Path):
     assert [w[1] for w in result.files] == ["new"]
 
 
-def test_run_gen_skips_unsafe_names_with_warning(tmp_path: Path):
+def test_run_gen_skips_unsafe_names_with_warning(tmp_path: Path) -> None:
     root = _load(tmp_path / "meta", {"metadata.root": {"package": "acme", "children": [
         {"object.entity": {"name": "Bad-Name", "children": [
             {"field.string": {"name": "x"}},
@@ -40,7 +41,7 @@ def test_run_gen_skips_unsafe_names_with_warning(tmp_path: Path):
     assert any("unsafe name" in w for w in result.warnings)
 
 
-def test_run_gen_errors_on_path_collision(tmp_path: Path):
+def test_run_gen_errors_on_path_collision(tmp_path: Path) -> None:
     root = _load(tmp_path / "meta", {"metadata.root": {"package": "acme", "children": [
         {"object.entity": {"name": "A", "children": [{"field.string": {"name": "x"}}]}},
     ]}})

@@ -6,7 +6,13 @@ from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_FIELD
 
 
-def _entity(name, fields, *, super_data=None, package=None):
+def _entity(
+    name: str,
+    fields: list[MetaField],
+    *,
+    super_data: MetaObject | None = None,
+    package: str | None = None,
+) -> MetaObject:
     o = MetaObject(TYPE_OBJECT, "entity", name)
     o.package = package
     o.super_data = super_data
@@ -15,7 +21,15 @@ def _entity(name, fields, *, super_data=None, package=None):
     return o
 
 
-def _f(name, sub, *, required=False, max_length=None, is_array=False, object_ref=None):
+def _f(
+    name: str,
+    sub: str,
+    *,
+    required: bool = False,
+    max_length: int | None = None,
+    is_array: bool = False,
+    object_ref: str | None = None,
+) -> MetaField:
     f = MetaField(TYPE_FIELD, sub, name)
     f.is_array = is_array
     if required:
@@ -27,7 +41,7 @@ def _f(name, sub, *, required=False, max_length=None, is_array=False, object_ref
     return f
 
 
-def test_vanilla_entity_model():
+def test_vanilla_entity_model() -> None:
     e = _entity("Subscriber", [
         _f("email", fc.FIELD_SUBTYPE_STRING, required=True, max_length=200),
         _f("subscribed", fc.FIELD_SUBTYPE_BOOLEAN),
@@ -40,7 +54,7 @@ def test_vanilla_entity_model():
     assert "subscribed: bool | None = None" in out
 
 
-def test_extends_subclasses_base_and_imports_it():
+def test_extends_subclasses_base_and_imports_it() -> None:
     base = _entity("BaseEntity", [_f("id", fc.FIELD_SUBTYPE_INT, required=True)])
     child = _entity("Program", [_f("name", fc.FIELD_SUBTYPE_STRING, required=True)], super_data=base)
     out = render_entity_model(child)
@@ -50,7 +64,7 @@ def test_extends_subclasses_base_and_imports_it():
     assert "id" not in out  # inherited; not re-emitted (own_fields only)
 
 
-def test_nested_object_array_imports_ref():
+def test_nested_object_array_imports_ref() -> None:
     e = _entity("AuthorBrief", [
         _f("displayName", fc.FIELD_SUBTYPE_STRING, required=True),
         _f("posts", fc.FIELD_SUBTYPE_OBJECT, object_ref="PostBrief", is_array=True),

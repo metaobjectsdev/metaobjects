@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
+from typing import Callable
 
 from metaobjects.meta.meta_root import MetaRoot
 from metaobjects.meta.meta_data import MetaData
@@ -27,9 +28,22 @@ def _objects(root: MetaData) -> list[MetaObject]:
             if c.type == TYPE_OBJECT and isinstance(c, MetaObject)]
 
 
-def _matcher(gen: Generator):
+def _matcher(gen: Generator) -> Callable[[MetaObject], bool]:
     flt = getattr(gen, "filter", None)
-    return flt if callable(flt) else (lambda _e: True)
+    if callable(flt):
+        return flt  # type: ignore[no-any-return]
+
+    def _all(_e: MetaObject) -> bool:
+        return True
+
+    return _all
+
+
+def _warn_collector(name: str, sink: list[str]) -> Callable[[str], None]:
+    def warn(msg: str) -> None:
+        sink.append(f"[{name}] {msg}")
+
+    return warn
 
 
 def run_gen(
@@ -66,7 +80,7 @@ def run_gen(
             loaded_root=metadata,
             matches=_matcher(gen),
             config=config,
-            warn=lambda m, g=gen: result.warnings.append(f"[{g.name}] {m}"),
+            warn=_warn_collector(gen.name, result.warnings),
         )
         for f in gen.generate(ctx):
             full = os.path.join(config.out_dir, f.path)
