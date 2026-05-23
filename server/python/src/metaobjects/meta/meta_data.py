@@ -33,6 +33,18 @@ class MetaData:
     def fqn(self) -> str:
         return self.name if not self.package else f"{self.package}{PACKAGE_SEP}{self.name}"
 
+    def effective_package(self) -> Optional[str]:
+        node: Optional[MetaData] = self
+        while node is not None:
+            if node.package:
+                return node.package
+            node = node.parent
+        return None
+
+    def effective_fqn(self) -> str:
+        pkg = self.effective_package()
+        return self.name if not pkg else f"{pkg}{PACKAGE_SEP}{self.name}"
+
     def _require_mutable(self) -> None:
         if self._frozen:
             raise RuntimeError(f"Cannot mutate frozen MetaData {self.fqn()}")
