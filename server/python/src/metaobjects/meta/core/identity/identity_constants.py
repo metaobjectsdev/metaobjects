@@ -1,0 +1,6 @@
+"""Identity subtype + attr vocabulary (colocated)."""
+IDENTITY_SUBTYPE_PRIMARY = "primary"
+IDENTITY_SUBTYPE_SECONDARY = "secondary"
+IDENTITY_SUBTYPES = (IDENTITY_SUBTYPE_PRIMARY, IDENTITY_SUBTYPE_SECONDARY)
+
+IDENTITY_ATTR_FIELDS = "fields"

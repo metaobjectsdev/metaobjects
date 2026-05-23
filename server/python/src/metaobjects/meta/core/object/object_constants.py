@@ -1,0 +1,4 @@
+"""Object subtype vocabulary (colocated)."""
+OBJECT_SUBTYPE_ENTITY = "entity"
+OBJECT_SUBTYPE_VALUE = "value"
+OBJECT_SUBTYPES = (OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE)
