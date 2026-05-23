@@ -35,17 +35,16 @@
   "publishConfig": { "access": "public" },
   "dependencies": {
     "@metaobjectsdev/metadata": "workspace:*",
+    "@biomejs/js-api": "^0.7.0",
+    "@biomejs/wasm-nodejs": "^1.9.4",
     "ts-poet": "^6.10.0"
   },
   "peerDependencies": {
     "drizzle-orm": ">=0.36.0",
-    "zod": ">=3.23.0",
-    "@biomejs/biome": ">=1.9.0"
+    "zod": ">=3.23.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
-    "@biomejs/js-api": "^0.7.0",
-    "@biomejs/wasm-nodejs": "^1.9.4",
     "@metaobjectsdev/codegen-ts-react": "workspace:*",
     "bun-types": "latest",
     "drizzle-orm": "^0.36.0",
