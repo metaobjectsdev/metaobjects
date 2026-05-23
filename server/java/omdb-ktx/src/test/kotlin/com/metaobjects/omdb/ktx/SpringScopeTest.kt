@@ -1,6 +1,8 @@
 package com.metaobjects.omdb.ktx
 
 import java.sql.Connection
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.BeforeAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -8,8 +10,18 @@ import kotlin.test.assertFalse
 class SpringScopeTest {
 
     companion object {
-        private val db: TestDb by lazy {
-            TestDb.build(dbName = "omdb-ktx-spring-${System.currentTimeMillis()}")
+        private lateinit var db: TestDb
+
+        @JvmStatic
+        @BeforeAll
+        fun setup() {
+            db = TestDb.build(dbName = "omdb-ktx-spring-${System.currentTimeMillis()}")
+        }
+
+        @JvmStatic
+        @AfterAll
+        fun teardown() {
+            db.destroy()
         }
     }
 

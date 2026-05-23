@@ -101,7 +101,7 @@ in the same transaction are visible immediately (read-your-writes). This contras
 ### Resolving an object by string reference
 
 ```kotlin
-val widget: Widget? = session.findByRef<Widget>("acme::Widget:42")
+val widget: Widget? = session.findByRef<Widget>("objectref://acme::Widget/42")
 ```
 
 Returns `null` if the reference does not exist. Name resolution (FQN → `MetaObject`) is
