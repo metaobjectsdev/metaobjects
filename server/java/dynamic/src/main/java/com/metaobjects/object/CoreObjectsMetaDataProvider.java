@@ -27,14 +27,10 @@ public class CoreObjectsMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public void registerTypes(MetaDataRegistry registry) {
-        // object.value is now owned by the metadata module (ValueMetaObject); registering it
-        // here too caused a duplicate-registration collision once dynamic is on the classpath,
-        // so the dynamic ValueMetaObject registration is removed.
-        //
-        // object.data (DataMetaObject) is still registered: it does not collide with anything in
-        // metadata (which owns only entity/value), and DataObjectTest exercises it programmatically.
-        // DataMetaObject + object.data + DataObjectTest are retired together in a later phase.
-        com.metaobjects.object.data.DataMetaObject.registerTypes(registry);
+        // object.entity / object.value are owned by the metadata module
+        // (EntityMetaObject / ValueMetaObject). The retired dynamic DataMetaObject
+        // (object.data) and the old dynamic ValueMetaObject no longer register here.
+        // This provider now only contributes attribute extensions onto object.base.
 
         // Register additional attributes for existing base types
         DataObjectExtensions.registerDataObjectAttributes(registry);

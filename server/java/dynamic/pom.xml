@@ -88,8 +88,7 @@
             <Bundle-SymbolicName>${project.artifactId}</Bundle-SymbolicName>
             <Bundle-Name>${project.name}</Bundle-Name>
             <Export-Package>
-              com.metaobjects.object.data.*;version=${project.version},
-              com.metaobjects.object.value.*;version=${project.version}
+              com.metaobjects.object.*;version=${project.version}
             </Export-Package>
             <Import-Package>
               com.metaobjects.*,

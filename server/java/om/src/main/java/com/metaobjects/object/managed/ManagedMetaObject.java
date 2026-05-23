@@ -5,40 +5,48 @@ import com.metaobjects.field.*;
 import com.metaobjects.manager.ManagerAwareMetaObject;
 import com.metaobjects.manager.ObjectManager;
 import com.metaobjects.manager.StateAwareMetaObject;
-import com.metaobjects.object.pojo.PojoMetaObject;
+import com.metaobjects.object.EntityMetaObject;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.util.DataConverter;
 
 import static com.metaobjects.object.MetaObject.TYPE_OBJECT;
 import static com.metaobjects.object.MetaObject.SUBTYPE_BASE;
 
-import java.lang.reflect.Method;
-
 /**
  * Managed MetaObject with state awareness and object manager integration.
+ *
+ * <p>An {@code om}-local {@code object.managed} subtype (sanctioned subclass extension).
+ * Extends {@link EntityMetaObject} to inherit the reflection/map hybrid, but dispatches
+ * value access against {@link ManagedObject} (a {@code Map}-backed live object, not a
+ * {@code DataObjectBase}): reflection when a getter/setter exists, the object attribute
+ * bag otherwise. The {@link StateAwareMetaObject} / {@link ManagerAwareMetaObject}
+ * interfaces are consumed by {@code ObjectManager} for persistence state.</p>
  */
 @SuppressWarnings("serial")
-public class ManagedMetaObject extends PojoMetaObject implements StateAwareMetaObject, ManagerAwareMetaObject
+public class ManagedMetaObject extends EntityMetaObject implements StateAwareMetaObject, ManagerAwareMetaObject
 {
-    public final static String CACHE_PARAM_HAS_GETTER_METHOD = "hasGetterMethod";
-    public final static String CACHE_PARAM_HAS_SETTER_METHOD = "hasSetterMethod";
+    public final static String SUBTYPE_MANAGED = "managed";
 
     /**
      * Register this type with the MetaDataRegistry (called by provider)
      */
     public static void registerTypes(MetaDataRegistry registry) {
         registry.registerType(ManagedMetaObject.class, def -> def
-            .type(TYPE_OBJECT).subType("managed")
+            .type(TYPE_OBJECT).subType(SUBTYPE_MANAGED)
             .description("Managed MetaObject with state awareness and object manager integration")
             .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE)
         );
     }
 
     /**
-     * Constructs the MetaClassObject for MetaObjects
+     * Constructs the MetaClassObject for MetaObjects.
+     *
+     * <p>Routes through {@link EntityMetaObject}'s protected {@code (subType, name)}
+     * ctor with {@code "managed"} so registry {@code createInstance("object","managed",…)}
+     * yields a node whose {@code getSubType()} is {@code "managed"} (not {@code "entity"}).</p>
      */
     public ManagedMetaObject(String name) {
-        super(name);
+        super(SUBTYPE_MANAGED, name);
     }
 
     /*public static MetaObject createFromTemplate(String name, String template) {
@@ -134,9 +142,13 @@ public class ManagedMetaObject extends PojoMetaObject implements StateAwareMetaO
 
             if (mo.getMetaObjectName() == null) {
                 //log.warn("MetaObject with no MetaClassName: [" + obj.getClass() + "]");
-                
-                // See if we can match by the object produced
-                return super.produces(obj);
+
+                // See if we can match by the object produced (class-equality fallback)
+                try {
+                    return obj.getClass().equals(getObjectClass());
+                } catch (ClassNotFoundException e) {
+                    return false;
+                }
             }
 
             // TODO: WARNING:  This doesn't match up class loaders!
@@ -199,59 +211,15 @@ public class ManagedMetaObject extends PojoMetaObject implements StateAwareMetaO
         return ((ManagedObject) obj).getObjectAttributeValue(f.getName());
     }
 
-    protected boolean hasGetterMethod(MetaField f, Class<?> objClass) {
-
-        // Try the cache value first
-        Boolean b = (Boolean) f.getCacheValue(CACHE_PARAM_HAS_GETTER_METHOD + "." + objClass.getName());
-        if (b != null) {
-            return b.booleanValue();
-        }
-
-        // Now try to actually get the method
-        Method m = null;
-        try {
-            m = retrieveGetterMethod(f, objClass);
-        } catch (NoSuchMethodError e) {
-        }
-
-        // Return whether the setter existed
-        if (m != null) {
-            f.setCacheValue(CACHE_PARAM_HAS_GETTER_METHOD + "." + objClass.getName(), Boolean.TRUE);
-            return true;
-        } else {
-            f.setCacheValue(CACHE_PARAM_HAS_GETTER_METHOD + "." + objClass.getName(), Boolean.FALSE);
-            return false;
-        }
-    }
-
-    protected boolean hasSetterMethod(MetaField f, Class<?> objClass) {
-
-        // Try the cache value first
-        Boolean b = (Boolean) f.getCacheValue(CACHE_PARAM_HAS_SETTER_METHOD + "." + objClass.getName());
-        if (b != null) {
-            return b.booleanValue();
-        }
-
-        // Now try to actually get the method
-        Method m = null;
-        try {
-            m = retrieveSetterMethod(f, objClass);
-        } catch (NoSuchMethodError e) {
-        }
-
-        // Return whether the setter existed
-        if (m != null) {
-            f.setCacheValue(CACHE_PARAM_HAS_SETTER_METHOD + "." + objClass.getName(), Boolean.TRUE);
-            return true;
-        } else {
-            f.setCacheValue(CACHE_PARAM_HAS_SETTER_METHOD + "." + objClass.getName(), Boolean.FALSE);
-            return false;
-        }
-    }
-
     /**
-     * Gets the object attribute represented by this MetaField
+     * Gets the object attribute represented by this MetaField.
+     *
+     * <p>Overrides the inherited hybrid: it dispatches against {@link ManagedObject}
+     * (a {@code Map}-backed live object, not a {@code DataObjectBase}), so reflection
+     * via the inherited {@code getValueWithReflection} when a getter exists, else the
+     * managed object's attribute bag.</p>
      */
+    @Override
     public Object getValue(MetaField f, Object obj) //throws MetaException
     {
         if (!(obj instanceof ManagedObject)) {
@@ -259,15 +227,19 @@ public class ManagedMetaObject extends PojoMetaObject implements StateAwareMetaO
         }
 
         if (hasGetterMethod(f, obj.getClass())) {
-            return super.getValue(f, obj);
+            return getValueWithReflection(f, obj);
         } else {
             return ((ManagedObject) obj).getObjectAttribute(f.getName());
         }
     }
 
     /**
-     * Sets the object attribute represented by this MetaField
+     * Sets the object attribute represented by this MetaField.
+     *
+     * <p>See {@link #getValue(MetaField, Object)}: dispatches against {@link ManagedObject},
+     * using the inherited {@code setValueWithReflection} when a setter exists.</p>
      */
+    @Override
     public void setValue(MetaField f, Object obj, Object value) //throws MetaException
     {
         if (!(obj instanceof ManagedObject)) {
@@ -280,7 +252,7 @@ public class ManagedMetaObject extends PojoMetaObject implements StateAwareMetaO
         }
 
         if (hasSetterMethod(f, obj.getClass())) {
-            super.setValue(f, obj, value);
+            setValueWithReflection(f, obj, value);
         } else {
             ((ManagedObject) obj).setObjectAttribute(f.getName(), value);
         }
