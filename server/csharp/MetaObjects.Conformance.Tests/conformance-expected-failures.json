@@ -3,6 +3,7 @@
   "fixtures": [
     "template-prompt-simple",
     "template-output-and-prompt",
-    "error-template-prompt-missing-payload-ref"
+    "error-template-prompt-missing-payload-ref",
+    "origin-collection-simple"
   ]
 }

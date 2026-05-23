@@ -33,7 +33,7 @@ import {
 import { MetaRelationship } from "./core/relationship/meta-relationship.js";
 import { MetaLayout } from "./presentation/layout/meta-layout.js";
 import { MetaSource } from "./persistence/source/meta-source.js";
-import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin } from "./persistence/origin/meta-origin.js";
+import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin, MetaCollectionOrigin } from "./persistence/origin/meta-origin.js";
 import { commonFieldAttrs, currencyFieldAttr } from "./core/field/field-schema.js";
 import { objectAttrs } from "./core/object/object-schema.js";
 import { relationshipAttrs } from "./core/relationship/relationship-schema.js";
@@ -89,6 +89,7 @@ import {
   ORIGIN_SUBTYPES,
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
+  ORIGIN_SUBTYPE_COLLECTION,
 } from "./persistence/origin/origin-constants.js";
 
 // ---------------------------------------------------------------------------
@@ -150,6 +151,7 @@ const IDENTITY_CLASS_MAP = new Map<string, NodeConstructor>([
 const ORIGIN_CLASS_MAP = new Map<string, NodeConstructor>([
   [ORIGIN_SUBTYPE_PASSTHROUGH, MetaPassthroughOrigin],
   [ORIGIN_SUBTYPE_AGGREGATE, MetaAggregateOrigin],
+  [ORIGIN_SUBTYPE_COLLECTION, MetaCollectionOrigin],
 ]);
 
 // ATTR_CLASS_MAP + attrClassFor live in the leaf module ./attr-class-map.ts

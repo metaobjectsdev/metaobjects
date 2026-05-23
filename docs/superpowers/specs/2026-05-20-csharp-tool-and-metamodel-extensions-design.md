@@ -75,8 +75,7 @@ These additions are Tier 1 cross-language metamodel changes — TS, Java (future
 
 | Addition | Shape | Notes |
 |---|---|---|
-| **JSONB column subtype** | `field.subType = "jsonb"` | Postgres-native. Column maps to `jsonb`. C# codegen emits the property as `string` or a typed model + value converter (configurable via `@csJsonbType`). |
-| **Schema namespacing** | A `package` segment maps to a DB schema (e.g., `acme::api` → `acme_api`). Default schema: `public`. | Necessary for projects with curated read-model schemas alongside the canonical OLTP schema. |
+| **Schema namespacing** | `@schema` attr on `source[dbTable]` / `source[dbView]`. Default `public` for Postgres; SQLite rejects non-default values. | **Shipped** 2026-05-20 — see plan `2026-05-20-schema-namespacing.md`. |
 | **Partial indexes** | `index.@filter "IsOpen = true"` | Postgres `CREATE INDEX ... WHERE ...`. Common in production schemas. |
 | **Computed columns** | `field.@computed "(\"ParentId\" IS NULL)"` | Postgres `GENERATED ... STORED`. Codegen emits `HasComputedColumnSql(...)` on the Fluent side. |
 
@@ -85,7 +84,7 @@ These additions are Tier 1 cross-language metamodel changes — TS, Java (future
 | Addition | Shape | Notes |
 |---|---|---|
 | **TPH discriminator inheritance** | `object.@discriminator "Type"` on the base; `object.@discriminatorValue "Bridge"` on each child object that `extends` it | Maps to EF `HasDiscriminator`. Discriminator column type: int / string / enum. Conformance must cover: nullable subtypes, FK pointing at base vs. subtype, EF skip-navigation onto subtypes. |
-| **Owned types** | A field of subtype `ownedComplex` references a separate `object` declared with `object.@owned true`; columns from the owned object flatten into the owner's table with optional column-name remap | Maps to EF `OwnsOne` / `OwnsMany`. Cross-language ports represent the same flattening; non-.NET languages may emit a nested struct or a flattened record. |
+| **Structured nested values via `object.value` + `@storage` hint** | A field declared `field.object @objectRef "Address"` references an existing `object.value`. The `@storage` attr — `"flattened"` \| `"jsonb"` \| `"subdocument"` — tells codegen + introspect how the nested value lands in storage. `isArray true` supported with `"jsonb"` / `"subdocument"`. | **Unifies the original Tier-2 "JSONB subtype" and Tier-3 "Owned types".** One concept: the metadata declares the structured shape, the storage hint picks the strategy. `flattened` → multiple columns prefixed by field name (EF `OwnsOne` pattern). `jsonb` → single Postgres jsonb column holding the structured value (and an array of values when `isArray true`). `subdocument` → nested document for Mongo-shaped stores. Cross-language ports interpret the same metadata against their target dialect; the metamodel does not encode any dialect-specific behavior. |
 | **External-SQL function references** | `function[externalSql]` declaration: name, parameters (typed), return type, and a path to a `.sql` file holding the body | For Postgres functions whose body is too large or imperative to author in metadata. The tool tracks the file's checksum; when it changes, the next `migrate emit` produces a `CREATE OR REPLACE FUNCTION` statement. |
 | **External-SQL view references** | `view[externalSql]` declaration: name, optional column list, and a path to a `.sql` file holding the SELECT body | Same pattern for views that aren't projections (legacy hand-written views, complex CTEs that resist projection authoring). |
 
@@ -113,20 +112,21 @@ Both extensions are general-purpose and benefit every TypeScript consumer that d
 
 Required new fixtures under `fixtures/conformance/`:
 
-- `field-subtype-jsonb-basic/`
-- `package-to-schema-mapping/`
 - `index-partial-filter/`
 - `field-computed-column/`
 - `tph-discriminator-int-base-only/`
 - `tph-discriminator-string-base-only/`
 - `tph-discriminator-with-subtypes/`
 - `tph-discriminator-nullable-subtypes/`
-- `owned-type-single/`
-- `owned-type-with-column-rename/`
-- `owned-type-nullable/`
+- `field-object-storage-flattened/`
+- `field-object-storage-flattened-nullable/`
+- `field-object-storage-jsonb-single/`
+- `field-object-storage-jsonb-array/`
 - `function-externalsql-basic/`
 - `view-externalsql-basic/`
 - `view-externalsql-with-dependency-tracking/`
+
+(Schema namespacing fixtures already shipped: `source-db-table-with-schema/`, `source-db-view-with-schema/`, `source-db-table-default-schema-omitted/`.)
 
 Each fixture pairs input metadata with the canonical serializer output. TS implementation establishes the canonical form; C# (and future Java, Python) implementations must match.
 
@@ -153,7 +153,7 @@ Each fixture pairs input metadata with the canonical serializer output. TS imple
 ## Risks
 
 1. **EF model reflection at design time has historically been fiddly** — assembly loading, design-time DI, runtime-only configuration. Mitigation: the `ModelSnapshot.cs` parsing fallback. Validate which is robust in the first 2 weeks.
-2. **Owned-type codegen has edge cases** the conformance fixtures might not catch on first pass (shadow FKs, nullable owned blocks, nested owned types). Mitigation: 2-3 week buffer in the estimate for first-real-project iteration.
+2. **`field.object + @storage` codegen has edge cases** the conformance fixtures might not catch on first pass — column-name prefixing for `flattened` (`PRPAddress_Street` vs `Address_Street`?), nullable owned blocks, nested objects inside JSONB, arrays of jsonb-stored values. Mitigation: 2-3 week buffer in the estimate for first-real-project iteration; cover all four shapes (single+flattened, single+jsonb, array+jsonb, array+subdocument) with dedicated fixtures.
 3. **TPH inheritance is the gnarliest codegen pattern.** Subtype-pointing FKs, EF skip-navigation, discriminator-as-enum vs. discriminator-as-int. Mitigation: cover 5+ TPH conformance fixtures before C# codegen ships.
 4. **`view[externalSql]` checksum tracking format must be stable across language ports.** A naive whitespace-sensitive checksum is fragile. Mitigation: define a canonical normalization (strip trailing whitespace, normalize line endings, optionally strip SQL comments) — and conformance-test it.
 5. **`migrate emit` SQL output divergence between TS and C# implementations.** The cross-language conformance corpus must enforce byte-equality of emitted DDL for the same metadata + dialect. Mitigation: a `fixtures/migrations/` corpus parallel to the loader corpus, validating both implementations against the same canonical script.
@@ -161,11 +161,12 @@ Each fixture pairs input metadata with the canonical serializer output. TS imple
 ## Cross-references
 
 - **Superseded:** `docs/superpowers/specs/2026-05-20-csharp-rdb-persistence-design.md`
-- **TS reference implementation:** `typescript/packages/migrate-ts/`
-- **TS codegen architecture:** `typescript/packages/codegen-ts/`
-- **C# loader (foundation):** `csharp/MetaObjects/`
+- **TS reference implementation:** `server/typescript/packages/migrate-ts/`
+- **TS codegen architecture:** `server/typescript/packages/codegen-ts/`
+- **C# loader (foundation):** `server/csharp/MetaObjects/`
 - **C# loader plan:** `docs/superpowers/plans/2026-05-19-csharp-conformance-port.md`
 - **Existing conformance corpus:** `fixtures/conformance/`
+- **Shipped Tier-2 — schema namespacing:** `docs/superpowers/plans/2026-05-20-schema-namespacing.md`
 
 ## Open decisions for the implementation plan
 

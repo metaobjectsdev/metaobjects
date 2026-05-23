@@ -1,0 +1,33 @@
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      {
+        "object.value": {
+          "name": "PostBrief",
+          "children": [
+            { "field.string": { "name": "title" } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "AuthorBrief",
+          "children": [
+            { "field.string": { "name": "displayName" } },
+            {
+              "field.object": {
+                "name": "posts",
+                "@isArray": true,
+                "@objectRef": "PostBrief",
+                "children": [
+                  { "origin.collection": { "@via": "Author.posts" } }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
