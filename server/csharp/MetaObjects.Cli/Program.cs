@@ -9,6 +9,7 @@ if (args.Length == 0)
         "usage: meta <command> [options]\n" +
         "  commands:\n" +
         "    gen <metadataDir> --out <dir> --namespace <ns>   generate EF Core code from metadata\n" +
+        "    migrate <metadataDir> --out <file.sql>           emit Postgres schema DDL from metadata\n" +
         "    verify <metadataDir> --templates <root>          drift-check templates against their payloads");
     return 2;
 }
@@ -16,9 +17,37 @@ if (args.Length == 0)
 return args[0] switch
 {
     "gen" => RunGen(args[1..]),
+    "migrate" => RunMigrate(args[1..]),
     "verify" => RunVerify(args[1..]),
     _ => Unknown(args[0]),
 };
+
+static int RunMigrate(string[] rest)
+{
+    string? metadataDir = null;
+    string? outFile = null;
+    for (int i = 0; i < rest.Length; i++)
+    {
+        if (rest[i] == "--out" && i + 1 < rest.Length) outFile = rest[++i];
+        else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
+    }
+    if (metadataDir is null || outFile is null)
+    {
+        Console.Error.WriteLine("usage: meta migrate <metadataDir> --out <file.sql>");
+        return 2;
+    }
+
+    var outcome = MigrateCommand.Run(metadataDir, outFile);
+    if (!outcome.Ok)
+    {
+        foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
+        Console.Error.WriteLine("meta migrate: FAILED (metadata did not load cleanly)");
+        return 1;
+    }
+    foreach (var w in outcome.Warnings) Console.Error.WriteLine($"  warning: {w}");
+    Console.WriteLine($"meta migrate: wrote {outFile}");
+    return 0;
+}
 
 static int RunGen(string[] rest)
 {
