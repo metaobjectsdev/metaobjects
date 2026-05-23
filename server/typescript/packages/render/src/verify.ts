@@ -73,7 +73,9 @@ function resolve(stack: Stack, path: string): PayloadField | undefined {
   return current;
 }
 
-const parse = (text: string): Token[] => Mustache.parse(text) as unknown as Token[];
+function parse(text: string): Token[] {
+  return Mustache.parse(text) as unknown as Token[];
+}
 
 /**
  * Walk a Mustache template's tokens against a payload field tree, returning a
@@ -108,7 +110,7 @@ export function verify(
         case "#": // {{#x}}…{{/x}}
         case "^": {
           // {{^x}}…{{/x}}
-          const sub = (Array.isArray(tok[4]) ? (tok[4] as Token[]) : []) as Token[];
+          const sub = Array.isArray(tok[4]) ? (tok[4] as Token[]) : [];
           if (value === ".") {
             walk(sub, stack, seen);
             break;

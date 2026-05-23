@@ -75,11 +75,14 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
 
     const fieldTree = derivePayloadFieldTree(root, payloadRef);
     const slotsAttr = tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_SLOTS);
-    const requiredSlots = Array.isArray(slotsAttr)
-      ? slotsAttr.filter((s): s is string => typeof s === "string")
-      : typeof slotsAttr === "string"
-        ? [slotsAttr]
-        : [];
+    let requiredSlots: string[];
+    if (Array.isArray(slotsAttr)) {
+      requiredSlots = slotsAttr.filter((s): s is string => typeof s === "string");
+    } else if (typeof slotsAttr === "string") {
+      requiredSlots = [slotsAttr];
+    } else {
+      requiredSlots = [];
+    }
 
     const drift = verify(text, fieldTree, { provider, requiredSlots });
     checked++;
