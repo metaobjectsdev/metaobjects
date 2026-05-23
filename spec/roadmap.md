@@ -34,9 +34,11 @@
   First Python implementation at `server/python/` (uv + src-layout + pytest, zero runtime deps):
   metadata loader, canonical serializer, and a pytest conformance runner over the shared corpus.
   Built on the current TS/Java Open-Closed extensibility model (ADR-0002/0003/0004) — colocated
-  constants, behavior-on-the-class typed nodes, decorator self-registration + `compose_registry` —
-  **not** the stale C# central-dispatch shape. First corpus slice green; remaining fixtures tracked
-  honestly as known-gaps in an expected-failures ledger. Codegen + runtime out of scope. Design:
+  constants, behavior-on-the-class typed nodes, decorator self-registration + `compose_registry`.
+  (C# has since migrated onto this same provider model — ADR-0003/0004 — so it is no longer the
+  central-dispatch outlier.) First corpus slice green; remaining fixtures tracked honestly as
+  known-gaps in an expected-failures ledger. Python codegen/runtime were out of scope for this
+  loader phase (now in progress in a separate effort). Design:
   `docs/superpowers/specs/2026-05-23-python-loader-conformance-design.md`; porting method +
   contracts: `spec/cross-language-porting-guide.md`.
 
