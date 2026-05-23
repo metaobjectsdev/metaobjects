@@ -20,7 +20,9 @@ public static class SchemaDiff
     /// <summary>
     /// Produces the changes to bring <paramref name="actual"/> to <paramref name="expected"/>.
     /// Tables whose name matches an <paramref name="ignoreTables"/> pattern (exact or
-    /// <c>*</c>-glob) are excluded from both sides.
+    /// <c>*</c>-glob) are excluded from both sides. The default is empty by design; a
+    /// live-DB caller should pass the migration-history table (e.g. <c>"__EFMigrationsHistory"</c>)
+    /// so it isn't surfaced as a drop.
     /// </summary>
     public static DiffResult Diff(
         SchemaSnapshot expected,
@@ -177,14 +179,13 @@ public static class SchemaDiff
         Change.DropIndex => allow.DropIndex ? null : "destructive: drop-index not allowed (pass allow.dropIndex)",
         Change.DropFk => allow.DropFk ? null : "destructive: drop-fk not allowed (pass allow.dropFk)",
 
-        Change.ChangeColumnType t => SqlType.IsWidening(t.From, t.To)
-            ? null
-            : allow.TypeChange ? null : "lossy type change (pass allow.typeChange)",
+        // Widening type changes are always allowed.
+        Change.ChangeColumnType t when SqlType.IsWidening(t.From, t.To) || allow.TypeChange => null,
+        Change.ChangeColumnType => "lossy type change (pass allow.typeChange)",
 
         // from = actual.nullable, to = expected.nullable; notnull→nullable is safe.
-        Change.ChangeColumnNullable n => (n.From == false && n.To)
-            ? null
-            : allow.NullableToNotNull ? null : "nullable→notnull requires existing data to satisfy (pass allow.nullableToNotNull)",
+        Change.ChangeColumnNullable n when (!n.From && n.To) || allow.NullableToNotNull => null,
+        Change.ChangeColumnNullable => "nullable→notnull requires existing data to satisfy (pass allow.nullableToNotNull)",
 
         _ => null,
     };
