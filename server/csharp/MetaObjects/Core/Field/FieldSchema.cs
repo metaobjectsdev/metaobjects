@@ -26,6 +26,18 @@ public static class FieldSchema
             Description: "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."),
 
         new AttrSchema(
+            Name: FieldConstants.FIELD_ATTR_STORAGE,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            AllowedValues: [.. FieldConstants.STORAGE_VALUES],
+            Description:
+                "Storage strategy for an object-typed field (set with @objectRef). " +
+                "\"flattened\" expands the nested value into prefixed columns on the parent " +
+                "table. \"jsonb\" stores the structured value in a single jsonb column " +
+                "(supports isArray=true for arrays of values). \"subdocument\" is a hint for " +
+                "document-store codegen targets and emits no Postgres column."),
+
+        new AttrSchema(
             Name: FieldConstants.FIELD_ATTR_REQUIRED,
             ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
             Required: false,

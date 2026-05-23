@@ -659,4 +659,47 @@ public static class ValidationPasses
             _ => value.GetType().Name,
         };
     }
+
+    // =========================================================================
+    // Pass 8: ValidateFieldObjectStorage
+    //   Cross-attribute validation for @storage on field.object:
+    //     - @storage requires @objectRef on the same field → ERR_STORAGE_WITHOUT_OBJECT_REF
+    //     - @storage "flattened" requires isArray=false (cannot flatten a
+    //       variable-length array) → ERR_STORAGE_FLATTENED_ARRAY
+    //
+    // Ported from validateFieldObjectStorage in
+    // typescript/packages/metadata/src/loader/validation-passes.ts.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateFieldObjectStorage(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            foreach (var field in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
+            {
+                var storage = field.OwnAttr(FIELD_ATTR_STORAGE);
+                if (storage is null) continue;
+
+                var objectRef = field.OwnAttr(FIELD_ATTR_OBJECT_REF);
+                if (objectRef is not string refStr || refStr.Length == 0)
+                {
+                    errors.Add(new MetaError(
+                        $"field \"{obj.Name}.{field.Name}\" sets @storage but has no @objectRef",
+                        ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF));
+                }
+
+                if (storage is string st && st == STORAGE_FLATTENED && field.IsArray)
+                {
+                    errors.Add(new MetaError(
+                        $"field \"{obj.Name}.{field.Name}\" sets @storage \"flattened\" with isArray=true; " +
+                        "flattened storage requires a single nested value",
+                        ErrorCode.ERR_STORAGE_FLATTENED_ARRAY));
+                }
+            }
+        }
+
+        return errors.AsReadOnly();
+    }
 }

@@ -75,6 +75,38 @@ public static class FieldConstants
     /// </summary>
     public const string FIELD_ATTR_OBJECT_REF            = "objectRef";
 
+    /// <summary>
+    /// Storage strategy for an object-typed field. Meaningful only when @objectRef is set.
+    /// Cross-language metamodel attr — every port must accept and round-trip it.
+    /// </summary>
+    public const string FIELD_ATTR_STORAGE = "storage";
+
+    /// <summary>
+    /// @storage "flattened" — nested object's columns expand into the parent table,
+    /// each prefixed by the parent field's DB name (EF OwnsOne pattern). Requires
+    /// the parent field.object to have isArray=false; arrays-of-values must use jsonb.
+    /// </summary>
+    public const string STORAGE_FLATTENED = "flattened";
+
+    /// <summary>
+    /// @storage "jsonb" — the nested value (or array of values when isArray=true) lives
+    /// in a single jsonb column. The structure is typed by metadata; storage is opaque.
+    /// </summary>
+    public const string STORAGE_JSONB = "jsonb";
+
+    /// <summary>
+    /// @storage "subdocument" — document-store-native nested document. No Postgres
+    /// column is emitted for this; codegen targets like Mongo render it inline.
+    /// </summary>
+    public const string STORAGE_SUBDOCUMENT = "subdocument";
+
+    public static readonly string[] STORAGE_VALUES =
+    [
+        STORAGE_FLATTENED,
+        STORAGE_JSONB,
+        STORAGE_SUBDOCUMENT,
+    ];
+
     public const string AUTO_SET_ON_CREATE = "onCreate";
     public const string AUTO_SET_ON_UPDATE = "onUpdate";
 
