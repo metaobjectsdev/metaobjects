@@ -471,6 +471,8 @@ PRs welcome. When contributing:
 
 For significant new features or architectural changes, open an issue first to discuss the approach.
 
+**Publishing to npm:** see [docs/RELEASING.md](docs/RELEASING.md) — the procedure (RC → smoke-test → promote) plus the non-obvious gotchas (publish with `bun`, regen the lockfile after every version bump, runtime imports must be `dependencies`, verify a real external install in npm *and* pnpm).
+
 ## Roadmap pointer
 
 See `spec/roadmap.md` for current and planned work across the H1-H10 project series.
