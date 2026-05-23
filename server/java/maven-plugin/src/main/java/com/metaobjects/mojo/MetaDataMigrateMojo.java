@@ -17,6 +17,7 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 
 import java.io.File;
@@ -52,7 +53,7 @@ import java.util.List;
  * needs to declare {@code MojoFailureException} on {@code execute()} for schema-drift
  * signalling — a check that the codegen base class narrows away.</p>
  */
-@Mojo(name = "migrate")
+@Mojo(name = "migrate", requiresDependencyResolution = ResolutionScope.COMPILE_PLUS_RUNTIME)
 public class MetaDataMigrateMojo extends AbstractMojo {
 
     /** Migration verb: {@code diff} | {@code verify} | {@code emit} | {@code apply}. */

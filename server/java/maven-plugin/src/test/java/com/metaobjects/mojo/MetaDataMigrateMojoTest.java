@@ -5,6 +5,7 @@ import com.metaobjects.loader.file.FileLoaderOptions;
 import com.metaobjects.loader.file.FileMetaDataLoader;
 import com.metaobjects.loader.file.LocalFileMetaDataSources;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
 import org.codehaus.plexus.PlexusTestCase;
 import org.junit.After;
 import org.junit.Before;
@@ -14,6 +15,7 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLNonTransientConnectionException;
 
@@ -203,5 +205,95 @@ public class MetaDataMigrateMojoTest {
             assertTrue("Exception message should mention the unknown verb",
                 e.getMessage().contains("explode"));
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Test: verb=verify against a fresh (empty) DB detects drift → MojoFailureException
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void verify_freshDb_detectsDriftAndThrowsMojoFailureException() throws Exception {
+        // A fresh DB has no tables; the widget table is declared in metadata → drift exists.
+        File resourcesDir = new File(PlexusTestCase.getBasedir(), "src/test/resources/mojo");
+
+        TestableMigrateMojo mojo = new TestableMigrateMojo(
+            resourcesDir.getAbsolutePath(), "meta.migrate-test.json");
+
+        setField(mojo, "verb",           "verify");
+        setField(mojo, "jdbcUrl",        "jdbc:derby:memory:" + dbName + ";create=true");
+        setField(mojo, "jdbcUser",       null);
+        setField(mojo, "jdbcPassword",   null);
+        setField(mojo, "jdbcDriver",     "org.apache.derby.jdbc.EmbeddedDriver");
+        setField(mojo, "databaseDriver", "com.metaobjects.manager.db.driver.DerbyDriver");
+        setField(mojo, "outputDir",      Path.of(PlexusTestCase.getBasedir(), "target", "mojo-migrate-test-verify").toString());
+        setField(mojo, "slug",           "widget-verify");
+        setField(mojo, "allowDropColumn",false);
+        setField(mojo, "allowDropTable", false);
+        setField(mojo, "allowTypeChange",false);
+
+        try {
+            mojo.execute();
+            fail("Expected MojoFailureException: drift should be detected on a fresh DB");
+        } catch (MojoFailureException e) {
+            assertTrue("Failure message should mention drift",
+                e.getMessage().toLowerCase().contains("drift") ||
+                e.getMessage().toLowerCase().contains("sync"));
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Test: verb=apply converges the DB; subsequent verb=verify passes (no drift)
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void apply_convergesToDb_thenVerify_reportsNodrfit() throws Exception {
+        // Both mojos share the same in-memory Derby DB so the second sees the table the first created.
+        File resourcesDir = new File(PlexusTestCase.getBasedir(), "src/test/resources/mojo");
+        String sharedDbUrl = "jdbc:derby:memory:" + dbName + ";create=true";
+
+        // Step 1: apply — creates the widget table on the fresh DB
+        TestableMigrateMojo applyMojo = new TestableMigrateMojo(
+            resourcesDir.getAbsolutePath(), "meta.migrate-test.json");
+
+        setField(applyMojo, "verb",           "apply");
+        setField(applyMojo, "jdbcUrl",        sharedDbUrl);
+        setField(applyMojo, "jdbcUser",       null);
+        setField(applyMojo, "jdbcPassword",   null);
+        setField(applyMojo, "jdbcDriver",     "org.apache.derby.jdbc.EmbeddedDriver");
+        setField(applyMojo, "databaseDriver", "com.metaobjects.manager.db.driver.DerbyDriver");
+        setField(applyMojo, "outputDir",      Path.of(PlexusTestCase.getBasedir(), "target", "mojo-migrate-test-apply").toString());
+        setField(applyMojo, "slug",           "widget-apply");
+        setField(applyMojo, "allowDropColumn",false);
+        setField(applyMojo, "allowDropTable", false);
+        setField(applyMojo, "allowTypeChange",false);
+
+        // Must not throw — migration should apply cleanly
+        applyMojo.execute();
+
+        // Verify the table actually exists after apply
+        try (Connection conn = DriverManager.getConnection(sharedDbUrl)) {
+            boolean tableExists = conn.getMetaData()
+                .getTables(null, null, "WIDGET", null).next();
+            assertTrue("widget table must exist after apply", tableExists);
+        }
+
+        // Step 2: verify — same DB is now in sync, so no MojoFailureException
+        TestableMigrateMojo verifyMojo = new TestableMigrateMojo(
+            resourcesDir.getAbsolutePath(), "meta.migrate-test.json");
+
+        setField(verifyMojo, "verb",           "verify");
+        setField(verifyMojo, "jdbcUrl",        sharedDbUrl);
+        setField(verifyMojo, "jdbcUser",       null);
+        setField(verifyMojo, "jdbcPassword",   null);
+        setField(verifyMojo, "jdbcDriver",     "org.apache.derby.jdbc.EmbeddedDriver");
+        setField(verifyMojo, "databaseDriver", "com.metaobjects.manager.db.driver.DerbyDriver");
+        setField(verifyMojo, "outputDir",      Path.of(PlexusTestCase.getBasedir(), "target", "mojo-migrate-test-verify2").toString());
+        setField(verifyMojo, "slug",           "widget-verify2");
+        setField(verifyMojo, "allowDropColumn",false);
+        setField(verifyMojo, "allowDropTable", false);
+        setField(verifyMojo, "allowTypeChange",false);
+
+        // Must not throw — schema is in sync after apply
+        verifyMojo.execute();
     }
 }
