@@ -43,6 +43,7 @@
     <module>dynamic</module>
     <module>om</module>
     <module>omdb</module>
+    <module>omdb-ktx</module>
     <module>archetype</module>
     <module>examples</module>
   </modules>
