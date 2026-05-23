@@ -1,7 +1,8 @@
-// Base type vocabulary — the 11 registered base types + universal/metadata subtypes.
+// Base type vocabulary — the 12 registered base types + universal/metadata subtypes.
 
 // ---------------------------------------------------------------------------
-// Base type names (the 11 registered base types — Java metaobjects-core vocabulary)
+// Base type names (the registered base types — Java metaobjects-core vocabulary,
+// plus `prompt`, the TS-first FR-004 addition for prompt construction)
 // ---------------------------------------------------------------------------
 
 export const TYPE_METADATA = "metadata";
@@ -15,6 +16,7 @@ export const TYPE_RELATIONSHIP = "relationship";
 export const TYPE_LAYOUT = "layout";
 export const TYPE_SOURCE = "source";
 export const TYPE_ORIGIN = "origin";
+export const TYPE_PROMPT = "prompt";
 
 export const BASE_TYPES = [
   TYPE_METADATA,
@@ -28,6 +30,7 @@ export const BASE_TYPES = [
   TYPE_LAYOUT,
   TYPE_SOURCE,
   TYPE_ORIGIN,
+  TYPE_PROMPT,
 ] as const;
 export type BaseType = (typeof BASE_TYPES)[number];
 

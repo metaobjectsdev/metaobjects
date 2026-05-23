@@ -42,6 +42,9 @@ import { VALIDATOR_ATTRS_MAP } from "./core/validator/validator-schema.js";
 import { currencyViewAttrs } from "./presentation/view/view-schema.js";
 import { dataGridLayoutAttrs } from "./presentation/layout/layout-schema.js";
 import { ORIGIN_ATTRS_MAP } from "./persistence/origin/origin-schema.js";
+import { MetaPrompt } from "./prompt/meta-prompt.js";
+import { PROMPT_ATTRS_MAP } from "./prompt/prompt-schema.js";
+import { PROMPT_SUBTYPES } from "./prompt/prompt-constants.js";
 import {
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -54,6 +57,7 @@ import {
   TYPE_LAYOUT,
   TYPE_SOURCE,
   TYPE_ORIGIN,
+  TYPE_PROMPT,
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
@@ -161,6 +165,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
       wildcard(TYPE_FIELD),
       wildcard(TYPE_ATTR),
       wildcard(TYPE_VALIDATOR),
+      wildcard(TYPE_PROMPT),
     ], MetaRoot),
   );
 
@@ -265,6 +270,17 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     const originAttrs = ORIGIN_ATTRS_MAP.get(subType) ?? [];
     registry.register(
       def(TYPE_ORIGIN, subType, `Origin (${subType})`, [wildcard(TYPE_ATTR)], NodeClass, originAttrs),
+    );
+  }
+
+  // prompt — LLM prompt construction (FR-004). template + fragment; attr-only
+  // children. A single MetaPrompt class backs all subtypes (mirrors source);
+  // per-subtype attr schemas drive validation (template requires @payloadRef +
+  // @textRef; fragment requires @textRef).
+  for (const subType of PROMPT_SUBTYPES) {
+    const promptAttrs = PROMPT_ATTRS_MAP.get(subType) ?? [];
+    registry.register(
+      def(TYPE_PROMPT, subType, `Prompt (${subType})`, [wildcard(TYPE_ATTR)], MetaPrompt, promptAttrs),
     );
   }
 

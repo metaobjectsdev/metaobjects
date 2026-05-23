@@ -14,6 +14,7 @@ import {
   TYPE_LAYOUT,
   TYPE_SOURCE,
   TYPE_ORIGIN,
+  TYPE_PROMPT,
   SUBTYPE_BASE,
   SUBTYPE_ROOT,
   FIELD_SUBTYPE_STRING,
@@ -306,12 +307,13 @@ describe("registerCoreTypes", () => {
     registerCoreTypes(registry);
   });
 
-  // 1. All 65 types registered (object subtypes: base/entity/value; field adds base + 15 subtypes (int/string/long/currency/...);
+  // 1. All 68 types registered (object subtypes: base/entity/value; field adds base + 15 subtypes (int/string/long/currency/...);
   //    view adds base + 13 subtypes (text/textarea/currency/...); layout adds base + dataGrid; source adds base + dbTable + dbView;
   //    origin adds base + passthrough + aggregate; identity adds primary + secondary + reference;
-  //    attr adds base + string/int/long/double/boolean/class/properties/stringarray/filter — net type count 65)
-  it("registers exactly 65 type definitions", () => {
-    expect(registry.allTypes()).toHaveLength(65);
+  //    attr adds base + string/int/long/double/boolean/class/properties/stringarray/filter;
+  //    prompt adds base + template + fragment (FR-004) — net type count 68)
+  it("registers exactly 68 type definitions", () => {
+    expect(registry.allTypes()).toHaveLength(68);
   });
 
   // 2. Per-base-type subtype lists exact match
@@ -415,11 +417,11 @@ describe("registerCoreTypes", () => {
     });
   });
 
-  it("metadata.root allows object, field, attr, and validator children", () => {
+  it("metadata.root allows object, field, attr, validator, and prompt children", () => {
     const def = registry.find(TYPE_METADATA, SUBTYPE_ROOT);
     expect(def).toBeDefined();
     const childTypes = def!.childRules.map((r) => r.childType).sort();
-    expect(childTypes).toEqual([TYPE_ATTR, TYPE_FIELD, TYPE_OBJECT, TYPE_VALIDATOR].sort());
+    expect(childTypes).toEqual([TYPE_ATTR, TYPE_FIELD, TYPE_OBJECT, TYPE_VALIDATOR, TYPE_PROMPT].sort());
   });
 
   // 6. attr.* has empty child rules
