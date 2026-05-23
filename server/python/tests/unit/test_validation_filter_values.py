@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from metaobjects.core_types import core_provider
 from metaobjects.errors import ErrorCode, MetaError
-from metaobjects.loader.validation_passes import run_validations
+from metaobjects.loader.validation_passes import ops_for_subtype, run_validations
 from metaobjects.meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_BOOLEAN,
     ATTR_SUBTYPE_FILTER,
@@ -155,3 +155,41 @@ def test_valid_filter_no_error() -> None:
 
     bad = [e for e in errors if e.code == ErrorCode.ERR_BAD_ATTR_FILTER]
     assert not bad, f"Unexpected ERR_BAD_ATTR_FILTER: {bad}"
+
+
+# ---------------------------------------------------------------------------
+# Tests: ops_for_subtype closed allowlist (TS/C# parity)
+# ---------------------------------------------------------------------------
+
+
+def test_ops_for_subtype_unknown_returns_empty() -> None:
+    """An unknown field subtype must return an empty frozenset (closed allowlist).
+
+    TS and C# both return [] for unrecognised subtypes; Python must match.
+    """
+    assert ops_for_subtype("uuid") == frozenset()
+    assert ops_for_subtype("blob") == frozenset()
+    assert ops_for_subtype("") == frozenset()
+    assert ops_for_subtype("custom.extension") == frozenset()
+
+
+def test_ops_for_subtype_string() -> None:
+    """string subtype must return the string operator set."""
+    ops = ops_for_subtype("string")
+    assert ops == frozenset({"eq", "ne", "in", "like", "isNull"})
+
+
+def test_ops_for_subtype_boolean() -> None:
+    """boolean subtype must return only eq and isNull."""
+    ops = ops_for_subtype("boolean")
+    assert ops == frozenset({"eq", "isNull"})
+
+
+def test_ops_for_subtype_numeric_subtypes() -> None:
+    """Numeric and temporal subtypes must return the full numeric/temporal operator set."""
+    numeric_temporal = {"int", "short", "byte", "long", "double", "float", "decimal", "date", "time", "timestamp"}
+    expected = frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"})
+    for subtype in numeric_temporal:
+        assert ops_for_subtype(subtype) == expected, (
+            f"ops_for_subtype('{subtype}') should be {expected}"
+        )

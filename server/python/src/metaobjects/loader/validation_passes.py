@@ -119,11 +119,15 @@ def _validate_attr_schema(
 
         schema_by_name: dict[str, AttrSchema] = {s.name: s for s in schemas}
 
-        # --- Check 1: required attrs must be present (effective = own + inherited) ---
+        # --- Check 1: required attrs must be present ---
         for schema in schemas:
             if not schema.required:
                 continue
-            # node.attr() returns None when the attr is absent (own or inherited).
+            # node.attr() checks OWN attrs only — there is no effective/inherited
+            # attr accessor today.  Effective required-attr resolution (satisfying
+            # a requirement via an inherited attr from the super chain) is deferred:
+            # no conformance fixture currently inherits a required attr, so this
+            # own-only check is sufficient until that fixture is added.
             if node.attr(schema.name) is None:
                 errors.append(
                     MetaError(
@@ -234,8 +238,8 @@ def ops_for_subtype(field_subtype: str) -> frozenset[str]:
         return _OPS_BOOLEAN
     if field_subtype in _NUMERIC_TEMPORAL_SUBTYPES:
         return _OPS_NUMERIC_TEMPORAL
-    # Unknown/extension subtypes: allow the full union (open policy).
-    return _OPS_STRING | _OPS_NUMERIC_TEMPORAL
+    # Unknown/extension subtypes: closed allowlist — no operators permitted.
+    return frozenset()
 
 
 # ---------------------------------------------------------------------------
@@ -480,22 +484,43 @@ def _validate_origin_paths(
 
             if origin.sub_type == ORIGIN_SUBTYPE_PASSTHROUGH:
                 from_ref = origin.attr(ORIGIN_ATTR_FROM)
-                if isinstance(from_ref, str):
+                if not isinstance(from_ref, str) or not from_ref:
+                    errors.append(
+                        MetaError(
+                            f"{ctx} is missing required attribute '@{ORIGIN_ATTR_FROM}'",
+                            ErrorCode.ERR_INVALID_ORIGIN,
+                        )
+                    )
+                else:
                     _validate_entity_field_ref(
                         from_ref, ORIGIN_ATTR_FROM, ctx, object_index, errors
                     )
                 via = origin.attr(ORIGIN_ATTR_VIA)
-                if isinstance(via, str):
+                if isinstance(via, str) and via:
                     _validate_via_path(via, ctx, object_index, errors)
 
             elif origin.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
                 of_ref = origin.attr(ORIGIN_ATTR_OF)
-                if isinstance(of_ref, str):
+                if not isinstance(of_ref, str) or not of_ref:
+                    errors.append(
+                        MetaError(
+                            f"{ctx} is missing required attribute '@{ORIGIN_ATTR_OF}'",
+                            ErrorCode.ERR_INVALID_ORIGIN,
+                        )
+                    )
+                else:
                     _validate_entity_field_ref(
                         of_ref, ORIGIN_ATTR_OF, ctx, object_index, errors
                     )
                 via = origin.attr(ORIGIN_ATTR_VIA)
-                if isinstance(via, str):
+                if not isinstance(via, str) or not via:
+                    errors.append(
+                        MetaError(
+                            f"{ctx} is missing required attribute '@{ORIGIN_ATTR_VIA}'",
+                            ErrorCode.ERR_INVALID_ORIGIN,
+                        )
+                    )
+                else:
                     _validate_via_path(via, ctx, object_index, errors)
 
 
