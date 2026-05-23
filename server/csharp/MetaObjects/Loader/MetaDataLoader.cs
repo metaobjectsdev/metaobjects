@@ -242,6 +242,9 @@ public class MetaDataLoader
 
             // Pass 9: template @payloadRef / @requiredSlots resolution
             errors.AddRange(ValidationPasses.ValidateTemplatePayloadRefs(root));
+
+            // Pass 10: enum @values content rules (non-empty, identifier-safe, no duplicates)
+            errors.AddRange(ValidationPasses.ValidateEnumValues(root));
         }
 
         // If nothing parsed successfully, synthesize an empty root so callers
