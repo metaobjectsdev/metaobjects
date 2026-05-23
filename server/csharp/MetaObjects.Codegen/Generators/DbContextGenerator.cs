@@ -72,7 +72,7 @@ public sealed class DbContextGenerator : IGenerator
     // when @objectRef can't be resolved.
     private string? OwnedTypeConfig(MetaObject entity, MetaField field, GenContext ctx)
     {
-        if (field.ObjectRef is not { } oref || ctx.Root.FindObject(StripPkg(oref)) is not { } vo)
+        if (field.ObjectRef is not { } oref || ctx.Root.FindObject(CSharpNaming.StripPkg(oref)) is not { } vo)
         {
             ctx.Warn($"{Name}: object-typed field \"{entity.Name}.{field.Name}\" has an unresolved @objectRef \"{field.ObjectRef}\" — no owned-type config emitted.");
             return null;
@@ -94,11 +94,5 @@ public sealed class DbContextGenerator : IGenerator
         }
         sb.Append("        });");
         return sb.ToString();
-    }
-
-    private static string StripPkg(string s)
-    {
-        var i = s.LastIndexOf("::", StringComparison.Ordinal);
-        return i < 0 ? s : s[(i + 2)..];
     }
 }

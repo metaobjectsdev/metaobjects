@@ -115,6 +115,30 @@ public class PostgresSchemaTests
     }
 
     [Fact]
+    public void Composite_pk_and_unique_index_preserve_declared_field_order()
+    {
+        // @fields order ("b","a") differs from field-declaration order ("a","b");
+        // the DDL must follow @fields, not declaration order.
+        const string m = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Link", "children": [
+            { "source.dbTable": { "@name": "links" } },
+            { "field.long": { "name": "a" } },
+            { "field.long": { "name": "b" } },
+            { "identity.primary": { "@fields": ["b", "a"] } },
+            { "identity.secondary": { "name": "byBA", "@fields": ["b", "a"], "@unique": true } }
+          ]}}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "ck.json")]);
+        Assert.Empty(r.Errors);
+        var sql = PostgresSchema.BuildSchema(r.Root);
+
+        Assert.Contains("PRIMARY KEY (b, a)", sql);
+        Assert.Contains("CREATE UNIQUE INDEX links_byBA_uniq ON links (b, a);", sql);
+    }
+
+    [Fact]
     public void Flattened_object_field_expands_to_prefixed_columns()
     {
         var sql = PostgresSchema.BuildSchema(Load());

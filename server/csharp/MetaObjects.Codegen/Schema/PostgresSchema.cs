@@ -59,7 +59,6 @@ public static class PostgresSchema
     {
         var table = entity.DbTable ?? entity.Name;
         var pk = entity.PrimaryIdentity();
-        var pkCols = (pk?.Fields ?? []).ToHashSet(StringComparer.Ordinal);
 
         var lines = new List<string>();
         foreach (var f in entity.Fields())
@@ -76,7 +75,8 @@ public static class PostgresSchema
         }
         if (pk is not null && pk.Fields.Count > 0)
         {
-            var cols = entity.Fields().Where(f => pkCols.Contains(f.Name)).Select(Col);
+            // Preserve the identity's declared @fields order (not field-declaration order).
+            var cols = pk.Fields.Select(name => ResolveColumn(entity, name));
             lines.Add($"  PRIMARY KEY ({string.Join(", ", cols)})");
         }
         // FOREIGN KEY constraints from enforced identity.reference children.
@@ -93,7 +93,7 @@ public static class PostgresSchema
         // UNIQUE indexes from secondary identities marked unique.
         foreach (var sec in entity.SecondaryIdentities().Where(i => i.Unique))
         {
-            var cols = entity.Fields().Where(f => sec.Fields.Contains(f.Name)).Select(Col);
+            var cols = sec.Fields.Select(name => ResolveColumn(entity, name));
             sb.AppendLine($"CREATE UNIQUE INDEX {table}_{sec.Name}_uniq ON {table} ({string.Join(", ", cols)});");
         }
         return sb.ToString();
@@ -106,7 +106,7 @@ public static class PostgresSchema
     private static IEnumerable<string> ObjectFieldColumns(MetaObject entity, MetaField f, MetaRoot root)
     {
         if (f.Storage == STORAGE_FLATTENED && f.ObjectRef is { } oref &&
-            root.FindObject(StripPkg(oref)) is { } nested)
+            root.FindObject(CSharpNaming.StripPkg(oref)) is { } nested)
         {
             var prefix = Col(f) + "_";
             foreach (var nf in nested.Fields().Where(n => CSharpNaming.ScalarFor(n.SubType) is not null))
@@ -127,7 +127,7 @@ public static class PostgresSchema
     private static string? ForeignKeyClause(MetaObject entity, MetaReferenceIdentity fk, MetaRoot root)
     {
         if (fk.TargetEntity is not { } targetName || fk.Fields.Count == 0) return null;
-        var target = root.FindObject(StripPkg(targetName));
+        var target = root.FindObject(CSharpNaming.StripPkg(targetName));
         if (target is null) return null;
 
         var fkCols = fk.Fields.Select(js => ResolveColumn(entity, js)).ToList();
@@ -173,8 +173,8 @@ public static class PostgresSchema
             if (origin is MetaPassthroughOrigin pt && pt.Via is null && pt.From is { } from && from.Contains('.'))
             {
                 var (ent, field) = SplitDot(from);
-                baseEntity ??= StripPkg(ent);
-                if (StripPkg(ent) != baseEntity) { blocked = "passthrough from multiple base entities"; break; }
+                baseEntity ??= CSharpNaming.StripPkg(ent);
+                if (CSharpNaming.StripPkg(ent) != baseEntity) { blocked = "passthrough from multiple base entities"; break; }
                 cols.Add($"  {ResolveColumn(root.FindObject(baseEntity), field)} AS {Col(f)}");
             }
             // passthrough WITH via → forward a field from a to-one related entity (correlated subquery).
@@ -182,8 +182,8 @@ public static class PostgresSchema
                      pvia.Contains('.') && pfrom.Contains('.'))
             {
                 var (baseEnt, relName) = SplitDot(pvia);
-                baseEntity ??= StripPkg(baseEnt);
-                if (StripPkg(baseEnt) != baseEntity) { blocked = "passthrough via a different base entity"; break; }
+                baseEntity ??= CSharpNaming.StripPkg(baseEnt);
+                if (CSharpNaming.StripPkg(baseEnt) != baseEntity) { blocked = "passthrough via a different base entity"; break; }
                 if (ToOneFk(root, baseEntity, relName) is not { } fk)
                 { blocked = $"unresolved to-one FK for @via \"{pvia}\" (base needs an identity.reference)"; break; }
                 var srcCol = ResolveColumn(fk.Target, SplitDot(pfrom).Tail);
@@ -194,8 +194,8 @@ public static class PostgresSchema
                      of.Contains('.') && via.Contains('.'))
             {
                 var (baseEnt, relName) = SplitDot(via);
-                baseEntity ??= StripPkg(baseEnt);
-                if (StripPkg(baseEnt) != baseEntity) { blocked = "aggregate over a different base entity"; break; }
+                baseEntity ??= CSharpNaming.StripPkg(baseEnt);
+                if (CSharpNaming.StripPkg(baseEnt) != baseEntity) { blocked = "aggregate over a different base entity"; break; }
                 if (ToManyFk(root, baseEntity, relName) is not { } fk)
                 { blocked = $"unresolved to-many FK for @via \"{via}\" (target needs an identity.reference back to {baseEntity})"; break; }
                 var ofCol = ResolveColumn(fk.Target, SplitDot(of).Tail);
@@ -205,9 +205,9 @@ public static class PostgresSchema
             else if (origin is MetaCollectionOrigin coll && coll.Via is { } cvia && cvia.Contains('.') && f.ObjectRef is { } objRef)
             {
                 var (baseEnt, relName) = SplitDot(cvia);
-                baseEntity ??= StripPkg(baseEnt);
-                if (StripPkg(baseEnt) != baseEntity) { blocked = "collection over a different base entity"; break; }
-                var nested = root.FindObject(StripPkg(objRef));
+                baseEntity ??= CSharpNaming.StripPkg(baseEnt);
+                if (CSharpNaming.StripPkg(baseEnt) != baseEntity) { blocked = "collection over a different base entity"; break; }
+                var nested = root.FindObject(CSharpNaming.StripPkg(objRef));
                 if (ToManyFk(root, baseEntity, relName) is not { } fk || nested is null)
                 { blocked = $"unresolved collection @via \"{cvia}\" / @objectRef \"{objRef}\""; break; }
                 var pairs = nested.Fields()
@@ -238,14 +238,19 @@ public static class PostgresSchema
         return (s[..i], s[(i + 1)..]);
     }
 
-    private static string StripPkg(string s)
-    {
-        var i = s.LastIndexOf("::", StringComparison.Ordinal);
-        return i < 0 ? s : s[(i + 2)..];
-    }
-
     private static string ResolveColumn(MetaObject? obj, string fieldName) =>
         obj?.Fields().FirstOrDefault(f => f.Name == fieldName)?.DbColumn ?? fieldName;
+
+    // Resolve a named relationship on the base entity to its (base, target) objects.
+    private static (MetaObject Base, MetaObject Target)? ResolveRelation(
+        MetaRoot root, string baseEntity, string relName)
+    {
+        var baseObj = root.FindObject(baseEntity);
+        var rel = baseObj?.Relationships().FirstOrDefault(r => r.Name == relName);
+        if (baseObj is null || rel?.ObjectRef is not { } objRef) return null;
+        var target = root.FindObject(CSharpNaming.StripPkg(objRef));
+        return target is null ? null : (baseObj, target);
+    }
 
     // Resolve a to-many relationship to the FK that lives on the *target* entity:
     // the target carries an identity.reference back to the base. Used by aggregate
@@ -253,14 +258,11 @@ public static class PostgresSchema
     private static (MetaObject Target, string TargetTable, string FkCol, string ParentCol)? ToManyFk(
         MetaRoot root, string baseEntity, string relName)
     {
-        var baseObj = root.FindObject(baseEntity);
-        var rel = baseObj?.Relationships().FirstOrDefault(r => r.Name == relName);
-        if (baseObj is null || rel?.ObjectRef is not { } objRef) return null;
-        var target = root.FindObject(StripPkg(objRef));
-        if (target is null) return null;
+        if (ResolveRelation(root, baseEntity, relName) is not { } rel) return null;
+        var (baseObj, target) = rel;
 
         var fkRef = target.ReferenceIdentities()
-            .FirstOrDefault(r => r.TargetEntity is { } te && StripPkg(te) == baseEntity);
+            .FirstOrDefault(r => r.TargetEntity is { } te && CSharpNaming.StripPkg(te) == baseEntity);
         if (fkRef is null || fkRef.Fields.Count == 0) return null;
 
         var fkCol = ResolveColumn(target, fkRef.Fields[0]);
@@ -278,14 +280,11 @@ public static class PostgresSchema
     private static (MetaObject Target, string TargetTable, string TargetKeyCol, string BaseFkCol)? ToOneFk(
         MetaRoot root, string baseEntity, string relName)
     {
-        var baseObj = root.FindObject(baseEntity);
-        var rel = baseObj?.Relationships().FirstOrDefault(r => r.Name == relName);
-        if (baseObj is null || rel?.ObjectRef is not { } objRef) return null;
-        var target = root.FindObject(StripPkg(objRef));
-        if (target is null) return null;
+        if (ResolveRelation(root, baseEntity, relName) is not { } rel) return null;
+        var (baseObj, target) = rel;
 
         var fkRef = baseObj.ReferenceIdentities()
-            .FirstOrDefault(r => r.TargetEntity is { } te && StripPkg(te) == StripPkg(objRef));
+            .FirstOrDefault(r => r.TargetEntity is { } te && CSharpNaming.StripPkg(te) == target.Name);
         if (fkRef is null || fkRef.Fields.Count == 0) return null;
 
         var baseFkCol = ResolveColumn(baseObj, fkRef.Fields[0]);

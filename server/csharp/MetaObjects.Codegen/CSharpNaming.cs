@@ -48,6 +48,17 @@ public static class CSharpNaming
         name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
 
     /// <summary>
+    /// The bare object name from a possibly package-qualified reference (the segment
+    /// after the last <c>::</c>), for resolving an <c>@objectRef</c>/<c>@references</c>
+    /// against <see cref="MetaRoot.FindObject"/>. Shared by the schema + generators.
+    /// </summary>
+    public static string StripPkg(string name)
+    {
+        var i = name.LastIndexOf("::", StringComparison.Ordinal);
+        return i < 0 ? name : name[(i + 2)..];
+    }
+
+    /// <summary>
     /// Cosmetic pluralization for a DbSet property name + the route collection
     /// segment (the table name itself comes from [Table]). Shared so the DbContext
     /// and routes generators agree.

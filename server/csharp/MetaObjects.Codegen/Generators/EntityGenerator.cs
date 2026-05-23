@@ -164,14 +164,14 @@ public sealed class EntityGenerator : IGenerator
     // a warning) when the @objectRef can't be resolved.
     private string? ObjectNavProperty(MetaObject owner, MetaField field, GenContext ctx)
     {
-        if (field.ObjectRef is not { } oref || ctx.Root.FindObject(StripPkg(oref)) is not { } target)
+        if (field.ObjectRef is not { } oref || ctx.Root.FindObject(CSharpNaming.StripPkg(oref)) is not { } target)
         {
             ctx.Warn($"{Name}: object-typed field \"{owner.Name}.{field.Name}\" has an unresolved @objectRef \"{field.ObjectRef}\" — skipped.");
             return null;
         }
         var typeName = CSharpNaming.Pascal(target.Name);
         var propName = CSharpNaming.Pascal(field.Name);
-        var required = field.OwnAttr(FIELD_ATTR_REQUIRED) is true;
+        var required = CSharpNaming.IsRequired(owner, field);
         return required
             ? $"    public {typeName} {propName} {{ get; set; }} = default!;"
             : $"    public {typeName}? {propName} {{ get; set; }}";
@@ -201,17 +201,11 @@ public sealed class EntityGenerator : IGenerator
         void Enqueue(string? objectRef)
         {
             if (objectRef is null) return;
-            var target = ctx.Root.FindObject(StripPkg(objectRef));
+            var target = ctx.Root.FindObject(CSharpNaming.StripPkg(objectRef));
             // Only plain value objects (no source) become POCOs; entities/projections
             // are already in `mapped`.
             if (target is null || !target.IsValue() || target.DbView is not null) return;
             if (seen.Add(target.Name)) queue.Enqueue(target);
         }
-    }
-
-    private static string StripPkg(string s)
-    {
-        var i = s.LastIndexOf("::", StringComparison.Ordinal);
-        return i < 0 ? s : s[(i + 2)..];
     }
 }
