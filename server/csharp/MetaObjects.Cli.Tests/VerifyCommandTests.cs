@@ -68,4 +68,21 @@ public sealed class VerifyCommandTests : IDisposable
         Assert.False(o.Ok);
         Assert.NotEmpty(o.UnresolvedText);
     }
+
+    [Fact]
+    public void Missing_required_tag_is_caught()
+    {
+        // Override the metadata with a template that contracts a <answer> output tag.
+        const string tagged = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "Payload", "children": [ { "field.string": { "name": "name" } } ] } },
+          { "template.prompt": { "name": "greeting", "@payloadRef": "Payload", "@textRef": "t/main", "@requiredTags": ["answer"] } }
+        ]}}
+        """;
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), tagged);
+        WriteTemplate("Hi {{name}}."); // references the var cleanly but omits the <answer> tag
+        var o = VerifyCommand.Run(MetaDir, TplDir);
+        Assert.False(o.Ok);
+        Assert.Contains(o.Errors, d => d.Code == Render.Verify.ERR_OUTPUT_TAG_MISSING && d.Path == "answer");
+    }
 }

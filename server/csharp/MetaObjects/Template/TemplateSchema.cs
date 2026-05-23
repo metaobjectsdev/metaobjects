@@ -56,6 +56,12 @@ public static class TemplateSchema
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
             Description: "Governance: the version this template was introduced in."),
+
+        new AttrSchema(
+            Name: TemplateConstants.TEMPLATE_ATTR_REQUIRED_TAGS,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRINGARRAY,
+            Required: false,
+            Description: "Output tags the rendered text must contain (drives the verify output-tag check)."),
     ];
 
     // LLM-overlay attrs (template.prompt only).
