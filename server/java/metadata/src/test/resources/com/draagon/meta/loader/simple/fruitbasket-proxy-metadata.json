@@ -32,6 +32,7 @@
         "object.entity": {
           "name": "Basket",
           "@object": "com.metaobjects.test.proxy.fruitbasket.Basket",
+          "@objectAdapter": "com.metaobjects.test.proxy.fruitbasket.ProxyObjectAdapter",
           "children": [
             {
               "identity.primary": {
@@ -108,6 +109,7 @@
         "object.entity": {
           "name": "BasketToFruit",
           "@object": "com.metaobjects.test.proxy.fruitbasket.BasketToFruit",
+          "@objectAdapter": "com.metaobjects.test.proxy.fruitbasket.ProxyObjectAdapter",
           "children": [
             {
               "identity.primary": {
@@ -159,6 +161,7 @@
           "name": "Fruit",
           "abstract": true,
           "@object": "com.metaobjects.test.proxy.fruitbasket.Fruit",
+          "@objectAdapter": "com.metaobjects.test.proxy.fruitbasket.ProxyObjectAdapter",
           "children": [
             {
               "identity.primary": {
@@ -220,6 +223,7 @@
           "name": "Apple",
           "extends": "Fruit",
           "@object": "com.metaobjects.test.proxy.fruitbasket.Apple",
+          "@objectAdapter": "com.metaobjects.test.proxy.fruitbasket.ProxyObjectAdapter",
           "children": [
             {
               "field.string": {
@@ -238,7 +242,8 @@
         "object.entity": {
           "name": "Macintosh",
           "extends": "Apple",
-          "@object": "com.metaobjects.test.proxy.fruitbasket.Macintosh"
+          "@object": "com.metaobjects.test.proxy.fruitbasket.Macintosh",
+          "@objectAdapter": "com.metaobjects.test.proxy.fruitbasket.ProxyObjectAdapter"
         }
       },
       {
@@ -246,6 +251,7 @@
           "name": "Orange",
           "extends": "Fruit",
           "@object": "com.metaobjects.test.proxy.fruitbasket.Orange",
+          "@objectAdapter": "com.metaobjects.test.proxy.fruitbasket.ProxyObjectAdapter",
           "children": [
             {
               "field.date": {
