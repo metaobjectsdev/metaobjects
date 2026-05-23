@@ -41,6 +41,9 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
     public static final String DB_AUTO_INCREMENT = "dbAutoIncrement";
     public static final String DB_TYPE = "dbType";
 
+    /** {@code @dbType} value that marks a field as a JSON document column. */
+    public static final String DB_TYPE_JSONB = "jsonb";
+
     // Identity-specific database attributes
     public static final String DB_SEQUENCE_NAME = "dbSequenceName";
     public static final String DB_INDEX_NAME = "dbIndexName";

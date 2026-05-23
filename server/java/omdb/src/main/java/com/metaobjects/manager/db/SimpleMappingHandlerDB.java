@@ -252,7 +252,7 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	protected boolean isJsonbField(MetaField mf) {
 		try {
 			return mf.hasMetaAttr(CoreDBMetaDataProvider.DB_TYPE)
-				&& "jsonb".equals(mf.getMetaAttr(CoreDBMetaDataProvider.DB_TYPE).getValueAsString());
+				&& CoreDBMetaDataProvider.DB_TYPE_JSONB.equals(mf.getMetaAttr(CoreDBMetaDataProvider.DB_TYPE).getValueAsString());
 		} catch (Exception e) {
 			return false;
 		}

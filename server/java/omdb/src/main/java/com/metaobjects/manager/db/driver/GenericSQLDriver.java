@@ -72,7 +72,7 @@ public class GenericSQLDriver implements DatabaseDriver {
     protected boolean isJsonbField(MetaField f) {
         try {
             return f.hasMetaAttr(CoreDBMetaDataProvider.DB_TYPE)
-                && "jsonb".equals(f.getMetaAttr(CoreDBMetaDataProvider.DB_TYPE).getValueAsString());
+                && CoreDBMetaDataProvider.DB_TYPE_JSONB.equals(f.getMetaAttr(CoreDBMetaDataProvider.DB_TYPE).getValueAsString());
         } catch (Exception e) {
             return false;
         }
@@ -120,9 +120,11 @@ public class GenericSQLDriver implements DatabaseDriver {
      *       {@link ObjectClassRegistry} has a binding for that name, deserialize
      *       using Gson's default reflection into the bound class (registry wins for
      *       explicit POJO bindings).</li>
-     *   <li>Otherwise, use {@link JsonObjectReader} with the referenced
-     *       {@link MetaObject}; this returns a {@code ValueObject} (or whichever
-     *       class the MetaObject declares via its {@code @object} attribute).</li>
+     *   <li>Otherwise, deserialize via a {@link MetaObjectDeserializer} bound to the
+     *       referenced {@link MetaObject}; this returns a {@code ValueObject} (or
+     *       whichever class the MetaObject declares via its {@code @object} attribute).
+     *       That variant does not require an {@code @type} field in the JSON, so plain
+     *       JSON written by Gson's default reflection (e.g. a Map) round-trips cleanly.</li>
      * </ol>
      *
      * @param f    the jsonb MetaField (carries {@code @objectRef} and the loader)
@@ -131,28 +133,16 @@ public class GenericSQLDriver implements DatabaseDriver {
      */
     protected Object deserializeJsonb(MetaField f, String json) {
         try {
-            // Step 1: check explicit registry binding (typed POJO path)
+            // Step 1: registry-bound typed POJO wins, deserialized via Gson reflection.
             if (MetaDataUtil.hasObjectRef(f)) {
-                String refName = f.getMetaAttr(MetaDataUtil.ATTR_OBJECT_REF).getValueAsString();
-                // expand relative refs the same way MetaDataUtil.getObjectRef does
-                String fqn = MetaDataUtil.expandPackageForMetaDataRef(
-                        MetaDataUtil.findPackageForMetaData(f), refName);
-                Class<?> bound = ObjectClassRegistry.global().resolve(fqn);
+                Class<?> bound = ObjectClassRegistry.global().resolve(resolveObjectRefFqn(f));
                 if (bound != null) {
                     return buildGson(f.getLoader()).fromJson(json, bound);
                 }
             }
-            // Step 2: fall back to metadata-driven deserialization via a per-MetaObject
-            // Gson instance.  We register MetaObjectDeserializer(refMo) directly — this
-            // variant does not require an @type field in the JSON, so plain JSON written
-            // by Gson's default reflection (e.g. a Map) round-trips cleanly.
+            // Step 2: fall back to the MetaObject's declared class (e.g. ValueObject).
             MetaObject refMo = MetaDataUtil.getObjectRef(f);
-            Class<?> refClass;
-            try {
-                refClass = refMo.getObjectClass();
-            } catch (ClassNotFoundException e) {
-                throw new IllegalStateException("Cannot resolve class for MetaObject [" + refMo + "]: " + e, e);
-            }
+            Class<?> refClass = refMo.getObjectClass();
             Gson fallbackGson = new GsonBuilder()
                     .registerTypeAdapter(refClass, new MetaObjectDeserializer(refMo))
                     .create();
@@ -160,6 +150,12 @@ public class GenericSQLDriver implements DatabaseDriver {
         } catch (Exception e) {
             throw new IllegalStateException("jsonb deserialize failed for field [" + f + "]: " + e, e);
         }
+    }
+
+    /** Expands a field's {@code @objectRef} to a canonical FQN, mirroring {@link MetaDataUtil#getObjectRef}. */
+    private String resolveObjectRefFqn(MetaField f) {
+        String refName = f.getMetaAttr(MetaDataUtil.ATTR_OBJECT_REF).getValueAsString();
+        return MetaDataUtil.expandPackageForMetaDataRef(MetaDataUtil.findPackageForMetaData(f), refName);
     }
 
     /**

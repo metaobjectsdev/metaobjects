@@ -354,8 +354,6 @@ public abstract class MetaObject extends MetaData {
         Class<?> c = (Class<?>) getCacheValue(CACHE_KEY );
         if ( c == null ) {
 
-            c = null;
-
             if (hasObjectAttr()) {
                 c = getObjectClassFromAttr();
             }
