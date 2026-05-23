@@ -21,6 +21,24 @@ public final class ErrorMessageConstants {
         // Utility class - no instantiation
     }
 
+    // === CROSS-LANGUAGE ERROR CODES ===
+    // These codes are part of the shared conformance contract across all language ports
+    // (TypeScript, Java, Python, C#). Keep them identical to the TS/C# constants.
+
+    /**
+     * Error code emitted when a required attribute is absent.
+     * Cross-language contract: {@code ERR_MISSING_REQUIRED_ATTR}.
+     */
+    public static final String ERR_MISSING_REQUIRED_ATTR = "ERR_MISSING_REQUIRED_ATTR";
+
+    /**
+     * Error code emitted when an attribute value fails content validation
+     * (e.g. an enum {@code @values} member is not an identifier-safe symbol, is empty, or
+     * contains a duplicate).
+     * Cross-language contract: {@code ERR_BAD_ATTR_VALUE}.
+     */
+    public static final String ERR_BAD_ATTR_VALUE = "ERR_BAD_ATTR_VALUE";
+
     // === ERROR MESSAGE FORMATS ===
 
     /** Format template for not found errors */

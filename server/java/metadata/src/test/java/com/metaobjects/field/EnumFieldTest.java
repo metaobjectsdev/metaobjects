@@ -10,6 +10,7 @@ import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.parser.json.CanonicalJsonParser;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.SharedRegistryTestBase;
+import com.metaobjects.util.ErrorMessageConstants;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -405,10 +406,8 @@ public class EnumFieldTest extends SharedRegistryTestBase {
             fail("Expected MetaDataException for missing @values (ERR_MISSING_REQUIRED_ATTR)");
         } catch (MetaDataException e) {
             assertTrue(
-                "Exception message must reference the missing-required-attr contract or @values: " + e.getMessage(),
-                e.getMessage().contains("ERR_MISSING_REQUIRED_ATTR")
-                    || e.getMessage().contains("values")
-                    || e.getMessage().contains("required"));
+                "Exception message must contain ERR_MISSING_REQUIRED_ATTR: " + e.getMessage(),
+                e.getMessage().contains(ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR));
         }
     }
 
@@ -427,10 +426,8 @@ public class EnumFieldTest extends SharedRegistryTestBase {
             fail("Expected MetaDataException for empty @values (ERR_BAD_ATTR_VALUE)");
         } catch (MetaDataException e) {
             assertTrue(
-                "Exception message must reference the bad-attr-value contract or @values: " + e.getMessage(),
-                e.getMessage().contains("ERR_BAD_ATTR_VALUE")
-                    || e.getMessage().contains("values")
-                    || e.getMessage().contains("empty"));
+                "Exception message must contain ERR_BAD_ATTR_VALUE: " + e.getMessage(),
+                e.getMessage().contains(ErrorMessageConstants.ERR_BAD_ATTR_VALUE));
         }
     }
 
@@ -449,11 +446,8 @@ public class EnumFieldTest extends SharedRegistryTestBase {
             fail("Expected MetaDataException for non-identifier @values member (ERR_BAD_ATTR_VALUE)");
         } catch (MetaDataException e) {
             assertTrue(
-                "Exception message must reference the bad-attr-value contract or @values: " + e.getMessage(),
-                e.getMessage().contains("ERR_BAD_ATTR_VALUE")
-                    || e.getMessage().contains("values")
-                    || e.getMessage().contains("identifier")
-                    || e.getMessage().contains("member"));
+                "Exception message must contain ERR_BAD_ATTR_VALUE: " + e.getMessage(),
+                e.getMessage().contains(ErrorMessageConstants.ERR_BAD_ATTR_VALUE));
         }
     }
 
@@ -472,10 +466,8 @@ public class EnumFieldTest extends SharedRegistryTestBase {
             fail("Expected MetaDataException for duplicate @values members (ERR_BAD_ATTR_VALUE)");
         } catch (MetaDataException e) {
             assertTrue(
-                "Exception message must reference the bad-attr-value contract or @values: " + e.getMessage(),
-                e.getMessage().contains("ERR_BAD_ATTR_VALUE")
-                    || e.getMessage().contains("values")
-                    || e.getMessage().contains("duplicate"));
+                "Exception message must contain ERR_BAD_ATTR_VALUE: " + e.getMessage(),
+                e.getMessage().contains(ErrorMessageConstants.ERR_BAD_ATTR_VALUE));
         }
     }
 
@@ -516,5 +508,95 @@ public class EnumFieldTest extends SharedRegistryTestBase {
         assertTrue("members must contain DRAFT",     members.contains("DRAFT"));
         assertTrue("members must contain PUBLISHED", members.contains("PUBLISHED"));
         assertTrue("members must contain ARCHIVED",  members.contains("ARCHIVED"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests 16–17 — abstract field.enum own-only validation contract
+    // -----------------------------------------------------------------------
+
+    /**
+     * TDD: write failing first, then implement.
+     *
+     * <p>An ABSTRACT {@code field.enum} that declares a bad own {@code @values} member
+     * ({@code "in-progress"} contains a hyphen) MUST raise {@code ERR_BAD_ATTR_VALUE}
+     * even though there is no concrete subtype in the same file.</p>
+     *
+     * <p>This test exposed the divergence from the TS/C# own-only contract: the old Java
+     * implementation early-returned for abstract nodes, so this case silently escaped
+     * validation.  Write it failing first to confirm, then implement the fix.</p>
+     */
+    @Test
+    public void fullLoad_abstractEnumWithBadOwnMember_raisesError() {
+        // Abstract field.enum at root level — no concrete subtype, no object wrapper.
+        String canonical =
+            "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+            "  { \"field.enum\": { \"name\": \"Status\", \"abstract\": true," +
+            "      \"@values\": [\"VALID\", \"in-progress\"] } }" +
+            "] } }";
+
+        MetaDataLoader loader = newTestLoader();
+        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "abstract-bad-enum-test.json");
+        try {
+            parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+            fail("Expected MetaDataException for abstract field.enum with bad own @values member (ERR_BAD_ATTR_VALUE)");
+        } catch (MetaDataException e) {
+            assertTrue(
+                "Exception message must contain ERR_BAD_ATTR_VALUE: " + e.getMessage(),
+                e.getMessage().contains(ErrorMessageConstants.ERR_BAD_ATTR_VALUE));
+        }
+    }
+
+    /**
+     * Abstract {@code field.enum} with valid {@code @values} plus a concrete
+     * {@code field.enum} that {@code extends} it — the concrete field has no own
+     * {@code @values} and must load cleanly (no spurious missing-required error,
+     * no re-content-validation of inherited values).
+     *
+     * <p>This is the well-formed abstract-extends scenario: the abstract base is
+     * content-validated on its own node; the concrete child is exempt from both checks
+     * because it has no own {@code @values} and has a super reference.</p>
+     */
+    @Test
+    public void fullLoad_abstractValidEnum_concreteExtendsLoadsCleanly() {
+        String canonical =
+            "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+            "  { \"field.enum\": { \"name\": \"Status\", \"abstract\": true," +
+            "      \"@values\": [\"DRAFT\", \"PUBLISHED\", \"ARCHIVED\"] } }," +
+            "  { \"object.entity\": { \"name\": \"Order\", \"children\": [" +
+            "    { \"field.long\": { \"name\": \"id\" } }," +
+            "    { \"field.enum\": { \"name\": \"status\", \"extends\": \"Status\" } }," +
+            "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
+            "  ] } }" +
+            "] } }";
+
+        MetaDataLoader loader = newTestLoader();
+        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "abstract-extends-clean-test.json");
+        // Must not throw — concrete field has no own @values but has a super reference.
+        parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+
+        // Verify the abstract Status loaded correctly.
+        MetaData statusAbstract = loader.getRoot().getChildOfType("field", "acme::Status");
+        assertNotNull("Abstract Status field must be present", statusAbstract);
+        assertTrue("Abstract Status must be abstract",
+            statusAbstract.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT, false));
+
+        // Verify the concrete status field inside Order loaded without error.
+        MetaData order = loader.getRoot().getChildOfType("object", "acme::Order");
+        assertNotNull("Order entity must be present", order);
+
+        MetaData concreteStatus = order.getChildOfType("field", "status");
+        assertNotNull("Concrete status field must be present", concreteStatus);
+        assertEquals("Concrete status must have subtype 'enum'",
+            EnumField.SUBTYPE_ENUM, concreteStatus.getSubType());
+
+        // Concrete field has no own @values.
+        assertFalse("Concrete status must NOT declare own @values",
+            concreteStatus.hasMetaAttr(EnumField.ATTR_VALUES, false));
+
+        // Super data must be wired to the abstract Status.
+        assertNotNull("Concrete status must have super data pointing to abstract Status",
+            concreteStatus.getSuperData());
+        assertEquals("Super data must be abstract Status",
+            "Status", concreteStatus.getSuperData().getShortName());
     }
 }

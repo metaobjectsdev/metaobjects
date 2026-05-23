@@ -12,9 +12,11 @@ import com.metaobjects.MetaDataException;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
+import com.metaobjects.util.ErrorMessageConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -141,45 +143,46 @@ public class EnumField extends PrimitiveField<String> {
         if (enumNode == null) return;
         if (!TYPE_FIELD.equals(enumNode.getType()) || !SUBTYPE_ENUM.equals(enumNode.getSubType())) return;
 
-        // Abstract nodes may intentionally omit @values (e.g. abstract base enums).
-        if (enumNode.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT, false)) {
+        // --- Content check (own @values only) ---
+        // Validate OWN @values regardless of whether the node is abstract or concrete.
+        // A node that merely inherits @values from a super has nothing to content-validate here.
+        // This matches the TS (attr-schema-validate.ts) and C# (ValidationPasses.ValidateEnumValues)
+        // own-only contracts.
+        if (enumNode.hasMetaAttr(ATTR_VALUES, false)) {
+            MetaAttribute<?> valuesAttr;
+            try {
+                @SuppressWarnings("unchecked")
+                MetaAttribute<?> attr = (MetaAttribute<?>) enumNode.getMetaAttr(ATTR_VALUES, false);
+                valuesAttr = attr;
+            } catch (Exception e) {
+                // hasMetaAttr(false) returned true above, so this should not occur in practice.
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR + ": field.enum '" + enumNode.getName()
+                        + "' could not read own @values attribute in file [" + filename + "]", e);
+            }
+            if (!validateEnumValues(valuesAttr.getValue())) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": field.enum '" + enumNode.getName()
+                        + "' @values must be a non-empty list of identifier-safe, unique members"
+                        + " (e.g. [\"DRAFT\",\"PUBLISHED\"]) in file [" + filename + "]");
+            }
+            // Own @values present and valid — no need for the required check below.
             return;
         }
 
-        // A concrete field.enum that extends an abstract base enum inherits @values
-        // through the super data chain. If no @values is found anywhere in the chain,
-        // defer: the abstract base will be validated separately when it is processed.
-        if (enumNode.getSuperData() != null && !enumNode.hasMetaAttr(ATTR_VALUES, true)) {
-            return;
-        }
-
-        // Required-attribute check for nodes with no super (or super with no @values resolved above).
-        if (!enumNode.hasMetaAttr(ATTR_VALUES, true)) {
+        // --- Required check ---
+        // The node has no own @values. It is valid ONLY if it has a super reference
+        // (inheriting @values from the super, which is validated on its own node).
+        // getSuperData() is non-null iff an "extends" was given AND the super was found
+        // (if extends was given but not found, BaseMetaDataParser already threw).
+        // This check is therefore load-order-independent — no dependency on getSuperData()
+        // resolution state beyond the guarantee that createOrOverlayMetaData provides.
+        if (enumNode.getSuperData() == null) {
             throw new MetaDataException(
-                "ERR_MISSING_REQUIRED_ATTR: field.enum '" + enumNode.getName()
+                ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR + ": field.enum '" + enumNode.getName()
                     + "' is missing required @values attribute in file [" + filename + "]");
         }
-
-        // Content check: delegate to validateEnumValues for the shared contract.
-        // includeParentData=true so inherited @values from a super is also content-validated.
-        MetaAttribute<?> valuesAttr;
-        try {
-            @SuppressWarnings("unchecked")
-            MetaAttribute<?> attr = (MetaAttribute<?>) enumNode.getMetaAttr(ATTR_VALUES, true);
-            valuesAttr = attr;
-        } catch (Exception e) {
-            // hasMetaAttr returned true above, so this path should not occur in practice.
-            throw new MetaDataException(
-                "ERR_MISSING_REQUIRED_ATTR: field.enum '" + enumNode.getName()
-                    + "' could not read @values attribute in file [" + filename + "]", e);
-        }
-
-        if (!validateEnumValues(valuesAttr.getValue())) {
-            throw new MetaDataException(
-                "ERR_BAD_ATTR_VALUE: field.enum '" + enumNode.getName()
-                    + "' @values must be a non-empty list of identifier-safe, unique members"
-                    + " (e.g. [\"DRAFT\",\"PUBLISHED\"]) in file [" + filename + "]");
-        }
+        // Has a super — inherits @values from the super, which is validated on its own node. OK.
     }
 
     // -----------------------------------------------------------------------
@@ -208,33 +211,29 @@ public class EnumField extends PrimitiveField<String> {
     @SuppressWarnings("unchecked")
     public static boolean validateEnumValues(Object value) {
         if (value == null) {
-            // Null is handled by the required-attribute check; allow here to avoid
+            // Null is handled by the required-attribute check; return false to avoid
             // double-fault during load.
             return false;
         }
 
+        // Normalise the comma-delimited String form (programmatic/direct-call path) into
+        // a List so the shared member/duplicate check below handles both forms identically.
+        // The List form is the normal load-time path (setArray-before-setValueAsString fix
+        // means the parser always produces a List).
         List<String> members;
         if (value instanceof List) {
             members = (List<String>) value;
         } else if (value instanceof String) {
-            // Comma-delimited string form produced before setValueAsObject is called
             String str = ((String) value).trim();
             if (str.isEmpty()) {
-                return false; // empty → ERR_BAD_ATTR_VALUE (empty array)
+                return false; // empty string → ERR_BAD_ATTR_VALUE (empty array)
             }
-            // Validate the raw comma-delimited tokens
             String[] tokens = str.split(",");
-            Set<String> seen = new HashSet<>();
+            List<String> list = new ArrayList<>(tokens.length);
             for (String token : tokens) {
-                String member = token.trim();
-                if (member.isEmpty() || !ENUM_MEMBER_PATTERN.matcher(member).matches()) {
-                    return false; // non-identifier member
-                }
-                if (!seen.add(member)) {
-                    return false; // duplicate member
-                }
+                list.add(token.trim());
             }
-            return true;
+            members = list;
         } else {
             return false; // unexpected type
         }
@@ -244,7 +243,7 @@ public class EnumField extends PrimitiveField<String> {
             return false;
         }
 
-        // Identifier-safe + no duplicates
+        // Identifier-safe + no duplicates (shared check for both List and String inputs)
         Set<String> seen = new HashSet<>();
         for (String member : members) {
             if (member == null || member.isEmpty() || !ENUM_MEMBER_PATTERN.matcher(member).matches()) {
