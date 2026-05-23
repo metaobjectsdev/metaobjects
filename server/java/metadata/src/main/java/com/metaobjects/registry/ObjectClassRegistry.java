@@ -4,7 +4,17 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.ServiceLoader;
 
-/** Aggregates FQN -> Class bindings from all discovered providers (ADR-0001). */
+/**
+ * Aggregates FQN -&gt; Class bindings from all discovered providers (ADR-0001).
+ *
+ * <p><b>Thread-safety:</b> {@code register()} and the underlying {@code byFqn} map are
+ * intentionally <em>not</em> thread-safe.  The expected usage pattern is startup/discovery-time
+ * population (via {@link #discover()} or explicit {@link #register(ObjectClassBindingProvider)}
+ * calls) followed by publication via {@link #setGlobal(ObjectClassRegistry)} — all registration
+ * must complete before the instance is shared across threads.  {@link #resolve(String)} (the
+ * read-only hot path) is safe to call concurrently once registration is complete.  Do not call
+ * {@code register()} after the registry has been published.
+ */
 public final class ObjectClassRegistry {
 
     // -----------------------------------------------------------------------

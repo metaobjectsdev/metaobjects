@@ -66,6 +66,13 @@ public class GenericSQLDriver implements DatabaseDriver {
     private ObjectManagerDB mManager = null;
     /** Memoized Gson per loader — building Gson iterates all MetaObjects (O(N)); cache it. */
     private final java.util.Map<MetaDataLoader, Gson> gsonCache = new java.util.concurrent.ConcurrentHashMap<>();
+    /**
+     * Memoized fallback Gson per MetaObject — the fallback branch (no registry binding) was
+     * previously building a fresh GsonBuilder on every call; cached here for consistency with the
+     * primary {@link #gsonCache} path.  Keyed by MetaObject identity (one entry per distinct
+     * referenced MetaObject).
+     */
+    private final java.util.Map<MetaObject, Gson> fallbackGsonCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * Returns true if the field is declared as a jsonb column via {@code @dbType="jsonb"}.
@@ -145,11 +152,14 @@ public class GenericSQLDriver implements DatabaseDriver {
                 }
             }
             // Step 2: fall back to the MetaObject's declared class (e.g. ValueObject).
+            // Resolve refClass before the lambda — getObjectClass() throws a checked exception
+            // that cannot propagate from inside computeIfAbsent.
             MetaObject refMo = MetaDataUtil.getObjectRef(f);
             Class<?> refClass = refMo.getObjectClass();
-            Gson fallbackGson = new GsonBuilder()
-                    .registerTypeAdapter(refClass, new MetaObjectDeserializer(refMo))
-                    .create();
+            Gson fallbackGson = fallbackGsonCache.computeIfAbsent(refMo,
+                    m -> new GsonBuilder()
+                            .registerTypeAdapter(refClass, new MetaObjectDeserializer(m))
+                            .create());
             return fallbackGson.fromJson(json, refClass);
         } catch (Exception e) {
             throw new IllegalStateException("jsonb deserialize failed for field [" + f + "]: " + e, e);
