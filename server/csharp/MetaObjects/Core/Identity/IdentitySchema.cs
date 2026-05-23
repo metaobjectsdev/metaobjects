@@ -37,13 +37,32 @@ public static class IdentitySchema
             Description: "When true (default), the secondary identity is a UNIQUE index; false makes it a plain (non-unique) index."),
     ];
 
+    private static readonly IReadOnlyList<AttrSchema> ReferenceIdentityAttrs =
+    [
+        IdentityFieldsAttr,
+        new AttrSchema(
+            Name: IdentityConstants.IDENTITY_REFERENCE_ATTR_REFERENCES,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: true,
+            Description: "Target of the reference. Bare entity name resolves to that entity's primary identity; " +
+                "dotted forms ('Program.id' or 'Program.a,b') target an explicit field set."),
+        new AttrSchema(
+            Name: IdentityConstants.IDENTITY_REFERENCE_ATTR_ENFORCE,
+            ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+            Required: false,
+            Description: "When true (default), the backend physically enforces the reference (SQL FK constraint). " +
+                "Set false for a logical-only reference (navigation/typing/codegen)."),
+    ];
+
     /// <summary>
-    /// Attrs per identity subtype. primary adds @generation; secondary adds @unique.
+    /// Attrs per identity subtype. primary adds @generation; secondary adds @unique;
+    /// reference adds @references (+ @enforce).
     /// </summary>
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<AttrSchema>> IdentityAttrsMap =
         new Dictionary<string, IReadOnlyList<AttrSchema>>
         {
             [IdentityConstants.IDENTITY_SUBTYPE_PRIMARY]   = [.. PrimaryIdentityAttrs],
             [IdentityConstants.IDENTITY_SUBTYPE_SECONDARY] = [.. SecondaryIdentityAttrs],
+            [IdentityConstants.IDENTITY_SUBTYPE_REFERENCE] = [.. ReferenceIdentityAttrs],
         };
 }

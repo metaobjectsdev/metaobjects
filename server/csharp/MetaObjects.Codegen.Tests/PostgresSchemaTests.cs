@@ -7,14 +7,16 @@ namespace MetaObjects.Codegen.Tests;
 
 public class PostgresSchemaTests
 {
-    // Week + Program (tables); ProgramView (passthrough projection from Program);
-    // ProgramStat (aggregate projection -> needs join/aggregate SQL -> TODO).
+    // Week + Program (tables); Week.fkProgram is the FK (identity.reference).
+    // ProgramView (passthrough projection); ProgramStat (aggregate -> correlated subquery).
     private const string Model = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Week", "children": [
         { "source.dbTable": { "@name": "weeks" } },
         { "field.long": { "name": "id" } },
-        { "identity.primary": { "@fields": "id" } }
+        { "field.long": { "name": "programId" } },
+        { "identity.primary": { "@fields": "id" } },
+        { "identity.reference": { "name": "fkProgram", "@fields": "programId", "@references": "Program" } }
       ]}},
       { "object.entity": { "name": "Program", "children": [
         { "source.dbTable": { "@name": "programs" } },
@@ -70,11 +72,14 @@ public class PostgresSchemaTests
     }
 
     [Fact]
-    public void Aggregate_projection_is_flagged_todo_not_wrong_sql()
+    public void Aggregate_projection_emits_correlated_subquery_with_resolved_fk()
     {
-        var warns = new List<string>();
-        var sql = PostgresSchema.BuildSchema(Load(), warns.Add);
-        Assert.Contains("-- TODO CREATE VIEW v_program_stat", sql);
-        Assert.Contains(warns, w => w.Contains("v_program_stat"));
+        var sql = PostgresSchema.BuildSchema(Load());
+        Assert.Contains("CREATE VIEW v_program_stat AS", sql);
+        // FK resolved from Week.fkProgram (identity.reference @fields programId -> Program.id).
+        Assert.Contains(
+            "(SELECT count(weeks.id) FROM weeks WHERE weeks.programId = programs.id) AS weekCount",
+            sql);
+        Assert.Contains("FROM programs;", sql);
     }
 }

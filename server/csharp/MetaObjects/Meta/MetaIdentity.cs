@@ -33,6 +33,9 @@ public class MetaIdentity(TypeId typeId, string name) : MetaData(typeId, name)
     /// <summary>True when this identity's subtype is <c>secondary</c>.</summary>
     public bool IsSecondary() => SubType == IDENTITY_SUBTYPE_SECONDARY;
 
+    /// <summary>True when this identity's subtype is <c>reference</c> (a foreign key).</summary>
+    public bool IsReference() => SubType == IDENTITY_SUBTYPE_REFERENCE;
+
     /// <summary>True when this identity is composite (more than one field).</summary>
     public bool IsComposite() => Fields.Count > 1;
 }
@@ -59,3 +62,47 @@ public class MetaPrimaryIdentity(TypeId typeId, string name) : MetaIdentity(type
 /// <c>@generation</c> does not apply here.
 /// </summary>
 public class MetaSecondaryIdentity(TypeId typeId, string name) : MetaIdentity(typeId, name) { }
+
+/// <summary>
+/// Reference identity (FR-003) — a foreign key. The local <c>@fields</c> hold the
+/// FK; <c>@references</c> names the target (bare entity → its primary identity, or
+/// dotted <c>Entity.field[,field]</c>). <c>@enforce</c> (default true) toggles a hard
+/// FK constraint vs. a logical-only reference.
+/// </summary>
+public class MetaReferenceIdentity(TypeId typeId, string name) : MetaIdentity(typeId, name)
+{
+    /// <summary>Raw <c>@references</c> value, unparsed.</summary>
+    public string? ReferencesRaw =>
+        OwnAttr(IDENTITY_REFERENCE_ATTR_REFERENCES) is string s ? s : null;
+
+    /// <summary>Target entity name (the part before the dot, or the whole bare value).</summary>
+    public string? TargetEntity
+    {
+        get
+        {
+            var raw = ReferencesRaw;
+            if (raw is null) return null;
+            int dot = raw.IndexOf('.');
+            return dot < 0 ? raw : raw[..dot];
+        }
+    }
+
+    /// <summary>
+    /// Target field names. Empty = "use the target's primary identity" (bare form);
+    /// otherwise the comma-split, trimmed field(s) after the dot.
+    /// </summary>
+    public IReadOnlyList<string> TargetFields
+    {
+        get
+        {
+            var raw = ReferencesRaw;
+            if (raw is null) return [];
+            int dot = raw.IndexOf('.');
+            if (dot < 0) return [];
+            return raw[(dot + 1)..].Split(',').Select(s => s.Trim()).Where(s => s.Length > 0).ToArray();
+        }
+    }
+
+    /// <summary>Whether the reference is physically enforced (default true; <c>@enforce: false</c> = logical-only).</summary>
+    public bool Enforce => OwnAttr(IDENTITY_REFERENCE_ATTR_ENFORCE) is not false;
+}
