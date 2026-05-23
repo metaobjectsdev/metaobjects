@@ -3,6 +3,7 @@ package com.metaobjects.omdb.ktx
 import com.metaobjects.loader.file.FileLoaderOptions
 import com.metaobjects.loader.file.FileMetaDataLoader
 import com.metaobjects.loader.file.LocalFileMetaDataSources
+import com.metaobjects.manager.ObjectRef
 import com.metaobjects.manager.db.ObjectManagerDB
 import com.metaobjects.manager.db.driver.DerbyDriver
 import com.metaobjects.manager.db.validator.MetaClassDBValidatorService
@@ -103,7 +104,24 @@ class TestDb private constructor(
             }
 
             // 4. Initialise ObjectManagerDB — setDatabaseDriver mirrors AbstractOMDBTest exactly.
-            val omdb = ObjectManagerDB()
+            //    We use an anonymous subclass that overrides getObjectRef(String) to use the
+            //    LOCAL registry instead of the global MetaDataUtil static lookup, so that
+            //    findObjectByRef (and thus OmdbSession.findByRef) works in the test environment
+            //    without requiring a globally-bootstrapped loader registry (OSGi/Spring style).
+            val omdb = object : ObjectManagerDB() {
+                override fun getObjectRef(refStr: String): ObjectRef {
+                    val prefix = "objectref://"
+                    require(refStr.startsWith(prefix)) { "Invalid object reference [$refStr]" }
+                    val rest = refStr.removePrefix(prefix)
+                    val slashIdx = rest.indexOf('/')
+                    require(slashIdx >= 0) { "Invalid object reference [$refStr]" }
+                    val fqn = rest.substring(0, slashIdx)
+                    val idsStr = rest.substring(slashIdx + 1)
+                    val mo = registry.findMetaObjectByName(fqn)
+                    val ids = idsStr.split('/').filter { it.isNotBlank() }.toTypedArray()
+                    return ObjectRef(mo, ids)
+                }
+            }
             omdb.setDatabaseDriver(DerbyDriver())
             omdb.setDataSource(ds)
             omdb.init()
