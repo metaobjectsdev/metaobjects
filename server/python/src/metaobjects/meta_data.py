@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, Callable, Optional, TypeVar, cast
 
 T = TypeVar("T")
 
@@ -79,7 +79,7 @@ class MetaData(ABC):
         """Memoize a derived read. Stores only once frozen — a value computed
         pre-freeze is never cached, so it cannot go stale."""
         if self._frozen and key in self._cache:
-            return self._cache[key]
+            return cast(T, self._cache[key])
         value = compute()
         if self._frozen:
             self._cache[key] = value
