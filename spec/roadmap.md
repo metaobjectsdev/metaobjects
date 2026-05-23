@@ -18,6 +18,16 @@
   references emit as extension-less `importBase` package paths; same-target stays
   relative; single-`outDir` projects are byte-identical. Design:
   `docs/superpowers/specs/2026-05-21-per-target-output-dirs-design.md`.
+- **H7 — npm publish: first public release** (2026-05-23)
+  All 11 publish-candidate `@metaobjectsdev/*` packages published to npm at `0.5.0` (`latest`),
+  followed by a `cli@0.5.1` patch (pnpm config-resolution fix). The JS/TS workspace root was
+  hoisted to the repo root so `workspace:*` resolves uniformly across the server + client package
+  trees at publish time. Release candidates that shipped with broken cross-deps were deprecated;
+  `latest` is clean. Design: `docs/superpowers/specs/2026-05-22-hoist-ts-workspace-root-design.md`.
+- **H8 — First TS consumer on published packages** (2026-05-23)
+  A real TS consumer migrated off `link:` filesystem deps onto the published `^0.5.0` packages and
+  builds clean end-to-end — validating the published dist, `.d.ts` types, and runtime imports
+  through a real pnpm install (which is what surfaced the `cli@0.5.1` fix).
 
 ## Active
 - **H3 — Java port (Loader + runtime + conformance)**
@@ -45,10 +55,6 @@
   in every language port (and an eval harness renders exactly what prod ships). Designed in
   `docs/superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md`. Depends on
   FR-003 shipping (≥ 7.0.0-M1). MCP / metadata-graph exposure is where this pillar heads next.
-- **H7 — npm publish** (1 wk)
-  First stable public release reflecting polyglot reality.
-- **H8 — TS consumer npm migration** (0.5 wk)
-  First TS consumer switches from `link:` deps to published versions.
 - **H9 — Second consumer migration** (2-3 wk)
   TS frontend adopts `@metaobjectsdev/runtime-web` + `@metaobjectsdev/react` + `@metaobjectsdev/tanstack`.
 - **H10 — Polyglot consumer migration** (3-4 wk)

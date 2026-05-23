@@ -8,7 +8,7 @@ The metamodel is the durable spine; generated code is the disposable artifact. S
 
 | Language | Status | Directory |
 |---|---|---|
-| TypeScript | Reference implementation (v0.3) | [`typescript/`](typescript/) |
+| TypeScript | Reference implementation — published on npm (`0.5.0`) | [`server/typescript/`](server/typescript/) · [`client/web/`](client/web/) |
 | Java | In progress (H3a shipped 2026-05-19; H3b active) | [`java/`](java/) |
 | Python | Planned | [`python/`](python/) |
 | C# | Loader + conformance shipped | [`csharp/`](csharp/) |
@@ -17,18 +17,17 @@ The metamodel is the durable spine; generated code is the disposable artifact. S
 
 - [`spec/`](spec/) — cross-language design docs, roadmap, conformance test documentation
 - [`fixtures/`](fixtures/) — shared cross-language conformance test fixtures
-- [`typescript/`](typescript/) — TypeScript implementation (codegen, runtime, CLI, SDK)
-- [`java/`](java/), [`python/`](python/), [`csharp/`](csharp/) — placeholders for upcoming ports
+- [`server/typescript/`](server/typescript/) — server-side TypeScript (codegen, runtime, CLI, SDK); [`client/web/`](client/web/) — browser packages (React, TanStack, framework-agnostic runtime)
+- [`java/`](java/), [`csharp/`](csharp/), [`python/`](python/) — other language ports (see status table above)
 
 ## Getting started (TypeScript)
 
 ```bash
-cd typescript
-bun install
-bun test
+bun install                        # at the repo root (the JS/TS workspace root)
+cd server/typescript && bun test   # server suite
 ```
 
-(Bun-first dev workflow; no separate build step. Typecheck across the workspace with `bun run --filter '*' typecheck`. Distribution artifacts remain Node-compatible — consumers can install via npm/pnpm/bun.)
+(Bun-first dev workflow; no separate build step. Typecheck across the workspace with `bun run --filter '*' typecheck` from the repo root. Published packages are on npm — consumers install via npm/pnpm/bun, e.g. `npm i @metaobjectsdev/cli`.)
 
 CLI binary: `meta`. Project config: `metaobjects.config.ts`. Project marker directory: `.metaobjects/`.
 

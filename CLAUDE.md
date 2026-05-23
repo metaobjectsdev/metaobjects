@@ -17,7 +17,7 @@ Equal weight. Three ship per-language today; the fourth is committed for 7.0.0:
 
 ## Status
 
-TypeScript reference implementation is at v0.3 — Projects D–G shipped end-to-end with 1784+ tests passing. Java port is in progress: H3a (loader restructure) shipped 2026-05-19; H3b (conformance harness) is active. **C# loader + conformance shipped** (loader, canonical serializer, and a `dotnet test` conformance runner that runs the full shared corpus; codegen + runtime remain out of scope for C#). Python is planned post-H3.
+TypeScript reference implementation is **published to npm at `0.5.0`** (11 `@metaobjectsdev/*` packages on the `latest` tag; `cli` at `0.5.1`) — Projects D–G shipped end-to-end with 2124+ tests passing. Java port is in progress: H3a (loader restructure) shipped 2026-05-19; H3b (conformance harness) is active. **C# loader + conformance shipped** (loader, canonical serializer, and a `dotnet test` conformance runner that runs the full shared corpus; codegen + runtime remain out of scope for C#). Python is planned post-H3.
 
 The 7.0.0 line is specced: FR-003 brings the Java OMDB persistence engine, metadata-driven schema migration, and dynamic projections onto current core; FR-004 builds the fourth pillar (cross-language prompt construction) on top of FR-003's projections. Both are design-stage plan-of-record (`docs/superpowers/specs/2026-05-22-fr-003-*` and `*-fr-004-*`), not yet implemented.
 
