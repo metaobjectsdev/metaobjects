@@ -49,6 +49,8 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
     public static final String DB_INDEX_NAME = "dbIndexName";
     public static final String DB_TABLESPACE = "dbTablespace";
 
+    /** Rename hint: the prior name of this object/field, so migration emits RENAME (not drop+add). */
+    public static final String PREVIOUS_NAME = "previousName";
 
     @Override
     public String getProviderId() {
@@ -80,10 +82,12 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
         registry.findType(MetaObject.TYPE_OBJECT, MetaObject.SUBTYPE_BASE)
             .optionalAttribute(DB_TABLE, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_INDEX, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(DB_UNIQUE, StringAttribute.SUBTYPE_STRING);
+            .optionalAttribute(DB_UNIQUE, StringAttribute.SUBTYPE_STRING)
+            .optionalAttribute(PREVIOUS_NAME, StringAttribute.SUBTYPE_STRING);
 
         registry.findType(MetaObject.TYPE_OBJECT, PojoMetaObject.SUBTYPE_POJO)
-            .optionalAttribute(DB_TABLE, StringAttribute.SUBTYPE_STRING);
+            .optionalAttribute(DB_TABLE, StringAttribute.SUBTYPE_STRING)
+            .optionalAttribute(PREVIOUS_NAME, StringAttribute.SUBTYPE_STRING);
 
         // Field-level database attributes
         registry.findType(MetaField.TYPE_FIELD, MetaField.SUBTYPE_BASE)
@@ -95,7 +99,8 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
             .optionalAttribute(DB_LENGTH, IntAttribute.SUBTYPE_INT)
             .optionalAttribute(DB_PRECISION, IntAttribute.SUBTYPE_INT)
             .optionalAttribute(DB_SCALE, IntAttribute.SUBTYPE_INT)
-            .optionalAttribute(DB_TYPE, StringAttribute.SUBTYPE_STRING);
+            .optionalAttribute(DB_TYPE, StringAttribute.SUBTYPE_STRING)
+            .optionalAttribute(PREVIOUS_NAME, StringAttribute.SUBTYPE_STRING);
 
         // String field specific
         registry.findType(MetaField.TYPE_FIELD, StringAttribute.SUBTYPE_STRING)

@@ -24,6 +24,10 @@ import com.metaobjects.manager.db.defs.IndexDef;
 import com.metaobjects.manager.db.defs.SequenceDef;
 import com.metaobjects.manager.db.defs.TableDef;
 import com.metaobjects.manager.db.defs.ViewDef;
+import com.metaobjects.manager.db.migrate.Change;
+import com.metaobjects.manager.db.migrate.SchemaSnapshot.ColumnDescriptor;
+import com.metaobjects.manager.db.migrate.SchemaSnapshot.TableDescriptor;
+import com.metaobjects.manager.db.migrate.SqlType;
 import com.metaobjects.manager.exp.Range;
 
 /**
@@ -338,6 +342,82 @@ public class DerbyDriver extends GenericSQLDriver {
     @Override
     public String getDateFormat() {
         return "yyyy-MM-dd HH:mm:ss";
+    }
+
+    // --- Migration render support ---
+
+    /** Maps a canonical SqlType to its Derby DDL type string. */
+    String derbyType(SqlType t) {
+        return switch (t) {
+            case SqlType.Int i       -> i.bits() == 64 ? "BIGINT" : "INTEGER";
+            case SqlType.Text tx     -> {
+                if (tx.maxLength() == null || tx.maxLength() > 32700) yield "CLOB";
+                yield "VARCHAR(" + tx.maxLength() + ")";
+            }
+            case SqlType.Bool b      -> "BOOLEAN";
+            case SqlType.Timestamp ts -> "TIMESTAMP";
+            case SqlType.Real r      -> "DOUBLE";
+            case SqlType.Numeric n   -> "NUMERIC";
+            case SqlType.Json j      -> "VARCHAR(32700)";
+            case SqlType.Date d      -> "DATE";
+            case SqlType.Uuid u      -> "VARCHAR(36)";
+            case SqlType.Blob b      -> "BLOB";
+        };
+    }
+
+    /**
+     * Renders a CREATE TABLE DDL string from a canonical TableDescriptor.
+     * Used by {@link #render(Change)} for CreateTable changes.
+     * The existing {@link #createTable(Connection, TableDef)} is left intact so existing tests are unaffected.
+     */
+    String renderCreateTable(TableDescriptor table) {
+        StringBuilder sb = new StringBuilder("CREATE TABLE ").append(table.name()).append(" (");
+        List<ColumnDescriptor> cols = table.columns();
+        for (int i = 0; i < cols.size(); i++) {
+            if (i > 0) sb.append(", ");
+            ColumnDescriptor col = cols.get(i);
+            sb.append(col.name()).append(" ").append(derbyType(col.sqlType()));
+            if (!col.nullable()) sb.append(" NOT NULL");
+        }
+        if (!table.primaryKey().isEmpty()) {
+            sb.append(", PRIMARY KEY (").append(String.join(", ", table.primaryKey())).append(")");
+        }
+        sb.append(")");
+        return sb.toString();
+    }
+
+    @Override
+    public String render(Change change) {
+        return switch (change) {
+            case Change.CreateTable ct      -> renderCreateTable(ct.table());
+            case Change.AddColumn a         ->
+                "ALTER TABLE " + a.table() + " ADD COLUMN " + a.column().name() + " " + derbyType(a.column().sqlType());
+            case Change.ChangeColumnType ch ->
+                "ALTER TABLE " + ch.table() + " ALTER COLUMN " + ch.column() + " SET DATA TYPE " + derbyType(ch.to());
+            case Change.RenameColumn rc     ->
+                "RENAME COLUMN " + rc.table() + "." + rc.from() + " TO " + rc.to();
+            case Change.RenameTable rt      ->
+                "RENAME TABLE " + rt.from() + " TO " + rt.to();
+            case Change.AddIndex ai         ->
+                "CREATE " + (ai.index().unique() ? "UNIQUE " : "") + "INDEX " + ai.index().name() +
+                " ON " + ai.table() + "(" + String.join(",", ai.index().columns()) + ")";
+            case Change.AddFk af            ->
+                "ALTER TABLE " + af.table() + " ADD CONSTRAINT " + af.fk().name() +
+                " FOREIGN KEY (" + String.join(",", af.fk().columns()) + ") REFERENCES " +
+                af.fk().refTable() + " (" + String.join(",", af.fk().refColumns()) + ")";
+            case Change.CreateView cv       ->
+                "CREATE VIEW " + cv.view().name() + " AS " + cv.view().sql();
+            case Change.DropColumn dc       ->
+                "ALTER TABLE " + dc.table() + " DROP COLUMN " + dc.column();
+            case Change.DropTable dt        ->
+                "DROP TABLE " + dt.table();
+            case Change.DropIndex di        ->
+                "DROP INDEX " + di.index();
+            case Change.DropFk df           ->
+                "ALTER TABLE " + df.table() + " DROP CONSTRAINT " + df.fk();
+            default -> throw new UnsupportedOperationException(
+                "DerbyDriver does not support migration render for change kind: " + change.kind());
+        };
     }
 
     @Override
