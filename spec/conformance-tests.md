@@ -155,7 +155,7 @@ has a Loader. They are **not** gated by `conformance-expected-failures.json` —
 that ledger is loader-corpus only.
 
 - **`fixtures/render-conformance/`** — byte-exact render output. Run by TS and C#.
-- **`fixtures/verify-conformance/`** — template drift-check output (below).
+- **`fixtures/verify-conformance/`** — template drift-check output. Run by TS, C#, and Python (below).
 
 ### Verify-conformance corpus
 
@@ -195,7 +195,11 @@ Each fixture is a directory under `fixtures/verify-conformance/`:
   *data*. Here it is the declared *shape*.)
 
 - **`template.mustache`** is the entry template. Whitespace/literal text is
-  irrelevant to drift — `verify` reads only tag structure, not output.
+  irrelevant to drift — `verify` reads only tag structure, not output. Use only
+  plain interpolation, sections, inverted sections, and partials: the C#/Python
+  ports use a purpose-built tag tokenizer that does **not** model Mustache
+  set-delimiter directives (`{{=<% %>=}}`), so a fixture using them would diverge
+  from the TS engine (which parses with the real `mustache` library).
 
 - **`partials/`** holds partial bodies; `partials/tone.mustache` is resolvable as
   `{{> partials/tone}}`. Same convention as `render-conformance`.
@@ -245,9 +249,23 @@ assert verify(...) is identical across two runs                # determinism
 ```
 
 Adding a fixture directory adds a test automatically — no code change required.
-Other ports (Java/Python/C#) run this corpus once they implement `verify`; until
-then they simply do not run it, exactly as Python/Java do not run
-`render-conformance` today.
+
+**Per-port runners** (same corpus, same algorithm; each parses `payload.json` into
+its native `PayloadField` tree, builds a partial provider from `partials/`, and
+compares drift as a sorted multiset):
+
+| Port | `verify` engine | Verify-conformance runner |
+|---|---|---|
+| TypeScript | `server/typescript/packages/render/src/verify.ts` | `server/typescript/packages/render/test/verify-conformance.test.ts` |
+| C# | `server/csharp/MetaObjects.Render/Verify.cs` | `server/csharp/MetaObjects.Render.Tests/VerifyConformanceTests.cs` |
+| Python | `server/python/src/metaobjects/render/verify.py` | `server/python/tests/render/test_verify_conformance.py` |
+
+**Java** does not run this corpus yet: it has no cross-language conformance harness
+on `main` and no render/`verify` tier (it is mid loader-restructure). It will adopt
+the corpus once its conformance harness lands — exactly as it does not yet run the
+loader or `render-conformance` corpora. There is no per-port ledger for the verify
+corpus (it follows the `render-conformance` precedent): a port runs it when it has a
+`verify`, and is simply absent until then.
 
 ## What this suite does not test
 
