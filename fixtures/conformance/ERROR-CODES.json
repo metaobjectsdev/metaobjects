@@ -32,6 +32,7 @@
     "ERR_RESERVED_ATTR": "An @-prefixed reserved structural keyword (e.g. @name, @isArray, @children) was used as an inline attribute.",
     "ERR_SOURCE_NO_PRIMARY": "An object declares source nodes but none has role=primary.",
     "ERR_SOURCE_MULTIPLE_PRIMARY": "An object declares more than one source node with role=primary.",
+    "ERR_YAML_COERCION": "A YAML 1.2 silent type coercion produced a JS value whose runtime type differs from the attribute's declared valueType (e.g. an unquoted `column: TRUE` parsed as boolean for a string-typed attr). TS-only emitter — YAML is a TypeScript-side front-end; canonical JSON is unaffected.",
     "ERR_UNKNOWN": "An internal loader error with no stable error code."
   }
 }

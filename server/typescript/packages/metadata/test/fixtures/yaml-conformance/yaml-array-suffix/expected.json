@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "field.long": {
+                "name": "weekIds",
+                "isArray": true
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

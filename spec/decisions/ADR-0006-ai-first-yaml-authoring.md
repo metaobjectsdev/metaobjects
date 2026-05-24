@@ -1,6 +1,6 @@
 # ADR-0006 — AI-first YAML authoring (sigil-free YAML; JSON stays canonical)
 
-**Status:** Proposed (2026-05-23)
+**Status:** Accepted (2026-05-24) — TypeScript implementation shipped.
 
 **Related:** ADR-0004 (per-subtype attr schemas), ADR-0007 (source v2), the enum datatype design
 (`docs/superpowers/specs/2026-05-23-enum-datatype-design.md`, which defers its YAML spelling here).
@@ -67,6 +67,9 @@ silent footguns and "multiple ways to say the same thing." Four problems with YA
 
 ## Realization status
 
-- **Spec:** `spec/wire-format.md` (canonical key model, unchanged) + this ADR (YAML layer).
-- **TypeScript:** _pending_ — `parser-yaml`/`yaml-desugar`/validation + YAML fixtures. **Other
-  ports: out of scope** (canonical JSON is the cross-language interchange).
+- **Spec:** `spec/wire-format.md` (canonical key model, unchanged), this ADR (YAML layer), and
+  `spec/yaml-house-style.md` (D3 author-facing rules).
+- **TypeScript:** D1 + D2 + D3 + D4 shipped — `core/yaml-desugar.ts` (sigil-free attrs +
+  type-coercion guard via `ERR_YAML_COERCION`), `spec/yaml-house-style.md`, and a TS-only YAML
+  conformance corpus under `server/typescript/packages/metadata/test/fixtures/yaml-conformance/`.
+  **Other ports: out of scope** (canonical JSON is the cross-language interchange).

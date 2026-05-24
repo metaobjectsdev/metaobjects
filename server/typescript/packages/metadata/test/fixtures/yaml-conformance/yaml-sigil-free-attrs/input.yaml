@@ -1,0 +1,17 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Product
+        children:
+          - field.string:
+              name: sku
+              column: sku_code
+              required: true
+          - field.object:
+              name: address
+              objectRef: Address
+              storage: flattened
+          - identity.primary:
+              name: pk
+              fields: ["sku"]

@@ -1,0 +1,21 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "children": [
+            {
+              "field.object": {
+                "name": "address",
+                "@objectRef": "Address",
+                "@storage": "flattened"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

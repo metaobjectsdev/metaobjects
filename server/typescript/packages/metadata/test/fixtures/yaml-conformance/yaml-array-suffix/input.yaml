@@ -1,0 +1,6 @@
+metadata:
+  children:
+    - object.entity:
+        name: Program
+        children:
+          - field.long[]: weekIds
