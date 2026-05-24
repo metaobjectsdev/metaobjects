@@ -64,6 +64,14 @@ public class MetaDataRegistry {
     private final Map<String, List<ChildRequirement>> globalRequirements = new ConcurrentHashMap<>();
     private final Set<TypeDefinition> deferredInheritanceTypes = ConcurrentHashMap.newKeySet();
 
+    /**
+     * Per-type designated default subType — queried by the YAML desugar (ADR-0006 Rule 1)
+     * to resolve a bare {@code metadata:} / {@code object:} key to its fused form
+     * (e.g. {@code metadata.root}, {@code object.entity}). Mirrors the TypeScript
+     * {@code TypeRegistry._defaultSubTypes} and Python {@code _default_sub_types}.
+     */
+    private final Map<String, String> defaultSubTypes = new ConcurrentHashMap<>();
+
     // Integrated constraint system (merged from ConstraintRegistry)
     private final List<Constraint> constraints = Collections.synchronizedList(new ArrayList<>());
     private volatile boolean constraintsInitialized = false;
@@ -514,7 +522,38 @@ public class MetaDataRegistry {
         return Set.copyOf(typeDefinitions.keySet());
     }
     
-    // Deprecated getDefaultSubType method removed
+    /**
+     * Designate the default subType for a bare {@code type} YAML key (ADR-0006 Rule 1).
+     *
+     * <p>Mirrors {@code TypeRegistry.setDefaultSubType} in TS / {@code set_default_sub_type}
+     * in Python. Used by {@link com.metaobjects.loader.parser.yaml.YamlDesugar} when
+     * resolving sugared {@code metadata:} / {@code object:} keys to their fused form.
+     * The last registration wins.</p>
+     *
+     * @param type    primary type identifier (e.g. {@code "metadata"}, {@code "object"});
+     *                must not be {@code null}
+     * @param subType default subType to attach when the YAML key omits it (e.g. {@code "root"},
+     *                {@code "entity"}); must not be {@code null}
+     */
+    public void setDefaultSubType(String type, String subType) {
+        Objects.requireNonNull(type, "Type cannot be null");
+        Objects.requireNonNull(subType, "SubType cannot be null");
+        defaultSubTypes.put(type, subType);
+    }
+
+    /**
+     * Return the designated default subType for {@code type}, or {@code null} if none.
+     *
+     * <p>Mirrors {@code TypeRegistry.defaultSubTypeOf} in TS / {@code default_sub_type_of}
+     * in Python.</p>
+     *
+     * @param type primary type identifier; must not be {@code null}
+     * @return the designated default subType, or {@code null} when no default was registered
+     */
+    public String defaultSubTypeOf(String type) {
+        Objects.requireNonNull(type, "Type cannot be null");
+        return defaultSubTypes.get(type);
+    }
     
     /**
      * Get all registered type names for display

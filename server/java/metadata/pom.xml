@@ -55,6 +55,11 @@
             <artifactId>gson</artifactId>
             <version>2.13.2</version>
         </dependency>
+        <!-- SnakeYAML: YAML authoring front-end (ADR-0006). Version managed in parent. -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+        </dependency>
         <dependency>
             <groupId>xml-apis</groupId>
             <artifactId>xml-apis</artifactId>

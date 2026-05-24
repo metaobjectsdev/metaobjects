@@ -89,6 +89,14 @@ public enum ErrorCode {
     /** The YAML metadata input is not valid YAML, or cannot be desugared. */
     ERR_MALFORMED_YAML,
 
+    /**
+     * A YAML 1.2 silent type coercion produced a value whose runtime type differs from
+     * the attribute's declared valueType (e.g. an unquoted {@code column: TRUE} parsed
+     * as boolean for a string-typed attr). Emitted only by the YAML loader; canonical
+     * JSON is unaffected.
+     */
+    ERR_YAML_COERCION,
+
     /** A field origin (passthrough/aggregate) declares an invalid path or attribute. */
     ERR_INVALID_ORIGIN,
 

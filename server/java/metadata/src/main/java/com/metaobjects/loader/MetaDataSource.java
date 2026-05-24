@@ -25,12 +25,16 @@ public interface MetaDataSource {
      * The raw-document formats understood by the loader pipeline.
      * Maps directly to the parsers registered in the pipeline.
      *
-     * <p>As of H3b-1 Task 4 only canonical JSON is supported. The XML value was
-     * removed; all fixture files have been migrated to canonical JSON.</p>
+     * <p>Canonical JSON is the on-disk interchange format. YAML is the sigil-free
+     * authoring front-end added in Phase 3 of the cross-language YAML expansion
+     * (ADR-0006 D4); a YAML document is desugared into the canonical-JSON-shaped
+     * tree before the shared builder runs.</p>
      */
     enum MetaDataFormat {
-        /** Canonical JSON — the only supported format as of H3b-1 Task 4. */
-        JSON
+        /** Canonical JSON — the on-disk interchange format. */
+        JSON,
+        /** Authoring YAML — desugared into canonical JSON before tree building. */
+        YAML
     }
 
     /**

@@ -10,6 +10,7 @@ import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.loader.parser.json.CanonicalJsonParser;
+import com.metaobjects.loader.parser.yaml.ParserYaml;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataLoaderRegistry;
 import com.metaobjects.registry.ServiceRegistryFactory;
@@ -814,9 +815,16 @@ public class MetaDataLoader implements LoaderConfigurable {
                     getName(), LoadingState.Phase.INITIALIZING, 0, e);
             }
 
-            // All metadata sources are canonical JSON; dispatch unconditionally to CanonicalJsonParser.
+            // Dispatch by format: canonical JSON → CanonicalJsonParser; sigil-free
+            // authoring YAML → ParserYaml (which desugars to canonical JSON before
+            // calling the same buildTree). ADR-0006 D4.
             InputStream is = new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8));
-            CanonicalJsonParser parser = new CanonicalJsonParser(this, source.getId());
+            com.metaobjects.loader.parser.MetaDataFileParser parser;
+            if (source.getFormat() == MetaDataSource.MetaDataFormat.YAML) {
+                parser = new ParserYaml(this, source.getId());
+            } else {
+                parser = new CanonicalJsonParser(this, source.getId());
+            }
             parser.loadFromStream(is);
         }
 

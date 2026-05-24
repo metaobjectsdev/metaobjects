@@ -61,6 +61,21 @@ public final class ErrorMessageConstants {
      */
     public static final String ERR_SOURCE_MULTIPLE_PRIMARY = "ERR_SOURCE_MULTIPLE_PRIMARY";
 
+    /**
+     * Error code emitted when the YAML metadata input is not valid YAML, or cannot be
+     * desugared into canonical metadata (ADR-0006).
+     * Cross-language contract: {@code ERR_MALFORMED_YAML}.
+     */
+    public static final String ERR_MALFORMED_YAML = "ERR_MALFORMED_YAML";
+
+    /**
+     * Error code emitted when a YAML 1.2 silent type coercion changed an authored value's
+     * runtime type away from the attribute's declared valueType (e.g. unquoted
+     * {@code column: TRUE} parsed as boolean for a string-typed attr) (ADR-0006 D2).
+     * Cross-language contract: {@code ERR_YAML_COERCION}.
+     */
+    public static final String ERR_YAML_COERCION = "ERR_YAML_COERCION";
+
     // === ERROR MESSAGE FORMATS ===
 
     /** Format template for not found errors */

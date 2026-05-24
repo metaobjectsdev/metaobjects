@@ -156,6 +156,9 @@ public abstract class MetaObject extends MetaData {
             .description("Value object (no identity) — value access via the reflection/map hybrid")
             .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE));
 
+        // ADR-0006 Rule 1 — bare `object:` YAML key fuses to `object.entity`.
+        registry.setDefaultSubType(TYPE_OBJECT, SUBTYPE_ENTITY);
+
         if (log != null) {
             log.debug("Registered semantic object subtypes object.entity and object.value (ADR-0005)");
         }

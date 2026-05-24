@@ -48,11 +48,19 @@ public class FileMetaDataSources {
         }
 
         /**
-         * {@inheritDoc} — as of H3b-1 Task 4 all metadata files are canonical
-         * JSON, so this always returns {@link MetaDataFormat#JSON}.
+         * {@inheritDoc} — infers the format from the filename extension:
+         * {@code .yaml} / {@code .yml} → {@link MetaDataFormat#YAML} (authoring front-end,
+         * ADR-0006); everything else falls back to {@link MetaDataFormat#JSON} (canonical
+         * interchange).
          */
         @Override
         public MetaDataFormat getFormat() {
+            if (filename != null) {
+                String lower = filename.toLowerCase();
+                if (lower.endsWith(".yaml") || lower.endsWith(".yml")) {
+                    return MetaDataFormat.YAML;
+                }
+            }
             return MetaDataFormat.JSON;
         }
 

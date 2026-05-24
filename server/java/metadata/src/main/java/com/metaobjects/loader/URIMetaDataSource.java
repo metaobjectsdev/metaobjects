@@ -49,12 +49,18 @@ public class URIMetaDataSource implements MetaDataSource {
     }
 
     /**
-     * Infers the document format from the URI string.
-     *
-     * <p>As of H3b-1 Task 4 all metadata files are canonical JSON; this method
-     * always returns {@link MetaDataFormat#JSON}.</p>
+     * Infers the document format from the URI string by extension:
+     * {@code .yaml} / {@code .yml} → {@link MetaDataFormat#YAML} (sigil-free authoring
+     * front-end, ADR-0006); everything else falls back to {@link MetaDataFormat#JSON}
+     * (the canonical interchange format).
      */
     private static MetaDataFormat inferFormat(String uriString) {
+        if (uriString != null) {
+            String lower = uriString.toLowerCase();
+            if (lower.endsWith(".yaml") || lower.endsWith(".yml")) {
+                return MetaDataFormat.YAML;
+            }
+        }
         return MetaDataFormat.JSON;
     }
 
