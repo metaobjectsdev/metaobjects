@@ -32,12 +32,82 @@ test("rule 2: a scalar body becomes { name: <scalar> }", () => {
   expect(canonical).toEqual({ "field.string": { name: "sku" } });
 });
 
-test("rule 2: a mapping body is kept as-is", () => {
+test("rule 2: a mapping body keeps reserved + already-@-prefixed keys as-authored", () => {
   const { canonical } = desugar(
     { "field.string": { name: "sku", "@column": "sku_code" } },
     coreRegistry(),
   );
   expect(canonical).toEqual({ "field.string": { name: "sku", "@column": "sku_code" } });
+});
+
+test("rule 5: bare body keys not in RESERVED_KEYS are @-prefixed (sigil-free authoring)", () => {
+  const { canonical, errors } = desugar(
+    { "field.string": { name: "sku", column: "sku_code" } },
+    coreRegistry(),
+  );
+  expect(errors).toEqual([]);
+  expect(canonical).toEqual({ "field.string": { name: "sku", "@column": "sku_code" } });
+});
+
+test("rule 5: reserved structural keywords stay bare (not @-prefixed)", () => {
+  const { canonical, errors } = desugar(
+    {
+      "object.entity": {
+        name: "Program",
+        extends: "BaseEntity",
+        abstract: false,
+        overlay: false,
+        isArray: false,
+        children: [],
+      },
+    },
+    coreRegistry(),
+  );
+  expect(errors).toEqual([]);
+  expect(canonical).toEqual({
+    "object.entity": {
+      name: "Program",
+      extends: "BaseEntity",
+      abstract: false,
+      overlay: false,
+      isArray: false,
+      children: [],
+    },
+  });
+});
+
+test("rule 5: a mix of bare and already-@-prefixed attrs both flow through (backward compat)", () => {
+  const { canonical, errors } = desugar(
+    { "field.object": { name: "address", "@objectRef": "Address", storage: "flattened" } },
+    coreRegistry(),
+  );
+  expect(errors).toEqual([]);
+  expect(canonical).toEqual({
+    "field.object": {
+      name: "address",
+      "@objectRef": "Address",
+      "@storage": "flattened",
+    },
+  });
+});
+
+test("rule 5: bare attrs in nested children are also @-prefixed", () => {
+  const { canonical, errors } = desugar(
+    {
+      "object.entity": {
+        name: "Product",
+        children: [{ "field.string": { name: "sku", column: "sku_code" } }],
+      },
+    },
+    coreRegistry(),
+  );
+  expect(errors).toEqual([]);
+  expect(canonical).toEqual({
+    "object.entity": {
+      name: "Product",
+      children: [{ "field.string": { name: "sku", "@column": "sku_code" } }],
+    },
+  });
 });
 
 test("rule 3: a node with no children gets no synthesized children key", () => {

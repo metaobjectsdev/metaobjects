@@ -2,12 +2,19 @@
 //
 // desugar() turns the sugared authoring object (from yaml.parse) into the
 // canonical-shaped object that buildTree (parser-core.ts) consumes. It applies
-// the four format-spec sugar rules:
+// the five format-spec sugar rules (ADR-0006):
 //   1. Fused key, subType omittable — a bare `type` key resolves to the type's
 //      registry default subType.
 //   2. Scalar-or-map body — a scalar body becomes { name: <scalar> }.
 //   3. Omit empties — absent keys stay absent; the desugar invents nothing.
 //   4. `[]` arrays — a trailing `[]` on the key strips to isArray: true.
+//   5. Sigil-free attributes (ADR-0006 D1) — every body key not in
+//      RESERVED_KEYS is treated as an inline attribute and re-prefixed with `@`
+//      when lowering to canonical JSON. Keys already prefixed with `@` are
+//      left as-is (backward-compat). Reserved structural keywords (name,
+//      package, extends, abstract, overlay, isArray, children, value) stay
+//      bare. Note: an already-`@`-prefixed reserved word remains an error
+//      downstream — parser-core's ERR_RESERVED_ATTR check fires.
 //
 // Pure and total: it never throws. Malformed fragments are collected as error
 // strings and a safe placeholder is substituted so buildTree does not
@@ -15,6 +22,8 @@
 
 import type { TypeRegistry } from "../registry.js";
 import {
+  ATTR_PREFIX,
+  RESERVED_KEYS,
   RESERVED_KEY_CHILDREN,
   RESERVED_KEY_NAME,
   RESERVED_KEY_IS_ARRAY,
@@ -118,7 +127,10 @@ function resolveKey(
   return `${key}${TYPE_SUBTYPE_SEPARATOR}${subType}`;
 }
 
-// Rule 2 — normalize a node body into a canonical mapping.
+// Rule 2 + 5 — normalize a node body into a canonical mapping. Reserved
+// structural keys stay bare; every other key is treated as an inline attribute
+// and `@`-prefixed (Rule 5 / ADR-0006 D1). Keys already starting with `@` are
+// kept as-authored so the awkward "@column: foo" form remains accepted.
 function desugarBody(
   rawBody: unknown,
   errors: string[],
@@ -140,6 +152,15 @@ function desugarBody(
     return {};
   }
   // A mapping — shallow-copy so isArray / children replacement do not mutate
-  // the caller's parsed-YAML object.
-  return { ...(rawBody as Record<string, unknown>) };
+  // the caller's parsed-YAML object, AND apply Rule 5 (sigil-free attrs).
+  const src = rawBody as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(src)) {
+    if (RESERVED_KEYS.has(key) || key.startsWith(ATTR_PREFIX)) {
+      out[key] = src[key];
+    } else {
+      out[`${ATTR_PREFIX}${key}`] = src[key];
+    }
+  }
+  return out;
 }
