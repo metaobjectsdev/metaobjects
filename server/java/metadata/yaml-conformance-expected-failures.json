@@ -1,0 +1,8 @@
+{
+  "language": "java",
+  "corpus": "fixtures/yaml-conformance",
+  "comment": "yaml-array-suffix: the input declares no top-level package, but Java's MetaDataLoader sanitises an empty loader name to 'root'. The CanonicalJsonSerializer reads MetaRoot.getName() as the package, so the canonical output gains a spurious 'package: root'. This is the same Java-only loader-name-leak that ledgers smoke-empty-metadata in the canonical JSON corpus; the fix lives outside Phase 3.",
+  "fixtures": [
+    "yaml-array-suffix"
+  ]
+}
