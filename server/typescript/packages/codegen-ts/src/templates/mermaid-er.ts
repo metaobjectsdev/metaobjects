@@ -2,7 +2,7 @@
 //   1. A top-level ```mermaid erDiagram block of entities + identity.reference relationships.
 //   2. A per-entity prose section consuming the 6 user-facing doc attrs (notes excluded).
 //
-// D5: @notes is NEVER emitted. Per the Documentation Provider design.
+// D5: the notes attr is NEVER emitted. Per the Documentation Provider design.
 
 import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { DOC_ATTR_DESCRIPTION } from "@metaobjectsdev/metadata";
@@ -104,8 +104,8 @@ function renderEntityProse(entity: MetaObject): string[] {
     out.push("");
     out.push(`*Aliases:* ${docs.aliases.join(", ")}`);
   }
-  // Truthy check (not !== undefined): an empty @deprecated is the same signal
-  // as none (no reason ⇒ nothing meaningful to render in the prose callout).
+  // Truthy check (not !== undefined): an empty deprecated value is the same
+  // signal as none (no reason ⇒ nothing meaningful to render in the prose callout).
   if (docs.deprecated) {
     const replaced = docs.replacedBy ? ` Replaced by **${docs.replacedBy}**.` : "";
     out.push("");

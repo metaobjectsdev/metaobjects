@@ -9,19 +9,19 @@ namespace MetaObjects.Codegen.Docs;
 
 /// <summary>
 /// Renders an XML-doc block + optional [Obsolete] attribute for a MetaData node.
-/// Returns ("", null) when no relevant doc attrs are set. @notes is never read
+/// Returns ("", null) when no relevant doc attrs are set. The notes attr is never read
 /// (D5 contract: internal-only rationale must not reach user-facing output).
 /// </summary>
 public static class XmlDocBuilder
 {
     /// <summary>
     /// Render an XML-doc block + optional [Obsolete] attribute for a MetaData node.
-    /// Returns ("", null) when no relevant doc attrs are set. @notes is never read
+    /// Returns ("", null) when no relevant doc attrs are set. The notes attr is never read
     /// (D5 contract).
     /// </summary>
     public static (string XmlDoc, string? ObsoleteAttribute) Render(MetaData node)
     {
-        // Effective attrs so inherited @description (etc.) on a node extending
+        // Effective attrs so inherited description (etc.) on a node extending
         // an abstract base flows through (parity with TS readDocAttrs).
         string? desc       = node.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) as string;
         string? title      = node.Attr(DocumentationConstants.DOC_ATTR_TITLE) as string;

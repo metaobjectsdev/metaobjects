@@ -182,9 +182,9 @@ function buildTable(
 }
 
 /**
- * Read effective `@description` from a node. Returns the string if present and
- * non-empty, undefined otherwise. Uses `.attr` (effective, not own) so a node
- * that extends an abstract base picks up the base's `@description` — required
+ * Read effective `description` attr from a node. Returns the string if present
+ * and non-empty, undefined otherwise. Uses `.attr` (effective, not own) so a
+ * node that extends an abstract base picks up the base's description — required
  * for both entity- and field-level COMMENT ON parity with the entity-attr contract.
  */
 function readDescription(node: { attr: (n: string) => unknown }): string | undefined {

@@ -122,8 +122,8 @@ public static class PostgresSchema
             sb.AppendLine($"CREATE UNIQUE INDEX {table}_{sec.Name}_uniq ON {table} ({string.Join(", ", cols)});");
         }
 
-        // COMMENT ON TABLE / COLUMN from @description (entity- and field-level).
-        // @notes is intentionally never read — D5 contract.
+        // COMMENT ON TABLE / COLUMN from the description attr (entity- and field-level).
+        // The notes attr is intentionally never read — D5 contract.
         if (entity.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) is string entityDesc && entityDesc.Length > 0)
         {
             sb.AppendLine($"COMMENT ON TABLE {table} IS '{PgSql.Escape(entityDesc)}';");
