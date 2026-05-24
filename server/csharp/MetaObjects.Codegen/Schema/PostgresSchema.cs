@@ -106,7 +106,7 @@ public static class PostgresSchema
                                                      f.EffectiveEnumValues is { Count: > 0 }))
         {
             var col = CSharpNaming.Column(f);
-            var list = string.Join(", ", f.EffectiveEnumValues!.Select(v => $"'{v.Replace("'", "''")}'"));
+            var list = string.Join(", ", f.EffectiveEnumValues!.Select(v => $"'{PgSql.Escape(v)}'"));
             lines.Add($"  CHECK ({col} IN ({list}))");
         }
 
@@ -126,14 +126,14 @@ public static class PostgresSchema
         // @notes is intentionally never read — D5 contract.
         if (entity.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) is string entityDesc && entityDesc.Length > 0)
         {
-            sb.AppendLine($"COMMENT ON TABLE {table} IS '{PgEscape(entityDesc)}';");
+            sb.AppendLine($"COMMENT ON TABLE {table} IS '{PgSql.Escape(entityDesc)}';");
         }
         foreach (var f in entity.Fields())
         {
             if (f.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) is string fieldDesc && fieldDesc.Length > 0)
             {
                 var col = CSharpNaming.Column(f);
-                sb.AppendLine($"COMMENT ON COLUMN {table}.\"{col}\" IS '{PgEscape(fieldDesc)}';");
+                sb.AppendLine($"COMMENT ON COLUMN {table}.\"{col}\" IS '{PgSql.Escape(fieldDesc)}';");
             }
         }
 
@@ -336,9 +336,6 @@ public static class PostgresSchema
 
         return (target, CSharpNaming.Table(target), ResolveColumn(target, targetKeyField), baseFkCol);
     }
-
-    /// <summary>Escape a string for use in a Postgres single-quoted string literal.</summary>
-    private static string PgEscape(string s) => s.Replace("'", "''");
 
     /// <summary>Full schema DDL: tables for writable entities, then views for projections.</summary>
     public static string BuildSchema(MetaRoot root, Action<string>? warn = null)
