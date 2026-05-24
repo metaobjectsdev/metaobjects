@@ -169,7 +169,6 @@ function buildTable(
     }
   }
 
-  const entityDesc = entity.attr(DOC_ATTR_DESCRIPTION);
   const descriptor: TableDescriptor = {
     name: tableName,
     columns,
@@ -177,10 +176,20 @@ function buildTable(
     foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root),
     primaryKey,
   };
-  if (typeof entityDesc === "string" && entityDesc.length > 0) {
-    descriptor.description = entityDesc;
-  }
+  const entityDesc = readDescription(entity);
+  if (entityDesc !== undefined) descriptor.description = entityDesc;
   return descriptor;
+}
+
+/**
+ * Read effective `@description` from a node. Returns the string if present and
+ * non-empty, undefined otherwise. Uses `.attr` (effective, not own) so a node
+ * that extends an abstract base picks up the base's `@description` — required
+ * for both entity- and field-level COMMENT ON parity with the entity-attr contract.
+ */
+function readDescription(node: { attr: (n: string) => unknown }): string | undefined {
+  const v = node.attr(DOC_ATTR_DESCRIPTION);
+  return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
 function buildSecondaryIndexes(entity: MetaObject, tableName: string): IndexDescriptor[] {
@@ -326,12 +335,8 @@ function buildColumn(
     col.identity = pkGeneration;
   }
 
-  // Use effective attr (.attr) so a field that extends an abstract base picks
-  // up the base's @description — parity with buildTable's entity.attr() call.
-  const fieldDesc = field.attr(DOC_ATTR_DESCRIPTION);
-  if (typeof fieldDesc === "string" && fieldDesc.length > 0) {
-    col.description = fieldDesc;
-  }
+  const fieldDesc = readDescription(field);
+  if (fieldDesc !== undefined) col.description = fieldDesc;
 
   return col;
 }
