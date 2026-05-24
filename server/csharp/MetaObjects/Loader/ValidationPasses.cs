@@ -429,7 +429,8 @@ public static class ValidationPasses
         TypeRegistry registry)
     {
         var errors = new List<MetaError>();
-        WalkAttrSchema(root, registry, errors);
+        var reportedConflicts = new HashSet<string>(StringComparer.Ordinal);
+        WalkAttrSchema(root, registry, errors, reportedConflicts);
         return new AttrSchemaValidationResult(errors.AsReadOnly(), []);
     }
 
@@ -532,12 +533,13 @@ public static class ValidationPasses
     private static void WalkAttrSchema(
         MetaData node,
         TypeRegistry registry,
-        List<MetaError> errors)
+        List<MetaError> errors,
+        HashSet<string> reportedConflicts)
     {
-        ValidateAttrSchemaNode(node, registry, errors);
+        ValidateAttrSchemaNode(node, registry, errors, reportedConflicts);
         foreach (var child in node.OwnChildren())
         {
-            WalkAttrSchema(child, registry, errors);
+            WalkAttrSchema(child, registry, errors, reportedConflicts);
         }
     }
 
@@ -550,9 +552,34 @@ public static class ValidationPasses
     private static void ValidateAttrSchemaNode(
         MetaData node,
         TypeRegistry registry,
-        List<MetaError> errors)
+        List<MetaError> errors,
+        HashSet<string> reportedConflicts)
     {
-        var schema = registry.AttrsOf(node.Type, node.SubType);
+        var perType = registry.AttrsOf(node.Type, node.SubType);
+        var common  = registry.GetCommonAttrs();
+
+        // Detect common-vs-per-type name collisions once per (type, subType).
+        var typeKey = $"{node.Type}.{node.SubType}";
+        if (!reportedConflicts.Contains(typeKey))
+        {
+            foreach (var ca in common)
+            {
+                if (perType.Any(pa => pa.Name == ca.Name))
+                {
+                    errors.Add(new MetaError(
+                        $"Common attr '{ca.Name}' conflicts with per-type attr on {typeKey}",
+                        ErrorCode.ERR_PROVIDER_ATTR_CONFLICT));
+                    reportedConflicts.Add(typeKey);
+                    break; // one error per (type, subType)
+                }
+            }
+        }
+
+        // Merge: per-type wins on name collision, common fills the rest.
+        var schema = perType
+            .Concat(common.Where(ca => !perType.Any(pa => pa.Name == ca.Name)))
+            .ToList();
+
         if (schema.Count == 0) return;
 
         // Index the schema by attr name for declared-attr checks.

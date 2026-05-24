@@ -184,6 +184,44 @@ public sealed class TypeRegistry
         _defaultSubTypes.TryGetValue(type, out string? sub) ? sub : null;
 
     // ------------------------------------------------------------------
+    // Common attrs
+    // ------------------------------------------------------------------
+
+    private readonly List<AttrSchema> _commonAttrs = new();
+
+    /// <summary>
+    /// Register attrs that are accepted on every metatype. Used by providers to
+    /// declare cross-cutting attrs (e.g. documentation attrs). Repeated
+    /// registration of the same name is silently deduped (first registration
+    /// wins); conflicts with per-type attrs are detected at validation time.
+    /// Throws <see cref="InvalidOperationException"/> if any attr has
+    /// ValueType == SUBTYPE_BASE.
+    /// </summary>
+    public void RegisterCommonAttrs(IEnumerable<AttrSchema> attrs)
+    {
+        foreach (AttrSchema attr in attrs)
+        {
+            if (attr.ValueType == SUBTYPE_BASE)
+            {
+                throw new InvalidOperationException(
+                    $"TypeRegistry.RegisterCommonAttrs: attr \"{attr.Name}\" declares " +
+                    $"valueType \"{SUBTYPE_BASE}\", which is not valid for attrs. " +
+                    $"Use no valueType (null) for a polymorphic/untyped attr.");
+            }
+
+            if (_commonAttrs.Any(existing => existing.Name == attr.Name))
+            {
+                continue; // first-wins dedupe; per-type conflicts handled at validation time
+            }
+
+            _commonAttrs.Add(attr);
+        }
+    }
+
+    /// <summary>Returns the registered common attrs (defensive copy).</summary>
+    public IReadOnlyList<AttrSchema> GetCommonAttrs() => _commonAttrs.ToList();
+
+    // ------------------------------------------------------------------
     // AttrsOf
     // ------------------------------------------------------------------
 
