@@ -4,7 +4,9 @@
 //   EntityGenerator  — emit List<T> property instead of a scalar T property.
 //   PostgresSchema   — emit a jsonb column instead of the scalar PG type.
 //   PostgresSchema   — suppress the enum CHECK for array-of-enum fields.
-//   DbContextGenerator — emit .ToJson() mapping for the List<T> column.
+//   DbContextGenerator — emit .PrimitiveCollection(...) for scalar arrays (EF Core 8).
+//   DbContextGenerator — emit .PrimitiveCollection(...).ElementType().HasConversion<string>()
+//                        for enum arrays so elements persist as string symbols, not int ordinals.
 //
 // Scope: scalar + enum arrays only. Object-array handling is separate.
 
@@ -197,40 +199,47 @@ public class ScalarArrayCodegenTests
     }
 
     // -------------------------------------------------------------------------
-    // DbContextGenerator — List<T> scalar/enum array → .ToJson()
+    // DbContextGenerator — List<T> scalar array → .PrimitiveCollection(...)
+    // DbContextGenerator — List<EnumType> enum array → .PrimitiveCollection(...).ElementType().HasConversion<string>()
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void Scalar_array_field_emits_ToJson_in_dbcontext()
+    public void Scalar_array_field_emits_PrimitiveCollection_in_dbcontext()
     {
         var ctx = Ctx(Load(ScalarArrayModel));
         var dbCtx = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
 
-        // EF Core primitive collection -> .ToJson() mapping.
+        // EF Core 8 primitive collection API — .ToJson() does not exist on PropertyBuilder<List<T>>.
         Assert.Contains(
-            "modelBuilder.Entity<Product>().Property(x => x.Tags).ToJson();",
+            "modelBuilder.Entity<Product>().PrimitiveCollection(x => x.Tags);",
             dbCtx);
+        // Guard: the incorrect .Property(...).ToJson() form must NOT appear for this field.
+        Assert.DoesNotContain("x => x.Tags).ToJson()", dbCtx);
+        Assert.DoesNotContain("Property(x => x.Tags)", dbCtx);
     }
 
     [Fact]
-    public void Enum_array_field_emits_ToJson_in_dbcontext()
+    public void Enum_array_field_emits_PrimitiveCollection_with_element_conversion_in_dbcontext()
     {
         var ctx = Ctx(Load(EnumArrayModel));
         var dbCtx = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
 
-        // EF Core primitive collection of enum -> .ToJson() mapping.
+        // EF Core 8: enum elements must persist as string symbols, not int ordinals.
         Assert.Contains(
-            "modelBuilder.Entity<Order>().Property(x => x.Statuses).ToJson();",
+            "modelBuilder.Entity<Order>().PrimitiveCollection(x => x.Statuses).ElementType().HasConversion<string>();",
             dbCtx);
+        // Guard: the incorrect .Property(...).ToJson() form must NOT appear for this field.
+        Assert.DoesNotContain("x => x.Statuses).ToJson()", dbCtx);
+        Assert.DoesNotContain("Property(x => x.Statuses)", dbCtx);
     }
 
     [Fact]
-    public void Enum_array_field_does_not_emit_has_conversion_in_dbcontext()
+    public void Enum_array_field_does_not_emit_has_conversion_without_element_type_in_dbcontext()
     {
         var ctx = Ctx(Load(EnumArrayModel));
         var dbCtx = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
 
-        // An array-of-enum goes through .ToJson(), not .HasConversion<string>().
+        // An array-of-enum must use .ElementType().HasConversion<string>(), not bare .HasConversion<string>().
         Assert.DoesNotContain("Statuses).HasConversion<string>()", dbCtx);
     }
 

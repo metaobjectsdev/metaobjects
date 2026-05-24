@@ -2,7 +2,8 @@
 // object (tables + read-only projections) plus an OnModelCreating that maps each
 // projection to its view (.ToView / .HasNoKey) and configures owned types for
 // object-typed entity fields (@storage flattened → per-property column names;
-// jsonb / subdocument / absent → a single json column via .ToJson).
+// jsonb / subdocument / absent → a single json column via .ToJson), and uses
+// .PrimitiveCollection() for scalar/enum array fields (EF Core 8 API).
 
 using System.Text;
 using MetaObjects.Meta;
@@ -41,22 +42,24 @@ public sealed class DbContextGenerator : IGenerator
                 var prop = CSharpNaming.Pascal(f.Name);
                 if (f.IsArray)
                 {
-                    // Array-of-enum: EF Core primitive collection stored as jsonb via .ToJson().
-                    // .HasConversion<string>() is for scalar enum → TEXT; it is wrong here
-                    // because the column is a jsonb array, not a single text value.
-                    modelLines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).ToJson();");
+                    // Array-of-enum: EF Core 8 primitive collection with per-element string conversion
+                    // so enum values persist as string symbols (e.g. ["DRAFT","ARCHIVED"]), consistent
+                    // with the scalar enum path (.HasConversion<string>()). Without .ElementType()
+                    // .HasConversion<string>() elements would persist as int ordinals ([0,2]).
+                    modelLines.Add($"        modelBuilder.Entity<{owner}>().PrimitiveCollection(x => x.{prop}).ElementType().HasConversion<string>();");
                 }
                 else
                 {
                     modelLines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasConversion<string>();");
                 }
             }
-            // Scalar/enum arrays (scalar subtypes): emit .ToJson() for EF primitive collections.
+            // Scalar arrays (scalar subtypes, non-enum): EF Core 8 .PrimitiveCollection() API.
+            // .Property(...).ToJson() does not exist on PropertyBuilder<List<T>> (CS1061).
             foreach (var f in e.Fields().Where(f => f.IsArray && CSharpNaming.ScalarFor(f.SubType) is not null))
             {
                 var owner = CSharpNaming.Pascal(e.Name);
                 var prop = CSharpNaming.Pascal(f.Name);
-                modelLines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).ToJson();");
+                modelLines.Add($"        modelBuilder.Entity<{owner}>().PrimitiveCollection(x => x.{prop});");
             }
         }
 
