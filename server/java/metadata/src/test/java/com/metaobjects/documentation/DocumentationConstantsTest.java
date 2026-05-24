@@ -5,6 +5,8 @@ import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataTypeProvider;
 import org.junit.Test;
 
+import java.util.ServiceLoader;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -79,15 +81,9 @@ public class DocumentationConstantsTest {
 
     @Test
     public void provider_is_discoverable_via_SPI() {
-        java.util.ServiceLoader<MetaDataTypeProvider> loader =
-            java.util.ServiceLoader.load(MetaDataTypeProvider.class);
-        boolean found = false;
-        for (MetaDataTypeProvider p : loader) {
-            if (p instanceof DocumentationMetaDataProvider) {
-                found = true;
-                break;
-            }
-        }
+        boolean found = ServiceLoader.load(MetaDataTypeProvider.class)
+            .stream()
+            .anyMatch(p -> p.type() == DocumentationMetaDataProvider.class);
         assertTrue("DocumentationMetaDataProvider must be SPI-registered", found);
     }
 
