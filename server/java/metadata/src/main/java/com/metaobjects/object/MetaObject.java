@@ -119,6 +119,9 @@ public abstract class MetaObject extends MetaData {
 
             // OBJECTS CAN CONTAIN RELATIONSHIPS
             def.optionalChild(MetaRelationship.TYPE_RELATIONSHIP, "*", "*");
+
+            // OBJECTS CAN CONTAIN SOURCES (source.rdb and future subtypes)
+            def.optionalChild("source", "*", "*");
         });
 
         if (log != null) {
@@ -930,6 +933,16 @@ public abstract class MetaObject extends MetaData {
                 "Objects can contain relationships",
                 TYPE_OBJECT, "*",                       // Parent: object.*
                 MetaRelationship.TYPE_RELATIONSHIP, "*", // Child: relationship.*
+                null,                                   // No name constraint
+                true                                    // Allowed
+            ));
+
+            // PLACEMENT CONSTRAINT: Objects CAN contain sources (source.rdb and future subtypes)
+            registry.addConstraint(new PlacementConstraint(
+                "object.sources.placement",
+                "Objects can contain sources",
+                TYPE_OBJECT, "*",                       // Parent: object.*
+                "source", "*",                          // Child: source.*
                 null,                                   // No name constraint
                 true                                    // Allowed
             ));

@@ -6,3 +6,4 @@ com.metaobjects.validator.ValidatorTypesMetaDataProvider
 com.metaobjects.relationship.RelationshipTypesMetaDataProvider
 com.metaobjects.identity.IdentityTypesMetaDataProvider
 com.metaobjects.database.CoreDBMetaDataProvider
+com.metaobjects.source.SourceTypesMetaDataProvider

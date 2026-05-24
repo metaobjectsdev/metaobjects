@@ -12,6 +12,7 @@ import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.field.EnumField;
+import com.metaobjects.source.MetaSource;
 import com.metaobjects.util.ErrorMessageConstants;
 
 /**
@@ -53,6 +54,7 @@ public final class ValidationPhase {
     public static void run(MetaRoot root) {
         if (root == null) return;
         validateEnumValues(root);
+        validateSourceAttrs(root);
     }
 
     // =========================================================================
@@ -139,6 +141,91 @@ public final class ValidationPhase {
                 ErrorCode.ERR_MISSING_REQUIRED_ATTR);
         }
         // Has a super — inherits @values from the super, which is validated on its own node.
+    }
+
+    // =========================================================================
+    // Source @kind / @role enum validation
+    //
+    // Applied to every source.* node after the full tree is built (attrs are set
+    // post-placement, so we cannot validate at addChild time via the constraint
+    // framework — same reason field.enum uses a post-load pass).
+    //
+    //   @kind must be one of: table / view / materializedView / storedProc / tableFunction
+    //   @role must be one of: primary / replica / index / cache / publish / mirror
+    //
+    // Missing attrs are fine (defaults apply); only explicitly-set bad values fail.
+    // =========================================================================
+
+    /**
+     * Walk the full tree and validate {@code @kind} and {@code @role} on every
+     * {@code source.*} node.
+     *
+     * @param root the root node to walk
+     * @throws MetaDataException on the first error found
+     */
+    static void validateSourceAttrs(MetaRoot root) {
+        walkSourceAttrs(root);
+    }
+
+    private static void walkSourceAttrs(MetaData node) {
+        validateSourceNode(node);
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkSourceAttrs(child);
+        }
+    }
+
+    /**
+     * Validate {@code @kind} and {@code @role} on a single node if it is a {@code source.*}.
+     *
+     * @param node the node to inspect
+     * @throws MetaDataException if {@code @kind} or {@code @role} is set to an invalid value
+     */
+    private static void validateSourceNode(MetaData node) {
+        if (!MetaSource.TYPE_SOURCE.equals(node.getType())) {
+            return;
+        }
+        // Only validate on instances of MetaSource (skip the abstract base type itself at
+        // registration time — it will never appear in a loaded document tree).
+        if (!(node instanceof MetaSource)) {
+            return;
+        }
+        MetaSource src = (MetaSource) node;
+
+        // Validate @kind (own attribute only — defaults are fine)
+        if (node.hasMetaAttr(MetaSource.ATTR_KIND, false)) {
+            String kind = src.getEffectiveKind();
+            if (!MetaSource.KIND_TABLE.equals(kind)
+                    && !MetaSource.KIND_VIEW.equals(kind)
+                    && !MetaSource.KIND_MATERIALIZED_VIEW.equals(kind)
+                    && !MetaSource.KIND_STORED_PROC.equals(kind)
+                    && !MetaSource.KIND_TABLE_FUNCTION.equals(kind)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": source '" + node.getName()
+                        + "' @kind '" + kind
+                        + "' is not a valid value; allowed: table, view, materializedView,"
+                        + " storedProc, tableFunction",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+
+        // Validate @role (own attribute only — defaults are fine)
+        if (node.hasMetaAttr(MetaSource.ATTR_ROLE, false)) {
+            String role = src.getRole();
+            if (!MetaSource.ROLE_PRIMARY.equals(role)
+                    && !MetaSource.ROLE_REPLICA.equals(role)
+                    && !MetaSource.ROLE_INDEX.equals(role)
+                    && !MetaSource.ROLE_CACHE.equals(role)
+                    && !MetaSource.ROLE_PUBLISH.equals(role)
+                    && !MetaSource.ROLE_MIRROR.equals(role)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": source '" + node.getName()
+                        + "' @role '" + role
+                        + "' is not a valid value; allowed: primary, replica, index, cache, publish, mirror",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
     }
 
 }
