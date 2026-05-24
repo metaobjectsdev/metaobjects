@@ -664,10 +664,10 @@ mvn clean compile
     "package": "com_mycompany_domain",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "User",
-          "@dbTable": "users",
           "children": [
+            { "source.rdb": { "@table": "users" } },
             {
               "field": {
                 "name": "id",
@@ -732,10 +732,10 @@ mvn clean compile
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "Order",
-          "@dbTable": "orders",
           "children": [
+            { "source.rdb": { "@table": "orders" } },
             {
               "field": {
                 "name": "id",
@@ -1367,10 +1367,12 @@ This guide is optimized for Claude Code assistance. When asking Claude for help:
 - `@defaultValue` - Default field value
 
 ### **Database Attributes**
-- `@dbTable` - Database table name
-- `@column` - Database column name
-- `@dbIndexName` - Database index name
+- `@column` - Database column name (field-level)
+- `@dbIndexName` - Database index name (identity-level)
 - `@generation` - ID generation strategy
+
+!!! note
+    Table/view declaration uses the `source.rdb` child metatype, not an inline `@dbTable` attribute. See the source mapping section above.
 
 ---
 

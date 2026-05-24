@@ -11,11 +11,10 @@ Metadata defines the **structure, rules, and behavior** of your objects. Think o
 
 ```json title="Metadata Example (Defines Structure)"
 {
-  "object": {
+  "object.entity": {
     "name": "User",
-    "subType": "pojo",
-    "@dbTable": "users",
     "children": [
+      { "source.rdb": { "@table": "users" } },
       {
         "field": {
           "name": "id",

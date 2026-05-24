@@ -438,11 +438,10 @@ metaobjects/
     "package": "com_example_model",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "User",
-          "type": "pojo",
-          "@dbTable": "users",
           "children": [
+            { "source.rdb": { "@table": "users" } },
             {
               "field": {
                 "name": "id",
@@ -480,11 +479,10 @@ metaobjects/
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "Product",
-          "type": "pojo",
-          "@dbTable": "products",
           "children": [
+            { "source.rdb": { "@table": "products" } },
             {
               "field": {
                 "name": "id",

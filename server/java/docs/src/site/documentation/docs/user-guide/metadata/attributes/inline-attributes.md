@@ -10,7 +10,7 @@ Traditional metadata systems require verbose nested structures for attributes. M
     **Inline attributes are for configuration and system properties, NOT for validation rules.**
 
     **✅ Use inline attributes for:**
-    - Database mapping: `@dbTable`, `@column`, `@dbNullable`
+    - Field-level database mapping: `@column`, `@dbNullable` (table/view declaration uses the `source.*` child metatype, not inline attrs)
     - System configuration: `@defaultValue`, `@displayName`, `@isSearchable`
     - UI properties: `@placeholder`, `@helpText`, `@cssClasses`
 
@@ -85,18 +85,17 @@ JSON inline attributes use the `@` prefix to distinguish them from standard meta
     "package": "com_example_model",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "User",
-          "subType": "pojo",
-          "@dbTable": "users",
-          "@auditable": true,
           "children": [
+            { "source.rdb": { "@table": "users" } },
             {
               "field": {
                 "name": "id",
                 "subType": "long",
                 "@required": true,
-                "@column": "user_id"
+                "@column": "user_id",
+                "@auditable": true
               }
             },
             {
@@ -146,36 +145,63 @@ JSON inline attributes use the `@` prefix to distinguish them from standard meta
 
 XML inline attributes use standard XML attribute syntax without prefixes:
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<metadata package="com_example_model">
-  <children>
-    <object name="User" subType="pojo" dbTable="users" auditable="true">
-      <children>
-        <field name="id" subType="long"
-               required="true"
-               column="user_id" />
-
-        <field name="email" subType="string"
-               required="true"
-               maxLength="255"
-               pattern="^[\w._%+-]+@[\w.-]+\.[A-Za-z]{2,}$"
-               column="email_address"
-               unique="true" />
-
-        <field name="status" subType="string"
-               required="true"
-               defaultValue="active"
-               allowedValues="active,inactive,pending" />
-
-        <key name="primary" subType="primary"
-             keys="id"
-             autoIncrementStrategy="sequential" />
-      </children>
-    </object>
-  </children>
-</metadata>
+```json
+{
+  "metadata": {
+    "package": "com_example_model",
+    "children": [
+      {
+        "object.entity": {
+          "name": "User",
+          "children": [
+            { "source.rdb": { "@table": "users" } },
+            {
+              "field": {
+                "name": "id",
+                "subType": "long",
+                "@required": true,
+                "@column": "user_id",
+                "@auditable": true
+              }
+            },
+            {
+              "field": {
+                "name": "email",
+                "subType": "string",
+                "@required": true,
+                "@maxLength": 255,
+                "@pattern": "^[\\w._%+-]+@[\\w.-]+\\.[A-Za-z]{2,}$",
+                "@column": "email_address",
+                "@unique": true
+              }
+            },
+            {
+              "field": {
+                "name": "status",
+                "subType": "string",
+                "@required": true,
+                "@defaultValue": "active",
+                "@allowedValues": ["active", "inactive", "pending"]
+              }
+            },
+            {
+              "key": {
+                "name": "primary",
+                "subType": "primary",
+                "@keys": ["id"],
+                "@autoIncrementStrategy": "sequential"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
 ```
+
+!!! note "Canonical JSON form"
+    The XML reader supports the same attributes without `@` prefixes. The example above uses canonical JSON, which is the cross-language interchange format. In XML the table/view declaration is expressed as a `<source subType="rdb" table="users" />` child element rather than an object-level attribute.
 
 #### XML Syntax Rules
 
@@ -569,12 +595,11 @@ try {
 
 ```json
 {
-  "object": {
+  "object.entity": {
     "name": "User",
-    "subType": "pojo",
-    "@dbTable": "users",
-    "@dbSchema": "public",
-    "@auditable": true
+    "children": [
+      { "source.rdb": { "@table": "users", "@schema": "public" } }
+    ]
   }
 }
 

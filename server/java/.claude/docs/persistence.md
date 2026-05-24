@@ -46,11 +46,10 @@ Without it, ObjectManagerDB fails with "Attempt to modify an identity column" er
 
 ```json
 {
-  "object": {
+  "object.entity": {
     "name": "User",
-    "subType": "managed",
-    "@dbTable": "users",
     "children": [
+      { "source.rdb": { "@table": "users" } },
       {
         "field": {
           "name": "id",
@@ -178,14 +177,16 @@ Without it, ObjectManagerDB fails with "Attempt to modify an identity column" er
 
 ```json
 {
-  "object": {
+  "object.entity": {
     "name": "User",
-    "@dbTable": "USERS",           // Table name
-    "@dbSchema": "public",         // Schema name (optional)
-    "@dbCatalog": "mydb"           // Catalog name (optional)
+    "children": [
+      { "source.rdb": { "@table": "USERS", "@schema": "public" } }
+    ]
   }
 }
 ```
+
+The table name and optional schema are declared via the `source.rdb` child node. The `@dbCatalog` attribute (catalog-level override) remains on the `source.rdb` node as `@catalog` if needed.
 
 ### Field Level
 
@@ -354,10 +355,10 @@ long count = objectManager.count(connection, User.class);
 ### db-overlay.json
 ```json
 {
-  "object": {
+  "object.entity": {
     "name": "Store",
-    "@dbTable": "STORE",
     "children": [
+      { "source.rdb": { "@table": "STORE" } },
       {"field": {"name": "id", "@column": "ID"}},
       {"identity": {"name": "store_pk", "@generation": "increment", "@dbIndexName": "pk_store"}}
     ]

@@ -51,11 +51,10 @@ Define your object structures, validation rules, and relationships through rich 
   "metadata": {
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "User",
-          "type": "pojo",
-          "@dbTable": "users",
           "children": [
+            { "source.rdb": { "@table": "users" } },
             {
               "field": {
                 "name": "email",

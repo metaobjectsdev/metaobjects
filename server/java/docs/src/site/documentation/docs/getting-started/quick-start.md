@@ -71,11 +71,10 @@ Create a JSON metadata file that defines a simple User object:
     "package": "example",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "User",
-          "subType": "pojo",
-          "@dbTable": "users",
           "children": [
+            { "source.rdb": { "@table": "users" } },
             {
               "field": {
                 "name": "id",
@@ -176,7 +175,7 @@ Create a JSON metadata file that defines a simple User object:
 ```
 
 !!! tip "Architecture Patterns"
-    Notice the discrete validator children for validation rules like required and length constraints. Database attributes like `@dbTable` and `@column` use inline attribute syntax with the `@` prefix. This separation ensures validation is first-class metadata while keeping configuration attributes concise.
+    Notice the discrete validator children for validation rules like required and length constraints. Field-level database mapping attributes like `@column` use inline attribute syntax with the `@` prefix, while the table/view declaration is expressed as a `source.rdb` child node. This separation ensures validation is first-class metadata while keeping configuration attributes concise.
 
 ## Step 3: Load and Use Metadata
 
