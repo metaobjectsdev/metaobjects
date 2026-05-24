@@ -232,6 +232,28 @@ public sealed class TypeRegistry
     public IReadOnlyList<AttrSchema> AttrsOf(string type, string subType) =>
         Find(type, subType)?.Attributes.ToList() ?? [];
 
+    /// <summary>
+    /// Locate the schema for <paramref name="attrName"/> on (type, subType): per-type
+    /// declaration wins, common attrs fill the rest. Returns null when the attr is
+    /// not declared on either tier (open policy — undeclared attrs are not flagged).
+    /// </summary>
+    public AttrSchema? FindAttrSchema(string type, string subType, string attrName)
+    {
+        TypeDefinition? def = Find(type, subType);
+        if (def is not null)
+        {
+            foreach (AttrSchema a in def.Attributes)
+            {
+                if (a.Name == attrName) return a;
+            }
+        }
+        foreach (AttrSchema a in _commonAttrs)
+        {
+            if (a.Name == attrName) return a;
+        }
+        return null;
+    }
+
     // ------------------------------------------------------------------
     // Extend
     // ------------------------------------------------------------------
