@@ -15,6 +15,7 @@ import type { MetaDataTypeProvider } from "../../src/provider.js";
 import { composeRegistry } from "../../src/provider.js";
 import { coreTypesProvider } from "../../src/core-types.js";
 import { dbProvider } from "../../src/persistence/db/db-provider.js";
+import { docProvider } from "../../src/core/documentation/doc-provider.js";
 import { FileMetaDataLoader } from "../../src/core/file-meta-data-loader.js";
 import type { MetaData } from "../../src/shared/meta-data.js";
 import { canonicalSerialize, canonicalSerializeEffective } from "../../src/serializer-json.js";
@@ -29,6 +30,7 @@ import { binding } from "./binding.js";
 const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
   [coreTypesProvider.id]: coreTypesProvider, // "metaobjects-core-types"
   [dbProvider.id]: dbProvider,               // "metaobjects-db"
+  [docProvider.id]: docProvider,             // "metaobjects-documentation"
 };
 
 /** Pull a `.code` off a collected loader error, if it carries one. */

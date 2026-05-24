@@ -2,6 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { composeRegistry, type MetaDataTypeProvider } from "../src/provider.js";
 import { coreTypesProvider, coreProviders, registerCoreTypes } from "../src/core-types.js";
 import { dbProvider } from "../src/persistence/db/db-provider.js";
+import { docProvider } from "../src/core/documentation/doc-provider.js";
 import { TypeRegistry, TypeId } from "../src/registry.js";
 import { MetaField } from "../src/core/field/meta-field.js";
 import {
@@ -93,10 +94,11 @@ describe("coreTypesProvider", () => {
     expect(registry.defaultSubTypeOf(TYPE_METADATA)).toBe(SUBTYPE_ROOT);
   });
 
-  it("coreProviders is a two-provider bundle: coreTypesProvider + dbProvider", () => {
-    expect(coreProviders).toHaveLength(2);
+  it("coreProviders is a three-provider bundle: coreTypesProvider + dbProvider + docProvider", () => {
+    expect(coreProviders).toHaveLength(3);
     expect(coreProviders[0]).toBe(coreTypesProvider);
     expect(coreProviders[1]).toBe(dbProvider);
+    expect(coreProviders[2]).toBe(docProvider);
   });
 
   it("registerCoreTypes registers the structural types but not the DB-domain attrs", () => {

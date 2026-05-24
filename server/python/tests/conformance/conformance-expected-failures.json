@@ -1,5 +1,9 @@
 {
   "fixtures": [
+    "doc-common-attrs-basic",
+    "doc-common-attrs-multiline",
+    "doc-common-attrs-on-all-types",
+    "doc-common-attrs-stringarray-shapes",
     "error-field-object-storage-flattened-array",
     "error-field-object-storage-no-object-ref",
     "error-origin-bad-aggregate-fn",
