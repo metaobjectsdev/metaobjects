@@ -3,9 +3,9 @@
     "children": [
       { "object.entity": {
           "name": "Program",
-          "@dbTable": "program",
           "@previousName": "offering",
           "children": [
+            { "source.rdb": { "@table": "program" }},
             { "field.string": { "name": "title", "@column": "title", "@previousName": "name" }}
           ]
       }}

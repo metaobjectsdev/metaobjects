@@ -5,9 +5,13 @@
         "object.entity": {
           "name": "User",
           "package": "com_example_model",
-          "@dbTable": "users",
           "@hasAuditing": "true",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "users"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
@@ -82,8 +86,12 @@
         "object.entity": {
           "name": "Product",
           "package": "com_example_model",
-          "@dbTable": "products",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "products"
+              }
+            },
             {
               "field.long": {
                 "name": "id",

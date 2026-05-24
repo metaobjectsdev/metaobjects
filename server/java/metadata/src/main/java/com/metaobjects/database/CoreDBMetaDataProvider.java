@@ -26,7 +26,12 @@ import com.metaobjects.registry.MetaDataTypeProvider;
 public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
 
     // Common database attribute constants
-    public static final String DB_TABLE = "dbTable";
+    //
+    // Source-v2 ADR-0007: the object-level {@code @dbTable} / {@code @dbView} attrs
+    // were dropped in Stage 2. An object declares storage ONLY via {@code source.*}
+    // children — the primary writable {@code source.rdb} child's {@code @table}
+    // attr is the table name; a read-only ({@code @kind: view / ...}) source
+    // names the view. See {@link com.metaobjects.object.MetaObject#getPrimaryRdbTableName()}.
 
     /**
      * Field physical column name. Source-v2 Tier-1 cross-language vocabulary
@@ -87,8 +92,11 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
      */
     public static void registerDatabaseAttributes(MetaDataRegistry registry) {
         // Object-level database attributes
+        //
+        // Source-v2 ADR-0007: {@code @dbTable} / {@code @dbView} are NOT registered here.
+        // The table/view name is declared on {@code source.rdb @table}; see
+        // {@link com.metaobjects.object.MetaObject#getPrimaryRdbTableName()}.
         registry.findType(MetaObject.TYPE_OBJECT, MetaObject.SUBTYPE_BASE)
-            .optionalAttribute(DB_TABLE, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_INDEX, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_UNIQUE, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(PREVIOUS_NAME, StringAttribute.SUBTYPE_STRING);

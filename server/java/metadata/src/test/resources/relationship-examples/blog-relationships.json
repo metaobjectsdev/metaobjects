@@ -5,8 +5,12 @@
       {
         "object.entity": {
           "name": "Author",
-          "@dbTable": "authors",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "authors"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
@@ -59,8 +63,12 @@
       {
         "object.entity": {
           "name": "AuthorProfile",
-          "@dbTable": "author_profiles",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "author_profiles"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
@@ -102,8 +110,12 @@
       {
         "object.entity": {
           "name": "BlogPost",
-          "@dbTable": "blog_posts",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "blog_posts"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
@@ -185,8 +197,12 @@
       {
         "object.entity": {
           "name": "Comment",
-          "@dbTable": "comments",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "comments"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
@@ -253,8 +269,12 @@
       {
         "object.entity": {
           "name": "Tag",
-          "@dbTable": "tags",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "tags"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
@@ -291,8 +311,12 @@
       {
         "object.entity": {
           "name": "Category",
-          "@dbTable": "categories",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "categories"
+              }
+            },
             {
               "field.long": {
                 "name": "id",

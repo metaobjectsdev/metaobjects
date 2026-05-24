@@ -6,8 +6,12 @@
         "object.value": {
           "name": "Item",
           "@object": "com.metaobjects.object.value.ValueObject",
-          "@dbTable": "JSONB_ITEM",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "JSONB_ITEM"
+              }
+            },
             {
               "field.long": {
                 "name": "id",

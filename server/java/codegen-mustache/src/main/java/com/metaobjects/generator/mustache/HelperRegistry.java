@@ -7,10 +7,8 @@ import com.metaobjects.validator.MetaValidator;
 import com.metaobjects.validator.RequiredValidator;
 import com.metaobjects.validator.LengthValidator;
 import com.metaobjects.identity.MetaIdentity;
-import com.metaobjects.database.CoreDBMetaDataProvider;
 import org.apache.commons.lang3.StringUtils;
 
-import static com.metaobjects.database.CoreDBMetaDataProvider.DB_TABLE;
 import static com.metaobjects.database.CoreDBMetaDataProvider.COLUMN;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -432,8 +430,11 @@ public class HelperRegistry {
                 return false;
             }
             
-            // Inference: Generate JPA if object has database-related attributes or keys
-            return metaObject.hasMetaAttr(DB_TABLE) || 
+            // Inference: Generate JPA if object has database-related attributes or keys.
+            // Source-v2 ADR-0007: an entity is "DB-bound" when it declares a source.rdb
+            // (its @table provides the physical name); previously this checked @dbTable.
+            return metaObject.getPrimaryRdbTableName() != null ||
+                   metaObject.getPrimaryRdbViewName() != null ||
                    hasAnyFieldWithDbColumn(metaObject) ||
                    hasAnyDatabaseKeys(metaObject);
         }
@@ -569,17 +570,22 @@ public class HelperRegistry {
 
     /**
      * Get the database table name for a MetaObject.
-     * Returns the explicit dbTable attribute if present, otherwise converts
-     * the object name from camelCase to snake_case.
+     *
+     * <p>Source-v2 ADR-0007: returns the {@code @table} of the primary writable
+     * {@code source.rdb} child if present, or — for view-backed projections —
+     * the {@code @table} of the primary read-only source. Falls back to the
+     * snake_case form of the object name when neither is declared.</p>
      */
     private String getTableName(MetaObject metaObject) {
-        // Check for explicit dbTable attribute first
-        if (metaObject.hasMetaAttr(DB_TABLE)) {
-            String explicitTable = metaObject.getMetaAttr(DB_TABLE).getValueAsString();
-            if (explicitTable != null && !explicitTable.trim().isEmpty()) {
-                log.debug("Using explicit dbTable: {} for object: {}", explicitTable, metaObject.getName());
-                return explicitTable.trim();
-            }
+        // Primary writable source.rdb @table
+        String explicitTable = metaObject.getPrimaryRdbTableName();
+        if (explicitTable == null) {
+            // Projection: primary read-only source.rdb @table
+            explicitTable = metaObject.getPrimaryRdbViewName();
+        }
+        if (explicitTable != null && !explicitTable.trim().isEmpty()) {
+            log.debug("Using source.rdb @table: {} for object: {}", explicitTable, metaObject.getName());
+            return explicitTable.trim();
         }
 
         // Default: Convert object name from camelCase to snake_case

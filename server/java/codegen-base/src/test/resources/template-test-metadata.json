@@ -5,9 +5,13 @@
         "object.entity": {
           "name": "User",
           "package": "example",
-          "@dbTable": "users",
           "@description": "User entity for template testing",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "users"
+              }
+            },
             {
               "field.long": {
                 "name": "id",

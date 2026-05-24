@@ -6,9 +6,14 @@
         "object": {
           "name": "Product",
           "subType": "pojo",
-          "@dbTable": "products",
           "@hasAuditing": true,
           "children": [
+            {
+              "source": {
+                "subType": "rdb",
+                "@table": "products"
+              }
+            },
             {
               "field": {
                 "name": "productId",

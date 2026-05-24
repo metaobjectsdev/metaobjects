@@ -116,10 +116,9 @@ public final class ExpectedSchemaBuilder {
     }
 
     private void harvestRenameHints(MetaObject mc, RenameHints hints) {
-        // Determine the table name for this object
-        String table = mc.hasMetaAttr(CoreDBMetaDataProvider.DB_TABLE)
-            ? mc.getMetaAttr(CoreDBMetaDataProvider.DB_TABLE).getValueAsString()
-            : null;
+        // Determine the table name for this object (source-v2 ADR-0007:
+        // primary writable source.rdb @table; nothing if no such source).
+        String table = mc.getPrimaryRdbTableName();
         if (table == null) return;
 
         // Table-level rename

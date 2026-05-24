@@ -6,8 +6,12 @@
         "object.value": {
           "name": "Widget",
           "@object": "com.metaobjects.object.value.ValueObject",
-          "@dbTable": "WIDGET",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "WIDGET"
+              }
+            },
             {
               "field.long": {
                 "name": "id",

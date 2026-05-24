@@ -5,8 +5,12 @@
       {
         "object.entity": {
           "name": "User",
-          "@dbTable": "users",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "users"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
@@ -70,8 +74,12 @@
       {
         "object.entity": {
           "name": "Product",
-          "@dbTable": "products",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "products"
+              }
+            },
             {
               "field.long": {
                 "name": "id",

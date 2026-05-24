@@ -6,8 +6,12 @@
         "object.value": {
           "name": "Program",
           "@object": "com.metaobjects.object.value.ValueObject",
-          "@dbTable": "program",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "program"
+              }
+            },
             {
               "field.long": {
                 "name": "id",

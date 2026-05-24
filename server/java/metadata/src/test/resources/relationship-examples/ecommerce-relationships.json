@@ -5,8 +5,12 @@
       {
         "object.entity": {
           "name": "User",
-          "@dbTable": "users",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "users"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
@@ -68,8 +72,12 @@
       {
         "object.entity": {
           "name": "UserProfile",
-          "@dbTable": "user_profiles",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "user_profiles"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
@@ -103,8 +111,12 @@
       {
         "object.entity": {
           "name": "Address",
-          "@dbTable": "addresses",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "addresses"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
@@ -155,8 +167,12 @@
       {
         "object.entity": {
           "name": "Order",
-          "@dbTable": "orders",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "orders"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
@@ -224,8 +240,12 @@
       {
         "object.entity": {
           "name": "OrderItem",
-          "@dbTable": "order_items",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "order_items"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
@@ -268,8 +288,12 @@
       {
         "object.entity": {
           "name": "Product",
-          "@dbTable": "products",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "products"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
@@ -321,8 +345,12 @@
       {
         "object.entity": {
           "name": "Category",
-          "@dbTable": "categories",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "categories"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
