@@ -13,7 +13,7 @@ public sealed class GenCommandTests : IDisposable
     private const string Metadata = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Subscriber", "children": [
-        { "source.dbTable": { "@name": "subscribers" } },
+        { "source.rdb": { "@table": "subscribers" } },
         { "field.long":   { "name": "id" } },
         { "field.string": { "name": "email", "@required": true } },
         { "identity.primary": { "@fields": "id" } }

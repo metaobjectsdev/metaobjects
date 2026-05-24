@@ -59,4 +59,32 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
             return f is IReadOnlyList<string> list ? list : [];
         }
     }
+
+    /// <summary>
+    /// The effective FK referential action on parent delete — the explicit
+    /// <c>@onDelete</c>, else the per-subtype default
+    /// (<see cref="ON_DELETE_DEFAULT_BY_SUBTYPE"/>).
+    /// </summary>
+    public string EffectiveOnDelete
+    {
+        get
+        {
+            if (OwnAttr(RELATIONSHIP_ATTR_ON_DELETE) is string s && s != "") return s;
+            return ON_DELETE_DEFAULT_BY_SUBTYPE.TryGetValue(SubType, out var def)
+                ? def : ACTION_RESTRICT;
+        }
+    }
+
+    /// <summary>
+    /// The effective FK referential action on parent key update — the explicit
+    /// <c>@onUpdate</c>, else <see cref="ON_UPDATE_DEFAULT"/>.
+    /// </summary>
+    public string EffectiveOnUpdate
+    {
+        get
+        {
+            if (OwnAttr(RELATIONSHIP_ATTR_ON_UPDATE) is string s && s != "") return s;
+            return ON_UPDATE_DEFAULT;
+        }
+    }
 }

@@ -42,7 +42,7 @@ public class DbContextCompileTests
         { "field.string": { "name": "city",   "@maxLength": 80 } }
       ]}},
       { "object.entity": { "name": "Order", "children": [
-        { "source.dbTable": { "@name": "orders" } },
+        { "source.rdb": { "@table": "orders" } },
         { "field.long":   { "name": "id" } },
         { "field.enum":   { "name": "status",   "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"] } },
         { "field.enum":   { "name": "statuses", "isArray": true, "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"] } },
@@ -52,7 +52,7 @@ public class DbContextCompileTests
         { "identity.primary": { "@fields": "id" } }
       ]}},
       { "object.entity": { "name": "ProgramSummary", "children": [
-        { "source.dbView": { "@name": "v_program_summary" } },
+        { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
         { "field.long": { "name": "id" } },
         { "field.int":  { "name": "weekCount" } },
         { "identity.primary": { "@fields": "id" } }

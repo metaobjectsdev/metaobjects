@@ -18,13 +18,13 @@ public class ProjectionTests
     private const string Model = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "ProgramSummary", "children": [
-        { "source.dbView": { "@name": "v_program_summary" } },
+        { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
         { "field.long": { "name": "id" } },
         { "field.int":  { "name": "weekCount" } },
         { "identity.primary": { "@fields": "id" } }
       ]}},
       { "object.value": { "name": "TagCount", "children": [
-        { "source.dbView": { "@name": "v_tag_count" } },
+        { "source.rdb": { "@kind": "view", "@table": "v_tag_count" } },
         { "field.string": { "name": "tag" } },
         { "field.int":    { "name": "count" } }
       ]}}

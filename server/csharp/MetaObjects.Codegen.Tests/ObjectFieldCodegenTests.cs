@@ -20,7 +20,7 @@ public class ObjectFieldCodegenTests
         { "field.string": { "name": "city", "@maxLength": 80 } }
       ]}},
       { "object.entity": { "name": "Customer", "children": [
-        { "source.dbTable": { "@name": "customers" } },
+        { "source.rdb": { "@table": "customers" } },
         { "field.long":   { "name": "id" } },
         { "field.string": { "name": "name", "@required": true } },
         { "field.object": { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened" } },

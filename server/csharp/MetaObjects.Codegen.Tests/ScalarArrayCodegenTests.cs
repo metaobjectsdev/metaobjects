@@ -31,7 +31,7 @@ public class ScalarArrayCodegenTests
     private const string ScalarArrayModel = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Product", "children": [
-        { "source.dbTable": { "@name": "products" } },
+        { "source.rdb": { "@table": "products" } },
         { "field.long":   { "name": "id" } },
         { "field.string": { "name": "tags", "isArray": true } },
         { "identity.primary": { "@fields": "id" } }
@@ -43,7 +43,7 @@ public class ScalarArrayCodegenTests
     private const string EnumArrayModel = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Order", "children": [
-        { "source.dbTable": { "@name": "orders" } },
+        { "source.rdb": { "@table": "orders" } },
         { "field.long": { "name": "id" } },
         { "field.enum": { "name": "statuses", "isArray": true, "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"] } },
         { "identity.primary": { "@fields": "id" } }
@@ -56,7 +56,7 @@ public class ScalarArrayCodegenTests
     private const string MixedEnumModel = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Order", "children": [
-        { "source.dbTable": { "@name": "orders" } },
+        { "source.rdb": { "@table": "orders" } },
         { "field.long": { "name": "id" } },
         { "field.enum": { "name": "status",   "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"] } },
         { "field.enum": { "name": "statuses", "isArray": true, "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"] } },

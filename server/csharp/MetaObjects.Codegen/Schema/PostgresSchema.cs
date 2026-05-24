@@ -26,6 +26,7 @@
 // in the csharp-migration-pipeline-status memory.
 
 using System.Text;
+using MetaObjects.Codegen.Migrate;
 using MetaObjects.Core.Documentation;
 using MetaObjects.Meta;
 using static MetaObjects.Core.Field.FieldConstants;
@@ -164,7 +165,9 @@ public static class PostgresSchema
     // A table-level FOREIGN KEY constraint for an enforced reference identity.
     // FK columns keep the reference's declared @fields order; target columns are
     // the explicit dotted @references fields (multi-col) or the target's primary
-    // identity (single-col / bare form), falling back to "id".
+    // identity (single-col / bare form), falling back to "id". Referential
+    // actions (ON DELETE / ON UPDATE) come from the matching relationship's
+    // effective @onDelete / @onUpdate (source-v2 ADR-0007).
     private static string? ForeignKeyClause(MetaObject entity, MetaReferenceIdentity fk, MetaRoot root)
     {
         if (fk.TargetEntity is not { } targetName || fk.Fields.Count == 0) return null;
@@ -178,8 +181,33 @@ public static class PostgresSchema
 
         var name = $"{CSharpNaming.Table(entity)}_{fkCols[0]}_fk";
         var refTable = CSharpNaming.Table(target);
-        return $"  CONSTRAINT {name} FOREIGN KEY ({string.Join(", ", fkCols)}) " +
-               $"REFERENCES {refTable} ({string.Join(", ", refCols)})";
+
+        // Resolve referential actions from the matching relationship (if any).
+        var actions = ReferentialActions.Resolve(entity, CSharpNaming.StripPkg(targetName));
+
+        // Set-null on a NOT NULL FK column is a contradiction — fail loudly so the
+        // user can tighten one side or the other. Mirrors Java SetNullNotNullableError.
+        if (actions.OnDelete is FkAction.SetNull)
+        {
+            foreach (var jsField in fk.Fields)
+            {
+                var field = entity.FindField(jsField);
+                if (field is not null && CSharpNaming.IsRequired(entity, field))
+                {
+                    throw new InvalidOperationException(
+                        $"FK {CSharpNaming.Table(entity)}.{ResolveColumn(entity, jsField)} → " +
+                        $"{refTable}: @onDelete \"set-null\" requires the FK column to be nullable, " +
+                        $"but {entity.Name}.{jsField} is NOT NULL. Either make the field nullable " +
+                        $"or change the relationship's @onDelete.");
+                }
+            }
+        }
+
+        var clause = $"  CONSTRAINT {name} FOREIGN KEY ({string.Join(", ", fkCols)}) " +
+                     $"REFERENCES {refTable} ({string.Join(", ", refCols)})";
+        if (actions.OnDelete is { } d) clause += $" ON DELETE {ReferentialActions.FkActionSql(d)}";
+        if (actions.OnUpdate is { } u) clause += $" ON UPDATE {ReferentialActions.FkActionSql(u)}";
+        return clause;
     }
 
     // The single target column a reference resolves to: the lone explicit @references

@@ -13,7 +13,7 @@ public class EntityGeneratorTests
     private const string Model = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Subscriber", "children": [
-        { "source.dbTable": { "@name": "subscribers" } },
+        { "source.rdb": { "@table": "subscribers" } },
         { "field.long":    { "name": "id" } },
         { "field.string":  { "name": "email", "@required": true, "@maxLength": 255 } },
         { "field.boolean": { "name": "subscribed" } },
@@ -113,7 +113,7 @@ public class EntityGeneratorTests
     private const string EnumModel = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Order", "children": [
-        { "source.dbTable": { "@name": "orders" } },
+        { "source.rdb": { "@table": "orders" } },
         { "field.long":    { "name": "id" } },
         { "field.enum":    { "name": "status", "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"] } },
         { "identity.primary": { "@fields": "id" } }
@@ -155,7 +155,7 @@ public class EntityGeneratorTests
         const string model = """
         { "metadata.root": { "package": "acme", "children": [
           { "object.entity": { "name": "Order", "children": [
-            { "source.dbTable": { "@name": "orders" } },
+            { "source.rdb": { "@table": "orders" } },
             { "field.enum": { "name": "kind", "@values": ["A", "B"] } },
             { "identity.primary": { "@fields": "kind" } }
           ]}}
@@ -176,7 +176,7 @@ public class EntityGeneratorTests
         { "metadata.root": { "package": "acme", "children": [
           { "field.enum": { "name": "Status", "abstract": true, "@values": ["DRAFT", "PUBLISHED"] } },
           { "object.entity": { "name": "Order", "children": [
-            { "source.dbTable": { "@name": "orders" } },
+            { "source.rdb": { "@table": "orders" } },
             { "field.long": { "name": "id" } },
             { "field.enum": { "name": "status", "extends": "Status" } },
             { "identity.primary": { "@fields": "id" } }
@@ -242,7 +242,7 @@ public class EntityGeneratorTests
         { "metadata.root": { "package": "acme", "children": [
           { "field.enum": { "name": "OrderStatus", "abstract": true, "@values": ["DRAFT", "PUBLISHED"] } },
           { "object.entity": { "name": "Order", "children": [
-            { "source.dbTable": { "@name": "orders" } },
+            { "source.rdb": { "@table": "orders" } },
             { "field.long": { "name": "id" } },
             { "field.enum": { "name": "currentStatus",  "extends": "OrderStatus" } },
             { "field.enum": { "name": "previousStatus", "extends": "OrderStatus" } },

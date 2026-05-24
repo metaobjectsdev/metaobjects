@@ -26,7 +26,7 @@ public class PayloadCodegenTests
           { "object.value": { "name": "AuthorBrief", "children": [
             { "field.string": { "name": "displayName" } },
             { "field.int": { "name": "postCount" } },
-            { "field.object": { "name": "posts", "@isArray": true, "@objectRef": "PostBrief",
+            { "field.object": { "name": "posts", "isArray": true, "@objectRef": "PostBrief",
               "children": [ { "origin.collection": { "@via": "Author.posts" } } ] } }
           ]}},
           { "template.prompt": { "name": "contentStrategyPrompt",

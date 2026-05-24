@@ -18,7 +18,7 @@ public class PostgresSchemaTests
     private const string Model = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Week", "children": [
-        { "source.dbTable": { "@name": "weeks" } },
+        { "source.rdb": { "@table": "weeks" } },
         { "field.long": { "name": "id" } },
         { "field.long": { "name": "programId" } },
         { "identity.primary": { "@fields": "id" } },
@@ -26,7 +26,7 @@ public class PostgresSchemaTests
         { "relationship.association": { "name": "program", "@objectRef": "Program", "@cardinality": "one" } }
       ]}},
       { "object.entity": { "name": "Tag", "children": [
-        { "source.dbTable": { "@name": "tags" } },
+        { "source.rdb": { "@table": "tags" } },
         { "field.long": { "name": "id" } },
         { "field.long": { "name": "programId" } },
         { "identity.primary": { "@fields": "id" } },
@@ -37,7 +37,7 @@ public class PostgresSchemaTests
         { "field.string": { "name": "city", "@maxLength": 80 } }
       ]}},
       { "object.entity": { "name": "Program", "children": [
-        { "source.dbTable": { "@name": "programs" } },
+        { "source.rdb": { "@table": "programs" } },
         { "field.long":   { "name": "id" } },
         { "field.string": { "name": "title", "@required": true, "@maxLength": 200 } },
         { "field.object": { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened" } },
@@ -47,25 +47,25 @@ public class PostgresSchemaTests
         { "identity.secondary": { "name": "byTitle", "@fields": "title", "@unique": true } }
       ]}},
       { "object.value": { "name": "ProgramView", "children": [
-        { "source.dbView": { "@name": "v_program" } },
+        { "source.rdb": { "@kind": "view", "@table": "v_program" } },
         { "field.long":   { "name": "id",    "children": [ { "origin.passthrough": { "@from": "Program.id" } } ] } },
         { "field.string": { "name": "title", "children": [ { "origin.passthrough": { "@from": "Program.title" } } ] } }
       ]}},
       { "object.value": { "name": "ProgramStat", "children": [
-        { "source.dbView": { "@name": "v_program_stat" } },
+        { "source.rdb": { "@kind": "view", "@table": "v_program_stat" } },
         { "field.int": { "name": "weekCount", "children": [
           { "origin.aggregate": { "@agg": "count", "@of": "Week.id", "@via": "Program.weeks" } }
         ]}}
       ]}},
       { "object.value": { "name": "WeekDetail", "children": [
-        { "source.dbView": { "@name": "v_week_detail" } },
+        { "source.rdb": { "@kind": "view", "@table": "v_week_detail" } },
         { "field.long":   { "name": "id", "children": [ { "origin.passthrough": { "@from": "Week.id" } } ] } },
         { "field.string": { "name": "programTitle", "children": [
           { "origin.passthrough": { "@from": "Program.title", "@via": "Week.program" } }
         ]}}
       ]}},
       { "object.value": { "name": "ProgramWithWeeks", "children": [
-        { "source.dbView": { "@name": "v_program_weeks" } },
+        { "source.rdb": { "@kind": "view", "@table": "v_program_weeks" } },
         { "field.long":   { "name": "id", "children": [ { "origin.passthrough": { "@from": "Program.id" } } ] } },
         { "field.object": { "name": "weeks", "@objectRef": "Week", "children": [
           { "origin.collection": { "@via": "Program.weeks" } }
@@ -122,7 +122,7 @@ public class PostgresSchemaTests
         const string m = """
         { "metadata.root": { "package": "acme", "children": [
           { "object.entity": { "name": "Link", "children": [
-            { "source.dbTable": { "@name": "links" } },
+            { "source.rdb": { "@table": "links" } },
             { "field.long": { "name": "a" } },
             { "field.long": { "name": "b" } },
             { "identity.primary": { "@fields": ["b", "a"] } },
@@ -219,7 +219,7 @@ public class PostgresSchemaTests
           { "object.entity": { "name": "Item",
             "@description": "A catalog item.",
             "children": [
-              { "source.dbTable": { "@name": "items" } },
+              { "source.rdb": { "@table": "items" } },
               { "field.long": { "name": "id" } },
               { "identity.primary": { "@fields": "id" } }
             ]
@@ -238,7 +238,7 @@ public class PostgresSchemaTests
         const string m = """
         { "metadata.root": { "package": "acme", "children": [
           { "object.entity": { "name": "Item", "children": [
-              { "source.dbTable": { "@name": "items" } },
+              { "source.rdb": { "@table": "items" } },
               { "field.long": { "name": "id" } },
               { "field.string": { "name": "sku", "@description": "Stock keeping unit." } },
               { "identity.primary": { "@fields": "id" } }
@@ -258,7 +258,7 @@ public class PostgresSchemaTests
         const string m = """
         { "metadata.root": { "package": "acme", "children": [
           { "object.entity": { "name": "Item", "children": [
-              { "source.dbTable": { "@name": "items" } },
+              { "source.rdb": { "@table": "items" } },
               { "field.long": { "name": "id" } },
               { "field.string": { "name": "label", "@description": "It's a label." } },
               { "identity.primary": { "@fields": "id" } }
@@ -278,7 +278,7 @@ public class PostgresSchemaTests
         const string m = """
         { "metadata.root": { "package": "acme", "children": [
           { "object.entity": { "name": "Item", "children": [
-              { "source.dbTable": { "@name": "items" } },
+              { "source.rdb": { "@table": "items" } },
               { "field.long": { "name": "id" } },
               { "identity.primary": { "@fields": "id" } }
             ]
@@ -300,7 +300,7 @@ public class PostgresSchemaTests
             "@description": "Public description.",
             "@notes": "__DDL_INTERNAL__",
             "children": [
-              { "source.dbTable": { "@name": "items" } },
+              { "source.rdb": { "@table": "items" } },
               { "field.long": { "name": "id" } },
               { "identity.primary": { "@fields": "id" } }
             ]
