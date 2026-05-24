@@ -15,6 +15,7 @@ using MetaObjects.Core.Validator;
 using MetaObjects.Core.Identity;
 using MetaObjects.Core.Relationship;
 using MetaObjects.Persistence.Origin;
+using MetaObjects.Persistence.Source;
 using MetaObjects.Presentation.View;
 using MetaObjects.Presentation.Layout;
 using MetaObjects.Template;
@@ -322,9 +323,15 @@ public static class CoreTypes
                     layoutAttrs));
         }
 
-        // source — 3 subtypes (base + dbTable + dbView); only attr children
+        // source — 2 subtypes (base + rdb); only attr children. ADR-0007: source.rdb
+        // declares @table/@kind/@role/@schema; read-only-ness derives from @kind.
         foreach (string subType in SOURCE_SUBTYPES)
         {
+            // Attr schemas are declared on the concrete rdb subtype (mirrors TS/Java).
+            List<AttrSchema> sourceAttrs = subType == SOURCE_SUBTYPE_RDB
+                ? SourceSchema.RdbSourceAttrs.ToList()
+                : [];
+
             registry.Register(
                 Def(
                     TYPE_SOURCE,
@@ -332,7 +339,7 @@ public static class CoreTypes
                     $"Source ({subType})",
                     [Wildcard(TYPE_ATTR)],
                     (tid, n) => new MetaSource(tid, n),
-                    []));
+                    sourceAttrs));
         }
 
         // origin — 3 subtypes (base + passthrough + aggregate); dispatch to subtype class

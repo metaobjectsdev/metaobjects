@@ -11,36 +11,76 @@ namespace MetaObjects.Meta;
 public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
 {
     /// <summary>
-    /// The SQL table name from the first <c>source[dbTable]</c> child,
-    /// or <see langword="null"/> when none is declared.
-    /// Uses effective <see cref="MetaData.Children"/> (not <see cref="MetaData.OwnChildren"/>)
-    /// because a <c>source</c> node can be inherited via the super chain — mirrors TS.
+    /// All effective <c>source.*</c> children (own + inherited via extends).
+    /// Mirrors Java's <c>getSources(true)</c>; ordering preserves declaration order
+    /// (own-first, then super chain).
+    /// </summary>
+    public IReadOnlyList<MetaSource> Sources()
+    {
+        return Cached("sources", () =>
+            (IReadOnlyList<MetaSource>)Children()
+                .OfType<MetaSource>()
+                .ToArray());
+    }
+
+    /// <summary>Own <c>source.*</c> children only — no inheritance walk.</summary>
+    public IReadOnlyList<MetaSource> OwnSources()
+    {
+        return Cached("ownSources", () =>
+            (IReadOnlyList<MetaSource>)OwnChildren()
+                .OfType<MetaSource>()
+                .ToArray());
+    }
+
+    /// <summary>
+    /// The primary writable <c>source.rdb</c> — the first effective source whose
+    /// role is "primary" and kind is writable (table). Walks the extends chain so
+    /// a projection (which declares its own read-only source) still inherits the
+    /// parent entity's writable source. The ValidationPasses one-primary rule
+    /// guarantees at most one primary per object (own-only).
+    /// </summary>
+    public MetaSource? FindPrimaryWritableSource()
+    {
+        return Cached("primaryWritableSource", () =>
+            Sources().FirstOrDefault(s => s.Role == SOURCE_ROLE_PRIMARY && s.IsWritable()));
+    }
+
+    /// <summary>
+    /// The primary read-only <c>source.rdb</c> — the first OWN source whose role
+    /// is "primary" and kind is read-only (view/materializedView/storedProc/
+    /// tableFunction). Own-only: a projection declares its own read-only source;
+    /// the parent entity's writable source is reached via
+    /// <see cref="FindPrimaryWritableSource"/>.
+    /// </summary>
+    public MetaSource? FindPrimaryReadOnlySource()
+    {
+        return Cached("primaryReadOnlySource", () =>
+            OwnSources().FirstOrDefault(s => s.Role == SOURCE_ROLE_PRIMARY && s.IsReadOnly()));
+    }
+
+    /// <summary>
+    /// The physical <c>@table</c> name from the primary writable <c>source.rdb</c>
+    /// (source-v2 ADR-0007). Walks the extends chain. Replaces the legacy object-
+    /// level <c>@dbTable</c> attr (dropped in source-v2). Returns null when the
+    /// object has no primary writable source.
     /// </summary>
     public string? DbTable => Cached("dbTable", () =>
-    {
-        var source = Children().FirstOrDefault(
-            c => c.Type == TYPE_SOURCE && c.SubType == SOURCE_SUBTYPE_DB_TABLE);
-        var n = source?.OwnAttr(SOURCE_DB_TABLE_ATTR_NAME);
-        return n is string s && s != "" ? s : null;
-    });
+        FindPrimaryWritableSource()?.TableName);
 
     /// <summary>
-    /// The SQL view name from the first <c>source[dbView]</c> child, or null when
-    /// none is declared. Uses effective <see cref="MetaData.Children"/> (a source
-    /// node can be inherited via the super chain).
+    /// The physical <c>@table</c> name from the primary read-only <c>source.rdb</c>
+    /// (source-v2 ADR-0007). Own-only — used for projections. Replaces the legacy
+    /// object-level <c>@dbView</c> attr (dropped in source-v2). Returns null when
+    /// the object has no primary read-only source.
     /// </summary>
     public string? DbView => Cached("dbView", () =>
-    {
-        var source = Children().FirstOrDefault(
-            c => c.Type == TYPE_SOURCE && c.SubType == SOURCE_SUBTYPE_DB_VIEW);
-        var n = source?.OwnAttr(SOURCE_DB_VIEW_ATTR_NAME);
-        return n is string s && s != "" ? s : null;
-    });
+        FindPrimaryReadOnlySource()?.TableName);
 
     /// <summary>
-    /// True when this object is a read-only projection: it has a <c>dbView</c>
-    /// source and no <c>dbTable</c> (queries target the view; there is nothing to
-    /// write). Write-through objects (both dbTable + dbView) are not read-only.
+    /// True when this object is a read-only projection: it has a read-only primary
+    /// source and no writable primary source (queries target the view; nothing to
+    /// write). Write-through objects (a read-only and a writable primary) are NOT
+    /// read-only projections — they're CQRS write-through.
     /// </summary>
     public bool IsReadOnlyProjection() => DbView is not null && DbTable is null;
 
