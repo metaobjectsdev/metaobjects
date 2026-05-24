@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ConfigSchema, type Config, DEFAULT_METAOBJECTS_DIR } from "@metaobjectsdev/sdk";
 import type { GenFlags, MigrateFlags } from "./args.js";
+import type { Dialect } from "./kysely.js";
 
 // ---------------------------------------------------------------------------
 // Built-in defaults
@@ -10,7 +11,7 @@ import type { GenFlags, MigrateFlags } from "./args.js";
 const MIGRATE_DEFAULTS = {
   outDir: "./.metaobjects/migrations",
   databaseUrl: undefined as string | undefined,
-  dialect: undefined as "sqlite" | "postgres" | undefined,
+  dialect: undefined as Dialect | undefined,
   onAmbiguous: "abort" as const,
   allow: [] as string[],
 };
@@ -27,7 +28,7 @@ export interface ResolvedGenConfig {
 export interface ResolvedMigrateConfig {
   outDir: string;
   databaseUrl: string | undefined;
-  dialect: "sqlite" | "postgres" | undefined;
+  dialect: Dialect | undefined;
   onAmbiguous: "abort" | "rename" | "drop-add";
   allow: string[];
   slug: string | undefined;

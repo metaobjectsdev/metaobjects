@@ -56,6 +56,12 @@ export async function buildKyselyFromUrl(
   const dialect = dialectOverride ?? inferDialect(url);
   const displayUrl = redactUrl(url);
 
+  if (dialect === "d1") {
+    throw new Error(
+      `dialect 'd1' does not use a URL connection; use meta migrate --d1 <binding> (Task 9)`,
+    );
+  }
+
   if (dialect === "sqlite") {
     type LibsqlDialectCtor = new (opts: { url: string }) => ConstructorParameters<typeof Kysely<Record<string, unknown>>>[0]["dialect"];
     let LibsqlDialect: LibsqlDialectCtor;
