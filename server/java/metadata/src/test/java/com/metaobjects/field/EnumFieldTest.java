@@ -1,21 +1,20 @@
 package com.metaobjects.field;
 
+import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.io.json.CanonicalJsonSerializer;
+import com.metaobjects.loader.InMemoryMetaDataSource;
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.parser.json.CanonicalJsonParser;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import com.metaobjects.util.ErrorMessageConstants;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import java.io.ByteArrayInputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 
@@ -54,11 +53,25 @@ public class EnumFieldTest extends SharedRegistryTestBase {
     }
 
     // -----------------------------------------------------------------------
-    // Helper
+    // Helpers
     // -----------------------------------------------------------------------
 
     private MetaDataLoader newTestLoader() {
         return createTestLoader("EnumFieldTest", Collections.emptyList());
+    }
+
+    /**
+     * Load the given canonical JSON string through the full loader pipeline
+     * (parse + {@code ValidationPhase.run()}). Returns the loader on success;
+     * propagates any {@link MetaDataException} thrown during parse or validation.
+     *
+     * <p>Use this helper in tests that must assert that bad metadata raises an
+     * error during the full load lifecycle — not just during parse.</p>
+     */
+    private MetaDataLoader loadThrough(String canonical, String id) {
+        MetaDataLoader loader = newTestLoader();
+        loader.load(List.of(new InMemoryMetaDataSource(canonical, id)));
+        return loader;
     }
 
     // -----------------------------------------------------------------------
@@ -81,9 +94,7 @@ public class EnumFieldTest extends SharedRegistryTestBase {
             "  ] } }" +
             "] } }";
 
-        MetaDataLoader loader = newTestLoader();
-        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "enum-test.json");
-        parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+        MetaDataLoader loader = loadThrough(canonical, "enum-test.json");
 
         MetaData order = loader.getRoot().getChildOfType("object", "acme::Order");
         assertNotNull("Order entity should exist", order);
@@ -150,9 +161,7 @@ public class EnumFieldTest extends SharedRegistryTestBase {
             "  ] } }" +
             "] } }";
 
-        MetaDataLoader loader = newTestLoader();
-        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "enum-extends-test.json");
-        parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+        MetaDataLoader loader = loadThrough(canonical, "enum-extends-test.json");
 
         // Verify the abstract Status field exists with @values
         MetaData statusAbstract = loader.getRoot().getChildOfType("field", "acme::Status");
@@ -399,15 +408,15 @@ public class EnumFieldTest extends SharedRegistryTestBase {
     @Test
     public void fullLoad_missingValues_raisesError() {
         String canonical = enumEntityCanonical(null);
-        MetaDataLoader loader = newTestLoader();
-        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "enum-missing-values-test.json");
         try {
-            parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+            loadThrough(canonical, "enum-missing-values-test.json");
             fail("Expected MetaDataException for missing @values (ERR_MISSING_REQUIRED_ATTR)");
         } catch (MetaDataException e) {
             assertTrue(
                 "Exception message must contain ERR_MISSING_REQUIRED_ATTR: " + e.getMessage(),
                 e.getMessage().contains(ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR));
+            assertEquals("ErrorCode must be ERR_MISSING_REQUIRED_ATTR",
+                ErrorCode.ERR_MISSING_REQUIRED_ATTR, e.getCode().orElseThrow());
         }
     }
 
@@ -419,15 +428,15 @@ public class EnumFieldTest extends SharedRegistryTestBase {
     @Test
     public void fullLoad_emptyValues_raisesError() {
         String canonical = enumEntityCanonical("[]");
-        MetaDataLoader loader = newTestLoader();
-        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "enum-empty-values-test.json");
         try {
-            parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+            loadThrough(canonical, "enum-empty-values-test.json");
             fail("Expected MetaDataException for empty @values (ERR_BAD_ATTR_VALUE)");
         } catch (MetaDataException e) {
             assertTrue(
                 "Exception message must contain ERR_BAD_ATTR_VALUE: " + e.getMessage(),
                 e.getMessage().contains(ErrorMessageConstants.ERR_BAD_ATTR_VALUE));
+            assertEquals("ErrorCode must be ERR_BAD_ATTR_VALUE",
+                ErrorCode.ERR_BAD_ATTR_VALUE, e.getCode().orElseThrow());
         }
     }
 
@@ -439,15 +448,15 @@ public class EnumFieldTest extends SharedRegistryTestBase {
     @Test
     public void fullLoad_nonIdentifierMember_raisesError() {
         String canonical = enumEntityCanonical("[\"VALID\", \"in-progress\"]");
-        MetaDataLoader loader = newTestLoader();
-        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "enum-bad-member-test.json");
         try {
-            parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+            loadThrough(canonical, "enum-bad-member-test.json");
             fail("Expected MetaDataException for non-identifier @values member (ERR_BAD_ATTR_VALUE)");
         } catch (MetaDataException e) {
             assertTrue(
                 "Exception message must contain ERR_BAD_ATTR_VALUE: " + e.getMessage(),
                 e.getMessage().contains(ErrorMessageConstants.ERR_BAD_ATTR_VALUE));
+            assertEquals("ErrorCode must be ERR_BAD_ATTR_VALUE",
+                ErrorCode.ERR_BAD_ATTR_VALUE, e.getCode().orElseThrow());
         }
     }
 
@@ -459,15 +468,15 @@ public class EnumFieldTest extends SharedRegistryTestBase {
     @Test
     public void fullLoad_duplicateMembers_raisesError() {
         String canonical = enumEntityCanonical("[\"A\", \"A\"]");
-        MetaDataLoader loader = newTestLoader();
-        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "enum-duplicate-members-test.json");
         try {
-            parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+            loadThrough(canonical, "enum-duplicate-members-test.json");
             fail("Expected MetaDataException for duplicate @values members (ERR_BAD_ATTR_VALUE)");
         } catch (MetaDataException e) {
             assertTrue(
                 "Exception message must contain ERR_BAD_ATTR_VALUE: " + e.getMessage(),
                 e.getMessage().contains(ErrorMessageConstants.ERR_BAD_ATTR_VALUE));
+            assertEquals("ErrorCode must be ERR_BAD_ATTR_VALUE",
+                ErrorCode.ERR_BAD_ATTR_VALUE, e.getCode().orElseThrow());
         }
     }
 
@@ -483,9 +492,7 @@ public class EnumFieldTest extends SharedRegistryTestBase {
     @Test
     public void fullLoad_validValues_produces3DistinctElements() {
         String canonical = enumEntityCanonical("[\"DRAFT\", \"PUBLISHED\", \"ARCHIVED\"]");
-        MetaDataLoader loader = newTestLoader();
-        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "enum-valid-values-test.json");
-        parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+        MetaDataLoader loader = loadThrough(canonical, "enum-valid-values-test.json");
 
         MetaData order = loader.getRoot().getChildOfType("object", "acme::Order");
         assertNotNull("Order entity must be present", order);
@@ -534,15 +541,15 @@ public class EnumFieldTest extends SharedRegistryTestBase {
             "      \"@values\": [\"VALID\", \"in-progress\"] } }" +
             "] } }";
 
-        MetaDataLoader loader = newTestLoader();
-        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "abstract-bad-enum-test.json");
         try {
-            parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+            loadThrough(canonical, "abstract-bad-enum-test.json");
             fail("Expected MetaDataException for abstract field.enum with bad own @values member (ERR_BAD_ATTR_VALUE)");
         } catch (MetaDataException e) {
             assertTrue(
                 "Exception message must contain ERR_BAD_ATTR_VALUE: " + e.getMessage(),
                 e.getMessage().contains(ErrorMessageConstants.ERR_BAD_ATTR_VALUE));
+            assertEquals("ErrorCode must be ERR_BAD_ATTR_VALUE",
+                ErrorCode.ERR_BAD_ATTR_VALUE, e.getCode().orElseThrow());
         }
     }
 
@@ -569,10 +576,8 @@ public class EnumFieldTest extends SharedRegistryTestBase {
             "  ] } }" +
             "] } }";
 
-        MetaDataLoader loader = newTestLoader();
-        CanonicalJsonParser parser = new CanonicalJsonParser(loader, "abstract-extends-clean-test.json");
         // Must not throw — concrete field has no own @values but has a super reference.
-        parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+        MetaDataLoader loader = loadThrough(canonical, "abstract-extends-clean-test.json");
 
         // Verify the abstract Status loaded correctly.
         MetaData statusAbstract = loader.getRoot().getChildOfType("field", "acme::Status");

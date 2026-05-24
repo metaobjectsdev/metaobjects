@@ -820,6 +820,11 @@ public class MetaDataLoader implements LoaderConfigurable {
             parser.loadFromStream(is);
         }
 
+        // Run post-load validation passes after all sources in this batch are parsed.
+        // Fires both when called from init() (via loadSourceURIsIfPresent) and when
+        // called directly by tests or the conformance runner.
+        ValidationPhase.run(root);
+
         return this;
     }
 

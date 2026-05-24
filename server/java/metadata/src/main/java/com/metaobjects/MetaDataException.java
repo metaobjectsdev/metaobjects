@@ -42,40 +42,61 @@ public class MetaDataException extends RuntimeException {
     private final String threadName;
 
     /**
+     * Structured error code — {@code null} when the exception was constructed via one of
+     * the legacy message-only constructors (backward-compatible callers that embed the code
+     * string in the message).  Migration of those sites is incremental; only the enum
+     * validation path sets this in the first phase.
+     */
+    private final ErrorCode code;
+
+    /**
      * Creates a MetaDataException with a simple message.
      * Backward compatible constructor.
-     * 
+     *
      * @param msg the error message
      */
     public MetaDataException(String msg) {
-        this(msg, null, null, null, Collections.emptyMap());
+        this(msg, (ErrorCode) null);
+    }
+
+    /**
+     * Creates a MetaDataException with a message and a structured error code.
+     *
+     * <p>Use this constructor in new code that needs machine-readable error codes.
+     * The {@code code} is accessible via {@link #getCode()}.</p>
+     *
+     * @param msg  the error message (may still embed the code string for backward compat)
+     * @param code the structured {@link ErrorCode}; {@code null} if not applicable
+     */
+    public MetaDataException(String msg, ErrorCode code) {
+        this(msg, null, null, null, Collections.emptyMap(), code);
     }
 
     /**
      * Creates a MetaDataException with a message and cause.
      * Backward compatible constructor.
-     * 
+     *
      * @param msg the error message
      * @param cause the underlying cause
      */
     public MetaDataException(String msg, Throwable cause) {
-        this(msg, null, null, cause, Collections.emptyMap());
+        this(msg, null, null, cause, Collections.emptyMap(), null);
     }
 
     /**
      * Creates a MetaDataException with enhanced context information.
-     * 
+     *
      * @param message the error message
      * @param source the MetaData object where the error occurred (may be null)
      * @param operation the operation being performed when the error occurred (may be null)
      */
     public MetaDataException(String message, MetaData source, String operation) {
-        this(message, source, operation, null, Collections.emptyMap());
+        this(message, source, operation, null, Collections.emptyMap(), null);
     }
 
     /**
      * Creates a MetaDataException with full context information.
-     * 
+     *
      * @param message the error message
      * @param source the MetaData object where the error occurred (may be null)
      * @param operation the operation being performed when the error occurred (may be null)
@@ -84,8 +105,25 @@ public class MetaDataException extends RuntimeException {
      */
     public MetaDataException(String message, MetaData source, String operation,
                            Throwable cause, Map<String, Object> additionalContext) {
+        this(message, source, operation, cause, additionalContext, null);
+    }
+
+    /**
+     * Full internal constructor — all fields including the structured error code.
+     *
+     * @param message           the error message
+     * @param source            the MetaData object where the error occurred (may be null)
+     * @param operation         the operation being performed when the error occurred (may be null)
+     * @param cause             the underlying cause (may be null)
+     * @param additionalContext additional context information (may be empty)
+     * @param code              the structured {@link ErrorCode}; {@code null} if not applicable
+     */
+    public MetaDataException(String message, MetaData source, String operation,
+                           Throwable cause, Map<String, Object> additionalContext,
+                           ErrorCode code) {
         super(buildEnhancedMessage(message, source, operation, additionalContext), cause);
 
+        this.code = code;
         this.metaDataPath = source != null ? MetaDataPath.buildPath(source) : null;
         this.operation = operation;
         this.context = new LinkedHashMap<>(additionalContext != null ? additionalContext : Collections.emptyMap());
@@ -141,8 +179,21 @@ public class MetaDataException extends RuntimeException {
     }
 
     /**
+     * Returns the structured error code attached to this exception.
+     *
+     * <p>Returns {@code Optional.empty()} for exceptions constructed via the legacy
+     * message-only constructors that embed the code string in the message text.
+     * Migration to structured codes is incremental.</p>
+     *
+     * @return Optional containing the {@link ErrorCode}, or empty if none was set
+     */
+    public Optional<ErrorCode> getCode() {
+        return Optional.ofNullable(code);
+    }
+
+    /**
      * Returns the hierarchical path to the MetaData object where this error occurred.
-     * 
+     *
      * @return Optional containing the MetaDataPath, or empty if no source was provided
      */
     public Optional<MetaDataPath> getMetaDataPath() {
