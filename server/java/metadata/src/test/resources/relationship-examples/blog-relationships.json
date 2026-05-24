@@ -5,19 +5,23 @@
       {
         "object.entity": {
           "name": "Author",
-          "@dbTable": "authors",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "authors"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "author_id",
+                "@column": "author_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "username",
-                "@dbColumn": "username",
+                "@column": "username",
                 "@maxLength": 50,
                 "@required": true
               }
@@ -25,7 +29,7 @@
             {
               "field.string": {
                 "name": "email",
-                "@dbColumn": "email",
+                "@column": "email",
                 "@maxLength": 255,
                 "@required": true
               }
@@ -33,7 +37,7 @@
             {
               "field.string": {
                 "name": "displayName",
-                "@dbColumn": "display_name",
+                "@column": "display_name",
                 "@maxLength": 100
               }
             },
@@ -42,7 +46,7 @@
                 "name": "posts",
                 "@cardinality": "many",
                 "@referencedBy": "postIds",
-                "@targetObject": "BlogPost"
+                "@objectRef": "BlogPost"
               }
             },
             {
@@ -50,7 +54,7 @@
                 "name": "profile",
                 "@cardinality": "one",
                 "@referencedBy": "profileId",
-                "@targetObject": "AuthorProfile"
+                "@objectRef": "AuthorProfile"
               }
             }
           ]
@@ -59,40 +63,44 @@
       {
         "object.entity": {
           "name": "AuthorProfile",
-          "@dbTable": "author_profiles",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "author_profiles"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "profile_id",
+                "@column": "profile_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "bio",
-                "@dbColumn": "bio",
+                "@column": "bio",
                 "@maxLength": 1000
               }
             },
             {
               "field.string": {
                 "name": "avatarUrl",
-                "@dbColumn": "avatar_url",
+                "@column": "avatar_url",
                 "@maxLength": 500
               }
             },
             {
               "field.string": {
                 "name": "website",
-                "@dbColumn": "website",
+                "@column": "website",
                 "@maxLength": 255
               }
             },
             {
               "field.string": {
                 "name": "socialLinks",
-                "@dbColumn": "social_links",
+                "@column": "social_links",
                 "@maxLength": 1000
               }
             }
@@ -102,19 +110,23 @@
       {
         "object.entity": {
           "name": "BlogPost",
-          "@dbTable": "blog_posts",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "blog_posts"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "post_id",
+                "@column": "post_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "title",
-                "@dbColumn": "title",
+                "@column": "title",
                 "@maxLength": 255,
                 "@required": true
               }
@@ -122,7 +134,7 @@
             {
               "field.string": {
                 "name": "slug",
-                "@dbColumn": "slug",
+                "@column": "slug",
                 "@maxLength": 255,
                 "@required": true
               }
@@ -130,27 +142,27 @@
             {
               "field.string": {
                 "name": "content",
-                "@dbColumn": "content",
+                "@column": "content",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "excerpt",
-                "@dbColumn": "excerpt",
+                "@column": "excerpt",
                 "@maxLength": 500
               }
             },
             {
               "field.date": {
                 "name": "publishedDate",
-                "@dbColumn": "published_date"
+                "@column": "published_date"
               }
             },
             {
               "field.string": {
                 "name": "status",
-                "@dbColumn": "status",
+                "@column": "status",
                 "@maxLength": 20,
                 "@required": true
               }
@@ -160,7 +172,7 @@
                 "name": "comments",
                 "@cardinality": "many",
                 "@referencedBy": "commentIds",
-                "@targetObject": "Comment"
+                "@objectRef": "Comment"
               }
             },
             {
@@ -168,7 +180,7 @@
                 "name": "tags",
                 "@cardinality": "many",
                 "@referencedBy": "tagIds",
-                "@targetObject": "Tag"
+                "@objectRef": "Tag"
               }
             },
             {
@@ -176,7 +188,7 @@
                 "name": "category",
                 "@cardinality": "one",
                 "@referencedBy": "categoryId",
-                "@targetObject": "Category"
+                "@objectRef": "Category"
               }
             }
           ]
@@ -185,19 +197,23 @@
       {
         "object.entity": {
           "name": "Comment",
-          "@dbTable": "comments",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "comments"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "comment_id",
+                "@column": "comment_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "content",
-                "@dbColumn": "content",
+                "@column": "content",
                 "@maxLength": 2000,
                 "@required": true
               }
@@ -205,7 +221,7 @@
             {
               "field.string": {
                 "name": "authorName",
-                "@dbColumn": "author_name",
+                "@column": "author_name",
                 "@maxLength": 100,
                 "@required": true
               }
@@ -213,7 +229,7 @@
             {
               "field.string": {
                 "name": "authorEmail",
-                "@dbColumn": "author_email",
+                "@column": "author_email",
                 "@maxLength": 255,
                 "@required": true
               }
@@ -221,14 +237,14 @@
             {
               "field.date": {
                 "name": "createdDate",
-                "@dbColumn": "created_date",
+                "@column": "created_date",
                 "@required": true
               }
             },
             {
               "field.boolean": {
                 "name": "approved",
-                "@dbColumn": "approved"
+                "@column": "approved"
               }
             },
             {
@@ -236,7 +252,7 @@
                 "name": "parentComment",
                 "@cardinality": "one",
                 "@referencedBy": "parentCommentId",
-                "@targetObject": "Comment"
+                "@objectRef": "Comment"
               }
             },
             {
@@ -244,7 +260,7 @@
                 "name": "replies",
                 "@cardinality": "many",
                 "@referencedBy": "replyIds",
-                "@targetObject": "Comment"
+                "@objectRef": "Comment"
               }
             }
           ]
@@ -253,19 +269,23 @@
       {
         "object.entity": {
           "name": "Tag",
-          "@dbTable": "tags",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "tags"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "tag_id",
+                "@column": "tag_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "name",
-                "@dbColumn": "tag_name",
+                "@column": "tag_name",
                 "@maxLength": 50,
                 "@required": true
               }
@@ -273,7 +293,7 @@
             {
               "field.string": {
                 "name": "slug",
-                "@dbColumn": "slug",
+                "@column": "slug",
                 "@maxLength": 50,
                 "@required": true
               }
@@ -281,7 +301,7 @@
             {
               "field.string": {
                 "name": "description",
-                "@dbColumn": "description",
+                "@column": "description",
                 "@maxLength": 255
               }
             }
@@ -291,19 +311,23 @@
       {
         "object.entity": {
           "name": "Category",
-          "@dbTable": "categories",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "categories"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "category_id",
+                "@column": "category_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "name",
-                "@dbColumn": "category_name",
+                "@column": "category_name",
                 "@maxLength": 100,
                 "@required": true
               }
@@ -311,7 +335,7 @@
             {
               "field.string": {
                 "name": "slug",
-                "@dbColumn": "slug",
+                "@column": "slug",
                 "@maxLength": 100,
                 "@required": true
               }
@@ -319,7 +343,7 @@
             {
               "field.string": {
                 "name": "description",
-                "@dbColumn": "description",
+                "@column": "description",
                 "@maxLength": 500
               }
             },
@@ -328,7 +352,7 @@
                 "name": "parentCategory",
                 "@cardinality": "one",
                 "@referencedBy": "parentCategoryId",
-                "@targetObject": "Category"
+                "@objectRef": "Category"
               }
             }
           ]

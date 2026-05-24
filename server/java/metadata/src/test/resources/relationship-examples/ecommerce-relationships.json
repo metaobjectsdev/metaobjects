@@ -5,19 +5,23 @@
       {
         "object.entity": {
           "name": "User",
-          "@dbTable": "users",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "users"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "user_id",
+                "@column": "user_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "username",
-                "@dbColumn": "username",
+                "@column": "username",
                 "@maxLength": 50,
                 "@required": true
               }
@@ -25,7 +29,7 @@
             {
               "field.string": {
                 "name": "email",
-                "@dbColumn": "email",
+                "@column": "email",
                 "@maxLength": 255,
                 "@required": true
               }
@@ -35,7 +39,7 @@
                 "name": "profile",
                 "@cardinality": "one",
                 "@referencedBy": "profileId",
-                "@targetObject": "UserProfile"
+                "@objectRef": "UserProfile"
               }
             },
             {
@@ -43,7 +47,7 @@
                 "name": "addresses",
                 "@cardinality": "many",
                 "@referencedBy": "addressIds",
-                "@targetObject": "Address"
+                "@objectRef": "Address"
               }
             },
             {
@@ -51,7 +55,7 @@
                 "name": "orders",
                 "@cardinality": "many",
                 "@referencedBy": "orderIds",
-                "@targetObject": "Order"
+                "@objectRef": "Order"
               }
             },
             {
@@ -59,7 +63,7 @@
                 "name": "manager",
                 "@cardinality": "one",
                 "@referencedBy": "managerId",
-                "@targetObject": "User"
+                "@objectRef": "User"
               }
             }
           ]
@@ -68,33 +72,37 @@
       {
         "object.entity": {
           "name": "UserProfile",
-          "@dbTable": "user_profiles",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "user_profiles"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "profile_id",
+                "@column": "profile_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "firstName",
-                "@dbColumn": "first_name",
+                "@column": "first_name",
                 "@maxLength": 100
               }
             },
             {
               "field.string": {
                 "name": "lastName",
-                "@dbColumn": "last_name",
+                "@column": "last_name",
                 "@maxLength": 100
               }
             },
             {
               "field.date": {
                 "name": "birthDate",
-                "@dbColumn": "birth_date"
+                "@column": "birth_date"
               }
             }
           ]
@@ -103,19 +111,23 @@
       {
         "object.entity": {
           "name": "Address",
-          "@dbTable": "addresses",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "addresses"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "address_id",
+                "@column": "address_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "street",
-                "@dbColumn": "street",
+                "@column": "street",
                 "@maxLength": 255,
                 "@required": true
               }
@@ -123,7 +135,7 @@
             {
               "field.string": {
                 "name": "city",
-                "@dbColumn": "city",
+                "@column": "city",
                 "@maxLength": 100,
                 "@required": true
               }
@@ -131,21 +143,21 @@
             {
               "field.string": {
                 "name": "state",
-                "@dbColumn": "state",
+                "@column": "state",
                 "@maxLength": 50
               }
             },
             {
               "field.string": {
                 "name": "zipCode",
-                "@dbColumn": "zip_code",
+                "@column": "zip_code",
                 "@maxLength": 20
               }
             },
             {
               "field.string": {
                 "name": "type",
-                "@dbColumn": "address_type",
+                "@column": "address_type",
                 "@maxLength": 20
               }
             }
@@ -155,19 +167,23 @@
       {
         "object.entity": {
           "name": "Order",
-          "@dbTable": "orders",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "orders"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "order_id",
+                "@column": "order_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "orderNumber",
-                "@dbColumn": "order_number",
+                "@column": "order_number",
                 "@maxLength": 50,
                 "@required": true
               }
@@ -175,21 +191,21 @@
             {
               "field.date": {
                 "name": "orderDate",
-                "@dbColumn": "order_date",
+                "@column": "order_date",
                 "@required": true
               }
             },
             {
               "field.decimal": {
                 "name": "totalAmount",
-                "@dbColumn": "total_amount",
+                "@column": "total_amount",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "status",
-                "@dbColumn": "status",
+                "@column": "status",
                 "@maxLength": 20,
                 "@required": true
               }
@@ -199,7 +215,7 @@
                 "name": "orderItems",
                 "@cardinality": "many",
                 "@referencedBy": "orderItemIds",
-                "@targetObject": "OrderItem"
+                "@objectRef": "OrderItem"
               }
             },
             {
@@ -207,7 +223,7 @@
                 "name": "shippingAddress",
                 "@cardinality": "one",
                 "@referencedBy": "shippingAddressId",
-                "@targetObject": "Address"
+                "@objectRef": "Address"
               }
             },
             {
@@ -215,7 +231,7 @@
                 "name": "billingAddress",
                 "@cardinality": "one",
                 "@referencedBy": "billingAddressId",
-                "@targetObject": "Address"
+                "@objectRef": "Address"
               }
             }
           ]
@@ -224,33 +240,37 @@
       {
         "object.entity": {
           "name": "OrderItem",
-          "@dbTable": "order_items",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "order_items"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "item_id",
+                "@column": "item_id",
                 "@required": true
               }
             },
             {
               "field.int": {
                 "name": "quantity",
-                "@dbColumn": "quantity",
+                "@column": "quantity",
                 "@required": true
               }
             },
             {
               "field.decimal": {
                 "name": "unitPrice",
-                "@dbColumn": "unit_price",
+                "@column": "unit_price",
                 "@required": true
               }
             },
             {
               "field.decimal": {
                 "name": "totalPrice",
-                "@dbColumn": "total_price",
+                "@column": "total_price",
                 "@required": true
               }
             },
@@ -259,7 +279,7 @@
                 "name": "product",
                 "@cardinality": "one",
                 "@referencedBy": "productId",
-                "@targetObject": "Product"
+                "@objectRef": "Product"
               }
             }
           ]
@@ -268,19 +288,23 @@
       {
         "object.entity": {
           "name": "Product",
-          "@dbTable": "products",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "products"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "product_id",
+                "@column": "product_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "name",
-                "@dbColumn": "product_name",
+                "@column": "product_name",
                 "@maxLength": 255,
                 "@required": true
               }
@@ -288,21 +312,21 @@
             {
               "field.string": {
                 "name": "description",
-                "@dbColumn": "description",
+                "@column": "description",
                 "@maxLength": 1000
               }
             },
             {
               "field.decimal": {
                 "name": "price",
-                "@dbColumn": "price",
+                "@column": "price",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "sku",
-                "@dbColumn": "sku",
+                "@column": "sku",
                 "@maxLength": 50,
                 "@required": true
               }
@@ -312,7 +336,7 @@
                 "name": "category",
                 "@cardinality": "one",
                 "@referencedBy": "categoryId",
-                "@targetObject": "Category"
+                "@objectRef": "Category"
               }
             }
           ]
@@ -321,19 +345,23 @@
       {
         "object.entity": {
           "name": "Category",
-          "@dbTable": "categories",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "categories"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "category_id",
+                "@column": "category_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "name",
-                "@dbColumn": "category_name",
+                "@column": "category_name",
                 "@maxLength": 100,
                 "@required": true
               }
@@ -341,7 +369,7 @@
             {
               "field.string": {
                 "name": "description",
-                "@dbColumn": "description",
+                "@column": "description",
                 "@maxLength": 500
               }
             },
@@ -350,7 +378,7 @@
                 "name": "parentCategory",
                 "@cardinality": "one",
                 "@referencedBy": "parentCategoryId",
-                "@targetObject": "Category"
+                "@objectRef": "Category"
               }
             },
             {
@@ -358,7 +386,7 @@
                 "name": "subCategories",
                 "@cardinality": "many",
                 "@referencedBy": "subCategoryIds",
-                "@targetObject": "Category"
+                "@objectRef": "Category"
               }
             }
           ]

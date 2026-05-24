@@ -676,7 +676,7 @@ PlacementConstraint.allowAttributeOnAnyField(
     "field.database.column",
     "Any field can have database column mapping",
     StringAttribute.SUBTYPE_STRING,
-    "dbColumn"
+    "column"
 );
 ```
 

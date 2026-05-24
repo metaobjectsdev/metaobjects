@@ -60,7 +60,7 @@
             {
               "field.string": {
                 "name": "tags",
-                "@isArray": true
+                "isArray": true
               }
             },
             {

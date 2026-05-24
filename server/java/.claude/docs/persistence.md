@@ -46,16 +46,15 @@ Without it, ObjectManagerDB fails with "Attempt to modify an identity column" er
 
 ```json
 {
-  "object": {
+  "object.entity": {
     "name": "User",
-    "subType": "managed",
-    "@dbTable": "users",
     "children": [
+      { "source.rdb": { "@table": "users" } },
       {
         "field": {
           "name": "id",
           "subType": "long",
-          "@dbColumn": "user_id"
+          "@column": "user_id"
         }
       },
       {
@@ -178,14 +177,16 @@ Without it, ObjectManagerDB fails with "Attempt to modify an identity column" er
 
 ```json
 {
-  "object": {
+  "object.entity": {
     "name": "User",
-    "@dbTable": "USERS",           // Table name
-    "@dbSchema": "public",         // Schema name (optional)
-    "@dbCatalog": "mydb"           // Catalog name (optional)
+    "children": [
+      { "source.rdb": { "@table": "USERS", "@schema": "public" } }
+    ]
   }
 }
 ```
+
+The table name and optional schema are declared via the `source.rdb` child node. The `@dbCatalog` attribute (catalog-level override) remains on the `source.rdb` node as `@catalog` if needed.
 
 ### Field Level
 
@@ -193,7 +194,7 @@ Without it, ObjectManagerDB fails with "Attempt to modify an identity column" er
 {
   "field": {
     "name": "email",
-    "@dbColumn": "EMAIL_ADDRESS",  // Column name
+    "@column": "EMAIL_ADDRESS",  // Column name
     "@dbType": "VARCHAR(255)",     // SQL type override
     "@dbNullable": false,          // NOT NULL constraint
     "@dbUnique": true              // UNIQUE constraint
@@ -354,11 +355,11 @@ long count = objectManager.count(connection, User.class);
 ### db-overlay.json
 ```json
 {
-  "object": {
+  "object.entity": {
     "name": "Store",
-    "@dbTable": "STORE",
     "children": [
-      {"field": {"name": "id", "@dbColumn": "ID"}},
+      { "source.rdb": { "@table": "STORE" } },
+      {"field": {"name": "id", "@column": "ID"}},
       {"identity": {"name": "store_pk", "@generation": "increment", "@dbIndexName": "pk_store"}}
     ]
   }

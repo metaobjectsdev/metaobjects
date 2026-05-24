@@ -5,7 +5,10 @@ targetLanguage: "java"
 outputFileExtension: "java"
 packagePath: true
 requirements:
-  attributes: ["dbTable"]
+  # Source-v2 ADR-0007: the table name now comes from a source.rdb child, not
+  # an object-level @dbTable attr. JPA-eligibility is decided by the helper
+  # (HelperRegistry.shouldGenerateJpa), not by an attr-presence gate here.
+  attributes: []
   helpers: ["capitalize", "javaType", "javaArrayType", "dbColumnName", "isIdField", "isNullable", "isArrayField"]
 template: |
   package {{packageName}};

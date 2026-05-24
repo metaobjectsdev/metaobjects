@@ -18,3 +18,22 @@ RELATIONSHIP_ATTR_FK_FIELD = "fkField"
 RELATIONSHIP_ATTR_PARENT_FIELD = "parentField"
 RELATIONSHIP_ATTR_JOIN_ENTITY = "joinEntity"
 RELATIONSHIP_ATTR_JOIN_FIELDS = "joinFields"
+
+# --- Referential action attrs (@onDelete / @onUpdate) ----------------------
+
+RELATIONSHIP_ATTR_ON_DELETE = "onDelete"
+RELATIONSHIP_ATTR_ON_UPDATE = "onUpdate"
+
+# Canonical cross-language referential-action set (kebab-case, no "setDefault").
+# MUST equal TS migrate-ts FkAction; mirrors Java REFERENTIAL_ACTIONS.
+REFERENTIAL_ACTIONS = ("cascade", "set-null", "restrict", "no-action")
+
+# Default @onDelete per relationship subtype (rollout-decided defaults).
+ON_DELETE_DEFAULT_BY_SUBTYPE: dict[str, str] = {
+    RELATIONSHIP_SUBTYPE_COMPOSITION: "cascade",
+    RELATIONSHIP_SUBTYPE_AGGREGATION: "set-null",
+    RELATIONSHIP_SUBTYPE_ASSOCIATION: "restrict",
+}
+
+# Default @onUpdate (subtype-independent).
+ON_UPDATE_DEFAULT = "cascade"

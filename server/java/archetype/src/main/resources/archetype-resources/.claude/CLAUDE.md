@@ -183,36 +183,40 @@ This file maps your entities to H2 database tables:
 {
   "object": {
     "name": "Product",
-    "@dbTable": "products",
     "children": [
+      {
+        "source.rdb": {
+          "@table": "products"
+        }
+      },
       {
         "field": {
           "name": "id",
-          "@dbColumn": "product_id"
+          "@column": "product_id"
         }
       },
       {
         "field": {
           "name": "name",
-          "@dbColumn": "product_name"
+          "@column": "product_name"
         }
       },
       {
         "field": {
           "name": "description",
-          "@dbColumn": "description"
+          "@column": "description"
         }
       },
       {
         "field": {
           "name": "price",
-          "@dbColumn": "price"
+          "@column": "price"
         }
       },
       {
         "field": {
           "name": "isActive",
-          "@dbColumn": "is_active"
+          "@column": "is_active"
         }
       }
     ]

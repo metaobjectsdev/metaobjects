@@ -7,24 +7,28 @@
           "name": "Basket",
           "package": "container",
           "@object": "com.metaobjects.object.value.ValueObject",
-          "@dbTable": "BASKET",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "BASKET"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "id"
+                "@column": "id"
               }
             },
             {
               "field.int": {
                 "name": "apples",
-                "@dbColumn": "apples"
+                "@column": "apples"
               }
             },
             {
               "field.int": {
                 "name": "oranges",
-                "@dbColumn": "oranges"
+                "@column": "oranges"
               }
             },
             {
@@ -42,8 +46,15 @@
           "name": "FullBasketView",
           "extends": "container::Basket",
           "@object": "com.metaobjects.object.value.ValueObject",
-          "@dbView": "FULL_BASKET_VIEW",
-          "@dbViewSQL": "SELECT B.* FROM BASKET B WHERE b.apples+b.oranges > 10"
+          "@dbViewSQL": "SELECT B.* FROM BASKET B WHERE b.apples+b.oranges > 10",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "FULL_BASKET_VIEW",
+                "@kind": "view"
+              }
+            }
+          ]
         }
       }
     ]

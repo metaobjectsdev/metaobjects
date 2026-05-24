@@ -6,24 +6,28 @@
         "object.value": {
           "name": "Widget",
           "@object": "com.metaobjects.object.value.ValueObject",
-          "@dbTable": "WIDGET",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "WIDGET"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "id"
+                "@column": "id"
               }
             },
             {
               "field.string": {
                 "name": "name",
-                "@dbColumn": "name"
+                "@column": "name"
               }
             },
             {
               "field.int": {
                 "name": "quantity",
-                "@dbColumn": "quantity"
+                "@column": "quantity"
               }
             },
             {

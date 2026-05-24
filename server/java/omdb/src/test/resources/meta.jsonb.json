@@ -6,18 +6,22 @@
         "object.value": {
           "name": "Item",
           "@object": "com.metaobjects.object.value.ValueObject",
-          "@dbTable": "JSONB_ITEM",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "JSONB_ITEM"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "id"
+                "@column": "id"
               }
             },
             {
               "field.object": {
                 "name": "prefs",
-                "@dbColumn": "prefs",
+                "@column": "prefs",
                 "@dbType": "jsonb",
                 "@objectRef": "jsonbtest::Prefs"
               }
@@ -40,13 +44,13 @@
             {
               "field.string": {
                 "name": "theme",
-                "@dbColumn": "theme"
+                "@column": "theme"
               }
             },
             {
               "field.int": {
                 "name": "fontSize",
-                "@dbColumn": "fontSize"
+                "@column": "fontSize"
               }
             }
           ]

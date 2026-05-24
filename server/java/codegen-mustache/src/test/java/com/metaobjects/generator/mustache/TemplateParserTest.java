@@ -243,17 +243,19 @@ public class TemplateParserTest {
     @Test
     public void testParseJpaEntityTemplate() throws IOException {
         TemplateDefinition template = parser.parseTemplateFromFile("templates/jpa-entity.mustache.yaml");
-        
+
         assertNotNull("JPA template should be loaded", template);
         assertEquals("JPA Entity Template", template.getName());
         assertEquals("java", template.getTargetLanguage());
-        
+
         // Validate the template
         parser.validateTemplate(template);
-        
-        // Check requirements
-        assertTrue("Should require dbTable attribute", parser.requiresAttribute(template, "dbTable"));
-        
+
+        // Source-v2 ADR-0007: the JPA template no longer gates on @dbTable
+        // (it was dropped); JPA-eligibility is decided by the helper now.
+        assertFalse("Should NOT require dbTable attribute (source-v2 ADR-0007)",
+            parser.requiresAttribute(template, "dbTable"));
+
         // Check template content
         String templateContent = template.getTemplate();
         assertTrue("Should contain @Entity annotation", templateContent.contains("@Entity"));

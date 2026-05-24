@@ -20,7 +20,7 @@ graph TB
         B[required: true]
         C[maxLength: 255]
         D[pattern: email regex]
-        E[dbColumn: email_address]
+        E[column: email_address]
     end
 
     A --> B
@@ -51,7 +51,7 @@ MetaObjects provides a comprehensive type system for attributes:
 
 ```java
 // String attributes for text values
-StringAttribute dbColumn = new StringAttribute("dbColumn");
+StringAttribute dbColumn = new StringAttribute("column");
 dbColumn.setValue("email_address");
 
 // Integer attributes for numeric values
@@ -136,7 +136,7 @@ MetaObjects supports **inline attribute syntax** for concise metadata definition
     "@required": true,
     "@maxLength": 255,
     "@pattern": "^[\\w._%+-]+@[\\w.-]+\\.[A-Za-z]{2,}$",
-    "@dbColumn": "email_address"
+    "@column": "email_address"
   }
 }
 ```
@@ -148,7 +148,7 @@ MetaObjects supports **inline attribute syntax** for concise metadata definition
        required="true"
        maxLength="255"
        pattern="^[\w._%+-]+@[\w.-]+\.[A-Za-z]{2,}$"
-       dbColumn="email_address" />
+       column="email_address" />
 ```
 
 ### Automatic Type Conversion
@@ -160,7 +160,7 @@ The parser automatically converts inline attribute values to appropriate types:
 "@required": true        → BooleanAttribute(true)
 "@maxLength": 255        → IntAttribute(255)
 "@scale": 2.5           → DoubleAttribute(2.5)
-"@dbColumn": "email"     → StringAttribute("email")
+"@column": "email"     → StringAttribute("email")
 "@tags": ["user", "contact"] → StringArrayAttribute(["user", "contact"])
 ```
 
@@ -280,12 +280,12 @@ PlacementConstraint.allowAttribute(
     "maxLength"
 );
 
-// Allow dbColumn on any field for database mapping
+// Allow @column on any field for database mapping
 PlacementConstraint.allowAttributeOnAnyField(
     "field.database.column",
     "Any field can have database column mapping",
     StringAttribute.SUBTYPE_STRING,
-    "dbColumn"
+    "column"
 );
 ```
 
@@ -312,9 +312,9 @@ new RegexConstraint(
 
 // Ensure database column names follow conventions
 new RegexConstraint(
-    "attr.dbColumn.naming",
+    "attr.column.naming",
     "Database columns must follow snake_case",
-    "attr", "string", "dbColumn",
+    "attr", "string", "column",
     "^[a-z][a-z0-9_]*$"
 );
 ```
@@ -329,7 +329,7 @@ StringAttribute dbTable = new StringAttribute("dbTable");
 dbTable.setValue("users");
 
 // Database column mapping for fields
-StringAttribute dbColumn = new StringAttribute("dbColumn");
+StringAttribute dbColumn = new StringAttribute("column");
 dbColumn.setValue("email_address");
 
 // Nullable column specification
@@ -429,7 +429,7 @@ emailField.addChild(IntAttribute.create("maxLength", 255));
 emailField.addChild(StringAttribute.create("pattern", "^[\\w._%+-]+@[\\w.-]+\\.[A-Za-z]{2,}$"));
 
 // Alternative: Use setMetaAttr convenience method
-emailField.setMetaAttr("dbColumn", "email_address");
+emailField.setMetaAttr("column", "email_address");
 emailField.setMetaAttr("displayName", "Email Address");
 ```
 
@@ -444,7 +444,7 @@ if (emailField.hasMetaAttr("required")) {
 }
 
 // Type-safe access with fallback
-String dbColumn = emailField.findString("dbColumn").orElse(emailField.getName());
+String dbColumn = emailField.findString("column").orElse(emailField.getName());
 
 // Required access (throws if missing)
 int maxLength = Integer.parseInt(emailField.requireString("maxLength"));
@@ -651,7 +651,7 @@ Attributes provide database mapping information:
 ```java
 // ORM integration reads database attributes
 String tableName = metaObject.findString("dbTable").orElse(metaObject.getName());
-String columnName = metaField.findString("dbColumn").orElse(metaField.getName());
+String columnName = metaField.findString("column").orElse(metaField.getName());
 boolean nullable = metaField.findBoolean("dbNullable").orElse(true);
 ```
 

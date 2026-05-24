@@ -26,6 +26,11 @@ class ErrorCode(str, Enum):
     ERR_MALFORMED_YAML = "ERR_MALFORMED_YAML"
     ERR_INVALID_ORIGIN = "ERR_INVALID_ORIGIN"
     ERR_BAD_ATTR_FILTER = "ERR_BAD_ATTR_FILTER"
+    # Reserved structural body key authored as an @-attr (source-v2 / ADR-0007).
+    ERR_RESERVED_ATTR = "ERR_RESERVED_ATTR"
+    # Source-v2 multi-source one-primary rule (ADR-0007).
+    ERR_SOURCE_NO_PRIMARY = "ERR_SOURCE_NO_PRIMARY"
+    ERR_SOURCE_MULTIPLE_PRIMARY = "ERR_SOURCE_MULTIPLE_PRIMARY"
     # Cross-language vocabulary for features other ports added (FR-003 storage, FR-004 template);
     # the Python loader does not emit these yet, but the enum tracks the shared corpus codes.
     ERR_INVALID_TEMPLATE = "ERR_INVALID_TEMPLATE"

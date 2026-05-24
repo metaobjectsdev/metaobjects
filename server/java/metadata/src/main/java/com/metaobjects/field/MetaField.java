@@ -339,7 +339,7 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
      * This method consults the MetaDataRegistry to determine what Java type an
      * attribute should be converted to during parsing.
      *
-     * @param attributeName the name of the attribute (e.g., "required", "maxLength", "dbColumn")
+     * @param attributeName the name of the attribute (e.g., "required", "maxLength", "column")
      * @return the expected Java class for the attribute, or String.class if not found
      */
     public Class<?> getExpectedAttributeType(String attributeName) {

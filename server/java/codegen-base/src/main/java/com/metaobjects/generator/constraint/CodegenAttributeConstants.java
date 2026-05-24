@@ -18,7 +18,7 @@ package com.metaobjects.generator.constraint;
  *   <li><strong>Build-Time Generation</strong> - Maven plugin and build tool attributes</li>
  * </ul>
  *
- * <p><strong>Architectural Note:</strong> Database-related attributes (dbTable, dbColumn, etc.)
+ * <p><strong>Architectural Note:</strong> Database-related attributes (dbTable, column, etc.)
  * are defined in {@link com.metaobjects.database.common.DatabaseAttributeConstants} to avoid
  * duplication between OMDB and code generation modules.</p>
  *

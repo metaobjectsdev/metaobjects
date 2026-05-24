@@ -13,8 +13,18 @@ from ..errors import ErrorCode, MetaError
 from ..meta.core.field.field_constants import ENUM_MEMBER_PATTERN, FIELD_ATTR_VALUES, FIELD_SUBTYPE_ENUM
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.meta_data import MetaData
+from ..meta.persistence.source.meta_source import MetaSource
+from ..meta.persistence.source.source_constants import SOURCE_ROLE_PRIMARY
 from ..registry import AttrSchema, TypeRegistry
-from ..shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_LAYOUT, TYPE_OBJECT, TYPE_ORIGIN, TYPE_RELATIONSHIP
+from ..shared.base_types import (
+    TYPE_FIELD,
+    TYPE_IDENTITY,
+    TYPE_LAYOUT,
+    TYPE_OBJECT,
+    TYPE_ORIGIN,
+    TYPE_RELATIONSHIP,
+    TYPE_SOURCE,
+)
 from ..meta.presentation.layout.layout_constants import (
     LAYOUT_ATTR_DEFAULT_SORT_FIELD,
     LAYOUT_ATTR_FILTER,
@@ -51,6 +61,7 @@ def run_validations(
     _validate_datagrid_sort_fields(root, errors)
     _validate_datagrid_filter_values(root, errors)
     _validate_origin_paths(root, errors)
+    _validate_one_primary_source(root, errors)
     _validate_subtype_rules(root, errors, warnings)
     _validate_filterable_has_index(root, warnings)
 
@@ -630,6 +641,55 @@ def _validate_origin_paths(
                     )
                 else:
                     _validate_via_path(via, ctx, object_index, errors)
+
+
+# ---------------------------------------------------------------------------
+# Pass: one-primary multi-source rule (ADR-0007 source v2)
+# ---------------------------------------------------------------------------
+# Walks every object.entity / object.value; counts source own-children with
+# role == "primary" (using the default-aware MetaSource.role() getter):
+#   - 0 sources total → skip (object is not persisted).
+#   - exactly 1 primary → OK.
+#   - 0 primaries → ERR_SOURCE_NO_PRIMARY.
+#   - >1 primaries → ERR_SOURCE_MULTIPLE_PRIMARY.
+
+
+def _validate_one_primary_source(
+    root: MetaData,
+    errors: list[MetaError],
+) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_OBJECT:
+            continue
+        if not isinstance(node, MetaObject):
+            continue
+
+        sources = [c for c in node.own_children() if c.type == TYPE_SOURCE]
+        if not sources:
+            continue
+
+        primary_count = sum(
+            1
+            for s in sources
+            if isinstance(s, MetaSource) and s.role() == SOURCE_ROLE_PRIMARY
+        )
+
+        if primary_count == 0:
+            errors.append(
+                MetaError(
+                    f"{_node_label(node)} declares {len(sources)} source(s) but "
+                    f"none has role '{SOURCE_ROLE_PRIMARY}'",
+                    ErrorCode.ERR_SOURCE_NO_PRIMARY,
+                )
+            )
+        elif primary_count > 1:
+            errors.append(
+                MetaError(
+                    f"{_node_label(node)} declares {primary_count} sources with "
+                    f"role '{SOURCE_ROLE_PRIMARY}'; exactly one is required",
+                    ErrorCode.ERR_SOURCE_MULTIPLE_PRIMARY,
+                )
+            )
 
 
 # ---------------------------------------------------------------------------

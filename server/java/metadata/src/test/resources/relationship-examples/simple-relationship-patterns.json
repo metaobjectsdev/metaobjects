@@ -32,7 +32,7 @@
                 "@cardinality": "one",
                 "@description": "One-to-One Composition: Customer owns exactly one profile (dependent lifecycle)",
                 "@referencedBy": "profileId",
-                "@targetObject": "CustomerProfile"
+                "@objectRef": "CustomerProfile"
               }
             },
             {
@@ -41,7 +41,7 @@
                 "@cardinality": "many",
                 "@description": "One-to-Many Composition: Customer owns multiple addresses (dependent lifecycle)",
                 "@referencedBy": "addressIds",
-                "@targetObject": "Address"
+                "@objectRef": "Address"
               }
             },
             {
@@ -50,7 +50,7 @@
                 "@cardinality": "one",
                 "@description": "One-to-One Association: Customer references a preferred store (independent lifecycle)",
                 "@referencedBy": "preferredStoreId",
-                "@targetObject": "Store"
+                "@objectRef": "Store"
               }
             },
             {
@@ -59,7 +59,7 @@
                 "@cardinality": "many",
                 "@description": "One-to-Many Association: Customer references multiple favorite products (independent lifecycle)",
                 "@referencedBy": "favoriteProductIds",
-                "@targetObject": "Product"
+                "@objectRef": "Product"
               }
             }
           ]

@@ -6,7 +6,7 @@ This directory contains example metadata JSON files demonstrating the MetaObject
 
 ### Essential Attributes (AI specifies these 4)
 
-1. **`@targetObject`** - The target object this relationship points to
+1. **`@objectRef`** - The target object this relationship points to
 2. **`@cardinality`** - Either "one" or "many"
 3. **`@ownership`** - Either "owns" or "references"
 4. **`@referencedBy`** - Field name that implements the relationship
@@ -23,7 +23,7 @@ This directory contains example metadata JSON files demonstrating the MetaObject
 {
   "relationship": {
     "name": "profile",
-    "@targetObject": "UserProfile",
+    "@objectRef": "UserProfile",
     "@cardinality": "one",
     "@ownership": "owns",
     "@referencedBy": "profileId"
@@ -39,7 +39,7 @@ This directory contains example metadata JSON files demonstrating the MetaObject
 {
   "relationship": {
     "name": "addresses",
-    "@targetObject": "Address",
+    "@objectRef": "Address",
     "@cardinality": "many",
     "@ownership": "owns",
     "@referencedBy": "addressIds"
@@ -55,7 +55,7 @@ This directory contains example metadata JSON files demonstrating the MetaObject
 {
   "relationship": {
     "name": "manager",
-    "@targetObject": "User",
+    "@objectRef": "User",
     "@cardinality": "one",
     "@ownership": "references",
     "@referencedBy": "managerId"
@@ -71,7 +71,7 @@ This directory contains example metadata JSON files demonstrating the MetaObject
 {
   "relationship": {
     "name": "favoriteProducts",
-    "@targetObject": "Product",
+    "@objectRef": "Product",
     "@cardinality": "many",
     "@ownership": "references",
     "@referencedBy": "favoriteProductIds"
@@ -182,7 +182,7 @@ The relationship system replaces the database-specific MetaKey system:
 {
   "relationship": {
     "name": "user",
-    "@targetObject": "User",
+    "@objectRef": "User",
     "@cardinality": "one",
     "@ownership": "references",
     "@referencedBy": "userId"

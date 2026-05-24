@@ -179,7 +179,7 @@ public class DatabaseColumnNamingConstraint extends BaseConstraint {
     private final boolean enforceSnakeCase;
 
     public DatabaseColumnNamingConstraint(String constraintId, String description) {
-        super(constraintId, description, "attr", "string", "dbColumn");
+        super(constraintId, description, "attr", "string", "column");
 
         // Initialize field type mappings
         this.fieldTypeToColumnPrefix = Map.of(

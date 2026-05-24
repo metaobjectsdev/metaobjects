@@ -26,8 +26,23 @@ import com.metaobjects.registry.MetaDataTypeProvider;
 public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
 
     // Common database attribute constants
-    public static final String DB_TABLE = "dbTable";
-    public static final String DB_COLUMN = "dbColumn";
+    //
+    // Source-v2 ADR-0007: the object-level {@code @dbTable} / {@code @dbView} attrs
+    // were dropped in Stage 2. An object declares storage ONLY via {@code source.*}
+    // children — the primary writable {@code source.rdb} child's {@code @table}
+    // attr is the table name; a read-only ({@code @kind: view / ...}) source
+    // names the view. See {@link com.metaobjects.object.MetaObject#getPrimaryRdbTableName()}.
+
+    /**
+     * Field physical column name. Source-v2 Tier-1 cross-language vocabulary
+     * (matches the TS reference and the shared conformance corpus).
+     *
+     * <p>Paradigm-neutral key (no {@code db} prefix) to pair with
+     * {@code source.rdb @table}: a future {@code source.docdb} would still use
+     * {@code @column} for the physical name. Prior to source-v2 this attr was
+     * {@code @dbColumn}; no backwards-compat alias.</p>
+     */
+    public static final String COLUMN = "column";
     public static final String DB_NULLABLE = "dbNullable";
     public static final String DB_PRIMARY_KEY = "dbPrimaryKey";
     public static final String DB_FOREIGN_KEY = "dbForeignKey";
@@ -77,15 +92,18 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
      */
     public static void registerDatabaseAttributes(MetaDataRegistry registry) {
         // Object-level database attributes
+        //
+        // Source-v2 ADR-0007: {@code @dbTable} / {@code @dbView} are NOT registered here.
+        // The table/view name is declared on {@code source.rdb @table}; see
+        // {@link com.metaobjects.object.MetaObject#getPrimaryRdbTableName()}.
         registry.findType(MetaObject.TYPE_OBJECT, MetaObject.SUBTYPE_BASE)
-            .optionalAttribute(DB_TABLE, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_INDEX, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_UNIQUE, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(PREVIOUS_NAME, StringAttribute.SUBTYPE_STRING);
 
         // Field-level database attributes
         registry.findType(MetaField.TYPE_FIELD, MetaField.SUBTYPE_BASE)
-            .optionalAttribute(DB_COLUMN, StringAttribute.SUBTYPE_STRING)
+            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_NULLABLE, BooleanAttribute.SUBTYPE_BOOLEAN)
             .optionalAttribute(DB_FOREIGN_KEY, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_INDEX, StringAttribute.SUBTYPE_STRING)
@@ -98,18 +116,18 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
 
         // String field specific
         registry.findType(MetaField.TYPE_FIELD, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(DB_COLUMN, StringAttribute.SUBTYPE_STRING)
+            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_LENGTH, IntAttribute.SUBTYPE_INT);
 
         // Numeric field specific
         registry.findType(MetaField.TYPE_FIELD, LongField.SUBTYPE_LONG)
-            .optionalAttribute(DB_COLUMN, StringAttribute.SUBTYPE_STRING);
+            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING);
 
         registry.findType(MetaField.TYPE_FIELD, IntegerField.SUBTYPE_INT)
-            .optionalAttribute(DB_COLUMN, StringAttribute.SUBTYPE_STRING);
+            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING);
 
         registry.findType(MetaField.TYPE_FIELD, DoubleField.SUBTYPE_DOUBLE)
-            .optionalAttribute(DB_COLUMN, StringAttribute.SUBTYPE_STRING)
+            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_PRECISION, IntAttribute.SUBTYPE_INT)
             .optionalAttribute(DB_SCALE, IntAttribute.SUBTYPE_INT);
 

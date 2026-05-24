@@ -86,8 +86,11 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
         assertEquals("entity", product.getSubType());
         assertEquals("long", product.getChildOfType("field", "id").getSubType());
         assertEquals("string", product.getChildOfType("field", "name").getSubType());
-        // Identity nodes get the document package prefix (same as other non-field children)
-        assertNotNull(product.getChildOfType("identity", "acme::commerce::primary"));
+        // Identity nodes are auto-named when no explicit name is authored (the canonical
+        // serializer suppresses the auto-name on emit to match the TS oracle byte form).
+        // First identity.primary under the entity gets auto-name "primary1", qualified
+        // with the document package: "acme::commerce::primary1".
+        assertNotNull(product.getChildOfType("identity", "acme::commerce::primary1"));
     }
 
     // -----------------------------------------------------------------------
@@ -273,8 +276,10 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
         parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
 
         MetaData item = loader.getRoot().getChildOfType("object", "acme::Item");
-        // Identity nodes get the document package prefix (base parser behavior for non-field children)
-        MetaData identity = item.getChildOfType("identity", "acme::primary");
+        // Identity nodes are auto-named when no explicit name is authored
+        // (sequential <subType>N — first unnamed identity.primary → "primary1").
+        // The base parser's package-qualification applies on top.
+        MetaData identity = item.getChildOfType("identity", "acme::primary1");
         assertNotNull("primary identity should exist", identity);
 
         // The fields attribute should exist and hold "id"

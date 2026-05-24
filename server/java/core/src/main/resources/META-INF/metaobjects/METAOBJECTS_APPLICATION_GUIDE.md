@@ -484,7 +484,7 @@ my-metaobjects-app/
           "name": "orders",
           "subType": "reference",
           "description": "Orders placed by this user",
-          "@targetObject": "Order",
+          "@objectRef": "Order",
           "@cardinality": "one-to-many",
           "@sourceIdentity": "user_pk",
           "@targetField": "userId"
@@ -507,7 +507,7 @@ my-metaobjects-app/
           "name": "user",
           "subType": "reference",
           "description": "User who placed this order",
-          "@targetObject": "User",
+          "@objectRef": "User",
           "@cardinality": "many-to-one",
           "@sourceField": "userId",
           "@targetIdentity": "user_pk"
@@ -530,7 +530,7 @@ my-metaobjects-app/
           "name": "orderItems",
           "subType": "reference",
           "description": "Items in this order",
-          "@targetObject": "OrderItem",
+          "@objectRef": "OrderItem",
           "@cardinality": "one-to-many",
           "@sourceIdentity": "order_pk",
           "@targetField": "orderId",
@@ -664,50 +664,50 @@ mvn clean compile
     "package": "com_mycompany_domain",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "User",
-          "@dbTable": "users",
           "children": [
+            { "source.rdb": { "@table": "users" } },
             {
               "field": {
                 "name": "id",
-                "@dbColumn": "user_id"
+                "@column": "user_id"
               }
             },
             {
               "field": {
                 "name": "username",
-                "@dbColumn": "username"
+                "@column": "username"
               }
             },
             {
               "field": {
                 "name": "email",
-                "@dbColumn": "email_address"
+                "@column": "email_address"
               }
             },
             {
               "field": {
                 "name": "firstName",
-                "@dbColumn": "first_name"
+                "@column": "first_name"
               }
             },
             {
               "field": {
                 "name": "lastName",
-                "@dbColumn": "last_name"
+                "@column": "last_name"
               }
             },
             {
               "field": {
                 "name": "createdAt",
-                "@dbColumn": "created_at"
+                "@column": "created_at"
               }
             },
             {
               "field": {
                 "name": "isActive",
-                "@dbColumn": "is_active"
+                "@column": "is_active"
               }
             },
             {
@@ -732,44 +732,44 @@ mvn clean compile
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "Order",
-          "@dbTable": "orders",
           "children": [
+            { "source.rdb": { "@table": "orders" } },
             {
               "field": {
                 "name": "id",
-                "@dbColumn": "order_id"
+                "@column": "order_id"
               }
             },
             {
               "field": {
                 "name": "userId",
-                "@dbColumn": "user_id"
+                "@column": "user_id"
               }
             },
             {
               "field": {
                 "name": "orderNumber",
-                "@dbColumn": "order_number"
+                "@column": "order_number"
               }
             },
             {
               "field": {
                 "name": "orderDate",
-                "@dbColumn": "order_date"
+                "@column": "order_date"
               }
             },
             {
               "field": {
                 "name": "totalAmount",
-                "@dbColumn": "total_amount"
+                "@column": "total_amount"
               }
             },
             {
               "field": {
                 "name": "status",
-                "@dbColumn": "order_status"
+                "@column": "order_status"
               }
             },
             {
@@ -1354,7 +1354,7 @@ This guide is optimized for Claude Code assistance. When asking Claude for help:
 
 ### **Relationship Patterns**
 ```json
-{"relationship": {"name": "items", "subType": "reference", "@targetObject": "Item", "@cardinality": "one-to-many"}}
+{"relationship": {"name": "items", "subType": "reference", "@objectRef": "Item", "@cardinality": "one-to-many"}}
 ```
 
 ### **Validation Attributes**
@@ -1367,10 +1367,12 @@ This guide is optimized for Claude Code assistance. When asking Claude for help:
 - `@defaultValue` - Default field value
 
 ### **Database Attributes**
-- `@dbTable` - Database table name
-- `@dbColumn` - Database column name
-- `@dbIndexName` - Database index name
+- `@column` - Database column name (field-level)
+- `@dbIndexName` - Database index name (identity-level)
 - `@generation` - ID generation strategy
+
+!!! note
+    Table/view declaration uses the `source.rdb` child metatype, not an inline `@dbTable` attribute. See the source mapping section above.
 
 ---
 

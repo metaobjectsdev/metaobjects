@@ -13,6 +13,7 @@ import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.identity.SecondaryIdentity;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.registry.MetaDataRegistry;
+import com.metaobjects.source.MetaSource;
 import com.metaobjects.validator.MetaValidator;
 import com.metaobjects.view.MetaView;
 import static com.metaobjects.MetaData.ATTR_IS_ABSTRACT;
@@ -119,6 +120,9 @@ public abstract class MetaObject extends MetaData {
 
             // OBJECTS CAN CONTAIN RELATIONSHIPS
             def.optionalChild(MetaRelationship.TYPE_RELATIONSHIP, "*", "*");
+
+            // OBJECTS CAN CONTAIN SOURCES (source.rdb and future subtypes)
+            def.optionalChild("source", "*", "*");
         });
 
         if (log != null) {
@@ -651,7 +655,7 @@ public abstract class MetaObject extends MetaData {
         return useCache("getRelationshipsByTarget()", targetObject, target -> {
             Collection<MetaRelationship> filtered = new ArrayList<>();
             for (MetaRelationship rel : getRelationships()) {
-                if (target.equals(rel.getTargetObject())) {
+                if (target.equals(rel.getObjectRef())) {
                     filtered.add(rel);
                 }
             }
@@ -801,6 +805,127 @@ public abstract class MetaObject extends MetaData {
         }
     }
 
+    // === SOURCE METHODS (source-v2 ADR-0007) ===
+    //
+    // An object declares its physical storage via {@code source.*} children
+    // (currently {@code source.rdb}). The object-level {@code @dbTable} / {@code @dbView}
+    // attrs were dropped in Stage 2. Consumers that need the table/view name go through
+    // these helpers.
+
+    /**
+     * Get all {@link MetaSource} children, optionally including inherited sources
+     * from the super-object chain.
+     *
+     * <p>Note: this method does NOT delegate to
+     * {@link com.metaobjects.MetaData#getChildren(Class, boolean)}, because that
+     * path dedupes children by {@code type+name} — and unnamed source children
+     * (e.g. two {@code source.rdb} nodes that both default to name {@code "rdb"})
+     * would collide and silently drop inherited sources. We walk the super chain
+     * directly here, concatenating own + inherited.</p>
+     *
+     * @param includeParentData {@code true} to walk {@code extends} chain, {@code false}
+     *                          for own-only
+     * @return all {@code source.*} children — own first, then super-chain in order
+     */
+    public Collection<MetaSource> getSources(boolean includeParentData) {
+        java.util.List<MetaSource> result = new java.util.ArrayList<>();
+        result.addAll(getChildren(MetaSource.class, false));
+        if (includeParentData) {
+            MetaData s = getSuperData();
+            while (s instanceof MetaObject) {
+                result.addAll(((MetaObject) s).getChildren(MetaSource.class, false));
+                s = s.getSuperData();
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Get all {@link MetaSource} children (own-only, no inheritance walk).
+     *
+     * @return all direct {@code source.*} children, in declaration order
+     */
+    public Collection<MetaSource> getSources() {
+        return getSources(false);
+    }
+
+    /**
+     * Find the primary writable {@link MetaSource} — the source.* child whose
+     * effective role is {@code "primary"} and whose effective kind is writable
+     * ({@code "table"}; i.e. not view / materializedView / storedProc /
+     * tableFunction). Walks the {@code extends} chain so that a projection
+     * (which declares its own read-only source) still inherits the parent
+     * entity's writable source.
+     *
+     * <p>The {@link com.metaobjects.loader.ValidationPhase} guarantees at most
+     * one primary source per object (own-only); the first match wins along
+     * the inheritance walk.</p>
+     *
+     * @return the primary writable source, or empty if none
+     */
+    public Optional<MetaSource> findPrimaryWritableSource() {
+        for (MetaSource src : getSources(true)) {
+            if (MetaSource.ROLE_PRIMARY.equals(src.getRole()) && src.isWritable()) {
+                return Optional.of(src);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Find the primary read-only {@link MetaSource} — the source.* child whose
+     * effective role is {@code "primary"} and whose effective kind is read-only
+     * (view / materializedView / storedProc / tableFunction). Own-only: a
+     * projection declares its own read-only source; the parent entity's
+     * writable source is reached via {@link #findPrimaryWritableSource()}.
+     *
+     * @return the primary read-only source, or empty if none
+     */
+    public Optional<MetaSource> findPrimaryReadOnlySource() {
+        for (MetaSource src : getSources(false)) {
+            if (MetaSource.ROLE_PRIMARY.equals(src.getRole()) && src.isReadOnly()) {
+                return Optional.of(src);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Returns the physical {@code @table} name from the primary writable
+     * {@code source.rdb} (source-v2 ADR-0007). Walks the {@code extends}
+     * chain. Replaces the legacy object-level {@code @dbTable} attr (dropped
+     * in Stage 2).
+     *
+     * <p>Returns {@code null} if the object has no primary writable source
+     * (e.g. a value object with no persistence). Callers should fall back to
+     * a naming-strategy default (e.g. snake_case of the object name) when
+     * {@code null}.</p>
+     *
+     * @return the {@code @table} value of the primary writable source, or {@code null}
+     */
+    public String getPrimaryRdbTableName() {
+        return findPrimaryWritableSource()
+            .map(MetaSource::getTableName)
+            .orElse(null);
+    }
+
+    /**
+     * Returns the physical {@code @table} name from the primary read-only
+     * {@code source.rdb} (source-v2 ADR-0007). Own-only: used for projections
+     * (entities that declare their own view / materializedView / storedProc /
+     * tableFunction source). Replaces the legacy object-level {@code @dbView}
+     * attr (dropped in Stage 2).
+     *
+     * <p>Returns {@code null} if the object has no primary read-only source.</p>
+     *
+     * @return the {@code @table} value of the primary read-only source, or {@code null}
+     */
+    public String getPrimaryRdbViewName() {
+        return findPrimaryReadOnlySource()
+            .map(MetaSource::getTableName)
+            .orElse(null);
+    }
+
     /**
      * Get one-to-one relationships (cardinality = "one")
      */
@@ -930,6 +1055,16 @@ public abstract class MetaObject extends MetaData {
                 "Objects can contain relationships",
                 TYPE_OBJECT, "*",                       // Parent: object.*
                 MetaRelationship.TYPE_RELATIONSHIP, "*", // Child: relationship.*
+                null,                                   // No name constraint
+                true                                    // Allowed
+            ));
+
+            // PLACEMENT CONSTRAINT: Objects CAN contain sources (source.rdb and future subtypes)
+            registry.addConstraint(new PlacementConstraint(
+                "object.sources.placement",
+                "Objects can contain sources",
+                TYPE_OBJECT, "*",                       // Parent: object.*
+                "source", "*",                          // Child: source.*
                 null,                                   // No name constraint
                 true                                    // Allowed
             ));

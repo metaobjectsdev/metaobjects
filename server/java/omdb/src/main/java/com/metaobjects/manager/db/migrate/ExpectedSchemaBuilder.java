@@ -108,18 +108,17 @@ public final class ExpectedSchemaBuilder {
         return null;
     }
 
-    /** The field's column name: {@code @dbColumn} when present, otherwise the field name. */
+    /** The field's column name: {@code @column} when present, otherwise the field name. */
     private static String columnNameOf(MetaField<?> mf) {
-        return mf.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN)
-            ? mf.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN).getValueAsString()
+        return mf.hasMetaAttr(CoreDBMetaDataProvider.COLUMN)
+            ? mf.getMetaAttr(CoreDBMetaDataProvider.COLUMN).getValueAsString()
             : mf.getName();
     }
 
     private void harvestRenameHints(MetaObject mc, RenameHints hints) {
-        // Determine the table name for this object
-        String table = mc.hasMetaAttr(CoreDBMetaDataProvider.DB_TABLE)
-            ? mc.getMetaAttr(CoreDBMetaDataProvider.DB_TABLE).getValueAsString()
-            : null;
+        // Determine the table name for this object (source-v2 ADR-0007:
+        // primary writable source.rdb @table; nothing if no such source).
+        String table = mc.getPrimaryRdbTableName();
         if (table == null) return;
 
         // Table-level rename

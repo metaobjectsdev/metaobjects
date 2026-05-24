@@ -12,6 +12,9 @@ import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.field.EnumField;
+import com.metaobjects.object.MetaObject;
+import com.metaobjects.relationship.MetaRelationship;
+import com.metaobjects.source.MetaSource;
 import com.metaobjects.util.ErrorMessageConstants;
 
 /**
@@ -45,6 +48,12 @@ public final class ValidationPhase {
      * <p>Currently runs:</p>
      * <ol>
      *   <li>{@link #validateEnumValues(MetaRoot)} — enum {@code @values} content rules.</li>
+     *   <li>{@link #validateSourceAttrs(MetaRoot)} — {@code source.*} {@code @kind}/{@code @role}
+     *       enum-membership rules.</li>
+     *   <li>{@link #validateOnePrimarySource(MetaRoot)} — exactly one {@code role=primary} source
+     *       per object that declares any sources.</li>
+     *   <li>{@link #validateRelationshipReferentialActions(MetaRoot)} — {@code relationship.*}
+     *       {@code @onDelete}/{@code @onUpdate} enum-membership rules.</li>
      * </ol>
      *
      * @param root the fully-loaded {@link MetaRoot}; must not be {@code null}
@@ -53,6 +62,9 @@ public final class ValidationPhase {
     public static void run(MetaRoot root) {
         if (root == null) return;
         validateEnumValues(root);
+        validateSourceAttrs(root);
+        validateOnePrimarySource(root);
+        validateRelationshipReferentialActions(root);
     }
 
     // =========================================================================
@@ -139,6 +151,245 @@ public final class ValidationPhase {
                 ErrorCode.ERR_MISSING_REQUIRED_ATTR);
         }
         // Has a super — inherits @values from the super, which is validated on its own node.
+    }
+
+    // =========================================================================
+    // Source @kind / @role enum validation
+    //
+    // Applied to every source.* node after the full tree is built (attrs are set
+    // post-placement, so we cannot validate at addChild time via the constraint
+    // framework — same reason field.enum uses a post-load pass).
+    //
+    //   @kind must be one of: table / view / materializedView / storedProc / tableFunction
+    //   @role must be one of: primary / replica / index / cache / publish / mirror
+    //
+    // Missing attrs are fine (defaults apply); only explicitly-set bad values fail.
+    // =========================================================================
+
+    /**
+     * Walk the full tree and validate {@code @kind} and {@code @role} on every
+     * {@code source.*} node.
+     *
+     * @param root the root node to walk
+     * @throws MetaDataException on the first error found
+     */
+    static void validateSourceAttrs(MetaRoot root) {
+        walkSourceAttrs(root);
+    }
+
+    private static void walkSourceAttrs(MetaData node) {
+        validateSourceNode(node);
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkSourceAttrs(child);
+        }
+    }
+
+    /**
+     * Validate {@code @kind} and {@code @role} on a single node if it is a {@code source.*}.
+     *
+     * @param node the node to inspect
+     * @throws MetaDataException if {@code @kind} or {@code @role} is set to an invalid value
+     */
+    private static void validateSourceNode(MetaData node) {
+        if (!MetaSource.TYPE_SOURCE.equals(node.getType())) {
+            return;
+        }
+        // Only validate on instances of MetaSource (skip the abstract base type itself at
+        // registration time — it will never appear in a loaded document tree).
+        if (!(node instanceof MetaSource)) {
+            return;
+        }
+        MetaSource src = (MetaSource) node;
+
+        // Validate @kind (own attribute only — defaults are fine)
+        if (node.hasMetaAttr(MetaSource.ATTR_KIND, false)) {
+            String kind = src.getEffectiveKind();
+            if (!MetaSource.VALID_KINDS.contains(kind)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": source '" + node.getName()
+                        + "' @kind '" + kind
+                        + "' is not a valid value; allowed: table, view, materializedView,"
+                        + " storedProc, tableFunction",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+
+        // Validate @role (own attribute only — defaults are fine)
+        if (node.hasMetaAttr(MetaSource.ATTR_ROLE, false)) {
+            String role = src.getRole();
+            if (!MetaSource.VALID_ROLES.contains(role)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": source '" + node.getName()
+                        + "' @role '" + role
+                        + "' is not a valid value; allowed: primary, replica, index, cache, publish, mirror",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+    }
+
+    // =========================================================================
+    // One-primary multi-source validation
+    //
+    // An object (entity or value) that declares ≥1 source.* children MUST have
+    // exactly one whose effective role is "primary":
+    //
+    //   0 sources          → OK (object is not persisted)
+    //   1+ sources, 1 primary → OK
+    //   1+ sources, 0 primary → ERR_SOURCE_NO_PRIMARY
+    //   1+ sources, 2+ primary → ERR_SOURCE_MULTIPLE_PRIMARY
+    //
+    // Own-only: only direct MetaSource children of the object are counted.
+    // Validation is eager-throw: first violation terminates the pass.
+    // =========================================================================
+
+    /**
+     * Walk every {@code object.*} in the root tree and enforce the one-primary rule:
+     * if an object declares any sources, exactly one must have an effective role of
+     * {@code "primary"}.
+     *
+     * @param root the root node to walk
+     * @throws MetaDataException on the first violation found
+     */
+    static void validateOnePrimarySource(MetaRoot root) {
+        for (MetaData child : root.getChildren(MetaData.class, false)) {
+            walkOnePrimarySource(child);
+        }
+    }
+
+    private static void walkOnePrimarySource(MetaData node) {
+        if (node instanceof MetaObject) {
+            validateObjectPrimarySource((MetaObject) node);
+        }
+        // Recurse into own children — handles nested objects (value objects inside entities, etc.)
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkOnePrimarySource(child);
+        }
+    }
+
+    /**
+     * Enforce the one-primary rule on a single {@code MetaObject} node.
+     *
+     * <p>Counts own {@code MetaSource} children whose effective role is {@code "primary"}.
+     * Objects with zero source children are exempt.</p>
+     *
+     * @param obj the object node to inspect
+     * @throws MetaDataException if the one-primary rule is violated
+     */
+    private static void validateObjectPrimarySource(MetaObject obj) {
+        // Own-only MetaSource children — delegates to MetaObject.getSources() to avoid
+        // duplicating the child-collection logic here.
+        java.util.Collection<MetaSource> sources = obj.getSources();
+
+        if (sources.isEmpty()) {
+            // No sources declared — object is not persisted; no rule to enforce.
+            return;
+        }
+
+        long primaryCount = sources.stream()
+            .filter(s -> MetaSource.ROLE_PRIMARY.equals(s.getRole()))
+            .count();
+
+        if (primaryCount == 0) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_SOURCE_NO_PRIMARY
+                    + ": object '" + obj.getName()
+                    + "' declares " + sources.size()
+                    + " source(s) but none has role \"" + MetaSource.ROLE_PRIMARY + "\"",
+                ErrorCode.ERR_SOURCE_NO_PRIMARY);
+        }
+
+        if (primaryCount > 1) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_SOURCE_MULTIPLE_PRIMARY
+                    + ": object '" + obj.getName()
+                    + "' declares " + primaryCount
+                    + " sources with role \"" + MetaSource.ROLE_PRIMARY
+                    + "\"; exactly one is required",
+                ErrorCode.ERR_SOURCE_MULTIPLE_PRIMARY);
+        }
+    }
+
+    // =========================================================================
+    // Relationship @onDelete / @onUpdate enum validation
+    //
+    // Applied to every relationship.* node after the full tree is built.
+    // The .withEnum() constraint registered on relationship.base does not fire
+    // eagerly at addChild time (the CustomConstraint applicability test checks
+    // the container node's own type/subtype, which is attr.string for the attr
+    // child, not relationship.base) — so we use this post-load pass instead,
+    // mirroring the pattern for source @kind/@role.
+    //
+    //   @onDelete must be one of: cascade / set-null / restrict / no-action
+    //   @onUpdate must be one of: cascade / set-null / restrict / no-action
+    //
+    // Missing attrs are fine (defaults apply per subtype in consumer code);
+    // only explicitly-set bad values fail.
+    // =========================================================================
+
+    /**
+     * Walk the full tree and validate {@code @onDelete} and {@code @onUpdate} on every
+     * {@code relationship.*} node.
+     *
+     * @param root the root node to walk
+     * @throws MetaDataException on the first error found
+     */
+    static void validateRelationshipReferentialActions(MetaRoot root) {
+        walkRelationshipReferentialActions(root);
+    }
+
+    private static void walkRelationshipReferentialActions(MetaData node) {
+        validateRelationshipNode(node);
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkRelationshipReferentialActions(child);
+        }
+    }
+
+    /**
+     * Validate {@code @onDelete} and {@code @onUpdate} on a single node if it is a
+     * {@code relationship.*} instance.
+     *
+     * @param node the node to inspect
+     * @throws MetaDataException if {@code @onDelete} or {@code @onUpdate} is set to an
+     *         invalid value (not in {@link MetaRelationship#REFERENTIAL_ACTIONS})
+     */
+    private static void validateRelationshipNode(MetaData node) {
+        if (!MetaRelationship.TYPE_RELATIONSHIP.equals(node.getType())) {
+            return;
+        }
+        // Only validate concrete MetaRelationship instances — skip the abstract base type
+        // itself at registration time; it will never appear in a loaded document tree.
+        if (!(node instanceof MetaRelationship)) {
+            return;
+        }
+        MetaRelationship rel = (MetaRelationship) node;
+
+        // Validate @onDelete (own attribute only — absent is fine)
+        if (node.hasMetaAttr(MetaRelationship.ATTR_ON_DELETE, false)) {
+            String onDelete = rel.getOnDeleteRaw();
+            if (!MetaRelationship.REFERENTIAL_ACTIONS.contains(onDelete)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": relationship '" + node.getName()
+                        + "' @onDelete '" + onDelete
+                        + "' is not a valid value; allowed: cascade, set-null, restrict, no-action",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+
+        // Validate @onUpdate (own attribute only — absent is fine)
+        if (node.hasMetaAttr(MetaRelationship.ATTR_ON_UPDATE, false)) {
+            String onUpdate = rel.getOnUpdateRaw();
+            if (!MetaRelationship.REFERENTIAL_ACTIONS.contains(onUpdate)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": relationship '" + node.getName()
+                        + "' @onUpdate '" + onUpdate
+                        + "' is not a valid value; allowed: cascade, set-null, restrict, no-action",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
     }
 
 }

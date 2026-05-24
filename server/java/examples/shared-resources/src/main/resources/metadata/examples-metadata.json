@@ -5,12 +5,16 @@
       {
         "object.entity": {
           "name": "User",
-          "@dbTable": "users",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "users"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "user_id",
+                "@column": "user_id",
                 "children": [
                   {
                     "validator.required": {
@@ -23,7 +27,7 @@
             {
               "field.string": {
                 "name": "username",
-                "@dbColumn": "username",
+                "@column": "username",
                 "children": [
                   {
                     "validator.required": {
@@ -42,7 +46,7 @@
             {
               "field.string": {
                 "name": "email",
-                "@dbColumn": "email",
+                "@column": "email",
                 "children": [
                   {
                     "validator.required": {
@@ -61,7 +65,7 @@
             {
               "field.date": {
                 "name": "createdDate",
-                "@dbColumn": "created_date"
+                "@column": "created_date"
               }
             }
           ]
@@ -70,12 +74,16 @@
       {
         "object.entity": {
           "name": "Product",
-          "@dbTable": "products",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "products"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "product_id",
+                "@column": "product_id",
                 "children": [
                   {
                     "validator.required": {
@@ -88,7 +96,7 @@
             {
               "field.string": {
                 "name": "name",
-                "@dbColumn": "product_name",
+                "@column": "product_name",
                 "children": [
                   {
                     "validator.required": {
@@ -107,7 +115,7 @@
             {
               "field.double": {
                 "name": "price",
-                "@dbColumn": "price",
+                "@column": "price",
                 "children": [
                   {
                     "validator.required": {

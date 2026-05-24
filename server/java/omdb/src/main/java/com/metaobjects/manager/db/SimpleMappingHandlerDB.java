@@ -42,10 +42,11 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	public final static String IS_VIEWONLY  = "isViewOnly";
 
 	public final static String FOREIGN_KEY_REF     = "dbForeignKey";
-	public final static String VIEW_REF     = "dbView";
+	// Source-v2 ADR-0007: table/view names come from source.rdb @table (via
+	// MetaObject.getPrimaryRdbTableName() / .getPrimaryRdbViewName()), not
+	// from object-level @dbTable / @dbView (dropped in Stage 2).
 	public final static String VIEW_SQL_REF = "dbViewSQL";
-	public final static String TABLE_REF    = "dbTable";
-	public final static String COL_REF      = "dbColumn";
+	public final static String COL_REF      = "column";
 	public final static String SEQ_REF      = "dbSequence";
 	public final static String SEQ_START_REF   = "dbSeqStart";
 	public final static String INHERITANCE_REF = "dbInheritance";
@@ -442,14 +443,14 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	}
     
     /**
-     * Retrieves the table name from the MetaClass
+     * Retrieves the view name from the MetaObject — the {@code @table} of its
+     * primary read-only {@code source.rdb} child (source-v2 ADR-0007).
      *
-     * @return Returns the table name
-     * @throws MetaDataException An exception is thrown if the object is not persistable
+     * @return the view name, or {@code null} if no primary read-only source
      */
     protected String getViewRef( MetaObject mc )
     {
-      return getPersistenceAttribute( mc, VIEW_REF );
+      return mc.getPrimaryRdbViewName();
     }
 
 	/**
@@ -464,14 +465,14 @@ public class SimpleMappingHandlerDB implements MappingHandler {
     }
 
     /**
-     * Retrieves the table name from the MetaClass
+     * Retrieves the table name from the MetaObject — the {@code @table} of its
+     * primary writable {@code source.rdb} child (source-v2 ADR-0007).
      *
-     * @return Returns the table name
-     * @throws MetaDataException An exception is thrown if the object is not persistable
+     * @return the table name, or {@code null} if no primary writable source
      */
     protected String getTableRef( MetaObject mc )
     {
-      return getPersistenceAttribute( mc, TABLE_REF );
+      return mc.getPrimaryRdbTableName();
     }
 
     /**

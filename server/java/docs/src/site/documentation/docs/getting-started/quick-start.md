@@ -71,16 +71,15 @@ Create a JSON metadata file that defines a simple User object:
     "package": "example",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "User",
-          "subType": "pojo",
-          "@dbTable": "users",
           "children": [
+            { "source.rdb": { "@table": "users" } },
             {
               "field": {
                 "name": "id",
                 "subType": "long",
-                "@dbColumn": "user_id",
+                "@column": "user_id",
                 "children": [
                   {
                     "validator": {
@@ -95,7 +94,7 @@ Create a JSON metadata file that defines a simple User object:
               "field": {
                 "name": "email",
                 "subType": "string",
-                "@dbColumn": "email_address",
+                "@column": "email_address",
                 "children": [
                   {
                     "validator": {
@@ -124,7 +123,7 @@ Create a JSON metadata file that defines a simple User object:
               "field": {
                 "name": "firstName",
                 "subType": "string",
-                "@dbColumn": "first_name",
+                "@column": "first_name",
                 "children": [
                   {
                     "validator": {
@@ -140,7 +139,7 @@ Create a JSON metadata file that defines a simple User object:
               "field": {
                 "name": "lastName",
                 "subType": "string",
-                "@dbColumn": "last_name",
+                "@column": "last_name",
                 "children": [
                   {
                     "validator": {
@@ -156,7 +155,7 @@ Create a JSON metadata file that defines a simple User object:
               "field": {
                 "name": "createdAt",
                 "subType": "date",
-                "@dbColumn": "created_at"
+                "@column": "created_at"
               }
             },
             {
@@ -176,7 +175,7 @@ Create a JSON metadata file that defines a simple User object:
 ```
 
 !!! tip "Architecture Patterns"
-    Notice the discrete validator children for validation rules like required and length constraints. Database attributes like `@dbTable` and `@dbColumn` use inline attribute syntax with the `@` prefix. This separation ensures validation is first-class metadata while keeping configuration attributes concise.
+    Notice the discrete validator children for validation rules like required and length constraints. Field-level database mapping attributes like `@column` use inline attribute syntax with the `@` prefix, while the table/view declaration is expressed as a `source.rdb` child node. This separation ensures validation is first-class metadata while keeping configuration attributes concise.
 
 ## Step 3: Load and Use Metadata
 
@@ -222,9 +221,9 @@ Create a simple Java application that loads and uses the metadata:
                 );
 
                 // Check for database column mapping
-                if (field.hasMetaAttr("dbColumn")) {
+                if (field.hasMetaAttr("column")) {
                     System.out.printf(" -> %s",
-                        field.getMetaAttr("dbColumn").getValueAsString()
+                        field.getMetaAttr("column").getValueAsString()
                     );
                 }
 

@@ -6,14 +6,19 @@
         "object": {
           "name": "Product",
           "subType": "pojo",
-          "@dbTable": "products",
           "@hasAuditing": true,
           "children": [
+            {
+              "source": {
+                "subType": "rdb",
+                "@table": "products"
+              }
+            },
             {
               "field": {
                 "name": "productId",
                 "subType": "long",
-                "@dbColumn": "product_id",
+                "@column": "product_id",
                 "@dbNullable": false,
                 "children": [
                   {
@@ -29,7 +34,7 @@
               "field": {
                 "name": "name",
                 "subType": "string",
-                "@dbColumn": "product_name",
+                "@column": "product_name",
                 "@isSearchable": true,
                 "children": [
                   {
@@ -53,7 +58,7 @@
               "field": {
                 "name": "price",
                 "subType": "double",
-                "@dbColumn": "price",
+                "@column": "price",
                 "@dbScale": 2,
                 "children": [
                   {
@@ -77,14 +82,14 @@
                 "name": "inStock",
                 "subType": "boolean",
                 "@defaultValue": true,
-                "@dbColumn": "in_stock"
+                "@column": "in_stock"
               }
             },
             {
               "field": {
                 "name": "categoryId",
                 "subType": "int",
-                "@dbColumn": "category_id",
+                "@column": "category_id",
                 "@dbForeignKey": "categories.id",
                 "@isOptional": true
               }

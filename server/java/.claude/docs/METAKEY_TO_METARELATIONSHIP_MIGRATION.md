@@ -1,5 +1,13 @@
 # MetaKey to MetaRelationship Migration - Complete Implementation Plan
 
+> **Historical note (2026-05-24, source-v2 Stage 2):** The relationship target attr,
+> documented throughout this file as `@targetObject` (with constant `ATTR_TARGET_OBJECT`
+> and accessor `getTargetObject()`), was subsequently renamed to `@objectRef`
+> (constant `ATTR_OBJECT_REF`, accessor `getObjectRef()`) as a Tier-1
+> cross-language vocabulary alignment with the TS reference and the shared
+> conformance corpus. This document is preserved as a historical record of the
+> prior migration; for current authoring guidance use `@objectRef`.
+
 ## 🎯 **Project Overview**
 
 **Objective**: Migrate from database-centric MetaKey system to model-driven MetaRelationship system that better supports AI code generation and cross-platform persistence.

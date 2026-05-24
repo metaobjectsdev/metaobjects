@@ -367,8 +367,8 @@ public class PlantUMLWriter extends FileDirectWriter<PlantUMLWriter> {
 
     protected MetaObject getTargetObject(AssociationRelationship relationship) {
         // Get the target object name from the relationship
-        if (relationship.hasMetaAttr(MetaRelationship.ATTR_TARGET_OBJECT)) {
-            String targetObjectName = relationship.getMetaAttr(MetaRelationship.ATTR_TARGET_OBJECT).getValueAsString();
+        if (relationship.hasMetaAttr(MetaRelationship.ATTR_OBJECT_REF)) {
+            String targetObjectName = relationship.getMetaAttr(MetaRelationship.ATTR_OBJECT_REF).getValueAsString();
             if (targetObjectName != null) {
                 try {
                     return MetaDataUtil.findMetaObjectByName(targetObjectName, this);

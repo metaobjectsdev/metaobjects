@@ -292,10 +292,11 @@ Edit `shared-resources/src/main/resources/metadata/examples-metadata.json`:
     "package": "com_example_model",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "YourObject",
-          "type": "pojo",
-          "@dbTable": "your_table"
+          "children": [
+            { "source.rdb": { "@table": "your_table" } }
+          ]
         }
       }
     ]
