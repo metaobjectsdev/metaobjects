@@ -69,6 +69,18 @@ const EXCLUDED_PATH_PREFIXES: ReadonlyArray<string> = [
   "fixtures/conformance",
 ];
 
+// Specific files we must never touch: each intentionally contains the bad
+// tokens (`@isArray` / `@name` as an inline attribute) as test data or as
+// quoted text in a doc comment. The pure-text TS scanner has no comment-
+// awareness and would either mangle these files or abort. Excluding them
+// keeps the script idempotent (re-running is a no-op).
+const EXPLICIT_FILE_EXCLUDES: ReadonlySet<string> = new Set([
+  // ERR_RESERVED_ATTR parser check — its doc comment quotes "@isArray" as an example.
+  "server/typescript/packages/metadata/src/parser-core.ts",
+  // ERR_RESERVED_ATTR unit test — intentionally feeds "@isArray"/"@name" to the loader.
+  "server/typescript/packages/metadata/test/reserved-attr.test.ts",
+]);
+
 const ALLOWED_EXTENSIONS: ReadonlySet<string> = new Set([".json", ".ts"]);
 
 // ---------------------------------------------------------------------------
@@ -99,6 +111,7 @@ const DRY_RUN = process.argv.includes("--dry-run");
 
 function isExcluded(absPath: string): boolean {
   const rel = relative(REPO_ROOT, absPath);
+  if (EXPLICIT_FILE_EXCLUDES.has(rel)) return true;
   for (const prefix of EXCLUDED_PATH_PREFIXES) {
     if (rel === prefix || rel.startsWith(prefix + "/")) return true;
   }
