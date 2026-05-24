@@ -2,6 +2,7 @@ import type { Change, EmitResult, Dialect, SchemaSnapshot, SnapshotMeta } from "
 import { BlockedChangesError } from "../errors.js";
 import { renderPostgres } from "./postgres.js";
 import { renderSqlite } from "./sqlite.js";
+import { renderD1 } from "./d1.js";
 
 export interface EmitOptions {
   dialect: Dialect;
@@ -34,6 +35,6 @@ export function emit(changes: Change[], opts: EmitOptions): EmitResult {
   switch (opts.dialect) {
     case "postgres": return renderPostgres(changes);
     case "sqlite":   return renderSqlite(changes, opts.expectedSchema, opts.actualMeta);
-    case "d1":       throw new Error("d1 emit not yet wired (Task 4)");
+    case "d1":       return renderD1(changes, opts.expectedSchema, opts.actualMeta);
   }
 }
