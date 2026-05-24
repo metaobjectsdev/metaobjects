@@ -117,3 +117,46 @@ describe("meta prompt-snapshot (write mode)", () => {
     }
   });
 });
+
+describe("meta prompt-snapshot --check", () => {
+  test("passes clean immediately after a write", async () => {
+    const tmp = scaffold();
+    writePayload(tmp, "greeting", { name: "Ada" });
+    try {
+      expect(await run(["prompt-snapshot", "--cwd", tmp])).toBe(0); // write golden
+      expect(await run(["prompt-snapshot", "--check", "--cwd", tmp])).toBe(0);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("exit 1 + reports drift when a shared partial changed", async () => {
+    const tmp = scaffold();
+    writePayload(tmp, "greeting", { name: "Ada" });
+    try {
+      await run(["prompt-snapshot", "--cwd", tmp]); // write golden
+      // Edit the shared partial — greeting.mustache itself is untouched, yet the
+      // rendered prompt changes. This is the case the template's git history misses.
+      writeFileSync(join(tmp, "prompts", "shared", "preamble.mustache"), "You are a WISE guide.\n", "utf8");
+      expect(await run(["prompt-snapshot", "--check", "--cwd", tmp])).toBe(1);
+      const all = [...out, ...err].join("\n");
+      expect(all).toContain("greeting");
+      expect(all).toMatch(/drift/i);
+      // --check must NOT rewrite the golden.
+      expect(readFileSync(snapPath(tmp, "greeting"), "utf8")).toBe("You are a helpful guide.\nHi Ada.");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("exit 1 when a payload exists but no golden is committed", async () => {
+    const tmp = scaffold();
+    writePayload(tmp, "greeting", { name: "Ada" }); // payload but no output.snap written
+    try {
+      expect(await run(["prompt-snapshot", "--check", "--cwd", tmp])).toBe(1);
+      expect([...out, ...err].join("\n")).toContain("greeting");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});

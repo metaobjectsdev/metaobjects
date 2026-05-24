@@ -12,7 +12,7 @@ import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { parsePromptSnapshotArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { FileProvider } from "../lib/file-provider.js";
-import { snapshotPaths } from "../lib/snapshot.js";
+import { snapshotPaths, unifiedDiff } from "../lib/snapshot.js";
 import { loadMemory } from "@metaobjectsdev/sdk";
 import { TYPE_TEMPLATE, TEMPLATE_ATTR_TEXT_REF, TEMPLATE_ATTR_FORMAT } from "@metaobjectsdev/metadata";
 import { render, type RenderFormat } from "@metaobjectsdev/render";
@@ -51,7 +51,9 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
   }
 
   let errorCount = 0;
+  let driftCount = 0;
   let wrote = 0;
+  let checked = 0;
   let skipped = 0;
 
   for (const tmpl of templates) {
@@ -87,10 +89,40 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
       continue;
     }
 
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(snapPath, rendered, "utf8");
-    log.info(`[${tmpl.name}] wrote ${snapPath}`);
-    wrote++;
+    if (flags.check) {
+      checked++;
+      if (!existsSync(snapPath)) {
+        log.error(
+          `[${tmpl.name}] no committed snapshot at ${snapPath}; run 'meta prompt-snapshot' to create it`,
+        );
+        driftCount++;
+        continue;
+      }
+      const golden = readFileSync(snapPath, "utf8");
+      if (golden !== rendered) {
+        log.error(`[${tmpl.name}] snapshot drift:\n${unifiedDiff(golden, rendered)}`);
+        log.error(`[${tmpl.name}] run 'meta prompt-snapshot' to accept the change`);
+        driftCount++;
+      }
+    } else {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(snapPath, rendered, "utf8");
+      log.info(`[${tmpl.name}] wrote ${snapPath}`);
+      wrote++;
+    }
+  }
+
+  if (flags.check) {
+    if (errorCount > 0 || driftCount > 0) {
+      log.error(
+        `meta prompt-snapshot --check — ${driftCount} drifted, ${errorCount} error(s) across ${checked} checked.`,
+      );
+      return 1;
+    }
+    log.info(
+      `meta prompt-snapshot --check — ${checked} snapshot(s) clean${skipped > 0 ? `, ${skipped} skipped` : ""}.`,
+    );
+    return 0;
   }
 
   if (errorCount > 0) {
