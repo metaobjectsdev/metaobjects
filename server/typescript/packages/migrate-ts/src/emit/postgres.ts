@@ -159,7 +159,7 @@ function pgType(t: SqlType): string {
 function renderDefault(d: ColumnDefault): string {
   if (d.kind === "expr") return d.value;
   // Literal: quote string-form values.
-  return `'${d.value.replace(/'/g, "''")}'`;
+  return `'${pgEscape(d.value)}'`;
 }
 
 function renderCreateIndex(table: string, schema: string | undefined, ix: IndexDescriptor): string {
