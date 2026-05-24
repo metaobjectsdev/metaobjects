@@ -87,6 +87,13 @@ metamodel-as-spine payoff. A per-language regex is strictly worse output.
   or `404` → number under the 1.2 core schema) is **rejected at load time** with a
   "quote this value" error. The subtype is the type-expectation that makes the guard
   deterministic. (General rule captured in ADR-0006.)
+  - **Implementation note (as-built):** at the *metadata (canonical JSON)* layer this guard
+    is moot — `@values` is a `stringarray` whose loader coercion stringifies every element,
+    so a non-string member cannot reach validation as a non-string (it becomes its string
+    form and is then caught by the identifier-pattern check). The non-string-rejection
+    fixture was therefore dropped (see Conformance fixtures). The live value of D7 is the
+    *YAML authoring* coercion guard, deferred to ADR-0006; the shipped loader-level
+    enforcement is the identifier-pattern + non-empty + no-duplicate rules below.
 
 ## Key prior-art findings
 
@@ -195,12 +202,16 @@ membership is validated the same way as the scalar case.
 2. **`enum-abstract-extends`** — an abstract `field.enum` extended by a concrete field; the
    **first fixture exercising field-to-field `extends`**, asserting members are inherited.
 3. **`enum-array`** — `field.enum[]`; element-membership semantics.
-4. **`enum-reject-nonstring-value`** (negative) — a `@values` element that parses as a
-   non-string (boolean/number/null) is rejected at load time with a clear, located error.
-5. **`enum-reject-duplicate-member`** (negative) — duplicate members rejected.
-6. **`enum-reject-non-identifier-member`** (negative) — a member like `"in-progress"`
-   (non-identifier-safe) is rejected at load time, pointing the author at the deferred
+4. **`error-enum-missing-values`** (negative) — `@values` absent → `ERR_MISSING_REQUIRED_ATTR`.
+5. **`error-enum-empty-values`** (negative) — `@values: []` (present but empty) → `ERR_BAD_ATTR_VALUE`.
+6. **`error-enum-duplicate-member`** (negative) — duplicate members → `ERR_BAD_ATTR_VALUE`.
+7. **`error-enum-non-identifier-member`** (negative) — a member like `"in-progress"`
+   (non-identifier-safe) → `ERR_BAD_ATTR_VALUE`, pointing the author at the deferred
    symbol↔value path.
+
+(As-built: the `enum-reject-nonstring-value` fixture from the original design was dropped —
+see D7's implementation note: stringarray coercion makes a non-string member unreachable at
+the metadata layer. The empty-`@values` fixture, surfaced during review, replaced it.)
 
 ## Testing
 
@@ -218,3 +229,8 @@ membership is validated the same way as the scalar case.
   symbol↔stored-value mapping.
 - Display labels (presentation/view layer).
 - Native Postgres `CREATE TYPE ... AS ENUM` (opt-in `@dbEnum`-style flag).
+- **C# scalar-array codegen** (incl. array-of-enum): the C# EF Core tier has no scalar-array
+  emission yet, so an `isArray` enum is currently emitted as a scalar. When scalar-array
+  codegen lands, suppress the column-level `CHECK` for array-of-enum (TS already guards
+  `!isArray`). Tracked here so it isn't lost. The `enum-array` fixture exercises only the
+  loader/serializer round-trip today (which all ports handle).
