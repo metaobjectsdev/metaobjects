@@ -204,11 +204,7 @@ public final class ValidationPhase {
         // Validate @kind (own attribute only — defaults are fine)
         if (node.hasMetaAttr(MetaSource.ATTR_KIND, false)) {
             String kind = src.getEffectiveKind();
-            if (!MetaSource.KIND_TABLE.equals(kind)
-                    && !MetaSource.KIND_VIEW.equals(kind)
-                    && !MetaSource.KIND_MATERIALIZED_VIEW.equals(kind)
-                    && !MetaSource.KIND_STORED_PROC.equals(kind)
-                    && !MetaSource.KIND_TABLE_FUNCTION.equals(kind)) {
+            if (!MetaSource.VALID_KINDS.contains(kind)) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_BAD_ATTR_VALUE
                         + ": source '" + node.getName()
@@ -222,12 +218,7 @@ public final class ValidationPhase {
         // Validate @role (own attribute only — defaults are fine)
         if (node.hasMetaAttr(MetaSource.ATTR_ROLE, false)) {
             String role = src.getRole();
-            if (!MetaSource.ROLE_PRIMARY.equals(role)
-                    && !MetaSource.ROLE_REPLICA.equals(role)
-                    && !MetaSource.ROLE_INDEX.equals(role)
-                    && !MetaSource.ROLE_CACHE.equals(role)
-                    && !MetaSource.ROLE_PUBLISH.equals(role)
-                    && !MetaSource.ROLE_MIRROR.equals(role)) {
+            if (!MetaSource.VALID_ROLES.contains(role)) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_BAD_ATTR_VALUE
                         + ": source '" + node.getName()
@@ -287,13 +278,9 @@ public final class ValidationPhase {
      * @throws MetaDataException if the one-primary rule is violated
      */
     private static void validateObjectPrimarySource(MetaObject obj) {
-        // Collect own MetaSource children (own-only, includeParentData=false).
-        java.util.List<MetaSource> sources = new java.util.ArrayList<>();
-        for (MetaData child : obj.getChildren(MetaData.class, false)) {
-            if (child instanceof MetaSource) {
-                sources.add((MetaSource) child);
-            }
-        }
+        // Own-only MetaSource children — delegates to MetaObject.getSources() to avoid
+        // duplicating the child-collection logic here.
+        java.util.Collection<MetaSource> sources = obj.getSources();
 
         if (sources.isEmpty()) {
             // No sources declared — object is not persisted; no rule to enforce.

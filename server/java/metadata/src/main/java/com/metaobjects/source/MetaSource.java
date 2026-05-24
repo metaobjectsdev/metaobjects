@@ -64,6 +64,15 @@ public abstract class MetaSource extends MetaData {
         KIND_TABLE_FUNCTION
     );
 
+    /** All valid {@code @kind} values. Used by {@code ValidationPhase} for enum-membership checks. */
+    public static final Set<String> VALID_KINDS = Set.of(
+        KIND_TABLE,
+        KIND_VIEW,
+        KIND_MATERIALIZED_VIEW,
+        KIND_STORED_PROC,
+        KIND_TABLE_FUNCTION
+    );
+
     // === ROLE VALUE CONSTANTS ===
 
     public static final String ROLE_PRIMARY = "primary";
@@ -75,6 +84,11 @@ public abstract class MetaSource extends MetaData {
 
     /** Default role when {@code @role} is absent. */
     public static final String DEFAULT_ROLE = ROLE_PRIMARY;
+
+    /** All valid {@code @role} values. Used by {@code ValidationPhase} for enum-membership checks. */
+    public static final Set<String> VALID_ROLES = Set.of(
+        ROLE_PRIMARY, ROLE_REPLICA, ROLE_INDEX, ROLE_CACHE, ROLE_PUBLISH, ROLE_MIRROR
+    );
 
     // -----------------------------------------------------------------------
     // Constructor
