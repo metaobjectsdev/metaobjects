@@ -57,7 +57,7 @@ public static class CSharpNaming
     public static string Table(MetaObject entity) => entity.DbTable ?? entity.Name;
 
     /// <summary>
-    /// The DB column name for a field: the <c>@dbColumn</c> override, else the raw
+    /// The DB column name for a field: the <c>@column</c> override, else the raw
     /// field name. Shared so the schema DDL and the [Column] annotation agree.
     /// </summary>
     public static string Column(MetaField field) => field.DbColumn ?? field.Name;
