@@ -111,7 +111,7 @@ describe("buildExpectedSchema — indexes + FKs", () => {
     expect(programs?.indexes.find((i) => i.name === "programs_pk")).toBeUndefined();
   });
 
-  test("many-to-one relationship → FK on child table", () => {
+  test("many-to-one relationship → FK on child table (association → restrict/cascade defaults)", () => {
     const weeks = snapshot.tables.find((t) => t.name === "weeks");
     expect(weeks?.foreignKeys).toEqual([
       {
@@ -119,6 +119,8 @@ describe("buildExpectedSchema — indexes + FKs", () => {
         columns: ["program_id"],
         refTable: "programs",
         refColumns: ["id"],
+        onDelete: "restrict",
+        onUpdate: "cascade",
       },
     ]);
   });

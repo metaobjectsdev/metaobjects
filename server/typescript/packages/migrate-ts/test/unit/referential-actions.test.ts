@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { resolveReferentialActions } from "../../src/referential-actions.js";
+import { buildExpectedSchema } from "../../src/expected-schema.js";
+import { diff } from "../../src/diff/index.js";
+import { emit } from "../../src/emit/index.js";
 import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
 
 async function loadDoc(doc: unknown) {
@@ -63,5 +66,90 @@ describe("resolveReferentialActions", () => {
   test("no correlated relationship → both undefined", async () => {
     const { week, ref } = await loadWeek(undefined);
     expect(resolveReferentialActions(week, ref)).toEqual({ onDelete: undefined, onUpdate: undefined });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round-trip: buildExpectedSchema → diff (against empty) → emit
+//
+// Asserts that the relationship-derived defaults (and explicit overrides)
+// flow all the way through to the emitted DDL — for both Postgres
+// (ALTER TABLE … ADD CONSTRAINT) and SQLite (inline FOREIGN KEY clause).
+// ---------------------------------------------------------------------------
+
+const EMPTY_SCHEMA = { tables: [], views: [] };
+
+function makeDoc(rel: Record<string, unknown>) {
+  return {
+    "metadata.root": {
+      package: "acme",
+      children: [
+        { "object.entity": { name: "Program", children: [
+          { "field.long": { name: "id" } },
+          { "identity.primary": { "@fields": "id" } },
+        ] } },
+        { "object.entity": { name: "Week", children: [
+          { "field.long": { name: "id" } },
+          { "field.long": { name: "programId" } },
+          rel,
+          { "identity.reference": { name: "ref_program", "@fields": ["programId"], "@references": "Program" } },
+          { "identity.primary": { "@fields": "id" } },
+        ] } },
+      ],
+    },
+  };
+}
+
+async function buildSnapshotForRel(rel: Record<string, unknown>) {
+  const { root, errors } = await new MetaDataLoader().load([
+    new InMemorySource(JSON.stringify(makeDoc(rel))),
+  ]);
+  expect(errors).toHaveLength(0);
+  return buildExpectedSchema(root);
+}
+
+describe("end-to-end FK actions in emitted DDL", () => {
+  test("composition default → ON DELETE CASCADE / ON UPDATE CASCADE (Postgres ADD CONSTRAINT)", async () => {
+    const snapshot = await buildSnapshotForRel({
+      "relationship.composition": { name: "program", "@objectRef": "Program", "@cardinality": "one" },
+    });
+    const { changes } = await diff(snapshot, EMPTY_SCHEMA);
+    const { up } = emit(changes, { dialect: "postgres" });
+    expect(up).toContain('ADD CONSTRAINT "weeks_program_id_fk"');
+    expect(up).toContain('REFERENCES "programs" ("id") ON DELETE CASCADE ON UPDATE CASCADE');
+  });
+
+  test("composition default → inline FOREIGN KEY … ON DELETE CASCADE ON UPDATE CASCADE (SQLite CREATE TABLE)", async () => {
+    const snapshot = await buildSnapshotForRel({
+      "relationship.composition": { name: "program", "@objectRef": "Program", "@cardinality": "one" },
+    });
+    const { changes } = await diff(snapshot, EMPTY_SCHEMA);
+    const { up } = emit(changes, { dialect: "sqlite" });
+    expect(up).toContain('FOREIGN KEY ("program_id") REFERENCES "programs" ("id") ON DELETE CASCADE ON UPDATE CASCADE');
+  });
+
+  test("explicit @onDelete: set-null overrides composition default; @onUpdate stays cascade (Postgres)", async () => {
+    const snapshot = await buildSnapshotForRel({
+      "relationship.composition": {
+        name: "program", "@objectRef": "Program", "@cardinality": "one",
+        "@onDelete": "set-null", "@onUpdate": "cascade",
+      },
+    });
+    const { changes } = await diff(snapshot, EMPTY_SCHEMA);
+    const { up } = emit(changes, { dialect: "postgres" });
+    expect(up).toContain('REFERENCES "programs" ("id") ON DELETE SET NULL ON UPDATE CASCADE');
+    expect(up).not.toContain("ON DELETE CASCADE");
+  });
+
+  test("explicit @onDelete: set-null overrides composition default (SQLite inline)", async () => {
+    const snapshot = await buildSnapshotForRel({
+      "relationship.composition": {
+        name: "program", "@objectRef": "Program", "@cardinality": "one",
+        "@onDelete": "set-null", "@onUpdate": "cascade",
+      },
+    });
+    const { changes } = await diff(snapshot, EMPTY_SCHEMA);
+    const { up } = emit(changes, { dialect: "sqlite" });
+    expect(up).toContain('FOREIGN KEY ("program_id") REFERENCES "programs" ("id") ON DELETE SET NULL ON UPDATE CASCADE');
   });
 });

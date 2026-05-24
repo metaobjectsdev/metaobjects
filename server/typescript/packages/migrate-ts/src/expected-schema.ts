@@ -34,6 +34,7 @@ import type { SqlType } from "./sql-type.js";
 import type {
   SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,
 } from "./types.js";
+import { resolveReferentialActions } from "./referential-actions.js";
 
 export interface BuildExpectedSchemaOptions {
   /**
@@ -242,12 +243,16 @@ function buildForeignKeys(
       ? explicitTargetFields.map(toSnake)
       : [toSnake(refChild.resolvedTargetPkField(root) ?? "id")];
 
-    fks.push({
+    const { onDelete, onUpdate } = resolveReferentialActions(entity, refChild);
+    const fk: FkDescriptor = {
       name: `${tableName}_${fkCols[0]}_fk`,
       columns: fkCols,
       refTable,
       refColumns,
-    });
+    };
+    if (onDelete !== undefined) fk.onDelete = onDelete;
+    if (onUpdate !== undefined) fk.onUpdate = onUpdate;
+    fks.push(fk);
   }
   return fks;
 }
