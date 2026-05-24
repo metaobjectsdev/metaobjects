@@ -24,7 +24,7 @@ describe("extractViewSpec — flat passthrough via extends", () => {
         "object.entity": {
           name: "Program",
           children: [
-            { "source.dbTable": { "@name": "programs" } },
+            { "source.rdb": { "@table": "programs" } },
             { "field.int": { name: "id", } },
             { "field.string": { name: "title", } },
             { "identity.primary": { "@fields": "id" } },
@@ -42,7 +42,7 @@ describe("extractViewSpec — flat passthrough via extends", () => {
         "object.entity": {
           name: "Week",
           children: [
-            { "source.dbTable": { "@name": "weeks" } },
+            { "source.rdb": { "@table": "weeks" } },
             { "field.int": { name: "id", } },
             { "field.int": { name: "programId", } },
             { "identity.primary":   { "@fields": "id" } },
@@ -55,7 +55,7 @@ describe("extractViewSpec — flat passthrough via extends", () => {
           name: "ProgramSummary",
           "extends": "Program",
           children: [
-            { "source.dbView": { "@name": "v_program_summary" } },
+            { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
             {
               "field.int": {
                 name: "weekCount",
@@ -111,7 +111,7 @@ describe("extractViewSpec — multi-level via path", () => {
         "object.entity": {
           name: "Program",
           children: [
-            { "source.dbTable": { "@name": "programs" } },
+            { "source.rdb": { "@table": "programs" } },
             { "field.int": { name: "id", } },
             { "identity.primary": { "@fields": "id" } },
             {
@@ -128,7 +128,7 @@ describe("extractViewSpec — multi-level via path", () => {
         "object.entity": {
           name: "Week",
           children: [
-            { "source.dbTable": { "@name": "weeks" } },
+            { "source.rdb": { "@table": "weeks" } },
             { "field.int": { name: "id", } },
             { "field.int": { name: "programId", } },
             { "identity.primary":   { "@fields": "id" } },
@@ -147,7 +147,7 @@ describe("extractViewSpec — multi-level via path", () => {
         "object.entity": {
           name: "Workout",
           children: [
-            { "source.dbTable": { "@name": "workouts" } },
+            { "source.rdb": { "@table": "workouts" } },
             { "field.int": { name: "id", } },
             { "field.int": { name: "weekId", } },
             { "identity.primary":   { "@fields": "id" } },
@@ -160,7 +160,7 @@ describe("extractViewSpec — multi-level via path", () => {
           name: "ProgramSummary",
           "extends": "Program",
           children: [
-            { "source.dbView": { "@name": "v_program_summary" } },
+            { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
             {
               "field.int": {
                 name: "workoutCount",
@@ -197,7 +197,7 @@ describe("extractViewSpec — shared @via deduplication", () => {
         "object.entity": {
           name: "Program",
           children: [
-            { "source.dbTable": { "@name": "programs" } },
+            { "source.rdb": { "@table": "programs" } },
             { "field.int": { name: "id", } },
             { "field.string": { name: "title", } },
             { "identity.primary": { "@fields": "id" } },
@@ -215,7 +215,7 @@ describe("extractViewSpec — shared @via deduplication", () => {
         "object.entity": {
           name: "Week",
           children: [
-            { "source.dbTable": { "@name": "weeks" } },
+            { "source.rdb": { "@table": "weeks" } },
             { "field.int": { name: "id", } },
             { "field.int": { name: "programId", } },
             { "field.string": { name: "title", } },
@@ -229,7 +229,7 @@ describe("extractViewSpec — shared @via deduplication", () => {
           name: "ProgramSummary",
           "extends": "Program",
           children: [
-            { "source.dbView": { "@name": "v_program_summary" } },
+            { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
             {
               "field.int": {
                 name: "weekCount",
@@ -283,7 +283,7 @@ describe("extractViewSpec — pure-extends projection (no origin children)", () 
         "object.entity": {
           name: "Program",
           children: [
-            { "source.dbTable": { "@name": "programs" } },
+            { "source.rdb": { "@table": "programs" } },
             { "field.int": { name: "id", } },
             { "field.string": { name: "title", } },
             { "identity.primary": { "@fields": "id" } },
@@ -295,7 +295,7 @@ describe("extractViewSpec — pure-extends projection (no origin children)", () 
           name: "ProgramView",
           "extends": "Program",
           children: [
-            { "source.dbView": { "@name": "v_program_view" } },
+            { "source.rdb": { "@kind": "view", "@table": "v_program_view" } },
             { "identity.primary": { "@fields": "id" } },
           ],
         },
@@ -326,7 +326,7 @@ describe("extractViewSpec — pkField resolution", () => {
         "object.entity": {
           name: "Program",
           children: [
-            { "source.dbTable": { "@name": "programs" } },
+            { "source.rdb": { "@table": "programs" } },
             { "field.int": { name: "id", } },
             { "field.string": { name: "title", } },
             { "identity.primary": { "@fields": "id" } },
@@ -344,7 +344,7 @@ describe("extractViewSpec — pkField resolution", () => {
         "object.entity": {
           name: "Week",
           children: [
-            { "source.dbTable": { "@name": "weeks" } },
+            { "source.rdb": { "@table": "weeks" } },
             { "field.int": { name: "id", } },
             { "field.int": { name: "programId", } },
             { "identity.primary":   { "@fields": "id" } },
@@ -357,7 +357,7 @@ describe("extractViewSpec — pkField resolution", () => {
           name: "ProgramSummary",
           "extends": "Program",
           children: [
-            { "source.dbView": { "@name": "v_program_summary" } },
+            { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
             {
               "field.int": {
                 name: "weekCount",
@@ -391,7 +391,7 @@ describe("extractViewSpec — pkField resolution", () => {
         "object.entity": {
           name: "Customer",
           children: [
-            { "source.dbTable": { "@name": "customers" } },
+            { "source.rdb": { "@table": "customers" } },
             { "field.int": { name: "id", } },
             { "field.string": { name: "email", } },
             { "identity.primary":   { "@fields": "id" } },
@@ -410,7 +410,7 @@ describe("extractViewSpec — pkField resolution", () => {
         "object.entity": {
           name: "Purchase",
           children: [
-            { "source.dbTable": { "@name": "purchases" } },
+            { "source.rdb": { "@table": "purchases" } },
             { "field.int": { name: "id", } },
             { "field.string": { name: "customerEmail", } },
             { "identity.primary":   { "@fields": "id" } },
@@ -423,7 +423,7 @@ describe("extractViewSpec — pkField resolution", () => {
           name: "CustomerSummary",
           "extends": "Customer",
           children: [
-            { "source.dbView": { "@name": "v_customer_summary" } },
+            { "source.rdb": { "@kind": "view", "@table": "v_customer_summary" } },
             {
               "field.int": {
                 name: "purchaseCount",
@@ -489,7 +489,7 @@ describe("extractViewSpec — belongs-to via identity.reference", () => {
           name: "PurchaseSummary",
           "extends": "Purchase",
           children: [
-            { "source.dbView": { "@name": "v_purchase_summary" } },
+            { "source.rdb": { "@kind": "view", "@table": "v_purchase_summary" } },
             {
               "field.string": {
                 name: "programTitle",

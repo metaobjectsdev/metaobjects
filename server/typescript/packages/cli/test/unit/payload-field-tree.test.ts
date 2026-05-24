@@ -21,7 +21,7 @@ const model = [
         {
           "field.object": {
             name: "posts",
-            "@isArray": true,
+            "isArray": true,
             "@objectRef": "PostBrief",
             children: [{ "origin.collection": { "@via": "Author.posts" } }],
           },

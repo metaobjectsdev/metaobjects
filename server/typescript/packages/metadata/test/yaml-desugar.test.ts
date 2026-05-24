@@ -34,10 +34,10 @@ test("rule 2: a scalar body becomes { name: <scalar> }", () => {
 
 test("rule 2: a mapping body is kept as-is", () => {
   const { canonical } = desugar(
-    { "field.string": { name: "sku", "@dbColumn": "sku_code" } },
+    { "field.string": { name: "sku", "@column": "sku_code" } },
     coreRegistry(),
   );
-  expect(canonical).toEqual({ "field.string": { name: "sku", "@dbColumn": "sku_code" } });
+  expect(canonical).toEqual({ "field.string": { name: "sku", "@column": "sku_code" } });
 });
 
 test("rule 3: a node with no children gets no synthesized children key", () => {

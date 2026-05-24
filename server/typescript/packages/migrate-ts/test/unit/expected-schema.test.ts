@@ -148,7 +148,7 @@ describe("buildExpectedSchema — identity.reference @enforce", () => {
         "object.entity": {
           name: "Program",
           children: [
-            { "source.dbTable": { "@name": "programs" } },
+            { "source.rdb": { "@table": "programs" } },
             { "field.long": { name: "id" } },
             { "identity.primary": { "@fields": "id" } },
           ],
@@ -158,7 +158,7 @@ describe("buildExpectedSchema — identity.reference @enforce", () => {
         "object.entity": {
           name: "Purchase",
           children: [
-            { "source.dbTable": { "@name": "purchases" } },
+            { "source.rdb": { "@table": "purchases" } },
             { "field.long":   { name: "id" } },
             { "field.long":   { name: "programId" } },
             { "identity.primary":   { "@fields": "id" } },
@@ -182,7 +182,7 @@ describe("buildExpectedSchema — identity.reference @enforce", () => {
         "object.entity": {
           name: "Subscriber",
           children: [
-            { "source.dbTable": { "@name": "subscribers" } },
+            { "source.rdb": { "@table": "subscribers" } },
             { "field.long":   { name: "id" } },
             { "field.string": { name: "email" } },
             { "identity.primary":   { "@fields": "id" } },
@@ -194,7 +194,7 @@ describe("buildExpectedSchema — identity.reference @enforce", () => {
         "object.entity": {
           name: "Purchase",
           children: [
-            { "source.dbTable": { "@name": "purchases" } },
+            { "source.rdb": { "@table": "purchases" } },
             { "field.long":   { name: "id" } },
             { "field.string": { name: "customerEmail" } },
             { "identity.primary":   { "@fields": "id" } },

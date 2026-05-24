@@ -75,7 +75,7 @@ describe("meta migrate — sqlite end-to-end round-trip", () => {
       const root = meta["metadata.root"];
       const user = root.children.find((c: Record<string, { name: string }>) => c["object.entity"]?.name === "User");
       user["object.entity"].children.push({
-        "field.string": { name: "bio", "@dbColumn": "bio" },
+        "field.string": { name: "bio", "@column": "bio" },
       });
       writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 

@@ -933,7 +933,7 @@ describe("registry dispatch — origin subtype classes", () => {
               name: "ProgramSummary",
               extends: "Program",
               children: [
-                { "source.dbView": { "@name": "v_program_summary" } },
+                { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
                 {
                   "field.string": {
                     name: "displayTitle",
@@ -990,7 +990,7 @@ describe("registry dispatch — origin subtype classes", () => {
               name: "ProgramSummary",
               extends: "Program",
               children: [
-                { "source.dbView": { "@name": "v_program_summary" } },
+                { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
                 {
                   "field.int": {
                     name: "weekCount",
@@ -1142,7 +1142,7 @@ describe("MetaDataLoader produces typed concrete nodes from JSON", () => {
           "object.entity": {
             name: "User",
             children: [
-              { "source.dbTable": { "@name": "users" } },
+              { "source.rdb": { "@table": "users" } },
               { "field.long": { name: "id" } },
               {
                 "field.string": {
@@ -1306,7 +1306,7 @@ describe("MetaDataLoader produces typed concrete nodes from JSON", () => {
             "object.entity": {
               name: "Summary",
               children: [
-                { "source.dbView": { "@name": "v_summary" } },
+                { "source.rdb": { "@kind": "view", "@table": "v_summary" } },
                 {
                   "field.string": {
                     name: "label",

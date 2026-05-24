@@ -23,7 +23,7 @@ describe("emit (postgres) — schema namespacing end-to-end", () => {
                 "name": "AuditEvent",
                 "children": [
                   { "field.long": { "name": "id" } },
-                  { "source.dbTable": { "name": "src", "@name": "audit_events", "@schema": "p3_api" } },
+                  { "source.rdb": { "name": "src", "@table": "audit_events", "@schema": "p3_api" } },
                   { "identity.primary": { "name": "pk", "@fields": ["id"] } },
                 ],
               },
@@ -33,7 +33,7 @@ describe("emit (postgres) — schema namespacing end-to-end", () => {
                 "name": "Customer",
                 "children": [
                   { "field.long": { "name": "id" } },
-                  { "source.dbTable": { "name": "src", "@name": "customers" } },
+                  { "source.rdb": { "name": "src", "@table": "customers" } },
                   { "identity.primary": { "name": "pk", "@fields": ["id"] } },
                 ],
               },

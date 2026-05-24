@@ -7,10 +7,34 @@
           "name": "Widget",
           "@dbTable": "widgets",
           "children": [
-            {"field": {"name": "id", "extends": "::demo::common::id"}},
-            {"field": {"name": "createdAt", "extends": "::demo::common::createdAt"}},
-            {"field.string": {"name": "name", "@dbColumn": "name", "@maxLength": 100}},
-            {"identity.primary": {"name": "pk", "@fields": ["id"], "@generation": "increment"}}
+            {
+              "field": {
+                "name": "id",
+                "extends": "::demo::common::id"
+              }
+            },
+            {
+              "field": {
+                "name": "createdAt",
+                "extends": "::demo::common::createdAt"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@column": "name",
+                "@maxLength": 100
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ],
+                "@generation": "increment"
+              }
+            }
           ]
         }
       }

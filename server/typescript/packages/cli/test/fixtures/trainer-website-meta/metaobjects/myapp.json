@@ -10,17 +10,54 @@
           "@forgeSource": "human",
           "@forgePrimaryLocation": "src/db/users.schema.ts",
           "children": [
-            {"field.long": {"name": "id", "@dbColumn": "id"}},
-            {"field.string": {"name": "email", "@dbColumn": "email",
-              "@maxLength": 255,
-              "children": [{"validator.required": {}}]
-            }},
-            {"field.string": {"name": "displayName", "@dbColumn": "display_name",
-              "@maxLength": 100
-            }},
-            {"field.timestamp": {"name": "createdAt", "@dbColumn": "created_at"}},
-            {"identity.primary": {"name": "pk", "@fields": ["id"], "@generation": "increment"}},
-            {"identity.secondary": {"name": "emailIdx", "@fields": ["email"]}}
+            {
+              "field.long": {
+                "name": "id",
+                "@column": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "email",
+                "@column": "email",
+                "@maxLength": 255,
+                "children": [
+                  {
+                    "validator.required": {}
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "displayName",
+                "@column": "display_name",
+                "@maxLength": 100
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt",
+                "@column": "created_at"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ],
+                "@generation": "increment"
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "emailIdx",
+                "@fields": [
+                  "email"
+                ]
+              }
+            }
           ]
         }
       },
@@ -32,20 +69,67 @@
           "@forgeSource": "human",
           "@forgePrimaryLocation": "src/db/posts.schema.ts",
           "children": [
-            {"field.long": {"name": "id", "@dbColumn": "id"}},
-            {"field.long": {"name": "userId", "@dbColumn": "user_id"}},
-            {"field.string": {"name": "title", "@dbColumn": "title",
-              "@maxLength": 200,
-              "children": [{"validator.required": {}}]
-            }},
-            {"field.string": {"name": "body", "@dbColumn": "body"}},
-            {"field.timestamp": {"name": "publishedAt", "@dbColumn": "published_at"}},
-            {"identity.primary":   {"name": "pk", "@fields": ["id"], "@generation": "increment"}},
-            {"identity.reference": {"name": "ref_user", "@fields": ["userId"], "@references": "trainerWebsite::User"}},
-            {"relationship.association": {"name": "author",
-              "@cardinality": "one",
-              "@objectRef": "trainerWebsite::User"
-            }}
+            {
+              "field.long": {
+                "name": "id",
+                "@column": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "userId",
+                "@column": "user_id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title",
+                "@column": "title",
+                "@maxLength": 200,
+                "children": [
+                  {
+                    "validator.required": {}
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "body",
+                "@column": "body"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "publishedAt",
+                "@column": "published_at"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ],
+                "@generation": "increment"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "ref_user",
+                "@fields": [
+                  "userId"
+                ],
+                "@references": "trainerWebsite::User"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "author",
+                "@cardinality": "one",
+                "@objectRef": "trainerWebsite::User"
+              }
+            }
           ]
         }
       },
@@ -56,13 +140,41 @@
           "@forgeConfidence": 0.9,
           "@forgeSource": "human",
           "children": [
-            {"field.long": {"name": "id", "@dbColumn": "id"}},
-            {"field.string": {"name": "name", "@dbColumn": "name",
-              "@maxLength": 50,
-              "children": [{"validator.required": {}}]
-            }},
-            {"identity.primary": {"name": "pk", "@fields": ["id"], "@generation": "increment"}},
-            {"identity.secondary": {"name": "nameIdx", "@fields": ["name"]}}
+            {
+              "field.long": {
+                "name": "id",
+                "@column": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@column": "name",
+                "@maxLength": 50,
+                "children": [
+                  {
+                    "validator.required": {}
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ],
+                "@generation": "increment"
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "nameIdx",
+                "@fields": [
+                  "name"
+                ]
+              }
+            }
           ]
         }
       },
@@ -72,7 +184,10 @@
           "@forgeConfidence": 0.9,
           "@forgeSource": "human",
           "@forgeRationale": "Real-time invalidation matters for the games dashboard.",
-          "@forgeAlternatives": ["swr", "redux-toolkit-query"]
+          "@forgeAlternatives": [
+            "swr",
+            "redux-toolkit-query"
+          ]
         }
       }
     ]

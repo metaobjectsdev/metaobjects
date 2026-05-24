@@ -21,7 +21,7 @@ describe("buildExpectedSchema — SQLite @schema rejection", () => {
                 "name": "Order",
                 "children": [
                   { "field.long": { "name": "id" } },
-                  { "source.dbTable": { "name": "src", "@name": "orders", "@schema": "sales" } },
+                  { "source.rdb": { "name": "src", "@table": "orders", "@schema": "sales" } },
                   { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
                 ],
               },
@@ -50,7 +50,7 @@ describe("buildExpectedSchema — SQLite @schema rejection", () => {
                 "name": "Order",
                 "children": [
                   { "field.long": { "name": "id" } },
-                  { "source.dbTable": { "name": "src", "@name": "orders" } },
+                  { "source.rdb": { "name": "src", "@table": "orders" } },
                   { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
                 ],
               },

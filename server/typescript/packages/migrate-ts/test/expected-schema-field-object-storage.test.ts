@@ -21,7 +21,7 @@ describe("buildExpectedSchema — field.object @storage", () => {
             { "field.string": { name: "postalCode" } },
           ]}},
           { "object.entity": { name: "Customer", children: [
-            { "source.dbTable": { "@name": "customers" } },
+            { "source.rdb": { "@table": "customers" } },
             { "field.long":   { name: "id" } },
             { "field.object": { name: "shippingAddress", "@objectRef": "Address", "@storage": "flattened" } },
             { "identity.primary": { "@fields": "id" } },
@@ -50,7 +50,7 @@ describe("buildExpectedSchema — field.object @storage", () => {
             { "field.string": { name: "postalCode" } },
           ]}},
           { "object.entity": { name: "Customer", children: [
-            { "source.dbTable": { "@name": "customers" } },
+            { "source.rdb": { "@table": "customers" } },
             { "field.long":   { name: "id" } },
             { "field.object": { name: "shippingAddress", "@objectRef": "Address", "@storage": "flattened" } },
             { "identity.primary": { "@fields": "id" } },
@@ -75,7 +75,7 @@ describe("buildExpectedSchema — field.object @storage", () => {
             { "field.string": { name: "email" } },
           ]}},
           { "object.entity": { name: "Patient", children: [
-            { "source.dbTable": { "@name": "patients" } },
+            { "source.rdb": { "@table": "patients" } },
             { "field.long":   { name: "id" } },
             { "field.object": { name: "contactInfos", isArray: true, "@objectRef": "ContactInfo", "@storage": "jsonb" } },
             { "identity.primary": { "@fields": "id" } },
@@ -98,7 +98,7 @@ describe("buildExpectedSchema — field.object @storage", () => {
             { "field.string": { name: "data" } },
           ]}},
           { "object.entity": { name: "Item", children: [
-            { "source.dbTable": { "@name": "items" } },
+            { "source.rdb": { "@table": "items" } },
             { "field.long":   { name: "id" } },
             { "field.object": { name: "payload", "@objectRef": "Blob" } },
             { "identity.primary": { "@fields": "id" } },

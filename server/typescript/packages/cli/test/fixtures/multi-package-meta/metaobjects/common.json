@@ -2,8 +2,20 @@
   "metadata.root": {
     "package": "demo::common",
     "children": [
-      {"field.long": {"name": "id", "abstract": true, "@dbColumn": "id"}},
-      {"field.timestamp": {"name": "createdAt", "abstract": true, "@dbColumn": "created_at"}}
+      {
+        "field.long": {
+          "name": "id",
+          "abstract": true,
+          "@column": "id"
+        }
+      },
+      {
+        "field.timestamp": {
+          "name": "createdAt",
+          "abstract": true,
+          "@column": "created_at"
+        }
+      }
     ]
   }
 }

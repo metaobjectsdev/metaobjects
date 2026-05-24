@@ -16,11 +16,11 @@ async function loadFixture() {
               name: "BaseEntity",
               abstract: true,
               children: [
-                { "field.long": { name: "id", "@dbColumn": "id" } },
+                { "field.long": { name: "id", "@column": "id" } },
                 {
                   "field.timestamp": {
                     name: "createdAt",
-                    "@dbColumn": "created_at",
+                    "@column": "created_at",
                   },
                 },
                 { "identity.primary": { "@fields": "id" } },
@@ -32,8 +32,8 @@ async function loadFixture() {
               name: "Program",
               extends: "BaseEntity",
               children: [
-                { "source.dbTable": { "@name": "programs" } },
-                { "field.string": { name: "title", "@dbColumn": "title" } },
+                { "source.rdb": { "@table": "programs" } },
+                { "field.string": { name: "title", "@column": "title" } },
               ],
             },
           },

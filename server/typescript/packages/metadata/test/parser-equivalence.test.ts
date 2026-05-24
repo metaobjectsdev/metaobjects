@@ -73,7 +73,7 @@ test("equivalence: a full document spanning all four rules", () => {
         "children": [
           { "field.string": { "name": "sku" } },
           { "field.string": { "name": "tags", "isArray": true } },
-          { "field.long": { "name": "priceCents", "@dbColumn": "price_cents" } },
+          { "field.long": { "name": "priceCents", "@column": "price_cents" } },
           { "identity.primary": { "name": "pk", "@fields": ["sku"] } }
         ]
       } },
@@ -91,7 +91,7 @@ metadata:
           - field.string[]: tags
           - field.long:
               name: priceCents
-              "@dbColumn": price_cents
+              "@column": price_cents
           - identity.primary:
               name: pk
               "@fields": sku

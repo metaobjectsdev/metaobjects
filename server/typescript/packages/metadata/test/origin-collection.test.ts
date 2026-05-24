@@ -27,7 +27,7 @@ const nested = (collectionChildren: unknown[]) => [
         {
           "field.object": {
             name: "posts",
-            "@isArray": true,
+            "isArray": true,
             "@objectRef": "PostBrief",
             children: collectionChildren,
           },

@@ -34,7 +34,7 @@ describe("MetaDataLoader validates origin.passthrough.from", () => {
         "object.entity": {
           name: "UserView",
           children: [
-            { "source.dbView": { "@name": "v_user" } },
+            { "source.rdb": { "@kind": "view", "@table": "v_user" } },
             {
               "field.string": {
                 name: "displayName",
@@ -66,7 +66,7 @@ describe("MetaDataLoader validates origin.passthrough.from", () => {
         "object.entity": {
           name: "UserView",
           children: [
-            { "source.dbView": { "@name": "v_user" } },
+            { "source.rdb": { "@kind": "view", "@table": "v_user" } },
             {
               "field.string": {
                 name: "displayName",
@@ -121,7 +121,7 @@ describe("MetaDataLoader validates origin.aggregate.of", () => {
         "object.entity": {
           name: "UserSummary",
           children: [
-            { "source.dbView": { "@name": "v_user_summary" } },
+            { "source.rdb": { "@kind": "view", "@table": "v_user_summary" } },
             {
               "field.long": {
                 name: "totalSpent",
@@ -177,7 +177,7 @@ describe("MetaDataLoader validates origin.aggregate.of", () => {
         "object.entity": {
           name: "UserStat",
           children: [
-            { "source.dbView": { "@name": "v_user_stat" } },
+            { "source.rdb": { "@kind": "view", "@table": "v_user_stat" } },
             {
               "field.int": {
                 name: "n",
@@ -219,7 +219,7 @@ describe("MetaDataLoader validates origin.via paths against relationships", () =
         "object.entity": {
           name: "UserStat",
           children: [
-            { "source.dbView": { "@name": "v_user_stat" } },
+            { "source.rdb": { "@kind": "view", "@table": "v_user_stat" } },
             {
               "field.int": {
                 name: "n",

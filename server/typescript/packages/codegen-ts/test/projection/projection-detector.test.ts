@@ -19,7 +19,7 @@ describe("isProjection / isWriteThrough", () => {
       "object.entity": {
         name: "Foo",
         children: [
-          { "source.dbView": { "@name": "v_foo" } },
+          { "source.rdb": { "@kind": "view", "@table": "v_foo" } },
           { "field.int": { name: "id", } },
           { "identity.primary": { "@fields": "id" } },
         ],
@@ -34,7 +34,7 @@ describe("isProjection / isWriteThrough", () => {
       "object.entity": {
         name: "Foo",
         children: [
-          { "source.dbTable": { "@name": "foos" } },
+          { "source.rdb": { "@table": "foos" } },
           { "field.int": { name: "id", } },
           { "identity.primary": { "@fields": "id" } },
         ],
@@ -49,8 +49,8 @@ describe("isProjection / isWriteThrough", () => {
       "object.entity": {
         name: "Foo",
         children: [
-          { "source.dbTable": { "@name": "foos" } },
-          { "source.dbView": { "@name": "v_foo" } },
+          { "source.rdb": { "@table": "foos" } },
+          { "source.rdb": { "@kind": "view", "@table": "v_foo" } },
           { "field.int": { name: "id", } },
           { "identity.primary": { "@fields": "id" } },
         ],

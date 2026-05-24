@@ -22,7 +22,7 @@ describe("buildExpectedSchema — schema namespacing", () => {
                 "children": [
                   { "field.long": { "name": "id" } },
                   { "field.string": { "name": "ref" } },
-                  { "source.dbTable": { "name": "src", "@name": "orders", "@schema": "sales" } },
+                  { "source.rdb": { "name": "src", "@table": "orders", "@schema": "sales" } },
                   { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
                 ],
               },
@@ -52,7 +52,7 @@ describe("buildExpectedSchema — schema namespacing", () => {
                 "children": [
                   { "field.long": { "name": "id" } },
                   { "field.string": { "name": "ref" } },
-                  { "source.dbTable": { "name": "src", "@name": "orders" } },
+                  { "source.rdb": { "name": "src", "@table": "orders" } },
                   { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
                 ],
               },

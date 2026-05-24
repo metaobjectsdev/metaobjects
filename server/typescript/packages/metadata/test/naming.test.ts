@@ -21,7 +21,7 @@ describe("resolveTableSchema", () => {
             "object.entity": {
               name: "Order",
               children: [
-                { "source.dbTable": { "@name": "orders", "@schema": "sales" } },
+                { "source.rdb": { "@table": "orders", "@schema": "sales" } },
               ],
             },
           },
@@ -41,7 +41,7 @@ describe("resolveTableSchema", () => {
             "object.entity": {
               name: "Order",
               children: [
-                { "source.dbTable": { "@name": "orders" } },
+                { "source.rdb": { "@table": "orders" } },
               ],
             },
           },
@@ -79,7 +79,7 @@ describe("resolveTableSchema", () => {
             "object.entity": {
               name: "OrderSummary",
               children: [
-                { "source.dbView": { "@name": "v_order_summary", "@schema": "reporting" } },
+                { "source.rdb": { "@kind": "view", "@table": "v_order_summary", "@schema": "reporting" } },
               ],
             },
           },
@@ -99,7 +99,7 @@ describe("resolveTableSchema", () => {
             "object.entity": {
               name: "Order",
               children: [
-                { "source.dbTable": { "@name": "orders", "@schema": "sales" } },
+                { "source.rdb": { "@table": "orders", "@schema": "sales" } },
               ],
             },
           },

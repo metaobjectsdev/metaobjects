@@ -519,7 +519,7 @@ metaobjects.config.ts         generator wiring (committed)
           "children": [
             {"field": {"name": "id", "extends": "..::common::id"}},
             {"field": {"name": "email", "subType": "string",
-              "@dbColumn": "email_address",
+              "@column": "email_address",
               "children": [{"validator": {"subType": "required"}}]
             }},
             {"identity": {"name": "pk", "subType": "primary", "@fields": ["id"], "@generation": "increment"}}

@@ -23,7 +23,7 @@ async function makeMinimalProjection(projName: string, baseName: string) {
           "object.entity": {
             name: baseName,
             children: [
-              { "source.dbTable": { "@name": baseName.toLowerCase() + "s" } },
+              { "source.rdb": { "@table": baseName.toLowerCase() + "s" } },
               { "field.int": { name: "id", } },
               { "identity.primary": { "@fields": "id" } },
             ],
@@ -34,7 +34,7 @@ async function makeMinimalProjection(projName: string, baseName: string) {
             name: projName,
             extends: baseName,
             children: [
-              { "source.dbView": { "@name": `v_${projName.toLowerCase()}` } },
+              { "source.rdb": { "@kind": "view", "@table": `v_${projName.toLowerCase()}` } },
               { "identity.primary": { "@fields": "id" } },
             ],
           },
@@ -90,7 +90,7 @@ async function loadProjection() {
           "object.entity": {
             name: "Program",
             children: [
-              { "source.dbTable": { "@name": "programs" } },
+              { "source.rdb": { "@table": "programs" } },
               { "field.int": { name: "id", } },
               { "field.string": { name: "title", } },
               { "identity.primary": { "@fields": "id" } },
@@ -108,7 +108,7 @@ async function loadProjection() {
           "object.entity": {
             name: "Week",
             children: [
-              { "source.dbTable": { "@name": "weeks" } },
+              { "source.rdb": { "@table": "weeks" } },
               { "field.int": { name: "id", } },
               { "field.int": { name: "programId", } },
               { "identity.primary":   { "@fields": "id" } },
@@ -121,7 +121,7 @@ async function loadProjection() {
             name: "ProgramSummary",
             extends: "Program",
             children: [
-              { "source.dbView": { "@name": "v_program_summary" } },
+              { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
               {
                 "field.int": {
                   name: "weekCount",

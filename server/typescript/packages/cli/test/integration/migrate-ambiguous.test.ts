@@ -43,8 +43,8 @@ function renameField(metaPath: string, objectName: string, from: string, to: str
     const fieldKey = Object.keys(child).find((k) => k.startsWith("field.") || k === "field");
     if (fieldKey && child[fieldKey]?.name === from) {
       child[fieldKey].name = to;
-      if (child[fieldKey]["@dbColumn"] !== undefined) {
-        child[fieldKey]["@dbColumn"] = to.replace(/([A-Z])/g, "_$1").toLowerCase();
+      if (child[fieldKey]["@column"] !== undefined) {
+        child[fieldKey]["@column"] = to.replace(/([A-Z])/g, "_$1").toLowerCase();
       }
     }
   }
