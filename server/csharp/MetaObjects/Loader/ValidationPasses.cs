@@ -685,6 +685,73 @@ public static class ValidationPasses
     }
 
     // =========================================================================
+    // Pass: ValidateOnePrimarySource (source-v2, ADR-0007)
+    //   An object that declares ≥1 source children MUST have exactly one whose
+    //   effective role is "primary":
+    //     0 sources           → OK (object is not persisted; no rule to enforce).
+    //     1+ sources, 1 primary → OK
+    //     1+ sources, 0 primary → ERR_SOURCE_NO_PRIMARY
+    //     1+ sources, 2+ primary → ERR_SOURCE_MULTIPLE_PRIMARY
+    //
+    //   Own-only: only direct MetaSource children of the object are counted —
+    //   inheriting "primary" status across extends would silently disable the
+    //   author's ability to introduce a write-through projection.
+    //
+    //   Ported from typescript/packages/metadata/src/persistence/source/validate-source-roles.ts
+    //   and Java loader/ValidationPhase#validateOnePrimarySource.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateOnePrimarySource(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        WalkOnePrimarySource(root, errors);
+        return errors.AsReadOnly();
+    }
+
+    private static void WalkOnePrimarySource(MetaData node, List<MetaError> errors)
+    {
+        if (node is MetaObject obj)
+        {
+            ValidateObjectPrimarySource(obj, errors);
+        }
+        // Recurse into own children — handles nested objects (e.g. value objects).
+        foreach (var child in node.OwnChildren())
+        {
+            WalkOnePrimarySource(child, errors);
+        }
+    }
+
+    private static void ValidateObjectPrimarySource(MetaObject obj, List<MetaError> errors)
+    {
+        // Own-only MetaSource children.
+        var sources = obj.OwnSources();
+        if (sources.Count == 0)
+        {
+            // No sources declared — object is not persisted; rule does not apply.
+            return;
+        }
+
+        int primaryCount = 0;
+        foreach (var s in sources)
+        {
+            if (s.Role == SOURCE_ROLE_PRIMARY) primaryCount++;
+        }
+
+        if (primaryCount == 0)
+        {
+            errors.Add(new MetaError(
+                $"object '{obj.Name}' declares {sources.Count} source(s) but none has role \"{SOURCE_ROLE_PRIMARY}\"",
+                ErrorCode.ERR_SOURCE_NO_PRIMARY));
+        }
+        else if (primaryCount > 1)
+        {
+            errors.Add(new MetaError(
+                $"object '{obj.Name}' declares {primaryCount} sources with role \"{SOURCE_ROLE_PRIMARY}\"; exactly one is required",
+                ErrorCode.ERR_SOURCE_MULTIPLE_PRIMARY));
+        }
+    }
+
+    // =========================================================================
     // Pass 10: ValidateEnumValues
     //   Enforces the three cross-language @values rules on every field.enum node:
     //     1. @values must be non-empty.
