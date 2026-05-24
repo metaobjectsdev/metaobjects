@@ -66,6 +66,10 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
 
+        // XML doc + [Obsolete] FIRST — XML doc-extraction tools (docfx,
+        // Sandcastle, IDE hover-doc) require the doc comment to immediately
+        // precede the declaration, before any attributes.
+        XmlDocBuilder.AppendTo(sb, entity);
         // Composite primary key -> class-level [PrimaryKey(...)] (EF Core 7+).
         if (pkFields.Count > 1)
         {
@@ -74,7 +78,6 @@ public sealed class EntityGenerator : IGenerator
         }
         if (!isProjection)
             sb.AppendLine($"[Table(\"{CSharpNaming.Table(entity)}\")]");
-        XmlDocBuilder.AppendTo(sb, entity);
         sb.AppendLine($"public class {className}");
         sb.AppendLine("{");
 

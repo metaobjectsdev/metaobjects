@@ -65,10 +65,17 @@ public class DocCommentEmissionTests
         """);
         Assert.Contains("/// <summary>A registered account holder.</summary>", src);
         Assert.Contains("public class User", src);
-        // The summary must appear before the class declaration.
+        // The summary must appear before the class declaration AND before any
+        // attributes on the class — doc-extraction tools (docfx, Sandcastle, IDE
+        // hover-doc) require the XML comment to immediately precede the declaration,
+        // before any attributes. With [Table(...)] between the comment and the class,
+        // tools fail to associate the doc with the class.
         int summaryIdx = src.IndexOf("/// <summary>A registered account holder.</summary>", StringComparison.Ordinal);
+        int tableIdx   = src.IndexOf("[Table(", StringComparison.Ordinal);
         int classIdx   = src.IndexOf("public class User", StringComparison.Ordinal);
-        Assert.True(summaryIdx < classIdx, "summary comment must precede the class declaration");
+        Assert.True(tableIdx >= 0, "this entity has a single-PK, so [Table(...)] is expected");
+        Assert.True(summaryIdx < tableIdx, "summary comment must precede [Table] attribute");
+        Assert.True(tableIdx < classIdx,   "[Table] attribute precedes the class declaration");
     }
 
     [Fact]
