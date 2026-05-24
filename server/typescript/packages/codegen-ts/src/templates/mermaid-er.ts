@@ -55,11 +55,9 @@ function renderEntityBlock(entity: MetaObject): string[] {
   const pkFields = pkFieldNames(entity);
   const fkFields = fkFieldNames(entity);
   for (const field of entity.fields()) {
-    const marker = pkFields.has(field.name)
-      ? " PK"
-      : fkFields.has(field.name)
-        ? " FK"
-        : "";
+    let marker = "";
+    if (pkFields.has(field.name)) marker = " PK";
+    else if (fkFields.has(field.name)) marker = " FK";
     const desc = field.attr(DOC_ATTR_DESCRIPTION);
     const comment =
       typeof desc === "string" && desc.length > 0
