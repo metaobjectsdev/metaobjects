@@ -159,4 +159,17 @@ describe("meta prompt-snapshot --check", () => {
       rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  test("exit 1 when a template's @textRef does not resolve (render error path)", async () => {
+    const tmp = scaffold();
+    writePayload(tmp, "farewell", { name: "Ada" });
+    await run(["prompt-snapshot", "--cwd", tmp]); // write the golden first
+    rmSync(join(tmp, "prompts", "prompt", "farewell.mustache"), { force: true }); // now unresolvable
+    try {
+      expect(await run(["prompt-snapshot", "--check", "--cwd", tmp])).toBe(1);
+      expect([...out, ...err].join("\n")).toContain("farewell");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });

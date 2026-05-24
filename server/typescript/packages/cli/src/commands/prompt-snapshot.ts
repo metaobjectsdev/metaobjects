@@ -3,9 +3,10 @@
 // For each template.* node with a committed fixture payload, render its @textRef
 // text against that payload (same engine, provider, and @format escaping prod
 // uses) and snapshot the byte-exact output under .metaobjects/snapshots/<name>/.
-// Write mode (default) overwrites output.snap; --check (a later task) diffs and
-// fails on drift. Closes the gap the template's own git history misses: a shared
-// partial or payload-shape change that silently alters the rendered prompt.
+// Write mode (default) overwrites output.snap; --check compares against the
+// committed golden and exits 1 on drift (never writes). Closes the gap the
+// template's own git history misses: a shared partial or payload-shape change
+// that silently alters the rendered prompt.
 
 import { join } from "node:path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
@@ -15,7 +16,7 @@ import { FileProvider } from "../lib/file-provider.js";
 import { snapshotPaths, unifiedDiff } from "../lib/snapshot.js";
 import { loadMemory } from "@metaobjectsdev/sdk";
 import { TYPE_TEMPLATE, TEMPLATE_ATTR_TEXT_REF, TEMPLATE_ATTR_FORMAT } from "@metaobjectsdev/metadata";
-import { render, type RenderFormat } from "@metaobjectsdev/render";
+import { render, ESCAPERS, type RenderFormat } from "@metaobjectsdev/render";
 
 const DEFAULT_PROMPTS_DIR = "prompts";
 
@@ -77,8 +78,13 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
       continue;
     }
 
+    // @format is loader-validated against the template format vocabulary; narrow
+    // against the render engine's own escaper registry so the RenderFormat cast is
+    // a checked narrowing (never a TypeError on an unknown format), and omit the
+    // key entirely when absent (exactOptionalPropertyTypes forbids `format: undefined`).
     const fmtAttr = tmpl.ownAttr(TEMPLATE_ATTR_FORMAT);
-    const format = typeof fmtAttr === "string" ? (fmtAttr as RenderFormat) : undefined;
+    const format =
+      typeof fmtAttr === "string" && fmtAttr in ESCAPERS ? (fmtAttr as RenderFormat) : undefined;
 
     let rendered: string;
     try {
