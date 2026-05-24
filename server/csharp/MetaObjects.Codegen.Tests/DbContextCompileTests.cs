@@ -3,8 +3,9 @@
 // Compiles the generated entity POCOs + AppDbContext TOGETHER against real
 // EF Core 8 assemblies (in-memory Roslyn, same pattern as EntityGeneratorTests).
 // This catches API mismatches that pure string-contains checks can't find —
-// e.g. calling .ToJson() on a PropertyBuilder<List<T>>, which EF Core 8 does not
-// expose (CS1061), even though the string appears valid.
+// e.g. calling .ToJson() on a PrimitiveCollectionBuilder<List<T>>, which EF Core 8
+// does not expose (CS1929: that extension method's receiver must be an
+// OwnedNavigationBuilder), even though the string appears valid.
 //
 // The fixture exercises the full EF surface in one model:
 //   - object.value Address (owned type target)
@@ -32,13 +33,8 @@ namespace MetaObjects.Codegen.Tests;
 
 public class DbContextCompileTests
 {
-    // One model that exercises every EF-surface code-path in DbContextGenerator:
-    //   • scalar enum   → .HasConversion<string>()
-    //   • array enum    → .PrimitiveCollection().ElementType().HasConversion<string>()
-    //   • scalar array  → .PrimitiveCollection()
-    //   • flattened object field → OwnsOne per-property column config
-    //   • json object field      → OwnsOne(...).ToJson(...)
-    //   • dbView projection      → .ToView(...)
+    // One model that exercises every EF-surface code-path in DbContextGenerator
+    // (see the file-header comment for the field-by-field breakdown).
     private const string Model = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.value": { "name": "Address", "children": [
