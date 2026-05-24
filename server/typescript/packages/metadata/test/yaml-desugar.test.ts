@@ -1,12 +1,19 @@
 import { test, expect } from "bun:test";
 import { TypeRegistry } from "../src/registry.js";
-import { registerCoreTypes } from "../src/core-types.js";
+import { registerCoreTypes, coreProviders } from "../src/core-types.js";
+import { composeRegistry } from "../src/provider.js";
 import { desugar } from "../src/core/yaml-desugar.js";
 
 function coreRegistry(): TypeRegistry {
   const registry = new TypeRegistry();
   registerCoreTypes(registry);
   return registry;
+}
+
+/** A registry with the full default-provider bundle (core + db), so attrs
+ *  registered by dbProvider (e.g. `@column`) are in scope for D2 tests. */
+function fullRegistry(): TypeRegistry {
+  return composeRegistry(coreProviders);
 }
 
 test("rule 1: a bare type key resolves to the registry default subType", () => {
@@ -153,4 +160,67 @@ test("malformed: a non-mapping document is a collected error with empty canonica
   const { canonical, errors } = desugar("just a string", coreRegistry());
   expect(errors.length).toBeGreaterThan(0);
   expect(Object.keys(canonical)).toEqual([]);
+});
+
+// ---------------------------------------------------------------------------
+// D2 — YAML type-coercion guard (ADR-0006 D2)
+// ---------------------------------------------------------------------------
+
+test("D2: a boolean parsed for a string-typed attr is an ERR_YAML_COERCION", () => {
+  // `column: TRUE` in YAML → JS true. The schema says @column on field.string
+  // is a string-typed attr, so this is a silent coercion.
+  const { errors } = desugar(
+    { "field.string": { name: "active", column: true } },
+    fullRegistry(),
+  );
+  const coercion = errors.find((e) => e.code === "ERR_YAML_COERCION");
+  expect(coercion).toBeDefined();
+  expect(coercion!.message).toContain("@column");
+  expect(coercion!.message).toContain("expected string");
+  expect(coercion!.message).toContain("boolean");
+  expect(coercion!.message.toLowerCase()).toContain("quote");
+});
+
+test("D2: a string value for a string-typed attr is NOT an error", () => {
+  const { errors } = desugar(
+    { "field.string": { name: "active", column: "TRUE" } },
+    fullRegistry(),
+  );
+  expect(errors.filter((e) => e.code === "ERR_YAML_COERCION")).toEqual([]);
+});
+
+test("D2: an unquoted number in a string-array attr triggers per-element coercion", () => {
+  // field.enum.@values is a string-array attr. A YAML list with an unquoted
+  // `42` becomes JS number 42 — silent coercion.
+  const { errors } = desugar(
+    {
+      "field.enum": {
+        name: "status",
+        values: ["DRAFT", 42, "PUBLISHED"],
+      },
+    },
+    fullRegistry(),
+  );
+  const coercion = errors.find((e) => e.code === "ERR_YAML_COERCION");
+  expect(coercion).toBeDefined();
+  expect(coercion!.message).toContain("@values[1]");
+  expect(coercion!.message).toContain("number");
+});
+
+test("D2: a boolean for a boolean-typed attr is NOT an error (no coercion)", () => {
+  // @filterable on a field is boolean-typed.
+  const { errors } = desugar(
+    { "field.string": { name: "sku", filterable: true } },
+    fullRegistry(),
+  );
+  expect(errors.filter((e) => e.code === "ERR_YAML_COERCION")).toEqual([]);
+});
+
+test("D2: an awkward author form (@column: TRUE) is ALSO guarded", () => {
+  const { errors } = desugar(
+    { "field.string": { name: "active", "@column": true } },
+    fullRegistry(),
+  );
+  const coercion = errors.find((e) => e.code === "ERR_YAML_COERCION");
+  expect(coercion).toBeDefined();
 });

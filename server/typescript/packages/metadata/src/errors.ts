@@ -47,6 +47,9 @@ export const ERROR_CODES = [
   "ERR_RESERVED_ATTR",
   "ERR_SOURCE_NO_PRIMARY",
   "ERR_SOURCE_MULTIPLE_PRIMARY",
+  // ADR-0006 D2 — YAML type-coercion guard (TS-only emitter; YAML is a TS
+  // front-end). Registered here so the code vocabulary stays single-sourced.
+  "ERR_YAML_COERCION",
   "ERR_UNKNOWN",
 ] as const;
 

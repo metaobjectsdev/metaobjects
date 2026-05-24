@@ -34,17 +34,25 @@ export function parseYaml(content: string, opts: ParseOptions): ParseResult {
   // If the desugar could not produce a usable document at all, surface the
   // first desugar error as a throw — parallels parseJson's top-level throws.
   if (Object.keys(canonical).length === 0) {
+    const first = desugarErrors[0]!;
     throw new ParseError(
-      desugarErrors[0]!,
-      { ...errOpts(opts.sourceName), code: "ERR_MALFORMED_YAML" },
+      first.message,
+      { ...errOpts(opts.sourceName), code: first.code ?? "ERR_MALFORMED_YAML" },
     );
   }
 
   const result = buildTree(canonical, opts);
 
   // Merge collected desugar errors ahead of buildTree's own collected errors.
+  // Each CollectedError carries its own stable code when set (e.g.
+  // ERR_YAML_COERCION from the D2 type-coercion guard); the malformed-document
+  // shape errors fall back to ERR_MALFORMED_YAML.
   const desugarParseErrors = desugarErrors.map(
-    (msg) => new ParseError(msg, { ...errOpts(opts.sourceName), code: "ERR_MALFORMED_YAML" }),
+    (e) =>
+      new ParseError(e.message, {
+        ...errOpts(opts.sourceName),
+        code: e.code ?? "ERR_MALFORMED_YAML",
+      }),
   );
   return {
     root: result.root,
