@@ -4,6 +4,7 @@
     "error-field-object-storage-no-object-ref",
     "error-origin-bad-aggregate-fn",
     "error-origin-bad-via-path",
+    "error-reserved-word-as-attr",
     "error-source-multiple-primary",
     "error-source-no-primary",
     "error-template-payload-ref-unresolved",

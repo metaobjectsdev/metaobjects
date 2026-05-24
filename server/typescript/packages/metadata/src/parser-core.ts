@@ -188,6 +188,14 @@ function expandPackageForPath(basePkg: string, pkgPath: string): string {
 // a single parse call. Set at buildTree entry, read deep in the call tree.
 let _deferSuperResolution = false;
 
+// Module-level hard-error sink for inline @-attr checks (used by
+// applyInlineAttrsAndUnknownKeys). Set at buildTree entry alongside the
+// errors[] aggregator so a reserved-word-as-attr violation lands in the
+// loader's errors[] without changing the helper's signature.
+// Safe because buildTree is synchronous — same reentrancy argument as
+// _deferSuperResolution.
+let _currentErrors: ParseError[] | undefined;
+
 /**
  * buildTree — the shared registry-driven tree-builder.
  *
@@ -205,6 +213,7 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
   const strict = opts.strict ?? false;
   const source = opts.sourceName;
   _deferSuperResolution = opts.deferSuperResolution === true;
+  _currentErrors = errors;
 
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new ParseError("Top-level metadata must be an object", { ...errOpts(source), code: "ERR_TOP_LEVEL_NOT_OBJECT" });
@@ -580,6 +589,34 @@ function applyInlineAttrsAndUnknownKeys(
 
     // Inline attribute (@-prefixed) — materialize into a MetaAttr instance.
     const attrName = key.slice(ATTR_PREFIX.length);
+
+    // Reserved structural keys (name/package/extends/abstract/overlay/isArray
+    // /children/value) must NOT be @-prefixed — they're written bare. An
+    // @-prefixed reserved word is always a metadata-author error (e.g.
+    // "@isArray" instead of bare "isArray") and is reported as a hard error
+    // regardless of strict mode so downstream code never sees a bogus
+    // MetaAttr named after a reserved word.
+    if (RESERVED_KEYS.has(attrName)) {
+      const displayName =
+        model.name !== "" ? `${model.type}.${model.subType} '${model.name}'` : `${model.type}.${model.subType}`;
+      const msg =
+        `Reserved structural key '${attrName}' must not be ${ATTR_PREFIX}-prefixed ` +
+        `on ${displayName} at ${path} (write it bare)`;
+      if (strict) {
+        throw new ParseError(msg, { ...errOpts(source, path), code: "ERR_RESERVED_ATTR" });
+      }
+      // Lax mode: route through the module-level errors sink so the loader
+      // sees this as a hard error (parity with attr-schema-validate's
+      // ERR_BAD_ATTR_VALUE direct pushes). Falls back to warnings only if
+      // _currentErrors isn't bound (unreachable when called from buildTree).
+      if (_currentErrors !== undefined) {
+        _currentErrors.push(new ParseError(msg, { ...errOpts(source, path), code: "ERR_RESERVED_ATTR" }));
+      } else {
+        warnings.push(msg);
+      }
+      continue;
+    }
+
     const rawVal = nodeData[key];
 
     try {
