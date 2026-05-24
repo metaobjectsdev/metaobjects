@@ -40,6 +40,7 @@ COMMANDS:
   gen [<entity>...]     Codegen TS targets from metaobjects/ entities
   export                Flatten loaded metadata to one canonical JSON artifact
   verify                Check template.* text against its payload (drift gate)
+  prompt-snapshot       Snapshot rendered template.* output; --check gates drift
   migrate               Diff metadata vs live DB; emit migration SQL files
   --version, -v         Print version
   --help, -h            Print this help
@@ -56,6 +57,10 @@ EXPORT FLAGS:
   --out <file>          Write output to a file (default: stdout)
 
 VERIFY FLAGS:
+  --prompts <dir>       Directory of provider-resolved template text (default: prompts)
+
+PROMPT-SNAPSHOT FLAGS:
+  --check               Compare against committed snapshots; exit 1 on drift (CI gate)
   --prompts <dir>       Directory of provider-resolved template text (default: prompts)
 
 MIGRATE FLAGS:
@@ -128,6 +133,10 @@ export async function run(argv: string[]): Promise<number> {
     case "verify": {
       const { verifyCommand } = await import("./commands/verify.js");
       return verifyCommand(rest, cwd);
+    }
+    case "prompt-snapshot": {
+      const { promptSnapshotCommand } = await import("./commands/prompt-snapshot.js");
+      return promptSnapshotCommand(rest, cwd);
     }
     case "migrate": {
       const { migrateCommand } = await import("./commands/migrate.js");
