@@ -64,4 +64,9 @@ describe("parseWranglerExecuteJson", () => {
     const stdout = JSON.stringify([{ success: false, error: "no such table: foo" }]);
     expect(() => parseWranglerExecuteJson(stdout)).toThrow(/no such table: foo/);
   });
+
+  test("throws when envelope is a bare object (not array-wrapped)", () => {
+    const stdout = JSON.stringify({ success: true, results: [{ id: 1 }] });
+    expect(() => parseWranglerExecuteJson(stdout)).toThrow(/non-empty array envelope/i);
+  });
 });

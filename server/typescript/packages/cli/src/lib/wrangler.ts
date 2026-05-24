@@ -34,9 +34,12 @@ export function parseWranglerExecuteJson(stdout: string): Record<string, unknown
   } catch (err) {
     throw new Error(`failed to parse wrangler JSON output: ${(err as Error).message}`);
   }
-  const envelope = Array.isArray(parsed) ? parsed[0] : parsed;
-  if (envelope === undefined || envelope === null || typeof envelope !== "object") {
-    throw new Error(`unexpected wrangler output shape: ${stdout.slice(0, 200)}`);
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error(`unexpected wrangler output shape (expected non-empty array envelope): ${stdout.slice(0, 200)}`);
+  }
+  const envelope = parsed[0];
+  if (envelope === null || typeof envelope !== "object") {
+    throw new Error(`unexpected wrangler output shape (envelope is not an object): ${stdout.slice(0, 200)}`);
   }
   const env = envelope as { success?: boolean; error?: string; results?: unknown };
   if (env.success === false) {
