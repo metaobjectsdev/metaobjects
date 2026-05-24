@@ -39,6 +39,20 @@ public final class ErrorMessageConstants {
      */
     public static final String ERR_BAD_ATTR_VALUE = "ERR_BAD_ATTR_VALUE";
 
+    /**
+     * Error code emitted when an object declares one or more sources but none has
+     * role {@code "primary"}.
+     * Cross-language contract: {@code ERR_SOURCE_NO_PRIMARY}.
+     */
+    public static final String ERR_SOURCE_NO_PRIMARY = "ERR_SOURCE_NO_PRIMARY";
+
+    /**
+     * Error code emitted when an object declares more than one source with
+     * role {@code "primary"}.
+     * Cross-language contract: {@code ERR_SOURCE_MULTIPLE_PRIMARY}.
+     */
+    public static final String ERR_SOURCE_MULTIPLE_PRIMARY = "ERR_SOURCE_MULTIPLE_PRIMARY";
+
     // === ERROR MESSAGE FORMATS ===
 
     /** Format template for not found errors */

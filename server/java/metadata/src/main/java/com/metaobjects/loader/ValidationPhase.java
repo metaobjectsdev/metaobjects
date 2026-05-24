@@ -12,6 +12,7 @@ import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.field.EnumField;
+import com.metaobjects.object.MetaObject;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.util.ErrorMessageConstants;
 
@@ -46,6 +47,10 @@ public final class ValidationPhase {
      * <p>Currently runs:</p>
      * <ol>
      *   <li>{@link #validateEnumValues(MetaRoot)} — enum {@code @values} content rules.</li>
+     *   <li>{@link #validateSourceAttrs(MetaRoot)} — {@code source.*} {@code @kind}/{@code @role}
+     *       enum-membership rules.</li>
+     *   <li>{@link #validateOnePrimarySource(MetaRoot)} — exactly one {@code role=primary} source
+     *       per object that declares any sources.</li>
      * </ol>
      *
      * @param root the fully-loaded {@link MetaRoot}; must not be {@code null}
@@ -55,6 +60,7 @@ public final class ValidationPhase {
         if (root == null) return;
         validateEnumValues(root);
         validateSourceAttrs(root);
+        validateOnePrimarySource(root);
     }
 
     // =========================================================================
@@ -225,6 +231,92 @@ public final class ValidationPhase {
                         + "' is not a valid value; allowed: primary, replica, index, cache, publish, mirror",
                     ErrorCode.ERR_BAD_ATTR_VALUE);
             }
+        }
+    }
+
+    // =========================================================================
+    // One-primary multi-source validation
+    //
+    // An object (entity or value) that declares ≥1 source.* children MUST have
+    // exactly one whose effective role is "primary":
+    //
+    //   0 sources          → OK (object is not persisted)
+    //   1+ sources, 1 primary → OK
+    //   1+ sources, 0 primary → ERR_SOURCE_NO_PRIMARY
+    //   1+ sources, 2+ primary → ERR_SOURCE_MULTIPLE_PRIMARY
+    //
+    // Own-only: only direct MetaSource children of the object are counted.
+    // Validation is eager-throw: first violation terminates the pass.
+    // =========================================================================
+
+    /**
+     * Walk every {@code object.*} in the root tree and enforce the one-primary rule:
+     * if an object declares any sources, exactly one must have an effective role of
+     * {@code "primary"}.
+     *
+     * @param root the root node to walk
+     * @throws MetaDataException on the first violation found
+     */
+    static void validateOnePrimarySource(MetaRoot root) {
+        for (MetaData child : root.getChildren(MetaData.class, false)) {
+            walkOnePrimarySource(child);
+        }
+    }
+
+    private static void walkOnePrimarySource(MetaData node) {
+        if (node instanceof MetaObject) {
+            validateObjectPrimarySource((MetaObject) node);
+        }
+        // Recurse into own children — handles nested objects (value objects inside entities, etc.)
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkOnePrimarySource(child);
+        }
+    }
+
+    /**
+     * Enforce the one-primary rule on a single {@code MetaObject} node.
+     *
+     * <p>Counts own {@code MetaSource} children whose effective role is {@code "primary"}.
+     * Objects with zero source children are exempt.</p>
+     *
+     * @param obj the object node to inspect
+     * @throws MetaDataException if the one-primary rule is violated
+     */
+    private static void validateObjectPrimarySource(MetaObject obj) {
+        // Collect own MetaSource children (own-only, includeParentData=false).
+        java.util.List<MetaSource> sources = new java.util.ArrayList<>();
+        for (MetaData child : obj.getChildren(MetaData.class, false)) {
+            if (child instanceof MetaSource) {
+                sources.add((MetaSource) child);
+            }
+        }
+
+        if (sources.isEmpty()) {
+            // No sources declared — object is not persisted; no rule to enforce.
+            return;
+        }
+
+        long primaryCount = sources.stream()
+            .filter(s -> MetaSource.ROLE_PRIMARY.equals(s.getRole()))
+            .count();
+
+        if (primaryCount == 0) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_SOURCE_NO_PRIMARY
+                    + ": object '" + obj.getName()
+                    + "' declares " + sources.size()
+                    + " source(s) but none has role \"" + MetaSource.ROLE_PRIMARY + "\"",
+                ErrorCode.ERR_SOURCE_NO_PRIMARY);
+        }
+
+        if (primaryCount > 1) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_SOURCE_MULTIPLE_PRIMARY
+                    + ": object '" + obj.getName()
+                    + "' declares " + primaryCount
+                    + " sources with role \"" + MetaSource.ROLE_PRIMARY
+                    + "\"; exactly one is required",
+                ErrorCode.ERR_SOURCE_MULTIPLE_PRIMARY);
         }
     }
 

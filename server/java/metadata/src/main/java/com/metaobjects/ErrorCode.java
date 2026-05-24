@@ -111,6 +111,12 @@ public enum ErrorCode {
     /** @storage was set on a field that has no @objectRef. */
     ERR_STORAGE_WITHOUT_OBJECT_REF,
 
+    /** An object declares source nodes but none has role=primary. */
+    ERR_SOURCE_NO_PRIMARY,
+
+    /** An object declares more than one source node with role=primary. */
+    ERR_SOURCE_MULTIPLE_PRIMARY,
+
     /** An internal loader error with no stable error code. */
     ERR_UNKNOWN,
 }
