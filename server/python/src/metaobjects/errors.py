@@ -24,6 +24,9 @@ class ErrorCode(str, Enum):
     ERR_SUBTYPE_RULE_VIOLATION = "ERR_SUBTYPE_RULE_VIOLATION"
     ERR_OVERLAY_NO_TARGET = "ERR_OVERLAY_NO_TARGET"
     ERR_MALFORMED_YAML = "ERR_MALFORMED_YAML"
+    # YAML 1.2 silently coerced an unquoted scalar to a type incompatible with the
+    # declared attr valueType (ADR-0006 D2). Authors should quote the value.
+    ERR_YAML_COERCION = "ERR_YAML_COERCION"
     ERR_INVALID_ORIGIN = "ERR_INVALID_ORIGIN"
     ERR_BAD_ATTR_FILTER = "ERR_BAD_ATTR_FILTER"
     # Reserved structural body key authored as an @-attr (source-v2 / ADR-0007).

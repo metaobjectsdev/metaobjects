@@ -41,6 +41,10 @@ class TypeRegistry:
     def __init__(self) -> None:
         self._defs: dict[tuple[str, str], TypeDefinition] = {}
         self._common_attrs: list[AttrSchema] = []
+        # Per-type designated default subType (queried by the YAML desugar to
+        # resolve a bare `metadata:` / `object:` key to e.g. `metadata.root` /
+        # `object.entity`). Mirrors TypeRegistry._defaultSubTypes in TS.
+        self._default_sub_types: dict[str, str] = {}
 
     def register(self, definition: TypeDefinition) -> None:
         self._defs[definition.key] = definition
@@ -50,6 +54,21 @@ class TypeRegistry:
 
     def has_type(self, type_: str) -> bool:
         return any(t == type_ for (t, _s) in self._defs)
+
+    def set_default_sub_type(self, type_: str, sub_type: str) -> None:
+        """Designate the default subType for a bare `type` YAML key (ADR-0006 Rule 1).
+
+        Mirrors TypeRegistry.setDefaultSubType in TS. Used by the YAML desugar
+        when resolving sugared `metadata:` / `object:` keys.
+        """
+        self._default_sub_types[type_] = sub_type
+
+    def default_sub_type_of(self, type_: str) -> str | None:
+        """Return the designated default subType for *type_*, or None if none.
+
+        Mirrors TypeRegistry.defaultSubTypeOf in TS.
+        """
+        return self._default_sub_types.get(type_)
 
     def register_common_attrs(self, attrs: list[AttrSchema]) -> None:
         """Register attrs accepted on every metatype. First-wins dedupe by name.

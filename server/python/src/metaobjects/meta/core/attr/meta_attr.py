@@ -4,6 +4,7 @@ from __future__ import annotations
 from ....attr_class_map import register_attr_class, register_fallback_attr_class
 from ....datatype import DataType
 from ...meta_data import MetaData
+from ....shared.base_types import SUBTYPE_BASE
 from .attr_constants import (
     ATTR_SUBTYPE_BOOLEAN,
     ATTR_SUBTYPE_CLASS,
@@ -35,7 +36,30 @@ class MetaAttr(MetaData):
         return _SCALAR_DATA_TYPE.get(self.sub_type, DataType.STRING)
 
     def coerce(self, raw: object) -> object:
-        """Base coercion: keep scalars as-is (the parser already produced JSON scalars)."""
+        """Base coercion mirrors TS convertToDataType (data-converter.ts):
+        directional toward the declared DataType.
+
+        SUBTYPE_BASE is the polymorphic/unconstrained marker (an undeclared
+        @-attr or an attr.base child node): the value is preserved as-is and
+        never stringified. Only attrs whose owner declared `value_type=string`
+        (i.e. the registry mapped them to ATTR_SUBTYPE_STRING) are coerced.
+        This keeps cross-language parity with TS: YAML 1.2 scalar coercion is
+        reported once by the desugar's D2 guard (ERR_YAML_COERCION) and the
+        downstream attr-schema validator does NOT double-report the same
+        offence (since the stored value already matches the declared type).
+        """
+        if self.sub_type == SUBTYPE_BASE:
+            return raw  # polymorphic / unconstrained — type-preserve
+        if self.sub_type == ATTR_SUBTYPE_STRING:
+            if raw is None or isinstance(raw, str):
+                return raw
+            if isinstance(raw, bool):
+                # bool must NOT be Pythonically rendered as "True"/"False" —
+                # use the JSON lower-cased form for cross-language byte parity.
+                return "true" if raw else "false"
+            if isinstance(raw, (int, float)):
+                return str(raw)
+            return raw
         return raw
 
     def desugar(self, value: object) -> object:

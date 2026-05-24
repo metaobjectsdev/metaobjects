@@ -27,7 +27,7 @@ from .meta.core.identity.identity_constants import (
 )
 from .meta.core.identity.meta_identity import MetaIdentity
 from .meta.core.object.meta_object import MetaObject
-from .meta.core.object.object_constants import OBJECT_SUBTYPES
+from .meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPES
 from .meta.core.relationship.meta_relationship import MetaRelationship
 from .meta.core.relationship.relationship_constants import (
     REFERENTIAL_ACTIONS,
@@ -67,7 +67,7 @@ from .meta.presentation.layout.meta_layout import MetaLayout
 from .meta.presentation.view.meta_view import MetaView
 from .meta.presentation.view.view_constants import VIEW_SUBTYPES
 from .provider import Provider
-from .registry import AttrSchema, ChildRule, NodeFactory, TypeDefinition
+from .registry import AttrSchema, ChildRule, NodeFactory, TypeDefinition, TypeRegistry
 from .shared.base_types import (
     SUBTYPE_BASE,
     SUBTYPE_ROOT,
@@ -83,7 +83,22 @@ from .shared.base_types import (
     TYPE_VIEW,
 )
 
-core_provider = Provider("metaobjects-core-types")
+class _CoreProvider(Provider):
+    """Subclass of Provider that also designates default subTypes for YAML authoring (ADR-0006).
+
+    `metadata` has exactly one subtype (`root`) so the default is unambiguous;
+    `object` defaults to `entity` (the common case). Other types (field,
+    validator, ...) have no default — authoring always writes the full
+    `type.subType`. Mirrors registerCoreTypeDefs in TS core-types.ts.
+    """
+
+    def register_types(self, registry: TypeRegistry) -> None:
+        super().register_types(registry)
+        registry.set_default_sub_type(TYPE_METADATA, SUBTYPE_ROOT)
+        registry.set_default_sub_type(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY)
+
+
+core_provider = _CoreProvider("metaobjects-core-types")
 
 
 def _register_subtypes(
@@ -142,12 +157,22 @@ _FIELD_CHILD_RULES = [
     ChildRule(TYPE_ORIGIN, "*"),
     ChildRule(TYPE_VIEW, "*"),
 ]
+# Common field attrs declared by the core port. `@column` carries a declared
+# string valueType so the YAML desugar's D2 type-coercion guard (ADR-0006) can
+# detect a YAML 1.2 silently-coerced unquoted boolean/number value
+# (e.g. `column: TRUE` → boolean True instead of the string "TRUE"). The TS
+# port registers this through a dedicated dbProvider that extends field types;
+# Python keeps it on the core field defs until a full Python db-codegen port lands.
+_FIELD_COMMON_ATTRS = [
+    AttrSchema(name="column", value_type=ATTR_SUBTYPE_STRING, required=False),
+]
 _register_subtypes(
     core_provider,
     TYPE_FIELD,
     fc.FIELD_SUBTYPES,
     factory=MetaField,
     child_rules=_FIELD_CHILD_RULES,
+    attrs=_FIELD_COMMON_ATTRS,
 )
 
 # field.enum — dedicated registration with required @values attr
@@ -161,7 +186,10 @@ core_provider.add(
                 name=FIELD_ATTR_VALUES,
                 value_type=ATTR_SUBTYPE_STRINGARRAY,
                 required=True,
-            )
+            ),
+            # See _FIELD_COMMON_ATTRS above — `@column` is declared on enum too
+            # so the D2 type-coercion guard applies uniformly across all fields.
+            AttrSchema(name="column", value_type=ATTR_SUBTYPE_STRING, required=False),
         ],
         child_rules=_FIELD_CHILD_RULES,
     )

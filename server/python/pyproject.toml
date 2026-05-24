@@ -3,7 +3,11 @@ name = "metaobjects"
 version = "0.0.1"
 description = "Python implementation of the MetaObjects metadata standard (loader + conformance)."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    # YAML authoring front-end (ADR-0006). The desugar lowers sugared YAML to
+    # canonical JSON before the shared tree-builder runs.
+    "PyYAML>=6.0",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6", "pydantic>=2"]
