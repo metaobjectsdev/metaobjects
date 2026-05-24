@@ -3,7 +3,7 @@ import { renderSqlite } from "./sqlite.js";
 import { applyD1SafetyPass } from "./d1-safety-pass.js";
 
 export function renderD1(
-  changes: Change[],
+  changes: readonly Change[],
   expectedSchema?: SchemaSnapshot,
   actualMeta?: SnapshotMeta,
 ): EmitResult {

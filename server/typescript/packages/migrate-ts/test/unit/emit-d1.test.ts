@@ -76,5 +76,12 @@ describe("emit(dialect: 'd1')", () => {
     // But it must NOT contain explicit BEGIN/COMMIT in d1 mode.
     expect(result.up).not.toMatch(/^\s*BEGIN/im);
     expect(result.up).not.toMatch(/^\s*COMMIT/im);
+    // Ordering: OFF must come before the recreate DDL, ON must come after.
+    const offIdx = result.up.indexOf("PRAGMA foreign_keys = OFF");
+    const ddlIdx = result.up.indexOf("CREATE TABLE");
+    const onIdx  = result.up.indexOf("PRAGMA foreign_keys = ON");
+    expect(offIdx).toBeGreaterThanOrEqual(0);
+    expect(ddlIdx).toBeGreaterThan(offIdx);
+    expect(onIdx).toBeGreaterThan(ddlIdx);
   });
 });

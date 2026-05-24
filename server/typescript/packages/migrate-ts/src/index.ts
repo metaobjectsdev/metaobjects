@@ -40,7 +40,10 @@ export type { ViewShape, ViewDiffClass, ViewMigrationOpts } from "./view-diff.js
 export { emitPostgresViewMigration } from "./view-ddl-postgres.js";
 export { emitSqliteViewMigration } from "./view-ddl-sqlite.js";
 
-// D1 dialect emitter + safety pass
+// D1 dialect emitter + safety pass.
+// renderD1 is exported directly (unlike renderSqlite/renderPostgres) so
+// consumers writing raw wrangler batch scripts can apply the safety pass
+// independently without going through emit().
 export { renderD1 } from "./emit/d1.js";
 export { applyD1SafetyPass, D1UnsupportedStatementError } from "./emit/d1-safety-pass.js";
 
