@@ -20,8 +20,8 @@ describe("source type constants", () => {
     expect(SOURCE_SUBTYPE_DB_TABLE).toBe("dbTable");
     expect(SOURCE_SUBTYPE_DB_VIEW).toBe("dbView");
   });
-  test("SOURCE_SUBTYPES contains base + dbTable + dbView", () => {
-    expect(SOURCE_SUBTYPES).toEqual([SUBTYPE_BASE, "dbTable", "dbView"]);
+  test("SOURCE_SUBTYPES contains base + dbTable + dbView + rdb", () => {
+    expect(SOURCE_SUBTYPES).toEqual([SUBTYPE_BASE, "dbTable", "dbView", "rdb"]);
   });
   test("source @name attr constant", () => {
     expect(SOURCE_DB_TABLE_ATTR_NAME).toBe("name");

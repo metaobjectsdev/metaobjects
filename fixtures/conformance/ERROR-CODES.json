@@ -29,6 +29,9 @@
     "ERR_BAD_ATTR_FILTER": "A dataGrid @filter references a non-filterable field or uses an op disallowed for the field's subtype.",
     "ERR_STORAGE_FLATTENED_ARRAY": "@storage \"flattened\" cannot be combined with isArray=true.",
     "ERR_STORAGE_WITHOUT_OBJECT_REF": "@storage was set on a field that has no @objectRef.",
+    "ERR_RESERVED_ATTR": "An @-prefixed reserved structural keyword (e.g. @name, @isArray, @children) was used as an inline attribute.",
+    "ERR_SOURCE_NO_PRIMARY": "An object declares source nodes but none has role=primary.",
+    "ERR_SOURCE_MULTIPLE_PRIMARY": "An object declares more than one source node with role=primary.",
     "ERR_UNKNOWN": "An internal loader error with no stable error code."
   }
 }
