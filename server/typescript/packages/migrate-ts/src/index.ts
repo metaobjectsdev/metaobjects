@@ -54,3 +54,15 @@ export {
   type ViewMigrationsOpts,
   type ViewMigrationsResult,
 } from "./source-aware-diff.js";
+
+// D1 introspection
+export { introspectD1, type D1Runner, type IntrospectD1Options } from "./introspect/d1.js";
+
+// Wrangler config helpers
+export {
+  findWranglerConfig,
+  parseWranglerConfig,
+  resolveD1Binding,
+  type D1Binding,
+  type WranglerConfig,
+} from "./wrangler-config.js";
