@@ -8,8 +8,10 @@ import type { Dialect } from "./kysely.js";
 // Built-in defaults
 // ---------------------------------------------------------------------------
 
+export const MIGRATE_DEFAULT_OUT_DIR = "./.metaobjects/migrations";
+
 const MIGRATE_DEFAULTS = {
-  outDir: "./.metaobjects/migrations",
+  outDir: MIGRATE_DEFAULT_OUT_DIR,
   databaseUrl: undefined as string | undefined,
   dialect: undefined as Dialect | undefined,
   onAmbiguous: "abort" as const,

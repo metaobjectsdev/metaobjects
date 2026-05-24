@@ -1,8 +1,9 @@
-import { resolve, resolve as resolvePath } from "node:path";
+import { resolve as resolvePath } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { parseMigrateArgs } from "../lib/args.js";
-import { resolveMigrateConfig } from "../lib/config.js";
+import { resolveMigrateConfig, MIGRATE_DEFAULT_OUT_DIR } from "../lib/config.js";
+import type { ResolvedMigrateConfig } from "../lib/config.js";
 import { formatMigrateResult, type BlockedEntry, type AmbiguousEntry } from "../lib/output.js";
 import { buildKyselyFromUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
@@ -343,7 +344,7 @@ export async function migrateCommand(
         if (config.dryRun) {
           log.info(`-- UP --\n${combinedUp}\n\n-- DOWN --\n${combinedDown}`);
         } else {
-          const outDir = resolve(metaRoot, config.outDir);
+          const outDir = resolvePath(metaRoot, config.outDir);
           await mkdir(outDir, { recursive: true });
           const res = await writeMigration(
             { up: combinedUp, down: combinedDown },
@@ -376,7 +377,7 @@ export async function migrateCommand(
 }
 
 async function runD1Migrate(
-  config: import("../lib/config.js").ResolvedMigrateConfig,
+  config: ResolvedMigrateConfig,
   metaRoot: string,
   runner: WranglerRunner,
 ): Promise<number> {
@@ -421,7 +422,12 @@ async function runD1Migrate(
   try {
     metadata = await loadMemory(metaRoot);
   } catch (err) {
-    log.error(`migrate: failed to load metadata: ${(err as Error).message}`);
+    const msg = (err as Error).message;
+    if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {
+      log.error(`no metaobjects/ found in ${metaRoot}; run 'meta init' to scaffold`);
+    } else {
+      log.error(`migrate: failed to load metadata: ${msg}`);
+    }
     return 2;
   }
 
@@ -456,7 +462,11 @@ async function runD1Migrate(
     });
   } catch (err) {
     if ((err as Error).message.includes("aborted by onAmbiguous")) {
-      log.error(`migrate: aborted on ambiguous change`);
+      const entries = ambiguousToEntries(collectedAmbiguous);
+      for (const e of entries) {
+        log.error(`  ambiguous ${e.kind}: ${e.description}${e.hint ? ` [${e.hint}]` : ""}`);
+      }
+      log.error(`migrate: aborted on ambiguous change (re-run with --on-ambiguous rename|drop-add)`);
       return 1;
     }
     throw err;
@@ -492,8 +502,7 @@ async function runD1Migrate(
   // Migration dir resolution: --out-dir > wrangler.toml's migrations_dir > "migrations".
   // The default outDir (./.metaobjects/migrations) is the Kysely-path default; for D1
   // we fall back to wrangler conventions when the caller hasn't overridden it.
-  const KYSELY_DEFAULT_OUT_DIR = "./.metaobjects/migrations";
-  const isDefaultOutDir = config.outDir === KYSELY_DEFAULT_OUT_DIR;
+  const isDefaultOutDir = config.outDir === MIGRATE_DEFAULT_OUT_DIR;
   const migrationsDir = resolvePath(
     metaRoot,
     isDefaultOutDir ? (binding.migrations_dir ?? "migrations") : config.outDir,
