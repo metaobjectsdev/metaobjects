@@ -40,6 +40,7 @@ class TypeDefinition:
 class TypeRegistry:
     def __init__(self) -> None:
         self._defs: dict[tuple[str, str], TypeDefinition] = {}
+        self._common_attrs: list[AttrSchema] = []
 
     def register(self, definition: TypeDefinition) -> None:
         self._defs[definition.key] = definition
@@ -50,6 +51,20 @@ class TypeRegistry:
     def has_type(self, type_: str) -> bool:
         return any(t == type_ for (t, _s) in self._defs)
 
+    def register_common_attrs(self, attrs: list[AttrSchema]) -> None:
+        """Register attrs accepted on every metatype. First-wins dedupe by name.
+
+        Conflict with per-type attrs is detected at validation time, not here.
+        """
+        for attr in attrs:
+            if any(existing.name == attr.name for existing in self._common_attrs):
+                continue  # first registration wins
+            self._common_attrs.append(attr)
+
+    def get_common_attrs(self) -> list[AttrSchema]:
+        """Return a defensive copy of the registered common attrs."""
+        return list(self._common_attrs)
+
     def attrs_of(self, type_: str, sub_type: str) -> list[AttrSchema]:
         """The declared attribute schemas for a (type, subType), or [] if unregistered.
         Mirrors the TS registry's attrsOf()."""
@@ -57,7 +72,11 @@ class TypeRegistry:
         return list(definition.attrs) if definition is not None else []
 
     def attr_schema(self, type_: str, sub_type: str, attr_name: str) -> AttrSchema | None:
+        """Look up a per-type attr schema by name, then fall back to common attrs."""
         for attr in self.attrs_of(type_, sub_type):
+            if attr.name == attr_name:
+                return attr
+        for attr in self._common_attrs:
             if attr.name == attr_name:
                 return attr
         return None

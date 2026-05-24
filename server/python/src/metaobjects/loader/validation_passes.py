@@ -116,8 +116,32 @@ def _validate_attr_schema(
     registry: TypeRegistry,
     errors: list[MetaError],
 ) -> None:
+    common_attrs = registry.get_common_attrs()
+    reported_conflicts: set[tuple[str, str]] = set()
+
     for node in _walk(root):
-        schemas: list[AttrSchema] = registry.attrs_of(node.type, node.sub_type)
+        per_type_attrs = registry.attrs_of(node.type, node.sub_type)
+        per_type_names = {s.name for s in per_type_attrs}
+
+        # Detect per-type vs common-attr name collision; report once per (type, sub_type).
+        key = (node.type, node.sub_type)
+        if key not in reported_conflicts:
+            for ca in common_attrs:
+                if ca.name in per_type_names:
+                    errors.append(
+                        MetaError(
+                            f"{node.type}.{node.sub_type} has a per-type attr '@{ca.name}' "
+                            f"that conflicts with a common attr of the same name",
+                            ErrorCode.ERR_PROVIDER_ATTR_CONFLICT,
+                        )
+                    )
+                    reported_conflicts.add(key)
+                    break  # one error per (type, sub_type) is sufficient
+
+        # Effective schema: per-type attrs + common attrs not shadowed by per-type names.
+        schemas: list[AttrSchema] = per_type_attrs + [
+            ca for ca in common_attrs if ca.name not in per_type_names
+        ]
         if not schemas:
             continue
 
