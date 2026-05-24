@@ -51,5 +51,19 @@ public static class RelationshipSchema
             ValueType: AttrConstants.ATTR_SUBTYPE_STRINGARRAY,
             Required: false,
             Description: "Join-table column names for N:M relationships."),
+
+        new AttrSchema(
+            Name: RelationshipConstants.RELATIONSHIP_ATTR_ON_DELETE,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            AllowedValues: [.. RelationshipConstants.REFERENTIAL_ACTIONS],
+            Description: "FK referential action on parent delete: cascade, set-null, restrict, or no-action. Default depends on subtype (composition→cascade, aggregation→set-null, association→restrict)."),
+
+        new AttrSchema(
+            Name: RelationshipConstants.RELATIONSHIP_ATTR_ON_UPDATE,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            AllowedValues: [.. RelationshipConstants.REFERENTIAL_ACTIONS],
+            Description: "FK referential action on parent key update: cascade, set-null, restrict, or no-action. Default: cascade."),
     ];
 }
