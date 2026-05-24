@@ -29,7 +29,12 @@ from .meta.core.identity.meta_identity import MetaIdentity
 from .meta.core.object.meta_object import MetaObject
 from .meta.core.object.object_constants import OBJECT_SUBTYPES
 from .meta.core.relationship.meta_relationship import MetaRelationship
-from .meta.core.relationship.relationship_constants import RELATIONSHIP_SUBTYPES
+from .meta.core.relationship.relationship_constants import (
+    REFERENTIAL_ACTIONS,
+    RELATIONSHIP_ATTR_ON_DELETE,
+    RELATIONSHIP_ATTR_ON_UPDATE,
+    RELATIONSHIP_SUBTYPES,
+)
 from .meta.meta_root import MetaRoot
 from .meta.persistence.origin.meta_origin import MetaOrigin
 from .meta.persistence.origin.origin_constants import (
@@ -215,13 +220,31 @@ core_provider.add(
     )
 )
 
-# relationship.* (base, association, aggregation, composition)
+# relationship.* (base, association, aggregation, composition).
+# @onDelete / @onUpdate are validated against REFERENTIAL_ACTIONS — kebab-case
+# values (cascade / set-null / restrict / no-action). Defaults derive from the
+# relationship subtype at consumption time, not at validation time.
+_RELATIONSHIP_ATTRS = [
+    AttrSchema(
+        name=RELATIONSHIP_ATTR_ON_DELETE,
+        value_type=ATTR_SUBTYPE_STRING,
+        required=False,
+        allowed_values=REFERENTIAL_ACTIONS,
+    ),
+    AttrSchema(
+        name=RELATIONSHIP_ATTR_ON_UPDATE,
+        value_type=ATTR_SUBTYPE_STRING,
+        required=False,
+        allowed_values=REFERENTIAL_ACTIONS,
+    ),
+]
 _register_subtypes(
     core_provider,
     TYPE_RELATIONSHIP,
     RELATIONSHIP_SUBTYPES,
     factory=MetaRelationship,
     child_rules=[ChildRule(TYPE_ATTR, "*")],
+    attrs=_RELATIONSHIP_ATTRS,
 )
 
 # source.* — base (no attrs) + rdb (paradigm subtype with @table/@kind/@role/@schema).
