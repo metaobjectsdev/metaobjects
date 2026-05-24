@@ -395,6 +395,7 @@ Preserve the following contracts exactly across all language ports:
 - Currency attrs: `@currency` (ISO 4217), `@locale` (BCP 47)
 - Schema attrs: `@schema` on `source[dbTable]` and `source[dbView]` (DB schema name; Postgres default `public`, SQLite rejects non-default values)
 - Storage attrs: `@storage` on `field.object` (with `@objectRef`) — values `flattened` / `jsonb` / `subdocument`. Unifies "owned types" (flattened storage) and "structured JSONB" (jsonb storage). Defaults to single-jsonb-column when absent (back-compat).
+- Enum: `field.enum` is a first-class field subtype (peer of `currency`), string-backed. Required `@values` string-array attr (member symbols). Members must be a non-empty set, each matching `^[A-Za-z_][A-Za-z0-9_]*$`, no duplicates — every port's loader enforces this (own-only) emitting `ERR_BAD_ATTR_VALUE` (missing `@values` → `ERR_MISSING_REQUIRED_ATTR`). Reuse via abstract `field.enum` + `extends`. Codegen: TS union + `z.enum`, C# `enum` + EF `HasConversion<string>()`, DB `varchar` + `CHECK`. Int-backed values, display labels, and native PG enum are deferred (see `docs/superpowers/specs/2026-05-23-enum-datatype-design.md`).
 
 **Wire format:**
 - Currency: integer minor units on the wire always. Float arithmetic for money is forbidden.

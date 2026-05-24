@@ -1,7 +1,7 @@
 # Design: `field.enum` — first-class enum datatype
 
 **Date:** 2026-05-23
-**Status:** Approved (design)
+**Status:** Implemented across TS, C#, Java, Python (2026-05-23)
 **Author:** Doug Mealing (with Claude)
 
 ## Problem
