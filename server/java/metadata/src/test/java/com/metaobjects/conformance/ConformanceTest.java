@@ -250,7 +250,8 @@ public class ConformanceTest {
             }
             String got = CanonicalJsonSerializer.canonicalSerialize(loader.getRoot()).trim();
             if (!want.equals(got)) {
-                failures.add("canonical serialization mismatch");
+                failures.add("canonical serialization mismatch:\n--- expected ---\n"
+                    + want + "\n--- got ---\n" + got);
             }
         }
 

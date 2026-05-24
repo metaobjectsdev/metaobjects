@@ -78,18 +78,19 @@ public class MetaSourceTest extends SharedRegistryTestBase {
 
     @Test
     public void rdbSourceWithTableLoads() {
-        // When no explicit "name" key is provided, the parser uses the subType as node name.
-        // So { "source.rdb": { "@table": "products" } } creates a node named "acme::rdb"
-        // (package is inherited from the document default package "acme").
+        // When no explicit "name" key is provided, source nodes participate in
+        // auto-naming (sequential <subType>N) — the canonical serializer suppresses
+        // the auto-name on emit so the output stays byte-identical to the TS oracle.
+        // First source.rdb under the entity gets auto-name "rdb1", qualified with the
+        // document's default package "acme" → "acme::rdb1".
         String canonical = entityWith("{ \"source.rdb\": { \"@table\": \"products\" } }");
         MetaDataLoader loader = loadThrough(canonical, "source-rdb-table-test.json");
 
         MetaData product = loader.getRoot().getChildOfType("object", "acme::Product");
         assertNotNull("Product entity should exist", product);
 
-        // The parser qualifies the node name with the document package: "acme::rdb".
-        MetaData src = product.getChildOfType(MetaSource.TYPE_SOURCE, "acme::rdb");
-        assertNotNull("source.rdb child 'acme::rdb' should exist", src);
+        MetaData src = product.getChildOfType(MetaSource.TYPE_SOURCE, "acme::rdb1");
+        assertNotNull("source.rdb child 'acme::rdb1' should exist", src);
         assertEquals("subtype should be rdb", RdbSource.SUBTYPE_RDB, src.getSubType());
         assertTrue("src must be a MetaSource", src instanceof MetaSource);
         assertEquals("@table attr should be 'products'",
@@ -265,9 +266,10 @@ public class MetaSourceTest extends SharedRegistryTestBase {
         MetaData product = loader.getRoot().getChildOfType("object", "acme::Product");
         assertNotNull("Product entity should exist", product);
 
-        // The parser qualifies the node name with the document package: "acme::rdb".
-        MetaData src = product.getChildOfType(MetaSource.TYPE_SOURCE, "acme::rdb");
-        assertNotNull("source.rdb child 'acme::rdb' should exist", src);
+        // Source nodes are auto-named (sequential <subType>N); auto-name is suppressed
+        // on canonical serialization. Lookup by the resolved qualified auto-name.
+        MetaData src = product.getChildOfType(MetaSource.TYPE_SOURCE, "acme::rdb1");
+        assertNotNull("source.rdb child 'acme::rdb1' should exist", src);
         assertTrue("src must be a MetaSource", src instanceof MetaSource);
         assertEquals("@schema should round-trip as 'public'",
             "public", ((MetaSource) src).getSchema());
@@ -363,5 +365,79 @@ public class MetaSourceTest extends SharedRegistryTestBase {
         assertEquals("Type must be source", MetaSource.TYPE_SOURCE, src.getType());
         assertEquals("SubType must be rdb", RdbSource.SUBTYPE_RDB, src.getSubType());
         assertEquals("Name must be set", "registryTest", src.getName());
+    }
+
+    // -----------------------------------------------------------------------
+    // 12 — Canonical byte-parity: source.rdb with no authored name round-trips
+    //      cleanly without emitting a spurious "name" key.
+    //
+    // This is the regression test for the cross-language divergence where Java's
+    // parser used to fall back to name = subType for every nameless node, causing
+    // the canonical serializer to emit `"name": "rdb"` on every source.rdb that
+    // wasn't authored with a name — diverging from the TS oracle by exactly that
+    // one key.
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void sourceRdbWithoutNameRoundTripsByteIdentical() throws Exception {
+        // Authored shape — note the absence of any "name" key on the source.rdb body.
+        // The canonical serializer must NOT emit a spurious "name" key on the
+        // source.rdb node — that's the cross-language divergence this test guards.
+        String authored =
+            "{\n" +
+            "  \"metadata.root\": {\n" +
+            "    \"package\": \"acme::commerce\",\n" +
+            "    \"children\": [\n" +
+            "      {\n" +
+            "        \"object.entity\": {\n" +
+            "          \"name\": \"Customer\",\n" +
+            "          \"children\": [\n" +
+            "            { \"source.rdb\": { \"@table\": \"customers\" } },\n" +
+            "            { \"field.long\": { \"name\": \"id\" } },\n" +
+            "            { \"identity.primary\": { \"@fields\": [\"id\"] } }\n" +
+            "          ]\n" +
+            "        }\n" +
+            "      }\n" +
+            "    ]\n" +
+            "  }\n" +
+            "}";
+
+        MetaDataLoader loader = loadThrough(authored, "source-rdb-byte-parity-test.json");
+
+        String got =
+            com.metaobjects.io.json.CanonicalJsonSerializer.canonicalSerialize(
+                loader.getRoot()).trim();
+
+        // The root-level divergence guard: no "name": "rdb..." anywhere in the
+        // serialized output. Before the fix, this string would appear inside
+        // the source.rdb body as "name": "rdb".
+        assertFalse(
+            "Serializer must NOT emit a spurious 'name' key for a nameless source.rdb:\n" + got,
+            got.contains("\"name\": \"rdb"));
+
+        // Extract the source.rdb body and assert it is exactly {"@table": "customers"}.
+        com.google.gson.JsonObject gotRoot =
+            com.google.gson.JsonParser.parseString(got).getAsJsonObject();
+        com.google.gson.JsonObject metadataRoot =
+            gotRoot.getAsJsonObject("metadata.root");
+        com.google.gson.JsonArray rootChildren = metadataRoot.getAsJsonArray("children");
+        com.google.gson.JsonObject entity = rootChildren.get(0).getAsJsonObject()
+            .getAsJsonObject("object.entity");
+        com.google.gson.JsonArray entityChildren = entity.getAsJsonArray("children");
+
+        com.google.gson.JsonObject sourceBody = null;
+        for (com.google.gson.JsonElement child : entityChildren) {
+            com.google.gson.JsonObject wrapper = child.getAsJsonObject();
+            if (wrapper.has("source.rdb")) {
+                sourceBody = wrapper.getAsJsonObject("source.rdb");
+                break;
+            }
+        }
+        assertNotNull("serialized output must contain a source.rdb child", sourceBody);
+        assertFalse("source.rdb body must NOT carry a 'name' key", sourceBody.has("name"));
+        assertEquals("source.rdb body must carry only @table",
+            "customers", sourceBody.get("@table").getAsString());
+        assertEquals("source.rdb body must be exactly {@table: ...}",
+            1, sourceBody.size());
     }
 }
