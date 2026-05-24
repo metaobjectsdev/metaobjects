@@ -101,6 +101,33 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
 }
 
 // ---------------------------------------------------------------------------
+// prompt-snapshot flags
+// ---------------------------------------------------------------------------
+
+export interface PromptSnapshotFlags {
+  /** Compare against committed snapshots and fail on drift; never write. */
+  check: boolean;
+  /** Directory (relative to cwd) holding provider-resolved template text. */
+  prompts: string | undefined;
+}
+
+export function parsePromptSnapshotArgs(argv: string[]): PromptSnapshotFlags {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      check: { type: "boolean", default: false },
+      prompts: { type: "string" },
+    },
+    strict: true,
+    allowPositionals: false,
+  });
+  return {
+    check: !!values.check,
+    prompts: values.prompts,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // migrate flags
 // ---------------------------------------------------------------------------
 
