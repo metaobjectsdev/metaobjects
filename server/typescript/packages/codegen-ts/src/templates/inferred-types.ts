@@ -6,13 +6,13 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { FIELD_SUBTYPE_ENUM } from "@metaobjectsdev/metadata";
 import { variableNameFromEntity, toPascalCase } from "../naming.js";
 import { enumValues } from "../enum-meta.js";
-import { readDocAttrs, renderJsDocBlock } from "./jsdoc.js";
+import { renderDocsFor } from "./jsdoc.js";
 
 export function renderInferredTypes(entity: MetaObject): Code {
   const varName = variableNameFromEntity(entity.name);
   const selectSym = imp("InferSelectModel@drizzle-orm");
   const insertSym = imp("InferInsertModel@drizzle-orm");
-  const docs = renderJsDocBlock(readDocAttrs(entity));
+  const docs = renderDocsFor(entity);
   const docsPrefix = docs ? `${docs}\n` : "";
   return code`
 ${docsPrefix}export type ${entity.name} = ${selectSym}<typeof ${varName}>;

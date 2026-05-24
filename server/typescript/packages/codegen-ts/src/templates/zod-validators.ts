@@ -18,7 +18,7 @@ import {
   GENERATION_INCREMENT, GENERATION_UUID,
 } from "@metaobjectsdev/metadata";
 import { enumValues, zodEnumExpr } from "../enum-meta.js";
-import { readDocAttrs, renderJsDocBlock } from "./jsdoc.js";
+import { renderDocsFor } from "./jsdoc.js";
 
 export function renderZodValidators(obj: MetaObject): Code {
   const z = imp("z@zod");
@@ -69,7 +69,7 @@ export function renderZodValidators(obj: MetaObject): Code {
   const insertSchemaName = `${obj.name}InsertSchema`;
   const updateSchemaName = `${obj.name}UpdateSchema`;
 
-  const docs = renderJsDocBlock(readDocAttrs(obj));
+  const docs = renderDocsFor(obj);
   const docsPrefix = docs ? `${docs}\n` : "";
 
   return code`

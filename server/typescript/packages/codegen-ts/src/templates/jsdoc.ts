@@ -74,3 +74,8 @@ export function readDocAttrs(node: { attr: (n: string) => unknown }): DocAttrs {
   // notes intentionally NOT read here — codegen consumers should never receive it
   return { description, title, deprecated, replacedBy, seeAlso, aliases };
 }
+
+/** Convenience: `renderJsDocBlock(readDocAttrs(node))`. Returns "" if no doc attrs. */
+export function renderDocsFor(node: { attr: (n: string) => unknown }): string {
+  return renderJsDocBlock(readDocAttrs(node));
+}

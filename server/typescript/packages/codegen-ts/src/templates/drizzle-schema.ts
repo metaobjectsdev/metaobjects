@@ -15,7 +15,7 @@ import { crossEntitySpecifier } from "../import-path.js";
 import { mapColumnType, type ColumnSpec } from "../column-mapper.js";
 import { tableNameFromEntity, variableNameFromEntity, columnNameFromField } from "../naming.js";
 import { renderRelationsBlock } from "./relations-block.js";
-import { readDocAttrs, renderJsDocBlock } from "./jsdoc.js";
+import { renderDocsFor } from "./jsdoc.js";
 
 /**
  * Render the Drizzle table definition for one entity, including:
@@ -72,7 +72,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     // Compute the column spec once per field and reuse it for both the column
     // line and the CHECK collection.
     const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy);
-    const fieldDocs = renderJsDocBlock(readDocAttrs(child));
+    const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(spec, child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique, obj.package);
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     if (spec.checkConstraint !== undefined) {
