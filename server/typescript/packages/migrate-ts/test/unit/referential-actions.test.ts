@@ -91,31 +91,8 @@ describe("resolveReferentialActions", () => {
 
 const EMPTY_SCHEMA = { tables: [], views: [] };
 
-function makeDoc(rel: Record<string, unknown>) {
-  return {
-    "metadata.root": {
-      package: "acme",
-      children: [
-        { "object.entity": { name: "Program", children: [
-          { "field.long": { name: "id" } },
-          { "identity.primary": { "@fields": "id" } },
-        ] } },
-        { "object.entity": { name: "Week", children: [
-          { "field.long": { name: "id" } },
-          { "field.long": { name: "programId" } },
-          rel,
-          { "identity.reference": { name: "ref_program", "@fields": ["programId"], "@references": "Program" } },
-          { "identity.primary": { "@fields": "id" } },
-        ] } },
-      ],
-    },
-  };
-}
-
 async function buildSnapshotForRel(rel: Record<string, unknown>) {
-  const { root, errors } = await new MetaDataLoader().load([
-    new InMemorySource(JSON.stringify(makeDoc(rel))),
-  ]);
+  const { root, errors } = await loadDoc(weekDoc(rel));
   expect(errors).toHaveLength(0);
   return buildExpectedSchema(root);
 }

@@ -1,13 +1,9 @@
-import type { MetaData, MetaObject, MetaReferenceIdentity, MetaRoot } from "@metaobjectsdev/metadata";
+import type { MetaData, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import {
   TYPE_OBJECT,
-  TYPE_VALIDATOR,
   MetaSource,
-  VALIDATOR_SUBTYPE_REQUIRED,
-  IDENTITY_ATTR_FIELDS,
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_UNIQUE,
-  FIELD_ATTR_REQUIRED,
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_UNIQUE,
   FIELD_SUBTYPE_STRING,
@@ -34,7 +30,13 @@ import type { SqlType } from "./sql-type.js";
 import type {
   SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,
 } from "./types.js";
-import { resolveReferentialActions, validateSetNullNullability } from "./referential-actions.js";
+import {
+  resolveReferentialActions,
+  validateSetNullNullability,
+  readIdentityFields,
+  findField,
+  isRequired,
+} from "./referential-actions.js";
 
 export interface BuildExpectedSchemaOptions {
   /**
@@ -297,19 +299,14 @@ function buildColumn(
   isPk: boolean,
   pkGeneration: string | undefined,
 ): ColumnDescriptor {
-  const requiredAttr = field.ownAttr(FIELD_ATTR_REQUIRED);
-  // BaseEntity-style metadata expresses required via a validator.required child;
-  // direct attr form is the alternative. Either signals NOT NULL.
-  const hasRequiredValidator = field.ownChildren().some(
-    (c) => c.type === TYPE_VALIDATOR && c.subType === VALIDATOR_SUBTYPE_REQUIRED,
-  );
-  const isRequired = requiredAttr === true || requiredAttr === "true" || hasRequiredValidator;
+  // Both the @required attr and the validator.required child signal NOT NULL.
+  const fieldIsRequired = isRequired(field);
   const defaultRaw = field.ownAttr(FIELD_ATTR_DEFAULT);
 
   const col: ColumnDescriptor = {
     name: resolveColumnName(field),
     sqlType: subtypeToSqlType(field.subType),
-    nullable: !isPk && !isRequired,
+    nullable: !isPk && !fieldIsRequired,
   };
 
   if (typeof defaultRaw === "string" && defaultRaw.length > 0) {
@@ -345,25 +342,6 @@ function subtypeToSqlType(subType: string): SqlType {
     case FIELD_SUBTYPE_CLASS:     return { kind: "json" };
     default:                      return { kind: "text" }; // unknown → text fallback
   }
-}
-
-function readIdentityFields(identity: MetaData): string[] {
-  const raw = identity.ownAttr(IDENTITY_ATTR_FIELDS);
-  if (Array.isArray(raw)) {
-    return raw.map(String).filter((s) => s.length > 0);
-  }
-  if (typeof raw === "string") {
-    // Fallback: comma-separated string form (defensive; canonical form is array)
-    return raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
-  }
-  return [];
-}
-
-function findField(entity: MetaObject, name: string): MetaData | undefined {
-  for (const field of entity.fields()) {
-    if (field.name === name) return field;
-  }
-  return undefined;
 }
 
 function toSnake(s: string): string {

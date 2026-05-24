@@ -12,6 +12,33 @@ import {
 import type { FkAction } from "./types.js";
 import { SetNullNotNullableError } from "./errors.js";
 
+// ---------------------------------------------------------------------------
+// Shared field helpers — exported for use by expected-schema.ts
+// ---------------------------------------------------------------------------
+
+export function readIdentityFields(identity: MetaData): string[] {
+  const raw = identity.ownAttr(IDENTITY_ATTR_FIELDS);
+  if (Array.isArray(raw)) return raw.map(String).filter((s) => s.length > 0);
+  // Fallback: comma-separated string form (defensive; canonical form is array)
+  if (typeof raw === "string") return raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+  return [];
+}
+
+export function findField(entity: MetaObject, name: string): MetaData | undefined {
+  for (const field of entity.fields()) {
+    if (field.name === name) return field;
+  }
+  return undefined;
+}
+
+export function isRequired(field: MetaData): boolean {
+  const attr = field.ownAttr(FIELD_ATTR_REQUIRED);
+  if (attr === true || attr === "true") return true;
+  return field.ownChildren().some(
+    (c) => c.type === TYPE_VALIDATOR && c.subType === VALIDATOR_SUBTYPE_REQUIRED,
+  );
+}
+
 /**
  * Resolve the referential actions for a foreign key inferred from an
  * identity.reference, by correlating it with a sibling relationship on the
@@ -92,7 +119,7 @@ export function validateSetNullNullability(
 ): void {
   if (onDelete !== "set-null") return;
 
-  const fkFieldJsNames = readRefFields(ref);
+  const fkFieldJsNames = readIdentityFields(ref);
   const offending: string[] = [];
   for (const jsName of fkFieldJsNames) {
     const field = findField(entity, jsName);
@@ -104,26 +131,4 @@ export function validateSetNullNullability(
   if (offending.length > 0) {
     throw new SetNullNotNullableError(entity.name, constraintName, offending);
   }
-}
-
-function readRefFields(ref: MetaReferenceIdentity): string[] {
-  const raw = ref.ownAttr(IDENTITY_ATTR_FIELDS);
-  if (Array.isArray(raw)) return raw.map(String).filter((s) => s.length > 0);
-  if (typeof raw === "string") return raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
-  return [];
-}
-
-function findField(entity: MetaObject, name: string): MetaData | undefined {
-  for (const field of entity.fields()) {
-    if (field.name === name) return field;
-  }
-  return undefined;
-}
-
-function isRequired(field: MetaData): boolean {
-  const attr = field.ownAttr(FIELD_ATTR_REQUIRED);
-  if (attr === true || attr === "true") return true;
-  return field.ownChildren().some(
-    (c) => c.type === TYPE_VALIDATOR && c.subType === VALIDATOR_SUBTYPE_REQUIRED,
-  );
 }
