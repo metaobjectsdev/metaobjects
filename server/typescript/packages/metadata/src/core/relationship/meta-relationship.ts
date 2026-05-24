@@ -8,6 +8,8 @@ import {
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_JOIN_ENTITY,
   RELATIONSHIP_ATTR_JOIN_FIELDS,
+  RELATIONSHIP_ATTR_ON_DELETE,
+  RELATIONSHIP_ATTR_ON_UPDATE,
 } from "./relationship-constants.js";
 
 export class MetaRelationship extends MetaData {
@@ -32,5 +34,17 @@ export class MetaRelationship extends MetaData {
   get joinFields(): string[] {
     const f = this.ownAttr(RELATIONSHIP_ATTR_JOIN_FIELDS);
     return Array.isArray(f) ? (f as string[]) : [];
+  }
+
+  /** Referential action on parent delete. Undefined when not explicitly set (default derives from subtype). */
+  get onDelete(): string | undefined {
+    const v = this.ownAttr(RELATIONSHIP_ATTR_ON_DELETE);
+    return typeof v === "string" && v !== "" ? v : undefined;
+  }
+
+  /** Referential action on key update. Undefined when not explicitly set (default: cascade). */
+  get onUpdate(): string | undefined {
+    const v = this.ownAttr(RELATIONSHIP_ATTR_ON_UPDATE);
+    return typeof v === "string" && v !== "" ? v : undefined;
   }
 }

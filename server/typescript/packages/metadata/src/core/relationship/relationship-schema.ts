@@ -11,6 +11,9 @@ import {
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_JOIN_ENTITY,
   RELATIONSHIP_ATTR_JOIN_FIELDS,
+  RELATIONSHIP_ATTR_ON_DELETE,
+  RELATIONSHIP_ATTR_ON_UPDATE,
+  REFERENTIAL_ACTIONS,
 } from "./relationship-constants.js";
 
 /** Attrs common to every relationship subtype. */
@@ -45,5 +48,20 @@ export const relationshipAttrs: AttrSchema[] = [
     valueType: ATTR_SUBTYPE_STRINGARRAY,
     required: false,
     description: "Join-table column names for N:M relationships.",
+  },
+  {
+    name: RELATIONSHIP_ATTR_ON_DELETE,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    allowedValues: [...REFERENTIAL_ACTIONS],
+    description:
+      "Referential action on parent delete. Default derives from subtype (composition→cascade, aggregation→set-null, association→restrict).",
+  },
+  {
+    name: RELATIONSHIP_ATTR_ON_UPDATE,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    allowedValues: [...REFERENTIAL_ACTIONS],
+    description: "Referential action on key update. Default cascade.",
   },
 ];
