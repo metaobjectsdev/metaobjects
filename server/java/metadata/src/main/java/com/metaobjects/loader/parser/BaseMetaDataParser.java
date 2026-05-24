@@ -269,7 +269,8 @@ public abstract class BaseMetaDataParser {
                     + "] requires a name to be specified in file [" + getFilename() + "]");
             }
 
-            // Auto-naming only allowed for validator and view types (and not abstract at root)
+            // Auto-naming only allowed for the types in isAutoNamingType (validator, view,
+            // source, identity) and not abstract at root.
             if (isAutoNamingType(typeName) &&
                 !(isRoot && Boolean.TRUE.equals(isAbstract))) {
                 // Generate sequential name based on subtype if available, otherwise use type
