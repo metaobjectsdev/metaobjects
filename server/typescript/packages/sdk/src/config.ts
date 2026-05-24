@@ -2,7 +2,7 @@ import { z } from "zod";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const DialectEnum = z.enum(["sqlite", "postgres"]);
+const DialectEnum = z.enum(["sqlite", "postgres", "d1"]);
 
 const OnAmbiguousEnum = z.enum(["abort", "rename", "drop-add"]);
 

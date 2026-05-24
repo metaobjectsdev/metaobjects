@@ -34,5 +34,6 @@ export function emit(changes: Change[], opts: EmitOptions): EmitResult {
   switch (opts.dialect) {
     case "postgres": return renderPostgres(changes);
     case "sqlite":   return renderSqlite(changes, opts.expectedSchema, opts.actualMeta);
+    case "d1":       throw new Error("d1 emit not yet wired (Task 4)");
   }
 }

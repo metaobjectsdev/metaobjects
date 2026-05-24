@@ -10,5 +10,6 @@ export async function introspect(db: Kysely<Record<string, unknown>>, dialect: D
   switch (dialect) {
     case "postgres": return introspectPostgres(db);
     case "sqlite":   return introspectSqlite(db);
+    case "d1":       throw new Error("d1 introspect goes through introspectD1 (Task 6), not introspect()");
   }
 }

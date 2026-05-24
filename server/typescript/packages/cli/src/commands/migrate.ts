@@ -357,8 +357,10 @@ export async function migrateCommand(args: string[], cwd: string): Promise<numbe
 async function readExistingViewSql(
   // biome-ignore lint/suspicious/noExplicitAny: kysely raw query, dialect-dispatched
   db: any,
-  dialect: "sqlite" | "postgres",
+  dialectIn: "sqlite" | "postgres" | "d1",
 ): Promise<ReadonlyMap<string, string>> {
+  // D1 is SQLite at the SQL level; route to the sqlite branch.
+  const dialect: "sqlite" | "postgres" = dialectIn === "d1" ? "sqlite" : dialectIn;
   const result = new Map<string, string>();
   try {
     if (dialect === "sqlite") {

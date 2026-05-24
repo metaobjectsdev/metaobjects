@@ -3,6 +3,8 @@
 // TTY-gated glyphs: unicode (✓ ↺ ✗ = ⚠) when stdout is a TTY, plain words
 // (NEW MERGED CONFLICT UNCHANGED REFUSED) otherwise. Per SP5 §5.1.
 
+import type { Dialect } from "./kysely.js";
+
 export interface FormatOptions {
   isTTY: boolean;
 }
@@ -22,7 +24,7 @@ export interface GenFileEntry {
 export interface GenResultShape {
   files: GenFileEntry[];
   outDir: string;
-  dialect: "sqlite" | "postgres";
+  dialect: Dialect;
   dryRun: boolean;
   warnings: string[];
 }
@@ -103,7 +105,7 @@ export interface AmbiguousEntry {
 }
 
 export interface MigrateResultShape {
-  dialect: "sqlite" | "postgres";
+  dialect: Dialect;
   displayUrl: string;
   changeCounts: Record<string, number>;
   blocked: BlockedEntry[];

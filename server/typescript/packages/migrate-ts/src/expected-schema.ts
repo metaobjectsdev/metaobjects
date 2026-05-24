@@ -28,7 +28,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
 import type {
-  SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,
+  Dialect, SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,
 } from "./types.js";
 import {
   resolveReferentialActions,
@@ -41,19 +41,23 @@ import {
 export interface BuildExpectedSchemaOptions {
   /**
    * If set, normalize column SqlTypes for the target dialect so the diff
-   * matches what introspection will see. For sqlite this collapses
-   * boolean → integer{64} and timestamp/date/time → text, since sqlite
-   * has no native boolean/timestamp affinity and Drizzle's
-   * `integer(..., {mode:"boolean"})` / `text("ts")` patterns produce
-   * INTEGER / TEXT in the actual DB.
+   * matches what introspection will see. For sqlite (and d1, which is SQLite
+   * at the SQL level) this collapses boolean → integer{64} and
+   * timestamp/date/time → text, since sqlite has no native boolean/timestamp
+   * affinity and Drizzle's `integer(..., {mode:"boolean"})` / `text("ts")`
+   * patterns produce INTEGER / TEXT in the actual DB.
    */
-  dialect?: "sqlite" | "postgres";
+  dialect?: Dialect;
 }
 
 export function buildExpectedSchema(
   root: MetaData,
   opts?: BuildExpectedSchemaOptions,
 ): SchemaSnapshot {
+  // D1 is SQLite at the SQL level; normalize it so downstream dialect checks
+  // don't need to handle "d1" separately.
+  const dialect = opts?.dialect === "d1" ? "sqlite" : opts?.dialect;
+
   // Pass 1: collect entities + their resolved table names.
   // Skip:
   //   - abstract objects (e.g., BaseEntity)
@@ -89,7 +93,7 @@ export function buildExpectedSchema(
   });
 
   // Pass 3: dialect-specific SqlType normalization.
-  if (opts?.dialect === "sqlite") {
+  if (dialect === "sqlite") {
     for (const table of tables) {
       for (const col of table.columns) {
         col.sqlType = normalizeForSqlite(col.sqlType);
@@ -98,7 +102,7 @@ export function buildExpectedSchema(
   }
 
   // Dialect validation: SQLite has no schema concept; reject any non-default @schema.
-  if (opts?.dialect === "sqlite") {
+  if (dialect === "sqlite") {
     for (const table of tables) {
       if (table.schema !== undefined) {
         throw new Error(

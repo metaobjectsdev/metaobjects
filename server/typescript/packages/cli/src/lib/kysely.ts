@@ -1,6 +1,6 @@
 import { Kysely } from "kysely";
 
-export type Dialect = "sqlite" | "postgres";
+export type Dialect = "sqlite" | "postgres" | "d1";
 
 export interface KyselyHandle {
   db: Kysely<Record<string, unknown>>;
