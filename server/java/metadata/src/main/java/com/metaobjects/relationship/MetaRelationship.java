@@ -49,6 +49,40 @@ public abstract class MetaRelationship extends MetaData {
     public static final String LIFECYCLE_INDEPENDENT = "independent";
     public static final String LIFECYCLE_SHARED = "shared";
 
+    // === REFERENTIAL ACTION ATTRIBUTES ===
+    /** {@code @onDelete} attr: referential action taken when the referenced row is deleted. */
+    public static final String ATTR_ON_DELETE = "onDelete";
+
+    /** {@code @onUpdate} attr: referential action taken when the referenced key is updated. */
+    public static final String ATTR_ON_UPDATE = "onUpdate";
+
+    // === REFERENTIAL ACTION VALUES ===
+    /** Referential actions — the canonical cross-language set (kebab-case, no setDefault).
+     *  MUST equal the TS migrate-ts {@code FkAction} union:
+     *  {@code cascade | set-null | restrict | no-action}. */
+    public static final String ACTION_CASCADE    = "cascade";
+    public static final String ACTION_SET_NULL   = "set-null";
+    public static final String ACTION_RESTRICT   = "restrict";
+    public static final String ACTION_NO_ACTION  = "no-action";
+
+    /** Immutable set of all valid referential-action values. */
+    public static final java.util.Set<String> REFERENTIAL_ACTIONS = java.util.Set.of(
+        ACTION_CASCADE, ACTION_SET_NULL, ACTION_RESTRICT, ACTION_NO_ACTION
+    );
+
+    /** Default {@code @onDelete} per relationship subtype (rollout-decided defaults).
+     *  Default-derivation lives in OMDB consumer code; these constants are exported
+     *  for the deriver so it does not have to inline string literals. */
+    public static final java.util.Map<String, String> ON_DELETE_DEFAULT_BY_SUBTYPE =
+        java.util.Map.of(
+            "composition", ACTION_CASCADE,
+            "aggregation", ACTION_SET_NULL,
+            "association", ACTION_RESTRICT
+        );
+
+    /** Default {@code @onUpdate} for all relationship subtypes (rollout-decided default). */
+    public static final String ON_UPDATE_DEFAULT = ACTION_CASCADE;
+
     /**
      * Register this type with the MetaDataRegistry (called by provider)
      */
@@ -80,6 +114,15 @@ public abstract class MetaRelationship extends MetaData {
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION)
                .ofType(StringAttribute.SUBTYPE_STRING)
                .asSingle();
+
+            // @onDelete / @onUpdate — enum-constrained; withEnum also marks as single
+            def.optionalAttributeWithConstraints(ATTR_ON_DELETE)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .withEnum(ACTION_CASCADE, ACTION_SET_NULL, ACTION_RESTRICT, ACTION_NO_ACTION);
+
+            def.optionalAttributeWithConstraints(ATTR_ON_UPDATE)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .withEnum(ACTION_CASCADE, ACTION_SET_NULL, ACTION_RESTRICT, ACTION_NO_ACTION);
         });
     }
 
@@ -102,6 +145,21 @@ public abstract class MetaRelationship extends MetaData {
     public String getReferencedBy() {
         return hasMetaAttr(ATTR_REFERENCED_BY) ?
                getMetaAttr(ATTR_REFERENCED_BY).getValueAsString() : null;
+    }
+
+    /** Raw value of {@code @onDelete} attr, or {@code null} if not set.
+     *  Default-derivation (composition→cascade, aggregation→set-null, association→restrict)
+     *  lives in OMDB consumer code; use {@link #ON_DELETE_DEFAULT_BY_SUBTYPE} for that. */
+    public String getOnDeleteRaw() {
+        return hasMetaAttr(ATTR_ON_DELETE) ?
+               getMetaAttr(ATTR_ON_DELETE).getValueAsString() : null;
+    }
+
+    /** Raw value of {@code @onUpdate} attr, or {@code null} if not set.
+     *  Default is {@link #ON_UPDATE_DEFAULT} ({@code cascade}); derivation lives in consumers. */
+    public String getOnUpdateRaw() {
+        return hasMetaAttr(ATTR_ON_UPDATE) ?
+               getMetaAttr(ATTR_ON_UPDATE).getValueAsString() : null;
     }
 
     /**

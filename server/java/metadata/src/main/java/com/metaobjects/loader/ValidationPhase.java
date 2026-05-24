@@ -13,6 +13,7 @@ import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.util.ErrorMessageConstants;
 
@@ -51,6 +52,8 @@ public final class ValidationPhase {
      *       enum-membership rules.</li>
      *   <li>{@link #validateOnePrimarySource(MetaRoot)} — exactly one {@code role=primary} source
      *       per object that declares any sources.</li>
+     *   <li>{@link #validateRelationshipReferentialActions(MetaRoot)} — {@code relationship.*}
+     *       {@code @onDelete}/{@code @onUpdate} enum-membership rules.</li>
      * </ol>
      *
      * @param root the fully-loaded {@link MetaRoot}; must not be {@code null}
@@ -61,6 +64,7 @@ public final class ValidationPhase {
         validateEnumValues(root);
         validateSourceAttrs(root);
         validateOnePrimarySource(root);
+        validateRelationshipReferentialActions(root);
     }
 
     // =========================================================================
@@ -317,6 +321,87 @@ public final class ValidationPhase {
                     + " sources with role \"" + MetaSource.ROLE_PRIMARY
                     + "\"; exactly one is required",
                 ErrorCode.ERR_SOURCE_MULTIPLE_PRIMARY);
+        }
+    }
+
+    // =========================================================================
+    // Relationship @onDelete / @onUpdate enum validation
+    //
+    // Applied to every relationship.* node after the full tree is built.
+    // The .withEnum() constraint registered on relationship.base does not fire
+    // eagerly at addChild time (the CustomConstraint applicability test checks
+    // the container node's own type/subtype, which is attr.string for the attr
+    // child, not relationship.base) — so we use this post-load pass instead,
+    // mirroring the pattern for source @kind/@role.
+    //
+    //   @onDelete must be one of: cascade / set-null / restrict / no-action
+    //   @onUpdate must be one of: cascade / set-null / restrict / no-action
+    //
+    // Missing attrs are fine (defaults apply per subtype in consumer code);
+    // only explicitly-set bad values fail.
+    // =========================================================================
+
+    /**
+     * Walk the full tree and validate {@code @onDelete} and {@code @onUpdate} on every
+     * {@code relationship.*} node.
+     *
+     * @param root the root node to walk
+     * @throws MetaDataException on the first error found
+     */
+    static void validateRelationshipReferentialActions(MetaRoot root) {
+        walkRelationshipReferentialActions(root);
+    }
+
+    private static void walkRelationshipReferentialActions(MetaData node) {
+        validateRelationshipNode(node);
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkRelationshipReferentialActions(child);
+        }
+    }
+
+    /**
+     * Validate {@code @onDelete} and {@code @onUpdate} on a single node if it is a
+     * {@code relationship.*} instance.
+     *
+     * @param node the node to inspect
+     * @throws MetaDataException if {@code @onDelete} or {@code @onUpdate} is set to an
+     *         invalid value (not in {@link MetaRelationship#REFERENTIAL_ACTIONS})
+     */
+    private static void validateRelationshipNode(MetaData node) {
+        if (!MetaRelationship.TYPE_RELATIONSHIP.equals(node.getType())) {
+            return;
+        }
+        // Only validate concrete MetaRelationship instances — skip the abstract base type
+        // itself at registration time; it will never appear in a loaded document tree.
+        if (!(node instanceof MetaRelationship)) {
+            return;
+        }
+        MetaRelationship rel = (MetaRelationship) node;
+
+        // Validate @onDelete (own attribute only — absent is fine)
+        if (node.hasMetaAttr(MetaRelationship.ATTR_ON_DELETE, false)) {
+            String onDelete = rel.getOnDeleteRaw();
+            if (!MetaRelationship.REFERENTIAL_ACTIONS.contains(onDelete)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": relationship '" + node.getName()
+                        + "' @onDelete '" + onDelete
+                        + "' is not a valid value; allowed: cascade, set-null, restrict, no-action",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+
+        // Validate @onUpdate (own attribute only — absent is fine)
+        if (node.hasMetaAttr(MetaRelationship.ATTR_ON_UPDATE, false)) {
+            String onUpdate = rel.getOnUpdateRaw();
+            if (!MetaRelationship.REFERENTIAL_ACTIONS.contains(onUpdate)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": relationship '" + node.getName()
+                        + "' @onUpdate '" + onUpdate
+                        + "' is not a valid value; allowed: cascade, set-null, restrict, no-action",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
         }
     }
 
