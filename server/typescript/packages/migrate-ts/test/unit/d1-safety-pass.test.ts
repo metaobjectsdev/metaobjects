@@ -39,11 +39,11 @@ describe("applyD1SafetyPass", () => {
     expect(applyD1SafetyPass(input)).toBe("CREATE TABLE x (id INT);");
   });
 
-  test("warns (via warnings array) when statement exceeds 100 KB", () => {
-    const huge = "INSERT INTO x VALUES (" + "'a',".repeat(30000) + "'a');";
+  test("warns (via warnings array) when statement exceeds 1 MB", () => {
+    const huge = "INSERT INTO x VALUES (" + "'a',".repeat(300000) + "'a');";  // ~1.5 MB
     const result = applyD1SafetyPass(huge, { collectWarnings: true });
     expect(result.warnings.length).toBeGreaterThan(0);
-    expect(result.warnings[0]).toMatch(/100\s?KB|too large/i);
+    expect(result.warnings[0]).toMatch(/1\s?MB|per-statement limit/i);
     expect(result.sql).toBe(huge.trim());
   });
 
@@ -58,9 +58,10 @@ describe("applyD1SafetyPass", () => {
     expect(applyD1SafetyPass(input)).toBe(input);
   });
 
-  test("preserves empty lines collapsed to a single blank between statements", () => {
-    const input = "CREATE TABLE a (id INT);\n\nCREATE TABLE b (id INT);";
-    expect(applyD1SafetyPass(input)).toBe("CREATE TABLE a (id INT);\n\nCREATE TABLE b (id INT);");
+  test("collapses multiple blank lines between statements to a single blank", () => {
+    const input = "CREATE TABLE a (id INT);\n\n\n\nCREATE TABLE b (id INT);";
+    const expected = "CREATE TABLE a (id INT);\n\nCREATE TABLE b (id INT);";
+    expect(applyD1SafetyPass(input)).toBe(expected);
   });
 
   test("noop on empty input", () => {

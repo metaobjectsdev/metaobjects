@@ -1,4 +1,4 @@
-const MAX_STATEMENT_BYTES = 100 * 1024; // 100 KB — wrangler d1 execute limit
+const MAX_STATEMENT_BYTES = 1 * 1024 * 1024; // 1 MB — D1 batch API per-statement limit (path used by `wrangler d1 migrations apply --file`).
 
 export class D1UnsupportedStatementError extends Error {
   constructor(public readonly statement: string, public readonly reason: string) {
@@ -43,9 +43,10 @@ export function applyD1SafetyPass(sql: string, opts?: { collectWarnings?: boolea
     }
 
     if (byteLength(trimmed) > MAX_STATEMENT_BYTES) {
+      const byteLen = byteLength(trimmed);
       warnings.push(
-        `statement exceeds D1's 100 KB per-statement limit (${byteLength(trimmed)} bytes); ` +
-        `wrangler d1 execute will reject it: ${trimmed.slice(0, 80)}...`,
+        `statement exceeds D1's 1 MB per-statement limit (${byteLen} bytes); ` +
+        `may be rejected by D1 at apply time: ${trimmed.slice(0, 80)}...`,
       );
     }
 
@@ -60,7 +61,8 @@ export function applyD1SafetyPass(sql: string, opts?: { collectWarnings?: boolea
 
 /**
  * Split SQL on `;` boundaries, respecting single-quoted strings (SQL uses
- * '' to escape a single quote inside a literal — that's still one token to us).
+ * '' to escape a single quote inside a literal — two consecutive quotes toggle
+ * inString twice, net zero, which is exactly what we want).
  * Sufficient for our DDL output; we don't generate dollar-quoted blocks or
  * other exotic SQLite literals.
  */
