@@ -7,7 +7,10 @@ Warning strings are byte-identical to the expected-warnings fixtures.
 """
 from __future__ import annotations
 
+import re
+
 from ..errors import ErrorCode, MetaError
+from ..meta.core.field.field_constants import ENUM_MEMBER_PATTERN, FIELD_ATTR_VALUES, FIELD_SUBTYPE_ENUM
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.meta_data import MetaData
 from ..registry import AttrSchema, TypeRegistry
@@ -44,6 +47,7 @@ def run_validations(
     Passes are designed to be additive: later tasks add passes here.
     """
     _validate_attr_schema(root, registry, errors)
+    _validate_enum_values(root, errors)
     _validate_datagrid_sort_fields(root, errors)
     _validate_datagrid_filter_values(root, errors)
     _validate_origin_paths(root, errors)
@@ -168,6 +172,73 @@ def _validate_attr_schema(
                             ErrorCode.ERR_BAD_ATTR_VALUE,
                         )
                     )
+
+
+# ---------------------------------------------------------------------------
+# Pass: field.enum @values content validation (cross-language contract)
+# ---------------------------------------------------------------------------
+# Checks OWN @values only — inherited members were already validated on the node
+# that declared them (own-only rule, mirrors TS/C#/Java behaviour).
+#
+# Three content rules, all → ERR_BAD_ATTR_VALUE:
+#   1. Non-empty: @values must contain at least one member.
+#   2. Identifier-safe: every member must match ENUM_MEMBER_PATTERN.
+#   3. No duplicates.
+
+_ENUM_MEMBER_RE = re.compile(ENUM_MEMBER_PATTERN)
+
+
+def _validate_enum_values(
+    root: MetaData,
+    errors: list[MetaError],
+) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_FIELD or node.sub_type != FIELD_SUBTYPE_ENUM:
+            continue
+
+        # Own-only: only validate if THIS node declares @values directly.
+        own_values = node.attr(FIELD_ATTR_VALUES) if node.own_meta_attr(FIELD_ATTR_VALUES) else None
+        if own_values is None:
+            # No own @values — required-attr check (ERR_MISSING_REQUIRED_ATTR) is
+            # handled by _validate_attr_schema.  Nothing more to do here.
+            continue
+
+        if not isinstance(own_values, list):
+            # Type mismatch — already reported by _validate_attr_schema.
+            continue
+
+        label = _node_label(node)
+
+        # Rule 1: non-empty
+        if len(own_values) == 0:
+            errors.append(
+                MetaError(
+                    f"{label} attribute '@{FIELD_ATTR_VALUES}' must not be empty",
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                )
+            )
+            continue  # further checks don't apply to empty list
+
+        # Rule 2: identifier-safe members
+        for member in own_values:
+            if not isinstance(member, str) or not _ENUM_MEMBER_RE.match(member):
+                errors.append(
+                    MetaError(
+                        f"{label} attribute '@{FIELD_ATTR_VALUES}' member {member!r} "
+                        f"is not a valid identifier (must match {ENUM_MEMBER_PATTERN})",
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                    )
+                )
+                break  # one error per field is sufficient
+
+        # Rule 3: no duplicates
+        if len(own_values) != len(set(own_values)):
+            errors.append(
+                MetaError(
+                    f"{label} attribute '@{FIELD_ATTR_VALUES}' contains duplicate members",
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                )
+            )
 
 
 # ---------------------------------------------------------------------------
