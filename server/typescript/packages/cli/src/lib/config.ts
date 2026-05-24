@@ -40,6 +40,7 @@ export interface ResolvedMigrateConfig {
   allow: string[];
   slug: string | undefined;
   dryRun: boolean;
+  yes: boolean;
   d1: ResolvedD1Config;
 }
 
@@ -84,6 +85,7 @@ export async function resolveMigrateConfig(
       : (cfgBlock.allow ?? MIGRATE_DEFAULTS.allow),
     slug: flags.slug,
     dryRun: flags.dryRun,
+    yes: flags.yes,
     d1: {
       binding: flags.d1Binding ?? d1Block.binding,
       remote: flags.remote || (d1Block.remote ?? false),
