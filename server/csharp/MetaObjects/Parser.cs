@@ -699,6 +699,15 @@ public static class Parser
             string attrName = key[ATTR_PREFIX.Length..];
             JsonElement rawVal = prop.Value;
 
+            // NOTE on ERR_RESERVED_ATTR: TS / Java reject any @-prefixed reserved
+            // structural key (e.g. "@isArray") at canonical-JSON parse time. C# v1
+            // metadata vocabulary intentionally uses "@name" as a writable attr on
+            // source.dbTable / source.dbView (see SourceConstants.SOURCE_ATTR_NAME),
+            // so we cannot enforce that rule on every JSON load without churning v1.
+            // The reserved-attr check is therefore implemented in the YAML desugar
+            // layer (see YamlDesugar), which sees author-written sugar and can
+            // strip the bad key before handing canonical JSON to this parser.
+
             AttrSchema? attrSpec = st.Registry
                 .AttrsOf(model.Type, model.SubType)
                 .FirstOrDefault(a => a.Name == attrName);

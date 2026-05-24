@@ -112,23 +112,25 @@ public class MetaDataLoader
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Parse one source's raw content into a <see cref="ParseResult"/>. The base
-    /// loader handles JSON only; non-JSON formats throw. Subclasses override this
-    /// seam to add formats (e.g. YAML). Keeping the base loader free of the YAML
-    /// parser matches the TS architecture.
+    /// Parse one source's raw content into a <see cref="ParseResult"/>. Dispatches by
+    /// <see cref="IMetaDataSource.Format"/>:
+    /// <list type="bullet">
+    ///   <item><see cref="MetaDataFormat.Json"/> → <see cref="Parser.ParseJson"/></item>
+    ///   <item><see cref="MetaDataFormat.Yaml"/> → <see cref="ParserYaml.ParseYaml"/></item>
+    /// </list>
     /// </summary>
     protected virtual ParseResult ParseSource(
         string content,
         IMetaDataSource source,
         ParseOptions parseOpts)
     {
-        if (source.Format == MetaDataFormat.Json)
+        return source.Format switch
         {
-            return Parser.ParseJson(content, parseOpts);
-        }
-        throw new InvalidOperationException(
-            $"MetaDataLoader parses JSON only; format \"{source.Format}\" for source " +
-            $"\"{source.Id}\" requires a subclass that overrides ParseSource");
+            MetaDataFormat.Json => Parser.ParseJson(content, parseOpts),
+            MetaDataFormat.Yaml => ParserYaml.ParseYaml(content, parseOpts),
+            _ => throw new InvalidOperationException(
+                $"MetaDataLoader: unsupported format \"{source.Format}\" for source \"{source.Id}\""),
+        };
     }
 
     // -------------------------------------------------------------------------

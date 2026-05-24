@@ -1,0 +1,127 @@
+// ParserYaml — YAML authoring front-end (ADR-0006).
+//
+// C# port of:
+//   server/typescript/packages/metadata/src/core/parser-yaml.ts  (reference)
+//   server/python/src/metaobjects/parser_yaml.py                 (sibling)
+//   server/java/metadata/src/main/java/com/metaobjects/loader/parser/yaml/ParserYaml.java
+//
+// Pipeline:
+//   1. Read text as UTF-8; strip UTF-8 BOM if present.
+//   2. YamlDotNet's YamlStream parses YAML → YamlDocument(s).
+//   3. YamlDesugar.Desugar lowers the YAML representation to canonical-JSON
+//      (a JsonObject) + collected diagnostics (e.g. ERR_YAML_COERCION).
+//   4. The canonical JSON is serialized and handed to Parser.ParseJson, which
+//      runs the registry-driven canonical buildTree pipeline.
+//
+// Two entry points:
+//   - ParseYaml(content, opts)           — single-result API, mirrors ParseJson.
+//   - ParseYamlCollecting(content, opts) — multi-error API, used by the YAML
+//                                          conformance harness.
+
+using System.Text.Json.Nodes;
+using YamlDotNet.Core;
+using YamlDotNet.RepresentationModel;
+
+namespace MetaObjects;
+
+/// <summary>
+/// Combined desugar output — the canonical JSON ready for buildTree, plus the
+/// desugar's collected diagnostics. The conformance harness uses this to union
+/// the desugar codes with any subsequent buildTree validation codes.
+/// </summary>
+public sealed record YamlParseCollectingResult(
+    JsonObject Canonical,
+    IReadOnlyList<YamlCollectedError> Errors);
+
+/// <summary>
+/// YAML authoring front-end. Entry point: <see cref="ParseYaml"/>.
+/// </summary>
+public static class ParserYaml
+{
+    /// <summary>
+    /// Parse a YAML metadata document into a typed MetaData tree.
+    /// Desugars to canonical JSON, then runs the registry-driven canonical parser.
+    /// Surfaces the first desugar diagnostic (if any) as a <see cref="ParseException"/>
+    /// carrying that diagnostic's stable code; otherwise behaves like
+    /// <see cref="Parser.ParseJson"/>.
+    /// </summary>
+    /// <exception cref="ParseException">
+    /// On malformed YAML (<see cref="ErrorCode.ERR_MALFORMED_YAML"/>), a YAML
+    /// coercion that the desugar collected as its first diagnostic
+    /// (<see cref="ErrorCode.ERR_YAML_COERCION"/>), or any top-level structural
+    /// failure the canonical parser also throws on.
+    /// </exception>
+    public static ParseResult ParseYaml(string content, ParseOptions opts)
+    {
+        YamlParseCollectingResult collected = ParseYamlCollecting(content, opts);
+
+        if (collected.Errors.Count > 0)
+        {
+            YamlCollectedError first = collected.Errors[0];
+            throw new ParseException(
+                first.Message,
+                first.Code ?? ErrorCode.ERR_MALFORMED_YAML,
+                opts.SourceName,
+                null);
+        }
+
+        // Hand the canonical JSON to the existing canonical parser.
+        // ToJsonString() emits standard JSON; round-trip is byte-safe for the
+        // shapes the desugar produces (strings/numbers/bools/null/objects/arrays).
+        string canonicalJson = collected.Canonical.ToJsonString();
+        return Parser.ParseJson(canonicalJson, opts);
+    }
+
+    /// <summary>
+    /// Front-end + desugar with collected diagnostics: reads <paramref name="content"/>
+    /// (with BOM stripping), runs the YamlDotNet loader, desugars the result to canonical
+    /// JSON, and returns the canonical <see cref="JsonObject"/> along with every collected
+    /// desugar diagnostic. Independently callable so the YAML conformance harness can
+    /// run <see cref="Parser.ParseJson"/> on the canonical and union its (validation)
+    /// errors with the desugar errors here. Mirrors the multi-error result shape used
+    /// by the TS / Python / Java reference parsers.
+    /// </summary>
+    /// <exception cref="ParseException">
+    /// On YamlDotNet rejecting the document as invalid YAML
+    /// (<see cref="ErrorCode.ERR_MALFORMED_YAML"/>).
+    /// </exception>
+    public static YamlParseCollectingResult ParseYamlCollecting(string content, ParseOptions opts)
+    {
+        // Strip UTF-8 BOM (consistent with Parser.ParseJson).
+        string normalized = content.Length > 0 && content[0] == '﻿'
+            ? content[1..]
+            : content;
+
+        YamlStream stream;
+        try
+        {
+            stream = new YamlStream();
+            using var reader = new StringReader(normalized);
+            stream.Load(reader);
+        }
+        catch (YamlException ex)
+        {
+            throw new ParseException(
+                $"Invalid YAML: {ex.Message}",
+                ErrorCode.ERR_MALFORMED_YAML,
+                opts.SourceName,
+                null);
+        }
+        catch (Exception ex)
+        {
+            // Defensive — anything YamlDotNet bubbles up that isn't a YamlException.
+            throw new ParseException(
+                $"Invalid YAML: {ex.Message}",
+                ErrorCode.ERR_MALFORMED_YAML,
+                opts.SourceName,
+                null);
+        }
+
+        // Empty document — synthesize an empty mapping so the desugar collects a
+        // graceful "must be a mapping" error rather than throwing.
+        YamlNode? root = stream.Documents.Count > 0 ? stream.Documents[0].RootNode : null;
+
+        YamlDesugarResult desugared = YamlDesugar.Desugar(root, opts.Registry);
+        return new YamlParseCollectingResult(desugared.Canonical, desugared.Errors);
+    }
+}

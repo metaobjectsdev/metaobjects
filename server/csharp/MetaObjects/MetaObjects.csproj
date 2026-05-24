@@ -7,4 +7,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>MetaObjects</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" Version="18.0.0" />
+  </ItemGroup>
 </Project>
