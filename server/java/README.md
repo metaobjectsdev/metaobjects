@@ -95,6 +95,24 @@ The following modules have been moved to separate projects for focused developme
 - **OSGi Compatible** - Full bundle lifecycle support with WeakReference cleanup patterns
 - **Provider-Based Registration** - Java's `MetaDataTypeProvider` (`ServiceLoader`-discovered) is the pioneering implementation of the type-provider model adopted across all language ports. New types, subtypes, and attributes are contributed by a provider — never by editing central registry files.
 
+## 📝 **Authoring formats**
+
+The Java loader accepts both authoring formats:
+
+- **Canonical JSON** (`*.json`) — the cross-language interchange shape.
+- **Sigil-free YAML** (`*.yaml` / `*.yml`) — the AI-first authoring front-end
+  (ADR-0006). YAML is desugared to canonical JSON at load time; the shared
+  conformance corpus at `../../fixtures/yaml-conformance/` exercises every
+  desugar rule cross-language. The YAML front-end ships in `metadata` via
+  `com.metaobjects.loader.parser.yaml.ParserYaml` and is wired automatically
+  for any source whose filename ends in `.yaml` / `.yml`.
+
+A single directory may freely mix `.json` and `.yaml` files — the loader
+discovers each source's format from its filename extension and routes it to
+the matching parser. Overlay semantics and load order are unchanged.
+
+YAML front-end design: ADR-0006.
+
 ## 📚 **Documentation & Examples**
 
 ### **Examples Structure**
