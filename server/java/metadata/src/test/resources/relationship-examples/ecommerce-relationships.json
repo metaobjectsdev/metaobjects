@@ -35,7 +35,7 @@
                 "name": "profile",
                 "@cardinality": "one",
                 "@referencedBy": "profileId",
-                "@targetObject": "UserProfile"
+                "@objectRef": "UserProfile"
               }
             },
             {
@@ -43,7 +43,7 @@
                 "name": "addresses",
                 "@cardinality": "many",
                 "@referencedBy": "addressIds",
-                "@targetObject": "Address"
+                "@objectRef": "Address"
               }
             },
             {
@@ -51,7 +51,7 @@
                 "name": "orders",
                 "@cardinality": "many",
                 "@referencedBy": "orderIds",
-                "@targetObject": "Order"
+                "@objectRef": "Order"
               }
             },
             {
@@ -59,7 +59,7 @@
                 "name": "manager",
                 "@cardinality": "one",
                 "@referencedBy": "managerId",
-                "@targetObject": "User"
+                "@objectRef": "User"
               }
             }
           ]
@@ -199,7 +199,7 @@
                 "name": "orderItems",
                 "@cardinality": "many",
                 "@referencedBy": "orderItemIds",
-                "@targetObject": "OrderItem"
+                "@objectRef": "OrderItem"
               }
             },
             {
@@ -207,7 +207,7 @@
                 "name": "shippingAddress",
                 "@cardinality": "one",
                 "@referencedBy": "shippingAddressId",
-                "@targetObject": "Address"
+                "@objectRef": "Address"
               }
             },
             {
@@ -215,7 +215,7 @@
                 "name": "billingAddress",
                 "@cardinality": "one",
                 "@referencedBy": "billingAddressId",
-                "@targetObject": "Address"
+                "@objectRef": "Address"
               }
             }
           ]
@@ -259,7 +259,7 @@
                 "name": "product",
                 "@cardinality": "one",
                 "@referencedBy": "productId",
-                "@targetObject": "Product"
+                "@objectRef": "Product"
               }
             }
           ]
@@ -312,7 +312,7 @@
                 "name": "category",
                 "@cardinality": "one",
                 "@referencedBy": "categoryId",
-                "@targetObject": "Category"
+                "@objectRef": "Category"
               }
             }
           ]
@@ -350,7 +350,7 @@
                 "name": "parentCategory",
                 "@cardinality": "one",
                 "@referencedBy": "parentCategoryId",
-                "@targetObject": "Category"
+                "@objectRef": "Category"
               }
             },
             {
@@ -358,7 +358,7 @@
                 "name": "subCategories",
                 "@cardinality": "many",
                 "@referencedBy": "subCategoryIds",
-                "@targetObject": "Category"
+                "@objectRef": "Category"
               }
             }
           ]

@@ -81,7 +81,7 @@ public class MetaRelationshipTest {
         CompositionRelationship relationship = new CompositionRelationship("userProfile");
 
         // Add target object attribute
-        StringAttribute targetAttr = new StringAttribute(MetaRelationship.ATTR_TARGET_OBJECT);
+        StringAttribute targetAttr = new StringAttribute(MetaRelationship.ATTR_OBJECT_REF);
         targetAttr.setValueAsString("Profile");
         relationship.addChild(targetAttr);
 
@@ -96,7 +96,7 @@ public class MetaRelationshipTest {
         relationship.addChild(refAttr);
 
         // Test accessors
-        assertEquals("Target object should be Profile", "Profile", relationship.getTargetObject());
+        assertEquals("Target object should be Profile", "Profile", relationship.getObjectRef());
         assertEquals("Cardinality should be one", MetaRelationship.CARDINALITY_ONE, relationship.getCardinality());
         assertEquals("Referenced by should be profileId", "profileId", relationship.getReferencedBy());
     }
@@ -110,7 +110,7 @@ public class MetaRelationshipTest {
         assertEquals("Default cardinality should be one", MetaRelationship.CARDINALITY_ONE, relationship.getCardinality());
 
         // Test null values for non-defaulted attributes
-        assertNull("Target object should be null by default", relationship.getTargetObject());
+        assertNull("Target object should be null by default", relationship.getObjectRef());
         assertNull("Referenced by should be null by default", relationship.getReferencedBy());
     }
 
@@ -170,7 +170,7 @@ public class MetaRelationshipTest {
         CompositionRelationship relationship = new CompositionRelationship("stringTest");
 
         // Add all essential attributes
-        StringAttribute targetAttr = new StringAttribute(MetaRelationship.ATTR_TARGET_OBJECT);
+        StringAttribute targetAttr = new StringAttribute(MetaRelationship.ATTR_OBJECT_REF);
         targetAttr.setValueAsString("Order");
         relationship.addChild(targetAttr);
 
@@ -204,7 +204,7 @@ public class MetaRelationshipTest {
         assertEquals("Association subtype constant should be 'association'", "association", AssociationRelationship.SUBTYPE_ASSOCIATION);
 
         // Verify attribute constants (3 essential attributes)
-        assertEquals("Target object attribute", "targetObject", MetaRelationship.ATTR_TARGET_OBJECT);
+        assertEquals("Object ref attribute", "objectRef", MetaRelationship.ATTR_OBJECT_REF);
         assertEquals("Cardinality attribute", "cardinality", MetaRelationship.ATTR_CARDINALITY);
         assertEquals("Referenced by attribute", "referencedBy", MetaRelationship.ATTR_REFERENCED_BY);
 

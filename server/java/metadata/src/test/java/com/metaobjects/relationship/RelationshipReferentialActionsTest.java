@@ -162,7 +162,7 @@ public class RelationshipReferentialActionsTest extends SharedRegistryTestBase {
         for (String action : MetaRelationship.REFERENTIAL_ACTIONS) {
             String json = entityWithRelationship(
                 "{ \"relationship.composition\": { \"name\": \"items\","
-                + " \"@targetObject\": \"Item\", \"@onDelete\": \"" + action + "\" } }");
+                + " \"@objectRef\": \"Item\", \"@onDelete\": \"" + action + "\" } }");
             MetaDataLoader loader = loadThrough(json, "onDelete-" + action + ".json");
 
             MetaData order = loader.getRoot().getChildOfType("object", "acme::Order");
@@ -181,7 +181,7 @@ public class RelationshipReferentialActionsTest extends SharedRegistryTestBase {
         for (String action : MetaRelationship.REFERENTIAL_ACTIONS) {
             String json = entityWithRelationship(
                 "{ \"relationship.aggregation\": { \"name\": \"members\","
-                + " \"@targetObject\": \"Member\", \"@onUpdate\": \"" + action + "\" } }");
+                + " \"@objectRef\": \"Member\", \"@onUpdate\": \"" + action + "\" } }");
             MetaDataLoader loader = loadThrough(json, "onUpdate-" + action + ".json");
 
             MetaData order = loader.getRoot().getChildOfType("object", "acme::Order");
@@ -203,7 +203,7 @@ public class RelationshipReferentialActionsTest extends SharedRegistryTestBase {
     public void onDeleteAndOnUpdateBothRoundTrip() {
         String json = entityWithRelationship(
             "{ \"relationship.composition\": { \"name\": \"sections\","
-            + " \"@targetObject\": \"Section\","
+            + " \"@objectRef\": \"Section\","
             + " \"@onDelete\": \"cascade\","
             + " \"@onUpdate\": \"no-action\" } }");
         MetaDataLoader loader = loadThrough(json, "both-attrs-roundtrip.json");
@@ -227,7 +227,7 @@ public class RelationshipReferentialActionsTest extends SharedRegistryTestBase {
     public void invalidOnDeleteValueRaisesError() {
         String json = entityWithRelationship(
             "{ \"relationship.composition\": { \"name\": \"items\","
-            + " \"@targetObject\": \"Item\", \"@onDelete\": \"setDefault\" } }");
+            + " \"@objectRef\": \"Item\", \"@onDelete\": \"setDefault\" } }");
         try {
             loadThrough(json, "onDelete-invalid.json");
             fail("Expected MetaDataException for invalid @onDelete value 'setDefault'");
@@ -246,7 +246,7 @@ public class RelationshipReferentialActionsTest extends SharedRegistryTestBase {
     public void invalidOnDeleteValueBogusRaisesError() {
         String json = entityWithRelationship(
             "{ \"relationship.association\": { \"name\": \"customer\","
-            + " \"@targetObject\": \"Customer\", \"@onDelete\": \"bogus\" } }");
+            + " \"@objectRef\": \"Customer\", \"@onDelete\": \"bogus\" } }");
         try {
             loadThrough(json, "onDelete-bogus.json");
             fail("Expected MetaDataException for invalid @onDelete value 'bogus'");
@@ -269,7 +269,7 @@ public class RelationshipReferentialActionsTest extends SharedRegistryTestBase {
     public void invalidOnUpdateValueRaisesError() {
         String json = entityWithRelationship(
             "{ \"relationship.aggregation\": { \"name\": \"members\","
-            + " \"@targetObject\": \"Member\", \"@onUpdate\": \"setDefault\" } }");
+            + " \"@objectRef\": \"Member\", \"@onUpdate\": \"setDefault\" } }");
         try {
             loadThrough(json, "onUpdate-invalid.json");
             fail("Expected MetaDataException for invalid @onUpdate value 'setDefault'");
@@ -288,7 +288,7 @@ public class RelationshipReferentialActionsTest extends SharedRegistryTestBase {
     public void invalidOnUpdateValueBogusRaisesError() {
         String json = entityWithRelationship(
             "{ \"relationship.composition\": { \"name\": \"sections\","
-            + " \"@targetObject\": \"Section\", \"@onUpdate\": \"DELETE\" } }");
+            + " \"@objectRef\": \"Section\", \"@onUpdate\": \"DELETE\" } }");
         try {
             loadThrough(json, "onUpdate-bogus.json");
             fail("Expected MetaDataException for invalid @onUpdate value 'DELETE'");
@@ -312,7 +312,7 @@ public class RelationshipReferentialActionsTest extends SharedRegistryTestBase {
         // No @onDelete / @onUpdate — should load cleanly and return nulls.
         String json = entityWithRelationship(
             "{ \"relationship.composition\": { \"name\": \"items\","
-            + " \"@targetObject\": \"Item\" } }");
+            + " \"@objectRef\": \"Item\" } }");
         MetaDataLoader loader = loadThrough(json, "no-referential-attrs.json");
 
         MetaData order = loader.getRoot().getChildOfType("object", "acme::Order");

@@ -67,7 +67,7 @@ public class MetaRelationshipIntegrationTest {
         // Test getting specific relationships
         MetaRelationship foundProfile = testObject.getRelationship("profile");
         assertNotNull("Should find profile relationship", foundProfile);
-        assertEquals("Profile relationship target should be Profile", "Profile", foundProfile.getTargetObject());
+        assertEquals("Profile relationship target should be Profile", "Profile", foundProfile.getObjectRef());
 
         // Test Optional-based access
         Optional<MetaRelationship> optProfile = testObject.findRelationship("profile");
@@ -155,11 +155,11 @@ public class MetaRelationshipIntegrationTest {
 
         // Test that relationship accepts string attributes for essential properties
         try {
-            StringAttribute targetAttr = new StringAttribute(MetaRelationship.ATTR_TARGET_OBJECT);
+            StringAttribute targetAttr = new StringAttribute(MetaRelationship.ATTR_OBJECT_REF);
             targetAttr.setValueAsString("TestTarget");
             testRel.addChild(targetAttr);
 
-            assertEquals("Target attribute should be set", "TestTarget", testRel.getTargetObject());
+            assertEquals("Target attribute should be set", "TestTarget", testRel.getObjectRef());
         } catch (Exception e) {
             fail("Adding target attribute should not violate constraints: " + e.getMessage());
         }
@@ -196,7 +196,7 @@ public class MetaRelationshipIntegrationTest {
 
         // Test that all essential attributes have proper type support
         String[] essentialAttrs = {
-            MetaRelationship.ATTR_TARGET_OBJECT,
+            MetaRelationship.ATTR_OBJECT_REF,
             MetaRelationship.ATTR_CARDINALITY,
             MetaRelationship.ATTR_REFERENCED_BY
         };
@@ -242,7 +242,7 @@ public class MetaRelationshipIntegrationTest {
 
         // Test that inherited relationship has correct properties
         MetaRelationship inheritedRel = adminUser.getRelationship("baseProfile");
-        assertEquals("Inherited relationship should have correct target", "Profile", inheritedRel.getTargetObject());
+        assertEquals("Inherited relationship should have correct target", "Profile", inheritedRel.getObjectRef());
         assertTrue("Inherited relationship should be composition", "composition".equals(inheritedRel.getSubType()));
     }
 
@@ -277,7 +277,7 @@ public class MetaRelationshipIntegrationTest {
      */
     private void addRelationshipAttributes(MetaRelationship relationship, String target, String cardinality, String referencedBy) throws Exception {
         if (target != null) {
-            StringAttribute targetAttr = new StringAttribute(MetaRelationship.ATTR_TARGET_OBJECT);
+            StringAttribute targetAttr = new StringAttribute(MetaRelationship.ATTR_OBJECT_REF);
             targetAttr.setValueAsString(target);
             relationship.addChild(targetAttr);
         }

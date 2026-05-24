@@ -654,7 +654,7 @@ public abstract class MetaObject extends MetaData {
         return useCache("getRelationshipsByTarget()", targetObject, target -> {
             Collection<MetaRelationship> filtered = new ArrayList<>();
             for (MetaRelationship rel : getRelationships()) {
-                if (target.equals(rel.getTargetObject())) {
+                if (target.equals(rel.getObjectRef())) {
                     filtered.add(rel);
                 }
             }

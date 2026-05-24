@@ -186,7 +186,7 @@ Represents relationships between objects with clear semantic meaning:
 
 ```java
 AssociationRelationship customerRel = orderMeta.getRelationship("customer");
-String targetObject = customerRel.getTargetObject();  // "Customer"
+String targetObject = customerRel.getObjectRef();  // "Customer"
 String cardinality = customerRel.getCardinality();  // "one"
 ```
 

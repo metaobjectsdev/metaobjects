@@ -484,7 +484,7 @@ my-metaobjects-app/
           "name": "orders",
           "subType": "reference",
           "description": "Orders placed by this user",
-          "@targetObject": "Order",
+          "@objectRef": "Order",
           "@cardinality": "one-to-many",
           "@sourceIdentity": "user_pk",
           "@targetField": "userId"
@@ -507,7 +507,7 @@ my-metaobjects-app/
           "name": "user",
           "subType": "reference",
           "description": "User who placed this order",
-          "@targetObject": "User",
+          "@objectRef": "User",
           "@cardinality": "many-to-one",
           "@sourceField": "userId",
           "@targetIdentity": "user_pk"
@@ -530,7 +530,7 @@ my-metaobjects-app/
           "name": "orderItems",
           "subType": "reference",
           "description": "Items in this order",
-          "@targetObject": "OrderItem",
+          "@objectRef": "OrderItem",
           "@cardinality": "one-to-many",
           "@sourceIdentity": "order_pk",
           "@targetField": "orderId",
@@ -1354,7 +1354,7 @@ This guide is optimized for Claude Code assistance. When asking Claude for help:
 
 ### **Relationship Patterns**
 ```json
-{"relationship": {"name": "items", "subType": "reference", "@targetObject": "Item", "@cardinality": "one-to-many"}}
+{"relationship": {"name": "items", "subType": "reference", "@objectRef": "Item", "@cardinality": "one-to-many"}}
 ```
 
 ### **Validation Attributes**

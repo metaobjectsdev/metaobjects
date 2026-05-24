@@ -128,7 +128,7 @@
                 "@sourceFields": [
                   "basketId"
                 ],
-                "@targetObject": "::Basket"
+                "@objectRef": "::Basket"
               }
             },
             {
@@ -138,7 +138,7 @@
                 "@sourceFields": [
                   "fruitId"
                 ],
-                "@targetObject": "::Fruit"
+                "@objectRef": "::Fruit"
               }
             },
             {
@@ -179,7 +179,7 @@
                 "@sourceFields": [
                   "basketId"
                 ],
-                "@targetObject": "::Basket"
+                "@objectRef": "::Basket"
               }
             },
             {

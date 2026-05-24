@@ -42,7 +42,7 @@
                 "name": "posts",
                 "@cardinality": "many",
                 "@referencedBy": "postIds",
-                "@targetObject": "BlogPost"
+                "@objectRef": "BlogPost"
               }
             },
             {
@@ -50,7 +50,7 @@
                 "name": "profile",
                 "@cardinality": "one",
                 "@referencedBy": "profileId",
-                "@targetObject": "AuthorProfile"
+                "@objectRef": "AuthorProfile"
               }
             }
           ]
@@ -160,7 +160,7 @@
                 "name": "comments",
                 "@cardinality": "many",
                 "@referencedBy": "commentIds",
-                "@targetObject": "Comment"
+                "@objectRef": "Comment"
               }
             },
             {
@@ -168,7 +168,7 @@
                 "name": "tags",
                 "@cardinality": "many",
                 "@referencedBy": "tagIds",
-                "@targetObject": "Tag"
+                "@objectRef": "Tag"
               }
             },
             {
@@ -176,7 +176,7 @@
                 "name": "category",
                 "@cardinality": "one",
                 "@referencedBy": "categoryId",
-                "@targetObject": "Category"
+                "@objectRef": "Category"
               }
             }
           ]
@@ -236,7 +236,7 @@
                 "name": "parentComment",
                 "@cardinality": "one",
                 "@referencedBy": "parentCommentId",
-                "@targetObject": "Comment"
+                "@objectRef": "Comment"
               }
             },
             {
@@ -244,7 +244,7 @@
                 "name": "replies",
                 "@cardinality": "many",
                 "@referencedBy": "replyIds",
-                "@targetObject": "Comment"
+                "@objectRef": "Comment"
               }
             }
           ]
@@ -328,7 +328,7 @@
                 "name": "parentCategory",
                 "@cardinality": "one",
                 "@referencedBy": "parentCategoryId",
-                "@targetObject": "Category"
+                "@objectRef": "Category"
               }
             }
           ]

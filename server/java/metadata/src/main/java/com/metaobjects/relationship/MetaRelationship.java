@@ -31,8 +31,10 @@ public abstract class MetaRelationship extends MetaData {
     public final static String SUBTYPE_BASE = "base";
 
     // === ESSENTIAL ATTRIBUTES (AI specifies these 3) ===
-    /** Target object that this relationship points to */
-    public final static String ATTR_TARGET_OBJECT = "targetObject";
+    /** Target object that this relationship points to.
+     *  Literal {@code "objectRef"} — Tier-1 cross-language vocabulary (matches the
+     *  TS reference and shared conformance corpus). */
+    public final static String ATTR_OBJECT_REF = "objectRef";
 
     /** Cardinality of relationship: "one" or "many" */
     public final static String ATTR_CARDINALITY = "cardinality";
@@ -99,7 +101,7 @@ public abstract class MetaRelationship extends MetaData {
                .ofType(BooleanAttribute.SUBTYPE_BOOLEAN)
                .asSingle();
 
-            def.optionalAttributeWithConstraints(ATTR_TARGET_OBJECT)
+            def.optionalAttributeWithConstraints(ATTR_OBJECT_REF)
                .ofType(StringAttribute.SUBTYPE_STRING)
                .asSingle();
 
@@ -132,9 +134,9 @@ public abstract class MetaRelationship extends MetaData {
 
     // === ESSENTIAL ATTRIBUTE ACCESSORS ===
 
-    public String getTargetObject() {
-        return hasMetaAttr(ATTR_TARGET_OBJECT) ?
-               getMetaAttr(ATTR_TARGET_OBJECT).getValueAsString() : null;
+    public String getObjectRef() {
+        return hasMetaAttr(ATTR_OBJECT_REF) ?
+               getMetaAttr(ATTR_OBJECT_REF).getValueAsString() : null;
     }
 
     public String getCardinality() {
@@ -193,7 +195,7 @@ public abstract class MetaRelationship extends MetaData {
             getType(),
             getSubType(),
             getName(),
-            getTargetObject(),
+            getObjectRef(),
             getCardinality());
     }
 }
