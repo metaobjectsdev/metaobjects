@@ -41,7 +41,15 @@ from .meta.persistence.origin.origin_constants import (
     ORIGIN_SUBTYPE_PASSTHROUGH,
 )
 from .meta.persistence.source.meta_source import MetaSource
-from .meta.persistence.source.source_constants import SOURCE_SUBTYPES
+from .meta.persistence.source.source_constants import (
+    SOURCE_ATTR_KIND,
+    SOURCE_ATTR_ROLE,
+    SOURCE_ATTR_SCHEMA,
+    SOURCE_ATTR_TABLE,
+    SOURCE_RDB_KINDS,
+    SOURCE_ROLES,
+    SOURCE_SUBTYPE_RDB,
+)
 from .meta.presentation.layout.layout_constants import (
     LAYOUT_ATTR_COLUMNS,
     LAYOUT_ATTR_DEFAULT_SORT_FIELD,
@@ -216,13 +224,40 @@ _register_subtypes(
     child_rules=[ChildRule(TYPE_ATTR, "*")],
 )
 
-# source.* (base, dbTable, dbView); @name + @schema flow through as base attrs
-_register_subtypes(
-    core_provider,
-    TYPE_SOURCE,
-    SOURCE_SUBTYPES,
-    factory=MetaSource,
-    child_rules=[ChildRule(TYPE_ATTR, "*")],
+# source.* — base (no attrs) + rdb (paradigm subtype with @table/@kind/@role/@schema).
+# ADR-0007: read-only-ness is derived from @kind; multi-source one-primary rule is
+# enforced in validation_passes.py.
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_SOURCE,
+        sub_type=SUBTYPE_BASE,
+        factory=MetaSource,
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_SOURCE,
+        sub_type=SOURCE_SUBTYPE_RDB,
+        factory=MetaSource,
+        attrs=[
+            AttrSchema(name=SOURCE_ATTR_TABLE, value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(
+                name=SOURCE_ATTR_KIND,
+                value_type=ATTR_SUBTYPE_STRING,
+                required=False,
+                allowed_values=SOURCE_RDB_KINDS,
+            ),
+            AttrSchema(
+                name=SOURCE_ATTR_ROLE,
+                value_type=ATTR_SUBTYPE_STRING,
+                required=False,
+                allowed_values=SOURCE_ROLES,
+            ),
+            AttrSchema(name=SOURCE_ATTR_SCHEMA, value_type=ATTR_SUBTYPE_STRING, required=False),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
 )
 
 # origin.base — no schema (pass-through container)
