@@ -90,6 +90,8 @@ const codesOf = (errors: readonly Error[]) =>
 
 Build order is additive-first (Tasks 1–6 keep old vocab) → migrate fixtures (Tasks 7–8) → drop old vocab (Task 9).
 
+> **Execution-time reorder (recorded 2026-05-24):** Task 4 (`ERR_RESERVED_ATTR` enforcement) and Task 7 (corpus migration) are SWAPPED in execution. The rollout plan's qualifier — "land `ERR_RESERVED_ATTR` … safe once `@name` is gone" — means enforcement should land *after* the corpus migration removes `@name`-on-source. Executing in the originally written order forces a registry-exception hack or transient red on every v1 source fixture. New executed order within Unit 1: **1, 2, 3, 5, 6, 7, 4, 8, 9.** The new conformance fixture `error-reserved-word-as-attr` is authored in (the now-later) Task 4 alongside the parser enforcement, not in Task 7.
+
 ---
 
 ### Task 1: Source v2 + error-code constants (additive)
