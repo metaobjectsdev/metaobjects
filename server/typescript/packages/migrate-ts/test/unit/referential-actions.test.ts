@@ -3,7 +3,19 @@ import { resolveReferentialActions } from "../../src/referential-actions.js";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
 import { diff } from "../../src/diff/index.js";
 import { emit } from "../../src/emit/index.js";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemorySource, REFERENTIAL_ACTIONS } from "@metaobjectsdev/metadata";
+
+// Invariant referenced by the as-FkAction cast in resolveReferentialActions:
+// REFERENTIAL_ACTIONS (metadata) and FkAction (migrate-ts) MUST be the same
+// four-value kebab-case set. Tested here so a cross-package divergence is
+// caught immediately rather than silently shipping wrong DDL.
+describe("REFERENTIAL_ACTIONS / FkAction invariant", () => {
+  test("REFERENTIAL_ACTIONS is exactly the FkAction union literal set", () => {
+    expect([...REFERENTIAL_ACTIONS].sort()).toEqual(
+      ["cascade", "no-action", "restrict", "set-null"],
+    );
+  });
+});
 
 async function loadDoc(doc: unknown) {
   return new MetaDataLoader().load([new InMemorySource(JSON.stringify(doc))]);

@@ -29,9 +29,10 @@ import { SetNullNotNullableError } from "./errors.js";
  *
  * The single `as FkAction` cast in normalize() is safe because REFERENTIAL_ACTIONS
  * (metadata package) and FkAction (migrate-ts/src/types.ts) are the same four-value
- * set: "cascade" | "set-null" | "restrict" | "no-action". The comment in
- * relationship-constants.ts documents this invariant; a test in this file guards it
- * at runtime.
+ * set: "cascade" | "set-null" | "restrict" | "no-action". The invariant is
+ * documented in relationship-constants.ts and enforced by both the type system
+ * (FkAction is the union literal) and a runtime-set-equality test in
+ * referential-actions.test.ts.
  */
 export function resolveReferentialActions(
   entity: MetaObject,
@@ -40,6 +41,13 @@ export function resolveReferentialActions(
   const target = ref.targetEntity;
   if (target === undefined) return { onDelete: undefined, onUpdate: undefined };
 
+  // Correlation is by exact-string match. Every fixture in the corpus uses
+  // bare entity names for @objectRef and @references (no `::`-FQN form), so
+  // bare-vs-bare matching is sufficient today. If a future author writes an
+  // FQN value on either side, this find returns undefined and both actions
+  // resolve to undefined (no clause emitted) — surfacing the mismatch as a
+  // silent loss of intent rather than a wrong action. Cross-language ports
+  // should match the same correlation rule.
   const rel = entity.relationships().find((r) => r.objectRef === target);
   if (rel === undefined) return { onDelete: undefined, onUpdate: undefined };
 
