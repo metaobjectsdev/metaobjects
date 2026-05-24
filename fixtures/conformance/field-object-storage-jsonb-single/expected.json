@@ -29,8 +29,8 @@
           "name": "Program",
           "children": [
             {
-              "source.dbTable": {
-                "@name": "programs"
+              "source.rdb": {
+                "@table": "programs"
               }
             },
             {

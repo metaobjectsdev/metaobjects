@@ -7,8 +7,8 @@
           "name": "Product",
           "children": [
             {
-              "source.dbTable": {
-                "@name": "products"
+              "source.rdb": {
+                "@table": "products"
               }
             },
             {

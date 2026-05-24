@@ -6,9 +6,21 @@
         "object.entity": {
           "name": "Customer",
           "children": [
-            { "source.dbTable": { "@name": "customers" } },
-            { "field.long":   { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            {
+              "source.rdb": {
+                "@table": "customers"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
           ]
         }
       }

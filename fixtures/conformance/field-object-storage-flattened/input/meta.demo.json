@@ -6,9 +6,23 @@
         "object.value": {
           "name": "Address",
           "children": [
-            { "field.string": { "name": "street", "@required": true } },
-            { "field.string": { "name": "city",   "@required": true } },
-            { "field.string": { "name": "postalCode" } }
+            {
+              "field.string": {
+                "name": "street",
+                "@required": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "city",
+                "@required": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "postalCode"
+              }
+            }
           ]
         }
       },
@@ -16,10 +30,28 @@
         "object.entity": {
           "name": "Customer",
           "children": [
-            { "source.dbTable": { "@name": "customers" } },
-            { "field.long":   { "name": "id" } },
-            { "field.object": { "name": "shippingAddress", "@objectRef": "Address", "@storage": "flattened" } },
-            { "identity.primary": { "@fields": "id" } }
+            {
+              "source.rdb": {
+                "@table": "customers"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "shippingAddress",
+                "@objectRef": "Address",
+                "@storage": "flattened"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
           ]
         }
       }

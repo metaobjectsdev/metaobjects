@@ -31,30 +31,42 @@
       },
       {
         "object.entity": {
-          "name": "ProgramSummary",
-          "extends": "Program",
+          "name": "Week",
           "children": [
             {
               "source.rdb": {
-                "@kind": "view",
-                "@table": "v_program_summary"
+                "@table": "weeks"
               }
             },
             {
-              "field.string": {
-                "name": "displayTitle",
-                "children": [
-                  {
-                    "origin.passthrough": {
-                      "@from": "Program.title"
-                    }
-                  }
-                ]
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "relationship.composition": {
+                "name": "program",
+                "@objectRef": "Program",
+                "@cardinality": "one",
+                "@onDelete": "cascade",
+                "@onUpdate": "cascade"
               }
             },
             {
               "identity.primary": {
                 "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "programRef",
+                "@fields": "programId",
+                "@references": "Program"
               }
             }
           ]

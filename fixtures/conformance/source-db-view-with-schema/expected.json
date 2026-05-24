@@ -7,9 +7,10 @@
           "name": "CaseV1",
           "children": [
             {
-              "source.dbView": {
-                "@name": "cases_v1",
-                "@schema": "p3_api"
+              "source.rdb": {
+                "@kind": "view",
+                "@schema": "p3_api",
+                "@table": "cases_v1"
               }
             },
             {

@@ -7,8 +7,8 @@
           "name": "Program",
           "children": [
             {
-              "source.dbTable": {
-                "@name": "programs"
+              "source.rdb": {
+                "@table": "programs"
               }
             },
             {
@@ -37,8 +37,9 @@
           "extends": "Program",
           "children": [
             {
-              "source.dbView": {
-                "@name": "v_program_summary"
+              "source.rdb": {
+                "@kind": "view",
+                "@table": "v_program_summary"
               }
             },
             {

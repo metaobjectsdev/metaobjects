@@ -1,16 +1,21 @@
 {
   "metadata.root": {
-    "package": "p3::api",
+    "package": "acme::commerce",
     "children": [
       {
         "object.entity": {
-          "name": "CaseV1",
+          "name": "Product",
           "children": [
             {
               "source.rdb": {
+                "@table": "products"
+              }
+            },
+            {
+              "source.rdb": {
                 "@kind": "view",
-                "@table": "cases_v1",
-                "@schema": "p3_api"
+                "@role": "replica",
+                "@table": "v_products_replica"
               }
             },
             {
@@ -20,12 +25,14 @@
             },
             {
               "field.string": {
-                "name": "case_number"
+                "name": "name"
               }
             },
             {
               "identity.primary": {
-                "@fields": "id"
+                "@fields": [
+                  "id"
+                ]
               }
             }
           ]

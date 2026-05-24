@@ -7,9 +7,9 @@
           "name": "Case",
           "children": [
             {
-              "source.dbTable": {
-                "@name": "Cases",
-                "@schema": "public"
+              "source.rdb": {
+                "@schema": "public",
+                "@table": "Cases"
               }
             },
             {
