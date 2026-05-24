@@ -1,9 +1,9 @@
 # YAML authoring house style (ADR-0006 D3)
 
-YAML is a **TypeScript-only authoring front-end** for MetaObjects metadata. It
-lowers to canonical JSON, which is the sole cross-language interchange. This
-document defines the single house style AI authors (Claude) and humans should
-use when writing YAML metadata.
+YAML is the **cross-language authoring front-end** for MetaObjects metadata. It
+lowers to canonical JSON, which is the on-disk interchange consumed by all ports
+(TS, Python, Java, C#). This document defines the single house style AI authors
+(Claude) and humans should use when writing YAML metadata.
 
 The desugar may *accept* additional shorthand for backward compatibility; the
 rules below are the form to *emit*.

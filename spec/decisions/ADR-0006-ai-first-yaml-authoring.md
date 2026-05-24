@@ -1,6 +1,6 @@
 # ADR-0006 — AI-first YAML authoring (sigil-free YAML; JSON stays canonical)
 
-**Status:** Accepted (2026-05-24) — TypeScript implementation shipped.
+**Status:** Accepted (2026-05-24) — TypeScript implementation shipped; Python/Java/C# YAML loaders to follow.
 
 **Related:** ADR-0004 (per-subtype attr schemas), ADR-0007 (source v2), the enum datatype design
 (`docs/superpowers/specs/2026-05-23-enum-datatype-design.md`, which defers its YAML spelling here).
@@ -40,15 +40,16 @@ silent footguns and "multiple ways to say the same thing." Four problems with YA
 - **D3 — Reduce degrees of freedom.** Define the single AI **house style** Claude always emits:
   explicit `type.subType`; one consistent body form; quoted string values. The desugar may still
   *accept* human shorthand; optionally lint-warn toward house style.
-- **D4 — First-class + conformance-tested, TS-only scope.** YAML stays a **TS-only authoring
-  front-end**; **canonical JSON remains the sole cross-language interchange** (only TS has a YAML
-  loader). Add YAML conformance fixtures exercising sigil-free attributes + the coercion guard.
+- **D4 — First-class + conformance-tested, cross-language authoring scope.** YAML loaders are
+  implemented per port (TS, Python, Java, C#); **canonical JSON remains the on-disk interchange**.
+  The conformance corpus is shared at `fixtures/yaml-conformance/`. Add YAML conformance fixtures
+  exercising sigil-free attributes + the coercion guard.
 
 ## Consequences
 
-- Changes are **TS-only** (`core/parser-yaml.ts`, `core/yaml-desugar.ts`, the schema-validation
-  pass for D2, constants, tests + new YAML fixtures). **Canonical JSON, the other ports, and the
-  conformance oracle are unchanged.**
+- Initial implementation lands in **TS** (`core/parser-yaml.ts`, `core/yaml-desugar.ts`, the
+  schema-validation pass for D2, constants, tests + new YAML fixtures). **Python, Java, and C#
+  follow with parallel YAML loaders.** Canonical JSON and the conformance oracle are unchanged.
 - **Enum coordination:** `field.enum`'s `values:` (YAML) / `@values` (canonical JSON) follows D1.
 - **Sequencing:** built **last** in the source-v2 rollout — YAML authoring desugars to the
   canonical vocabulary, so source v2 + the persistence attrs must be final first.
@@ -69,7 +70,12 @@ silent footguns and "multiple ways to say the same thing." Four problems with YA
 
 - **Spec:** `spec/wire-format.md` (canonical key model, unchanged), this ADR (YAML layer), and
   `spec/yaml-house-style.md` (D3 author-facing rules).
-- **TypeScript:** D1 + D2 + D3 + D4 shipped — `core/yaml-desugar.ts` (sigil-free attrs +
-  type-coercion guard via `ERR_YAML_COERCION`), `spec/yaml-house-style.md`, and a TS-only YAML
-  conformance corpus under `server/typescript/packages/metadata/test/fixtures/yaml-conformance/`.
-  **Other ports: out of scope** (canonical JSON is the cross-language interchange).
+- **Shared corpus:** `fixtures/yaml-conformance/` (sibling of `fixtures/conformance/`). Every
+  port's YAML loader runs this corpus.
+
+| Port           | Status                                                                                  |
+|----------------|-----------------------------------------------------------------------------------------|
+| **TypeScript** | D1 + D2 + D3 + D4 shipped (`core/yaml-desugar.ts`, `ERR_YAML_COERCION`).              |
+| **Python**     | _pending_ — YAML loader port to follow.                                                 |
+| **Java**       | _pending_ — YAML loader port to follow.                                                 |
+| **C#**         | _pending_ — YAML loader follows the source-v2 cutover (currently held on v1).          |

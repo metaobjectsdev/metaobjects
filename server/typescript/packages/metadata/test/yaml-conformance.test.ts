@@ -1,17 +1,17 @@
-// YAML conformance harness (TS-only, ADR-0006 D4).
+// YAML conformance harness (TS port; corpus shared at fixtures/yaml-conformance/, ADR-0006 D4).
 //
-// YAML is a TS-only authoring front-end (canonical JSON is the cross-language
-// interchange), so its conformance corpus lives in this package — never under
-// the repo-root `fixtures/conformance/` corpus, which the Java/Python/C# ports
-// also consume.
+// YAML is the cross-language authoring front-end (TS, Python, Java, C#).
+// Canonical JSON is the on-disk interchange. The corpus lives at the
+// repo-root `fixtures/yaml-conformance/` so every port's YAML loader can
+// run it (mirroring how `fixtures/conformance/` is shared for JSON conformance).
 //
-// Each fixture directory under test/fixtures/yaml-conformance/ contains:
+// Each fixture directory under fixtures/yaml-conformance/ contains:
 //   - input.yaml                                        (required)
 //   - expected.json   (happy-path → canonical-serialized output must match)
 //   - expected-errors.json   (error-path → emitted ParseError codes must match)
 //
 // Exactly one of expected.json / expected-errors.json must be present per
-// fixture. Adding a directory under test/fixtures/yaml-conformance/ adds two
+// fixture. Adding a directory under fixtures/yaml-conformance/ adds two
 // tests automatically (a parse run + the appropriate comparison).
 
 import { test, expect } from "bun:test";
@@ -22,7 +22,7 @@ import { InMemorySource } from "../src/loader/meta-data-source.js";
 import { canonicalSerialize } from "../src/serializer-json.js";
 import type { ParseError } from "../src/errors.js";
 
-const CORPUS = join(import.meta.dir, "fixtures/yaml-conformance");
+const CORPUS = join(import.meta.dir, "../../../../../fixtures/yaml-conformance");
 
 interface YamlFixture {
   name: string;

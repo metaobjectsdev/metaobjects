@@ -68,12 +68,13 @@ package from sub-project A): read-only via `@kind`, field via `@column`. Un-gate
 Conformance green. (Python codegen/runtime/persistence is its own larger track — see the Python
 foundation roadmap; source v2 lands in its loader + codegen here.)
 
-## Stage 4 — AI-first YAML (ADR-0006 D1–D4), TypeScript-only, LAST.
+## Stage 4 — AI-first YAML (ADR-0006 D1–D4), TS-first then ported to Python/Java/C#, LAST.
 `parser-yaml` + `yaml-desugar`: sigil-free authoring (closed structural-key set; desugar re-adds
 `@` for the now-final source-v2/persistence vocab). D2 type-coercion guard in the schema-validation
 pass (reject schema-type-mismatched coerced values; located "quote this" error). D3 house style
 (+ optional lint warnings). D4 YAML conformance fixtures (sigil-free attrs + coercion guard);
-YAML stays TS-only. TDD on parser-yaml/yaml-desugar/parser-equivalence/validation.
+YAML loaders ship per port; corpus shared at `fixtures/yaml-conformance/`. TDD on
+parser-yaml/yaml-desugar/parser-equivalence/validation.
 
 ## Stage 5 — Enum datatype (separate; coordinate spelling).
 `field.enum` per its design doc; `values:` (YAML) / `@values` (canonical JSON) per ADR-0006 D1.
