@@ -448,7 +448,7 @@ metaobjects/
                 "name": "id",
                 "type": "long",
                 "@required": true,
-                "@dbColumn": "user_id"
+                "@column": "user_id"
               }
             },
             {
@@ -457,7 +457,7 @@ metaobjects/
                 "type": "string",
                 "@required": true,
                 "@maxLength": 50,
-                "@dbColumn": "username"
+                "@column": "username"
               }
             },
             {
@@ -466,14 +466,14 @@ metaobjects/
                 "type": "string", 
                 "@required": true,
                 "@maxLength": 255,
-                "@dbColumn": "email"
+                "@column": "email"
               }
             },
             {
               "field": {
                 "name": "createdDate",
                 "type": "timestamp",
-                "@dbColumn": "created_date"
+                "@column": "created_date"
               }
             }
           ]
@@ -490,7 +490,7 @@ metaobjects/
                 "name": "id",
                 "type": "long",
                 "@required": true,
-                "@dbColumn": "product_id"
+                "@column": "product_id"
               }
             },
             {
@@ -499,7 +499,7 @@ metaobjects/
                 "type": "string",
                 "@required": true,
                 "@maxLength": 100,
-                "@dbColumn": "product_name"
+                "@column": "product_name"
               }
             },
             {
@@ -507,7 +507,7 @@ metaobjects/
                 "name": "price",
                 "type": "double",
                 "@required": true,
-                "@dbColumn": "price"
+                "@column": "price"
               }
             }
           ]

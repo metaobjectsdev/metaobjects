@@ -671,43 +671,43 @@ mvn clean compile
             {
               "field": {
                 "name": "id",
-                "@dbColumn": "user_id"
+                "@column": "user_id"
               }
             },
             {
               "field": {
                 "name": "username",
-                "@dbColumn": "username"
+                "@column": "username"
               }
             },
             {
               "field": {
                 "name": "email",
-                "@dbColumn": "email_address"
+                "@column": "email_address"
               }
             },
             {
               "field": {
                 "name": "firstName",
-                "@dbColumn": "first_name"
+                "@column": "first_name"
               }
             },
             {
               "field": {
                 "name": "lastName",
-                "@dbColumn": "last_name"
+                "@column": "last_name"
               }
             },
             {
               "field": {
                 "name": "createdAt",
-                "@dbColumn": "created_at"
+                "@column": "created_at"
               }
             },
             {
               "field": {
                 "name": "isActive",
-                "@dbColumn": "is_active"
+                "@column": "is_active"
               }
             },
             {
@@ -739,37 +739,37 @@ mvn clean compile
             {
               "field": {
                 "name": "id",
-                "@dbColumn": "order_id"
+                "@column": "order_id"
               }
             },
             {
               "field": {
                 "name": "userId",
-                "@dbColumn": "user_id"
+                "@column": "user_id"
               }
             },
             {
               "field": {
                 "name": "orderNumber",
-                "@dbColumn": "order_number"
+                "@column": "order_number"
               }
             },
             {
               "field": {
                 "name": "orderDate",
-                "@dbColumn": "order_date"
+                "@column": "order_date"
               }
             },
             {
               "field": {
                 "name": "totalAmount",
-                "@dbColumn": "total_amount"
+                "@column": "total_amount"
               }
             },
             {
               "field": {
                 "name": "status",
-                "@dbColumn": "order_status"
+                "@column": "order_status"
               }
             },
             {
@@ -1368,7 +1368,7 @@ This guide is optimized for Claude Code assistance. When asking Claude for help:
 
 ### **Database Attributes**
 - `@dbTable` - Database table name
-- `@dbColumn` - Database column name
+- `@column` - Database column name
 - `@dbIndexName` - Database index name
 - `@generation` - ID generation strategy
 

@@ -11,13 +11,13 @@
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "id"
+                "@column": "id"
               }
             },
             {
               "field.object": {
                 "name": "prefs",
-                "@dbColumn": "prefs",
+                "@column": "prefs",
                 "@dbType": "jsonb",
                 "@objectRef": "jsonbtest::Prefs"
               }
@@ -40,13 +40,13 @@
             {
               "field.string": {
                 "name": "theme",
-                "@dbColumn": "theme"
+                "@column": "theme"
               }
             },
             {
               "field.int": {
                 "name": "fontSize",
-                "@dbColumn": "fontSize"
+                "@column": "fontSize"
               }
             }
           ]

@@ -10,7 +10,7 @@ Traditional metadata systems require verbose nested structures for attributes. M
     **Inline attributes are for configuration and system properties, NOT for validation rules.**
 
     **✅ Use inline attributes for:**
-    - Database mapping: `@dbTable`, `@dbColumn`, `@dbNullable`
+    - Database mapping: `@dbTable`, `@column`, `@dbNullable`
     - System configuration: `@defaultValue`, `@displayName`, `@isSearchable`
     - UI properties: `@placeholder`, `@helpText`, `@cssClasses`
 
@@ -96,7 +96,7 @@ JSON inline attributes use the `@` prefix to distinguish them from standard meta
                 "name": "id",
                 "subType": "long",
                 "@required": true,
-                "@dbColumn": "user_id"
+                "@column": "user_id"
               }
             },
             {
@@ -106,7 +106,7 @@ JSON inline attributes use the `@` prefix to distinguish them from standard meta
                 "@required": true,
                 "@maxLength": 255,
                 "@pattern": "^[\\w._%+-]+@[\\w.-]+\\.[A-Za-z]{2,}$",
-                "@dbColumn": "email_address",
+                "@column": "email_address",
                 "@unique": true
               }
             },
@@ -154,13 +154,13 @@ XML inline attributes use standard XML attribute syntax without prefixes:
       <children>
         <field name="id" subType="long"
                required="true"
-               dbColumn="user_id" />
+               column="user_id" />
 
         <field name="email" subType="string"
                required="true"
                maxLength="255"
                pattern="^[\w._%+-]+@[\w.-]+\.[A-Za-z]{2,}$"
-               dbColumn="email_address"
+               column="email_address"
                unique="true" />
 
         <field name="status" subType="string"
@@ -290,7 +290,7 @@ LongField, LongArrayField, DoubleField, DoubleArrayField
 
 **String Conversion:**
 ```json
-"@dbColumn": "email_address"  → StringAttribute("dbColumn", "email_address")
+"@column": "email_address"  → StringAttribute("column", "email_address")
 "@pattern": "^[a-zA-Z]+$"     → StringAttribute("pattern", "^[a-zA-Z]+$")
 ```
 
@@ -474,7 +474,7 @@ try {
 {
   "@required": true,
   "@maxLength": 255,
-  "@dbColumn": "email_address",
+  "@column": "email_address",
   "@displayName": "Email Address"
 }
 
@@ -501,7 +501,7 @@ try {
     "@pattern": "^[\\w._%+-]+@[\\w.-]+\\.[A-Za-z]{2,}$",
 
     // Database attributes
-    "@dbColumn": "email_address",
+    "@column": "email_address",
     "@unique": true,
     "@indexed": true,
 
@@ -582,7 +582,7 @@ try {
   "field": {
     "name": "email",
     "subType": "string",
-    "@dbColumn": "email_address",
+    "@column": "email_address",
     "@dbType": "VARCHAR(255)",
     "@nullable": false,
     "@unique": true,
@@ -786,7 +786,7 @@ Solution: Use appropriate JSON types for values:
 **Issue**: Attribute not recognized in XML
 ```
 Solution: Ensure XML attribute doesn't conflict with standard metadata attributes
-(name, type, subType, package). Use custom names like "dbColumn", "maxLength".
+(name, type, subType, package). Use custom names like "column", "maxLength".
 ```
 
 **Issue**: Missing attribute type registration

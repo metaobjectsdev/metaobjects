@@ -11,13 +11,13 @@
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "id"
+                "@column": "id"
               }
             },
             {
               "field.string": {
                 "name": "title",
-                "@dbColumn": "title",
+                "@column": "title",
                 "@previousName": "name"
               }
             },

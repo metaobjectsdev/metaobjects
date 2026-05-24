@@ -3,7 +3,7 @@
 <metadata package="produce">
 
     <!-- Id -->
-    <field name="id" subType="long" dbColumn="id" auto="last" />
+    <field name="id" subType="long" column="id" auto="last" />
     
     <!-- Fruit -->
     <object name="Fruit" subType="entity" dbTable="FRUIT">
@@ -14,18 +14,18 @@
       <field name="id" super="id"/>
 
       <!-- Type -->
-      <field name="kind" subType="int" dbColumn="kind" />
+      <field name="kind" subType="int" column="kind" />
             
       <!-- Name -->
-      <field name="name" subType="string" dbColumn="name">
+      <field name="name" subType="string" column="name">
         <attr name="len" subType="int">50</attr>
       </field>
       
       <!-- Length -->
-      <field name="length" subType="int" dbColumn="length"/>
+      <field name="length" subType="int" column="length"/>
 
       <!-- Weight -->
-      <field name="weight" subType="int" dbColumn="weight"/>
+      <field name="weight" subType="int" column="weight"/>
 
       <!-- Primary Identity -->
       <identity name="primary" subType="primary">
@@ -50,15 +50,15 @@
       </attr>
     
       <!-- Fruit Id -->
-      <field name="fruitId" subType="long" dbColumn="FRUIT_ID" />
+      <field name="fruitId" subType="long" column="FRUIT_ID" />
 
       <!-- Orachard -->
-      <field name="orchard" subType="string" dbColumn="orchard">
+      <field name="orchard" subType="string" column="orchard">
         <attr name="len" subType="int">80</attr>
       </field>
      
       <!-- Worms -->
-      <field name="worms" subType="int" dbColumn="worms"/>
+      <field name="worms" subType="int" column="worms"/>
 
     </object>  
 
@@ -77,10 +77,10 @@
       </attr>
     
       <!-- Fruit Id -->
-      <field name="fruitId" subType="long" dbColumn="FRUIT_ID" />
+      <field name="fruitId" subType="long" column="FRUIT_ID" />
     
       <!-- Picked Date -->
-      <field name="pickedDate" subType="date" dbColumn="picked_dt"/>
+      <field name="pickedDate" subType="date" column="picked_dt"/>
 
     </object>
     
@@ -99,10 +99,10 @@
       <field name="id" super="produce::id"/>
 
       <!-- Number of apples -->
-      <field name="apples" subType="int" dbColumn="apples"/>
+      <field name="apples" subType="int" column="apples"/>
 
       <!-- Number of oranges -->
-      <field name="oranges" subType="int" dbColumn="oranges"/>
+      <field name="oranges" subType="int" column="oranges"/>
 
     </object>
     

@@ -11,13 +11,13 @@
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "user_id"
+                "@column": "user_id"
               }
             },
             {
               "field.string": {
                 "name": "username",
-                "@dbColumn": "username",
+                "@column": "username",
                 "@isSearchable": "true",
                 "children": [
                   {
@@ -34,7 +34,7 @@
             {
               "field.string": {
                 "name": "email",
-                "@dbColumn": "email_address",
+                "@column": "email_address",
                 "@isSearchable": "true",
                 "children": [
                   {
@@ -51,21 +51,21 @@
             {
               "field.int": {
                 "name": "age",
-                "@dbColumn": "user_age",
+                "@column": "user_age",
                 "@isOptional": "true"
               }
             },
             {
               "field.date": {
                 "name": "createdAt",
-                "@dbColumn": "created_at"
+                "@column": "created_at"
               }
             },
             {
               "field.string": {
                 "name": "tags",
                 "isArray": true,
-                "@dbColumn": "user_tags"
+                "@column": "user_tags"
               }
             },
             {
@@ -87,13 +87,13 @@
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "product_id"
+                "@column": "product_id"
               }
             },
             {
               "field.string": {
                 "name": "name",
-                "@dbColumn": "product_name",
+                "@column": "product_name",
                 "children": [
                   {
                     "validator.required": {}
@@ -109,7 +109,7 @@
             {
               "field.double": {
                 "name": "price",
-                "@dbColumn": "price",
+                "@column": "price",
                 "children": [
                   {
                     "validator.required": {}
@@ -120,7 +120,7 @@
             {
               "field.string": {
                 "name": "notes",
-                "@dbColumn": "description",
+                "@column": "description",
                 "children": [
                   {
                     "validator.length": {

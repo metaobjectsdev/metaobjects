@@ -228,8 +228,8 @@ public class MetaAttribute extends MetaData {
 **StringAttribute:**
 ```java
 // Text values with optional pattern validation
-StringAttribute dbColumn = new StringAttribute("dbColumn");
-dbColumn.setValue("email_address");
+StringAttribute column = new StringAttribute("column");
+column.setValue("email_address");
 
 // With pattern validation
 StringAttribute pattern = new StringAttribute("pattern");

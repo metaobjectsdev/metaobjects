@@ -11,13 +11,13 @@
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "id"
+                "@column": "id"
               }
             },
             {
               "field.string": {
                 "name": "label",
-                "@dbColumn": "label"
+                "@column": "label"
               }
             },
             {

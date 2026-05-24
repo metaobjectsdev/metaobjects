@@ -268,7 +268,7 @@ if (emailField.hasValidation()) {
 **Database Integration**:
 ```java
 // Database mapping
-String dbColumn = emailField.getDbColumn();        // "email_address"
+String column = emailField.getMetaAttr("column").getValueAsString();  // "email_address"
 boolean searchable = emailField.isSearchable();    // true
 
 // Key information

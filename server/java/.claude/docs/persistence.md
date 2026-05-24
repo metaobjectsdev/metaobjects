@@ -55,7 +55,7 @@ Without it, ObjectManagerDB fails with "Attempt to modify an identity column" er
         "field": {
           "name": "id",
           "subType": "long",
-          "@dbColumn": "user_id"
+          "@column": "user_id"
         }
       },
       {
@@ -193,7 +193,7 @@ Without it, ObjectManagerDB fails with "Attempt to modify an identity column" er
 {
   "field": {
     "name": "email",
-    "@dbColumn": "EMAIL_ADDRESS",  // Column name
+    "@column": "EMAIL_ADDRESS",  // Column name
     "@dbType": "VARCHAR(255)",     // SQL type override
     "@dbNullable": false,          // NOT NULL constraint
     "@dbUnique": true              // UNIQUE constraint
@@ -358,7 +358,7 @@ long count = objectManager.count(connection, User.class);
     "name": "Store",
     "@dbTable": "STORE",
     "children": [
-      {"field": {"name": "id", "@dbColumn": "ID"}},
+      {"field": {"name": "id", "@column": "ID"}},
       {"identity": {"name": "store_pk", "@generation": "increment", "@dbIndexName": "pk_store"}}
     ]
   }

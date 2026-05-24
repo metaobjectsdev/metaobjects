@@ -10,14 +10,14 @@
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "author_id",
+                "@column": "author_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "username",
-                "@dbColumn": "username",
+                "@column": "username",
                 "@maxLength": 50,
                 "@required": true
               }
@@ -25,7 +25,7 @@
             {
               "field.string": {
                 "name": "email",
-                "@dbColumn": "email",
+                "@column": "email",
                 "@maxLength": 255,
                 "@required": true
               }
@@ -33,7 +33,7 @@
             {
               "field.string": {
                 "name": "displayName",
-                "@dbColumn": "display_name",
+                "@column": "display_name",
                 "@maxLength": 100
               }
             },
@@ -64,35 +64,35 @@
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "profile_id",
+                "@column": "profile_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "bio",
-                "@dbColumn": "bio",
+                "@column": "bio",
                 "@maxLength": 1000
               }
             },
             {
               "field.string": {
                 "name": "avatarUrl",
-                "@dbColumn": "avatar_url",
+                "@column": "avatar_url",
                 "@maxLength": 500
               }
             },
             {
               "field.string": {
                 "name": "website",
-                "@dbColumn": "website",
+                "@column": "website",
                 "@maxLength": 255
               }
             },
             {
               "field.string": {
                 "name": "socialLinks",
-                "@dbColumn": "social_links",
+                "@column": "social_links",
                 "@maxLength": 1000
               }
             }
@@ -107,14 +107,14 @@
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "post_id",
+                "@column": "post_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "title",
-                "@dbColumn": "title",
+                "@column": "title",
                 "@maxLength": 255,
                 "@required": true
               }
@@ -122,7 +122,7 @@
             {
               "field.string": {
                 "name": "slug",
-                "@dbColumn": "slug",
+                "@column": "slug",
                 "@maxLength": 255,
                 "@required": true
               }
@@ -130,27 +130,27 @@
             {
               "field.string": {
                 "name": "content",
-                "@dbColumn": "content",
+                "@column": "content",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "excerpt",
-                "@dbColumn": "excerpt",
+                "@column": "excerpt",
                 "@maxLength": 500
               }
             },
             {
               "field.date": {
                 "name": "publishedDate",
-                "@dbColumn": "published_date"
+                "@column": "published_date"
               }
             },
             {
               "field.string": {
                 "name": "status",
-                "@dbColumn": "status",
+                "@column": "status",
                 "@maxLength": 20,
                 "@required": true
               }
@@ -190,14 +190,14 @@
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "comment_id",
+                "@column": "comment_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "content",
-                "@dbColumn": "content",
+                "@column": "content",
                 "@maxLength": 2000,
                 "@required": true
               }
@@ -205,7 +205,7 @@
             {
               "field.string": {
                 "name": "authorName",
-                "@dbColumn": "author_name",
+                "@column": "author_name",
                 "@maxLength": 100,
                 "@required": true
               }
@@ -213,7 +213,7 @@
             {
               "field.string": {
                 "name": "authorEmail",
-                "@dbColumn": "author_email",
+                "@column": "author_email",
                 "@maxLength": 255,
                 "@required": true
               }
@@ -221,14 +221,14 @@
             {
               "field.date": {
                 "name": "createdDate",
-                "@dbColumn": "created_date",
+                "@column": "created_date",
                 "@required": true
               }
             },
             {
               "field.boolean": {
                 "name": "approved",
-                "@dbColumn": "approved"
+                "@column": "approved"
               }
             },
             {
@@ -258,14 +258,14 @@
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "tag_id",
+                "@column": "tag_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "name",
-                "@dbColumn": "tag_name",
+                "@column": "tag_name",
                 "@maxLength": 50,
                 "@required": true
               }
@@ -273,7 +273,7 @@
             {
               "field.string": {
                 "name": "slug",
-                "@dbColumn": "slug",
+                "@column": "slug",
                 "@maxLength": 50,
                 "@required": true
               }
@@ -281,7 +281,7 @@
             {
               "field.string": {
                 "name": "description",
-                "@dbColumn": "description",
+                "@column": "description",
                 "@maxLength": 255
               }
             }
@@ -296,14 +296,14 @@
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "category_id",
+                "@column": "category_id",
                 "@required": true
               }
             },
             {
               "field.string": {
                 "name": "name",
-                "@dbColumn": "category_name",
+                "@column": "category_name",
                 "@maxLength": 100,
                 "@required": true
               }
@@ -311,7 +311,7 @@
             {
               "field.string": {
                 "name": "slug",
-                "@dbColumn": "slug",
+                "@column": "slug",
                 "@maxLength": 100,
                 "@required": true
               }
@@ -319,7 +319,7 @@
             {
               "field.string": {
                 "name": "description",
-                "@dbColumn": "description",
+                "@column": "description",
                 "@maxLength": 500
               }
             },

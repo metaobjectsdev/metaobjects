@@ -12,19 +12,19 @@
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "id"
+                "@column": "id"
               }
             },
             {
               "field.int": {
                 "name": "apples",
-                "@dbColumn": "apples"
+                "@column": "apples"
               }
             },
             {
               "field.int": {
                 "name": "oranges",
-                "@dbColumn": "oranges"
+                "@column": "oranges"
               }
             },
             {

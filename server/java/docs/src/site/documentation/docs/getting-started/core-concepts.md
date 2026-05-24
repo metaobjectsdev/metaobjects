@@ -20,7 +20,7 @@ Metadata defines the **structure, rules, and behavior** of your objects. Think o
         "field": {
           "name": "id",
           "subType": "long",
-          "@dbColumn": "user_id"
+          "@column": "user_id"
         }
       },
       {
@@ -29,7 +29,7 @@ Metadata defines the **structure, rules, and behavior** of your objects. Think o
           "subType": "string",
           "@required": true,
           "@maxLength": 255,
-          "@dbColumn": "email"
+          "@column": "email"
         }
       },
       {
@@ -109,7 +109,7 @@ This is MetaObjects' core architectural pattern:
 ```java
 // Runtime reads - ultra-fast, no locks
 MetaField field = userMeta.getMetaField("email");  // ~1μs
-String dbColumn = field.getMetaAttr("dbColumn").getValueAsString();  // ~1μs
+String dbColumn = field.getMetaAttr("column").getValueAsString();  // ~1μs
 
 // Updates (rare) - atomic replacement
 loader.reload();  // Replaces entire metadata set atomically
@@ -168,7 +168,7 @@ boolean isRequired = emailField.hasMetaAttr("required");
 Represents additional properties that can be attached to any metadata:
 
 ```java
-MetaAttribute dbColumn = emailField.getMetaAttr("dbColumn");
+MetaAttribute dbColumn = emailField.getMetaAttr("column");
 String columnName = dbColumn.getValueAsString();  // "email_address"
 ```
 

@@ -27,7 +27,17 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
 
     // Common database attribute constants
     public static final String DB_TABLE = "dbTable";
-    public static final String DB_COLUMN = "dbColumn";
+
+    /**
+     * Field physical column name. Source-v2 Tier-1 cross-language vocabulary
+     * (matches the TS reference and the shared conformance corpus).
+     *
+     * <p>Paradigm-neutral key (no {@code db} prefix) to pair with
+     * {@code source.rdb @table}: a future {@code source.docdb} would still use
+     * {@code @column} for the physical name. Prior to source-v2 this attr was
+     * {@code @dbColumn}; no backwards-compat alias.</p>
+     */
+    public static final String COLUMN = "column";
     public static final String DB_NULLABLE = "dbNullable";
     public static final String DB_PRIMARY_KEY = "dbPrimaryKey";
     public static final String DB_FOREIGN_KEY = "dbForeignKey";
@@ -85,7 +95,7 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
 
         // Field-level database attributes
         registry.findType(MetaField.TYPE_FIELD, MetaField.SUBTYPE_BASE)
-            .optionalAttribute(DB_COLUMN, StringAttribute.SUBTYPE_STRING)
+            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_NULLABLE, BooleanAttribute.SUBTYPE_BOOLEAN)
             .optionalAttribute(DB_FOREIGN_KEY, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_INDEX, StringAttribute.SUBTYPE_STRING)
@@ -98,18 +108,18 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
 
         // String field specific
         registry.findType(MetaField.TYPE_FIELD, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(DB_COLUMN, StringAttribute.SUBTYPE_STRING)
+            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_LENGTH, IntAttribute.SUBTYPE_INT);
 
         // Numeric field specific
         registry.findType(MetaField.TYPE_FIELD, LongField.SUBTYPE_LONG)
-            .optionalAttribute(DB_COLUMN, StringAttribute.SUBTYPE_STRING);
+            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING);
 
         registry.findType(MetaField.TYPE_FIELD, IntegerField.SUBTYPE_INT)
-            .optionalAttribute(DB_COLUMN, StringAttribute.SUBTYPE_STRING);
+            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING);
 
         registry.findType(MetaField.TYPE_FIELD, DoubleField.SUBTYPE_DOUBLE)
-            .optionalAttribute(DB_COLUMN, StringAttribute.SUBTYPE_STRING)
+            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_PRECISION, IntAttribute.SUBTYPE_INT)
             .optionalAttribute(DB_SCALE, IntAttribute.SUBTYPE_INT);
 

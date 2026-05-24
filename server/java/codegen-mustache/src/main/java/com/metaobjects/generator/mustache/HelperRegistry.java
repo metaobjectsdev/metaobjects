@@ -11,7 +11,7 @@ import com.metaobjects.database.CoreDBMetaDataProvider;
 import org.apache.commons.lang3.StringUtils;
 
 import static com.metaobjects.database.CoreDBMetaDataProvider.DB_TABLE;
-import static com.metaobjects.database.CoreDBMetaDataProvider.DB_COLUMN;
+import static com.metaobjects.database.CoreDBMetaDataProvider.COLUMN;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -272,7 +272,7 @@ public class HelperRegistry {
     
     private boolean inferIdFieldFromPatterns(MetaField field) {
         String fieldName = field.getName();
-        String dbColumn = field.hasMetaAttr(DB_COLUMN) ? field.getMetaAttr(DB_COLUMN).getValueAsString() : "";
+        String dbColumn = field.hasMetaAttr(COLUMN) ? field.getMetaAttr(COLUMN).getValueAsString() : "";
         
         // Common ID field naming patterns
         if ("id".equals(fieldName)) return true;
@@ -295,7 +295,7 @@ public class HelperRegistry {
 
     private boolean inferForeignKeyFieldFromPatterns(MetaField field) {
         String fieldName = field.getName();
-        String dbColumn = field.hasMetaAttr(DB_COLUMN) ? field.getMetaAttr(DB_COLUMN).getValueAsString() : "";
+        String dbColumn = field.hasMetaAttr(COLUMN) ? field.getMetaAttr(COLUMN).getValueAsString() : "";
 
         // Common foreign key field naming patterns
         if (fieldName != null && fieldName.endsWith("Id") && !fieldName.equals("id")) return true;
@@ -448,7 +448,7 @@ public class HelperRegistry {
             }
             
             // Inference: Generate JPA if field has database-related attributes or is part of keys
-            return field.hasMetaAttr(DB_COLUMN) || 
+            return field.hasMetaAttr(COLUMN) || 
                    isPartOfAnyKey(field);
         }
         
@@ -457,7 +457,7 @@ public class HelperRegistry {
     
     private boolean hasAnyFieldWithDbColumn(MetaObject metaObject) {
         List<MetaField> fields = metaObject.getChildren(MetaField.class);
-        return fields.stream().anyMatch(field -> field.hasMetaAttr(DB_COLUMN));
+        return fields.stream().anyMatch(field -> field.hasMetaAttr(COLUMN));
     }
     
     private boolean hasAnyDatabaseKeys(MetaObject metaObject) {
@@ -552,8 +552,8 @@ public class HelperRegistry {
      */
     private String getColumnName(MetaField metaField) {
         // Check for explicit dbColumn attribute first
-        if (metaField.hasMetaAttr(DB_COLUMN)) {
-            String explicitColumn = metaField.getMetaAttr(DB_COLUMN).getValueAsString();
+        if (metaField.hasMetaAttr(COLUMN)) {
+            String explicitColumn = metaField.getMetaAttr(COLUMN).getValueAsString();
             if (explicitColumn != null && !explicitColumn.trim().isEmpty()) {
                 log.debug("Using explicit dbColumn: {} for field: {}", explicitColumn, metaField.getName());
                 return explicitColumn.trim();
@@ -844,7 +844,7 @@ public class HelperRegistry {
     private Object hasDbColumn(Object input) {
         if (input instanceof MetaField) {
             MetaField field = (MetaField) input;
-            return field.hasMetaAttr(DB_COLUMN);
+            return field.hasMetaAttr(COLUMN);
         }
         return false;
     }

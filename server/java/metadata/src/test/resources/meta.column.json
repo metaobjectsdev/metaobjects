@@ -1,0 +1,13 @@
+{ "metadata.root": {
+    "package": "myapp::commerce",
+    "children": [
+      { "object.entity": {
+          "name": "Person",
+          "children": [
+            { "field.long": { "name": "id" }},
+            { "field.string": { "name": "firstName", "@column": "first_name" }},
+            { "identity.primary": { "name": "pk", "@fields": ["id"] }}
+          ]
+      }}
+    ]
+}}

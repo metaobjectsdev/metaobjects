@@ -11,13 +11,13 @@
             {
               "field.long": {
                 "name": "id",
-                "@dbColumn": "id"
+                "@column": "id"
               }
             },
             {
               "field.string": {
                 "name": "username",
-                "@dbColumn": "username",
+                "@column": "username",
                 "@dbNullable": "false",
                 "children": [
                   {
@@ -34,7 +34,7 @@
             {
               "field.string": {
                 "name": "email",
-                "@dbColumn": "email",
+                "@column": "email",
                 "children": [
                   {
                     "validator.required": {}

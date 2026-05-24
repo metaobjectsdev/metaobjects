@@ -45,7 +45,7 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	public final static String VIEW_REF     = "dbView";
 	public final static String VIEW_SQL_REF = "dbViewSQL";
 	public final static String TABLE_REF    = "dbTable";
-	public final static String COL_REF      = "dbColumn";
+	public final static String COL_REF      = "column";
 	public final static String SEQ_REF      = "dbSequence";
 	public final static String SEQ_START_REF   = "dbSeqStart";
 	public final static String INHERITANCE_REF = "dbInheritance";

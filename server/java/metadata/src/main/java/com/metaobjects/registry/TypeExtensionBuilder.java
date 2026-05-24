@@ -13,7 +13,7 @@ import com.metaobjects.MetaDataTypeId;
  * <pre>{@code
  * // Service provider extending string fields with database attributes
  * registry.findType("field", "string")
- *     .optionalAttribute("dbColumn", "string")
+ *     .optionalAttribute("column", "string")
  *     .optionalAttribute("dbNullable", "boolean")
  *     .optionalChild("validator", "required", "*");
  * }</pre>
