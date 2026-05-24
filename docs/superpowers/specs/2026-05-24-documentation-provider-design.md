@@ -1,7 +1,7 @@
 # Design: Documentation provider — universal doc common attrs + cross-language doc-gen
 
 **Date:** 2026-05-24
-**Status:** Approved (design)
+**Status:** Implemented across TS, C#, Java (substrate; wiring deferred to H3b), Python (2026-05-24)
 **Author:** Doug Mealing (with Claude)
 
 ## Problem
