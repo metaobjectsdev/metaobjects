@@ -5,6 +5,7 @@ import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAUL
 import { parseInitArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "@metaobjectsdev/sdk/agent-docs";
+import { findWranglerConfig, parseWranglerConfig } from "@metaobjectsdev/migrate-ts";
 
 const META_COMMON_JSON = JSON.stringify(
   {
@@ -62,6 +63,7 @@ export interface InitOptions {
   quiet?: boolean;
   printOnly?: boolean;
   refreshDocs?: boolean;
+  d1?: boolean;
 }
 
 export interface InitResult {
@@ -151,6 +153,9 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   }
 
   // .metaobjects/config.json
+  const freshConfig = opts.d1
+    ? ConfigSchema.parse({ ...DEFAULT_CONFIG, migrate: buildD1MigrateBlock(opts.cwd) })
+    : DEFAULT_CONFIG;
   if (agentDirExists) {
     const configPath = join(agentDir, "config.json");
     let priorContent: string | undefined;
@@ -168,7 +173,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
       }
       await writeFile(
         join(agentDir, "config.json"),
-        JSON.stringify(DEFAULT_CONFIG, null, 2) + "\n",
+        JSON.stringify(freshConfig, null, 2) + "\n",
         "utf8",
       );
       if (priorContent === undefined) {
@@ -178,7 +183,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   } else {
     await writeFile(
       join(agentDir, "config.json"),
-      JSON.stringify(DEFAULT_CONFIG, null, 2) + "\n",
+      JSON.stringify(freshConfig, null, 2) + "\n",
       "utf8",
     );
     result.created.push(".metaobjects/config.json");
@@ -213,6 +218,25 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   }
 
   return result;
+}
+
+function buildD1MigrateBlock(cwd: string): Record<string, unknown> {
+  const block: Record<string, unknown> = { dialect: "d1" };
+  const cfgPath = findWranglerConfig(cwd);
+  if (cfgPath !== undefined) {
+    try {
+      const parsed = parseWranglerConfig(cfgPath);
+      if (parsed.d1Bindings.length === 1) {
+        block.d1 = { binding: parsed.d1Bindings[0]!.binding };
+      } else if (parsed.d1Bindings.length > 1) {
+        // Multiple bindings — leave binding unset; user must pick later with --d1 <binding>.
+        block.d1 = {};
+      }
+    } catch {
+      // Parse failed; leave d1 sub-block absent.
+    }
+  }
+  return block;
 }
 
 export function nextStepsBlock(): string {
@@ -253,6 +277,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
       quiet: flags.quiet,
       printOnly: flags.printOnly,
       refreshDocs: flags.refreshDocs,
+      d1: flags.d1,
     });
 
     if (flags.printOnly) {

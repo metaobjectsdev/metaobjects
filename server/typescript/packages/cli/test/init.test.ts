@@ -133,3 +133,37 @@ describe("init() --force config preservation", () => {
     expect(reloaded.pending_in_git).toBe(true); // back to default
   });
 });
+
+describe("init --d1", () => {
+  test("scaffolds config with migrate.dialect = 'd1' and prefilled binding from wrangler.toml", async () => {
+    writeFileSync(join(cwd, "wrangler.toml"), [
+      `name = "myapp"`,
+      ``,
+      `[[d1_databases]]`,
+      `binding = "DB"`,
+      `database_name = "myapp-prod"`,
+      `database_id = "abc-123"`,
+    ].join("\n"));
+    const code = await initCommand(["--d1"], cwd);
+    expect(code).toBe(0);
+    const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(cfg.migrate.dialect).toBe("d1");
+    expect(cfg.migrate.d1.binding).toBe("DB");
+  });
+
+  test("scaffolds config with migrate.dialect = 'd1' but no binding when wrangler.toml absent", async () => {
+    const code = await initCommand(["--d1"], cwd);
+    expect(code).toBe(0);
+    const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(cfg.migrate.dialect).toBe("d1");
+    expect(cfg.migrate.d1?.binding).toBeUndefined();
+  });
+
+  test("without --d1, existing init behavior is unchanged", async () => {
+    const code = await initCommand([], cwd);
+    expect(code).toBe(0);
+    const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    // DEFAULT_CONFIG has no migrate block; the d1 path must not pollute the default path
+    expect(cfg.migrate?.dialect ?? "sqlite").toBe("sqlite");
+  });
+});

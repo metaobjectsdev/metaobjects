@@ -9,6 +9,7 @@ export interface InitFlags {
   quiet: boolean;
   printOnly: boolean;
   refreshDocs: boolean;
+  d1: boolean;
 }
 
 export function parseInitArgs(argv: string[]): InitFlags {
@@ -19,6 +20,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
       quiet: { type: "boolean", default: false },
       "print-only": { type: "boolean", default: false },
       "refresh-docs": { type: "boolean", default: false },
+      d1: { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
@@ -28,6 +30,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
     quiet: !!values.quiet,
     printOnly: !!values["print-only"],
     refreshDocs: !!values["refresh-docs"],
+    d1: !!values.d1,
   };
 }
 
