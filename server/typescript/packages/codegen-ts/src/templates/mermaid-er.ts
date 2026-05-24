@@ -5,14 +5,8 @@
 // D5: @notes is NEVER emitted. Per the Documentation Provider design.
 
 import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
-import {
-  DOC_ATTR_ALIASES,
-  DOC_ATTR_DEPRECATED,
-  DOC_ATTR_DESCRIPTION,
-  DOC_ATTR_REPLACED_BY,
-  DOC_ATTR_SEE_ALSO,
-  DOC_ATTR_TITLE,
-} from "@metaobjectsdev/metadata";
+import { DOC_ATTR_DESCRIPTION } from "@metaobjectsdev/metadata";
+import { readDocAttrs } from "./jsdoc.js";
 
 /** Render a docs/model.md body: Mermaid erDiagram + per-entity prose. Abstract
  *  entities are excluded — they have no physical table to put in a diagram
@@ -99,45 +93,30 @@ function escapeMermaidComment(s: string): string {
 }
 
 function renderEntityProse(entity: MetaObject): string[] {
+  // readDocAttrs handles the typeof-string / Array.isArray guards and intentionally
+  // omits `notes` (D5 contract — never read, never emitted).
+  const docs = readDocAttrs(entity);
   const out: string[] = [];
-  const title = readStr(entity.attr(DOC_ATTR_TITLE)) ?? entity.name;
-  out.push(`## ${title}`);
-  const desc = readStr(entity.attr(DOC_ATTR_DESCRIPTION));
-  if (desc) {
+  out.push(`## ${docs.title ?? entity.name}`);
+  if (docs.description) {
     out.push("");
-    out.push(desc);
+    out.push(docs.description);
   }
-  const aliases = readStrArr(entity.attr(DOC_ATTR_ALIASES));
-  if (aliases.length > 0) {
+  if (docs.aliases && docs.aliases.length > 0) {
     out.push("");
-    out.push(`*Aliases:* ${aliases.join(", ")}`);
+    out.push(`*Aliases:* ${docs.aliases.join(", ")}`);
   }
-  const deprecated = readStr(entity.attr(DOC_ATTR_DEPRECATED));
   // Truthy check (not !== undefined): an empty @deprecated is the same signal
   // as none (no reason ⇒ nothing meaningful to render in the prose callout).
-  if (deprecated) {
-    const replaced = readStr(entity.attr(DOC_ATTR_REPLACED_BY));
+  if (docs.deprecated) {
+    const replaced = docs.replacedBy ? ` Replaced by **${docs.replacedBy}**.` : "";
     out.push("");
-    out.push(
-      `> ⚠️ **Deprecated:** ${deprecated}${replaced ? ` Replaced by **${replaced}**.` : ""}`,
-    );
+    out.push(`> ⚠️ **Deprecated:** ${docs.deprecated}${replaced}`);
   }
-  const seeAlso = readStrArr(entity.attr(DOC_ATTR_SEE_ALSO));
-  if (seeAlso.length > 0) {
+  if (docs.seeAlso && docs.seeAlso.length > 0) {
     out.push("");
     out.push("**See also:**");
-    for (const url of seeAlso) out.push(`- <${url}>`);
+    for (const url of docs.seeAlso) out.push(`- <${url}>`);
   }
-  // notes intentionally NOT emitted — D5 contract.
   return out;
-}
-
-function readStr(v: unknown): string | undefined {
-  return typeof v === "string" ? v : undefined;
-}
-
-function readStrArr(v: unknown): string[] {
-  return Array.isArray(v) && v.every((x) => typeof x === "string")
-    ? (v as string[])
-    : [];
 }
