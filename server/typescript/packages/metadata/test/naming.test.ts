@@ -12,7 +12,7 @@ async function load(doc: unknown) {
 }
 
 describe("resolveTableSchema", () => {
-  it("returns the explicit @schema attr when present on source.dbTable", async () => {
+  it("returns the explicit @schema attr when present on source.rdb (writable)", async () => {
     const root = await load({
       "metadata.root": {
         package: "acme",
@@ -52,7 +52,7 @@ describe("resolveTableSchema", () => {
     expect(resolveTableSchema(entity)).toBeUndefined();
   });
 
-  it("returns undefined when there is no source[dbTable] child at all", async () => {
+  it("returns undefined when there is no source.rdb child at all", async () => {
     const root = await load({
       "metadata.root": {
         package: "acme",
@@ -70,7 +70,7 @@ describe("resolveTableSchema", () => {
     expect(resolveTableSchema(entity)).toBeUndefined();
   });
 
-  it("reads @schema from source.dbView for projection entities", async () => {
+  it("reads @schema from source.rdb (@kind: view) for projection entities", async () => {
     const root = await load({
       "metadata.root": {
         package: "acme",

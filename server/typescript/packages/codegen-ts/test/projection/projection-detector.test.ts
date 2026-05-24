@@ -14,7 +14,7 @@ async function loadObj(objNode: unknown) {
 }
 
 describe("isProjection / isWriteThrough", () => {
-  test("entity with only source[dbView] → isProjection true, isWriteThrough false", async () => {
+  test("entity with source.rdb @kind:view only → isProjection true, isWriteThrough false", async () => {
     const obj = await loadObj({
       "object.entity": {
         name: "Foo",
@@ -29,7 +29,7 @@ describe("isProjection / isWriteThrough", () => {
     expect(isWriteThrough(obj)).toBe(false);
   });
 
-  test("entity with only source[dbTable] → isProjection false, isWriteThrough false", async () => {
+  test("entity with source.rdb @kind:table only → isProjection false, isWriteThrough false", async () => {
     const obj = await loadObj({
       "object.entity": {
         name: "Foo",

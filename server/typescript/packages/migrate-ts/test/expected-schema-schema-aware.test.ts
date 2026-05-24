@@ -9,7 +9,7 @@ async function loadJson(json: string): Promise<MetaData> {
 }
 
 describe("buildExpectedSchema — schema namespacing", () => {
-  describe("captures the explicit @schema attr from source.dbTable", () => {
+  describe("captures the explicit @schema attr from source.rdb", () => {
     let root: MetaData;
 
     beforeAll(async () => {

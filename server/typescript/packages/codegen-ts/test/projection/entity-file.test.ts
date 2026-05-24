@@ -27,7 +27,7 @@ async function loadMetadata(children: unknown[]) {
 }
 
 // ---------------------------------------------------------------------------
-// Fixture: ProgramSummary projection (extends Program, source[dbView])
+// Fixture: ProgramSummary projection (extends Program, source.rdb @kind:view)
 // ---------------------------------------------------------------------------
 
 async function loadProjectionFixture() {
@@ -104,7 +104,7 @@ async function loadProjectionFixture() {
 }
 
 // ---------------------------------------------------------------------------
-// Fixture: vanilla Post entity (source[dbTable])
+// Fixture: vanilla Post entity (source.rdb @kind:table)
 // ---------------------------------------------------------------------------
 
 async function loadVanillaFixture() {

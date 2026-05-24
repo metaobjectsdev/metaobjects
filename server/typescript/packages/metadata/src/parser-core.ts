@@ -215,93 +215,98 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
   _deferSuperResolution = opts.deferSuperResolution === true;
   _currentErrors = errors;
 
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new ParseError("Top-level metadata must be an object", { ...errOpts(source), code: "ERR_TOP_LEVEL_NOT_OBJECT" });
-  }
+  try {
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new ParseError("Top-level metadata must be an object", { ...errOpts(source), code: "ERR_TOP_LEVEL_NOT_OBJECT" });
+    }
 
-  const topLevel = parsed as Record<string, unknown>;
+    const topLevel = parsed as Record<string, unknown>;
 
-  // --- Find the wrapper key (skip $schema) ---
-  const wrapperKeys = Object.keys(topLevel).filter((k) => k !== JSON_KEY_SCHEMA);
+    // --- Find the wrapper key (skip $schema) ---
+    const wrapperKeys = Object.keys(topLevel).filter((k) => k !== JSON_KEY_SCHEMA);
 
-  if (wrapperKeys.length === 0) {
-    throw new ParseError("Top-level metadata object has no type wrapper key", { ...errOpts(source), code: "ERR_TOP_LEVEL_NOT_OBJECT" });
-  }
-  if (wrapperKeys.length > 1) {
-    throw new ParseError(
-      `Top-level metadata object must have exactly one wrapper key (found: ${wrapperKeys.join(", ")})`,
-      { ...errOpts(source), code: "ERR_TOP_LEVEL_NOT_OBJECT" },
-    );
-  }
+    if (wrapperKeys.length === 0) {
+      throw new ParseError("Top-level metadata object has no type wrapper key", { ...errOpts(source), code: "ERR_TOP_LEVEL_NOT_OBJECT" });
+    }
+    if (wrapperKeys.length > 1) {
+      throw new ParseError(
+        `Top-level metadata object must have exactly one wrapper key (found: ${wrapperKeys.join(", ")})`,
+        { ...errOpts(source), code: "ERR_TOP_LEVEL_NOT_OBJECT" },
+      );
+    }
 
-  const rootKey = wrapperKeys[0]!;
-  const rootData = topLevel[rootKey];
+    const rootKey = wrapperKeys[0]!;
+    const rootData = topLevel[rootKey];
 
-  if (typeof rootData !== "object" || rootData === null || Array.isArray(rootData)) {
-    throw new ParseError(
-      `Top-level wrapper "${rootKey}" must contain an object`,
-      { ...errOpts(source, rootKey), code: "ERR_TOP_LEVEL_NOT_OBJECT" },
-    );
-  }
+    if (typeof rootData !== "object" || rootData === null || Array.isArray(rootData)) {
+      throw new ParseError(
+        `Top-level wrapper "${rootKey}" must contain an object`,
+        { ...errOpts(source, rootKey), code: "ERR_TOP_LEVEL_NOT_OBJECT" },
+      );
+    }
 
-  const rootDataObj = rootData as Record<string, unknown>;
-  const { type: rootType, subType: rootSubType } = splitTypeKey(rootKey, opts.registry);
+    const rootDataObj = rootData as Record<string, unknown>;
+    const { type: rootType, subType: rootSubType } = splitTypeKey(rootKey, opts.registry);
 
-  // Check root type is registered (always throw — can't skip the root)
-  if (!opts.registry.has(rootType, rootSubType)) {
-    const rootTypeCode = opts.registry.allSubTypesOf(rootType).length > 0
-      ? "ERR_UNKNOWN_SUBTYPE" as const
-      : "ERR_UNKNOWN_TYPE" as const;
-    throw new ParseError(
-      `Unknown root type "${rootType}.${rootSubType}" — not registered`,
-      { ...errOpts(source, rootKey), code: rootTypeCode },
-    );
-  }
+    // Check root type is registered (always throw — can't skip the root)
+    if (!opts.registry.has(rootType, rootSubType)) {
+      const rootTypeCode = opts.registry.allSubTypesOf(rootType).length > 0
+        ? "ERR_UNKNOWN_SUBTYPE" as const
+        : "ERR_UNKNOWN_TYPE" as const;
+      throw new ParseError(
+        `Unknown root type "${rootType}.${rootSubType}" — not registered`,
+        { ...errOpts(source, rootKey), code: rootTypeCode },
+      );
+    }
 
-  if (opts.intoRoot !== undefined) {
-    // --- Merge mode: parse root's attrs/children into the existing root ---
-    // The JSON root's own package/super/reserved-keys are not re-applied to the
-    // existing root. BUT: children from the NEW JSON should inherit from the
-    // NEW root's package, not the existing root's.
-    const newRootPkg = rootDataObj[RESERVED_KEY_PACKAGE];
-    const contextPkg = (typeof newRootPkg === "string" ? newRootPkg : opts.intoRoot.package) ?? "";
-    parseNodeInto(
+    if (opts.intoRoot !== undefined) {
+      // --- Merge mode: parse root's attrs/children into the existing root ---
+      // The JSON root's own package/super/reserved-keys are not re-applied to the
+      // existing root. BUT: children from the NEW JSON should inherit from the
+      // NEW root's package, not the existing root's.
+      const newRootPkg = rootDataObj[RESERVED_KEY_PACKAGE];
+      const contextPkg = (typeof newRootPkg === "string" ? newRootPkg : opts.intoRoot.package) ?? "";
+      parseNodeInto(
+        rootDataObj,
+        opts.intoRoot,
+        opts.intoRoot, // accumulating root for super resolution
+        contextPkg,
+        opts.registry,
+        warnings,
+        errors,
+        strict,
+        source,
+        rootKey,
+      );
+      return { root: opts.intoRoot, warnings, errors };
+    }
+
+    // --- Fresh root mode: create a new root from the JSON ---
+    // The cast is safe within the core provider: `metadata.root` is the only
+    // registered `metadata` subtype, and its factory unconditionally produces a
+    // MetaRoot (see core-types.ts). A registry that registered a second
+    // `metadata.*` subtype backed by a non-MetaRoot factory would break this
+    // cast — a known limitation of the `TypeDefinition.factory: => MetaData`
+    // signature. `parseNodeFresh` is a general node parser, so MetaData is its
+    // correct return type; this top-level callsite is where the doc-root invariant holds.
+    const root = parseNodeFresh(
+      rootType,
+      rootSubType,
       rootDataObj,
-      opts.intoRoot,
-      opts.intoRoot, // accumulating root for super resolution
-      contextPkg,
+      undefined, // no accumulating root yet — built as we go
+      "",        // no inherited context pkg yet for the root itself
       opts.registry,
       warnings,
       errors,
       strict,
       source,
       rootKey,
-    );
-    return { root: opts.intoRoot, warnings, errors };
+    ) as MetaRoot;
+    return { root, warnings, errors };
+  } finally {
+    _deferSuperResolution = false;
+    _currentErrors = undefined;
   }
-
-  // --- Fresh root mode: create a new root from the JSON ---
-  // The cast is safe within the core provider: `metadata.root` is the only
-  // registered `metadata` subtype, and its factory unconditionally produces a
-  // MetaRoot (see core-types.ts). A registry that registered a second
-  // `metadata.*` subtype backed by a non-MetaRoot factory would break this
-  // cast — a known limitation of the `TypeDefinition.factory: => MetaData`
-  // signature. `parseNodeFresh` is a general node parser, so MetaData is its
-  // correct return type; this top-level callsite is where the doc-root invariant holds.
-  const root = parseNodeFresh(
-    rootType,
-    rootSubType,
-    rootDataObj,
-    undefined, // no accumulating root yet — built as we go
-    "",        // no inherited context pkg yet for the root itself
-    opts.registry,
-    warnings,
-    errors,
-    strict,
-    source,
-    rootKey,
-  ) as MetaRoot;
-  return { root, warnings, errors };
 }
 
 // ---------------------------------------------------------------------------

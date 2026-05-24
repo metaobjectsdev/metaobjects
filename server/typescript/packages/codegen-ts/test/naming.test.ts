@@ -57,7 +57,7 @@ describe("pluralize", () => {
     expect(pluralize("box")).toBe("boxes");
     expect(pluralize("class")).toBe("classes");
   });
-  test("preserves explicit @dbTable name (handled by caller, not here)", () => {
+  test("preserves explicit @table name (handled by caller via source.rdb, not here)", () => {
     // Just confirms pluralize doesn't crash on weird input
     expect(pluralize("Person")).toBe("Persons"); // documented imperfection per design §13 #1
   });

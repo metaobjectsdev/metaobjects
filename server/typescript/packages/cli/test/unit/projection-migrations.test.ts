@@ -104,7 +104,7 @@ describe("computeProjectionMigrations", () => {
     expect(sql).toMatch(/COUNT\(DISTINCT/i);
   });
 
-  test("resolves table name from @dbTable attr", async () => {
+  test("resolves table name from @table on source.rdb", async () => {
     const metadata = await load([programEntity, weekEntity, programSummaryProjection]);
     const result = computeProjectionMigrations({ metadata, dialect: "sqlite" });
 

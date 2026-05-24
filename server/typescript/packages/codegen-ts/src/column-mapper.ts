@@ -21,7 +21,6 @@ import {
   VALIDATOR_SUBTYPE_LENGTH,
   FIELD_ATTR_MAX_LENGTH,
   FIELD_ATTR_REQUIRED,
-  FIELD_ATTR_COLUMN,
   FIELD_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
   VALIDATOR_ATTR_MAX,
@@ -121,10 +120,7 @@ export function mapColumnType(
   dialect: Dialect,
   strategy: ColumnNamingStrategy = "snake_case",
 ): ColumnSpec {
-  const colAttr = field.ownAttr(FIELD_ATTR_COLUMN);
-  const dbName =
-    (typeof colAttr === "string" && colAttr !== "" ? colAttr : undefined)
-    ?? columnNameFromField(field.name, strategy);
+  const dbName = field.column ?? columnNameFromField(field.name, strategy);
   const importModule = dialect === "sqlite" ? "drizzle-orm/sqlite-core" : "drizzle-orm/pg-core";
   const subType = field.subType;
   const isArray = field.isArray;
