@@ -232,6 +232,12 @@ the metadata layer. The empty-`@values` fixture, surfaced during review, replace
   `ErrorCode` enum (mirrors `ERROR-CODES.json`), a nullable `code` on `MetaDataException`,
   and a `ValidationPhase` run post-load by `MetaDataLoader`; enum `@values` validation moved
   out of the parser hook into it (own-only, eager-throw, structured code).
+- **EF Core compile-check** — DONE. `MetaObjects.Codegen.Tests` now references EF Core 8 +
+  EF Core Relational and Roslyn-compiles the generated `AppDbContext` (+ entities + owned
+  value-objects, for a model exercising owned/jsonb/enum/enum-array/scalar-array/projection)
+  against the real EF Core API surface, asserting zero compile errors. Guard validated
+  red-then-green (reintroducing `.ToJson()` on a primitive collection fails with `CS1929`).
+  (Routes/ASP.NET surface intentionally out of scope.)
 
 ## Remaining follow-ups
 
@@ -241,7 +247,5 @@ the metadata layer. The empty-`@values` fixture, surfaced during review, replace
 - Display labels (presentation/view layer) — no current consumer.
 - Native Postgres `CREATE TYPE ... AS ENUM` (opt-in `@dbEnum`-style flag) — portable
   `varchar`+`CHECK` covers current needs.
-- **EF Core compile-check harness** (CI): generated `AppDbContext` code is never compiled
-  against EF Core today (only entity POCOs are Roslyn-checked), which let a non-compiling
-  `.ToJson()` mapping slip through review. A test project referencing EF Core 8 (+ Npgsql)
-  that compiles the emitted DbContext would catch this class of bug.
+- Extend the EF Core compile-check to the **Routes/ASP.NET** surface (needs the
+  `Microsoft.AspNetCore.App` shared framework) — optional, lower priority.
