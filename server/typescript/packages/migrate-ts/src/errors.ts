@@ -1,5 +1,38 @@
 import type { Change, ChangeKind } from "./types.js";
 
+// ---------------------------------------------------------------------------
+// SetNullNotNullableError — surfaced by buildExpectedSchema
+// ---------------------------------------------------------------------------
+
+/**
+ * Thrown when a foreign key's resolved ON DELETE action is "set-null" but one
+ * or more of its FK columns map to a NOT NULL field (@required: true).
+ *
+ * ON DELETE SET NULL requires the FK column(s) to be nullable — Postgres and
+ * SQLite both reject the combination at DDL execution time.
+ *
+ * Fix: either remove @required from the FK field(s), or override the
+ * relationship with @onDelete: "restrict" / "no-action" to avoid set-null.
+ */
+export class SetNullNotNullableError extends Error {
+  override readonly name = "SetNullNotNullableError";
+  readonly entityName: string;
+  readonly constraintName: string;
+  readonly offendingFields: string[];
+
+  constructor(entityName: string, constraintName: string, offendingFields: string[]) {
+    const fieldList = offendingFields.join(", ");
+    super(
+      `Entity "${entityName}": FK constraint "${constraintName}" uses ON DELETE SET NULL ` +
+      `but field(s) [${fieldList}] are NOT NULL (@required: true). ` +
+      `Fix: remove @required from the FK field(s), or override with @onDelete: "restrict" / "no-action" on the relationship.`,
+    );
+    this.entityName = entityName;
+    this.constraintName = constraintName;
+    this.offendingFields = offendingFields;
+  }
+}
+
 const ENABLE_FLAG_BY_KIND: Partial<Record<ChangeKind, string>> = {
   "drop-column": "allow.dropColumn",
   "drop-table": "allow.dropTable",

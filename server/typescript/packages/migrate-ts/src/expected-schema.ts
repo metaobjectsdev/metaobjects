@@ -34,7 +34,7 @@ import type { SqlType } from "./sql-type.js";
 import type {
   SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,
 } from "./types.js";
-import { resolveReferentialActions } from "./referential-actions.js";
+import { resolveReferentialActions, validateSetNullNullability } from "./referential-actions.js";
 
 export interface BuildExpectedSchemaOptions {
   /**
@@ -244,8 +244,13 @@ function buildForeignKeys(
       : [toSnake(refChild.resolvedTargetPkField(root) ?? "id")];
 
     const { onDelete, onUpdate } = resolveReferentialActions(entity, refChild);
+    const constraintName = `${tableName}_${fkCols[0]}_fk`;
+
+    // Guard: ON DELETE SET NULL requires nullable FK columns.
+    validateSetNullNullability(entity, refChild, onDelete, constraintName);
+
     const fk: FkDescriptor = {
-      name: `${tableName}_${fkCols[0]}_fk`,
+      name: constraintName,
       columns: fkCols,
       refTable,
       refColumns,

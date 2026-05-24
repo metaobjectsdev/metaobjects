@@ -15,7 +15,7 @@ export { emit } from "./emit/index.js";
 export { writeMigration } from "./write-migration.js";
 
 // Errors
-export { BlockedChangesError } from "./errors.js";
+export { BlockedChangesError, SetNullNotNullableError } from "./errors.js";
 
 // SqlType helpers (rarely needed but useful for advanced consumers)
 export { isWidening, sqlTypeEquals } from "./sql-type.js";
