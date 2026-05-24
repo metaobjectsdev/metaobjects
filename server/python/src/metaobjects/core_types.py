@@ -5,6 +5,7 @@ from __future__ import annotations
 from .attr_class_map import attr_class_for
 from .meta.core.attr import meta_attr as _attr  # noqa: F401
 from .meta.core.attr.attr_constants import (
+    ATTR_SUBTYPE_BOOLEAN,
     ATTR_SUBTYPE_FILTER,
     ATTR_SUBTYPE_INT,
     ATTR_SUBTYPE_STRING,
@@ -18,7 +19,10 @@ from .meta.core.identity.identity_constants import (
     GENERATION_VALUES,
     IDENTITY_ATTR_FIELDS,
     IDENTITY_ATTR_GENERATION,
+    IDENTITY_REFERENCE_ATTR_ENFORCE,
+    IDENTITY_REFERENCE_ATTR_REFERENCES,
     IDENTITY_SUBTYPE_PRIMARY,
+    IDENTITY_SUBTYPE_REFERENCE,
     IDENTITY_SUBTYPE_SECONDARY,
 )
 from .meta.core.identity.meta_identity import MetaIdentity
@@ -184,6 +188,21 @@ core_provider.add(
         sub_type=IDENTITY_SUBTYPE_SECONDARY,
         factory=MetaIdentity,
         attrs=[AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRINGARRAY, required=True)],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+
+# identity.reference — @fields (required), @references (required), @enforce (optional boolean)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_IDENTITY,
+        sub_type=IDENTITY_SUBTYPE_REFERENCE,
+        factory=MetaIdentity,
+        attrs=[
+            AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRINGARRAY, required=True),
+            AttrSchema(name=IDENTITY_REFERENCE_ATTR_REFERENCES, value_type=ATTR_SUBTYPE_STRING, required=True),
+            AttrSchema(name=IDENTITY_REFERENCE_ATTR_ENFORCE, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+        ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
 )
