@@ -40,10 +40,8 @@ function renderUp(c: Change): string {
     case "rename-table":           return `ALTER TABLE ${quoteQualified(c.from, c.schema)} RENAME TO ${quote(c.to)};`;
     case "add-column": {
       const base = `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD COLUMN ${renderColumn(c.column)};`;
-      if (c.column.description) {
-        return `${base}\nCOMMENT ON COLUMN ${quoteQualified(c.table, c.schema)}.${quote(c.column.name)} IS '${pgEscape(c.column.description)}';`;
-      }
-      return base;
+      if (!c.column.description) return base;
+      return `${base}\n${columnCommentSql(c.table, c.schema, c.column.name, c.column.description)}`;
     }
     case "drop-column":            return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP COLUMN ${quote(c.column)};`;
     case "rename-column":          return `ALTER TABLE ${quoteQualified(c.table, c.schema)} RENAME COLUMN ${quote(c.from)} TO ${quote(c.to)};`;
@@ -113,12 +111,19 @@ function renderTableComments(t: TableDescriptor): string[] {
   }
   for (const col of t.columns) {
     if (col.description) {
-      out.push(
-        `COMMENT ON COLUMN ${quoteQualified(t.name, t.schema)}.${quote(col.name)} IS '${pgEscape(col.description)}';`,
-      );
+      out.push(columnCommentSql(t.name, t.schema, col.name, col.description));
     }
   }
   return out;
+}
+
+function columnCommentSql(
+  table: string,
+  schema: string | undefined,
+  column: string,
+  description: string,
+): string {
+  return `COMMENT ON COLUMN ${quoteQualified(table, schema)}.${quote(column)} IS '${pgEscape(description)}';`;
 }
 
 function pgEscape(s: string): string {
