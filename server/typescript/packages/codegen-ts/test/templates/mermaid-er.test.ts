@@ -96,4 +96,42 @@ describe("renderMermaidModel", () => {
     const md = renderMermaidModel(root);
     expect(md).not.toContain("INTERNAL_SECRET");
   });
+
+  test("abstract entities are excluded from the diagram and prose", async () => {
+    // Abstract entities (e.g. BaseEntity) have no physical table — they must not
+    // appear as a diagram box. Mirrors migrate-ts's same filter.
+    const root = await loadRoot({
+      "metadata.root": {
+        children: [
+          {
+            "object.entity": {
+              name: "BaseRecord",
+              "abstract": true,
+              "@description": "Should not appear.",
+              children: [
+                { "field.long": { name: "id" } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+              ],
+            },
+          },
+          {
+            "object.entity": {
+              name: "Order",
+              "extends": "BaseRecord",
+              children: [
+                { "source.rdb": { name: "src", "@table": "orders" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const md = renderMermaidModel(root);
+    // Concrete entity Order present:
+    expect(md).toContain("Order {");
+    expect(md).toContain("## Order");
+    // Abstract BaseRecord NOT present as a diagram box or a prose heading:
+    expect(md).not.toContain("BaseRecord {");
+    expect(md).not.toContain("## BaseRecord");
+  });
 });

@@ -14,9 +14,9 @@ export interface MermaidErOptions {
  * default outFile is "docs/model.md".
  */
 export const mermaidErDiagram = function mermaidErDiagram(
-  opts: MermaidErOptions = {},
+  opts?: MermaidErOptions,
 ): Generator {
-  const outFile = opts.outFile ?? "docs/model.md";
+  const outFile = opts?.outFile ?? "docs/model.md";
   const generator: Generator = {
     name: "mermaid-er-diagram",
     generate: oncePerRun((_entities, ctx) => ({
@@ -24,6 +24,6 @@ export const mermaidErDiagram = function mermaidErDiagram(
       content: renderMermaidModel(ctx.loadedRoot),
     })),
   };
-  if (opts.target) generator.target = opts.target;
+  if (opts?.target) generator.target = opts.target;
   return generator;
 } as GeneratorFactory<MermaidErOptions>;

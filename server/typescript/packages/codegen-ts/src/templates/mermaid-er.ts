@@ -14,9 +14,13 @@ import {
   DOC_ATTR_TITLE,
 } from "@metaobjectsdev/metadata";
 
-/** Render a docs/model.md body: Mermaid erDiagram + per-entity prose. */
+/** Render a docs/model.md body: Mermaid erDiagram + per-entity prose. Abstract
+ *  entities are excluded — they have no physical table to put in a diagram
+ *  (matches migrate-ts/expected-schema.ts's same filter). */
 export function renderMermaidModel(root: MetaRoot): string {
-  const entities = root.objects().filter((o) => o.isEntity());
+  const entities = root
+    .objects()
+    .filter((o) => o.isEntity() && !o.isAbstract);
   const parts: string[] = [];
 
   parts.push("# Data Model");
@@ -77,7 +81,7 @@ function pkFieldNames(entity: MetaObject): Set<string> {
   const out = new Set<string>();
   const primary = entity.primaryIdentity();
   if (primary) {
-    addFields(out, primary.ownAttr("fields"));
+    for (const f of primary.fields) out.add(f);
   }
   return out;
 }
@@ -85,17 +89,9 @@ function pkFieldNames(entity: MetaObject): Set<string> {
 function fkFieldNames(entity: MetaObject): Set<string> {
   const out = new Set<string>();
   for (const ref of entity.referenceIdentities()) {
-    addFields(out, ref.ownAttr("fields"));
+    for (const f of ref.fields) out.add(f);
   }
   return out;
-}
-
-function addFields(out: Set<string>, fields: unknown): void {
-  if (Array.isArray(fields)) {
-    for (const f of fields) if (typeof f === "string") out.add(f);
-  } else if (typeof fields === "string") {
-    out.add(fields);
-  }
 }
 
 function escapeMermaidComment(s: string): string {
@@ -117,7 +113,9 @@ function renderEntityProse(entity: MetaObject): string[] {
     out.push(`*Aliases:* ${aliases.join(", ")}`);
   }
   const deprecated = readStr(entity.attr(DOC_ATTR_DEPRECATED));
-  if (deprecated !== undefined) {
+  // Truthy check (not !== undefined): an empty @deprecated is the same signal
+  // as none (no reason ⇒ nothing meaningful to render in the prose callout).
+  if (deprecated) {
     const replaced = readStr(entity.attr(DOC_ATTR_REPLACED_BY));
     out.push("");
     out.push(
