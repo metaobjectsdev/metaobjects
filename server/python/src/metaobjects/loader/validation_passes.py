@@ -111,41 +111,56 @@ def _node_label(node: MetaData) -> str:
     return f"{head} '{node.name}'" if node.name else head
 
 
+def _effective_schemas(
+    type_: str,
+    sub_type: str,
+    common_attrs: list[AttrSchema],
+    registry: TypeRegistry,
+    errors: list[MetaError],
+) -> tuple[list[AttrSchema], dict[str, AttrSchema]]:
+    """Compute the effective attr schema for a (type, sub_type).
+
+    Per-type attrs win over common attrs of the same name. If any collision
+    exists, append a single ERR_PROVIDER_ATTR_CONFLICT for this (type, sub_type).
+    """
+    per_type_attrs = registry.attrs_of(type_, sub_type)
+    per_type_names = {s.name for s in per_type_attrs}
+
+    for ca in common_attrs:
+        if ca.name in per_type_names:
+            errors.append(
+                MetaError(
+                    f"{type_}.{sub_type} has a per-type attr '@{ca.name}' "
+                    f"that conflicts with a common attr of the same name",
+                    ErrorCode.ERR_PROVIDER_ATTR_CONFLICT,
+                )
+            )
+            break  # one error per (type, sub_type) is sufficient
+
+    schemas = per_type_attrs + [ca for ca in common_attrs if ca.name not in per_type_names]
+    return schemas, {s.name: s for s in schemas}
+
+
 def _validate_attr_schema(
     root: MetaData,
     registry: TypeRegistry,
     errors: list[MetaError],
 ) -> None:
     common_attrs = registry.get_common_attrs()
-    reported_conflicts: set[tuple[str, str]] = set()
+    # Cache effective schemas per (type, sub_type) — also dedupes the per-type-vs-common
+    # conflict report (the registry is global, so each (type, sub_type) yields one error).
+    schema_cache: dict[tuple[str, str], tuple[list[AttrSchema], dict[str, AttrSchema]]] = {}
 
     for node in _walk(root):
-        per_type_attrs = registry.attrs_of(node.type, node.sub_type)
-        per_type_names = {s.name for s in per_type_attrs}
-
-        # Detect per-type vs common-attr name collision; report once per (type, sub_type).
         key = (node.type, node.sub_type)
-        if key not in reported_conflicts:
-            for ca in common_attrs:
-                if ca.name in per_type_names:
-                    errors.append(
-                        MetaError(
-                            f"{node.type}.{node.sub_type} has a per-type attr '@{ca.name}' "
-                            f"that conflicts with a common attr of the same name",
-                            ErrorCode.ERR_PROVIDER_ATTR_CONFLICT,
-                        )
-                    )
-                    reported_conflicts.add(key)
-                    break  # one error per (type, sub_type) is sufficient
+        cached = schema_cache.get(key)
+        if cached is None:
+            cached = _effective_schemas(node.type, node.sub_type, common_attrs, registry, errors)
+            schema_cache[key] = cached
+        schemas, schema_by_name = cached
 
-        # Effective schema: per-type attrs + common attrs not shadowed by per-type names.
-        schemas: list[AttrSchema] = per_type_attrs + [
-            ca for ca in common_attrs if ca.name not in per_type_names
-        ]
         if not schemas:
             continue
-
-        schema_by_name: dict[str, AttrSchema] = {s.name: s for s in schemas}
 
         # --- Check 1: required attrs must be present (uses node.attrs() = effective,
         #     so an inherited attr from the super chain satisfies the requirement) ---
