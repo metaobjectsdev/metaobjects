@@ -84,7 +84,11 @@ import {
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
   SOURCE_SUBTYPE_DB_TABLE,
   SOURCE_SUBTYPE_DB_VIEW,
+  SOURCE_SUBTYPE_RDB,
   SOURCE_DB_TABLE_ATTR_NAME,
+  SOURCE_ATTR_KIND,
+  SOURCE_KIND_TABLE,
+  SOURCE_KIND_VIEW,
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_PASSTHROUGH_ATTR_FROM,
@@ -212,6 +216,13 @@ function makeLayout(subType: string, name: string): MetaLayout {
 function makeSource(subType: string, sourceName?: string): MetaSource {
   const node = new MetaSource(new TypeId(TYPE_SOURCE, subType), subType);
   if (sourceName !== undefined) node.setAttr(SOURCE_DB_TABLE_ATTR_NAME, sourceName);
+  return node;
+}
+
+/** A source.rdb node with an optional @kind (omitted ⇒ default kind = table). */
+function makeRdbSource(kind?: string): MetaSource {
+  const node = new MetaSource(new TypeId(TYPE_SOURCE, SOURCE_SUBTYPE_RDB), SOURCE_SUBTYPE_RDB);
+  if (kind !== undefined) node.setAttr(SOURCE_ATTR_KIND, kind);
   return node;
 }
 
@@ -765,25 +776,18 @@ describe("MetaSource", () => {
     expect(s.sourceName).toBeUndefined();
   });
 
-  it("isWritable() returns true for dbTable, false for dbView", () => {
-    const table = makeSource(SOURCE_SUBTYPE_DB_TABLE, "users");
-    const view  = makeSource(SOURCE_SUBTYPE_DB_VIEW, "v_summary");
-    expect(table.isWritable()).toBe(true);
-    expect(view.isWritable()).toBe(false);
-  });
-
-  it("isReadOnly() returns false for dbTable, true for dbView", () => {
-    const table = makeSource(SOURCE_SUBTYPE_DB_TABLE, "users");
-    const view  = makeSource(SOURCE_SUBTYPE_DB_VIEW, "v_summary");
+  it("isReadOnly() is derived from @kind (view ⇒ read-only; omitted/table ⇒ writable)", () => {
+    const table = makeRdbSource();                 // @kind omitted → default kind = table
+    const view  = makeRdbSource(SOURCE_KIND_VIEW);
     expect(table.isReadOnly()).toBe(false);
     expect(view.isReadOnly()).toBe(true);
   });
 
-  it("isWritable() and isReadOnly() are not mirrors of each other (both false for base subtype)", () => {
-    // Verify the design: if a third subtype is added, neither flag is set.
-    const base = new MetaSource(new TypeId(TYPE_SOURCE, "someNewSubtype"), "s");
-    expect(base.isWritable()).toBe(false);
-    expect(base.isReadOnly()).toBe(false);
+  it("isWritable() is the strict complement of isReadOnly() for an rdb source", () => {
+    const table = makeRdbSource(SOURCE_KIND_TABLE);
+    const view  = makeRdbSource(SOURCE_KIND_VIEW);
+    expect(table.isWritable()).toBe(true);
+    expect(view.isWritable()).toBe(false);
   });
 });
 
