@@ -88,6 +88,43 @@ public static class XmlDocBuilder
         return string.Join("\n", xmlDoc.Split('\n').Select(l => l.Length == 0 ? l : indent + l));
     }
 
+    /// <summary>
+    /// Render <paramref name="node"/>'s doc block + [Obsolete] (if any) and append both
+    /// to <paramref name="sb"/>, each line prefixed by <paramref name="indent"/>. No-op
+    /// when neither attribute is present. Convenience over the raw <see cref="Render"/>
+    /// tuple for "emit at the current position in a class body" callers.
+    /// </summary>
+    public static void AppendTo(StringBuilder sb, MetaData node, string indent = "")
+    {
+        (string doc, string? obsolete) = Render(node);
+        if (!string.IsNullOrEmpty(doc))
+        {
+            sb.AppendLine(indent.Length == 0 ? doc : Indent(doc, indent));
+        }
+        if (obsolete is not null)
+        {
+            sb.Append(indent).AppendLine(obsolete);
+        }
+    }
+
+    /// <summary>
+    /// Return <paramref name="member"/> with <paramref name="node"/>'s doc block +
+    /// [Obsolete] prepended (each line prefixed by <paramref name="indent"/>). Returns
+    /// <paramref name="member"/> unchanged when no doc attrs are set. Convenience for
+    /// "stitch the doc above a pre-built member string" callers.
+    /// </summary>
+    public static string Prepend(string member, MetaData node, string indent)
+    {
+        (string doc, string? obsolete) = Render(node);
+        if (string.IsNullOrEmpty(doc) && obsolete is null) return member;
+
+        var sb = new StringBuilder();
+        if (!string.IsNullOrEmpty(doc)) sb.Append(Indent(doc, indent)).Append('\n');
+        if (obsolete is not null) sb.Append(indent).Append(obsolete).Append('\n');
+        sb.Append(member);
+        return sb.ToString();
+    }
+
     private static (string Summary, string? Remainder) SplitSummary(string s)
     {
         int idx = s.IndexOf('\n');

@@ -78,9 +78,7 @@ public sealed class DbContextGenerator : IGenerator
         foreach (var o in objects)
         {
             var name = CSharpNaming.Pascal(o.Name);
-            var (dbsetDoc, dbsetObs) = XmlDocBuilder.Render(o);
-            if (!string.IsNullOrEmpty(dbsetDoc)) sb.AppendLine(XmlDocBuilder.Indent(dbsetDoc, "    "));
-            if (dbsetObs is not null) sb.AppendLine("    " + dbsetObs);
+            XmlDocBuilder.AppendTo(sb, o, indent: "    ");
             sb.AppendLine($"    public DbSet<{name}> {CSharpNaming.Pluralize(name)} {{ get; set; }} = default!;");
         }
 

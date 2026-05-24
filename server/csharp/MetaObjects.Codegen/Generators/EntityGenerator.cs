@@ -74,9 +74,7 @@ public sealed class EntityGenerator : IGenerator
         }
         if (!isProjection)
             sb.AppendLine($"[Table(\"{CSharpNaming.Table(entity)}\")]");
-        var (entityDoc, entityObs) = XmlDocBuilder.Render(entity);
-        if (!string.IsNullOrEmpty(entityDoc)) sb.AppendLine(entityDoc);
-        if (entityObs is not null) sb.AppendLine(entityObs);
+        XmlDocBuilder.AppendTo(sb, entity);
         sb.AppendLine($"public class {className}");
         sb.AppendLine("{");
 
@@ -109,10 +107,7 @@ public sealed class EntityGenerator : IGenerator
                 member = ObjectNavProperty(entity, field, ctx);
             }
             if (member is null) continue;
-            var (fieldDoc, fieldObs) = XmlDocBuilder.Render(field);
-            if (!string.IsNullOrEmpty(fieldDoc)) member = XmlDocBuilder.Indent(fieldDoc, "    ") + "\n" + member;
-            if (fieldObs is not null) member = "    " + fieldObs + "\n" + member;
-            members.Add(member);
+            members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }
 
         if (enumDecls.Count > 0)
@@ -141,9 +136,7 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
-        var (voDoc, voObs) = XmlDocBuilder.Render(vo);
-        if (!string.IsNullOrEmpty(voDoc)) sb.AppendLine(voDoc);
-        if (voObs is not null) sb.AppendLine(voObs);
+        XmlDocBuilder.AppendTo(sb, vo);
         sb.AppendLine($"public class {className}");
         sb.AppendLine("{");
 
@@ -160,10 +153,7 @@ public sealed class EntityGenerator : IGenerator
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx) is { } nav)
                 member = nav;
             if (member is null) continue;
-            var (fieldDoc, fieldObs) = XmlDocBuilder.Render(field);
-            if (!string.IsNullOrEmpty(fieldDoc)) member = XmlDocBuilder.Indent(fieldDoc, "    ") + "\n" + member;
-            if (fieldObs is not null) member = "    " + fieldObs + "\n" + member;
-            members.Add(member);
+            members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }
 
         if (enumDeclsVo.Count > 0)
