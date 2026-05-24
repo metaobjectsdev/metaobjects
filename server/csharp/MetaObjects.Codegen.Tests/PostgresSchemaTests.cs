@@ -206,4 +206,110 @@ public class PostgresSchemaTests
             sql);
         Assert.Contains("FROM programs;", sql);
     }
+
+    // -------------------------------------------------------------------------
+    // Task 7.1 — COMMENT ON TABLE / COLUMN from @description
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Comment_on_table_emits_from_entity_description()
+    {
+        const string m = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Item",
+            "@description": "A catalog item.",
+            "children": [
+              { "source.dbTable": { "@name": "items" } },
+              { "field.long": { "name": "id" } },
+              { "identity.primary": { "@fields": "id" } }
+            ]
+          }}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "m.json")]);
+        Assert.Empty(r.Errors);
+        var sql = PostgresSchema.BuildSchema(r.Root);
+        Assert.Contains("COMMENT ON TABLE items IS 'A catalog item.';", sql);
+    }
+
+    [Fact]
+    public void Comment_on_column_emits_from_field_description()
+    {
+        const string m = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Item", "children": [
+              { "source.dbTable": { "@name": "items" } },
+              { "field.long": { "name": "id" } },
+              { "field.string": { "name": "sku", "@description": "Stock keeping unit." } },
+              { "identity.primary": { "@fields": "id" } }
+            ]
+          }}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "m.json")]);
+        Assert.Empty(r.Errors);
+        var sql = PostgresSchema.BuildSchema(r.Root);
+        Assert.Contains("COMMENT ON COLUMN items.\"sku\" IS 'Stock keeping unit.';", sql);
+    }
+
+    [Fact]
+    public void Comment_on_column_single_quote_in_description_is_escaped()
+    {
+        const string m = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Item", "children": [
+              { "source.dbTable": { "@name": "items" } },
+              { "field.long": { "name": "id" } },
+              { "field.string": { "name": "label", "@description": "It's a label." } },
+              { "identity.primary": { "@fields": "id" } }
+            ]
+          }}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "m.json")]);
+        Assert.Empty(r.Errors);
+        var sql = PostgresSchema.BuildSchema(r.Root);
+        Assert.Contains("COMMENT ON COLUMN items.\"label\" IS 'It''s a label.';", sql);
+    }
+
+    [Fact]
+    public void No_description_produces_no_comment_statements()
+    {
+        const string m = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Item", "children": [
+              { "source.dbTable": { "@name": "items" } },
+              { "field.long": { "name": "id" } },
+              { "identity.primary": { "@fields": "id" } }
+            ]
+          }}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "m.json")]);
+        Assert.Empty(r.Errors);
+        var sql = PostgresSchema.BuildSchema(r.Root);
+        Assert.DoesNotContain("COMMENT ON", sql);
+    }
+
+    [Fact]
+    public void Notes_content_NEVER_appears_in_DDL()
+    {
+        const string m = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Item",
+            "@description": "Public description.",
+            "@notes": "__DDL_INTERNAL__",
+            "children": [
+              { "source.dbTable": { "@name": "items" } },
+              { "field.long": { "name": "id" } },
+              { "identity.primary": { "@fields": "id" } }
+            ]
+          }}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "m.json")]);
+        Assert.Empty(r.Errors);
+        var sql = PostgresSchema.BuildSchema(r.Root);
+        Assert.DoesNotContain("__DDL_INTERNAL__", sql);
+    }
 }

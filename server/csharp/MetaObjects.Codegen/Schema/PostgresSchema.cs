@@ -26,6 +26,7 @@
 // in the csharp-migration-pipeline-status memory.
 
 using System.Text;
+using MetaObjects.Core.Documentation;
 using MetaObjects.Meta;
 using static MetaObjects.Core.Field.FieldConstants;
 using static MetaObjects.Shared.BaseTypes;
@@ -120,6 +121,22 @@ public static class PostgresSchema
             var cols = sec.Fields.Select(name => ResolveColumn(entity, name));
             sb.AppendLine($"CREATE UNIQUE INDEX {table}_{sec.Name}_uniq ON {table} ({string.Join(", ", cols)});");
         }
+
+        // COMMENT ON TABLE / COLUMN from @description (entity- and field-level).
+        // @notes is intentionally never read — D5 contract.
+        if (entity.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) is string entityDesc && entityDesc.Length > 0)
+        {
+            sb.AppendLine($"COMMENT ON TABLE {table} IS '{PgEscape(entityDesc)}';");
+        }
+        foreach (var f in entity.Fields())
+        {
+            if (f.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) is string fieldDesc && fieldDesc.Length > 0)
+            {
+                var col = CSharpNaming.Column(f);
+                sb.AppendLine($"COMMENT ON COLUMN {table}.\"{col}\" IS '{PgEscape(fieldDesc)}';");
+            }
+        }
+
         return sb.ToString();
     }
 
@@ -319,6 +336,9 @@ public static class PostgresSchema
 
         return (target, CSharpNaming.Table(target), ResolveColumn(target, targetKeyField), baseFkCol);
     }
+
+    /// <summary>Escape a string for use in a Postgres single-quoted string literal.</summary>
+    private static string PgEscape(string s) => s.Replace("'", "''");
 
     /// <summary>Full schema DDL: tables for writable entities, then views for projections.</summary>
     public static string BuildSchema(MetaRoot root, Action<string>? warn = null)
