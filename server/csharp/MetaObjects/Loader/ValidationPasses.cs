@@ -558,39 +558,35 @@ public static class ValidationPasses
         var perType = registry.AttrsOf(node.Type, node.SubType);
         var common  = registry.GetCommonAttrs();
 
-        // Detect common-vs-per-type name collisions once per (type, subType).
+        // Build the effective schema (per-type wins on name collision, common fills
+        // the rest) and surface common-vs-per-type collisions in the same pass —
+        // a name in both lists means a provider tried to overload a declared attr.
+        var byName = new Dictionary<string, AttrSchema>(perType.Count + common.Count, StringComparer.Ordinal);
+        foreach (var spec in perType) byName[spec.Name] = spec;
+
         var typeKey = $"{node.Type}.{node.SubType}";
-        if (!reportedConflicts.Contains(typeKey))
+        foreach (var ca in common)
         {
-            foreach (var ca in common)
+            if (byName.ContainsKey(ca.Name))
             {
-                if (perType.Any(pa => pa.Name == ca.Name))
+                if (reportedConflicts.Add(typeKey))
                 {
                     errors.Add(new MetaError(
                         $"Common attr '{ca.Name}' conflicts with per-type attr on {typeKey}",
                         ErrorCode.ERR_PROVIDER_ATTR_CONFLICT));
-                    reportedConflicts.Add(typeKey);
-                    break; // one error per (type, subType)
                 }
+                continue; // per-type wins
             }
+            byName[ca.Name] = ca;
         }
 
-        // Merge: per-type wins on name collision, common fills the rest.
-        var schema = perType
-            .Concat(common.Where(ca => !perType.Any(pa => pa.Name == ca.Name)))
-            .ToList();
-
-        if (schema.Count == 0) return;
-
-        // Index the schema by attr name for declared-attr checks.
-        var byName = new Dictionary<string, AttrSchema>(StringComparer.Ordinal);
-        foreach (var spec in schema) byName[spec.Name] = spec;
+        if (byName.Count == 0) return;
 
         // --- Check 1: required attrs present ---
         // Use Attrs() (effective = own + inherited) so a node that legitimately
         // inherits a required attr from its super is not flagged as missing it.
         var effective = node.Attrs();
-        foreach (var spec in schema)
+        foreach (var spec in byName.Values)
         {
             if (spec.Required && !effective.ContainsKey(spec.Name))
             {
