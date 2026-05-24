@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findWranglerConfig, parseWranglerConfig, resolveD1Binding } from "../../src/wrangler-config.js";
@@ -21,7 +21,7 @@ describe("wrangler-config", () => {
 
   test("findWranglerConfig: walks up the parent tree", () => {
     const sub = join(dir, "a", "b", "c");
-    require("node:fs").mkdirSync(sub, { recursive: true });
+    mkdirSync(sub, { recursive: true });
     writeFileSync(join(dir, "wrangler.toml"), `name = "x"\n`);
     expect(findWranglerConfig(sub)).toBe(join(dir, "wrangler.toml"));
   });
@@ -78,7 +78,7 @@ describe("wrangler-config", () => {
 
   test("resolveD1Binding: returns the only binding when there's exactly one and no explicit name", () => {
     const bindings = [{ binding: "DB", database_name: "x", database_id: "id1", migrations_dir: undefined }];
-    expect(resolveD1Binding(bindings, undefined)).toEqual(bindings[0]);
+    expect(resolveD1Binding(bindings, undefined)).toEqual(bindings[0]!);
   });
 
   test("resolveD1Binding: returns the explicitly named binding", () => {
@@ -86,7 +86,7 @@ describe("wrangler-config", () => {
       { binding: "DB", database_name: "x", database_id: "id1", migrations_dir: undefined },
       { binding: "CACHE", database_name: "y", database_id: "id2", migrations_dir: undefined },
     ];
-    expect(resolveD1Binding(bindings, "CACHE")).toEqual(bindings[1]);
+    expect(resolveD1Binding(bindings, "CACHE")).toEqual(bindings[1]!);
   });
 
   test("resolveD1Binding: throws when multiple bindings and no explicit name", () => {
@@ -104,5 +104,28 @@ describe("wrangler-config", () => {
 
   test("resolveD1Binding: throws when there are no bindings at all", () => {
     expect(() => resolveD1Binding([], undefined)).toThrow(/no d1 bindings/i);
+  });
+
+  test("findWranglerConfig: probes wrangler.json after .toml and .jsonc", () => {
+    writeFileSync(join(dir, "wrangler.json"), `{ "name": "x" }`);
+    expect(findWranglerConfig(dir)).toBe(join(dir, "wrangler.json"));
+  });
+
+  test("parseWranglerConfig: rejects non-array d1_databases", () => {
+    const path = join(dir, "wrangler.toml");
+    writeFileSync(path, `name = "x"\nd1_databases = "not-an-array"\n`);
+    expect(() => parseWranglerConfig(path)).toThrow(/d1_databases must be an array/);
+  });
+
+  test("parseWranglerConfig: rejects binding entry missing 'binding' field", () => {
+    const path = join(dir, "wrangler.toml");
+    writeFileSync(path, [
+      `name = "x"`,
+      ``,
+      `[[d1_databases]]`,
+      `database_name = "dbname"`,
+      `database_id = "xyz"`,
+    ].join("\n"));
+    expect(() => parseWranglerConfig(path)).toThrow(/missing required 'binding' field/);
   });
 });

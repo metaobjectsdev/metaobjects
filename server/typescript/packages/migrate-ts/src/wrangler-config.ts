@@ -14,8 +14,9 @@ export interface WranglerConfig {
 }
 
 /**
- * Walk from `startDir` upward looking for wrangler.toml or wrangler.jsonc.
- * Returns the first match or undefined. wrangler.toml wins over .jsonc at the same level.
+ * Walk from `startDir` upward looking for wrangler.toml, wrangler.jsonc, or wrangler.json.
+ * Returns the first match or undefined. Probe order: toml > jsonc > json at each level,
+ * matching wrangler's own resolution order.
  */
 export function findWranglerConfig(startDir: string): string | undefined {
   let dir = resolve(startDir);
@@ -24,6 +25,8 @@ export function findWranglerConfig(startDir: string): string | undefined {
     if (existsSync(toml)) return toml;
     const jsonc = join(dir, "wrangler.jsonc");
     if (existsSync(jsonc)) return jsonc;
+    const json = join(dir, "wrangler.json");
+    if (existsSync(json)) return json;
     const parent = dirname(dir);
     if (parent === dir) return undefined;
     dir = parent;
@@ -38,14 +41,24 @@ export function parseWranglerConfig(path: string): WranglerConfig {
   const raw = readFileSync(path, "utf8");
   const isJsonc = path.endsWith(".jsonc") || path.endsWith(".json");
   const obj = isJsonc ? parseJsoncLoose(raw) : (TOML.parse(raw) as Record<string, unknown>);
-  const rawBindings = (obj.d1_databases as unknown[] | undefined) ?? [];
-  const d1Bindings: D1Binding[] = rawBindings.map((b) => {
+  const rawArr = obj.d1_databases;
+  if (rawArr !== undefined && !Array.isArray(rawArr)) {
+    throw new Error(`${path}: d1_databases must be an array (got ${typeof rawArr})`);
+  }
+  const rawBindings: unknown[] = rawArr ?? [];
+  const d1Bindings: D1Binding[] = rawBindings.map((b, i) => {
+    if (b === null || typeof b !== "object") {
+      throw new Error(`${path}: d1_databases[${i}] must be an object`);
+    }
     const r = b as Record<string, unknown>;
+    if (typeof r.binding !== "string" || r.binding.length === 0) {
+      throw new Error(`${path}: d1_databases[${i}] is missing required 'binding' field`);
+    }
     return {
-      binding: String(r.binding ?? ""),
-      database_name: String(r.database_name ?? ""),
-      database_id: String(r.database_id ?? ""),
-      migrations_dir: r.migrations_dir !== undefined ? String(r.migrations_dir) : undefined,
+      binding: r.binding,
+      database_name: typeof r.database_name === "string" ? r.database_name : "",
+      database_id: typeof r.database_id === "string" ? r.database_id : "",
+      migrations_dir: typeof r.migrations_dir === "string" ? r.migrations_dir : undefined,
     };
   });
   return { d1Bindings };
@@ -75,8 +88,12 @@ export function resolveD1Binding(bindings: readonly D1Binding[], name: string | 
 }
 
 /**
- * Minimal JSONC parser: strips line comments and block comments,
+ * Minimal JSONC parser: strips `//` line comments and block comments (`/`+`* ... *`+`/`),
  * then JSON.parse. Wrangler's jsonc is small; this is sufficient.
+ *
+ * Limitation: a `//` sequence inside a JSON string value would be incorrectly
+ * stripped. Wrangler's config vocabulary (UUIDs, identifiers, paths) does not
+ * use such substrings, so this is acceptable in scope.
  */
 function parseJsoncLoose(raw: string): Record<string, unknown> {
   const stripped = raw
