@@ -16,6 +16,7 @@ import { TYPE_METADATA, SUBTYPE_ROOT } from "../shared/base-types.js";
 import { ParseError } from "../errors.js";
 import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs } from "./validation-passes.js";
+import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
 import { validateAttrSchema } from "../attr-schema-validate.js";
@@ -292,6 +293,11 @@ export class MetaDataLoader {
       // Ninth pass: @storage cross-attribute validation — @storage requires
       // @objectRef, and @storage "flattened" forbids isArray=true.
       errors.push(...validateFieldObjectStorage(root));
+
+      // Tenth pass: one-primary multi-source rule — if an object has ≥1 source,
+      // exactly one must carry role "primary" (ERR_SOURCE_NO_PRIMARY /
+      // ERR_SOURCE_MULTIPLE_PRIMARY).
+      errors.push(...validateSourceRoles(root));
     }
 
     // If nothing parsed successfully, synthesize an empty root so callers
