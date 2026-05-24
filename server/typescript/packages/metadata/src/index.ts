@@ -27,6 +27,7 @@ export * from "./shared/structural.js";
 export * from "./core/object/object-constants.js";
 export * from "./core/field/field-constants.js";
 export * from "./core/attr/attr-constants.js";
+export * from "./core/documentation/doc-constants.js";
 export * from "./core/validator/validator-constants.js";
 export * from "./core/identity/identity-constants.js";
 export * from "./core/relationship/relationship-constants.js";
@@ -112,6 +113,8 @@ export { TypeId, TypeRegistry, childRuleMatches } from "./registry.js";
 export type { AttrSchema, ChildRule, TypeDefinition } from "./registry.js";
 export { registerCoreTypes, coreTypesProvider, coreProviders } from "./core-types.js";
 export { dbProvider } from "./persistence/db/db-provider.js";
+export { commonDocAttrs } from "./core/documentation/doc-schema.js";
+export { docProvider } from "./core/documentation/doc-provider.js";
 
 // Type provider model
 export { composeRegistry } from "./provider.js";
