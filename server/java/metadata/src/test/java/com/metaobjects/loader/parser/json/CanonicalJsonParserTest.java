@@ -433,6 +433,33 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
     // -----------------------------------------------------------------------
 
     /**
+     * Resolves a named fixture directory within the shared conformance corpus by walking
+     * up from the current working directory until a directory containing
+     * {@code fixtures/conformance} is found (the repo root).
+     *
+     * <p>This avoids hard-coded relative paths like {@code ../../fixtures/...} that break
+     * when the Maven working directory is not exactly two levels below the repo root
+     * (e.g. in git worktrees or CI environments).</p>
+     *
+     * @param fixtureName the fixture directory name within {@code fixtures/conformance/}
+     * @return the resolved {@link java.nio.file.Path} to the fixture directory
+     * @throws AssertionError if the corpus cannot be found from the current working directory
+     */
+    private static java.nio.file.Path resolveCorpusDir(String fixtureName) {
+        java.nio.file.Path dir = java.nio.file.Paths.get("").toAbsolutePath();
+        while (dir != null) {
+            java.nio.file.Path candidate = dir.resolve("fixtures/conformance/" + fixtureName);
+            if (java.nio.file.Files.isDirectory(candidate)) {
+                return candidate;
+            }
+            dir = dir.getParent();
+        }
+        throw new AssertionError(
+            "Could not locate fixtures/conformance/" + fixtureName
+            + " by walking up from: " + java.nio.file.Paths.get("").toAbsolutePath());
+    }
+
+    /**
      * Step 7: Corpus spot-check — loader-basic-empty-package.
      *
      * <p>This fixture has no {@code object.entity} (or other gap types), so it can
@@ -447,8 +474,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
      */
     @Test
     public void corpusSpotCheck_loaderBasicEmptyPackage() throws Exception {
-        java.nio.file.Path fixtureDir = java.nio.file.Paths.get(
-            "../../fixtures/conformance/loader-basic-empty-package");
+        java.nio.file.Path fixtureDir = resolveCorpusDir("loader-basic-empty-package");
         java.nio.file.Path inputFile = fixtureDir.resolve("input").toFile().listFiles()[0].toPath();
         java.nio.file.Path expectedFile = fixtureDir.resolve("expected.json");
 
@@ -483,8 +509,7 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
      */
     @Test
     public void corpusSpotCheck_smokeEmptyMetadata() throws Exception {
-        java.nio.file.Path fixtureDir = java.nio.file.Paths.get(
-            "../../fixtures/conformance/smoke-empty-metadata");
+        java.nio.file.Path fixtureDir = resolveCorpusDir("smoke-empty-metadata");
         java.nio.file.Path inputFile = fixtureDir.resolve("input").toFile().listFiles()[0].toPath();
         java.nio.file.Path expectedFile = fixtureDir.resolve("expected.json");
 
