@@ -12,15 +12,27 @@ import type { SqlType } from "../sql-type.js";
  */
 export type D1Runner = (sql: string) => Promise<string>;
 
+/** Private shorthand for the exec helper used throughout this module. */
+type Exec = (sql: string) => Promise<Record<string, unknown>[]>;
+
 export interface IntrospectD1Options {
   runner: D1Runner;
+  /**
+   * Documented passthrough — the CLI wiring (Task 9) uses binding/remote/configPath
+   * to construct the runner; introspectD1 itself only dispatches SQL via opts.runner.
+   * They live on the options so the wiring contract is self-documenting at the call site.
+   */
   binding: string;
   remote: boolean;
   configPath: string | undefined;
 }
 
 export async function introspectD1(opts: IntrospectD1Options): Promise<SchemaSnapshot> {
-  const exec = async (sql: string): Promise<Record<string, unknown>[]> => {
+  // Note: opts.binding/remote/configPath are documented passthroughs — they describe
+  // the runner's wiring (set up by the CLI in Task 9) but introspectD1 itself only
+  // dispatches SQL via opts.runner. They live on the options so the wiring contract
+  // is self-documenting at the call site.
+  const exec: Exec = async (sql: string) => {
     const stdout = await opts.runner(sql);
     return parseEnvelope(stdout);
   };
@@ -38,8 +50,11 @@ export async function introspectD1(opts: IntrospectD1Options): Promise<SchemaSna
   for (const t of tableRows) {
     const name = String(t.name);
     const createSql = String(t.sql ?? "");
-    const cols = await readColumns(exec, name);
-    const pk = await readPrimaryKey(exec, name);
+    // Issue pragma_table_info ONCE per table; extractColumns + extractPrimaryKey
+    // consume the same rows without re-querying (each query is a wrangler round-trip).
+    const tableInfoRows = await readTableInfo(exec, name);
+    const cols = extractColumns(tableInfoRows);
+    const pk = extractPrimaryKey(tableInfoRows);
     const hasAutoincrement = createSql.toUpperCase().includes("AUTOINCREMENT");
     if (hasAutoincrement && pk.length === 1) {
       const pkCol = cols.find((c) => c.name === pk[0]);
@@ -81,8 +96,11 @@ function parseEnvelope(stdout: string): Record<string, unknown>[] {
   return results as Record<string, unknown>[];
 }
 
-async function readColumns(exec: (sql: string) => Promise<Record<string, unknown>[]>, table: string): Promise<ColumnDescriptor[]> {
-  const rows = await exec(`SELECT * FROM pragma_table_info('${table}') ORDER BY cid`);
+async function readTableInfo(exec: Exec, table: string): Promise<Record<string, unknown>[]> {
+  return exec(`SELECT * FROM pragma_table_info('${table}') ORDER BY cid`);
+}
+
+function extractColumns(rows: Record<string, unknown>[]): ColumnDescriptor[] {
   return rows.map((r) => {
     const col: ColumnDescriptor = {
       name: String(r.name),
@@ -95,15 +113,14 @@ async function readColumns(exec: (sql: string) => Promise<Record<string, unknown
   });
 }
 
-async function readPrimaryKey(exec: (sql: string) => Promise<Record<string, unknown>[]>, table: string): Promise<string[]> {
-  const rows = await exec(`SELECT * FROM pragma_table_info('${table}') ORDER BY cid`);
+function extractPrimaryKey(rows: Record<string, unknown>[]): string[] {
   return rows
     .filter((r) => Number(r.pk) > 0)
     .sort((a, b) => Number(a.pk) - Number(b.pk))
     .map((r) => String(r.name));
 }
 
-async function readIndexes(exec: (sql: string) => Promise<Record<string, unknown>[]>, table: string): Promise<IndexDescriptor[]> {
+async function readIndexes(exec: Exec, table: string): Promise<IndexDescriptor[]> {
   const list = await exec(`SELECT * FROM pragma_index_list('${table}')`);
   const indexes: IndexDescriptor[] = [];
   for (const ix of list) {
@@ -120,7 +137,7 @@ async function readIndexes(exec: (sql: string) => Promise<Record<string, unknown
   return indexes;
 }
 
-async function readForeignKeys(exec: (sql: string) => Promise<Record<string, unknown>[]>, table: string): Promise<FkDescriptor[]> {
+async function readForeignKeys(exec: Exec, table: string): Promise<FkDescriptor[]> {
   const rows = await exec(`SELECT * FROM pragma_foreign_key_list('${table}') ORDER BY id, seq`);
   const byId = new Map<number, { refTable: string; cols: string[]; refCols: string[]; onDelete: FkAction; onUpdate: FkAction; }>();
   for (const r of rows) {
@@ -152,7 +169,7 @@ async function readForeignKeys(exec: (sql: string) => Promise<Record<string, unk
   });
 }
 
-async function readViews(exec: (sql: string) => Promise<Record<string, unknown>[]>): Promise<ViewDescriptor[]> {
+async function readViews(exec: Exec): Promise<ViewDescriptor[]> {
   const rows = await exec(
     "SELECT name FROM sqlite_master WHERE type='view' AND name NOT LIKE 'sqlite_%' ORDER BY name",
   );

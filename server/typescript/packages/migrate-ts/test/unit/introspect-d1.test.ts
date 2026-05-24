@@ -49,19 +49,6 @@ describe("introspectD1", () => {
     expect(snap.tables[0]!.columns[1]!.nullable).toBe(false);
   });
 
-  test("invokes runner with --remote flag when remote: true", async () => {
-    const calls: string[] = [];
-    const runner: D1Runner = async (cmd) => {
-      calls.push(cmd);
-      if (cmd.includes("sqlite_version")) {
-        return JSON.stringify([{ success: true, results: [{ v: "3.44.2" }] }]);
-      }
-      return JSON.stringify([{ success: true, results: [] }]);
-    };
-    await introspectD1({ runner, binding: "DB", remote: true, configPath: undefined });
-    expect(calls.length).toBeGreaterThan(0); // runner was invoked; remote flag handled by caller wiring (see CLI task)
-  });
-
   test("returns empty snapshot when DB has no tables", async () => {
     const runner = mockRunner({
       "sqlite_version": [{ v: "3.44.2" }],
@@ -75,5 +62,24 @@ describe("introspectD1", () => {
     const runner: D1Runner = async () => { throw new Error("wrangler not found on PATH"); };
     await expect(introspectD1({ runner, binding: "DB", remote: false, configPath: undefined }))
       .rejects.toThrow(/wrangler not found/);
+  });
+
+  test("rejects malformed JSON from runner with helpful error", async () => {
+    const runner: D1Runner = async () => "not json";
+    await expect(introspectD1({ runner, binding: "DB", remote: false, configPath: undefined }))
+      .rejects.toThrow(/failed to parse wrangler JSON output/);
+  });
+
+  test("rejects wrangler success:false envelope with the error field", async () => {
+    const runner: D1Runner = async () =>
+      JSON.stringify([{ success: false, error: "access denied" }]);
+    await expect(introspectD1({ runner, binding: "DB", remote: false, configPath: undefined }))
+      .rejects.toThrow(/access denied/);
+  });
+
+  test("rejects non-array envelope from runner", async () => {
+    const runner: D1Runner = async () => JSON.stringify({ success: true, results: [] });
+    await expect(introspectD1({ runner, binding: "DB", remote: false, configPath: undefined }))
+      .rejects.toThrow(/non-empty array envelope/);
   });
 });
