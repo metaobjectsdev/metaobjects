@@ -1,29 +1,5 @@
 {
   "language": "csharp",
-  "fixtures": [
-    "doc-common-attrs-on-all-types",
-    "error-field-object-storage-flattened-array",
-    "error-field-object-storage-no-object-ref",
-    "error-origin-bad-aggregate-fn",
-    "error-origin-bad-via-path",
-    "error-reserved-word-as-attr",
-    "error-source-multiple-primary",
-    "error-source-no-primary",
-    "field-object-storage-flattened",
-    "field-object-storage-flattened-nullable",
-    "field-object-storage-jsonb-array",
-    "field-object-storage-jsonb-single",
-    "origin-aggregate-count",
-    "origin-aggregate-sum",
-    "origin-multi-level-via",
-    "origin-passthrough-simple",
-    "source-db-table-default-schema-omitted",
-    "source-db-table-explicit",
-    "source-db-table-with-schema",
-    "source-db-view-projection",
-    "source-db-view-with-schema",
-    "source-multi-source-roles",
-    "source-rdb-column",
-    "source-rdb-referential-actions"
-  ]
+  "_comment": "Source-v2 (ADR-0007) un-gated the v1 source fixtures + the multi-primary + reserved-attr fixtures + the field-object-storage cluster + origin cluster + doc-common-attrs-on-all-types. All conformance fixtures pass.",
+  "fixtures": []
 }

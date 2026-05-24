@@ -700,15 +700,25 @@ public static class Parser
             JsonElement rawVal = prop.Value;
 
             // ERR_RESERVED_ATTR: any @-prefixed reserved structural key (e.g. "@isArray",
-            // "@name") is rejected here at canonical-JSON parse time. Mirrors the TS
-            // parser-core.ts and Java CanonicalJsonParser. The YAML desugar layer has
-            // its own pre-check that fires first when authoring in YAML; the canonical
-            // parser is the last-line cross-language gate.
+            // "@name") is always a metadata-author error and is reported as a hard
+            // error regardless of strict mode — downstream code must never see a
+            // bogus MetaAttr named after a reserved word. Mirrors the TS
+            // parser-core.ts (errors-sink-direct in lax mode, throw in strict) and
+            // Java CanonicalJsonParser. The YAML desugar layer has its own pre-check
+            // that fires first when authoring in YAML; the canonical parser is the
+            // last-line cross-language gate.
             if (RESERVED_KEYS.Contains(attrName))
             {
-                ReportProblem(
-                    $"Reserved structural key '{attrName}' must not be {ATTR_PREFIX}-prefixed at {path} (write it bare)",
-                    st, path, ErrorCode.ERR_RESERVED_ATTR);
+                string displayName = model.Name != ""
+                    ? $"{model.Type}.{model.SubType} '{model.Name}'"
+                    : $"{model.Type}.{model.SubType}";
+                string msg = $"Reserved structural key '{attrName}' must not be " +
+                             $"{ATTR_PREFIX}-prefixed on {displayName} at {path} (write it bare)";
+                if (st.Strict)
+                {
+                    throw new ParseException(msg, ErrorCode.ERR_RESERVED_ATTR, st.Source, path);
+                }
+                st.Errors.Add(new MetaError(msg, ErrorCode.ERR_RESERVED_ATTR, st.Source, path));
                 continue;
             }
 

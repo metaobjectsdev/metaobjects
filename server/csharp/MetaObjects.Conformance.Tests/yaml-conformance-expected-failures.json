@@ -1,7 +1,5 @@
 {
   "language": "csharp",
-  "_comment": "C# v1 metadata vocabulary doesn't declare @column on field.string, so the YAML D2 coercion guard has no schema to compare `column: TRUE` against — no ERR_YAML_COERCION fires. The 3 v2-vocabulary happy-paths and the num-in-enum fixture (which uses v1-declared @values on field.enum) pass natively.",
-  "fixtures": [
-    "error-yaml-coerced-bool-in-string"
-  ]
+  "_comment": "Source-v2 (ADR-0007) registered @column on every field subtype, so the YAML D2 coercion guard now catches `column: TRUE`. All YAML conformance fixtures pass.",
+  "fixtures": []
 }
