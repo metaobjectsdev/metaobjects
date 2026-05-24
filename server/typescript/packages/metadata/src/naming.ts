@@ -1,7 +1,7 @@
 import type { MetaData } from "./shared/meta-data.js";
 import { TYPE_FIELD, TYPE_SOURCE } from "./shared/base-types.js";
 import { PACKAGE_SEPARATOR } from "./shared/structural.js";
-import { FIELD_ATTR_DB_COLUMN } from "./persistence/db/db-constants.js";
+import { FIELD_ATTR_COLUMN, FIELD_ATTR_DB_COLUMN } from "./persistence/db/db-constants.js";
 import {
   SOURCE_SUBTYPE_DB_TABLE,
   SOURCE_SUBTYPE_DB_VIEW,
@@ -45,8 +45,10 @@ export function resolveTableName(entity: MetaData): string {
 }
 
 export function resolveColumnName(field: MetaData): string {
-  const attr = field.ownAttr(FIELD_ATTR_DB_COLUMN);
-  if (typeof attr === "string") return attr;
+  const col = field.ownAttr(FIELD_ATTR_COLUMN);
+  if (typeof col === "string" && col) return col;
+  const dbAttr = field.ownAttr(FIELD_ATTR_DB_COLUMN); // dropped in a later task
+  if (typeof dbAttr === "string" && dbAttr) return dbAttr;
   return toSnakeCase(field.name);
 }
 

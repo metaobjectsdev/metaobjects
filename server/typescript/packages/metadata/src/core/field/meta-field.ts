@@ -42,7 +42,7 @@ import {
   FIELD_ATTR_SCALE,
   FIELD_ATTR_OBJECT_REF,
 } from "./field-constants.js";
-import { FIELD_ATTR_DB_COLUMN } from "../../persistence/db/db-constants.js";
+import { FIELD_ATTR_COLUMN, FIELD_ATTR_DB_COLUMN } from "../../persistence/db/db-constants.js";
 import { VALIDATOR_SUBTYPE_REQUIRED } from "../validator/validator-constants.js";
 import type { MetaValidator } from "../validator/meta-validator.js";
 import type { MetaView } from "../../presentation/view/meta-view.js";
@@ -84,6 +84,13 @@ export class MetaField extends MetaData implements DataTypeAware {
   get objectRef(): string | undefined {
     const v = this.ownAttr(FIELD_ATTR_OBJECT_REF);
     return typeof v === "string" ? v : undefined;
+  }
+
+  /** Source v2: physical column name override (`@column`), falling back to `@dbColumn`. */
+  get column(): string | undefined {
+    const v = this.ownAttr(FIELD_ATTR_COLUMN);
+    if (typeof v === "string") return v;
+    return this.dbColumn;
   }
 
   get dbColumn(): string | undefined {

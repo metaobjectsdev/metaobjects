@@ -8,6 +8,7 @@ import {
 } from "../../core/attr/attr-constants.js";
 import {
   FIELD_ATTR_DB_COLUMN,
+  FIELD_ATTR_COLUMN,
   FIELD_ATTR_DB_INDEXED,
 } from "./db-constants.js";
 import { SOURCE_ATTR_NAME } from "../source/source-constants.js";
@@ -19,6 +20,15 @@ export const dbColumnSchema: AttrSchema = {
   required: false,
   description:
     "Override the generated SQL column name for this field. Defaults to the field name run through the project's columnNamingStrategy.",
+};
+
+/** `@column` — source v2 column-name override; preferred over `@dbColumn`; on every field subtype. */
+export const columnSchema: AttrSchema = {
+  name: FIELD_ATTR_COLUMN,
+  valueType: ATTR_SUBTYPE_STRING,
+  required: false,
+  description:
+    "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.",
 };
 
 /** `@db.indexed` — suppress the @filterable-without-index warning; on every field subtype. */

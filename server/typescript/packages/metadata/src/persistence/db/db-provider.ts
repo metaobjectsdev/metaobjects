@@ -12,7 +12,7 @@ import {
   SOURCE_SUBTYPE_DB_VIEW,
   SOURCE_SUBTYPE_RDB,
 } from "../source/source-constants.js";
-import { dbColumnSchema, dbIndexedSchema, sourceNameSchema } from "./db-schema.js";
+import { dbColumnSchema, columnSchema, dbIndexedSchema, sourceNameSchema } from "./db-schema.js";
 import { sourceRdbAttrs } from "../source/source-schema.js";
 
 export const dbProvider: MetaDataTypeProvider = {
@@ -23,7 +23,7 @@ export const dbProvider: MetaDataTypeProvider = {
   registerTypes(registry: TypeRegistry): void {
     for (const subType of FIELD_SUBTYPES) {
       registry.extend(TYPE_FIELD, subType, {
-        attributes: [dbColumnSchema, dbIndexedSchema],
+        attributes: [dbColumnSchema, columnSchema, dbIndexedSchema],
       });
     }
     // Two explicit calls (not a loop) — dbTable and dbView are the only DB
