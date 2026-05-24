@@ -13,7 +13,7 @@ export { introspect, introspectPostgres, introspectSqlite } from "./introspect/i
 export { diff } from "./diff/index.js";
 export { emit } from "./emit/index.js";
 export { writeMigration } from "./write-migration.js";
-export { writeMigrationD1, type WriteMigrationD1Options, type WriteMigrationD1Result } from "./write-migration-d1.js";
+export { writeMigrationD1 } from "./write-migration-d1.js";
 
 // Errors
 export { BlockedChangesError, SetNullNotNullableError } from "./errors.js";
@@ -34,6 +34,7 @@ export type {
 export type { DiffArgs } from "./diff/index.js";
 export type { EmitOptions } from "./emit/index.js";
 export type { WriteMigrationOptions, WriteMigrationResult } from "./write-migration.js";
+export type { WriteMigrationD1Options, WriteMigrationD1Result } from "./write-migration-d1.js";
 
 // View diff + dialect emitters
 export { classifyViewDiff } from "./view-diff.js";

@@ -43,6 +43,8 @@ export async function writeMigrationD1(
 
 async function nextSequence(dir: string): Promise<number> {
   let entries: string[];
+  // Best-effort: dir was just mkdir'd above, but in race/permission edge cases the
+  // listing can still fail; treat as empty (next seq = 1) rather than rethrow.
   try {
     entries = await readdir(dir);
   } catch {

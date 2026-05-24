@@ -16,6 +16,7 @@ describe("writeMigrationD1", () => {
     );
     expect(result.upPath).toBe(join(dir, "0001_init.sql"));
     expect(result.downPath).toBe(join(dir, ".down", "0001_init.sql"));
+    expect(result.sequence).toBe(1);
     expect(readFileSync(result.upPath, "utf8")).toBe("CREATE TABLE x (id INT);\n");
     expect(readFileSync(result.downPath, "utf8")).toBe("DROP TABLE x;\n");
   });
@@ -94,5 +95,6 @@ describe("writeMigrationD1", () => {
       { dir, slug: "next" },
     );
     expect(result.upPath).toBe(join(dir, "10000_next.sql"));
+    expect(result.sequence).toBe(10000);
   });
 });
