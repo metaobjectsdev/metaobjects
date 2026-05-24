@@ -25,6 +25,13 @@ export interface ResolvedGenConfig {
   entities: string[];
 }
 
+export interface ResolvedD1Config {
+  binding: string | undefined;
+  remote: boolean;
+  autoApply: boolean;
+  wranglerConfigPath: string | undefined;
+}
+
 export interface ResolvedMigrateConfig {
   outDir: string;
   databaseUrl: string | undefined;
@@ -33,6 +40,7 @@ export interface ResolvedMigrateConfig {
   allow: string[];
   slug: string | undefined;
   dryRun: boolean;
+  d1: ResolvedD1Config;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +70,7 @@ export async function resolveMigrateConfig(
 ): Promise<ResolvedMigrateConfig> {
   const config = await tryLoadConfig(metaRoot);
   const cfgBlock = config?.migrate ?? {};
+  const d1Block = cfgBlock.d1 ?? {};
 
   const envUrl = process.env.DATABASE_URL;
 
@@ -75,5 +84,11 @@ export async function resolveMigrateConfig(
       : (cfgBlock.allow ?? MIGRATE_DEFAULTS.allow),
     slug: flags.slug,
     dryRun: flags.dryRun,
+    d1: {
+      binding: flags.d1Binding ?? d1Block.binding,
+      remote: flags.remote || (d1Block.remote ?? false),
+      autoApply: flags.apply || (d1Block.autoApply ?? false),
+      wranglerConfigPath: d1Block.wranglerConfigPath,
+    },
   };
 }

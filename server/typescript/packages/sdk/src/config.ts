@@ -15,12 +15,20 @@ const AllowTokenEnum = z.enum([
   "nullable-to-not-null",
 ]);
 
+const D1Block = z.object({
+  binding: z.string(),
+  remote: z.boolean(),
+  autoApply: z.boolean(),
+  wranglerConfigPath: z.string(),
+}).partial();
+
 const MigrateBlock = z.object({
   outDir: z.string(),
   databaseUrl: z.string(),
   dialect: DialectEnum,
   onAmbiguous: OnAmbiguousEnum,
   allow: z.array(AllowTokenEnum),
+  d1: D1Block,
 }).partial();
 
 export const ConfigSchema = z.object({

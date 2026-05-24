@@ -45,6 +45,13 @@ describe("resolveMigrateConfig", () => {
     else process.env.DATABASE_URL = origEnv;
   });
 
+  const defaultD1Flags = {
+    d1Binding: undefined,
+    remote: false,
+    apply: false,
+    yes: false,
+  } as const;
+
   test("built-in defaults when no flag/env/config", async () => {
     root = makeRoot();
     const resolved = await resolveMigrateConfig({
@@ -55,6 +62,7 @@ describe("resolveMigrateConfig", () => {
       allow: [],
       onAmbiguous: undefined,
       dryRun: false,
+      ...defaultD1Flags,
     }, root);
     expect(resolved.outDir).toBe("./.metaobjects/migrations");
     expect(resolved.databaseUrl).toBeUndefined();
@@ -75,6 +83,7 @@ describe("resolveMigrateConfig", () => {
       allow: [],
       onAmbiguous: undefined,
       dryRun: false,
+      ...defaultD1Flags,
     }, root);
     expect(resolved.databaseUrl).toBe("env://from-env");
   });
@@ -90,6 +99,7 @@ describe("resolveMigrateConfig", () => {
       allow: [],
       onAmbiguous: undefined,
       dryRun: false,
+      ...defaultD1Flags,
     }, root);
     expect(resolved.databaseUrl).toBe("flag://from-flag");
   });
@@ -106,6 +116,7 @@ describe("resolveMigrateConfig", () => {
       allow: ["drop-table"],
       onAmbiguous: undefined,
       dryRun: false,
+      ...defaultD1Flags,
     }, root);
     expect(resolved.allow).toEqual(["drop-table"]);
   });
@@ -122,6 +133,7 @@ describe("resolveMigrateConfig", () => {
         allow: [],
         onAmbiguous: undefined,
         dryRun: false,
+        ...defaultD1Flags,
       }, root);
       expect(resolved.databaseUrl).toBe("file:./x.db");
     } finally {
