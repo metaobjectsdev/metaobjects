@@ -1,0 +1,48 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Subscriber",
+          "@description": "Entity-level doc.",
+          "children": [
+            {
+              "source.rdb": {
+                "@description": "Source-level doc.",
+                "@kind": "table",
+                "@table": "subscribers"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "email",
+                "@description": "Field-level doc.",
+                "children": [
+                  {
+                    "validator.required": {
+                      "@description": "Validator-level doc."
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "@description": "Identity-level doc.",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "sku",
+                "@seeAlso": "https://acme.com/docs/sku",
+                "@aliases": "productCode"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": ["id"]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
