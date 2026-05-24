@@ -6,6 +6,6 @@
     { "field.timestamp": { "name": "generatedAt", "@required": true } },
     { "field.decimal": { "name": "total", "@required": true } },
     { "field.currency": { "name": "revenue", "@required": true } },
-    { "field.object": { "name": "metrics", "@objectRef": "Metric", "@isArray": true } }
+    { "field.object": { "name": "metrics", "@objectRef": "Metric", "isArray": true } }
   ]}}
 ]}}

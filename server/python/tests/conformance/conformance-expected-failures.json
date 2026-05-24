@@ -2,7 +2,6 @@
   "fixtures": [
     "error-field-object-storage-flattened-array",
     "error-field-object-storage-no-object-ref",
-    "error-reserved-word-as-attr",
     "error-template-payload-ref-unresolved",
     "error-template-prompt-missing-payload-ref",
     "error-template-required-slot-missing",

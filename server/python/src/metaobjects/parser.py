@@ -21,6 +21,19 @@ from .shared.structural import (
     KEY_VALUE,
 )
 
+# Reserved structural body keys — authoring any of these with the @-prefix is a
+# hard ERR_RESERVED_ATTR (ADR-0007). Detected inline as each @-key is processed.
+_RESERVED_STRUCTURAL_KEYS: frozenset[str] = frozenset({
+    KEY_NAME,
+    KEY_PACKAGE,
+    KEY_EXTENDS,
+    KEY_ABSTRACT,
+    KEY_OVERLAY,
+    KEY_IS_ARRAY,
+    KEY_CHILDREN,
+    KEY_VALUE,
+})
+
 
 @dataclass
 class ParseResult:
@@ -99,6 +112,18 @@ def _build(
     for key, value in body_dict.items():
         if key.startswith(ATTR_PREFIX):
             attr_name = key[len(ATTR_PREFIX):]
+            # ADR-0007: @-prefixing a reserved structural body key is invalid.
+            # Detected inline as each @-attr key is processed (matches TS parser-core).
+            if attr_name in _RESERVED_STRUCTURAL_KEYS:
+                result.errors.append(
+                    MetaError(
+                        f"node '{wrapper}' uses reserved structural key '{attr_name}' "
+                        f"with @-prefix; bare '{attr_name}' is the canonical form",
+                        ErrorCode.ERR_RESERVED_ATTR,
+                        source,
+                    )
+                )
+                continue
             schema = registry.attr_schema(type_, sub_type, attr_name)
             node.set_attr(attr_name, value, sub_type=schema.value_type if schema else None)
 
