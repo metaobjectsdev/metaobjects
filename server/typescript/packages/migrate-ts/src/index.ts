@@ -13,6 +13,7 @@ export { introspect, introspectPostgres, introspectSqlite } from "./introspect/i
 export { diff } from "./diff/index.js";
 export { emit } from "./emit/index.js";
 export { writeMigration } from "./write-migration.js";
+export { writeMigrationD1, type WriteMigrationD1Options, type WriteMigrationD1Result } from "./write-migration-d1.js";
 
 // Errors
 export { BlockedChangesError, SetNullNotNullableError } from "./errors.js";
