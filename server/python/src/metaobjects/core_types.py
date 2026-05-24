@@ -119,25 +119,21 @@ _register_subtypes(
 
 # field.* (one factory, data_type by subtype)
 # Note: FIELD_SUBTYPE_ENUM is excluded from FIELD_SUBTYPES; it is registered
-# separately below with its required @values AttrSchema.
-_register_subtypes(
-    core_provider,
-    TYPE_FIELD,
-    fc.FIELD_SUBTYPES,
-    factory=MetaField,
-    child_rules=[
-        ChildRule(TYPE_ATTR, "*"),
-        ChildRule(TYPE_ORIGIN, "*"),
-        ChildRule(TYPE_VIEW, "*"),
-    ],
-)
-
-# field.enum — dedicated registration with required @values attr
+# separately below with its required @values AttrSchema (sharing these child rules).
 _FIELD_CHILD_RULES = [
     ChildRule(TYPE_ATTR, "*"),
     ChildRule(TYPE_ORIGIN, "*"),
     ChildRule(TYPE_VIEW, "*"),
 ]
+_register_subtypes(
+    core_provider,
+    TYPE_FIELD,
+    fc.FIELD_SUBTYPES,
+    factory=MetaField,
+    child_rules=_FIELD_CHILD_RULES,
+)
+
+# field.enum — dedicated registration with required @values attr
 core_provider.add(
     TypeDefinition(
         type=TYPE_FIELD,

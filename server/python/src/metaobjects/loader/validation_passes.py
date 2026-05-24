@@ -196,8 +196,9 @@ def _validate_enum_values(
         if node.type != TYPE_FIELD or node.sub_type != FIELD_SUBTYPE_ENUM:
             continue
 
-        # Own-only: only validate if THIS node declares @values directly.
-        own_values = node.attr(FIELD_ATTR_VALUES) if node.own_meta_attr(FIELD_ATTR_VALUES) else None
+        # Own-only: node.attr() reads only this node's own attrs (never the super
+        # chain), so an inherited @values yields None here and is skipped.
+        own_values = node.attr(FIELD_ATTR_VALUES)
         if own_values is None:
             # No own @values — required-attr check (ERR_MISSING_REQUIRED_ATTR) is
             # handled by _validate_attr_schema.  Nothing more to do here.
