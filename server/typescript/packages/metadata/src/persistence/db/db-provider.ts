@@ -10,8 +10,10 @@ import { FIELD_SUBTYPES } from "../../core/field/field-constants.js";
 import {
   SOURCE_SUBTYPE_DB_TABLE,
   SOURCE_SUBTYPE_DB_VIEW,
+  SOURCE_SUBTYPE_RDB,
 } from "../source/source-constants.js";
 import { dbColumnSchema, dbIndexedSchema, sourceNameSchema } from "./db-schema.js";
+import { sourceRdbAttrs } from "../source/source-schema.js";
 
 export const dbProvider: MetaDataTypeProvider = {
   id: "metaobjects-db",
@@ -31,6 +33,10 @@ export const dbProvider: MetaDataTypeProvider = {
     });
     registry.extend(TYPE_SOURCE, SOURCE_SUBTYPE_DB_VIEW, {
       attributes: [sourceNameSchema],
+    });
+    // source.rdb (v2) — @table/@kind/@role/@schema attrs.
+    registry.extend(TYPE_SOURCE, SOURCE_SUBTYPE_RDB, {
+      attributes: [...sourceRdbAttrs],
     });
   },
 };
