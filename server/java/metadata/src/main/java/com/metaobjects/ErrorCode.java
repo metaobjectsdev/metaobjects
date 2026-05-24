@@ -51,6 +51,14 @@ public enum ErrorCode {
     /** An attribute name is not declared on the node's type. */
     ERR_UNKNOWN_ATTR,
 
+    /**
+     * A reserved structural keyword ({@code name}, {@code package}, {@code extends},
+     * {@code abstract}, {@code overlay}, {@code isArray}, {@code children}, {@code value})
+     * was written as an {@code @}-prefixed attribute in canonical JSON.
+     * The rule is unconditional — write the key bare.
+     */
+    ERR_RESERVED_ATTR,
+
     /** A required attribute is absent from the node. */
     ERR_MISSING_REQUIRED_ATTR,
 

@@ -4,9 +4,11 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.attr.MetaAttribute;
+import com.metaobjects.util.ErrorMessageConstants;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.parser.BaseMetaDataParser;
 import com.metaobjects.loader.parser.MetaDataFileParser;
@@ -545,6 +547,18 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
 
             // Strip the @ prefix
             String attrName = key.substring(ATTR_PREFIX.length());
+
+            // ADR-0006 §D1: reserved structural keywords must be written bare in canonical JSON.
+            // Writing them as @-prefixed attributes (e.g. @isArray, @name) is unconditionally
+            // invalid — there is no registry-exception.
+            if (RESERVED_KEYS.contains(attrName)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_RESERVED_ATTR
+                        + ": reserved structural key '" + attrName + "' must not be "
+                        + ATTR_PREFIX + "-prefixed on " + md.getType() + "." + md.getSubType()
+                        + " '" + md.getName() + "' in file [" + getFilename() + "] — write it bare",
+                    ErrorCode.ERR_RESERVED_ATTR);
+            }
 
             // Canonical bare-string → JSON-array desugar for array-declared attributes.
             // If the raw JSON value is a string primitive (not already a JSON array) AND
