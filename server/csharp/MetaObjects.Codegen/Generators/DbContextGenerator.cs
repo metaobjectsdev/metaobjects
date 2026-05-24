@@ -34,11 +34,11 @@ public sealed class DbContextGenerator : IGenerator
         }
         foreach (var e in objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
         {
+            var owner = CSharpNaming.Pascal(e.Name);
             foreach (var f in e.Fields().Where(f => f.SubType == FIELD_SUBTYPE_OBJECT))
                 if (OwnedTypeConfig(e, f, ctx) is { } cfg) modelLines.Add(cfg);
             foreach (var f in e.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM))
             {
-                var owner = CSharpNaming.Pascal(e.Name);
                 var prop = CSharpNaming.Pascal(f.Name);
                 if (f.IsArray)
                 {
@@ -57,7 +57,6 @@ public sealed class DbContextGenerator : IGenerator
             // .Property(...).ToJson() does not exist on PropertyBuilder<List<T>> (CS1061).
             foreach (var f in e.Fields().Where(f => f.IsArray && CSharpNaming.ScalarFor(f.SubType) is not null))
             {
-                var owner = CSharpNaming.Pascal(e.Name);
                 var prop = CSharpNaming.Pascal(f.Name);
                 modelLines.Add($"        modelBuilder.Entity<{owner}>().PrimitiveCollection(x => x.{prop});");
             }

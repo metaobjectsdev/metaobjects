@@ -205,39 +205,35 @@ public sealed class EntityGenerator : IGenerator
         var baseType = CSharpNaming.ScalarFor(field.SubType)!;
         var propName = CSharpNaming.Pascal(field.Name);
 
+        // Array fields: emit List<T> with an empty-list initializer and only a [Column]
+        // attribute — [Key]/[MaxLength]/[Required] are not meaningful for a List<T> jsonb
+        // column (arrays are never PKs, and the list itself is never null in C#).
+        if (field.IsArray)
+        {
+            var arr = new StringBuilder();
+            if (withAttributes)
+                arr.AppendLine($"    [Column(\"{CSharpNaming.Column(field)}\")]");
+            arr.Append($"    public List<{baseType}> {propName} {{ get; set; }} = new();");
+            return arr.ToString();
+        }
+
+        var required = CSharpNaming.IsRequired(owner, field);
+        var isValue = CSharpNaming.IsValueType(baseType);
+
         var sb = new StringBuilder();
         if (withAttributes)
         {
-            if (field.IsArray)
-            {
-                // Array fields: only [Column]; [Key]/[MaxLength]/[Required] are not
-                // meaningful for a List<T> jsonb column (arrays are never PKs).
-                sb.AppendLine($"    [Column(\"{CSharpNaming.Column(field)}\")]");
-            }
-            else
-            {
-                var required = CSharpNaming.IsRequired(owner, field);
-                var isValue = CSharpNaming.IsValueType(baseType);
-                if (pkFields.Count == 1 && pkFields[0] == field.Name)
-                    sb.AppendLine("    [Key]");
-                sb.AppendLine($"    [Column(\"{CSharpNaming.Column(field)}\")]");
-                if (baseType == "string" && field.MaxLength is long max)
-                    sb.AppendLine($"    [MaxLength({max})]");
-                if (required && !isValue)
-                    sb.AppendLine("    [Required]");
-            }
+            if (pkFields.Count == 1 && pkFields[0] == field.Name)
+                sb.AppendLine("    [Key]");
+            sb.AppendLine($"    [Column(\"{CSharpNaming.Column(field)}\")]");
+            if (baseType == "string" && field.MaxLength is long max)
+                sb.AppendLine($"    [MaxLength({max})]");
+            if (required && !isValue)
+                sb.AppendLine("    [Required]");
         }
 
-        if (field.IsArray)
-        {
-            sb.Append($"    public List<{baseType}> {propName} {{ get; set; }} = new();");
-            return sb.ToString();
-        }
-
-        var req = CSharpNaming.IsRequired(owner, field);
-        var iv = CSharpNaming.IsValueType(baseType);
-        var type = req ? baseType : baseType + "?";
-        var init = req && !iv ? " = default!;" : string.Empty;
+        var type = required ? baseType : baseType + "?";
+        var init = required && !isValue ? " = default!;" : string.Empty;
         sb.Append($"    public {type} {propName} {{ get; set; }}{init}");
         return sb.ToString();
     }
