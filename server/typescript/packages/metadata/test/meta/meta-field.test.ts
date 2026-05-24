@@ -13,7 +13,7 @@ import {
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   VIEW_SUBTYPE_TEXT,
-  FIELD_ATTR_DB_COLUMN,
+  FIELD_ATTR_COLUMN,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
@@ -59,15 +59,15 @@ function makeView(subType: string): MetaData {
 // ---------------------------------------------------------------------------
 
 describe("MetaField attribute getters", () => {
-  it("dbColumn returns the @dbColumn attr string", () => {
+  it("column returns the @column attr string", () => {
     const f = makeField("email");
-    f.setAttr(FIELD_ATTR_DB_COLUMN, "email_addr");
-    expect(f.dbColumn).toBe("email_addr");
+    f.setAttr(FIELD_ATTR_COLUMN, "email_addr");
+    expect(f.column).toBe("email_addr");
   });
 
-  it("dbColumn returns undefined when attr is absent", () => {
+  it("column returns undefined when attr is absent", () => {
     const f = makeField("email");
-    expect(f.dbColumn).toBeUndefined();
+    expect(f.column).toBeUndefined();
   });
 
   it("maxLength returns numeric attr", () => {

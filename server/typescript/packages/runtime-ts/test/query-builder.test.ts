@@ -133,10 +133,10 @@ describe("compileFilter — $and", () => {
 });
 
 describe("compileFilter — column name resolution", () => {
-  test("uses @dbColumn attr when present", () => {
+  test("uses @column attr when present", () => {
     const e = makePost();
     const title = e.ownChildren().find((c) => c.name === "title")!;
-    title.setAttr("dbColumn", "post_title");
+    title.setAttr("column", "post_title");
     expect(compileFilter(e, { title: "x" })).toEqual({
       kind: "eq", column: "post_title", value: "x",
     });

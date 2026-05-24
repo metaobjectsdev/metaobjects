@@ -82,10 +82,7 @@ import {
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
   LAYOUT_DATA_GRID_ATTR_FILTER,
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
-  SOURCE_SUBTYPE_DB_TABLE,
-  SOURCE_SUBTYPE_DB_VIEW,
   SOURCE_SUBTYPE_RDB,
-  SOURCE_DB_TABLE_ATTR_NAME,
   SOURCE_ATTR_KIND,
   SOURCE_KIND_TABLE,
   SOURCE_KIND_VIEW,
@@ -213,10 +210,8 @@ function makeLayout(subType: string, name: string): MetaLayout {
   return new MetaLayout(new TypeId(TYPE_LAYOUT, subType), name);
 }
 
-function makeSource(subType: string, sourceName?: string): MetaSource {
-  const node = new MetaSource(new TypeId(TYPE_SOURCE, subType), subType);
-  if (sourceName !== undefined) node.setAttr(SOURCE_DB_TABLE_ATTR_NAME, sourceName);
-  return node;
+function makeSource(subType: string): MetaSource {
+  return new MetaSource(new TypeId(TYPE_SOURCE, subType), subType);
 }
 
 /** A source.rdb node with an optional @kind (omitted ⇒ default kind = table). */
@@ -750,30 +745,14 @@ describe("MetaLayout — typed dataGrid accessors", () => {
 
 describe("MetaSource", () => {
   it("extends MetaData", () => {
-    const s = makeSource(SOURCE_SUBTYPE_DB_TABLE, "users");
+    const s = makeSource(SOURCE_SUBTYPE_RDB);
     expect(s).toBeInstanceOf(MetaData);
   });
 
-  it("has correct type / subType for dbTable", () => {
-    const s = makeSource(SOURCE_SUBTYPE_DB_TABLE, "users");
+  it("has correct type / subType for rdb", () => {
+    const s = makeSource(SOURCE_SUBTYPE_RDB);
     expect(s.type).toBe(TYPE_SOURCE);
-    expect(s.subType).toBe(SOURCE_SUBTYPE_DB_TABLE);
-  });
-
-  it("has correct type / subType for dbView", () => {
-    const s = makeSource(SOURCE_SUBTYPE_DB_VIEW, "v_summary");
-    expect(s.type).toBe(TYPE_SOURCE);
-    expect(s.subType).toBe(SOURCE_SUBTYPE_DB_VIEW);
-  });
-
-  it("sourceName returns @name attr", () => {
-    const s = makeSource(SOURCE_SUBTYPE_DB_TABLE, "products");
-    expect(s.sourceName).toBe("products");
-  });
-
-  it("sourceName returns undefined when @name not set", () => {
-    const s = makeSource(SOURCE_SUBTYPE_DB_TABLE);
-    expect(s.sourceName).toBeUndefined();
+    expect(s.subType).toBe(SOURCE_SUBTYPE_RDB);
   });
 
   it("isReadOnly() is derived from @kind (view ⇒ read-only; omitted/table ⇒ writable)", () => {

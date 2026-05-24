@@ -7,22 +7,11 @@ import {
   ATTR_SUBTYPE_BOOLEAN,
 } from "../../core/attr/attr-constants.js";
 import {
-  FIELD_ATTR_DB_COLUMN,
   FIELD_ATTR_COLUMN,
   FIELD_ATTR_DB_INDEXED,
 } from "./db-constants.js";
-import { SOURCE_ATTR_NAME } from "../source/source-constants.js";
 
-/** `@dbColumn` — column-name override; on every field subtype. */
-export const dbColumnSchema: AttrSchema = {
-  name: FIELD_ATTR_DB_COLUMN,
-  valueType: ATTR_SUBTYPE_STRING,
-  required: false,
-  description:
-    "Override the generated SQL column name for this field. Defaults to the field name run through the project's columnNamingStrategy.",
-};
-
-/** `@column` — source v2 column-name override; preferred over `@dbColumn`; on every field subtype. */
+/** `@column` — column-name override on every field subtype (source.rdb). */
 export const columnSchema: AttrSchema = {
   name: FIELD_ATTR_COLUMN,
   valueType: ATTR_SUBTYPE_STRING,
@@ -38,13 +27,4 @@ export const dbIndexedSchema: AttrSchema = {
   required: false,
   description:
     "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).",
-};
-
-/** `@name` — the SQL table/view identifier; on source.dbTable and source.dbView. */
-export const sourceNameSchema: AttrSchema = {
-  name: SOURCE_ATTR_NAME,
-  valueType: ATTR_SUBTYPE_STRING,
-  required: false,
-  description:
-    "The SQL table or view name for this source. Defaults to the object name run through the columnNamingStrategy when omitted.",
 };

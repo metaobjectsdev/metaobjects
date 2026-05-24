@@ -307,13 +307,13 @@ describe("registerCoreTypes", () => {
     registerCoreTypes(registry);
   });
 
-  // 1. All 71 types registered (object subtypes: base/entity/value; field adds base + 16 subtypes (int/string/long/currency/enum/...);
-  //    view adds base + 13 subtypes (text/textarea/currency/...); layout adds base + dataGrid; source adds base + dbTable + dbView + rdb;
+  // 1. All 69 types registered (object subtypes: base/entity/value; field adds base + 16 subtypes (int/string/long/currency/enum/...);
+  //    view adds base + 13 subtypes (text/textarea/currency/...); layout adds base + dataGrid; source adds base + rdb;
   //    origin adds base + passthrough + aggregate + collection; identity adds primary + secondary + reference;
   //    attr adds base + string/int/long/double/boolean/class/properties/stringarray/filter;
-  //    template adds base + prompt + output (FR-004) — net type count 71)
-  it("registers exactly 71 type definitions", () => {
-    expect(registry.allTypes()).toHaveLength(71);
+  //    template adds base + prompt + output (FR-004) — net type count 69)
+  it("registers exactly 69 type definitions", () => {
+    expect(registry.allTypes()).toHaveLength(69);
   });
 
   // 2. Per-base-type subtype lists exact match

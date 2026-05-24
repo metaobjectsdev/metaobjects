@@ -44,9 +44,9 @@ describe("mapColumnType — SQLite", () => {
     expect(spec.defaultExpr).toEqual({ kind: "now" });
   });
 
-  test("@dbColumn overrides snake_case name", () => {
+  test("@column overrides snake_case name", () => {
     const f = metaField(FIELD_SUBTYPE_STRING, "firstName");
-    f.setAttr("dbColumn", "given_name");
+    f.setAttr("column", "given_name");
     const spec = mapColumnType(f, "sqlite");
     expect(spec.dbName).toBe("given_name");
   });

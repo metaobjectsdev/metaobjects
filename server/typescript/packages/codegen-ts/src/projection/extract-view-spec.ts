@@ -14,7 +14,6 @@ import {
   RELATIONSHIP_ATTR_CARDINALITY,
   CARDINALITY_ONE,
   FIELD_ATTR_COLUMN,
-  FIELD_ATTR_DB_COLUMN,
   findReferenceBetween,
   type AggregateFunction,
 } from "@metaobjectsdev/metadata";
@@ -81,11 +80,8 @@ function sourceColumnNameFor(
   entityField: MetaData,
   ctx: ExtractContext,
 ): string {
-  // Prefer the v2 @column, then fall back to the v1 @dbColumn (kept until Task 9).
   const col = entityField.ownAttr(FIELD_ATTR_COLUMN);
   if (typeof col === "string" && col !== "") return col;
-  const dbCol = entityField.ownAttr(FIELD_ATTR_DB_COLUMN);
-  if (typeof dbCol === "string" && dbCol !== "") return dbCol;
   return columnNameFromField(entityField.name, ctx.columnNamingStrategy);
 }
 

@@ -1,13 +1,11 @@
 // MetaSource — concrete node class for type=source nodes.
 // Declares where an object's data lives (Project E).
-// dbTable / dbView source subtypes declare the SQL table or view name (v1).
-// source.rdb (v2) uses @table/@kind/@role/@schema; read-only is derived from @kind.
+// source.rdb uses @table/@kind/@role/@schema; read-only is derived from @kind.
 //
 // Extends MetaData directly: no model wrapper, no metaOf() indirection.
 
 import { MetaData } from "../../shared/meta-data.js";
 import {
-  SOURCE_ATTR_NAME,
   SOURCE_ATTR_TABLE,
   SOURCE_ATTR_KIND,
   SOURCE_ATTR_ROLE,
@@ -17,13 +15,7 @@ import {
 } from "./source-constants.js";
 
 export class MetaSource extends MetaData {
-  /** The SQL table or view name (value of @name attr on the source child). */
-  get sourceName(): string | undefined {
-    const v = this.ownAttr(SOURCE_ATTR_NAME);
-    return typeof v === "string" ? v : undefined;
-  }
-
-  /** Physical SQL table/view name from @table (source.rdb / v2). */
+  /** Physical SQL table/view name from @table (source.rdb). */
   get tableName(): string | undefined {
     const v = this.ownAttr(SOURCE_ATTR_TABLE);
     return typeof v === "string" && v !== "" ? v : undefined;
@@ -48,9 +40,7 @@ export class MetaSource extends MetaData {
 
   /**
    * True when this source's effective kind is read-only (view, materializedView,
-   * storedProc, tableFunction).  For source.rdb this is @kind-derived. V1
-   * dbView sources carry no @kind so they default to "table" (writable) under
-   * this implementation; they are handled by a later migration task.
+   * storedProc, tableFunction). Derived from the @kind attr on source.rdb.
    */
   isReadOnly(): boolean {
     return SOURCE_READ_ONLY_KINDS.has(this.effectiveKind);

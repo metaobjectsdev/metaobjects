@@ -24,8 +24,7 @@ import {
   OBJECT_SUBTYPE_ENTITY,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
-  SOURCE_SUBTYPE_DB_TABLE,
-  SOURCE_SUBTYPE_DB_VIEW,
+  SOURCE_SUBTYPE_RDB,
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
   LAYOUT_SUBTYPE_DATA_GRID,
@@ -246,7 +245,7 @@ describe("Phase A2 — core attribute schemas", () => {
     const attrs = byName(TYPE_FIELD, FIELD_SUBTYPE_STRING);
     expect(attrs.get("currency")).toBeUndefined();
     // but they DO carry the common field attrs
-    expect(attrs.get("dbColumn")).toBeDefined();
+    expect(attrs.get("column")).toBeDefined();
     expect(attrs.get("filterable")!.valueType).toBe(ATTR_SUBTYPE_BOOLEAN);
   });
 
@@ -276,11 +275,10 @@ describe("Phase A2 — core attribute schemas", () => {
     expect(attrs.get("generation")).toBeUndefined();
   });
 
-  it("source.dbTable and source.dbView declare optional @name", () => {
-    for (const st of [SOURCE_SUBTYPE_DB_TABLE, SOURCE_SUBTYPE_DB_VIEW]) {
-      const attrs = byName(TYPE_SOURCE, st);
-      expect(attrs.get("name")!.required).toBe(false);
-    }
+  it("source.rdb declares @table from dbProvider (rdb attrs are registered by dbProvider)", () => {
+    const attrs = byName(TYPE_SOURCE, SOURCE_SUBTYPE_RDB);
+    expect(attrs.get("table")).toBeDefined();
+    expect(attrs.get("table")!.required).toBe(false);
   });
 
   it("origin.base declares no attributes", () => {

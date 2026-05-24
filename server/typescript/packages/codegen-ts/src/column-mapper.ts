@@ -22,7 +22,6 @@ import {
   FIELD_ATTR_MAX_LENGTH,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_COLUMN,
-  FIELD_ATTR_DB_COLUMN,
   FIELD_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
   VALIDATOR_ATTR_MAX,
@@ -78,7 +77,7 @@ function canonicalizeSqlExpr(value: string): string {
 export interface ColumnSpec {
   /** Drizzle function name, e.g., "text", "integer", "varchar". */
   fnName: string;
-  /** DB column name (snake_case from field name, or @dbColumn override). */
+  /** DB column name (snake_case from field name, or @column override). */
   dbName: string;
   /** Positional args after dbName (currently always empty; reserved). */
   fnArgs: unknown[];
@@ -122,12 +121,9 @@ export function mapColumnType(
   dialect: Dialect,
   strategy: ColumnNamingStrategy = "snake_case",
 ): ColumnSpec {
-  // Prefer the v2 @column, then fall back to the v1 @dbColumn (kept until Task 9).
   const colAttr = field.ownAttr(FIELD_ATTR_COLUMN);
-  const dbColAttr = field.ownAttr(FIELD_ATTR_DB_COLUMN);
   const dbName =
     (typeof colAttr === "string" && colAttr !== "" ? colAttr : undefined)
-    ?? (typeof dbColAttr === "string" && dbColAttr !== "" ? dbColAttr : undefined)
     ?? columnNameFromField(field.name, strategy);
   const importModule = dialect === "sqlite" ? "drizzle-orm/sqlite-core" : "drizzle-orm/pg-core";
   const subType = field.subType;
