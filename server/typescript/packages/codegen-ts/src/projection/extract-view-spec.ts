@@ -2,9 +2,7 @@ import {
   TYPE_FIELD,
   TYPE_ORIGIN,
   TYPE_RELATIONSHIP,
-  TYPE_SOURCE,
-  SOURCE_SUBTYPE_DB_VIEW,
-  SOURCE_DB_VIEW_ATTR_NAME,
+  MetaSource,
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_PASSTHROUGH_ATTR_FROM,
@@ -15,6 +13,7 @@ import {
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_CARDINALITY,
   CARDINALITY_ONE,
+  FIELD_ATTR_COLUMN,
   FIELD_ATTR_DB_COLUMN,
   findReferenceBetween,
   type AggregateFunction,
@@ -48,10 +47,11 @@ function findRelationship(obj: MetaData, name: string): MetaData | undefined {
 }
 
 function viewName(projection: MetaObject, ctx: ExtractContext): string {
-  const dbView = projection.ownChildren().find(
-    (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_VIEW,
+  // The read-only source carries the physical view name (@table).
+  const viewSource = projection.ownChildren().find(
+    (c): c is MetaSource => c instanceof MetaSource && c.isReadOnly(),
   );
-  const explicit = dbView?.ownAttr(SOURCE_DB_VIEW_ATTR_NAME) as string | undefined;
+  const explicit = viewSource?.tableName;
   return explicit ?? viewNameFromProjection(projection.name, ctx.columnNamingStrategy);
 }
 
@@ -81,8 +81,12 @@ function sourceColumnNameFor(
   entityField: MetaData,
   ctx: ExtractContext,
 ): string {
-  const explicit = entityField.ownAttr(FIELD_ATTR_DB_COLUMN) as string | undefined;
-  return explicit ?? columnNameFromField(entityField.name, ctx.columnNamingStrategy);
+  // Prefer the v2 @column, then fall back to the v1 @dbColumn (kept until Task 9).
+  const col = entityField.ownAttr(FIELD_ATTR_COLUMN);
+  if (typeof col === "string" && col !== "") return col;
+  const dbCol = entityField.ownAttr(FIELD_ATTR_DB_COLUMN);
+  if (typeof dbCol === "string" && dbCol !== "") return dbCol;
+  return columnNameFromField(entityField.name, ctx.columnNamingStrategy);
 }
 
 function shortAliasFor(entityName: string, used: Set<string>): string {

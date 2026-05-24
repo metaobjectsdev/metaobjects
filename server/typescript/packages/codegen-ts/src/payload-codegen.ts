@@ -17,7 +17,6 @@ import {
   TYPE_TEMPLATE,
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
-  RESERVED_KEY_IS_ARRAY,
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_FORMAT,
@@ -48,8 +47,13 @@ function fieldTsType(field: MetaData): { type: string; refVo?: string } {
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
     const refName = typeof ref === "string" ? ref : "unknown";
-    const isArray = field.ownAttr(RESERVED_KEY_IS_ARRAY) === true;
-    return { type: isArray ? `${refName}[]` : refName, refVo: typeof ref === "string" ? ref : undefined };
+    // isArray is a structural property on MetaData, not an attr.
+    const isArray = field.isArray;
+    const result: { type: string; refVo?: string } = {
+      type: isArray ? `${refName}[]` : refName,
+    };
+    if (typeof ref === "string") result.refVo = ref;
+    return result;
   }
   return { type: SCALAR_TS[field.subType] ?? "unknown" };
 }

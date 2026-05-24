@@ -1,9 +1,8 @@
 import type { MetaData, MetaObject, MetaReferenceIdentity, MetaRoot } from "@metaobjectsdev/metadata";
 import {
   TYPE_OBJECT,
-  TYPE_SOURCE,
   TYPE_VALIDATOR,
-  SOURCE_SUBTYPE_DB_VIEW,
+  MetaSource,
   VALIDATOR_SUBTYPE_REQUIRED,
   IDENTITY_ATTR_FIELDS,
   IDENTITY_ATTR_GENERATION,
@@ -56,16 +55,21 @@ export function buildExpectedSchema(
   // Skip:
   //   - abstract objects (e.g., BaseEntity)
   //   - value objects (no table backing)
-  //   - projections (source.dbView — handled by the view-diff pipeline, not table diff)
+  //   - projections (read-only @kind source with no writable peer — handled by
+  //     the view-diff pipeline, not the table diff)
   const entities: { entity: MetaObject; tableName: string }[] = [];
   for (const child of root.ownChildren()) {
     if (child.type !== TYPE_OBJECT) continue;
     if (child.isAbstract) continue;
     if (child.subType === "value") continue;
-    const hasViewSource = child.ownChildren().some(
-      (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_VIEW,
+    const hasReadOnlySource = child.ownChildren().some(
+      (c) => c instanceof MetaSource && c.isReadOnly(),
     );
-    if (hasViewSource) continue;
+    const hasWritableSource = child.ownChildren().some(
+      (c) => c instanceof MetaSource && c.isWritable(),
+    );
+    // Projection: read-only and not write-through.
+    if (hasReadOnlySource && !hasWritableSource) continue;
     entities.push({ entity: child as MetaObject, tableName: resolveTableName(child) });
   }
   const entityToTable = new Map(entities.map((e) => [e.entity.name, e.tableName]));

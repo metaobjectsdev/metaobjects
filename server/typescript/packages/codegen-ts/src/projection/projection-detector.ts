@@ -1,26 +1,22 @@
-import {
-  TYPE_SOURCE,
-  SOURCE_SUBTYPE_DB_TABLE,
-  SOURCE_SUBTYPE_DB_VIEW,
-} from "@metaobjectsdev/metadata";
+import { MetaSource } from "@metaobjectsdev/metadata";
 import type { MetaData } from "@metaobjectsdev/metadata";
 
-function hasSource(entity: MetaData, subType: string): boolean {
+function hasReadOnlyKindSource(entity: MetaData): boolean {
   return entity.ownChildren().some(
-    (c) => c.type === TYPE_SOURCE && c.subType === subType,
+    (c) => c instanceof MetaSource && c.isReadOnly(),
+  );
+}
+
+function hasWritableKindSource(entity: MetaData): boolean {
+  return entity.ownChildren().some(
+    (c) => c instanceof MetaSource && c.isWritable(),
   );
 }
 
 export function isProjection(entity: MetaData): boolean {
-  return (
-    hasSource(entity, SOURCE_SUBTYPE_DB_VIEW) &&
-    !hasSource(entity, SOURCE_SUBTYPE_DB_TABLE)
-  );
+  return hasReadOnlyKindSource(entity) && !hasWritableKindSource(entity);
 }
 
 export function isWriteThrough(entity: MetaData): boolean {
-  return (
-    hasSource(entity, SOURCE_SUBTYPE_DB_VIEW) &&
-    hasSource(entity, SOURCE_SUBTYPE_DB_TABLE)
-  );
+  return hasReadOnlyKindSource(entity) && hasWritableKindSource(entity);
 }

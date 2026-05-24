@@ -3,7 +3,7 @@ import type { MetaData } from "@metaobjectsdev/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_IDENTITY, TYPE_SOURCE,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_BOOLEAN,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
-         SOURCE_SUBTYPE_DB_TABLE, SOURCE_DB_TABLE_ATTR_NAME } from "@metaobjectsdev/metadata";
+         SOURCE_SUBTYPE_RDB, SOURCE_ATTR_TABLE } from "@metaobjectsdev/metadata";
 import { meta } from "./_meta-build.js";
 import {
   compileFilter, buildSelectSpec, buildInsertSpec, buildUpdateSpec,
@@ -25,10 +25,10 @@ function makePost(): MetaData {
 }
 
 describe("resolveTableName", () => {
-  test("uses source[dbTable]@name when present", () => {
+  test("uses primary writable source's @table when present", () => {
     const e = makePost();
-    const source = meta(new TypeId(TYPE_SOURCE, SOURCE_SUBTYPE_DB_TABLE), "");
-    source.setAttr(SOURCE_DB_TABLE_ATTR_NAME, "blog_posts");
+    const source = meta(new TypeId(TYPE_SOURCE, SOURCE_SUBTYPE_RDB), "");
+    source.setAttr(SOURCE_ATTR_TABLE, "blog_posts");
     e.addChild(source);
     expect(resolveTableName(e)).toBe("blog_posts");
   });

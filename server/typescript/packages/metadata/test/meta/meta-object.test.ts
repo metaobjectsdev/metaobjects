@@ -3,6 +3,7 @@ import { TypeId } from "../../src/registry.js";
 import { MetaData } from "../../src/shared/meta-data.js";
 import { MetaObject } from "../../src/core/object/meta-object.js";
 import { MetaField } from "../../src/core/field/meta-field.js";
+import { MetaSource } from "../../src/persistence/source/meta-source.js";
 import {
   TYPE_OBJECT,
   TYPE_FIELD,
@@ -14,8 +15,8 @@ import {
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
   SUBTYPE_BASE,
-  SOURCE_SUBTYPE_DB_TABLE,
-  SOURCE_DB_TABLE_ATTR_NAME,
+  SOURCE_SUBTYPE_RDB,
+  SOURCE_ATTR_TABLE,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
   FIELD_SUBTYPE_LONG,
@@ -43,9 +44,10 @@ function makeIdentity(name: string, subType: string, fields: string[]): MetaData
   return node;
 }
 
-function makeSource(subType: string, tableName: string): MetaData {
-  const node = new TestNode(new TypeId(TYPE_SOURCE, subType), subType);
-  node.setAttr(SOURCE_DB_TABLE_ATTR_NAME, tableName);
+function makeSource(subType: string, tableName: string): MetaSource {
+  // Source v2: physical name lives on @table on a MetaSource instance.
+  const node = new MetaSource(new TypeId(TYPE_SOURCE, subType), subType);
+  node.setAttr(SOURCE_ATTR_TABLE, tableName);
   return node;
 }
 
@@ -88,24 +90,24 @@ describe("MetaObject.isEntity / isValue", () => {
 // ---------------------------------------------------------------------------
 
 describe("MetaObject.dbTable", () => {
-  it("returns the source[dbTable]@name when present", () => {
+  it("returns the primary writable source's @table when present", () => {
     const obj = makeObject("User");
-    const source = makeSource(SOURCE_SUBTYPE_DB_TABLE, "users");
+    const source = makeSource(SOURCE_SUBTYPE_RDB, "users");
     obj.addChild(source);
     obj.freeze();
     expect(obj.dbTable).toBe("users");
   });
 
-  it("returns undefined when no source[dbTable] child", () => {
+  it("returns undefined when no source child", () => {
     const obj = makeObject("User");
     obj.freeze();
     expect(obj.dbTable).toBeUndefined();
   });
 
-  it("returns undefined when source exists but @name is empty string", () => {
+  it("returns undefined when source exists but @table is empty string", () => {
     const obj = makeObject("User");
-    const source = new TestNode(new TypeId(TYPE_SOURCE, SOURCE_SUBTYPE_DB_TABLE), SOURCE_SUBTYPE_DB_TABLE);
-    source.setAttr(SOURCE_DB_TABLE_ATTR_NAME, "");
+    const source = new MetaSource(new TypeId(TYPE_SOURCE, SOURCE_SUBTYPE_RDB), SOURCE_SUBTYPE_RDB);
+    source.setAttr(SOURCE_ATTR_TABLE, "");
     obj.addChild(source);
     obj.freeze();
     expect(obj.dbTable).toBeUndefined();

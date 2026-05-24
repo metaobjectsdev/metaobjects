@@ -1,13 +1,12 @@
 import type { MetaData } from "./shared/meta-data.js";
-import { TYPE_FIELD, TYPE_SOURCE } from "./shared/base-types.js";
+import { TYPE_FIELD } from "./shared/base-types.js";
 import { PACKAGE_SEPARATOR } from "./shared/structural.js";
 import { FIELD_ATTR_COLUMN, FIELD_ATTR_DB_COLUMN } from "./persistence/db/db-constants.js";
 import {
-  SOURCE_SUBTYPE_DB_TABLE,
-  SOURCE_SUBTYPE_DB_VIEW,
-  SOURCE_DB_TABLE_ATTR_NAME,
   SOURCE_ATTR_SCHEMA,
+  SOURCE_ROLE_PRIMARY,
 } from "./persistence/source/source-constants.js";
+import { MetaSource } from "./persistence/source/meta-source.js";
 
 /**
  * Strip the package prefix from a metadata-qualified name
@@ -36,10 +35,12 @@ export function pluralize(s: string): string {
 }
 
 export function resolveTableName(entity: MetaData): string {
+  // Primary writable source carries the physical table name (@table).
   const source = entity.ownChildren().find(
-    (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_TABLE,
+    (c): c is MetaSource =>
+      c instanceof MetaSource && c.isWritable() && c.role === SOURCE_ROLE_PRIMARY,
   );
-  const name = source?.ownAttr(SOURCE_DB_TABLE_ATTR_NAME);
+  const name = source?.tableName;
   if (typeof name === "string" && name !== "") return name;
   return pluralize(toSnakeCase(entity.name));
 }
@@ -53,15 +54,16 @@ export function resolveColumnName(field: MetaData): string {
 }
 
 /**
- * Returns the DB schema declared on an entity's source[dbTable] or source[dbView] child,
- * or undefined if no @schema attr is set or no source child exists. Callers decide what
+ * Returns the DB schema declared on an entity's primary source child, or undefined
+ * when no @schema attr is set or no source child exists. @schema is paradigm-agnostic
+ * (works for writable tables and read-only views/projections alike). Callers decide what
  * "undefined" means for their dialect — Postgres treats it as the default public schema,
  * SQLite treats it as the only allowed value (no schema concept).
  */
 export function resolveTableSchema(entity: MetaData): string | undefined {
   const source = entity.ownChildren().find(
-    (c) => c.type === TYPE_SOURCE
-        && (c.subType === SOURCE_SUBTYPE_DB_TABLE || c.subType === SOURCE_SUBTYPE_DB_VIEW),
+    (c): c is MetaSource =>
+      c instanceof MetaSource && c.role === SOURCE_ROLE_PRIMARY,
   );
   if (!source) return undefined;
   const schema = source.ownAttr(SOURCE_ATTR_SCHEMA);

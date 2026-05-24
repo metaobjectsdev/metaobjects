@@ -9,13 +9,12 @@ import {
   TYPE_IDENTITY,
   TYPE_RELATIONSHIP,
   TYPE_VALIDATOR,
-  TYPE_SOURCE,
   TYPE_LAYOUT,
 } from "../../shared/base-types.js";
 import {
-  SOURCE_SUBTYPE_DB_TABLE,
-  SOURCE_DB_TABLE_ATTR_NAME,
+  SOURCE_ROLE_PRIMARY,
 } from "../../persistence/source/source-constants.js";
+import { MetaSource } from "../../persistence/source/meta-source.js";
 import {
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
@@ -34,11 +33,12 @@ import type { MetaValidator } from "../validator/meta-validator.js";
 export class MetaObject extends MetaData {
   get dbTable(): string | undefined {
     return this.cached("dbTable", () => {
+      // The primary writable source carries the physical table name (@table).
       const source = this.children().find(
-        (c) => c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_DB_TABLE,
+        (c): c is MetaSource =>
+          c instanceof MetaSource && c.isWritable() && c.role === SOURCE_ROLE_PRIMARY,
       );
-      const name = source?.ownAttr(SOURCE_DB_TABLE_ATTR_NAME);
-      return typeof name === "string" && name !== "" ? name : undefined;
+      return source?.tableName;
     });
   }
 
