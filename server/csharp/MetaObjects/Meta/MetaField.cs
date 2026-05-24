@@ -39,12 +39,12 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
         }
     }
 
-    /// <summary>Column name override (the <c>@dbColumn</c> attr).</summary>
+    /// <summary>Column name override (source-v2 attr <c>@column</c>).</summary>
     public string? DbColumn
     {
         get
         {
-            var v = OwnAttr(FIELD_ATTR_DB_COLUMN);
+            var v = OwnAttr(FIELD_ATTR_COLUMN);
             return v is string s ? s : null;
         }
     }

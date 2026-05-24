@@ -13,8 +13,8 @@ namespace MetaObjects.Persistence.Db;
 /// <summary>DB-domain physical-column attr keys on fields.</summary>
 public static class DbConstants
 {
-    /// <summary>Custom DB column name override on a field (maps to @dbColumn in metadata).</summary>
-    public const string FIELD_ATTR_DB_COLUMN  = "dbColumn";
+    /// <summary>Custom DB column name override on a field (source-v2 attr <c>@column</c>).</summary>
+    public const string FIELD_ATTR_COLUMN     = "column";
     /// <summary>When true, suppress the @filterable-without-index Loader warning (Project D drift check).</summary>
     public const string FIELD_ATTR_DB_INDEXED = "db.indexed";
 }

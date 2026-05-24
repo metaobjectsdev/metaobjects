@@ -5,6 +5,7 @@
 
 using MetaObjects.Core.Attr;
 using MetaObjects.Core.Query;
+using MetaObjects.Persistence.Db;
 
 namespace MetaObjects.Core.Field;
 
@@ -102,6 +103,15 @@ public static class FieldSchema
             Required: false,
             AllowedValues: [.. FieldConstants.AUTO_SET_VALUES],
             Description: "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."),
+
+        // Source-v2: physical column name override on an rdb source. Paradigm-neutral
+        // (no "db" prefix) — pairs with source.rdb @table. Registered on every field
+        // subtype so a YAML coercion check on `column: TRUE` fires the guard.
+        new AttrSchema(
+            Name: DbConstants.FIELD_ATTR_COLUMN,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."),
     ];
 
     /// <summary>The @currency attr — only on field.currency.</summary>

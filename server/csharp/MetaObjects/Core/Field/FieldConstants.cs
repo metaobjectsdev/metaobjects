@@ -2,7 +2,7 @@
 // AUTO_SET semantics, and currency attrs.
 //
 // Colocated per ADR-0003. Mirrors typescript/packages/metadata/src/core/field/field-constants.ts.
-// (DB-physical attrs @dbColumn / @db.indexed live in Persistence/Db/DbConstants.cs.)
+// (DB-physical attrs @column / @db.indexed live in Persistence/Db/DbConstants.cs.)
 
 using MetaObjects.Shared;
 
