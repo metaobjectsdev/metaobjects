@@ -83,19 +83,20 @@ function validateNode(
   errors: ParseError[],
   reportedConflicts: Set<string>,
 ): void {
-  const perTypeAttrs = registry.attrsOf(node.type, node.subType);
-  const commonAttrs = registry.getCommonAttrs();
+  // Build the effective schema in a single pass: per-type attrs win on name
+  // collision; common attrs fill in for unclaimed names. Surface common-vs-per-type
+  // collisions in the same pass — a name in both lists means a provider tried to
+  // overload a declared attr. The conflict is registry-state (not per-node), so
+  // emit ONE error per (type, subType), tracked via `reportedConflicts`.
+  // Even when a conflict exists, the per-type attr still wins (the common attr
+  // for that name is suppressed) so type-checking proceeds normally for everything else.
+  const byName = new Map<string, AttrSchema>();
+  for (const spec of registry.attrsOf(node.type, node.subType)) byName.set(spec.name, spec);
 
-  // Detect per-type attr names that collide with common attr names.
-  // This is a registry-state condition: emit it once per (type, subType).
-  // If MULTIPLE common attrs collide on the same (type, subType), the first
-  // collision wins — emit one error naming that attr, then mark the pair
-  // reported and break. Subsequent nodes of the same (type, subType) are
-  // skipped by the outer `has(typeKey)` guard.
   const typeKey = `${node.type}.${node.subType}`;
-  if (!reportedConflicts.has(typeKey)) {
-    for (const ca of commonAttrs) {
-      if (perTypeAttrs.some((pa) => pa.name === ca.name)) {
+  for (const ca of registry.getCommonAttrs()) {
+    if (byName.has(ca.name)) {
+      if (!reportedConflicts.has(typeKey)) {
         errors.push(
           new ParseError(
             `Common attr '${ca.name}' conflicts with per-type attr on ${typeKey}`,
@@ -103,26 +104,13 @@ function validateNode(
           ),
         );
         reportedConflicts.add(typeKey);
-        break;
       }
+      continue; // per-type wins
     }
+    byName.set(ca.name, ca);
   }
 
-  // Build the effective schema: per-type attrs take precedence; common attrs
-  // fill in only where no per-type attr occupies the same name. This means
-  // type-checking still fires for common attrs on every node even when there
-  // is a conflict (per-type attr wins; common attr is suppressed for that name).
-  const perTypeNames = new Set(perTypeAttrs.map((pa) => pa.name));
-  const schema = [
-    ...perTypeAttrs,
-    ...commonAttrs.filter((ca) => !perTypeNames.has(ca.name)),
-  ];
-
-  if (schema.length === 0) return;
-
-  // Index the schema by attr name for the declared-attr checks below.
-  const byName = new Map<string, AttrSchema>();
-  for (const spec of schema) byName.set(spec.name, spec);
+  if (byName.size === 0) return;
 
   // --- Check 1: required attrs present ---
   //
@@ -133,7 +121,7 @@ function validateNode(
   // were already validated on the node that declared them, so re-checking would
   // double-report. This mirrors the effective-vs-own split in subtype-rules.ts.
   const effective = node.attrs();
-  for (const spec of schema) {
+  for (const spec of byName.values()) {
     if (spec.required && !effective.has(spec.name)) {
       errors.push(
         new ParseError(
