@@ -1,0 +1,54 @@
+{
+  "metadata.root": {
+    "package": "acme::orders",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "customerId"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkCustomer",
+                "@enforce": true,
+                "@fields": "customerId",
+                "@references": "Customer"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "metadata.root": {
+    "package": "acme::commerce",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.decimal": {
+                "name": "price",
+                "@precision": 10,
+                "@scale": 2
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
