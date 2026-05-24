@@ -577,7 +577,9 @@ public static class Parser
         TypeRegistry registry)
     {
         if (value is not string s) return value;
-        AttrSchema? spec = registry.AttrsOf(type, subType).FirstOrDefault(a => a.Name == attrName);
+        // Check per-type attrs first; fall back to common attrs (e.g. doc attrs).
+        AttrSchema? spec = registry.AttrsOf(type, subType).FirstOrDefault(a => a.Name == attrName)
+            ?? registry.GetCommonAttrs().FirstOrDefault(a => a.Name == attrName);
         if (spec is null || spec.ValueType != ATTR_SUBTYPE_STRINGARRAY) return value;
         return new List<string> { s }.AsReadOnly();
     }
