@@ -222,15 +222,26 @@ the metadata layer. The empty-`@values` fixture, surfaced during review, replace
 - C#: real `enum` + `HasConversion<string>()`, DDL `CHECK` emission.
 - Conformance: the fixtures above run across every implemented port.
 
-## Deferred (named so they are not silently dropped)
+## Completed follow-ups (post-initial-merge, 2026-05-23)
 
-- Integer-backed enums (per-member symbol→value).
+- **C# scalar-array codegen** — DONE. `isArray` scalar/enum fields now emit `List<T>` /
+  `List<EnumType>` properties, a `jsonb` column, and EF Core 8 `.PrimitiveCollection(...)`
+  mapping (enum arrays add `.ElementType().HasConversion<string>()` so members persist as
+  strings, consistent with scalar enums). The array-of-enum `CHECK` is suppressed (`!isArray`).
+- **Java structured error codes + post-load validation phase** — DONE. Java gained an
+  `ErrorCode` enum (mirrors `ERROR-CODES.json`), a nullable `code` on `MetaDataException`,
+  and a `ValidationPhase` run post-load by `MetaDataLoader`; enum `@values` validation moved
+  out of the parser hook into it (own-only, eager-throw, structured code).
+
+## Remaining follow-ups
+
+- Integer-backed enums (per-member symbol→value) — no current consumer.
 - Non-identifier-safe member strings (kebab-case, leading digit, etc.) needing a
-  symbol↔stored-value mapping.
-- Display labels (presentation/view layer).
-- Native Postgres `CREATE TYPE ... AS ENUM` (opt-in `@dbEnum`-style flag).
-- **C# scalar-array codegen** (incl. array-of-enum): the C# EF Core tier has no scalar-array
-  emission yet, so an `isArray` enum is currently emitted as a scalar. When scalar-array
-  codegen lands, suppress the column-level `CHECK` for array-of-enum (TS already guards
-  `!isArray`). Tracked here so it isn't lost. The `enum-array` fixture exercises only the
-  loader/serializer round-trip today (which all ports handle).
+  symbol↔stored-value mapping — no current consumer.
+- Display labels (presentation/view layer) — no current consumer.
+- Native Postgres `CREATE TYPE ... AS ENUM` (opt-in `@dbEnum`-style flag) — portable
+  `varchar`+`CHECK` covers current needs.
+- **EF Core compile-check harness** (CI): generated `AppDbContext` code is never compiled
+  against EF Core today (only entity POCOs are Roslyn-checked), which let a non-compiling
+  `.ToJson()` mapping slip through review. A test project referencing EF Core 8 (+ Npgsql)
+  that compiles the emitted DbContext would catch this class of bug.
