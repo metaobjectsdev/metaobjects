@@ -26,10 +26,10 @@ import com.metaobjects.util.ErrorMessageConstants;
  * <p>In this phase only enum {@code @values} content validation is wired here. Other
  * validation passes will be migrated incrementally.</p>
  *
- * <p>Ordering: this phase runs <em>after</em> {@code extends:} super resolution, so
- * {@link MetaData#getSuperData()} is already set. The own-only validation contract
- * (validate the node's own attributes, not inherited ones) means we do not need
- * effective/resolved attribute access.</p>
+ * <p>Ordering: {@code extends:} super resolution happens eagerly at parse time, so by
+ * the time this phase runs {@link MetaData#getSuperData()} is already set. The own-only
+ * validation contract (validate the node's own attributes, not inherited ones) means we
+ * do not need effective/resolved attribute access.</p>
  *
  * @since 6.1.0
  */
@@ -70,9 +70,9 @@ public final class ValidationPhase {
     // A concrete field.enum with no own @values AND no super reference is flagged as
     // missing a required attribute → ERR_MISSING_REQUIRED_ATTR.
     //
-    // This pass is safe to run before super resolution because it relies only on
-    // getSuperData() for the required-check exemption, and getSuperData() is set by
-    // the parser when a valid "extends" is found (before the validation phase runs).
+    // This pass relies only on getSuperData() for the required-check exemption, and
+    // getSuperData() is set eagerly by the parser when a valid "extends" is found
+    // (at parse time, before this validation phase runs).
     // =========================================================================
 
     /**
@@ -116,9 +116,8 @@ public final class ValidationPhase {
 
         // --- Own @values content check ---
         if (node.hasMetaAttr(EnumField.ATTR_VALUES, false)) {
-            @SuppressWarnings("unchecked")
-            MetaAttribute<?> valuesAttr = (MetaAttribute<?>) node.getMetaAttr(EnumField.ATTR_VALUES, false);
-            if (valuesAttr == null || !EnumField.validateEnumValues(valuesAttr.getValue())) {
+            MetaAttribute<?> valuesAttr = node.getMetaAttr(EnumField.ATTR_VALUES, false);
+            if (!EnumField.validateEnumValues(valuesAttr.getValue())) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_BAD_ATTR_VALUE
                         + ": field.enum '" + node.getName()

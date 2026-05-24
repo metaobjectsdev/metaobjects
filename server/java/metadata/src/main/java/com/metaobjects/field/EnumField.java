@@ -7,12 +7,8 @@
 package com.metaobjects.field;
 
 import com.metaobjects.DataTypes;
-import com.metaobjects.MetaData;
-import com.metaobjects.MetaDataException;
-import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
-import com.metaobjects.util.ErrorMessageConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,9 +28,9 @@ import java.util.regex.Pattern;
  * member must match {@code ^[A-Za-z_][A-Za-z0-9_]*$}.  These constraints mirror the
  * cross-language validation contract shared with TS and C# (conformance error code
  * {@code ERR_BAD_ATTR_VALUE}).  The static {@link #validateEnumValues(Object)} method
- * enforces this contract; call it after loading to validate the content.  A
- * load-time-enforcement hook is deferred (see the comment in
- * {@link #registerTypes(MetaDataRegistry)}).</p>
+ * is the lower-level content helper; the loader's
+ * {@link com.metaobjects.loader.ValidationPhase} invokes it in a post-load pass to
+ * enforce this contract.</p>
  *
  * @version 6.0
  */
@@ -81,10 +77,11 @@ public class EnumField extends PrimitiveField<String> {
      * {@code attr.stringarray} type was removed; the pattern mirrors {@code identity.primary
      * @fields}).  Per-element content validation (non-empty, identifier-safe members,
      * no duplicates — equivalent to cross-language {@code ERR_BAD_ATTR_VALUE}) is
-     * available via the static {@link #validateEnumValues(Object)} method.  Wiring it
-     * as a load-time constraint is deferred because the constraint enforcer fires at
-     * node-creation time (before {@code @values} is parsed), so enforcement would
-     * require a dedicated post-parse validation pass.</p>
+     * available via the static {@link #validateEnumValues(Object)} method.  It is not
+     * wired as a node-creation constraint because the constraint enforcer fires before
+     * {@code @values} is parsed; instead the loader's
+     * {@link com.metaobjects.loader.ValidationPhase} runs it as a dedicated post-load
+     * validation pass.</p>
      *
      * @param registry The MetaDataRegistry to register with
      */
@@ -111,78 +108,6 @@ public class EnumField extends PrimitiveField<String> {
         } catch (Exception e) {
             log.error("Failed to register EnumField type with unified registry", e);
         }
-    }
-
-    // -----------------------------------------------------------------------
-    // Post-parse validation hook — called by CanonicalJsonParser after the
-    // full field.enum node (attributes + children) has been built.
-    // -----------------------------------------------------------------------
-
-    /**
-     * Post-parse validation for a freshly-built {@code field.enum} node.
-     *
-     * <p>Enforces the cross-language {@code @values} contract at load time:</p>
-     * <ol>
-     *   <li>Missing {@code @values} → throws with {@code ERR_MISSING_REQUIRED_ATTR}</li>
-     *   <li>Empty / non-identifier member / duplicate → throws with {@code ERR_BAD_ATTR_VALUE}</li>
-     * </ol>
-     *
-     * <p>Called from {@code CanonicalJsonParser.processNode()} after the node's
-     * attributes and children have been processed, so {@code @values} is already
-     * set on the node.  Mirrors the TS and C# loader validation that fires at the
-     * equivalent point in those pipelines.</p>
-     *
-     * @param enumNode the {@code field.enum} node to validate; ignored if not
-     *                 type=field / subtype=enum
-     * @param filename the source filename — included in error messages
-     * @throws MetaDataException with code {@code ERR_MISSING_REQUIRED_ATTR} if
-     *         {@code @values} is absent, or {@code ERR_BAD_ATTR_VALUE} if the
-     *         members fail the identifier / uniqueness contract
-     */
-    public static void validateNodeAfterParse(MetaData enumNode, String filename) {
-        if (enumNode == null) return;
-        if (!TYPE_FIELD.equals(enumNode.getType()) || !SUBTYPE_ENUM.equals(enumNode.getSubType())) return;
-
-        // --- Content check (own @values only) ---
-        // Validate OWN @values regardless of whether the node is abstract or concrete.
-        // A node that merely inherits @values from a super has nothing to content-validate here.
-        // This matches the TS (attr-schema-validate.ts) and C# (ValidationPasses.ValidateEnumValues)
-        // own-only contracts.
-        if (enumNode.hasMetaAttr(ATTR_VALUES, false)) {
-            MetaAttribute<?> valuesAttr;
-            try {
-                @SuppressWarnings("unchecked")
-                MetaAttribute<?> attr = (MetaAttribute<?>) enumNode.getMetaAttr(ATTR_VALUES, false);
-                valuesAttr = attr;
-            } catch (Exception e) {
-                // hasMetaAttr(false) returned true above, so this should not occur in practice.
-                throw new MetaDataException(
-                    ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR + ": field.enum '" + enumNode.getName()
-                        + "' could not read own @values attribute in file [" + filename + "]", e);
-            }
-            if (!validateEnumValues(valuesAttr.getValue())) {
-                throw new MetaDataException(
-                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": field.enum '" + enumNode.getName()
-                        + "' @values must be a non-empty list of identifier-safe, unique members"
-                        + " (e.g. [\"DRAFT\",\"PUBLISHED\"]) in file [" + filename + "]");
-            }
-            // Own @values present and valid — no need for the required check below.
-            return;
-        }
-
-        // --- Required check ---
-        // The node has no own @values. It is valid ONLY if it has a super reference
-        // (inheriting @values from the super, which is validated on its own node).
-        // getSuperData() is non-null iff an "extends" was given AND the super was found
-        // (if extends was given but not found, BaseMetaDataParser already threw).
-        // This check is therefore load-order-independent — no dependency on getSuperData()
-        // resolution state beyond the guarantee that createOrOverlayMetaData provides.
-        if (enumNode.getSuperData() == null) {
-            throw new MetaDataException(
-                ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR + ": field.enum '" + enumNode.getName()
-                    + "' is missing required @values attribute in file [" + filename + "]");
-        }
-        // Has a super — inherits @values from the super, which is validated on its own node. OK.
     }
 
     // -----------------------------------------------------------------------
