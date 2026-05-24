@@ -9,13 +9,13 @@ using MetaObjects.Shared;
 namespace MetaObjects.Core.Field;
 
 /// <summary>
-/// Field concern constants — the 15 field subtypes (plus the universal base),
+/// Field concern constants — the 16 field subtypes (plus the universal base),
 /// the field-level attr keys, AUTO_SET semantics, and currency attrs.
 /// </summary>
 public static class FieldConstants
 {
     // -----------------------------------------------------------------------
-    // Field subtypes (15)
+    // Field subtypes (16)
     // -----------------------------------------------------------------------
 
     public const string FIELD_SUBTYPE_STRING    = "string";

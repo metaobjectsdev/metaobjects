@@ -3,7 +3,7 @@
 import { SUBTYPE_BASE } from "../../shared/base-types.js";
 
 // ---------------------------------------------------------------------------
-// Field subtypes (15)
+// Field subtypes (16)
 // ---------------------------------------------------------------------------
 
 export const FIELD_SUBTYPE_STRING = "string";
