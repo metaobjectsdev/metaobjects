@@ -4,7 +4,7 @@ import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { TypeId, TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION,
          FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_INT,
          FIELD_SUBTYPE_TIMESTAMP, IDENTITY_SUBTYPE_PRIMARY, IDENTITY_SUBTYPE_SECONDARY,
-         OBJECT_SUBTYPE_ENTITY, TYPE_FIELD, TYPE_IDENTITY } from "@metaobjectsdev/metadata";
+         OBJECT_SUBTYPE_ENTITY, TYPE_FIELD, TYPE_IDENTITY, FIELD_SUBTYPE_ENUM } from "@metaobjectsdev/metadata";
 import { meta, metaRoot, metaObject, metaField } from "../_meta-build.js";
 import { renderDrizzleSchema } from "../../src/templates/drizzle-schema.js";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
@@ -342,5 +342,49 @@ describe("renderDrizzleSchema — secondary identity", () => {
     // The FK column itself is still declared, but no .references() chain.
     expect(out).toContain('integer("author_id")');
     expect(out).not.toContain(".references(");
+  });
+});
+
+describe("renderDrizzleSchema — field.enum CHECK constraints", () => {
+  function makeOrderWithEnum(dialect: "sqlite" | "postgres") {
+    const order = metaObject(OBJECT_SUBTYPE_ENTITY, "Order");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    order.addChild(id);
+    const status = metaField(FIELD_SUBTYPE_ENUM, "status");
+    status.setAttr("values", ["DRAFT", "PUBLISHED", "ARCHIVED"]);
+    order.addChild(status);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    order.addChild(primary);
+    const root = makeRoot([order]);
+    const ctx = makeRenderContext({
+      dialect,
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+    return { root, ctx };
+  }
+
+  test("SQLite: enum field emits check() callback with sql`...`", () => {
+    const { root, ctx } = makeOrderWithEnum("sqlite");
+    const out = renderDrizzleSchema(root.findObject("Order")!, ctx).toString();
+    // Check constraint should be emitted as a table-level callback entry.
+    expect(out).toContain("check(");
+    expect(out).toContain("status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED')");
+    expect(out).toContain("sql`status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED')`");
+    // The check function should be imported from drizzle-orm/sqlite-core.
+    expect(out).toContain("drizzle-orm/sqlite-core");
+  });
+
+  test("Postgres: enum field emits check() callback with sql`...`", () => {
+    const { root, ctx } = makeOrderWithEnum("postgres");
+    const out = renderDrizzleSchema(root.findObject("Order")!, ctx).toString();
+    expect(out).toContain("check(");
+    expect(out).toContain("status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED')");
+    expect(out).toContain("drizzle-orm/pg-core");
   });
 });

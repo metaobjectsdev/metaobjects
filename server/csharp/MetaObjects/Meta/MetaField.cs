@@ -101,6 +101,26 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     public bool Unique => OwnAttr(FIELD_ATTR_UNIQUE) is true;
 
     /// <summary>
+    /// Own member symbols of an enum-subtype field (the <c>@values</c> attr),
+    /// or <see langword="null"/> when not set on this node (e.g. a concrete field
+    /// that inherits via <c>extends:</c>).
+    /// </summary>
+    public IReadOnlyList<string>? EnumValues => OwnAttr(FIELD_ATTR_VALUES) switch
+    {
+        IReadOnlyList<string> ss => ss,
+        IReadOnlyList<object?> os => os.OfType<string>().ToList(),
+        _ => null,
+    };
+
+    /// <summary>
+    /// Effective enum member symbols: own <c>@values</c> first, then the
+    /// inherited (super) values. Returns <see langword="null"/> when neither
+    /// this field nor any super carries <c>@values</c>.
+    /// </summary>
+    public IReadOnlyList<string>? EffectiveEnumValues =>
+        EnumValues ?? (ResolveSuper()?.EnumValues);
+
+    /// <summary>
     /// True if the field is required (NOT NULL).
     /// Checks both <c>@required: true</c> attr and <c>validator.required</c> children.
     /// Mirrors TS <c>MetaField.isRequired</c> getter.

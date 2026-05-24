@@ -94,6 +94,7 @@ public static class CoreTypes
         [FIELD_SUBTYPE_BYTE]      = DataType.Int,
         [FIELD_SUBTYPE_LONG]      = DataType.Long,
         [FIELD_SUBTYPE_CURRENCY]  = DataType.Long,
+        [FIELD_SUBTYPE_ENUM]      = DataType.String,
         [FIELD_SUBTYPE_DOUBLE]    = DataType.Double,
         [FIELD_SUBTYPE_FLOAT]     = DataType.Double,
         [FIELD_SUBTYPE_DECIMAL]   = DataType.Double,
@@ -219,7 +220,7 @@ public static class CoreTypes
                     ObjectSchema.ObjectAttrs.ToList()));
         }
 
-        // field — 16 subtypes (base + 15)
+        // field — 17 subtypes (base + 16)
         List<ChildRule> fieldRules =
         [
             Wildcard(TYPE_VALIDATOR),
@@ -229,10 +230,12 @@ public static class CoreTypes
         ];
         foreach (string subType in FIELD_SUBTYPES)
         {
-            List<AttrSchema> fieldAttrs =
-                subType == FIELD_SUBTYPE_CURRENCY
-                    ? [.. FieldSchema.CommonFieldAttrs, FieldSchema.CurrencyFieldAttr]
-                    : FieldSchema.CommonFieldAttrs.ToList();
+            List<AttrSchema> fieldAttrs = subType switch
+            {
+                FIELD_SUBTYPE_CURRENCY => [.. FieldSchema.CommonFieldAttrs, FieldSchema.CurrencyFieldAttr],
+                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr],
+                _                      => FieldSchema.CommonFieldAttrs.ToList(),
+            };
 
             registry.Register(
                 Def(

@@ -7,6 +7,7 @@ import {
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_DECIMAL,
+  FIELD_SUBTYPE_ENUM,
 } from "@metaobjectsdev/metadata";
 import { meta, metaField } from "./_meta-build.js";
 import { mapColumnType, type ColumnSpec } from "../src/column-mapper.js";
@@ -95,6 +96,39 @@ describe("mapColumnType — Postgres", () => {
     f.setIsArray(true);
     const spec = mapColumnType(f, "postgres");
     expect(spec.modifiers).toContain(".array()");
+  });
+});
+
+describe("mapColumnType — field.enum", () => {
+  test("SQLite: enum → text column with CHECK constraint", () => {
+    const f = metaField(FIELD_SUBTYPE_ENUM, "status");
+    f.setAttr("values", ["DRAFT", "PUBLISHED"]);
+    const spec = mapColumnType(f, "sqlite");
+    expect(spec.fnName).toBe("text");
+    expect(spec.checkConstraint).toBe("status IN ('DRAFT', 'PUBLISHED')");
+  });
+
+  test("Postgres: enum → text column with CHECK constraint", () => {
+    const f = metaField(FIELD_SUBTYPE_ENUM, "status");
+    f.setAttr("values", ["DRAFT", "PUBLISHED"]);
+    const spec = mapColumnType(f, "postgres");
+    expect(spec.fnName).toBe("text");
+    expect(spec.checkConstraint).toBe("status IN ('DRAFT', 'PUBLISHED')");
+  });
+
+  test("single quotes in enum values are escaped in CHECK constraint", () => {
+    const f = metaField(FIELD_SUBTYPE_ENUM, "status");
+    f.setAttr("values", ["O'BRIEN", "NORMAL"]);
+    const spec = mapColumnType(f, "postgres");
+    expect(spec.checkConstraint).toBe("status IN ('O''BRIEN', 'NORMAL')");
+  });
+
+  test("enum column name from snake_case field name", () => {
+    const f = metaField(FIELD_SUBTYPE_ENUM, "orderStatus");
+    f.setAttr("values", ["DRAFT", "PUBLISHED"]);
+    const spec = mapColumnType(f, "sqlite");
+    expect(spec.dbName).toBe("order_status");
+    expect(spec.checkConstraint).toBe("order_status IN ('DRAFT', 'PUBLISHED')");
   });
 });
 

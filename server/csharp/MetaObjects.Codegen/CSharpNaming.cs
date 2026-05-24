@@ -23,6 +23,9 @@ public static class CSharpNaming
             [FIELD_SUBTYPE_BYTE]      = "byte",
             [FIELD_SUBTYPE_LONG]      = "long",
             [FIELD_SUBTYPE_CURRENCY]  = "long",   // integer minor units (wire contract)
+            // FIELD_SUBTYPE_ENUM is intentionally absent: enum fields get a nested C# enum
+            // type, not a primitive scalar. ScalarFor(enum) returns null to trigger the
+            // dedicated enum-field branch in the generators.
             [FIELD_SUBTYPE_DOUBLE]    = "double",
             [FIELD_SUBTYPE_FLOAT]     = "float",
             [FIELD_SUBTYPE_DECIMAL]   = "decimal",
@@ -95,5 +98,20 @@ public static class CSharpNaming
         if (field.OwnAttr(FIELD_ATTR_REQUIRED) is true) return true;
         var pk = entity.PrimaryIdentity();
         return pk is not null && pk.Fields.Contains(field.Name);
+    }
+
+    /// <summary>
+    /// The C# enum type name for an enum-subtype field:
+    /// <list type="bullet">
+    ///   <item>When the field <c>extends:</c> an abstract super, use the PascalCased super name
+    ///   (one enum type shared by all fields that extend it).</item>
+    ///   <item>Otherwise use <c>&lt;EntityPascal&gt;&lt;FieldPascal&gt;</c>.</item>
+    /// </list>
+    /// </summary>
+    public static string EnumTypeName(MetaObject entity, MetaField field)
+    {
+        if (field.ResolveSuper() is { } super)
+            return Pascal(super.Name);
+        return Pascal(entity.Name) + Pascal(field.Name);
     }
 }

@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { TypeId, TYPE_IDENTITY, TYPE_VALIDATOR,
-         FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
+         FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_ENUM,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
          VALIDATOR_SUBTYPE_REGEX } from "@metaobjectsdev/metadata";
 import { meta, metaObject, metaField } from "../_meta-build.js";
@@ -31,6 +31,23 @@ describe("renderZodValidators", () => {
     expect(out).toContain("z.string().min(1).max(200).optional()"); // title in update: optional
     // PK with autoIncrement should NOT appear in InsertSchema or UpdateSchema
     expect(out).not.toContain("id:");
+  });
+
+  test("field.enum emits z.enum([...]) with quoted member strings", () => {
+    const order = metaObject(OBJECT_SUBTYPE_ENTITY, "Order");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    order.addChild(id);
+    const status = metaField(FIELD_SUBTYPE_ENUM, "status");
+    status.setAttr("values", ["DRAFT", "PUBLISHED"]);
+    order.addChild(status);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    order.addChild(primary);
+
+    const out = renderZodValidators(order).toString();
+    expect(out).toContain('z.enum(["DRAFT", "PUBLISHED"])');
+    expect(out).not.toContain("z.string()"); // no fallback string type for enum field
   });
 
   test("validator.regex emits .regex(new RegExp(pattern)) — Zod expects a RegExp object, not a string", () => {

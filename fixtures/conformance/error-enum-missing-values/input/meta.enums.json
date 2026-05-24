@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "status" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

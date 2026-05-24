@@ -36,6 +36,13 @@ export function toCamelCase(s: string): string {
 }
 
 /**
+ * Capitalize the first character of a string (camelCase → PascalCase).
+ */
+export function toPascalCase(s: string): string {
+  return s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s;
+}
+
+/**
  * Simple English pluralization. Documented imperfection per design §13 #1:
  * irregular plurals (Person → Persons, not People) are not handled.
  * Users override via source[dbTable]@name in metadata.

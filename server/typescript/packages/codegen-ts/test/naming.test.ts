@@ -2,6 +2,7 @@ import { describe, test, expect } from "bun:test";
 import {
   toSnakeCase,
   toCamelCase,
+  toPascalCase,
   pluralize,
   tableNameFromEntity,
   columnNameFromField,
@@ -29,6 +30,18 @@ describe("toCamelCase", () => {
   });
   test("preserves camelCase", () => {
     expect(toCamelCase("firstName")).toBe("firstName");
+  });
+});
+
+describe("toPascalCase", () => {
+  test("returns empty string unchanged", () => {
+    expect(toPascalCase("")).toBe("");
+  });
+  test("capitalizes a single character", () => {
+    expect(toPascalCase("x")).toBe("X");
+  });
+  test("capitalizes the first character of a word", () => {
+    expect(toPascalCase("status")).toBe("Status");
   });
 });
 

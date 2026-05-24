@@ -111,4 +111,11 @@ public static class FieldSchema
         Required: false,
         Default: FieldConstants.FIELD_ATTR_CURRENCY_DEFAULT,
         Description: "ISO 4217 currency code for a currency-subtype field. Storage is integer minor units; defaults to 'USD' when omitted.");
+
+    /// <summary>The @values attr — only on field.enum. Required string array.</summary>
+    public static readonly AttrSchema EnumValuesAttr = new AttrSchema(
+        Name: FieldConstants.FIELD_ATTR_VALUES,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRINGARRAY,
+        Required: true,
+        Description: "Member symbols of an enum-subtype field; declaration order significant.");
 }

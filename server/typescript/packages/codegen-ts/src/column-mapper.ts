@@ -16,6 +16,7 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
+  FIELD_SUBTYPE_ENUM,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   FIELD_ATTR_MAX_LENGTH,
@@ -26,6 +27,7 @@ import {
   VALIDATOR_ATTR_MAX,
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
+import { enumValues } from "./enum-meta.js";
 import type { Dialect, ColumnNamingStrategy } from "./metaobjects-config.js";
 
 export type { Dialect };
@@ -89,6 +91,8 @@ export interface ColumnSpec {
   importModule: string;
   /** Optional leading line-comment for the generated column (e.g., type-fallback notice). */
   leadingComment?: string;
+  /** Optional CHECK constraint expression for the column (e.g., `status IN ('A', 'B')`). */
+  checkConstraint?: string;
 }
 
 /** Resolve max length from validator.length child or @maxLength attr.
@@ -157,6 +161,7 @@ export function mapColumnType(
         case FIELD_SUBTYPE_TIME:
         case FIELD_SUBTYPE_TIMESTAMP:
         case FIELD_SUBTYPE_STRING:
+        case FIELD_SUBTYPE_ENUM:
         case FIELD_SUBTYPE_CLASS:
         case FIELD_SUBTYPE_OBJECT:
         default:
@@ -206,6 +211,7 @@ export function mapColumnType(
         }
         break;
       }
+      case FIELD_SUBTYPE_ENUM:
       case FIELD_SUBTYPE_CLASS:
       case FIELD_SUBTYPE_OBJECT:
       default:
@@ -262,5 +268,20 @@ export function mapColumnType(
   if (fnOptions !== undefined) result.fnOptions = fnOptions;
   if (defaultExpr !== undefined) result.defaultExpr = defaultExpr;
   if (leadingComment !== undefined) result.leadingComment = leadingComment;
+
+  // Enum fields: emit a CHECK constraint listing the valid member values.
+  if (subType === FIELD_SUBTYPE_ENUM && !isArray) {
+    const values = enumValues(field);
+    if (values !== undefined && values.length > 0) {
+      // Single-quote escaping is belt-and-suspenders: the loader's
+      // ENUM_MEMBER_PATTERN already rejects quote-bearing members (members are
+      // validated to be identifier-safe), so this never fires in practice.
+      const list = values
+        .map((v) => `'${v.replace(/'/g, "''")}'`)
+        .join(", ");
+      result.checkConstraint = `${dbName} IN (${list})`;
+    }
+  }
+
   return result;
 }

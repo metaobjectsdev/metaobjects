@@ -465,6 +465,19 @@ public abstract class BaseMetaDataParser {
 
         String expandedName = MetaDataUtil.expandPackageForMetaDataRef(basePackage, superName);
 
+        // When superName is a simple unqualified name (no package separator) and we have a
+        // base package context, prepend the package.  This handles the common case of a field
+        // inside an object extending a root-level abstract field in the same package — e.g.
+        // "extends": "Status" resolving to "acme::Status".  The expandPackageForMetaDataRef
+        // utility only transforms relative (:: or ..::) paths; a bare simple name is left as-is,
+        // which breaks cross-type extends where the element's own packageName is "" (fields
+        // inside objects carry no package) but the super lives at the package root.
+        if (!basePackage.isEmpty()
+                && superName.indexOf(MetaDataLoader.PKG_SEPARATOR) < 0
+                && !expandedName.contains(MetaDataLoader.PKG_SEPARATOR)) {
+            expandedName = basePackage + MetaDataLoader.PKG_SEPARATOR + superName;
+        }
+
         return expandedName;
     }
 
@@ -675,13 +688,16 @@ public abstract class BaseMetaDataParser {
 
             if (actualAttr != null) {
                 parentMetaData.addChild(actualAttr);
-                actualAttr.setValueAsString(stringValue);
 
-                // If this was originally a JSON array, set native isArray property
+                // Set isArray BEFORE setValueAsString so that StringAttribute (and
+                // any other array-aware attribute) parses comma-delimited tokens into
+                // a List<String> rather than storing the raw comma-delimited string.
                 if (isJsonArray && actualAttr instanceof MetaAttribute) {
                     ((MetaAttribute<?>) actualAttr).setArray(true);
                     log.debug("Set native isArray=true on MetaAttribute: {}", attrName);
                 }
+
+                actualAttr.setValueAsString(stringValue);
 
                 log.debug("Created attribute [{}] with expected subtype [{}] and value [{}] on [{}:{}:{}] in file [{}]",
                     attrName, expectedAttributeSubType, stringValue, parentType, parentSubType,

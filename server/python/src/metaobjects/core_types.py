@@ -12,6 +12,7 @@ from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPES,
 )
 from .meta.core.field import field_constants as fc
+from .meta.core.field.field_constants import FIELD_ATTR_VALUES, FIELD_SUBTYPE_ENUM
 from .meta.core.field.meta_field import MetaField
 from .meta.core.identity.identity_constants import (
     GENERATION_VALUES,
@@ -117,16 +118,36 @@ _register_subtypes(
 )
 
 # field.* (one factory, data_type by subtype)
+# Note: FIELD_SUBTYPE_ENUM is excluded from FIELD_SUBTYPES; it is registered
+# separately below with its required @values AttrSchema (sharing these child rules).
+_FIELD_CHILD_RULES = [
+    ChildRule(TYPE_ATTR, "*"),
+    ChildRule(TYPE_ORIGIN, "*"),
+    ChildRule(TYPE_VIEW, "*"),
+]
 _register_subtypes(
     core_provider,
     TYPE_FIELD,
     fc.FIELD_SUBTYPES,
     factory=MetaField,
-    child_rules=[
-        ChildRule(TYPE_ATTR, "*"),
-        ChildRule(TYPE_ORIGIN, "*"),
-        ChildRule(TYPE_VIEW, "*"),
-    ],
+    child_rules=_FIELD_CHILD_RULES,
+)
+
+# field.enum — dedicated registration with required @values attr
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_FIELD,
+        sub_type=FIELD_SUBTYPE_ENUM,
+        factory=MetaField,
+        attrs=[
+            AttrSchema(
+                name=FIELD_ATTR_VALUES,
+                value_type=ATTR_SUBTYPE_STRINGARRAY,
+                required=True,
+            )
+        ],
+        child_rules=_FIELD_CHILD_RULES,
+    )
 )
 
 # attr.* (factory resolved per subtype via the attr-class map at parse time)

@@ -8,7 +8,7 @@ from .errors import ErrorCode, MetaError
 from .meta.meta_data import MetaData
 from .meta.meta_root import MetaRoot
 from .registry import TypeRegistry
-from .shared.base_types import SUBTYPE_ROOT, TYPE_ATTR, TYPE_METADATA
+from .shared.base_types import SUBTYPE_ROOT, TYPE_ATTR, TYPE_FIELD, TYPE_METADATA, TYPE_OBJECT
 from .shared.separators import ATTR_PREFIX, FUSED_KEY_SEP
 from .shared.structural import (
     KEY_ABSTRACT,
@@ -51,7 +51,17 @@ def _build(
     registry: TypeRegistry,
     source: str,
     result: ParseResult,
+    ctx_pkg: str = "",
+    parent_type: str = "",
 ) -> MetaData | None:
+    """Build a node from a fused-key wrapper and its body dict.
+
+    *ctx_pkg* is the effective package inherited from the nearest ancestor that
+    declared one.  *parent_type* is the type of the immediate parent node (used
+    for the field-package-inheritance rule: fields NOT inside objects inherit the
+    context package, mirroring the TS/Java loader behaviour for abstract fields
+    declared at the root level).
+    """
     type_, _, sub_type = wrapper.partition(FUSED_KEY_SEP)
     if not sub_type:
         result.errors.append(MetaError(f"node '{wrapper}' omits subType", ErrorCode.ERR_MISSING_SUBTYPE, source))
@@ -70,7 +80,16 @@ def _build(
     assert isinstance(node, MetaData)
 
     pkg = body_dict.get(KEY_PACKAGE)
-    node.package = str(pkg) if pkg else None  # explicit only; inferred package is omitted (Phase 2 computes effective)
+    if pkg:
+        node.package = str(pkg)
+    elif type_ == TYPE_FIELD and parent_type != TYPE_OBJECT and ctx_pkg:
+        # Fields NOT inside objects inherit the context package.
+        # This covers abstract fields declared at root level (e.g. abstract field.enum).
+        # Mirrors TS parser-core.ts and Java BaseMetaDataParser.shouldInheritPackageFromParent.
+        node.package = ctx_pkg
+    else:
+        node.package = None
+
     if body_dict.get(KEY_EXTENDS):
         node.super_ref = str(body_dict[KEY_EXTENDS])
     node.is_abstract = bool(body_dict.get(KEY_ABSTRACT, False))
@@ -83,12 +102,15 @@ def _build(
             schema = registry.attr_schema(type_, sub_type, attr_name)
             node.set_attr(attr_name, value, sub_type=schema.value_type if schema else None)
 
+    # The context package for children: use this node's own package if set, else inherit.
+    child_ctx_pkg = node.package or ctx_pkg
+
     for cw, cbody in _iter_children(body_dict):
         child_type, _, child_sub = cw.partition(FUSED_KEY_SEP)
         if child_type == TYPE_ATTR:
             _parse_attr_child(node, child_sub, cbody, registry, source, result)
         else:
-            child = _build(cw, cbody, registry, source, result)
+            child = _build(cw, cbody, registry, source, result, ctx_pkg=child_ctx_pkg, parent_type=type_)
             if child is not None:
                 node.add_child(child)
 

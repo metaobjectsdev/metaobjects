@@ -8,6 +8,7 @@
 // Each method takes a fully-merged MetaData root (or registry) and returns
 // errors / warnings. No loader state is read or written — pure functions.
 
+using System.Text.RegularExpressions;
 using MetaObjects.Meta;
 
 namespace MetaObjects.Loader;
@@ -658,6 +659,79 @@ public static class ValidationPasses
             double or float => "number",
             _ => value.GetType().Name,
         };
+    }
+
+    // =========================================================================
+    // Pass 10: ValidateEnumValues
+    //   Enforces the three cross-language @values rules on every field.enum node:
+    //     1. @values must be non-empty.
+    //     2. Every member must match ENUM_MEMBER_PATTERN (identifier-safe).
+    //     3. No duplicate members.
+    //   Error: ERR_BAD_ATTR_VALUE for all three.
+    //
+    //   Note: Pass 6 (ValidateAttrSchema) already enforces that @values is
+    //   present (Required: true → ERR_MISSING_REQUIRED_ATTR) and that it is a
+    //   stringarray. This pass runs after that and handles the content rules.
+    // =========================================================================
+
+    private static readonly Regex EnumMemberRegex =
+        new Regex(ENUM_MEMBER_PATTERN, RegexOptions.Compiled);
+
+    public static IReadOnlyList<MetaError> ValidateEnumValues(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        WalkEnumValues(root, errors);
+        return errors.AsReadOnly();
+    }
+
+    private static void WalkEnumValues(MetaData node, List<MetaError> errors)
+    {
+        if (node is MetaField { SubType: FIELD_SUBTYPE_ENUM } field)
+        {
+            // Own @values only — content rules apply per-field, not via extends: inheritance.
+            var members = field.EnumValues;
+
+            if (members is not null)
+            {
+                // Rule 1: non-empty.
+                if (members.Count == 0)
+                {
+                    errors.Add(new MetaError(
+                        $"field.enum '{field.Name}' @values must not be empty",
+                        ErrorCode.ERR_BAD_ATTR_VALUE));
+                }
+                else
+                {
+                    // Rule 2: each member must match the identifier pattern.
+                    foreach (var member in members)
+                    {
+                        if (!EnumMemberRegex.IsMatch(member))
+                        {
+                            errors.Add(new MetaError(
+                                $"field.enum '{field.Name}' @values member \"{member}\" is not a valid identifier " +
+                                $"(must match {ENUM_MEMBER_PATTERN})",
+                                ErrorCode.ERR_BAD_ATTR_VALUE));
+                        }
+                    }
+
+                    // Rule 3: no duplicates.
+                    var seen = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var member in members)
+                    {
+                        if (!seen.Add(member))
+                        {
+                            errors.Add(new MetaError(
+                                $"field.enum '{field.Name}' @values contains duplicate member \"{member}\"",
+                                ErrorCode.ERR_BAD_ATTR_VALUE));
+                            break; // one duplicate error per field is enough
+                        }
+                    }
+                }
+            }
+        }
+
+        foreach (var child in node.OwnChildren())
+            WalkEnumValues(child, errors);
     }
 
     // =========================================================================

@@ -3,7 +3,7 @@
 import { SUBTYPE_BASE } from "../../shared/base-types.js";
 
 // ---------------------------------------------------------------------------
-// Field subtypes (15)
+// Field subtypes (16)
 // ---------------------------------------------------------------------------
 
 export const FIELD_SUBTYPE_STRING = "string";
@@ -21,6 +21,7 @@ export const FIELD_SUBTYPE_TIMESTAMP = "timestamp";
 export const FIELD_SUBTYPE_OBJECT = "object";
 export const FIELD_SUBTYPE_CLASS = "class";
 export const FIELD_SUBTYPE_CURRENCY = "currency";
+export const FIELD_SUBTYPE_ENUM = "enum";
 
 export const FIELD_SUBTYPES = [
   SUBTYPE_BASE,
@@ -39,6 +40,7 @@ export const FIELD_SUBTYPES = [
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_CURRENCY,
+  FIELD_SUBTYPE_ENUM,
 ] as const;
 export type FieldSubType = (typeof FIELD_SUBTYPES)[number];
 
@@ -101,3 +103,17 @@ export type AutoSetValue = (typeof AUTO_SET_VALUES)[number];
 export const FIELD_ATTR_CURRENCY = "currency";
 /** Default ISO 4217 currency code when @currency is omitted on a currency field. */
 export const FIELD_ATTR_CURRENCY_DEFAULT = "USD";
+
+// ---------------------------------------------------------------------------
+// Enum attrs (on enum-subtype fields)
+// ---------------------------------------------------------------------------
+
+/** Member symbols of an enum-subtype field. Required, string array. */
+export const FIELD_ATTR_VALUES = "values";
+
+/**
+ * Pattern every enum member must satisfy: a legal identifier in all target
+ * languages (TS union member, Java/C#/Python enum member). Ensures symbol ==
+ * stored string with no name↔value divergence.
+ */
+export const ENUM_MEMBER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;

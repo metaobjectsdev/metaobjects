@@ -34,7 +34,7 @@ import { MetaRelationship } from "./core/relationship/meta-relationship.js";
 import { MetaLayout } from "./presentation/layout/meta-layout.js";
 import { MetaSource } from "./persistence/source/meta-source.js";
 import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin, MetaCollectionOrigin } from "./persistence/origin/meta-origin.js";
-import { commonFieldAttrs, currencyFieldAttr } from "./core/field/field-schema.js";
+import { commonFieldAttrs, currencyFieldAttr, enumFieldAttr } from "./core/field/field-schema.js";
 import { objectAttrs } from "./core/object/object-schema.js";
 import { relationshipAttrs } from "./core/relationship/relationship-schema.js";
 import { identityFieldsAttr, IDENTITY_ATTRS_MAP } from "./core/identity/identity-schema.js";
@@ -62,7 +62,7 @@ import {
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
 import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY } from "./core/object/object-constants.js";
-import { FIELD_SUBTYPES, FIELD_SUBTYPE_CURRENCY } from "./core/field/field-constants.js";
+import { FIELD_SUBTYPES, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_ENUM } from "./core/field/field-constants.js";
 import { ATTR_SUBTYPES } from "./core/attr/attr-constants.js";
 import {
   VALIDATOR_SUBTYPES,
@@ -195,12 +195,14 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     wildcard(TYPE_ORIGIN),
   ];
   for (const subType of FIELD_SUBTYPES) {
-    // field.currency additionally carries @currency; all other field subtypes
-    // share the common codegen/filter attrs only.
+    // field.currency additionally carries @currency; field.enum additionally
+    // carries @values; all other field subtypes share the common attrs only.
     const fieldAttrs =
       subType === FIELD_SUBTYPE_CURRENCY
         ? [...commonFieldAttrs, { ...currencyFieldAttr }]
-        : [...commonFieldAttrs];
+        : subType === FIELD_SUBTYPE_ENUM
+          ? [...commonFieldAttrs, { ...enumFieldAttr }]
+          : [...commonFieldAttrs];
     registry.register(
       def(TYPE_FIELD, subType, `Field of type ${subType}`, fieldRules, MetaField, fieldAttrs,
         new MetaField(new TypeId(TYPE_FIELD, subType), "").dataType),

@@ -28,13 +28,13 @@ public class CoreTypesTests
     }
 
     [Fact]
-    public void Core_provider_registers_exactly_69_types()
+    public void Core_provider_registers_exactly_70_types()
     {
         // Guard: if a subtype array gains an entry without a matching
         // FieldDataType / AttrDataType mapping, RegisterCoreTypeDefs throws and
         // this test catches the mismatch before it reaches downstream callers.
-        // 69 = 64 + template.{base,prompt,output} + origin.collection + identity.reference (FR-003/004).
+        // 70 = 64 + template.{base,prompt,output} + origin.collection + identity.reference (FR-003/004) + field.enum.
         var reg = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
-        Assert.Equal(69, reg.AllTypes().Count);
+        Assert.Equal(70, reg.AllTypes().Count);
     }
 }

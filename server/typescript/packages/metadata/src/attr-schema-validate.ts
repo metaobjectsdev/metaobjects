@@ -30,6 +30,12 @@
 import type { MetaData } from "./shared/meta-data.js";
 import { ParseError } from "./errors.js";
 import type { AttrSchema, TypeRegistry } from "./registry.js";
+import { TYPE_FIELD } from "./shared/base-types.js";
+import {
+  FIELD_SUBTYPE_ENUM,
+  FIELD_ATTR_VALUES,
+  ENUM_MEMBER_PATTERN,
+} from "./core/field/field-constants.js";
 
 export interface AttrSchemaValidationResult {
   errors: ParseError[];
@@ -128,6 +134,52 @@ function validateNode(
             { code: "ERR_BAD_ATTR_VALUE" },
           ),
         );
+      }
+    }
+  }
+
+  // --- Check 4: field.enum @values content rules ---
+  //
+  // Only for field.enum nodes that carry an own @values attr (concrete or
+  // abstract). Concrete fields that extend an abstract enum inherit @values
+  // from the super; the super was already validated when it was declared, so
+  // only own @values need checking here (mirrors the own-attrs-only policy of
+  // Checks 2+3 above — inherited attrs were validated on the declaring node).
+  if (node.type === TYPE_FIELD && node.subType === FIELD_SUBTYPE_ENUM) {
+    const rawValues = node.ownAttrs().get(FIELD_ATTR_VALUES);
+    if (Array.isArray(rawValues)) {
+      if (rawValues.length === 0) {
+        errors.push(
+          new ParseError(
+            `${nodeLabel(node)} must declare at least one value in '@${FIELD_ATTR_VALUES}'.`,
+            { code: "ERR_BAD_ATTR_VALUE" },
+          ),
+        );
+      } else {
+        // rawValues is the only array variant of AttrValue, so each member is a
+        // string (StringArrayAttr.coerce stringifies every element on load).
+        const seen = new Set<string>();
+        for (const member of rawValues) {
+          if (!ENUM_MEMBER_PATTERN.test(member)) {
+            errors.push(
+              new ParseError(
+                `${nodeLabel(node)} attribute '@${FIELD_ATTR_VALUES}' member '${member}' ` +
+                  `is not a valid identifier (must match ${ENUM_MEMBER_PATTERN.source}). ` +
+                  `Non-identifier-safe member strings require a symbol↔value mapping (deferred).`,
+                { code: "ERR_BAD_ATTR_VALUE" },
+              ),
+            );
+          } else if (seen.has(member)) {
+            errors.push(
+              new ParseError(
+                `${nodeLabel(node)} attribute '@${FIELD_ATTR_VALUES}' has duplicate member '${member}'.`,
+                { code: "ERR_BAD_ATTR_VALUE" },
+              ),
+            );
+          } else {
+            seen.add(member);
+          }
+        }
       }
     }
   }

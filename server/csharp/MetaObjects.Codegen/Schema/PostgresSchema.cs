@@ -49,6 +49,7 @@ public static class PostgresSchema
         FIELD_SUBTYPE_FLOAT     => "real",
         FIELD_SUBTYPE_DECIMAL   => field.Precision is long p
             ? $"numeric({p}, {field.Scale ?? 0})" : "numeric",
+        FIELD_SUBTYPE_ENUM      => "text",        // string-backed; CHECK constraint added in CreateTable
         FIELD_SUBTYPE_BOOLEAN   => "boolean",
         FIELD_SUBTYPE_DATE      => "date",
         FIELD_SUBTYPE_TIME      => "time",
@@ -70,7 +71,7 @@ public static class PostgresSchema
         var lines = new List<string>();
         foreach (var f in entity.Fields())
         {
-            if (CSharpNaming.ScalarFor(f.SubType) is not null)
+            if (CSharpNaming.ScalarFor(f.SubType) is not null || f.SubType == FIELD_SUBTYPE_ENUM)
             {
                 var notNull = CSharpNaming.IsRequired(entity, f) ? " NOT NULL" : string.Empty;
                 lines.Add($"  {CSharpNaming.Column(f)} {PgType(f)}{notNull}");
@@ -90,6 +91,15 @@ public static class PostgresSchema
         foreach (var fk in entity.ReferenceIdentities().Where(r => r.Enforce))
         {
             if (ForeignKeyClause(entity, fk, root) is { } clause) lines.Add(clause);
+        }
+
+        // CHECK constraints for enum-typed fields (one per field with @values).
+        foreach (var f in entity.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM &&
+                                                     f.EffectiveEnumValues is { Count: > 0 }))
+        {
+            var col = CSharpNaming.Column(f);
+            var list = string.Join(", ", f.EffectiveEnumValues!.Select(v => $"'{v.Replace("'", "''")}'"));
+            lines.Add($"  CHECK ({col} IN ({list}))");
         }
 
         var sb = new StringBuilder();
