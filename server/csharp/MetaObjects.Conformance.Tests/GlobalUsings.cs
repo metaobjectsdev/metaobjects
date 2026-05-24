@@ -4,6 +4,7 @@
 global using static MetaObjects.Shared.BaseTypes;
 global using static MetaObjects.Shared.Structural;
 global using static MetaObjects.Core.Attr.AttrConstants;
+global using static MetaObjects.Core.Documentation.DocumentationConstants;
 global using static MetaObjects.Core.Query.QueryConstants;
 global using static MetaObjects.Core.Field.FieldConstants;
 global using static MetaObjects.Core.Object.ObjectConstants;

@@ -1,0 +1,44 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "User",
+          "@description": "A registered account holder.",
+          "@title": "User",
+          "@aliases": ["Account", "Member"],
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "email",
+                "@description": "User's primary email address.",
+                "@title": "Email",
+                "@deprecated": "Use contactEmail instead.",
+                "@replacedBy": "User.contactEmail",
+                "@seeAlso": ["https://acme.com/docs/email"],
+                "@aliases": ["emailAddress", "userEmail"]
+              }
+            },
+            {
+              "field.string": {
+                "name": "contactEmail",
+                "@description": "Replacement contact email."
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

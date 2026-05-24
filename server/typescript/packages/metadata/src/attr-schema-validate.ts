@@ -51,7 +51,11 @@ export function validateAttrSchema(
   registry: TypeRegistry,
 ): AttrSchemaValidationResult {
   const errors: ParseError[] = [];
-  walk(root, registry, errors);
+  // Tracks (type.subType) pairs for which ERR_PROVIDER_ATTR_CONFLICT has already
+  // been emitted. The conflict is a registry-state condition, not a per-node
+  // condition — emit it once per (type, subType), not once per node instance.
+  const reportedConflicts = new Set<string>();
+  walk(root, registry, errors, reportedConflicts);
   return { errors, warnings: [] };
 }
 
@@ -59,10 +63,11 @@ function walk(
   node: MetaData,
   registry: TypeRegistry,
   errors: ParseError[],
+  reportedConflicts: Set<string>,
 ): void {
-  validateNode(node, registry, errors);
+  validateNode(node, registry, errors, reportedConflicts);
   for (const child of node.ownChildren()) {
-    walk(child, registry, errors);
+    walk(child, registry, errors, reportedConflicts);
   }
 }
 
@@ -76,13 +81,36 @@ function validateNode(
   node: MetaData,
   registry: TypeRegistry,
   errors: ParseError[],
+  reportedConflicts: Set<string>,
 ): void {
-  const schema = registry.attrsOf(node.type, node.subType);
-  if (schema.length === 0) return;
-
-  // Index the schema by attr name for the declared-attr checks below.
+  // Build the effective schema in a single pass: per-type attrs win on name
+  // collision; common attrs fill in for unclaimed names. Surface common-vs-per-type
+  // collisions in the same pass — a name in both lists means a provider tried to
+  // overload a declared attr. The conflict is registry-state (not per-node), so
+  // emit ONE error per (type, subType), tracked via `reportedConflicts`.
+  // Even when a conflict exists, the per-type attr still wins (the common attr
+  // for that name is suppressed) so type-checking proceeds normally for everything else.
   const byName = new Map<string, AttrSchema>();
-  for (const spec of schema) byName.set(spec.name, spec);
+  for (const spec of registry.attrsOf(node.type, node.subType)) byName.set(spec.name, spec);
+
+  const typeKey = `${node.type}.${node.subType}`;
+  for (const ca of registry.getCommonAttrs()) {
+    if (byName.has(ca.name)) {
+      if (!reportedConflicts.has(typeKey)) {
+        errors.push(
+          new ParseError(
+            `Common attr '${ca.name}' conflicts with per-type attr on ${typeKey}`,
+            { code: "ERR_PROVIDER_ATTR_CONFLICT" },
+          ),
+        );
+        reportedConflicts.add(typeKey);
+      }
+      continue; // per-type wins
+    }
+    byName.set(ca.name, ca);
+  }
+
+  if (byName.size === 0) return;
 
   // --- Check 1: required attrs present ---
   //
@@ -93,7 +121,7 @@ function validateNode(
   // were already validated on the node that declared them, so re-checking would
   // double-report. This mirrors the effective-vs-own split in subtype-rules.ts.
   const effective = node.attrs();
-  for (const spec of schema) {
+  for (const spec of byName.values()) {
     if (spec.required && !effective.has(spec.name)) {
       errors.push(
         new ParseError(

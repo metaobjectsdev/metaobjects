@@ -32,6 +32,13 @@ export interface TableDescriptor {
   indexes: IndexDescriptor[];
   foreignKeys: FkDescriptor[];
   primaryKey: string[];              // column names; [] if none
+  /**
+   * Human-readable description threaded from entity `@description`.
+   * Postgres: emitted as `COMMENT ON TABLE … IS '…';` after CREATE TABLE.
+   * SQLite: silently ignored (no native COMMENT support).
+   * Introspect side: not read back in v1 (no change-description variant yet).
+   */
+  description?: string;
 }
 
 export interface ColumnDescriptor {
@@ -40,6 +47,13 @@ export interface ColumnDescriptor {
   nullable: boolean;
   default?: ColumnDefault;
   identity?: "increment" | "uuid";
+  /**
+   * Human-readable description threaded from field `@description`.
+   * Postgres: emitted as `COMMENT ON COLUMN … IS '…';` after CREATE TABLE or ADD COLUMN.
+   * SQLite: silently ignored (no native COMMENT support).
+   * Introspect side: not read back in v1 (no change-description variant yet).
+   */
+  description?: string;
 }
 
 export interface ColumnDefault {

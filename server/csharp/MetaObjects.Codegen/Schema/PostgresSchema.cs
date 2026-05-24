@@ -26,6 +26,7 @@
 // in the csharp-migration-pipeline-status memory.
 
 using System.Text;
+using MetaObjects.Core.Documentation;
 using MetaObjects.Meta;
 using static MetaObjects.Core.Field.FieldConstants;
 using static MetaObjects.Shared.BaseTypes;
@@ -105,7 +106,7 @@ public static class PostgresSchema
                                                      f.EffectiveEnumValues is { Count: > 0 }))
         {
             var col = CSharpNaming.Column(f);
-            var list = string.Join(", ", f.EffectiveEnumValues!.Select(v => $"'{v.Replace("'", "''")}'"));
+            var list = string.Join(", ", f.EffectiveEnumValues!.Select(v => $"'{PgSql.Escape(v)}'"));
             lines.Add($"  CHECK ({col} IN ({list}))");
         }
 
@@ -120,6 +121,22 @@ public static class PostgresSchema
             var cols = sec.Fields.Select(name => ResolveColumn(entity, name));
             sb.AppendLine($"CREATE UNIQUE INDEX {table}_{sec.Name}_uniq ON {table} ({string.Join(", ", cols)});");
         }
+
+        // COMMENT ON TABLE / COLUMN from @description (entity- and field-level).
+        // @notes is intentionally never read — D5 contract.
+        if (entity.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) is string entityDesc && entityDesc.Length > 0)
+        {
+            sb.AppendLine($"COMMENT ON TABLE {table} IS '{PgSql.Escape(entityDesc)}';");
+        }
+        foreach (var f in entity.Fields())
+        {
+            if (f.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) is string fieldDesc && fieldDesc.Length > 0)
+            {
+                var col = CSharpNaming.Column(f);
+                sb.AppendLine($"COMMENT ON COLUMN {table}.\"{col}\" IS '{PgSql.Escape(fieldDesc)}';");
+            }
+        }
+
         return sb.ToString();
     }
 

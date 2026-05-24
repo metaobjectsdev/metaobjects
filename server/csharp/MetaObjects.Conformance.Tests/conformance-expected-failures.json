@@ -1,6 +1,7 @@
 {
   "language": "csharp",
   "fixtures": [
+    "doc-common-attrs-on-all-types",
     "error-field-object-storage-flattened-array",
     "error-field-object-storage-no-object-ref",
     "error-origin-bad-aggregate-fn",
@@ -14,7 +15,6 @@
     "field-object-storage-jsonb-single",
     "origin-aggregate-count",
     "origin-aggregate-sum",
-    "origin-collection-simple",
     "origin-multi-level-via",
     "origin-passthrough-simple",
     "source-db-table-default-schema-omitted",

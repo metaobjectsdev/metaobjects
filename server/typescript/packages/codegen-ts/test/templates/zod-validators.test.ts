@@ -2,7 +2,8 @@ import { describe, test, expect } from "bun:test";
 import { TypeId, TYPE_IDENTITY, TYPE_VALIDATOR,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_ENUM,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
-         VALIDATOR_SUBTYPE_REGEX } from "@metaobjectsdev/metadata";
+         VALIDATOR_SUBTYPE_REGEX,
+         MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
 import { meta, metaObject, metaField } from "../_meta-build.js";
 import { renderZodValidators } from "../../src/templates/zod-validators.js";
 
@@ -62,5 +63,63 @@ describe("renderZodValidators", () => {
     const out = renderZodValidators(post).toString();
     expect(out).toContain('.regex(new RegExp("^[a-z0-9-]+$"))');
     expect(out).not.toMatch(/\.regex\("[^"]*"\)/); // no bare-string regex argument
+  });
+
+  test("emits JSDoc above InsertSchema + UpdateSchema from entity @description", async () => {
+    const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+      "metadata.root": {
+        "package": "acme",
+        "children": [
+          {
+            "object.entity": {
+              "name": "User",
+              "@description": "A registered account holder.",
+              "children": [
+                { "field.long": { "name": "id" } },
+                { "field.string": { "name": "email" } },
+                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+              ]
+            }
+          }
+        ]
+      }
+    }))]);
+    expect(result.errors).toEqual([]);
+    const user = result.root.objects()[0]!;
+
+    const out = renderZodValidators(user).toString();
+    // The one-liner JSDoc form for a single-line description.
+    const jsdoc = "/** A registered account holder. */";
+    expect(out).toContain(jsdoc);
+    expect(out).toContain("export const UserInsertSchema");
+    expect(out).toContain("export const UserUpdateSchema");
+    // Both schemas get the JSDoc — assert two occurrences.
+    const occurrences = out.split(jsdoc).length - 1;
+    expect(occurrences).toBe(2);
+  });
+
+  test("renderZodValidators does NOT emit `notes` content (D5)", async () => {
+    const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+      "metadata.root": {
+        "package": "acme",
+        "children": [
+          {
+            "object.entity": {
+              "name": "User",
+              "@description": "Public.",
+              "@notes": "INTERNAL_SECRET",
+              "children": [
+                { "field.long": { "name": "id" } },
+                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+              ]
+            }
+          }
+        ]
+      }
+    }))]);
+    expect(result.errors).toEqual([]);
+    const user = result.root.objects()[0]!;
+
+    expect(renderZodValidators(user).toString()).not.toContain("INTERNAL_SECRET");
   });
 });

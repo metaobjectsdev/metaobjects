@@ -1,0 +1,26 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "@description": "An order placed by a User.\n\nLifecycle: DRAFT → PUBLISHED → ARCHIVED.\nMultiple lines preserved via canonical serialization.",
+          "@notes": "Internal rationale:\n- We chose status as an enum because external integrations require canonical states.\n- Don't surface this in API docs.",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

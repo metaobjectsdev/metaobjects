@@ -13,6 +13,7 @@
 // memory) — ideally by routing full-CREATE through this pipeline too.
 
 using System.Text;
+using MetaObjects.Codegen.Schema;
 using static MetaObjects.Persistence.Source.SourceConstants;
 
 namespace MetaObjects.Codegen.Migrate;
@@ -129,7 +130,7 @@ public static class PostgresEmit
     };
 
     private static string RenderDefault(ColumnDefault d) =>
-        d.Kind == DefaultKind.Expr ? d.Value : $"'{d.Value.Replace("'", "''")}'";
+        d.Kind == DefaultKind.Expr ? d.Value : $"'{PgSql.Escape(d.Value)}'";
 
     private static string RenderCreateIndex(string table, string? schema, IndexDescriptor ix)
     {

@@ -7,6 +7,7 @@
 // Navigate / Invoke (capability script) are added in Slice 7.
 
 using MetaObjects;
+using MetaObjects.Core.Documentation;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 
@@ -35,7 +36,8 @@ public static class ConformanceAdapter
     private static readonly IReadOnlyDictionary<string, IMetaDataTypeProvider> Providers =
         new Dictionary<string, IMetaDataTypeProvider>(StringComparer.Ordinal)
         {
-            ["metaobjects-core-types"] = CoreTypes.CoreTypesProvider,
+            ["metaobjects-core-types"]    = CoreTypes.CoreTypesProvider,
+            ["metaobjects-documentation"] = DocumentationTypes.DocTypesProvider,
         };
 
     /// <summary>

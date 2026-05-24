@@ -6,6 +6,7 @@
 // .PrimitiveCollection() for scalar/enum array fields (EF Core 8 API).
 
 using System.Text;
+using MetaObjects.Codegen.Docs;
 using MetaObjects.Meta;
 using static MetaObjects.Core.Field.FieldConstants;
 
@@ -77,6 +78,7 @@ public sealed class DbContextGenerator : IGenerator
         foreach (var o in objects)
         {
             var name = CSharpNaming.Pascal(o.Name);
+            XmlDocBuilder.AppendTo(sb, o, indent: "    ");
             sb.AppendLine($"    public DbSet<{name}> {CSharpNaming.Pluralize(name)} {{ get; set; }} = default!;");
         }
 

@@ -13,6 +13,7 @@
 // here — that is a separate projection-materialization concern.
 
 using System.Text;
+using MetaObjects.Codegen.Docs;
 using MetaObjects.Meta;
 using static MetaObjects.Core.Field.FieldConstants;
 
@@ -65,6 +66,10 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
 
+        // XML doc + [Obsolete] FIRST — XML doc-extraction tools (docfx,
+        // Sandcastle, IDE hover-doc) require the doc comment to immediately
+        // precede the declaration, before any attributes.
+        XmlDocBuilder.AppendTo(sb, entity);
         // Composite primary key -> class-level [PrimaryKey(...)] (EF Core 7+).
         if (pkFields.Count > 1)
         {
@@ -84,13 +89,14 @@ public sealed class EntityGenerator : IGenerator
         var members = new List<string>();
         foreach (var field in entity.Fields())
         {
+            string? member = null;
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
             {
-                members.Add(ScalarProperty(entity, field, pkFields, withAttributes: true));
+                member = ScalarProperty(entity, field, pkFields, withAttributes: true);
             }
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
             {
-                members.Add(EnumProperty(entity, field));
+                member = EnumProperty(entity, field);
             }
             else if (field.SubType == FIELD_SUBTYPE_OBJECT)
             {
@@ -101,8 +107,10 @@ public sealed class EntityGenerator : IGenerator
                     ctx.Warn($"{Name}: skipping object-typed field \"{entity.Name}.{field.Name}\" on projection (collection materialization not emitted here).");
                     continue;
                 }
-                if (ObjectNavProperty(entity, field, ctx) is { } nav) members.Add(nav);
+                member = ObjectNavProperty(entity, field, ctx);
             }
+            if (member is null) continue;
+            members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }
 
         if (enumDecls.Count > 0)
@@ -131,6 +139,7 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
+        XmlDocBuilder.AppendTo(sb, vo);
         sb.AppendLine($"public class {className}");
         sb.AppendLine("{");
 
@@ -139,12 +148,15 @@ public sealed class EntityGenerator : IGenerator
         var members = new List<string>();
         foreach (var field in vo.Fields())
         {
+            string? member = null;
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
-                members.Add(ScalarProperty(vo, field, [], withAttributes: false));
+                member = ScalarProperty(vo, field, [], withAttributes: false);
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
-                members.Add(EnumProperty(vo, field));
+                member = EnumProperty(vo, field);
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx) is { } nav)
-                members.Add(nav);
+                member = nav;
+            if (member is null) continue;
+            members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }
 
         if (enumDeclsVo.Count > 0)

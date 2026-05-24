@@ -648,7 +648,11 @@ function materializeAttr(
   rawVal: unknown,
   registry: TypeRegistry,
 ): MetaAttr {
-  const attrSpec = registry.attrsOf(owner.type, owner.subType).find((s) => s.name === attrName);
+  // Resolve attr spec: per-type attrs take precedence over common attrs.
+  // Common attrs are consulted as a fallback so they get the correct MetaAttr
+  // subclass (and thus the right coerce/validateValue) at parse time.
+  const perTypeSpec = registry.attrsOf(owner.type, owner.subType).find((s) => s.name === attrName);
+  const attrSpec = perTypeSpec ?? registry.getCommonAttrs().find((s) => s.name === attrName);
   let subType: string;
   if (attrSpec !== undefined && attrSpec.valueType !== undefined) {
     subType = attrSpec.valueType;

@@ -38,7 +38,11 @@ function renderUp(c: Change): string {
     case "create-table":           return renderCreateTable(c.table);
     case "drop-table":             return `DROP TABLE ${quoteQualified(c.table, c.schema)};`;
     case "rename-table":           return `ALTER TABLE ${quoteQualified(c.from, c.schema)} RENAME TO ${quote(c.to)};`;
-    case "add-column":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD COLUMN ${renderColumn(c.column)};`;
+    case "add-column": {
+      const base = `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD COLUMN ${renderColumn(c.column)};`;
+      if (!c.column.description) return base;
+      return `${base}\n${columnCommentSql(c.table, c.schema, c.column.name, c.column.description)}`;
+    }
     case "drop-column":            return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP COLUMN ${quote(c.column)};`;
     case "rename-column":          return `ALTER TABLE ${quoteQualified(c.table, c.schema)} RENAME COLUMN ${quote(c.from)} TO ${quote(c.to)};`;
     case "change-column-type":     return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} TYPE ${pgType(c.to)};`;
@@ -95,7 +99,35 @@ function renderCreateTable(t: TableDescriptor): string {
   if (t.primaryKey.length > 0) {
     colDefs.push(`  CONSTRAINT ${quote(t.name + "_pkey")} PRIMARY KEY (${t.primaryKey.map(quote).join(", ")})`);
   }
-  return `CREATE TABLE ${quoteQualified(t.name, t.schema)} (\n${colDefs.join(",\n")}\n);`;
+  const create = `CREATE TABLE ${quoteQualified(t.name, t.schema)} (\n${colDefs.join(",\n")}\n);`;
+  const comments = renderTableComments(t);
+  return comments.length === 0 ? create : `${create}\n${comments.join("\n")}`;
+}
+
+function renderTableComments(t: TableDescriptor): string[] {
+  const out: string[] = [];
+  if (t.description) {
+    out.push(`COMMENT ON TABLE ${quoteQualified(t.name, t.schema)} IS '${pgEscape(t.description)}';`);
+  }
+  for (const col of t.columns) {
+    if (col.description) {
+      out.push(columnCommentSql(t.name, t.schema, col.name, col.description));
+    }
+  }
+  return out;
+}
+
+function columnCommentSql(
+  table: string,
+  schema: string | undefined,
+  column: string,
+  description: string,
+): string {
+  return `COMMENT ON COLUMN ${quoteQualified(table, schema)}.${quote(column)} IS '${pgEscape(description)}';`;
+}
+
+function pgEscape(s: string): string {
+  return s.replace(/'/g, "''");
 }
 
 function renderColumn(c: ColumnDescriptor): string {
@@ -132,7 +164,7 @@ function pgType(t: SqlType): string {
 function renderDefault(d: ColumnDefault): string {
   if (d.kind === "expr") return d.value;
   // Literal: quote string-form values.
-  return `'${d.value.replace(/'/g, "''")}'`;
+  return `'${pgEscape(d.value)}'`;
 }
 
 function renderCreateIndex(table: string, schema: string | undefined, ix: IndexDescriptor): string {

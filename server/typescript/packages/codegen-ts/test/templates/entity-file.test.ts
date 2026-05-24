@@ -147,6 +147,119 @@ describe("renderEntityFile", () => {
     expect(out).toContain('export type OrderPriority = "LOW" | "HIGH";');
   });
 
+  test("emits JSDoc above entity type from description / deprecated / seeAlso", async () => {
+    const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+      "metadata.root": {
+        "package": "acme",
+        "children": [
+          {
+            "object.entity": {
+              "name": "Order",
+              "@description": "An order placed by a User.",
+              "@deprecated": "Use OrderV2.",
+              "@replacedBy": "OrderV2",
+              "@seeAlso": ["https://acme.com/docs/order"],
+              "children": [
+                { "field.long": { "name": "id" } },
+                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+              ]
+            }
+          }
+        ]
+      }
+    }))]);
+    expect(result.errors).toEqual([]);
+    const root = result.root;
+    const order = root.objects()[0]!;
+
+    const ctx = makeRenderContext({
+      dialect: "sqlite",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+
+    const out = renderEntityFile(order, ctx);
+    expect(out).toContain("/**");
+    expect(out).toContain("An order placed by a User.");
+    expect(out).toContain("@deprecated Use OrderV2. Replaced by OrderV2.");
+    expect(out).toContain("@see https://acme.com/docs/order");
+  });
+
+  test("emits JSDoc above a field column line from field @description", async () => {
+    const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+      "metadata.root": {
+        "package": "acme",
+        "children": [
+          {
+            "object.entity": {
+              "name": "User",
+              "children": [
+                { "field.long": { "name": "id" } },
+                { "field.string": { "name": "email", "@description": "Primary email address." } },
+                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+              ]
+            }
+          }
+        ]
+      }
+    }))]);
+    expect(result.errors).toEqual([]);
+    const root = result.root;
+    const user = root.objects()[0]!;
+
+    const ctx = makeRenderContext({
+      dialect: "sqlite",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+
+    const out = renderEntityFile(user, ctx);
+    // Per-field JSDoc lands above the Drizzle column line for `email`.
+    expect(out).toMatch(/\/\*\* Primary email address\. \*\/\s*email:/);
+  });
+
+  test("does NOT emit `notes` content in JSDoc (D5)", async () => {
+    const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+      "metadata.root": {
+        "package": "acme",
+        "children": [
+          {
+            "object.entity": {
+              "name": "User",
+              "@description": "Public.",
+              "@notes": "INTERNAL_SECRET",
+              "children": [
+                { "field.long": { "name": "id" } },
+                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+              ]
+            }
+          }
+        ]
+      }
+    }))]);
+    expect(result.errors).toEqual([]);
+    const root = result.root;
+    const user = root.objects()[0]!;
+
+    const ctx = makeRenderContext({
+      dialect: "sqlite",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+
+    const out = renderEntityFile(user, ctx);
+    expect(out).not.toContain("INTERNAL_SECRET");
+  });
+
   test("emits @generated header + table + types + validators", () => {
     const root = metaRoot();
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");

@@ -24,6 +24,7 @@ import {
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STORAGE,
   STORAGE_FLATTENED,
+  DOC_ATTR_DESCRIPTION,
   resolveTableName, resolveColumnName, resolveTableSchema,
 } from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
@@ -168,13 +169,27 @@ function buildTable(
     }
   }
 
-  return {
+  const descriptor: TableDescriptor = {
     name: tableName,
     columns,
     indexes: buildSecondaryIndexes(entity, tableName),
     foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root),
     primaryKey,
   };
+  const entityDesc = readDescription(entity);
+  if (entityDesc !== undefined) descriptor.description = entityDesc;
+  return descriptor;
+}
+
+/**
+ * Read effective `@description` from a node. Returns the string if present and
+ * non-empty, undefined otherwise. Uses `.attr` (effective, not own) so a node
+ * that extends an abstract base picks up the base's `@description` — required
+ * for both entity- and field-level COMMENT ON parity with the entity-attr contract.
+ */
+function readDescription(node: { attr: (n: string) => unknown }): string | undefined {
+  const v = node.attr(DOC_ATTR_DESCRIPTION);
+  return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
 function buildSecondaryIndexes(entity: MetaObject, tableName: string): IndexDescriptor[] {
@@ -319,6 +334,9 @@ function buildColumn(
   if (isPk && (pkGeneration === "increment" || pkGeneration === "uuid")) {
     col.identity = pkGeneration;
   }
+
+  const fieldDesc = readDescription(field);
+  if (fieldDesc !== undefined) col.description = fieldDesc;
 
   return col;
 }

@@ -76,6 +76,9 @@ export class TypeRegistry {
   /** Per-type designated default subType (queried by the YAML desugar). */
   private readonly _defaultSubTypes = new Map<string, string>();
 
+  /** Attrs accepted on every metatype (declared by providers). */
+  private readonly _commonAttrs: AttrSchema[] = [];
+
   register(def: TypeDefinition): void {
     const key = def.typeId.toString();
     if (this._defs.has(key)) {
@@ -138,6 +141,34 @@ export class TypeRegistry {
    *  pair is unregistered or declares no attributes. */
   attrsOf(type: string, subType: string): AttrSchema[] {
     return [...(this.find(type, subType)?.attributes ?? [])];
+  }
+
+  /**
+   * Register attrs that are accepted on every metatype. Callers (providers) use
+   * this to declare cross-cutting attrs (e.g. doc attrs). Repeated registration
+   * of the same name is silently deduped (first registration wins); conflicts with
+   * per-type attrs are resolved at validation time (Task 1.3).
+   */
+  registerCommonAttrs(attrs: AttrSchema[]): void {
+    for (const attr of attrs) {
+      if (attr.valueType === SUBTYPE_BASE) {
+        throw new Error(
+          `TypeRegistry.registerCommonAttrs: attr "${attr.name}" declares valueType "${SUBTYPE_BASE}", ` +
+          `which is not valid for attrs. Use no valueType (omit the field) for a polymorphic/untyped attr.`,
+        );
+      }
+      if (this._commonAttrs.some((existing) => existing.name === attr.name)) {
+        continue; // dedupe same-name re-registration; conflict-with-per-type-attr is checked at validation time
+      }
+      this._commonAttrs.push(attr);
+    }
+  }
+
+  /** Returns the registered common attrs (attrs accepted on every metatype).
+   *  Returns a defensive copy so callers cannot mutate internal state, matching
+   *  the spread-copy pattern used by `attrsOf` and `allSubTypesOf`. */
+  getCommonAttrs(): readonly AttrSchema[] {
+    return [...this._commonAttrs];
   }
 
   /**
