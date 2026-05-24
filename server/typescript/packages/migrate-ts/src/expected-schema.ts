@@ -24,6 +24,7 @@ import {
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STORAGE,
   STORAGE_FLATTENED,
+  DOC_ATTR_DESCRIPTION,
   resolveTableName, resolveColumnName, resolveTableSchema,
 } from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
@@ -168,13 +169,18 @@ function buildTable(
     }
   }
 
-  return {
+  const entityDesc = entity.attr(DOC_ATTR_DESCRIPTION);
+  const descriptor: TableDescriptor = {
     name: tableName,
     columns,
     indexes: buildSecondaryIndexes(entity, tableName),
     foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root),
     primaryKey,
   };
+  if (typeof entityDesc === "string" && entityDesc.length > 0) {
+    descriptor.description = entityDesc;
+  }
+  return descriptor;
 }
 
 function buildSecondaryIndexes(entity: MetaObject, tableName: string): IndexDescriptor[] {
@@ -318,6 +324,13 @@ function buildColumn(
 
   if (isPk && (pkGeneration === "increment" || pkGeneration === "uuid")) {
     col.identity = pkGeneration;
+  }
+
+  // Use effective attr (.attr) so a field that extends an abstract base picks
+  // up the base's @description — parity with buildTable's entity.attr() call.
+  const fieldDesc = field.attr(DOC_ATTR_DESCRIPTION);
+  if (typeof fieldDesc === "string" && fieldDesc.length > 0) {
+    col.description = fieldDesc;
   }
 
   return col;

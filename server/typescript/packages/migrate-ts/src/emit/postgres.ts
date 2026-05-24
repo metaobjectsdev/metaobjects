@@ -38,7 +38,13 @@ function renderUp(c: Change): string {
     case "create-table":           return renderCreateTable(c.table);
     case "drop-table":             return `DROP TABLE ${quoteQualified(c.table, c.schema)};`;
     case "rename-table":           return `ALTER TABLE ${quoteQualified(c.from, c.schema)} RENAME TO ${quote(c.to)};`;
-    case "add-column":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD COLUMN ${renderColumn(c.column)};`;
+    case "add-column": {
+      const base = `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD COLUMN ${renderColumn(c.column)};`;
+      if (c.column.description) {
+        return `${base}\nCOMMENT ON COLUMN ${quoteQualified(c.table, c.schema)}.${quote(c.column.name)} IS '${pgEscape(c.column.description)}';`;
+      }
+      return base;
+    }
     case "drop-column":            return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP COLUMN ${quote(c.column)};`;
     case "rename-column":          return `ALTER TABLE ${quoteQualified(c.table, c.schema)} RENAME COLUMN ${quote(c.from)} TO ${quote(c.to)};`;
     case "change-column-type":     return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} TYPE ${pgType(c.to)};`;
@@ -95,7 +101,28 @@ function renderCreateTable(t: TableDescriptor): string {
   if (t.primaryKey.length > 0) {
     colDefs.push(`  CONSTRAINT ${quote(t.name + "_pkey")} PRIMARY KEY (${t.primaryKey.map(quote).join(", ")})`);
   }
-  return `CREATE TABLE ${quoteQualified(t.name, t.schema)} (\n${colDefs.join(",\n")}\n);`;
+  const create = `CREATE TABLE ${quoteQualified(t.name, t.schema)} (\n${colDefs.join(",\n")}\n);`;
+  const comments = renderTableComments(t);
+  return comments.length === 0 ? create : `${create}\n${comments.join("\n")}`;
+}
+
+function renderTableComments(t: TableDescriptor): string[] {
+  const out: string[] = [];
+  if (t.description) {
+    out.push(`COMMENT ON TABLE ${quoteQualified(t.name, t.schema)} IS '${pgEscape(t.description)}';`);
+  }
+  for (const col of t.columns) {
+    if (col.description) {
+      out.push(
+        `COMMENT ON COLUMN ${quoteQualified(t.name, t.schema)}.${quote(col.name)} IS '${pgEscape(col.description)}';`,
+      );
+    }
+  }
+  return out;
+}
+
+function pgEscape(s: string): string {
+  return s.replace(/'/g, "''");
 }
 
 function renderColumn(c: ColumnDescriptor): string {
