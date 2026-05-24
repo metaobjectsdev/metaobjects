@@ -56,7 +56,7 @@ The conformance test depends on **deterministic** serialization: the same metamo
 Every node is a one-key map of the form `{ "<type>.<subType>": <body> }`. The wrapper key
 fuses type and subType — there is **no separate `subType` body key** in the canonical form.
 Examples: `metadata.root`, `object.entity`, `field.long`, `identity.primary`,
-`source.dbView`, `origin.aggregate`.
+`source.rdb`, `origin.aggregate`.
 
 ### Key ordering within each node body
 

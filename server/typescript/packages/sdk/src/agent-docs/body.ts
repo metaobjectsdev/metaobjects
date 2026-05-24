@@ -313,7 +313,7 @@ When a list needs computed columns (counts, sums, joined fields), create a **pro
     "subType": "entity",
     "extends": "Program",
     "children": [
-      { "source": { "subType": "dbView", "@name": "v_program_summary" } },
+      { "source": { "subType": "rdb", "@kind": "view", "@table": "v_program_summary" } },
       { "field": { "name": "weekCount", "subType": "int", "children": [
         { "origin": { "subType": "aggregate",
             "@agg": "count", "@of": "Week.id", "@via": "Program.weeks" }}

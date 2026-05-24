@@ -108,7 +108,7 @@ describe("projection authoring in refreshed docs", () => {
       await init({ cwd: tmp, refreshDocs: true, quiet: true });
       const claudeMd = readFileSync(join(tmp, ".metaobjects", "CLAUDE.md"), "utf-8");
       expect(claudeMd).toContain("Projections");
-      expect(claudeMd).toContain("dbView");
+      expect(claudeMd).toContain('"@kind": "view"');
       expect(claudeMd).toContain("useProgramSummaries");
     } finally {
       rmSync(tmp, { recursive: true, force: true });

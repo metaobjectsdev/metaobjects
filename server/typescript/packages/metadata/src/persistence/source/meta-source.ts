@@ -22,10 +22,8 @@ export class MetaSource extends MetaData {
   }
 
   /**
-   * The effective kind for this source.
-   * For source.rdb: the value of @kind, defaulting to "table" when omitted.
-   * For v1 subtypes (dbTable/dbView): @kind is not registered, so ownAttr
-   * returns undefined → defaults to "table".
+   * The effective kind for this source: the value of `@kind`, defaulting to
+   * `"table"` when omitted (ADR-0007 Rule 3 — per-paradigm default).
    */
   get effectiveKind(): string {
     const v = this.ownAttr(SOURCE_ATTR_KIND);

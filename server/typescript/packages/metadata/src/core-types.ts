@@ -256,9 +256,10 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     );
   }
 
-  // source — declares where an object's data lives (dbTable, dbView, ...).
+  // source — declares where an object's data lives (rdb, ... per ADR-0007).
   // Only attr children; sources carry only configuration, never nested structure.
-  // DB-domain attrs (@name) are added by dbProvider via TypeRegistry.extend.
+  // Per-subtype attrs (@table/@kind/@role/@schema for rdb) are added by
+  // dbProvider via TypeRegistry.extend.
   for (const subType of SOURCE_SUBTYPES) {
     registry.register(
       def(TYPE_SOURCE, subType, `Source (${subType})`, [wildcard(TYPE_ATTR)], MetaSource, []),

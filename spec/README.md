@@ -15,7 +15,7 @@ The substrate is local-first: typed metadata lives in your repo at `metaobjects/
 
 ## The metamodel in one paragraph
 
-The metamodel is built from 11 base types: `metadata`, `object`, `field`, `attr`, `validator`, `view`, `layout`, `identity`, `relationship`, `source`, `origin`. Each type has subtype-specific child rules and attributes. Every node is encoded as a single-key map of the shape `{ "<type>.<subType>": <body> }` -- the wrapper key fuses type and subType (there is no separate `subType` body key). Reserved structural body keys are `name`, `package`, `extends`, `abstract`, `overlay`, `isArray`, and `children`; everything else inside a node body is an `@`-prefixed attribute (e.g. `@dbColumn`, `@currency`, `@fields`). Full vocabulary in [`metamodel.md`](metamodel.md).
+The metamodel is built from 11 base types: `metadata`, `object`, `field`, `attr`, `validator`, `view`, `layout`, `identity`, `relationship`, `source`, `origin`. Each type has subtype-specific child rules and attributes. Every node is encoded as a single-key map of the shape `{ "<type>.<subType>": <body> }` -- the wrapper key fuses type and subType (there is no separate `subType` body key). Reserved structural body keys are `name`, `package`, `extends`, `abstract`, `overlay`, `isArray`, and `children`; everything else inside a node body is an `@`-prefixed attribute (e.g. `@column`, `@currency`, `@fields`). Full vocabulary in [`metamodel.md`](metamodel.md).
 
 ## The wire format in one paragraph
 

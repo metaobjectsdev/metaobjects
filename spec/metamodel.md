@@ -26,7 +26,7 @@ wrapper key fuses type and subType; there is no separate `subType` body key. Exa
 - `field.string`, `field.long`, `field.currency`
 - `identity.primary`, `identity.secondary`
 - `relationship.association`
-- `source.dbTable`, `source.dbView`
+- `source.rdb`
 - `origin.passthrough`, `origin.aggregate`
 
 Inside each node body, the **reserved structural keys** are exactly:
@@ -39,7 +39,7 @@ Inside each node body, the **reserved structural keys** are exactly:
 - `isArray` — `true` (when the node is an array; structural, NOT an `@`-attr)
 - `children` — list of nodes (when non-empty)
 
-Everything else inside a body is an `@`-prefixed attribute (e.g. `@dbColumn`, `@currency`,
+Everything else inside a body is an `@`-prefixed attribute (e.g. `@column`, `@currency`,
 `@fields`). `@`-attrs appear in alphabetical order in the canonical form.
 
 See `typescript/packages/metadata/src/constants.ts` for the canonical vocabulary

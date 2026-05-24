@@ -40,7 +40,7 @@ Within a node body, keys appear in this exact order in the canonical form:
 5. `overlay` — when `true`
 6. `isArray` — when `true` (structural, NOT an `@`-attr)
 7. `@`-prefixed attributes — alphabetical order within this section
-   (e.g. `@currency`, `@dbColumn`, `@default`, `@fields`, `@locale`, `@objectRef`)
+   (e.g. `@column`, `@currency`, `@default`, `@fields`, `@locale`, `@objectRef`)
 8. `children` — when non-empty (declaration order, NOT alphabetized)
 
 The reserved structural keys are exactly those listed above. In **canonical JSON**, everything
