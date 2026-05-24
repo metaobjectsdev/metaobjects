@@ -74,7 +74,11 @@ public static class PostgresSchema
             if (CSharpNaming.ScalarFor(f.SubType) is not null || f.SubType == FIELD_SUBTYPE_ENUM)
             {
                 var notNull = CSharpNaming.IsRequired(entity, f) ? " NOT NULL" : string.Empty;
-                lines.Add($"  {CSharpNaming.Column(f)} {PgType(f)}{notNull}");
+                // isArray scalar/enum columns persist as jsonb (an array of values, not a
+                // single scalar). Consistent with object-array (.ToJson) and EF's
+                // primitive-collection jsonb mapping.
+                var pgType = f.IsArray ? "jsonb" : PgType(f);
+                lines.Add($"  {CSharpNaming.Column(f)} {pgType}{notNull}");
             }
             else if (f.SubType == FIELD_SUBTYPE_OBJECT)
             {
@@ -93,8 +97,11 @@ public static class PostgresSchema
             if (ForeignKeyClause(entity, fk, root) is { } clause) lines.Add(clause);
         }
 
-        // CHECK constraints for enum-typed fields (one per field with @values).
+        // CHECK constraints for scalar enum-typed fields (one per non-array field with @values).
+        // Array-of-enum columns are jsonb (they hold a JSON array, not a single scalar value),
+        // so a per-row IN(...) CHECK is incorrect and must be suppressed.
         foreach (var f in entity.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM &&
+                                                     !f.IsArray &&
                                                      f.EffectiveEnumValues is { Count: > 0 }))
         {
             var col = CSharpNaming.Column(f);

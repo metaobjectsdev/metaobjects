@@ -39,7 +39,24 @@ public sealed class DbContextGenerator : IGenerator
             {
                 var owner = CSharpNaming.Pascal(e.Name);
                 var prop = CSharpNaming.Pascal(f.Name);
-                modelLines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasConversion<string>();");
+                if (f.IsArray)
+                {
+                    // Array-of-enum: EF Core primitive collection stored as jsonb via .ToJson().
+                    // .HasConversion<string>() is for scalar enum → TEXT; it is wrong here
+                    // because the column is a jsonb array, not a single text value.
+                    modelLines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).ToJson();");
+                }
+                else
+                {
+                    modelLines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasConversion<string>();");
+                }
+            }
+            // Scalar/enum arrays (scalar subtypes): emit .ToJson() for EF primitive collections.
+            foreach (var f in e.Fields().Where(f => f.IsArray && CSharpNaming.ScalarFor(f.SubType) is not null))
+            {
+                var owner = CSharpNaming.Pascal(e.Name);
+                var prop = CSharpNaming.Pascal(f.Name);
+                modelLines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).ToJson();");
             }
         }
 
