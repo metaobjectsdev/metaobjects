@@ -111,9 +111,10 @@ public sealed class DbContextGenerator : IGenerator
             ctx.Warn($"{Name}: object-typed field \"{entity.Name}.{field.Name}\" has an unresolved @objectRef \"{field.ObjectRef}\" — no owned-type config emitted.");
             return null;
         }
+        var strategy = ctx.Config.ColumnNamingStrategy;
         var owner = CSharpNaming.Pascal(entity.Name);
         var nav = CSharpNaming.Pascal(field.Name);
-        var parentCol = CSharpNaming.Column(field);
+        var parentCol = CSharpNaming.Column(field, strategy);
 
         if (field.Storage != STORAGE_FLATTENED)
             return $"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson(\"{parentCol}\"));";
@@ -123,7 +124,7 @@ public sealed class DbContextGenerator : IGenerator
         sb.AppendLine("        {");
         foreach (var nf in vo.Fields().Where(n => CSharpNaming.ScalarFor(n.SubType) is not null))
         {
-            var nestedCol = $"{parentCol}_{CSharpNaming.Column(nf)}";
+            var nestedCol = $"{parentCol}_{CSharpNaming.Column(nf, strategy)}";
             sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)}).HasColumnName(\"{nestedCol}\");");
         }
         sb.Append("        });");

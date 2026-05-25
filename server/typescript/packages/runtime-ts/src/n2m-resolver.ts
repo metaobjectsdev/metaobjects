@@ -7,6 +7,7 @@ import {
   RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_JOIN_ENTITY, RELATIONSHIP_ATTR_JOIN_FIELDS,
   CARDINALITY_MANY,
+  DEFAULT_COLUMN_NAMING_STRATEGY,
   resolveColumnName,
 } from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
@@ -77,19 +78,20 @@ export function buildN2mLazySpecs(
   desc: N2mDescriptor,
   sourceRecord: Row,
   root: MetaData,
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): N2mLazyOutput {
   const joinEntity = mustGetEntity(root, desc.joinEntityName);
   const targetEntity = mustGetEntity(root, desc.targetEntityName);
   const sourcePkField = resolvePkFields(mustGetEntity(root, desc.sourceEntityName))[0]!;
   const sourcePkValue = sourceRecord[sourcePkField];
 
-  const joinSpec = buildSelectSpec(joinEntity, { [desc.sourceJoinField]: sourcePkValue as PrimitiveValue }, {});
+  const joinSpec = buildSelectSpec(joinEntity, { [desc.sourceJoinField]: sourcePkValue as PrimitiveValue }, {}, undefined, strategy);
 
   const makeTargetSpec = (joinRows: Row[]): SelectSpec | null => {
-    const targetIds = collectTargetIds(joinRows, desc.targetJoinField, joinEntity);
+    const targetIds = collectTargetIds(joinRows, desc.targetJoinField, joinEntity, strategy);
     if (targetIds.length === 0) return null;
     const targetPkField = resolvePkFields(targetEntity)[0]!;
-    return buildSelectSpec(targetEntity, { [targetPkField]: targetIds }, {});
+    return buildSelectSpec(targetEntity, { [targetPkField]: targetIds }, {}, undefined, strategy);
   };
 
   return { joinSpec, makeTargetSpec };
@@ -99,19 +101,20 @@ export function buildN2mBatchSpecs(
   desc: N2mDescriptor,
   sourceRecords: Row[],
   root: MetaData,
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): N2mBatchOutput {
   const joinEntity = mustGetEntity(root, desc.joinEntityName);
   const targetEntity = mustGetEntity(root, desc.targetEntityName);
   const sourcePkField = resolvePkFields(mustGetEntity(root, desc.sourceEntityName))[0]!;
   const sourceIds = collectIds(sourceRecords, sourcePkField);
 
-  const joinSpec = buildSelectSpec(joinEntity, { [desc.sourceJoinField]: sourceIds }, {});
+  const joinSpec = buildSelectSpec(joinEntity, { [desc.sourceJoinField]: sourceIds }, {}, undefined, strategy);
 
   const makeTargetSpec = (joinRows: Row[]): SelectSpec | null => {
-    const targetIds = collectTargetIds(joinRows, desc.targetJoinField, joinEntity);
+    const targetIds = collectTargetIds(joinRows, desc.targetJoinField, joinEntity, strategy);
     if (targetIds.length === 0) return null;
     const targetPkField = resolvePkFields(targetEntity)[0]!;
-    return buildSelectSpec(targetEntity, { [targetPkField]: targetIds }, {});
+    return buildSelectSpec(targetEntity, { [targetPkField]: targetIds }, {}, undefined, strategy);
   };
 
   return { joinSpec, makeTargetSpec };
@@ -133,9 +136,11 @@ function collectIds(records: Row[], pkField: string): (string | number)[] {
   return [...seen] as (string | number)[];
 }
 
-function collectTargetIds(joinRows: Row[], targetJoinField: string, joinEntity: MetaData): (string | number)[] {
+function collectTargetIds(
+  joinRows: Row[], targetJoinField: string, joinEntity: MetaData, strategy: ColumnNamingStrategy,
+): (string | number)[] {
   // joinRows are raw column-keyed (driver hasn't been to-JS-row'd yet); resolve the metadata field name to its DB column.
-  const dbColumn = resolveJoinColumnName(joinEntity, targetJoinField);
+  const dbColumn = resolveJoinColumnName(joinEntity, targetJoinField, strategy);
   const seen = new Set<PrimitiveValue>();
   for (const r of joinRows) {
     const v = r[dbColumn];
@@ -147,7 +152,7 @@ function collectTargetIds(joinRows: Row[], targetJoinField: string, joinEntity: 
 
 export function resolveJoinColumnName(
   joinEntity: MetaData, fieldName: string,
-  strategy: ColumnNamingStrategy = "snake_case",
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): string {
   const field = joinEntity.ownChildren().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!field) throw new MetadataError(`Join field '${fieldName}' not on '${joinEntity.name}'`);

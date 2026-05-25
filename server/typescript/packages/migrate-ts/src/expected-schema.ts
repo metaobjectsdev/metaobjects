@@ -26,7 +26,7 @@ import {
   FIELD_ATTR_STORAGE,
   STORAGE_FLATTENED,
   DOC_ATTR_DESCRIPTION,
-  applyColumnNamingStrategy as applyStrategy,
+  applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY,
   resolveTableName, resolveColumnName, resolveTableSchema,
 } from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
@@ -53,9 +53,8 @@ export interface BuildExpectedSchemaOptions {
   dialect?: Dialect;
   /**
    * Column-naming strategy for fields with no `@column` override. Defaults to
-   * `"snake_case"` (matches TS codegen default + SQL convention). Must match
-   * the runtime's `ObjectManager` strategy — a mismatch yields a schema whose
-   * columns the runtime can't address.
+   * `"snake_case"`. Must match the runtime's `ObjectManager` strategy — a
+   * mismatch yields a schema whose columns the runtime can't address.
    */
   columnNamingStrategy?: ColumnNamingStrategy;
 }
@@ -67,7 +66,7 @@ export function buildExpectedSchema(
   // D1 is SQLite at the SQL level; normalize it so downstream dialect checks
   // don't need to handle "d1" separately.
   const dialect = opts?.dialect === "d1" ? "sqlite" : opts?.dialect;
-  const strategy: ColumnNamingStrategy = opts?.columnNamingStrategy ?? "snake_case";
+  const strategy: ColumnNamingStrategy = opts?.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY;
 
   // Pass 1: collect entities + their resolved table names.
   // Skip:
@@ -166,7 +165,7 @@ function buildTable(
 
   const primaryKey = pkJsNames.map((jsName) => {
     const field = findField(entity, jsName);
-    return field ? resolveColumnName(field, strategy) : applyStrategy(jsName, strategy);
+    return field ? resolveColumnName(field, strategy) : applyColumnNamingStrategy(jsName, strategy);
   });
 
   const columns: ColumnDescriptor[] = [];
@@ -234,7 +233,7 @@ function buildSecondaryIndexes(
     if (fieldNames.length === 0) continue;
     const cols = fieldNames.map((jsName) => {
       const field = findField(entity, jsName);
-      return field ? resolveColumnName(field, strategy) : applyStrategy(jsName, strategy);
+      return field ? resolveColumnName(field, strategy) : applyColumnNamingStrategy(jsName, strategy);
     });
     const uniqueAttr = identity.ownAttr(IDENTITY_ATTR_UNIQUE);
     indexes.push({
@@ -267,7 +266,7 @@ function buildForeignKeys(
 
     const fkCols = fkFieldJsNames.map((jsName) => {
       const fkField = findField(entity, jsName);
-      return fkField ? resolveColumnName(fkField, strategy) : applyStrategy(jsName, strategy);
+      return fkField ? resolveColumnName(fkField, strategy) : applyColumnNamingStrategy(jsName, strategy);
     });
 
     // Target columns: prefer explicit multi-field dotted form, else delegate
@@ -275,8 +274,8 @@ function buildForeignKeys(
     // primary identity → "id" fallback).
     const explicitTargetFields = refChild.targetFields;
     const refColumns = explicitTargetFields.length > 1
-      ? explicitTargetFields.map((n) => applyStrategy(n, strategy))
-      : [applyStrategy(refChild.resolvedTargetPkField(root) ?? "id", strategy)];
+      ? explicitTargetFields.map((n) => applyColumnNamingStrategy(n, strategy))
+      : [applyColumnNamingStrategy(refChild.resolvedTargetPkField(root) ?? "id", strategy)];
 
     const { onDelete, onUpdate } = resolveReferentialActions(entity, refChild);
     const constraintName = `${tableName}_${fkCols[0]}_fk`;
