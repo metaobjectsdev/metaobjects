@@ -5,11 +5,11 @@ each one cost a broken/burned release to learn.
 
 ## What gets published
 
-The 11 publish-candidate packages (versioned in lockstep unless a package gets an isolated patch):
+The 12 publish-candidate packages (versioned in lockstep unless a package gets an isolated patch):
 
 | Tier | Packages |
 |---|---|
-| 0 | `metadata` |
+| 0 | `metadata`, `render` |
 | 1 | `codegen-ts`, `runtime-ts`, `migrate-ts`, `sdk`, `runtime-web` |
 | 2 | `codegen-ts-react`, `codegen-ts-tanstack`, `react` |
 | 3 | `tanstack` |

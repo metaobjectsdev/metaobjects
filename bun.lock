@@ -10,7 +10,7 @@
     },
     "client/web/packages/react": {
       "name": "@metaobjectsdev/react",
-      "version": "0.5.0",
+      "version": "0.6.0-rc.1",
       "dependencies": {
         "@metaobjectsdev/runtime-web": "workspace:*",
       },
@@ -42,7 +42,7 @@
     },
     "client/web/packages/runtime-web": {
       "name": "@metaobjectsdev/runtime-web",
-      "version": "0.5.0",
+      "version": "0.6.0-rc.1",
       "dependencies": {
         "@metaobjectsdev/metadata": "workspace:*",
         "qs": "^6.13.0",
@@ -55,7 +55,7 @@
     },
     "client/web/packages/tanstack": {
       "name": "@metaobjectsdev/tanstack",
-      "version": "0.5.0",
+      "version": "0.6.0-rc.1",
       "dependencies": {
         "@metaobjectsdev/react": "workspace:*",
         "@metaobjectsdev/runtime-web": "workspace:*",
@@ -85,7 +85,7 @@
     },
     "server/typescript/packages/cli": {
       "name": "@metaobjectsdev/cli",
-      "version": "0.5.1",
+      "version": "0.6.0-rc.1",
       "bin": {
         "meta": "./dist/bin/meta.js",
       },
@@ -122,7 +122,7 @@
     },
     "server/typescript/packages/codegen-ts": {
       "name": "@metaobjectsdev/codegen-ts",
-      "version": "0.5.0",
+      "version": "0.6.0-rc.1",
       "dependencies": {
         "@biomejs/js-api": "^0.7.0",
         "@biomejs/wasm-nodejs": "^1.9.4",
@@ -145,7 +145,7 @@
     },
     "server/typescript/packages/codegen-ts-react": {
       "name": "@metaobjectsdev/codegen-ts-react",
-      "version": "0.5.0",
+      "version": "0.6.0-rc.1",
       "dependencies": {
         "@metaobjectsdev/codegen-ts": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
@@ -162,7 +162,7 @@
     },
     "server/typescript/packages/codegen-ts-tanstack": {
       "name": "@metaobjectsdev/codegen-ts-tanstack",
-      "version": "0.5.0",
+      "version": "0.6.0-rc.1",
       "dependencies": {
         "@metaobjectsdev/codegen-ts": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
@@ -201,7 +201,7 @@
     },
     "server/typescript/packages/metadata": {
       "name": "@metaobjectsdev/metadata",
-      "version": "0.5.0",
+      "version": "0.6.0-rc.1",
       "dependencies": {
         "yaml": "^2.9.0",
       },
@@ -214,7 +214,7 @@
     },
     "server/typescript/packages/migrate-ts": {
       "name": "@metaobjectsdev/migrate-ts",
-      "version": "0.5.0",
+      "version": "0.6.0-rc.1",
       "dependencies": {
         "@iarna/toml": "^2.2.5",
         "@metaobjectsdev/metadata": "workspace:*",
@@ -234,7 +234,7 @@
     },
     "server/typescript/packages/render": {
       "name": "@metaobjectsdev/render",
-      "version": "0.5.0",
+      "version": "0.6.0-rc.1",
       "dependencies": {
         "mustache": "^4.2.0",
       },
@@ -246,7 +246,7 @@
     },
     "server/typescript/packages/runtime-ts": {
       "name": "@metaobjectsdev/runtime-ts",
-      "version": "0.5.0",
+      "version": "0.6.0-rc.1",
       "dependencies": {
         "@metaobjectsdev/metadata": "workspace:*",
         "qs": "^6.13.0",
@@ -279,7 +279,7 @@
     },
     "server/typescript/packages/sdk": {
       "name": "@metaobjectsdev/sdk",
-      "version": "0.5.0",
+      "version": "0.6.0-rc.1",
       "dependencies": {
         "@metaobjectsdev/metadata": "workspace:*",
         "zod": "^3.23.0",
@@ -535,9 +535,9 @@
 
     "@stryker-mutator/util": ["@stryker-mutator/util@9.6.1", "", {}, "sha512-Lk/ALVctJjFv1vvwR+CFoKzDCWvsBlq7flDUnmnpuwTrGbm156EdZD1Jjq4o8KdOap0ezUZqQNE9OAI1m2+pUQ=="],
 
-    "@tanstack/query-core": ["@tanstack/query-core@5.100.13", "", {}, "sha512-mlKVKMTzZWGTKAC1CKOgt7axAjJ921emkEvYIp27I/PdP1yEYL/BteLY8iK35gn8hoYeKB4mgJ/ve3lrDI6/Fw=="],
+    "@tanstack/query-core": ["@tanstack/query-core@5.100.14", "", {}, "sha512-5X41dGpxgeaHISCRW2oYwcSycZeULZzAunaudXT9ov1KOTj9xwt0CH6hbwqP1/z74ZWF7rYFnDpyYH07XFcZew=="],
 
-    "@tanstack/react-query": ["@tanstack/react-query@5.100.13", "", { "dependencies": { "@tanstack/query-core": "5.100.13" }, "peerDependencies": { "react": "^18 || ^19" } }, "sha512-HSBr8CycQEAoXsJR7KNDawBnINJEJ96Eme8oE0hCXjyodE2I97vg3IDzDJBDu18LsbzpVVJcKo80eqLfVCykxw=="],
+    "@tanstack/react-query": ["@tanstack/react-query@5.100.14", "", { "dependencies": { "@tanstack/query-core": "5.100.14" }, "peerDependencies": { "react": "^18 || ^19" } }, "sha512-oOr6aRdSFEwWhzxEkD/9ZcItM3+LjBSkeVmadWKwUssAHTsqd/7bOjWrX4AbvEkoEhgAxzN0Xk6H/aYzXiYBAw=="],
 
     "@tanstack/react-table": ["@tanstack/react-table@8.21.3", "", { "dependencies": { "@tanstack/table-core": "8.21.3" }, "peerDependencies": { "react": ">=16.8", "react-dom": ">=16.8" } }, "sha512-5nNMTSETP4ykGegmVkhjcS8tTLW6Vl4axfEGQN3v0zdHYbK4UfoqfPChclTrJ4EoK9QynqAu9oUf8VEmrpZ5Ww=="],
 
@@ -941,9 +941,9 @@
 
     "thread-stream": ["thread-stream@4.2.0", "", { "dependencies": { "real-require": "^1.0.0" } }, "sha512-e2zZ96wSChazBsbENf/Pcm/4swHt2cEKQ92rhUjkL9GCKiTDJIaTBenjE/m9DXi0QBmTMDkFDdOomUy20A1tDQ=="],
 
-    "tldts": ["tldts@7.0.30", "", { "dependencies": { "tldts-core": "^7.0.30" }, "bin": { "tldts": "bin/cli.js" } }, "sha512-ELrFxuqsDdHUwoh0XxDbxuLD3Wnz49Z57IFvTtvWy1hJdcMZjXLIuonjilCiWHlT2GbE4Wlv1wKVTzDFnXH1aw=="],
+    "tldts": ["tldts@7.1.2", "", { "dependencies": { "tldts-core": "^7.1.2" }, "bin": { "tldts": "bin/cli.js" } }, "sha512-RUX5sQm8bl03ycwQ6nSgJiKw9FZWhA8GBzxX6X1lsG3xKzFIW+lYLLpM30FQbDD6XjTWa/VkF15VxjnAMWYJAQ=="],
 
-    "tldts-core": ["tldts-core@7.0.30", "", {}, "sha512-uiHN8PIB1VmWyS98eZYja4xzlYqeFZVjb4OuYlJQnZAuJhMw4PbKQOKgHKhBdJR3FE/t5mUQ1Kd80++B+qhD1Q=="],
+    "tldts-core": ["tldts-core@7.1.2", "", {}, "sha512-26EbERPLf5wkNFKW+7egxArSPN1Nqipe/PIe1nvhpNu8HqQeY2pYdOeQk4sAiADv/e03VzHkLY0PPohKv1JMAQ=="],
 
     "toad-cache": ["toad-cache@3.7.1", "", {}, "sha512-5DXWzE4Vz7xNHsv+xQ+MGfJYyC78Aok3tEr0MNwHoRf7vZnga1mQXZ4/Nsodld4VR6Wd+VhfmqnNrsRJyYPfrQ=="],
 
