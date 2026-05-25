@@ -723,7 +723,7 @@ public class MetaDataLoader implements LoaderConfigurable {
      * Called automatically from {@link #performInitializationInternal} so that
      * {@code setSourceURIs(...).init()} is the standard URI-based loading pattern.
      *
-     * <p>Each URI is wrapped in a {@link URIMetaDataSource} (which infers JSON vs XML
+     * <p>Each URI is wrapped in a {@link UriSource} (which infers JSON vs XML
      * from the file extension) and routed through the canonical
      * {@link #load(List)} method, ensuring a single parser-dispatch path.</p>
      */
@@ -732,7 +732,7 @@ public class MetaDataLoader implements LoaderConfigurable {
 
         List<MetaDataSource> sources = new ArrayList<>();
         for (URI uri : sourceURIs) {
-            sources.add(new URIMetaDataSource(uri));
+            sources.add(new UriSource(uri));
         }
         load(sources);
     }

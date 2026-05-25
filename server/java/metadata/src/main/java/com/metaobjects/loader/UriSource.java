@@ -25,11 +25,11 @@ import java.util.Scanner;
  * <p>Example usage:</p>
  * <pre>{@code
  * URI uri = URIHelper.toURI("model:file:/opt/app/meta.json");
- * MetaDataSource source = new URIMetaDataSource(uri);
+ * MetaDataSource source = new UriSource(uri);
  * String content = source.read();
  * }</pre>
  */
-public class URIMetaDataSource implements MetaDataSource {
+public class UriSource implements MetaDataSource {
 
     private final URI uri;
     private final String id;
@@ -41,7 +41,7 @@ public class URIMetaDataSource implements MetaDataSource {
      * @param uri the model URI to read from; must not be {@code null} and must
      *            be parseable by {@link URIHelper}
      */
-    public URIMetaDataSource(URI uri) {
+    public UriSource(URI uri) {
         if (uri == null) throw new IllegalArgumentException("uri must not be null");
         this.uri = uri;
         this.id = uri.toString();
@@ -104,6 +104,6 @@ public class URIMetaDataSource implements MetaDataSource {
 
     @Override
     public String toString() {
-        return "URIMetaDataSource{uri='" + id + "', format=" + format + "}";
+        return "UriSource{uri='" + id + "', format=" + format + "}";
     }
 }
