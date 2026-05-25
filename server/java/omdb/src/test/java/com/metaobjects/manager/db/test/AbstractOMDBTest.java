@@ -11,9 +11,6 @@
 package com.metaobjects.manager.db.test;
 
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.file.FileMetaDataLoader;
-import com.metaobjects.loader.file.FileLoaderOptions;
-import com.metaobjects.loader.file.LocalFileMetaDataSources;
 import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.db.ObjectManagerDB;
 import com.metaobjects.manager.db.driver.DerbyDriver;
@@ -51,20 +48,13 @@ public class AbstractOMDBTest {
             // Initialize OSGi-compatible loader registry
             registry = new MetaDataLoaderRegistry(ServiceRegistryFactory.getDefault());
 
-            // Initialize the loader using FileMetaDataLoader with auto-detection
-            FileMetaDataLoader xl = new FileMetaDataLoader(
-                new FileLoaderOptions()
-                    .setShouldRegister( false )
-                    .setAllowAutoAttrs( true )
-                    .setStrict( false )
-                    .setVerbose( false ),
-                "test-db" );
-            
-            xl.init(new LocalFileMetaDataSources( "meta.fruit.json" ));
-            
-            // Register with both old and new mechanisms for compatibility
-            xl.register();  // Old mechanism
-            registry.registerLoader(xl);  // New mechanism
+            // Initialize the loader using the unified MetaDataLoader.fromResources factory
+            MetaDataLoader xl = MetaDataLoader.fromResources(
+                "test-db", java.util.List.of("meta.fruit.json"));
+
+            // Register with the new loader registry (fromResources already invoked
+            // the loader's own register() during construction)
+            registry.registerLoader(xl);
 
             loader = xl;
             

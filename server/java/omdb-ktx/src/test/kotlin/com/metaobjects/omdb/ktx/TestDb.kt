@@ -1,8 +1,6 @@
 package com.metaobjects.omdb.ktx
 
-import com.metaobjects.loader.file.FileLoaderOptions
-import com.metaobjects.loader.file.FileMetaDataLoader
-import com.metaobjects.loader.file.LocalFileMetaDataSources
+import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.manager.ObjectRef
 import com.metaobjects.manager.db.ObjectManagerDB
 import com.metaobjects.manager.db.driver.DerbyDriver
@@ -30,7 +28,7 @@ class TestDb private constructor(
     val registry: MetaDataLoaderRegistry,
     val dataSource: DataSource,
     private val dbName: String,
-    private val loader: FileMetaDataLoader,
+    private val loader: MetaDataLoader,
 ) {
 
     /** Returns a raw JDBC connection to the in-memory database. */
@@ -67,16 +65,9 @@ class TestDb private constructor(
             // 1. Loader registry (mirrors AbstractOMDBTest.setupDB)
             val registry = MetaDataLoaderRegistry(ServiceRegistryFactory.getDefault())
 
-            @Suppress("UNCHECKED_CAST", "RAW_TYPE_WARNINGS")
-            val loaderOptions: FileLoaderOptions<*> = FileLoaderOptions<FileLoaderOptions<*>>()
-            loaderOptions.setShouldRegister(false)
-            loaderOptions.setAllowAutoAttrs(true)
-            loaderOptions.setStrict(false)
-            loaderOptions.setVerbose(false)
-            val loader = FileMetaDataLoader(loaderOptions, "test-db-ktx")
-            loader.init(LocalFileMetaDataSources(metaFile))
-            loader.register()           // old mechanism
-            registry.registerLoader(loader) // new mechanism
+            // Unified factory: builds + inits + loads + registers in one call.
+            val loader = MetaDataLoader.fromResources("test-db-ktx", listOf(metaFile))
+            registry.registerLoader(loader)
 
             // 2. Boot the embedded Derby driver (ensures the EmbeddedDriver is registered
             //    in DriverManager before we hand a DataSource to omdb).

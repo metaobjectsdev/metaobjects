@@ -3,7 +3,7 @@ package com.metaobjects.source;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
-import com.metaobjects.loader.InMemoryMetaDataSource;
+import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.SharedRegistryTestBase;
@@ -39,7 +39,7 @@ public class MetaSourceTest extends SharedRegistryTestBase {
      */
     private MetaDataLoader loadThrough(String canonical, String id) {
         MetaDataLoader loader = newTestLoader();
-        loader.load(List.of(new InMemoryMetaDataSource(canonical, id)));
+        loader.load(List.of(new InMemoryStringSource(canonical, id)));
         return loader;
     }
 

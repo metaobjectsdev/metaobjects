@@ -60,7 +60,7 @@ public class HtmlDocumentationGeneratorExample extends GeneratorTestBase {
      *             </goals>
      *             <configuration>
      *                 <loader>
-     *                     <classname>com.metaobjects.loader.file.FileMetaDataLoader</classname>
+     *                     <classname>com.metaobjects.loader.MetaDataLoader</classname>
      *                     <name>html-doc-generator</name>
      *                     <sources/>
      *                 </loader>

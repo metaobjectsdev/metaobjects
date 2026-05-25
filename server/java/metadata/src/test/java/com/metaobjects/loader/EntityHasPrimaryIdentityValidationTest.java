@@ -34,7 +34,7 @@ public class EntityHasPrimaryIdentityValidationTest extends SharedRegistryTestBa
 
     private MetaDataLoader loadThrough(String canonical, String id) {
         MetaDataLoader loader = newTestLoader();
-        loader.load(List.of(new InMemoryMetaDataSource(canonical, id)));
+        loader.load(List.of(new InMemoryStringSource(canonical, id)));
         return loader;
     }
 
@@ -153,7 +153,7 @@ public class EntityHasPrimaryIdentityValidationTest extends SharedRegistryTestBa
             "    { \"field.long\": { \"name\": \"id\" } }" +
             "  ] } }" +
             "] } }";
-        loader.load(List.of(new InMemoryMetaDataSource(firstBatch, "batch-1.json")));
+        loader.load(List.of(new InMemoryStringSource(firstBatch, "batch-1.json")));
         assertEquals(1, loader.getWarnings().size());
 
         // Second load — should reset accumulator before running validation.
@@ -162,7 +162,7 @@ public class EntityHasPrimaryIdentityValidationTest extends SharedRegistryTestBa
         // so the second load re-visits it and would re-warn — that is the
         // expected behaviour. The contract is "warnings reflect this batch's
         // validation", and the validation pass IS re-run over the full tree.
-        loader.load(List.of(new InMemoryMetaDataSource(firstBatch, "batch-2.json")));
+        loader.load(List.of(new InMemoryStringSource(firstBatch, "batch-2.json")));
         // Still exactly one warning (one Subscriber, one missing-identity).
         assertEquals(1, loader.getWarnings().size());
     }

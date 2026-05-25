@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -183,35 +184,147 @@ public class MetaDataLoader implements LoaderConfigurable {
                         SUBTYPE_MANUAL, name );
     }
 
+    ///////////////////////////////////////////////////////////////////////
+    // Unified static factories (cross-language consistent — see TS / C# / Python)
+
     /**
-     * Construct a MetaDataLoader, set the given URI list, then init + load — all in one call.
-     * Equivalent to the old {@code SimpleLoader.createManualURIs(name, uris)}.
+     * Build a {@link DirectorySource} for the given path and load all files
+     * in deterministic order. Convenience for the 99% case.
      *
-     * @param name the loader name
-     * @param uris model URIs to load (e.g. {@code model:resource:…}, {@code model:file:…})
-     * @return a fully-initialized loader with all URIs loaded
+     * @param name      the loader name
+     * @param directory the directory containing metadata files
+     * @return a fully-initialized loader with all directory files loaded
      */
-    public static MetaDataLoader createFromURIs(String name, List<URI> uris) {
-        MetaDataLoader loader = new MetaDataLoader(
-                LoaderOptions.create(false, false, true), SUBTYPE_MANUAL, name);
-        loader.setSourceURIs(uris);
-        loader.init();
+    public static MetaDataLoader fromDirectory(String name, Path directory) {
+        return fromDirectory(name, directory, new DirectorySource.Options());
+    }
+
+    /**
+     * Build a {@link DirectorySource} for the given path with the supplied
+     * options and load all matching files.
+     *
+     * @param name      the loader name
+     * @param directory the directory containing metadata files
+     * @param opts      expansion options (exclude list, recursion)
+     * @return a fully-initialized loader with all directory files loaded
+     */
+    public static MetaDataLoader fromDirectory(String name, Path directory, DirectorySource.Options opts) {
+        MetaDataLoader loader = createManual(false, name);
+        try {
+            loader.init();
+            List<MetaDataSource> sources = new DirectorySource(directory, opts).expandToList();
+            loader.load(sources);
+            loader.register();
+        } catch (MetaDataLoadingException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new MetaDataLoadingException(
+                "Failed to load from directory " + directory, name,
+                loader.getLoadingState().getCurrentPhase(), 0, e);
+        }
         return loader;
     }
 
     /**
-     * Construct a MetaDataLoader from classpath resource paths, then init + load.
-     * Each resource path is wrapped as {@code model:resource:<path>}.
-     * Equivalent to the old {@code SimpleLoader.createManual(name, List&lt;String&gt;)}.
+     * Build {@link UriSource}s and load them. The cross-language URI-based
+     * factory — every port (TS/Java/C#/Python) exposes the same shape.
+     *
+     * <p>Uses {@link #createManual(boolean, String)} defaults
+     * ({@code shouldRegister=false, verbose=false, strict=false}). Callers that
+     * need a different {@link LoaderOptions} (e.g. {@code strict=true}) should
+     * use {@link #fromUris(String, List, LoaderOptions)}.</p>
+     *
+     * @param name the loader name
+     * @param uris model URIs to load
+     * @return a fully-initialized loader with all URIs loaded
+     */
+    public static MetaDataLoader fromUris(String name, List<URI> uris) {
+        return fromUris(name, uris, null);
+    }
+
+    /**
+     * Build {@link UriSource}s and load them with the supplied options.
+     *
+     * <p>Preserves the caller's {@link LoaderOptions} (notably {@code strict},
+     * which {@link #createManual(boolean, String)} defaults to {@code false}).
+     * Pass {@code null} to use the {@code createManual} defaults.</p>
+     *
+     * @param name the loader name
+     * @param uris model URIs to load
+     * @param opts loader options (may be {@code null} for defaults)
+     * @return a fully-initialized loader with all URIs loaded
+     */
+    public static MetaDataLoader fromUris(String name, List<URI> uris, LoaderOptions opts) {
+        MetaDataLoader loader = (opts == null)
+            ? createManual(false, name)
+            : new MetaDataLoader(opts, SUBTYPE_MANUAL, name);
+        try {
+            loader.init();
+            List<MetaDataSource> sources = new ArrayList<>(uris.size());
+            for (URI uri : uris) sources.add(new UriSource(uri));
+            loader.load(sources);
+            loader.register();
+        } catch (MetaDataLoadingException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new MetaDataLoadingException(
+                "Failed to load from URIs", name,
+                loader.getLoadingState().getCurrentPhase(), 0, e);
+        }
+        return loader;
+    }
+
+    /**
+     * Load a list of classpath resource paths. Each path is wrapped as a
+     * {@code model:resource:<path>} URI and routed through {@link #fromUris(String, List)}.
      *
      * @param name      the loader name
      * @param resources classpath resource paths (no {@code model:} prefix needed)
      * @return a fully-initialized loader with all resources loaded
      */
-    public static MetaDataLoader createFromResources(String name, List<String> resources) {
+    public static MetaDataLoader fromResources(String name, List<String> resources) {
+        return fromResources(name, resources, null);
+    }
+
+    /**
+     * Load a list of classpath resource paths with the supplied options.
+     *
+     * <p>Symmetric with {@link #fromUris(String, List, LoaderOptions)} — preserves
+     * caller-supplied {@link LoaderOptions} (notably {@code strict}).</p>
+     *
+     * @param name      the loader name
+     * @param resources classpath resource paths (no {@code model:} prefix needed)
+     * @param opts      loader options (may be {@code null} for defaults)
+     * @return a fully-initialized loader with all resources loaded
+     */
+    public static MetaDataLoader fromResources(String name, List<String> resources, LoaderOptions opts) {
         List<URI> uris = new ArrayList<>();
         for (String r : resources) uris.add(URIHelper.toURI("model:resource:" + r));
-        return createFromURIs(name, uris);
+        return fromUris(name, uris, opts);
+    }
+
+    /**
+     * Load a single in-memory string of the given format.
+     *
+     * @param name    the loader name
+     * @param content the raw document content
+     * @param format  the document format
+     * @return a fully-initialized loader with the inline content loaded
+     */
+    public static MetaDataLoader fromString(String name, String content, MetaDataSource.MetaDataFormat format) {
+        MetaDataLoader loader = createManual(false, name);
+        try {
+            loader.init();
+            loader.load(List.of(new InMemoryStringSource(content, "<inline>", format)));
+            loader.register();
+        } catch (MetaDataLoadingException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new MetaDataLoadingException(
+                "Failed to load from string", name,
+                loader.getLoadingState().getCurrentPhase(), 0, e);
+        }
+        return loader;
     }
 
     ///////////////////////////////////////////////////////////////////////
@@ -723,7 +836,7 @@ public class MetaDataLoader implements LoaderConfigurable {
      * Called automatically from {@link #performInitializationInternal} so that
      * {@code setSourceURIs(...).init()} is the standard URI-based loading pattern.
      *
-     * <p>Each URI is wrapped in a {@link URIMetaDataSource} (which infers JSON vs XML
+     * <p>Each URI is wrapped in a {@link UriSource} (which infers JSON vs XML
      * from the file extension) and routed through the canonical
      * {@link #load(List)} method, ensuring a single parser-dispatch path.</p>
      */
@@ -732,7 +845,7 @@ public class MetaDataLoader implements LoaderConfigurable {
 
         List<MetaDataSource> sources = new ArrayList<>();
         for (URI uri : sourceURIs) {
-            sources.add(new URIMetaDataSource(uri));
+            sources.add(new UriSource(uri));
         }
         load(sources);
     }

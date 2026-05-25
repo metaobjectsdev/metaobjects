@@ -35,16 +35,12 @@ import java.util.List;
  * <pre>{@code
  * @Configuration
  * public class MyMetaDataConfig {
- *     
+ *
  *     @Bean
  *     public MetaDataLoader userMetaDataLoader() {
- *         MetaDataLoader loader = new MetaDataLoader(
- *             LoaderOptions.create(false, false, true), MetaDataLoader.SUBTYPE_MANUAL, "userLoader");
- *         loader.setSourceURIs(Arrays.asList(
+ *         return MetaDataLoader.fromUris("userLoader", List.of(
  *             URI.create("classpath:metadata/users.json")
  *         ));
- *         loader.init();
- *         return loader;
  *     }
  * }
  * }</pre>
@@ -83,16 +79,12 @@ public class MetaDataLoaderConfiguration {
         for (String source : metadataSources) {
             sourceURIs.add(URI.create(source));
         }
-        
-        // Create and configure loader
-        MetaDataLoader loader = new MetaDataLoader(
-                LoaderOptions.create(false, false, true),
-                MetaDataLoader.SUBTYPE_MANUAL, "applicationLoader");
 
-        loader.setSourceURIs(sourceURIs);
-        loader.init();
-
-        return loader;
+        // Build a loader via the unified factory (init + load + register in one call).
+        // Preserve the pre-unification strict=true default (the no-options
+        // fromUris overload routes through createManual which uses strict=false).
+        LoaderOptions opts = LoaderOptions.create(false, false, true);
+        return MetaDataLoader.fromUris("applicationLoader", sourceURIs, opts);
     }
     
     /**
@@ -113,10 +105,7 @@ public class MetaDataLoaderConfiguration {
     // @Bean
     // @ConditionalOnProperty("metaobjects.external-path")
     // public MetaDataLoader externalMetaDataLoader(@Value("${metaobjects.external-path}") String path) {
-    //     FileMetaDataLoader loader = new FileMetaDataLoader("externalLoader");
-    //     loader.setSourceURIs(Arrays.asList(URI.create("file:" + path)));
-    //     loader.init(); 
-    //     return loader;
+    //     return MetaDataLoader.fromUris("externalLoader", List.of(URI.create("file:" + path)));
     // }
     
     /**

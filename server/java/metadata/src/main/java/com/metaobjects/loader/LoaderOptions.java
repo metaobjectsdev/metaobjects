@@ -4,7 +4,8 @@ import java.util.Objects;
 
 
 /**
- * FileMetaDataLoader Configuration Settings
+ * MetaDataLoader configuration settings — toggle behavior flags that apply
+ * across all loader sources (file, URI, directory, in-memory).
  */
 public class LoaderOptions {
 

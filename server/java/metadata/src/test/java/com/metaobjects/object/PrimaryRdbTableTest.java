@@ -3,7 +3,7 @@
  */
 package com.metaobjects.object;
 
-import com.metaobjects.loader.InMemoryMetaDataSource;
+import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import com.metaobjects.source.MetaSource;
@@ -38,7 +38,7 @@ public class PrimaryRdbTableTest extends SharedRegistryTestBase {
 
     private MetaDataLoader loadThrough(String canonical, String id) {
         MetaDataLoader loader = newTestLoader();
-        loader.load(List.of(new InMemoryMetaDataSource(canonical, id)));
+        loader.load(List.of(new InMemoryStringSource(canonical, id)));
         return loader;
     }
 
