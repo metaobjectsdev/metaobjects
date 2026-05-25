@@ -1,4 +1,5 @@
 using MetaObjects.Cli;
+using MetaObjects.Codegen.Migrate;
 using Xunit;
 
 namespace MetaObjects.Cli.Tests;
@@ -40,4 +41,34 @@ public sealed class MigrateCommandTests : IDisposable
         Assert.Contains("email text NOT NULL", sql);
         Assert.Contains("PRIMARY KEY (id)", sql);
     }
+
+    [Fact]
+    public async Task Incremental_migrate_against_an_empty_db_emits_all_creates()
+    {
+        // Empty actual DB: every expected table becomes a CREATE TABLE in the up
+        // migration. The down should drop the just-created table.
+        var db = new InlineEmptyDb();
+        var upFile = Path.Combine(_tmp, "up.sql");
+        var downFile = Path.Combine(_tmp, "down.sql");
+
+        var outcome = await MigrateCommand.RunIncrementalAsync(MetaDir, db, upFile, downFile);
+
+        Assert.True(outcome.Ok, "expected clean run, got: " + string.Join("; ", outcome.Blocked));
+        Assert.True(File.Exists(upFile));
+        Assert.True(File.Exists(downFile));
+        var up = File.ReadAllText(upFile);
+        var down = File.ReadAllText(downFile);
+        // Engine emits quoted identifiers + CONSTRAINT "{table}_pkey" (PostgresEmit shape).
+        Assert.Contains("CREATE TABLE \"subscribers\" (", up);
+        Assert.Contains("CONSTRAINT \"subscribers_pkey\" PRIMARY KEY (\"id\")", up);
+        Assert.Contains("DROP TABLE \"subscribers\";", down);
+    }
+}
+
+/// <summary>Inline fake <see cref="IPgIntrospector"/> that returns no rows — the
+/// "empty database" baseline used by the incremental-migrate test.</summary>
+internal sealed class InlineEmptyDb : IPgIntrospector
+{
+    public Task<IReadOnlyList<PgRow>> QueryAsync(string sql, params (string Name, object? Value)[] parameters) =>
+        Task.FromResult<IReadOnlyList<PgRow>>([]);
 }
