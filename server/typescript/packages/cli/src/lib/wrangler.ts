@@ -24,33 +24,6 @@ export function buildWranglerExecuteArgs(opts: WranglerExecuteOptions): string[]
 }
 
 /**
- * Wrangler emits an array envelope: [{ results: [...], success: bool, meta: {...} }].
- * Returns the rows from the first result element. Throws if not parseable or success=false.
- */
-export function parseWranglerExecuteJson(stdout: string): Record<string, unknown>[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stdout);
-  } catch (err) {
-    throw new Error(`failed to parse wrangler JSON output: ${(err as Error).message}`);
-  }
-  if (!Array.isArray(parsed) || parsed.length === 0) {
-    throw new Error(`unexpected wrangler output shape (expected non-empty array envelope): ${stdout.slice(0, 200)}`);
-  }
-  const envelope = parsed[0];
-  if (envelope === null || typeof envelope !== "object") {
-    throw new Error(`unexpected wrangler output shape (envelope is not an object): ${stdout.slice(0, 200)}`);
-  }
-  const env = envelope as { success?: boolean; error?: string; results?: unknown };
-  if (env.success === false) {
-    throw new Error(`wrangler d1 execute failed: ${env.error ?? "(no error message)"}`);
-  }
-  const results = env.results;
-  if (!Array.isArray(results)) return [];
-  return results as Record<string, unknown>[];
-}
-
-/**
  * Run wrangler with the given args; return stdout. Stderr is included in the
  * error message when wrangler exits non-zero. `cwd` is the directory wrangler
  * runs in (defaults to process.cwd() — caller should pass the project root).
