@@ -1,0 +1,6 @@
+<h1>Hi Ada Lovelace</h1>
+<p>You published 2 posts:</p>
+<ul>
+  <li>Notes on the Engine</li>
+  <li>Bernoulli &amp; Loops</li>
+</ul>

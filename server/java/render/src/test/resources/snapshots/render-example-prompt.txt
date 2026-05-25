@@ -1,0 +1,10 @@
+<prompt>
+  <tone>concise, encouraging</tone>
+
+  <author name="Ada Lovelace" posts="2"/>
+  <posts>
+    <post title="Notes on the Engine"><tag>compute</tag><tag>history</tag></post>
+    <post title="Bernoulli &amp; Loops"><tag>math</tag></post>
+  </posts>
+  <task>Suggest the next 3 content topics.</task>
+</prompt>
