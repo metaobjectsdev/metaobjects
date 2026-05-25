@@ -7,7 +7,7 @@ import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.io.json.CanonicalJsonSerializer;
-import com.metaobjects.loader.InMemoryMetaDataSource;
+import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.SharedRegistryTestBase;
@@ -70,7 +70,7 @@ public class EnumFieldTest extends SharedRegistryTestBase {
      */
     private MetaDataLoader loadThrough(String canonical, String id) {
         MetaDataLoader loader = newTestLoader();
-        loader.load(List.of(new InMemoryMetaDataSource(canonical, id)));
+        loader.load(List.of(new InMemoryStringSource(canonical, id)));
         return loader;
     }
 

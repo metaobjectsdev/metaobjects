@@ -11,13 +11,13 @@ import java.io.IOException;
  *
  * <p>Concrete implementations:
  * <ul>
- *   <li>{@link InMemoryMetaDataSource} — a pre-loaded string (useful in tests)</li>
- *   <li>{@link URIMetaDataSource} — reads via {@link com.metaobjects.loader.uri.URIHelper}</li>
+ *   <li>{@link InMemoryStringSource} — a pre-loaded string (useful in tests)</li>
+ *   <li>{@link UriSource} — reads via {@link com.metaobjects.loader.uri.URIHelper}</li>
  * </ul>
  * </p>
  *
- * @see InMemoryMetaDataSource
- * @see URIMetaDataSource
+ * @see InMemoryStringSource
+ * @see UriSource
  */
 public interface MetaDataSource {
 
