@@ -75,6 +75,40 @@ public class MetaDataLoader
         Provider.ComposeRegistry([CoreTypes.CoreTypesProvider]);
 
     // -------------------------------------------------------------------------
+    // Static factories (the 99% case, cross-language consistent)
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Convenience: build a <see cref="DirectorySource"/> for <paramref name="directory"/>
+    /// and load all discovered files in deterministic order.
+    /// </summary>
+    public static LoadResult FromDirectory(string directory, DirectorySource.Options? opts = null)
+    {
+        var src = new DirectorySource(directory, opts);
+        var loader = new MetaDataLoader();
+        return loader.Load(src.Expand().Cast<IMetaDataSource>().ToList());
+    }
+
+    /// <summary>
+    /// Convenience: wrap each URI in a <see cref="UriSource"/> and load in order.
+    /// </summary>
+    public static LoadResult FromUris(IReadOnlyList<Uri> uris)
+    {
+        var loader = new MetaDataLoader();
+        var sources = uris.Select(u => (IMetaDataSource)new UriSource(u)).ToList();
+        return loader.Load(sources);
+    }
+
+    /// <summary>
+    /// Convenience: load a single in-memory string of the given format.
+    /// </summary>
+    public static LoadResult FromString(string content, MetaDataFormat format)
+    {
+        var loader = new MetaDataLoader();
+        return loader.Load(new IMetaDataSource[] { new InMemoryStringSource(content, format: format) });
+    }
+
+    // -------------------------------------------------------------------------
     // Public properties
     // -------------------------------------------------------------------------
 
