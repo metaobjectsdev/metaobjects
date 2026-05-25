@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from metaobjects.loader.meta_data_loader import load_directory
+from metaobjects import MetaDataLoader
 from metaobjects.serializer_json import canonical_serialize
 
 
@@ -14,7 +14,7 @@ def test_load_single_entity_dir(tmp_path: Path) -> None:
             ]}}
         ]}
     }))
-    result = load_directory(str(tmp_path))
+    result = MetaDataLoader.from_directory(tmp_path)
     assert not result.errors
     assert result.root.frozen
     out = json.loads(canonical_serialize(result.root))

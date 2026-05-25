@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from metaobjects.loader.meta_data_loader import load_directory
+from metaobjects import MetaDataLoader
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.runner import run_gen
@@ -13,7 +13,7 @@ from metaobjects.codegen.generators.entity_model import entity_model
 def _load(meta_dir: Path, doc: dict[str, object]) -> MetaData:
     meta_dir.mkdir(parents=True, exist_ok=True)
     (meta_dir / "meta.json").write_text(json.dumps(doc))
-    return load_directory(str(meta_dir)).root
+    return MetaDataLoader.from_directory(meta_dir).root
 
 
 def test_run_gen_writes_a_model_per_entity(tmp_path: Path) -> None:
