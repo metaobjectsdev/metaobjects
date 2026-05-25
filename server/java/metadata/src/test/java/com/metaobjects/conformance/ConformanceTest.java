@@ -327,11 +327,16 @@ public class ConformanceTest {
                 failures.add("expected-warnings.json parse error: " + ex.getMessage());
                 return;
             }
-            TreeSet<String> wantSet = new TreeSet<>(wantWarnings);
-            TreeSet<String> gotSet = new TreeSet<>(gotWarnings);
-            if (!wantSet.equals(gotSet)) {
+            // Multiset equality (order-insensitive, duplicate-preserving): sort
+            // both lists and compare directly so the same warning emitted N
+            // times must also appear N times in expected-warnings.json.
+            List<String> wantSorted = new ArrayList<>(wantWarnings);
+            List<String> gotSorted = new ArrayList<>(gotWarnings);
+            Collections.sort(wantSorted);
+            Collections.sort(gotSorted);
+            if (!wantSorted.equals(gotSorted)) {
                 failures.add("warnings mismatch:\n--- expected ---\n"
-                    + wantSet + "\n--- got ---\n" + gotSet);
+                    + wantSorted + "\n--- got ---\n" + gotSorted);
             }
         } else if (fix.hasExpected && !gotWarnings.isEmpty()) {
             failures.add("loader emitted unexpected warnings: " + gotWarnings);

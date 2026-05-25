@@ -277,7 +277,7 @@ public class MetaDataLoader implements LoaderConfigurable {
      *
      * @return an unmodifiable snapshot of the accumulated warnings (never {@code null})
      */
-     public List<String> getWarnings() {
+    public List<String> getWarnings() {
         return Collections.unmodifiableList(new ArrayList<>(warnings));
     }
 

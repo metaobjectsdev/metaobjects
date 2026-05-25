@@ -99,18 +99,22 @@ public class EntityHasPrimaryIdentityValidationTest extends SharedRegistryTestBa
     }
 
     // -----------------------------------------------------------------------
-    // Case 4 — entity with zero fields (no warning — not yet a data record)
+    // Case 4 — entity with zero fields ALSO warns (aligns with TS/C#:
+    //          any concrete entity-without-primary-identity warns, regardless
+    //          of field count)
     // -----------------------------------------------------------------------
 
     @Test
-    public void emptyEntityEmitsNoWarning() {
+    public void emptyEntityEmitsWarning() {
         String canonical = "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
             "  { \"object.entity\": { \"name\": \"Empty\" } }" +
             "] } }";
 
         MetaDataLoader loader = loadThrough(canonical, "empty-entity.json");
-        assertTrue("empty entity should not warn; got " + loader.getWarnings(),
-            loader.getWarnings().isEmpty());
+        assertEquals(1, loader.getWarnings().size());
+        assertEquals(
+            "entity object 'Empty' has no primary identity (add an identity child or mark @isAbstract: true)",
+            loader.getWarnings().get(0));
     }
 
     // -----------------------------------------------------------------------

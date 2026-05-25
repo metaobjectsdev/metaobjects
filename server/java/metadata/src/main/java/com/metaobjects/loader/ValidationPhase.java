@@ -16,6 +16,7 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.origin.AggregateOrigin;
+import com.metaobjects.origin.CollectionOrigin;
 import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.origin.PassthroughOrigin;
 import com.metaobjects.relationship.MetaRelationship;
@@ -467,22 +468,20 @@ public final class ValidationPhase {
     }
 
     private static void walkOriginsOnObject(MetaRoot root, MetaData node) {
-        if (node instanceof MetaObject) {
-            MetaObject obj = (MetaObject) node;
-            // Own fields only; field children carry origin children.
-            for (MetaData fieldChild : obj.getChildren(MetaData.class, false)) {
-                if (!(fieldChild instanceof MetaField)) continue;
-                MetaField<?> field = (MetaField<?>) fieldChild;
+        if (!(node instanceof MetaObject)) return; // only objects carry origins (via their fields)
+        MetaObject obj = (MetaObject) node;
+        for (MetaData child : obj.getChildren(MetaData.class, false)) {
+            if (child instanceof MetaField) {
+                MetaField<?> field = (MetaField<?>) child;
                 for (MetaData originChild : field.getChildren(MetaData.class, false)) {
                     if (originChild instanceof MetaOrigin) {
                         validateOriginNode(root, obj, field, (MetaOrigin) originChild);
                     }
                 }
+            } else if (child instanceof MetaObject) {
+                walkOriginsOnObject(root, child); // nested object (composition)
             }
-        }
-        // Recurse into own children (handles nested objects).
-        for (MetaData child : node.getChildren(MetaData.class, false)) {
-            walkOriginsOnObject(root, child);
+            // identity/source/attr/etc. children are skipped — they don't carry origins
         }
     }
 
@@ -548,7 +547,7 @@ public final class ValidationPhase {
         // origin.collection — required-check only on @via; full path traversal
         // is intentionally not enforced here (mirrors TS validateOriginPaths,
         // which only validates passthrough + aggregate).
-        if (com.metaobjects.origin.CollectionOrigin.SUBTYPE_COLLECTION.equals(subType)) {
+        if (CollectionOrigin.SUBTYPE_COLLECTION.equals(subType)) {
             String via = origin.getVia();
             if (via == null || via.isEmpty()) {
                 throw new MetaDataException(
@@ -622,20 +621,14 @@ public final class ValidationPhase {
         // TS/C# behaviour of `model.children()` in their walks.
         List<MetaData> effective = obj.getChildren(MetaData.class, true);
 
-        boolean hasAnyField = false;
-        boolean hasPrimaryIdentity = false;
         for (MetaData child : effective) {
-            if (child instanceof MetaField) {
-                hasAnyField = true;
-            } else if (MetaIdentity.TYPE_IDENTITY.equals(child.getType())
+            if (MetaIdentity.TYPE_IDENTITY.equals(child.getType())
                     && MetaIdentity.SUBTYPE_PRIMARY.equals(child.getSubType())) {
-                hasPrimaryIdentity = true;
+                return; // has a primary identity (own or inherited) — no warning
             }
         }
-
-        // Empty object (no fields) — not a meaningful data record yet; skip.
-        if (!hasAnyField) return;
-        if (hasPrimaryIdentity) return;
+        // Concrete entity, no primary identity (own or inherited) — warn.
+        // Matches TS subtype-rules / C# ValidationPasses (no "has any field" guard).
 
         // Bare entity name (no package prefix) — matches what other ports emit
         // (TS / C# fqn() falls back to name when no own package is set on the
