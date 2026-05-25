@@ -23,7 +23,8 @@ namespace MetaObjects.Loader;
 public sealed record LoadResult(
     MetaRoot Root,
     IReadOnlyList<string> Warnings,
-    IReadOnlyList<MetaError> Errors);
+    IReadOnlyList<MetaError> Errors,
+    string State = "loaded");
 
 /// <summary>
 /// Core metadata loader pipeline. Consumes a list of
@@ -79,7 +80,6 @@ public class MetaDataLoader
     public static LoadResult FromDirectory(string directory, TypeRegistry registry, DirectorySource.Options? opts = null)
     {
         var src = new DirectorySource(directory, opts);
-        var loader = new MetaDataLoader(registry);
         List<IMetaDataSource> sources;
         try
         {
@@ -87,24 +87,38 @@ public class MetaDataLoader
         }
         catch (Exception ex)
         {
-            // Directory-read failure: surface as a collected error on an empty load.
-            var empty = loader.Load(Array.Empty<IMetaDataSource>());
+            // Directory-read failure: synthesize an error result directly so
+            // state reflects "error" (calling Load([]) would set state to
+            // "loaded" because no errors had been collected yet at that point).
+            var loader = new MetaDataLoader(registry);
+            loader.SetState("error");
+            var root = MakeSyntheticRoot();
+            if (loader.Freeze)
+            {
+                root.Freeze();
+            }
             var errors = new List<MetaError>
             {
                 new($"Failed to read directory \"{directory}\": {ex.Message}", ErrorCode.ERR_UNKNOWN),
             };
-            errors.AddRange(empty.Errors);
-            return new LoadResult(empty.Root, empty.Warnings, errors.AsReadOnly());
+            return new LoadResult(root, Array.Empty<string>(), errors.AsReadOnly(), "error");
         }
-        return loader.Load(sources);
+        return new MetaDataLoader(registry).Load(sources);
     }
 
     /// <summary>
     /// Convenience: wrap each URI in a <see cref="UriSource"/> and load in order.
     /// </summary>
     public static LoadResult FromUris(IReadOnlyList<Uri> uris)
+        => FromUris(uris, DefaultRegistry());
+
+    /// <summary>
+    /// Registry-aware overload: wrap each URI in a <see cref="UriSource"/> and
+    /// load using the supplied <paramref name="registry"/>.
+    /// </summary>
+    public static LoadResult FromUris(IReadOnlyList<Uri> uris, TypeRegistry registry)
     {
-        var loader = new MetaDataLoader();
+        var loader = new MetaDataLoader(registry);
         var sources = uris.Select(u => (IMetaDataSource)new UriSource(u)).ToList();
         return loader.Load(sources);
     }
@@ -113,8 +127,15 @@ public class MetaDataLoader
     /// Convenience: load a single in-memory string of the given format.
     /// </summary>
     public static LoadResult FromString(string content, MetaDataFormat format)
+        => FromString(content, format, DefaultRegistry());
+
+    /// <summary>
+    /// Registry-aware overload: load a single in-memory string of the given
+    /// format using the supplied <paramref name="registry"/>.
+    /// </summary>
+    public static LoadResult FromString(string content, MetaDataFormat format, TypeRegistry registry)
     {
-        var loader = new MetaDataLoader();
+        var loader = new MetaDataLoader(registry);
         return loader.Load(new IMetaDataSource[] { new InMemoryStringSource(content, format: format) });
     }
 
@@ -312,8 +333,15 @@ public class MetaDataLoader
         }
 
         _root = root;
-        return new LoadResult(root, warnings.AsReadOnly(), errors.AsReadOnly());
+        return new LoadResult(root, warnings.AsReadOnly(), errors.AsReadOnly(), _state);
     }
+
+    /// <summary>
+    /// Internal state setter — used by static factories (e.g. FromDirectory)
+    /// that need to short-circuit the pipeline on pre-Load failures and still
+    /// report state == "error".
+    /// </summary>
+    internal void SetState(string state) => _state = state;
 
     // -------------------------------------------------------------------------
     // Helpers

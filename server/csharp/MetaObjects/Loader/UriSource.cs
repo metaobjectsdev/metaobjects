@@ -30,6 +30,8 @@ public sealed class UriSource : IMetaDataSource
     public UriSource(Uri uri, MetaDataFormat? format = null)
     {
         Uri = uri ?? throw new ArgumentNullException(nameof(uri));
+        if (!uri.IsAbsoluteUri)
+            throw new ArgumentException($"UriSource requires an absolute URI; got relative '{uri}'.", nameof(uri));
         Id = uri.ToString();
         Format = format ?? MetaDataFormats.InferFromExtension(uri.AbsolutePath);
     }
@@ -43,9 +45,12 @@ public sealed class UriSource : IMetaDataSource
 
         if (Uri.Scheme == "http" || Uri.Scheme == "https")
         {
-            using HttpResponseMessage resp = _http.GetAsync(Uri).GetAwaiter().GetResult();
+            using var req = new HttpRequestMessage(HttpMethod.Get, Uri);
+            using var resp = _http.Send(req);
             resp.EnsureSuccessStatusCode();
-            return resp.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            using var stream = resp.Content.ReadAsStream();
+            using var reader = new System.IO.StreamReader(stream);
+            return reader.ReadToEnd();
         }
 
         throw new NotSupportedException($"Unsupported URI scheme '{Uri.Scheme}' on {Uri}");

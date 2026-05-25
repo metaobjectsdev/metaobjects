@@ -25,6 +25,12 @@ public class UriSourceTests
     }
 
     [Fact]
+    public void RelativeUri_ThrowsArgumentException()
+    {
+        Assert.Throws<ArgumentException>(() => new UriSource(new Uri("foo/bar.json", UriKind.Relative)));
+    }
+
+    [Fact]
     public void ExplicitFormat_OverridesExtensionInference()
     {
         string path = Path.Combine(Path.GetTempPath(), "u_" + Path.GetRandomFileName() + ".txt");

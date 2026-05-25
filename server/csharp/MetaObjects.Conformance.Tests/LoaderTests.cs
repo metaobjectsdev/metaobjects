@@ -48,5 +48,6 @@ public class LoaderTests
         var result = MetaDataLoader.FromDirectory("/nonexistent/path/that/does/not/exist");
         Assert.NotEmpty(result.Errors);
         Assert.NotNull(result.Root);
+        Assert.Equal("error", result.State);
     }
 }
