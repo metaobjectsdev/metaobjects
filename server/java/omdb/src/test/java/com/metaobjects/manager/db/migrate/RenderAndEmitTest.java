@@ -17,12 +17,13 @@ public class RenderAndEmitTest {
 
     @Test public void postgres_renders_create_add_widen_rename() {
         PostgresDriver pg = new PostgresDriver();
-        assertTrue(pg.render(new Change.CreateTable(program())).startsWith("CREATE TABLE"));
-        assertEquals("ALTER TABLE program ADD COLUMN title VARCHAR(120)",
+        // Identifiers are double-quoted so mixed-case names round-trip through PG.
+        assertTrue(pg.render(new Change.CreateTable(program())).startsWith("CREATE TABLE \"program\""));
+        assertEquals("ALTER TABLE \"program\" ADD COLUMN \"title\" VARCHAR(120)",
             pg.render(new Change.AddColumn("program", null, new ColumnDescriptor("title", new SqlType.Text(120), true, null))));
-        assertEquals("ALTER TABLE program ALTER COLUMN title TYPE VARCHAR(400)",
+        assertEquals("ALTER TABLE \"program\" ALTER COLUMN \"title\" TYPE VARCHAR(400)",
             pg.render(new Change.ChangeColumnType("program", null, "title", new SqlType.Text(120), new SqlType.Text(400))));
-        assertEquals("ALTER TABLE program RENAME COLUMN name TO title",
+        assertEquals("ALTER TABLE \"program\" RENAME COLUMN \"name\" TO \"title\"",
             pg.render(new Change.RenameColumn("program", null, "name", "title")));
     }
     @Test public void derby_rename_uses_derby_grammar() {

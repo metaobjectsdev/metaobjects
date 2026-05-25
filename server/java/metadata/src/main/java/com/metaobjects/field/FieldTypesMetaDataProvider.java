@@ -63,6 +63,7 @@ public class FieldTypesMetaDataProvider implements MetaDataTypeProvider {
         ObjectField.registerTypes(registry);
         ClassField.registerTypes(registry);
         EnumField.registerTypes(registry);
+        CurrencyField.registerTypes(registry);
 
         log.debug("Field types registered via provider");
     }

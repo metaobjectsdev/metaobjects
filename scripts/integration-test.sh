@@ -2,14 +2,15 @@
 # Cross-language persistence conformance — on-demand integration suite.
 #
 # Spins up ephemeral Postgres containers (one per scenario) and runs the same
-# fixture corpus through every shipped runner: TypeScript (Bun) and C# (dotnet).
-# Each runner exercises that port's metaobjects persistence layer (codegen +
-# runtime) against a real Postgres instance.
+# fixture corpus through every shipped runner: TypeScript (Bun), C# (dotnet),
+# and Java (Maven). Each runner exercises that port's metaobjects persistence
+# layer (codegen + runtime) against a real Postgres instance.
 #
 # Usage:
 #   scripts/integration-test.sh            # all runners
 #   scripts/integration-test.sh ts         # only typescript
 #   scripts/integration-test.sh csharp     # only c#
+#   scripts/integration-test.sh java       # only java
 #
 # Pre-flight: docker daemon must be running.
 
@@ -36,11 +37,17 @@ run_csharp() {
   dotnet test server/csharp/MetaObjects.IntegrationTests/MetaObjects.IntegrationTests.csproj || FAIL=1
 }
 
+run_java() {
+  echo "==> Java persistence conformance"
+  ( cd server/java && mvn -f integration-tests/pom.xml test ) || FAIL=1
+}
+
 case "$WHICH" in
-  all)    run_ts; run_csharp ;;
+  all)    run_ts; run_csharp; run_java ;;
   ts)     run_ts ;;
   csharp) run_csharp ;;
-  *)      echo "unknown runner: $WHICH (expected: all|ts|csharp)" >&2; exit 2 ;;
+  java)   run_java ;;
+  *)      echo "unknown runner: $WHICH (expected: all|ts|csharp|java)" >&2; exit 2 ;;
 esac
 
 if [ "$FAIL" -ne 0 ]; then
