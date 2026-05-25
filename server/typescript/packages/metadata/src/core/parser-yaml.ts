@@ -7,9 +7,20 @@
 
 import { parse as parseYamlText } from "yaml";
 import { ParseError } from "../errors.js";
-import { buildTree, errOpts } from "../parser-core.js";
+import { buildTree } from "../parser-core.js";
 import type { ParseOptions, ParseResult } from "../parser-core.js";
+import type { ErrorSource } from "../source.js";
 import { desugar } from "./yaml-desugar.js";
+
+/** FR5a / ADR-0009 — build a YAML-source envelope rooted at "$".
+ *  yamlPosition is FR5b territory and not populated here. */
+function yamlSource(sourceName: string | undefined): ErrorSource {
+  return {
+    format: "yaml",
+    files: [sourceName ?? "<unknown>"],
+    jsonPath: "$",
+  };
+}
 
 export function parseYaml(content: string, opts: ParseOptions): ParseResult {
   // Strip UTF-8 BOM if present (consistent with parseJson).
@@ -24,7 +35,7 @@ export function parseYaml(content: string, opts: ParseOptions): ParseResult {
   } catch (err) {
     throw new ParseError(
       `Invalid YAML: ${(err as Error).message}`,
-      { ...errOpts(opts.sourceName), code: "ERR_MALFORMED_YAML" },
+      { code: "ERR_MALFORMED_YAML", source: yamlSource(opts.sourceName) },
     );
   }
 
@@ -37,7 +48,7 @@ export function parseYaml(content: string, opts: ParseOptions): ParseResult {
     const first = desugarErrors[0]!;
     throw new ParseError(
       first.message,
-      { ...errOpts(opts.sourceName), code: first.code ?? "ERR_MALFORMED_YAML" },
+      { code: first.code ?? "ERR_MALFORMED_YAML", source: yamlSource(opts.sourceName) },
     );
   }
 
@@ -50,8 +61,8 @@ export function parseYaml(content: string, opts: ParseOptions): ParseResult {
   const desugarParseErrors = desugarErrors.map(
     (e) =>
       new ParseError(e.message, {
-        ...errOpts(opts.sourceName),
         code: e.code ?? "ERR_MALFORMED_YAML",
+        source: yamlSource(opts.sourceName),
       }),
   );
   return {

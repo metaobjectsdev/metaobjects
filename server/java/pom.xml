@@ -36,6 +36,8 @@
     <module>metadata</module>
     <module>codegen-base</module>
     <module>codegen-mustache</module>
+    <module>render</module>
+    <module>metadata-ktx</module>
     <module>codegen-plantuml</module>
     <module>maven-plugin</module>
     <module>core-spring</module>

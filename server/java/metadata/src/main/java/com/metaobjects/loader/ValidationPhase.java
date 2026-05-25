@@ -16,9 +16,6 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.layout.DataGridLayout;
 import com.metaobjects.layout.MetaLayout;
-import com.metaobjects.template.MetaTemplate;
-import com.metaobjects.template.OutputTemplate;
-import com.metaobjects.template.PromptTemplate;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.origin.AggregateOrigin;
@@ -27,9 +24,15 @@ import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.origin.PassthroughOrigin;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.source.MetaSource;
+import com.metaobjects.template.MetaTemplate;
+import com.metaobjects.template.OutputTemplate;
+import com.metaobjects.template.PromptTemplate;
+import com.metaobjects.template.TemplateConstants;
 import com.metaobjects.util.ErrorMessageConstants;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Post-load validation phase — runs after all sources are parsed and before the
@@ -756,97 +759,6 @@ public final class ValidationPhase {
     }
 
     // =========================================================================
-    // template.* validation (FR-004)
-    //
-    //   template.prompt requires @payloadRef → ERR_MISSING_REQUIRED_ATTR
-    //   @payloadRef must resolve to a real root-level object (value or entity)
-    //       → ERR_INVALID_TEMPLATE
-    //   @requiredSlots entries on template.prompt must be field names on the
-    //       referenced payload → ERR_INVALID_TEMPLATE
-    // =========================================================================
-
-    static void validateTemplates(MetaRoot root) {
-        java.util.Map<String, MetaObject> objectsByName = new java.util.HashMap<>();
-        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
-            if (rootChild instanceof MetaObject) {
-                MetaObject obj = (MetaObject) rootChild;
-                objectsByName.put(obj.getShortName(), obj);
-            }
-        }
-        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
-            if (rootChild instanceof MetaTemplate) {
-                validateTemplateNode((MetaTemplate) rootChild, objectsByName);
-            }
-        }
-    }
-
-    private static void validateTemplateNode(MetaTemplate tpl,
-                                              java.util.Map<String, MetaObject> objectsByName) {
-        boolean isPrompt = tpl instanceof PromptTemplate;
-        boolean hasPayloadRef = tpl.hasMetaAttr(MetaTemplate.ATTR_PAYLOAD_REF, false);
-        if (isPrompt && !hasPayloadRef) {
-            throw new MetaDataException(
-                ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
-                    + ": template.prompt '" + tpl.getShortName()
-                    + "' is missing required @payloadRef attribute",
-                ErrorCode.ERR_MISSING_REQUIRED_ATTR);
-        }
-        if (!hasPayloadRef) {
-            return;
-        }
-        Object refVal = tpl.getMetaAttr(MetaTemplate.ATTR_PAYLOAD_REF, false).getValue();
-        String payloadName = refVal == null ? null : refVal.toString();
-        if (payloadName == null || payloadName.isEmpty()) {
-            throw new MetaDataException(
-                ErrorMessageConstants.ERR_INVALID_TEMPLATE
-                    + ": template '" + tpl.getShortName() + "' @payloadRef is empty",
-                ErrorCode.ERR_INVALID_TEMPLATE);
-        }
-        MetaObject payload = objectsByName.get(payloadName);
-        if (payload == null) {
-            throw new MetaDataException(
-                ErrorMessageConstants.ERR_INVALID_TEMPLATE
-                    + ": template '" + tpl.getShortName() + "' @payloadRef '"
-                    + payloadName + "' does not resolve to a root-level object",
-                ErrorCode.ERR_INVALID_TEMPLATE);
-        }
-        if (isPrompt && tpl.hasMetaAttr(PromptTemplate.ATTR_REQUIRED_SLOTS, false)) {
-            Object slotsRaw = tpl.getMetaAttr(PromptTemplate.ATTR_REQUIRED_SLOTS, false).getValue();
-            java.util.Set<String> payloadFieldNames = new java.util.HashSet<>();
-            for (MetaField f : payload.getChildren(MetaField.class, false)) {
-                payloadFieldNames.add(f.getShortName());
-            }
-            java.util.List<String> slots = parseSlotsValue(slotsRaw);
-            for (String slot : slots) {
-                if (!payloadFieldNames.contains(slot)) {
-                    throw new MetaDataException(
-                        ErrorMessageConstants.ERR_INVALID_TEMPLATE
-                            + ": template.prompt '" + tpl.getShortName()
-                            + "' @requiredSlots references '" + slot
-                            + "' which is not a field on payload '" + payloadName + "'",
-                        ErrorCode.ERR_INVALID_TEMPLATE);
-                }
-            }
-        }
-    }
-
-    private static java.util.List<String> parseSlotsValue(Object raw) {
-        java.util.List<String> out = new java.util.ArrayList<>();
-        if (raw == null) return out;
-        if (raw instanceof String) {
-            for (String s : ((String) raw).split(",")) {
-                String t = s.trim();
-                if (!t.isEmpty()) out.add(t);
-            }
-        } else if (raw instanceof Iterable<?>) {
-            for (Object o : (Iterable<?>) raw) {
-                if (o != null) out.add(o.toString());
-            }
-        }
-        return out;
-    }
-
-    // =========================================================================
     // layout.dataGrid validation
     //
     //   @defaultSortField must name a real field on the owning entity
@@ -1061,6 +973,104 @@ public final class ValidationPhase {
         return false;
     }
 
+    // =========================================================================
+    // Template validation (FR-004 — cross-language prompt construction)
+    //
+    // Four rules, own-only, eager-throw — mirrors TS validateTemplates and
+    // C# TemplateValidator:
+    //   R1: template.prompt requires @payloadRef → ERR_MISSING_REQUIRED_ATTR
+    //   R2: @payloadRef (if present on any template) must resolve to an
+    //       object.value at root → ERR_INVALID_TEMPLATE
+    //   R3: template.prompt @requiredSlots members must each be a field on the
+    //       resolved payload VO → ERR_INVALID_TEMPLATE
+    //   R4: @format (if present) must be a member of TemplateConstants.ALLOWED_FORMATS
+    //       → ERR_BAD_ATTR_VALUE
+    //
+    // Templates always live at the document root. We walk root children only.
+    // =========================================================================
+
+    /**
+     * Validate every {@code template.*} child of the root.
+     *
+     * @param root the fully-loaded root
+     * @throws MetaDataException on the first template validation failure
+     */
+    static void validateTemplates(MetaRoot root) {
+        for (MetaData child : root.getChildren(MetaData.class, false)) {
+            if (!(child instanceof MetaTemplate)) continue;
+            validateTemplateNode(root, (MetaTemplate) child);
+        }
+    }
+
+    private static void validateTemplateNode(MetaRoot root, MetaTemplate template) {
+        String subType = template.getSubType();
+        String payloadRef = template.getPayloadRef();
+
+        // R4 — @format (if present) must be in the closed allowed set
+        // (text|html|xml|csv|json|markdown|spreadsheet). Own-only — absent is fine.
+        if (template.hasMetaAttr(TemplateConstants.ATTR_FORMAT, false)) {
+            String fmt = template.getMetaAttr(TemplateConstants.ATTR_FORMAT, false).getValueAsString();
+            if (fmt != null && !TemplateConstants.ALLOWED_FORMATS.contains(fmt)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": template '" + template.getName()
+                        + "' @format '" + fmt
+                        + "' is not a valid value; allowed: "
+                        + TemplateConstants.ALLOWED_FORMATS,
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+
+        // R1 — template.prompt requires @payloadRef
+        if (TemplateConstants.SUBTYPE_PROMPT.equals(subType)
+                && (payloadRef == null || payloadRef.isEmpty())) {
+            throw new MetaDataException(
+                "template.prompt '" + template.getName() + "' is missing required @payloadRef",
+                ErrorCode.ERR_MISSING_REQUIRED_ATTR);
+        }
+
+        // R2 + R3 only apply if @payloadRef is set
+        if (payloadRef == null || payloadRef.isEmpty()) return;
+
+        MetaObject payloadVo = findRootObject(root, payloadRef);
+        if (payloadVo == null || !MetaObject.SUBTYPE_VALUE.equals(payloadVo.getSubType())) {
+            throw new MetaDataException(
+                "template '" + template.getName() + "' @payloadRef '" + payloadRef
+                    + "' does not resolve to an object.value at root",
+                ErrorCode.ERR_INVALID_TEMPLATE);
+        }
+
+        // R3 — every @requiredSlots member must be a field on the payload VO
+        if (!(template instanceof PromptTemplate prompt)) return;
+        List<String> required = prompt.getRequiredSlots();
+        if (required == null || required.isEmpty()) return;
+
+        Set<String> available = collectPayloadFieldNames(payloadVo);
+        for (String slot : required) {
+            if (slot == null || slot.isEmpty()) continue;
+            if (!available.contains(slot)) {
+                throw new MetaDataException(
+                    "template.prompt '" + template.getName()
+                        + "' @requiredSlots includes '" + slot
+                        + "' which is not a field on payload '" + payloadRef + "'",
+                    ErrorCode.ERR_INVALID_TEMPLATE);
+            }
+        }
+    }
+
+    /**
+     * Collect the short names of every {@code field.*} child of a payload VO.
+     * Walks effective children (includeParentData=true) so an extends-based
+     * payload contributes inherited fields too.
+     */
+    private static Set<String> collectPayloadFieldNames(MetaObject payloadVo) {
+        Set<String> out = new HashSet<>();
+        for (MetaData child : payloadVo.getChildren(MetaData.class, true)) {
+            if (child instanceof MetaField) out.add(shortNameOf(child));
+        }
+        return out;
+    }
+
     /**
      * Validate a dotted "Entity.field" reference (used by passthrough's @from
      * and aggregate's @of). The entity must exist at the root, and the field
@@ -1219,13 +1229,22 @@ public final class ValidationPhase {
      * segment from {@code getName()} (after the last {@code "::"}).
      */
     private static boolean nameMatches(MetaData child, String name) {
+        String bare = shortNameOf(child);
+        return bare != null && name.equals(bare);
+    }
+
+    /**
+     * Bare name for {@code child}: prefers {@code getShortName()}, falls back
+     * to the tail segment of {@code getName()} (after the last {@code "::"}).
+     * Returns {@code null} only when both are unavailable.
+     */
+    private static String shortNameOf(MetaData child) {
         String shortName = child.getShortName();
-        if (shortName != null && name.equals(shortName)) return true;
+        if (shortName != null && !shortName.isEmpty()) return shortName;
         String full = child.getName();
-        if (full == null) return false;
+        if (full == null) return null;
         int idx = full.lastIndexOf(MetaData.PKG_SEPARATOR);
-        String bare = (idx >= 0) ? full.substring(idx + MetaData.PKG_SEPARATOR.length()) : full;
-        return name.equals(bare);
+        return (idx >= 0) ? full.substring(idx + MetaData.PKG_SEPARATOR.length()) : full;
     }
 
 }

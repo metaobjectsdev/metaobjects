@@ -58,7 +58,10 @@ export const tsAdapter: ConformanceAdapter = {
     return {
       tree: result.root,
       errorCodes: result.errors.map(errorCode),
-      warnings: result.warnings,
+      // ConformanceAdapter.LoadOutcome.warnings is `string[]`; the loader now
+      // returns LoaderWarning envelopes (FR5a). Extract the human-readable
+      // message for cross-port string-equality comparison.
+      warnings: result.warnings.map((w) => w.message),
     };
   },
 

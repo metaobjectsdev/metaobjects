@@ -77,7 +77,7 @@ public class MetaRoot extends MetaData {
                 .optionalChild(com.metaobjects.identity.MetaIdentity.TYPE_IDENTITY, "*", "*")        // Any identity type
                 .optionalChild(com.metaobjects.relationship.MetaRelationship.TYPE_RELATIONSHIP, "*", "*") // Any relationship type
                 .optionalChild("layout", "*", "*")                          // Any layout type (root-level shared layouts)
-                .optionalChild("template", "*", "*")                        // Any template type (FR-004)
+                .optionalChild(com.metaobjects.template.TemplateConstants.TYPE_TEMPLATE, "*", "*") // Any template type (FR-004)
             );
             // ADR-0006 Rule 1 — bare `metadata:` YAML key fuses to `metadata.root`.
             MetaDataRegistry.getInstance().setDefaultSubType(TYPE_METADATA, SUBTYPE_ROOT);
@@ -107,7 +107,7 @@ public class MetaRoot extends MetaData {
                 .optionalChild(com.metaobjects.identity.MetaIdentity.TYPE_IDENTITY, "*", "*")
                 .optionalChild(com.metaobjects.relationship.MetaRelationship.TYPE_RELATIONSHIP, "*", "*")
                 .optionalChild("layout", "*", "*")
-                .optionalChild("template", "*", "*")
+                .optionalChild(com.metaobjects.template.TemplateConstants.TYPE_TEMPLATE, "*", "*")
             );
         } catch (Exception e) {
             log.error("Failed to register MetaRoot type with unified registry", e);

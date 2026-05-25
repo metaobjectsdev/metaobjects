@@ -943,11 +943,11 @@ describe("parseJson — fruitbasket fixture round-trip", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 13. Errors include source + path
+// 13. Errors include source envelope (FR5a / ADR-0009)
 // ---------------------------------------------------------------------------
 
-describe("parseJson — ParseError source and path", () => {
-  it("ParseError.source matches the sourceName option", () => {
+describe("parseJson — ParseError source envelope (FR5a)", () => {
+  it("source.files[0] matches the sourceName option (malformed JSON)", () => {
     const registry = makeRegistry();
     let caught: unknown;
     try {
@@ -956,10 +956,12 @@ describe("parseJson — ParseError source and path", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ParseError);
-    expect((caught as ParseError).source).toBe("test.json");
+    const pe = caught as ParseError;
+    expect(pe.source.format).toBe("json");
+    if (pe.source.format === "json") expect(pe.source.files).toEqual(["test.json"]);
   });
 
-  it("ParseError from unknown root type includes source", () => {
+  it("ParseError from unknown root type carries the source envelope", () => {
     const registry = makeRegistry();
     let caught: unknown;
     try {
@@ -968,10 +970,12 @@ describe("parseJson — ParseError source and path", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ParseError);
-    expect((caught as ParseError).source).toBe("fishstore.json");
+    const pe = caught as ParseError;
+    expect(pe.source.format).toBe("json");
+    if (pe.source.format === "json") expect(pe.source.files).toEqual(["fishstore.json"]);
   });
 
-  it("ParseError from strict unknown key includes a path", () => {
+  it("ParseError from strict unknown key includes a jsonPath", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
       "metadata.root": {
@@ -985,13 +989,15 @@ describe("parseJson — ParseError source and path", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ParseError);
-    const err = caught as ParseError;
-    expect(err.source).toBe("test.json");
-    expect(typeof err.path).toBe("string");
-    expect(err.path!.length).toBeGreaterThan(0);
+    const pe = caught as ParseError;
+    expect(pe.source.format).toBe("json");
+    if (pe.source.format === "json") {
+      expect(pe.source.files).toEqual(["test.json"]);
+      expect(pe.source.jsonPath.length).toBeGreaterThan(0);
+    }
   });
 
-  it("ParseError from an unknown child type carries a path with the children index", () => {
+  it("ParseError from an unknown child type carries a jsonPath with the children index", () => {
     const registry = makeRegistry();
     const input = JSON.stringify({
       "metadata.root": {
@@ -1005,10 +1011,13 @@ describe("parseJson — ParseError source and path", () => {
     // Unknown child type is collected in errors[] (not thrown).
     const { errors } = parseJson(input, { registry, strict: true, sourceName: "test.json" });
     expect(errors.length).toBeGreaterThan(0);
-    const err = errors[0]!;
-    expect(err).toBeInstanceOf(ParseError);
-    // Path should reference the third child (index 2)
-    expect(err.path).toContain("[2]");
+    const pe = errors[0]!;
+    expect(pe).toBeInstanceOf(ParseError);
+    expect(pe.source.format).toBe("json");
+    if (pe.source.format === "json") {
+      // jsonPath should reference the third child (index 2)
+      expect(pe.source.jsonPath).toContain("[2]");
+    }
   });
 
   it("ParseError name is 'ParseError'", () => {
@@ -1023,7 +1032,7 @@ describe("parseJson — ParseError source and path", () => {
     expect((caught as ParseError).name).toBe("ParseError");
   });
 
-  it("sourceName undefined when not provided", () => {
+  it("sourceName undefined falls back to '<unknown>' in the envelope files[]", () => {
     const registry = makeRegistry();
     let caught: unknown;
     try {
@@ -1032,7 +1041,9 @@ describe("parseJson — ParseError source and path", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ParseError);
-    expect((caught as ParseError).source).toBeUndefined();
+    const pe = caught as ParseError;
+    expect(pe.source.format).toBe("json");
+    if (pe.source.format === "json") expect(pe.source.files).toEqual(["<unknown>"]);
   });
 });
 
@@ -1599,25 +1610,34 @@ describe("parseJson — @default (SUBTYPE_BASE / polymorphic) preserves value ty
 
 describe("errors.ts exports", () => {
   it("ParseError is an Error subclass", () => {
-    const err = new ParseError("test");
+    const err = new ParseError("test", { code: "ERR_UNKNOWN", source: { format: "code" } });
     expect(err).toBeInstanceOf(Error);
     expect(err).toBeInstanceOf(ParseError);
   });
 
   it("ParseError.name is 'ParseError'", () => {
-    expect(new ParseError("x").name).toBe("ParseError");
+    expect(new ParseError("x", { code: "ERR_UNKNOWN", source: { format: "code" } }).name).toBe("ParseError");
   });
 
-  it("ParseError stores source and path", () => {
-    const err = new ParseError("msg", { source: "file.json", path: "metadata.children[0]" });
-    expect(err.source).toBe("file.json");
-    expect(err.path).toBe("metadata.children[0]");
+  it("ParseError stores the ErrorSource envelope (FR5a)", () => {
+    const err = new ParseError("msg", {
+      code: "ERR_MALFORMED_JSON",
+      source: { format: "json", files: ["file.json"], jsonPath: "$.metadata.root.children[0]" },
+    });
+    expect(err.source.format).toBe("json");
+    if (err.source.format === "json") {
+      expect(err.source.files).toEqual(["file.json"]);
+      expect(err.source.jsonPath).toBe("$.metadata.root.children[0]");
+    }
+    expect(err.code).toBe("ERR_MALFORMED_JSON");
   });
 
-  it("ParseError source and path are optional", () => {
-    const err = new ParseError("bare message");
-    expect(err.source).toBeUndefined();
-    expect(err.path).toBeUndefined();
+  it("ParseError accepts a code-source envelope for programmatic construction", () => {
+    const err = new ParseError("bare message", {
+      code: "ERR_UNKNOWN",
+      source: { format: "code", caller: "test" },
+    });
+    expect(err.source.format).toBe("code");
     expect(err.message).toBe("bare message");
   });
 });

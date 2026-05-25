@@ -4,8 +4,9 @@
 // the canonical object to the shared buildTree (parser-core.ts).
 
 import { ParseError } from "./errors.js";
-import { buildTree, errOpts } from "./parser-core.js";
+import { buildTree } from "./parser-core.js";
 import type { ParseOptions, ParseResult } from "./parser-core.js";
+import type { ErrorSource } from "./source.js";
 
 export type { ParseOptions, ParseResult } from "./parser-core.js";
 
@@ -18,9 +19,17 @@ export function parseJson(content: string, opts: ParseOptions): ParseResult {
   try {
     parsed = JSON.parse(normalizedContent);
   } catch (err) {
+    // FR5a / ADR-0009 — pre-buildTree errors can't reach the parser's
+    // module-level JsonPathBuilder; build a minimal json-source envelope
+    // rooted at "$" so cross-port callers see a consistent shape.
+    const source: ErrorSource = {
+      format: "json",
+      files: [opts.sourceName ?? "<unknown>"],
+      jsonPath: "$",
+    };
     throw new ParseError(
       `Invalid JSON: ${(err as Error).message}`,
-      { ...errOpts(opts.sourceName), code: "ERR_MALFORMED_JSON" },
+      { code: "ERR_MALFORMED_JSON", source },
     );
   }
 
