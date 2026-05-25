@@ -38,7 +38,6 @@
     <module>codegen-mustache</module>
     <module>codegen-plantuml</module>
     <module>maven-plugin</module>
-    <module>core</module>
     <module>core-spring</module>
     <module>dynamic</module>
     <module>om</module>

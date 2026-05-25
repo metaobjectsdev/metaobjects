@@ -1,7 +1,7 @@
 package com.metaobjects.registry;
 
-import com.metaobjects.loader.file.FileMetaDataLoader;
 import com.metaobjects.attr.PropertiesAttribute;
+import com.metaobjects.loader.file.FileMetaDataLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,7 +26,7 @@ public class CoreTypeInitializer {
         try {
             log.debug("Loading core MetaData types...");
 
-            // Load FileMetaDataLoader to trigger its static block
+            // Load FileMetaDataLoader to trigger its static block.
             Class.forName(FileMetaDataLoader.class.getName());
             log.debug("Loaded FileMetaDataLoader type");
 

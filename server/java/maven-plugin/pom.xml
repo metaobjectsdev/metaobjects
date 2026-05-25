@@ -59,12 +59,6 @@
             <artifactId>metaobjects-omdb</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <dependency>
-            <groupId>com.metaobjects</groupId>
-            <artifactId>metaobjects-core</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        
         <!-- Code Generation Dependencies -->
         <dependency>
             <groupId>com.metaobjects</groupId>
