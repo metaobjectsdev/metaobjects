@@ -42,35 +42,6 @@ function makeCtx(post: MetaObject) {
 }
 
 describe("renderFindByIdFn", () => {
-  test("emits findPostById with prepared statement (sqlite has no name arg)", () => {
-    const post = makePost();
-    const ctx = makeCtx(post); // sqlite
-    const out = renderFindByIdFn(post, ctx).toString();
-    expect(out).toContain("findPostById");
-    // sqlite: prepare() has no args (drizzle-orm 0.41+ removed the name arg).
-    expect(out).toMatch(/\.prepare\(\s*\)/);
-    expect(out).toContain("Promise<Post | null>");
-    expect(out).toContain("return post ?? null");
-  });
-
-  test("postgres emits prepare(name) for plan caching", () => {
-    const post = makePost();
-    const ctx = { ...makeCtx(post), dialect: "postgres" as const };
-    const out = renderFindByIdFn(post, ctx).toString();
-    expect(out).toContain('.prepare("find_post_by_id")');
-  });
-
-  test("postgres prepared statement name is stable across calls", () => {
-    const post = makePost();
-    const ctx = { ...makeCtx(post), dialect: "postgres" as const };
-    const out1 = renderFindByIdFn(post, ctx).toString();
-    const out2 = renderFindByIdFn(post, ctx).toString();
-    const match1 = out1.match(/prepare\(['"]([^'"]+)['"]\)/);
-    const match2 = out2.match(/prepare\(['"]([^'"]+)['"]\)/);
-    expect(match1?.[1]).toBe(match2?.[1]);
-    expect(match1?.[1]).toBe("find_post_by_id");
-  });
-
   test("first parameter is db: Db (the persistence-context handle)", () => {
     const post = makePost();
     const ctx = makeCtx(post); // sqlite
@@ -81,19 +52,18 @@ describe("renderFindByIdFn", () => {
     expect(out).toMatch(/findPostById\(\s*db:\s*Db\s*,\s*id:\s*number\s*\)/);
   });
 
-  test("does not reference a module-level db (constants hoisted into the fn body)", () => {
+  test("emits findPostById with .limit(1) shape returning singleton", () => {
     const post = makePost();
     const ctx = makeCtx(post);
     const out = renderFindByIdFn(post, ctx).toString();
-    // Old shape was a top-level `const findPostByIdBase = db.select()...` followed
-    // by `const findPostByIdPrepared = ...`. New shape has those constants
-    // inside the function body (so `db` resolves to the parameter).
-    // Heuristic: the function declaration must appear BEFORE any
-    // `findPostByIdBase` / `findPostByIdPrepared` constant.
-    const fnIdx = out.indexOf("export async function findPostById");
-    const baseIdx = out.indexOf("findPostByIdBase");
-    expect(fnIdx).toBeGreaterThanOrEqual(0);
-    expect(baseIdx).toBeGreaterThan(fnIdx);
+    expect(out).toContain("findPostById");
+    expect(out).toContain("Promise<Post | null>");
+    // New shape: plain select().limit(1) — no prepared statement.
+    expect(out).toContain(".limit(1)");
+    expect(out).toContain("return post ?? null");
+    // Old prepared-statement artifacts must be gone.
+    expect(out).not.toContain(".prepare(");
+    expect(out).not.toContain("sql.placeholder");
   });
 });
 

@@ -5,12 +5,7 @@ import { code, imp, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { IDENTITY_ATTR_FIELDS } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
-import { variableNameFromEntity, toSnakeCase, pluralize } from "../naming.js";
-
-/** Derive a stable prepared statement name. Deterministic from entity + field names. */
-function prepareName(prefix: string, entitySnakeName: string, fieldDbName: string): string {
-  return `${prefix}_${entitySnakeName}_by_${fieldDbName}`;
-}
+import { variableNameFromEntity, pluralize } from "../naming.js";
 
 /** Get the PK field name and its TS type for a given entity. */
 function getPkInfo(entity: MetaObject, ctx: RenderContext): { fieldName: string; tsType: string } {
@@ -34,29 +29,13 @@ export function renderFindByIdFn(entity: MetaObject, ctx: RenderContext): Code {
   const varName = variableNameFromEntity(entity.name);
   const entityName = entity.name;
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
-  const entitySnakeName = toSnakeCase(entityName);
   const { fieldName: pkField, tsType: pkType } = getPkInfo(entity, ctx);
-  const pkSnakeName = toSnakeCase(pkField);
-  const prepName = prepareName("find", entitySnakeName, pkSnakeName);
   const fnName = `find${entityName}ById`;
-  const baseVarName = `${fnName}Base`;
-  const prepVarName = `${fnName}Prepared`;
   const eqSym = imp("eq@drizzle-orm");
-  const sqlSym = imp("sql@drizzle-orm");
-
-  // Drizzle's `.prepare()` signature differs by dialect:
-  //   - Postgres: prepare(name) — the name is used by the pg driver to cache the plan
-  //   - SQLite:   prepare()     — no name; the name arg was removed in drizzle-orm 0.41+
-  const prepArg = ctx.dialect === "postgres" ? `"${prepName}"` : "";
 
   return code`
 export async function ${fnName}(db: Db, ${pkField}: ${pkType}): Promise<${entityName} | null> {
-  const ${baseVarName} = db
-    .select()
-    .from(${varName})
-    .where(${eqSym}(${varName}.${pkField}, ${sqlSym}.placeholder(${JSON.stringify(pkField)})));
-  const ${prepVarName} = ${baseVarName}.prepare(${prepArg});
-  const [${singularVar}] = await ${prepVarName}.execute({ ${pkField} });
+  const [${singularVar}] = await db.select().from(${varName}).where(${eqSym}(${varName}.${pkField}, ${pkField})).limit(1);
   return ${singularVar} ?? null;
 }
 `;
