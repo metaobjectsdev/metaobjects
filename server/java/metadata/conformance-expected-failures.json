@@ -1,6 +1,4 @@
 {
   "language": "java",
-  "fixtures": [
-    "extends-abstract-base"
-  ]
+  "fixtures": []
 }

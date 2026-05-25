@@ -228,9 +228,7 @@ public class ConformanceTest {
         // expected-warnings.json is now supported — the assertion lives below,
         // after the loader has run (so loader.getWarnings() has a value to
         // compare against).
-        if (fix.hasScript) {
-            failures.add("script.json (operation scripts) not supported by Java harness");
-        }
+        // script.json is handled below — after the loader has run.
 
         // -- Load all input files --------------------------------------------
         List<Path> inputFiles = listInputFiles(fix.inputDir);
@@ -343,6 +341,18 @@ public class ConformanceTest {
             }
         } else if (fix.hasExpected && !gotWarnings.isEmpty()) {
             failures.add("loader emitted unexpected warnings: " + gotWarnings);
+        }
+
+        // -- script.json check ----------------------------------------------
+        if (fix.hasScript) {
+            try {
+                JsonElement scriptEl = JsonParser.parseString(new String(
+                    Files.readAllBytes(fix.dir.resolve("script.json")),
+                    StandardCharsets.UTF_8));
+                ScriptRunner.run(loader, scriptEl, failures);
+            } catch (Exception ex) {
+                failures.add("script.json parse error: " + ex.getMessage());
+            }
         }
 
         // -- no-expectation safeguard ---------------------------------------
