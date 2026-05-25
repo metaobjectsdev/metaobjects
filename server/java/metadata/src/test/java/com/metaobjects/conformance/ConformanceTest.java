@@ -120,7 +120,8 @@ public class ConformanceTest {
                 "validator-types",
                 "identity-types",
                 "relationship-types",
-                "source-types"
+                "source-types",
+                "view-types"
             )
         );
 

@@ -357,7 +357,12 @@ public final class CanonicalJsonSerializer {
      */
     private static String resolveNodePackage(MetaData node) {
         if (node instanceof MetaRoot) {
-            // The root's name is the package itself.
+            // The root's name is the package itself — unless the loader had no
+            // authored name to bind it to, in which case the canonical wire
+            // form is "no package" (TS/C#/Python parity).
+            if (((MetaRoot) node).hasSynthesizedName()) {
+                return null;
+            }
             return node.getName();
         }
         return node.getPackage();

@@ -354,10 +354,19 @@ public class MetaData implements Cloneable, Serializable {
      * Validate MetaData name during construction
      */
     private void validateName(String name) {
-        // Loaders and views can have more flexible naming (allow hyphens)
+        // Loaders and views can have more flexible naming (allow hyphens). Views
+        // also accept package-qualified names because the loader synthesises
+        // FQNs like `pkg::Entity::currency1` for unnamed children.
         if ("loader".equals(type) || "view".equals(type)) {
-            // Allow hyphens for loaders and views
-            if (!name.matches("^[a-zA-Z][a-zA-Z0-9_-]*$")) {
+            if (name.contains("::")) {
+                for (String part : name.split("::")) {
+                    if (!part.matches("^[a-zA-Z][a-zA-Z0-9_-]*$")) {
+                        throw new IllegalArgumentException(
+                            "Invalid " + type + " name part '" + part + "' in '" + name
+                                + "': must follow pattern ^[a-zA-Z][a-zA-Z0-9_-]*$");
+                    }
+                }
+            } else if (!name.matches("^[a-zA-Z][a-zA-Z0-9_-]*$")) {
                 throw new IllegalArgumentException(
                     "Invalid " + type + " name '" + name + "': must follow pattern ^[a-zA-Z][a-zA-Z0-9_-]*$");
             }

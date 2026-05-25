@@ -13,6 +13,7 @@ import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
+import com.metaobjects.field.ObjectField;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.origin.AggregateOrigin;
@@ -83,7 +84,9 @@ public final class ValidationPhase {
         validateOnePrimarySource(root);
         validateRelationshipReferentialActions(root);
         validateOrigins(root);
+        validateObjectFieldStorage(root);
         validateEntityHasPrimaryIdentity(root, loader);
+        warnFilterableWithoutIndex(root, loader);
     }
 
     /**
@@ -425,6 +428,56 @@ public final class ValidationPhase {
     }
 
     // =========================================================================
+    // field.object @storage validation
+    //
+    // Two rules, matching the cross-port spec:
+    //   1. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY
+    //      (flattened storage materialises one column-per-field; arrays would
+    //       require a side table, which is what @storage="jsonb" is for.)
+    //   2. @storage set without @objectRef → ERR_STORAGE_WITHOUT_OBJECT_REF
+    //      (storage shape only makes sense when there IS a referenced object).
+    //
+    // Only field.object nodes are inspected; @storage on other field subtypes is
+    // already rejected by the constraint phase.
+    // =========================================================================
+
+    static void validateObjectFieldStorage(MetaRoot root) {
+        walkObjectFieldStorage(root);
+    }
+
+    private static void walkObjectFieldStorage(MetaData node) {
+        validateObjectFieldStorageNode(node);
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkObjectFieldStorage(child);
+        }
+    }
+
+    private static void validateObjectFieldStorageNode(MetaData node) {
+        if (!(node instanceof ObjectField)) return;
+        if (!node.hasMetaAttr(ObjectField.ATTR_STORAGE, false)) return;
+
+        ObjectField field = (ObjectField) node;
+
+        if (!node.hasMetaAttr(ObjectField.ATTR_OBJECTREF, false)) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_STORAGE_WITHOUT_OBJECT_REF
+                    + ": field.object '" + field.getName()
+                    + "' has @storage but no @objectRef — @storage shape only applies to referenced objects",
+                ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF);
+        }
+
+        Object storageVal = node.getMetaAttr(ObjectField.ATTR_STORAGE, false).getValue();
+        if ("flattened".equals(String.valueOf(storageVal)) && field.isArrayType()) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_STORAGE_FLATTENED_ARRAY
+                    + ": field.object '" + field.getName()
+                    + "' @storage=\"flattened\" cannot be combined with isArray=true"
+                    + " (use @storage=\"jsonb\" for owned-array storage)",
+                ErrorCode.ERR_STORAGE_FLATTENED_ARRAY);
+        }
+    }
+
+    // =========================================================================
     // Origin validation (passthrough / aggregate / collection)
     //
     // Mirrors the TS validateOriginPaths pass (server/typescript/packages/metadata/
@@ -641,6 +694,74 @@ public final class ValidationPhase {
         loader.addWarning(
             "entity object '" + shortName + "' has no primary identity "
                 + "(add an identity child or mark @isAbstract: true)");
+    }
+
+    // =========================================================================
+     // @filterable without backing index — warning pass
+    //
+    // Mirrors TS validation-passes.ts (filterable-without-index). For every
+    // field carrying @filterable: true that is NOT a member of any identity
+    // on its owning object (primary or secondary), emit a warning. Authors
+    // should either remove @filterable or add a backing index (a secondary
+    // identity / @db.indexed).
+    //
+    // Warning text MUST match the cross-port string exactly so fixtures'
+    // expected-warnings.json compare byte-equal.
+    // =========================================================================
+
+    private static final String ATTR_FILTERABLE = "filterable";
+
+    static void warnFilterableWithoutIndex(MetaRoot root, MetaDataLoader loader) {
+        if (loader == null) return;
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            if (rootChild instanceof MetaObject) {
+                checkFilterableFields((MetaObject) rootChild, loader);
+            }
+        }
+    }
+
+    private static void checkFilterableFields(MetaObject obj, MetaDataLoader loader) {
+        List<MetaField> indexedFieldNames = obj.getChildren(MetaField.class, false);
+        java.util.Set<String> indexed = new java.util.HashSet<>();
+        for (MetaData child : obj.getChildren(MetaData.class, false)) {
+            if (!(child instanceof MetaIdentity)) continue;
+            MetaIdentity identity = (MetaIdentity) child;
+            if (!identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, false)) continue;
+            Object raw = identity.getMetaAttr(MetaIdentity.ATTR_FIELDS, false).getValue();
+            collectIdentityFields(raw, indexed);
+        }
+
+        for (MetaField field : indexedFieldNames) {
+            if (!field.hasMetaAttr(ATTR_FILTERABLE, false)) continue;
+            Object v = field.getMetaAttr(ATTR_FILTERABLE, false).getValue();
+            boolean filterable =
+                (v instanceof Boolean) ? (Boolean) v
+                : (v instanceof String) ? "true".equalsIgnoreCase((String) v)
+                : false;
+            if (!filterable) continue;
+            if (indexed.contains(field.getShortName())) continue;
+            String objName = obj.getShortName() != null ? obj.getShortName() : obj.getName();
+            loader.addWarning(
+                "[filterable-without-index] field \"" + objName + "." + field.getShortName()
+                    + "\" has @filterable: true but is not part of any identity."
+                    + " Filtering on this field will sequential-scan."
+                    + " Add @db.indexed: true to the field (when supported),"
+                    + " or remove @filterable: true.");
+        }
+    }
+
+    private static void collectIdentityFields(Object raw, java.util.Set<String> out) {
+        if (raw == null) return;
+        if (raw instanceof String) {
+            for (String s : ((String) raw).split(",")) {
+                String t = s.trim();
+                if (!t.isEmpty()) out.add(t);
+            }
+        } else if (raw instanceof Iterable<?>) {
+            for (Object o : (Iterable<?>) raw) {
+                if (o != null) out.add(o.toString());
+            }
+        }
     }
 
     /**

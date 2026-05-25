@@ -84,6 +84,21 @@ public final class ErrorMessageConstants {
      */
     public static final String ERR_YAML_COERCION = "ERR_YAML_COERCION";
 
+    /**
+     * Error code emitted when {@code field.object @storage="flattened"} is combined
+     * with {@code isArray=true} (flattened materialises one-column-per-field; arrays
+     * require {@code @storage="jsonb"}).
+     * Cross-language contract: {@code ERR_STORAGE_FLATTENED_ARRAY}.
+     */
+    public static final String ERR_STORAGE_FLATTENED_ARRAY = "ERR_STORAGE_FLATTENED_ARRAY";
+
+    /**
+     * Error code emitted when {@code field.object @storage} is set on a field that
+     * has no {@code @objectRef} — storage shape only applies to referenced objects.
+     * Cross-language contract: {@code ERR_STORAGE_WITHOUT_OBJECT_REF}.
+     */
+    public static final String ERR_STORAGE_WITHOUT_OBJECT_REF = "ERR_STORAGE_WITHOUT_OBJECT_REF";
+
     // === ERROR MESSAGE FORMATS ===
 
     /** Format template for not found errors */

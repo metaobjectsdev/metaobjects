@@ -163,8 +163,15 @@ public class MetaDataLoader implements LoaderConfigurable {
         this.name = name;
         // Produce the tree-root node. The root's name must satisfy the metadata
         // identifier pattern, so loader-name hyphens are normalized to underscores.
+        // When the loader name is empty we fall back to a sentinel and mark the
+        // root as synthesized so the canonical serializer does not leak it as a
+        // top-level `package`.
+        boolean synthesized = (name == null || name.isEmpty());
         this.root = new MetaRoot( sanitizeRootName( name ) );
         this.root.setLoader( this );
+        if (synthesized) {
+            this.root.markSynthesizedName();
+        }
     }
 
     /** Normalize a loader name into a metadata-identifier-safe root name. */

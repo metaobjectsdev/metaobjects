@@ -4,8 +4,6 @@
     "attr-filter-explicit-ops",
     "attr-filter-shorthand",
     "attr-properties-basic",
-    "currency-explicit-jpy",
-    "currency-precedence-field-vs-view",
     "enum-abstract-extends",
     "error-attr-bad-allowed-value",
     "error-attr-filter-bad-field",
@@ -15,8 +13,6 @@
     "error-attr-wrong-type",
     "error-data-grid-bad-sort-field",
     "error-extends-nonexistent",
-    "error-field-object-storage-flattened-array",
-    "error-field-object-storage-no-object-ref",
     "error-parse-malformed-json",
     "error-template-payload-ref-unresolved",
     "error-template-prompt-missing-payload-ref",
@@ -26,10 +22,8 @@
     "extends-cross-file",
     "layout-data-grid-basic",
     "layout-data-grid-multiple-named",
-    "smoke-empty-metadata",
     "template-output-and-prompt",
     "template-output-simple",
-    "template-prompt-simple",
-    "warning-filterable-no-index"
+    "template-prompt-simple"
   ]
 }

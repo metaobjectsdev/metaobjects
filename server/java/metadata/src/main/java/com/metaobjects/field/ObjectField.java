@@ -29,6 +29,8 @@ public class ObjectField extends MetaField<Object>
 
     public final static String SUBTYPE_OBJECT = "object";
     public final static String ATTR_OBJECTREF = MetaObject.ATTR_OBJECT_REF;
+    /** Persistence-side storage shape for owned-object data. Cross-port values: flattened / jsonb / subdocument. */
+    public final static String ATTR_STORAGE = "storage";
 
     /**
      * Register ObjectField type using the standardized registerTypes() pattern.
@@ -47,6 +49,10 @@ public class ObjectField extends MetaField<Object>
 
                 // OBJECT-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
                 def.optionalAttributeWithConstraints(ATTR_OBJECTREF)
+                   .ofType(StringAttribute.SUBTYPE_STRING)
+                   .asSingle();
+
+                def.optionalAttributeWithConstraints(ATTR_STORAGE)
                    .ofType(StringAttribute.SUBTYPE_STRING)
                    .asSingle();
             });

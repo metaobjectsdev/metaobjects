@@ -49,6 +49,16 @@ public class MetaRoot extends MetaData {
      */
     private transient com.metaobjects.loader.MetaDataLoader owningLoader;
 
+    /**
+     * True when the root's name was synthesized from an empty/null loader name
+     * (cross-port parity: TS / C# / Python all treat "no authored package" as
+     * absence, never as a literal "root" package). Set by {@link
+     * com.metaobjects.loader.MetaDataLoader} when it falls back to the
+     * sentinel; the canonical serializer reads this to suppress emission of a
+     * spurious top-level {@code package} key.
+     */
+    private transient boolean synthesizedName = false;
+
     // Self-registration of the metadata.root type with the unified registry.
     // metadata.root accepts the same top-level children as metadata.base; it is
     // the concrete tree-root produced by MetaDataLoader.
@@ -129,6 +139,16 @@ public class MetaRoot extends MetaData {
      */
     public void setLoader(com.metaobjects.loader.MetaDataLoader loader) {
         this.owningLoader = loader;
+    }
+
+    /** True when this root's name is the synthesized sentinel (no authored package). */
+    public boolean hasSynthesizedName() {
+        return synthesizedName;
+    }
+
+    /** Loader-only: mark this root as having a synthesized (non-authored) name. */
+    public void markSynthesizedName() {
+        this.synthesizedName = true;
     }
 
     /**
