@@ -27,6 +27,12 @@ public final class SchemaDiffer {
                     diffColumns(e, prevTable, hints, changes);   // then converge columns of the renamed table
                 } else {
                     changes.add(new Change.CreateTable(e));      // new table: columns ride with CREATE TABLE
+                    // Indexes + FKs are separate DDL statements; emit alongside the CREATE TABLE
+                    // so they're applied at the same point in the pipeline (matches TS migrate-ts).
+                    for (IndexDescriptor idx : e.indexes())
+                        changes.add(new Change.AddIndex(e.name(), e.schema(), idx));
+                    for (FkDescriptor fk : e.foreignKeys())
+                        changes.add(new Change.AddFk(e.name(), e.schema(), fk));
                 }
             } else {
                 diffColumns(e, a, hints, changes);

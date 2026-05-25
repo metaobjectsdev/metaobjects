@@ -31,26 +31,13 @@ import static org.junit.jupiter.api.Assumptions.abort;
 final class MigrationScenarioTests {
 
     /**
-     * Scenarios deferred until the underlying Java port gap is closed. The
-     * harness still loads + parses them; we abort with the documented reason
-     * before running them so {@code BUILD SUCCESS} stays meaningful.
+     * Scenarios deferred until the underlying Java port gap is closed. Empty
+     * today — closing the three previous gaps (index/FK emission, NOT-NULL
+     * inference, projection view-body builder) made all three migration
+     * scenarios green. Kept as a Map so a future expected-fail can be added
+     * with a one-line reason matching the C# and TS expected-failures patterns.
      */
-    private static final Map<String, String> EXPECTED_FAILURES = Map.of(
-        "bootstrap-canonical-from-empty",
-        // Three independent Java gaps surface on the canonical fixture:
-        //   1. ExpectedSchemaBuilder.tableDescriptor returns indexes=[] / foreignKeys=[]
-        //      (`indexes: empty in v1` literal in the source), so unique-index +
-        //      FK CREATE statements never appear in the up SQL.
-        //   2. SimpleMappingHandlerDB doesn't surface @required / identity.primary
-        //      NOT-NULL on columns from the new-metadata layer.
-        //   3. The view-DDL pipeline emits `CREATE OR REPLACE VIEW "v_program" AS null`
-        //      because Java has no port of the TS expected-views.ts / C#
-        //      PostgresSchema.CreateView origin-walker.
-        // Track-and-skip pattern matches `conformance-expected-failures.json`.
-        "deferred: Java omdb migration pipeline needs index/FK emission, "
-        + "NOT-NULL inference from identity.primary + @required, and a "
-        + "projection-view body builder porting passthrough/aggregate origins"
-    );
+    private static final Map<String, String> EXPECTED_FAILURES = Map.of();
 
     private static List<MigrationScenario> SCENARIOS;
 
