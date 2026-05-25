@@ -10,7 +10,14 @@ from __future__ import annotations
 import re
 
 from ..errors import ErrorCode, MetaError
-from ..meta.core.field.field_constants import ENUM_MEMBER_PATTERN, FIELD_ATTR_VALUES, FIELD_SUBTYPE_ENUM
+from ..meta.core.field.field_constants import (
+    ENUM_MEMBER_PATTERN,
+    FIELD_ATTR_OBJECT_REF,
+    FIELD_ATTR_STORAGE,
+    FIELD_ATTR_VALUES,
+    FIELD_SUBTYPE_ENUM,
+    FIELD_SUBTYPE_OBJECT,
+)
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.meta_data import MetaData
 from ..meta.persistence.source.meta_source import MetaSource
@@ -24,7 +31,9 @@ from ..shared.base_types import (
     TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
     TYPE_SOURCE,
+    TYPE_TEMPLATE,
 )
+from ..meta.template import template_constants as tc
 from ..meta.presentation.layout.layout_constants import (
     LAYOUT_ATTR_DEFAULT_SORT_FIELD,
     LAYOUT_ATTR_FILTER,
@@ -62,6 +71,8 @@ def run_validations(
     _validate_datagrid_filter_values(root, errors)
     _validate_origin_paths(root, errors)
     _validate_one_primary_source(root, errors)
+    _validate_field_object_storage(root, errors)
+    _validate_templates(root, errors)
     _validate_subtype_rules(root, errors, warnings)
     _validate_filterable_has_index(root, warnings)
 
@@ -774,3 +785,114 @@ def _validate_filterable_has_index(
                 f"but is not part of any identity. Filtering on this field will sequential-scan. "
                 f"Add @db.indexed: true to the field (when supported), or remove @filterable: true."
             )
+
+
+# ---------------------------------------------------------------------------
+# Pass: field.object @storage validation
+# ---------------------------------------------------------------------------
+# Two cross-port rules:
+#   1. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY (flattened
+#      materialises one-column-per-field; arrays require @storage="jsonb").
+#   2. @storage set without @objectRef → ERR_STORAGE_WITHOUT_OBJECT_REF
+#      (storage shape only applies to referenced objects).
+
+
+def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_FIELD or node.sub_type != FIELD_SUBTYPE_OBJECT:
+            continue
+        storage = node.attr(FIELD_ATTR_STORAGE)
+        if storage is None:
+            continue
+        object_ref = node.attr(FIELD_ATTR_OBJECT_REF)
+        if not (isinstance(object_ref, str) and object_ref):
+            errors.append(MetaError(
+                code=ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF,
+                message=(
+                    f"field.object '{node.name}' has @storage but no @objectRef — "
+                    f"@storage shape only applies to referenced objects"
+                ),
+            ))
+            continue
+        if storage == "flattened" and getattr(node, "is_array", False):
+            errors.append(MetaError(
+                code=ErrorCode.ERR_STORAGE_FLATTENED_ARRAY,
+                message=(
+                    f"field.object '{node.name}' @storage=\"flattened\" cannot be combined "
+                    f"with isArray=true (use @storage=\"jsonb\" for owned-array storage)"
+                ),
+            ))
+
+
+# ---------------------------------------------------------------------------
+# Pass: template.* validation (FR-004)
+# ---------------------------------------------------------------------------
+# Four cross-port rules:
+#   R1 — template.prompt requires @payloadRef     → ERR_MISSING_REQUIRED_ATTR
+#   R2 — @payloadRef resolves to a root-level object.value → ERR_INVALID_TEMPLATE
+#   R3 — @requiredSlots entries are fields on the payload → ERR_INVALID_TEMPLATE
+#   R4 — @format (if set) is in the closed enum set → ERR_BAD_ATTR_VALUE
+#        (handled by AttrSchema.allowed_values already; included for parity).
+
+
+def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
+    objects_by_name: dict[str, MetaData] = {}
+    for child in root.own_children():
+        if child.type == TYPE_OBJECT:
+            objects_by_name.setdefault(child.name, child)
+
+    for tpl in root.own_children():
+        if tpl.type != TYPE_TEMPLATE:
+            continue
+        is_prompt = tpl.sub_type == tc.TEMPLATE_SUBTYPE_PROMPT
+        payload_ref = tpl.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)
+        has_payload_ref = isinstance(payload_ref, str) and payload_ref
+
+        # R1 — prompt requires @payloadRef
+        if is_prompt and not has_payload_ref:
+            errors.append(MetaError(
+                code=ErrorCode.ERR_MISSING_REQUIRED_ATTR,
+                message=f"template.prompt '{tpl.name}' is missing required @payloadRef",
+            ))
+            continue
+
+        if not has_payload_ref:
+            continue
+
+        # R2 — @payloadRef must resolve to a root-level object.value
+        payload = objects_by_name.get(payload_ref)
+        if payload is None or payload.sub_type != "value":
+            errors.append(MetaError(
+                code=ErrorCode.ERR_INVALID_TEMPLATE,
+                message=(
+                    f"template '{tpl.name}' @payloadRef '{payload_ref}' "
+                    f"does not resolve to an object.value at root"
+                ),
+            ))
+            continue
+
+        # R3 — required-slots membership
+        if is_prompt:
+            slots_raw = tpl.attr(tc.TEMPLATE_ATTR_REQUIRED_SLOTS)
+            slots = _parse_string_list(slots_raw)
+            if slots:
+                payload_fields = {f.name for f in payload.own_children() if f.type == TYPE_FIELD}
+                for slot in slots:
+                    if slot not in payload_fields:
+                        errors.append(MetaError(
+                            code=ErrorCode.ERR_INVALID_TEMPLATE,
+                            message=(
+                                f"template.prompt '{tpl.name}' @requiredSlots includes '{slot}' "
+                                f"which is not a field on payload '{payload_ref}'"
+                            ),
+                        ))
+
+
+def _parse_string_list(raw: object) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        return tuple(s.strip() for s in raw.split(",") if s.strip())
+    if isinstance(raw, (list, tuple)):
+        return tuple(str(x) for x in raw)
+    return ()

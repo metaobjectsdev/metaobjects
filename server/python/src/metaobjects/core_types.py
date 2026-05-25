@@ -13,7 +13,14 @@ from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPES,
 )
 from .meta.core.field import field_constants as fc
-from .meta.core.field.field_constants import FIELD_ATTR_VALUES, FIELD_SUBTYPE_ENUM
+from .meta.core.field.field_constants import (
+    FIELD_ATTR_OBJECT_REF,
+    FIELD_ATTR_STORAGE,
+    FIELD_ATTR_VALUES,
+    FIELD_SUBTYPE_ENUM,
+    FIELD_SUBTYPE_OBJECT,
+    STORAGE_VALUES,
+)
 from .meta.core.field.meta_field import MetaField
 from .meta.core.identity.identity_constants import (
     GENERATION_VALUES,
@@ -35,6 +42,7 @@ from .meta.core.relationship.relationship_constants import (
     RELATIONSHIP_ATTR_ON_UPDATE,
     RELATIONSHIP_SUBTYPES,
 )
+from .meta.meta_data import MetaData
 from .meta.meta_root import MetaRoot
 from .meta.persistence.origin.meta_origin import MetaOrigin
 from .meta.persistence.origin.origin_constants import (
@@ -43,8 +51,11 @@ from .meta.persistence.origin.origin_constants import (
     ORIGIN_ATTR_OF,
     ORIGIN_ATTR_VIA,
     ORIGIN_SUBTYPE_AGGREGATE,
+    ORIGIN_SUBTYPE_COLLECTION,
     ORIGIN_SUBTYPE_PASSTHROUGH,
 )
+from .meta.template.meta_template import MetaTemplate
+from .meta.template import template_constants as tc
 from .meta.persistence.source.meta_source import MetaSource
 from .meta.persistence.source.source_constants import (
     SOURCE_ATTR_KIND,
@@ -80,6 +91,8 @@ from .shared.base_types import (
     TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
     TYPE_SOURCE,
+    TYPE_TEMPLATE,
+    TYPE_VALIDATOR,
     TYPE_VIEW,
 )
 
@@ -123,13 +136,18 @@ def _register_subtypes(
         )
 
 
-# metadata.root
+# metadata.root — accepts top-level objects, root-level fields (shared abstracts),
+# and template.* (FR-004).
 core_provider.add(
     TypeDefinition(
         type=TYPE_METADATA,
         sub_type=SUBTYPE_ROOT,
         factory=MetaRoot,
-        child_rules=[ChildRule(TYPE_OBJECT, "*")],
+        child_rules=[
+            ChildRule(TYPE_OBJECT, "*"),
+            ChildRule(TYPE_FIELD, "*"),
+            ChildRule(TYPE_TEMPLATE, "*"),
+        ],
     )
 )
 
@@ -156,6 +174,7 @@ _FIELD_CHILD_RULES = [
     ChildRule(TYPE_ATTR, "*"),
     ChildRule(TYPE_ORIGIN, "*"),
     ChildRule(TYPE_VIEW, "*"),
+    ChildRule(TYPE_VALIDATOR, "*"),
 ]
 # Common field attrs declared by the core port. `@column` carries a declared
 # string valueType so the YAML desugar's D2 type-coercion guard (ADR-0006) can
@@ -165,6 +184,19 @@ _FIELD_CHILD_RULES = [
 # Python keeps it on the core field defs until a full Python db-codegen port lands.
 _FIELD_COMMON_ATTRS = [
     AttrSchema(name="column", value_type=ATTR_SUBTYPE_STRING, required=False),
+    # @storage applies to field.object only (cross-port); validation_passes enforces
+    # the shape rules + non-object-subtype guard. Declared at the common level so
+    # the AttrSchema parser doesn't reject it on field.object before validation runs.
+    AttrSchema(
+        name=FIELD_ATTR_STORAGE,
+        value_type=ATTR_SUBTYPE_STRING,
+        required=False,
+        allowed_values=STORAGE_VALUES,
+    ),
+    # @objectRef is the cross-entity reference for field.object — declared on the
+    # common attrs so an inline @objectRef on any field subtype routes correctly
+    # (validation lives in validation_passes.py).
+    AttrSchema(name=FIELD_ATTR_OBJECT_REF, value_type=ATTR_SUBTYPE_STRING, required=False),
 ]
 _register_subtypes(
     core_provider,
@@ -356,6 +388,21 @@ core_provider.add(
     )
 )
 
+# origin.collection — owned-array origin (@via required, points at a relationship path).
+# Mirrors Java's CollectionOrigin / TS origin.collection. Path traversal is intentionally
+# NOT enforced here (matches TS).
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_ORIGIN,
+        sub_type=ORIGIN_SUBTYPE_COLLECTION,
+        factory=MetaOrigin,
+        attrs=[
+            AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=True),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+
 # view.* (base, text, textarea, date, currency); @locale flows through as a base attr
 _register_subtypes(
     core_provider,
@@ -389,3 +436,64 @@ for _sub in LAYOUT_SUBTYPES:
             child_rules=[ChildRule(TYPE_ATTR, "*")],
         )
     )
+
+# validator.* — base + required (validates a field has a value at write time).
+# Sized to satisfy the cross-port corpus today; richer validator subtypes
+# (regex/length/numeric) can join later mirroring Java's ValidatorTypesMetaDataProvider.
+_VALIDATOR_SUBTYPES = (SUBTYPE_BASE, "required")
+_register_subtypes(
+    core_provider,
+    TYPE_VALIDATOR,
+    _VALIDATOR_SUBTYPES,
+    factory=lambda t, s, n: MetaData(t, s, n),
+    child_rules=[ChildRule(TYPE_ATTR, "*")],
+)
+
+# template.* (FR-004) — base + prompt + output. @payloadRef / @textRef / @format /
+# @maxChars / @owner / @since / @requiredTags are shared; prompt also carries
+# @maxTokens / @requiredSlots / @model. Validation in validation_passes.py.
+_TEMPLATE_SHARED_ATTRS = [
+    AttrSchema(name=tc.TEMPLATE_ATTR_PAYLOAD_REF, value_type=ATTR_SUBTYPE_STRING),
+    AttrSchema(name=tc.TEMPLATE_ATTR_TEXT_REF, value_type=ATTR_SUBTYPE_STRING),
+    AttrSchema(
+        name=tc.TEMPLATE_ATTR_FORMAT,
+        value_type=ATTR_SUBTYPE_STRING,
+        allowed_values=tc.ALLOWED_FORMATS,
+    ),
+    AttrSchema(name=tc.TEMPLATE_ATTR_MAX_CHARS, value_type=ATTR_SUBTYPE_INT),
+    AttrSchema(name=tc.TEMPLATE_ATTR_OWNER, value_type=ATTR_SUBTYPE_STRING),
+    AttrSchema(name=tc.TEMPLATE_ATTR_SINCE, value_type=ATTR_SUBTYPE_STRING),
+    AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_TAGS, value_type=ATTR_SUBTYPE_STRINGARRAY),
+]
+_TEMPLATE_PROMPT_ATTRS = list(_TEMPLATE_SHARED_ATTRS) + [
+    AttrSchema(name=tc.TEMPLATE_ATTR_MAX_TOKENS, value_type=ATTR_SUBTYPE_INT),
+    AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_SLOTS, value_type=ATTR_SUBTYPE_STRINGARRAY),
+    AttrSchema(name=tc.TEMPLATE_ATTR_MODEL, value_type=ATTR_SUBTYPE_STRING),
+]
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_TEMPLATE,
+        sub_type=SUBTYPE_BASE,
+        factory=MetaTemplate,
+        attrs=list(_TEMPLATE_SHARED_ATTRS),
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_TEMPLATE,
+        sub_type=tc.TEMPLATE_SUBTYPE_OUTPUT,
+        factory=MetaTemplate,
+        attrs=list(_TEMPLATE_SHARED_ATTRS),
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_TEMPLATE,
+        sub_type=tc.TEMPLATE_SUBTYPE_PROMPT,
+        factory=MetaTemplate,
+        attrs=list(_TEMPLATE_PROMPT_ATTRS),
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
