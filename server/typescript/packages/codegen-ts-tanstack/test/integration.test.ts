@@ -2,10 +2,11 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 import { tanstackQuery, tanstackGrid } from "../src/index.js";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const MULTI_GRID = resolve(import.meta.dir, "fixtures", "multi-grid-entity.json");
 
@@ -15,7 +16,7 @@ afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 
 describe("Full pipeline — Project A + Project B generators together", () => {
   test("emits Program.ts, Program.queries.ts, Program.routes.ts, Program.hooks.ts, Program.columns.tsx, index.ts", async () => {
-    const { root } = await new FileMetaDataLoader().loadFiles([MULTI_GRID]);
+    const { root } = await new MetaDataLoader().load([new FileSource(MULTI_GRID)]);
     const out = await runGen({
       config: defineConfig({
         outDir: tmp, extStyle: "none", dbImport: "../db", dialect: "sqlite",
@@ -51,7 +52,7 @@ describe("Full pipeline — Project A + Project B generators together", () => {
   });
 
   test("all generators emit their expected file kinds together (happy path)", async () => {
-    const { root } = await new FileMetaDataLoader().loadFiles([MULTI_GRID]);
+    const { root } = await new MetaDataLoader().load([new FileSource(MULTI_GRID)]);
     const out = await runGen({
       config: defineConfig({
         outDir: tmp, extStyle: "none", dbImport: "../db", dialect: "sqlite",

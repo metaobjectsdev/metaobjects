@@ -5,9 +5,10 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { runGen, defineConfig } from "../src/index.js";
 import { entityFile, queriesFile, routesFile, barrel } from "../src/generators/index.js";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 let tmp: string;
 beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-integration-")); });
@@ -17,8 +18,8 @@ const FIXTURE = resolve(import.meta.dir, "fixtures/trainer-website-shape.json");
 
 describe("trainer-website-shape integration — 9 entities, SQLite", () => {
   test("loads 9 entities with no errors", async () => {
-    const loader = new FileMetaDataLoader();
-    const result = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(FIXTURE)]);
 
     expect(result.errors).toEqual([]);
 
@@ -40,8 +41,8 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
   });
 
   test("emits 28 files (9 entity + 9 queries + 9 routes + 1 barrel) with no warnings (forms opt-in)", async () => {
-    const loader = new FileMetaDataLoader();
-    const result = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(FIXTURE)]);
     expect(result.errors).toEqual([]);
 
     const out = await runGen({
@@ -85,8 +86,8 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
   });
 
   test("generated files satisfy structural contracts", async () => {
-    const loader = new FileMetaDataLoader();
-    const result = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(FIXTURE)]);
     expect(result.errors).toEqual([]);
 
     const out = await runGen({
@@ -181,8 +182,8 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
   });
 
   test("emits FilterAllowlist + SortAllowlist + Filter TS type in every entity file", async () => {
-    const loader = new FileMetaDataLoader();
-    const result = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(FIXTURE)]);
     expect(result.errors).toEqual([]);
 
     const out = await runGen({
@@ -220,8 +221,8 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
   });
 
   test("routes file passes filterAllowlist + sortAllowlist + dialect to mountCrudRoutes", async () => {
-    const loader = new FileMetaDataLoader();
-    const result = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(FIXTURE)]);
     expect(result.errors).toEqual([]);
 
     const out = await runGen({
@@ -258,8 +259,8 @@ describe("trainer-website-shape integration — 9 entities, SQLite", () => {
 
 describe("trainer-website-shape integration — 9 entities, Postgres", () => {
   test("emits 28 files with no warnings (forms opt-in)", async () => {
-    const loader = new FileMetaDataLoader();
-    const result = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(FIXTURE)]);
     expect(result.errors).toEqual([]);
 
     const out = await runGen({
@@ -300,8 +301,8 @@ describe("trainer-website-shape integration — 9 entities, Postgres", () => {
   });
 
   test("generated files satisfy Postgres structural contracts", async () => {
-    const loader = new FileMetaDataLoader();
-    const result = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(FIXTURE)]);
     expect(result.errors).toEqual([]);
 
     const out = await runGen({

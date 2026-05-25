@@ -1,12 +1,13 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { GENERATED_HEADER } from "../../src/constants.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import type { GenContext } from "../../src/generator.js";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const FIXTURE = resolve(import.meta.dir, "..", "fixtures", "single-entity.json");
 
@@ -18,8 +19,8 @@ describe("entityFile() factory", () => {
   });
 
   test("emits one <Entity>.ts per entity with @generated header and Drizzle table", async () => {
-    const loader = new FileMetaDataLoader();
-    const { root } = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new FileSource(FIXTURE)]);
     const entities = root.objects();
 
     const renderContext = makeRenderContext({
@@ -45,8 +46,8 @@ describe("entityFile() factory", () => {
   });
 
   test("filter option narrows generated entities", async () => {
-    const loader = new FileMetaDataLoader();
-    const { root } = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new FileSource(FIXTURE)]);
     const entities = root.objects();
 
     const renderContext = makeRenderContext({

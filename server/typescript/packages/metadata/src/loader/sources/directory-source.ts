@@ -48,9 +48,9 @@ export class DirectorySource {
       filtered.push(p);
     }
 
-    // Sort by basename (ordinal) for deterministic overlay order. The original
-    // FileMetaDataLoader sorted readdir entries (basenames) for the same reason —
-    // we preserve that contract here.
+    // Sort by basename (ordinal) for deterministic overlay order. The
+    // pre-unification FileMetaDataLoader sorted readdir entries (basenames)
+    // for the same reason — that contract carries forward here.
     filtered.sort((a, b) => {
       const an = basename(a);
       const bn = basename(b);

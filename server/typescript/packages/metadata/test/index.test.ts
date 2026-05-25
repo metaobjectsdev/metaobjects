@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { FileMetaDataLoader, FileSource } from "../src/core/index.js";
+import { FileSource } from "../src/core/index.js";
 import {
   // Concrete node classes (the typed tree replaces the old metaOf-based layers)
   MetaData,
@@ -255,8 +255,8 @@ describe("Public API surface — @metaobjectsdev/metadata index", () => {
     expect(loader.state).toBe("uninitialized");
   });
 
-  test("FileMetaDataLoader is constructible via /core subpath", () => {
-    const loader = new FileMetaDataLoader();
+  test("MetaDataLoader is constructible via the root entry", () => {
+    const loader = new MetaDataLoader();
     expect(loader.state).toBe("uninitialized");
   });
 

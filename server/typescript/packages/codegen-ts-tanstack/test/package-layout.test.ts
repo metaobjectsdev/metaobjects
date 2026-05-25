@@ -2,10 +2,11 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readdirSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 import { tanstackQuery, tanstackGrid } from "../src/index.js";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const PACKAGED_GRID = resolve(import.meta.dir, "fixtures", "packaged-grid-entity.json");
 
@@ -15,7 +16,7 @@ afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 
 describe("package-aware output placement — tanstackQuery + tanstackGrid", () => {
   test("package layout: hooks and columns land in package sub-path alongside entity file", async () => {
-    const { root, errors } = await new FileMetaDataLoader().loadFiles([PACKAGED_GRID]);
+    const { root, errors } = await new MetaDataLoader().load([new FileSource(PACKAGED_GRID)]);
     expect(errors).toEqual([]);
 
     const out = await runGen({
@@ -57,7 +58,7 @@ describe("package-aware output placement — tanstackQuery + tanstackGrid", () =
   });
 
   test("flat layout (default): hooks and columns land at outDir root", async () => {
-    const { root, errors } = await new FileMetaDataLoader().loadFiles([PACKAGED_GRID]);
+    const { root, errors } = await new MetaDataLoader().load([new FileSource(PACKAGED_GRID)]);
     expect(errors).toEqual([]);
 
     const out = await runGen({
@@ -80,7 +81,7 @@ describe("package-aware output placement — tanstackQuery + tanstackGrid", () =
   });
 
   test("extStyle: js — hooks and columns import the entity with a .js extension", async () => {
-    const { root, errors } = await new FileMetaDataLoader().loadFiles([PACKAGED_GRID]);
+    const { root, errors } = await new MetaDataLoader().load([new FileSource(PACKAGED_GRID)]);
     expect(errors).toEqual([]);
 
     const out = await runGen({

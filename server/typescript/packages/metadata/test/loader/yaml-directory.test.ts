@@ -2,14 +2,14 @@ import { describe, it, expect } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FileMetaDataLoader } from "../../src/core/file-meta-data-loader.js";
+import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function makeTmpDir(): string {
-  return mkdtempSync(join(tmpdir(), "fmdl-yaml-test-"));
+  return mkdtempSync(join(tmpdir(), "ds-yaml-test-"));
 }
 
 function writeYamlFixture(dir: string, filename: string, entityName: string): string {
@@ -50,18 +50,16 @@ function writeJsonFixture(dir: string, filename: string, entityName: string): st
 }
 
 // ---------------------------------------------------------------------------
-// YAML discovery tests
+// YAML discovery tests — verified via MetaDataLoader.fromDirectory
+// (which expands a DirectorySource and dispatches on each source's format).
 // ---------------------------------------------------------------------------
 
-describe("FileMetaDataLoader.loadDirectory() — YAML discovery", () => {
+describe("MetaDataLoader.fromDirectory() — YAML discovery", () => {
   it("discovers and loads a .yaml metadata file", async () => {
     const dir = makeTmpDir();
     try {
       writeYamlFixture(dir, "meta.shop.yaml", "Product");
-
-      const loader = new FileMetaDataLoader();
-      const result = await loader.loadDirectory(dir);
-
+      const result = await MetaDataLoader.fromDirectory(dir);
       expect(result.errors).toHaveLength(0);
       expect(result.root.ownChildByName("Product")).toBeDefined();
     } finally {
@@ -73,10 +71,7 @@ describe("FileMetaDataLoader.loadDirectory() — YAML discovery", () => {
     const dir = makeTmpDir();
     try {
       writeYamlFixture(dir, "meta.shop.yml", "Product");
-
-      const loader = new FileMetaDataLoader();
-      const result = await loader.loadDirectory(dir);
-
+      const result = await MetaDataLoader.fromDirectory(dir);
       expect(result.errors).toHaveLength(0);
       expect(result.root.ownChildByName("Product")).toBeDefined();
     } finally {
@@ -89,10 +84,7 @@ describe("FileMetaDataLoader.loadDirectory() — YAML discovery", () => {
     try {
       writeJsonFixture(dir, "meta.json.json", "Product");
       writeYamlFixture(dir, "meta.yaml.yaml", "Customer");
-
-      const loader = new FileMetaDataLoader();
-      const result = await loader.loadDirectory(dir);
-
+      const result = await MetaDataLoader.fromDirectory(dir);
       expect(result.errors).toHaveLength(0);
       expect(result.root.ownChildByName("Product")).toBeDefined();
       expect(result.root.ownChildByName("Customer")).toBeDefined();
@@ -107,10 +99,7 @@ describe("FileMetaDataLoader.loadDirectory() — YAML discovery", () => {
       writeJsonFixture(dir, "a.json", "FromJson");
       writeYamlFixture(dir, "b.yaml", "FromYaml");
       writeYamlFixture(dir, "c.yml", "FromYml");
-
-      const loader = new FileMetaDataLoader();
-      const result = await loader.loadDirectory(dir);
-
+      const result = await MetaDataLoader.fromDirectory(dir);
       expect(result.errors).toHaveLength(0);
       const names = result.root.objects().map((o) => o.name);
       expect(names).toContain("FromJson");
@@ -127,10 +116,9 @@ describe("FileMetaDataLoader.loadDirectory() — YAML discovery", () => {
       writeYamlFixture(dir, "meta.alpha.yaml", "Alpha");
       writeYamlFixture(dir, "meta.beta.yaml", "Beta");
       writeYamlFixture(dir, "meta.gamma.yml", "Gamma");
-
-      const loader = new FileMetaDataLoader();
-      const result = await loader.loadDirectory(dir, { exclude: ["meta.beta.yaml"] });
-
+      const result = await MetaDataLoader.fromDirectory(dir, {
+        exclude: ["meta.beta.yaml"],
+      });
       expect(result.errors).toHaveLength(0);
       const names = result.root.objects().map((o) => o.name);
       expect(names).toContain("Alpha");
@@ -141,15 +129,14 @@ describe("FileMetaDataLoader.loadDirectory() — YAML discovery", () => {
     }
   });
 
-  it("exclude glob with case-insensitive match skips .yml file", async () => {
+  it("exclude glob with literal match skips .yml file", async () => {
     const dir = makeTmpDir();
     try {
       writeYamlFixture(dir, "meta.skip.yml", "Skip");
       writeYamlFixture(dir, "meta.keep.yml", "Keep");
-
-      const loader = new FileMetaDataLoader();
-      const result = await loader.loadDirectory(dir, { exclude: ["meta.skip.yml"] });
-
+      const result = await MetaDataLoader.fromDirectory(dir, {
+        exclude: ["meta.skip.yml"],
+      });
       expect(result.errors).toHaveLength(0);
       const names = result.root.objects().map((o) => o.name);
       expect(names).not.toContain("Skip");

@@ -7,14 +7,12 @@
 
 // Source impls — the node:fs-backed MetaDataSource implementations. Live
 // under `loader/sources/`; re-exported here so server-side consumers can pull
-// them from the same `/core` entry that already houses the YAML parser and
-// the file-backed loader.
+// them from the same `/core` entry that already houses the YAML parser.
 export { FileSource } from "../loader/sources/file-source.js";
 export { DirectorySource } from "../loader/sources/directory-source.js";
 export type { DirectoryOptions } from "../loader/sources/directory-source.js";
 export { UriSource } from "../loader/sources/uri-source.js";
 
-export { FileMetaDataLoader } from "./file-meta-data-loader.js";
 export { parseYaml } from "./parser-yaml.js";
 export { loadAndExportJson } from "./export-json.js";
 export type { ExportResult } from "./export-json.js";

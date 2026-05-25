@@ -21,10 +21,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, relative, dirname } from "node:path";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { runGen, defineConfig } from "../../src/index.js";
 import { entityFile, queriesFile, routesFile, barrel } from "../../src/generators/index.js";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const FIXTURE = resolve(import.meta.dir, "../fixtures/packaged-shape.json");
 const SNAP = join(import.meta.dir, "__snapshots__/package");
@@ -47,8 +48,8 @@ function walkDir(dir: string, base: string = dir): string[] {
 }
 
 // Load metadata once for all tests.
-const loader = new FileMetaDataLoader();
-const loadResult = await loader.loadFiles([FIXTURE]);
+const loader = new MetaDataLoader();
+const loadResult = await loader.load([new FileSource(FIXTURE)]);
 if (loadResult.errors.length > 0) {
   throw new Error(`Fixture load errors: ${loadResult.errors.join(", ")}`);
 }

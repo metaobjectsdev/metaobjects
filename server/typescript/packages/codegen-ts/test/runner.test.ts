@@ -2,10 +2,11 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { perEntity, oncePerRun, type Generator } from "../src/generator.js";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 
@@ -15,8 +16,8 @@ afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 
 describe("runGen — happy path", () => {
   test("runs each generator in order and writes their files", async () => {
-    const loader = new FileMetaDataLoader();
-    const { root } = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new FileSource(FIXTURE)]);
 
     const log: string[] = [];
     const a: Generator = {
@@ -46,8 +47,8 @@ describe("runGen — happy path", () => {
   });
 
   test("entityFilter narrows the entity set passed to generators", async () => {
-    const loader = new FileMetaDataLoader();
-    const { root } = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new FileSource(FIXTURE)]);
 
     const gen: Generator = {
       name: "any",
@@ -68,8 +69,8 @@ describe("runGen — happy path", () => {
 
 describe("runGen — error paths", () => {
   test("duplicate output paths from two generators -> throws naming both", async () => {
-    const loader = new FileMetaDataLoader();
-    const { root } = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new FileSource(FIXTURE)]);
 
     const a: Generator = { name: "alpha", generate: perEntity((e) => ({ path: `${e.name}.ts`, content: "// a" })) };
     const b: Generator = { name: "beta",  generate: perEntity((e) => ({ path: `${e.name}.ts`, content: "// b" })) };
@@ -84,8 +85,8 @@ describe("runGen — error paths", () => {
   });
 
   test("generator throws -> error prefixed with [generator.name]", async () => {
-    const loader = new FileMetaDataLoader();
-    const { root } = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new FileSource(FIXTURE)]);
 
     const bad: Generator = { name: "exploder", generate: () => { throw new Error("boom"); } };
     await expect(runGen({
@@ -108,8 +109,8 @@ describe("runGen — error paths", () => {
 
 describe("runGen — multi-target", () => {
   test("routes each generator's files to its target outDir; collision scoped per full path", async () => {
-    const loader = new FileMetaDataLoader();
-    const { root } = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new FileSource(FIXTURE)]);
     const apiDir = join(tmp, "api");
 
     const entity: Generator = {
@@ -141,8 +142,8 @@ describe("runGen — multi-target", () => {
   });
 
   test("unknown target name → throws listing valid targets", async () => {
-    const loader = new FileMetaDataLoader();
-    const { root } = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new FileSource(FIXTURE)]);
     const g: Generator = { name: "x", target: "nope", generate: perEntity((e) => ({ path: `${e.name}.ts`, content: "" })) };
     await expect(runGen({
       config: defineConfig({ outDir: tmp, extStyle: "none", dbImport: "../index", dialect: "sqlite", generators: [g] }),
@@ -151,8 +152,8 @@ describe("runGen — multi-target", () => {
   });
 
   test("cross-target without importBase on entity-module target → throws", async () => {
-    const loader = new FileMetaDataLoader();
-    const { root } = await loader.loadFiles([FIXTURE]);
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new FileSource(FIXTURE)]);
     const entity: Generator = { name: "entity-file", emitsEntityModule: true, generate: perEntity((e) => ({ path: `${e.name}.ts`, content: "" })) };
     const routes: Generator = { name: "routes-file", target: "api", generate: perEntity((e) => ({ path: `${e.name}.routes.ts`, content: "" })) };
     await expect(runGen({

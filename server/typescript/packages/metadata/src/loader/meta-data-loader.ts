@@ -112,8 +112,26 @@ export class MetaDataLoader {
     if (exclude !== undefined) dirOpts.exclude = exclude;
     if (recurse !== undefined) dirOpts.recurse = recurse;
     const { DirectorySource } = await import("./sources/directory-source.js");
-    const sources = await new DirectorySource(dir, dirOpts).expand();
-    return new MetaDataLoader(loaderOpts).load(sources);
+    const loader = new MetaDataLoader(loaderOpts);
+    let sources;
+    try {
+      sources = await new DirectorySource(dir, dirOpts).expand();
+    } catch (err) {
+      // Match the pre-unification contract: a missing/unreadable directory is
+      // surfaced as a collected error on the LoadResult, not a throw. The
+      // pipeline still completes with a synthetic empty root.
+      const emptyResult = await loader.load([]);
+      return {
+        ...emptyResult,
+        errors: [
+          err instanceof Error
+            ? err
+            : new Error(`MetaDataLoader.fromDirectory: ${String(err)}`),
+          ...emptyResult.errors,
+        ],
+      };
+    }
+    return loader.load(sources);
   }
 
   /**
