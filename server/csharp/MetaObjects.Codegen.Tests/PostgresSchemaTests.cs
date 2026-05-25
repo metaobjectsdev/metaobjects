@@ -174,6 +174,28 @@ public class PostgresSchemaTests
         Assert.Empty(PostgresSchema.EnumCheckConstraints(root));
     }
 
+    [Fact]
+    public void EnumCheckConstraints_emits_for_scalar_enum_and_suppresses_array_enum_on_same_entity()
+    {
+        // Regression for the (now-deleted) ScalarArrayCodegen mixed-enum test: when one
+        // entity carries BOTH a scalar enum and an array-of-enum, only the scalar gets a
+        // CHECK; the array (jsonb) does not.
+        var root = LoadModel("""
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Order", "children": [
+              { "source.rdb": { "@table": "orders" } },
+              { "field.long": { "name": "id" } },
+              { "field.enum": { "name": "status",   "@values": ["DRAFT", "ARCHIVED"] } },
+              { "field.enum": { "name": "statuses", "@values": ["A", "B"], "isArray": true } },
+              { "identity.primary": { "@fields": "id" } }
+            ]}}
+        ]}}
+        """);
+        var stmt = Assert.Single(PostgresSchema.EnumCheckConstraints(root));
+        Assert.Contains("\"status\"", stmt);              // scalar got the CHECK
+        Assert.DoesNotContain("\"statuses\"", stmt);     // array suppressed
+    }
+
     // No enum-value escape test: the metamodel rejects any @values member that
     // doesn't match ^[A-Za-z_][A-Za-z0-9_]*$, so an unsafe character can't legally
     // reach the emitter. PgSql.Escape is still exercised by the description tests

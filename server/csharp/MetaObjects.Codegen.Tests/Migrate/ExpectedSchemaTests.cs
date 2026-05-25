@@ -136,6 +136,29 @@ public class ExpectedSchemaTests
     }
 
     [Fact]
+    public void Composite_secondary_unique_index_preserves_declared_field_order()
+    {
+        // The identity's @fields order ("b","a") differs from field-declaration
+        // order ("a","b"); the IndexDescriptor.Columns must follow @fields.
+        const string m = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Link", "children": [
+            { "source.rdb": { "@table": "links" } },
+            { "field.long": { "name": "a" } },
+            { "field.long": { "name": "b" } },
+            { "identity.primary":   { "@fields": "a" } },
+            { "identity.secondary": { "name": "byBA", "@fields": ["b", "a"], "@unique": true } }
+          ]}}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "ck.json")]);
+        Assert.Empty(r.Errors);
+        var snap = ExpectedSchema.Build(r.Root);
+        var idx = Assert.Single(snap.Tables.Single(t => t.Name == "links").Indexes);
+        Assert.Equal(["b", "a"], idx.Columns.ToArray());
+    }
+
+    [Fact]
     public void Enforced_reference_emits_fk_with_referential_actions_from_relationship()
     {
         var week = Load().Tables.Single(t => t.Name == "weeks");
@@ -193,10 +216,11 @@ public class ExpectedSchemaTests
     }
 
     [Fact]
-    public void Enum_field_emits_text_column_matching_PostgresSchema()
+    public void Enum_field_emits_text_column()
     {
-        // PostgresSchema.PgType maps FIELD_SUBTYPE_ENUM -> "text"; the snapshot must agree,
-        // else a post-gen migrate would propose a destructive drop of the actual column.
+        // FIELD_SUBTYPE_ENUM is string-backed → SqlType.Text in the snapshot; PostgresEmit
+        // renders that as TEXT. (The membership CHECK constraint is tail-appended by
+        // PostgresSchema.EnumCheckConstraints.)
         var program = Load().Tables.Single(t => t.Name == "programs");
         var status = program.Columns.Single(c => c.Name == "status");
         Assert.IsType<SqlType.Text>(status.SqlType);
@@ -205,7 +229,7 @@ public class ExpectedSchemaTests
     [Fact]
     public void IsArray_scalar_field_collapses_to_json_column()
     {
-        // PostgresSchema renders f.IsArray as "jsonb" regardless of underlying subtype.
+        // Any isArray scalar/enum becomes a single Json column (PostgresEmit → JSONB).
         var program = Load().Tables.Single(t => t.Name == "programs");
         var tags = program.Columns.Single(c => c.Name == "tags");
         Assert.IsType<SqlType.Json>(tags.SqlType);

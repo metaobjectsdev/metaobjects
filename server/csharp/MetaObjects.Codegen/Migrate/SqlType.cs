@@ -9,10 +9,11 @@ namespace MetaObjects.Codegen.Migrate;
 
 /// <summary>
 /// A canonical, dialect-neutral SQL column type. Intentionally has NO <c>Time</c>
-/// variant: like the TS reference, the (forthcoming) expected-schema builder coerces
-/// a <c>field.time</c> to <see cref="Text"/> (SQL TIME is rare and round-trips poorly).
-/// Do not add a <c>Time</c> member without also handling it in introspection and in
-/// PostgresSchema.PgType (which emits <c>time</c>), or migrations will churn time columns.
+/// variant: like the TS reference, <see cref="ExpectedSchema"/>'s subtype mapping
+/// coerces a <c>field.time</c> to <see cref="Text"/> (SQL TIME is rare and
+/// round-trips poorly). Do not add a <c>Time</c> member without also handling it
+/// in <see cref="PostgresIntrospect.PgTypeToSqlType"/>, or migrations will churn
+/// time columns.
 /// </summary>
 public abstract record SqlType
 {

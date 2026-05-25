@@ -195,43 +195,47 @@ public static class PostgresSchema
     /// pass to match). Array-of-enum columns are jsonb and don't get a per-row IN check.
     /// </summary>
     public static IEnumerable<string> EnumCheckConstraints(MetaRoot root) =>
-        root.Objects()
-            .Where(o => o.IsEntity() && o.FindPrimaryWritableSource() is not null)
-            .OrderBy(o => o.Name, StringComparer.Ordinal)
-            .SelectMany(e =>
-            {
-                var table = CSharpNaming.Table(e);
-                return e.Fields()
-                    .Where(f => f.SubType == FIELD_SUBTYPE_ENUM && !f.IsArray
-                                && f.EffectiveEnumValues is { Count: > 0 })
-                    .Select(f =>
-                    {
-                        var col = CSharpNaming.Column(f);
-                        var list = string.Join(", ", f.EffectiveEnumValues!.Select(v => $"'{PgSql.Escape(v)}'"));
-                        return $"ALTER TABLE \"{table}\" ADD CONSTRAINT \"{table}_{col}_check\" CHECK (\"{col}\" IN ({list}));";
-                    });
-            });
+        WritableEntitiesByName(root).SelectMany(e =>
+        {
+            var table = CSharpNaming.Table(e);
+            return e.Fields()
+                .Where(f => f.SubType == FIELD_SUBTYPE_ENUM && !f.IsArray
+                            && f.EffectiveEnumValues is { Count: > 0 })
+                .Select(f =>
+                {
+                    var col = CSharpNaming.Column(f);
+                    var list = string.Join(", ", f.EffectiveEnumValues!.Select(v => $"'{PgSql.Escape(v)}'"));
+                    return $"ALTER TABLE \"{table}\" ADD CONSTRAINT \"{table}_{col}_check\" CHECK (\"{col}\" IN ({list}));";
+                });
+        });
 
     /// <summary>
     /// <c>COMMENT ON TABLE</c> + <c>COMMENT ON COLUMN</c> statements from the
     /// <c>@description</c> attr. The <c>@notes</c> attr is intentionally never read
     /// (internal-only rationale slot, per the documentation provider D5 contract).
     /// </summary>
-    public static IEnumerable<string> TableAndColumnComments(MetaRoot root) =>
+    public static IEnumerable<string> TableAndColumnComments(MetaRoot root)
+    {
+        foreach (var e in WritableEntitiesByName(root))
+        {
+            var table = CSharpNaming.Table(e);
+            if (Description(e) is { } entityDesc)
+                yield return $"COMMENT ON TABLE \"{table}\" IS '{PgSql.Escape(entityDesc)}';";
+            foreach (var f in e.Fields())
+                if (Description(f) is { } fieldDesc)
+                    yield return $"COMMENT ON COLUMN \"{table}\".\"{CSharpNaming.Column(f)}\" IS '{PgSql.Escape(fieldDesc)}';";
+        }
+    }
+
+    // Shared writable-entity iterator: matches ExpectedSchema.Build's filter + ordering
+    // so the tail-append helpers iterate the same set the engine produced CREATE TABLE for.
+    private static IEnumerable<MetaObject> WritableEntitiesByName(MetaRoot root) =>
         root.Objects()
             .Where(o => o.IsEntity() && o.FindPrimaryWritableSource() is not null)
-            .OrderBy(o => o.Name, StringComparer.Ordinal)
-            .SelectMany(e =>
-            {
-                var table = CSharpNaming.Table(e);
-                var statements = new List<string>();
-                if (e.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) is string entityDesc && entityDesc.Length > 0)
-                    statements.Add($"COMMENT ON TABLE \"{table}\" IS '{PgSql.Escape(entityDesc)}';");
-                foreach (var f in e.Fields())
-                {
-                    if (f.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) is string fieldDesc && fieldDesc.Length > 0)
-                        statements.Add($"COMMENT ON COLUMN \"{table}\".\"{CSharpNaming.Column(f)}\" IS '{PgSql.Escape(fieldDesc)}';");
-                }
-                return statements;
-            });
+            .OrderBy(o => o.Name, StringComparer.Ordinal);
+
+    // Non-empty @description value, or null. Centralizes the "description is missing
+    // or blank" check so both table + column comment emission agree.
+    private static string? Description(MetaData node) =>
+        node.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) is string s && s.Length > 0 ? s : null;
 }

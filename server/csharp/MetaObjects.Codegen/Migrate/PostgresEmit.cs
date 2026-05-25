@@ -6,13 +6,11 @@
 // Ported from typescript/packages/migrate-ts/src/emit/postgres.ts. The SQLite
 // recreate-and-copy path and its `recreatedTables` set are out of scope here.
 //
-// NOTE: this emitter's identifier conventions (quoted idents, UPPERCASE types,
-// "{table}_pkey" PK constraint, raw index names) differ from the full-CREATE
-// Schema/PostgresSchema. They must be reconciled before introspection-driven
-// migration ships (see that file's header + the csharp-migration-pipeline-status
-// memory) — ideally by routing full-CREATE through this pipeline too.
+// The identifier conventions emitted here (quoted idents, UPPERCASE types,
+// "{table}_pkey" PK constraint, raw index names) are the canonical engine output
+// — `meta migrate` (full-CREATE) and `meta migrate --from-db` (incremental) both
+// route table DDL through this layer, so introspection round-trips cleanly.
 
-using System.Text;
 using MetaObjects.Codegen.Schema;
 using static MetaObjects.Persistence.Source.SourceConstants;
 
@@ -161,14 +159,13 @@ public static class PostgresEmit
 
     private static string RenderAddFk(string table, string? schema, FkDescriptor fk)
     {
-        var s = new StringBuilder();
-        s.Append($"ALTER TABLE {QualifiedTable(table, schema)} ADD CONSTRAINT {Quote(fk.Name)} ");
-        s.Append($"FOREIGN KEY ({string.Join(", ", fk.Columns.Select(Quote))}) ");
+        var onDelete = fk.OnDelete is { } d ? $" ON DELETE {FkActionSql(d)}" : "";
+        var onUpdate = fk.OnUpdate is { } u ? $" ON UPDATE {FkActionSql(u)}" : "";
         // The ref table is assumed to live in the FK-owner's schema (no cross-schema FK yet).
-        s.Append($"REFERENCES {QualifiedTable(fk.RefTable, schema)} ({string.Join(", ", fk.RefColumns.Select(Quote))})");
-        if (fk.OnDelete is { } d) s.Append($" ON DELETE {FkActionSql(d)}");
-        if (fk.OnUpdate is { } u) s.Append($" ON UPDATE {FkActionSql(u)}");
-        return s.Append(';').ToString();
+        return $"ALTER TABLE {QualifiedTable(table, schema)} ADD CONSTRAINT {Quote(fk.Name)} " +
+               $"FOREIGN KEY ({string.Join(", ", fk.Columns.Select(Quote))}) " +
+               $"REFERENCES {QualifiedTable(fk.RefTable, schema)} ({string.Join(", ", fk.RefColumns.Select(Quote))})" +
+               $"{onDelete}{onUpdate};";
     }
 
     private static string FkActionSql(FkAction a) => a switch
