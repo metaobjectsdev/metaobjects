@@ -16,6 +16,9 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.layout.DataGridLayout;
 import com.metaobjects.layout.MetaLayout;
+import com.metaobjects.template.MetaTemplate;
+import com.metaobjects.template.OutputTemplate;
+import com.metaobjects.template.PromptTemplate;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.origin.AggregateOrigin;
@@ -89,6 +92,7 @@ public final class ValidationPhase {
         validateObjectFieldStorage(root);
         validateIdentityFieldsAndGeneration(root);
         validateDataGridLayouts(root);
+        validateTemplates(root);
         validateEntityHasPrimaryIdentity(root, loader);
         warnFilterableWithoutIndex(root, loader);
     }
@@ -749,6 +753,97 @@ public final class ValidationPhase {
                     ErrorCode.ERR_BAD_ATTR_VALUE);
             }
         }
+    }
+
+    // =========================================================================
+    // template.* validation (FR-004)
+    //
+    //   template.prompt requires @payloadRef → ERR_MISSING_REQUIRED_ATTR
+    //   @payloadRef must resolve to a real root-level object (value or entity)
+    //       → ERR_INVALID_TEMPLATE
+    //   @requiredSlots entries on template.prompt must be field names on the
+    //       referenced payload → ERR_INVALID_TEMPLATE
+    // =========================================================================
+
+    static void validateTemplates(MetaRoot root) {
+        java.util.Map<String, MetaObject> objectsByName = new java.util.HashMap<>();
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            if (rootChild instanceof MetaObject) {
+                MetaObject obj = (MetaObject) rootChild;
+                objectsByName.put(obj.getShortName(), obj);
+            }
+        }
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            if (rootChild instanceof MetaTemplate) {
+                validateTemplateNode((MetaTemplate) rootChild, objectsByName);
+            }
+        }
+    }
+
+    private static void validateTemplateNode(MetaTemplate tpl,
+                                              java.util.Map<String, MetaObject> objectsByName) {
+        boolean isPrompt = tpl instanceof PromptTemplate;
+        boolean hasPayloadRef = tpl.hasMetaAttr(MetaTemplate.ATTR_PAYLOAD_REF, false);
+        if (isPrompt && !hasPayloadRef) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
+                    + ": template.prompt '" + tpl.getShortName()
+                    + "' is missing required @payloadRef attribute",
+                ErrorCode.ERR_MISSING_REQUIRED_ATTR);
+        }
+        if (!hasPayloadRef) {
+            return;
+        }
+        Object refVal = tpl.getMetaAttr(MetaTemplate.ATTR_PAYLOAD_REF, false).getValue();
+        String payloadName = refVal == null ? null : refVal.toString();
+        if (payloadName == null || payloadName.isEmpty()) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_INVALID_TEMPLATE
+                    + ": template '" + tpl.getShortName() + "' @payloadRef is empty",
+                ErrorCode.ERR_INVALID_TEMPLATE);
+        }
+        MetaObject payload = objectsByName.get(payloadName);
+        if (payload == null) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_INVALID_TEMPLATE
+                    + ": template '" + tpl.getShortName() + "' @payloadRef '"
+                    + payloadName + "' does not resolve to a root-level object",
+                ErrorCode.ERR_INVALID_TEMPLATE);
+        }
+        if (isPrompt && tpl.hasMetaAttr(PromptTemplate.ATTR_REQUIRED_SLOTS, false)) {
+            Object slotsRaw = tpl.getMetaAttr(PromptTemplate.ATTR_REQUIRED_SLOTS, false).getValue();
+            java.util.Set<String> payloadFieldNames = new java.util.HashSet<>();
+            for (MetaField f : payload.getChildren(MetaField.class, false)) {
+                payloadFieldNames.add(f.getShortName());
+            }
+            java.util.List<String> slots = parseSlotsValue(slotsRaw);
+            for (String slot : slots) {
+                if (!payloadFieldNames.contains(slot)) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_INVALID_TEMPLATE
+                            + ": template.prompt '" + tpl.getShortName()
+                            + "' @requiredSlots references '" + slot
+                            + "' which is not a field on payload '" + payloadName + "'",
+                        ErrorCode.ERR_INVALID_TEMPLATE);
+                }
+            }
+        }
+    }
+
+    private static java.util.List<String> parseSlotsValue(Object raw) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (raw == null) return out;
+        if (raw instanceof String) {
+            for (String s : ((String) raw).split(",")) {
+                String t = s.trim();
+                if (!t.isEmpty()) out.add(t);
+            }
+        } else if (raw instanceof Iterable<?>) {
+            for (Object o : (Iterable<?>) raw) {
+                if (o != null) out.add(o.toString());
+            }
+        }
+        return out;
     }
 
     // =========================================================================

@@ -11,3 +11,4 @@ com.metaobjects.origin.OriginTypesMetaDataProvider
 com.metaobjects.documentation.DocumentationMetaDataProvider
 com.metaobjects.view.ViewTypesMetaDataProvider
 com.metaobjects.layout.LayoutTypesMetaDataProvider
+com.metaobjects.template.TemplateTypesMetaDataProvider

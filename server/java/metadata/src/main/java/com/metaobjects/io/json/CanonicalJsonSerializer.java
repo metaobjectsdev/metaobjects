@@ -213,14 +213,16 @@ public final class CanonicalJsonSerializer {
         String nodePackage = resolveNodePackage(node);
         if (nodePackage != null && !nodePackage.isEmpty()) {
             boolean differsFromParent = (parentPackage == null) || !nodePackage.equals(parentPackage);
-            // Cross-port: shared-type nodes at root (e.g. an abstract field.enum
-            // declared at metadata.root) always emit their package, even when it
-            // equals the root's package — they are addressable "library" entries
-            // that need a stable qualifier. Objects naturally live at root and
-            // do not need the redundant emission.
-            boolean rootSharedType = (node.getParent() instanceof MetaRoot)
-                && !(node instanceof com.metaobjects.object.MetaObject);
-            if (differsFromParent || rootSharedType) {
+            // Cross-port: abstract field-type nodes declared at root level
+            // (e.g. an abstract field.enum bound as a shared type) always emit
+            // their package, even when it equals the root's package — they are
+            // addressable library entries that need a stable qualifier so other
+            // entities can reference them via `extends`. Objects / templates /
+            // layouts at root do not need the redundant emission.
+            boolean rootAbstractFieldType = (node.getParent() instanceof MetaRoot)
+                && (node instanceof com.metaobjects.field.MetaField)
+                && getIsAbstractValue(node);
+            if (differsFromParent || rootAbstractFieldType) {
                 body.addProperty(KEY_PACKAGE, nodePackage);
             }
         }

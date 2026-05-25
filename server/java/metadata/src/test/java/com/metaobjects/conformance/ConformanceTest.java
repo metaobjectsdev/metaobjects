@@ -122,7 +122,8 @@ public class ConformanceTest {
                 "relationship-types",
                 "source-types",
                 "view-types",
-                "layout-types"
+                "layout-types",
+                "template-types"
             )
         );
 

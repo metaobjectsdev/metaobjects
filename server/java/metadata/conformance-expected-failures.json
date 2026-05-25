@@ -1,12 +1,6 @@
 {
   "language": "java",
   "fixtures": [
-    "error-template-payload-ref-unresolved",
-    "error-template-prompt-missing-payload-ref",
-    "error-template-required-slot-missing",
-    "extends-abstract-base",
-    "template-output-and-prompt",
-    "template-output-simple",
-    "template-prompt-simple"
+    "extends-abstract-base"
   ]
 }

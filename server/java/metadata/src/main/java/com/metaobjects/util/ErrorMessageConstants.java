@@ -114,6 +114,14 @@ public final class ErrorMessageConstants {
      */
     public static final String ERR_BAD_DEFAULT_SORT_FIELD = "ERR_BAD_DEFAULT_SORT_FIELD";
 
+    /**
+     * Error code emitted when a {@code template.*} node fails structural
+     * validation: unresolved {@code @payloadRef}, {@code @requiredSlots}
+     * referring to non-existent payload fields, etc.
+     * Cross-language contract: {@code ERR_INVALID_TEMPLATE}.
+     */
+    public static final String ERR_INVALID_TEMPLATE = "ERR_INVALID_TEMPLATE";
+
     // === ERROR MESSAGE FORMATS ===
 
     /** Format template for not found errors */
