@@ -90,8 +90,7 @@ public static class PostgresIntrospect
               or "int2" or "smallint" or "smallserial")
             return new SqlType.Integer(32);
 
-        if (dt is "float4" or "real") return new SqlType.Real();
-        if (dt is "float8" or "double precision") return new SqlType.Real();
+        if (dt is "float4" or "real" or "float8" or "double precision") return new SqlType.Real();
 
         var num = NumericInline.Match(dt);
         if (num.Success)
@@ -105,6 +104,11 @@ public static class PostgresIntrospect
         if (dt == "date") return new SqlType.Date();
         if (dt is "timestamp" or "timestamp without time zone") return new SqlType.Timestamp(false);
         if (dt is "timestamptz" or "timestamp with time zone") return new SqlType.Timestamp(true);
+        // SqlType has no Time variant (see SqlType.cs; intentional per TS). Pinned
+        // explicitly here so the time→text mapping isn't a quiet accident of the
+        // catch-all fallback below.
+        if (dt is "time" or "time without time zone" or "timetz" or "time with time zone")
+            return new SqlType.Text();
         if (dt is "json" or "jsonb") return new SqlType.Json();
         if (dt == "bytea") return new SqlType.Blob();
         if (dt == "uuid") return new SqlType.Uuid();
@@ -160,6 +164,16 @@ public static class PostgresIntrospect
         "SET NULL" => FkAction.SetNull,
         "RESTRICT" => FkAction.Restrict,
         _ => null,
+    };
+
+    // udt_name values Postgres reports for the legacy auto-increment forms
+    // (bigserial / serial / smallserial and their internal aliases). Used by
+    // ReadColumnsAsync's identity-detection.
+    private static readonly HashSet<string> SerialUdtNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "bigserial", "serial8",
+        "serial",    "serial4",
+        "smallserial", "serial2",
     };
 
     // -----------------------------------------------------------------------
@@ -218,7 +232,8 @@ public static class PostgresIntrospect
           udt_name,
           character_maximum_length,
           is_nullable,
-          column_default
+          column_default,
+          is_identity
         FROM information_schema.columns
         WHERE table_schema = @schema
           AND table_name = @table
@@ -297,15 +312,15 @@ public static class PostgresIntrospect
             var nullable = string.Equals(r.GetString("is_nullable"), "YES", StringComparison.OrdinalIgnoreCase);
             var rawDefault = r.GetString("column_default");
             var def = ParsePgDefault(rawDefault);
-            // bigserial / serial / smallserial surface as a nextval(...) default OR
-            // as the udt_name. Belt-and-suspenders detection.
-            var isSerial = (rawDefault is not null && rawDefault.StartsWith("nextval(", StringComparison.OrdinalIgnoreCase))
-                || udtName.Equals("bigserial", StringComparison.OrdinalIgnoreCase)
-                || udtName.Equals("serial8", StringComparison.OrdinalIgnoreCase)
-                || udtName.Equals("serial4", StringComparison.OrdinalIgnoreCase)
-                || udtName.Equals("serial", StringComparison.OrdinalIgnoreCase)
-                || udtName.Equals("smallserial", StringComparison.OrdinalIgnoreCase)
-                || udtName.Equals("serial2", StringComparison.OrdinalIgnoreCase);
+            // Identity detection covers two PG generations:
+            //   * legacy `bigserial`/`serial`/`smallserial` — surfaces as a nextval(...)
+            //     default OR as the udt_name.
+            //   * PG 10+ `GENERATED ... AS IDENTITY` — surfaces as
+            //     information_schema.columns.is_identity = 'YES'.
+            var isIdentity = string.Equals(r.GetString("is_identity"), "YES", StringComparison.OrdinalIgnoreCase);
+            var isSerial = isIdentity
+                || (rawDefault is not null && rawDefault.StartsWith("nextval(", StringComparison.OrdinalIgnoreCase))
+                || SerialUdtNames.Contains(udtName);
             // When a column's default is the sequence-feeder (nextval(...)) and we've
             // already flagged the column as identity=increment, suppress the default so
             // the snapshot matches ExpectedSchema (which models the serial column as
@@ -334,7 +349,7 @@ public static class PostgresIntrospect
     private static async Task<List<IndexDescriptor>> ReadIndexesAsync(IPgIntrospector db, string schema, string table)
     {
         var rows = await db.QueryAsync(IndexesSql, ("schema", schema), ("table", table));
-        // Group rows by index name, ordered by `ordinal` (already done by ORDER BY).
+        // Group rows by index name; the SQL's ORDER BY ordinal handles in-index column order.
         var byName = new Dictionary<string, (bool IsUnique, bool IsPrimary, List<string> Cols)>(StringComparer.Ordinal);
         foreach (var r in rows)
         {
@@ -344,9 +359,9 @@ public static class PostgresIntrospect
                 entry = (r.GetBool("is_unique"), r.GetBool("is_primary"), new List<string>());
                 byName[name] = entry;
             }
+            // Cols is a reference type — mutating the List here mutates the one stored
+            // in the dictionary entry; no re-store needed.
             entry.Cols.Add(r.GetString("column_name")!);
-            // re-store the tuple since we mutated the List inside it (tuple value-copy)
-            byName[name] = entry;
         }
         return byName
             .Where(kv => !kv.Value.IsPrimary) // PK is carried separately on TableDescriptor
@@ -371,9 +386,9 @@ public static class PostgresIntrospect
                     PgRuleToAction(r.GetString("update_rule") ?? ""));
                 byName[name] = entry;
             }
+            // Both lists are reference types; mutating in place is enough (no re-store).
             entry.Cols.Add(r.GetString("column_name")!);
             entry.RefCols.Add(r.GetString("ref_column")!);
-            byName[name] = entry;
         }
         return byName
             .Select(kv => new FkDescriptor(

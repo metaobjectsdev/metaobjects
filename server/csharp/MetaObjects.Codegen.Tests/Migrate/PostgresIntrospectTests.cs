@@ -5,6 +5,27 @@ namespace MetaObjects.Codegen.Tests.Migrate;
 
 public class PostgresIntrospectTests
 {
+    // Information_schema.columns row shaped like the production ReadColumnsAsync
+    // query expects. Keeps every field visible at the call-site via named args.
+    // Defaults mirror the most common "plain bigint NOT NULL with no default,
+    // not an identity" shape so unrelated tests don't have to repeat seven nulls.
+    private static PgRow ColRow(
+        string columnName,
+        string dataType = "bigint",
+        string udtName = "int8",
+        long? maxLength = null,
+        string isNullable = "NO",
+        string? columnDefault = null,
+        string isIdentity = "NO") =>
+        PgRow.Of(
+            ("column_name", columnName),
+            ("data_type", dataType),
+            ("udt_name", udtName),
+            ("character_maximum_length", maxLength),
+            ("is_nullable", isNullable),
+            ("column_default", columnDefault),
+            ("is_identity", isIdentity));
+
     // -----------------------------------------------------------------------
     // PgTypeToSqlType — pure string → canonical SqlType
     // -----------------------------------------------------------------------
@@ -170,18 +191,10 @@ public class PostgresIntrospectTests
         fake.OnTables(("public", "posts"));
         // 2) columns (id pk via nextval, title varchar(200) NOT NULL, score numeric(10,2) NULL, body text NULL DEFAULT 'x')
         fake.OnColumns("public", "posts",
-            PgRow.Of(("column_name", "id"), ("data_type", "bigint"), ("udt_name", "int8"),
-                     ("character_maximum_length", null), ("is_nullable", "NO"),
-                     ("column_default", "nextval('public.posts_id_seq'::regclass)")),
-            PgRow.Of(("column_name", "title"), ("data_type", "character varying"), ("udt_name", "varchar"),
-                     ("character_maximum_length", 200L), ("is_nullable", "NO"),
-                     ("column_default", null)),
-            PgRow.Of(("column_name", "score"), ("data_type", "numeric(10,2)"), ("udt_name", "numeric"),
-                     ("character_maximum_length", null), ("is_nullable", "YES"),
-                     ("column_default", null)),
-            PgRow.Of(("column_name", "body"), ("data_type", "text"), ("udt_name", "text"),
-                     ("character_maximum_length", null), ("is_nullable", "YES"),
-                     ("column_default", "'x'::text")));
+            ColRow("id", columnDefault: "nextval('public.posts_id_seq'::regclass)"),
+            ColRow("title", dataType: "character varying", udtName: "varchar", maxLength: 200L),
+            ColRow("score", dataType: "numeric(10,2)", udtName: "numeric", isNullable: "YES"),
+            ColRow("body", dataType: "text", udtName: "text", isNullable: "YES", columnDefault: "'x'::text"));
         // 3) PK
         fake.OnPrimaryKey("public", "posts", "id");
         // 4) indexes (the PK index appears here too — orchestrator must drop is_primary=true)
@@ -237,10 +250,7 @@ public class PostgresIntrospectTests
     {
         var fake = new FakePgIntrospector();
         fake.OnTables(("billing", "invoices"));
-        fake.OnColumns("billing", "invoices",
-            PgRow.Of(("column_name", "id"), ("data_type", "bigint"), ("udt_name", "int8"),
-                     ("character_maximum_length", null), ("is_nullable", "NO"),
-                     ("column_default", null)));
+        fake.OnColumns("billing", "invoices", ColRow("id"));
         fake.OnPrimaryKey("billing", "invoices", "id");
 
         var t = Assert.Single((await PostgresIntrospect.IntrospectAsync(fake)).Tables);
@@ -252,15 +262,88 @@ public class PostgresIntrospectTests
     {
         var fake = new FakePgIntrospector();
         fake.OnTables(("public", "links"));
-        fake.OnColumns("public", "links",
-            PgRow.Of(("column_name", "a"), ("data_type", "bigint"), ("udt_name", "int8"),
-                     ("character_maximum_length", null), ("is_nullable", "NO"), ("column_default", null)),
-            PgRow.Of(("column_name", "b"), ("data_type", "bigint"), ("udt_name", "int8"),
-                     ("character_maximum_length", null), ("is_nullable", "NO"), ("column_default", null)));
+        fake.OnColumns("public", "links", ColRow("a"), ColRow("b"));
         fake.OnPrimaryKey("public", "links", "b", "a"); // order matters
 
         var t = Assert.Single((await PostgresIntrospect.IntrospectAsync(fake)).Tables);
         Assert.Equal(["b", "a"], t.PrimaryKey.ToArray());
+    }
+
+    [Fact]
+    public async Task Composite_fk_preserves_column_pairing()
+    {
+        var fake = new FakePgIntrospector();
+        fake.OnTables(("public", "child"));
+        fake.OnColumns("public", "child", ColRow("p_a"), ColRow("p_b"));
+        fake.OnForeignKeys("public", "child",
+            PgRow.Of(("fk_name", "child_parent_fk"), ("column_name", "p_a"),
+                     ("ref_table", "parent"), ("ref_column", "a"),
+                     ("update_rule", "RESTRICT"), ("delete_rule", "CASCADE"), ("ordinal", 1)),
+            PgRow.Of(("fk_name", "child_parent_fk"), ("column_name", "p_b"),
+                     ("ref_table", "parent"), ("ref_column", "b"),
+                     ("update_rule", "RESTRICT"), ("delete_rule", "CASCADE"), ("ordinal", 2)));
+
+        var t = Assert.Single((await PostgresIntrospect.IntrospectAsync(fake)).Tables);
+        var fk = Assert.Single(t.ForeignKeys);
+        Assert.Equal(["p_a", "p_b"], fk.Columns.ToArray());
+        Assert.Equal(["a", "b"], fk.RefColumns.ToArray());
+        Assert.Equal(FkAction.Cascade, fk.OnDelete);
+        Assert.Equal(FkAction.Restrict, fk.OnUpdate);
+    }
+
+    [Fact]
+    public async Task Non_unique_and_multi_column_indexes_are_carried()
+    {
+        var fake = new FakePgIntrospector();
+        fake.OnTables(("public", "t"));
+        fake.OnColumns("public", "t", ColRow("x"));
+        fake.OnIndexes("public", "t",
+            // Non-unique single-column.
+            PgRow.Of(("index_name", "t_x_idx"), ("is_unique", false), ("is_primary", false),
+                     ("column_name", "x"), ("ordinal", 1)),
+            // Multi-column unique — rows arrive ordered by `ordinal` from the SQL's ORDER BY.
+            PgRow.Of(("index_name", "t_ab_uq"), ("is_unique", true), ("is_primary", false),
+                     ("column_name", "a"), ("ordinal", 1)),
+            PgRow.Of(("index_name", "t_ab_uq"), ("is_unique", true), ("is_primary", false),
+                     ("column_name", "b"), ("ordinal", 2)));
+
+        var t = Assert.Single((await PostgresIntrospect.IntrospectAsync(fake)).Tables);
+        var idx = t.Indexes.Single(i => i.Name == "t_x_idx");
+        Assert.False(idx.Unique);
+        Assert.Equal(["x"], idx.Columns.ToArray());
+        var uq = t.Indexes.Single(i => i.Name == "t_ab_uq");
+        Assert.True(uq.Unique);
+        Assert.Equal(["a", "b"], uq.Columns.ToArray());
+    }
+
+    [Fact]
+    public async Task Serial_detected_via_udt_name_when_default_is_absent()
+    {
+        // Belt-and-suspenders: covers the udt_name-only branch (a serial column whose
+        // sequence default has been stripped or unmapped). The PG10+ identity branch
+        // (is_identity=YES) is covered by the next test.
+        var fake = new FakePgIntrospector();
+        fake.OnTables(("public", "t"));
+        fake.OnColumns("public", "t", ColRow("id", udtName: "bigserial"));
+
+        var t = Assert.Single((await PostgresIntrospect.IntrospectAsync(fake)).Tables);
+        var id = Assert.Single(t.Columns);
+        Assert.Equal(IdentityKind.Increment, id.Identity);
+        Assert.Null(id.Default);
+    }
+
+    [Fact]
+    public async Task Pg10_identity_column_detected_via_is_identity()
+    {
+        // PG 10+ GENERATED ... AS IDENTITY columns surface as is_identity='YES' with
+        // no nextval(...) default. Must still mark the column identity=increment.
+        var fake = new FakePgIntrospector();
+        fake.OnTables(("public", "t"));
+        fake.OnColumns("public", "t", ColRow("id", isIdentity: "YES"));
+
+        var t = Assert.Single((await PostgresIntrospect.IntrospectAsync(fake)).Tables);
+        var id = Assert.Single(t.Columns);
+        Assert.Equal(IdentityKind.Increment, id.Identity);
     }
 
     [Fact]
@@ -271,10 +354,7 @@ public class PostgresIntrospectTests
         // confirm SchemaDiff finds no changes.
         var fake = new FakePgIntrospector();
         fake.OnTables(("public", "t"));
-        fake.OnColumns("public", "t",
-            PgRow.Of(("column_name", "id"), ("data_type", "bigint"), ("udt_name", "int8"),
-                     ("character_maximum_length", null), ("is_nullable", "NO"),
-                     ("column_default", "nextval('t_id_seq'::regclass)")));
+        fake.OnColumns("public", "t", ColRow("id", columnDefault: "nextval('t_id_seq'::regclass)"));
         fake.OnPrimaryKey("public", "t", "id");
 
         var actual = await PostgresIntrospect.IntrospectAsync(fake);
@@ -313,7 +393,9 @@ internal sealed class FakePgIntrospector : IPgIntrospector
 
     public void OnPrimaryKey(string schema, string table, params string[] cols) =>
         _routes.Add(((sql, p) =>
-            sql.Contains("PRIMARY KEY")
+            // Match the constraint_type literal anchor — narrower than "PRIMARY KEY"
+            // alone so a future SQL comment can't accidentally collide.
+            sql.Contains("'PRIMARY KEY'")
                 && p.Any(x => x is { Name: "schema" } && Equals(x.Value, schema))
                 && p.Any(x => x is { Name: "table" } && Equals(x.Value, table)),
             cols.Select((c, i) => PgRow.Of(("column_name", c), ("ordinal_position", (long)(i + 1)))).ToList()));

@@ -17,12 +17,21 @@ public sealed class NpgsqlIntrospector : IPgIntrospector, IAsyncDisposable
 
     private NpgsqlIntrospector(NpgsqlConnection conn) => _conn = conn;
 
-    /// <summary>Open a connection and return a ready-to-use introspector.</summary>
+    /// <summary>Open a connection and return a ready-to-use introspector.
+    /// Disposes the half-open connection if <see cref="NpgsqlConnection.OpenAsync()"/> throws.</summary>
     public static async Task<NpgsqlIntrospector> ConnectAsync(string connectionString)
     {
         var conn = new NpgsqlConnection(connectionString);
-        await conn.OpenAsync();
-        return new NpgsqlIntrospector(conn);
+        try
+        {
+            await conn.OpenAsync();
+            return new NpgsqlIntrospector(conn);
+        }
+        catch
+        {
+            await conn.DisposeAsync();
+            throw;
+        }
     }
 
     public async Task<IReadOnlyList<PgRow>> QueryAsync(string sql, params (string Name, object? Value)[] parameters)

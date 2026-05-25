@@ -71,8 +71,9 @@ public static class MigrateCommand
         var diff = SchemaDiff.Diff(expected, actual, allow);
         var emitted = PostgresEmit.Render(diff.Changes);
 
+        // Nested-record Type.Name is already the short form ("DropColumn"); no Change+ prefix.
         var blocked = diff.Blocked
-            .Select(c => $"{c.GetType().Name.Replace("Change+", "")}: {c.Status.BlockedReason}")
+            .Select(c => $"{c.GetType().Name}: {c.Status.BlockedReason}")
             .ToList();
 
         if (upOutFile is not null) File.WriteAllText(upOutFile, emitted.Up);

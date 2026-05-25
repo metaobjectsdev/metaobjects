@@ -59,7 +59,14 @@ static int RunMigrate(string[] rest)
 
 static async Task<int> RunIncrementalMigrate(string metadataDir, string upFile, string connString, string? downFile)
 {
-    await using var db = await NpgsqlIntrospector.ConnectAsync(connString);
+    NpgsqlIntrospector db;
+    try { db = await NpgsqlIntrospector.ConnectAsync(connString); }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"meta migrate: could not connect to Postgres: {ex.Message}");
+        return 1;
+    }
+    await using var _ = db;
     var outcome = await MigrateCommand.RunIncrementalAsync(metadataDir, db, upFile, downFile);
 
     foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
