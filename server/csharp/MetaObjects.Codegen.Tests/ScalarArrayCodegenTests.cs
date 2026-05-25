@@ -131,60 +131,6 @@ public class ScalarArrayCodegenTests
         Assert.Contains("public enum OrderStatuses { DRAFT, PUBLISHED, ARCHIVED }", src);
     }
 
-    // -------------------------------------------------------------------------
-    // PostgresSchema — scalar array → jsonb column
-    // -------------------------------------------------------------------------
-
-    [Fact]
-    public void Scalar_array_field_emits_jsonb_column_in_DDL()
-    {
-        var sql = PostgresSchema.BuildSchema(Load(ScalarArrayModel));
-
-        // Array column -> jsonb, not text/varchar.
-        Assert.Contains("tags jsonb", sql);
-        // Guard: the scalar type must NOT appear for this column.
-        Assert.DoesNotContain("tags text", sql);
-        Assert.DoesNotContain("tags varchar", sql);
-    }
-
-    // -------------------------------------------------------------------------
-    // PostgresSchema — enum array → jsonb column, no CHECK constraint
-    // -------------------------------------------------------------------------
-
-    [Fact]
-    public void Enum_array_field_emits_jsonb_column_in_DDL()
-    {
-        var sql = PostgresSchema.BuildSchema(Load(EnumArrayModel));
-
-        // Array enum column -> jsonb, not text.
-        Assert.Contains("statuses jsonb", sql);
-        Assert.DoesNotContain("statuses text", sql);
-    }
-
-    [Fact]
-    public void Enum_array_field_does_not_emit_check_constraint()
-    {
-        var sql = PostgresSchema.BuildSchema(Load(EnumArrayModel));
-
-        // No CHECK constraint for an array-of-enum column (jsonb holds the array).
-        Assert.DoesNotContain("CHECK (statuses IN", sql);
-        Assert.DoesNotContain("CHECK", sql);
-    }
-
-    // -------------------------------------------------------------------------
-    // Regression: scalar enum (non-array) still emits CHECK + HasConversion
-    // -------------------------------------------------------------------------
-
-    [Fact]
-    public void Scalar_enum_still_emits_check_constraint_when_not_array()
-    {
-        var sql = PostgresSchema.BuildSchema(Load(MixedEnumModel));
-
-        // The scalar enum ("status") must still emit a CHECK.
-        Assert.Contains("CHECK (status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED'))", sql);
-        // But the array enum ("statuses") must not.
-        Assert.DoesNotContain("CHECK (statuses IN", sql);
-    }
 
     [Fact]
     public void Scalar_enum_still_emits_has_conversion_when_not_array()

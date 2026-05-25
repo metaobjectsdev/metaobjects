@@ -62,13 +62,12 @@ public static class ExpectedSchema
             Schema: source.Schema);
     }
 
-    // Columns in declared order. The branches mirror PostgresSchema.CreateTable so
-    // codegen-time DDL and the snapshot describe the SAME columns (else `migrate`
-    // would see drift): scalar OR enum → one ColumnDescriptor (enum stored as text);
-    // any isArray (scalar/enum) collapses to a single json column (matches
-    // PostgresSchema's `f.IsArray ? "jsonb"` mapping); object @storage flattened →
-    // expand each nested scalar as "{parentCol}_{nestedCol}" (parent contributes no
-    // column); other object storage → a single json column.
+    // Columns in declared order. This is the canonical source-of-truth for what
+    // columns a writable entity contributes to the snapshot (consumed by SchemaDiff
+    // and PostgresEmit): scalar OR enum → one ColumnDescriptor (enum stored as text);
+    // any isArray (scalar/enum) collapses to a single json column; object @storage
+    // flattened → expand each nested scalar as "{parentCol}_{nestedCol}" (parent
+    // contributes no column); other object storage → a single json column.
     private static IEnumerable<ColumnDescriptor> BuildColumns(
         MetaObject entity, MetaRoot root,
         IReadOnlySet<string> pkSet, string? pkGeneration)
@@ -116,9 +115,9 @@ public static class ExpectedSchema
     private static ColumnDescriptor BuildColumn(
         MetaObject owner, MetaField field, bool isPk, string? pkGeneration)
     {
-        // isArray collapses any scalar/enum to a single json column — matches
-        // PostgresSchema.CreateTable's `f.IsArray ? "jsonb"` mapping. Sizing /
-        // precision / scale on the underlying type don't apply once the value is JSON.
+        // isArray collapses any scalar/enum to a single json column (PostgresEmit
+        // renders SqlType.Json as JSONB). Sizing/precision/scale on the underlying
+        // type don't apply once the value is JSON.
         var sqlType = field.IsArray ? new SqlType.Json() : SubtypeToSqlType(field);
         var required = CSharpNaming.IsRequired(owner, field);
         // PK columns are NOT NULL by definition (and their own @required is implicit).
@@ -138,9 +137,10 @@ public static class ExpectedSchema
         FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_CURRENCY => new SqlType.Integer(64),
         FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT => new SqlType.Real(),
         FIELD_SUBTYPE_DECIMAL => new SqlType.Numeric(f.Precision, f.Scale),
-        // enum is string-backed (matches PostgresSchema PgType -> "text").
-        // The DB-side CHECK constraint enforcing membership isn't yet modeled in the
-        // snapshot — a known gap, harmless until introspection lands (#3).
+        // enum is string-backed → SqlType.Text (PostgresEmit renders as TEXT).
+        // The DB-side CHECK constraint enforcing membership is tail-appended by
+        // PostgresSchema.EnumCheckConstraints (the engine snapshot doesn't yet
+        // model CHECK constraints, so the diff doesn't see them).
         FIELD_SUBTYPE_ENUM => new SqlType.Text(),
         FIELD_SUBTYPE_BOOLEAN => new SqlType.Boolean(),
         FIELD_SUBTYPE_DATE => new SqlType.Date(),
@@ -178,8 +178,7 @@ public static class ExpectedSchema
         || string.Equals(s, "current_time",      StringComparison.OrdinalIgnoreCase);
 
     // Unique indexes come from secondary identities (unique unless @unique:false).
-    // Index NAME = bare identity name (matches TS expected-schema.ts:204; diverges
-    // from PostgresSchema's "{table}_{name}_uniq" — reconciliation tracked separately).
+    // Index NAME = bare identity name (matches TS expected-schema.ts:204).
     private static IEnumerable<IndexDescriptor> BuildIndexes(MetaObject entity)
     {
         foreach (var sec in entity.SecondaryIdentities())
