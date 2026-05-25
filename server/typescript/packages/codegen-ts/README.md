@@ -36,7 +36,7 @@ Per entity, codegen emits **two files**:
 
 - `<Entity>.ts` — Drizzle table definition (with FK `.references()` + `relations()` blocks
   auto-emitted from metadata relationships) + Drizzle-inferred types + Zod validators
-- `<Entity>.queries.ts` — typed CRUD query functions with prepared statements
+- `<Entity>.queries.ts` — typed CRUD query functions
   (`findPostById`, `listPosts`, `createPost`, `updatePost`, `deletePostById`)
 
 Plus a barrel `index.ts` re-exporting from each `<Entity>.ts`.

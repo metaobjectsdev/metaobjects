@@ -89,7 +89,7 @@ Hono is the de facto edge HTTP router in 2026. Generated queries compose with
 it directly — no metaobjects-specific Hono integration needed.
 
 ```ts
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { drizzle } from "drizzle-orm/d1";
 import {
   findUserById,
@@ -103,7 +103,7 @@ type Env = { Bindings: { DB: D1Database } };
 
 const users = new Hono<Env>();
 
-const getDb = (c: Hono.Context<Env>) => drizzle(c.env.DB);
+const getDb = (c: Context<Env>) => drizzle(c.env.DB);
 
 users.get("/:id", async (c) => {
   const user = await findUserById(getDb(c), c.req.param("id"));
@@ -272,11 +272,16 @@ import { honoRoutesFile } from "./metaobjects-routes-hono";
 
 export default defineConfig({
   outDir: "src/generated",
-  dialect: "d1",
+  dialect: "sqlite",
   apiPrefix: "/api",
   generators: [entityFile(), queriesFile(), honoRoutesFile(), barrel()],
 });
 ```
+
+> **Note for D1 consumers:** codegen-ts only knows `"sqlite" | "postgres"`. D1 is
+> SQLite at the SQL level, so codegen uses `dialect: "sqlite"`. The D1-specific
+> `--dialect d1` is a `meta migrate` CLI flag (it controls migration transport +
+> file layout), not a codegen config value.
 
 ## Migration from 0.6.0
 
