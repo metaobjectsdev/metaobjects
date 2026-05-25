@@ -1,0 +1,32 @@
+name: filter-is-null
+description: |
+  Filter Weeks with `isNull` on a nullable field. Verifies the runner
+  translates `{ field: { isNull: true } }` to SQL `IS NULL` (not `= NULL`,
+  which is always false in three-valued logic) and that `{ isNull: false }`
+  surfaces the complementary row set.
+seed-data: |
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00');
+  INSERT INTO "weeks" ("id", "programId", "label") VALUES
+    (1, 1, 'Week 1'),
+    (2, 1, NULL),
+    (3, 1, 'Week 3'),
+    (4, 1, NULL);
+queries:
+  - name: weeks-with-null-label
+    op: list
+    entity: Week
+    filter: { label: { isNull: true } }
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "2", programId: "1", label: null }
+      - { id: "4", programId: "1", label: null }
+
+  - name: weeks-with-non-null-label
+    op: list
+    entity: Week
+    filter: { label: { isNull: false } }
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "1", programId: "1", label: "Week 1" }
+      - { id: "3", programId: "1", label: "Week 3" }
