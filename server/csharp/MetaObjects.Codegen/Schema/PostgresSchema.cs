@@ -48,6 +48,10 @@ public static class PostgresSchema
         string? blocked = null;
         const string T = "t"; // target alias inside correlated subqueries (self-reference safe)
 
+        // All emitted identifiers are quoted (engine convention) so mixed-case column
+        // names like "programId" round-trip through PG without being silently
+        // lowercased. The bare alias `t` is intentionally unquoted (it's never a
+        // user identifier and PG treats it case-insensitively as lowercase).
         string BaseTable() => root.FindObject(baseEntity!)?.DbTable ?? baseEntity!;
 
         foreach (var f in projection.Fields())
@@ -60,7 +64,7 @@ public static class PostgresSchema
                 var (ent, field) = SplitDot(from);
                 baseEntity ??= CSharpNaming.StripPkg(ent);
                 if (CSharpNaming.StripPkg(ent) != baseEntity) { blocked = "passthrough from multiple base entities"; break; }
-                cols.Add($"  {ResolveColumn(root.FindObject(baseEntity), field)} AS {CSharpNaming.Column(f)}");
+                cols.Add($"  \"{ResolveColumn(root.FindObject(baseEntity), field)}\" AS \"{CSharpNaming.Column(f)}\"");
             }
             // passthrough WITH via → forward a field from a to-one related entity (correlated subquery).
             else if (origin is MetaPassthroughOrigin ptv && ptv.Via is { } pvia && ptv.From is { } pfrom &&
@@ -72,7 +76,7 @@ public static class PostgresSchema
                 if (ToOneFk(root, baseEntity, relName) is not { } fk)
                 { blocked = $"unresolved to-one FK for @via \"{pvia}\" (base needs an identity.reference)"; break; }
                 var srcCol = ResolveColumn(fk.Target, SplitDot(pfrom).Tail);
-                cols.Add($"  (SELECT {T}.{srcCol} FROM {fk.TargetTable} {T} WHERE {T}.{fk.TargetKeyCol} = {BaseTable()}.{fk.BaseFkCol}) AS {CSharpNaming.Column(f)}");
+                cols.Add($"  (SELECT {T}.\"{srcCol}\" FROM \"{fk.TargetTable}\" {T} WHERE {T}.\"{fk.TargetKeyCol}\" = \"{BaseTable()}\".\"{fk.BaseFkCol}\") AS \"{CSharpNaming.Column(f)}\"");
             }
             // aggregate → count/sum/... over a to-many relationship (correlated subquery).
             else if (origin is MetaAggregateOrigin agg && agg.Agg is { } aggFn && agg.Of is { } of && agg.Via is { } via &&
@@ -84,7 +88,7 @@ public static class PostgresSchema
                 if (ToManyFk(root, baseEntity, relName) is not { } fk)
                 { blocked = $"unresolved to-many FK for @via \"{via}\" (target needs an identity.reference back to {baseEntity})"; break; }
                 var ofCol = ResolveColumn(fk.Target, SplitDot(of).Tail);
-                cols.Add($"  (SELECT {aggFn}({T}.{ofCol}) FROM {fk.TargetTable} {T} WHERE {T}.{fk.FkCol} = {BaseTable()}.{fk.ParentCol}) AS {CSharpNaming.Column(f)}");
+                cols.Add($"  (SELECT {aggFn}({T}.\"{ofCol}\") FROM \"{fk.TargetTable}\" {T} WHERE {T}.\"{fk.FkCol}\" = \"{BaseTable()}\".\"{fk.ParentCol}\") AS \"{CSharpNaming.Column(f)}\"");
             }
             // collection → array of nested view-objects over a to-many relationship (json_agg).
             else if (origin is MetaCollectionOrigin coll && coll.Via is { } cvia && cvia.Contains('.') && f.ObjectRef is { } objRef)
@@ -95,11 +99,12 @@ public static class PostgresSchema
                 var nested = root.FindObject(CSharpNaming.StripPkg(objRef));
                 if (ToManyFk(root, baseEntity, relName) is not { } fk || nested is null)
                 { blocked = $"unresolved collection @via \"{cvia}\" / @objectRef \"{objRef}\""; break; }
+                // json_build_object keys are JSON string literals (single-quoted), not idents — left unquoted-as-ident.
                 var pairs = nested.Fields()
                     .Where(nf => CSharpNaming.ScalarFor(nf.SubType) is not null)
-                    .Select(nf => $"'{nf.Name}', {T}.{ResolveColumn(fk.Target, nf.Name)}");
+                    .Select(nf => $"'{nf.Name}', {T}.\"{ResolveColumn(fk.Target, nf.Name)}\"");
                 cols.Add($"  (SELECT coalesce(json_agg(json_build_object({string.Join(", ", pairs)})), '[]'::json) " +
-                         $"FROM {fk.TargetTable} {T} WHERE {T}.{fk.FkCol} = {BaseTable()}.{fk.ParentCol}) AS {CSharpNaming.Column(f)}");
+                         $"FROM \"{fk.TargetTable}\" {T} WHERE {T}.\"{fk.FkCol}\" = \"{BaseTable()}\".\"{fk.ParentCol}\") AS \"{CSharpNaming.Column(f)}\"");
             }
             else
             {
@@ -114,7 +119,7 @@ public static class PostgresSchema
             return $"-- TODO CREATE VIEW {view}: {blocked ?? "no derivable columns"}\n";
         }
 
-        return $"CREATE VIEW {view} AS\nSELECT\n{string.Join(",\n", cols)}\nFROM {BaseTable()};\n";
+        return $"CREATE VIEW \"{view}\" AS\nSELECT\n{string.Join(",\n", cols)}\nFROM \"{BaseTable()}\";\n";
     }
 
     private static (string Head, string Tail) SplitDot(string s)

@@ -84,51 +84,54 @@ public class PostgresSchemaTests
     [Fact]
     public void CreateView_passthrough_emits_plain_select_from_single_base()
     {
+        // Engine-canonical: all idents quoted so mixed-case columns ("programId")
+        // survive PG's silent lowercasing of unquoted idents.
         var sql = View(Load(), "ProgramView");
-        Assert.Contains("CREATE VIEW v_program AS", sql);
-        Assert.Contains("id AS id", sql);
-        Assert.Contains("title AS title", sql);
-        Assert.Contains("FROM programs;", sql); // base entity Program -> its table "programs"
+        Assert.Contains("CREATE VIEW \"v_program\" AS", sql);
+        Assert.Contains("\"id\" AS \"id\"", sql);
+        Assert.Contains("\"title\" AS \"title\"", sql);
+        Assert.Contains("FROM \"programs\";", sql);
     }
 
     [Fact]
     public void CreateView_aggregate_emits_correlated_subquery_with_resolved_fk()
     {
         var sql = View(Load(), "ProgramStat");
-        Assert.Contains("CREATE VIEW v_program_stat AS", sql);
+        Assert.Contains("CREATE VIEW \"v_program_stat\" AS", sql);
         // FK resolved from Week.fkProgram (identity.reference @fields programId -> Program.id);
-        // target aliased "t" so the subquery is self-reference safe.
+        // target aliased "t" (alias is intentionally unquoted — it's never a user ident).
         Assert.Contains(
-            "(SELECT count(t.id) FROM weeks t WHERE t.programId = programs.id) AS weekCount",
+            "(SELECT count(t.\"id\") FROM \"weeks\" t WHERE t.\"programId\" = \"programs\".\"id\") AS \"weekCount\"",
             sql);
-        Assert.Contains("FROM programs;", sql);
+        Assert.Contains("FROM \"programs\";", sql);
     }
 
     [Fact]
     public void CreateView_passthrough_via_forwards_to_one_field_via_base_fk()
     {
         var sql = View(Load(), "WeekDetail");
-        Assert.Contains("CREATE VIEW v_week_detail AS", sql);
-        Assert.Contains("id AS id", sql);
-        // Week.program -> Program.title: FK lives on the base (Week.programId -> Program.id),
-        // so the subquery selects from the target keyed by the base FK column.
+        Assert.Contains("CREATE VIEW \"v_week_detail\" AS", sql);
+        Assert.Contains("\"id\" AS \"id\"", sql);
+        // Week.program -> Program.title: FK on the base (Week.programId -> Program.id);
+        // subquery selects from the target keyed by the base FK column.
         Assert.Contains(
-            "(SELECT t.title FROM programs t WHERE t.id = weeks.programId) AS programTitle",
+            "(SELECT t.\"title\" FROM \"programs\" t WHERE t.\"id\" = \"weeks\".\"programId\") AS \"programTitle\"",
             sql);
-        Assert.Contains("FROM weeks;", sql);
+        Assert.Contains("FROM \"weeks\";", sql);
     }
 
     [Fact]
     public void CreateView_collection_emits_json_agg_of_nested_rows()
     {
         var sql = View(Load(), "ProgramWithWeeks");
-        Assert.Contains("CREATE VIEW v_program_weeks AS", sql);
-        // json_agg over the to-many (Week back-references Program via programId).
+        Assert.Contains("CREATE VIEW \"v_program_weeks\" AS", sql);
+        // json_agg over the to-many; json_build_object keys stay single-quoted (they're
+        // JSON string literals, not idents — the column refs alongside them are quoted).
         Assert.Contains(
-            "(SELECT coalesce(json_agg(json_build_object('id', t.id, 'programId', t.programId)), '[]'::json) " +
-            "FROM weeks t WHERE t.programId = programs.id) AS weeks",
+            "(SELECT coalesce(json_agg(json_build_object('id', t.\"id\", 'programId', t.\"programId\")), '[]'::json) " +
+            "FROM \"weeks\" t WHERE t.\"programId\" = \"programs\".\"id\") AS \"weeks\"",
             sql);
-        Assert.Contains("FROM programs;", sql);
+        Assert.Contains("FROM \"programs\";", sql);
     }
 
     // -------------------------------------------------------------------------

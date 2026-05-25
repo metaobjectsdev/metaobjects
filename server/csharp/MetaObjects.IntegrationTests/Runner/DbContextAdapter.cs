@@ -1,0 +1,228 @@
+// DbContextAdapter — translates a QuerySpec (metadata-anchored DSL) into a LINQ
+// expression against the generated AppDbContext + DbSets.
+//
+// The adapter is generic over entity type, but the entrypoint takes the entity's
+// *metadata name* (Program, ProgramStat, …) and resolves to the right DbSet via
+// reflection on the DbContext (the generated DbSet property pluralizes the name).
+//
+// The DSL is small enough that hand-built Expression trees stay readable; no
+// Dynamic LINQ dependency.
+
+using System.Linq.Expressions;
+using System.Reflection;
+using MetaObjects.IntegrationTests.Generated;
+using Microsoft.EntityFrameworkCore;
+
+namespace MetaObjects.IntegrationTests.Runner;
+
+public static class DbContextAdapter
+{
+    /// <summary>
+    /// Execute a query intent against the DbContext. Returns:
+    ///   * op=list  → a List of rows (each row = property-name→value dictionary).
+    ///   * op=get   → a single row dictionary or null.
+    ///   * op=count → a long.
+    /// </summary>
+    public static async Task<object?> ExecuteAsync(AppDbContext db, QuerySpec spec)
+    {
+        var entityType = ResolveEntityType(spec.Entity);
+        return await (Task<object?>)typeof(DbContextAdapter)
+            .GetMethod(nameof(ExecuteGeneric), BindingFlags.NonPublic | BindingFlags.Static)!
+            .MakeGenericMethod(entityType)
+            .Invoke(null, [db, spec])!;
+    }
+
+    private static async Task<object?> ExecuteGeneric<T>(AppDbContext db, QuerySpec spec) where T : class
+    {
+        var queryable = (IQueryable<T>)db.Set<T>().AsNoTracking();
+
+        // For op:get, filter is implied by `by`.
+        if (spec.Op == "get")
+        {
+            if (spec.By is null || spec.By.Count == 0)
+                throw new InvalidOperationException("op:get requires a `by` block");
+            queryable = ApplyFilter(queryable, ToFilterFromBy(spec.By));
+            var single = await queryable.FirstOrDefaultAsync();
+            return single is null ? null : RowFor(single);
+        }
+
+        if (spec.Filter is not null) queryable = ApplyFilter(queryable, spec.Filter);
+        if (spec.Sort is { Count: > 0 } sorts) queryable = ApplySort(queryable, sorts);
+        if (spec.Offset is { } off) queryable = queryable.Skip(off);
+        if (spec.Limit is { } lim) queryable = queryable.Take(lim);
+
+        if (spec.Op == "count")
+            return (long)await queryable.CountAsync();
+
+        // op: list
+        var rows = await queryable.ToListAsync();
+        return rows.Select(RowFor).ToList();
+    }
+
+    // -----------------------------------------------------------------------
+    // Entity / property resolution
+    // -----------------------------------------------------------------------
+
+    private static Type ResolveEntityType(string metadataName)
+    {
+        // The generated entity class is in MetaObjects.IntegrationTests.Generated
+        // with the same Pascal-case name as the metadata entity.
+        var t = typeof(AppDbContext).Assembly.GetType(
+            $"MetaObjects.IntegrationTests.Generated.{metadataName}",
+            throwOnError: false);
+        return t ?? throw new InvalidOperationException(
+            $"Generated entity type for metadata name '{metadataName}' not found");
+    }
+
+    // The C# property name is Pascal-cased from the metadata field name; both happen
+    // to be identical in the canonical model since fields are already lowerCamel and
+    // CSharpNaming.Pascal capitalizes the first letter.
+    private static PropertyInfo Property(Type entity, string fieldName) =>
+        entity.GetProperty(char.ToUpperInvariant(fieldName[0]) + fieldName[1..])
+            ?? throw new InvalidOperationException(
+                $"Entity '{entity.Name}' has no property for metadata field '{fieldName}'");
+
+    // -----------------------------------------------------------------------
+    // Filter / sort → Expression
+    // -----------------------------------------------------------------------
+
+    private static IReadOnlyDictionary<string, object?> ToFilterFromBy(IReadOnlyDictionary<string, object?> by) =>
+        by.ToDictionary(
+            kv => kv.Key,
+            kv => (object?)new Dictionary<string, object?> { ["eq"] = kv.Value });
+
+    private static IQueryable<T> ApplyFilter<T>(IQueryable<T> queryable, IReadOnlyDictionary<string, object?> filter)
+    {
+        var param = Expression.Parameter(typeof(T), "x");
+        Expression? body = null;
+        foreach (var (field, opsRaw) in filter)
+        {
+            var prop = Property(typeof(T), field);
+            var propExpr = Expression.Property(param, prop);
+            // YamlDotNet hands back Dictionary<object, object?> for nested mappings
+            // when the parent is typed as object?; normalize both shapes here so the
+            // DSL author doesn't have to think about it.
+            var ops = AsStringKeyedDict(opsRaw)
+                ?? throw new InvalidOperationException(
+                    $"filter for field '{field}' must be an object of {{op:value}} (got {opsRaw?.GetType().Name ?? "null"})");
+            foreach (var (op, value) in ops)
+            {
+                var clause = BuildOp(propExpr, op, value);
+                body = body is null ? clause : Expression.AndAlso(body, clause);
+            }
+        }
+        if (body is null) return queryable;
+        var lambda = Expression.Lambda<Func<T, bool>>(body, param);
+        return queryable.Where(lambda);
+    }
+
+    private static IDictionary<string, object?>? AsStringKeyedDict(object? raw) => raw switch
+    {
+        IDictionary<string, object?> sd => sd,
+        IDictionary<object, object?> od => od.ToDictionary(kv => kv.Key.ToString()!, kv => kv.Value),
+        _ => null,
+    };
+
+    private static Expression BuildOp(Expression propExpr, string op, object? rawValue)
+    {
+        // null/IsNull operators don't need value coercion.
+        if (op == "isNull")
+        {
+            var isNullExpr = Expression.Equal(propExpr, Expression.Constant(null, propExpr.Type));
+            return rawValue is true ? isNullExpr : Expression.Not(isNullExpr);
+        }
+
+        // `in` takes a list of values.
+        if (op == "in")
+        {
+            if (rawValue is not System.Collections.IEnumerable list)
+                throw new InvalidOperationException("filter op `in` requires a list value");
+            var coerced = list.Cast<object?>().Select(v => CoerceValue(v, propExpr.Type)).ToArray();
+            var arrayType = propExpr.Type.MakeArrayType();
+            var arrayExpr = Expression.Constant(ToTypedArray(coerced, propExpr.Type), arrayType);
+            var containsMethod = typeof(System.Linq.Enumerable).GetMethods()
+                .First(m => m.Name == "Contains" && m.GetParameters().Length == 2)
+                .MakeGenericMethod(propExpr.Type);
+            return Expression.Call(containsMethod, arrayExpr, propExpr);
+        }
+
+        // `like` uses EF.Functions.Like (translated to SQL LIKE).
+        if (op == "like")
+        {
+            var likeMethod = typeof(NpgsqlDbFunctionsExtensions)
+                .GetMethod(nameof(NpgsqlDbFunctionsExtensions.ILike), [typeof(DbFunctions), typeof(string), typeof(string)])
+                ?? typeof(DbFunctionsExtensions)
+                    .GetMethod(nameof(DbFunctionsExtensions.Like), [typeof(DbFunctions), typeof(string), typeof(string)])!;
+            var functions = Expression.Constant(EF.Functions);
+            return Expression.Call(likeMethod, functions, propExpr, Expression.Constant((string)rawValue!));
+        }
+
+        // Scalar comparison ops.
+        var value = Expression.Constant(CoerceValue(rawValue, propExpr.Type), propExpr.Type);
+        return op switch
+        {
+            "eq"  => Expression.Equal(propExpr, value),
+            "ne"  => Expression.NotEqual(propExpr, value),
+            "gt"  => Expression.GreaterThan(propExpr, value),
+            "gte" => Expression.GreaterThanOrEqual(propExpr, value),
+            "lt"  => Expression.LessThan(propExpr, value),
+            "lte" => Expression.LessThanOrEqual(propExpr, value),
+            _ => throw new InvalidOperationException($"unsupported filter op '{op}'"),
+        };
+    }
+
+    private static IQueryable<T> ApplySort<T>(IQueryable<T> queryable, IReadOnlyList<SortSpec> sorts)
+    {
+        IOrderedQueryable<T>? ordered = null;
+        foreach (var sort in sorts)
+        {
+            var param = Expression.Parameter(typeof(T), "x");
+            var propExpr = Expression.Property(param, Property(typeof(T), sort.Field));
+            var lambda = Expression.Lambda(propExpr, param);
+            var methodName = (ordered is null ? "OrderBy" : "ThenBy") + (sort.Dir == "desc" ? "Descending" : "");
+            var method = typeof(Queryable).GetMethods()
+                .First(m => m.Name == methodName && m.GetParameters().Length == 2)
+                .MakeGenericMethod(typeof(T), propExpr.Type);
+            ordered = (IOrderedQueryable<T>)method.Invoke(null, [ordered ?? queryable, lambda])!;
+        }
+        return ordered ?? queryable;
+    }
+
+    // -----------------------------------------------------------------------
+    // Value coercion + row extraction
+    // -----------------------------------------------------------------------
+
+    // YAML → .NET coercion. YamlDotNet defaults numerics to long, but our entity
+    // properties may be int, long, decimal, or an enum (e.g. ProgramStatus).
+    private static object? CoerceValue(object? raw, Type targetType)
+    {
+        if (raw is null) return null;
+        var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
+        if (underlying.IsEnum)
+            return Enum.Parse(underlying, raw.ToString()!, ignoreCase: false);
+        if (underlying == raw.GetType()) return raw;
+        return Convert.ChangeType(raw, underlying, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static Array ToTypedArray(object?[] values, Type elementType)
+    {
+        var arr = Array.CreateInstance(elementType, values.Length);
+        for (int i = 0; i < values.Length; i++) arr.SetValue(values[i], i);
+        return arr;
+    }
+
+    // Read all public instance properties off the materialized entity into a
+    // dictionary keyed by the entity's metadata field name (lowerCamel) — the same
+    // shape every other port produces.
+    private static IReadOnlyDictionary<string, object?> RowFor<T>(T entity)
+    {
+        var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var prop in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            // Pascal → lowerCamel for the wire-format key.
+            var key = char.ToLowerInvariant(prop.Name[0]) + prop.Name[1..];
+            dict[key] = prop.GetValue(entity);
+        }
+        return dict;
+    }
+}

@@ -5,6 +5,7 @@ import {
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
+  FIELD_ATTR_MAX_LENGTH,
   FIELD_ATTR_UNIQUE,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
@@ -324,7 +325,7 @@ function buildColumn(
 
   const col: ColumnDescriptor = {
     name: resolveColumnName(field),
-    sqlType: subtypeToSqlType(field.subType),
+    sqlType: subtypeToSqlType(field),
     nullable: !isPk && !fieldIsRequired,
   };
 
@@ -345,9 +346,14 @@ function buildColumn(
   return col;
 }
 
-function subtypeToSqlType(subType: string): SqlType {
+function subtypeToSqlType(field: MetaData): SqlType {
+  const subType = field.subType;
   switch (subType) {
-    case FIELD_SUBTYPE_STRING:    return { kind: "text" };
+    case FIELD_SUBTYPE_STRING:    {
+      // @maxLength is declared as ATTR_SUBTYPE_INT so the loader coerces it to a number.
+      const m = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
+      return typeof m === "number" ? { kind: "text", maxLength: m } : { kind: "text" };
+    }
     case FIELD_SUBTYPE_INT:
     case FIELD_SUBTYPE_SHORT:
     case FIELD_SUBTYPE_BYTE:      return { kind: "integer", bits: 32 };

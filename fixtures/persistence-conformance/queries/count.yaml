@@ -1,0 +1,18 @@
+name: count
+description: A count query returns a single integer, not a row.
+seed-data: |
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Strength',    7999, 'PUBLISHED', '2026-05-02T10:00:00'),
+    (3, 'Mobility',    2999, 'DRAFT',     '2026-05-03T10:00:00');
+queries:
+  - name: count-all
+    op: count
+    entity: Program
+    expect: 3
+
+  - name: count-filtered
+    op: count
+    entity: Program
+    filter: { status: { eq: "PUBLISHED" } }
+    expect: 2

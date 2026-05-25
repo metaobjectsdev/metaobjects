@@ -1,0 +1,17 @@
+name: drop-table-blocked-without-allow
+description: |
+  Removing an entity from metadata is destructive. The diff produces a
+  drop-table change, but the status pass blocks it without `allow.DropTable`.
+
+seed-metadata: ./states/program-v1/
+
+# Target = empty metadata (no children). The diff sees `programs` in actual,
+# nothing in expected, → drop-table.
+target-metadata-inline: |
+  { "metadata.root": { "package": "fitness", "children": [] } }
+
+expect:
+  blocked:
+    - { kind: DropTable, reason-contains: 'allow.dropTable' }
+  # No `apply-up-then-query` — the up SQL is non-empty but blocked; runner
+  # should NOT execute it.

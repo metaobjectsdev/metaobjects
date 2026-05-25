@@ -35,10 +35,11 @@ export function pluralize(s: string): string {
 }
 
 export function resolveTableName(entity: MetaData): string {
-  // Primary writable source carries the physical table name (@table).
+  // Primary source carries the physical table/view name (@table). Writability
+  // (table vs view/storedProc/tableFunction) only affects write-routing — for
+  // SELECT-side name resolution, a read-only primary source is the right answer.
   const source = entity.ownChildren().find(
-    (c): c is MetaSource =>
-      c instanceof MetaSource && c.isWritable() && c.role === SOURCE_ROLE_PRIMARY,
+    (c): c is MetaSource => c instanceof MetaSource && c.role === SOURCE_ROLE_PRIMARY,
   );
   const name = source?.tableName;
   if (typeof name === "string" && name !== "") return name;

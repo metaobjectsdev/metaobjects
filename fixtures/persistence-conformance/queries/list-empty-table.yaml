@@ -1,0 +1,7 @@
+name: list-empty-table
+description: A list query against an empty table returns an empty array (not null).
+queries:
+  - name: list-no-programs
+    op: list
+    entity: Program
+    expect: []
