@@ -399,7 +399,7 @@ The built-in generators integrate seamlessly with the MetaObjects Maven plugin:
             <goals><goal>generate</goal></goals>
             <configuration>
                 <loader>
-                    <classname>com.metaobjects.loader.file.FileMetaDataLoader</classname>
+                    <classname>com.metaobjects.loader.MetaDataLoader</classname>
                 </loader>
                 <generators>
                     <!-- JSON Schema Generation -->
@@ -446,8 +446,10 @@ For Gradle builds, you can invoke generators programmatically:
 task generateMetadataSchemas {
     doLast {
         // Create loader and registry
-        def loader = new com.metaobjects.loader.file.FileMetaDataLoader()
-        loader.init()
+        def loader = com.metaobjects.loader.MetaDataLoader.fromDirectory(
+            "gradle",
+            java.nio.file.Path.of("${projectDir}/src/main/resources/metadata")
+        )
 
         // Generate JSON Schema
         def jsonGenerator = new com.metaobjects.generator.direct.metadata.file.json.MetaDataFileJsonSchemaGenerator()

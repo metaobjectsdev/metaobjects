@@ -9,157 +9,168 @@ The loader system follows a **ClassLoader pattern** analogous to Java's class lo
 - **Load once at startup**: Metadata loaded into permanent memory structures
 - **Read many at runtime**: Ultra-fast cached access with no synchronization
 - **OSGi compatibility**: WeakReference patterns for bundle lifecycle management
-- **Multiple source support**: Files, URIs, classpath resources, and bundle files
+- **Multiple source support**: Files, directories, URIs, classpath resources, and in-memory strings
 
-## FileMetaDataLoader
+## MetaDataLoader
 
 ### Purpose and Design
 
-`FileMetaDataLoader` is the primary implementation of the metadata loading system, designed for file-based metadata sources including JSON, XML, and bundle files.
+`MetaDataLoader` is the single, unified loader for all metadata sources — files, directories, URIs, classpath resources, and in-memory strings. There is no longer a subclass-per-source-kind: one loader class accepts any `MetaDataSource` implementation.
 
 **Key Features**:
-- **Multi-format support**: JSON and XML metadata files with automatic parser selection
+- **Multi-format support**: JSON and XML metadata with automatic parser selection by file extension or explicit `MetaDataFormat`
 - **ClassLoader integration**: OSGi-compatible class loading with fallback chains
-- **Bundle file support**: Load multiple metadata files from bundle manifests
-- **Source flexibility**: Local files, URIs, and classpath resources
+- **Source flexibility**: Local files, directories, URIs, classpath resources, and in-memory strings — all via the same `MetaDataSource` SPI
+- **Static factory ergonomics**: `MetaDataLoader.fromDirectory(...)`, `fromUris(...)`, `fromResources(...)`, `fromString(...)`
 - **Performance optimization**: In-memory caching and lazy initialization
 
 ### Basic Usage
 
-**Simple File Loading**:
+**Load from a directory (recursive by default)**:
 ```java
-// Create loader with basic configuration
-FileMetaDataLoader loader = new FileMetaDataLoader("myLoader");
-
-// Configure file sources
-LocalFileMetaDataSources sources = new LocalFileMetaDataSources("/metadata");
-sources.add("user-metadata.json");
-sources.add("product-metadata.xml");
-
-// Initialize and load
-loader.init(sources);
+// Scan a directory; format inferred per file by extension
+MetaDataLoader loader = MetaDataLoader.fromDirectory(
+    "myLoader",
+    Path.of("/metadata")
+);
 
 // Access loaded metadata
 MetaObject userMeta = loader.getMetaObjectByName("User");
 MetaField emailField = userMeta.getMetaField("email");
 ```
 
-**URI-based Loading**:
+**Load from classpath resources**:
 ```java
-// Load from multiple URI sources
-List<URI> uriSources = Arrays.asList(
+MetaDataLoader loader = MetaDataLoader.fromResources(
+    "myLoader",
+    List.of("user-metadata.json", "product-metadata.xml")
+);
+```
+
+**URI-based loading**:
+```java
+List<URI> uris = List.of(
     URI.create("file:///metadata/core-types.json"),
     URI.create("classpath://com/mycompany/metadata/business-types.xml"),
     URI.create("https://api.example.com/metadata/external-types.json")
 );
 
-URIFileMetaDataSources uriSourceProvider = new URIFileMetaDataSources(uriSources);
-FileMetaDataLoader loader = new FileMetaDataLoader("uriLoader");
-loader.init(uriSourceProvider);
+MetaDataLoader loader = MetaDataLoader.fromUris("uriLoader", uris);
+```
+
+**Inline string loading** (handy for tests and code-driven definitions):
+```java
+String json = "{\"metadata\":{\"package\":\"demo\",\"children\":[...]}}";
+MetaDataLoader loader = MetaDataLoader.fromString(
+    "inlineLoader",
+    json,
+    MetaDataSource.MetaDataFormat.JSON
+);
 ```
 
 ### Advanced Configuration
 
-**Custom FileLoaderOptions**:
+**Custom LoaderOptions**:
 ```java
-FileLoaderOptions options = new FileLoaderOptions()
-    .setVerbose(true)
-    .setCacheEnabled(true)
-    .setValidationEnabled(true);
+// shouldRegister, verbose, strict
+LoaderOptions opts = LoaderOptions.create(false, true, true);
 
-FileMetaDataLoader loader = new FileMetaDataLoader(options, "advancedLoader");
+MetaDataLoader loader = MetaDataLoader.fromResources(
+    "advancedLoader",
+    List.of("core-metadata.json"),
+    opts
+);
 ```
 
 **OSGi ClassLoader Integration**:
 ```java
-// Provide bundle-specific classloader for OSGi environments
 ClassLoader bundleClassLoader = MyBundle.class.getClassLoader();
-FileMetaDataLoader loader = new FileMetaDataLoader("osgiLoader");
+
+MetaDataLoader loader = new MetaDataLoader("osgiLoader");
 loader.setMetaDataClassLoader(bundleClassLoader);
 
-// Sources will use the bundle classloader for resource discovery
-LocalFileMetaDataSources sources = new LocalFileMetaDataSources(metadataFiles);
-sources.setLoaderClassLoader(bundleClassLoader);
-loader.init(sources);
+// Build any source(s) — the loader uses the bundle ClassLoader for
+// classpath:// resolution on classpath-backed UriSources.
+loader.load(List.of(new FileSource(Path.of("/metadata/bundle-metadata.json"))));
+loader.init();
 ```
 
-## File Source System
+## Source System
 
-### FileMetaDataSources Hierarchy
+### MetaDataSource implementations
 
-The source system provides flexible metadata discovery with multiple implementations:
+The source system provides flexible metadata discovery via the `MetaDataSource` SPI. Four built-in implementations live in `com.metaobjects.loader`:
 
-#### LocalFileMetaDataSources
+#### FileSource
 
-**Purpose**: Load metadata from local filesystem with optional base directory.
+**Purpose**: Load metadata from a single local file. Format is inferred from the extension, or pass an explicit `MetaDataFormat`.
 
 ```java
-// Load from specific directory
-LocalFileMetaDataSources localSources = new LocalFileMetaDataSources(
-    "/project/metadata",  // Base directory
-    Arrays.asList("core.json", "extensions.xml", "business-rules.json")
-);
+import com.metaobjects.loader.FileSource;
 
-// Load from current directory
-LocalFileMetaDataSources currentDirSources = new LocalFileMetaDataSources(
-    Arrays.asList("metadata.json", "types.xml")
+FileSource source = new FileSource(Path.of("/project/metadata/core.json"));
+
+// Or with an explicit format:
+FileSource xmlSource = new FileSource(
+    Path.of("/project/metadata/types.dat"),
+    MetaDataSource.MetaDataFormat.XML
 );
 ```
 
-**Features**:
-- **Base directory support**: All relative paths resolved against base directory
-- **File existence validation**: Immediate failure for missing files
-- **Recursive bundle loading**: Support for bundle files that reference other files
+#### DirectorySource
 
-#### URIFileMetaDataSources
-
-**Purpose**: Load metadata from URI sources including classpath resources, HTTP endpoints, and file URLs.
+**Purpose**: Expand a directory into one `FileSource` per metadata file inside it. Recursive by default; exclusions and recursion are configurable.
 
 ```java
-List<URI> sources = Arrays.asList(
-    URI.create("classpath://metadata/core-types.json"),
-    URI.create("file:///opt/metadata/business-types.xml"),
-    URI.create("https://config.example.com/metadata/external-types.json")
+import com.metaobjects.loader.DirectorySource;
+
+// Default: recursive, no exclusions
+DirectorySource dir = new DirectorySource(Path.of("/project/metadata"));
+
+// With options
+DirectorySource customized = new DirectorySource(
+    Path.of("/project/metadata"),
+    new DirectorySource.Options()
+        .setRecurse(false)
+        .setExclude(List.of("archive.json", "draft.xml"))
 );
 
-URIFileMetaDataSources uriSources = new URIFileMetaDataSources(sources);
+// Expand to a list of FileSources you can hand to a loader
+List<MetaDataSource> sources = customized.expandToList();
+```
+
+`MetaDataLoader.fromDirectory(name, path)` and `MetaDataLoader.fromDirectory(name, path, opts)` are convenience wrappers around `DirectorySource` + `load(...)` + `init()`.
+
+#### UriSource
+
+**Purpose**: Load metadata from a single URI (classpath, file, http(s), jar).
+
+```java
+import com.metaobjects.loader.UriSource;
+
+UriSource source = new UriSource(URI.create("classpath://metadata/core-types.json"));
 ```
 
 **URI Schemes Supported**:
-- `file://` - Local filesystem access
-- `classpath://` - Classpath resource loading
-- `http://` / `https://` - Remote metadata loading
-- `jar://` - JAR file resource access
+- `file://` — Local filesystem access
+- `classpath://` — Classpath resource loading (uses the loader's `MetaDataClassLoader`)
+- `http://` / `https://` — Remote metadata loading
+- `jar://` — JAR file resource access
 
-### Bundle File System
+#### InMemoryStringSource
 
-**Bundle files** (`.bundle` extension) contain lists of other metadata files to load, enabling modular metadata organization.
+**Purpose**: Provide metadata directly as an in-memory string — perfect for tests, snapshots, or code-generated definitions. The default id is `"<inline>"`.
 
-**Bundle File Format**:
-```
-# Core business types bundle
-# Lines starting with # are comments
-
-core-fields.json
-business-objects.xml
-validation-rules.json
-
-# Load another bundle
-extended-types.bundle
-```
-
-**Bundle Loading Usage**:
 ```java
-LocalFileMetaDataSources sources = new LocalFileMetaDataSources("metadata");
-sources.add("complete-system.bundle");  // Loads all files referenced in bundle
-loader.init(sources);
-```
+import com.metaobjects.loader.InMemoryStringSource;
+import com.metaobjects.loader.MetaDataSource;
 
-**Bundle Processing Features**:
-- **Recursive loading**: Bundles can reference other bundles
-- **Comment support**: Lines starting with `#` are ignored
-- **Relative path resolution**: File paths resolved relative to bundle location
-- **Error isolation**: Bundle loading failures don't affect other sources
+InMemoryStringSource source = new InMemoryStringSource(
+    jsonContent,
+    "fixture://user-spec",                       // id (defaults to "<inline>")
+    MetaDataSource.MetaDataFormat.JSON
+);
+```
 
 ## ClassLoader Integration
 
@@ -169,7 +180,7 @@ The loader system is designed for complex ClassLoader scenarios including OSGi b
 
 **ClassLoader Chain Resolution**:
 ```java
-// FileMetaDataSources uses sophisticated ClassLoader chain
+// Sources backed by the classpath use a sophisticated ClassLoader chain
 URL resource = getResourceViaClassLoaderChain(filename);
 
 // Resolution order:
@@ -182,20 +193,19 @@ URL resource = getResourceViaClassLoaderChain(filename);
 ```java
 public class OSGIMetaDataBundle implements BundleActivator {
 
-    private FileMetaDataLoader loader;
+    private MetaDataLoader loader;
 
     @Override
     public void start(BundleContext context) throws Exception {
         // Create loader with bundle ClassLoader
-        loader = new FileMetaDataLoader("bundleLoader");
+        loader = new MetaDataLoader("bundleLoader");
         loader.setMetaDataClassLoader(getClass().getClassLoader());
 
-        // Load bundle-specific metadata
-        LocalFileMetaDataSources sources = new LocalFileMetaDataSources(
-            Arrays.asList("bundle-metadata.json")
-        );
-        sources.setLoaderClassLoader(getClass().getClassLoader());
-        loader.init(sources);
+        // Load bundle-specific metadata via a classpath URI
+        loader.load(List.of(
+            new UriSource(URI.create("classpath://bundle-metadata.json"))
+        ));
+        loader.init();
 
         // Register as OSGi service
         context.registerService(MetaDataLoader.class, loader, null);
@@ -232,23 +242,14 @@ Class<?> customFieldClass = loader.loadClass("com.mycompany.CustomField");
 
 ### Automatic Parser Selection
 
-The loader automatically selects the appropriate parser based on file extensions:
+The loader automatically selects the appropriate parser based on each source's `MetaDataFormat` — inferred from the file extension for `FileSource`/`DirectorySource`/`UriSource`, or supplied explicitly for `InMemoryStringSource`:
 
-```java
-// FileMetaDataLoader.loadSourceFiles() - automatic parser selection
-if (filename.endsWith(".json")) {
-    JsonMetaDataParser parser = new JsonMetaDataParser(this, filename);
-    parser.loadFromStream(new ByteArrayInputStream(data.getBytes()));
-} else if (filename.endsWith(".xml")) {
-    XMLMetaDataParser parser = new XMLMetaDataParser(this, filename);
-    parser.loadFromStream(new ByteArrayInputStream(data.getBytes()));
-}
-```
+- `JSON` → `JsonMetaDataParser`
+- `XML` → `XMLMetaDataParser`
 
 **Supported File Types**:
-- `.json` - JSON metadata files with inline attribute support
-- `.xml` - XML metadata files with schema validation
-- `.bundle` - Bundle manifest files
+- `.json` — JSON metadata files with inline attribute support
+- `.xml` — XML metadata files with schema validation
 
 ### Parser Configuration
 
@@ -318,7 +319,7 @@ The loader system implements the READ-OPTIMIZED architecture:
 
 **Dual Cache Architecture**:
 ```java
-// FileMetaDataLoader maintains efficient caching
+// MetaDataLoader maintains efficient caching
 private final Map<String, MetaObject> objectCache = new ConcurrentHashMap<>();
 private final Map<String, MetaField> fieldCache = new ConcurrentHashMap<>();
 
@@ -337,22 +338,18 @@ private final Map<Object, Object> computedCache =
 
 **Efficient File Loading**:
 ```java
-// All files loaded into memory during initialization
-List<SourceData> loadedFiles = sources.getSourceData();
-
-// SourceData structure optimizes memory usage
-public static class SourceData {
-    public final String filename;
-    public final Class<? extends FileMetaDataSources> sourceClass;
-    public final String sourceData;  // Complete file content in memory
+// All sources are read into memory during initialization
+for (MetaDataSource source : sources) {
+    String content = source.read();              // pulled once at init
+    parse(content, source.getFormat(), source.getId());
 }
 ```
 
 **I/O Strategy Benefits**:
-- **Sequential Access**: All files read sequentially during startup
-- **Memory Buffering**: Complete file contents loaded into memory
+- **Sequential Access**: All sources read sequentially during startup
+- **Memory Buffering**: Complete content loaded into memory
 - **No Runtime I/O**: Zero file system access after initialization
-- **Error Isolation**: File loading errors detected immediately during init()
+- **Error Isolation**: Source loading errors detected immediately during init()
 
 ## Error Handling and Diagnostics
 
@@ -361,7 +358,7 @@ public static class SourceData {
 **MetaDataException Integration**:
 ```java
 try {
-    loader.init(sources);
+    loader.init();
 } catch (MetaDataException e) {
     // Rich error context provided
     System.err.println("Loading failed: " + e.getMessage());
@@ -381,9 +378,9 @@ try {
 
 | Error Type | Cause | Resolution |
 |------------|-------|------------|
-| `IllegalStateException` | No sources configured | Add FileMetaDataSources before init() |
+| `IllegalStateException` | No sources configured | Call `load(sources)` (or a `from...` factory) before `init()` |
 | `MetaDataException: file not found` | Missing metadata file | Verify file paths and ClassLoader setup |
-| `MetaDataException: unsupported file type` | Unknown extension | Use .json, .xml, or .bundle files |
+| `MetaDataException: unsupported file type` | Unknown extension | Use `.json` or `.xml`, or pass an explicit `MetaDataFormat` |
 | `ClassNotFoundException` | Missing implementation class | Add required classes to ClassLoader path |
 | `ConstraintViolationException` | Invalid metadata structure | Fix metadata to comply with constraints |
 
@@ -391,20 +388,26 @@ try {
 
 **Verbose Logging Configuration**:
 ```java
-FileLoaderOptions options = new FileLoaderOptions().setVerbose(true);
-FileMetaDataLoader loader = new FileMetaDataLoader(options, "debugLoader");
+LoaderOptions opts = LoaderOptions.create(false, true, false); // verbose=true
+MetaDataLoader loader = MetaDataLoader.fromResources(
+    "debugLoader",
+    List.of("user-metadata.json"),
+    opts
+);
 
 // Produces detailed logging:
-// INFO - METADATA - (3) Source Files Loaded in FileMetaDataLoader{name=debugLoader}
+// INFO - METADATA - (3) Source Files Loaded in MetaDataLoader{name=debugLoader}
 // DEBUG - LOADING: user-metadata.json
-// DEBUG - Retrieved from Source LocalFileMetaDataSources's ClassLoader: user-metadata.json
 ```
 
 **Load Monitoring**:
 ```java
 // Track loading performance
 long startTime = System.currentTimeMillis();
-loader.init(sources);
+MetaDataLoader loader = MetaDataLoader.fromResources(
+    "monitored",
+    List.of("user-metadata.json")
+);
 long loadTime = System.currentTimeMillis() - startTime;
 
 System.out.println("Loaded " + loader.getMetaObjects().size() +
@@ -422,26 +425,19 @@ public class MetaDataConfiguration {
 
     @Bean
     @Primary
-    public FileMetaDataLoader primaryMetaDataLoader() {
-        FileMetaDataLoader loader = new FileMetaDataLoader("primary");
-
-        // Load from classpath resources
-        LocalFileMetaDataSources sources = new LocalFileMetaDataSources(
-            Arrays.asList("core-metadata.json", "business-metadata.xml")
+    public MetaDataLoader primaryMetaDataLoader() {
+        return MetaDataLoader.fromResources(
+            "primary",
+            List.of("core-metadata.json", "business-metadata.xml")
         );
-
-        return loader.init(sources);
     }
 
     @Bean
     @Qualifier("external")
-    public FileMetaDataLoader externalMetaDataLoader() {
-        // Load from external configuration
+    public MetaDataLoader externalMetaDataLoader(Environment environment) {
         String metadataUrl = environment.getProperty("metadata.external.url");
-        List<URI> uriSources = Arrays.asList(URI.create(metadataUrl));
-
-        URIFileMetaDataSources sources = new URIFileMetaDataSources(uriSources);
-        return new FileMetaDataLoader("external").init(sources);
+        List<URI> uris = List.of(URI.create(metadataUrl));
+        return MetaDataLoader.fromUris("external", uris);
     }
 }
 ```
@@ -453,6 +449,7 @@ public class MetaDataLoaderProperties {
     private List<String> sources = new ArrayList<>();
     private String sourceDirectory = "metadata";
     private boolean verbose = false;
+    private boolean strict = true;
 
     // Getters and setters...
 }
@@ -463,18 +460,19 @@ public class MetaDataLoaderAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public FileMetaDataLoader fileMetaDataLoader(MetaDataLoaderProperties properties) {
-        FileLoaderOptions options = new FileLoaderOptions()
-            .setVerbose(properties.isVerbose());
-
-        FileMetaDataLoader loader = new FileMetaDataLoader(options, "autoConfigured");
-
-        LocalFileMetaDataSources sources = new LocalFileMetaDataSources(
-            properties.getSourceDirectory(),
-            properties.getSources()
+    public MetaDataLoader metaDataLoader(MetaDataLoaderProperties properties) {
+        LoaderOptions opts = LoaderOptions.create(
+            false,                       // shouldRegister
+            properties.isVerbose(),
+            properties.isStrict()
         );
 
-        return loader.init(sources);
+        // Resolve sources against a base directory
+        List<String> resources = properties.getSources().stream()
+            .map(s -> properties.getSourceDirectory() + "/" + s)
+            .toList();
+
+        return MetaDataLoader.fromResources("autoConfigured", resources, opts);
     }
 }
 ```
@@ -488,13 +486,12 @@ public class MetaDataLoaderAutoConfiguration {
     <artifactId>metaobjects-maven-plugin</artifactId>
     <configuration>
         <loader>
-            <classname>com.metaobjects.loader.file.FileMetaDataLoader</classname>
+            <classname>com.metaobjects.loader.MetaDataLoader</classname>
             <name>maven-build-loader</name>
             <sourceDir>${project.basedir}/src/main/resources/metadata</sourceDir>
             <sources>
                 <source>core-types.json</source>
                 <source>business-types.xml</source>
-                <source>database-config.bundle</source>
             </sources>
         </loader>
     </configuration>
@@ -503,18 +500,19 @@ public class MetaDataLoaderAutoConfiguration {
 
 **Plugin Configuration Processing**:
 ```java
-// FileMetaDataLoader.configure() handles Maven plugin args
+// MetaDataLoader.configure() handles Maven plugin args
 @Override
 public void configure(LoaderConfiguration config) {
-    // Process sourceDir and sources from plugin configuration
     Map<String, String> args = config.getArguments();
     String sourceDir = args.get("sourceDir");
-    List<String> sources = config.getSources();
+    List<String> rawSources = config.getSources();
 
-    // Create appropriate FileMetaDataSources
-    processSources(sourceDir, sources);
+    // Resolve to absolute paths and build FileSources
+    List<MetaDataSource> sources = rawSources.stream()
+        .map(s -> (MetaDataSource) new FileSource(Path.of(sourceDir, s)))
+        .toList();
 
-    // Initialize with processed sources
+    load(sources);
     super.configure(config);
 }
 ```
@@ -526,82 +524,79 @@ public void configure(LoaderConfiguration config) {
 // Parent module: Core metadata loader
 public class CoreMetaDataModule {
 
-    public static FileMetaDataLoader createCoreLoader() {
-        FileMetaDataLoader loader = new FileMetaDataLoader("core");
-
-        LocalFileMetaDataSources sources = new LocalFileMetaDataSources(
-            Arrays.asList("base-types.json", "core-constraints.json")
+    public static MetaDataLoader createCoreLoader() {
+        return MetaDataLoader.fromResources(
+            "core",
+            List.of("base-types.json", "core-constraints.json")
         );
-
-        return loader.init(sources);
     }
 }
 
 // Child module: Extended metadata loader
 public class BusinessMetaDataModule {
 
-    public static FileMetaDataLoader createBusinessLoader() {
-        FileMetaDataLoader loader = new FileMetaDataLoader("business");
-
+    public static MetaDataLoader createBusinessLoader() {
         // Load core types first
-        FileMetaDataLoader coreLoader = CoreMetaDataModule.createCoreLoader();
+        MetaDataLoader coreLoader = CoreMetaDataModule.createCoreLoader();
+
+        MetaDataLoader loader = new MetaDataLoader("business");
         loader.addParentLoader(coreLoader);
 
         // Add business-specific metadata
-        LocalFileMetaDataSources sources = new LocalFileMetaDataSources(
-            Arrays.asList("business-objects.xml", "workflow-types.json")
-        );
-
-        return loader.init(sources);
+        loader.load(List.of(
+            new UriSource(URI.create("classpath://business-objects.xml")),
+            new UriSource(URI.create("classpath://workflow-types.json"))
+        ));
+        return loader.init();
     }
 }
 ```
 
 ## Best Practices
 
-### Loader Configuration
+### Source Selection
 
-**Choose LocalFileMetaDataSources when**:
-- Loading from development environment with local files
+**Choose `MetaDataLoader.fromDirectory(...)` when**:
+- Loading from a development environment with local files
 - Using Maven/Gradle build-time metadata processing
 - Working with file-based metadata editing workflows
-- Requiring immediate file system feedback during development
+- You want recursive expansion with optional exclusions
 
-**Choose URIFileMetaDataSources when**:
+**Choose `MetaDataLoader.fromResources(...)` when**:
 - Loading from classpath resources in packaged applications
-- Integrating with external metadata services
-- Building cloud-native applications with remote configuration
-- Supporting multiple metadata source types in a single loader
+- Building cloud-native applications with bundled metadata
+- You want simple, ClassLoader-friendly source lookup
 
-**Choose Bundle Files when**:
-- Managing complex metadata with multiple interdependent files
-- Building modular metadata systems with optional components
-- Simplifying deployment with metadata manifests
-- Supporting environment-specific metadata loading
+**Choose `MetaDataLoader.fromUris(...)` when**:
+- Integrating with external metadata services
+- Mixing local files, classpath resources, and HTTP sources in a single loader
+- Loading from remote configuration endpoints
+
+**Choose `MetaDataLoader.fromString(...)` when**:
+- Writing tests with inline fixtures
+- Driving the loader from code-generated metadata
+- Snapshotting metadata for reproducible diagnostics
 
 ### Performance Optimization
 
 **For Large Metadata Sets**:
 ```java
-// Use streaming initialization for very large metadata sets
-FileLoaderOptions options = new FileLoaderOptions()
-    .setVerbose(false)          // Reduce logging overhead
-    .setCacheEnabled(true)      // Enable all caching optimizations
-    .setParallelLoading(true);  // Process files in parallel if supported
+// Quiet, strict, register-globally-disabled options
+LoaderOptions opts = LoaderOptions.create(false, false, true);
 
-FileMetaDataLoader loader = new FileMetaDataLoader(options, "optimized");
+MetaDataLoader loader = MetaDataLoader.fromDirectory(
+    "optimized",
+    Path.of("/project/metadata"),
+    opts
+);
 ```
 
 **For Memory-Constrained Environments**:
 ```java
-// Minimize memory usage during loading
-FileLoaderOptions options = new FileLoaderOptions()
-    .setCompactMode(true)       // Use compact internal representations
-    .setEagerGC(true);          // Trigger GC after loading phases
-
-// Load only essential metadata
-LocalFileMetaDataSources sources = new LocalFileMetaDataSources(
-    Arrays.asList("essential-types.json")  // Avoid loading optional metadata
+// Load only essential metadata via explicit resource list
+MetaDataLoader loader = MetaDataLoader.fromResources(
+    "minimal",
+    List.of("essential-types.json")
 );
 ```
 
@@ -611,31 +606,22 @@ LocalFileMetaDataSources sources = new LocalFileMetaDataSources(
 ```java
 public class ResilientMetaDataLoader {
 
-    private FileMetaDataLoader primaryLoader;
-    private FileMetaDataLoader fallbackLoader;
-
     public MetaDataLoader createResilientLoader() {
         try {
             // Attempt primary loading
-            primaryLoader = new FileMetaDataLoader("primary");
-            primaryLoader.init(createPrimarySources());
-            return primaryLoader;
-
+            return MetaDataLoader.fromDirectory(
+                "primary",
+                Path.of("/etc/myapp/metadata")
+            );
         } catch (MetaDataException e) {
             log.warn("Primary metadata loading failed, using fallback", e);
 
-            // Fall back to embedded metadata
-            fallbackLoader = new FileMetaDataLoader("fallback");
-            fallbackLoader.init(createFallbackSources());
-            return fallbackLoader;
+            // Fall back to embedded classpath resources
+            return MetaDataLoader.fromResources(
+                "fallback",
+                List.of("metadata/embedded-types.json")
+            );
         }
-    }
-
-    private FileMetaDataSources createFallbackSources() {
-        // Load from embedded classpath resources
-        return new URIFileMetaDataSources(Arrays.asList(
-            URI.create("classpath://metadata/embedded-types.json")
-        ));
     }
 }
 ```
@@ -644,11 +630,12 @@ public class ResilientMetaDataLoader {
 ```java
 public class ValidatingMetaDataLoader {
 
-    public FileMetaDataLoader createValidatedLoader() {
-        FileMetaDataLoader loader = new FileMetaDataLoader("validated");
-
+    public MetaDataLoader createValidatedLoader() {
         try {
-            loader.init(sources);
+            MetaDataLoader loader = MetaDataLoader.fromResources(
+                "validated",
+                List.of("core-metadata.json")
+            );
 
             // Validate loaded metadata
             validateMetaDataConsistency(loader);
