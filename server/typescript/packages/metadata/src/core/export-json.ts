@@ -55,6 +55,9 @@ export async function loadAndExportJson(
   return {
     json,
     errors: result.errors,
-    warnings: result.warnings,
+    // FR5a: LoadResult.warnings is now LoaderWarning[]; ExportResult preserves
+    // its public string[] shape (callers print warnings as text). Extract the
+    // message for back-compat.
+    warnings: result.warnings.map((w) => w.message),
   };
 }

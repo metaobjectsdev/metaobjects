@@ -14,6 +14,8 @@ import { coreProviders } from "../core-types.js";
 import { composeRegistry } from "../provider.js";
 import { TYPE_METADATA, SUBTYPE_ROOT } from "../shared/base-types.js";
 import { ParseError } from "../errors.js";
+import type { LoaderWarning } from "../source.js";
+import { codeSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs } from "./validation-passes.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
@@ -58,7 +60,13 @@ export interface LoadOptions {
 
 export interface LoadResult {
   root: MetaRoot;
-  warnings: string[];
+  /** Cross-port-aligned warning envelopes per ADR-0009.
+   *  FR5a creates the channel; FR5c (overlay-merge duplicate detection)
+   *  will be the first feature to populate it. Legacy string warnings
+   *  collected during parse/validation are wrapped at the loader boundary
+   *  with `code: "WARN_LEGACY"` and `source: { format: "code" }` so the
+   *  channel always presents the envelope shape to consumers. */
+  warnings: LoaderWarning[];
   errors: Error[];
 }
 
@@ -435,6 +443,17 @@ export class MetaDataLoader {
     }
 
     this._root = root;
-    return { root, warnings, errors };
+    // Wrap legacy string warnings collected from parser-core / validators in
+    // LoaderWarning envelopes at the loader boundary. The parser/validator
+    // surface keeps its `string[]` shape internally (parser-core is shared
+    // with parseJson() / parseYaml() callers who consume string warnings
+    // directly). FR5c will retire WARN_LEGACY by routing the duplicate-
+    // declaration site through a proper envelope-shaped emit helper.
+    const envelopeWarnings: LoaderWarning[] = warnings.map((msg) => ({
+      code: "WARN_LEGACY",
+      message: msg,
+      source: codeSource("MetaDataLoader"),
+    }));
+    return { root, warnings: envelopeWarnings, errors };
   }
 }
