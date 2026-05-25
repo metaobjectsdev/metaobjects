@@ -25,11 +25,15 @@ export function emit(changes: Change[], opts: EmitOptions): EmitResult {
   const blocked = changes.filter((c) => c.status.state === "blocked");
   if (blocked.length > 0) throw new BlockedChangesError(blocked);
 
-  const viewChanges = changes.filter((c) => VIEW_KINDS.has(c.kind));
-  if (viewChanges.length > 0) {
-    throw new Error(
-      `view migration not implemented in v0.1 (${viewChanges.length} view-targeting change(s); deferred to v0.3)`,
-    );
+  // Views are postgres-only for now (sqlite/d1 DDL renderers don't handle them).
+  if (opts.dialect !== "postgres") {
+    const viewChanges = changes.filter((c) => VIEW_KINDS.has(c.kind));
+    if (viewChanges.length > 0) {
+      throw new Error(
+        `view migration not implemented for dialect "${opts.dialect}" ` +
+        `(${viewChanges.length} view-targeting change(s); postgres-only today)`,
+      );
+    }
   }
 
   switch (opts.dialect) {

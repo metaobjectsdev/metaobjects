@@ -1,16 +1,10 @@
 // query-scenario.ts — execute a QueryScenario end-to-end:
-//   1. Apply the canonical schema (engine full-CREATE).
-//   2. Apply tail-append DDL (views/comments/CHECK) — see below.
-//   3. Execute seed-data SQL.
-//   4. For each QuerySpec: translate to ObjectManager call, normalize, compare.
+//   1. Apply the canonical schema — tables + views via the migrate-ts engine.
+//   2. Execute seed-data SQL.
+//   3. For each QuerySpec: translate to ObjectManager call, normalize, compare.
 //
-// The tail-append DDL (CREATE VIEW + COMMENT ON + enum CHECK) is the C# port's
-// concern today; TS migrate-ts does not yet emit any of those. For the v2 corpus
-// to work cross-port, the TS runner needs the same VIEW DDL the C# runner emits
-// — otherwise projection-aggregate would fail with "relation v_program_stat
-// does not exist". We synthesize the view DDL inline below (small, scenario-
-// specific to the canonical schema). When TS migrate-ts grows view + CHECK
-// emission, replace this with a direct call.
+// COMMENT ON / enum CHECK are still C#-only (TS migrate-ts doesn't emit them).
+// None of the current query scenarios depend on those, so the runner skips them.
 
 import { type MetaRoot } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema, diff, emit } from "@metaobjectsdev/migrate-ts";
@@ -24,28 +18,12 @@ import { canonicalJson, normalizeRow } from "./normalization.ts";
 import { executeSql } from "./postgres-sql.ts";
 import type { QueryScenario, QuerySpec } from "./scenario.ts";
 
-// Hand-authored views matching the C# engine output. Required because TS
-// migrate-ts does not yet emit view DDL (see file header).
-const CANONICAL_VIEW_DDL = [
-  `CREATE VIEW "v_program" AS
-SELECT
-  "id" AS "id",
-  "title" AS "title",
-  "status" AS "status"
-FROM "programs";`,
-  `CREATE VIEW "v_program_stat" AS
-SELECT
-  "id" AS "programId",
-  (SELECT count(t."id") FROM "weeks" t WHERE t."programId" = "programs"."id") AS "weekCount"
-FROM "programs";`,
-];
-
 export async function runQueryScenario(
   scenario: QueryScenario,
   connectionUri: string,
   canonicalDir: string,
 ): Promise<void> {
-  // 1. Apply the canonical schema (tables + views — see header for the view caveat).
+  // 1. Apply the canonical schema — tables AND views, both via the engine pipeline.
   const root = await loadMetadataDir(canonicalDir);
   await applyCanonicalSchema(connectionUri, root);
 
@@ -81,7 +59,6 @@ async function applyCanonicalSchema(connectionUri: string, root: MetaRoot): Prom
   const expected = buildExpectedSchema(root, { columnNamingStrategy: "literal" });
   const r = await diff({ expected, actual: { tables: [], views: [] } });
   await executeSql(connectionUri, emit(r.changes, { dialect: "postgres" }).up);
-  for (const ddl of CANONICAL_VIEW_DDL) await executeSql(connectionUri, ddl);
 }
 
 // ---------------------------------------------------------------------------

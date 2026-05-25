@@ -82,7 +82,14 @@ export interface ViewDescriptor {
   name: string;
   /** Same semantics as TableDescriptor.schema. */
   schema?: string;
-  // structural fields deferred to v0.3
+  /**
+   * View body: everything between `CREATE VIEW <name> AS` and the trailing `;`
+   * (the SELECT clause through the FROM/WHERE/GROUP-BY tail). Populated by
+   * `buildExpectedSchema` from projection metadata; omitted by introspect
+   * (body-level comparison isn't implemented yet — diff matches by name only,
+   * so a body change does NOT trigger replace-view today).
+   */
+  sql?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,9 +125,9 @@ export type Change =
   | { kind: "add-fk"; table: string; schema?: string; fk: FkDescriptor; status: ChangeStatus }
   | { kind: "drop-fk"; table: string; schema?: string; fk: string; status: ChangeStatus }
   // Declared for v0.3, never produced in v0.1:
-  | { kind: "create-view"; view: ViewDescriptor; status: ChangeStatus }
-  | { kind: "drop-view"; view: string; status: ChangeStatus }
-  | { kind: "replace-view"; view: ViewDescriptor; status: ChangeStatus };
+  | { kind: "create-view"; view: ViewDescriptor; schema?: string; status: ChangeStatus }
+  | { kind: "drop-view"; view: string; schema?: string; status: ChangeStatus }
+  | { kind: "replace-view"; view: ViewDescriptor; schema?: string; status: ChangeStatus };
 
 export type ChangeKind = Change["kind"];
 

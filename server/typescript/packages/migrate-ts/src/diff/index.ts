@@ -1,5 +1,6 @@
 import type {
   SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,
+  ViewDescriptor,
   Change, ChangeStatus, DiffResult, AllowOptions, AmbiguousCallback,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
@@ -150,6 +151,13 @@ export async function diff(
     diffTableForeignKeys(expectedTable, actualTable, changes);
   }
 
+  // Pass 2b: views. Identity is (schema, name). Body comparison isn't
+  // implemented — introspect doesn't read view bodies today, so a name match
+  // is no-change regardless of how the user's projection metadata has evolved.
+  // Users who change a view body without renaming need to manually drop+recreate
+  // or do a full bootstrap until replace-view-from-body-diff lands.
+  diffViews(args.expected.views, args.actual.views, changes);
+
   // Pass 3: detect table renames BEFORE column renames — so a renamed table's
   // columns are not scanned as orphaned drop/add pairs.
   await detectTableRenames(changes, args.onAmbiguous);
@@ -269,6 +277,27 @@ function diffTableForeignKeys(
   for (const [name] of actualFk) {
     if (!expectedFk.has(name)) {
       changes.push({ kind: "drop-fk", table, ...sx, fk: name, status: ALLOWED });
+    }
+  }
+}
+
+function viewIdentity(v: { name: string; schema?: string }): string {
+  return (v.schema ?? DEFAULT_DB_SCHEMA_POSTGRES) + "." + v.name;
+}
+
+function diffViews(
+  expected: ViewDescriptor[], actual: ViewDescriptor[], changes: Change[],
+): void {
+  const exp = new Map(expected.map((v) => [viewIdentity(v), v] as const));
+  const act = new Map(actual.map((v) => [viewIdentity(v), v] as const));
+  for (const [id, v] of exp) {
+    if (!act.has(id)) {
+      changes.push({ kind: "create-view", view: v, ...schemaSpread(v.schema), status: ALLOWED });
+    }
+  }
+  for (const [id, v] of act) {
+    if (!exp.has(id)) {
+      changes.push({ kind: "drop-view", view: v.name, ...schemaSpread(v.schema), status: ALLOWED });
     }
   }
 }

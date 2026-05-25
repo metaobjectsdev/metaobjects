@@ -113,10 +113,28 @@ public static class MigrateCommand
             .Select(c => $"{c.GetType().Name}: {c.Status.BlockedReason}")
             .ToList();
 
-        if (upOutFile is not null) File.WriteAllText(upOutFile, emitted.Up);
+        // Tail-append view DDL the engine snapshot doesn't yet model. Mirrors
+        // the Run (full-bootstrap) path so a `meta migrate` against a live DB
+        // creates the same projection views as a fresh bootstrap would. Views
+        // are CREATE OR REPLACE so re-running an incremental migration over an
+        // already-up-to-date DB is idempotent.
+        var warnings = new List<string>();
+        var viewSql = new StringBuilder();
+        foreach (var p in root.Objects().Where(o => o.IsReadOnlyProjection())
+                              .OrderBy(o => o.Name, StringComparer.Ordinal))
+        {
+            viewSql.Append("\n");
+            viewSql.Append(PostgresSchema.CreateView(p, root, warnings.Add, strategy)
+                // The Schema.CreateView helper still emits CREATE VIEW; rewrite to
+                // CREATE OR REPLACE VIEW so an incremental re-run doesn't error.
+                .Replace("CREATE VIEW", "CREATE OR REPLACE VIEW"));
+        }
+        var upWithViews = emitted.Up + viewSql.ToString();
+
+        if (upOutFile is not null) File.WriteAllText(upOutFile, upWithViews);
         if (downOutFile is not null) File.WriteAllText(downOutFile, emitted.Down);
 
-        return new IncrementalOutcome([], emitted.Up, emitted.Down, blocked, []);
+        return new IncrementalOutcome([], upWithViews, emitted.Down, blocked, warnings);
     }
 
     private static (IReadOnlyList<string> Errors, MetaRoot? Root) LoadRoot(string metadataDir)

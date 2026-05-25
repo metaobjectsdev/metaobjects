@@ -1,11 +1,15 @@
 import type {
   Change, EmitResult, ColumnDescriptor, IndexDescriptor, FkDescriptor,
-  TableDescriptor, ColumnDefault, FkAction,
+  TableDescriptor, ViewDescriptor, ColumnDefault, FkAction,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 
+// Stages run low → high. drop-view + drop-fk run BEFORE drop-table so a view
+// that depends on a soon-to-be-dropped table is removed first. create-view
+// runs AFTER add-fk so the view can reference the new schema in full.
 const STAGE_ORDER: Record<Change["kind"], number> = {
+  "drop-view": 0,
   "create-table": 1,
   "add-column": 2, "drop-column": 2,
   "change-column-type": 2, "change-column-nullable": 2, "change-column-default": 2,
@@ -13,8 +17,7 @@ const STAGE_ORDER: Record<Change["kind"], number> = {
   "add-index": 4, "drop-index": 4,
   "add-fk": 5, "drop-fk": 5,
   "drop-table": 6,
-  // view kinds — never reach here (filtered in emit())
-  "create-view": 99, "drop-view": 99, "replace-view": 99,
+  "create-view": 7, "replace-view": 7,
 };
 
 export function renderPostgres(changes: Change[]): EmitResult {
@@ -58,11 +61,9 @@ function renderUp(c: Change): string {
     case "drop-index":             return `DROP INDEX ${quoteIndexQualified(c.index, c.schema)};`;
     case "add-fk":                 return renderAddFk(c.table, c.schema, c.fk);
     case "drop-fk":                return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.fk)};`;
-    case "create-view":
-    case "drop-view":
-    case "replace-view":
-      // emit() filters these; defensive throw if reached.
-      throw new Error(`unexpected view-kind in renderPostgres: ${c.kind}`);
+    case "create-view":            return renderCreateView(c.view, c.schema, /* orReplace */ false);
+    case "drop-view":              return `DROP VIEW ${quoteQualifiedView(c.view, c.schema)};`;
+    case "replace-view":           return renderCreateView(c.view, c.schema, /* orReplace */ true);
   }
 }
 
@@ -87,10 +88,9 @@ function renderDown(c: Change): string {
     case "drop-index":             return `-- WARNING: down migration cannot restore the original index definition`;
     case "add-fk":                 return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.fk.name)};`;
     case "drop-fk":                return `-- WARNING: down migration cannot restore the original FK definition`;
-    case "create-view":
-    case "drop-view":
-    case "replace-view":
-      throw new Error(`unexpected view-kind in renderPostgres: ${c.kind}`);
+    case "create-view":            return `DROP VIEW ${quoteQualifiedView(c.view.name, c.schema)};`;
+    case "drop-view":              return `-- WARNING: down migration cannot restore the original view definition`;
+    case "replace-view":           return `-- WARNING: down migration cannot restore the original view definition`;
   }
 }
 
@@ -218,4 +218,17 @@ function quoteQualified(table: string, schema: string | undefined): string {
 function quoteIndexQualified(index: string, schema: string | undefined): string {
   if (!schema || schema === DEFAULT_DB_SCHEMA_POSTGRES) return quote(index);
   return quote(schema) + "." + quote(index);
+}
+
+/** Same shape as quoteQualified, just for view identifiers (kept separate for readability). */
+function quoteQualifiedView(view: string, schema: string | undefined): string {
+  return quoteQualified(view, schema);
+}
+
+function renderCreateView(v: ViewDescriptor, schema: string | undefined, orReplace: boolean): string {
+  if (v.sql === undefined || v.sql.trim().length === 0) {
+    throw new Error(`view "${v.name}" has no sql body — buildExpectedSchema must populate it before emit`);
+  }
+  const prefix = orReplace ? "CREATE OR REPLACE VIEW" : "CREATE VIEW";
+  return `${prefix} ${quoteQualifiedView(v.name, schema)} AS\n${v.sql};`;
 }

@@ -13,11 +13,6 @@ import { canonicalJson, normalizeRow } from "./normalization.ts";
 import { executeSql, queryRows } from "./postgres-sql.ts";
 import type { MigrationScenario } from "./scenario.ts";
 
-// Change kinds emit() can't handle yet on the TS side (views are C#-only today).
-// Filtering these out lets emit() be a no-op when the schema is unchanged but
-// the canonical model carries projections.
-const VIEW_CHANGE_KINDS = new Set(["create-view", "drop-view", "replace-view"]);
-
 export async function runMigrationScenario(scenario: MigrationScenario, connectionUri: string): Promise<void> {
   // 1. Bootstrap the starting schema, if any.
   if (scenario.seedMetadataDir) {
@@ -47,9 +42,7 @@ export async function runMigrationScenario(scenario: MigrationScenario, connecti
     const actual = await introspectPostgres(kysely);
     const result = await diff({ expected, actual });
 
-    const emittable = result.changes.filter(
-      (c) => c.status.state !== "blocked" && !VIEW_CHANGE_KINDS.has(c.kind),
-    );
+    const emittable = result.changes.filter((c) => c.status.state !== "blocked");
     const emitted = emittable.length === 0
       ? { up: "", down: "" }
       : emit(emittable, { dialect: "postgres" });

@@ -33,6 +33,7 @@ import type { SqlType } from "./sql-type.js";
 import type {
   Dialect, SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,
 } from "./types.js";
+import { buildExpectedViews } from "./expected-views.js";
 import {
   resolveReferentialActions,
   validateSetNullNullability,
@@ -122,7 +123,12 @@ export function buildExpectedSchema(
     }
   }
 
-  return { tables, views: [] };
+  // Pass 4: views from read-only projections. Built regardless of dialect so
+  // the diff produces correct create-view changes; emit() refuses them for
+  // sqlite/d1 with a clear error ("view migration not implemented for ...").
+  const views = buildExpectedViews(root as MetaRoot, strategy);
+
+  return { tables, views };
 }
 
 /**
