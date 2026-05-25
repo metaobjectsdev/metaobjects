@@ -1,9 +1,11 @@
+import { DEFAULT_COLUMN_NAMING_STRATEGY, type ColumnNamingStrategy } from "@metaobjectsdev/metadata";
 import type { Generator } from "./generator.js";
 import type { ExtStyle } from "./render-context.js";
 import type { OutputLayout, ResolvedTarget } from "./import-path.js";
 
 export type Dialect = "sqlite" | "postgres";
-export type ColumnNamingStrategy = "snake_case" | "literal" | "kebab-case";
+/** Re-exported from metadata so codegen-ts consumers see one canonical type. */
+export type { ColumnNamingStrategy } from "@metaobjectsdev/metadata";
 export type { ExtStyle };
 export type { OutputLayout };
 export type { ResolvedTarget };
@@ -87,7 +89,7 @@ export function resolveTargets(config: MetaobjectsGenConfig): Record<string, Res
 export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobjectsGenConfig {
   return {
     ...config,
-    columnNamingStrategy: config.columnNamingStrategy ?? "snake_case",
+    columnNamingStrategy: config.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
     apiPrefix: config.apiPrefix ?? "",
     outputLayout: config.outputLayout ?? "flat",
     targets: resolveTargets(config),
