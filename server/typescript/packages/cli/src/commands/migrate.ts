@@ -26,6 +26,7 @@ import {
   type AmbiguousChange,
   type AmbiguousResolution,
   type Change,
+  type D1Binding,
   type EmitResult,
   type D1Runner,
 } from "@metaobjectsdev/migrate-ts";
@@ -391,7 +392,7 @@ async function runD1Migrate(
     return 2;
   }
 
-  let binding: { binding: string; database_name: string; database_id: string; migrations_dir: string | undefined };
+  let binding: D1Binding;
   if (wranglerConfigPath !== undefined) {
     const parsed = parseWranglerConfig(wranglerConfigPath);
     try {

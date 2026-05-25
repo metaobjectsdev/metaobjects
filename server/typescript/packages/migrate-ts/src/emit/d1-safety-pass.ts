@@ -42,8 +42,8 @@ export function applyD1SafetyPass(sql: string, opts?: { collectWarnings?: boolea
       continue;
     }
 
-    if (byteLength(trimmed) > MAX_STATEMENT_BYTES) {
-      const byteLen = byteLength(trimmed);
+    const byteLen = byteLength(trimmed);
+    if (byteLen > MAX_STATEMENT_BYTES) {
       warnings.push(
         `statement exceeds D1's 1 MB per-statement limit (${byteLen} bytes); ` +
         `may be rejected by D1 at apply time: ${trimmed.slice(0, 80)}...`,

@@ -1,8 +1,8 @@
 import type {
-  SchemaSnapshot, TableDescriptor, ColumnDescriptor, ColumnDefault, SnapshotMeta,
+  SchemaSnapshot, TableDescriptor, ColumnDescriptor, SnapshotMeta,
   IndexDescriptor, FkDescriptor, FkAction, ViewDescriptor,
 } from "../types.js";
-import type { SqlType } from "../sql-type.js";
+import { parseSqliteDefault, sqliteTypeToSqlType, sqliteRuleToAction } from "./sqlite-shared.js";
 
 /**
  * Runner contract: takes a SQL command string and returns wrangler's raw
@@ -28,10 +28,6 @@ export interface IntrospectD1Options {
 }
 
 export async function introspectD1(opts: IntrospectD1Options): Promise<SchemaSnapshot> {
-  // Note: opts.binding/remote/configPath are documented passthroughs — they describe
-  // the runner's wiring (set up by the CLI in Task 9) but introspectD1 itself only
-  // dispatches SQL via opts.runner. They live on the options so the wiring contract
-  // is self-documenting at the call site.
   const exec: Exec = async (sql: string) => {
     const stdout = await opts.runner(sql);
     return parseEnvelope(stdout);
@@ -176,49 +172,3 @@ async function readViews(exec: Exec): Promise<ViewDescriptor[]> {
   return rows.map((r) => ({ name: String(r.name) }));
 }
 
-const SQLITE_EXPR_DEFAULT_PATTERNS = [
-  /^current_timestamp$/i,
-  /^current_date$/i,
-  /^current_time$/i,
-  /\(.*\)/,
-];
-
-function parseSqliteDefault(raw: string | null): ColumnDefault | undefined {
-  if (raw === null || raw === undefined || raw === "") return undefined;
-  const isExpr = SQLITE_EXPR_DEFAULT_PATTERNS.some((re) => re.test(raw));
-  if (isExpr) return { kind: "expr", value: raw };
-  const cleaned = raw.replace(/^'(.*)'$/, "$1");
-  return { kind: "literal", value: cleaned };
-}
-
-function sqliteTypeToSqlType(declaredType: string): SqlType {
-  const t = declaredType.trim().toUpperCase();
-  const varcharMatch = /^(?:VARCHAR|CHAR|CHARACTER|TEXT)\((\d+)\)$/.exec(t);
-  if (varcharMatch) return { kind: "text", maxLength: parseInt(varcharMatch[1] ?? "0", 10) };
-  if (/TEXT|CLOB|VARCHAR|CHAR/.test(t)) return { kind: "text" };
-  const numMatch = /^(?:NUMERIC|DECIMAL)\((\d+)(?:,\s*(\d+))?\)$/.exec(t);
-  if (numMatch) {
-    const out: SqlType = { kind: "numeric" };
-    if (numMatch[1]) out.precision = parseInt(numMatch[1], 10);
-    if (numMatch[2]) out.scale = parseInt(numMatch[2], 10);
-    return out;
-  }
-  if (t === "BOOLEAN" || t === "BOOL") return { kind: "boolean" };
-  if (t === "DATE") return { kind: "date" };
-  if (t === "DATETIME" || t === "TIMESTAMP") return { kind: "timestamp", withTimezone: false };
-  if (t === "INT" || t === "SMALLINT" || t === "TINYINT") return { kind: "integer", bits: 32 };
-  if (/INT/.test(t)) return { kind: "integer", bits: 64 };
-  if (/REAL|FLOA|DOUB/.test(t)) return { kind: "real" };
-  if (t === "BLOB" || t === "") return { kind: "blob" };
-  if (/NUMERIC|DECIMAL/.test(t)) return { kind: "numeric" };
-  if (t === "JSON") return { kind: "json" };
-  return { kind: "text" };
-}
-
-function sqliteRuleToAction(rule: string): FkAction {
-  const r = rule.toUpperCase();
-  if (r === "CASCADE") return "cascade";
-  if (r === "SET NULL") return "set-null";
-  if (r === "RESTRICT") return "restrict";
-  return "no-action";
-}
