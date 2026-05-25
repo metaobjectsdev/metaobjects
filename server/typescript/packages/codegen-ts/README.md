@@ -57,6 +57,14 @@ codegen-ts overwrites files with the header but refuses to touch files
 without it. Hand-customizations live in sibling `<Entity>.extra.ts` files
 (for custom queries, derived-column indexes, etc. that metadata can't express).
 
+### Consumer wiring
+
+Generated query helpers accept a Drizzle `db` instance as their first
+parameter. See [wiring-generated-queries.md](../../../../docs/recipes/wiring-generated-queries.md)
+for per-dialect setup, edge (Workers / D1) examples, and a 0.6.0 → 0.7.0
+migration guide. The cross-language design decision is in
+[ADR-0008](../../../../spec/decisions/ADR-0008-parameter-passing-generated-repo-helpers.md).
+
 ## Output targets
 
 Each generator can be routed to its own output directory via a named **target**
