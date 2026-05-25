@@ -18,13 +18,13 @@ pnpm add @metaobjectsdev/migrate-ts
 ```typescript
 import { Kysely } from "kysely";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import {
   buildExpectedSchema, introspectSqlite, diff, emit, writeMigration,
 } from "@metaobjectsdev/migrate-ts";
 
 // 1. Load metadata.
-const { root: metadata } = await new FileMetaDataLoader().loadDirectory("./metaobjects");
+const { root: metadata } = await MetaDataLoader.fromDirectory("./metaobjects");
 
 // 2. Connect to live DB.
 const db = new Kysely({ dialect: new LibsqlDialect({ url: "file:./local.db" }) });

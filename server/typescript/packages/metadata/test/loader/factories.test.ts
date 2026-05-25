@@ -3,6 +3,7 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
+import { FileSource } from "../../src/loader/sources/file-source.js";
 
 describe("MetaDataLoader static factories", () => {
   test("fromString loads JSON", async () => {
@@ -67,6 +68,33 @@ describe("MetaDataLoader static factories", () => {
       const r = await MetaDataLoader.fromUris(["file://" + p]);
       expect(r.errors).toEqual([]);
       expect(r.root.package).toBe("u");
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+});
+
+describe("fromDirectory error semantics", () => {
+  test("missing directory collects error and returns synthetic empty root", async () => {
+    const r = await MetaDataLoader.fromDirectory("/nonexistent/path/that/should/not/exist");
+    expect(r.errors.length).toBeGreaterThan(0);
+    expect(r.root).toBeDefined();
+  });
+});
+
+describe("load() partial failure", () => {
+  test("missing file among valid paths collects error; valid files still load", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ld-partial-"));
+    try {
+      const validPath = join(dir, "meta.tiny.json");
+      const missingPath = join(dir, "meta.absent.json");
+      await writeFile(validPath, `{"metadata.root":{"package":"x","children":[]}}`);
+      const result = await new MetaDataLoader().load([
+        new FileSource(validPath),
+        new FileSource(missingPath),  // file does not exist
+      ]);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.root).toBeDefined();
     } finally {
       await rm(dir, { recursive: true });
     }

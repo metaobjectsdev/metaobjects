@@ -28,6 +28,7 @@ import type { ParseOptions, ParseResult } from "../parser-core.js";
 // (instead of `import type`'d from ./sources/directory-source.js) so the
 // browser-safety crawler — which walks every `import|export from` it sees,
 // type-only or not — never follows a path into a node:fs-using file.
+// Keep field-for-field in sync with `DirectoryOptions` in `./sources/directory-source.ts`.
 type DirectoryFactoryOptions = {
   exclude?: string[];
   recurse?: boolean;
@@ -102,6 +103,10 @@ export class MetaDataLoader {
    * Convenience for the typical "load a directory of metadata" path. The
    * `DirectorySource` impl is loaded lazily to keep the package root
    * browser-safe (the underlying source uses node:fs).
+   *
+   * A missing/unreadable directory is surfaced as a collected entry in
+   * `result.errors`; the loader returns a synthetic empty root rather than
+   * throwing — preserves the `meta export` CLI exit-code contract.
    */
   static async fromDirectory(
     dir: string,
