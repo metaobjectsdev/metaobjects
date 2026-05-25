@@ -1,5 +1,6 @@
 package com.metaobjects.metadata.ktx
 
+import com.metaobjects.MetaDataNotFoundException
 import com.metaobjects.field.MetaField
 import com.metaobjects.`object`.MetaObject
 
@@ -12,7 +13,11 @@ import com.metaobjects.`object`.MetaObject
 
 /** Typed lookup; returns null when the field is absent OR not the requested subtype. */
 inline fun <reified T : MetaField<*>> MetaObject.field(name: String): T? =
-    runCatching { getMetaField(name) }.getOrNull() as? T
+    try {
+        getMetaField(name) as? T
+    } catch (_: MetaDataNotFoundException) {
+        null
+    }
 
 /**
  * Typed lookup; throws when the field is absent (mirrors [MetaObject.getMetaField]).

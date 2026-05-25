@@ -1,5 +1,6 @@
 package com.metaobjects.metadata.ktx
 
+import com.metaobjects.render.Escapers
 import com.metaobjects.render.PayloadField
 import com.metaobjects.render.Provider
 import com.metaobjects.render.RenderRequest
@@ -26,7 +27,7 @@ class RenderBuilder {
     var ref: String? = null
     var payload: Any? = null
     var provider: Provider? = null
-    var format: String = "text"
+    var format: String = Escapers.FORMAT_TEXT
     var verify: List<PayloadField>? = null
     var maxChars: Int? = null
 

@@ -1,6 +1,5 @@
 package com.metaobjects.metadata.ktx
 
-import com.metaobjects.MetaData
 import com.metaobjects.MetaDataNotFoundException
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.relationship.MetaRelationship
@@ -40,8 +39,6 @@ val MetaRelationship.targetObjectOrNull: MetaObject?
         } catch (_: MetaDataNotFoundException) {
             // fall through to short-name scan
         }
-        return loader.root.getChildren(MetaData::class.java, false)
-            .asSequence()
-            .filterIsInstance<MetaObject>()
+        return loader.root.getChildren(MetaObject::class.java, false)
             .firstOrNull { it.shortName == ref || it.name == ref }
     }
