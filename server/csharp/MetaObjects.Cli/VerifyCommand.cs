@@ -41,7 +41,7 @@ public static class VerifyCommand
 
     public static Outcome Run(string metadataDir, string templatesRoot)
     {
-        var load = new FileMetaDataLoader().LoadDirectory(metadataDir);
+        var load = MetaDataLoader.FromDirectory(metadataDir);
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
 
         var provider = new FilesystemProvider(templatesRoot);

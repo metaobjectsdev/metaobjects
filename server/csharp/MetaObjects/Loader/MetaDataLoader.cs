@@ -38,13 +38,6 @@ public class MetaDataLoader
     private readonly bool _strict;
 
     private string _state = "uninitialized";
-
-    /// <summary>
-    /// Protected setter so subclasses can transition state on failure paths
-    /// that bypass <see cref="Load"/> (e.g. directory-read failure in
-    /// <see cref="FileMetaDataLoader.LoadDirectory"/>).
-    /// </summary>
-    protected void SetState(string state) => _state = state;
     private MetaRoot? _root;
 
     // -------------------------------------------------------------------------
@@ -83,10 +76,35 @@ public class MetaDataLoader
     /// and load all discovered files in deterministic order.
     /// </summary>
     public static LoadResult FromDirectory(string directory, DirectorySource.Options? opts = null)
+        => FromDirectory(directory, DefaultRegistry(), opts);
+
+    /// <summary>
+    /// Registry-aware overload: build a <see cref="DirectorySource"/> and load
+    /// using the supplied <paramref name="registry"/>. A directory-read failure
+    /// is surfaced as a collected <see cref="MetaError"/> on a synthetic empty
+    /// root (no throw) — mirrors the TS <c>loadDirectory</c> behavior.
+    /// </summary>
+    public static LoadResult FromDirectory(string directory, TypeRegistry registry, DirectorySource.Options? opts = null)
     {
         var src = new DirectorySource(directory, opts);
-        var loader = new MetaDataLoader();
-        return loader.Load(src.Expand().Cast<IMetaDataSource>().ToList());
+        var loader = new MetaDataLoader(registry);
+        List<IMetaDataSource> sources;
+        try
+        {
+            sources = src.Expand().Cast<IMetaDataSource>().ToList();
+        }
+        catch (Exception ex)
+        {
+            // Directory-read failure: surface as a collected error on an empty load.
+            var empty = loader.Load(Array.Empty<IMetaDataSource>());
+            var errors = new List<MetaError>
+            {
+                new($"Failed to read directory \"{directory}\": {ex.Message}", ErrorCode.ERR_UNKNOWN),
+            };
+            errors.AddRange(empty.Errors);
+            return new LoadResult(empty.Root, empty.Warnings, errors.AsReadOnly());
+        }
+        return loader.Load(sources);
     }
 
     /// <summary>

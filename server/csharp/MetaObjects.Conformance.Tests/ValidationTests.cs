@@ -13,7 +13,7 @@ namespace MetaObjects.Conformance.Tests;
 public class ValidationTests
 {
     private static LoadResult Load(string fixture) =>
-        new FileMetaDataLoader().LoadDirectory(
+        MetaDataLoader.FromDirectory(
             System.IO.Path.Combine(CorpusRoot.Path, fixture, "input"));
 
     [Fact]
