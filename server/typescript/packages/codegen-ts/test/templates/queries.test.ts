@@ -42,33 +42,28 @@ function makeCtx(post: MetaObject) {
 }
 
 describe("renderFindByIdFn", () => {
-  test("emits findPostById with prepared statement (sqlite has no name arg)", () => {
+  test("first parameter is db: Db (the persistence-context handle)", () => {
     const post = makePost();
     const ctx = makeCtx(post); // sqlite
     const out = renderFindByIdFn(post, ctx).toString();
-    expect(out).toContain("findPostById");
-    // sqlite: prepare() has no args (drizzle-orm 0.41+ removed the name arg).
-    expect(out).toMatch(/\.prepare\(\s*\)/);
-    expect(out).toContain("Promise<Post | null>");
-    expect(out).toContain("return post ?? null");
+    // Signature is `findPostById(db: Db, id: number)`. We assert structurally
+    // (substring + ordering) rather than an exact regex on whitespace so the
+    // test survives ts-poet line-wrapping decisions.
+    expect(out).toMatch(/findPostById\(\s*db:\s*Db\s*,\s*id:\s*number\s*\)/);
   });
 
-  test("postgres emits prepare(name) for plan caching", () => {
+  test("emits findPostById with .limit(1) shape returning singleton", () => {
     const post = makePost();
-    const ctx = { ...makeCtx(post), dialect: "postgres" as const };
+    const ctx = makeCtx(post);
     const out = renderFindByIdFn(post, ctx).toString();
-    expect(out).toContain('.prepare("find_post_by_id")');
-  });
-
-  test("postgres prepared statement name is stable across calls", () => {
-    const post = makePost();
-    const ctx = { ...makeCtx(post), dialect: "postgres" as const };
-    const out1 = renderFindByIdFn(post, ctx).toString();
-    const out2 = renderFindByIdFn(post, ctx).toString();
-    const match1 = out1.match(/prepare\(['"]([^'"]+)['"]\)/);
-    const match2 = out2.match(/prepare\(['"]([^'"]+)['"]\)/);
-    expect(match1?.[1]).toBe(match2?.[1]);
-    expect(match1?.[1]).toBe("find_post_by_id");
+    expect(out).toContain("findPostById");
+    expect(out).toContain("Promise<Post | null>");
+    // New shape: plain select().limit(1) — no prepared statement.
+    expect(out).toContain(".limit(1)");
+    expect(out).toContain("return post ?? null");
+    // Old prepared-statement artifacts must be gone.
+    expect(out).not.toContain(".prepare(");
+    expect(out).not.toContain("sql.placeholder");
   });
 });
 
@@ -96,6 +91,14 @@ describe("renderListFn", () => {
     expect(out).toContain("listCategories");
     expect(out).not.toContain("listCategorys");
   });
+
+  test("first parameter is db: Db", () => {
+    const post = makePost();
+    const ctx = makeCtx(post);
+    const out = renderListFn(post, ctx).toString();
+    // Signature: listPosts(db: Db, opts?: { limit?: number; offset?: number })
+    expect(out).toMatch(/listPosts\(\s*db:\s*Db\s*,\s*opts\?/);
+  });
 });
 
 describe("renderCreateFn", () => {
@@ -108,6 +111,14 @@ describe("renderCreateFn", () => {
     expect(out).toContain(".returning()");
     expect(out).toContain("Promise<Post>");
   });
+
+  test("first parameter is db: Db", () => {
+    const post = makePost();
+    const ctx = makeCtx(post);
+    const out = renderCreateFn(post, ctx).toString();
+    // Signature: createPost(db: Db, data: unknown)
+    expect(out).toMatch(/createPost\(\s*db:\s*Db\s*,\s*data:\s*unknown\s*\)/);
+  });
 });
 
 describe("renderUpdateFn", () => {
@@ -119,6 +130,14 @@ describe("renderUpdateFn", () => {
     expect(out).toContain("PostInsertSchema.partial().parse(data)");
     expect(out).toContain(".returning()");
     expect(out).toContain("Promise<Post | null>");
+  });
+
+  test("first parameter is db: Db", () => {
+    const post = makePost();
+    const ctx = makeCtx(post);
+    const out = renderUpdateFn(post, ctx).toString();
+    // Signature: updatePost(db: Db, id: number, data: unknown)
+    expect(out).toMatch(/updatePost\(\s*db:\s*Db\s*,\s*id:\s*number\s*,\s*data:\s*unknown\s*\)/);
   });
 });
 
@@ -135,5 +154,13 @@ describe("renderDeleteByIdFn", () => {
     expect(out).toContain(".returning()");
     expect(out).toContain("deleted.length > 0");
     expect(out).not.toContain("rowsAffected");
+  });
+
+  test("first parameter is db: Db", () => {
+    const post = makePost();
+    const ctx = makeCtx(post);
+    const out = renderDeleteByIdFn(post, ctx).toString();
+    // Signature: deletePostById(db: Db, id: number)
+    expect(out).toMatch(/deletePostById\(\s*db:\s*Db\s*,\s*id:\s*number\s*\)/);
   });
 });

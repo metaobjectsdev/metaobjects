@@ -4,7 +4,7 @@
 import { code, joinCode, type Code } from "ts-poet";
 import { MetaObject } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
-import { entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
+import { entityModuleSpecifier } from "../import-path.js";
 import {
   renderFindByIdFn,
   renderListFn,
@@ -26,13 +26,27 @@ export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
     entityName,
     ctx.extStyle,
   );
-  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, obj.package, ctx.dbImport);
   const varName = variableNameFromEntity(entityName);
 
-  // Literal imports (db + entity types) live in a code block so they sort
+  // The persistence-context `db` is parameter-passed into every generated CRUD
+  // helper (ADR-0008). Emit the dialect-correct Drizzle type alias so the
+  // signatures `findXxx(db: Db, ...)` typecheck without the consumer importing
+  // anything to construct one. Consumers pass any compatible Drizzle instance.
+  const dbTypeImport =
+    ctx.dialect === "postgres"
+      ? `import type { NodePgDatabase } from "drizzle-orm/node-postgres";`
+      : `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`;
+  const dbTypeAlias =
+    ctx.dialect === "postgres"
+      ? `type Db = NodePgDatabase<Record<string, never>>;`
+      : `type Db = BaseSQLiteDatabase<"async", Record<string, never>>;`;
+
+  // Literal imports (Db type + entity types) live in a code block so they sort
   // alongside ts-poet's hoisted imp() imports at the top of the body.
   const literalImports = code`
-import { db } from ${JSON.stringify(dbImportSpec)};
+${dbTypeImport}
+${dbTypeAlias}
+
 import { ${varName}, type ${entityName}, ${entityName}InsertSchema } from ${JSON.stringify(entityFileName)};
 `;
 

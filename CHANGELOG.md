@@ -30,6 +30,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `meta verify` log line format adds `(<subtype>)` after the template name
   (e.g., `[npcTurn] (prompt) ERR_*`). A pre-FR6 log scraper that matched
   on the bare `[name]` prefix needs to update its regex.
+- **BREAKING (codegen-ts):** Generated `<Entity>.queries.ts` CRUD helpers now
+  accept a Drizzle `db` instance as the **first parameter** of every function
+  (`findUserById(db, id)`, `listUsers(db, opts)`, `createUser(db, data)`,
+  `updateUser(db, id, data)`, `deleteUserById(db, id)`). The module-level
+  `import { db } from "<dbImport>"` line is no longer emitted; instead, every
+  file declares a dialect-correct `type Db = ...` alias at the top. Migration:
+  bump, regen, search-and-replace call sites — see the new
+  [wiring-generated-queries.md](docs/recipes/wiring-generated-queries.md)
+  recipe for the full guide. Background: [ADR-0008](spec/decisions/ADR-0008-parameter-passing-generated-repo-helpers.md).
+  Enables Cloudflare Workers / edge consumers to drop their typecheck stubs;
+  enables multi-tenant servers + test-isolated `db` setups. `routesFile()` is
+  unchanged.
 
 See [ADR-0010](spec/decisions/ADR-0010-template-output-parser-codegen.md)
 for the cross-port design.

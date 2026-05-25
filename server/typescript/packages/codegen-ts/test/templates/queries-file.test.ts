@@ -42,7 +42,7 @@ describe("renderQueriesFile", () => {
     expect(out).toContain(GENERATED_HEADER);
   });
 
-  test("imports db from configured dbImport path", () => {
+  test("does NOT import a runtime db value (lifecycle is parameter-passed)", () => {
     const root = metaRoot();
     const post = makePost();
     root.addChild(post);
@@ -55,9 +55,43 @@ describe("renderQueriesFile", () => {
       relationMap: buildRelationMap(root),
     });
     const out = renderQueriesFile(post, ctx);
-    expect(out).toContain("~/server/db");
-    expect(out).toContain("import");
-    expect(out).toContain("db");
+    // No `import { db } from "~/server/db"` (or any path) — db is a parameter.
+    expect(out).not.toMatch(/^import\s*\{\s*db\s*\}/m);
+    expect(out).not.toContain("~/server/db");
+  });
+
+  test("emits sqlite-flavoured `type Db = ...` alias for sqlite/d1/libsql", () => {
+    const root = metaRoot();
+    const post = makePost();
+    root.addChild(post);
+    const ctx = makeRenderContext({
+      dialect: "sqlite",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/server/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+    const out = renderQueriesFile(post, ctx);
+    expect(out).toContain('import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core"');
+    expect(out).toContain('type Db = BaseSQLiteDatabase<"async", Record<string, never>>;');
+  });
+
+  test("emits postgres-flavoured `type Db = ...` alias for postgres", () => {
+    const root = metaRoot();
+    const post = makePost();
+    root.addChild(post);
+    const ctx = makeRenderContext({
+      dialect: "postgres",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/server/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+    const out = renderQueriesFile(post, ctx);
+    expect(out).toContain('import type { NodePgDatabase } from "drizzle-orm/node-postgres"');
+    expect(out).toContain('type Db = NodePgDatabase<Record<string, never>>;');
   });
 
   test("imports entity types from ./Post.js", () => {
