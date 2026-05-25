@@ -6,6 +6,9 @@ spec: identity / format / read().
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from metaobjects.loader.sources import (
     DirectorySource,
@@ -108,3 +111,28 @@ def test_uri_source_format_inferred_from_path(tmp_path: Path) -> None:
     p.write_text("k: v", encoding="utf-8")
     src = UriSource(p.as_uri())
     assert src.format == MetaDataFormat.YAML
+
+
+def test_uri_source_http_scheme_decodes_utf8() -> None:
+    fake_response = MagicMock()
+    fake_response.read.return_value = b'{"metadata.root":{"package":"x","children":[]}}'
+    fake_response.__enter__ = lambda self: self
+    fake_response.__exit__ = lambda self, *a: None
+
+    with patch(
+        "metaobjects.loader.sources.uri_source.urlopen",
+        return_value=fake_response,
+    ) as mock_open:
+        src = UriSource("https://example.com/meta.json")
+        content = src.read()
+
+    assert content == '{"metadata.root":{"package":"x","children":[]}}'
+    # Verify timeout was passed
+    args, kwargs = mock_open.call_args
+    assert kwargs.get("timeout") == 30.0
+
+
+def test_uri_source_rejects_unsupported_scheme() -> None:
+    src = UriSource("ftp://example.com/foo.json", format=MetaDataFormat.JSON)
+    with pytest.raises(ValueError, match="unsupported scheme"):
+        src.read()

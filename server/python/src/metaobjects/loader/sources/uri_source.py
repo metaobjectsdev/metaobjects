@@ -23,9 +23,15 @@ def _infer_format(uri: str) -> MetaDataFormat:
 class UriSource(MetaDataSource):
     """A URI-backed source. Lazily fetched on ``read()``."""
 
-    def __init__(self, uri: str, format: MetaDataFormat | None = None) -> None:
+    def __init__(
+        self,
+        uri: str,
+        format: MetaDataFormat | None = None,
+        timeout: float = 30.0,
+    ) -> None:
         self._uri = uri
         self._format = format if format is not None else _infer_format(uri)
+        self._timeout = timeout
 
     @property
     def id(self) -> str:
@@ -41,7 +47,9 @@ class UriSource(MetaDataSource):
             # urlparse splits the leading slashes off the path on file:// URIs.
             return Path(parsed.path).read_text(encoding="utf-8-sig")
         if parsed.scheme in ("http", "https"):
-            with urlopen(self._uri) as resp:  # noqa: S310 — caller-supplied URI
+            # Schemes are explicitly allowlisted (file/http/https) above; arbitrary
+            # URI handlers (ftp, etc.) reject with ValueError before urlopen is called.
+            with urlopen(self._uri, timeout=self._timeout) as resp:  # noqa: S310
                 return resp.read().decode("utf-8")
         raise ValueError(
             f"UriSource: unsupported scheme '{parsed.scheme}' on {self._uri}"
