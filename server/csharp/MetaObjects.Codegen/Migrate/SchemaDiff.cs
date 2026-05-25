@@ -104,6 +104,8 @@ public static class SchemaDiff
                 changes.Add(new Change.ChangeColumnNullable(table, name, ac.Nullable, ec.Nullable, schema));
             if (ec.Default != ac.Default)
                 changes.Add(new Change.ChangeColumnDefault(table, name, ac.Default, ec.Default, schema));
+            if (ec.Identity != ac.Identity)
+                changes.Add(new Change.ChangeColumnIdentity(table, name, ac.Identity, ec.Identity, schema));
         }
         foreach (var (name, _) in actualCols)
             if (!expectedCols.ContainsKey(name))
