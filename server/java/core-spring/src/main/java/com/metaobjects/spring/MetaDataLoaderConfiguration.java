@@ -1,5 +1,6 @@
 package com.metaobjects.spring;
 
+import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -80,7 +81,10 @@ public class MetaDataLoaderConfiguration {
         }
 
         // Build a loader via the unified factory (init + load + register in one call).
-        return MetaDataLoader.fromUris("applicationLoader", sourceURIs);
+        // Preserve the pre-unification strict=true default (the no-options
+        // fromUris overload routes through createManual which uses strict=false).
+        LoaderOptions opts = LoaderOptions.create(false, false, true);
+        return MetaDataLoader.fromUris("applicationLoader", sourceURIs, opts);
     }
     
     /**

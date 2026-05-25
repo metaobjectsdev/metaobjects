@@ -9,18 +9,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 
 /**
- * A {@link MetaDataSource} that reads content via
- * {@link com.metaobjects.loader.uri.URIHelper}.
- *
- * <p>The URI must follow the {@code model:<sourceType>:<source>} scheme
- * understood by {@link URIHelper} (e.g. {@code model:file:/path/to/meta.json},
- * {@code model:resource:com/example/meta.json}).  The {@link MetaDataFormat}
- * is always {@link MetaDataFormat#JSON} — as of H3b-1 Task 4 all metadata files
- * are canonical JSON.</p>
- *
- * <p>Mirrors the TypeScript {@code FileSource} class introduced in H3a,
- * adapted to Java's URI-based addressing scheme already used by
- * {@link com.metaobjects.loader.MetaDataLoader}.</p>
+ * A URI-backed metadata source. Supports {@code file://}, {@code http://},
+ * {@code https://}, and the project's {@code model:} URI schemes (resolved via
+ * {@link URIHelper}). Format is inferred from the URI path's extension
+ * ({@code .yaml}/{@code .yml} → YAML, else JSON) unless overridden via constructor.
  *
  * <p>Example usage:</p>
  * <pre>{@code
@@ -83,6 +75,10 @@ public class UriSource implements MetaDataSource {
      */
     @Override
     public String read() throws IOException {
+        // TODO(OSGi): UriSource currently consults only URIHelper's default + system CL.
+        // The pre-unification FileMetaDataSources chained source-class CL → loader CL → system CL.
+        // If/when OSGi adopters need that chain back, add a UriSource constructor variant
+        // that accepts a List<ClassLoader> and threads it into URIHelper.getInputStream.
         try (InputStream is = URIHelper.getInputStream(uri);
              Scanner scanner = new Scanner(is, StandardCharsets.UTF_8)) {
             scanner.useDelimiter("\\Z");

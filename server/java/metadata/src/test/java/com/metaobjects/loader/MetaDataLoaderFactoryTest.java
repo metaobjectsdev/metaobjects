@@ -38,4 +38,11 @@ public class MetaDataLoaderFactoryTest extends SharedRegistryTestBase {
             MetaDataSource.MetaDataFormat.JSON);
         assertNotNull(loader.getRoot());
     }
+
+    @Test(expected = MetaDataLoadingException.class)
+    public void fromDirectoryThrowsOnMissingDirectory() {
+        MetaDataLoader.fromDirectory(
+            "missing",
+            Path.of("/nonexistent/path/that/should/not/exist"));
+    }
 }
