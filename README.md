@@ -15,8 +15,10 @@ The metamodel is the durable spine; generated code is the disposable artifact. S
 
 ## What's in this repo
 
+- [`CHANGELOG.md`](CHANGELOG.md) — release notes for the published `@metaobjectsdev/*` TypeScript packages
 - [`spec/`](spec/) — cross-language design docs, roadmap, conformance test documentation
 - [`fixtures/`](fixtures/) — shared cross-language conformance test fixtures
+- [`docs/recipes/`](docs/recipes/) — deployment recipes (Cloudflare Workers, more on the way)
 - [`server/typescript/`](server/typescript/) — server-side TypeScript (codegen, runtime, CLI, SDK); [`client/web/`](client/web/) — browser packages (React, TanStack, framework-agnostic runtime)
 - [`java/`](java/), [`csharp/`](csharp/), [`python/`](python/) — other language ports (see status table above)
 

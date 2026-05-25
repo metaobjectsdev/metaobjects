@@ -93,6 +93,8 @@ Targets Cloudflare D1 via the wrangler CLI. Connection is read from `wrangler.to
 
 **Requirements:** `wrangler` >= 3 on PATH (`npm i -D wrangler`).
 
+> See [`docs/recipes/cloudflare-workers.md`](../../../../docs/recipes/cloudflare-workers.md) for the full Vite + Workers deploy recipe (project layout, `emptyOutDir: false` gotcha, build chain, D1 migration loop).
+
 ## Not yet shipped
 
 - `meta migrate --apply` (apply migrations against the DB).
