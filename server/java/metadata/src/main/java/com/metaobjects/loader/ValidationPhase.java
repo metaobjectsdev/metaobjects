@@ -13,6 +13,7 @@ import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
+import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.origin.AggregateOrigin;
 import com.metaobjects.origin.MetaOrigin;
@@ -20,6 +21,8 @@ import com.metaobjects.origin.PassthroughOrigin;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.util.ErrorMessageConstants;
+
+import java.util.List;
 
 /**
  * Post-load validation phase — runs after all sources are parsed and before the
@@ -61,18 +64,38 @@ public final class ValidationPhase {
      *   <li>{@link #validateOrigins(MetaRoot)} — {@code origin.*} required-attr +
      *       {@code @from}/{@code @of} reference resolution + {@code @via} path traversal
      *       through declared relationships.</li>
+     *   <li>{@link #validateEntityHasPrimaryIdentity(MetaRoot, MetaDataLoader)} — non-fatal
+     *       advisory: every concrete {@code object.entity} with at least one field child
+     *       SHOULD have a primary identity (unless {@code @isAbstract: true}). Records
+     *       a warning via the loader's warning surface; does not throw.</li>
      * </ol>
      *
      * @param root the fully-loaded {@link MetaRoot}; must not be {@code null}
+     * @param loader the loader that produced {@code root}; may be {@code null} to
+     *               skip warning collection (legacy callers)
      * @throws MetaDataException on the first validation error found (eager-throw)
      */
-    public static void run(MetaRoot root) {
+    public static void run(MetaRoot root, MetaDataLoader loader) {
         if (root == null) return;
         validateEnumValues(root);
         validateSourceAttrs(root);
         validateOnePrimarySource(root);
         validateRelationshipReferentialActions(root);
         validateOrigins(root);
+        validateEntityHasPrimaryIdentity(root, loader);
+    }
+
+    /**
+     * Legacy entry point retained for callers that do not have a loader handle.
+     * Delegates to {@link #run(MetaRoot, MetaDataLoader)} with a {@code null}
+     * loader, which skips warning collection but still runs all error-throwing
+     * passes.
+     *
+     * @param root the fully-loaded {@link MetaRoot}; must not be {@code null}
+     * @throws MetaDataException on the first validation error found (eager-throw)
+     */
+    public static void run(MetaRoot root) {
+        run(root, null);
     }
 
     // =========================================================================
@@ -535,6 +558,111 @@ public final class ValidationPhase {
                     ErrorCode.ERR_INVALID_ORIGIN);
             }
         }
+    }
+
+    // =========================================================================
+    // Entity-has-primary-identity advisory (non-fatal)
+    //
+    // Mirrors the TS subtype-rules.ts / C# ValidationPasses.ValidateSubtypeRules
+    // warning path: every concrete object.entity with at least one field child
+    // SHOULD have a primary identity child. When it doesn't (and isn't marked
+    // @isAbstract: true), record a warning on the loader. This is advisory —
+    // we never throw.
+    //
+    // Edge cases (mirror TS/C#):
+    //   - Abstract entity (@isAbstract: true)       → no warning
+    //   - Entity with no fields at all              → no warning
+    //   - Entity that inherits a primary identity   → no warning
+    //     (uses effective children — includeParentData=true — for the identity
+    //      lookup so an extends-an-abstract-base-with-identity entity is silent)
+    //   - object.value or object.base subtypes      → no warning
+    //
+    // Warning text is byte-identical to the TS/C# / Python ports:
+    //   entity object '<shortName>' has no primary identity
+    //   (add an identity child or mark @isAbstract: true)
+    // =========================================================================
+
+    /**
+     * Walk every {@code object.entity} in the tree and record a non-fatal warning
+     * for any concrete one (i.e. not {@code @isAbstract: true}) that has at least
+     * one field child but no primary identity (own or inherited).
+     *
+     * @param root the root node to walk
+     * @param loader the loader to receive warnings; may be {@code null} (then this
+     *               pass is a no-op — there is nowhere to record findings)
+     */
+    static void validateEntityHasPrimaryIdentity(MetaRoot root, MetaDataLoader loader) {
+        if (loader == null) return;
+        walkEntityIdentityCheck(root, loader);
+    }
+
+    private static void walkEntityIdentityCheck(MetaData node, MetaDataLoader loader) {
+        if (node instanceof MetaObject) {
+            checkObjectIdentity((MetaObject) node, loader);
+        }
+        // Recurse into own children only (matches the walk style used elsewhere
+        // in this class — inherited nodes are validated on their declaring node).
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkEntityIdentityCheck(child, loader);
+        }
+    }
+
+    private static void checkObjectIdentity(MetaObject obj, MetaDataLoader loader) {
+        // Only entity-subtype objects warrant the warning.
+        if (!MetaObject.SUBTYPE_ENTITY.equals(obj.getSubType())) {
+            return;
+        }
+        // Abstract entities are templates / supers — no warning.
+        if (isAbstract(obj)) {
+            return;
+        }
+
+        // Effective children (includeParentData=true) so an entity that extends
+        // an abstract base providing the identity does NOT warn — matches the
+        // TS/C# behaviour of `model.children()` in their walks.
+        List<MetaData> effective = obj.getChildren(MetaData.class, true);
+
+        boolean hasAnyField = false;
+        boolean hasPrimaryIdentity = false;
+        for (MetaData child : effective) {
+            if (child instanceof MetaField) {
+                hasAnyField = true;
+            } else if (MetaIdentity.TYPE_IDENTITY.equals(child.getType())
+                    && MetaIdentity.SUBTYPE_PRIMARY.equals(child.getSubType())) {
+                hasPrimaryIdentity = true;
+            }
+        }
+
+        // Empty object (no fields) — not a meaningful data record yet; skip.
+        if (!hasAnyField) return;
+        if (hasPrimaryIdentity) return;
+
+        // Bare entity name (no package prefix) — matches what other ports emit
+        // (TS / C# fqn() falls back to name when no own package is set on the
+        // entity node, since `package` lives on metadata.root).
+        String shortName = obj.getShortName();
+        if (shortName == null || shortName.isEmpty()) {
+            shortName = obj.getName();
+        }
+
+        loader.addWarning(
+            "entity object '" + shortName + "' has no primary identity "
+                + "(add an identity child or mark @isAbstract: true)");
+    }
+
+    /**
+     * True if the node has an own {@code @isAbstract} attribute set to
+     * boolean-true. Reads only the own attribute (not effective) — matches the
+     * own-only validation contract used throughout this class.
+     */
+    private static boolean isAbstract(MetaData node) {
+        if (!node.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT, false)) {
+            return false;
+        }
+        Object v = node.getMetaAttr(MetaData.ATTR_IS_ABSTRACT, false).getValue();
+        if (v instanceof Boolean) return (Boolean) v;
+        if (v instanceof String) return "true".equalsIgnoreCase((String) v);
+        return false;
     }
 
     /**

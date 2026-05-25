@@ -28,6 +28,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -110,6 +111,21 @@ public class MetaDataLoader implements LoaderConfigurable {
     // URI-based source list (H3a Task 5: lifted from SimpleLoader).
     // If set before init(), sources are loaded automatically during init().
     private List<URI> sourceURIs = null;
+
+    // Validation-phase warnings accumulator.
+    //
+    // Mirrors the TS/C#/Python warning surfaces (a per-load list of human-readable
+    // warning strings produced by {@link ValidationPhase}). Consumers — primarily
+    // the conformance harness today — read this after {@link #load(List)} returns
+    // (which is the call site that runs {@link ValidationPhase#run(MetaRoot)}).
+    //
+    // Cleared at the start of every {@link #load(List)} so a subsequent load on
+    // the same loader does not accumulate prior-batch warnings. Errors continue
+    // to be eager-thrown — warnings are non-fatal, errors are not.
+    //
+    // Package-private mutator ({@link #addWarning(String)}) keeps callers
+    // restricted to the loader package (where {@link ValidationPhase} lives).
+    private final List<String> warnings = new ArrayList<>();
 
     /**
      * Convenience constructor accepting only a name.
@@ -243,6 +259,46 @@ public class MetaDataLoader implements LoaderConfigurable {
     @Override
     public MetaDataLoader getLoader() {
         return this;
+    }
+
+    ///////////////////////////////////////////////////////////////////////
+    // Validation warnings (cross-language warning surface)
+
+    /**
+     * Returns the validation warnings produced by the most recent {@link #load(List)}
+     * call (or accumulated across multiple loads in this batch). The list is reset
+     * at the start of every {@link #load(List)} invocation.
+     *
+     * <p>Warnings are non-fatal advisory messages emitted by {@link ValidationPhase}.
+     * Errors continue to be eager-thrown — only warnings accumulate here.</p>
+     *
+     * <p>Mirrors the TS/C#/Python warning surfaces; the canonical consumer is the
+     * conformance harness comparing against {@code expected-warnings.json}.</p>
+     *
+     * @return an unmodifiable snapshot of the accumulated warnings (never {@code null})
+     */
+     public List<String> getWarnings() {
+        return Collections.unmodifiableList(new ArrayList<>(warnings));
+    }
+
+    /**
+     * Append a validation warning. Package-private — only the loader-package
+     * validation passes ({@link ValidationPhase}) should be calling this.
+     *
+     * @param warning the warning message; ignored when {@code null} or empty
+     */
+    void addWarning(String warning) {
+        if (warning == null || warning.isEmpty()) return;
+        warnings.add(warning);
+    }
+
+    /**
+     * Clear accumulated warnings. Called at the start of {@link #load(List)} so
+     * a fresh batch does not see stale warnings from a prior load on the same
+     * loader instance.
+     */
+    void clearWarnings() {
+        warnings.clear();
     }
 
     ///////////////////////////////////////////////////////////////////////
@@ -805,6 +861,10 @@ public class MetaDataLoader implements LoaderConfigurable {
     public MetaDataLoader load(List<MetaDataSource> sources) {
         if (sources == null) throw new IllegalArgumentException("sources must not be null");
 
+        // Reset the per-load warning accumulator so callers see only warnings
+        // produced by THIS batch.
+        clearWarnings();
+
         for (MetaDataSource source : sources) {
             String content;
             try {
@@ -830,8 +890,10 @@ public class MetaDataLoader implements LoaderConfigurable {
 
         // Run post-load validation passes after all sources in this batch are parsed.
         // Fires both when called from init() (via loadSourceURIsIfPresent) and when
-        // called directly by tests or the conformance runner.
-        ValidationPhase.run(root);
+        // called directly by tests or the conformance runner. The loader handle is
+        // passed so non-fatal validation findings can be recorded via
+        // {@link #addWarning(String)} (errors continue to be eager-thrown).
+        ValidationPhase.run(root, this);
 
         return this;
     }

@@ -28,7 +28,6 @@
     "layout-data-grid-basic",
     "layout-data-grid-multiple-named",
     "smoke-empty-metadata",
-    "subtype-entity-missing-primary-warning",
     "template-output-and-prompt",
     "template-prompt-simple",
     "warning-filterable-no-index"
