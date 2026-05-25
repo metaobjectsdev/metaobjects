@@ -16,6 +16,7 @@ import com.metaobjects.loader.InMemoryMetaDataSource;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.MetaDataSource;
+import com.metaobjects.registry.MetaDataTypeProvider;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -34,6 +35,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -86,6 +88,44 @@ public class ConformanceTest {
     private static final Path CORPUS = CorpusRoot.locate();
     private static final Set<String> REGISTERED_CODES = FixtureLint.loadRegisteredCodes(CORPUS);
     private static final ExpectedFailures.Ledger LEDGER = ExpectedFailures.load(locateLedger());
+
+    /**
+     * Cross-language provider-id aliases: the corpus uses canonical provider
+     * names (e.g. {@code "metaobjects-core-types"}) that map to one or more of
+     * Java's fine-grained {@link MetaDataTypeProvider}s. A canonical name is
+     * considered "available" iff ALL of its backing Java provider ids are
+     * service-loaded. Mirrors how the TS/C# adapters paper over the same
+     * naming split.
+     *
+     * <p>Declared BEFORE {@link #AVAILABLE_PROVIDERS} so it is initialised first
+     * (JLS §12.4 — class-init runs static fields top-to-bottom).</p>
+     *
+     * <p><strong>Maintenance caveat:</strong> if Java ever drops or renames one
+     * of the 8 backing provider ids below, the {@code metaobjects-core-types}
+     * alias will silently disappear from {@link #AVAILABLE_PROVIDERS} and any
+     * fixture requiring it will fail honestly (as a missing-provider gap, not a
+     * silent skip). Keep this list in sync with the actual provider IDs declared
+     * in {@code META-INF/services/com.metaobjects.registry.MetaDataTypeProvider}.</p>
+     */
+    private static final java.util.Map<String, List<String>> PROVIDER_ALIASES =
+        java.util.Map.of(
+            // TS/C# expose one "metaobjects-core-types" provider; Java splits it
+            // into per-concern providers (core, fields, attrs, objects, validators,
+            // identity, relationships, sources).
+            "metaobjects-core-types", List.of(
+                "core-base-types",
+                "field-types",
+                "attribute-types",
+                "object-types",
+                "validator-types",
+                "identity-types",
+                "relationship-types",
+                "source-types"
+            )
+        );
+
+    /** Provider IDs available to the Java harness (via ServiceLoader auto-discovery). */
+    private static final Set<String> AVAILABLE_PROVIDERS = discoverAvailableProviders();
 
     // ERR_* token in legacy message-only exceptions; e.g. "... ERR_BAD_ATTR_VALUE: ..."
     private static final Pattern ERR_TOKEN = Pattern.compile("\\bERR_[A-Z][A-Z0-9_]*\\b");
@@ -158,11 +198,26 @@ public class ConformanceTest {
                                               List<String> failures) {
         // -- Unsupported-feature fast-fails (honest gaps) --------------------
         // The Java harness does not yet implement effective serialization,
-        // warnings, scripts, or provider-set composition. Anything that needs
-        // them fails honestly so the ledger captures the gap.
+        // warnings, or scripts. Anything that needs them fails honestly so the
+        // ledger captures the gap.
+        //
+        // providers.json: Java auto-discovers providers via ServiceLoader, so
+        // it cannot run with an arbitrary alternate provider set. But if a
+        // fixture's required providers are a SUBSET of the available service-
+        // loaded providers, the fixture can still be evaluated honestly — the
+        // attrs/types it relies on are present, even if extra providers happen
+        // to be loaded too. Only fail when a required provider is missing.
 
         if (fix.hasProvidersJson) {
-            failures.add("providers.json (provider-set composition) not supported by Java harness");
+            List<String> missing = new ArrayList<>();
+            for (String required : fix.requiredProviders) {
+                if (!AVAILABLE_PROVIDERS.contains(required)) {
+                    missing.add(required);
+                }
+            }
+            if (!missing.isEmpty()) {
+                failures.add("providers.json requires unavailable providers: " + missing);
+            }
         }
         if (fix.hasExpectedEffective) {
             failures.add("expected-effective.json (effective serialization) not supported by Java harness");
@@ -331,6 +386,34 @@ public class ConformanceTest {
             }
         }
         return "";
+    }
+
+    /**
+     * Discover provider IDs available to the Java harness via {@link ServiceLoader}.
+     * This is the set the loader will populate at init time; we use it to honour
+     * {@code providers.json}'s required-subset contract.
+     *
+     * <p>Augments the raw discovered set with cross-language aliases (see
+     * {@link #PROVIDER_ALIASES}) so corpus-canonical names like
+     * {@code metaobjects-core-types} resolve when their backing Java providers
+     * are all loaded.</p>
+     */
+    private static Set<String> discoverAvailableProviders() {
+        Set<String> ids = new LinkedHashSet<>();
+        for (MetaDataTypeProvider provider : ServiceLoader.load(MetaDataTypeProvider.class)) {
+            String id = provider.getProviderId();
+            if (id != null && !id.isEmpty()) {
+                ids.add(id);
+            }
+        }
+        // Expose cross-language aliases when ALL of their backing Java provider
+        // ids are present in the discovered set.
+        for (var entry : PROVIDER_ALIASES.entrySet()) {
+            if (ids.containsAll(entry.getValue())) {
+                ids.add(entry.getKey());
+            }
+        }
+        return Collections.unmodifiableSet(ids);
     }
 
     /**

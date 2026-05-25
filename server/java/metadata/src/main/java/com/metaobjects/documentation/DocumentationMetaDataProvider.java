@@ -1,23 +1,29 @@
 // Copyright 2026 MetaObjects authors.
 package com.metaobjects.documentation;
 
+import com.metaobjects.attr.StringArrayAttribute;
+import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataTypeProvider;
 
 /**
  * Documentation common-attrs provider — cross-language doc layer (TS/C# parity).
  *
- * <p>This Java port currently provides the API + SPI surface only.</p>
+ * <p>Registers the 7 universal documentation attributes via
+ * {@link MetaDataRegistry#registerCommonAttribute(String, String, boolean)} so
+ * they are accepted on any node (every type / every subType):</p>
  *
- * <p>TODO(java-h3b): wire the 7 common attrs via a registerCommonAttribute
- * mechanism on MetaDataRegistry once H3b's conformance harness lands and the
- * cross-language commonAttrs contract is testable here. Until then, this
- * provider's registerTypes is a no-op — Java's loader does not yet have an
- * open-policy validation pass to merge common attrs into.</p>
+ * <ul>
+ *   <li>{@code @description}, {@code @title}, {@code @notes}, {@code @deprecated},
+ *       {@code @replacedBy} — single-string attrs</li>
+ *   <li>{@code @seeAlso}, {@code @aliases} — string-array attrs</li>
+ * </ul>
  *
- * <p>The constants in {@link DocumentationConstants} are usable now by any
- * Java consumer that wants to read/write the 7 attr names with the
- * cross-language-stable spelling.</p>
+ * <p>The {@code @notes} attribute is the internal-only rationale slot — per the
+ * cross-language contract it must never be emitted to user-facing doc-gen
+ * (JSDoc / XML-doc / Postgres {@code COMMENT ON} / Mermaid prose). It is
+ * registered here so the loader accepts it on any node, but doc-emitters
+ * downstream are expected to skip it.</p>
  */
 public class DocumentationMetaDataProvider implements MetaDataTypeProvider {
 
@@ -28,18 +34,21 @@ public class DocumentationMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String[] getDependencies() {
-        // No hard dep until commonAttrs are registered; align with the cross-language
-        // contract (provider depends on core-types) by declaring it now.
+        // Depends on core-types because the common-attr registration references
+        // StringAttribute.SUBTYPE_STRING (a core type subtype).
         return new String[]{"core-base-types"};
     }
 
     @Override
     public void registerTypes(MetaDataRegistry registry) {
-        // Intentional no-op for now — see class-level Javadoc TODO(java-h3b).
-        // When the registerCommonAttribute API lands, replace with:
-        //   for (var attr : DocumentationSchema.COMMON_DOC_ATTRS) {
-        //       registry.registerCommonAttribute(attr.name(), attr.valueType(), attr.required());
-        //   }
+        // DocumentationSchema.COMMON_DOC_ATTRS is the single source of truth for
+        // the 7 attrs (mirrored across TS/C#/Python). The registry stores value
+        // class + arrayness separately, so derive isArray from the schema's
+        // SUBTYPE_STRING_ARRAY marker and register the underlying string class.
+        for (DocumentationSchema.CommonDocAttr attr : DocumentationSchema.COMMON_DOC_ATTRS) {
+            boolean isArray = StringArrayAttribute.SUBTYPE_STRING_ARRAY.equals(attr.valueType());
+            registry.registerCommonAttribute(attr.name(), StringAttribute.SUBTYPE_STRING, isArray);
+        }
     }
 
     @Override

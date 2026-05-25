@@ -10,6 +10,7 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.registry.CommonAttributeDef;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.TypeDefinition;
 import com.metaobjects.registry.ChildRequirement;
@@ -234,10 +235,17 @@ public abstract class BaseMetaDataParser {
 
     protected String getNextNamePrefix( MetaData parent, String typeName, String prefix ) {
         int i = 1;
+        // NOTE: compare against the SHORT name (package-stripped) so the prefix scan
+        // works for nodes whose effective name is package-qualified (e.g. a source
+        // attached to an object under a non-empty package becomes
+        // "acme::commerce::rdb1"; without short-name comparison the second auto-named
+        // sibling would collide on "rdb1"). See conformance fixtures
+        // source-multi-source-roles / error-source-multiple-primary.
         for( MetaData md : (List<MetaData>) parent.getChildrenOfType( typeName, true )) {
-            if ( md.getName().startsWith( prefix )) {
+            String shortName = md.getShortName();
+            if ( shortName != null && shortName.startsWith( prefix )) {
                 try {
-                    int n = Integer.parseInt(md.getName().substring(prefix.length()));
+                    int n = Integer.parseInt(shortName.substring(prefix.length()));
                     if ( n >= i ) i = n+1;
                 }
                 catch( NumberFormatException ignore ) {}
@@ -850,6 +858,16 @@ public abstract class BaseMetaDataParser {
                     return "string";
                 }
             }
+        }
+
+        // Cross-language commonAttrs: if the attribute is registered as a "common
+        // attribute" (valid on any node, e.g. documentation @description/@aliases),
+        // honour its declared value subtype. Checked BEFORE the wildcard "attr,*"
+        // fallback so a non-string common attr (e.g. a future boolean) is not
+        // silently coerced to "string" by the open-policy default.
+        CommonAttributeDef commonDef = getTypeRegistry().getCommonAttribute(attrName);
+        if (commonDef != null) {
+            return commonDef.valueType();
         }
 
         // If no specific requirement, check for wildcard requirements

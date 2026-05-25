@@ -77,6 +77,23 @@ public class MetaDataRegistry {
     private volatile boolean constraintsInitialized = false;
     private volatile boolean strictDuplicateDetection = true; // Enable strict checking by default
 
+    /**
+     * Common attributes — attributes valid on any node (every type / every subType).
+     * Cross-language commonAttrs contract: TS {@code registerCommonAttrs}, C#
+     * {@code RegisterCommonAttrs}, Python {@code register_common_attrs}. In Java,
+     * providers register via {@link #registerCommonAttribute(String, String, boolean)}.
+     * Keyed by attr name (bare, no {@code @} prefix).
+     */
+    private final Map<String, CommonAttributeDef> commonAttributes = new ConcurrentHashMap<>();
+
+    /**
+     * Fully-global parent-key tier in {@link #globalRequirements} — matches any
+     * (parentType, parentSubType). Used by {@link #registerCommonAttribute} so
+     * common attrs surface on every node via {@link #acceptsChild} /
+     * {@link #getChildRequirements}.
+     */
+    private static final String UNIVERSAL_PARENT_KEY = "*.*";
+
     private volatile boolean initialized = false;
     
     /**
@@ -335,7 +352,7 @@ public class MetaDataRegistry {
             }
         }
         
-        // Check wildcard global requirements
+        // Check wildcard global requirements (matches any subType under this parent type)
         String wildcardKey = parentType + ".*";
         List<ChildRequirement> wildcardReqs = globalRequirements.get(wildcardKey);
         if (wildcardReqs != null) {
@@ -345,10 +362,20 @@ public class MetaDataRegistry {
                 }
             }
         }
-        
+
+        // Check fully-global universal requirements (common attributes on any node)
+        List<ChildRequirement> universalReqs = globalRequirements.get(UNIVERSAL_PARENT_KEY);
+        if (universalReqs != null) {
+            for (ChildRequirement req : universalReqs) {
+                if (req.matches(childType, childSubType, childName)) {
+                    return true;
+                }
+            }
+        }
+
         return false;
     }
-    
+
     /**
      * Get all child requirements for a parent type
      * 
@@ -378,7 +405,13 @@ public class MetaDataRegistry {
         if (wildcardReqs != null) {
             requirements.addAll(wildcardReqs);
         }
-        
+
+        // Add fully-global universal requirements (common attributes on any node)
+        List<ChildRequirement> universalReqs = globalRequirements.get(UNIVERSAL_PARENT_KEY);
+        if (universalReqs != null) {
+            requirements.addAll(universalReqs);
+        }
+
         return requirements;
     }
     
@@ -423,6 +456,127 @@ public class MetaDataRegistry {
         globalRequirements.computeIfAbsent(key, k -> new ArrayList<>()).add(requirement);
 
         log.debug("Added global child requirement: {} accepts {}", key, requirement.getDescription());
+    }
+
+    // ========== COMMON ATTRIBUTES (cross-language commonAttrs contract) ==========
+
+    /**
+     * Register a "common attribute" — one that is valid on every node (any type /
+     * any subType). Cross-language parity: TS {@code registerCommonAttrs}, C#
+     * {@code RegisterCommonAttrs}, Python {@code register_common_attrs}.
+     *
+     * <p>Wires three things in one call:</p>
+     * <ul>
+     *   <li>A global {@link ChildRequirement} under the {@code "*.*"} key so
+     *       {@link #acceptsChild} returns {@code true} for this attr on any parent.</li>
+     *   <li>A wildcard {@link PlacementConstraint} so {@link ConstraintEnforcer}
+     *       permits the placement on any parent.</li>
+     *   <li>For {@code isArray=true} attrs, a globally-applicable array
+     *       {@link CustomConstraint} keyed as {@code "*.*.<name>.array"} so the
+     *       bare-string → single-element-array desugar in
+     *       {@code CanonicalJsonParser.processAttributes} fires for any parent.</li>
+     * </ul>
+     *
+     * <p>Idempotent: re-registering the same attr name is a no-op.</p>
+     *
+     * @param name      bare attribute name (no {@code @} prefix; e.g. {@code "description"})
+     * @param valueType attribute value subtype (e.g. {@link StringAttribute#SUBTYPE_STRING},
+     *                  {@link BooleanAttribute#SUBTYPE_BOOLEAN})
+     * @param isArray   {@code true} if the attribute holds an array of {@code valueType}
+     */
+    public void registerCommonAttribute(String name, String valueType, boolean isArray) {
+        if (name == null || name.isEmpty()) {
+            throw new IllegalArgumentException("Common attribute name must not be null or empty");
+        }
+        if (valueType == null || valueType.isEmpty()) {
+            throw new IllegalArgumentException("Common attribute valueType must not be null or empty");
+        }
+
+        // Idempotent: skip re-registration of the same attr name (allows tests that
+        // re-initialise the registry to not blow up on duplicate constraints).
+        if (commonAttributes.containsKey(name)) {
+            return;
+        }
+
+        CommonAttributeDef def = new CommonAttributeDef(name, valueType, isArray);
+        commonAttributes.put(name, def);
+
+        // 1. Global ChildRequirement under the UNIVERSAL_PARENT_KEY tier — makes
+        //    acceptsChild() return true for this attr on any (parentType, parentSubType) pair.
+        ChildRequirement req = new ChildRequirement(name, MetaAttribute.TYPE_ATTR, valueType, false);
+        addGlobalChildRequirement("*", "*", req);
+
+        // 2. Wildcard PlacementConstraint — the enforcer's appliesTo() honours "*.*"
+        //    parent patterns natively.
+        String placementId = "common." + name + ".placement";
+        if (!hasConstraint(placementId)) {
+            addConstraint(new PlacementConstraint(
+                placementId,
+                "Common attribute '" + name + "' is allowed on any node",
+                "*", "*",                              // parent: anything
+                MetaAttribute.TYPE_ATTR, valueType, name, // child: attr.<valueType>[name]
+                true));
+        }
+
+        // 3. For array attrs: globally-applicable array CustomConstraint keyed as
+        //    "*.*.<name>.array" — looked up by CanonicalJsonParser's bare-string
+        //    desugar (with a wildcard fallback) so `"x"` becomes `["x"]`.
+        if (isArray) {
+            String arrayConstraintId = "*.*." + name + ".array";
+            if (!hasConstraint(arrayConstraintId)) {
+                addConstraint(new CustomConstraint(
+                    arrayConstraintId,
+                    "Common attribute '" + name + "' must be array-shaped on any node",
+                    (metadata) -> true, // applies to any node (per-attr presence checked in validator)
+                    (metadata, value) -> isArrayShapedValue(value),
+                    "Array shape validation"));
+            }
+        }
+
+        log.debug("Registered common attribute: @{} ({}{})",
+            name, valueType, isArray ? "[]" : "");
+    }
+
+    /**
+     * Look up a common attribute definition by name.
+     *
+     * @param name bare attribute name (no {@code @} prefix)
+     * @return the definition, or {@code null} if not registered as a common attribute
+     */
+    public CommonAttributeDef getCommonAttribute(String name) {
+        return commonAttributes.get(name);
+    }
+
+    /**
+     * Whether any common attribute is registered.
+     *
+     * @return {@code true} if the registry has at least one common attribute
+     */
+    public boolean hasCommonAttributes() {
+        return !commonAttributes.isEmpty();
+    }
+
+    /**
+     * Lightweight array-shape predicate for common-array-attr validation. Mirrors
+     * the per-type {@code AttributeConstraintBuilder.isArrayValue} contract:
+     * {@code null} is permitted (optional), bracketed or comma-delimited string
+     * forms are permitted. The actual structured list value (post-desugar) is a
+     * {@code List<?>} which we also accept.
+     *
+     * <p>The empty-string acceptance is the desugar-invariant case (not author
+     * input): the canonical bare-string desugar in CanonicalJsonParser may emit
+     * an empty token through {@code convertJsonArrayToCommaDelimited} for an
+     * empty JSON array {@code []}. Authored empty values arrive as {@code null}
+     * via the optional-attr path.</p>
+     */
+    private static boolean isArrayShapedValue(Object value) {
+        if (value == null) return true; // optional
+        if (value instanceof List<?>) return true;
+        if (value instanceof String s) {
+            return (s.startsWith("[") && s.endsWith("]")) || s.contains(",")
+                || s.isEmpty(); // empty post-desugar (see Javadoc)
+        }
+        return false;
     }
 
     // ========== UNIFIED CONSTRAINT SUPPORT ==========
