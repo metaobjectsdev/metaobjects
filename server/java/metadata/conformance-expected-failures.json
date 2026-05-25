@@ -1,12 +1,10 @@
 {
   "language": "java",
   "fixtures": [
-    "enum-abstract-extends",
     "error-template-payload-ref-unresolved",
     "error-template-prompt-missing-payload-ref",
     "error-template-required-slot-missing",
     "extends-abstract-base",
-    "extends-cross-file",
     "template-output-and-prompt",
     "template-output-simple",
     "template-prompt-simple"
