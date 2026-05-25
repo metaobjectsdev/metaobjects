@@ -34,6 +34,7 @@
   </organization>
   <modules>
     <module>metadata</module>
+    <module>metadata-ktx</module>
     <module>codegen-base</module>
     <module>codegen-mustache</module>
     <module>render</module>
