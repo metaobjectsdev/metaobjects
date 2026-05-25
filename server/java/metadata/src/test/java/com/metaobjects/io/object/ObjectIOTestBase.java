@@ -6,9 +6,6 @@ import com.metaobjects.field.*;
 import com.metaobjects.io.MetaDataIOException;
 import com.metaobjects.io.object.json.JsonObjectReader;
 import com.metaobjects.io.object.json.JsonObjectWriter;
-//import com.metaobjects.io.object.xml.XMLObjectReader;
-//import com.metaobjects.io.object.xml.XMLObjectWriter;
-//import com.metaobjects.io.xml.XMLIOConstants;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.AbstractObjectRepresentation;
 import com.metaobjects.object.MetaObject;
@@ -198,22 +195,6 @@ public abstract class ObjectIOTestBase {
     }
 
     protected abstract void runTest(ValueObject o, String name ) throws IOException, MetaDataIOException;
-
-    /*protected void writeXML( String filename, Object vo ) throws IOException, MetaDataIOException {
-
-        XMLObjectWriter writer = new XMLObjectWriter( loader, getTestFileOutputStream( filename ) );
-        //writer.withIndent(true);
-        writer.write( vo );
-        writer.close();
-    }
-
-    protected ValueObject readXML(String filename, MetaObject mo) throws IOException, MetaDataIOException {
-
-        XMLObjectReader reader = new XMLObjectReader( loader, getTestFileInputStream( filename ) );
-        ValueObject vo = (ValueObject) reader.read( mo );
-        reader.close();
-        return vo;
-    }*/
 
     protected void writeJson( String filename, Object vo ) throws IOException, MetaDataIOException {
 
