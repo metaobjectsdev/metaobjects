@@ -15,6 +15,8 @@ import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMemory } from "@metaobjectsdev/sdk";
 import {
   TYPE_TEMPLATE,
+  TEMPLATE_SUBTYPE_PROMPT,
+  TEMPLATE_SUBTYPE_OUTPUT,
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_REQUIRED_SLOTS,
@@ -72,29 +74,52 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
     // Absent/typeless required attrs are a loader-schema concern, not verify's.
     if (typeof textRef !== "string" || typeof payloadRef !== "string") continue;
 
-    const text = provider.resolve(textRef);
-    if (text === undefined) {
+    // Both subtypes verify that @payloadRef resolves to a loaded object.value.
+    // The render-engine `verify()` would also throw on missing refs, but the
+    // output branch doesn't call it — explicit check keeps the error symmetric.
+    const fieldTree = derivePayloadFieldTree(root, payloadRef);
+    if (fieldTree.length === 0) {
       log.error(
-        `[${tmpl.name}] ${ERR_PARTIAL_UNRESOLVED}: @textRef "${textRef}" did not resolve under ${promptsDir}`,
+        `[${tmpl.name}] (${tmpl.subType}) ${ERR_PARTIAL_UNRESOLVED}: ` +
+          `@payloadRef "${payloadRef}" did not resolve to a loaded object.value`,
       );
       errorCount++;
       continue;
     }
 
-    const fieldTree = derivePayloadFieldTree(root, payloadRef);
-    const requiredSlots = attrAsStringArray(tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_SLOTS));
-    const requiredTags = attrAsStringArray(tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_TAGS));
-
-    const drift = verify(text, fieldTree, { provider, requiredSlots, requiredTags });
-    checked++;
-    for (const e of drift) {
-      if (e.code === ERR_REQUIRED_SLOT_UNUSED) {
-        log.warn(`[${tmpl.name}] ${e.code}: ${e.path}`);
-        warnCount++;
-      } else {
-        log.error(`[${tmpl.name}] ${e.code}: ${e.path}`);
+    if (tmpl.subType === TEMPLATE_SUBTYPE_PROMPT) {
+      // Render-engine drift check: template variables ↔ payload field names.
+      const text = provider.resolve(textRef);
+      if (text === undefined) {
+        log.error(
+          `[${tmpl.name}] (prompt) ${ERR_PARTIAL_UNRESOLVED}: @textRef "${textRef}" did not resolve under ${promptsDir}`,
+        );
         errorCount++;
+        continue;
       }
+
+      const requiredSlots = attrAsStringArray(tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_SLOTS));
+      const requiredTags = attrAsStringArray(tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_TAGS));
+
+      const drift = verify(text, fieldTree, { provider, requiredSlots, requiredTags });
+      checked++;
+      for (const e of drift) {
+        if (e.code === ERR_REQUIRED_SLOT_UNUSED) {
+          log.warn(`[${tmpl.name}] (prompt) ${e.code}: ${e.path}`);
+          warnCount++;
+        } else {
+          log.error(`[${tmpl.name}] (prompt) ${e.code}: ${e.path}`);
+          errorCount++;
+        }
+      }
+    } else if (tmpl.subType === TEMPLATE_SUBTYPE_OUTPUT) {
+      // Output drift check: re-derive the payload field tree (already done above);
+      // if it resolved, the parser codegen can produce a schema. Field-type
+      // unsupported-by-Zod issues are caught by the codegen itself if/when
+      // `meta gen` runs; verify confines itself to ref-resolution checks.
+      checked++;
+    } else {
+      // Unknown subtype — ignore (loader-schema concern).
     }
   }
 
