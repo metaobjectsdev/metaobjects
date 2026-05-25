@@ -5,6 +5,35 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
+## [Unreleased]
+
+### Added
+- **`outputParser()` stock generator** in `@metaobjectsdev/codegen-ts/generators` —
+  for every declared `template.output`, emits a typed Zod parser file with a
+  dual-API surface (`parseXxx(text)` throws, `safeParseXxx(text)` returns
+  Result). Field-type → Zod-type mapping covers all scalars, arrays, and
+  nested `field.object` with `@objectRef`. The emitted file is self-contained
+  (no cross-file payload import) and exports a `<TemplateName>Data` type-alias
+  derived via `z.infer`; consumers who also wire `promptRender()` can use the
+  payload-VO interface from `prompts.ts` interchangeably (structurally
+  identical). Wire it into `metaobjects.config.ts`:
+  `generators: [..., outputParser()]`.
+- **`meta verify` extension** for `template.output` drift — the build-time
+  drift gate now checks both subtypes. Output diagnostics carry `(output)`
+  prefix; prompt diagnostics gain `(prompt)` prefix for symmetry.
+- **Conformance fixture `template-output-simple`** — shared cross-language
+  corpus gains `input/meta.npc.json`, `expected.json`, and
+  `expected/NpcResponseOutput.output.ts` byte-exact codegen artifact. TS
+  conformance runner verifies `outputParser()`'s output matches.
+
+### Changed
+- `meta verify` log line format adds `(<subtype>)` after the template name
+  (e.g., `[npcTurn] (prompt) ERR_*`). A pre-FR6 log scraper that matched
+  on the bare `[name]` prefix needs to update its regex.
+
+See [ADR-0010](spec/decisions/ADR-0010-template-output-parser-codegen.md)
+for the cross-port design.
+
 ## [0.6.0] — 2026-05-25
 
 ### Added

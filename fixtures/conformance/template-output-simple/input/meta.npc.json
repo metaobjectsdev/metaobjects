@@ -1,0 +1,24 @@
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      {
+        "object.value": {
+          "name": "NpcResponsePayload",
+          "children": [
+            { "field.string": { "name": "name" } },
+            { "field.int": { "name": "age" } }
+          ]
+        }
+      },
+      {
+        "template.output": {
+          "name": "NpcResponseOutput",
+          "@payloadRef": "NpcResponsePayload",
+          "@textRef": "npc/output",
+          "@format": "json"
+        }
+      }
+    ]
+  }
+}
