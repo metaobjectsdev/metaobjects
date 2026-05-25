@@ -30,6 +30,7 @@ import { MetaAttr } from "./core/attr/meta-attr.js";
 import { inferAttrSubType } from "./serializer-json.js";
 import { ParseError, type ErrorCode } from "./errors.js";
 import { resolveSuperRef } from "./super-resolve.js";
+import { JsonPathBuilder } from "./json-path.js";
 import {
   TYPE_ATTR,
   TYPE_FIELD,
@@ -196,6 +197,27 @@ let _deferSuperResolution = false;
 // _deferSuperResolution.
 let _currentErrors: ParseError[] | undefined;
 
+// FR5a / ADR-0009 — Module-level JSONPath builder + source id, set at
+// buildTree entry and updated by recursive descent (push on the way down,
+// pop on the way back up). Used by populateNodeSource() to stamp every
+// constructed MetaData with `{ format: "json", files: [sourceId], jsonPath }`.
+// Safe because buildTree is synchronous — same reentrancy argument as
+// _currentErrors above.
+let _currentPath: JsonPathBuilder | undefined;
+let _currentSourceId: string | undefined;
+
+/** Set the parsed-from-JSON provenance envelope on a freshly-created node.
+ *  No-op when the parser is invoked outside buildTree's setup (defensive — the
+ *  module-level state will always be populated during a normal parse). */
+function populateNodeSource(node: MetaData): void {
+  if (_currentPath === undefined || _currentSourceId === undefined) return;
+  node.setSource({
+    format: "json",
+    files: [_currentSourceId],
+    jsonPath: _currentPath.toString(),
+  });
+}
+
 /**
  * buildTree — the shared registry-driven tree-builder.
  *
@@ -214,6 +236,12 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
   const source = opts.sourceName;
   _deferSuperResolution = opts.deferSuperResolution === true;
   _currentErrors = errors;
+  // FR5a — start a fresh JSONPath stack rooted at "$"; sourceId is the
+  // source's id (from FileSource / InMemoryStringSource via opts.sourceName).
+  // Falls back to "<unknown>" when no name was supplied (e.g. ad-hoc parseJson
+  // calls from tests).
+  _currentPath = new JsonPathBuilder();
+  _currentSourceId = source ?? "<unknown>";
 
   try {
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -259,6 +287,13 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
       );
     }
 
+    // FR5a — push the wrapper-key segment onto the JSONPath stack so all
+    // descendants emit jsonPath strings rooted at "$.<rootKey>". The merge-mode
+    // path keeps the existing root's source untouched; only NEW children get
+    // populated with the current source's id (correct: the existing root was
+    // already stamped from the file that created it).
+    _currentPath!.pushKey(rootKey);
+
     if (opts.intoRoot !== undefined) {
       // --- Merge mode: parse root's attrs/children into the existing root ---
       // The JSON root's own package/super/reserved-keys are not re-applied to the
@@ -278,6 +313,7 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
         source,
         rootKey,
       );
+      _currentPath!.pop();
       return { root: opts.intoRoot, warnings, errors };
     }
 
@@ -302,10 +338,13 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
       source,
       rootKey,
     ) as MetaRoot;
+    _currentPath!.pop();
     return { root, warnings, errors };
   } finally {
     _deferSuperResolution = false;
     _currentErrors = undefined;
+    _currentPath = undefined;
+    _currentSourceId = undefined;
   }
 }
 
@@ -344,7 +383,9 @@ function parseNodeFresh(
       errors.push(new ParseError(msg, { ...errOpts(source, path), code: "ERR_UNKNOWN_TYPE" }));
       const rawName = nodeData[RESERVED_KEY_NAME];
       const name = typeof rawName === "string" ? rawName : "";
-      return new MetaRoot(new TypeId(type, subType), name);
+      const stub = new MetaRoot(new TypeId(type, subType), name);
+      populateNodeSource(stub);
+      return stub;
     }
   }
 
@@ -355,6 +396,10 @@ function parseNodeFresh(
   // --- Create the model ---
   const def = registry.find(type, subType)!;
   const model = def.factory(def.typeId, name);
+  // FR5a — stamp the source provenance envelope using the parser's current
+  // JSONPath stack + source id. setSource happens BEFORE freeze (the parser
+  // is the only caller during loading; freeze runs in the loader after).
+  populateNodeSource(model);
 
   // --- Apply reserved keys (package, extends, abstract, isArray) ---
   applyReservedKeys(model, nodeData, strict, source, path, warnings, inheritedContextPkg);
@@ -707,12 +752,19 @@ function processChildren(
     return;
   }
 
+  // FR5a — push the "children" segment once; each iteration pushes/pops a
+  // numeric index + the wrapper-key segment so nested nodes see the correct
+  // jsonPath when populateNodeSource() is called during their construction.
+  _currentPath?.pushKey(RESERVED_KEY_CHILDREN);
+
   for (let i = 0; i < rawChildren.length; i++) {
     const childEntry = rawChildren[i];
     const childPath = `${path}.${RESERVED_KEY_CHILDREN}[${i}]`;
+    _currentPath?.pushIndex(i);
 
     if (typeof childEntry !== "object" || childEntry === null || Array.isArray(childEntry)) {
       reportProblem(`Child at ${childPath} must be an object`, strict, warnings, source, childPath, "ERR_TOP_LEVEL_NOT_OBJECT");
+      _currentPath?.pop();
       continue;
     }
 
@@ -725,18 +777,22 @@ function processChildren(
           ? `Child at ${childPath} has no type wrapper key`
           : `Child at ${childPath} has multiple keys (${childKeys.join(", ")}) — each child must have exactly one wrapper key`;
       reportProblem(msg, strict, warnings, source, childPath, "ERR_TOP_LEVEL_NOT_OBJECT");
+      _currentPath?.pop();
       continue;
     }
 
     const childKey = childKeys[0]!;
     const childData = childRecord[childKey];
     const childNodePath = `${childPath}.${childKey}`;
+    _currentPath?.pushKey(childKey);
 
     if (typeof childData !== "object" || childData === null || Array.isArray(childData)) {
       reportProblem(
         `Child wrapper "${childKey}" at ${childNodePath} must contain an object`,
         strict, warnings, source, childNodePath, "ERR_TOP_LEVEL_NOT_OBJECT",
       );
+      _currentPath?.pop(); // pop child wrapper key
+      _currentPath?.pop(); // pop array index
       continue;
     }
 
@@ -761,6 +817,8 @@ function processChildren(
             { ...errOpts(source, childNodePath), code: childTypeCode },
           ),
         );
+        _currentPath?.pop(); // pop child wrapper key
+        _currentPath?.pop(); // pop array index
         continue; // skip this child
       }
     }
@@ -789,7 +847,10 @@ function processChildren(
         parent.addChild(childModel);
       }
     }
+    _currentPath?.pop(); // pop child wrapper key
+    _currentPath?.pop(); // pop array index
   }
+  _currentPath?.pop(); // pop the "children" key
 }
 
 // ---------------------------------------------------------------------------
