@@ -46,11 +46,8 @@ export async function updateVideo(
   return video ?? null;
 }
 export async function deleteVideoById(id: number): Promise<boolean> {
-  const result = await db.delete(videos).where(eq(videos.id, id));
-  // SQLite (libsql/Turso) returns { rowsAffected }; postgres returns array from .returning()
-  return (
-    ("rowsAffected" in result
-      ? result.rowsAffected
-      : (result as unknown as unknown[]).length) > 0
-  );
+  // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
+  // and Postgres. Result is an array of deleted rows; presence implies success.
+  const deleted = await db.delete(videos).where(eq(videos.id, id)).returning();
+  return deleted.length > 0;
 }

@@ -46,11 +46,8 @@ export async function updateOrder(
   return order ?? null;
 }
 export async function deleteOrderById(id: number): Promise<boolean> {
-  const result = await db.delete(orders).where(eq(orders.id, id));
-  // SQLite (libsql/Turso) returns { rowsAffected }; postgres returns array from .returning()
-  return (
-    ("rowsAffected" in result
-      ? result.rowsAffected
-      : (result as unknown as unknown[]).length) > 0
-  );
+  // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
+  // and Postgres. Result is an array of deleted rows; presence implies success.
+  const deleted = await db.delete(orders).where(eq(orders.id, id)).returning();
+  return deleted.length > 0;
 }
