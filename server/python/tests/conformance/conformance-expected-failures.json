@@ -7,6 +7,7 @@
     "error-template-required-slot-missing",
     "origin-collection-simple",
     "template-output-and-prompt",
+    "template-output-simple",
     "template-prompt-simple"
   ]
 }
