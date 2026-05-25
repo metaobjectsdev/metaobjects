@@ -6,7 +6,12 @@
  */
 package com.metaobjects.conformance;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
+
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -50,11 +55,14 @@ public final class FixtureDiscovery {
         public final boolean hasExpectedWarnings;
         public final boolean hasScript;
         public final boolean hasProvidersJson;
+        /** Provider IDs required by this fixture (from {@code providers.json}); empty if absent. */
+        public final List<String> requiredProviders;
 
         Fixture(String name, Path dir, Path inputDir,
                 boolean hasExpected, boolean hasExpectedEffective,
                 boolean hasExpectedErrors, boolean hasExpectedWarnings,
-                boolean hasScript, boolean hasProvidersJson) {
+                boolean hasScript, boolean hasProvidersJson,
+                List<String> requiredProviders) {
             this.name = name;
             this.dir = dir;
             this.inputDir = inputDir;
@@ -64,6 +72,9 @@ public final class FixtureDiscovery {
             this.hasExpectedWarnings = hasExpectedWarnings;
             this.hasScript = hasScript;
             this.hasProvidersJson = hasProvidersJson;
+            this.requiredProviders = requiredProviders != null
+                ? Collections.unmodifiableList(requiredProviders)
+                : Collections.emptyList();
         }
 
         @Override
@@ -101,6 +112,12 @@ public final class FixtureDiscovery {
                 throw new AssertionError("Fixture '" + name + "' has no input/ directory");
             }
 
+            Path providersFile = dir.resolve("providers.json");
+            boolean hasProvidersJson = Files.isRegularFile(providersFile);
+            List<String> requiredProviders = hasProvidersJson
+                ? readRequiredProviders(providersFile, name)
+                : Collections.emptyList();
+
             fixtures.add(new Fixture(
                 name,
                 dir,
@@ -110,9 +127,44 @@ public final class FixtureDiscovery {
                 Files.isRegularFile(dir.resolve("expected-errors.json")),
                 Files.isRegularFile(dir.resolve("expected-warnings.json")),
                 Files.isRegularFile(dir.resolve("script.json")),
-                Files.isRegularFile(dir.resolve("providers.json"))));
+                hasProvidersJson,
+                requiredProviders));
         }
 
         return Collections.unmodifiableList(fixtures);
+    }
+
+    /**
+     * Read the list of required provider IDs from a fixture's {@code providers.json}.
+     * The file format is a top-level JSON array of strings (e.g.
+     * {@code ["metaobjects-core-types", "metaobjects-documentation"]}).
+     *
+     * @param providersFile path to {@code providers.json}
+     * @param fixtureName   fixture name, for error messages
+     * @return the provider IDs in declared order
+     * @throws AssertionError if the file is unreadable or not a JSON array of strings
+     */
+    private static List<String> readRequiredProviders(Path providersFile, String fixtureName) {
+        try {
+            String content = new String(Files.readAllBytes(providersFile), StandardCharsets.UTF_8);
+            JsonElement parsed = JsonParser.parseString(content);
+            if (!parsed.isJsonArray()) {
+                throw new AssertionError("Fixture '" + fixtureName
+                    + "' providers.json is not a JSON array: " + providersFile);
+            }
+            JsonArray array = parsed.getAsJsonArray();
+            List<String> result = new ArrayList<>(array.size());
+            for (JsonElement el : array) {
+                if (!el.isJsonPrimitive() || !el.getAsJsonPrimitive().isString()) {
+                    throw new AssertionError("Fixture '" + fixtureName
+                        + "' providers.json contains a non-string entry: " + providersFile);
+                }
+                result.add(el.getAsString());
+            }
+            return result;
+        } catch (IOException e) {
+            throw new AssertionError("Fixture '" + fixtureName
+                + "' providers.json is unreadable: " + providersFile, e);
+        }
     }
 }

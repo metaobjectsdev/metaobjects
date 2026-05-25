@@ -861,6 +861,15 @@ public abstract class BaseMetaDataParser {
             }
         }
 
+        // Cross-language commonAttrs: if the attribute is registered as a "common
+        // attribute" (valid on any node, e.g. documentation @description/@aliases),
+        // honour its declared value subtype.
+        com.metaobjects.registry.CommonAttributeDef commonDef =
+            getTypeRegistry().getCommonAttribute(attrName);
+        if (commonDef != null) {
+            return commonDef.valueType();
+        }
+
         // Fallback to string if no attribute support found
         return "string";
     }

@@ -572,14 +572,17 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             // Canonical bare-string → JSON-array desugar for array-declared attributes.
             // If the raw JSON value is a string primitive (not already a JSON array) AND
             // the registry has an array constraint for this attribute (constraint ID:
-            // "<type>.<subType>.<attrName>.array"), wrap the bare string as ["value"].
+            // "<type>.<subType>.<attrName>.array" — or, for cross-language commonAttrs,
+            // the wildcard "*.*.<attrName>.array"), wrap the bare string as ["value"].
             // This lets the base parser's existing [...]  → comma-delimited → isArray=true
             // path fire correctly, without any hardcoded attribute names.
             JsonElement rawValue = entry.getValue();
             String stringValue;
             if (rawValue.isJsonPrimitive() && rawValue.getAsJsonPrimitive().isString()) {
                 String arrayConstraintId = md.getType() + "." + md.getSubType() + "." + attrName + ".array";
-                if (getTypeRegistry().hasConstraint(arrayConstraintId)) {
+                String commonArrayConstraintId = "*.*." + attrName + ".array";
+                if (getTypeRegistry().hasConstraint(arrayConstraintId)
+                        || getTypeRegistry().hasConstraint(commonArrayConstraintId)) {
                     // Desugar: wrap bare string as single-element JSON array
                     stringValue = "[\"" + rawValue.getAsString().replace("\\", "\\\\").replace("\"", "\\\"") + "\"]";
                     log.debug("Desugared bare string @{} to JSON array for [{}:{}] in file [{}]",
