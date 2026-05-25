@@ -53,7 +53,7 @@ describe("loader drift warning for @filterable without index", () => {
     try {
       const result = await new MetaDataLoader().load([new FileSource(path)]);
       expect(result.errors).toEqual([]);
-      const warningMessages = (result.warnings ?? []);
+      const warningMessages = (result.warnings ?? []).map((w) => w.message);
       const hit = warningMessages.find((m) => m.includes("Sub.firstName") && m.includes("filterable") && m.includes("index"));
       expect(hit).toBeDefined();
     } finally {
@@ -78,7 +78,7 @@ describe("loader drift warning for @filterable without index", () => {
     }));
     try {
       const result = await new MetaDataLoader().load([new FileSource(path)]);
-      const warningMessages = (result.warnings ?? []);
+      const warningMessages = (result.warnings ?? []).map((w) => w.message);
       const hit = warningMessages.find((m) => m.includes("filterable"));
       expect(hit).toBeUndefined();
     } finally {
@@ -111,7 +111,7 @@ describe("@db.indexed opts a field out of the @filterable-without-index warning"
     try {
       const result = await new MetaDataLoader().load([new FileSource(path)]);
       expect(result.errors).toEqual([]);
-      const warningMessages = (result.warnings ?? []);
+      const warningMessages = (result.warnings ?? []).map((w) => w.message);
       const hit = warningMessages.find((m) => m.includes("Subscriber.tags") && m.includes("filterable") && m.includes("index"));
       expect(hit).toBeUndefined();
     } finally {
@@ -141,7 +141,7 @@ describe("@db.indexed opts a field out of the @filterable-without-index warning"
     try {
       const result = await new MetaDataLoader().load([new FileSource(path)]);
       expect(result.errors).toEqual([]);
-      const warningMessages = (result.warnings ?? []);
+      const warningMessages = (result.warnings ?? []).map((w) => w.message);
       const hit = warningMessages.find((m) => m.includes("Subscriber.tags") && m.includes("filterable") && m.includes("index"));
       expect(hit).toBeDefined();
     } finally {

@@ -112,7 +112,7 @@ function assertModelsEqual(a: MetaData, b: MetaData, path = "root"): void {
 // Helper: load a single fixture file via MetaDataLoader.load + FileSource
 // ---------------------------------------------------------------------------
 
-async function loadFixture(name: string): Promise<{ root: MetaData; warnings: string[]; errors: Error[] }> {
+async function loadFixture(name: string): Promise<Awaited<ReturnType<MetaDataLoader["load"]>>> {
   const loader = new MetaDataLoader({ freeze: false });
   return loader.load([new FileSource(fixturePath(name))]);
 }
@@ -121,7 +121,7 @@ async function loadFixture(name: string): Promise<{ root: MetaData; warnings: st
 // Helper: load multiple fixture files in dependency order
 // ---------------------------------------------------------------------------
 
-async function loadFixtures(names: string[]): Promise<{ root: MetaData; warnings: string[]; errors: Error[] }> {
+async function loadFixtures(names: string[]): Promise<Awaited<ReturnType<MetaDataLoader["load"]>>> {
   const loader = new MetaDataLoader({ freeze: false });
   return loader.load(names.map((n) => new FileSource(fixturePath(n))));
 }

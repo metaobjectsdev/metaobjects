@@ -5,6 +5,7 @@ import { composeRegistry, type MetaDataTypeProvider } from "../src/provider.js";
 test("ParseError carries a stable ERR_ code", () => {
   const err = new ParseError("unknown type 'widget'", {
     code: "ERR_UNKNOWN_TYPE",
+    source: { format: "code", caller: "errors.test" },
   });
   expect(err.code).toBe("ERR_UNKNOWN_TYPE");
 });

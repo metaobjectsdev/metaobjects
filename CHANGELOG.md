@@ -8,6 +8,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Added
+- **Loader error envelope + source-on-node** (`@metaobjectsdev/metadata`) —
+  per [ADR-0009](spec/decisions/ADR-0009-loader-error-envelope-and-source-on-node.md),
+  every `MetaData` node now carries a `source: ErrorSource` provenance field
+  (`{ format: "json", files: [...], jsonPath: "..." }` for loaded nodes;
+  `{ format: "code" }` for programmatically constructed). `ParseError` now
+  conforms to the cross-port `LoaderError` schema: required `code`, required
+  `message`, required `source` envelope. New `LoadResult.warnings:
+  LoaderWarning[]` channel (legacy parser/validator strings are wrapped at
+  the loader boundary as `WARN_LEGACY` envelopes; future overlay-merge
+  detection in FR5c will be the first feature to emit native envelope-shaped
+  warnings). New public exports from `@metaobjectsdev/metadata`:
+  `ErrorSource`, `LoaderError`, `LoaderWarning`, `NodeContext`, `Contributor`
+  types, plus the `codeSource()` helper. Foundation for FR5b (YAML
+  positions), FR5c (multi-file merge attribution), FR5d (reference-resolution
+  errors), FR5e (database-source errors).
 - **`outputParser()` stock generator** in `@metaobjectsdev/codegen-ts/generators` —
   for every declared `template.output`, emits a typed Zod parser file with a
   dual-API surface (`parseXxx(text)` throws, `safeParseXxx(text)` returns
@@ -42,6 +57,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   Enables Cloudflare Workers / edge consumers to drop their typecheck stubs;
   enables multi-tenant servers + test-isolated `db` setups. `routesFile()` is
   unchanged.
+- **BREAKING (metadata):** `ParseError` constructor signature changed. Was
+  `new ParseError(msg, { code?, source?: string, path? })`; now
+  `new ParseError(msg, { code, source: ErrorSource })`. Direct construction
+  outside the metadata package is rare (loader-internal API), but anyone
+  catching + repackaging a `ParseError` reads `.source` as the new envelope
+  type, not a string. Legacy `error.path` is gone — read
+  `error.source.jsonPath` instead.
+- **BREAKING (metadata):** `LoadResult.warnings` retyped from `string[]` to
+  `LoaderWarning[]` per ADR-0009. Consumers that inspected warning content
+  via `result.warnings[i].includes(...)` should now read
+  `result.warnings[i].message.includes(...)`. The public
+  `ExportResult.warnings` (returned by `loadAndExportJson()`) keeps its
+  `string[]` shape — extracted via `.map((w) => w.message)`.
 
 See [ADR-0010](spec/decisions/ADR-0010-template-output-parser-codegen.md)
 for the cross-port design.
