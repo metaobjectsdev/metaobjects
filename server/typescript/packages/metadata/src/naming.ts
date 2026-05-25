@@ -33,15 +33,17 @@ export function toKebabCase(s: string): string {
 }
 
 /**
- * Column-naming strategy applied by the persistence layer when a field has no
- * explicit `@column` override. Per ADR (TBD): the strategy is a persistence-
- * layer config (set on ObjectManager / buildExpectedSchema / codegen config),
- * not a metadata attr — same metadata serves snake_case (PG convention) and
- * literal (EF convention) consumers depending on how its persistence layer is
- * configured. Each call site that defaults this should pick the convention
- * native to its host stack (TS default: snake_case; C# default: literal).
+ * Column-naming strategy applied by the persistence layer to fields with no
+ * explicit `@column` override. Persistence-layer config (set on
+ * ObjectManager / buildExpectedSchema / codegen config), not a metadata attr —
+ * the same metadata can drive snake_case (PG convention) or literal (EF
+ * convention) consumers. TS port defaults to snake_case; C# port defaults to
+ * literal.
  */
 export type ColumnNamingStrategy = "snake_case" | "literal" | "kebab-case";
+
+/** Single source of truth for the TS-port default. */
+export const DEFAULT_COLUMN_NAMING_STRATEGY: ColumnNamingStrategy = "snake_case";
 
 export function applyColumnNamingStrategy(name: string, strategy: ColumnNamingStrategy): string {
   switch (strategy) {
@@ -71,7 +73,7 @@ export function resolveTableName(entity: MetaData): string {
 
 export function resolveColumnName(
   field: MetaData,
-  strategy: ColumnNamingStrategy = "snake_case",
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): string {
   const col = field.ownAttr(FIELD_ATTR_COLUMN);
   if (typeof col === "string" && col) return col;
@@ -104,7 +106,7 @@ export interface EntityNameMap {
 
 export function buildNameMap(
   entity: MetaData,
-  strategy: ColumnNamingStrategy = "snake_case",
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): EntityNameMap {
   const jsToDb = new Map<string, string>();
   const dbToJs = new Map<string, string>();

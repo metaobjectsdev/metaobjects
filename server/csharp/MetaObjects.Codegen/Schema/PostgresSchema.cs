@@ -40,7 +40,9 @@ public static class PostgresSchema
     /// target entity. Multi-base, @via passthrough, collection, or an unresolvable
     /// FK leave the view as a TODO comment (+ warning) rather than wrong SQL.
     /// </summary>
-    public static string CreateView(MetaObject projection, MetaRoot root, Action<string> warn)
+    public static string CreateView(
+        MetaObject projection, MetaRoot root, Action<string> warn,
+        ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
     {
         var view = projection.DbView!;
         var cols = new List<string>();
@@ -64,7 +66,7 @@ public static class PostgresSchema
                 var (ent, field) = SplitDot(from);
                 baseEntity ??= CSharpNaming.StripPkg(ent);
                 if (CSharpNaming.StripPkg(ent) != baseEntity) { blocked = "passthrough from multiple base entities"; break; }
-                cols.Add($"  \"{ResolveColumn(root.FindObject(baseEntity), field)}\" AS \"{CSharpNaming.Column(f)}\"");
+                cols.Add($"  \"{ResolveColumn(root.FindObject(baseEntity), field, strategy)}\" AS \"{CSharpNaming.Column(f, strategy)}\"");
             }
             // passthrough WITH via → forward a field from a to-one related entity (correlated subquery).
             else if (origin is MetaPassthroughOrigin ptv && ptv.Via is { } pvia && ptv.From is { } pfrom &&
@@ -73,10 +75,10 @@ public static class PostgresSchema
                 var (baseEnt, relName) = SplitDot(pvia);
                 baseEntity ??= CSharpNaming.StripPkg(baseEnt);
                 if (CSharpNaming.StripPkg(baseEnt) != baseEntity) { blocked = "passthrough via a different base entity"; break; }
-                if (ToOneFk(root, baseEntity, relName) is not { } fk)
+                if (ToOneFk(root, baseEntity, relName, strategy) is not { } fk)
                 { blocked = $"unresolved to-one FK for @via \"{pvia}\" (base needs an identity.reference)"; break; }
-                var srcCol = ResolveColumn(fk.Target, SplitDot(pfrom).Tail);
-                cols.Add($"  (SELECT {T}.\"{srcCol}\" FROM \"{fk.TargetTable}\" {T} WHERE {T}.\"{fk.TargetKeyCol}\" = \"{BaseTable()}\".\"{fk.BaseFkCol}\") AS \"{CSharpNaming.Column(f)}\"");
+                var srcCol = ResolveColumn(fk.Target, SplitDot(pfrom).Tail, strategy);
+                cols.Add($"  (SELECT {T}.\"{srcCol}\" FROM \"{fk.TargetTable}\" {T} WHERE {T}.\"{fk.TargetKeyCol}\" = \"{BaseTable()}\".\"{fk.BaseFkCol}\") AS \"{CSharpNaming.Column(f, strategy)}\"");
             }
             // aggregate → count/sum/... over a to-many relationship (correlated subquery).
             else if (origin is MetaAggregateOrigin agg && agg.Agg is { } aggFn && agg.Of is { } of && agg.Via is { } via &&
@@ -85,10 +87,10 @@ public static class PostgresSchema
                 var (baseEnt, relName) = SplitDot(via);
                 baseEntity ??= CSharpNaming.StripPkg(baseEnt);
                 if (CSharpNaming.StripPkg(baseEnt) != baseEntity) { blocked = "aggregate over a different base entity"; break; }
-                if (ToManyFk(root, baseEntity, relName) is not { } fk)
+                if (ToManyFk(root, baseEntity, relName, strategy) is not { } fk)
                 { blocked = $"unresolved to-many FK for @via \"{via}\" (target needs an identity.reference back to {baseEntity})"; break; }
-                var ofCol = ResolveColumn(fk.Target, SplitDot(of).Tail);
-                cols.Add($"  (SELECT {aggFn}({T}.\"{ofCol}\") FROM \"{fk.TargetTable}\" {T} WHERE {T}.\"{fk.FkCol}\" = \"{BaseTable()}\".\"{fk.ParentCol}\") AS \"{CSharpNaming.Column(f)}\"");
+                var ofCol = ResolveColumn(fk.Target, SplitDot(of).Tail, strategy);
+                cols.Add($"  (SELECT {aggFn}({T}.\"{ofCol}\") FROM \"{fk.TargetTable}\" {T} WHERE {T}.\"{fk.FkCol}\" = \"{BaseTable()}\".\"{fk.ParentCol}\") AS \"{CSharpNaming.Column(f, strategy)}\"");
             }
             // collection → array of nested view-objects over a to-many relationship (json_agg).
             else if (origin is MetaCollectionOrigin coll && coll.Via is { } cvia && cvia.Contains('.') && f.ObjectRef is { } objRef)
@@ -97,14 +99,14 @@ public static class PostgresSchema
                 baseEntity ??= CSharpNaming.StripPkg(baseEnt);
                 if (CSharpNaming.StripPkg(baseEnt) != baseEntity) { blocked = "collection over a different base entity"; break; }
                 var nested = root.FindObject(CSharpNaming.StripPkg(objRef));
-                if (ToManyFk(root, baseEntity, relName) is not { } fk || nested is null)
+                if (ToManyFk(root, baseEntity, relName, strategy) is not { } fk || nested is null)
                 { blocked = $"unresolved collection @via \"{cvia}\" / @objectRef \"{objRef}\""; break; }
                 // json_build_object keys are JSON string literals (single-quoted), not idents — left unquoted-as-ident.
                 var pairs = nested.Fields()
                     .Where(nf => CSharpNaming.ScalarFor(nf.SubType) is not null)
-                    .Select(nf => $"'{nf.Name}', {T}.\"{ResolveColumn(fk.Target, nf.Name)}\"");
+                    .Select(nf => $"'{nf.Name}', {T}.\"{ResolveColumn(fk.Target, nf.Name, strategy)}\"");
                 cols.Add($"  (SELECT coalesce(json_agg(json_build_object({string.Join(", ", pairs)})), '[]'::json) " +
-                         $"FROM \"{fk.TargetTable}\" {T} WHERE {T}.\"{fk.FkCol}\" = \"{BaseTable()}\".\"{fk.ParentCol}\") AS \"{CSharpNaming.Column(f)}\"");
+                         $"FROM \"{fk.TargetTable}\" {T} WHERE {T}.\"{fk.FkCol}\" = \"{BaseTable()}\".\"{fk.ParentCol}\") AS \"{CSharpNaming.Column(f, strategy)}\"");
             }
             else
             {
@@ -128,8 +130,16 @@ public static class PostgresSchema
         return (s[..i], s[(i + 1)..]);
     }
 
-    private static string ResolveColumn(MetaObject? obj, string fieldName) =>
-        obj?.Fields().FirstOrDefault(f => f.Name == fieldName)?.DbColumn ?? fieldName;
+    // Field-name lookup that honors @column override else applies the configured
+    // strategy. Stale FK references (field not registered on owner) fall through
+    // to applying the strategy on the bare name — same shape the runtime computes.
+    private static string ResolveColumn(MetaObject? obj, string fieldName, ColumnNamingStrategy strategy)
+    {
+        var field = obj?.Fields().FirstOrDefault(f => f.Name == fieldName);
+        return field is not null
+            ? CSharpNaming.Column(field, strategy)
+            : CSharpNaming.ApplyStrategy(fieldName, strategy);
+    }
 
     // Resolve a named relationship on the base entity to its (base, target) objects.
     private static (MetaObject Base, MetaObject Target)? ResolveRelation(
@@ -146,7 +156,7 @@ public static class PostgresSchema
     // the target carries an identity.reference back to the base. Used by aggregate
     // and collection origins (subquery scans the target, filtered by the base PK).
     private static (MetaObject Target, string TargetTable, string FkCol, string ParentCol)? ToManyFk(
-        MetaRoot root, string baseEntity, string relName)
+        MetaRoot root, string baseEntity, string relName, ColumnNamingStrategy strategy)
     {
         if (ResolveRelation(root, baseEntity, relName) is not { } rel) return null;
         var (baseObj, target) = rel;
@@ -155,20 +165,20 @@ public static class PostgresSchema
             .FirstOrDefault(r => r.TargetEntity is { } te && CSharpNaming.StripPkg(te) == baseEntity);
         if (fkRef is null || fkRef.Fields.Count == 0) return null;
 
-        var fkCol = ResolveColumn(target, fkRef.Fields[0]);
+        var fkCol = ResolveColumn(target, fkRef.Fields[0], strategy);
         var parentField = fkRef.TargetFields.Count > 0
             ? fkRef.TargetFields[0]
             : baseObj.PrimaryIdentity()?.Fields.FirstOrDefault();
         if (parentField is null) return null;
 
-        return (target, CSharpNaming.Table(target), fkCol, ResolveColumn(baseObj, parentField));
+        return (target, CSharpNaming.Table(target), fkCol, ResolveColumn(baseObj, parentField, strategy));
     }
 
     // Resolve a to-one relationship to the FK that lives on the *base* entity:
     // the base carries an identity.reference at the target. Used by passthrough-@via
     // origins (subquery selects from the target, joined on the base's FK column).
     private static (MetaObject Target, string TargetTable, string TargetKeyCol, string BaseFkCol)? ToOneFk(
-        MetaRoot root, string baseEntity, string relName)
+        MetaRoot root, string baseEntity, string relName, ColumnNamingStrategy strategy)
     {
         if (ResolveRelation(root, baseEntity, relName) is not { } rel) return null;
         var (baseObj, target) = rel;
@@ -177,13 +187,13 @@ public static class PostgresSchema
             .FirstOrDefault(r => r.TargetEntity is { } te && CSharpNaming.StripPkg(te) == target.Name);
         if (fkRef is null || fkRef.Fields.Count == 0) return null;
 
-        var baseFkCol = ResolveColumn(baseObj, fkRef.Fields[0]);
+        var baseFkCol = ResolveColumn(baseObj, fkRef.Fields[0], strategy);
         var targetKeyField = fkRef.TargetFields.Count > 0
             ? fkRef.TargetFields[0]
             : target.PrimaryIdentity()?.Fields.FirstOrDefault();
         if (targetKeyField is null) return null;
 
-        return (target, CSharpNaming.Table(target), ResolveColumn(target, targetKeyField), baseFkCol);
+        return (target, CSharpNaming.Table(target), ResolveColumn(target, targetKeyField, strategy), baseFkCol);
     }
     // -----------------------------------------------------------------------
     // Engine-supplement tail-append helpers — invoked by MigrateCommand.Run
@@ -199,7 +209,8 @@ public static class PostgresSchema
     /// Naming: <c>{table}_{column}_check</c> (stable enough for a future introspection
     /// pass to match). Array-of-enum columns are jsonb and don't get a per-row IN check.
     /// </summary>
-    public static IEnumerable<string> EnumCheckConstraints(MetaRoot root) =>
+    public static IEnumerable<string> EnumCheckConstraints(
+        MetaRoot root, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal) =>
         WritableEntitiesByName(root).SelectMany(e =>
         {
             var table = CSharpNaming.Table(e);
@@ -208,7 +219,7 @@ public static class PostgresSchema
                             && f.EffectiveEnumValues is { Count: > 0 })
                 .Select(f =>
                 {
-                    var col = CSharpNaming.Column(f);
+                    var col = CSharpNaming.Column(f, strategy);
                     var list = string.Join(", ", f.EffectiveEnumValues!.Select(v => $"'{PgSql.Escape(v)}'"));
                     return $"ALTER TABLE \"{table}\" ADD CONSTRAINT \"{table}_{col}_check\" CHECK (\"{col}\" IN ({list}));";
                 });
@@ -219,7 +230,8 @@ public static class PostgresSchema
     /// <c>@description</c> attr. The <c>@notes</c> attr is intentionally never read
     /// (internal-only rationale slot, per the documentation provider D5 contract).
     /// </summary>
-    public static IEnumerable<string> TableAndColumnComments(MetaRoot root)
+    public static IEnumerable<string> TableAndColumnComments(
+        MetaRoot root, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
     {
         foreach (var e in WritableEntitiesByName(root))
         {
@@ -228,7 +240,7 @@ public static class PostgresSchema
                 yield return $"COMMENT ON TABLE \"{table}\" IS '{PgSql.Escape(entityDesc)}';";
             foreach (var f in e.Fields())
                 if (Description(f) is { } fieldDesc)
-                    yield return $"COMMENT ON COLUMN \"{table}\".\"{CSharpNaming.Column(f)}\" IS '{PgSql.Escape(fieldDesc)}';";
+                    yield return $"COMMENT ON COLUMN \"{table}\".\"{CSharpNaming.Column(f, strategy)}\" IS '{PgSql.Escape(fieldDesc)}';";
         }
     }
 

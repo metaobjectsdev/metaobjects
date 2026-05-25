@@ -28,9 +28,12 @@ public static class ExpectedSchema
     /// <summary>
     /// Produces the snapshot the live DB should match: one TableDescriptor per
     /// writable entity (entities with a primary writable source.rdb), ordered by
-    /// metadata object name.
+    /// metadata object name. <paramref name="strategy"/> picks the default
+    /// column-naming applied to fields with no <c>@column</c> override
+    /// (defaults to <see cref="ColumnNamingStrategy.Literal"/>, matching EF +
+    /// the first C# adopter).
     /// </summary>
-    public static SchemaSnapshot Build(MetaRoot root)
+    public static SchemaSnapshot Build(MetaRoot root, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
     {
         var writableEntities = root.Objects()
             .Where(o => o.IsEntity() && o.FindPrimaryWritableSource() is not null)
@@ -41,11 +44,13 @@ public static class ExpectedSchema
         // RefTable is never created. Gate FK emission on this set (mirrors the TS
         // reference's resolveTargetTable callback dropping unknown targets).
         var writableNames = writableEntities.Select(e => e.Name).ToHashSet(StringComparer.Ordinal);
-        var tables = writableEntities.Select(e => BuildTable(e, root, writableNames)).ToList();
+        var tables = writableEntities.Select(e => BuildTable(e, root, writableNames, strategy)).ToList();
         return new SchemaSnapshot(tables);
     }
 
-    private static TableDescriptor BuildTable(MetaObject entity, MetaRoot root, IReadOnlySet<string> writableEntityNames)
+    private static TableDescriptor BuildTable(
+        MetaObject entity, MetaRoot root,
+        IReadOnlySet<string> writableEntityNames, ColumnNamingStrategy strategy)
     {
         var source = entity.FindPrimaryWritableSource()!;
         var pk = entity.PrimaryIdentity();
@@ -55,10 +60,10 @@ public static class ExpectedSchema
 
         return new TableDescriptor(
             Name: CSharpNaming.Table(entity),
-            Columns: BuildColumns(entity, root, pkSet, pkGeneration).ToList(),
-            Indexes: BuildIndexes(entity).ToList(),
-            ForeignKeys: BuildForeignKeys(entity, root, writableEntityNames).ToList(),
-            PrimaryKey: pkFieldNames.Select(n => ResolveColumn(entity, n)).ToList(),
+            Columns: BuildColumns(entity, root, pkSet, pkGeneration, strategy).ToList(),
+            Indexes: BuildIndexes(entity, strategy).ToList(),
+            ForeignKeys: BuildForeignKeys(entity, root, writableEntityNames, strategy).ToList(),
+            PrimaryKey: pkFieldNames.Select(n => ResolveColumn(entity, n, strategy)).ToList(),
             Schema: source.Schema);
     }
 
@@ -70,24 +75,24 @@ public static class ExpectedSchema
     // contributes no column); other object storage → a single json column.
     private static IEnumerable<ColumnDescriptor> BuildColumns(
         MetaObject entity, MetaRoot root,
-        IReadOnlySet<string> pkSet, string? pkGeneration)
+        IReadOnlySet<string> pkSet, string? pkGeneration, ColumnNamingStrategy strategy)
     {
         foreach (var f in entity.Fields())
         {
             if (CSharpNaming.ScalarFor(f.SubType) is not null || f.SubType == FIELD_SUBTYPE_ENUM)
             {
                 var isPk = pkSet.Contains(f.Name);
-                yield return BuildColumn(entity, f, isPk, isPk ? pkGeneration : null);
+                yield return BuildColumn(entity, f, isPk, isPk ? pkGeneration : null, strategy);
             }
             else if (f.SubType == FIELD_SUBTYPE_OBJECT)
             {
-                foreach (var c in ObjectFieldColumns(entity, f, root)) yield return c;
+                foreach (var c in ObjectFieldColumns(entity, f, root, strategy)) yield return c;
             }
         }
     }
 
     private static IEnumerable<ColumnDescriptor> ObjectFieldColumns(
-        MetaObject entity, MetaField f, MetaRoot root)
+        MetaObject entity, MetaField f, MetaRoot root, ColumnNamingStrategy strategy)
     {
         if (f.Storage == STORAGE_FLATTENED)
         {
@@ -97,23 +102,23 @@ public static class ExpectedSchema
             if (f.ObjectRef is { } oref &&
                 root.FindObject(CSharpNaming.StripPkg(oref)) is { } nested)
             {
-                var prefix = CSharpNaming.Column(f) + "_";
+                var prefix = CSharpNaming.Column(f, strategy) + "_";
                 foreach (var nf in nested.Fields().Where(n => CSharpNaming.ScalarFor(n.SubType) is not null))
                 {
-                    var inner = BuildColumn(nested, nf, isPk: false, pkGeneration: null);
+                    var inner = BuildColumn(nested, nf, isPk: false, pkGeneration: null, strategy);
                     yield return inner with { Name = prefix + inner.Name };
                 }
             }
             yield break;
         }
         yield return new ColumnDescriptor(
-            CSharpNaming.Column(f),
+            CSharpNaming.Column(f, strategy),
             new SqlType.Json(),
             Nullable: !CSharpNaming.IsRequired(entity, f));
     }
 
     private static ColumnDescriptor BuildColumn(
-        MetaObject owner, MetaField field, bool isPk, string? pkGeneration)
+        MetaObject owner, MetaField field, bool isPk, string? pkGeneration, ColumnNamingStrategy strategy)
     {
         // isArray collapses any scalar/enum to a single json column (PostgresEmit
         // renders SqlType.Json as JSONB). Sizing/precision/scale on the underlying
@@ -124,7 +129,7 @@ public static class ExpectedSchema
         var nullable = !isPk && !required;
         var identity = isPk ? ToIdentityKind(pkGeneration) : null;
         var def = BuildDefault(field);
-        return new ColumnDescriptor(CSharpNaming.Column(field), sqlType, nullable, def, identity);
+        return new ColumnDescriptor(CSharpNaming.Column(field, strategy), sqlType, nullable, def, identity);
     }
 
     // Canonical, dialect-neutral type from the field subtype + sizing attrs.
@@ -179,11 +184,11 @@ public static class ExpectedSchema
 
     // Unique indexes come from secondary identities (unique unless @unique:false).
     // Index NAME = bare identity name (matches TS expected-schema.ts:204).
-    private static IEnumerable<IndexDescriptor> BuildIndexes(MetaObject entity)
+    private static IEnumerable<IndexDescriptor> BuildIndexes(MetaObject entity, ColumnNamingStrategy strategy)
     {
         foreach (var sec in entity.SecondaryIdentities())
         {
-            var cols = sec.Fields.Select(n => ResolveColumn(entity, n)).ToList();
+            var cols = sec.Fields.Select(n => ResolveColumn(entity, n, strategy)).ToList();
             yield return new IndexDescriptor(sec.Name, cols, sec.Unique);
         }
     }
@@ -193,7 +198,8 @@ public static class ExpectedSchema
     // the FK to the matching relationship by @objectRef and reads its effective
     // referential actions (explicit attr → per-subtype default).
     private static IEnumerable<FkDescriptor> BuildForeignKeys(
-        MetaObject entity, MetaRoot root, IReadOnlySet<string> writableEntityNames)
+        MetaObject entity, MetaRoot root,
+        IReadOnlySet<string> writableEntityNames, ColumnNamingStrategy strategy)
     {
         var owningTable = CSharpNaming.Table(entity);
         foreach (var refId in entity.ReferenceIdentities().Where(r => r.Enforce))
@@ -205,10 +211,10 @@ public static class ExpectedSchema
             if (!writableEntityNames.Contains(bareTarget)) continue;
             if (root.FindObject(bareTarget) is not { } target) continue;
 
-            var cols = refId.Fields.Select(n => ResolveColumn(entity, n)).ToList();
+            var cols = refId.Fields.Select(n => ResolveColumn(entity, n, strategy)).ToList();
             var refCols = refId.TargetFields.Count > 1
-                ? refId.TargetFields.Select(n => ResolveColumn(target, n)).ToList()
-                : [ResolveColumn(target, ResolvedTargetPkField(target, refId))];
+                ? refId.TargetFields.Select(n => ResolveColumn(target, n, strategy)).ToList()
+                : [ResolveColumn(target, ResolvedTargetPkField(target, refId), strategy)];
             var actions = ReferentialActions.Resolve(entity, targetName);
 
             yield return new FkDescriptor(
@@ -228,6 +234,15 @@ public static class ExpectedSchema
             ? fk.TargetFields[0]
             : target.PrimaryIdentity()?.Fields.FirstOrDefault() ?? "id";
 
-    private static string ResolveColumn(MetaObject owner, string fieldName) =>
-        owner.Fields().FirstOrDefault(f => f.Name == fieldName)?.DbColumn ?? fieldName;
+    // Field-name lookup that honors @column override else applies the configured
+    // strategy. When no MetaField is registered for `fieldName` (e.g. a stale
+    // FK reference) we fall through to applying the strategy directly on the
+    // bare name — same shape the runtime would compute.
+    private static string ResolveColumn(MetaObject owner, string fieldName, ColumnNamingStrategy strategy)
+    {
+        var field = owner.Fields().FirstOrDefault(f => f.Name == fieldName);
+        return field is not null
+            ? CSharpNaming.Column(field, strategy)
+            : CSharpNaming.ApplyStrategy(fieldName, strategy);
+    }
 }

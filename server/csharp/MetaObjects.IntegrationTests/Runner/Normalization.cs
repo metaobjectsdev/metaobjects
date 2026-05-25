@@ -84,9 +84,11 @@ public static class Normalization
         return s;
     }
 
-    // Build a new tree with sorted keys. DeepClone before reparenting — System.Text.Json
-    // forbids attaching a node that already has a parent.
-    private static JsonNode SortKeys(JsonNode node)
+    /// <summary>
+    /// Build a new tree with sorted keys. DeepClone before reparenting —
+    /// System.Text.Json forbids attaching a node that already has a parent.
+    /// </summary>
+    public static JsonNode SortKeys(JsonNode node)
     {
         if (node is JsonObject obj)
         {
@@ -105,9 +107,18 @@ public static class Normalization
     }
 
     /// <summary>
+    /// Canonical-JSON serialization of an arbitrary node: object keys sorted
+    /// recursively so two semantically-equal trees compare byte-equal.
+    /// <c>null</c> serializes as the JSON literal <c>"null"</c>.
+    /// </summary>
+    public static string CanonicalJson(JsonNode? node) =>
+        node is null
+            ? "null"
+            : JsonSerializer.Serialize(SortKeys(node), new JsonSerializerOptions { WriteIndented = false });
+
+    /// <summary>
     /// Canonical JSON for a list of DB rows: each row normalized via
-    /// <see cref="NormalizeRow"/>, top-level array preserved, all object keys sorted
-    /// recursively so two semantically-equal results compare byte-equal.
+    /// <see cref="NormalizeRow"/>, top-level array preserved, all object keys sorted.
     /// </summary>
     public static string CanonicalRowsJson(IEnumerable<IReadOnlyDictionary<string, object?>> rows)
     {
@@ -119,6 +130,6 @@ public static class Normalization
                 obj[k] = v is null ? null : JsonValue.Create(v);
             arr.Add(obj);
         }
-        return JsonSerializer.Serialize(SortKeys(arr), new JsonSerializerOptions { WriteIndented = false });
+        return CanonicalJson(arr);
     }
 }

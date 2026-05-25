@@ -7,7 +7,6 @@
 //   5. For each QuerySpec: translate via DbContextAdapter, normalize the result,
 //      compare against the scenario's `expect:` block.
 
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using MetaObjects.Codegen.Migrate;
 using MetaObjects.Codegen.Schema;
@@ -161,29 +160,5 @@ public static class QueryScenarioRunner
         return obj;
     }
 
-    private static string Canonical(JsonNode? node)
-    {
-        if (node is null) return "null";
-        return JsonSerializer.Serialize(SortKeys(node), new JsonSerializerOptions { WriteIndented = false });
-    }
-
-    // Build a new tree with sorted keys. DeepClone before reparenting — System.Text.Json
-    // forbids attaching a node that already has a parent.
-    private static JsonNode SortKeys(JsonNode node)
-    {
-        if (node is JsonObject obj)
-        {
-            var sorted = new JsonObject();
-            foreach (var (k, v) in obj.OrderBy(p => p.Key, StringComparer.Ordinal))
-                sorted[k] = v is null ? null : SortKeys(v.DeepClone());
-            return sorted;
-        }
-        if (node is JsonArray arr)
-        {
-            var copy = new JsonArray();
-            foreach (var item in arr) copy.Add(item is null ? null : SortKeys(item.DeepClone()));
-            return copy;
-        }
-        return node.DeepClone();
-    }
+    private static string Canonical(JsonNode? node) => Normalization.CanonicalJson(node);
 }

@@ -27,6 +27,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
 import { enumValues } from "./enum-meta.js";
+import { DEFAULT_COLUMN_NAMING_STRATEGY } from "@metaobjectsdev/metadata";
 import type { Dialect, ColumnNamingStrategy } from "./metaobjects-config.js";
 
 export type { Dialect };
@@ -118,7 +119,7 @@ function isRequired(field: MetaField): boolean {
 export function mapColumnType(
   field: MetaField,
   dialect: Dialect,
-  strategy: ColumnNamingStrategy = "snake_case",
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): ColumnSpec {
   const dbName = field.column ?? columnNameFromField(field.name, strategy);
   const importModule = dialect === "sqlite" ? "drizzle-orm/sqlite-core" : "drizzle-orm/pg-core";

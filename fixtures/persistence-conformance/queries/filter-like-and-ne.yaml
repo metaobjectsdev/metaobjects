@@ -1,0 +1,29 @@
+name: filter-like-and-ne
+description: |
+  Filter Programs with `like` (SQL pattern match) and `ne` (not-equal). Both
+  ports must surface the same rows, in the same order. The `like` pattern is
+  case-aligned to the seed data (no case-fold dependency) so the test passes
+  whether a port wires LIKE or ILIKE under the hood.
+seed-data: |
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Strength',    7999, 'PUBLISHED', '2026-05-02T10:00:00'),
+    (3, 'Mobility',    2999, 'DRAFT',     '2026-05-03T10:00:00'),
+    (4, 'Archived',    1999, 'ARCHIVED',  '2026-05-04T10:00:00');
+queries:
+  - name: title-like-prefix
+    op: list
+    entity: Program
+    filter: { title: { like: "Found%" } }
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "1", title: "Foundations", priceCents: "4999", status: "PUBLISHED", createdAt: "2026-05-01T10:00:00" }
+
+  - name: status-not-published
+    op: list
+    entity: Program
+    filter: { status: { ne: "PUBLISHED" } }
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "3", title: "Mobility", priceCents: "2999", status: "DRAFT",    createdAt: "2026-05-03T10:00:00" }
+      - { id: "4", title: "Archived", priceCents: "1999", status: "ARCHIVED", createdAt: "2026-05-04T10:00:00" }

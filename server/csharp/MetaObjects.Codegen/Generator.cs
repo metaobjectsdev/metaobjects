@@ -19,16 +19,9 @@ public sealed record GenConfig
     public required string Namespace { get; init; }
     /// <summary>
     /// Strategy applied to field names with no <c>@column</c> override. Defaults
-    /// to <see cref="ColumnNamingStrategy.Literal"/> (EF Core convention). Set to
-    /// <see cref="ColumnNamingStrategy.SnakeCase"/> when sharing a schema with a
-    /// TS-default consumer.
-    ///
-    /// Note: as of this commit the strategy is exposed on the config + on
-    /// <see cref="CSharpNaming.Column(MetaField, ColumnNamingStrategy)"/>, but
-    /// the codegen generators + ExpectedSchema still hard-code the
-    /// <see cref="CSharpNaming.Column(MetaField)"/> default-Literal overload.
-    /// Flipping this to anything other than Literal currently has no effect
-    /// (deferred — first C# adopter is EF/literal).
+    /// to <see cref="ColumnNamingStrategy.Literal"/> (EF Core convention).
+    /// Plumbed through every <c>CSharpNaming.Column</c> call site in
+    /// ExpectedSchema, PostgresSchema, and the entity + DbContext generators.
     /// </summary>
     public ColumnNamingStrategy ColumnNamingStrategy { get; init; } = ColumnNamingStrategy.Literal;
 }

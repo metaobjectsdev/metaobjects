@@ -125,11 +125,20 @@ public static class DbContextAdapter
 
     private static Expression BuildOp(Expression propExpr, string op, object? rawValue)
     {
-        // null/IsNull operators don't need value coercion.
+        // null/IsNull operators don't need value coercion (other than the bool flag).
+        // YamlDotNet deserializes a YAML bool into a `string` when the target is
+        // `object?`, so accept both shapes here.
         if (op == "isNull")
         {
             var isNullExpr = Expression.Equal(propExpr, Expression.Constant(null, propExpr.Type));
-            return rawValue is true ? isNullExpr : Expression.Not(isNullExpr);
+            var wantNull = rawValue switch
+            {
+                bool b => b,
+                string s when bool.TryParse(s, out var parsed) => parsed,
+                _ => throw new InvalidOperationException(
+                    $"filter op `isNull` requires a boolean value (got: {rawValue?.GetType().Name ?? "null"})"),
+            };
+            return wantNull ? isNullExpr : Expression.Not(isNullExpr);
         }
 
         // `in` takes a list of values.

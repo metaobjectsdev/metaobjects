@@ -14,6 +14,7 @@
 // wraps console I/O so the command stays unit-testable.
 
 using System.Text;
+using MetaObjects.Codegen;
 using MetaObjects.Codegen.Migrate;
 using MetaObjects.Codegen.Schema;
 using MetaObjects.Loader;
@@ -50,15 +51,19 @@ public static class MigrateCommand
     /// against an empty actual snapshot — so the output uses the same identifier
     /// conventions <c>--from-db</c> introspection will see (no spurious churn on
     /// the first incremental run). Read-only projection views are tail-appended
-    /// via <see cref="PostgresSchema.CreateView"/>.
+    /// via <see cref="PostgresSchema.CreateView"/>. <paramref name="strategy"/>
+    /// picks the column-naming default for fields without <c>@column</c>; the
+    /// CLI passes <see cref="ColumnNamingStrategy.Literal"/> (EF convention).
     /// </summary>
-    public static Outcome Run(string metadataDir, string outFile)
+    public static Outcome Run(
+        string metadataDir, string outFile,
+        ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
     {
         var (loadErrors, root) = LoadRoot(metadataDir);
         if (root is null) return new Outcome(loadErrors, null, []);
 
         var warnings = new List<string>();
-        var diff = SchemaDiff.Diff(ExpectedSchema.Build(root), new SchemaSnapshot([]));
+        var diff = SchemaDiff.Diff(ExpectedSchema.Build(root, strategy), new SchemaSnapshot([]));
         // Use literal "\n" — sb.AppendLine() would emit \r\n on Windows and mix with
         // the engine + view bodies (which already use \n), corrupting golden-file diffs.
         var sb = new StringBuilder();
@@ -69,13 +74,13 @@ public static class MigrateCommand
         // appear in the introspection round-trip, so they never surface as drift on
         // a subsequent `--from-db` run — they're just extra DDL `meta gen` consumers
         // want bootstrapped on the fresh schema.
-        AppendBlock(sb, PostgresSchema.EnumCheckConstraints(root));                 // ALTER TABLE ADD CONSTRAINT ... CHECK
-        AppendBlock(sb, PostgresSchema.TableAndColumnComments(root));               // COMMENT ON TABLE / COLUMN
+        AppendBlock(sb, PostgresSchema.EnumCheckConstraints(root, strategy));       // ALTER TABLE ADD CONSTRAINT ... CHECK
+        AppendBlock(sb, PostgresSchema.TableAndColumnComments(root, strategy));     // COMMENT ON TABLE / COLUMN
         foreach (var p in root.Objects().Where(o => o.IsReadOnlyProjection())
                               .OrderBy(o => o.Name, StringComparer.Ordinal))         // CREATE VIEW per projection
         {
             sb.Append("\n\n");
-            sb.Append(PostgresSchema.CreateView(p, root, warnings.Add));
+            sb.Append(PostgresSchema.CreateView(p, root, warnings.Add, strategy));
         }
         var sql = sb.ToString();
         File.WriteAllText(outFile, sql);
@@ -92,12 +97,13 @@ public static class MigrateCommand
         IPgIntrospector db,
         string? upOutFile = null,
         string? downOutFile = null,
-        AllowOptions? allow = null)
+        AllowOptions? allow = null,
+        ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
     {
         var (loadErrors, root) = LoadRoot(metadataDir);
         if (root is null) return new IncrementalOutcome(loadErrors, null, null, [], []);
 
-        var expected = ExpectedSchema.Build(root);
+        var expected = ExpectedSchema.Build(root, strategy);
         var actual = await PostgresIntrospect.IntrospectAsync(db);
         var diff = SchemaDiff.Diff(expected, actual, allow);
         var emitted = PostgresEmit.Render(diff.Changes);

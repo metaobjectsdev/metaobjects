@@ -87,16 +87,17 @@ public sealed class EntityGenerator : IGenerator
 
         // Members in declared order: scalar columns + enum-typed props + (entities only) owned-type navs.
         var members = new List<string>();
+        var strategy = ctx.Config.ColumnNamingStrategy;
         foreach (var field in entity.Fields())
         {
             string? member = null;
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
             {
-                member = ScalarProperty(entity, field, pkFields, withAttributes: true);
+                member = ScalarProperty(entity, field, pkFields, withAttributes: true, strategy);
             }
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
             {
-                member = EnumProperty(entity, field);
+                member = EnumProperty(entity, field, strategy);
             }
             else if (field.SubType == FIELD_SUBTYPE_OBJECT)
             {
@@ -152,7 +153,7 @@ public sealed class EntityGenerator : IGenerator
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
                 member = ScalarProperty(vo, field, [], withAttributes: false);
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
-                member = EnumProperty(vo, field);
+                member = EnumProperty(vo, field, ctx.Config.ColumnNamingStrategy);
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx) is { } nav)
                 member = nav;
             if (member is null) continue;
@@ -193,11 +194,11 @@ public sealed class EntityGenerator : IGenerator
     // A property for an enum-subtype field. The property type is the nested enum name.
     // When the field is an array, emit List<EnumType> with an empty-list initializer;
     // the List is never nullable (the column stores a jsonb array, always present).
-    private static string EnumProperty(MetaObject entity, MetaField field)
+    private static string EnumProperty(MetaObject entity, MetaField field, ColumnNamingStrategy strategy)
     {
         var typeName = CSharpNaming.EnumTypeName(entity, field);
         var propName = CSharpNaming.Pascal(field.Name);
-        var colAttr = $"    [Column(\"{CSharpNaming.Column(field)}\")]";
+        var colAttr = $"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]";
         if (field.IsArray)
             return $"{colAttr}\n    public List<{typeName}> {propName} {{ get; set; }} = new();";
         var required = CSharpNaming.IsRequired(entity, field);
@@ -212,7 +213,9 @@ public sealed class EntityGenerator : IGenerator
     // When the field is an array (isArray: true), emit List<T> with an empty-list
     // initializer instead of a scalar T property. Arrays are always non-nullable
     // (the jsonb column holds the list; the list itself is never null in C#).
-    private static string ScalarProperty(MetaObject owner, MetaField field, IReadOnlyList<string> pkFields, bool withAttributes)
+    private static string ScalarProperty(
+        MetaObject owner, MetaField field, IReadOnlyList<string> pkFields,
+        bool withAttributes, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
     {
         var baseType = CSharpNaming.ScalarFor(field.SubType)!;
         var propName = CSharpNaming.Pascal(field.Name);
@@ -224,7 +227,7 @@ public sealed class EntityGenerator : IGenerator
         {
             var arr = new StringBuilder();
             if (withAttributes)
-                arr.AppendLine($"    [Column(\"{CSharpNaming.Column(field)}\")]");
+                arr.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
             arr.Append($"    public List<{baseType}> {propName} {{ get; set; }} = new();");
             return arr.ToString();
         }
@@ -237,7 +240,7 @@ public sealed class EntityGenerator : IGenerator
         {
             if (pkFields.Count == 1 && pkFields[0] == field.Name)
                 sb.AppendLine("    [Key]");
-            sb.AppendLine($"    [Column(\"{CSharpNaming.Column(field)}\")]");
+            sb.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
             if (baseType == "string" && field.MaxLength is long max)
                 sb.AppendLine($"    [MaxLength({max})]");
             if (required && !isValue)

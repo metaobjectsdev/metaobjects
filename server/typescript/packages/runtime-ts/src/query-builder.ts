@@ -3,6 +3,7 @@ import {
   TYPE_FIELD, TYPE_IDENTITY,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_ATTR_FIELDS,
+  DEFAULT_COLUMN_NAMING_STRATEGY,
   resolveTableName, resolveColumnName,
 } from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
@@ -85,7 +86,7 @@ function rowToColumns(entity: MetaData, data: Row, strategy: ColumnNamingStrateg
 export function compileFilter(
   entity: MetaData,
   filter: Filter,
-  strategy: ColumnNamingStrategy = "snake_case",
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): WhereClause | null {
   if ("$and" in filter && Array.isArray(filter.$and)) {
     // TS can't narrow $and away from the Record branch, so the runtime check above
@@ -162,7 +163,7 @@ export function buildSelectSpec(
   filter: Filter | undefined,
   opts: QueryOpts,
   projectedFields?: string[],
-  strategy: ColumnNamingStrategy = "snake_case",
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): SelectSpec {
   const allFields = projectedFields ?? listFieldNames(entity);
   const pkFields = resolvePkFields(entity);
@@ -186,7 +187,7 @@ export function buildSelectSpec(
 
 export function buildCountSpec(
   entity: MetaData, filter: Filter | undefined,
-  strategy: ColumnNamingStrategy = "snake_case",
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): CountSpec {
   const spec: CountSpec = { table: resolveTableName(entity) };
   const where = filter !== undefined ? compileFilter(entity, filter, strategy) : null;
@@ -196,7 +197,7 @@ export function buildCountSpec(
 
 export function buildInsertSpec(
   entity: MetaData, data: Row,
-  strategy: ColumnNamingStrategy = "snake_case",
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): InsertSpec {
   const values = rowToColumns(entity, data, strategy);
   const allFields = listFieldNames(entity);
@@ -209,7 +210,7 @@ export function buildInsertSpec(
 
 export function buildUpdateSpec(
   entity: MetaData, data: Row, id: unknown,
-  strategy: ColumnNamingStrategy = "snake_case",
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): UpdateSpec {
   const values = rowToColumns(entity, data, strategy);
   const pkFields = resolvePkFields(entity);
@@ -230,7 +231,7 @@ export function buildUpdateSpec(
 
 export function buildDeleteSpec(
   entity: MetaData, id: unknown,
-  strategy: ColumnNamingStrategy = "snake_case",
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): DeleteSpec {
   const pkFields = resolvePkFields(entity);
   if (pkFields.length !== 1) {

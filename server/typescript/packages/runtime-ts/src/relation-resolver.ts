@@ -1,4 +1,4 @@
-import type { MetaData } from "@metaobjectsdev/metadata";
+import type { ColumnNamingStrategy, MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_OBJECT, TYPE_RELATIONSHIP, TYPE_IDENTITY,
   IDENTITY_SUBTYPE_REFERENCE,
@@ -6,6 +6,7 @@ import {
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF,
   CARDINALITY_ONE, CARDINALITY_MANY,
+  DEFAULT_COLUMN_NAMING_STRATEGY,
 } from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
 import {
@@ -140,11 +141,12 @@ export function buildLazyRelateSpec(
   desc: RelationDescriptor,
   sourceRecord: Row,
   root: MetaData,
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): SelectSpec | null {
   const lookup = sourceRecord[desc.sourceField];
   if (lookup === null || lookup === undefined) return null;
   const target = mustGetEntity(root, desc.targetEntityName);
-  return buildSelectSpec(target, { [desc.targetField]: lookup as PrimitiveValue }, {});
+  return buildSelectSpec(target, { [desc.targetField]: lookup as PrimitiveValue }, {}, undefined, strategy);
 }
 
 /** Builds one batched IN(...) lookup. Returns null when there are no non-null source values. */
@@ -152,6 +154,7 @@ export function buildIncludeBatchSpec(
   desc: RelationDescriptor,
   sourceRecords: Row[],
   root: MetaData,
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): SelectSpec | null {
   const seen = new Set<PrimitiveValue>();
   for (const rec of sourceRecords) {
@@ -161,7 +164,7 @@ export function buildIncludeBatchSpec(
   }
   if (seen.size === 0) return null;
   const target = mustGetEntity(root, desc.targetEntityName);
-  return buildSelectSpec(target, { [desc.targetField]: [...seen] as (string | number)[] }, {});
+  return buildSelectSpec(target, { [desc.targetField]: [...seen] as (string | number)[] }, {}, undefined, strategy);
 }
 
 function mustGetEntity(root: MetaData, name: string): MetaData {

@@ -14,7 +14,7 @@ import {
   type Filter, type QueryOpts,
 } from "./query-builder.js";
 import {
-  buildNameMap, resolveTableName,
+  buildNameMap, resolveTableName, DEFAULT_COLUMN_NAMING_STRATEGY,
   type ColumnNamingStrategy, type EntityNameMap,
 } from "@metaobjectsdev/metadata";
 import { coerceRowOnRead, coerceRowOnWrite } from "./type-coercer.js";
@@ -41,11 +41,9 @@ export interface ObjectManagerOptions {
   metadata: MetaData;
   driver: PersistenceDriver;
   /**
-   * Column-naming strategy applied to fields with no `@column` override.
-   * Defaults to `"snake_case"` (matches the TS codegen default + the SQL
-   * convention). Set to `"literal"` when talking to a DB whose columns were
-   * authored to match the field names verbatim (e.g. an EF-shaped schema).
-   * Must agree with the codegen / migration config used to create the schema.
+   * Column-naming strategy for fields with no `@column` override. Defaults to
+   * `"snake_case"`. Must agree with the codegen / migration config that
+   * created the schema (a mismatch yields columns the runtime can't address).
    */
   columnNamingStrategy?: ColumnNamingStrategy;
 }
@@ -71,7 +69,7 @@ export class ObjectManager {
   constructor(opts: ObjectManagerOptions) {
     this.metadata = opts.metadata;
     this.driver = opts.driver;
-    this.columnNamingStrategy = opts.columnNamingStrategy ?? "snake_case";
+    this.columnNamingStrategy = opts.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY;
   }
 
   private nameMap(entity: MetaData): EntityNameMap {
@@ -273,7 +271,7 @@ export class ObjectManager {
     const n2m = resolveN2mDescriptor(entity, relationName, this.metadata);
     if (n2m !== null) {
       const target = this.requireEntity(n2m.targetEntityName);
-      const { joinSpec, makeTargetSpec } = buildN2mLazySpecs(n2m, record, this.metadata);
+      const { joinSpec, makeTargetSpec } = buildN2mLazySpecs(n2m, record, this.metadata, this.columnNamingStrategy);
       const joinRows = await driver.selectMany(joinSpec);
       const targetSpec = makeTargetSpec(joinRows);
       if (targetSpec === null) return [];
@@ -283,7 +281,7 @@ export class ObjectManager {
 
     const desc = resolveRelationDescriptor(entity, relationName, this.metadata);
     const target = this.requireEntity(desc.targetEntityName);
-    const spec = buildLazyRelateSpec(desc, record, this.metadata);
+    const spec = buildLazyRelateSpec(desc, record, this.metadata, this.columnNamingStrategy);
     if (spec === null) return desc.cardinality === "one" ? null : [];
     if (desc.cardinality === "one") {
       const row = await driver.selectOne(spec);
@@ -326,7 +324,7 @@ export class ObjectManager {
       const n2m = resolveN2mDescriptor(entity, inc, this.metadata);
       if (n2m !== null) {
         const target = this.requireEntity(n2m.targetEntityName);
-        const { joinSpec, makeTargetSpec } = buildN2mBatchSpecs(n2m, records, this.metadata);
+        const { joinSpec, makeTargetSpec } = buildN2mBatchSpecs(n2m, records, this.metadata, this.columnNamingStrategy);
         const joinRows = await driver.selectMany(joinSpec);
         const targetSpec = makeTargetSpec(joinRows);
         const targetRows = targetSpec === null ? [] : (await driver.selectMany(targetSpec)).map((r) => this.toJsRow(target, r));
@@ -351,7 +349,7 @@ export class ObjectManager {
 
       const desc = resolveRelationDescriptor(entity, inc, this.metadata);
       const target = this.requireEntity(desc.targetEntityName);
-      const spec = buildIncludeBatchSpec(desc, records, this.metadata);
+      const spec = buildIncludeBatchSpec(desc, records, this.metadata, this.columnNamingStrategy);
       const targetRows = spec === null ? [] : (await driver.selectMany(spec)).map((r) => this.toJsRow(target, r));
 
       if (desc.cardinality === "one") {

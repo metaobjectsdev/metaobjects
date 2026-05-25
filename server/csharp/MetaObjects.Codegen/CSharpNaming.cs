@@ -11,15 +11,13 @@ using static MetaObjects.Core.Field.FieldConstants;
 namespace MetaObjects.Codegen;
 
 /// <summary>
-/// Column-naming strategy applied to fields with no <c>@column</c> override.
-/// Defaults to <see cref="Literal"/> on the C# side (matches EF Core
-/// property = column convention). Cross-port: TS defaults to
-/// <c>SnakeCase</c> (PG convention). Set explicitly when the persistence layer
-/// must talk to a schema produced by a different default.
+/// Column-naming strategy for fields with no <c>@column</c> override. C# port
+/// defaults to <see cref="Literal"/> (EF Core property=column convention); TS
+/// port defaults to <see cref="SnakeCase"/> (PG convention).
 /// </summary>
 public enum ColumnNamingStrategy
 {
-    /// <summary>Field name verbatim (PascalCase / camelCase preserved). EF Core default.</summary>
+    /// <summary>Field name verbatim. EF Core default.</summary>
     Literal,
     /// <summary>camelCase / PascalCase → snake_case. PG / TS default.</summary>
     SnakeCase,
@@ -76,9 +74,7 @@ public static class CSharpNaming
     /// <summary>
     /// The DB column name for a field: the <c>@column</c> override, else the raw
     /// field name run through <paramref name="strategy"/>. Shared so the schema
-    /// DDL and the [Column] annotation agree. Default <see cref="ColumnNamingStrategy.Literal"/>
-    /// matches EF convention; pass <see cref="ColumnNamingStrategy.SnakeCase"/> to
-    /// share a schema with a TS-default consumer.
+    /// DDL and the [Column] annotation agree.
     /// </summary>
     public static string Column(MetaField field, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal) =>
         field.DbColumn ?? ApplyStrategy(field.Name, strategy);
@@ -92,6 +88,8 @@ public static class CSharpNaming
         _ => name,
     };
 
+    // Insert _ between lower→upper (camelCase) and at the end of an acronym run
+    // (UPPER followed by Upper+lower, e.g. URLHost → url_host).
     private static string ToSnakeCase(string s)
     {
         if (string.IsNullOrEmpty(s)) return s;
@@ -103,8 +101,6 @@ public static class CSharpNaming
             {
                 var prev = s[i - 1];
                 var next = i + 1 < s.Length ? s[i + 1] : '\0';
-                // Insert _ between lower→upper (camelCase) and at the end of an
-                // acronym run (UPPER followed by Upper+lower, e.g. URLHost → url_host).
                 if (char.IsLower(prev) || char.IsDigit(prev) || (char.IsUpper(prev) && char.IsLower(next)))
                     sb.Append('_');
             }
