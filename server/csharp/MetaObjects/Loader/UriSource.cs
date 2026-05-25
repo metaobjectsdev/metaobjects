@@ -31,7 +31,7 @@ public sealed class UriSource : IMetaDataSource
     {
         Uri = uri ?? throw new ArgumentNullException(nameof(uri));
         Id = uri.ToString();
-        Format = format ?? InferFormatFromExtension(uri.AbsolutePath);
+        Format = format ?? MetaDataFormats.InferFromExtension(uri.AbsolutePath);
     }
 
     public string Read()
@@ -49,14 +49,5 @@ public sealed class UriSource : IMetaDataSource
         }
 
         throw new NotSupportedException($"Unsupported URI scheme '{Uri.Scheme}' on {Uri}");
-    }
-
-    private static MetaDataFormat InferFormatFromExtension(string path)
-    {
-        string ext = Path.GetExtension(path);
-        return ext.Equals(".yaml", StringComparison.OrdinalIgnoreCase)
-               || ext.Equals(".yml", StringComparison.OrdinalIgnoreCase)
-            ? MetaDataFormat.Yaml
-            : MetaDataFormat.Json;
     }
 }

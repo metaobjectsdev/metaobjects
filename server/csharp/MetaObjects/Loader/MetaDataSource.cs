@@ -21,6 +21,20 @@ public interface IMetaDataSource
     string Read();
 }
 
+/// <summary>Shared helpers for <see cref="IMetaDataSource"/> implementations.</summary>
+internal static class MetaDataFormats
+{
+    /// <summary>Infer <see cref="MetaDataFormat"/> from a path/URI extension. Unknown → JSON.</summary>
+    internal static MetaDataFormat InferFromExtension(string path)
+    {
+        string ext = System.IO.Path.GetExtension(path);
+        return ext.Equals(".yaml", StringComparison.OrdinalIgnoreCase)
+               || ext.Equals(".yml", StringComparison.OrdinalIgnoreCase)
+            ? MetaDataFormat.Yaml
+            : MetaDataFormat.Json;
+    }
+}
+
 /// <summary>A metadata source backed by an in-memory string.</summary>
 public sealed class InMemoryStringSource : IMetaDataSource
 {

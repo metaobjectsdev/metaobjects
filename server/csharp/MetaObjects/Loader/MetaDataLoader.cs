@@ -44,19 +44,11 @@ public class MetaDataLoader
     // Constructors
     // -------------------------------------------------------------------------
 
-    /// <summary>
-    /// Construct with the default core-types registry, freeze=true, strict=false.
-    /// </summary>
+    /// <summary>Construct with the default core-types registry, freeze=true, strict=false.</summary>
     public MetaDataLoader()
         : this(DefaultRegistry()) { }
 
-    /// <summary>
-    /// Construct with a custom registry, freeze=true, strict=false.
-    /// </summary>
-    public MetaDataLoader(TypeRegistry registry)
-        : this(registry, freeze: true, strict: false) { }
-
-    /// <summary>Full constructor — registry, freeze, strict all configurable.</summary>
+    /// <summary>Full constructor — registry required; freeze and strict configurable (defaults: freeze=true, strict=false).</summary>
     public MetaDataLoader(TypeRegistry registry, bool freeze = true, bool strict = false)
     {
         _registry = registry;
@@ -254,10 +246,9 @@ public class MetaDataLoader
         }
 
         // After the merge loop, BEFORE freeze — validation passes.
-
-        // Pass 1: resolveDeferredSupers — resolve cross-file extends refs against the full merged root.
         if (root is not null)
         {
+            // Pass 1: resolveDeferredSupers — resolve cross-file extends refs against the full merged root.
             var failures = SuperResolve.ResolveDeferredSupers(root);
             foreach (var failure in failures)
             {
@@ -265,10 +256,7 @@ public class MetaDataLoader
                     $"the SuperClass '{failure.Ref}' does not exist (referenced by {failure.NodeFqn})",
                     ErrorCode.ERR_UNRESOLVED_SUPER));
             }
-        }
 
-        if (root is not null)
-        {
             // Pass 2: subtype rules (value must not have primary identity; entity should have one)
             var subtypeResult = ValidationPasses.ValidateSubtypeRules(root);
             errors.AddRange(subtypeResult.Errors);
