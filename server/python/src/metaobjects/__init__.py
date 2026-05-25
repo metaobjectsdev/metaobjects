@@ -3,11 +3,9 @@
 Top-level exports cover the cross-language loader API (MetaDataLoader +
 LoadResult, the four MetaDataSource impls, and Pythonic module-level
 shortcuts ``load_directory`` / ``load_uris`` / ``load_string`` that
-delegate to the class factories).
+alias the class factories ala ``requests.get`` over ``Session().get``).
 """
 from __future__ import annotations
-
-from pathlib import Path
 
 from .errors import ErrorCode, MetaError
 from .loader.meta_data_loader import LoadResult, MetaDataLoader
@@ -19,35 +17,13 @@ from .loader.sources import (
     MetaDataSource,
     UriSource,
 )
-from .provider import Provider
 
-
-def load_directory(
-    directory: Path | str,
-    providers: list[Provider] | None = None,
-    exclude: list[str] | None = None,
-    recurse: bool = True,
-) -> LoadResult:
-    """Module-level shortcut for ``MetaDataLoader.from_directory``."""
-    return MetaDataLoader.from_directory(
-        directory, providers=providers, exclude=exclude, recurse=recurse,
-    )
-
-
-def load_uris(
-    uris: list[str], providers: list[Provider] | None = None
-) -> LoadResult:
-    """Module-level shortcut for ``MetaDataLoader.from_uris``."""
-    return MetaDataLoader.from_uris(uris, providers=providers)
-
-
-def load_string(
-    content: str,
-    format: MetaDataFormat = MetaDataFormat.JSON,
-    providers: list[Provider] | None = None,
-) -> LoadResult:
-    """Module-level shortcut for ``MetaDataLoader.from_string``."""
-    return MetaDataLoader.from_string(content, format=format, providers=providers)
+# Module-level shortcuts: the 99% case for callers who don't need a
+# long-lived loader. Signatures + docstrings come straight from the
+# classmethods — no wrapping layer to drift.
+load_directory = MetaDataLoader.from_directory
+load_uris = MetaDataLoader.from_uris
+load_string = MetaDataLoader.from_string
 
 
 __all__ = [

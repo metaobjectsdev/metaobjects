@@ -34,18 +34,17 @@ class DirectorySource:
         return self._directory
 
     def expand(self) -> Iterator[FileSource]:
-        if self._recurse:
-            candidates: Iterable[Path] = self._directory.rglob("*")
-        else:
-            candidates = self._directory.iterdir()
-
-        files = [
-            p
-            for p in candidates
-            if p.is_file()
-            and p.suffix.lower() in _SUPPORTED_SUFFIXES
-            and p.name not in self._exclude
-        ]
-        files.sort(key=lambda p: p.name)
-        for p in files:
-            yield FileSource(p)
+        candidates = (
+            self._directory.rglob("*") if self._recurse else self._directory.iterdir()
+        )
+        files = sorted(
+            (
+                p
+                for p in candidates
+                if p.is_file()
+                and p.suffix.lower() in _SUPPORTED_SUFFIXES
+                and p.name not in self._exclude
+            ),
+            key=lambda p: p.name,
+        )
+        yield from (FileSource(p) for p in files)

@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..core_types import core_provider
-from ..errors import ErrorCode, MetaError
+from ..errors import ErrorCode, MetaError, ParseError
 from ..meta.meta_data import MetaData
 from ..meta.meta_root import MetaRoot
 from ..parser import ParseResult, parse_document
@@ -48,11 +48,6 @@ class LoadResult:
     warnings: list[str] = field(default_factory=list)
 
 
-def _empty_root() -> MetaRoot:
-    """Construct the canonical empty root (matches parse_document's seed)."""
-    return MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "")
-
-
 class MetaDataLoader:
     """Source-polymorphic metadata loader.
 
@@ -74,7 +69,8 @@ class MetaDataLoader:
 
     def load(self, sources: list[MetaDataSource]) -> LoadResult:
         """Parse -> merge -> super-resolve -> validate -> freeze."""
-        result = LoadResult(root=_empty_root())
+        # Canonical empty root (matches parse_document's seed).
+        result = LoadResult(root=MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, ""))
         roots: list[MetaData] = []
 
         for src in sources:
@@ -149,18 +145,17 @@ class MetaDataLoader:
             errors.append(MetaError(str(exc), ErrorCode.ERR_UNKNOWN, src.id))
             return None
 
-        if src.format is MetaDataFormat.YAML:
-            try:
-                return parse_yaml(text, self._registry, source=src.id)
-            except Exception as exc:  # ParseError carries a code
-                code = getattr(exc, "code", ErrorCode.ERR_MALFORMED_YAML)
-                errors.append(MetaError(str(exc), code, src.id))
-                return None
-
-        # Default: JSON.
-        try:
-            doc = json.loads(text)
-        except json.JSONDecodeError as exc:
-            errors.append(MetaError(str(exc), ErrorCode.ERR_MALFORMED_JSON, src.id))
-            return None
-        return parse_document(doc, self._registry, source=src.id)
+        match src.format:
+            case MetaDataFormat.YAML:
+                try:
+                    return parse_yaml(text, self._registry, source=src.id)
+                except ParseError as exc:
+                    errors.append(MetaError(str(exc), exc.code, src.id))
+                    return None
+            case MetaDataFormat.JSON:
+                try:
+                    doc = json.loads(text)
+                except json.JSONDecodeError as exc:
+                    errors.append(MetaError(str(exc), ErrorCode.ERR_MALFORMED_JSON, src.id))
+                    return None
+                return parse_document(doc, self._registry, source=src.id)
