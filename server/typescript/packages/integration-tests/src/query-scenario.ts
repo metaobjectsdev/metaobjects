@@ -111,11 +111,20 @@ async function execute(om: ObjectManager, spec: QuerySpec): Promise<unknown> {
   return await om.findMany(spec.entity, filter, opts);
 }
 
-function toRuntimeFilter(filter: Record<string, Record<string, unknown>>): Filter {
+function toRuntimeFilter(filter: Record<string, unknown>): Filter {
+  // Top-level `and: [filter, filter, ...]` lowers to the runtime's `$and` form.
+  // Compose-by-AND is the only logical combinator supported today; `or` would
+  // need both runtime-ts compileFilter AND the C# adapter to grow it first.
+  if (Array.isArray(filter.and)) {
+    return {
+      $and: (filter.and as Record<string, unknown>[]).map(toRuntimeFilter),
+    } as Filter;
+  }
+  // Otherwise: each top-level key is a field name; its value is a {op: value} object.
   const out: Record<string, unknown> = {};
   for (const [field, ops] of Object.entries(filter)) {
     const ops$: Record<string, unknown> = {};
-    for (const [op, value] of Object.entries(ops)) ops$["$" + op] = value;
+    for (const [op, value] of Object.entries(ops as Record<string, unknown>)) ops$["$" + op] = value;
     out[field] = ops$;
   }
   return out as Filter;

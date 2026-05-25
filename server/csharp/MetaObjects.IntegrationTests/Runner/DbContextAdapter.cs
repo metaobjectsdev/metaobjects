@@ -94,10 +94,41 @@ public static class DbContextAdapter
     private static IQueryable<T> ApplyFilter<T>(IQueryable<T> queryable, IReadOnlyDictionary<string, object?> filter)
     {
         var param = Expression.Parameter(typeof(T), "x");
+        var body = BuildFilterBody(typeof(T), param, filter);
+        if (body is null) return queryable;
+        var lambda = Expression.Lambda<Func<T, bool>>(body, param);
+        return queryable.Where(lambda);
+    }
+
+    // Accepts either an IReadOnlyDictionary (the top-level Filter shape) or an
+    // IDictionary (what AsStringKeyedDict returns for nested `and` children).
+    private static Expression? BuildFilterBody(
+        Type entityType, ParameterExpression param, IEnumerable<KeyValuePair<string, object?>> filterEntries)
+    {
+        var filter = filterEntries.ToDictionary(kv => kv.Key, kv => kv.Value);
+        // Top-level `and: [filter, filter, ...]` composes child filters with AndAlso.
+        // Compose-by-AND is the only logical combinator today; `or` would need both
+        // runtime-ts compileFilter AND this adapter to grow it first.
+        if (filter.TryGetValue("and", out var andValue) && andValue is System.Collections.IEnumerable list)
+        {
+            Expression? combined = null;
+            foreach (var child in list)
+            {
+                var childDict = AsStringKeyedDict(child)
+                    ?? throw new InvalidOperationException(
+                        "`and` list elements must be filter objects (got " +
+                        $"{child?.GetType().Name ?? "null"})");
+                var childExpr = BuildFilterBody(entityType, param, childDict);
+                if (childExpr is null) continue;
+                combined = combined is null ? childExpr : Expression.AndAlso(combined, childExpr);
+            }
+            return combined;
+        }
+
         Expression? body = null;
         foreach (var (field, opsRaw) in filter)
         {
-            var prop = Property(typeof(T), field);
+            var prop = Property(entityType, field);
             var propExpr = Expression.Property(param, prop);
             // YamlDotNet hands back Dictionary<object, object?> for nested mappings
             // when the parent is typed as object?; normalize both shapes here so the
@@ -111,9 +142,7 @@ public static class DbContextAdapter
                 body = body is null ? clause : Expression.AndAlso(body, clause);
             }
         }
-        if (body is null) return queryable;
-        var lambda = Expression.Lambda<Func<T, bool>>(body, param);
-        return queryable.Where(lambda);
+        return body;
     }
 
     private static IDictionary<string, object?>? AsStringKeyedDict(object? raw) => raw switch
