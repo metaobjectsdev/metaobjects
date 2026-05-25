@@ -859,6 +859,17 @@ public abstract class BaseMetaDataParser {
             }
         }
 
+        // Cross-language commonAttrs: if the attribute is registered as a "common
+        // attribute" (valid on any node, e.g. documentation @description/@aliases),
+        // honour its declared value subtype. Checked BEFORE the wildcard "attr,*"
+        // fallback so a non-string common attr (e.g. a future boolean) is not
+        // silently coerced to "string" by the open-policy default.
+        com.metaobjects.registry.CommonAttributeDef commonDef =
+            getTypeRegistry().getCommonAttribute(attrName);
+        if (commonDef != null) {
+            return commonDef.valueType();
+        }
+
         // If no specific requirement, check for wildcard requirements
         // Look through all child requirements to find wildcard attribute support
         for (ChildRequirement req : typeDef.getChildRequirements()) {
@@ -866,15 +877,6 @@ public abstract class BaseMetaDataParser {
                 // Found wildcard attribute support - default to string
                 return "string";
             }
-        }
-
-        // Cross-language commonAttrs: if the attribute is registered as a "common
-        // attribute" (valid on any node, e.g. documentation @description/@aliases),
-        // honour its declared value subtype.
-        com.metaobjects.registry.CommonAttributeDef commonDef =
-            getTypeRegistry().getCommonAttribute(attrName);
-        if (commonDef != null) {
-            return commonDef.valueType();
         }
 
         // Fallback to string if no attribute support found

@@ -1,6 +1,7 @@
 // Copyright 2026 MetaObjects authors.
 package com.metaobjects.documentation;
 
+import com.metaobjects.attr.StringArrayAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataTypeProvider;
@@ -40,31 +41,14 @@ public class DocumentationMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public void registerTypes(MetaDataRegistry registry) {
-        // All 7 docs attrs are string-valued; @seeAlso and @aliases are arrays.
-        // Cross-language contract: @deprecated is a string (free-form note such as
-        // "Use contactEmail instead."), not a boolean — every port's fixtures use
-        // a string value.
-        registry.registerCommonAttribute(
-            DocumentationConstants.DOC_ATTR_DESCRIPTION,
-            StringAttribute.SUBTYPE_STRING, false);
-        registry.registerCommonAttribute(
-            DocumentationConstants.DOC_ATTR_TITLE,
-            StringAttribute.SUBTYPE_STRING, false);
-        registry.registerCommonAttribute(
-            DocumentationConstants.DOC_ATTR_NOTES,
-            StringAttribute.SUBTYPE_STRING, false);
-        registry.registerCommonAttribute(
-            DocumentationConstants.DOC_ATTR_DEPRECATED,
-            StringAttribute.SUBTYPE_STRING, false);
-        registry.registerCommonAttribute(
-            DocumentationConstants.DOC_ATTR_REPLACED_BY,
-            StringAttribute.SUBTYPE_STRING, false);
-        registry.registerCommonAttribute(
-            DocumentationConstants.DOC_ATTR_SEE_ALSO,
-            StringAttribute.SUBTYPE_STRING, true);
-        registry.registerCommonAttribute(
-            DocumentationConstants.DOC_ATTR_ALIASES,
-            StringAttribute.SUBTYPE_STRING, true);
+        // DocumentationSchema.COMMON_DOC_ATTRS is the single source of truth for
+        // the 7 attrs (mirrored across TS/C#/Python). The registry stores value
+        // class + arrayness separately, so derive isArray from the schema's
+        // SUBTYPE_STRING_ARRAY marker and register the underlying string class.
+        for (DocumentationSchema.CommonDocAttr attr : DocumentationSchema.COMMON_DOC_ATTRS) {
+            boolean isArray = StringArrayAttribute.SUBTYPE_STRING_ARRAY.equals(attr.valueType());
+            registry.registerCommonAttribute(attr.name(), StringAttribute.SUBTYPE_STRING, isArray);
+        }
     }
 
     @Override
