@@ -58,7 +58,7 @@ export async function buildKyselyFromUrl(
 
   if (dialect === "d1") {
     throw new Error(
-      `dialect 'd1' does not use a URL connection; use meta migrate --d1 <binding> (Task 9)`,
+      `dialect 'd1' does not use a URL connection; use meta migrate --d1 <binding>`,
     );
   }
 

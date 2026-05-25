@@ -18,8 +18,8 @@ type Exec = (sql: string) => Promise<Record<string, unknown>[]>;
 export interface IntrospectD1Options {
   runner: D1Runner;
   /**
-   * Documented passthrough — the CLI wiring (Task 9) uses binding/remote/configPath
-   * to construct the runner; introspectD1 itself only dispatches SQL via opts.runner.
+   * Documented passthrough — the CLI wiring uses binding/remote/configPath to
+   * construct the runner; introspectD1 itself only dispatches SQL via opts.runner.
    * They live on the options so the wiring contract is self-documenting at the call site.
    */
   binding: string;
