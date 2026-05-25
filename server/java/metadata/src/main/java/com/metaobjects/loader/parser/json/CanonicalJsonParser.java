@@ -132,6 +132,11 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             buildTree(parseToCanonical(is));
         } catch (MetaDataException e) {
             throw e;
+        } catch (com.google.gson.JsonSyntaxException e) {
+            throw new MetaDataException(
+                "Error loading canonical JSON from file [" + getFilename() + "]: " + e.getMessage(),
+                null, null, e, java.util.Collections.emptyMap(),
+                com.metaobjects.ErrorCode.ERR_MALFORMED_JSON);
         } catch (Exception e) {
             throw new MetaDataException(
                 "Error loading canonical JSON from file [" + getFilename() + "]: " + e.getMessage(), e);

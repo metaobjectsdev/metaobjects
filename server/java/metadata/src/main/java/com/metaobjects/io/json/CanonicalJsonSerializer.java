@@ -479,12 +479,27 @@ public final class CanonicalJsonSerializer {
 
         // OBJECT-datatype attr with a Map value: emit as a JSON object.
         // Guard: DataTypes.OBJECT ensures only attrs that explicitly declare object
-        // semantics (e.g. FilterAttribute) take this path. PropertiesAttribute uses
-        // DataTypes.CUSTOM and is unaffected. Gson.toJsonTree handles nested
-        // Maps/Lists/primitives natively, so the full desugared filter structure
-        // ({field: {op: value}, ...}) round-trips correctly.
+        // semantics (e.g. FilterAttribute) take this path. Gson.toJsonTree handles
+        // nested Maps/Lists/primitives natively, so the full desugared filter
+        // structure ({field: {op: value}, ...}) round-trips correctly.
         if (attr.getDataType() == DataTypes.OBJECT && value instanceof Map) {
             return GSON.toJsonTree(value);
+        }
+
+        // PropertiesAttribute (DataTypes.CUSTOM, value is java.util.Properties):
+        // emit as a JSON object with string-valued keys. Cross-port: TS/C# both
+        // serialize attr.properties as `@<name>: { key: value, ... }`.
+        if (value instanceof java.util.Properties) {
+            java.util.Properties props = (java.util.Properties) value;
+            JsonObject obj = new JsonObject();
+            java.util.TreeMap<String, String> sorted = new java.util.TreeMap<>();
+            for (String name : props.stringPropertyNames()) {
+                sorted.put(name, props.getProperty(name));
+            }
+            for (Map.Entry<String, String> e : sorted.entrySet()) {
+                obj.addProperty(e.getKey(), e.getValue());
+            }
+            return obj;
         }
 
         // StringArrayAttribute: value is List<String>

@@ -445,7 +445,8 @@ public abstract class BaseMetaDataParser {
                     //        +", pkg="+pkg+", superName="+superName+", sn="+sn);
                     //log.error("Invalid MetaData [" +typeName+ "][" +name+ "] on parent ["+parent+"], the SuperClass [" + superName + "] does not exist in file ["+getFilename()+"]");
                     throw new MetaDataException("Invalid MetaData [" +typeName+ "][" +name+ "] on parent ["+parent
-                            +"], the SuperClass [" + superName + "] does not exist in file ["+getFilename()+"]");
+                            +"], the SuperClass [" + superName + "] does not exist in file ["+getFilename()+"]",
+                            com.metaobjects.ErrorCode.ERR_UNRESOLVED_SUPER);
                 }
             }
         }

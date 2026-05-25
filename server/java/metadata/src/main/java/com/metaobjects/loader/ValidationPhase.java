@@ -85,6 +85,7 @@ public final class ValidationPhase {
         validateRelationshipReferentialActions(root);
         validateOrigins(root);
         validateObjectFieldStorage(root);
+        validateIdentityFieldsAndGeneration(root);
         validateEntityHasPrimaryIdentity(root, loader);
         warnFilterableWithoutIndex(root, loader);
     }
@@ -694,6 +695,57 @@ public final class ValidationPhase {
         loader.addWarning(
             "entity object '" + shortName + "' has no primary identity "
                 + "(add an identity child or mark @isAbstract: true)");
+    }
+
+    // =========================================================================
+    // Identity @fields (required) + @generation (enum) validation
+    //
+    // The unified registry exposes withEnum() but the runtime doesn't currently
+    // walk those constraints post-load (only validators with side-effect passes
+    // do). For cross-port parity (TS / C# both throw on these shapes) we run a
+    // dedicated pass here.
+    //
+    //   @fields  is required on every identity.* node → ERR_MISSING_REQUIRED_ATTR
+    //   @generation, if present, must be one of increment / uuid / assigned →
+    //       ERR_BAD_ATTR_VALUE
+    // =========================================================================
+
+    static void validateIdentityFieldsAndGeneration(MetaRoot root) {
+        walkIdentityFieldsAndGeneration(root);
+    }
+
+    private static void walkIdentityFieldsAndGeneration(MetaData node) {
+        if (node instanceof MetaIdentity) {
+            validateIdentityNode((MetaIdentity) node);
+        }
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkIdentityFieldsAndGeneration(child);
+        }
+    }
+
+    private static final java.util.Set<String> VALID_IDENTITY_GENERATIONS =
+        java.util.Set.of("increment", "uuid", "assigned");
+
+    private static void validateIdentityNode(MetaIdentity identity) {
+        if (!identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, false)) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
+                    + ": identity '" + identity.getName()
+                    + "' is missing required @fields attribute",
+                ErrorCode.ERR_MISSING_REQUIRED_ATTR);
+        }
+        if (identity.hasMetaAttr(MetaIdentity.ATTR_GENERATION, false)) {
+            Object v = identity.getMetaAttr(MetaIdentity.ATTR_GENERATION, false).getValue();
+            String gen = v == null ? null : v.toString();
+            if (gen != null && !VALID_IDENTITY_GENERATIONS.contains(gen)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": identity '" + identity.getName()
+                        + "' @generation '" + gen + "' is not a valid value;"
+                        + " allowed: increment, uuid, assigned",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
     }
 
     // =========================================================================
