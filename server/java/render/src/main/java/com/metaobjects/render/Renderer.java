@@ -3,7 +3,6 @@ package com.metaobjects.render;
 import com.github.mustachejava.DefaultMustacheFactory;
 import com.github.mustachejava.Mustache;
 import com.github.mustachejava.MustacheException;
-import com.github.mustachejava.MustacheFactory;
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -11,6 +10,7 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -38,23 +38,6 @@ public final class Renderer {
     private static final Pattern PARTIAL_PATTERN =
         Pattern.compile("\\{\\{>\\s*([^\\s}]+)\\s*\\}\\}");
 
-    /**
-     * Mustache factory with HTML escaping disabled: Mustache.java's
-     * {@code DefaultMustacheFactory.encode()} HTML-escapes by default; we
-     * override it to a raw write so the {@link Escapers} registry is the
-     * sole source of escaping.
-     */
-    private final MustacheFactory mustacheFactory = new DefaultMustacheFactory() {
-        @Override
-        public void encode(String value, Writer writer) {
-            try {
-                writer.write(value);
-            } catch (IOException e) {
-                throw new MustacheException(e);
-            }
-        }
-    };
-
     public String render(RenderRequest req) {
         validate(req);
 
@@ -64,9 +47,26 @@ public final class Renderer {
 
         String expanded = preExpandPartials(body, req.provider(), new ArrayDeque<>());
 
+        // Per-variable escaping via the Mustache encode() hook — equivalent to
+        // C# Stubble's SetEncodingFunction. {{var}} runs through the escaper,
+        // {{{var}}} bypasses it (raw form), and literal template text passes
+        // through unmodified.
+        String format = req.format() != null ? req.format() : Escapers.FORMAT_TEXT;
+        Function<String, String> escaper = v -> Escapers.escape(format, v);
+
         String rendered;
         try {
-            Mustache compiled = mustacheFactory.compile(new StringReader(expanded), refOrInline(req));
+            DefaultMustacheFactory factory = new DefaultMustacheFactory() {
+                @Override
+                public void encode(String value, Writer writer) {
+                    try {
+                        writer.write(escaper.apply(value));
+                    } catch (IOException e) {
+                        throw new MustacheException(e);
+                    }
+                }
+            };
+            Mustache compiled = factory.compile(new StringReader(expanded), refOrInline(req));
             StringWriter writer = new StringWriter();
             compiled.execute(writer, req.payload()).flush();
             rendered = writer.toString();
@@ -74,13 +74,10 @@ public final class Renderer {
             throw new RenderException("Mustache compile/execute failed", e);
         }
 
-        String format = req.format() != null ? req.format() : Escapers.FORMAT_TEXT;
-        String escaped = Escapers.escape(format, rendered);
-
-        if (req.maxChars() != null && escaped.length() > req.maxChars()) {
-            escaped = escaped.substring(0, req.maxChars());
+        if (req.maxChars() != null && rendered.length() > req.maxChars()) {
+            rendered = rendered.substring(0, req.maxChars());
         }
-        return escaped;
+        return rendered;
     }
 
     private static void validate(RenderRequest req) {
