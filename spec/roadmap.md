@@ -67,9 +67,12 @@
     `promptRender()` generator wrapping existing `generateRenderHandle()` +
     `generatePayloadInterfaces()` helpers; `expected/prompts.ts` added to the
     `template-prompt-simple` conformance fixture (cross-language).
-  - `2026-05-25-fr-param-passing-generated-repo-helpers-design.md` — design proposal:
-    generated query helpers take `db` as a parameter (Workers-compatible; matches the
-    idiomatic 2026 ORM-helper shape). Cross-language design; TS impl first.
+  - `2026-05-25-fr-param-passing-generated-repo-helpers-design.md` — **plan-of-record**
+    (brainstormed 2026-05-25): generated query helpers take `db` as a parameter
+    (Workers-compatible; matches the idiomatic 2026 ORM-helper shape). 0.7.0 hard break
+    on the queries-side only; `routesFile()` unchanged; consumer-facing docs recipe
+    bundled at `docs/recipes/wiring-generated-queries.md`. Cross-language principle
+    captured in `spec/decisions/ADR-0008-parameter-passing-generated-repo-helpers.md`.
   - `2026-05-25-fr-cloudflare-workers-deploy-recipe.md` — README recipe for Vite + Workers
     deploy. TS-only.
   - `2026-05-25-fr-release-notes-and-naming-convention-docs.md` — `CHANGELOG.md` backfill
