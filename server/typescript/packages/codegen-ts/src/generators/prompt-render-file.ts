@@ -9,7 +9,7 @@
 // Custom output path:
 //   generators: [..., promptRender({ outFile: "src/render/generated/prompts.ts" })]
 
-import { TYPE_TEMPLATE, TEMPLATE_SUBTYPE_PROMPT } from "@metaobjectsdev/metadata";
+import { TYPE_TEMPLATE, TEMPLATE_SUBTYPE_PROMPT, OBJECT_SUBTYPE_VALUE } from "@metaobjectsdev/metadata";
 import {
   type Generator,
   type GeneratorFactory,
@@ -32,7 +32,7 @@ export const promptRender = function promptRender(opts?: PromptRenderOpts): Gene
   const generator: Generator = {
     name: "prompt-render",
     generate: oncePerRun((entities, ctx) => {
-      const payloads = entities.filter((e) => e.subType === "value");
+      const payloads = entities.filter((e) => e.subType === OBJECT_SUBTYPE_VALUE);
       const prompts = ctx.loadedRoot
         .ownChildren()
         .filter((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_PROMPT);
@@ -48,7 +48,10 @@ export const promptRender = function promptRender(opts?: PromptRenderOpts): Gene
       for (const t of prompts) {
         parts.push(generateRenderHandle(ctx.loadedRoot, t.name));
       }
-      return [{ path: outFile, content: parts.filter((s) => s.length > 0).join("\n\n") }];
+      return [{
+        path: outFile,
+        content: parts.filter((s) => s.length > 0).map((s) => s.trimEnd()).join("\n\n") + "\n",
+      }];
     }),
   };
   if (opts?.target) {

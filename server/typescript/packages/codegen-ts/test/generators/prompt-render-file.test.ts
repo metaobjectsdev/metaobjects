@@ -71,4 +71,53 @@ describe("promptRender() factory", () => {
     expect(out).toHaveLength(1);
     expect(out[0]!.path).toBe("src/render/generated/prompts.ts");
   });
+
+  test("emits payload interface when there are payloads but no prompts", async () => {
+    const root = await loadRoot([
+      {
+        "object.value": {
+          name: "JustAPayload",
+          children: [{ "field.string": { name: "msg" } }],
+        },
+      },
+    ]);
+    const gen = promptRender();
+    const out = await gen.generate(makeCtx(root));
+    expect(out).toHaveLength(1);
+    expect(out[0]!.content).toContain("export interface JustAPayload");
+    expect(out[0]!.content).toContain("msg: string;");
+  });
+
+  test("emits render handle when there are prompts but no payload VOs", async () => {
+    // Note: a prompt without a resolvable @payloadRef may emit something specific;
+    // this tests that the factory doesn't short-circuit when only prompts are present.
+    // Declare a placeholder VO outside the test's filter to satisfy @payloadRef
+    // resolution, then check that the prompt's render handle still emits.
+    const root = await loadRoot([
+      {
+        "object.value": {
+          name: "Holder",
+          children: [{ "field.string": { name: "x" } }],
+        },
+      },
+      {
+        "template.prompt": {
+          name: "onlyPrompt",
+          "@payloadRef": "Holder",
+          "@textRef": "p/only",
+          "@format": "text",
+        },
+      },
+    ]);
+    // Filter the factory to skip the Holder VO so we only test the prompt path.
+    // (Use a custom filter to exclude object.value entities for this test.)
+    const gen = promptRender({ outFile: "out.ts" });
+    // Wrap ctx.matches to skip the Holder VO so payloads list is effectively empty.
+    const ctx = makeCtx(root);
+    const filteredCtx: typeof ctx = { ...ctx, matches: (e) => e.name !== "Holder" };
+    const out = await gen.generate(filteredCtx);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.path).toBe("out.ts");
+    expect(out[0]!.content).toMatch(/onlyPrompt/i);
+  });
 });

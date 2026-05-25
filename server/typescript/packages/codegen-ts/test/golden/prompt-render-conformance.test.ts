@@ -63,10 +63,7 @@ describe("promptRender() conformance — expected/prompts.ts byte-match", () => 
       expect(out, `${fixtureName}: expected 1 file from promptRender()`).toHaveLength(1);
 
       const expected = readFileSync(expectedPath, "utf-8");
-      // Generator appends "\n" when joining parts; the fixture file was written
-      // with a trailing newline — normalize to compare content only.
-      const actual = out[0]!.content + "\n";
-      expect(actual, `${fixtureName}: prompts.ts content mismatch`).toBe(expected);
+      expect(out[0]!.content, `${fixtureName}: prompts.ts content mismatch`).toBe(expected);
     });
   }
 });
