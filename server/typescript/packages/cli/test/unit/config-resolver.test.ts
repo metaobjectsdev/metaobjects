@@ -45,6 +45,13 @@ describe("resolveMigrateConfig", () => {
     else process.env.DATABASE_URL = origEnv;
   });
 
+  const defaultD1Flags = {
+    d1Binding: undefined,
+    remote: false,
+    apply: false,
+    yes: false,
+  } as const;
+
   test("built-in defaults when no flag/env/config", async () => {
     root = makeRoot();
     const resolved = await resolveMigrateConfig({
@@ -55,6 +62,7 @@ describe("resolveMigrateConfig", () => {
       allow: [],
       onAmbiguous: undefined,
       dryRun: false,
+      ...defaultD1Flags,
     }, root);
     expect(resolved.outDir).toBe("./.metaobjects/migrations");
     expect(resolved.databaseUrl).toBeUndefined();
@@ -75,6 +83,7 @@ describe("resolveMigrateConfig", () => {
       allow: [],
       onAmbiguous: undefined,
       dryRun: false,
+      ...defaultD1Flags,
     }, root);
     expect(resolved.databaseUrl).toBe("env://from-env");
   });
@@ -90,6 +99,7 @@ describe("resolveMigrateConfig", () => {
       allow: [],
       onAmbiguous: undefined,
       dryRun: false,
+      ...defaultD1Flags,
     }, root);
     expect(resolved.databaseUrl).toBe("flag://from-flag");
   });
@@ -106,6 +116,7 @@ describe("resolveMigrateConfig", () => {
       allow: ["drop-table"],
       onAmbiguous: undefined,
       dryRun: false,
+      ...defaultD1Flags,
     }, root);
     expect(resolved.allow).toEqual(["drop-table"]);
   });
@@ -122,10 +133,52 @@ describe("resolveMigrateConfig", () => {
         allow: [],
         onAmbiguous: undefined,
         dryRun: false,
+        ...defaultD1Flags,
       }, root);
       expect(resolved.databaseUrl).toBe("file:./x.db");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test("d1 block: flag wins for binding; config wins for remote when flag is false", async () => {
+    root = makeRoot({
+      migrate: { d1: { remote: true, autoApply: false, wranglerConfigPath: "./wrangler.toml" } },
+    });
+    const resolved = await resolveMigrateConfig({
+      db: undefined,
+      dialect: "d1",
+      outDir: undefined,
+      slug: undefined,
+      allow: [],
+      onAmbiguous: undefined,
+      dryRun: false,
+      d1Binding: "MYDB",
+      remote: false,
+      apply: false,
+      yes: false,
+    }, root);
+    expect(resolved.d1?.binding).toBe("MYDB");
+    expect(resolved.d1?.remote).toBe(true);
+    expect(resolved.d1?.autoApply).toBe(false);
+    expect(resolved.d1?.wranglerConfigPath).toBe("./wrangler.toml");
+  });
+
+  test("d1 block: flag remote=true beats config remote=false", async () => {
+    root = makeRoot({ migrate: { d1: { remote: false } } });
+    const resolved = await resolveMigrateConfig({
+      db: undefined,
+      dialect: "d1",
+      outDir: undefined,
+      slug: undefined,
+      allow: [],
+      onAmbiguous: undefined,
+      dryRun: false,
+      d1Binding: undefined,
+      remote: true,
+      apply: false,
+      yes: false,
+    }, root);
+    expect(resolved.d1?.remote).toBe(true);
   });
 });

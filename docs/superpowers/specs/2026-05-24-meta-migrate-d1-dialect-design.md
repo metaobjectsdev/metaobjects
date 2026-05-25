@@ -126,7 +126,7 @@ Both up and down get the safety pass — the down sidecar isn't run by Wrangler,
 2. **Drop `SAVEPOINT` / `RELEASE` / `ROLLBACK TO`.** Same family. Defensive — not generated today.
 3. **Preserve `PRAGMA foreign_keys = OFF/ON`.** Wrangler sends a migration file as a single D1 batch, so PRAGMAs are expected to persist for the file's duration and the recreate-and-copy pattern should work as-is. **Verify during implementation:** the safety-pass test suite includes a recreate-and-copy fixture exercised end-to-end against `wrangler d1 execute --local` to confirm. If D1 silently drops the PRAGMA across statements in a batch, fall back to emitting per-statement FK-disable + re-enable bookends around each recreate-and-copy block (or, last resort, gate FK-touching DDL behind a typed error).
 4. **Reject `ATTACH DATABASE` / `DETACH DATABASE` / `VACUUM` at emit time** with a typed error. Not generated today; this is a future-proofing guard so a regression fails early with a clear message instead of at apply time.
-5. **Warn on statement size** if any statement exceeds 100 KB (the `wrangler d1 execute` limit). Schema DDL never gets close; data migrations could. Warn, don't block.
+5. **Warn on statement size** if any statement exceeds 1 MB (the `wrangler d1 migrations apply --file` limit; the D1 batch API's per-statement cap). Schema DDL never gets close; data migrations could. Warn, don't block.
 
 ### Recreate-and-copy unchanged
 

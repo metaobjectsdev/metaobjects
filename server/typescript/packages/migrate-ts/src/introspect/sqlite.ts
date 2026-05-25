@@ -1,10 +1,10 @@
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
 import type {
-  SchemaSnapshot, TableDescriptor, ColumnDescriptor, ColumnDefault, SnapshotMeta,
+  SchemaSnapshot, TableDescriptor, ColumnDescriptor, SnapshotMeta,
   IndexDescriptor, FkDescriptor, FkAction, ViewDescriptor,
 } from "../types.js";
-import type { SqlType } from "../sql-type.js";
+import { parseSqliteDefault, sqliteTypeToSqlType, sqliteRuleToAction } from "./sqlite-shared.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RawKysely = Kysely<any>;
@@ -83,66 +83,6 @@ async function readSqlitePrimaryKey(k: RawKysely, table: string): Promise<string
   return rows.rows.map((r) => r.name);
 }
 
-function sqliteTypeToSqlType(declaredType: string): SqlType {
-  const t = declaredType.trim().toUpperCase();
-
-  // SQLite's type affinity is loose; we honor the declared type literally for round-trip stability.
-  // Affinity rules per sqlite.org/datatype3.html — adapted to canonical SqlType.
-
-  // text affinity
-  const varcharMatch = /^(?:VARCHAR|CHAR|CHARACTER|TEXT)\((\d+)\)$/.exec(t);
-  if (varcharMatch) return { kind: "text", maxLength: parseInt(varcharMatch[1] ?? "0", 10) };
-  if (/TEXT|CLOB|VARCHAR|CHAR/.test(t)) return { kind: "text" };
-
-  // numeric affinity
-  const numMatch = /^(?:NUMERIC|DECIMAL)\((\d+)(?:,\s*(\d+))?\)$/.exec(t);
-  if (numMatch) {
-    const out: SqlType = { kind: "numeric" };
-    if (numMatch[1]) out.precision = parseInt(numMatch[1], 10);
-    if (numMatch[2]) out.scale = parseInt(numMatch[2], 10);
-    return out;
-  }
-  if (t === "BOOLEAN" || t === "BOOL") return { kind: "boolean" };
-  if (t === "DATE") return { kind: "date" };
-  if (t === "DATETIME" || t === "TIMESTAMP") return { kind: "timestamp", withTimezone: false };
-
-  // integer affinity (SQLite stores all INTEGER as 64-bit internally).
-  // Distinguish INT (32-bit) from INTEGER/BIGINT (64-bit) for round-trip fidelity:
-  // the emitter uses "INT" for integer{32} and "INTEGER" for integer{64}.
-  if (t === "INT" || t === "SMALLINT" || t === "TINYINT") return { kind: "integer", bits: 32 };
-  if (/INT/.test(t)) return { kind: "integer", bits: 64 };
-
-  // real affinity
-  if (/REAL|FLOA|DOUB/.test(t)) return { kind: "real" };
-
-  // blob affinity
-  if (t === "BLOB" || t === "") return { kind: "blob" };
-
-  // numeric affinity fallback
-  if (/NUMERIC|DECIMAL/.test(t)) return { kind: "numeric" };
-
-  // json (libsql/sqlite have JSON1)
-  if (t === "JSON") return { kind: "json" };
-
-  return { kind: "text" };
-}
-
-const SQLITE_EXPR_DEFAULT_PATTERNS = [
-  /^current_timestamp$/i,
-  /^current_date$/i,
-  /^current_time$/i,
-  /\(.*\)/,                           // anything function-like
-];
-
-function parseSqliteDefault(raw: string | null): ColumnDefault | undefined {
-  if (raw === null || raw === undefined || raw === "") return undefined;
-  const isExpr = SQLITE_EXPR_DEFAULT_PATTERNS.some((re) => re.test(raw));
-  if (isExpr) return { kind: "expr", value: raw };
-  // SQLite stores literal string defaults with surrounding quotes.
-  const cleaned = raw.replace(/^'(.*)'$/, "$1");
-  return { kind: "literal", value: cleaned };
-}
-
 async function readSqliteIndexes(k: RawKysely, table: string): Promise<IndexDescriptor[]> {
   // SELECT * avoids "unique" being treated as a reserved keyword by libsql.
   const listRows = await sql<{ seq: number; name: string; unique: number; origin: string; partial: number }>`
@@ -207,10 +147,3 @@ async function readSqliteForeignKeys(k: RawKysely, table: string): Promise<FkDes
   });
 }
 
-function sqliteRuleToAction(rule: string): FkAction {
-  const r = rule.toUpperCase();
-  if (r === "CASCADE") return "cascade";
-  if (r === "SET NULL") return "set-null";
-  if (r === "RESTRICT") return "restrict";
-  return "no-action";
-}

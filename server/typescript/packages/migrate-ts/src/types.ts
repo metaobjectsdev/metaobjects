@@ -185,4 +185,4 @@ export interface EmitResult {
   recreatedTables: ReadonlySet<string>;
 }
 
-export type Dialect = "postgres" | "sqlite";
+export type Dialect = "postgres" | "sqlite" | "d1";

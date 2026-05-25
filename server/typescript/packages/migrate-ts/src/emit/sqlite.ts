@@ -23,7 +23,7 @@ const RECREATE_TRIGGERING_KINDS = new Set<Change["kind"]>([
 ]);
 
 export function renderSqlite(
-  changes: Change[],
+  changes: readonly Change[],
   expectedSchema?: SchemaSnapshot,
   actualMeta?: SnapshotMeta,
 ): EmitResult {

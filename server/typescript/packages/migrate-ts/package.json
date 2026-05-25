@@ -20,15 +20,20 @@
   "license": "Apache-2.0",
   "author": "Doug Mealing <doug@dougmealing.com>",
   "homepage": "https://metaobjects.dev",
-  "bugs": { "url": "https://github.com/metaobjectsdev/metaobjects/issues" },
+  "bugs": {
+    "url": "https://github.com/metaobjectsdev/metaobjects/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/metaobjectsdev/metaobjects.git",
     "directory": "server/typescript/packages/migrate-ts"
   },
   "keywords": ["metaobjects", "migrate", "postgres", "sqlite", "schema-diff"],
-  "publishConfig": { "access": "public" },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
+    "@iarna/toml": "^2.2.5",
     "@metaobjectsdev/metadata": "workspace:*"
   },
   "peerDependencies": {

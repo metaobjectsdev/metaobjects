@@ -59,6 +59,40 @@ await writeMigration(sql, { dir: ".metaobjects/migrations", slug: "add-customer-
   + `onAmbiguous` callback — library doesn't prompt; CLI in SP5 wires the prompt.
 - Per-change-kind allow flags for destructive opt-in.
 
+## Dialects
+
+### `sqlite` — SQLite / libsql / Turso
+
+Connects via a Kysely `LibsqlDialect`. Emits `up.sql` + `down.sql` to the configured output directory.
+
+### `postgres` — PostgreSQL
+
+Connects via Kysely's built-in `PostgresDialect`. Emits `up.sql` + `down.sql`.
+
+### `d1` — Cloudflare D1
+
+Targets Cloudflare D1 via the wrangler CLI. Connection is read from `wrangler.toml`; introspection runs via `wrangler d1 execute --json`. SQL emit reuses the `sqlite` path with a D1-safety post-pass (strips explicit transactions, rejects `ATTACH`/`VACUUM`). Migration files are written in Wrangler's native layout (`migrations/<seq>_<slug>.sql` + a `.down/` sidecar for rollback).
+
+**Flags (from `@metaobjectsdev/cli`):**
+- `--dialect d1` — selects this pipeline.
+- `--d1 <binding>` — explicit binding from `wrangler.toml` (auto-detected when there's exactly one).
+- `--remote` — target remote D1 (default: local).
+- `--apply` — invoke `wrangler d1 migrations apply` after writing.
+- `--yes` — skip the `--remote --apply` 2-second confirmation pause.
+
+**Config (`.metaobjects/config.json`):**
+
+```jsonc
+{
+  "migrate": {
+    "dialect": "d1",
+    "d1": { "binding": "DB", "remote": false, "autoApply": false }
+  }
+}
+```
+
+**Requirements:** `wrangler` >= 3 on PATH (`npm i -D wrangler`).
+
 ## Not yet shipped
 
 - `meta migrate --apply` (apply migrations against the DB).

@@ -13,13 +13,14 @@ import {
   type ViewMigrationInput,
   type ViewMigrationsResult,
 } from "@metaobjectsdev/migrate-ts";
+import type { Dialect } from "./kysely.js";
 
 /** view-name → set of source-table names the view's SELECT depends on. */
 export type ProjectionViewDependencies = ReadonlyMap<string, ReadonlySet<string>>;
 
 export interface ProjectionMigrationsOpts {
   readonly metadata: MetaData;
-  readonly dialect: "postgres" | "sqlite";
+  readonly dialect: Dialect;
   readonly allowBreaking?: boolean;
   /** Column naming strategy forwarded to extractViewSpec. Defaults to "snake_case". */
   readonly columnNamingStrategy?: "snake_case" | "literal" | "kebab-case";
@@ -53,6 +54,8 @@ export function computeProjectionMigrations(
   if (!(opts.metadata instanceof MetaRoot)) {
     throw new Error("computeProjectionMigrations: opts.metadata must be a loaded MetaRoot.");
   }
+  // D1 is SQLite at the SQL level; normalize before passing to downstream emitters.
+  const dialect: "postgres" | "sqlite" = opts.dialect === "d1" ? "sqlite" : opts.dialect;
   const root = opts.metadata;
   const columnNamingStrategy = opts.columnNamingStrategy ?? "snake_case";
 
@@ -84,7 +87,7 @@ export function computeProjectionMigrations(
     }
 
     const createSql = emitViewDdl(spec, {
-      dialect: opts.dialect,
+      dialect,
       baseTableName,
       joinTables,
     });
@@ -111,7 +114,7 @@ export function computeProjectionMigrations(
   }
 
   return computeViewMigrations({
-    dialect: opts.dialect,
+    dialect,
     allowBreaking: opts.allowBreaking ?? false,
     views,
   });

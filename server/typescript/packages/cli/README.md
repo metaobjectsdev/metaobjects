@@ -58,12 +58,20 @@ Diffs `metaobjects/` metadata against a live DB and emits paired migration SQL f
 Flags:
 - `--db <url>` (required or via `$DATABASE_URL` or `.metaobjects/config.json`)
   - Supported schemes: `file:`, `libsql:`, `postgres:`, `postgresql:`
-- `--dialect sqlite|postgres` — auto-detected from URL scheme
+- `--dialect sqlite|postgres|d1` — auto-detected from URL scheme; use `d1` for Cloudflare D1
 - `--out-dir <path>` (default `./.metaobjects/migrations`)
 - `--slug <name>` — required when changes are pending (e.g., `add-user-shipping`)
 - `--allow <csv>` — destructive-change permissions: `drop-column,drop-table,type-change,drop-index,drop-fk,nullable-to-not-null`
 - `--on-ambiguous abort|rename|drop-add` (default `abort`) — non-interactive
 - `--dry-run` — print SQL pair to stdout, write nothing
+
+**D1-specific flags** (only relevant with `--dialect d1`):
+- `--d1 <binding>` — explicit D1 binding from `wrangler.toml` (auto-detected when there's exactly one)
+- `--remote` — target remote D1 (default: local)
+- `--apply` — invoke `wrangler d1 migrations apply` after writing
+- `--yes` — skip the `--remote --apply` 2-second confirmation pause
+
+**Requirements for D1:** `wrangler` >= 3 on PATH (`npm i -D wrangler`).
 
 ## Configuration
 
@@ -158,6 +166,17 @@ single-`outDir` project.
     "databaseUrl": "file:./local.db",
     "onAmbiguous": "abort",
     "allow": []
+  }
+}
+```
+
+For D1 projects, the `migrate` block instead looks like:
+
+```jsonc
+{
+  "migrate": {
+    "dialect": "d1",
+    "d1": { "binding": "DB", "remote": false, "autoApply": false }
   }
 }
 ```

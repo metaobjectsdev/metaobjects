@@ -38,12 +38,16 @@ PROMPT-SNAPSHOT FLAGS:
 MIGRATE FLAGS:
   --db <url>            DB connection URL (required, or set DATABASE_URL or config)
                         Supports: file:, libsql:, postgres:, postgresql:
-  --dialect sqlite|postgres   Optional override (auto-detected from URL scheme)
+  --dialect sqlite|postgres|d1   Optional override (auto-detected from URL scheme)
   --out-dir <path>      Migration directory (default: ./.metaobjects/migrations)
   --slug <name>         Required when changes are present (e.g., add-user-shipping)
   --allow <csv>         Comma-separated destructive-change permissions:
                         drop-column,drop-table,type-change,drop-index,drop-fk,nullable-to-not-null
   --on-ambiguous abort|rename|drop-add   Default abort
+  --d1 <binding>        D1 binding name from wrangler.toml (only with --dialect d1)
+  --remote              Target remote D1 instead of local (only with --dialect d1)
+  --apply               Run 'wrangler d1 migrations apply' after writing files
+  --yes                 Skip the --remote --apply confirmation pause
   --dry-run             Print SQL to stdout, don't write
 
 Other commands (ingest, mcp, serve, install-hooks, audit, capture, promote)

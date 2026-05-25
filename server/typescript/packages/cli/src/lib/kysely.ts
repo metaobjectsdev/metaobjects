@@ -1,6 +1,6 @@
 import { Kysely } from "kysely";
 
-export type Dialect = "sqlite" | "postgres";
+export type Dialect = "sqlite" | "postgres" | "d1";
 
 export interface KyselyHandle {
   db: Kysely<Record<string, unknown>>;
@@ -55,6 +55,12 @@ export async function buildKyselyFromUrl(
 ): Promise<KyselyHandle> {
   const dialect = dialectOverride ?? inferDialect(url);
   const displayUrl = redactUrl(url);
+
+  if (dialect === "d1") {
+    throw new Error(
+      `dialect 'd1' does not use a URL connection; use meta migrate --d1 <binding>`,
+    );
+  }
 
   if (dialect === "sqlite") {
     type LibsqlDialectCtor = new (opts: { url: string }) => ConstructorParameters<typeof Kysely<Record<string, unknown>>>[0]["dialect"];

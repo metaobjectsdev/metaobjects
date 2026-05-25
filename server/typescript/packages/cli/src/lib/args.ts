@@ -9,6 +9,7 @@ export interface InitFlags {
   quiet: boolean;
   printOnly: boolean;
   refreshDocs: boolean;
+  d1: boolean;
 }
 
 export function parseInitArgs(argv: string[]): InitFlags {
@@ -19,6 +20,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
       quiet: { type: "boolean", default: false },
       "print-only": { type: "boolean", default: false },
       "refresh-docs": { type: "boolean", default: false },
+      d1: { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
@@ -28,6 +30,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
     quiet: !!values.quiet,
     printOnly: !!values["print-only"],
     refreshDocs: !!values["refresh-docs"],
+    d1: !!values.d1,
   };
 }
 
@@ -131,7 +134,7 @@ export function parsePromptSnapshotArgs(argv: string[]): PromptSnapshotFlags {
 // migrate flags
 // ---------------------------------------------------------------------------
 
-const DIALECTS = ["sqlite", "postgres"] as const;
+const DIALECTS = ["sqlite", "postgres", "d1"] as const;
 type Dialect = (typeof DIALECTS)[number];
 
 const ALLOW_TOKENS = [
@@ -155,6 +158,11 @@ export interface MigrateFlags {
   allow: AllowToken[];
   onAmbiguous: OnAmbiguous | undefined;
   dryRun: boolean;
+  // D1-specific:
+  d1Binding: string | undefined;
+  remote: boolean;
+  apply: boolean;
+  yes: boolean;
 }
 
 export function parseMigrateArgs(argv: string[]): MigrateFlags {
@@ -168,6 +176,10 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
       "allow": { type: "string" },
       "on-ambiguous": { type: "string" },
       "dry-run": { type: "boolean", default: false },
+      "d1": { type: "string" },
+      "remote": { type: "boolean", default: false },
+      "apply": { type: "boolean", default: false },
+      "yes": { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
@@ -203,5 +215,9 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
     allow: allowTokens as AllowToken[],
     onAmbiguous: onAmb as OnAmbiguous | undefined,
     dryRun: !!values["dry-run"],
+    d1Binding: values.d1 as string | undefined,
+    remote: !!values.remote,
+    apply: !!values.apply,
+    yes: !!values.yes,
   };
 }
