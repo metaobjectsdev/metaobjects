@@ -33,7 +33,7 @@ import { MetaAttr, type ValueError } from "../src/core/attr/meta-attr.js";
 import { MetaField } from "../src/core/field/meta-field.js";
 import { registerAttrClass } from "../src/attr-class-map.js";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { canonicalSerialize } from "../src/serializer-json.js";
 import { TYPE_ATTR, TYPE_FIELD, TYPE_OBJECT, type AttrSubType } from "../src/index.js";
 import { DATA_TYPE_STRING, type DataType } from "../src/data-type.js";
@@ -145,7 +145,7 @@ describe("Open-Closed proof: a new subtype costs one class + one registration li
 
     const loader = new MetaDataLoader({ registry, freeze: false });
     const { root, errors } = await loader.load([
-      new InMemorySource(doc, { id: "demo.json", format: "json" }),
+      new InMemoryStringSource(doc, { id: "demo.json", format: "json" }),
     ]);
     expect(errors).toEqual([]);
 
@@ -217,7 +217,7 @@ describe("Open-Closed proof: a new subtype costs one class + one registration li
 
     const loader = new MetaDataLoader({ registry, freeze: false });
     const { errors } = await loader.load([
-      new InMemorySource(doc, { id: "demo.json", format: "json" }),
+      new InMemoryStringSource(doc, { id: "demo.json", format: "json" }),
     ]);
     expect(
       errors.some((e) => (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE"),
@@ -251,7 +251,7 @@ describe("Open-Closed proof: a new subtype costs one class + one registration li
 
     const loader = new MetaDataLoader({ registry, freeze: false });
     const { root, errors } = await loader.load([
-      new InMemorySource(doc, { id: "demo.json", format: "json" }),
+      new InMemoryStringSource(doc, { id: "demo.json", format: "json" }),
     ]);
     expect(errors).toEqual([]);
 

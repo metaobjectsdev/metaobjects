@@ -1,9 +1,10 @@
 import { describe, it, expect } from "bun:test";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { resolve } from "node:path";
 import { makeRenderContext, buildPkMap, buildRelationMap, type ResolvedTarget } from "@metaobjectsdev/codegen-ts";
 import { renderHooksFile } from "../src/templates/hooks-file.js";
 import { renderColumnsFile } from "../src/templates/columns-file.js";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 // Product lives in package "shop::commerce" → package-layout path "shop/commerce/Product".
 const FIXTURE = resolve(import.meta.dir, "fixtures", "packaged-grid-entity.json");
@@ -12,7 +13,7 @@ const model: ResolvedTarget = { name: "default", outDir: "db/gen", importBase: "
 const web:   ResolvedTarget = { name: "web", outDir: "web/gen", importBase: undefined, outputLayout: "package", dbImport: "../index" };
 
 async function ctxFor(self: ResolvedTarget, em: ResolvedTarget) {
-  const { root } = await new FileMetaDataLoader().loadFiles([FIXTURE]);
+  const { root } = await new MetaDataLoader().load([new FileSource(FIXTURE)]);
   const entity = root.objects().find((o) => o.name === "Product")!;
   const ctx = makeRenderContext({
     dialect: "sqlite", loadedRoot: root, outDir: self.outDir, dbImport: self.dbImport,

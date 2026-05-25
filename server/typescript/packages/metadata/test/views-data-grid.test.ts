@@ -12,10 +12,11 @@ import {
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
   OBJECT_SUBTYPE_ENTITY, FIELD_SUBTYPE_STRING,
 } from "../src/index.js";
-import { FileMetaDataLoader } from "../src/core/file-meta-data-loader.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
+import { FileSource } from "../src/loader/sources/file-source.js";
 
 describe("dataGrid layout subtype constants", () => {
   test("LAYOUT_SUBTYPE_DATA_GRID has expected string value", () => {
@@ -29,7 +30,7 @@ describe("dataGrid layout subtype constants", () => {
   });
 });
 
-describe("FileMetaDataLoader accepts dataGrid layouts on objects", () => {
+describe("loader accepts dataGrid layouts on objects", () => {
   test("dataGrid layout loads cleanly on an entity", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "loader-data-grid-layout-"));
     const path = join(tmp, "fixture.json");
@@ -48,7 +49,7 @@ describe("FileMetaDataLoader accepts dataGrid layouts on objects", () => {
       ]},
     }));
     try {
-      const result = await new FileMetaDataLoader().loadFiles([path]);
+      const result = await new MetaDataLoader().load([new FileSource(path)]);
       expect(result.errors).toEqual([]);
       const sub = result.root.ownChildren().find((c) => c.name === "Sub");
       expect(sub).toBeDefined();
@@ -61,7 +62,7 @@ describe("FileMetaDataLoader accepts dataGrid layouts on objects", () => {
   });
 });
 
-describe("FileMetaDataLoader validates @defaultSortField references an existing field (layout[dataGrid])", () => {
+describe("loader validates @defaultSortField references an existing field (layout[dataGrid])", () => {
   test("error when defaultSortField names a field not on the entity", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "loader-sort-validation-"));
     const path = join(tmp, "fixture.json");
@@ -81,7 +82,7 @@ describe("FileMetaDataLoader validates @defaultSortField references an existing 
       ]},
     }));
     try {
-      const result = await new FileMetaDataLoader().loadFiles([path]);
+      const result = await new MetaDataLoader().load([new FileSource(path)]);
       expect(result.errors.length).toBeGreaterThan(0);
       const msg = result.errors.map((e) => e.message).join("\n");
       expect(msg).toContain("defaultSortField");
@@ -111,7 +112,7 @@ describe("FileMetaDataLoader validates @defaultSortField references an existing 
       ]},
     }));
     try {
-      const result = await new FileMetaDataLoader().loadFiles([path]);
+      const result = await new MetaDataLoader().load([new FileSource(path)]);
       expect(result.errors).toEqual([]);
     } finally {
       rmSync(tmp, { recursive: true, force: true });

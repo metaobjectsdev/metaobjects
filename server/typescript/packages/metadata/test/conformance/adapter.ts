@@ -16,7 +16,7 @@ import { composeRegistry } from "../../src/provider.js";
 import { coreTypesProvider } from "../../src/core-types.js";
 import { dbProvider } from "../../src/persistence/db/db-provider.js";
 import { docProvider } from "../../src/core/documentation/doc-provider.js";
-import { FileMetaDataLoader } from "../../src/core/file-meta-data-loader.js";
+import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
 import type { MetaData } from "../../src/shared/meta-data.js";
 import { canonicalSerialize, canonicalSerializeEffective } from "../../src/serializer-json.js";
 import { navigate } from "./navigator.js";
@@ -54,9 +54,7 @@ export const tsAdapter: ConformanceAdapter = {
       return provider;
     });
     const registry = composeRegistry(resolved);
-    const result = await new FileMetaDataLoader({ registry }).loadDirectory(
-      inputDir,
-    );
+    const result = await MetaDataLoader.fromDirectory(inputDir, { registry });
     return {
       tree: result.root,
       errorCodes: result.errors.map(errorCode),

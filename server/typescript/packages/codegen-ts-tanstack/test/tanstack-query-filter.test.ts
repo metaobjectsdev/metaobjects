@@ -1,16 +1,17 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { tanstackQuery } from "../src/tanstack-query.js";
 import { makeRenderContext } from "@metaobjectsdev/codegen-ts";
 import { buildPkMap, buildRelationMap } from "@metaobjectsdev/codegen-ts";
 import type { GenContext } from "@metaobjectsdev/codegen-ts";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const FIXTURE = resolve(import.meta.dir, "..", "..", "codegen-ts", "test", "fixtures", "filter-fixture.json");
 
 async function buildCtx(): Promise<GenContext> {
-  const loader = new FileMetaDataLoader();
-  const { root } = await loader.loadFiles([FIXTURE]);
+  const loader = new MetaDataLoader();
+  const { root } = await loader.load([new FileSource(FIXTURE)]);
   const entities = root.objects();
   const renderContext = makeRenderContext({
     dialect: "sqlite",

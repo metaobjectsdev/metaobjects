@@ -1,12 +1,13 @@
 import { describe, test, expect } from "bun:test";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { renderFilterAllowlist, renderSortAllowlist } from "../../src/templates/filter-allowlist.js";
 import { resolve } from "node:path";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const FIXTURE = resolve(import.meta.dir, "..", "fixtures", "filter-fixture.json");
 
 async function loadEntity(name: string) {
-  const { root } = await new FileMetaDataLoader().loadFiles([FIXTURE]);
+  const { root } = await new MetaDataLoader().load([new FileSource(FIXTURE)]);
   return root.objects().find((c) => c.name === name)!;
 }
 
@@ -34,7 +35,7 @@ describe("renderFilterAllowlist", () => {
   });
 
   test("entity with no filterable fields emits empty allowlist", async () => {
-    const { root } = await new FileMetaDataLoader().loadFiles([FIXTURE]);
+    const { root } = await new MetaDataLoader().load([new FileSource(FIXTURE)]);
     const subscriber = root.objects().find((c) => c.name === "Subscriber")!;
     const out = renderFilterAllowlist(subscriber).toString();
     expect(out).toContain("SubscriberFilterAllowlist");

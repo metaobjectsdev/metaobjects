@@ -1,8 +1,8 @@
 // MetaDataSource — the raw-document unit consumed by the loader pipeline.
 //
-// A loader (FileMetaDataLoader, later UrlMetaDataLoader) discovers/acquires
-// sources; the MetaDataLoader pipeline calls read() on each. read() is async
-// so file/URL sources can do I/O; InMemorySource resolves immediately.
+// A loader (MetaDataLoader, fed by FileSource/DirectorySource/UriSource/
+// InMemoryStringSource) parses each source's content. read() is async so file
+// and URI sources can do I/O; InMemoryStringSource resolves immediately.
 
 /** Format of a source's content. Selects the parser. */
 export type MetaDataFormat = "json" | "yaml";
@@ -17,15 +17,19 @@ export interface MetaDataSource {
   read(): Promise<string>;
 }
 
-/** A metadata source backed by an in-memory string. */
-export class InMemorySource implements MetaDataSource {
+/**
+ * A metadata source backed by an in-memory string. The default identity is
+ * `"<inline>"` — matches the cross-language convention shared by the Java /
+ * C# / Python ports.
+ */
+export class InMemoryStringSource implements MetaDataSource {
   readonly id: string;
   readonly format: MetaDataFormat;
   private readonly _content: string;
 
   constructor(content: string, opts?: { id?: string; format?: MetaDataFormat }) {
     this._content = content;
-    this.id = opts?.id ?? "<in-memory>";
+    this.id = opts?.id ?? "<inline>";
     this.format = opts?.format ?? "json";
   }
 

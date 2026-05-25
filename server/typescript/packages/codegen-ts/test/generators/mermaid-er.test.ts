@@ -1,11 +1,11 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { mermaidErDiagram } from "../../src/generators/mermaid-er.js";
 import type { GenContext } from "../../src/generator.js";
 
 async function loadRoot() {
   const result = await new MetaDataLoader().load([
-    new InMemorySource(
+    new InMemoryStringSource(
       JSON.stringify({
         "metadata.root": {
           children: [

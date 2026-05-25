@@ -1,7 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { routesFile } from "../../src/generators/routes-file.js";
@@ -12,12 +11,14 @@ import { buildRelationMap } from "../../src/relation-resolver.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { GENERATED_HEADER } from "../../src/constants.js";
 import type { GenContext } from "../../src/generator.js";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const FIXTURE = resolve(import.meta.dir, "..", "fixtures", "single-entity.json");
 
 async function buildCtx(genFilter?: (e: MetaObject) => boolean): Promise<GenContext> {
-  const loader = new FileMetaDataLoader();
-  const { root } = await loader.loadFiles([FIXTURE]);
+  const loader = new MetaDataLoader();
+  const { root } = await loader.load([new FileSource(FIXTURE)]);
   const entities = root.objects();
   const renderContext = makeRenderContext({
     dialect: "sqlite", loadedRoot: root, outDir: "/tmp",

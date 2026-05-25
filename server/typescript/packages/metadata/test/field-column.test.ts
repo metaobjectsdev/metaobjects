@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { MetaObject } from "../src/core/object/meta-object.js";
 import { MetaField } from "../src/core/field/meta-field.js";
 import { resolveColumnName } from "../src/naming.js";
 
 async function loadDoc(doc: unknown) {
-  return new MetaDataLoader().load([new InMemorySource(JSON.stringify(doc))]);
+  return new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
 }
 
 const meta = {

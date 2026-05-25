@@ -17,10 +17,10 @@
 import { test, expect } from "bun:test";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { FileMetaDataLoader } from "../src/core/file-meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { canonicalSerialize } from "../src/serializer-json.js";
 import type { ParseError } from "../src/errors.js";
+import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 
 const CORPUS = join(import.meta.dir, "../../../../../fixtures/yaml-conformance");
 
@@ -82,9 +82,9 @@ async function loadYaml(yaml: string): Promise<{
   root: import("../src/shared/meta-root.js").MetaRoot;
   errors: Error[];
 }> {
-  const loader = new FileMetaDataLoader();
+  const loader = new MetaDataLoader();
   const result = await loader.load([
-    new InMemorySource(yaml, { id: "input.yaml", format: "yaml" }),
+    new InMemoryStringSource(yaml, { id: "input.yaml", format: "yaml" }),
   ]);
   return { root: result.root, errors: result.errors };
 }

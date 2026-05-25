@@ -10,13 +10,12 @@
 //   - Content errors (parse/validation failures) are collected in errors[] and
 //     returned in the result — they do NOT throw. `json` is still produced from
 //     whatever tree the Loader returned (Loader always returns a valid MetaData).
-//   - I/O failures (missing/unreadable directory) are caught by
-//     `loadFromDirectory` and returned in its `errors[]`; `loadAndExportJson`
-//     surfaces them unchanged in `ExportResult.errors`. It does not throw for
-//     directory or metadata problems.
+//   - I/O failures (missing/unreadable directory) surface as collected errors
+//     via MetaDataLoader.fromDirectory; `loadAndExportJson` surfaces them
+//     unchanged in `ExportResult.errors`. It does not throw for directory or
+//     metadata problems.
 
-import { FileMetaDataLoader } from "./file-meta-data-loader.js";
-import type { LoadOptions } from "../loader/meta-data-loader.js";
+import { MetaDataLoader, type LoadOptions } from "../loader/meta-data-loader.js";
 import { canonicalSerialize } from "../serializer-json.js";
 
 // ---------------------------------------------------------------------------
@@ -39,24 +38,19 @@ export interface ExportResult {
  * Load all metadata under `dir` and export the entire model as one flattened
  * canonical-JSON document.
  *
- * Internally constructs a fresh `FileMetaDataLoader` (using the default registry
- * composed via `composeRegistry(coreProviders)`), calls `loadDirectory`, then serializes the
- * resulting tree with `canonicalSerialize`.
+ * Routes through `MetaDataLoader.fromDirectory` (using the default registry
+ * composed via `composeRegistry(coreProviders)` when none supplied), then
+ * serializes the resulting tree with `canonicalSerialize`.
  *
  * @param dir  Absolute or relative path to the directory containing `meta.*.json` files.
- * @param opts Optional loader options forwarded to the `FileMetaDataLoader` constructor
- *             (registry, freeze, strict). The `exclude` glob list can be
- *             supplied as `opts.exclude` — see `FileMetaDataLoader.loadDirectory`.
+ * @param opts Optional loader options (registry, freeze, strict). The
+ *             `exclude` glob list can be supplied as `opts.exclude`.
  */
 export async function loadAndExportJson(
   dir: string,
   opts?: LoadOptions & { exclude?: string[] },
 ): Promise<ExportResult> {
-  const { exclude, ...loaderOpts } = opts ?? {};
-  const loader = new FileMetaDataLoader(loaderOpts);
-  // Only pass the exclude option when defined, to satisfy exactOptionalPropertyTypes.
-  const dirOpts = exclude !== undefined ? { exclude } : undefined;
-  const result = await loader.loadDirectory(dir, dirOpts);
+  const result = await MetaDataLoader.fromDirectory(dir, opts);
   const json = canonicalSerialize(result.root);
   return {
     json,

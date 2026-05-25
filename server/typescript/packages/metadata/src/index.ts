@@ -150,8 +150,19 @@ export { resolveSuperRef } from "./super-resolve.js";
 // Loader hierarchy
 export { MetaDataLoader } from "./loader/meta-data-loader.js";
 export type { LoadOptions, LoadResult, LoadingState } from "./loader/meta-data-loader.js";
-export { InMemorySource } from "./loader/meta-data-source.js";
+export { InMemoryStringSource } from "./loader/meta-data-source.js";
 export type { MetaDataSource, MetaDataFormat } from "./loader/meta-data-source.js";
+
+// Module-level loader shortcuts — delegate to MetaDataLoader.from* static
+// factories. The shortcuts honor the ergonomic per-port pattern (TS and
+// Python expose both class statics AND module-level functions); Java/C# stay
+// class-only. Browser safety is preserved: the underlying sources are
+// loaded via dynamic import inside MetaDataLoader.from*.
+export {
+  loadDirectory,
+  loadUris,
+  loadString,
+} from "./loader/shortcuts.js";
 
 // Errors
 export { ParseError, MetaModelError, ERROR_CODES } from "./errors.js";

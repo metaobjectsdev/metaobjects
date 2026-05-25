@@ -20,10 +20,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 import { tanstackGridHook } from "../../src/index.js";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const SNAP = join(import.meta.dir, "__snapshots__");
 const UPDATE = process.env.UPDATE_GOLDEN === "1";
@@ -55,7 +56,7 @@ const fixtures = [
 describe("tanstackGridHook() — golden snapshot", () => {
   for (const fixture of fixtures) {
     it(`generates byte-identical .grid.ts output — ${fixture.name}`, async () => {
-      const { root, errors } = await new FileMetaDataLoader().loadFiles([fixture.path]);
+      const { root, errors } = await new MetaDataLoader().load([new FileSource(fixture.path)]);
       if (errors.length > 0) {
         throw new Error(`Fixture load errors: ${errors.join(", ")}`);
       }

@@ -1,8 +1,7 @@
 import { test, expect } from "bun:test";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
-import { FileMetaDataLoader } from "../../src/core/file-meta-data-loader.js";
-import { InMemorySource } from "../../src/loader/meta-data-source.js";
-import { FileSource } from "../../src/core/file-source.js";
+import { InMemoryStringSource } from "../../src/loader/meta-data-source.js";
+import { FileSource } from "../../src/loader/sources/file-source.js";
 import { TYPE_METADATA } from "../../src/index.js";
 
 test("loader: dispatches a yaml-format source through parseYaml", async () => {
@@ -14,8 +13,8 @@ metadata:
         children:
           - field.string: sku
 `;
-  const loader = new FileMetaDataLoader();
-  const result = await loader.load([new InMemorySource(yaml, { id: "shop.yaml", format: "yaml" })]);
+  const loader = new MetaDataLoader();
+  const result = await loader.load([new InMemoryStringSource(yaml, { id: "shop.yaml", format: "yaml" })]);
   expect(result.errors).toEqual([]);
   expect(result.root.type).toBe(TYPE_METADATA);
   expect(result.root.ownChildren()[0]!.name).toBe("Product");
@@ -33,10 +32,10 @@ metadata:
         children:
           - field.string: email
 `;
-  const loader = new FileMetaDataLoader();
+  const loader = new MetaDataLoader();
   const result = await loader.load([
-    new InMemorySource(json, { id: "a.json", format: "json" }),
-    new InMemorySource(yaml, { id: "b.yaml", format: "yaml" }),
+    new InMemoryStringSource(json, { id: "a.json", format: "json" }),
+    new InMemoryStringSource(yaml, { id: "b.yaml", format: "yaml" }),
   ]);
   expect(result.errors).toEqual([]);
   expect(result.root.ownChildByName("Product")).toBeDefined();
@@ -49,11 +48,13 @@ test("FileSource: infers format from the file extension", () => {
   expect(new FileSource("meta.commerce.yml").format).toBe("yaml");
 });
 
-test("loader: the base MetaDataLoader rejects a yaml-format source", async () => {
+test("loader: the base MetaDataLoader now parses yaml-format sources directly", async () => {
+  // YAML support is folded into the base loader as of the cross-language
+  // loader-unification work — no FileMetaDataLoader subclass needed.
   const loader = new MetaDataLoader();
   const result = await loader.load([
-    new InMemorySource("metadata:\n  children: []\n", { id: "x.yaml", format: "yaml" }),
+    new InMemoryStringSource("metadata:\n  children: []\n", { id: "x.yaml", format: "yaml" }),
   ]);
-  expect(result.errors.length).toBeGreaterThan(0);
-  expect(result.errors[0]!.message).toContain("MetaDataLoader parses JSON only");
+  expect(result.errors).toEqual([]);
+  expect(result.root.type).toBe(TYPE_METADATA);
 });

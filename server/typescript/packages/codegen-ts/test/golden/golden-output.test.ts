@@ -12,18 +12,19 @@ import { describe, it, expect } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, relative } from "node:path";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { runGen, defineConfig } from "../../src/index.js";
 import { entityFile, queriesFile, routesFile, barrel } from "../../src/generators/index.js";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const FIXTURE = resolve(import.meta.dir, "../fixtures/trainer-website-shape.json");
 const SNAP = join(import.meta.dir, "__snapshots__");
 const UPDATE = process.env.UPDATE_GOLDEN === "1";
 
 // Load metadata once for all tests — same mechanism as integration.test.ts.
-const loader = new FileMetaDataLoader();
-const loadResult = await loader.loadFiles([FIXTURE]);
+const loader = new MetaDataLoader();
+const loadResult = await loader.load([new FileSource(FIXTURE)]);
 if (loadResult.errors.length > 0) {
   throw new Error(`Fixture load errors: ${loadResult.errors.join(", ")}`);
 }

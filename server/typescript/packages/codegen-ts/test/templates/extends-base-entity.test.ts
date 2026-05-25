@@ -1,12 +1,12 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 
 async function loadFixture() {
-  const result = await new MetaDataLoader().load([new InMemorySource(
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(
     JSON.stringify({
       "metadata.root": {
         package: "test",

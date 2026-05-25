@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { canonicalSerialize } from "../src/serializer-json.js";
 
 async function loadDoc(doc: unknown) {
-  return new MetaDataLoader().load([new InMemorySource(JSON.stringify(doc))]);
+  return new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
 }
 const codesOf = (errors: readonly Error[]) => errors.map((e) => (e as { code?: string }).code);
 

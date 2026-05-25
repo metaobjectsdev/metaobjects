@@ -1,14 +1,14 @@
 import { test, expect, describe, beforeAll } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import type { MetaData } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
 import type { SchemaSnapshot, ColumnDescriptor } from "../../src/types.js";
 
 async function loadFixture(name: string) {
   const json = readFileSync(join(import.meta.dir, "..", "fixtures", `${name}.json`), "utf8");
-  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
   return result.root;
 }
 
@@ -137,7 +137,7 @@ describe("buildExpectedSchema — indexes + FKs", () => {
 describe("buildExpectedSchema — identity.reference @enforce", () => {
   async function loadInline(children: unknown[]) {
     const json = JSON.stringify({ "metadata.root": { package: "test", children } });
-    const result = await new MetaDataLoader().load([new InMemorySource(json)]);
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
     if (result.errors.length > 0) {
       throw new Error(`Loader errors:\n${result.errors.map((e) => e.message).join("\n")}`);
     }

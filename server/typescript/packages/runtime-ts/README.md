@@ -13,13 +13,15 @@ npm install @metaobjectsdev/runtime-ts @metaobjectsdev/metadata kysely
 ## Usage
 
 ```typescript
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 import { ObjectManager } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { Kysely } from "kysely";
 
-const loader = new FileMetaDataLoader();
-const { root } = await loader.loadFiles(["metaobjects/meta.blog.json"]);
+const { root } = await new MetaDataLoader().load([
+  new FileSource("metaobjects/meta.blog.json"),
+]);
 
 const om = new ObjectManager({
   metadata: root,

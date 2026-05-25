@@ -348,7 +348,7 @@ function buildGroupBy(spec: SelectSpec): string[] {
  *                    and extends a writable entity).
  * @param root        The loader's MetaRoot — all top-level objects are
  *                    direct children of root (returned by `MetaDataLoader.load()`
- *                    / `FileMetaDataLoader.loadFiles()` as `result.root`).
+ *                    or `MetaDataLoader.fromDirectory()` as `result.root`).
  * @param ctx         Column naming strategy for SQL identifiers.
  */
 export function extractViewSpec(

@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import type { MetaField } from "@metaobjectsdev/metadata";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import {
   inferViewKind,
   zodTypeFor,
@@ -9,7 +9,7 @@ import {
 } from "../../src/templates/field-meta.js";
 
 async function loadField(json: unknown): Promise<MetaField> {
-  const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
     "metadata.root": { children: [
       { "object.entity": { name: "X", children: [json] }}
     ]}

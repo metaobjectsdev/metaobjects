@@ -1,12 +1,12 @@
 import { describe, test, expect, beforeAll } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import type { MetaData } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../src/expected-schema.js";
 import { diff } from "../src/diff/index.js";
 import { emit } from "../src/emit/index.js";
 
 async function loadJson(json: string): Promise<MetaData> {
-  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
   return result.root;
 }
 

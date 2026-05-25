@@ -1,7 +1,7 @@
 // Round-trip parity tests — Task 11 of v0.2 SP1
 //
 // Integration-level sweep: for each Java fixture (or fixture group), loads via
-// FileMetaDataLoader, serializes via serializeJson, reloads via a fresh MetaDataLoader, and compares
+// the loader, serializes via serializeJson, reloads via a fresh MetaDataLoader, and compares
 // both trees structurally. Catches drift between the parser and serializer that
 // per-component tests might miss.
 //
@@ -16,11 +16,11 @@
 
 import { describe, it, expect } from "bun:test";
 import { join } from "node:path";
-import { FileMetaDataLoader } from "../src/core/file-meta-data-loader.js";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import type { MetaData } from "../src/shared/meta-data.js";
 import { serializeJson } from "../src/serializer-json.js";
+import { FileSource } from "../src/loader/sources/file-source.js";
 import {
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -109,12 +109,12 @@ function assertModelsEqual(a: MetaData, b: MetaData, path = "root"): void {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: load a single fixture file via FileMetaDataLoader
+// Helper: load a single fixture file via MetaDataLoader.load + FileSource
 // ---------------------------------------------------------------------------
 
 async function loadFixture(name: string): Promise<{ root: MetaData; warnings: string[]; errors: Error[] }> {
-  const loader = new FileMetaDataLoader({ freeze: false });
-  return loader.loadFiles([fixturePath(name)]);
+  const loader = new MetaDataLoader({ freeze: false });
+  return loader.load([new FileSource(fixturePath(name))]);
 }
 
 // ---------------------------------------------------------------------------
@@ -122,8 +122,8 @@ async function loadFixture(name: string): Promise<{ root: MetaData; warnings: st
 // ---------------------------------------------------------------------------
 
 async function loadFixtures(names: string[]): Promise<{ root: MetaData; warnings: string[]; errors: Error[] }> {
-  const loader = new FileMetaDataLoader({ freeze: false });
-  return loader.loadFiles(names.map(fixturePath));
+  const loader = new MetaDataLoader({ freeze: false });
+  return loader.load(names.map((n) => new FileSource(fixturePath(n))));
 }
 
 // ---------------------------------------------------------------------------
@@ -133,7 +133,7 @@ async function loadFixtures(names: string[]): Promise<{ root: MetaData; warnings
 async function roundTrip(root: MetaData): Promise<MetaData> {
   const serialized = serializeJson(root);
   const loader = new MetaDataLoader({ freeze: false });
-  const result = await loader.load([new InMemorySource(serialized, { id: "round-trip" })]);
+  const result = await loader.load([new InMemoryStringSource(serialized, { id: "round-trip" })]);
   if (result.errors.length > 0) {
     throw new Error(
       `Round-trip parse produced errors:\n${result.errors.map((e) => e.message).join("\n")}`,
