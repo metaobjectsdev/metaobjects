@@ -23,7 +23,8 @@ import java.util.List;
 import static org.junit.Assert.*;
 
 /**
- * Enhanced tests for FileMetaDataLoader to improve core module coverage
+ * Enhanced tests for FileMetaDataLoader covering loader lifecycle,
+ * source registration, and error paths.
  */
 public class FileMetaDataLoaderTest {
 
