@@ -29,10 +29,6 @@
     </dependency>
     <dependency>
       <groupId>com.metaobjects</groupId>
-      <artifactId>metaobjects-core</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.metaobjects</groupId>
       <artifactId>metaobjects-codegen-base</artifactId>
       <scope>test</scope>
     </dependency>
