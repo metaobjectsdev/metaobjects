@@ -5,18 +5,19 @@ package com.metaobjects.loader;
  *
  * <p>Useful for unit tests and for loaders that have already read content
  * into memory and need to pass it through the pipeline as a source.
- * Mirrors the TypeScript {@code InMemorySource} class introduced in H3a.</p>
+ * Mirrors the cross-language {@code InMemoryStringSource} class across all ports
+ * (TS / Java / C# / Python).</p>
  *
  * <p>Example usage:</p>
  * <pre>{@code
- * MetaDataSource source = new InMemoryMetaDataSource(
- *     "{\"metadata\": {}}", "<test>", MetaDataSource.MetaDataFormat.JSON);
+ * MetaDataSource source = new InMemoryStringSource(
+ *     "{\"metadata\": {}}", "<inline>", MetaDataSource.MetaDataFormat.JSON);
  * String content = source.read(); // returns the string immediately
  * }</pre>
  */
-public class InMemoryMetaDataSource implements MetaDataSource {
+public class InMemoryStringSource implements MetaDataSource {
 
-    private static final String DEFAULT_ID = "<in-memory>";
+    private static final String DEFAULT_ID = "<inline>";
 
     private final String content;
     private final String id;
@@ -29,7 +30,7 @@ public class InMemoryMetaDataSource implements MetaDataSource {
      * @param id      human-readable identifier used in error messages; must not be {@code null}
      * @param format  the document format; must not be {@code null}
      */
-    public InMemoryMetaDataSource(String content, String id, MetaDataFormat format) {
+    public InMemoryStringSource(String content, String id, MetaDataFormat format) {
         if (content == null) throw new IllegalArgumentException("content must not be null");
         if (id == null)      throw new IllegalArgumentException("id must not be null");
         if (format == null)  throw new IllegalArgumentException("format must not be null");
@@ -39,12 +40,12 @@ public class InMemoryMetaDataSource implements MetaDataSource {
     }
 
     /**
-     * Constructs an in-memory source with a default id of {@code "<in-memory>"}
+     * Constructs an in-memory source with a default id of {@code "<inline>"}
      * and {@link MetaDataFormat#JSON} format.
      *
      * @param content the raw document content; must not be {@code null}
      */
-    public InMemoryMetaDataSource(String content) {
+    public InMemoryStringSource(String content) {
         this(content, DEFAULT_ID, MetaDataFormat.JSON);
     }
 
@@ -54,7 +55,7 @@ public class InMemoryMetaDataSource implements MetaDataSource {
      * @param content the raw document content; must not be {@code null}
      * @param id      human-readable identifier used in error messages; must not be {@code null}
      */
-    public InMemoryMetaDataSource(String content, String id) {
+    public InMemoryStringSource(String content, String id) {
         this(content, id, MetaDataFormat.JSON);
     }
 
@@ -80,6 +81,6 @@ public class InMemoryMetaDataSource implements MetaDataSource {
 
     @Override
     public String toString() {
-        return "InMemoryMetaDataSource{id='" + id + "', format=" + format + "}";
+        return "InMemoryStringSource{id='" + id + "', format=" + format + "}";
     }
 }

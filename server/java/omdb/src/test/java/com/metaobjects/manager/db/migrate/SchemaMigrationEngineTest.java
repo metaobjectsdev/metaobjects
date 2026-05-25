@@ -1,9 +1,6 @@
 package com.metaobjects.manager.db.migrate;
 
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.file.FileLoaderOptions;
-import com.metaobjects.loader.file.FileMetaDataLoader;
-import com.metaobjects.loader.file.LocalFileMetaDataSources;
 import com.metaobjects.manager.db.ObjectManagerDB;
 import com.metaobjects.manager.db.driver.DerbyDriver;
 import com.metaobjects.registry.MetaDataLoaderRegistry;
@@ -54,16 +51,8 @@ public class SchemaMigrationEngineTest {
 
         registry = new MetaDataLoaderRegistry(ServiceRegistryFactory.getDefault());
 
-        FileMetaDataLoader xl = new FileMetaDataLoader(
-            new FileLoaderOptions()
-                .setShouldRegister(false)
-                .setAllowAutoAttrs(true)
-                .setStrict(false)
-                .setVerbose(false),
-            "test-engine-db");
-
-        xl.init(new LocalFileMetaDataSources("meta.expected.json"));
-        xl.register();
+        MetaDataLoader xl = MetaDataLoader.fromResources(
+            "test-engine-db", java.util.List.of("meta.expected.json"));
         registry.registerLoader(xl);
         loader = xl;
 

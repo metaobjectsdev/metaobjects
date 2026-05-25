@@ -11,58 +11,30 @@
 package com.metaobjects.manager.xml;
 
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.file.FileMetaDataLoader;
-import com.metaobjects.loader.file.LocalFileMetaDataSources;
-import com.metaobjects.loader.file.FileLoaderOptions;
 import com.metaobjects.manager.ObjectConnection;
 
-import com.metaobjects.manager.QueryOptions;
-import com.metaobjects.manager.exp.Expression;
 // import com.metaobjects.test.produce.v1.Apple;
 import org.junit.*;
 
-import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
+ * Disabled XML-manager smoke test — the entire test body is currently disabled
+ * pending the Apple test class / XML bundle migration. Kept as a placeholder so
+ * the eventual revival is a code-edit, not a file-resurrection.
  *
  * @author dmealing
  */
 public class OMXMLTest {
-    
+
     protected ObjectManagerXML omxml = null;
     protected MetaDataLoader loader = null;
     protected ObjectConnection oc = null;
 
     protected AtomicInteger i = new AtomicInteger();
-    
-    @Before
-    public void setupDB() throws Exception {
-                
-        if ( loader == null ) {
-
-            // Initialize the loader
-            loader = new FileMetaDataLoader(
-                    new FileLoaderOptions()
-                            .addSources(new LocalFileMetaDataSources(
-                                    Arrays.asList(
-                                            "metadata/test/produce/v1/produce-v1.bundle")
-                            ))
-                            .setShouldRegister(true)
-                            .setVerbose(false),
-                    getClass().getSimpleName() + "-" + i.incrementAndGet())
-                    .init();
-
-            omxml = new ObjectManagerXML();
-            omxml.setLocation( "testdata/produce/v1/" );
-            omxml.init();
-
-            oc = omxml.getConnection();
-        }        
-    }
 
     @Test
-    @org.junit.Ignore("Temporarily disabled during types config cleanup")
+    @org.junit.Ignore("Temporarily disabled during types config cleanup; bundle-file XML loading needs to be ported to the unified MetaDataLoader factories")
     public void testFruit() {
         // Test disabled due to missing Apple test class
         /*
@@ -82,12 +54,5 @@ public class OMXMLTest {
 
         Assert.assertEquals( "Apple 88", apple, a88 );
         */
-    }
-    
-    @After
-    public synchronized void destroyEntityManager() throws Exception {
-
-        omxml.releaseConnection(oc);
-        loader.destroy();
     }
 }

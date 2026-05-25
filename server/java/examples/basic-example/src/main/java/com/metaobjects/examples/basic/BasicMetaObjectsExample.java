@@ -175,7 +175,7 @@ public class BasicMetaObjectsExample {
             // 7. Simple vs Complex pattern comparison
             System.out.println("\n7. When to use simple vs complex patterns...");
             System.out.println("   SIMPLE PATTERN (this example):");
-            System.out.println("     - Single MetaDataLoader (MetaDataLoader.createFromResources or setSourceURIs + init)");
+            System.out.println("     - Single MetaDataLoader (MetaDataLoader.fromResources or setSourceURIs + init)");
             System.out.println("     - Direct loader.getMetaObjectByName() or MetaDataUtil.findMetaObjectByName(loader, ...)");
             System.out.println("     - No registry complexity needed");
             System.out.println("   COMPLEX PATTERN (see spring-example, osgi-example):");

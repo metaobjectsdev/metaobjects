@@ -12,7 +12,7 @@ import com.google.gson.JsonParser;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.io.json.CanonicalJsonSerializer;
-import com.metaobjects.loader.InMemoryMetaDataSource;
+import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.MetaDataSource;
@@ -250,7 +250,7 @@ public class ConformanceTest {
             List<MetaDataSource> sources = new ArrayList<>(inputFiles.size());
             for (Path file : inputFiles) {
                 String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
-                sources.add(new InMemoryMetaDataSource(content, file.getFileName().toString()));
+                sources.add(new InMemoryStringSource(content, file.getFileName().toString()));
             }
             loader.load(sources);
         } catch (MetaDataException ex) {

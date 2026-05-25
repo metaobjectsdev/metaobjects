@@ -35,7 +35,7 @@ public class ProxyObjectTests {
     public void initLoader() throws ClassNotFoundException {
         log.debug("Starting loader initialization");
 
-        loader = MetaDataLoader.createFromResources("proxytest", Arrays.asList(
+        loader = MetaDataLoader.fromResources("proxytest", Arrays.asList(
                 "com/metaobjects/loader/simple/fruitbasket-proxy-metadata.json"
         ));
 

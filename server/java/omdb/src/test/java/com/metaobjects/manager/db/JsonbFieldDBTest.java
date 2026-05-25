@@ -8,9 +8,6 @@
 package com.metaobjects.manager.db;
 
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.file.FileLoaderOptions;
-import com.metaobjects.loader.file.FileMetaDataLoader;
-import com.metaobjects.loader.file.LocalFileMetaDataSources;
 import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.db.driver.DerbyDriver;
 import com.metaobjects.manager.db.validator.MetaClassDBValidatorService;
@@ -80,16 +77,8 @@ public class JsonbFieldDBTest {
     public static void setupDB() throws Exception {
         registry = new MetaDataLoaderRegistry(ServiceRegistryFactory.getDefault());
 
-        FileMetaDataLoader xl = new FileMetaDataLoader(
-            new FileLoaderOptions()
-                .setShouldRegister(false)
-                .setAllowAutoAttrs(true)
-                .setStrict(false)
-                .setVerbose(false),
-            "test-jsonb-db");
-
-        xl.init(new LocalFileMetaDataSources("meta.jsonb.json"));
-        xl.register();
+        MetaDataLoader xl = MetaDataLoader.fromResources(
+            "test-jsonb-db", java.util.List.of("meta.jsonb.json"));
         registry.registerLoader(xl);
         loader = xl;
 

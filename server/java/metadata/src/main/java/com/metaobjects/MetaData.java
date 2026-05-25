@@ -52,7 +52,7 @@ import java.util.stream.Stream;
  * <strong>Usage Examples:</strong>
  * <pre>{@code
  * // Loading Phase - Happens once at startup
- * MetaDataLoader loader = MetaDataLoader.createFromResources("myLoader",
+ * MetaDataLoader loader = MetaDataLoader.fromResources("myLoader",
  *     Arrays.asList("com/example/metadata.json"));
  * // OR: loader = new MetaDataLoader(...); loader.setSourceURIs(...); loader.init();
  * 

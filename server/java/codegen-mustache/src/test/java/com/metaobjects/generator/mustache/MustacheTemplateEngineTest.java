@@ -26,7 +26,7 @@ public class MustacheTemplateEngineTest {
         engine = new MustacheTemplateEngine();
 
         // Load test metadata using MetaDataLoader directly
-        loader = MetaDataLoader.createFromURIs("mustache-test",
+        loader = MetaDataLoader.fromUris("mustache-test",
             Arrays.asList(URIHelper.toURI("model:resource:mustache-test-metadata.json")));
 
         // Get the User MetaObject

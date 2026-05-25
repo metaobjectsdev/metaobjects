@@ -8,7 +8,7 @@ import com.metaobjects.loader.MetaDataLoader;
  * Interface for all metadata file parsers.
  * Replaces FileMetaDataParser inheritance hierarchy with composition.
  * 
- * <p>This interface allows FileMetaDataLoader to work with parsers without 
+ * <p>This interface allows the loader pipeline to work with parsers without
  * requiring inheritance from specific base classes, enabling a cleaner
  * architecture where all parsing logic is consolidated in the metadata module.</p>
  * 

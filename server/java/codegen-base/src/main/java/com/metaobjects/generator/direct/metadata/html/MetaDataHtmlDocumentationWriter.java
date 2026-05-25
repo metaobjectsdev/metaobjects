@@ -464,7 +464,7 @@ public class MetaDataHtmlDocumentationWriter extends GeneratorIOWriter<MetaDataH
         writer.println("                <h3>Architecture Patterns</h3>");
         writer.println("                <div class=\"code-block\">");
         writer.println("// MetaDataLoader operates like Java ClassLoader - load once, read many");
-        writer.println("MetaDataLoader loader = MetaDataLoader.createFromResources(\"myApp\", sources);");
+        writer.println("MetaDataLoader loader = MetaDataLoader.fromResources(\"myApp\", sources);");
         writer.println("loader.init(); // Heavy initialization, permanent in memory");
         writer.println("");
         writer.println("// Runtime access is O(1) cached lookup - no synchronization needed");
