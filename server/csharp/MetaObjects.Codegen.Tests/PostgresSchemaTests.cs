@@ -66,7 +66,7 @@ public class PostgresSchemaTests
 
     private static MetaRoot LoadModel(string m)
     {
-        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "schema.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(m, id: "schema.json")]);
         Assert.Empty(r.Errors);
         return r.Root;
     }

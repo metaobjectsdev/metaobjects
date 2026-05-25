@@ -27,7 +27,7 @@ public class LoaderTests
     {
         // The base pipeline takes sources directly — no filesystem knowledge.
         const string json = "{\"metadata.root\":{\"children\":[{\"object.entity\":{\"name\":\"W\"}}]}}";
-        var src = new InMemorySource(json, id: "inline.json");
+        var src = new InMemoryStringSource(json, id: "inline.json");
         var result = new MetaDataLoader().Load([src]);
         Assert.Empty(result.Errors);
         Assert.NotNull(result.Root.OwnChildByName("W"));

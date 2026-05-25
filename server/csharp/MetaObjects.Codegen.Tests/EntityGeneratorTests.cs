@@ -25,7 +25,7 @@ public class EntityGeneratorTests
 
     private static MetaRoot Load()
     {
-        var r = new MetaDataLoader().Load([new InMemorySource(Model, id: "gen.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "gen.json")]);
         Assert.Empty(r.Errors);
         return r.Root;
     }
@@ -123,7 +123,7 @@ public class EntityGeneratorTests
 
     private static MetaRoot LoadEnum()
     {
-        var r = new MetaDataLoader().Load([new InMemorySource(EnumModel, id: "enum.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(EnumModel, id: "enum.json")]);
         Assert.Empty(r.Errors);
         return r.Root;
     }
@@ -161,7 +161,7 @@ public class EntityGeneratorTests
           ]}}
         ]}}
         """;
-        var r = new MetaDataLoader().Load([new InMemorySource(model, id: "m.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "m.json")]);
         Assert.Empty(r.Errors);
         var ctx = EnumCtx(r.Root);
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
@@ -183,7 +183,7 @@ public class EntityGeneratorTests
           ]}}
         ]}}
         """;
-        var r = new MetaDataLoader().Load([new InMemorySource(model, id: "m.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "m.json")]);
         Assert.Empty(r.Errors);
         var ctx = EnumCtx(r.Root);
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
@@ -260,7 +260,7 @@ public class EntityGeneratorTests
           ]}}
         ]}}
         """;
-        var r = new MetaDataLoader().Load([new InMemorySource(model, id: "m.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "m.json")]);
         Assert.Empty(r.Errors);
         var ctx = EnumCtx(r.Root);
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;

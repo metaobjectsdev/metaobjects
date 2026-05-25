@@ -22,17 +22,17 @@ public interface IMetaDataSource
 }
 
 /// <summary>A metadata source backed by an in-memory string.</summary>
-public sealed class InMemorySource : IMetaDataSource
+public sealed class InMemoryStringSource : IMetaDataSource
 {
     private readonly string _content;
     public string Id { get; }
     public MetaDataFormat Format { get; }
 
-    public InMemorySource(string content, string id = "<in-memory>",
+    public InMemoryStringSource(string content, string id = "<inline>",
         MetaDataFormat format = MetaDataFormat.Json)
     {
-        _content = content;
-        Id = id;
+        _content = content ?? throw new ArgumentNullException(nameof(content));
+        Id = id ?? "<inline>";
         Format = format;
     }
 

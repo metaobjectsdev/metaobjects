@@ -67,7 +67,7 @@ public class ScalarArrayCodegenTests
 
     private static MetaRoot Load(string json)
     {
-        var r = new MetaDataLoader().Load([new InMemorySource(json, id: "test.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(json, id: "test.json")]);
         Assert.Empty(r.Errors);
         return r.Root;
     }

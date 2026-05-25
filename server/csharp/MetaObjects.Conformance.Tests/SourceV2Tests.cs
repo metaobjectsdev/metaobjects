@@ -19,7 +19,7 @@ namespace MetaObjects.Conformance.Tests;
 public class SourceV2Tests
 {
     private static LoadResult LoadInline(string json) =>
-        new MetaDataLoader().Load([new InMemorySource(json, id: "inline.json")]);
+        new MetaDataLoader().Load([new InMemoryStringSource(json, id: "inline.json")]);
 
     // -------------------------------------------------------------------------
     // source.rdb registration + accessors
