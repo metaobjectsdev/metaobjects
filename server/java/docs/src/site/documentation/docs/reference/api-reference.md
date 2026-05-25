@@ -337,8 +337,9 @@ MetaField emailField = loader.getMetaFieldByName("email");
 **Loader Hierarchy**:
 ```java
 // Create hierarchical loaders
-MetaDataLoader coreLoader = new FileMetaDataLoader("core");
-MetaDataLoader businessLoader = new FileMetaDataLoader("business");
+MetaDataLoader coreLoader = MetaDataLoader.fromResources("core",
+    List.of("core-types.json"));
+MetaDataLoader businessLoader = new MetaDataLoader("business");
 
 // Set up hierarchy
 businessLoader.addParentLoader(coreLoader);
@@ -348,67 +349,138 @@ MetaObject coreType = businessLoader.getMetaObjectByName("CoreType"); // From pa
 MetaObject businessType = businessLoader.getMetaObjectByName("BusinessType"); // From child
 ```
 
-### FileMetaDataLoader
+#### Static Factory Methods
 
-**Package**: `com.metaobjects.loader.file`
-**Purpose**: File-based metadata loader with JSON/XML support
-
-#### Key Methods
+`MetaDataLoader` exposes a set of static factories that cover the common loading patterns. Each factory builds the appropriate `MetaDataSource`(s), calls `load(...)`, and `init()`s the loader in one step.
 
 ```java
-public class FileMetaDataLoader extends MetaDataLoader {
+public class MetaDataLoader {
 
-    // Constants
-    public static final String SUBTYPE_FILE = "file";
-    public static final String XML_EXTENSION = "*.xml";
-    public static final String JSON_EXTENSION = "*.json";
+    // Directory expansion (recursive by default; use Options to customize)
+    public static MetaDataLoader fromDirectory(String name, Path directory)
+    public static MetaDataLoader fromDirectory(String name, Path directory,
+                                               DirectorySource.Options opts)
 
-    // Constructors
-    public FileMetaDataLoader(String name)
-    public FileMetaDataLoader(FileLoaderOptions options, String name)
+    // URI list (file://, classpath://, http(s)://, jar://)
+    public static MetaDataLoader fromUris(String name, List<URI> uris)
+    public static MetaDataLoader fromUris(String name, List<URI> uris,
+                                          LoaderOptions opts)
 
-    // Initialization
-    public FileMetaDataLoader init(FileMetaDataSources sources)
-    public FileLoaderOptions getLoaderOptions()
+    // Classpath resources (resolved via the loader's MetaDataClassLoader)
+    public static MetaDataLoader fromResources(String name, List<String> resources)
+    public static MetaDataLoader fromResources(String name, List<String> resources,
+                                               LoaderOptions opts)
 
-    // Configuration
-    public void configure(LoaderConfiguration config)
-    protected void processSources(String sourceDir, List<String> rawSources)
+    // In-memory content (JSON or XML)
+    public static MetaDataLoader fromString(String name, String content,
+                                            MetaDataSource.MetaDataFormat format)
+
+    // Low-level: build sources yourself and hand them in
+    public MetaDataLoader load(List<MetaDataSource> sources)
 }
 ```
 
 #### Usage Examples
 
-**File Loader Creation**:
+**Loader Creation**:
 ```java
-// Simple file loader
-FileMetaDataLoader loader = new FileMetaDataLoader("myLoader");
+// Directory-based loader
+MetaDataLoader dirLoader = MetaDataLoader.fromDirectory(
+    "myLoader",
+    Path.of("/metadata")
+);
 
-// With custom options
-FileLoaderOptions options = new FileLoaderOptions()
-    .setVerbose(true)
-    .setCacheEnabled(true);
-FileMetaDataLoader loader = new FileMetaDataLoader(options, "customLoader");
+// With custom options (shouldRegister, verbose, strict)
+LoaderOptions opts = LoaderOptions.create(false, true, true);
+MetaDataLoader customLoader = MetaDataLoader.fromResources(
+    "customLoader",
+    List.of("core-metadata.json"),
+    opts
+);
 ```
 
 **Source Configuration**:
 ```java
-// Local file sources
-LocalFileMetaDataSources localSources = new LocalFileMetaDataSources(
-    "/metadata",  // Base directory
-    Arrays.asList("user.json", "product.xml")
-);
+// Single file
+MetaDataLoader fileLoader = new MetaDataLoader("fileLoader");
+fileLoader.load(List.of(new FileSource(Path.of("/metadata/user.json"))));
+fileLoader.init();
 
-loader.init(localSources);
-
-// URI sources
-List<URI> uris = Arrays.asList(
+// URI list
+MetaDataLoader uriLoader = MetaDataLoader.fromUris("uriLoader", List.of(
     URI.create("classpath://metadata/core.json"),
     URI.create("file:///opt/metadata/business.xml")
-);
-URIFileMetaDataSources uriSources = new URIFileMetaDataSources(uris);
+));
 
-loader.init(uriSources);
+// Inline string (handy for tests)
+MetaDataLoader inlineLoader = MetaDataLoader.fromString(
+    "inlineLoader",
+    jsonContent,
+    MetaDataSource.MetaDataFormat.JSON
+);
+```
+
+### MetaDataSource implementations
+
+**Package**: `com.metaobjects.loader`
+
+Four built-in sources implement the `MetaDataSource` SPI:
+
+```java
+// Single file; format inferred from extension (.json / .xml) unless supplied
+public final class FileSource implements MetaDataSource {
+    public FileSource(Path path)
+    public FileSource(Path path, MetaDataFormat format)
+}
+
+// Directory expander; produces FileSources for each metadata file inside
+public final class DirectorySource {
+    public DirectorySource(Path directory)
+    public DirectorySource(Path directory, Options opts)
+    public List<MetaDataSource> expandToList()
+
+    public static final class Options {
+        public Options setExclude(List<String> excludeNames)  // skip by file name
+        public Options setRecurse(boolean recurse)            // default true
+    }
+}
+
+// URI-backed source (file://, classpath://, http(s)://, jar://)
+public class UriSource implements MetaDataSource {
+    public UriSource(URI uri)
+}
+
+// In-memory content; default id is "<inline>"
+public class InMemoryStringSource implements MetaDataSource {
+    public InMemoryStringSource(String content)
+    public InMemoryStringSource(String content, String id)
+    public InMemoryStringSource(String content, String id, MetaDataFormat format)
+}
+```
+
+### LoaderOptions
+
+**Package**: `com.metaobjects.loader`
+**Purpose**: Tunable flags for loader behavior
+
+```java
+public class LoaderOptions {
+
+    // Factory
+    public static LoaderOptions create(boolean shouldRegister,
+                                       boolean verbose,
+                                       boolean strict)
+
+    // Fluent setters
+    public LoaderOptions setShouldRegister(boolean shouldRegister)
+    public LoaderOptions setVerbose(boolean verbose)
+    public LoaderOptions setStrict(boolean strict)
+
+    // Accessors
+    public boolean shouldRegister()
+    public boolean isVerbose()
+    public boolean isStrict()
+}
 ```
 
 ## Registry and Type System APIs

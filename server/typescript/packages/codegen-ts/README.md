@@ -98,6 +98,88 @@ It does **not** work on `better-sqlite3` or `bun:sqlite` (no native
 functions in the sibling `<Entity>.extra.ts` file with a non-`.returning()`
 form, or switch to a supported driver.
 
+## `outputParser()` — typed parsers for `template.output`
+
+For every `template.output` declared in your metadata, `outputParser()` emits
+`<TemplateName>.output.ts` containing a Zod schema + dual-API parser:
+
+```ts
+// metaobjects.config.ts
+import { defineConfig } from "@metaobjectsdev/cli";
+import { entityFile, queriesFile, barrel, promptRender, outputParser } from "@metaobjectsdev/codegen-ts/generators";
+
+export default defineConfig({
+  generators: [entityFile(), queriesFile(), barrel(), promptRender(), outputParser()],
+});
+```
+
+For a `template.output` named `NpcResponseOutput` with `@payloadRef: "NpcResponsePayload"`:
+
+```ts
+// Generated NpcResponseOutput.output.ts — self-contained, no cross-file imports
+import { z } from "zod";
+
+const NpcResponseOutputSchema = z.object({
+  name: z.string(),
+  age: z.number().int(),
+});
+
+export type NpcResponseOutputData = z.infer<typeof NpcResponseOutputSchema>;
+export type NpcResponseOutputValidationError = z.ZodError;
+
+/** Throws ZodError on validation failure. */
+export function parseNpcResponseOutput(text: string): NpcResponseOutputData { ... }
+
+/** Result-style; never throws. */
+export function safeParseNpcResponseOutput(text: string):
+  | { success: true; data: NpcResponseOutputData }
+  | { success: false; error: NpcResponseOutputValidationError } { ... }
+```
+
+`parseXxx` and `safeParseXxx` return the local `<Name>Data` type, derived from
+the schema via `z.infer<>`. It is structurally identical to the payload-VO
+interface emitted by `promptRender()` (e.g., `NpcResponsePayload` in
+`prompts.ts`) — consumers who wire both generators can assign back and forth
+between `NpcResponseOutputData` and `NpcResponsePayload` interchangeably. The
+output-parser file is intentionally self-contained so it compiles standalone
+even when `promptRender()` is not wired in.
+
+Consumer usage:
+
+```ts
+import { parseNpcResponseOutput, safeParseNpcResponseOutput } from "./generated/NpcResponseOutput.output";
+
+const npc = parseNpcResponseOutput(llmResponseText);   // throws on bad shape
+
+const r = safeParseNpcResponseOutput(llmResponseText);
+if (!r.success) { /* handle r.error (a ZodError) */ } else { /* use r.data */ }
+```
+
+**Field-type → Zod-type mapping:**
+
+| Field subtype | Emitted Zod |
+|---|---|
+| `field.string`, `field.class` | `z.string()` |
+| `field.int`, `field.long`, `field.short`, `field.byte` | `z.number().int()` |
+| `field.double`, `field.float` | `z.number()` |
+| `field.boolean` | `z.boolean()` |
+| `field.object` (with `@objectRef`) | nested `z.object({ ... })` |
+| `isArray: true` on any of the above | wrapped in `z.array(...)` |
+
+**Options:**
+
+```ts
+outputParser({
+  outDir: "src/generated/outputs",   // default: emits at the target's root
+  target: "default",                 // default: "default" (the entity-module target)
+})
+```
+
+**`meta verify` integration:** when `meta verify` runs, every `template.output`'s
+`@payloadRef` resolution is checked. Unresolved refs fail the build (`exit 1`)
+with a `(output)` prefix on the diagnostic. See [ADR-0010](../../../../spec/decisions/ADR-0010-template-output-parser-codegen.md)
+for the cross-language design rationale.
+
 ## Naming conventions: camelCase TS ↔ snake_case SQL
 
 `@metaobjectsdev/codegen-ts` maps `snake_case` metadata field names to
