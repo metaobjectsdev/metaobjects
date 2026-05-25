@@ -19,17 +19,12 @@
     "error-field-object-storage-flattened-array",
     "error-field-object-storage-no-object-ref",
     "error-parse-malformed-json",
-    "error-template-payload-ref-unresolved",
-    "error-template-prompt-missing-payload-ref",
-    "error-template-required-slot-missing",
     "error-unknown-relationship-subtype",
     "extends-abstract-base",
     "extends-cross-file",
     "layout-data-grid-basic",
     "layout-data-grid-multiple-named",
     "smoke-empty-metadata",
-    "template-output-and-prompt",
-    "template-prompt-simple",
     "warning-filterable-no-index"
   ]
 }
