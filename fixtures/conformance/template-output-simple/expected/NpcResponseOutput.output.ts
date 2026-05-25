@@ -1,19 +1,19 @@
 import { z } from "zod";
-import type { NpcResponsePayload } from "./payloads.js";
 
 const NpcResponseOutputSchema = z.object({
-    name: z.string(),
-    age: z.number().int(),
-  });
+  name: z.string(),
+  age: z.number().int(),
+});
 
+export type NpcResponseOutputData = z.infer<typeof NpcResponseOutputSchema>;
 export type NpcResponseOutputValidationError = z.ZodError;
 
 /**
- * Parse an LLM response into a typed NpcResponsePayload.
+ * Parse an LLM response into a typed NpcResponseOutputData.
  * @throws ZodError on validation failure.
  */
-export function parseNpcResponseOutput(text: string): NpcResponsePayload {
-  return NpcResponseOutputSchema.parse(JSON.parse(text)) as NpcResponsePayload;
+export function parseNpcResponseOutput(text: string): NpcResponseOutputData {
+  return NpcResponseOutputSchema.parse(JSON.parse(text));
 }
 
 /**
@@ -22,7 +22,7 @@ export function parseNpcResponseOutput(text: string): NpcResponsePayload {
  */
 export function safeParseNpcResponseOutput(
   text: string,
-): { success: true; data: NpcResponsePayload } | { success: false; error: NpcResponseOutputValidationError } {
+): { success: true; data: NpcResponseOutputData } | { success: false; error: NpcResponseOutputValidationError } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -34,6 +34,6 @@ export function safeParseNpcResponseOutput(
   }
   const result = NpcResponseOutputSchema.safeParse(parsed);
   return result.success
-    ? { success: true, data: result.data as NpcResponsePayload }
+    ? { success: true, data: result.data }
     : { success: false, error: result.error };
 }

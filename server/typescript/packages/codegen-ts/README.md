@@ -116,25 +116,33 @@ export default defineConfig({
 For a `template.output` named `NpcResponseOutput` with `@payloadRef: "NpcResponsePayload"`:
 
 ```ts
-// Generated NpcResponseOutput.output.ts
+// Generated NpcResponseOutput.output.ts — self-contained, no cross-file imports
 import { z } from "zod";
-import type { NpcResponsePayload } from "./payloads.js";
 
 const NpcResponseOutputSchema = z.object({
   name: z.string(),
   age: z.number().int(),
 });
 
+export type NpcResponseOutputData = z.infer<typeof NpcResponseOutputSchema>;
 export type NpcResponseOutputValidationError = z.ZodError;
 
 /** Throws ZodError on validation failure. */
-export function parseNpcResponseOutput(text: string): NpcResponsePayload { ... }
+export function parseNpcResponseOutput(text: string): NpcResponseOutputData { ... }
 
 /** Result-style; never throws. */
 export function safeParseNpcResponseOutput(text: string):
-  | { success: true; data: NpcResponsePayload }
+  | { success: true; data: NpcResponseOutputData }
   | { success: false; error: NpcResponseOutputValidationError } { ... }
 ```
+
+`parseXxx` and `safeParseXxx` return the local `<Name>Data` type, derived from
+the schema via `z.infer<>`. It is structurally identical to the payload-VO
+interface emitted by `promptRender()` (e.g., `NpcResponsePayload` in
+`prompts.ts`) — consumers who wire both generators can assign back and forth
+between `NpcResponseOutputData` and `NpcResponsePayload` interchangeably. The
+output-parser file is intentionally self-contained so it compiles standalone
+even when `promptRender()` is not wired in.
 
 Consumer usage:
 

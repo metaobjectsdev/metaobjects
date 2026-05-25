@@ -50,13 +50,15 @@ describe("renderOutputParser()", () => {
     ]);
     const out = renderOutputParser(root, "NpcResponseOutput");
     expect(out).toContain('import { z } from "zod"');
-    expect(out).toContain('import type { NpcResponsePayload }');
+    // Self-contained: no cross-file payload import.
+    expect(out).not.toContain('./payloads');
     expect(out).toContain("const NpcResponseOutputSchema = z.object({");
     expect(out).toContain("name: z.string()");
     expect(out).toContain("age: z.number().int()");
-    expect(out).toContain("export function parseNpcResponseOutput(text: string): NpcResponsePayload");
+    expect(out).toContain("export type NpcResponseOutputData = z.infer<typeof NpcResponseOutputSchema>;");
+    expect(out).toContain("export function parseNpcResponseOutput(text: string): NpcResponseOutputData");
     expect(out).toContain("export function safeParseNpcResponseOutput(");
-    expect(out).toContain("{ success: true; data: NpcResponsePayload }");
+    expect(out).toContain("{ success: true; data: NpcResponseOutputData }");
     expect(out).toContain("{ success: false; error: NpcResponseOutputValidationError }");
   });
 
@@ -190,10 +192,10 @@ describe("renderOutputParser()", () => {
     ]);
     const out = renderOutputParser(root, "OuterOutput");
     expect(out).toContain(`const OuterOutputSchema = z.object({
-    inner: z.object({
-      x: z.string(),
-    }),
-  });`);
+  inner: z.object({
+    x: z.string(),
+  }),
+});`);
   });
 
   test("throws when template name is not a template.output", async () => {

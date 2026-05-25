@@ -2,11 +2,11 @@
 //
 // Per-template renderer for template.output codegen. Walks the @payloadRef's
 // value-object into a Zod schema and emits a dual-API parser (parse + safeParse)
-// alongside the schema. The emitted file imports the payload-VO type from
-// "./payloads.js" — the outputParser() factory writes one file per template,
-// so a consumer's project will have multiple <Name>.output.ts files all
-// referencing the shared payloads file emitted by promptRender() (or by their
-// own generator).
+// alongside the schema. The emitted file is self-contained: it derives a
+// local data type via `z.infer<typeof Schema>` and exports it as
+// `<TemplateName>Data`. Consumers wiring `promptRender()` get a structurally
+// identical payload-VO interface in `prompts.ts`; either type can be used
+// interchangeably with parse results.
 
 import {
   type MetaData,
@@ -61,11 +61,15 @@ function fieldZod(field: MetaData, root: MetaData, seen: ReadonlySet<string>, de
   return isArray ? `z.array(${base})` : base;
 }
 
-/** Render a `z.object({ ... })` for an object.value node. */
+/** Render a `z.object({ ... })` for an object.value node.
+ *  At depth 0 the schema starts at column 0 (consumer's `const Foo = z.object({`),
+ *  so fields sit at 2 spaces and the closing `})` at 0 spaces — matching the
+ *  surrounding `const NameSchema = ...` statement's indent. Nested schemas
+ *  step in two spaces per depth level. */
 function renderObjectSchema(vo: MetaData, root: MetaData, seen: ReadonlySet<string>, depth: number): string {
   const fields = vo.children().filter((c) => c.type === TYPE_FIELD);
-  const fieldIndent = "  ".repeat(depth + 2);
-  const closeIndent = "  ".repeat(depth + 1);
+  const fieldIndent = "  ".repeat(depth + 1);
+  const closeIndent = "  ".repeat(depth);
   const lines = fields.map((f) => `${fieldIndent}${f.name}: ${fieldZod(f, root, seen, depth)},`);
   return `z.object({\n${lines.join("\n")}\n${closeIndent}})`;
 }
@@ -94,23 +98,24 @@ export function renderOutputParser(root: MetaData, templateName: string): string
 
   const schema = renderObjectSchema(vo, root, new Set([payloadRef]), 0);
   const schemaName = `${templateName}Schema`;
+  const dataName = `${templateName}Data`;
   const errorName = `${templateName}ValidationError`;
   const parseName = `parse${templateName}`;
   const safeParseName = `safeParse${templateName}`;
 
   return `import { z } from "zod";
-import type { ${payloadRef} } from "./payloads.js";
 
 const ${schemaName} = ${schema};
 
+export type ${dataName} = z.infer<typeof ${schemaName}>;
 export type ${errorName} = z.ZodError;
 
 /**
- * Parse an LLM response into a typed ${payloadRef}.
+ * Parse an LLM response into a typed ${dataName}.
  * @throws ZodError on validation failure.
  */
-export function ${parseName}(text: string): ${payloadRef} {
-  return ${schemaName}.parse(JSON.parse(text)) as ${payloadRef};
+export function ${parseName}(text: string): ${dataName} {
+  return ${schemaName}.parse(JSON.parse(text));
 }
 
 /**
@@ -119,7 +124,7 @@ export function ${parseName}(text: string): ${payloadRef} {
  */
 export function ${safeParseName}(
   text: string,
-): { success: true; data: ${payloadRef} } | { success: false; error: ${errorName} } {
+): { success: true; data: ${dataName} } | { success: false; error: ${errorName} } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -131,7 +136,7 @@ export function ${safeParseName}(
   }
   const result = ${schemaName}.safeParse(parsed);
   return result.success
-    ? { success: true, data: result.data as ${payloadRef} }
+    ? { success: true, data: result.data }
     : { success: false, error: result.error };
 }
 `;

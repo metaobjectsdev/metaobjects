@@ -12,8 +12,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   for every declared `template.output`, emits a typed Zod parser file with a
   dual-API surface (`parseXxx(text)` throws, `safeParseXxx(text)` returns
   Result). Field-type → Zod-type mapping covers all scalars, arrays, and
-  nested `field.object` with `@objectRef`. Wire it into
-  `metaobjects.config.ts`: `generators: [..., outputParser()]`.
+  nested `field.object` with `@objectRef`. The emitted file is self-contained
+  (no cross-file payload import) and exports a `<TemplateName>Data` type-alias
+  derived via `z.infer`; consumers who also wire `promptRender()` can use the
+  payload-VO interface from `prompts.ts` interchangeably (structurally
+  identical). Wire it into `metaobjects.config.ts`:
+  `generators: [..., outputParser()]`.
 - **`meta verify` extension** for `template.output` drift — the build-time
   drift gate now checks both subtypes. Output diagnostics carry `(output)`
   prefix; prompt diagnostics gain `(prompt)` prefix for symmetry.
