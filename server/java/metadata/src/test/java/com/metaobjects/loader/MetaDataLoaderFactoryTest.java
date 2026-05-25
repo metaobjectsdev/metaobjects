@@ -13,9 +13,8 @@ import static org.junit.Assert.*;
  * {@link MetaDataLoader#fromUris(String, java.util.List)},
  * {@link MetaDataLoader#fromString(String, String, MetaDataSource.MetaDataFormat)}.
  *
- * <p>These factories supersede the deprecated {@code createFromURIs} /
- * {@code createFromResources} pair and match the cross-language convention
- * (TS/C#/Python all expose the same shape).</p>
+ * <p>These factories match the cross-language convention — every port
+ * (TS/Java/C#/Python) exposes the same shape.</p>
  */
 public class MetaDataLoaderFactoryTest extends SharedRegistryTestBase {
 

@@ -52,7 +52,7 @@ public class LoaderParam {
 
     /**
      * Set the fully qualified classname of the loader implementation
-     * @param classname Loader classname (e.g., "com.metaobjects.loader.file.FileMetaDataLoader")
+     * @param classname Loader classname (e.g., "com.metaobjects.loader.MetaDataLoader")
      */
     public void setClassname(String classname) {
         this.classname = classname;

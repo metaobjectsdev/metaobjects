@@ -185,37 +185,6 @@ public class MetaDataLoader implements LoaderConfigurable {
                         SUBTYPE_MANUAL, name );
     }
 
-    /**
-     * Construct a MetaDataLoader, set the given URI list, then init + load — all in one call.
-     * Equivalent to the old {@code SimpleLoader.createManualURIs(name, uris)}.
-     *
-     * @param name the loader name
-     * @param uris model URIs to load (e.g. {@code model:resource:…}, {@code model:file:…})
-     * @return a fully-initialized loader with all URIs loaded
-     */
-    public static MetaDataLoader createFromURIs(String name, List<URI> uris) {
-        MetaDataLoader loader = new MetaDataLoader(
-                LoaderOptions.create(false, false, true), SUBTYPE_MANUAL, name);
-        loader.setSourceURIs(uris);
-        loader.init();
-        return loader;
-    }
-
-    /**
-     * Construct a MetaDataLoader from classpath resource paths, then init + load.
-     * Each resource path is wrapped as {@code model:resource:<path>}.
-     * Equivalent to the old {@code SimpleLoader.createManual(name, List&lt;String&gt;)}.
-     *
-     * @param name      the loader name
-     * @param resources classpath resource paths (no {@code model:} prefix needed)
-     * @return a fully-initialized loader with all resources loaded
-     */
-    public static MetaDataLoader createFromResources(String name, List<String> resources) {
-        List<URI> uris = new ArrayList<>();
-        for (String r : resources) uris.add(URIHelper.toURI("model:resource:" + r));
-        return createFromURIs(name, uris);
-    }
-
     ///////////////////////////////////////////////////////////////////////
     // Unified static factories (cross-language consistent — see TS / C# / Python)
 
@@ -258,8 +227,8 @@ public class MetaDataLoader implements LoaderConfigurable {
     }
 
     /**
-     * Build {@link UriSource}s and load them. Replaces the deprecated
-     * {@link #createFromURIs(String, List)} alias.
+     * Build {@link UriSource}s and load them. The cross-language URI-based
+     * factory — every port (TS/Java/C#/Python) exposes the same shape.
      *
      * @param name the loader name
      * @param uris model URIs to load

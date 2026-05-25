@@ -1,9 +1,6 @@
 package com.metaobjects.mojo;
 
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.file.FileLoaderOptions;
-import com.metaobjects.loader.file.FileMetaDataLoader;
-import com.metaobjects.loader.file.LocalFileMetaDataSources;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.codehaus.plexus.PlexusTestCase;
@@ -28,7 +25,7 @@ import static org.junit.Assert.*;
  * {@link org.apache.maven.project.MavenProject} context that the maven-plugin-testing-harness
  * cannot trivially provide for a mojo with JDBC + engine wiring, this test uses a
  * <em>focused direct-instantiation</em> approach: it subclasses {@code MetaDataMigrateMojo},
- * overrides {@code createLoader} to build a {@link FileMetaDataLoader} from the test fixture
+ * overrides {@code createLoader} to build a {@link MetaDataLoader} from the test fixture
  * without touching the Maven classpath machinery, and drives the engine end-to-end against an
  * in-memory Derby database. The {@code SchemaMigrationEngine} and {@code DerbyDriver} are the
  * real implementations — nothing is mocked or faked.
@@ -75,23 +72,15 @@ public class MetaDataMigrateMojoTest {
 
         /**
          * Bypass {@code MetaDataMigrateMojo.createLoader} (needs loaderConfig + MavenProject).
-         * Uses a {@link FileMetaDataLoader} that reads directly from the filesystem via
-         * {@code LocalFileMetaDataSources(sourceDir, filename)}.
+         * Uses the unified {@link MetaDataLoader#fromUris(String, java.util.List)} factory
+         * reading the fixture directly from the filesystem.
          */
         @Override
         protected MetaDataLoader createLoader(ClassLoader ignored) {
             try {
-                FileMetaDataLoader xl = new FileMetaDataLoader(
-                    new FileLoaderOptions()
-                        .setShouldRegister(false)
-                        .setAllowAutoAttrs(true)
-                        .setStrict(false)
-                        .setVerbose(false),
-                    "mojo-test-loader");
-                // LocalFileMetaDataSources(baseDir, filename) → getFileInputStream(baseDir + "/" + filename)
-                xl.init(new LocalFileMetaDataSources(fixtureDir, fixtureFile));
-                xl.register();
-                return xl;
+                java.net.URI fixtureUri = java.nio.file.Path.of(fixtureDir, fixtureFile).toUri();
+                return MetaDataLoader.fromUris("mojo-test-loader",
+                    java.util.List.of(fixtureUri));
             } catch (Exception e) {
                 throw new RuntimeException("Could not build test loader: " + e.getMessage(), e);
             }

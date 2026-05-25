@@ -1,9 +1,6 @@
 package com.metaobjects.manager.db.migrate;
 
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.loader.file.FileLoaderOptions;
-import com.metaobjects.loader.file.FileMetaDataLoader;
-import com.metaobjects.loader.file.LocalFileMetaDataSources;
 import com.metaobjects.manager.db.ObjectManagerDB;
 import com.metaobjects.manager.db.driver.DerbyDriver;
 import com.metaobjects.manager.db.migrate.SchemaSnapshot.ColumnDescriptor;
@@ -27,7 +24,7 @@ import static org.junit.Assert.*;
 /**
  * TDD test for ExpectedSchemaBuilder: verifies that metadata-derived SchemaSnapshot
  * contains the correct tables, column types, and that @previousName is harvested into
- * RenameHints. Uses Derby in-memory + FileMetaDataLoader exactly as JsonbFieldDBTest does.
+ * RenameHints. Uses Derby in-memory + MetaDataLoader.fromResources exactly as JsonbFieldDBTest does.
  */
 public class ExpectedSchemaBuilderTest {
 
@@ -40,16 +37,8 @@ public class ExpectedSchemaBuilderTest {
     public static void setupDB() throws Exception {
         registry = new MetaDataLoaderRegistry(ServiceRegistryFactory.getDefault());
 
-        FileMetaDataLoader xl = new FileMetaDataLoader(
-            new FileLoaderOptions()
-                .setShouldRegister(false)
-                .setAllowAutoAttrs(true)
-                .setStrict(false)
-                .setVerbose(false),
-            "test-expected-db");
-
-        xl.init(new LocalFileMetaDataSources("meta.expected.json"));
-        xl.register();
+        MetaDataLoader xl = MetaDataLoader.fromResources(
+            "test-expected-db", java.util.List.of("meta.expected.json"));
         registry.registerLoader(xl);
         loader = xl;
 
