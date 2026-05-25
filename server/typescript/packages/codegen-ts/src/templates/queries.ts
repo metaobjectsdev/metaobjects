@@ -39,11 +39,10 @@ export function renderFindByIdFn(entity: MetaObject, ctx: RenderContext): Code {
   const pkSnakeName = toSnakeCase(pkField);
   const prepName = prepareName("find", entitySnakeName, pkSnakeName);
   const fnName = `find${entityName}ById`;
+  const baseVarName = `${fnName}Base`;
   const prepVarName = `${fnName}Prepared`;
   const eqSym = imp("eq@drizzle-orm");
   const sqlSym = imp("sql@drizzle-orm");
-
-  const baseVarName = `${fnName}Base`;
 
   // Drizzle's `.prepare()` signature differs by dialect:
   //   - Postgres: prepare(name) — the name is used by the pg driver to cache the plan
@@ -51,13 +50,12 @@ export function renderFindByIdFn(entity: MetaObject, ctx: RenderContext): Code {
   const prepArg = ctx.dialect === "postgres" ? `"${prepName}"` : "";
 
   return code`
-const ${baseVarName} = db
-  .select()
-  .from(${varName})
-  .where(${eqSym}(${varName}.${pkField}, ${sqlSym}.placeholder(${JSON.stringify(pkField)})));
-const ${prepVarName} = ${baseVarName}.prepare(${prepArg});
-
-export async function ${fnName}(${pkField}: ${pkType}): Promise<${entityName} | null> {
+export async function ${fnName}(db: Db, ${pkField}: ${pkType}): Promise<${entityName} | null> {
+  const ${baseVarName} = db
+    .select()
+    .from(${varName})
+    .where(${eqSym}(${varName}.${pkField}, ${sqlSym}.placeholder(${JSON.stringify(pkField)})));
+  const ${prepVarName} = ${baseVarName}.prepare(${prepArg});
   const [${singularVar}] = await ${prepVarName}.execute({ ${pkField} });
   return ${singularVar} ?? null;
 }
@@ -72,7 +70,7 @@ export function renderListFn(entity: MetaObject, _ctx: RenderContext): Code {
   const fnName = `list${pluralize(entityName)}`;
 
   return code`
-export async function ${fnName}(opts?: { limit?: number; offset?: number }): Promise<${entityName}[]> {
+export async function ${fnName}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${entityName}[]> {
   let q = db.select().from(${varName}).$dynamic();
   if (opts?.limit !== undefined) q = q.limit(opts.limit);
   if (opts?.offset !== undefined) q = q.offset(opts.offset);
@@ -89,7 +87,7 @@ export function renderCreateFn(entity: MetaObject, _ctx: RenderContext): Code {
   const schemaName = `${entityName}InsertSchema`;
 
   return code`
-export async function ${fnName}(data: unknown): Promise<${entityName}> {
+export async function ${fnName}(db: Db, data: unknown): Promise<${entityName}> {
   const validated = ${schemaName}.parse(data);
   const [${singularVar}] = await db.insert(${varName}).values(validated).returning();
   return ${singularVar}!;
@@ -107,7 +105,7 @@ export function renderUpdateFn(entity: MetaObject, ctx: RenderContext): Code {
   const eqSym = imp("eq@drizzle-orm");
 
   return code`
-export async function ${fnName}(${pkField}: ${pkType}, data: unknown): Promise<${entityName} | null> {
+export async function ${fnName}(db: Db, ${pkField}: ${pkType}, data: unknown): Promise<${entityName} | null> {
   const validated = ${schemaName}.partial().parse(data);
   const [${singularVar}] = await db.update(${varName}).set(validated).where(${eqSym}(${varName}.${pkField}, ${pkField})).returning();
   return ${singularVar} ?? null;
@@ -123,7 +121,7 @@ export function renderDeleteByIdFn(entity: MetaObject, ctx: RenderContext): Code
   const eqSym = imp("eq@drizzle-orm");
 
   return code`
-export async function ${fnName}(${pkField}: ${pkType}): Promise<boolean> {
+export async function ${fnName}(db: Db, ${pkField}: ${pkType}): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
   const deleted = await db.delete(${varName}).where(${eqSym}(${varName}.${pkField}, ${pkField})).returning();

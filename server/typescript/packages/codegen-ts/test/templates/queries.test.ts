@@ -70,6 +70,31 @@ describe("renderFindByIdFn", () => {
     expect(match1?.[1]).toBe(match2?.[1]);
     expect(match1?.[1]).toBe("find_post_by_id");
   });
+
+  test("first parameter is db: Db (the persistence-context handle)", () => {
+    const post = makePost();
+    const ctx = makeCtx(post); // sqlite
+    const out = renderFindByIdFn(post, ctx).toString();
+    // Signature is `findPostById(db: Db, id: number)`. We assert structurally
+    // (substring + ordering) rather than an exact regex on whitespace so the
+    // test survives ts-poet line-wrapping decisions.
+    expect(out).toMatch(/findPostById\(\s*db:\s*Db\s*,\s*id:\s*number\s*\)/);
+  });
+
+  test("does not reference a module-level db (constants hoisted into the fn body)", () => {
+    const post = makePost();
+    const ctx = makeCtx(post);
+    const out = renderFindByIdFn(post, ctx).toString();
+    // Old shape was a top-level `const findPostByIdBase = db.select()...` followed
+    // by `const findPostByIdPrepared = ...`. New shape has those constants
+    // inside the function body (so `db` resolves to the parameter).
+    // Heuristic: the function declaration must appear BEFORE any
+    // `findPostByIdBase` / `findPostByIdPrepared` constant.
+    const fnIdx = out.indexOf("export async function findPostById");
+    const baseIdx = out.indexOf("findPostByIdBase");
+    expect(fnIdx).toBeGreaterThanOrEqual(0);
+    expect(baseIdx).toBeGreaterThan(fnIdx);
+  });
 });
 
 describe("renderListFn", () => {
@@ -96,6 +121,14 @@ describe("renderListFn", () => {
     expect(out).toContain("listCategories");
     expect(out).not.toContain("listCategorys");
   });
+
+  test("first parameter is db: Db", () => {
+    const post = makePost();
+    const ctx = makeCtx(post);
+    const out = renderListFn(post, ctx).toString();
+    // Signature: listPosts(db: Db, opts?: { limit?: number; offset?: number })
+    expect(out).toMatch(/listPosts\(\s*db:\s*Db\s*,\s*opts\?/);
+  });
 });
 
 describe("renderCreateFn", () => {
@@ -108,6 +141,14 @@ describe("renderCreateFn", () => {
     expect(out).toContain(".returning()");
     expect(out).toContain("Promise<Post>");
   });
+
+  test("first parameter is db: Db", () => {
+    const post = makePost();
+    const ctx = makeCtx(post);
+    const out = renderCreateFn(post, ctx).toString();
+    // Signature: createPost(db: Db, data: unknown)
+    expect(out).toMatch(/createPost\(\s*db:\s*Db\s*,\s*data:\s*unknown\s*\)/);
+  });
 });
 
 describe("renderUpdateFn", () => {
@@ -119,6 +160,14 @@ describe("renderUpdateFn", () => {
     expect(out).toContain("PostInsertSchema.partial().parse(data)");
     expect(out).toContain(".returning()");
     expect(out).toContain("Promise<Post | null>");
+  });
+
+  test("first parameter is db: Db", () => {
+    const post = makePost();
+    const ctx = makeCtx(post);
+    const out = renderUpdateFn(post, ctx).toString();
+    // Signature: updatePost(db: Db, id: number, data: unknown)
+    expect(out).toMatch(/updatePost\(\s*db:\s*Db\s*,\s*id:\s*number\s*,\s*data:\s*unknown\s*\)/);
   });
 });
 
@@ -135,5 +184,13 @@ describe("renderDeleteByIdFn", () => {
     expect(out).toContain(".returning()");
     expect(out).toContain("deleted.length > 0");
     expect(out).not.toContain("rowsAffected");
+  });
+
+  test("first parameter is db: Db", () => {
+    const post = makePost();
+    const ctx = makeCtx(post);
+    const out = renderDeleteByIdFn(post, ctx).toString();
+    // Signature: deletePostById(db: Db, id: number)
+    expect(out).toMatch(/deletePostById\(\s*db:\s*Db\s*,\s*id:\s*number\s*\)/);
   });
 });
