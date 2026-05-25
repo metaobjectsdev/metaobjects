@@ -21,9 +21,14 @@ import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.origin.PassthroughOrigin;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.source.MetaSource;
+import com.metaobjects.template.MetaTemplate;
+import com.metaobjects.template.PromptTemplate;
+import com.metaobjects.template.TemplateConstants;
 import com.metaobjects.util.ErrorMessageConstants;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Post-load validation phase — runs after all sources are parsed and before the
@@ -83,6 +88,7 @@ public final class ValidationPhase {
         validateOnePrimarySource(root);
         validateRelationshipReferentialActions(root);
         validateOrigins(root);
+        validateTemplates(root);
         validateEntityHasPrimaryIdentity(root, loader);
     }
 
@@ -656,6 +662,109 @@ public final class ValidationPhase {
         if (v instanceof Boolean) return (Boolean) v;
         if (v instanceof String) return "true".equalsIgnoreCase((String) v);
         return false;
+    }
+
+    // =========================================================================
+    // Template validation (FR-004 — cross-language prompt construction)
+    //
+    // Three rules, own-only, eager-throw — mirrors TS validateTemplates and
+    // C# TemplateValidator:
+    //   R1: template.prompt requires @payloadRef → ERR_MISSING_REQUIRED_ATTR
+    //   R2: @payloadRef (if present on any template) must resolve to an
+    //       object.value at root → ERR_INVALID_TEMPLATE
+    //   R3: template.prompt @requiredSlots members must each be a field on the
+    //       resolved payload VO → ERR_INVALID_TEMPLATE
+    //
+    // Templates always live at the document root. We walk root children only.
+    // =========================================================================
+
+    /**
+     * Validate every {@code template.*} child of the root.
+     *
+     * @param root the fully-loaded root
+     * @throws MetaDataException on the first template validation failure
+     */
+    static void validateTemplates(MetaRoot root) {
+        for (MetaData child : root.getChildren(MetaData.class, false)) {
+            if (!(child instanceof MetaTemplate)) continue;
+            validateTemplateNode(root, (MetaTemplate) child);
+        }
+    }
+
+    private static void validateTemplateNode(MetaRoot root, MetaTemplate template) {
+        String subType = template.getSubType();
+        String payloadRef = template.getPayloadRef();
+
+        // R1 — template.prompt requires @payloadRef
+        if (TemplateConstants.SUBTYPE_PROMPT.equals(subType)
+                && (payloadRef == null || payloadRef.isEmpty())) {
+            throw new MetaDataException(
+                "template.prompt '" + template.getName() + "' is missing required @payloadRef",
+                ErrorCode.ERR_MISSING_REQUIRED_ATTR);
+        }
+
+        // R2 + R3 only apply if @payloadRef is set
+        if (payloadRef == null || payloadRef.isEmpty()) return;
+
+        MetaObject payloadVo = findRootValueObject(root, payloadRef);
+        if (payloadVo == null) {
+            throw new MetaDataException(
+                "template '" + template.getName() + "' @payloadRef '" + payloadRef
+                    + "' does not resolve to an object.value at root",
+                ErrorCode.ERR_INVALID_TEMPLATE);
+        }
+
+        // R3 — every @requiredSlots member must be a field on the payload VO
+        if (template instanceof PromptTemplate prompt) {
+            List<String> required = prompt.getRequiredSlots();
+            if (required != null && !required.isEmpty()) {
+                Set<String> available = collectPayloadFieldNames(payloadVo);
+                for (String slot : required) {
+                    if (slot == null || slot.isEmpty()) continue;
+                    if (!available.contains(slot)) {
+                        throw new MetaDataException(
+                            "template.prompt '" + template.getName()
+                                + "' @requiredSlots includes '" + slot
+                                + "' which is not a field on payload '" + payloadRef + "'",
+                            ErrorCode.ERR_INVALID_TEMPLATE);
+                    }
+                }
+            }
+        }
+    }
+
+    /** Find an {@code object.value} child at root whose short name matches {@code ref}. */
+    private static MetaObject findRootValueObject(MetaRoot root, String ref) {
+        for (MetaData child : root.getChildren(MetaData.class, false)) {
+            if (!(child instanceof MetaObject)) continue;
+            if (!MetaObject.SUBTYPE_VALUE.equals(child.getSubType())) continue;
+            if (nameMatches(child, ref)) return (MetaObject) child;
+        }
+        return null;
+    }
+
+    /**
+     * Collect the short names of every {@code field.*} child of a payload VO.
+     * Walks effective children (includeParentData=true) so an extends-based
+     * payload contributes inherited fields too.
+     */
+    private static Set<String> collectPayloadFieldNames(MetaObject payloadVo) {
+        Set<String> out = new HashSet<>();
+        for (MetaData child : payloadVo.getChildren(MetaData.class, true)) {
+            if (!(child instanceof MetaField)) continue;
+            String shortName = child.getShortName();
+            if (shortName != null && !shortName.isEmpty()) {
+                out.add(shortName);
+                continue;
+            }
+            String full = child.getName();
+            if (full == null) continue;
+            int idx = full.lastIndexOf(MetaData.PKG_SEPARATOR);
+            out.add(idx >= 0
+                ? full.substring(idx + MetaData.PKG_SEPARATOR.length())
+                : full);
+        }
+        return out;
     }
 
     /**
