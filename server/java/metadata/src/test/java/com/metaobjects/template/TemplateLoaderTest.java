@@ -47,6 +47,22 @@ public class TemplateLoaderTest extends SharedRegistryTestBase {
         "      \"@model\": \"claude-opus-4-7\" } }" +
         "] } }";
 
+    /** Exercises every Layer-2 typed accessor on a single fully-populated prompt template. */
+    private static final String FULL_ATTRS_FIXTURE =
+        "{ \"metadata.root\": { \"package\": \"acme::ai\", \"children\": [" +
+        "  { \"object.value\": { \"name\": \"FullVo\", \"children\": [" +
+        "    { \"field.string\": { \"name\": \"q\" } }" +
+        "  ] } }," +
+        "  { \"template.prompt\": { \"name\": \"FullTmpl\"," +
+        "      \"@payloadRef\": \"FullVo\"," +
+        "      \"@textRef\": \"ai/full\"," +
+        "      \"@owner\": \"prompt-platform\"," +
+        "      \"@since\": \"2026-05-25\"," +
+        "      \"@requiredTags\": [ \"public\", \"v1\" ]," +
+        "      \"@maxTokens\": 2048," +
+        "      \"@model\": \"claude-opus-4-7\" } }" +
+        "] } }";
+
     private MetaDataLoader loadThrough(String canonical, String id) {
         MetaDataLoader loader = createTestLoader("TemplateLoaderTest", Collections.emptyList());
         loader.load(List.of(new InMemoryStringSource(canonical, id)));
@@ -93,5 +109,32 @@ public class TemplateLoaderTest extends SharedRegistryTestBase {
         assertNotNull("@requiredSlots should be populated", slots);
         assertEquals(1, slots.size());
         assertEquals("q", slots.get(0));
+    }
+
+    @Test
+    public void typedAccessorsExposeAllLayer2Attrs() {
+        // Locks in the typed accessors Layer 2 (render engine + Verify) will read.
+        MetaDataLoader loader = loadThrough(FULL_ATTRS_FIXTURE, "full.json");
+
+        MetaData node = loader.getRoot().getChildOfType(
+            TemplateConstants.TYPE_TEMPLATE, "acme::ai::FullTmpl");
+        assertNotNull("template.prompt node should load", node);
+        assertTrue("expected PromptTemplate instance", node instanceof PromptTemplate);
+
+        PromptTemplate p = (PromptTemplate) node;
+
+        // Shared (MetaTemplate) accessors.
+        assertEquals("prompt-platform", p.getOwner());
+        assertEquals("2026-05-25", p.getSince());
+
+        List<String> tags = p.getRequiredTags();
+        assertNotNull("@requiredTags should be populated", tags);
+        assertEquals(2, tags.size());
+        assertEquals("public", tags.get(0));
+        assertEquals("v1", tags.get(1));
+
+        // Prompt-only accessors.
+        assertEquals(Integer.valueOf(2048), p.getMaxTokens());
+        assertEquals("claude-opus-4-7", p.getModel());
     }
 }

@@ -48,4 +48,19 @@ public final class PromptTemplate extends MetaTemplate {
         }
         return null;
     }
+
+    /** Returns the value of {@code @maxTokens}, or {@code null} if absent. */
+    public Integer getMaxTokens() {
+        if (!hasMetaAttr(ATTR_MAX_TOKENS, false)) return null;
+        // IntAttribute is parameterized on Integer; load-time conversion via
+        // DataConverter guarantees getValue() is Integer or null here.
+        return (Integer) getMetaAttr(ATTR_MAX_TOKENS, false).getValue();
+    }
+
+    /** Returns the raw value of {@code @model}, or {@code null} if absent. */
+    public String getModel() {
+        return hasMetaAttr(ATTR_MODEL, false)
+            ? getMetaAttr(ATTR_MODEL, false).getValueAsString()
+            : null;
+    }
 }

@@ -1,5 +1,7 @@
 package com.metaobjects.template;
 
+import java.util.Set;
+
 /**
  * Vocabulary constants for the {@code template.*} metatype (FR-004).
  *
@@ -41,4 +43,13 @@ public final class TemplateConstants {
     public static final String FORMAT_SPREADSHEET = "spreadsheet";
 
     public static final String FORMAT_DEFAULT = FORMAT_TEXT;
+
+    /**
+     * Closed set of valid {@code @format} values. Used by
+     * {@code ValidationPhase#validateTemplates} for enum-membership enforcement.
+     * Must match the TS / C# format vocabulary exactly (Tier-1 invariant).
+     */
+    public static final Set<String> ALLOWED_FORMATS = Set.of(
+        FORMAT_TEXT, FORMAT_HTML, FORMAT_XML, FORMAT_CSV,
+        FORMAT_JSON, FORMAT_MARKDOWN, FORMAT_SPREADSHEET);
 }

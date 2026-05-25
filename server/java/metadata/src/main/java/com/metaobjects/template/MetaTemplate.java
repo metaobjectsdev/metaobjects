@@ -6,6 +6,9 @@ import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static com.metaobjects.template.TemplateConstants.*;
 
 /**
@@ -48,6 +51,13 @@ public abstract class MetaTemplate extends MetaData {
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.optionalAttributeWithConstraints(ATTR_TEXT_REF)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            // @format — closed-set enum (Tier-1 invariant; see TemplateConstants.FORMAT_*
+            // and TemplateConstants.ALLOWED_FORMATS). Enum-membership is enforced on the
+            // concrete subtype (template.prompt / template.output) in
+            // ValidationPhase#validateTemplates, matching the pattern used for source.rdb
+            // @kind/@role and relationship.* @onDelete/@onUpdate (a withEnum constraint on
+            // the abstract base type does not fire for concrete subtypes — see
+            // CustomConstraint.applicabilityTest in AttributeConstraintBuilder).
             def.optionalAttributeWithConstraints(ATTR_FORMAT)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.optionalAttributeWithConstraints(ATTR_MAX_CHARS)
@@ -94,5 +104,31 @@ public abstract class MetaTemplate extends MetaData {
         // IntAttribute is parameterized on Integer; load-time conversion via
         // DataConverter guarantees getValue() is Integer or null here.
         return (Integer) getMetaAttr(ATTR_MAX_CHARS, false).getValue();
+    }
+
+    /** Returns the raw value of {@code @owner}, or {@code null} if absent. */
+    public String getOwner() {
+        return hasMetaAttr(ATTR_OWNER, false)
+            ? getMetaAttr(ATTR_OWNER, false).getValueAsString()
+            : null;
+    }
+
+    /** Returns the raw value of {@code @since}, or {@code null} if absent. */
+    public String getSince() {
+        return hasMetaAttr(ATTR_SINCE, false)
+            ? getMetaAttr(ATTR_SINCE, false).getValueAsString()
+            : null;
+    }
+
+    /** Returns the {@code @requiredTags} list, or {@code null} if absent. */
+    public List<String> getRequiredTags() {
+        if (!hasMetaAttr(ATTR_REQUIRED_TAGS, false)) return null;
+        Object v = getMetaAttr(ATTR_REQUIRED_TAGS, false).getValue();
+        if (v instanceof List<?> list) {
+            List<String> out = new ArrayList<>(list.size());
+            for (Object o : list) out.add(String.valueOf(o));
+            return out;
+        }
+        return null;
     }
 }

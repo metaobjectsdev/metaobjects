@@ -55,6 +55,15 @@ public class TemplateValidationTest extends SharedRegistryTestBase {
         "      \"@requiredSlots\": [ \"present\", \"absent\" ] } }" +
         "] } }";
 
+    private static final String UNKNOWN_FORMAT_VALUE =
+        "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+        "  { \"object.value\": { \"name\": \"P\", \"children\": [" +
+        "    { \"field.string\": { \"name\": \"x\" } }" +
+        "  ] } }," +
+        "  { \"template.output\": { \"name\": \"T\", \"@payloadRef\": \"P\"," +
+        "      \"@textRef\": \"x/y\", \"@format\": \"yaml\" } }" +
+        "] } }";
+
     // ---- helpers -----------------------------------------------------------
 
     private MetaDataLoader newTestLoader() {
@@ -92,5 +101,25 @@ public class TemplateValidationTest extends SharedRegistryTestBase {
         assertEquals(
             ErrorCode.ERR_INVALID_TEMPLATE,
             loadAndExpectError(REQUIRED_SLOT_MISSING, "required-slot-missing.json"));
+    }
+
+    @Test
+    public void rejectsUnknownFormatValue() {
+        // @format is a closed-set enum (text|html|xml|csv|json|markdown|spreadsheet);
+        // an unknown value like "yaml" must be rejected at registry constraint time.
+        // Mirror the relationship @onDelete enum-violation pattern (RelationshipReferentialActionsTest).
+        try {
+            newTestLoader().load(List.of(new InMemoryStringSource(
+                UNKNOWN_FORMAT_VALUE, "unknown-format-value.json")));
+            fail("Expected MetaDataException for unknown @format value 'yaml'");
+        } catch (MetaDataException e) {
+            boolean codeMatches = e.getCode()
+                .map(c -> c == ErrorCode.ERR_BAD_ATTR_VALUE)
+                .orElse(false);
+            boolean messageMatches = e.getMessage() != null
+                && e.getMessage().contains("ERR_BAD_ATTR_VALUE");
+            assertTrue("Exception must signal ERR_BAD_ATTR_VALUE (via code or message): "
+                + e.getMessage(), codeMatches || messageMatches);
+        }
     }
 }

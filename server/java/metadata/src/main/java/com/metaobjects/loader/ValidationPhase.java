@@ -667,13 +667,15 @@ public final class ValidationPhase {
     // =========================================================================
     // Template validation (FR-004 — cross-language prompt construction)
     //
-    // Three rules, own-only, eager-throw — mirrors TS validateTemplates and
+    // Four rules, own-only, eager-throw — mirrors TS validateTemplates and
     // C# TemplateValidator:
     //   R1: template.prompt requires @payloadRef → ERR_MISSING_REQUIRED_ATTR
     //   R2: @payloadRef (if present on any template) must resolve to an
     //       object.value at root → ERR_INVALID_TEMPLATE
     //   R3: template.prompt @requiredSlots members must each be a field on the
     //       resolved payload VO → ERR_INVALID_TEMPLATE
+    //   R4: @format (if present) must be a member of TemplateConstants.ALLOWED_FORMATS
+    //       → ERR_BAD_ATTR_VALUE
     //
     // Templates always live at the document root. We walk root children only.
     // =========================================================================
@@ -694,6 +696,21 @@ public final class ValidationPhase {
     private static void validateTemplateNode(MetaRoot root, MetaTemplate template) {
         String subType = template.getSubType();
         String payloadRef = template.getPayloadRef();
+
+        // R4 — @format (if present) must be in the closed allowed set
+        // (text|html|xml|csv|json|markdown|spreadsheet). Own-only — absent is fine.
+        if (template.hasMetaAttr(TemplateConstants.ATTR_FORMAT, false)) {
+            String fmt = template.getMetaAttr(TemplateConstants.ATTR_FORMAT, false).getValueAsString();
+            if (fmt != null && !TemplateConstants.ALLOWED_FORMATS.contains(fmt)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": template '" + template.getName()
+                        + "' @format '" + fmt
+                        + "' is not a valid value; allowed: "
+                        + TemplateConstants.ALLOWED_FORMATS,
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
 
         // R1 — template.prompt requires @payloadRef
         if (TemplateConstants.SUBTYPE_PROMPT.equals(subType)
