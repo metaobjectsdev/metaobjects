@@ -49,11 +49,13 @@ test("FileSource: infers format from the file extension", () => {
   expect(new FileSource("meta.commerce.yml").format).toBe("yaml");
 });
 
-test("loader: the base MetaDataLoader rejects a yaml-format source", async () => {
+test("loader: the base MetaDataLoader now parses yaml-format sources directly", async () => {
+  // YAML support is folded into the base loader as of the cross-language
+  // loader-unification work — no FileMetaDataLoader subclass needed.
   const loader = new MetaDataLoader();
   const result = await loader.load([
     new InMemoryStringSource("metadata:\n  children: []\n", { id: "x.yaml", format: "yaml" }),
   ]);
-  expect(result.errors.length).toBeGreaterThan(0);
-  expect(result.errors[0]!.message).toContain("MetaDataLoader parses JSON only");
+  expect(result.errors).toEqual([]);
+  expect(result.root.type).toBe(TYPE_METADATA);
 });
