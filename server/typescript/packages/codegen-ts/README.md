@@ -96,6 +96,44 @@ It does **not** work on `better-sqlite3` or `bun:sqlite` (no native
 functions in the sibling `<Entity>.extra.ts` file with a non-`.returning()`
 form, or switch to a supported driver.
 
+## Naming conventions: camelCase TS ↔ snake_case SQL
+
+`@metaobjectsdev/codegen-ts` maps `snake_case` metadata field names to
+`camelCase` TS property names by default. The underlying SQL column stays
+`snake_case`.
+
+```jsonc
+// Metadata
+{ "field.long": { "name": "council_id" } }
+```
+
+```ts
+// Generated TS — property is camelCase
+import { councils } from "./generated/Council";
+const id = council.councilId;
+db.select().from(councils).where(eq(councils.councilId, "abc"));
+```
+
+```sql
+-- Generated DDL — column stays snake_case
+CREATE TABLE councils (
+  council_id TEXT NOT NULL PRIMARY KEY,
+  ...
+);
+```
+
+To override the SQL column name per-field, use `@dbColumn`:
+
+```jsonc
+{ "field.long": { "name": "councilId", "@dbColumn": "council_uuid" } }
+```
+
+The mapping policy is project-wide via `columnNamingStrategy` in
+`metaobjects.config.ts`: `snake_case` (default) | `literal` | `kebab-case`.
+See the per-target output design doc at
+[`../../../../docs/superpowers/specs/2026-05-21-per-target-output-dirs-design.md`](../../../../docs/superpowers/specs/2026-05-21-per-target-output-dirs-design.md)
+for the full rationale.
+
 ## License
 
 Apache-2.0.

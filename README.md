@@ -15,6 +15,7 @@ The metamodel is the durable spine; generated code is the disposable artifact. S
 
 ## What's in this repo
 
+- [`CHANGELOG.md`](CHANGELOG.md) — release notes for the published `@metaobjectsdev/*` TypeScript packages
 - [`spec/`](spec/) — cross-language design docs, roadmap, conformance test documentation
 - [`fixtures/`](fixtures/) — shared cross-language conformance test fixtures
 - [`docs/recipes/`](docs/recipes/) — deployment recipes (Cloudflare Workers, more on the way)
