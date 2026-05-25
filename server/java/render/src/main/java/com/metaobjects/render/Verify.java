@@ -116,47 +116,51 @@ public final class Verify {
     ) {
         boolean atRoot = stack.size() == 1 && stack.get(0) == ctx.root();
         for (Tok tok : tokens) {
-            if (tok instanceof VarTok v) {
-                if (".".equals(v.value())) continue;   // implicit iterator — always valid
-                if (atRoot) ctx.referencedAtRoot().add(v.value().split("\\.")[0]);
-                if (resolve(stack, v.value()) == null) {
-                    ctx.errors().add(new VerifyError(ERR_VAR_NOT_ON_PAYLOAD, v.value()));
+            switch (tok) {
+                case VarTok v -> {
+                    if (".".equals(v.value())) break;   // implicit iterator — always valid
+                    if (atRoot) ctx.referencedAtRoot().add(v.value().split("\\.")[0]);
+                    if (resolve(stack, v.value()) == null) {
+                        ctx.errors().add(new VerifyError(ERR_VAR_NOT_ON_PAYLOAD, v.value()));
+                    }
                 }
-            } else if (tok instanceof SectionTok s) {
-                if (".".equals(s.value())) {
-                    walk(s.children(), stack, seen, ctx);
-                    continue;
+                case SectionTok s -> {
+                    if (".".equals(s.value())) {
+                        walk(s.children(), stack, seen, ctx);
+                        break;
+                    }
+                    if (atRoot) ctx.referencedAtRoot().add(s.value().split("\\.")[0]);
+                    PayloadField field = resolve(stack, s.value());
+                    if (field == null) {
+                        // Unresolved section head is itself drift; skip the body
+                        // (its context is unknowable; walking it cascades false errors).
+                        ctx.errors().add(new VerifyError(ERR_VAR_NOT_ON_PAYLOAD, s.value()));
+                        break;
+                    }
+                    // `#` over a container pushes its element fields; `^` (and `#`
+                    // over a scalar, used as a conditional) keep the current context.
+                    boolean push = !s.inverted() && field.fields() != null;
+                    if (push) {
+                        List<List<PayloadField>> next = new ArrayList<>(stack);
+                        next.add(field.fields());
+                        walk(s.children(), Collections.unmodifiableList(next), seen, ctx);
+                    } else {
+                        walk(s.children(), stack, seen, ctx);
+                    }
                 }
-                if (atRoot) ctx.referencedAtRoot().add(s.value().split("\\.")[0]);
-                PayloadField field = resolve(stack, s.value());
-                if (field == null) {
-                    // Unresolved section head is itself drift; skip the body
-                    // (its context is unknowable; walking it cascades false errors).
-                    ctx.errors().add(new VerifyError(ERR_VAR_NOT_ON_PAYLOAD, s.value()));
-                    continue;
+                case PartialTok p -> {
+                    if (ctx.provider() == null) break;   // can't resolve without a provider
+                    if (seen.contains(p.value()) || seen.size() >= MAX_DEPTH) break;
+                    String text = ctx.provider().resolve(p.value());
+                    if (text == null) {
+                        ctx.errors().add(new VerifyError(ERR_PARTIAL_UNRESOLVED, p.value()));
+                        break;
+                    }
+                    ctx.staticTexts().add(text);
+                    List<String> nextSeen = new ArrayList<>(seen);
+                    nextSeen.add(p.value());
+                    walk(tokenize(text), stack, Collections.unmodifiableList(nextSeen), ctx);
                 }
-                // `#` over a container pushes its element fields; `^` (and `#`
-                // over a scalar, used as a conditional) keep the current context.
-                boolean push = !s.inverted() && field.fields() != null;
-                if (push) {
-                    List<List<PayloadField>> next = new ArrayList<>(stack);
-                    next.add(field.fields());
-                    walk(s.children(), Collections.unmodifiableList(next), seen, ctx);
-                } else {
-                    walk(s.children(), stack, seen, ctx);
-                }
-            } else if (tok instanceof PartialTok p) {
-                if (ctx.provider() == null) continue;   // can't resolve without a provider
-                if (seen.contains(p.value()) || seen.size() >= MAX_DEPTH) continue;
-                String text = ctx.provider().resolve(p.value());
-                if (text == null) {
-                    ctx.errors().add(new VerifyError(ERR_PARTIAL_UNRESOLVED, p.value()));
-                    continue;
-                }
-                ctx.staticTexts().add(text);
-                List<String> nextSeen = new ArrayList<>(seen);
-                nextSeen.add(p.value());
-                walk(tokenize(text), stack, Collections.unmodifiableList(nextSeen), ctx);
             }
         }
     }
