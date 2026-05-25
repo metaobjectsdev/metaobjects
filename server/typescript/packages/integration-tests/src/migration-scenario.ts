@@ -31,7 +31,12 @@ export async function runMigrationScenario(scenario: MigrationScenario, connecti
   // 3. Run the incremental migration against the target.
   const targetDir = resolveTargetMetadata(scenario);
   const targetRoot = await loadMetadataDir(targetDir);
-  const expected = buildExpectedSchema(targetRoot);
+  // The cross-port corpus is authored with field names = column names verbatim
+  // (it mirrors the C# adopter's EF schema). Pin "literal" so both ports produce
+  // the same physical schema from the same fixture; without this TS would
+  // snake_case `programId` → `program_id` and the bootstrap up-SQL assertion
+  // for `weeks_programId_fk` would never match.
+  const expected = buildExpectedSchema(targetRoot, { columnNamingStrategy: "literal" });
 
   // Kysely owns its pool exclusively — calling pool.end() ourselves on a pool
   // shared with kysely produces a "Called end on pool more than once" hang.
@@ -75,7 +80,7 @@ export async function runMigrationScenario(scenario: MigrationScenario, connecti
 
 async function buildFullCreate(metadataDir: string): Promise<string> {
   const root = await loadMetadataDir(metadataDir);
-  const expected = buildExpectedSchema(root);
+  const expected = buildExpectedSchema(root, { columnNamingStrategy: "literal" });
   const result = await diff({ expected, actual: { tables: [], views: [] } });
   return emit(result.changes, { dialect: "postgres" }).up;
 }

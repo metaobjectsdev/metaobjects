@@ -28,6 +28,29 @@ export function toSnakeCase(s: string): string {
     .toLowerCase();
 }
 
+export function toKebabCase(s: string): string {
+  return toSnakeCase(s).replace(/_/g, "-");
+}
+
+/**
+ * Column-naming strategy applied by the persistence layer when a field has no
+ * explicit `@column` override. Per ADR (TBD): the strategy is a persistence-
+ * layer config (set on ObjectManager / buildExpectedSchema / codegen config),
+ * not a metadata attr — same metadata serves snake_case (PG convention) and
+ * literal (EF convention) consumers depending on how its persistence layer is
+ * configured. Each call site that defaults this should pick the convention
+ * native to its host stack (TS default: snake_case; C# default: literal).
+ */
+export type ColumnNamingStrategy = "snake_case" | "literal" | "kebab-case";
+
+export function applyColumnNamingStrategy(name: string, strategy: ColumnNamingStrategy): string {
+  switch (strategy) {
+    case "literal":     return name;
+    case "kebab-case":  return toKebabCase(name);
+    case "snake_case":  return toSnakeCase(name);
+  }
+}
+
 export function pluralize(s: string): string {
   if (/(s|x|z|ch|sh)$/i.test(s)) return s + "es";
   if (/[^aeiou]y$/i.test(s)) return s.slice(0, -1) + "ies";
@@ -46,10 +69,13 @@ export function resolveTableName(entity: MetaData): string {
   return pluralize(toSnakeCase(entity.name));
 }
 
-export function resolveColumnName(field: MetaData): string {
+export function resolveColumnName(
+  field: MetaData,
+  strategy: ColumnNamingStrategy = "snake_case",
+): string {
   const col = field.ownAttr(FIELD_ATTR_COLUMN);
   if (typeof col === "string" && col) return col;
-  return toSnakeCase(field.name);
+  return applyColumnNamingStrategy(field.name, strategy);
 }
 
 /**
@@ -76,12 +102,15 @@ export interface EntityNameMap {
   dbToJs: Map<string, string>;
 }
 
-export function buildNameMap(entity: MetaData): EntityNameMap {
+export function buildNameMap(
+  entity: MetaData,
+  strategy: ColumnNamingStrategy = "snake_case",
+): EntityNameMap {
   const jsToDb = new Map<string, string>();
   const dbToJs = new Map<string, string>();
   for (const child of entity.ownChildren()) {
     if (child.type !== TYPE_FIELD) continue;
-    const dbCol = resolveColumnName(child);
+    const dbCol = resolveColumnName(child, strategy);
     jsToDb.set(child.name, dbCol);
     dbToJs.set(dbCol, child.name);
   }

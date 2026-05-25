@@ -1,7 +1,7 @@
 // Two-stage N:M: first query the join entity for FK pairs, then query the target entity for the rows.
 // The relationship declares @joinEntity + @joinFields: [sourceJoinField, targetJoinField].
 
-import type { MetaData } from "@metaobjectsdev/metadata";
+import type { ColumnNamingStrategy, MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_OBJECT, TYPE_FIELD, TYPE_RELATIONSHIP,
   RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF,
@@ -145,8 +145,11 @@ function collectTargetIds(joinRows: Row[], targetJoinField: string, joinEntity: 
   return [...seen] as (string | number)[];
 }
 
-export function resolveJoinColumnName(joinEntity: MetaData, fieldName: string): string {
+export function resolveJoinColumnName(
+  joinEntity: MetaData, fieldName: string,
+  strategy: ColumnNamingStrategy = "snake_case",
+): string {
   const field = joinEntity.ownChildren().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!field) throw new MetadataError(`Join field '${fieldName}' not on '${joinEntity.name}'`);
-  return resolveColumnName(field);
+  return resolveColumnName(field, strategy);
 }

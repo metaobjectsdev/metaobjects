@@ -8,9 +8,9 @@
           { "source.rdb": { "@table": "programs" } },
           { "field.long":     { "name": "id" } },
           { "field.string":   { "name": "title", "@required": true, "@maxLength": 200 } },
-          { "field.currency": { "name": "priceCents", "@column": "priceCents", "@required": true, "@currency": "USD" } },
+          { "field.currency": { "name": "priceCents", "@required": true, "@currency": "USD" } },
           { "field.enum":     { "name": "status",     "@required": true, "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"] } },
-          { "field.timestamp": { "name": "createdAt", "@column": "createdAt", "@required": true } },
+          { "field.timestamp": { "name": "createdAt", "@required": true } },
           { "relationship.composition": { "name": "weeks", "@objectRef": "Week", "@cardinality": "many" } },
           { "identity.primary":   { "@fields": "id", "@generation": "increment" } },
           { "identity.secondary": { "name": "byTitle", "@fields": "title", "@unique": true } }
@@ -21,7 +21,7 @@
         "children": [
           { "source.rdb": { "@table": "weeks" } },
           { "field.long":   { "name": "id" } },
-          { "field.long":   { "name": "programId", "@column": "programId", "@required": true } },
+          { "field.long":   { "name": "programId", "@required": true } },
           { "field.string": { "name": "label", "@maxLength": 80 } },
           { "identity.primary":   { "@fields": "id", "@generation": "increment" } },
           { "identity.reference": { "name": "fkProgram", "@fields": "programId", "@references": "Program" } }
@@ -42,9 +42,9 @@
         "name": "ProgramStat",
         "children": [
           { "source.rdb": { "@kind": "view", "@table": "v_program_stat" } },
-          { "field.long": { "name": "programId", "@column": "programId",
+          { "field.long": { "name": "programId",
             "children": [ { "origin.passthrough": { "@from": "Program.id" } } ] } },
-          { "field.long": { "name": "weekCount", "@column": "weekCount",
+          { "field.long": { "name": "weekCount",
             "children": [
               { "origin.aggregate": { "@agg": "count", "@of": "Week.id", "@via": "Program.weeks" } }
           ]}},

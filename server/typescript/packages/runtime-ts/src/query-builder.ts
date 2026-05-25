@@ -1,4 +1,4 @@
-import type { MetaData } from "@metaobjectsdev/metadata";
+import type { ColumnNamingStrategy, MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD, TYPE_IDENTITY,
   IDENTITY_SUBTYPE_PRIMARY,
@@ -69,11 +69,11 @@ function getField(entity: MetaData, fieldName: string): MetaData {
   return f;
 }
 
-function rowToColumns(entity: MetaData, data: Row): Row {
+function rowToColumns(entity: MetaData, data: Row, strategy: ColumnNamingStrategy): Row {
   const out: Row = {};
   for (const [k, v] of Object.entries(data)) {
     const field = getField(entity, k);
-    out[resolveColumnName(field)] = v;
+    out[resolveColumnName(field, strategy)] = v;
   }
   return out;
 }
@@ -82,29 +82,37 @@ function rowToColumns(entity: MetaData, data: Row): Row {
  * Returns null when `filter` has no clauses ({} or { $and: [] }) — meaning "match all"
  * (callers should treat null the same as omitting the where clause entirely).
  */
-export function compileFilter(entity: MetaData, filter: Filter): WhereClause | null {
+export function compileFilter(
+  entity: MetaData,
+  filter: Filter,
+  strategy: ColumnNamingStrategy = "snake_case",
+): WhereClause | null {
   if ("$and" in filter && Array.isArray(filter.$and)) {
     // TS can't narrow $and away from the Record branch, so the runtime check above
     // proves it's a Filter[] but the element type still needs a bridge cast.
     const andFilters = filter.$and as Filter[];
-    const clauses = andFilters.map((f) => compileFilter(entity, f)).filter((c): c is WhereClause => c !== null);
+    const clauses = andFilters
+      .map((f) => compileFilter(entity, f, strategy))
+      .filter((c): c is WhereClause => c !== null);
     if (clauses.length === 0) return null;
     return clauses.length === 1 ? clauses[0]! : { kind: "and", clauses };
   }
   const entries = Object.entries(filter);
   if (entries.length === 0) return null;
   if (entries.length === 1) {
-    return compileEntry(entity, entries[0]![0], entries[0]![1] as FilterValue);
+    return compileEntry(entity, entries[0]![0], entries[0]![1] as FilterValue, strategy);
   }
   return {
     kind: "and",
-    clauses: entries.map(([k, v]) => compileEntry(entity, k, v as FilterValue)),
+    clauses: entries.map(([k, v]) => compileEntry(entity, k, v as FilterValue, strategy)),
   };
 }
 
-function compileEntry(entity: MetaData, fieldName: string, value: FilterValue): WhereClause {
+function compileEntry(
+  entity: MetaData, fieldName: string, value: FilterValue, strategy: ColumnNamingStrategy,
+): WhereClause {
   const field = getField(entity, fieldName);
-  const column = resolveColumnName(field);
+  const column = resolveColumnName(field, strategy);
 
   if (value === null) return { kind: "isNull", column, not: false };
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -137,12 +145,14 @@ function compileEntry(entity: MetaData, fieldName: string, value: FilterValue): 
   throw new MetadataError(`No recognized operator on filter for field '${fieldName}'`);
 }
 
-function normalizeOrderBy(input: QueryOpts["orderBy"], entity: MetaData): OrderBy[] | undefined {
+function normalizeOrderBy(
+  input: QueryOpts["orderBy"], entity: MetaData, strategy: ColumnNamingStrategy,
+): OrderBy[] | undefined {
   if (input === undefined) return undefined;
   const arr = Array.isArray(input[0]) ? (input as [string, "asc" | "desc"][]) : [input as [string, "asc" | "desc"]];
   return arr.map(([fieldName, dir]) => {
     const field = getField(entity, fieldName);
-    return { column: resolveColumnName(field), direction: dir };
+    return { column: resolveColumnName(field, strategy), direction: dir };
   });
 }
 
@@ -152,20 +162,21 @@ export function buildSelectSpec(
   filter: Filter | undefined,
   opts: QueryOpts,
   projectedFields?: string[],
+  strategy: ColumnNamingStrategy = "snake_case",
 ): SelectSpec {
   const allFields = projectedFields ?? listFieldNames(entity);
   const pkFields = resolvePkFields(entity);
   const fieldSet = new Set<string>(allFields);
   for (const pk of pkFields) fieldSet.add(pk);
 
-  const columns = [...fieldSet].map((f) => resolveColumnName(getField(entity, f)));
-  const orderBy = normalizeOrderBy(opts.orderBy, entity);
+  const columns = [...fieldSet].map((f) => resolveColumnName(getField(entity, f), strategy));
+  const orderBy = normalizeOrderBy(opts.orderBy, entity, strategy);
 
   const spec: SelectSpec = {
     table: resolveTableName(entity),
     columns,
   };
-  const where = filter !== undefined ? compileFilter(entity, filter) : null;
+  const where = filter !== undefined ? compileFilter(entity, filter, strategy) : null;
   if (where !== null) spec.where = where;
   if (orderBy !== undefined) spec.orderBy = orderBy;
   if (opts.limit !== undefined) spec.limit = opts.limit;
@@ -173,25 +184,34 @@ export function buildSelectSpec(
   return spec;
 }
 
-export function buildCountSpec(entity: MetaData, filter: Filter | undefined): CountSpec {
+export function buildCountSpec(
+  entity: MetaData, filter: Filter | undefined,
+  strategy: ColumnNamingStrategy = "snake_case",
+): CountSpec {
   const spec: CountSpec = { table: resolveTableName(entity) };
-  const where = filter !== undefined ? compileFilter(entity, filter) : null;
+  const where = filter !== undefined ? compileFilter(entity, filter, strategy) : null;
   if (where !== null) spec.where = where;
   return spec;
 }
 
-export function buildInsertSpec(entity: MetaData, data: Row): InsertSpec {
-  const values = rowToColumns(entity, data);
+export function buildInsertSpec(
+  entity: MetaData, data: Row,
+  strategy: ColumnNamingStrategy = "snake_case",
+): InsertSpec {
+  const values = rowToColumns(entity, data, strategy);
   const allFields = listFieldNames(entity);
   return {
     table: resolveTableName(entity),
     values,
-    returning: allFields.map((f) => resolveColumnName(getField(entity, f))),
+    returning: allFields.map((f) => resolveColumnName(getField(entity, f), strategy)),
   };
 }
 
-export function buildUpdateSpec(entity: MetaData, data: Row, id: unknown): UpdateSpec {
-  const values = rowToColumns(entity, data);
+export function buildUpdateSpec(
+  entity: MetaData, data: Row, id: unknown,
+  strategy: ColumnNamingStrategy = "snake_case",
+): UpdateSpec {
+  const values = rowToColumns(entity, data, strategy);
   const pkFields = resolvePkFields(entity);
   if (pkFields.length !== 1) {
     throw new MetadataError(
@@ -199,16 +219,19 @@ export function buildUpdateSpec(entity: MetaData, data: Row, id: unknown): Updat
       { entity: entity.name },
     );
   }
-  const pkColumn = resolveColumnName(getField(entity, pkFields[0]!));
+  const pkColumn = resolveColumnName(getField(entity, pkFields[0]!), strategy);
   return {
     table: resolveTableName(entity),
     values,
     where: { kind: "eq", column: pkColumn, value: id as PrimitiveValue },
-    returning: listFieldNames(entity).map((f) => resolveColumnName(getField(entity, f))),
+    returning: listFieldNames(entity).map((f) => resolveColumnName(getField(entity, f), strategy)),
   };
 }
 
-export function buildDeleteSpec(entity: MetaData, id: unknown): DeleteSpec {
+export function buildDeleteSpec(
+  entity: MetaData, id: unknown,
+  strategy: ColumnNamingStrategy = "snake_case",
+): DeleteSpec {
   const pkFields = resolvePkFields(entity);
   if (pkFields.length !== 1) {
     throw new MetadataError(
@@ -216,7 +239,7 @@ export function buildDeleteSpec(entity: MetaData, id: unknown): DeleteSpec {
       { entity: entity.name },
     );
   }
-  const pkColumn = resolveColumnName(getField(entity, pkFields[0]!));
+  const pkColumn = resolveColumnName(getField(entity, pkFields[0]!), strategy);
   return {
     table: resolveTableName(entity),
     where: { kind: "eq", column: pkColumn, value: id as PrimitiveValue },

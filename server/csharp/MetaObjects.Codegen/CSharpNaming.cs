@@ -10,6 +10,23 @@ using static MetaObjects.Core.Field.FieldConstants;
 
 namespace MetaObjects.Codegen;
 
+/// <summary>
+/// Column-naming strategy applied to fields with no <c>@column</c> override.
+/// Defaults to <see cref="Literal"/> on the C# side (matches EF Core
+/// property = column convention). Cross-port: TS defaults to
+/// <c>SnakeCase</c> (PG convention). Set explicitly when the persistence layer
+/// must talk to a schema produced by a different default.
+/// </summary>
+public enum ColumnNamingStrategy
+{
+    /// <summary>Field name verbatim (PascalCase / camelCase preserved). EF Core default.</summary>
+    Literal,
+    /// <summary>camelCase / PascalCase → snake_case. PG / TS default.</summary>
+    SnakeCase,
+    /// <summary>camelCase / PascalCase → kebab-case.</summary>
+    KebabCase,
+}
+
 /// <summary>Field-subtype -> C# type + naming helpers for the EF Core generators.</summary>
 public static class CSharpNaming
 {
@@ -58,9 +75,43 @@ public static class CSharpNaming
 
     /// <summary>
     /// The DB column name for a field: the <c>@column</c> override, else the raw
-    /// field name. Shared so the schema DDL and the [Column] annotation agree.
+    /// field name run through <paramref name="strategy"/>. Shared so the schema
+    /// DDL and the [Column] annotation agree. Default <see cref="ColumnNamingStrategy.Literal"/>
+    /// matches EF convention; pass <see cref="ColumnNamingStrategy.SnakeCase"/> to
+    /// share a schema with a TS-default consumer.
     /// </summary>
-    public static string Column(MetaField field) => field.DbColumn ?? field.Name;
+    public static string Column(MetaField field, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal) =>
+        field.DbColumn ?? ApplyStrategy(field.Name, strategy);
+
+    /// <summary>Apply <paramref name="strategy"/> to a raw field name.</summary>
+    public static string ApplyStrategy(string name, ColumnNamingStrategy strategy) => strategy switch
+    {
+        ColumnNamingStrategy.Literal    => name,
+        ColumnNamingStrategy.SnakeCase  => ToSnakeCase(name),
+        ColumnNamingStrategy.KebabCase  => ToSnakeCase(name).Replace('_', '-'),
+        _ => name,
+    };
+
+    private static string ToSnakeCase(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return s;
+        var sb = new System.Text.StringBuilder(s.Length + 4);
+        for (var i = 0; i < s.Length; i++)
+        {
+            var c = s[i];
+            if (i > 0 && char.IsUpper(c))
+            {
+                var prev = s[i - 1];
+                var next = i + 1 < s.Length ? s[i + 1] : '\0';
+                // Insert _ between lower→upper (camelCase) and at the end of an
+                // acronym run (UPPER followed by Upper+lower, e.g. URLHost → url_host).
+                if (char.IsLower(prev) || char.IsDigit(prev) || (char.IsUpper(prev) && char.IsLower(next)))
+                    sb.Append('_');
+            }
+            sb.Append(char.ToLowerInvariant(c));
+        }
+        return sb.ToString();
+    }
 
     /// <summary>
     /// The bare object name from a possibly package-qualified reference (the segment

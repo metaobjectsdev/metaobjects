@@ -1,4 +1,4 @@
-import type { MetaData, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
+import type { ColumnNamingStrategy, MetaData, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import {
   TYPE_OBJECT,
   MetaSource,
@@ -26,6 +26,7 @@ import {
   FIELD_ATTR_STORAGE,
   STORAGE_FLATTENED,
   DOC_ATTR_DESCRIPTION,
+  applyColumnNamingStrategy as applyStrategy,
   resolveTableName, resolveColumnName, resolveTableSchema,
 } from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
@@ -50,6 +51,13 @@ export interface BuildExpectedSchemaOptions {
    * patterns produce INTEGER / TEXT in the actual DB.
    */
   dialect?: Dialect;
+  /**
+   * Column-naming strategy for fields with no `@column` override. Defaults to
+   * `"snake_case"` (matches TS codegen default + SQL convention). Must match
+   * the runtime's `ObjectManager` strategy — a mismatch yields a schema whose
+   * columns the runtime can't address.
+   */
+  columnNamingStrategy?: ColumnNamingStrategy;
 }
 
 export function buildExpectedSchema(
@@ -59,6 +67,7 @@ export function buildExpectedSchema(
   // D1 is SQLite at the SQL level; normalize it so downstream dialect checks
   // don't need to handle "d1" separately.
   const dialect = opts?.dialect === "d1" ? "sqlite" : opts?.dialect;
+  const strategy: ColumnNamingStrategy = opts?.columnNamingStrategy ?? "snake_case";
 
   // Pass 1: collect entities + their resolved table names.
   // Skip:
@@ -88,7 +97,7 @@ export function buildExpectedSchema(
   // Schema is resolved here (not stored in Pass 1) to avoid exactOptionalPropertyTypes
   // issues with `string | undefined` vs `schema?: string`.
   const tables: TableDescriptor[] = entities.map(({ entity, tableName }) => {
-    const t = buildTable(entity, tableName, resolveTargetTable, root as MetaRoot);
+    const t = buildTable(entity, tableName, resolveTargetTable, root as MetaRoot, strategy);
     const schema = resolveTableSchema(entity);
     if (schema !== undefined) t.schema = schema;
     return t;
@@ -144,6 +153,7 @@ function buildTable(
   tableName: string,
   resolveTargetTable: (entityName: string) => string | undefined,
   root: MetaRoot,
+  strategy: ColumnNamingStrategy,
 ): TableDescriptor {
   // Use effective accessors so inherited fields/identities (from `extends:` /
   // abstract bases like BaseEntity) are included.
@@ -156,7 +166,7 @@ function buildTable(
 
   const primaryKey = pkJsNames.map((jsName) => {
     const field = findField(entity, jsName);
-    return field ? resolveColumnName(field) : toSnake(jsName);
+    return field ? resolveColumnName(field, strategy) : applyStrategy(jsName, strategy);
   });
 
   const columns: ColumnDescriptor[] = [];
@@ -168,17 +178,17 @@ function buildTable(
     ) {
       // Flattened storage: expand nested value-object fields as prefixed columns.
       // The parent field.object itself does NOT produce its own column.
-      columns.push(...flattenObjectField(field, root));
+      columns.push(...flattenObjectField(field, root, strategy));
     } else {
-      columns.push(buildColumn(field, isPk, isPk ? pkGeneration : undefined));
+      columns.push(buildColumn(field, isPk, isPk ? pkGeneration : undefined, strategy));
     }
   }
 
   const descriptor: TableDescriptor = {
     name: tableName,
     columns,
-    indexes: buildSecondaryIndexes(entity, tableName),
-    foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root),
+    indexes: buildSecondaryIndexes(entity, tableName, strategy),
+    foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy),
     primaryKey,
   };
   const entityDesc = readDescription(entity);
@@ -197,7 +207,9 @@ function readDescription(node: { attr: (n: string) => unknown }): string | undef
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
-function buildSecondaryIndexes(entity: MetaObject, tableName: string): IndexDescriptor[] {
+function buildSecondaryIndexes(
+  entity: MetaObject, tableName: string, strategy: ColumnNamingStrategy,
+): IndexDescriptor[] {
   const indexes: IndexDescriptor[] = [];
 
   // (a) Implicit unique indexes from @unique fields. Drizzle auto-creates these
@@ -206,7 +218,7 @@ function buildSecondaryIndexes(entity: MetaObject, tableName: string): IndexDesc
   // doesn't see them as drop-only on the actual side.
   for (const field of entity.fields()) {
     if (field.ownAttr(FIELD_ATTR_UNIQUE) !== true) continue;
-    const colName = resolveColumnName(field);
+    const colName = resolveColumnName(field, strategy);
     indexes.push({
       name: `${tableName}_${colName}_unique`,
       columns: [colName],
@@ -222,7 +234,7 @@ function buildSecondaryIndexes(entity: MetaObject, tableName: string): IndexDesc
     if (fieldNames.length === 0) continue;
     const cols = fieldNames.map((jsName) => {
       const field = findField(entity, jsName);
-      return field ? resolveColumnName(field) : toSnake(jsName);
+      return field ? resolveColumnName(field, strategy) : applyStrategy(jsName, strategy);
     });
     const uniqueAttr = identity.ownAttr(IDENTITY_ATTR_UNIQUE);
     indexes.push({
@@ -239,6 +251,7 @@ function buildForeignKeys(
   tableName: string,
   resolveTargetTable: (entityName: string) => string | undefined,
   root: MetaRoot,
+  strategy: ColumnNamingStrategy,
 ): FkDescriptor[] {
   const fks: FkDescriptor[] = [];
   for (const refChild of entity.referenceIdentities()) {
@@ -254,7 +267,7 @@ function buildForeignKeys(
 
     const fkCols = fkFieldJsNames.map((jsName) => {
       const fkField = findField(entity, jsName);
-      return fkField ? resolveColumnName(fkField) : toSnake(jsName);
+      return fkField ? resolveColumnName(fkField, strategy) : applyStrategy(jsName, strategy);
     });
 
     // Target columns: prefer explicit multi-field dotted form, else delegate
@@ -262,8 +275,8 @@ function buildForeignKeys(
     // primary identity → "id" fallback).
     const explicitTargetFields = refChild.targetFields;
     const refColumns = explicitTargetFields.length > 1
-      ? explicitTargetFields.map(toSnake)
-      : [toSnake(refChild.resolvedTargetPkField(root) ?? "id")];
+      ? explicitTargetFields.map((n) => applyStrategy(n, strategy))
+      : [applyStrategy(refChild.resolvedTargetPkField(root) ?? "id", strategy)];
 
     const { onDelete, onUpdate } = resolveReferentialActions(entity, refChild);
     const constraintName = `${tableName}_${fkCols[0]}_fk`;
@@ -292,15 +305,17 @@ function buildForeignKeys(
  * EF OwnsOne pattern: no JSON column for the parent itself; each nested field
  * becomes `<parent_col>_<nested_col>` in the owning entity's table.
  */
-function flattenObjectField(field: MetaData, root: MetaRoot): ColumnDescriptor[] {
+function flattenObjectField(
+  field: MetaData, root: MetaRoot, strategy: ColumnNamingStrategy,
+): ColumnDescriptor[] {
   const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
   if (typeof ref !== "string" || ref.length === 0) return [];
   const targetObject = root.findObject(ref);
   if (targetObject === undefined) return [];
-  const prefix = resolveColumnName(field) + "_";
+  const prefix = resolveColumnName(field, strategy) + "_";
   const cols: ColumnDescriptor[] = [];
   for (const nested of targetObject.fields()) {
-    const inner = buildColumn(nested, /* isPk */ false, /* pkGeneration */ undefined);
+    const inner = buildColumn(nested, /* isPk */ false, /* pkGeneration */ undefined, strategy);
     cols.push({ ...inner, name: prefix + inner.name });
   }
   return cols;
@@ -318,13 +333,14 @@ function buildColumn(
   field: MetaData,
   isPk: boolean,
   pkGeneration: string | undefined,
+  strategy: ColumnNamingStrategy,
 ): ColumnDescriptor {
   // Both the @required attr and the validator.required child signal NOT NULL.
   const fieldIsRequired = isRequired(field);
   const defaultRaw = field.ownAttr(FIELD_ATTR_DEFAULT);
 
   const col: ColumnDescriptor = {
-    name: resolveColumnName(field),
+    name: resolveColumnName(field, strategy),
     sqlType: subtypeToSqlType(field),
     nullable: !isPk && !fieldIsRequired,
   };
@@ -372,9 +388,3 @@ function subtypeToSqlType(field: MetaData): SqlType {
   }
 }
 
-function toSnake(s: string): string {
-  return s
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
-    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-    .toLowerCase();
-}

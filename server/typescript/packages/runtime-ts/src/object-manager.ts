@@ -13,7 +13,10 @@ import {
   resolvePkFields, compileFilter,
   type Filter, type QueryOpts,
 } from "./query-builder.js";
-import { buildNameMap, resolveTableName, type EntityNameMap } from "@metaobjectsdev/metadata";
+import {
+  buildNameMap, resolveTableName,
+  type ColumnNamingStrategy, type EntityNameMap,
+} from "@metaobjectsdev/metadata";
 import { coerceRowOnRead, coerceRowOnWrite } from "./type-coercer.js";
 import { decodeRef, encodeRef } from "./ref-codec.js";
 import { runValidators } from "./validator-runner.js";
@@ -37,6 +40,14 @@ import { VALID_ENTITY_NAME, DEFAULT_IF_MISSING } from "./constants.js";
 export interface ObjectManagerOptions {
   metadata: MetaData;
   driver: PersistenceDriver;
+  /**
+   * Column-naming strategy applied to fields with no `@column` override.
+   * Defaults to `"snake_case"` (matches the TS codegen default + the SQL
+   * convention). Set to `"literal"` when talking to a DB whose columns were
+   * authored to match the field names verbatim (e.g. an EF-shaped schema).
+   * Must agree with the codegen / migration config used to create the schema.
+   */
+  columnNamingStrategy?: ColumnNamingStrategy;
 }
 
 export interface ReadOpts extends QueryOpts {
@@ -54,17 +65,19 @@ export interface WriteOpts {
 export class ObjectManager {
   private readonly metadata: MetaData;
   private readonly driver: PersistenceDriver;
+  private readonly columnNamingStrategy: ColumnNamingStrategy;
   private readonly nameMapCache = new Map<string, EntityNameMap>();
 
   constructor(opts: ObjectManagerOptions) {
     this.metadata = opts.metadata;
     this.driver = opts.driver;
+    this.columnNamingStrategy = opts.columnNamingStrategy ?? "snake_case";
   }
 
   private nameMap(entity: MetaData): EntityNameMap {
     let m = this.nameMapCache.get(entity.name);
     if (!m) {
-      m = buildNameMap(entity);
+      m = buildNameMap(entity, this.columnNamingStrategy);
       this.nameMapCache.set(entity.name, m);
     }
     return m;
@@ -79,7 +92,7 @@ export class ObjectManager {
   async findFirst(entityName: string, filter: Filter, opts: ReadOpts = {}): Promise<Row | null> {
     const entity = this.requireEntity(entityName);
     const driver = opts.tx ?? this.driver;
-    const spec = buildSelectSpec(entity, filter, { ...opts, limit: 1 });
+    const spec = buildSelectSpec(entity, filter, { ...opts, limit: 1 }, undefined, this.columnNamingStrategy);
     const row = await driver.selectOne(spec);
     if (row === null) return null;
     const jsRow = this.toJsRow(entity, row);
@@ -92,7 +105,7 @@ export class ObjectManager {
   async findMany(entityName: string, filter?: Filter, opts: ReadOpts = {}): Promise<Row[]> {
     const entity = this.requireEntity(entityName);
     const driver = opts.tx ?? this.driver;
-    const spec = buildSelectSpec(entity, filter, opts);
+    const spec = buildSelectSpec(entity, filter, opts, undefined, this.columnNamingStrategy);
     const rows = (await driver.selectMany(spec)).map((r) => this.toJsRow(entity, r));
     if (opts.include && opts.include.length > 0) {
       await this.attachIncludes(entity, rows, opts.include, driver);
@@ -103,7 +116,7 @@ export class ObjectManager {
   async count(entityName: string, filter?: Filter, opts: Pick<ReadOpts, "tx"> = {}): Promise<number> {
     const entity = this.requireEntity(entityName);
     const driver = opts.tx ?? this.driver;
-    return driver.count(buildCountSpec(entity, filter));
+    return driver.count(buildCountSpec(entity, filter, this.columnNamingStrategy));
   }
 
   async load(refString: string): Promise<Row | null> {
@@ -144,7 +157,7 @@ export class ObjectManager {
     }
 
     const coerced = coerceRowOnWrite(entity, merged, driver.dialect);
-    const spec = buildInsertSpec(entity, coerced);
+    const spec = buildInsertSpec(entity, coerced, this.columnNamingStrategy);
     const dbRow = await driver.insert(spec);
     return this.toJsRow(entity, dbRow);
   }
@@ -162,7 +175,7 @@ export class ObjectManager {
     }
 
     const coerced = coerceRowOnWrite(entity, restricted, driver.dialect);
-    const spec = buildUpdateSpec(entity, coerced, id);
+    const spec = buildUpdateSpec(entity, coerced, id, this.columnNamingStrategy);
     const dbRow = await driver.update(spec);
     if (dbRow === null) {
       const mode = opts.ifMissing ?? DEFAULT_IF_MISSING;
@@ -175,7 +188,7 @@ export class ObjectManager {
   async delete(entityName: string, id: unknown, opts: WriteOpts = {}): Promise<boolean> {
     const entity = this.requireEntity(entityName);
     const driver = opts.tx ?? this.driver;
-    const spec = buildDeleteSpec(entity, id);
+    const spec = buildDeleteSpec(entity, id, this.columnNamingStrategy);
     const n = await driver.delete(spec);
     if (n === 0) {
       const mode = opts.ifMissing ?? DEFAULT_IF_MISSING;
@@ -228,7 +241,7 @@ export class ObjectManager {
     const spec: UpdateManySpec = {
       table: resolveTableName(entity),
       values: this.toDbRow(entity, coerced),
-      where: requireNonEmptyFilter(entity, filter, "updateMany"),
+      where: requireNonEmptyFilter(entity, filter, "updateMany", this.columnNamingStrategy),
     };
     return driver.updateMany(spec);
   }
@@ -238,14 +251,16 @@ export class ObjectManager {
     const driver = opts.tx ?? this.driver;
     const spec: DeleteManySpec = {
       table: resolveTableName(entity),
-      where: requireNonEmptyFilter(entity, filter, "deleteMany"),
+      where: requireNonEmptyFilter(entity, filter, "deleteMany", this.columnNamingStrategy),
     };
     return driver.deleteMany(spec);
   }
 
   async transaction<T>(fn: (txOm: ObjectManager) => Promise<T>): Promise<T> {
     return this.driver.transaction(async (txDriver) => {
-      const txOm = new ObjectManager({ metadata: this.metadata, driver: txDriver });
+      const txOm = new ObjectManager({
+        metadata: this.metadata, driver: txDriver, columnNamingStrategy: this.columnNamingStrategy,
+      });
       return fn(txOm);
     });
   }
@@ -318,8 +333,8 @@ export class ObjectManager {
 
         const sourcePk = resolvePkFields(entity)[0]!;
         const joinEntity = this.requireEntity(n2m.joinEntityName);
-        const sourceJoinDbCol = resolveJoinColumnName(joinEntity, n2m.sourceJoinField);
-        const targetJoinDbCol = resolveJoinColumnName(joinEntity, n2m.targetJoinField);
+        const sourceJoinDbCol = resolveJoinColumnName(joinEntity, n2m.sourceJoinField, this.columnNamingStrategy);
+        const targetJoinDbCol = resolveJoinColumnName(joinEntity, n2m.targetJoinField, this.columnNamingStrategy);
         const targetPk = resolvePkFields(target)[0]!;
         const targetById = new Map(targetRows.map((r) => [r[targetPk], r]));
         const grouped = new Map<unknown, Row[]>();
@@ -412,8 +427,10 @@ export class ObjectManager {
 
 // updateMany / deleteMany with an empty filter would silently affect every row.
 // Force callers to be explicit (use $or-style or a tautology if they really mean "all").
-function requireNonEmptyFilter(entity: MetaData, filter: Filter, op: string): WhereClause {
-  const where = compileFilter(entity, filter);
+function requireNonEmptyFilter(
+  entity: MetaData, filter: Filter, op: string, strategy: ColumnNamingStrategy,
+): WhereClause {
+  const where = compileFilter(entity, filter, strategy);
   if (where === null) {
     throw new MetadataError(
       `${op} on '${entity.name}' requires a non-empty filter — pass an explicit condition or use a per-row loop`,

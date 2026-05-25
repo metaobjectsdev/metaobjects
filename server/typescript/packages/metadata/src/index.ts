@@ -164,9 +164,10 @@ export type { AttrSchemaValidationResult } from "./attr-schema-validate.js";
 // Naming — hoisted from runtime-ts in v0.2.3 so multiple consumers (runtime-ts, migrate-ts, codegen-ts)
 // share identical name resolution. See spec §4.1.
 export {
-  toSnakeCase, pluralize,
+  toSnakeCase, toKebabCase, pluralize,
+  applyColumnNamingStrategy,
   resolveTableName, resolveColumnName, resolveTableSchema,
   buildNameMap,
   stripPackage,
 } from "./naming.js";
-export type { EntityNameMap } from "./naming.js";
+export type { EntityNameMap, ColumnNamingStrategy } from "./naming.js";

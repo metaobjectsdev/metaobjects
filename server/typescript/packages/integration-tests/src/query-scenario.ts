@@ -61,7 +61,8 @@ export async function runQueryScenario(
     // kyselyDriver wants Kysely<Record<string, Row>>; the actual row types are
     // resolved per-query so the placeholder generic is harmless.
     const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });
-    const om = new ObjectManager({ metadata: root, driver });
+    // See migration-scenario.ts for why both runners pin "literal".
+    const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: "literal" });
 
     for (const spec of scenario.queries) {
       const actual = await execute(om, spec);
@@ -77,7 +78,7 @@ export async function runQueryScenario(
 // ---------------------------------------------------------------------------
 
 async function applyCanonicalSchema(connectionUri: string, root: MetaRoot): Promise<void> {
-  const expected = buildExpectedSchema(root);
+  const expected = buildExpectedSchema(root, { columnNamingStrategy: "literal" });
   const r = await diff({ expected, actual: { tables: [], views: [] } });
   await executeSql(connectionUri, emit(r.changes, { dialect: "postgres" }).up);
   for (const ddl of CANONICAL_VIEW_DDL) await executeSql(connectionUri, ddl);
