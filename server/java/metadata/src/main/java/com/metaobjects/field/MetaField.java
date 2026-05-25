@@ -13,6 +13,7 @@ import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.constraint.PlacementConstraint;
 import com.metaobjects.constraint.RegexConstraint;
 import com.metaobjects.util.DataConverter;
+import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.validator.MetaValidator;
 import com.metaobjects.validator.MetaValidatorNotFoundException;
 import com.metaobjects.view.MetaView;
@@ -120,10 +121,11 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
             registry.registerType(MetaField.class, def -> {
                 def.type(TYPE_FIELD).subType(SUBTYPE_BASE)
                    .description("Base field metadata with common field attributes")
-                   // ACCEPTS ANY ATTRIBUTES, VALIDATORS AND VIEWS (all field types inherit these)
+                   // ACCEPTS ANY ATTRIBUTES, VALIDATORS, VIEWS, AND ORIGINS (all field types inherit these)
                    .optionalChild(MetaAttribute.TYPE_ATTR, "*")
                    .optionalChild(MetaValidator.TYPE_VALIDATOR, "*")
-                   .optionalChild(MetaView.TYPE_VIEW, "*");
+                   .optionalChild(MetaView.TYPE_VIEW, "*")
+                   .optionalChild(MetaOrigin.TYPE_ORIGIN, "*");
 
                 // FIELD-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
                 def.optionalAttributeWithConstraints(ATTR_IS_ABSTRACT)

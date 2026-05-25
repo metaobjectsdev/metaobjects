@@ -48,6 +48,14 @@ public final class ErrorMessageConstants {
     public static final String ERR_RESERVED_ATTR = "ERR_RESERVED_ATTR";
 
     /**
+     * Error code emitted when a field origin (passthrough / aggregate / collection)
+     * declares an invalid path or attribute (e.g. malformed {@code @via} relationship
+     * path, missing required attribute for the subtype).
+     * Cross-language contract: {@code ERR_INVALID_ORIGIN}.
+     */
+    public static final String ERR_INVALID_ORIGIN = "ERR_INVALID_ORIGIN";
+
+    /**
      * Error code emitted when an object declares one or more sources but none has
      * role {@code "primary"}.
      * Cross-language contract: {@code ERR_SOURCE_NO_PRIMARY}.

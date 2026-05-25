@@ -222,9 +222,9 @@ public class ConformanceTest {
         if (fix.hasExpectedEffective) {
             failures.add("expected-effective.json (effective serialization) not supported by Java harness");
         }
-        if (fix.hasExpectedWarnings) {
-            failures.add("expected-warnings.json (warnings surface) not supported by Java harness");
-        }
+        // expected-warnings.json is now supported — the assertion lives below,
+        // after the loader has run (so loader.getWarnings() has a value to
+        // compare against).
         if (fix.hasScript) {
             failures.add("script.json (operation scripts) not supported by Java harness");
         }
@@ -310,6 +310,38 @@ public class ConformanceTest {
             }
         }
 
+        // -- expected-warnings check ----------------------------------------
+        // Match the TS/C# contract: warnings are compared as a multiset of exact
+        // strings (order-insensitive). If a fixture has NO expected-warnings.json
+        // but the loader emitted some, that is itself a failure (we do not
+        // silently swallow unexpected warnings on happy-path fixtures).
+        List<String> gotWarnings = new ArrayList<>(loader.getWarnings());
+        if (fix.hasExpectedWarnings) {
+            List<String> wantWarnings;
+            try {
+                JsonElement parsed = JsonParser.parseString(new String(
+                    Files.readAllBytes(fix.dir.resolve("expected-warnings.json")),
+                    StandardCharsets.UTF_8));
+                wantWarnings = parseExpectedWarnings(parsed);
+            } catch (Exception ex) {
+                failures.add("expected-warnings.json parse error: " + ex.getMessage());
+                return;
+            }
+            // Multiset equality (order-insensitive, duplicate-preserving): sort
+            // both lists and compare directly so the same warning emitted N
+            // times must also appear N times in expected-warnings.json.
+            List<String> wantSorted = new ArrayList<>(wantWarnings);
+            List<String> gotSorted = new ArrayList<>(gotWarnings);
+            Collections.sort(wantSorted);
+            Collections.sort(gotSorted);
+            if (!wantSorted.equals(gotSorted)) {
+                failures.add("warnings mismatch:\n--- expected ---\n"
+                    + wantSorted + "\n--- got ---\n" + gotSorted);
+            }
+        } else if (fix.hasExpected && !gotWarnings.isEmpty()) {
+            failures.add("loader emitted unexpected warnings: " + gotWarnings);
+        }
+
         // -- no-expectation safeguard ---------------------------------------
         if (!fix.hasExpected
             && !fix.hasExpectedEffective
@@ -319,6 +351,27 @@ public class ConformanceTest {
             && failures.isEmpty()) {
             failures.add("fixture declares no expectation files");
         }
+    }
+
+    /**
+     * Parse an {@code expected-warnings.json} document into a flat list of
+     * warning strings. The format is a top-level JSON array of strings; anything
+     * else is a corpus error and throws.
+     */
+    private static List<String> parseExpectedWarnings(JsonElement parsed) {
+        if (!parsed.isJsonArray()) {
+            throw new IllegalArgumentException(
+                "expected-warnings.json must be a JSON array of strings");
+        }
+        List<String> out = new ArrayList<>();
+        for (JsonElement el : parsed.getAsJsonArray()) {
+            if (!el.isJsonPrimitive() || !el.getAsJsonPrimitive().isString()) {
+                throw new IllegalArgumentException(
+                    "expected-warnings.json entries must all be strings");
+            }
+            out.add(el.getAsString());
+        }
+        return out;
     }
 
     // -----------------------------------------------------------------------

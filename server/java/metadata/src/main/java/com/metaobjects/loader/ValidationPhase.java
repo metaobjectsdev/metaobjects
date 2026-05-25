@@ -12,10 +12,18 @@ import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.field.EnumField;
+import com.metaobjects.field.MetaField;
+import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.origin.AggregateOrigin;
+import com.metaobjects.origin.CollectionOrigin;
+import com.metaobjects.origin.MetaOrigin;
+import com.metaobjects.origin.PassthroughOrigin;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.util.ErrorMessageConstants;
+
+import java.util.List;
 
 /**
  * Post-load validation phase — runs after all sources are parsed and before the
@@ -54,17 +62,41 @@ public final class ValidationPhase {
      *       per object that declares any sources.</li>
      *   <li>{@link #validateRelationshipReferentialActions(MetaRoot)} — {@code relationship.*}
      *       {@code @onDelete}/{@code @onUpdate} enum-membership rules.</li>
+     *   <li>{@link #validateOrigins(MetaRoot)} — {@code origin.*} required-attr +
+     *       {@code @from}/{@code @of} reference resolution + {@code @via} path traversal
+     *       through declared relationships.</li>
+     *   <li>{@link #validateEntityHasPrimaryIdentity(MetaRoot, MetaDataLoader)} — non-fatal
+     *       advisory: every concrete {@code object.entity} with at least one field child
+     *       SHOULD have a primary identity (unless {@code @isAbstract: true}). Records
+     *       a warning via the loader's warning surface; does not throw.</li>
      * </ol>
      *
      * @param root the fully-loaded {@link MetaRoot}; must not be {@code null}
+     * @param loader the loader that produced {@code root}; may be {@code null} to
+     *               skip warning collection (legacy callers)
      * @throws MetaDataException on the first validation error found (eager-throw)
      */
-    public static void run(MetaRoot root) {
+    public static void run(MetaRoot root, MetaDataLoader loader) {
         if (root == null) return;
         validateEnumValues(root);
         validateSourceAttrs(root);
         validateOnePrimarySource(root);
         validateRelationshipReferentialActions(root);
+        validateOrigins(root);
+        validateEntityHasPrimaryIdentity(root, loader);
+    }
+
+    /**
+     * Legacy entry point retained for callers that do not have a loader handle.
+     * Delegates to {@link #run(MetaRoot, MetaDataLoader)} with a {@code null}
+     * loader, which skips warning collection but still runs all error-throwing
+     * passes.
+     *
+     * @param root the fully-loaded {@link MetaRoot}; must not be {@code null}
+     * @throws MetaDataException on the first validation error found (eager-throw)
+     */
+    public static void run(MetaRoot root) {
+        run(root, null);
     }
 
     // =========================================================================
@@ -390,6 +422,407 @@ public final class ValidationPhase {
                     ErrorCode.ERR_BAD_ATTR_VALUE);
             }
         }
+    }
+
+    // =========================================================================
+    // Origin validation (passthrough / aggregate / collection)
+    //
+    // Mirrors the TS validateOriginPaths pass (server/typescript/packages/metadata/
+    // src/loader/validation-passes.ts). Walks every object's own field children
+    // looking for origin.* children, then per-subtype:
+    //
+    //   passthrough:
+    //     - @from is required (ERR_INVALID_ORIGIN if missing)
+    //     - @from resolves: "Entity.field" form, entity exists at root, field
+    //       exists on entity (inherited fields included)
+    //     - if @via is present, it resolves through declared relationships
+    //
+    //   aggregate:
+    //     - @agg is enum-validated at registration time (.withEnum) — also
+    //       enforced here for fixtures whose @agg slips past constraint phase
+    //     - @of is required and resolves like passthrough's @from
+    //     - @via is required and traverses real relationships entity-by-entity
+    //
+    //   collection:
+    //     - @via required-check is enforced (matches the per-subtype spec);
+    //       full path traversal is intentionally NOT enforced here, mirroring
+    //       TS which only validates passthrough + aggregate paths.
+    //
+    // Aggregate function vocabulary uses ERR_BAD_ATTR_VALUE (matches the
+    // expected-errors.json for error-origin-bad-aggregate-fn); structural /
+    // referential origin errors use ERR_INVALID_ORIGIN (matches
+    // error-origin-bad-via-path and the cross-language ERROR-CODES registry).
+    // =========================================================================
+
+    /**
+     * Walk every {@code object.*} and validate {@code origin.*} children on its
+     * fields.
+     *
+     * @param root the root node to walk
+     * @throws MetaDataException on the first error found (eager-throw)
+     */
+    static void validateOrigins(MetaRoot root) {
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            walkOriginsOnObject(root, rootChild);
+        }
+    }
+
+    private static void walkOriginsOnObject(MetaRoot root, MetaData node) {
+        if (!(node instanceof MetaObject)) return; // only objects carry origins (via their fields)
+        MetaObject obj = (MetaObject) node;
+        for (MetaData child : obj.getChildren(MetaData.class, false)) {
+            if (child instanceof MetaField) {
+                MetaField<?> field = (MetaField<?>) child;
+                for (MetaData originChild : field.getChildren(MetaData.class, false)) {
+                    if (originChild instanceof MetaOrigin) {
+                        validateOriginNode(root, obj, field, (MetaOrigin) originChild);
+                    }
+                }
+            } else if (child instanceof MetaObject) {
+                walkOriginsOnObject(root, child); // nested object (composition)
+            }
+            // identity/source/attr/etc. children are skipped — they don't carry origins
+        }
+    }
+
+    private static void validateOriginNode(MetaRoot root, MetaObject obj,
+                                           MetaField<?> field, MetaOrigin origin) {
+        String subType = origin.getSubType();
+
+        if (PassthroughOrigin.SUBTYPE_PASSTHROUGH.equals(subType)) {
+            String from = origin.getFrom();
+            if (from == null || from.isEmpty()) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.passthrough on " + obj.getName() + "." + field.getName()
+                        + ": missing @from.",
+                    ErrorCode.ERR_INVALID_ORIGIN);
+            }
+            validateFromOrOfPath(from, root, obj.getName(), field.getName(),
+                "origin.passthrough.@from");
+            String via = origin.getVia();
+            if (via != null && !via.isEmpty()) {
+                validateViaPath(via, root, obj.getName(), field.getName());
+            }
+            return;
+        }
+
+        if (AggregateOrigin.SUBTYPE_AGGREGATE.equals(subType)) {
+            // Re-check @agg vocabulary — the .withEnum constraint on the base
+            // can be subverted by inline attribute parsing paths; mirror the
+            // belt-and-braces approach used for relationship referential actions.
+            String agg = origin.getAgg();
+            if (agg != null && !agg.isEmpty() && !MetaOrigin.AGGREGATE_FUNCTIONS.contains(agg)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": origin.aggregate on " + obj.getName() + "." + field.getName()
+                        + " @agg '" + agg + "' is not a valid value; allowed: "
+                        + "count, sum, avg, min, max",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+
+            String of = origin.getOf();
+            if (of == null || of.isEmpty()) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.aggregate on " + obj.getName() + "." + field.getName()
+                        + ": missing @of.",
+                    ErrorCode.ERR_INVALID_ORIGIN);
+            }
+            validateFromOrOfPath(of, root, obj.getName(), field.getName(),
+                "origin.aggregate.@of");
+
+            String via = origin.getVia();
+            if (via == null || via.isEmpty()) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.aggregate on " + obj.getName() + "." + field.getName()
+                        + ": missing @via (aggregates require a relationship path).",
+                    ErrorCode.ERR_INVALID_ORIGIN);
+            }
+            validateViaPath(via, root, obj.getName(), field.getName());
+            return;
+        }
+
+        // origin.collection — required-check only on @via; full path traversal
+        // is intentionally not enforced here (mirrors TS validateOriginPaths,
+        // which only validates passthrough + aggregate).
+        if (CollectionOrigin.SUBTYPE_COLLECTION.equals(subType)) {
+            String via = origin.getVia();
+            if (via == null || via.isEmpty()) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.collection on " + obj.getName() + "." + field.getName()
+                        + ": missing @via.",
+                    ErrorCode.ERR_INVALID_ORIGIN);
+            }
+        }
+    }
+
+    // =========================================================================
+    // Entity-has-primary-identity advisory (non-fatal)
+    //
+    // Mirrors the TS subtype-rules.ts / C# ValidationPasses.ValidateSubtypeRules
+    // warning path: every concrete object.entity with at least one field child
+    // SHOULD have a primary identity child. When it doesn't (and isn't marked
+    // @isAbstract: true), record a warning on the loader. This is advisory —
+    // we never throw.
+    //
+    // Edge cases (mirror TS/C#):
+    //   - Abstract entity (@isAbstract: true)       → no warning
+    //   - Entity with no fields at all              → no warning
+    //   - Entity that inherits a primary identity   → no warning
+    //     (uses effective children — includeParentData=true — for the identity
+    //      lookup so an extends-an-abstract-base-with-identity entity is silent)
+    //   - object.value or object.base subtypes      → no warning
+    //
+    // Warning text is byte-identical to the TS/C# / Python ports:
+    //   entity object '<shortName>' has no primary identity
+    //   (add an identity child or mark @isAbstract: true)
+    // =========================================================================
+
+    /**
+     * Walk every {@code object.entity} in the tree and record a non-fatal warning
+     * for any concrete one (i.e. not {@code @isAbstract: true}) that has at least
+     * one field child but no primary identity (own or inherited).
+     *
+     * @param root the root node to walk
+     * @param loader the loader to receive warnings; may be {@code null} (then this
+     *               pass is a no-op — there is nowhere to record findings)
+     */
+    static void validateEntityHasPrimaryIdentity(MetaRoot root, MetaDataLoader loader) {
+        if (loader == null) return;
+        walkEntityIdentityCheck(root, loader);
+    }
+
+    private static void walkEntityIdentityCheck(MetaData node, MetaDataLoader loader) {
+        if (node instanceof MetaObject) {
+            checkObjectIdentity((MetaObject) node, loader);
+        }
+        // Recurse into own children only (matches the walk style used elsewhere
+        // in this class — inherited nodes are validated on their declaring node).
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkEntityIdentityCheck(child, loader);
+        }
+    }
+
+    private static void checkObjectIdentity(MetaObject obj, MetaDataLoader loader) {
+        // Only entity-subtype objects warrant the warning.
+        if (!MetaObject.SUBTYPE_ENTITY.equals(obj.getSubType())) {
+            return;
+        }
+        // Abstract entities are templates / supers — no warning.
+        if (isAbstract(obj)) {
+            return;
+        }
+
+        // Effective children (includeParentData=true) so an entity that extends
+        // an abstract base providing the identity does NOT warn — matches the
+        // TS/C# behaviour of `model.children()` in their walks.
+        List<MetaData> effective = obj.getChildren(MetaData.class, true);
+
+        for (MetaData child : effective) {
+            if (MetaIdentity.TYPE_IDENTITY.equals(child.getType())
+                    && MetaIdentity.SUBTYPE_PRIMARY.equals(child.getSubType())) {
+                return; // has a primary identity (own or inherited) — no warning
+            }
+        }
+        // Concrete entity, no primary identity (own or inherited) — warn.
+        // Matches TS subtype-rules / C# ValidationPasses (no "has any field" guard).
+
+        // Bare entity name (no package prefix) — matches what other ports emit
+        // (TS / C# fqn() falls back to name when no own package is set on the
+        // entity node, since `package` lives on metadata.root).
+        String shortName = obj.getShortName();
+        if (shortName == null || shortName.isEmpty()) {
+            shortName = obj.getName();
+        }
+
+        loader.addWarning(
+            "entity object '" + shortName + "' has no primary identity "
+                + "(add an identity child or mark @isAbstract: true)");
+    }
+
+    /**
+     * True if the node has an own {@code @isAbstract} attribute set to
+     * boolean-true. Reads only the own attribute (not effective) — matches the
+     * own-only validation contract used throughout this class.
+     */
+    private static boolean isAbstract(MetaData node) {
+        if (!node.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT, false)) {
+            return false;
+        }
+        Object v = node.getMetaAttr(MetaData.ATTR_IS_ABSTRACT, false).getValue();
+        if (v instanceof Boolean) return (Boolean) v;
+        if (v instanceof String) return "true".equalsIgnoreCase((String) v);
+        return false;
+    }
+
+    /**
+     * Validate a dotted "Entity.field" reference (used by passthrough's @from
+     * and aggregate's @of). The entity must exist at the root, and the field
+     * must exist on that entity (inherited fields are included via the standard
+     * children() traversal).
+     */
+    private static void validateFromOrOfPath(String pathAttr, MetaRoot root,
+                                             String projectionName, String fieldName,
+                                             String label) {
+        int dotIdx = pathAttr.indexOf('.');
+        if (dotIdx < 1 || dotIdx == pathAttr.length() - 1) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_INVALID_ORIGIN
+                    + ": " + label + " \"" + pathAttr + "\" on "
+                    + projectionName + "." + fieldName
+                    + ": must be of form \"Entity.field\".",
+                ErrorCode.ERR_INVALID_ORIGIN);
+        }
+        String entityName = pathAttr.substring(0, dotIdx);
+        String targetFieldName = pathAttr.substring(dotIdx + 1);
+
+        MetaObject sourceObj = findRootObject(root, entityName);
+        if (sourceObj == null) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_INVALID_ORIGIN
+                    + ": " + label + " \"" + pathAttr + "\" on "
+                    + projectionName + "." + fieldName
+                    + ": no such entity \"" + entityName + "\".",
+                ErrorCode.ERR_INVALID_ORIGIN);
+        }
+
+        // Inherited fields included — getChildren(..., true) walks super data.
+        boolean fieldExists = false;
+        for (MetaData child : sourceObj.getChildren(MetaData.class, true)) {
+            if (child instanceof MetaField && nameMatches(child, targetFieldName)) {
+                fieldExists = true;
+                break;
+            }
+        }
+        if (!fieldExists) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_INVALID_ORIGIN
+                    + ": " + label + " \"" + pathAttr + "\" on "
+                    + projectionName + "." + fieldName
+                    + ": no such field \"" + targetFieldName
+                    + "\" on " + entityName + ".",
+                ErrorCode.ERR_INVALID_ORIGIN);
+        }
+    }
+
+    /**
+     * Validate a dotted relationship path of the form
+     * {@code "Entity.relationship[.relationship...]"}. The leading entity must
+     * exist at root; each relationship segment must exist on the current entity
+     * and carry a {@code @objectRef} that resolves to another entity at root,
+     * which becomes the next hop's current entity.
+     */
+    private static void validateViaPath(String viaAttr, MetaRoot root,
+                                        String projectionName, String fieldName) {
+        String[] segments = viaAttr.split("\\.");
+        if (segments.length < 2) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_INVALID_ORIGIN
+                    + ": origin.@via \"" + viaAttr + "\" on "
+                    + projectionName + "." + fieldName
+                    + ": must be of form \"Entity.relationship[.relationship...]\".",
+                ErrorCode.ERR_INVALID_ORIGIN);
+        }
+        String entityName = segments[0];
+        MetaObject currentObj = findRootObject(root, entityName);
+        if (currentObj == null) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_INVALID_ORIGIN
+                    + ": origin.@via \"" + viaAttr + "\" on "
+                    + projectionName + "." + fieldName
+                    + ": no such entity \"" + entityName + "\".",
+                ErrorCode.ERR_INVALID_ORIGIN);
+        }
+        for (int i = 1; i < segments.length; i++) {
+            String relName = segments[i];
+            MetaRelationship rel = findRelationship(currentObj, relName);
+            if (rel == null) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.@via \"" + viaAttr + "\" on "
+                        + projectionName + "." + fieldName
+                        + ": no such relationship \"" + relName
+                        + "\" on " + currentObj.getName() + ".",
+                    ErrorCode.ERR_INVALID_ORIGIN);
+            }
+            String refTarget = rel.hasMetaAttr(MetaRelationship.ATTR_OBJECT_REF)
+                ? rel.getMetaAttr(MetaRelationship.ATTR_OBJECT_REF).getValueAsString()
+                : null;
+            if (refTarget == null || refTarget.isEmpty()) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.@via \"" + viaAttr + "\" on "
+                        + projectionName + "." + fieldName
+                        + ": relationship \"" + relName + "\" on "
+                        + currentObj.getName() + " is missing @objectRef.",
+                    ErrorCode.ERR_INVALID_ORIGIN);
+            }
+            MetaObject nextObj = findRootObject(root, refTarget);
+            if (nextObj == null) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.@via \"" + viaAttr + "\" on "
+                        + projectionName + "." + fieldName
+                        + ": relationship \"" + relName
+                        + "\" points to non-existent entity \"" + refTarget + "\".",
+                    ErrorCode.ERR_INVALID_ORIGIN);
+            }
+            currentObj = nextObj;
+        }
+    }
+
+    /**
+     * Find a top-level MetaObject child of the root whose bare entity name
+     * matches. Origin reference paths ({@code @from}, {@code @of}, {@code @via})
+     * use bare entity names (e.g. {@code "Program.title"}, not
+     * {@code "acme::commerce::Program.title"}), so we compare against the
+     * package-stripped short name. Falls back to a tail-segment compare on the
+     * full name in case getShortName() is unset on some path.
+     */
+    private static MetaObject findRootObject(MetaRoot root, String name) {
+        for (MetaData child : root.getChildren(MetaData.class, false)) {
+            if (child instanceof MetaObject && nameMatches(child, name)) {
+                return (MetaObject) child;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Find a relationship child on an object by name. Walks inherited children
+     * (relationships declared on supers are visible to projections that extend
+     * the base entity).
+     *
+     * <p>Matches by getShortName() with a tail-segment fallback (consistent with
+     * {@link #findRootObject}), since relationships may be stored with the
+     * package prefix attached to {@code getName()}.</p>
+     */
+    private static MetaRelationship findRelationship(MetaObject obj, String name) {
+        for (MetaData child : obj.getChildren(MetaData.class, true)) {
+            if (!(child instanceof MetaRelationship)) continue;
+            if (nameMatches(child, name)) {
+                return (MetaRelationship) child;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * True if {@code child}'s bare name matches {@code name}. Compares against
+     * {@code getShortName()} first, then falls back to deriving the tail
+     * segment from {@code getName()} (after the last {@code "::"}).
+     */
+    private static boolean nameMatches(MetaData child, String name) {
+        String shortName = child.getShortName();
+        if (shortName != null && name.equals(shortName)) return true;
+        String full = child.getName();
+        if (full == null) return false;
+        int idx = full.lastIndexOf(MetaData.PKG_SEPARATOR);
+        String bare = (idx >= 0) ? full.substring(idx + MetaData.PKG_SEPARATOR.length()) : full;
+        return name.equals(bare);
     }
 
 }

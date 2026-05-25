@@ -8,6 +8,7 @@ import com.metaobjects.attr.BooleanAttribute;
 // StringArrayAttribute removed - using StringAttribute with @isArray instead
 import com.metaobjects.field.MetaField;
 import com.metaobjects.identity.MetaIdentity;
+import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.CommonAttributeDef;
@@ -946,7 +947,8 @@ public abstract class BaseMetaDataParser {
         return MetaValidator.TYPE_VALIDATOR.equals(typeName)
             || MetaView.TYPE_VIEW.equals(typeName)
             || MetaSource.TYPE_SOURCE.equals(typeName)
-            || MetaIdentity.TYPE_IDENTITY.equals(typeName);
+            || MetaIdentity.TYPE_IDENTITY.equals(typeName)
+            || MetaOrigin.TYPE_ORIGIN.equals(typeName);
     }
 
 

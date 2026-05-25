@@ -7,4 +7,5 @@ com.metaobjects.relationship.RelationshipTypesMetaDataProvider
 com.metaobjects.identity.IdentityTypesMetaDataProvider
 com.metaobjects.database.CoreDBMetaDataProvider
 com.metaobjects.source.SourceTypesMetaDataProvider
+com.metaobjects.origin.OriginTypesMetaDataProvider
 com.metaobjects.documentation.DocumentationMetaDataProvider
