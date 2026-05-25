@@ -234,10 +234,17 @@ public abstract class BaseMetaDataParser {
 
     protected String getNextNamePrefix( MetaData parent, String typeName, String prefix ) {
         int i = 1;
+        // NOTE: compare against the SHORT name (package-stripped) so the prefix scan
+        // works for nodes whose effective name is package-qualified (e.g. a source
+        // attached to an object under a non-empty package becomes
+        // "acme::commerce::rdb1"; without short-name comparison the second auto-named
+        // sibling would collide on "rdb1"). See conformance fixtures
+        // source-multi-source-roles / error-source-multiple-primary.
         for( MetaData md : (List<MetaData>) parent.getChildrenOfType( typeName, true )) {
-            if ( md.getName().startsWith( prefix )) {
+            String shortName = md.getShortName();
+            if ( shortName != null && shortName.startsWith( prefix )) {
                 try {
-                    int n = Integer.parseInt(md.getName().substring(prefix.length()));
+                    int n = Integer.parseInt(shortName.substring(prefix.length()));
                     if ( n >= i ) i = n+1;
                 }
                 catch( NumberFormatException ignore ) {}
