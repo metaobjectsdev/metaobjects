@@ -389,7 +389,7 @@ Preserve the following contracts exactly across all language ports:
 
 **Metamodel subtype vocabularies (must be identical across languages):**
 - Filter operators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `like`, `isNull`
-- Source subtypes: `dbTable`, `dbView`
+- Source subtypes: `rdb` (paradigm; ADR-0007). The pre-v2 `dbTable`/`dbView` subtypes are RETIRED — `source.rdb` + `@kind: table|view|materializedView|storedProc|tableFunction` is the form, with read-only-ness derived from `@kind`. Multi-source via `@role` (exactly one `primary` per object). Source physical name = `@table` (NOT `@name`); field physical name = `@column` (renamed from `@dbColumn`). Referential actions on relationships: `@onDelete` / `@onUpdate`.
 - Origin subtypes: `passthrough`, `aggregate`
 - Layout subtypes: `dataGrid`
 - Currency attrs: `@currency` (ISO 4217), `@locale` (BCP 47)
