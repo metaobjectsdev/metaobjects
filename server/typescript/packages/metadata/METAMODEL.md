@@ -145,7 +145,7 @@ When node B has `super: A`:
 
 ### 4.4 Cross-file resolution
 
-A `super:` reference can target a node in a different file, as long as both files were passed to `FileMetaDataLoader.loadFiles(paths[])` (or both live in the directory passed to `loadDirectory`). The loader resolves references across the full set of input files.
+A `super:` reference can target a node in a different file, as long as both files are passed to `MetaDataLoader.load([...sources])` (or both live in the directory passed to `MetaDataLoader.fromDirectory(...)`). The loader resolves references across the full set of input files.
 
 ## 5. Overlay vs override
 
@@ -212,28 +212,30 @@ When this file is loaded alongside one that declares `acme::Vehicle`, the overla
 
 ## 7. Loader API
 
-Two entry points (TypeScript):
+Entry points (TypeScript):
 
 ```typescript
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 // Load specific files from disk:
-const loader = new FileMetaDataLoader();
-const result1 = await loader.loadFiles(["path/to/a.json", "path/to/b.json"]);
+const result1 = await new MetaDataLoader().load([
+  new FileSource("path/to/a.json"),
+  new FileSource("path/to/b.json"),
+]);
 
 // Load everything in a directory:
-const result2 = await loader.loadDirectory("path/to/dir", {
+const result2 = await MetaDataLoader.fromDirectory("path/to/dir", {
   exclude: ["_pending/**"],
 });
 
 // Load from an in-memory JSON string (e.g. in tests):
-const result3 = await new MetaDataLoader().load([new InMemorySource(jsonString)]);
+const result3 = await new MetaDataLoader().load([new InMemoryStringSource(jsonString)]);
 
 // result.root is the merged MetaData tree; result.errors / result.warnings carry diagnostics.
 ```
 
-Strict mode rejects unknown types/attributes; permissive mode (the default) tolerates them as warnings. Set via `new FileMetaDataLoader({ strict: true })`.
+Strict mode rejects unknown types/attributes; permissive mode (the default) tolerates them as warnings. Set via `new MetaDataLoader({ strict: true })`.
 
 ## 8. See also
 

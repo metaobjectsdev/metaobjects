@@ -56,7 +56,7 @@ function pathFromProjectionName(name: string): string {
  *
  * @param projection  The projection entity (has a source[dbView] child).
  * @param root        The loader's root (all top-level objects as direct children,
- *                    from `MetaDataLoader.load()` / `FileMetaDataLoader.loadFiles()` as `result.root`).
+ *                    from `MetaDataLoader.load()` or `MetaDataLoader.fromDirectory()` as `result.root`).
  * @param opts        Column naming strategy + dialect.
  */
 export function renderProjectionDecl(

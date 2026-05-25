@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { FileMetaDataLoader, FileSource } from "../src/core/index.js";
+import { FileSource } from "../src/core/index.js";
 import {
   // Concrete node classes (the typed tree replaces the old metaOf-based layers)
   MetaData,
@@ -23,7 +23,7 @@ import {
   resolveSuperRef,
   // Loader hierarchy
   MetaDataLoader,
-  InMemorySource,
+  InMemoryStringSource,
   // Errors
   ParseError,
   // Constants
@@ -238,7 +238,7 @@ describe("Public API surface — @metaobjectsdev/metadata index", () => {
   test("MetaDataLoader.load works via index", async () => {
     const opts: LoadOptions = { freeze: false };
     const loader2 = new MetaDataLoader(opts);
-    const src: MetaDataSource = new InMemorySource(
+    const src: MetaDataSource = new InMemoryStringSource(
       JSON.stringify({ "metadata.root": { name: "r" } }),
     );
     const result: LoadResult = await loader2.load([src]);
@@ -255,13 +255,13 @@ describe("Public API surface — @metaobjectsdev/metadata index", () => {
     expect(loader.state).toBe("uninitialized");
   });
 
-  test("FileMetaDataLoader is constructible via /core subpath", () => {
-    const loader = new FileMetaDataLoader();
+  test("MetaDataLoader is constructible via the root entry", () => {
+    const loader = new MetaDataLoader();
     expect(loader.state).toBe("uninitialized");
   });
 
-  test("FileSource and InMemorySource are constructible (FileSource via /core, InMemorySource via root)", () => {
-    const inMem = new InMemorySource('{"metadata.root":{}}', { id: "test.json" });
+  test("FileSource and InMemoryStringSource are constructible (FileSource via /core, InMemoryStringSource via root)", () => {
+    const inMem = new InMemoryStringSource('{"metadata.root":{}}', { id: "test.json" });
     expect(inMem).toBeDefined();
     const fileSrc = new FileSource("/some/path.json");
     expect(fileSrc).toBeDefined();

@@ -9,7 +9,6 @@ import { newDb } from "pg-mem";
 import { createClient } from "@libsql/client";
 import { drizzle as drizzleLibsql } from "drizzle-orm/libsql";
 import { sqliteTable, integer, text } from "drizzle-orm/sqlite-core";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { resolve, join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,6 +16,8 @@ import { ObjectManager } from "../src/index.js";
 import { inMemoryDriver, kyselyDriver, drizzleDriver } from "../src/drivers/index.js";
 import { TWO_ENTITIES_FK_SQLITE, TWO_ENTITIES_FK_POSTGRES, splitStatements } from "./fixtures/setup-sql.js";
 import type { PersistenceDriver, Row } from "../src/persistence-driver.js";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 // Drizzle schema mirroring TWO_ENTITIES_FK_SQLITE — used by the drizzle-driver fixture.
 const drzUsers = sqliteTable("users", {
@@ -120,8 +121,8 @@ for (const { name, build, supportsTransactions } of DRIVERS) {
     beforeEach(async () => {
       const built = await build();
       teardown = built.teardown;
-      const loader = new FileMetaDataLoader();
-      const result = await loader.loadFiles([FIXTURE]);
+      const loader = new MetaDataLoader();
+      const result = await loader.load([new FileSource(FIXTURE)]);
       expect(result.errors).toEqual([]);
       om = new ObjectManager({ metadata: result.root, driver: built.driver });
     });

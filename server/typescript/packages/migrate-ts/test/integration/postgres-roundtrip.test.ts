@@ -23,7 +23,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Pool } from "pg";
 import { Kysely, PostgresDialect, sql } from "kysely";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
 import { introspectPostgres } from "../../src/introspect/postgres.js";
 import { diff } from "../../src/diff/index.js";
@@ -51,7 +51,7 @@ async function loadFixture(name: string) {
     join(import.meta.dir, "..", "fixtures", `${name}.json`),
     "utf8",
   );
-  return (await new MetaDataLoader().load([new InMemorySource(json)])).root;
+  return (await new MetaDataLoader().load([new InMemoryStringSource(json)])).root;
 }
 
 /**
@@ -196,7 +196,7 @@ describe("PG round-trip — after metadata mutations", () => {
       (c: { "object.entity"?: { name: string } }) => c["object.entity"]?.name === "Subscriber",
     )["object.entity"];
     subscriber.children.push({ "field.string": { name: "phone" } });
-    const metadata2 = (await new MetaDataLoader().load([new InMemorySource(JSON.stringify(json))])).root;
+    const metadata2 = (await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(json))])).root;
 
     // Second diff should detect one add-column.
     const second = await diff(buildExpectedSchema(metadata2), await introspectPostgres(kysely));
@@ -223,7 +223,7 @@ describe("PG round-trip — after metadata mutations", () => {
     const json = JSON.parse(
       readFileSync(join(import.meta.dir, "..", "fixtures", "trainer-website-entities.json"), "utf8"),
     );
-    const metadata1 = (await new MetaDataLoader().load([new InMemorySource(JSON.stringify(json))])).root;
+    const metadata1 = (await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(json))])).root;
     {
       const initial = await diff(buildExpectedSchema(metadata1), await introspectPostgres(kysely));
       const { up } = emit(initial.changes, { dialect: "postgres" });
@@ -237,7 +237,7 @@ describe("PG round-trip — after metadata mutations", () => {
     subscriber.children = subscriber.children.filter(
       (ch: { "field.string"?: { name: string } }) => ch["field.string"]?.name !== "source",
     );
-    const metadata2 = (await new MetaDataLoader().load([new InMemorySource(JSON.stringify(json))])).root;
+    const metadata2 = (await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(json))])).root;
 
     // Second diff should detect one drop-column (allowed).
     const second = await diff(buildExpectedSchema(metadata2), await introspectPostgres(kysely), {
@@ -266,7 +266,7 @@ describe("PG round-trip — after metadata mutations", () => {
     const json = JSON.parse(
       readFileSync(join(import.meta.dir, "..", "fixtures", "trainer-website-entities.json"), "utf8"),
     );
-    const metadata1 = (await new MetaDataLoader().load([new InMemorySource(JSON.stringify(json))])).root;
+    const metadata1 = (await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(json))])).root;
     {
       const initial = await diff(buildExpectedSchema(metadata1), await introspectPostgres(kysely));
       const { up } = emit(initial.changes, { dialect: "postgres" });
@@ -283,7 +283,7 @@ describe("PG round-trip — after metadata mutations", () => {
       (ch: { "field.string"?: { name: string } }) => ch["field.string"]?.name === "firstName",
     );
     fnField["field.string"].name = "first_name_2";
-    const metadata2 = (await new MetaDataLoader().load([new InMemorySource(JSON.stringify(json))])).root;
+    const metadata2 = (await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(json))])).root;
 
     // Second diff via object form so we can pass onAmbiguous.
     const second = await diff({

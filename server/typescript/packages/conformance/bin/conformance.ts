@@ -99,7 +99,7 @@ switch (subcommand) {
     }
 
     // Import the TS oracle — public API only (no test helpers).
-    const { MetaDataLoader, InMemorySource, canonicalSerialize } =
+    const { MetaDataLoader, InMemoryStringSource, canonicalSerialize } =
       await import("@metaobjectsdev/metadata");
 
     for (let i = 0; i < count; i++) {
@@ -110,7 +110,7 @@ switch (subcommand) {
       // Run through TS reference (oracle) to capture golden expected.json.
       // A generated document that fails to load is a generator bug — abort loudly.
       const loader = new MetaDataLoader();
-      const source = new InMemorySource(inputJson, { id: "meta.json", format: "json" });
+      const source = new InMemoryStringSource(inputJson, { id: "meta.json", format: "json" });
       const result = await loader.load([source]);
       if (result.errors.length > 0) {
         const details = result.errors

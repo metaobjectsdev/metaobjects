@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { TypeId, TYPE_IDENTITY,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_ENUM,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
-         MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+         MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { meta, metaRoot, metaObject, metaField } from "../_meta-build.js";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
@@ -39,7 +39,7 @@ describe("renderEntityFile", () => {
   });
 
   test("field.enum extends abstract — emits type alias using super field name", async () => {
-    const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
       "metadata.root": {
         "package": "acme",
         "children": [
@@ -77,7 +77,7 @@ describe("renderEntityFile", () => {
   });
 
   test("two fields extending the SAME abstract field.enum → ONE type alias", async () => {
-    const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
       "metadata.root": {
         "package": "acme",
         "children": [
@@ -148,7 +148,7 @@ describe("renderEntityFile", () => {
   });
 
   test("emits JSDoc above entity type from description / deprecated / seeAlso", async () => {
-    const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
       "metadata.root": {
         "package": "acme",
         "children": [
@@ -189,7 +189,7 @@ describe("renderEntityFile", () => {
   });
 
   test("emits JSDoc above a field column line from field @description", async () => {
-    const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
       "metadata.root": {
         "package": "acme",
         "children": [
@@ -225,7 +225,7 @@ describe("renderEntityFile", () => {
   });
 
   test("does NOT emit `notes` content in JSDoc (D5)", async () => {
-    const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
       "metadata.root": {
         "package": "acme",
         "children": [

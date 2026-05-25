@@ -3,7 +3,7 @@ import { TypeId, TYPE_IDENTITY, TYPE_VALIDATOR,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_ENUM,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
          VALIDATOR_SUBTYPE_REGEX,
-         MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+         MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { meta, metaObject, metaField } from "../_meta-build.js";
 import { renderZodValidators } from "../../src/templates/zod-validators.js";
 
@@ -66,7 +66,7 @@ describe("renderZodValidators", () => {
   });
 
   test("emits JSDoc above InsertSchema + UpdateSchema from entity @description", async () => {
-    const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
       "metadata.root": {
         "package": "acme",
         "children": [
@@ -99,7 +99,7 @@ describe("renderZodValidators", () => {
   });
 
   test("renderZodValidators does NOT emit `notes` content (D5)", async () => {
-    const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
       "metadata.root": {
         "package": "acme",
         "children": [

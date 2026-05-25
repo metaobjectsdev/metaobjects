@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { MetaField } from "../src/core/field/meta-field.js";
 import { MetaObject } from "../src/core/object/meta-object.js";
 import {
@@ -12,7 +12,7 @@ import {
 
 async function load(doc: unknown) {
   const loader = new MetaDataLoader();
-  return loader.load([new InMemorySource(JSON.stringify(doc))]);
+  return loader.load([new InMemoryStringSource(JSON.stringify(doc))]);
 }
 
 // ---------------------------------------------------------------------------

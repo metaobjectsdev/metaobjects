@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { LAYOUT_DATA_GRID_ATTR_FILTER, TYPE_OBJECT, TYPE_LAYOUT } from "../src/index.js";
 
 async function loadGridFilter(filter: unknown): Promise<unknown> {
@@ -32,7 +32,7 @@ async function loadGridFilter(filter: unknown): Promise<unknown> {
   };
   const loader = new MetaDataLoader();
   const { root } = await loader.load([
-    new InMemorySource(JSON.stringify(doc), { id: "test.json" }),
+    new InMemoryStringSource(JSON.stringify(doc), { id: "test.json" }),
   ]);
   const obj = root.children().find((c) => c.type === TYPE_OBJECT)!;
   const layout = obj.children().find((c) => c.type === TYPE_LAYOUT)!;

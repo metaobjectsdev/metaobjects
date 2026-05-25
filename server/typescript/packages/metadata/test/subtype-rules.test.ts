@@ -1,10 +1,10 @@
 import { describe, it, expect } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 
 async function load(json: string) {
   const loader = new MetaDataLoader();
-  return loader.load([new InMemorySource(json, { id: "test.json" })]);
+  return loader.load([new InMemoryStringSource(json, { id: "test.json" })]);
 }
 
 describe("subtype rule validation", () => {

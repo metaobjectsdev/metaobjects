@@ -12,10 +12,11 @@ import {
   FIELD_SUBTYPE_LONG,
   IDENTITY_SUBTYPE_PRIMARY,
 } from "../src/index.js";
-import { FileMetaDataLoader } from "../src/core/file-meta-data-loader.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
+import { FileSource } from "../src/loader/sources/file-source.js";
 
 describe("filterable + sortable field attr constants", () => {
   test("FIELD_ATTR_FILTERABLE has stable string value", () => {
@@ -32,7 +33,7 @@ describe("grid filter attr constant", () => {
   });
 });
 
-describe("FileMetaDataLoader drift warning for @filterable without index", () => {
+describe("loader drift warning for @filterable without index", () => {
   test("emits a warning when a @filterable field has no identity reference and no @db.indexed", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "loader-filterable-warn-"));
     const path = join(tmp, "fixture.json");
@@ -50,7 +51,7 @@ describe("FileMetaDataLoader drift warning for @filterable without index", () =>
       ]},
     }));
     try {
-      const result = await new FileMetaDataLoader().loadFiles([path]);
+      const result = await new MetaDataLoader().load([new FileSource(path)]);
       expect(result.errors).toEqual([]);
       const warningMessages = (result.warnings ?? []);
       const hit = warningMessages.find((m) => m.includes("Sub.firstName") && m.includes("filterable") && m.includes("index"));
@@ -76,7 +77,7 @@ describe("FileMetaDataLoader drift warning for @filterable without index", () =>
       ]},
     }));
     try {
-      const result = await new FileMetaDataLoader().loadFiles([path]);
+      const result = await new MetaDataLoader().load([new FileSource(path)]);
       const warningMessages = (result.warnings ?? []);
       const hit = warningMessages.find((m) => m.includes("filterable"));
       expect(hit).toBeUndefined();
@@ -108,7 +109,7 @@ describe("@db.indexed opts a field out of the @filterable-without-index warning"
       ]},
     }));
     try {
-      const result = await new FileMetaDataLoader().loadFiles([path]);
+      const result = await new MetaDataLoader().load([new FileSource(path)]);
       expect(result.errors).toEqual([]);
       const warningMessages = (result.warnings ?? []);
       const hit = warningMessages.find((m) => m.includes("Subscriber.tags") && m.includes("filterable") && m.includes("index"));
@@ -138,7 +139,7 @@ describe("@db.indexed opts a field out of the @filterable-without-index warning"
       ]},
     }));
     try {
-      const result = await new FileMetaDataLoader().loadFiles([path]);
+      const result = await new MetaDataLoader().load([new FileSource(path)]);
       expect(result.errors).toEqual([]);
       const warningMessages = (result.warnings ?? []);
       const hit = warningMessages.find((m) => m.includes("Subscriber.tags") && m.includes("filterable") && m.includes("index"));

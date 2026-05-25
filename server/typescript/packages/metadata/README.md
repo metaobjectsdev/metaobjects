@@ -11,13 +11,13 @@ pnpm add @metaobjectsdev/metadata
 ## Usage
 
 ```ts
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 
 const json = `{ "metadata.root": { "package": "demo", "children": [] } }`;
-const result = await new MetaDataLoader().load([new InMemorySource(json)]);
+const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
 ```
 
-The public loader API is `MetaDataLoader` + `InMemorySource`. A `MetaDataLoader` instance is single-use; construct a new one per load.
+The public loader API is `MetaDataLoader` + `InMemoryStringSource`. A `MetaDataLoader` instance is single-use; construct a new one per load.
 
 ## Links
 

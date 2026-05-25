@@ -1,11 +1,12 @@
 import { join } from "node:path";
 import { readdir, stat } from "node:fs/promises";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import {
+  MetaDataLoader,
   TypeRegistry,
   registerCoreTypes,
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 import { registerForgeTypes } from "./forge-types.js";
 import { discoverWorkspace, resolveExtendsOrder } from "./workspace.js";
 
@@ -48,8 +49,8 @@ export async function loadMemory(repoRoot: string): Promise<MetaRoot> {
   // against the merged tree afterwards) — dep packages first, current last.
   const paths = await collectMetadataPaths(repoRoot);
 
-  const loader = new FileMetaDataLoader({ registry });
-  const result = await loader.loadFiles(paths);
+  const loader = new MetaDataLoader({ registry });
+  const result = await loader.load(paths.map((p) => new FileSource(p)));
 
   if (result.errors.length > 0) {
     const first = result.errors[0]!;

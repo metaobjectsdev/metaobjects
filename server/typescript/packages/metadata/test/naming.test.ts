@@ -1,12 +1,12 @@
 import { describe, it, expect } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { resolveTableSchema, resolveTableName } from "../src/naming.js";
 
 async function load(doc: unknown) {
   const loader = new MetaDataLoader();
   const { root } = await loader.load([
-    new InMemorySource(JSON.stringify(doc), { id: "test.json" }),
+    new InMemoryStringSource(JSON.stringify(doc), { id: "test.json" }),
   ]);
   return root;
 }

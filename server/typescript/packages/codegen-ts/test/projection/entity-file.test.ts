@@ -4,7 +4,7 @@
 //   - vanilla entities still go through the Drizzle-table path
 
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
@@ -17,7 +17,7 @@ import { GENERATED_HEADER } from "../../src/constants.js";
 
 async function loadMetadata(children: unknown[]) {
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });
-  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
   if (result.errors.length > 0) {
     throw new Error(
       `Loader errors:\n${result.errors.map((e) => e.message).join("\n")}`,

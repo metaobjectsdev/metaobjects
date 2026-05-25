@@ -1,7 +1,7 @@
 import importlib.util
 from pathlib import Path
 
-from metaobjects.loader.meta_data_loader import load_directory
+from metaobjects import MetaDataLoader
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.runner import run_gen
 from metaobjects.codegen.generators.entity_model import entity_model
@@ -17,7 +17,7 @@ def _generate(case_dir: Path, out: Path) -> Path:
     meta_dir = out / "meta"
     meta_dir.mkdir(parents=True)
     (meta_dir / "meta.json").write_text((case_dir / "meta.json").read_text())
-    root = load_directory(str(meta_dir)).root
+    root = MetaDataLoader.from_directory(meta_dir).root
     gen_out = out / "gen"
     run_gen(GenConfig(out_dir=str(gen_out)), root, generators=[entity_model()])
     return gen_out

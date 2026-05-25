@@ -1,10 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { MetaReferenceIdentity } from "../../src/core/identity/meta-identity.js";
 
 async function load(children: unknown[]) {
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });
-  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
   if (result.errors.length > 0) {
     throw new Error(`Loader errors:\n${result.errors.map((e) => e.message).join("\n")}`);
   }
@@ -129,7 +129,7 @@ describe("identity.reference subtype", () => {
         ],
       },
     });
-    const result = await new MetaDataLoader().load([new InMemorySource(json)]);
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors.some((e) => /references/i.test(e.message))).toBe(true);
   });

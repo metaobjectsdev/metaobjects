@@ -12,13 +12,13 @@
  *      (override avoids set-null entirely)
  */
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
 import { SetNullNotNullableError } from "../../src/errors.js";
 
 async function loadDoc(doc: unknown) {
   const { root, errors } = await new MetaDataLoader().load([
-    new InMemorySource(JSON.stringify(doc)),
+    new InMemoryStringSource(JSON.stringify(doc)),
   ]);
   expect(errors).toHaveLength(0);
   return root;

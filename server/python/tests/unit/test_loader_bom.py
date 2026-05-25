@@ -4,8 +4,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from metaobjects import MetaDataLoader
 from metaobjects.errors import ErrorCode
-from metaobjects.loader.meta_data_loader import load_directory
 
 
 def _minimal_root_json() -> str:
@@ -40,7 +40,7 @@ def test_bom_prefixed_file_does_not_produce_malformed_json_error(tmp_path: Path)
     bom_file = tmp_path / "meta.items.json"
     bom_file.write_text(bom + _minimal_root_json(), encoding="utf-8")
 
-    result = load_directory(str(tmp_path))
+    result = MetaDataLoader.from_directory(tmp_path)
 
     malformed = [e for e in result.errors if e.code == ErrorCode.ERR_MALFORMED_JSON]
     assert not malformed, (
@@ -54,7 +54,7 @@ def test_bom_prefixed_file_parses_entity(tmp_path: Path) -> None:
     bom_file = tmp_path / "meta.items.json"
     bom_file.write_text(bom + _minimal_root_json(), encoding="utf-8")
 
-    result = load_directory(str(tmp_path))
+    result = MetaDataLoader.from_directory(tmp_path)
 
     assert not result.errors, f"Unexpected errors: {result.errors}"
     entity_names = [c.name for c in result.root.children() if c.name]
@@ -66,6 +66,6 @@ def test_file_without_bom_still_loads(tmp_path: Path) -> None:
     plain_file = tmp_path / "meta.items.json"
     plain_file.write_text(_minimal_root_json(), encoding="utf-8")
 
-    result = load_directory(str(tmp_path))
+    result = MetaDataLoader.from_directory(tmp_path)
 
     assert not result.errors, f"Unexpected errors: {result.errors}"

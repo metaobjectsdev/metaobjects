@@ -18,15 +18,15 @@ import os
 import tempfile
 from pathlib import Path
 
+from metaobjects import MetaDataLoader
 from metaobjects.core_types import core_provider
-from metaobjects.loader.meta_data_loader import load_directory
 
 
 def _load(doc: dict) -> list[str]:
     with tempfile.TemporaryDirectory() as tmpdir:
         path = os.path.join(tmpdir, "meta.test.json")
         Path(path).write_text(json.dumps(doc))
-        result = load_directory(tmpdir, providers=[core_provider])
+        result = MetaDataLoader.from_directory(tmpdir, providers=[core_provider])
         return [e.code.name for e in result.errors]
 
 

@@ -85,11 +85,12 @@ describe("FORGE_ATTR_* constants", () => {
 });
 
 import { TypeRegistry, TypeId, registerCoreTypes } from "@metaobjectsdev/metadata";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { registerForgeTypes } from "../src/forge-types.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 describe("registerForgeTypes", () => {
   test("registers all five Forge types with base subtype + listed subtypes", () => {
@@ -135,8 +136,8 @@ describe("registerForgeTypes", () => {
         }),
       );
 
-      const loader = new FileMetaDataLoader({ registry: reg });
-      const result = await loader.loadFiles([path]);
+      const loader = new MetaDataLoader({ registry: reg });
+      const result = await loader.load([new FileSource(path)]);
 
       expect(result.errors).toHaveLength(0);
       const dec = result.root.ownChildren().find((c) => c.type === "decision");

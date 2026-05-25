@@ -20,8 +20,25 @@ import { validateSourceRoles } from "../persistence/source/validate-source-roles
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
 import { validateAttrSchema } from "../attr-schema-validate.js";
-import type { MetaDataSource } from "./meta-data-source.js";
+import type { MetaDataFormat, MetaDataSource } from "./meta-data-source.js";
+import { InMemoryStringSource } from "./meta-data-source.js";
 import type { ParseOptions, ParseResult } from "../parser-core.js";
+
+// Local mirror of DirectorySource's options shape. Deliberately inlined here
+// (instead of `import type`'d from ./sources/directory-source.js) so the
+// browser-safety crawler — which walks every `import|export from` it sees,
+// type-only or not — never follows a path into a node:fs-using file.
+// Keep field-for-field in sync with `DirectoryOptions` in `./sources/directory-source.ts`.
+type DirectoryFactoryOptions = {
+  exclude?: string[];
+  recurse?: boolean;
+};
+
+// YAML parser and node:fs-backed Source impls are loaded lazily (dynamic
+// import) inside the methods that need them. Reason: the package root
+// (src/index.ts) re-exports MetaDataLoader and must stay browser-safe —
+// the browser-safety test asserts that no file reachable from index.ts
+// statically imports `yaml` or `node:fs(/promises)`.
 
 // ---------------------------------------------------------------------------
 // Public API types
@@ -73,6 +90,71 @@ export class MetaDataLoader {
 
   private static _defaultRegistry(): TypeRegistry {
     return composeRegistry(coreProviders);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Static factories — the 99% case (cross-language consistent)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Load every supported file (`.json` / `.yaml` / `.yml`) under `dir` in
+   * deterministic ordinal-basename order. Recurses by default.
+   *
+   * Convenience for the typical "load a directory of metadata" path. The
+   * `DirectorySource` impl is loaded lazily to keep the package root
+   * browser-safe (the underlying source uses node:fs).
+   *
+   * A missing/unreadable directory is surfaced as a collected entry in
+   * `result.errors`; the loader returns a synthetic empty root rather than
+   * throwing — preserves the `meta export` CLI exit-code contract.
+   */
+  static async fromDirectory(
+    dir: string,
+    opts?: DirectoryFactoryOptions & LoadOptions,
+  ): Promise<LoadResult> {
+    const { exclude, recurse, ...loaderOpts } = opts ?? {};
+    // Conditional spreads honor exactOptionalPropertyTypes — only forward keys
+    // when the caller supplied a value, so DirectorySource's own defaults apply.
+    const dirOpts: DirectoryFactoryOptions = {
+      ...(exclude !== undefined && { exclude }),
+      ...(recurse !== undefined && { recurse }),
+    };
+    const { DirectorySource } = await import("./sources/directory-source.js");
+    const loader = new MetaDataLoader(loaderOpts);
+    try {
+      const sources = await new DirectorySource(dir, dirOpts).expand();
+      return loader.load(sources);
+    } catch (err) {
+      // Match the pre-unification contract: a missing/unreadable directory is
+      // surfaced as a collected error on the LoadResult, not a throw. The
+      // pipeline still completes with a synthetic empty root.
+      const emptyResult = await loader.load([]);
+      const expandErr =
+        err instanceof Error
+          ? err
+          : new Error(`MetaDataLoader.fromDirectory: ${String(err)}`);
+      return { ...emptyResult, errors: [expandErr, ...emptyResult.errors] };
+    }
+  }
+
+  /**
+   * Load each URI as a {@link UriSource}. Supports `file://`, `http://`,
+   * `https://` schemes. The source impl is loaded lazily to keep the package
+   * root browser-safe.
+   */
+  static async fromUris(uris: string[], opts?: LoadOptions): Promise<LoadResult> {
+    const { UriSource } = await import("./sources/uri-source.js");
+    const sources = uris.map((u) => new UriSource(u));
+    return new MetaDataLoader(opts).load(sources);
+  }
+
+  /** Load a single in-memory string of the given format. */
+  static async fromString(
+    content: string,
+    format: MetaDataFormat,
+    opts?: LoadOptions,
+  ): Promise<LoadResult> {
+    return new MetaDataLoader(opts).load([new InMemoryStringSource(content, { format })]);
   }
 
   // ---------------------------------------------------------------------------
@@ -156,10 +238,16 @@ export class MetaDataLoader {
   // ---------------------------------------------------------------------------
 
   /**
-   * Parse one source's raw content into a ParseResult. The base loader handles
-   * JSON only; a non-JSON format throws. Subclasses override this seam to add
-   * formats — e.g. FileMetaDataLoader (in @metaobjectsdev/metadata/core) adds YAML.
-   * This keeps the browser-safe base loader free of the YAML parser.
+   * Parse one source's raw content into a ParseResult. Dispatches on the
+   * source's declared `format` — `"json"` runs the canonical JSON parser,
+   * `"yaml"` desugars the authoring YAML into canonical JSON via parseYaml.
+   * Cross-language consistent: the same format vocabulary is honored by the
+   * Java / C# / Python MetaDataLoaders.
+   *
+   * The YAML parser is loaded lazily so the browser-safe root entry never
+   * statically pulls in the `yaml` dependency — see the module-header comment.
+   * `parseYaml` is preloaded inside `load()` if any source declares YAML
+   * format so the call here can stay synchronous.
    */
   protected parseSource(
     content: string,
@@ -169,10 +257,33 @@ export class MetaDataLoader {
     if (source.format === "json") {
       return parseJson(content, parseOpts);
     }
+    if (source.format === "yaml") {
+      const fn = MetaDataLoader._yamlParser;
+      if (fn === undefined) {
+        throw new Error(
+          `MetaDataLoader: YAML parser was not preloaded — this is an internal bug. ` +
+            `Source "${source.id}" declares format "yaml".`,
+        );
+      }
+      return fn(content, parseOpts);
+    }
     throw new Error(
-      `MetaDataLoader parses JSON only; format "${source.format}" for source ` +
-        `"${source.id}" requires FileMetaDataLoader (from @metaobjectsdev/metadata/core)`,
+      `MetaDataLoader: unsupported source format "${source.format}" ` +
+        `on source "${source.id}"`,
     );
+  }
+
+  // Cached lazy YAML parser — populated by _ensureYamlParser() before
+  // parseSource is invoked on a YAML source. Module-level cache (one import
+  // per process) keeps the per-load cost negligible.
+  private static _yamlParser:
+    | ((content: string, opts: ParseOptions) => ParseResult)
+    | undefined;
+
+  private static async _ensureYamlParser(): Promise<void> {
+    if (MetaDataLoader._yamlParser !== undefined) return;
+    const mod = await import("../core/parser-yaml.js");
+    MetaDataLoader._yamlParser = mod.parseYaml;
   }
 
   // ---------------------------------------------------------------------------
@@ -202,6 +313,14 @@ export class MetaDataLoader {
     this._state = "loading";
     const warnings: string[] = [];
     const errors: Error[] = [];
+
+    // Pre-load the YAML parser via dynamic import if any source declares
+    // YAML format. This keeps `parseSource` synchronous and the package root
+    // (src/index.ts) browser-safe — yaml is never statically imported from a
+    // file reachable from the package entry. See `_ensureYamlParser`.
+    if (sources.some((s) => s.format === "yaml")) {
+      await MetaDataLoader._ensureYamlParser();
+    }
 
     let root: MetaRoot | undefined;
 

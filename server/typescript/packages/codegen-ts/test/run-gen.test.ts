@@ -14,10 +14,11 @@ import {
   IDENTITY_ATTR_GENERATION,
   GENERATION_INCREMENT,
 } from "@metaobjectsdev/metadata";
-import { FileMetaDataLoader } from "@metaobjectsdev/metadata/core";
 import { meta, metaRoot, metaObject, metaField } from "./_meta-build.js";
 import { runGen, defineConfig } from "../src/index.js";
 import { entityFile, queriesFile, routesFile, barrel } from "../src/generators/index.js";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 let tmp: string;
 beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-run-gen-")); });
@@ -27,8 +28,8 @@ const FIXTURE_DIR = resolve(import.meta.dir, "fixtures");
 
 describe("runGen — single entity, SQLite", () => {
   test("emits Post.ts, Post.queries.ts, and index.ts in outDir", async () => {
-    const loader = new FileMetaDataLoader();
-    const result = await loader.loadFiles([join(FIXTURE_DIR, "single-entity.json")]);
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(join(FIXTURE_DIR, "single-entity.json"))]);
     expect(result.errors).toEqual([]);
 
     const out = await runGen({
@@ -70,8 +71,8 @@ describe("runGen — single entity, SQLite", () => {
 
 describe("runGen — two entities with FK, Postgres", () => {
   test("emits entity + queries files; FK .references() auto-emitted; column type matches User.id", async () => {
-    const loader = new FileMetaDataLoader();
-    const result = await loader.loadFiles([join(FIXTURE_DIR, "two-entities-fk.json")]);
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(join(FIXTURE_DIR, "two-entities-fk.json"))]);
     expect(result.errors).toEqual([]);
 
     const out = await runGen({
@@ -103,8 +104,8 @@ describe("runGen — two entities with FK, Postgres", () => {
 
 describe("runGen — refuses to clobber hand-written files", () => {
   test("file without @generated header is left alone, status 'refused'", async () => {
-    const loader = new FileMetaDataLoader();
-    const result = await loader.loadFiles([join(FIXTURE_DIR, "single-entity.json")]);
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(join(FIXTURE_DIR, "single-entity.json"))]);
 
     // Pre-place a hand-written Post.ts in outDir
     const handPath = join(tmp, "Post.ts");
@@ -198,8 +199,8 @@ describe("runGen — path-traversal guard (security)", () => {
 // ---------------------------------------------------------------------------
 describe("runGen — mergeStrategy: 'skip-existing'", () => {
   test("existing generated files are skipped; new entities still written", async () => {
-    const loader = new FileMetaDataLoader();
-    const result = await loader.loadFiles([join(FIXTURE_DIR, "single-entity.json")]);
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(join(FIXTURE_DIR, "single-entity.json"))]);
     expect(result.errors).toEqual([]);
 
     const baseConfig = defineConfig({
@@ -268,8 +269,8 @@ describe("runGen — mergeStrategy: 'skip-existing'", () => {
 // ---------------------------------------------------------------------------
 describe("runGen — entityFilter", () => {
   test("entityFilter: ['Post'] produces only Post files; barrel reflects filter", async () => {
-    const loader = new FileMetaDataLoader();
-    const result = await loader.loadFiles([join(FIXTURE_DIR, "two-entities-fk.json")]);
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(join(FIXTURE_DIR, "two-entities-fk.json"))]);
     expect(result.errors).toEqual([]);
 
     const out = await runGen({
@@ -300,8 +301,8 @@ describe("runGen — entityFilter", () => {
   });
 
   test("entityFilter: ['NonExistent'] produces 0 entity files and a warning", async () => {
-    const loader = new FileMetaDataLoader();
-    const result = await loader.loadFiles([join(FIXTURE_DIR, "two-entities-fk.json")]);
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(join(FIXTURE_DIR, "two-entities-fk.json"))]);
     expect(result.errors).toEqual([]);
 
     const out = await runGen({

@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   MetaDataLoader,
-  InMemorySource,
+  InMemoryStringSource,
 } from "@metaobjectsdev/metadata";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { renderZodValidators } from "../../src/templates/zod-validators.js";
@@ -52,7 +52,7 @@ const fixtureJson = {
 describe("D5: @notes never reaches user-facing TS codegen output", () => {
   test("renderEntityFile output omits @notes content", async () => {
     const result = await new MetaDataLoader().load([
-      new InMemorySource(JSON.stringify(fixtureJson)),
+      new InMemoryStringSource(JSON.stringify(fixtureJson)),
     ]);
     expect(result.errors).toEqual([]);
     const root = result.root;
@@ -70,7 +70,7 @@ describe("D5: @notes never reaches user-facing TS codegen output", () => {
 
   test("renderZodValidators output omits @notes content", async () => {
     const result = await new MetaDataLoader().load([
-      new InMemorySource(JSON.stringify(fixtureJson)),
+      new InMemoryStringSource(JSON.stringify(fixtureJson)),
     ]);
     expect(result.errors).toEqual([]);
     const entity = result.root.objects()[0]!;

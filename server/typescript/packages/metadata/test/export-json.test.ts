@@ -16,7 +16,7 @@ import { join } from "node:path";
 
 import { loadAndExportJson } from "../src/core/export-json.js";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { canonicalSerialize } from "../src/serializer-json.js";
 import { TYPE_METADATA, SUBTYPE_ROOT } from "../src/index.js";
 
@@ -90,7 +90,7 @@ describe("loadAndExportJson — round-trip stability", () => {
 
     // Parse the exported JSON back into a MetaData tree, then re-serialize.
     const loader = new MetaDataLoader();
-    const reloadResult = await loader.load([new InMemorySource(firstJson, { id: "round-trip" })]);
+    const reloadResult = await loader.load([new InMemoryStringSource(firstJson, { id: "round-trip" })]);
     const secondJson = canonicalSerialize(reloadResult.root);
 
     expect(secondJson).toBe(firstJson);

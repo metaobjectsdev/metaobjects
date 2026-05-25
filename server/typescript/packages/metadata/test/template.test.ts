@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { canonicalSerialize } from "../src/serializer-json.js";
 import { TYPE_TEMPLATE } from "../src/shared/base-types.js";
 import {
@@ -11,7 +11,7 @@ import {
 async function load(children: unknown[]) {
   const loader = new MetaDataLoader();
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });
-  const result = await loader.load([new InMemorySource(json)]);
+  const result = await loader.load([new InMemoryStringSource(json)]);
   return { errors: result.errors.map((e) => e.message), root: result.root };
 }
 

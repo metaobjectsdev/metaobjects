@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Kysely, sql } from "kysely";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
 import { introspectSqlite } from "../../src/introspect/sqlite.js";
 import { diff } from "../../src/diff/index.js";
@@ -39,7 +39,7 @@ async function loadFixture(name: string) {
     join(import.meta.dir, "..", "fixtures", `${name}.json`),
     "utf8",
   );
-  return (await new MetaDataLoader().load([new InMemorySource(json)])).root;
+  return (await new MetaDataLoader().load([new InMemoryStringSource(json)])).root;
 }
 
 /**
@@ -97,7 +97,7 @@ describe("SQLite round-trip — trainer-website fixture", () => {
       (c: { "object.entity"?: { name: string } }) => c["object.entity"]?.name === "Subscriber",
     )["object.entity"];
     subscriber.children.push({ "field.string": { name: "phone" } });
-    const metadata2 = (await new MetaDataLoader().load([new InMemorySource(JSON.stringify(json))])).root;
+    const metadata2 = (await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(json))])).root;
     const expected2 = buildExpectedSchema(metadata2);
 
     const second = await diff(expected2, await introspectSqlite(k));

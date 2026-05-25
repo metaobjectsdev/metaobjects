@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { validateAttrSchema } from "../src/attr-schema-validate.js";
 import { TypeRegistry } from "../src/registry.js";
 import { registerCoreTypes } from "../src/core-types.js";
@@ -15,7 +15,7 @@ import { parseJson } from "../src/parser-json.js";
 async function load(doc: unknown) {
   const loader = new MetaDataLoader();
   return loader.load([
-    new InMemorySource(JSON.stringify(doc), { id: "test.json" }),
+    new InMemoryStringSource(JSON.stringify(doc), { id: "test.json" }),
   ]);
 }
 
