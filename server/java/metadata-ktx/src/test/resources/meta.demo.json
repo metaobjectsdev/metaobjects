@@ -1,0 +1,14 @@
+{
+  "metadata.root": {
+    "package": "acme::demo",
+    "children": [
+      { "object.value": { "name": "Author", "children": [
+          { "field.string": { "name": "name" } }
+      ] } },
+      { "template.prompt": { "name": "WelcomePrompt",
+          "@payloadRef": "Author",
+          "@textRef": "demo/welcome",
+          "@format": "text" } }
+    ]
+  }
+}
