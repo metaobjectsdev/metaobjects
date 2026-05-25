@@ -12,11 +12,15 @@ import java.io.IOException;
  * <p>Concrete implementations:
  * <ul>
  *   <li>{@link InMemoryStringSource} — a pre-loaded string (useful in tests)</li>
+ *   <li>{@link FileSource} — a single filesystem path</li>
+ *   <li>{@link DirectorySource} — expands a directory into a stream of {@link FileSource}</li>
  *   <li>{@link UriSource} — reads via {@link com.metaobjects.loader.uri.URIHelper}</li>
  * </ul>
  * </p>
  *
  * @see InMemoryStringSource
+ * @see FileSource
+ * @see DirectorySource
  * @see UriSource
  */
 public interface MetaDataSource {

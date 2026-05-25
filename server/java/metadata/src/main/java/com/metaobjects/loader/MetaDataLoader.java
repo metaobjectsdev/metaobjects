@@ -32,7 +32,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -238,9 +237,8 @@ public class MetaDataLoader implements LoaderConfigurable {
         MetaDataLoader loader = createManual(false, name);
         try {
             loader.init();
-            List<MetaDataSource> sources = uris.stream()
-                .map(uri -> (MetaDataSource) new UriSource(uri))
-                .collect(Collectors.toList());
+            List<MetaDataSource> sources = new ArrayList<>(uris.size());
+            for (URI uri : uris) sources.add(new UriSource(uri));
             loader.load(sources);
             loader.register();
         } catch (MetaDataLoadingException e) {
