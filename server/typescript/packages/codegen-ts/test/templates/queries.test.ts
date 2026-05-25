@@ -123,12 +123,17 @@ describe("renderUpdateFn", () => {
 });
 
 describe("renderDeleteByIdFn", () => {
-  test("emits deletePostById returning boolean", () => {
+  test("emits deletePostById returning boolean using .returning() (portable across D1, libsql, postgres)", () => {
     const post = makePost();
     const ctx = makeCtx(post);
     const out = renderDeleteByIdFn(post, ctx).toString();
     expect(out).toContain("deletePostById");
     expect(out).toContain("Promise<boolean>");
-    expect(out).toContain("rowsAffected");
+    // The helper now uses .returning() unconditionally so the result is an array
+    // on every dialect (SQLite ≥3.35 covers D1 + libsql/Turso; postgres native).
+    // The old `rowsAffected` shape was libsql/Turso-specific and missing on D1.
+    expect(out).toContain(".returning()");
+    expect(out).toContain("deleted.length > 0");
+    expect(out).not.toContain("rowsAffected");
   });
 });
