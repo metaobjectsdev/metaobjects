@@ -1,0 +1,17 @@
+name: get-by-id
+description: A `get` query returns the single row or null.
+seed-data: |
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00');
+queries:
+  - name: existing-id
+    op: get
+    entity: Program
+    by: { id: 1 }
+    expect: { id: "1", title: "Foundations", priceCents: "4999", status: "PUBLISHED", createdAt: "2026-05-01T10:00:00" }
+
+  - name: missing-id-returns-null
+    op: get
+    entity: Program
+    by: { id: 999 }
+    expect: null

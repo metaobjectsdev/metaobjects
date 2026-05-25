@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>MetaObjects.IntegrationTests</RootNamespace>
+    <!-- On-demand only. The project is intentionally NOT listed in
+         MetaObjects.sln, which is what keeps a plain `dotnet test
+         MetaObjects.sln` from spinning up Docker. Invoke explicitly via
+         `dotnet test path/to/MetaObjects.IntegrationTests.csproj` or
+         scripts/integration-test.sh. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MetaObjects/MetaObjects.csproj" />
+    <ProjectReference Include="../MetaObjects.Codegen/MetaObjects.Codegen.csproj" />
+    <ProjectReference Include="../MetaObjects.Cli/MetaObjects.Cli.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.6.4" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.6" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="3.10.0" />
+    <PackageReference Include="YamlDotNet" Version="18.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.10" />
+  </ItemGroup>
+</Project>

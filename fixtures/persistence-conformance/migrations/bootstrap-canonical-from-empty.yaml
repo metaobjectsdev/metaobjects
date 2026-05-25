@@ -1,0 +1,24 @@
+name: bootstrap-canonical-from-empty
+description: |
+  Empty Postgres → apply the full canonical schema. Every writable entity
+  becomes a CREATE TABLE; FK constraints + secondary indexes follow as
+  separate statements. No allow flags needed (everything is additive).
+
+# Reuse the shared canonical metadata as the target — the bootstrap path is
+# "diff(expected, emptySnapshot)" = all creates.
+target-metadata: ../canonical/
+
+expect:
+  blocked: []
+  up-contains:
+    - 'CREATE TABLE "programs"'
+    - 'CONSTRAINT "programs_pkey" PRIMARY KEY ("id")'
+    - 'CREATE TABLE "weeks"'
+    - 'CONSTRAINT "weeks_pkey" PRIMARY KEY ("id")'
+    - 'CREATE UNIQUE INDEX "byTitle" ON "programs" ("title");'
+    - 'ALTER TABLE "weeks" ADD CONSTRAINT "weeks_programId_fk"'
+  apply-up-then-query:
+    sql: SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name
+    rows:
+      - { table_name: "programs" }
+      - { table_name: "weeks" }

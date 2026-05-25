@@ -1,0 +1,27 @@
+name: projection-aggregate
+description: |
+  ProgramStat is a read-only projection over a Postgres VIEW backed by a
+  correlated-subquery aggregate (count of Weeks per Program). Every port must
+  query the view through its persistence layer and produce the same rolled-up
+  rows. This validates both the view DDL (engine emits CREATE VIEW correctly)
+  AND the runtime layer's projection-read path end-to-end.
+seed-data: |
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Empty',       1999, 'DRAFT',     '2026-05-02T10:00:00');
+  INSERT INTO "weeks" ("id", "programId", "label") VALUES
+    (10, 1, 'Week 1'),
+    (11, 1, 'Week 2'),
+    (12, 1, 'Week 3');
+queries:
+  - name: stats-for-program-with-weeks
+    op: get
+    entity: ProgramStat
+    by: { programId: 1 }
+    expect: { programId: "1", weekCount: "3" }
+
+  - name: stats-for-program-without-weeks
+    op: get
+    entity: ProgramStat
+    by: { programId: 2 }
+    expect: { programId: "2", weekCount: "0" }

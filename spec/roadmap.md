@@ -91,9 +91,22 @@
     - `2026-05-25-fr5d-reference-resolution-errors.md` — sketch. `extends`/`@via`/
       `@objectRef`/`@payloadRef` resolution failures with referrer + target.
     - `2026-05-25-fr5e-database-source-errors.md` — forward-looking. Gated on FR-003.
-  - `2026-05-25-fr-template-output-codegen-pipeline-design.md` — design proposal:
-    structured-output codegen for `template.output` to parity with `template.prompt`.
-    Cross-language vocabulary; per-port codegen.
+  - **FR6 family — template.output parser-on-receipt codegen** (brainstormed 2026-05-25).
+    ADR-0010 (`spec/decisions/ADR-0010-template-output-parser-codegen.md`) is the
+    cross-port contract: per-port idiomatic emission (TS dual API matching Zod/AI SDK;
+    Python throw-only matching Pydantic; Java throw-only matching Jackson; C# `Parse`/
+    `TryParse` matching BCL); discoverability-uniform documentation. `@payloadRef`
+    symmetric with template.prompt. `meta verify` extends to cover output drift with
+    `kind: "prompt" | "output"` on findings.
+    - `2026-05-25-fr6-template-output-parser-codegen.md` — cross-port parent design.
+    - `2026-05-25-fr6-ts-template-output-parser.md` — **plan-of-record** TS impl; first
+      port (codegen layer ready since 0.6.0).
+    - `2026-05-25-fr6-csharp-template-output-parser.md` — sketch; lighter brainstorm
+      needed (C# codegen layer ready).
+    - `2026-05-25-fr6-python-template-output-parser.md` — sketch; gated on Python
+      codegen layer (post-H3).
+    - `2026-05-25-fr6-java-template-output-parser.md` — sketch; gated on Java codegen
+      layer (H4).
 - **H4 — TS codegen Java target** (2-3 wk)
   Refactor TS codegen to pluggable targets; Java target emits Spring JDBC DAOs, Spring MVC controllers, POJOs.
 - **H5 — First Java consumer migration** (3-4 wk)

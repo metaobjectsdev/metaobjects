@@ -1,0 +1,20 @@
+name: list-programs-sorted
+description: |
+  Seed three Programs with mixed values; list sorted by id ascending. Every port
+  must surface identical normalized rows — BIGINT as string, currency as a JSON
+  number (it's stored as BIGINT minor units; the runtime layer surfaces it as
+  is). The enum value round-trips as its declared symbol.
+seed-data: |
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+    (1, 'Foundations', 4999,  'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Strength',    7999,  'PUBLISHED', '2026-05-02T10:00:00'),
+    (3, 'Mobility',    2999,  'DRAFT',     '2026-05-03T10:00:00');
+queries:
+  - name: list-all-by-id-asc
+    op: list
+    entity: Program
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "1", title: "Foundations", priceCents: "4999", status: "PUBLISHED", createdAt: "2026-05-01T10:00:00" }
+      - { id: "2", title: "Strength",    priceCents: "7999", status: "PUBLISHED", createdAt: "2026-05-02T10:00:00" }
+      - { id: "3", title: "Mobility",    priceCents: "2999", status: "DRAFT",     createdAt: "2026-05-03T10:00:00" }

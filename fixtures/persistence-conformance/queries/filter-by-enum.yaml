@@ -1,0 +1,28 @@
+name: filter-by-enum
+description: |
+  Filter by an enum-typed field via the standard cross-language filter ops.
+  Every port must surface the same row set, in the same order.
+seed-data: |
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Strength',    7999, 'PUBLISHED', '2026-05-02T10:00:00'),
+    (3, 'Mobility',    2999, 'DRAFT',     '2026-05-03T10:00:00'),
+    (4, 'Archived',    1999, 'ARCHIVED',  '2026-05-04T10:00:00');
+queries:
+  - name: only-published
+    op: list
+    entity: Program
+    filter: { status: { eq: "PUBLISHED" } }
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "1", title: "Foundations", priceCents: "4999", status: "PUBLISHED", createdAt: "2026-05-01T10:00:00" }
+      - { id: "2", title: "Strength",    priceCents: "7999", status: "PUBLISHED", createdAt: "2026-05-02T10:00:00" }
+
+  - name: in-multiple-statuses
+    op: list
+    entity: Program
+    filter: { status: { in: ["DRAFT", "ARCHIVED"] } }
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "3", title: "Mobility", priceCents: "2999", status: "DRAFT",    createdAt: "2026-05-03T10:00:00" }
+      - { id: "4", title: "Archived", priceCents: "1999", status: "ARCHIVED", createdAt: "2026-05-04T10:00:00" }

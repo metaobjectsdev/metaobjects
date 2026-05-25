@@ -1,0 +1,20 @@
+name: add-nullable-column
+description: |
+  Existing table picks up a new nullable column → ALTER TABLE ADD COLUMN with no
+  blocked changes. Existing rows survive intact (the new column is NULL).
+
+seed-metadata: ./states/program-v1/
+seed-data: |
+  INSERT INTO "programs" ("id", "title") VALUES (1, 'Foundations'), (2, 'Strength');
+
+target-metadata: ./states/program-v2/
+
+expect:
+  blocked: []
+  up-contains:
+    - 'ALTER TABLE "programs" ADD COLUMN "subtitle" VARCHAR(200)'
+  apply-up-then-query:
+    sql: SELECT "id", "title", "subtitle" FROM "programs" ORDER BY "id"
+    rows:
+      - { id: "1", title: "Foundations", subtitle: null }
+      - { id: "2", title: "Strength",    subtitle: null }

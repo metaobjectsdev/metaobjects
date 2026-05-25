@@ -82,6 +82,22 @@ npx meta --version && npx meta init && npx meta gen
 Fix anything that surfaces, bump to `-rc.(N+1)`, repeat. (rc.1 missed the lockfile regen; rc.2
 missed a runtime dep; rc.3 was clean — expect iterations.)
 
+### 2b. Cross-language persistence conformance (on-demand)
+
+Before promoting to `latest`, run the cross-language persistence suite against real Postgres
+(spins up one ephemeral testcontainer per scenario, exercises each port's codegen + runtime
+end-to-end). It is **not** part of `bun test` / `dotnet test` because it requires a docker daemon:
+
+```bash
+scripts/integration-test.sh           # all runners (typescript + c#)
+scripts/integration-test.sh ts        # just typescript
+scripts/integration-test.sh csharp    # just c#
+```
+
+The corpus lives at [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/).
+A red run here has caught real cross-port divergence (view-DDL identifier quoting, column-naming
+strategy mismatches) that the unit suites missed.
+
 ### 3. Promote to `latest`
 ```bash
 # bump the 11 to the final <version>
