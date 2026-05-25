@@ -72,7 +72,14 @@ export function readDocAttrs(node: { attr: (n: string) => unknown }): DocAttrs {
   const seeAlso = arr(node.attr(DOC_ATTR_SEE_ALSO));
   const aliases = arr(node.attr(DOC_ATTR_ALIASES));
   // notes intentionally NOT read here — codegen consumers should never receive it
-  return { description, title, deprecated, replacedBy, seeAlso, aliases };
+  return {
+    ...(description !== undefined && { description }),
+    ...(title !== undefined && { title }),
+    ...(deprecated !== undefined && { deprecated }),
+    ...(replacedBy !== undefined && { replacedBy }),
+    ...(seeAlso !== undefined && { seeAlso }),
+    ...(aliases !== undefined && { aliases }),
+  };
 }
 
 /** Convenience: `renderJsDocBlock(readDocAttrs(node))`. Returns "" if no doc attrs. */

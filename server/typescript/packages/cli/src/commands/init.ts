@@ -5,6 +5,7 @@ import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAUL
 import { parseInitArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "@metaobjectsdev/sdk/agent-docs";
+import { findWranglerConfig, parseWranglerConfig } from "@metaobjectsdev/migrate-ts";
 
 const META_COMMON_JSON = JSON.stringify(
   {
@@ -20,7 +21,8 @@ const META_COMMON_JSON = JSON.stringify(
 const METAOBJECTS_GITIGNORE_BODY = `.gen-state/
 `;
 
-const FORGE_CONFIG_BODY = `import { defineConfig } from "@metaobjectsdev/cli";
+function buildMetaobjectsConfigBody(dialect: "sqlite" | "postgres" | "d1" = "sqlite"): string {
+  return `import { defineConfig } from "@metaobjectsdev/cli";
 import {
   entityFile,
   queriesFile,
@@ -33,7 +35,7 @@ export default defineConfig({
   outDir:    "./src/db",
   extStyle:  "none",
   dbImport:  "../db",
-  dialect:   "sqlite",
+  dialect:   "${dialect}",
   apiPrefix: "",     // set to "/api" if your routes mount under /api
   generators: [
     entityFile(),
@@ -43,6 +45,7 @@ export default defineConfig({
   ],
 });
 `;
+}
 
 const NEXT_STEPS = `
 Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
@@ -62,6 +65,7 @@ export interface InitOptions {
   quiet?: boolean;
   printOnly?: boolean;
   refreshDocs?: boolean;
+  d1?: boolean;
 }
 
 export interface InitResult {
@@ -151,6 +155,9 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   }
 
   // .metaobjects/config.json
+  const freshConfig = opts.d1
+    ? ConfigSchema.parse({ ...DEFAULT_CONFIG, migrate: buildD1MigrateBlock(opts.cwd) })
+    : DEFAULT_CONFIG;
   if (agentDirExists) {
     const configPath = join(agentDir, "config.json");
     let priorContent: string | undefined;
@@ -158,6 +165,10 @@ export async function init(opts: InitOptions): Promise<InitResult> {
       priorContent = await readFile(configPath, "utf8");
       const parsed = ConfigSchema.parse(JSON.parse(priorContent));
       const merged = ConfigSchema.parse({ ...DEFAULT_CONFIG, ...parsed });
+      // When a valid .metaobjects/config.json already exists and the user passes --force,
+      // we preserve the existing config and only re-scaffold support files. The --d1 flag
+      // only takes effect on fresh inits — retro-fitting D1 onto an existing project is
+      // the user's job (edit migrate.dialect and migrate.d1 in config.json directly).
       await saveConfig(agentDir, merged);
       result.preserved.push(".metaobjects/config.json");
     } catch {
@@ -168,7 +179,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
       }
       await writeFile(
         join(agentDir, "config.json"),
-        JSON.stringify(DEFAULT_CONFIG, null, 2) + "\n",
+        JSON.stringify(freshConfig, null, 2) + "\n",
         "utf8",
       );
       if (priorContent === undefined) {
@@ -178,7 +189,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   } else {
     await writeFile(
       join(agentDir, "config.json"),
-      JSON.stringify(DEFAULT_CONFIG, null, 2) + "\n",
+      JSON.stringify(freshConfig, null, 2) + "\n",
       "utf8",
     );
     result.created.push(".metaobjects/config.json");
@@ -208,11 +219,29 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   // Scaffold metaobjects.config.ts at the project root. Never overwrite if it exists.
   const forgeConfigPath = join(opts.cwd, "metaobjects.config.ts");
   if (!(await fileExists(forgeConfigPath))) {
-    await writeFile(forgeConfigPath, FORGE_CONFIG_BODY, "utf8");
+    await writeFile(forgeConfigPath, buildMetaobjectsConfigBody(opts.d1 ? "d1" : "sqlite"), "utf8");
     result.created.push("metaobjects.config.ts");
   }
 
   return result;
+}
+
+function buildD1MigrateBlock(cwd: string): Record<string, unknown> {
+  const block: Record<string, unknown> = { dialect: "d1" };
+  const cfgPath = findWranglerConfig(cwd);
+  if (cfgPath !== undefined) {
+    try {
+      const parsed = parseWranglerConfig(cfgPath);
+      if (parsed.d1Bindings.length === 1) {
+        block.d1 = { binding: parsed.d1Bindings[0]!.binding };
+      }
+      // Multi-binding case: omit d1 entirely. User picks the binding later with
+      // `meta migrate --d1 <name>` (which prompts with the available names).
+    } catch {
+      // Parse failed; leave d1 sub-block absent.
+    }
+  }
+  return block;
 }
 
 export function nextStepsBlock(): string {
@@ -253,6 +282,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
       quiet: flags.quiet,
       printOnly: flags.printOnly,
       refreshDocs: flags.refreshDocs,
+      d1: flags.d1,
     });
 
     if (flags.printOnly) {

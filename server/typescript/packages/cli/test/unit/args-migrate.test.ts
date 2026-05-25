@@ -11,6 +11,10 @@ describe("parseMigrateArgs", () => {
       allow: [],
       onAmbiguous: undefined,
       dryRun: false,
+      d1Binding: undefined,
+      remote: false,
+      apply: false,
+      yes: false,
     });
   });
 
@@ -64,5 +68,36 @@ describe("parseMigrateArgs", () => {
 
   test("unknown flag throws", () => {
     expect(() => parseMigrateArgs(["--foo"])).toThrow();
+  });
+});
+
+describe("parseMigrateArgs (d1 flags)", () => {
+  test("accepts --dialect d1", () => {
+    const flags = parseMigrateArgs(["--dialect", "d1"]);
+    expect(flags.dialect).toBe("d1");
+  });
+
+  test("captures --d1 binding name", () => {
+    const flags = parseMigrateArgs(["--dialect", "d1", "--d1", "MYDB"]);
+    expect(flags.d1Binding).toBe("MYDB");
+  });
+
+  test("captures --remote as a boolean", () => {
+    expect(parseMigrateArgs(["--dialect", "d1", "--remote"]).remote).toBe(true);
+    expect(parseMigrateArgs(["--dialect", "d1"]).remote).toBe(false);
+  });
+
+  test("captures --apply as a boolean", () => {
+    expect(parseMigrateArgs(["--dialect", "d1", "--apply"]).apply).toBe(true);
+    expect(parseMigrateArgs(["--dialect", "d1"]).apply).toBe(false);
+  });
+
+  test("captures --yes as a boolean", () => {
+    expect(parseMigrateArgs(["--dialect", "d1", "--yes"]).yes).toBe(true);
+    expect(parseMigrateArgs(["--dialect", "d1"]).yes).toBe(false);
+  });
+
+  test("rejects unknown dialect", () => {
+    expect(() => parseMigrateArgs(["--dialect", "mysql"])).toThrow(/invalid --dialect/);
   });
 });

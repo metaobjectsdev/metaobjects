@@ -7,16 +7,16 @@ import { join } from "node:path";
 
 describe("parseInitArgs", () => {
   test("default flags are all false", () => {
-    expect(parseInitArgs([])).toEqual({ force: false, quiet: false, printOnly: false, refreshDocs: false });
+    expect(parseInitArgs([])).toEqual({ force: false, quiet: false, printOnly: false, refreshDocs: false, d1: false });
   });
   test("--force toggles force", () => {
-    expect(parseInitArgs(["--force"])).toEqual({ force: true, quiet: false, printOnly: false, refreshDocs: false });
+    expect(parseInitArgs(["--force"])).toEqual({ force: true, quiet: false, printOnly: false, refreshDocs: false, d1: false });
   });
   test("--quiet toggles quiet", () => {
-    expect(parseInitArgs(["--quiet"])).toEqual({ force: false, quiet: true, printOnly: false, refreshDocs: false });
+    expect(parseInitArgs(["--quiet"])).toEqual({ force: false, quiet: true, printOnly: false, refreshDocs: false, d1: false });
   });
   test("--print-only toggles printOnly", () => {
-    expect(parseInitArgs(["--print-only"])).toEqual({ force: false, quiet: false, printOnly: true, refreshDocs: false });
+    expect(parseInitArgs(["--print-only"])).toEqual({ force: false, quiet: false, printOnly: true, refreshDocs: false, d1: false });
   });
   test("multiple flags compose", () => {
     expect(parseInitArgs(["--force", "--quiet"])).toEqual({
@@ -24,7 +24,11 @@ describe("parseInitArgs", () => {
       quiet: true,
       printOnly: false,
       refreshDocs: false,
+      d1: false,
     });
+  });
+  test("--d1 toggles d1", () => {
+    expect(parseInitArgs(["--d1"])).toEqual({ force: false, quiet: false, printOnly: false, refreshDocs: false, d1: true });
   });
   test("throws on unknown flag", () => {
     expect(() => parseInitArgs(["--foo"])).toThrow();

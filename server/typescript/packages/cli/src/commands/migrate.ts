@@ -1,7 +1,9 @@
-import { resolve } from "node:path";
+import { resolve as resolvePath } from "node:path";
 import { mkdir } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { parseMigrateArgs } from "../lib/args.js";
-import { resolveMigrateConfig } from "../lib/config.js";
+import { resolveMigrateConfig, MIGRATE_DEFAULT_OUT_DIR } from "../lib/config.js";
+import type { ResolvedMigrateConfig } from "../lib/config.js";
 import { formatMigrateResult, type BlockedEntry, type AmbiguousEntry } from "../lib/output.js";
 import { buildKyselyFromUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
@@ -14,12 +16,26 @@ import {
   emit,
   writeMigration,
   BlockedChangesError,
+  renderD1,
+  applyD1SafetyPass,
+  writeMigrationD1,
+  introspectD1,
+  findWranglerConfig,
+  parseWranglerConfig,
+  resolveD1Binding,
   type AllowOptions,
   type AmbiguousChange,
   type AmbiguousResolution,
   type Change,
+  type D1Binding,
   type EmitResult,
+  type D1Runner,
 } from "@metaobjectsdev/migrate-ts";
+import {
+  buildWranglerExecuteArgs,
+  defaultWranglerRunner,
+  type WranglerRunner,
+} from "../lib/wrangler.js";
 import {
   computeProjectionMigrations,
   computeProjectionViewDependencies,
@@ -114,7 +130,12 @@ function ambiguousToEntries(amb: AmbiguousChange[]): AmbiguousEntry[] {
   });
 }
 
-export async function migrateCommand(args: string[], cwd: string): Promise<number> {
+export async function migrateCommand(
+  args: string[],
+  cwd: string,
+  /** Injectable wrangler runner — tests pass a mock; production uses the default. */
+  wranglerRunner?: WranglerRunner,
+): Promise<number> {
   let flags;
   try {
     flags = parseMigrateArgs(args);
@@ -125,6 +146,14 @@ export async function migrateCommand(args: string[], cwd: string): Promise<numbe
 
   const metaRoot = cwd;
   const config = await resolveMigrateConfig(flags, metaRoot);
+
+  if (config.dialect === "d1") {
+    if (config.databaseUrl !== undefined) {
+      log.error(`migrate: --db / DATABASE_URL is not used for dialect 'd1' — wrangler.toml owns connection`);
+      return 2;
+    }
+    return await runD1Migrate(config, metaRoot, wranglerRunner ?? defaultWranglerRunner);
+  }
 
   if (config.databaseUrl === undefined) {
     log.error(`migrate: --db <url> required (or set DATABASE_URL, or add migrate.databaseUrl to .metaobjects/config.json)`);
@@ -221,7 +250,8 @@ export async function migrateCommand(args: string[], cwd: string): Promise<numbe
 
     // Pull existing view CREATE SQL from the DB so unchanged views can be
     // skipped (no DROP+CREATE noise when the body hasn't changed).
-    const existingViewSql = await readExistingViewSql(kysely.db, kysely.dialect);
+    // kysely.dialect is always "sqlite" | "postgres" here — d1 exits above.
+    const existingViewSql = await readExistingViewSql(kysely.db, kysely.dialect as "sqlite" | "postgres");
 
     // Compute view migrations (projections) independently of table changes.
     const viewResult = computeProjectionMigrations({
@@ -317,7 +347,7 @@ export async function migrateCommand(args: string[], cwd: string): Promise<numbe
         if (config.dryRun) {
           log.info(`-- UP --\n${combinedUp}\n\n-- DOWN --\n${combinedDown}`);
         } else {
-          const outDir = resolve(metaRoot, config.outDir);
+          const outDir = resolvePath(metaRoot, config.outDir);
           await mkdir(outDir, { recursive: true });
           const res = await writeMigration(
             { up: combinedUp, down: combinedDown },
@@ -347,6 +377,258 @@ export async function migrateCommand(args: string[], cwd: string): Promise<numbe
 
   log.info(output);
   return exitCode;
+}
+
+async function runD1Migrate(
+  config: ResolvedMigrateConfig,
+  metaRoot: string,
+  runner: WranglerRunner,
+): Promise<number> {
+  // 1. Resolve wrangler.toml + binding.
+  const wranglerConfigPath = config.d1.wranglerConfigPath
+    ? resolvePath(metaRoot, config.d1.wranglerConfigPath)
+    : findWranglerConfig(metaRoot);
+
+  if (wranglerConfigPath === undefined && config.d1.binding === undefined) {
+    log.error(`migrate: no wrangler.toml found in ${metaRoot} or parents; pass --d1 <binding> to bypass`);
+    return 2;
+  }
+
+  let binding: D1Binding;
+  if (wranglerConfigPath !== undefined) {
+    const parsed = parseWranglerConfig(wranglerConfigPath);
+    try {
+      binding = resolveD1Binding(parsed.d1Bindings, config.d1.binding);
+    } catch (err) {
+      log.error(`migrate: ${(err as Error).message}`);
+      return 2;
+    }
+  } else {
+    // No wrangler config but explicit binding — let wrangler discover the DB itself.
+    binding = { binding: config.d1.binding!, database_name: "", database_id: "", migrations_dir: undefined };
+  }
+
+  // 2. Build a D1Runner closure over the wrangler runner.
+  const d1Runner: D1Runner = async (sql) => {
+    const args = buildWranglerExecuteArgs({
+      binding: binding.binding,
+      remote: config.d1.remote,
+      command: sql,
+      configPath: wranglerConfigPath,
+    });
+    const { stdout } = await runner(args, metaRoot);
+    return stdout;
+  };
+
+  // 3. Load metadata.
+  let metadata;
+  try {
+    metadata = await loadMemory(metaRoot);
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {
+      log.error(`no metaobjects/ found in ${metaRoot}; run 'meta init' to scaffold`);
+    } else {
+      log.error(`migrate: failed to load metadata: ${msg}`);
+    }
+    return 2;
+  }
+
+  // 4. Build expected schema + introspect actual.
+  const expected = buildExpectedSchema(metadata, { dialect: "d1" });
+  let actual;
+  try {
+    actual = await introspectD1({
+      runner: d1Runner,
+      binding: binding.binding,
+      remote: config.d1.remote,
+      configPath: wranglerConfigPath,
+    });
+  } catch (err) {
+    log.error(`migrate: failed to introspect D1: ${(err as Error).message}`);
+    return 2;
+  }
+
+  // 5. Diff.
+  const collectedAmbiguous: AmbiguousChange[] = [];
+  const onAmbiguousResolution = mapOnAmbiguous(config.onAmbiguous);
+  let diffResult;
+  try {
+    diffResult = await diff({
+      expected,
+      actual,
+      allow: tokensToAllowOptions(config.allow),
+      onAmbiguous: async (a) => {
+        collectedAmbiguous.push(a);
+        return onAmbiguousResolution;
+      },
+    });
+  } catch (err) {
+    if ((err as Error).message.includes("aborted by onAmbiguous")) {
+      const entries = ambiguousToEntries(collectedAmbiguous);
+      for (const e of entries) {
+        log.error(`  ambiguous ${e.kind}: ${e.description}${e.hint ? ` [${e.hint}]` : ""}`);
+      }
+      log.error(`migrate: aborted on ambiguous change (re-run with --on-ambiguous rename|drop-add)`);
+      return 1;
+    }
+    throw err;
+  }
+
+  const changeCounts = summarizeChanges(diffResult.changes);
+
+  // Load metaobjects config to pick up columnNamingStrategy for view DDL emit.
+  // Defensive try/catch: if metaobjects.config.ts is absent, fall back to snake_case.
+  let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
+  try {
+    const forgeConfig = await loadMetaobjectsConfig(metaRoot);
+    if (forgeConfig.columnNamingStrategy) {
+      columnNamingStrategy = forgeConfig.columnNamingStrategy;
+    }
+  } catch {
+    // metaobjects.config.ts absent or invalid — use default snake_case
+  }
+
+  // 5b. Compute view migrations (projections). D1 reuses the sqlite emitter.
+  // We intentionally skip readExistingViewSql for D1 in v1 — D1 has no
+  // introspection path for view bodies, so we accept over-eager DROP+CREATE.
+  const viewResult = computeProjectionMigrations({
+    metadata,
+    dialect: "d1",
+    allowBreaking: false,
+    columnNamingStrategy,
+  });
+  if (viewResult.errors.length > 0) {
+    for (const err of viewResult.errors) log.error(err);
+    return 1;
+  }
+
+  const hasTableChanges = diffResult.changes.length > 0;
+  const hasViewChanges = viewResult.migrations.length > 0;
+
+  if (!hasTableChanges && !hasViewChanges) {
+    log.info(`migrate: no schema changes for d1 binding '${binding.binding}'`);
+    return 0;
+  }
+
+  if (config.slug === undefined) {
+    log.error(`migrate: --slug <name> required when there are changes`);
+    return 2;
+  }
+
+  // 6. Emit (with D1 safety pass) + write Wrangler migration files.
+  let emitResult;
+  try {
+    emitResult = renderD1(diffResult.changes, expected, actual.meta);
+  } catch (err) {
+    if (err instanceof BlockedChangesError) {
+      const entries = blockedToEntries(err);
+      for (const e of entries) {
+        log.error(`migrate: blocked '${e.kind}' on ${e.description} (allow with --allow ${e.allowFlag})`);
+      }
+      return 1;
+    }
+    throw err;
+  }
+
+  // Combine view SQL with table SQL.
+  // Extract view names from CREATE VIEW statements for pre-drop + down SQL.
+  const viewNames = viewResult.migrations
+    .map((s) => {
+      const m = /CREATE(?:\s+OR\s+REPLACE)?\s+VIEW\s+(\S+)/i.exec(s);
+      return m ? m[1] : undefined;
+    })
+    .filter((n): n is string => Boolean(n));
+
+  // Pre-drop views whose source tables are being recreated (same logic as kysely path).
+  const recreatedTables = emitResult.recreatedTables ?? new Set<string>();
+  const viewPreDropSql = recreatedTables.size > 0 && viewNames.length > 0
+    ? (() => {
+        const deps = computeProjectionViewDependencies({ metadata, columnNamingStrategy });
+        const affected = viewNames.filter((n) => {
+          const sources = deps.get(n);
+          if (!sources) return false;
+          for (const t of sources) if (recreatedTables.has(t)) return true;
+          return false;
+        });
+        return affected.length > 0
+          ? affected.map((n) => `DROP VIEW IF EXISTS ${n};`).join("\n")
+          : "";
+      })()
+    : "";
+
+  const viewUpSql = viewResult.migrations.join("\n\n");
+  const viewDownSql = viewNames.map((n) => `DROP VIEW IF EXISTS ${n};`).join("\n");
+
+  // Combine and apply safety pass to the full combined SQL so view DDL
+  // (which uses BEGIN/COMMIT from emitSqliteViewMigration) is stripped too.
+  const rawUp = [viewPreDropSql, emitResult.up, viewUpSql].filter(Boolean).join("\n\n");
+  const rawDown = [viewDownSql, emitResult.down].filter(Boolean).join("\n\n");
+  const combinedUp = applyD1SafetyPass(rawUp);
+  const combinedDown = applyD1SafetyPass(rawDown);
+
+  // Migration dir resolution: --out-dir > wrangler.toml's migrations_dir > "migrations".
+  // The default outDir (./.metaobjects/migrations) is the Kysely-path default; for D1
+  // we fall back to wrangler conventions when the caller hasn't overridden it.
+  const isDefaultOutDir = config.outDir === MIGRATE_DEFAULT_OUT_DIR;
+  const migrationsDir = resolvePath(
+    metaRoot,
+    isDefaultOutDir ? (binding.migrations_dir ?? "migrations") : config.outDir,
+  );
+
+  if (config.dryRun) {
+    log.info(`-- UP --\n${combinedUp}\n\n-- DOWN --\n${combinedDown}`);
+    return 0;
+  }
+
+  const writeResult = await writeMigrationD1(
+    { up: combinedUp, down: combinedDown },
+    { dir: migrationsDir, slug: config.slug },
+  );
+  log.info(`migrate: wrote ${writeResult.upPath}`);
+  log.info(`migrate: wrote ${writeResult.downPath}`);
+  for (const [kind, count] of Object.entries(changeCounts)) {
+    log.info(`  ${kind}: ${count}`);
+  }
+
+  // 7. Optional --apply: run `wrangler d1 migrations apply`.
+  if (config.d1.autoApply) {
+    return await runWranglerApply(
+      binding.binding,
+      binding.database_name,
+      config.d1.remote,
+      wranglerConfigPath,
+      config.yes,
+    );
+  }
+
+  return 0;
+}
+
+async function runWranglerApply(
+  bindingName: string,
+  databaseName: string,
+  remote: boolean,
+  wranglerConfigPath: string | undefined,
+  yes: boolean,
+): Promise<number> {
+  if (remote && !yes) {
+    log.info(
+      `Applying to remote D1 '${databaseName}' (binding=${bindingName}) in 2s — Ctrl+C to abort or pass --yes to skip this pause.`,
+    );
+    await new Promise<void>((r) => setTimeout(r, 2000));
+  }
+  const applyArgs = ["d1", "migrations", "apply", bindingName, remote ? "--remote" : "--local"];
+  if (wranglerConfigPath !== undefined) applyArgs.push("--config", wranglerConfigPath);
+
+  return await new Promise<number>((resolve) => {
+    const child = spawn("wrangler", applyArgs, { stdio: "inherit" });
+    child.on("error", (err) => {
+      log.error(`migrate: failed to run wrangler: ${(err as Error).message}`);
+      resolve(2);
+    });
+    child.on("close", (code) => resolve(code ?? 1));
+  });
 }
 
 /**

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const DialectEnum = z.enum(["sqlite", "postgres"]);
+const DialectEnum = z.enum(["sqlite", "postgres", "d1"]);
 
 const OnAmbiguousEnum = z.enum(["abort", "rename", "drop-add"]);
 
@@ -15,12 +15,20 @@ const AllowTokenEnum = z.enum([
   "nullable-to-not-null",
 ]);
 
+const D1Block = z.object({
+  binding: z.string(),
+  remote: z.boolean(),
+  autoApply: z.boolean(),
+  wranglerConfigPath: z.string(),
+}).partial();
+
 const MigrateBlock = z.object({
   outDir: z.string(),
   databaseUrl: z.string(),
   dialect: DialectEnum,
   onAmbiguous: OnAmbiguousEnum,
   allow: z.array(AllowTokenEnum),
+  d1: D1Block,
 }).partial();
 
 export const ConfigSchema = z.object({

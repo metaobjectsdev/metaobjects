@@ -413,6 +413,8 @@ Preserve the following contracts exactly across all language ports:
 - Overlay/merge: same `package` + same object `name` across multiple files → merged. Last-writer-wins on attr conflicts; structural children accumulate.
 - Default scan path: `metaobjects/**/*.json` (recursive).
 
+**D1 is TS-only.** Cloudflare D1 is a peer of `sqlite`/`postgres` in TS's `dialect` vocabulary. It is SQLite at the SQL level — Java/Python/C# don't have an analogue (Cloudflare Workers run JS). When adding cross-language vocabulary, D1 doesn't constrain anything: its uniqueness is wrangler-CLI transport + Wrangler-native file layout (`migrations/<seq>_<slug>.sql`), both of which are TS-only concerns.
+
 **Constants discipline:**
 - TS: named constants in `packages/metadata/src/constants.ts`. Never inline metamodel strings as literals in code.
 - New type or subtype names: add to TS constants first; add the parallel in other language implementations.
