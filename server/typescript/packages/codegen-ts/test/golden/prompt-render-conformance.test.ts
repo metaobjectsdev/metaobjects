@@ -12,7 +12,7 @@
 import { describe, it, expect } from "bun:test";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { promptRender } from "../../src/generators/prompt-render-file.js";
 import type { GenContext } from "../../src/generator.js";
 
@@ -51,7 +51,10 @@ describe("promptRender() conformance — expected/prompts.ts byte-match", () => 
       // Load all .json files from the input directory
       const inputFiles = readdirSync(inputDir).filter((f) => f.endsWith(".json"));
       const sources = inputFiles.map((f) =>
-        new InMemorySource(readFileSync(join(inputDir, f), "utf-8")),
+        new InMemoryStringSource(
+          readFileSync(join(inputDir, f), "utf-8"),
+          { id: f, format: "json" },
+        ),
       );
 
       const res = await new MetaDataLoader().load(sources);

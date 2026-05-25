@@ -1,11 +1,14 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { promptRender } from "../../src/generators/prompt-render-file.js";
 import type { GenContext } from "../../src/generator.js";
 
 async function loadRoot(children: unknown[]) {
   const res = await new MetaDataLoader().load([
-    new InMemorySource(JSON.stringify({ "metadata.root": { package: "acme::ai", children } })),
+    new InMemoryStringSource(
+      JSON.stringify({ "metadata.root": { package: "acme::ai", children } }),
+      { id: "meta.json", format: "json" },
+    ),
   ]);
   expect(res.errors).toEqual([]);
   return res.root;
