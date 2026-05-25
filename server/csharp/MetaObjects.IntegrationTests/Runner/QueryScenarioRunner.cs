@@ -45,7 +45,7 @@ public static class QueryScenarioRunner
 
     private static async Task ApplyCanonicalSchemaAsync(string connString, string canonicalDir)
     {
-        var load = new FileMetaDataLoader().LoadDirectory(canonicalDir);
+        var load = MetaDataLoader.FromDirectory(canonicalDir);
         if (load.Errors.Count > 0)
             throw new InvalidOperationException(
                 $"canonical metadata at {canonicalDir} did not load cleanly: " +

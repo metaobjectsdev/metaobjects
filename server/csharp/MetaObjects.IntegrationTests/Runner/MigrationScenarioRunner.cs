@@ -60,7 +60,7 @@ public static class MigrationScenarioRunner
 
     private static string BuildFullCreate(string metadataDir)
     {
-        var load = new FileMetaDataLoader().LoadDirectory(metadataDir);
+        var load = MetaDataLoader.FromDirectory(metadataDir);
         if (load.Errors.Count > 0)
             throw new InvalidOperationException(
                 $"metadata at {metadataDir} did not load cleanly: " +
