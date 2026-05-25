@@ -38,7 +38,12 @@ export interface QuerySpec {
   readonly op: "list" | "get" | "count";
   readonly entity: string;
   readonly by: Record<string, unknown> | null;
-  readonly filter: Record<string, Record<string, unknown>> | null;
+  /**
+   * Either `{ field: { op: value } }` (each top-level key is a field name) or
+   * `{ and: [filter, filter, ...] }` (compose by AND). Mixed forms are
+   * ill-formed — pick one at each level.
+   */
+  readonly filter: Record<string, unknown> | null;
   readonly sort: ReadonlyArray<{ field: string; dir: "asc" | "desc" }> | null;
   readonly limit: number | null;
   readonly offset: number | null;
@@ -97,7 +102,7 @@ export function loadQuery(yamlPath: string): QueryScenario {
       op: required(q.op, yamlPath, "query.op") as QuerySpec["op"],
       entity: required(q.entity, yamlPath, "query.entity"),
       by: (q.by as Record<string, unknown> | undefined) ?? null,
-      filter: (q.filter as Record<string, Record<string, unknown>> | undefined) ?? null,
+      filter: (q.filter as Record<string, unknown> | undefined) ?? null,
       sort: q.sort
         ? q.sort.map((s) => ({ field: s.field ?? "", dir: (s.dir as "asc" | "desc") ?? "asc" }))
         : null,

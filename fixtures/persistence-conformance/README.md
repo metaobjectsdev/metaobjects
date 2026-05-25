@@ -134,7 +134,19 @@ Same vocabulary as the cross-language filter spec (Project D):
 | `like`   | SQL LIKE (string fields only) |
 | `isNull` | true → IS NULL, false → IS NOT NULL |
 
-Multiple field filters compose with AND.
+Multiple field filters compose with AND. To compose **multiple ops on the same
+field** (e.g. a range query) use an explicit `and:` block — applying two ops
+directly to one field is undefined across runtimes:
+
+```yaml
+filter:
+  and:
+    - { priceCents: { gte: 3000 } }
+    - { priceCents: { lte: 7000 } }
+```
+
+`and` is the only logical combinator today; `or` would require both runner
+adapters and `runtime-ts`' `compileFilter` to grow it first.
 
 ## Result format
 
