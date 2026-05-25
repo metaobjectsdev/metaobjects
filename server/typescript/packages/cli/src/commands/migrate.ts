@@ -17,6 +17,7 @@ import {
   writeMigration,
   BlockedChangesError,
   renderD1,
+  applyD1SafetyPass,
   writeMigrationD1,
   introspectD1,
   findWranglerConfig,
@@ -249,7 +250,8 @@ export async function migrateCommand(
 
     // Pull existing view CREATE SQL from the DB so unchanged views can be
     // skipped (no DROP+CREATE noise when the body hasn't changed).
-    const existingViewSql = await readExistingViewSql(kysely.db, kysely.dialect);
+    // kysely.dialect is always "sqlite" | "postgres" here — d1 exits above.
+    const existingViewSql = await readExistingViewSql(kysely.db, kysely.dialect as "sqlite" | "postgres");
 
     // Compute view migrations (projections) independently of table changes.
     const viewResult = computeProjectionMigrations({
@@ -475,7 +477,36 @@ async function runD1Migrate(
 
   const changeCounts = summarizeChanges(diffResult.changes);
 
-  if (diffResult.changes.length === 0) {
+  // Load metaobjects config to pick up columnNamingStrategy for view DDL emit.
+  // Defensive try/catch: if metaobjects.config.ts is absent, fall back to snake_case.
+  let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
+  try {
+    const forgeConfig = await loadMetaobjectsConfig(metaRoot);
+    if (forgeConfig.columnNamingStrategy) {
+      columnNamingStrategy = forgeConfig.columnNamingStrategy;
+    }
+  } catch {
+    // metaobjects.config.ts absent or invalid — use default snake_case
+  }
+
+  // 5b. Compute view migrations (projections). D1 reuses the sqlite emitter.
+  // We intentionally skip readExistingViewSql for D1 in v1 — D1 has no
+  // introspection path for view bodies, so we accept over-eager DROP+CREATE.
+  const viewResult = computeProjectionMigrations({
+    metadata,
+    dialect: "d1",
+    allowBreaking: false,
+    columnNamingStrategy,
+  });
+  if (viewResult.errors.length > 0) {
+    for (const err of viewResult.errors) log.error(err);
+    return 1;
+  }
+
+  const hasTableChanges = diffResult.changes.length > 0;
+  const hasViewChanges = viewResult.migrations.length > 0;
+
+  if (!hasTableChanges && !hasViewChanges) {
     log.info(`migrate: no schema changes for d1 binding '${binding.binding}'`);
     return 0;
   }
@@ -500,6 +531,42 @@ async function runD1Migrate(
     throw err;
   }
 
+  // Combine view SQL with table SQL.
+  // Extract view names from CREATE VIEW statements for pre-drop + down SQL.
+  const viewNames = viewResult.migrations
+    .map((s) => {
+      const m = /CREATE(?:\s+OR\s+REPLACE)?\s+VIEW\s+(\S+)/i.exec(s);
+      return m ? m[1] : undefined;
+    })
+    .filter((n): n is string => Boolean(n));
+
+  // Pre-drop views whose source tables are being recreated (same logic as kysely path).
+  const recreatedTables = emitResult.recreatedTables ?? new Set<string>();
+  const viewPreDropSql = recreatedTables.size > 0 && viewNames.length > 0
+    ? (() => {
+        const deps = computeProjectionViewDependencies({ metadata, columnNamingStrategy });
+        const affected = viewNames.filter((n) => {
+          const sources = deps.get(n);
+          if (!sources) return false;
+          for (const t of sources) if (recreatedTables.has(t)) return true;
+          return false;
+        });
+        return affected.length > 0
+          ? affected.map((n) => `DROP VIEW IF EXISTS ${n};`).join("\n")
+          : "";
+      })()
+    : "";
+
+  const viewUpSql = viewResult.migrations.join("\n\n");
+  const viewDownSql = viewNames.map((n) => `DROP VIEW IF EXISTS ${n};`).join("\n");
+
+  // Combine and apply safety pass to the full combined SQL so view DDL
+  // (which uses BEGIN/COMMIT from emitSqliteViewMigration) is stripped too.
+  const rawUp = [viewPreDropSql, emitResult.up, viewUpSql].filter(Boolean).join("\n\n");
+  const rawDown = [viewDownSql, emitResult.down].filter(Boolean).join("\n\n");
+  const combinedUp = applyD1SafetyPass(rawUp);
+  const combinedDown = applyD1SafetyPass(rawDown);
+
   // Migration dir resolution: --out-dir > wrangler.toml's migrations_dir > "migrations".
   // The default outDir (./.metaobjects/migrations) is the Kysely-path default; for D1
   // we fall back to wrangler conventions when the caller hasn't overridden it.
@@ -510,11 +577,14 @@ async function runD1Migrate(
   );
 
   if (config.dryRun) {
-    log.info(`-- UP --\n${emitResult.up}\n\n-- DOWN --\n${emitResult.down}`);
+    log.info(`-- UP --\n${combinedUp}\n\n-- DOWN --\n${combinedDown}`);
     return 0;
   }
 
-  const writeResult = await writeMigrationD1(emitResult, { dir: migrationsDir, slug: config.slug });
+  const writeResult = await writeMigrationD1(
+    { up: combinedUp, down: combinedDown },
+    { dir: migrationsDir, slug: config.slug },
+  );
   log.info(`migrate: wrote ${writeResult.upPath}`);
   log.info(`migrate: wrote ${writeResult.downPath}`);
   for (const [kind, count] of Object.entries(changeCounts)) {
@@ -569,10 +639,8 @@ async function runWranglerApply(
 async function readExistingViewSql(
   // biome-ignore lint/suspicious/noExplicitAny: kysely raw query, dialect-dispatched
   db: any,
-  dialectIn: "sqlite" | "postgres" | "d1",
+  dialect: "sqlite" | "postgres",
 ): Promise<ReadonlyMap<string, string>> {
-  // D1 is SQLite at the SQL level; route to the sqlite branch.
-  const dialect: "sqlite" | "postgres" = dialectIn === "d1" ? "sqlite" : dialectIn;
   const result = new Map<string, string>();
   try {
     if (dialect === "sqlite") {

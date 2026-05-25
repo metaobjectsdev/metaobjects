@@ -93,7 +93,7 @@ function parseEnvelope(stdout: string): Record<string, unknown>[] {
 }
 
 async function readTableInfo(exec: Exec, table: string): Promise<Record<string, unknown>[]> {
-  return exec(`SELECT * FROM pragma_table_info('${table}') ORDER BY cid`);
+  return exec(`SELECT * FROM pragma_table_info(${sqliteIdent(table)}) ORDER BY cid`);
 }
 
 function extractColumns(rows: Record<string, unknown>[]): ColumnDescriptor[] {
@@ -117,13 +117,13 @@ function extractPrimaryKey(rows: Record<string, unknown>[]): string[] {
 }
 
 async function readIndexes(exec: Exec, table: string): Promise<IndexDescriptor[]> {
-  const list = await exec(`SELECT * FROM pragma_index_list('${table}')`);
+  const list = await exec(`SELECT * FROM pragma_index_list(${sqliteIdent(table)})`);
   const indexes: IndexDescriptor[] = [];
   for (const ix of list) {
     if (String(ix.origin) === "pk") continue;
     if (Number(ix.partial) === 1) continue;
     const ixName = String(ix.name);
-    const cols = await exec(`SELECT seqno, cid, name FROM pragma_index_info('${ixName}') ORDER BY seqno`);
+    const cols = await exec(`SELECT seqno, cid, name FROM pragma_index_info(${sqliteIdent(ixName)}) ORDER BY seqno`);
     indexes.push({
       name: ixName,
       columns: cols.map((c) => String(c.name)),
@@ -134,7 +134,7 @@ async function readIndexes(exec: Exec, table: string): Promise<IndexDescriptor[]
 }
 
 async function readForeignKeys(exec: Exec, table: string): Promise<FkDescriptor[]> {
-  const rows = await exec(`SELECT * FROM pragma_foreign_key_list('${table}') ORDER BY id, seq`);
+  const rows = await exec(`SELECT * FROM pragma_foreign_key_list(${sqliteIdent(table)}) ORDER BY id, seq`);
   const byId = new Map<number, { refTable: string; cols: string[]; refCols: string[]; onDelete: FkAction; onUpdate: FkAction; }>();
   for (const r of rows) {
     const id = Number(r.id);
@@ -170,5 +170,16 @@ async function readViews(exec: Exec): Promise<ViewDescriptor[]> {
     "SELECT name FROM sqlite_master WHERE type='view' AND name NOT LIKE 'sqlite_%' ORDER BY name",
   );
   return rows.map((r) => ({ name: String(r.name) }));
+}
+
+/**
+ * Quote a SQLite identifier with double-quotes, escaping any embedded
+ * double-quotes (SQLite identifier escape: "" → literal ").
+ * Used for pragma_* calls where bind params aren't available (wrangler
+ * --command takes a complete SQL string). The introspectSqlite path uses
+ * Kysely tagged templates and doesn't need this.
+ */
+function sqliteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
 }
 

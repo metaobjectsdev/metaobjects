@@ -32,12 +32,12 @@ describe("introspectD1", () => {
       "type='table'": [
         { name: "users", sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL)" },
       ],
-      "pragma_table_info('users')": [
+      'pragma_table_info("users")': [
         { cid: 0, name: "id",    type: "INTEGER", notnull: 0, dflt_value: null, pk: 1 },
         { cid: 1, name: "email", type: "TEXT",    notnull: 1, dflt_value: null, pk: 0 },
       ],
-      "pragma_index_list('users')": [],
-      "pragma_foreign_key_list('users')": [],
+      'pragma_index_list("users")': [],
+      'pragma_foreign_key_list("users")': [],
       "type='view'": [],
     });
     const snap = await introspectD1({ runner, binding: "DB", remote: false, configPath: undefined });
@@ -81,5 +81,28 @@ describe("introspectD1", () => {
     const runner: D1Runner = async () => JSON.stringify({ success: true, results: [] });
     await expect(introspectD1({ runner, binding: "DB", remote: false, configPath: undefined }))
       .rejects.toThrow(/non-empty array envelope/);
+  });
+
+  test("handles table name with single quote safely (no SQL injection)", async () => {
+    // A crafted table name containing a single quote — valid as a SQLite identifier
+    // via double-quote quoting, but dangerous if interpolated with single-quote wrapping.
+    const injectedName = "a' OR 1=1--";
+    const runner = mockRunner({
+      "sqlite_version": [{ v: "3.44.2" }],
+      "type='table'": [
+        { name: injectedName, sql: `CREATE TABLE "${injectedName}" (id INTEGER)` },
+      ],
+      // The pragma calls should use double-quoted identifier form, so the mock
+      // matches on the double-quoted escaped name in the SQL string.
+      ['pragma_table_info("a\' OR 1=1--")']: [
+        { cid: 0, name: "id", type: "INTEGER", notnull: 0, dflt_value: null, pk: 1 },
+      ],
+      ['pragma_index_list("a\' OR 1=1--")']: [],
+      ['pragma_foreign_key_list("a\' OR 1=1--")']: [],
+    });
+    const snap = await introspectD1({ runner, binding: "DB", remote: false, configPath: undefined });
+    // The table name must be preserved exactly (not interpreted as SQL).
+    expect(snap.tables).toHaveLength(1);
+    expect(snap.tables[0]!.name).toBe(injectedName);
   });
 });
