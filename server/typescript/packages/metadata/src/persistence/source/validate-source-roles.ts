@@ -36,14 +36,14 @@ export function validateSourceRoles(root: MetaData): ParseError[] {
       errors.push(
         new ParseError(
           `object "${obj.name}" declares ${sources.length} source(s) but none has role "${SOURCE_ROLE_PRIMARY}"`,
-          { code: "ERR_SOURCE_NO_PRIMARY" },
+          { code: "ERR_SOURCE_NO_PRIMARY", source: obj.source },
         ),
       );
     } else if (primaryCount > 1) {
       errors.push(
         new ParseError(
           `object "${obj.name}" declares ${primaryCount} sources with role "${SOURCE_ROLE_PRIMARY}"; exactly one is required`,
-          { code: "ERR_SOURCE_MULTIPLE_PRIMARY" },
+          { code: "ERR_SOURCE_MULTIPLE_PRIMARY", source: obj.source },
         ),
       );
     }

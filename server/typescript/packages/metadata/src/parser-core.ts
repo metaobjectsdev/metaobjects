@@ -29,6 +29,7 @@ import { MetaRoot } from "./shared/meta-root.js";
 import { MetaAttr } from "./core/attr/meta-attr.js";
 import { inferAttrSubType } from "./serializer-json.js";
 import { ParseError, type ErrorCode } from "./errors.js";
+import type { ErrorSource } from "./source.js";
 import { resolveSuperRef } from "./super-resolve.js";
 import { JsonPathBuilder } from "./json-path.js";
 import {
@@ -90,18 +91,24 @@ export interface ParseResult {
 }
 
 // ---------------------------------------------------------------------------
-// Internal helper — build ParseError opts, omitting undefined fields
-// (required by exactOptionalPropertyTypes: true in the project tsconfig)
+// Internal helper — build a parse-phase ErrorSource envelope.
+//
+// FR5a / ADR-0009: ParseError carries a `source: ErrorSource` envelope. For
+// errors raised mid-parse, the envelope's jsonPath comes from the parser's
+// module-level JsonPathBuilder (synced with the walk); files[0] is the parsed
+// source id. Falls back to a code-source envelope if invoked outside a buildTree
+// run (defensive — every callsite below runs inside buildTree).
 // ---------------------------------------------------------------------------
 
-export function errOpts(
-  source: string | undefined,
-  path?: string,
-): { source?: string; path?: string } {
-  const opts: { source?: string; path?: string } = {};
-  if (source !== undefined) opts.source = source;
-  if (path !== undefined) opts.path = path;
-  return opts;
+export function errSource(): ErrorSource {
+  if (_currentPath !== undefined && _currentSourceId !== undefined) {
+    return {
+      format: "json",
+      files: [_currentSourceId],
+      jsonPath: _currentPath.toString(),
+    };
+  }
+  return { format: "code", caller: "parser-core" };
 }
 
 // ---------------------------------------------------------------------------
@@ -112,14 +119,10 @@ function reportProblem(
   msg: string,
   strict: boolean,
   warnings: string[],
-  source: string | undefined,
-  path: string,
-  code?: ErrorCode,
+  code: ErrorCode,
 ): void {
   if (strict) {
-    const opts = errOpts(source, path);
-    if (code !== undefined) throw new ParseError(msg, { ...opts, code });
-    else throw new ParseError(msg, opts);
+    throw new ParseError(msg, { code, source: errSource() });
   }
   warnings.push(msg);
 }
@@ -245,7 +248,7 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
 
   try {
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      throw new ParseError("Top-level metadata must be an object", { ...errOpts(source), code: "ERR_TOP_LEVEL_NOT_OBJECT" });
+      throw new ParseError("Top-level metadata must be an object", { code: "ERR_TOP_LEVEL_NOT_OBJECT", source: errSource() });
     }
 
     const topLevel = parsed as Record<string, unknown>;
@@ -254,12 +257,12 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
     const wrapperKeys = Object.keys(topLevel).filter((k) => k !== JSON_KEY_SCHEMA);
 
     if (wrapperKeys.length === 0) {
-      throw new ParseError("Top-level metadata object has no type wrapper key", { ...errOpts(source), code: "ERR_TOP_LEVEL_NOT_OBJECT" });
+      throw new ParseError("Top-level metadata object has no type wrapper key", { code: "ERR_TOP_LEVEL_NOT_OBJECT", source: errSource() });
     }
     if (wrapperKeys.length > 1) {
       throw new ParseError(
         `Top-level metadata object must have exactly one wrapper key (found: ${wrapperKeys.join(", ")})`,
-        { ...errOpts(source), code: "ERR_TOP_LEVEL_NOT_OBJECT" },
+        { code: "ERR_TOP_LEVEL_NOT_OBJECT", source: errSource() },
       );
     }
 
@@ -267,9 +270,14 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
     const rootData = topLevel[rootKey];
 
     if (typeof rootData !== "object" || rootData === null || Array.isArray(rootData)) {
+      // The error context references the rootKey wrapper; push it so the
+      // envelope's jsonPath includes it (matches the legacy `path` slot).
+      _currentPath!.pushKey(rootKey);
+      const src = errSource();
+      _currentPath!.pop();
       throw new ParseError(
         `Top-level wrapper "${rootKey}" must contain an object`,
-        { ...errOpts(source, rootKey), code: "ERR_TOP_LEVEL_NOT_OBJECT" },
+        { code: "ERR_TOP_LEVEL_NOT_OBJECT", source: src },
       );
     }
 
@@ -281,9 +289,12 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
       const rootTypeCode = opts.registry.allSubTypesOf(rootType).length > 0
         ? "ERR_UNKNOWN_SUBTYPE" as const
         : "ERR_UNKNOWN_TYPE" as const;
+      _currentPath!.pushKey(rootKey);
+      const src = errSource();
+      _currentPath!.pop();
       throw new ParseError(
         `Unknown root type "${rootType}.${rootSubType}" — not registered`,
-        { ...errOpts(source, rootKey), code: rootTypeCode },
+        { code: rootTypeCode, source: src },
       );
     }
 
@@ -380,7 +391,7 @@ function parseNodeFresh(
       subType = SUBTYPE_BASE;
     } else {
       const msg = `Unknown type "${type}.${subType}" — not registered`;
-      errors.push(new ParseError(msg, { ...errOpts(source, path), code: "ERR_UNKNOWN_TYPE" }));
+      errors.push(new ParseError(msg, { code: "ERR_UNKNOWN_TYPE", source: errSource() }));
       const rawName = nodeData[RESERVED_KEY_NAME];
       const name = typeof rawName === "string" ? rawName : "";
       const stub = new MetaRoot(new TypeId(type, subType), name);
@@ -437,7 +448,7 @@ function parseNodeFresh(
     } else {
       throw new ParseError(
         `the SuperClass '${model.superRef}' does not exist in file '${source ?? "<unknown>"}'`,
-        { ...errOpts(source, path), code: "ERR_UNRESOLVED_SUPER" },
+        { code: "ERR_UNRESOLVED_SUPER", source: errSource() },
       );
     }
   } else if (model.superRef !== undefined && accumRoot === undefined) {
@@ -446,8 +457,6 @@ function parseNodeFresh(
       `super on root node ('${model.superRef}') is not supported and will be ignored`,
       strict,
       warnings,
-      source,
-      path,
       "ERR_UNRESOLVED_SUPER",
     );
   }
@@ -532,7 +541,7 @@ function createOrFindMetaData(
     if (existing === undefined) {
       throw new ParseError(
         `Overlay operation requested for [${type}:${name}] but no existing metadata found to merge into`,
-        { ...errOpts(source, path), code: "ERR_OVERLAY_NO_TARGET" },
+        { code: "ERR_OVERLAY_NO_TARGET", source: errSource() },
       );
     }
     existing.setIsMerge(true);
@@ -569,7 +578,7 @@ function applyReservedKeys(
   const rawPkg = nodeData[RESERVED_KEY_PACKAGE];
   if (rawPkg !== undefined) {
     if (typeof rawPkg !== "string") {
-      reportProblem(`"${RESERVED_KEY_PACKAGE}" must be a string at ${path}`, strict, warnings, source, path, "ERR_BAD_ATTR_VALUE");
+      reportProblem(`"${RESERVED_KEY_PACKAGE}" must be a string at ${path}`, strict, warnings, "ERR_BAD_ATTR_VALUE");
     } else {
       const expandedPkg = contextPkg !== undefined ? expandPackageForPath(contextPkg, rawPkg) : rawPkg;
       model.setPackage(expandedPkg);
@@ -580,7 +589,7 @@ function applyReservedKeys(
   const rawExtends = nodeData[RESERVED_KEY_EXTENDS];
   if (rawExtends !== undefined) {
     if (typeof rawExtends !== "string") {
-      reportProblem(`"${RESERVED_KEY_EXTENDS}" must be a string at ${path}`, strict, warnings, source, path, "ERR_UNRESOLVED_SUPER");
+      reportProblem(`"${RESERVED_KEY_EXTENDS}" must be a string at ${path}`, strict, warnings, "ERR_UNRESOLVED_SUPER");
     } else {
       model.setSuper(rawExtends);
     }
@@ -590,7 +599,7 @@ function applyReservedKeys(
   const rawAbstract = nodeData[RESERVED_KEY_ABSTRACT];
   if (rawAbstract !== undefined) {
     if (typeof rawAbstract !== "boolean") {
-      reportProblem(`"${RESERVED_KEY_ABSTRACT}" must be a boolean at ${path}`, strict, warnings, source, path, "ERR_BAD_ATTR_VALUE");
+      reportProblem(`"${RESERVED_KEY_ABSTRACT}" must be a boolean at ${path}`, strict, warnings, "ERR_BAD_ATTR_VALUE");
     } else {
       model.setIsAbstract(rawAbstract);
     }
@@ -600,7 +609,7 @@ function applyReservedKeys(
   const rawIsArray = nodeData[RESERVED_KEY_IS_ARRAY];
   if (rawIsArray !== undefined) {
     if (typeof rawIsArray !== "boolean") {
-      reportProblem(`"${RESERVED_KEY_IS_ARRAY}" must be a boolean at ${path}`, strict, warnings, source, path, "ERR_BAD_ATTR_VALUE");
+      reportProblem(`"${RESERVED_KEY_IS_ARRAY}" must be a boolean at ${path}`, strict, warnings, "ERR_BAD_ATTR_VALUE");
     } else {
       model.setIsArray(rawIsArray);
     }
@@ -632,7 +641,7 @@ function applyInlineAttrsAndUnknownKeys(
         model.name !== "" ? `${model.type}.${model.subType} '${model.name}'` : `${model.type}.${model.subType}`;
       reportProblem(
         `Unknown key '${key}' on ${displayName} at ${path} (must be reserved or ${ATTR_PREFIX}-prefixed)`,
-        strict, warnings, source, path, "ERR_UNKNOWN_ATTR",
+        strict, warnings, "ERR_UNKNOWN_ATTR",
       );
       continue;
     }
@@ -653,14 +662,14 @@ function applyInlineAttrsAndUnknownKeys(
         `Reserved structural key '${attrName}' must not be ${ATTR_PREFIX}-prefixed ` +
         `on ${displayName} at ${path} (write it bare)`;
       if (strict) {
-        throw new ParseError(msg, { ...errOpts(source, path), code: "ERR_RESERVED_ATTR" });
+        throw new ParseError(msg, { code: "ERR_RESERVED_ATTR", source: errSource() });
       }
       // Lax mode: route through the module-level errors sink so the loader
       // sees this as a hard error (parity with attr-schema-validate's
       // ERR_BAD_ATTR_VALUE direct pushes). Falls back to warnings only if
       // _currentErrors isn't bound (unreachable when called from buildTree).
       if (_currentErrors !== undefined) {
-        _currentErrors.push(new ParseError(msg, { ...errOpts(source, path), code: "ERR_RESERVED_ATTR" }));
+        _currentErrors.push(new ParseError(msg, { code: "ERR_RESERVED_ATTR", source: errSource() }));
       } else {
         warnings.push(msg);
       }
@@ -675,7 +684,7 @@ function applyInlineAttrsAndUnknownKeys(
     } catch (err) {
       reportProblem(
         `Failed to convert attribute "${ATTR_PREFIX}${attrName}" at ${path}: ${(err as Error).message}`,
-        strict, warnings, source, path, "ERR_BAD_ATTR_VALUE",
+        strict, warnings, "ERR_BAD_ATTR_VALUE",
       );
     }
   }
@@ -748,7 +757,7 @@ function processChildren(
   if (rawChildren === undefined) return;
 
   if (!Array.isArray(rawChildren)) {
-    reportProblem(`"${RESERVED_KEY_CHILDREN}" must be an array at ${path}`, strict, warnings, source, path, "ERR_TOP_LEVEL_NOT_OBJECT");
+    reportProblem(`"${RESERVED_KEY_CHILDREN}" must be an array at ${path}`, strict, warnings, "ERR_TOP_LEVEL_NOT_OBJECT");
     return;
   }
 
@@ -763,7 +772,7 @@ function processChildren(
     _currentPath?.pushIndex(i);
 
     if (typeof childEntry !== "object" || childEntry === null || Array.isArray(childEntry)) {
-      reportProblem(`Child at ${childPath} must be an object`, strict, warnings, source, childPath, "ERR_TOP_LEVEL_NOT_OBJECT");
+      reportProblem(`Child at ${childPath} must be an object`, strict, warnings, "ERR_TOP_LEVEL_NOT_OBJECT");
       _currentPath?.pop();
       continue;
     }
@@ -776,7 +785,7 @@ function processChildren(
         childKeys.length === 0
           ? `Child at ${childPath} has no type wrapper key`
           : `Child at ${childPath} has multiple keys (${childKeys.join(", ")}) — each child must have exactly one wrapper key`;
-      reportProblem(msg, strict, warnings, source, childPath, "ERR_TOP_LEVEL_NOT_OBJECT");
+      reportProblem(msg, strict, warnings, "ERR_TOP_LEVEL_NOT_OBJECT");
       _currentPath?.pop();
       continue;
     }
@@ -789,7 +798,7 @@ function processChildren(
     if (typeof childData !== "object" || childData === null || Array.isArray(childData)) {
       reportProblem(
         `Child wrapper "${childKey}" at ${childNodePath} must contain an object`,
-        strict, warnings, source, childNodePath, "ERR_TOP_LEVEL_NOT_OBJECT",
+        strict, warnings, "ERR_TOP_LEVEL_NOT_OBJECT",
       );
       _currentPath?.pop(); // pop child wrapper key
       _currentPath?.pop(); // pop array index
@@ -814,7 +823,7 @@ function processChildren(
         errors.push(
           new ParseError(
             `Unknown type "${childType}.${childSubType}" — not registered`,
-            { ...errOpts(source, childNodePath), code: childTypeCode },
+            { code: childTypeCode, source: errSource() },
           ),
         );
         _currentPath?.pop(); // pop child wrapper key
@@ -882,7 +891,7 @@ function parseAttrChild(
   if (typeof attrName !== "string" || attrName === "") {
     reportProblem(
       `attr child at ${path} requires a non-empty "${RESERVED_KEY_NAME}" string`,
-      strict, warnings, source, path, "ERR_MISSING_REQUIRED_ATTR",
+      strict, warnings, "ERR_MISSING_REQUIRED_ATTR",
     );
     return;
   }
@@ -890,7 +899,7 @@ function parseAttrChild(
   if (attrValue === undefined) {
     reportProblem(
       `attr child "${attrName}" at ${path} is missing "${RESERVED_KEY_VALUE}"`,
-      strict, warnings, source, path, "ERR_MISSING_REQUIRED_ATTR",
+      strict, warnings, "ERR_MISSING_REQUIRED_ATTR",
     );
     return;
   }
@@ -913,7 +922,7 @@ function parseAttrChild(
   } catch (err) {
     reportProblem(
       `Failed to convert attr child "${attrName}" value at ${path}: ${(err as Error).message}`,
-      strict, warnings, source, path, "ERR_BAD_ATTR_VALUE",
+      strict, warnings, "ERR_BAD_ATTR_VALUE",
     );
     return;
   }

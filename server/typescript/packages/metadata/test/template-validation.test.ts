@@ -1,12 +1,16 @@
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
+import { ParseError } from "../src/errors.js";
 
 async function load(children: unknown[]) {
   const loader = new MetaDataLoader();
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });
   const result = await loader.load([new InMemoryStringSource(json)]);
-  return result.errors.map((e) => ({ code: e.code, message: e.message }));
+  return result.errors.map((e) => ({
+    code: e instanceof ParseError ? e.code : undefined,
+    message: e.message,
+  }));
 }
 
 const authorBrief = {

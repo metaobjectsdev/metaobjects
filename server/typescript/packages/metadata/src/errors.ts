@@ -1,5 +1,7 @@
 // Typed error classes for the metadata parser.
 
+import type { ErrorSource, LoaderError, NodeContext } from "./source.js";
+
 /** Stable, language-neutral error codes — mirrors fixtures/conformance/ERROR-CODES.json. */
 // NOTE: The following codes are forward-declared (no emitting site in the current
 // TS parser/loader — the condition is not yet detected):
@@ -55,20 +57,52 @@ export const ERROR_CODES = [
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
-export class ParseError extends Error {
-  readonly source: string | undefined;
-  readonly path: string | undefined; // logical path within the JSON, e.g. "metadata.children[2].field"
-  readonly code: ErrorCode | undefined;
+/**
+ * Loader error carrying the ADR-0009 LoaderError envelope.
+ *
+ * Public shape (FR5a):
+ *   new ParseError(message, { code, source, suggestions?, fixture?, node? })
+ *
+ * - `code` and `source` are required.
+ * - `source` is the ErrorSource discriminated union (json/yaml/merged/resolved/
+ *   database/code) — the same envelope every cross-language port emits.
+ * - `suggestions[]`, `fixture`, `node` are optional per ADR-0009 §RECOMMENDED;
+ *   FR5a does not populate them, FR5b–FR5e may.
+ *
+ * Legacy fields (`path?: string`, `source?: string`) were superseded by the
+ * envelope's `jsonPath` and `files` and have been dropped — see CHANGELOG.
+ */
+export class ParseError extends Error implements LoaderError {
+  readonly code: ErrorCode;
+  readonly source: ErrorSource;
+  readonly suggestions?: string[];
+  readonly fixture?: string;
+  readonly node?: NodeContext;
 
   constructor(
     message: string,
-    opts?: { source?: string; path?: string; code?: ErrorCode },
+    opts: {
+      code: ErrorCode;
+      source: ErrorSource;
+      suggestions?: string[];
+      fixture?: string;
+      node?: NodeContext;
+    },
   ) {
     super(message);
     this.name = "ParseError";
-    this.source = opts?.source;
-    this.path = opts?.path;
-    this.code = opts?.code;
+    this.code = opts.code;
+    this.source = opts.source;
+    // exactOptionalPropertyTypes: only assign when defined.
+    if (opts.suggestions !== undefined) {
+      (this as { suggestions?: string[] }).suggestions = opts.suggestions;
+    }
+    if (opts.fixture !== undefined) {
+      (this as { fixture?: string }).fixture = opts.fixture;
+    }
+    if (opts.node !== undefined) {
+      (this as { node?: NodeContext }).node = opts.node;
+    }
   }
 }
 

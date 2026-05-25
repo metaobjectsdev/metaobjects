@@ -307,14 +307,17 @@ describe("MetaDataLoader — independent instances", () => {
   });
 });
 
-describe("MetaDataLoader — InMemoryStringSource id propagates to ParseError.source", () => {
-  it("source id appears in ParseError.source when parse fails", async () => {
+describe("MetaDataLoader — InMemoryStringSource id propagates to ParseError envelope (FR5a)", () => {
+  it("source id appears in ParseError.source.files[0] when parse fails", async () => {
     const loader = new MetaDataLoader();
     const result = await loader.load([
       new InMemoryStringSource("not json", { id: "my-source.json" }),
     ]);
     expect(result.errors.length).toBeGreaterThan(0);
     const pe = result.errors[0] as ParseError;
-    expect(pe.source).toBe("my-source.json");
+    expect(pe.source.format).toBe("json");
+    if (pe.source.format === "json") {
+      expect(pe.source.files).toEqual(["my-source.json"]);
+    }
   });
 });
