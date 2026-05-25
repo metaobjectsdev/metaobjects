@@ -11,6 +11,7 @@
 
 import type { MetaData } from "../shared/meta-data.js";
 import { ParseError } from "../errors.js";
+import type { ErrorSource } from "../source.js";
 import {
   TYPE_OBJECT,
   TYPE_FIELD,
@@ -72,7 +73,7 @@ export function validateDataGridSortFields(root: MetaData): ParseError[] {
           new ParseError(
             `dataGrid layout "${layout.name}" on entity "${obj.name}" has @defaultSortField "${sortField}" ` +
             `but no such field exists on "${obj.name}". Available fields: ${[...fieldNames].join(", ")}`,
-            { code: "ERR_BAD_DEFAULT_SORT_FIELD" },
+            { code: "ERR_BAD_DEFAULT_SORT_FIELD", source: layout.source },
           ),
         );
       }
@@ -102,7 +103,7 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
       errors.push(
         new ParseError(
           `template "${tmpl.name}" @payloadRef "${payloadRef}" does not resolve to a known object in this model`,
-          { code: "ERR_INVALID_TEMPLATE" },
+          { code: "ERR_INVALID_TEMPLATE", source: tmpl.source },
         ),
       );
       continue;
@@ -118,7 +119,7 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
           new ParseError(
             `template "${tmpl.name}" @requiredSlots "${slot}" is not a field on payload "${payloadRef}". ` +
             `Available fields: ${[...fieldNames].join(", ")}`,
-            { code: "ERR_INVALID_TEMPLATE" },
+            { code: "ERR_INVALID_TEMPLATE", source: tmpl.source },
           ),
         );
       }
@@ -196,6 +197,7 @@ function _validateFromPath(
   root: MetaData,
   projectionName: string,
   fieldName: string,
+  originSource: ErrorSource,
   errors: ParseError[],
   label: string = "origin.passthrough.@from",
 ): void {
@@ -204,7 +206,7 @@ function _validateFromPath(
     errors.push(
       new ParseError(
         `${label} "${fromAttr}" on ${projectionName}.${fieldName}: must be of form "Entity.field".`,
-        { code: "ERR_INVALID_ORIGIN" },
+        { code: "ERR_INVALID_ORIGIN", source: originSource },
       ),
     );
     return;
@@ -216,7 +218,7 @@ function _validateFromPath(
     errors.push(
       new ParseError(
         `${label} "${fromAttr}" on ${projectionName}.${fieldName}: no such entity "${entityName}".`,
-        { code: "ERR_INVALID_ORIGIN" },
+        { code: "ERR_INVALID_ORIGIN", source: originSource },
       ),
     );
     return;
@@ -226,7 +228,7 @@ function _validateFromPath(
     errors.push(
       new ParseError(
         `${label} "${fromAttr}" on ${projectionName}.${fieldName}: no such field "${targetFieldName}" on ${entityName}.`,
-        { code: "ERR_INVALID_ORIGIN" },
+        { code: "ERR_INVALID_ORIGIN", source: originSource },
       ),
     );
   }
@@ -237,6 +239,7 @@ function _validateViaPath(
   root: MetaData,
   projectionName: string,
   fieldName: string,
+  originSource: ErrorSource,
   errors: ParseError[],
 ): void {
   const segments = viaAttr.split(".");
@@ -244,7 +247,7 @@ function _validateViaPath(
     errors.push(
       new ParseError(
         `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: must be of form "Entity.relationship[.relationship...]".`,
-        { code: "ERR_INVALID_ORIGIN" },
+        { code: "ERR_INVALID_ORIGIN", source: originSource },
       ),
     );
     return;
@@ -255,7 +258,7 @@ function _validateViaPath(
     errors.push(
       new ParseError(
         `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: no such entity "${entityName}".`,
-        { code: "ERR_INVALID_ORIGIN" },
+        { code: "ERR_INVALID_ORIGIN", source: originSource },
       ),
     );
     return;
@@ -266,7 +269,7 @@ function _validateViaPath(
       errors.push(
         new ParseError(
           `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: no such relationship "${relName}" on ${currentObj.name}.`,
-          { code: "ERR_INVALID_ORIGIN" },
+          { code: "ERR_INVALID_ORIGIN", source: originSource },
         ),
       );
       return;
@@ -276,7 +279,7 @@ function _validateViaPath(
       errors.push(
         new ParseError(
           `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: relationship "${relName}" on ${currentObj.name} is missing @objectRef.`,
-          { code: "ERR_INVALID_ORIGIN" },
+          { code: "ERR_INVALID_ORIGIN", source: originSource },
         ),
       );
       return;
@@ -286,7 +289,7 @@ function _validateViaPath(
       errors.push(
         new ParseError(
           `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: relationship "${relName}" points to non-existent entity "${refTarget}".`,
-          { code: "ERR_INVALID_ORIGIN" },
+          { code: "ERR_INVALID_ORIGIN", source: originSource },
         ),
       );
       return;
@@ -306,15 +309,15 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             errors.push(
               new ParseError(
                 `origin.passthrough on ${obj.name}.${field.name}: missing @from.`,
-                { code: "ERR_INVALID_ORIGIN" },
+                { code: "ERR_INVALID_ORIGIN", source: origin.source },
               ),
             );
             continue;
           }
-          _validateFromPath(from, root, obj.name, field.name, errors);
+          _validateFromPath(from, root, obj.name, field.name, origin.source, errors);
           const via = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
           if (typeof via === "string" && via !== "") {
-            _validateViaPath(via, root, obj.name, field.name, errors);
+            _validateViaPath(via, root, obj.name, field.name, origin.source, errors);
           }
         } else if (origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
           const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF);
@@ -322,23 +325,23 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             errors.push(
               new ParseError(
                 `origin.aggregate on ${obj.name}.${field.name}: missing @of.`,
-                { code: "ERR_INVALID_ORIGIN" },
+                { code: "ERR_INVALID_ORIGIN", source: origin.source },
               ),
             );
             continue;
           }
-          _validateFromPath(of_, root, obj.name, field.name, errors, "origin.aggregate.@of");
+          _validateFromPath(of_, root, obj.name, field.name, origin.source, errors, "origin.aggregate.@of");
           const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
           if (typeof via !== "string" || via === "") {
             errors.push(
               new ParseError(
                 `origin.aggregate on ${obj.name}.${field.name}: missing @via (aggregates require a relationship path).`,
-                { code: "ERR_INVALID_ORIGIN" },
+                { code: "ERR_INVALID_ORIGIN", source: origin.source },
               ),
             );
             continue;
           }
-          _validateViaPath(via, root, obj.name, field.name, errors);
+          _validateViaPath(via, root, obj.name, field.name, origin.source, errors);
         }
       }
     }
@@ -371,7 +374,7 @@ export function validateFieldObjectStorage(root: MetaData): ParseError[] {
         errors.push(
           new ParseError(
             `field "${obj.name}.${field.name}" sets @storage but has no @objectRef`,
-            { code: "ERR_STORAGE_WITHOUT_OBJECT_REF" },
+            { code: "ERR_STORAGE_WITHOUT_OBJECT_REF", source: field.source },
           ),
         );
       }
@@ -379,7 +382,7 @@ export function validateFieldObjectStorage(root: MetaData): ParseError[] {
         errors.push(
           new ParseError(
             `field "${obj.name}.${field.name}" sets @storage "flattened" with isArray=true; flattened storage requires a single nested value`,
-            { code: "ERR_STORAGE_FLATTENED_ARRAY" },
+            { code: "ERR_STORAGE_FLATTENED_ARRAY", source: field.source },
           ),
         );
       }
@@ -413,7 +416,7 @@ export function validateDataGridFilterValues(root: MetaData): ParseError[] {
       const filter = layout.ownAttr(LAYOUT_DATA_GRID_ATTR_FILTER);
       // Type errors (e.g. legacy string form) are reported by validateAttrSchema.
       if (typeof filter !== "object" || filter === null || Array.isArray(filter)) continue;
-      checkFilterClauses(filter as Record<string, unknown>, allow, obj.name, layout.name, errors);
+      checkFilterClauses(filter as Record<string, unknown>, allow, obj.name, layout.name, layout.source, errors);
     }
   }
   return errors;
@@ -424,6 +427,7 @@ function checkFilterClauses(
   allow: Map<string, readonly string[]>,
   entityName: string,
   layoutName: string,
+  layoutSource: ErrorSource,
   errors: ParseError[],
 ): void {
   for (const [key, clause] of Object.entries(filter)) {
@@ -431,7 +435,7 @@ function checkFilterClauses(
       if (Array.isArray(clause)) {
         for (const sub of clause) {
           if (typeof sub === "object" && sub !== null && !Array.isArray(sub)) {
-            checkFilterClauses(sub as Record<string, unknown>, allow, entityName, layoutName, errors);
+            checkFilterClauses(sub as Record<string, unknown>, allow, entityName, layoutName, layoutSource, errors);
           }
         }
       }
@@ -443,7 +447,7 @@ function checkFilterClauses(
         new ParseError(
           `dataGrid layout "${layoutName}" on entity "${entityName}" has @filter over ` +
             `non-filterable field "${key}". Filterable fields: ${[...allow.keys()].join(", ") || "(none)"}`,
-          { code: "ERR_BAD_ATTR_FILTER" },
+          { code: "ERR_BAD_ATTR_FILTER", source: layoutSource },
         ),
       );
       continue;
@@ -457,7 +461,7 @@ function checkFilterClauses(
             new ParseError(
               `dataGrid layout "${layoutName}" on entity "${entityName}" @filter uses disallowed ` +
                 `op "${key}.${op}". Allowed ops for "${key}": ${allowedOps.join(", ")}`,
-              { code: "ERR_BAD_ATTR_FILTER" },
+              { code: "ERR_BAD_ATTR_FILTER", source: layoutSource },
             ),
           );
         }

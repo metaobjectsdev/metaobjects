@@ -100,7 +100,7 @@ function validateNode(
         errors.push(
           new ParseError(
             `Common attr '${ca.name}' conflicts with per-type attr on ${typeKey}`,
-            { code: "ERR_PROVIDER_ATTR_CONFLICT" },
+            { code: "ERR_PROVIDER_ATTR_CONFLICT", source: node.source },
           ),
         );
         reportedConflicts.add(typeKey);
@@ -126,7 +126,7 @@ function validateNode(
       errors.push(
         new ParseError(
           `${nodeLabel(node)} is missing required attribute '@${spec.name}'`,
-          { code: "ERR_MISSING_REQUIRED_ATTR" },
+          { code: "ERR_MISSING_REQUIRED_ATTR", source: node.source },
         ),
       );
     }
@@ -145,7 +145,7 @@ function validateNode(
       const valueErrors = inst.validateValue(value);
       if (valueErrors.length > 0) {
         for (const ve of valueErrors) {
-          errors.push(new ParseError(`${nodeLabel(node)} ${ve.message}`, { code: "ERR_BAD_ATTR_VALUE" }));
+          errors.push(new ParseError(`${nodeLabel(node)} ${ve.message}`, { code: "ERR_BAD_ATTR_VALUE", source: node.source }));
         }
         continue; // type wrong → skip allowedValues
       }
@@ -159,7 +159,7 @@ function validateNode(
             `${nodeLabel(node)} attribute '@${inst.name}' has value ` +
               `'${String(value)}' which is not one of the allowed values: ` +
               `${spec.allowedValues.map((v) => String(v)).join(", ")}`,
-            { code: "ERR_BAD_ATTR_VALUE" },
+            { code: "ERR_BAD_ATTR_VALUE", source: node.source },
           ),
         );
       }
@@ -180,7 +180,7 @@ function validateNode(
         errors.push(
           new ParseError(
             `${nodeLabel(node)} must declare at least one value in '@${FIELD_ATTR_VALUES}'.`,
-            { code: "ERR_BAD_ATTR_VALUE" },
+            { code: "ERR_BAD_ATTR_VALUE", source: node.source },
           ),
         );
       } else {
@@ -194,14 +194,14 @@ function validateNode(
                 `${nodeLabel(node)} attribute '@${FIELD_ATTR_VALUES}' member '${member}' ` +
                   `is not a valid identifier (must match ${ENUM_MEMBER_PATTERN.source}). ` +
                   `Non-identifier-safe member strings require a symbol↔value mapping (deferred).`,
-                { code: "ERR_BAD_ATTR_VALUE" },
+                { code: "ERR_BAD_ATTR_VALUE", source: node.source },
               ),
             );
           } else if (seen.has(member)) {
             errors.push(
               new ParseError(
                 `${nodeLabel(node)} attribute '@${FIELD_ATTR_VALUES}' has duplicate member '${member}'.`,
-                { code: "ERR_BAD_ATTR_VALUE" },
+                { code: "ERR_BAD_ATTR_VALUE", source: node.source },
               ),
             );
           } else {

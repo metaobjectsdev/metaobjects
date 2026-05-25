@@ -74,9 +74,10 @@ describe("subtype rule validation", () => {
     );
     expect(errors).toHaveLength(0);
     expect(warnings.length).toBeGreaterThan(0);
-    expect(warnings[0]!).toContain("entity object");
-    expect(warnings[0]!).toContain("User");
-    expect(warnings[0]!).toContain("no primary identity");
+    // FR5a: LoadResult.warnings is now LoaderWarning[] — inspect .message.
+    expect(warnings[0]!.message).toContain("entity object");
+    expect(warnings[0]!.message).toContain("User");
+    expect(warnings[0]!.message).toContain("no primary identity");
   });
 
   it("abstract entity without identity does NOT warn (it's a template)", async () => {

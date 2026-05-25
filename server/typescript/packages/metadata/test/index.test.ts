@@ -274,17 +274,26 @@ describe("Public API surface — @metaobjectsdev/metadata index", () => {
   // Errors
   // ---------------------------------------------------------------------------
 
-  test("ParseError is constructible and named via index", () => {
-    const err = new ParseError("test error");
+  test("ParseError is constructible and named via index (FR5a envelope)", () => {
+    const err = new ParseError("test error", {
+      code: "ERR_UNKNOWN",
+      source: { format: "code", caller: "test" },
+    });
     expect(err.name).toBe("ParseError");
     expect(err.message).toBe("test error");
     expect(err).toBeInstanceOf(Error);
   });
 
-  test("ParseError carries optional source and path", () => {
-    const err = new ParseError("bad json", { source: "foo.json", path: "metadata.children[0]" });
-    expect(err.source).toBe("foo.json");
-    expect(err.path).toBe("metadata.children[0]");
+  test("ParseError carries the ErrorSource envelope (FR5a)", () => {
+    const err = new ParseError("bad json", {
+      code: "ERR_MALFORMED_JSON",
+      source: { format: "json", files: ["foo.json"], jsonPath: "$.metadata.root.children[0]" },
+    });
+    expect(err.source.format).toBe("json");
+    if (err.source.format === "json") {
+      expect(err.source.files).toEqual(["foo.json"]);
+      expect(err.source.jsonPath).toBe("$.metadata.root.children[0]");
+    }
   });
 
   // ---------------------------------------------------------------------------

@@ -168,6 +168,19 @@ export {
 export { ParseError, MetaModelError, ERROR_CODES } from "./errors.js";
 export type { ErrorCode } from "./errors.js";
 
+// FR5a — loader error envelope + source-on-node (ADR-0009).
+// Re-exported from the package root so consumers that catch + repackage
+// ParseErrors (or narrow on `err.source.format === "json"`) can import the
+// envelope types alongside the runtime discriminator.
+export type {
+  ErrorSource,
+  LoaderError,
+  LoaderWarning,
+  NodeContext,
+  Contributor,
+} from "./source.js";
+export { codeSource } from "./source.js";
+
 // Attribute-schema validation pass (Phase A3)
 export { validateAttrSchema } from "./attr-schema-validate.js";
 export type { AttrSchemaValidationResult } from "./attr-schema-validate.js";

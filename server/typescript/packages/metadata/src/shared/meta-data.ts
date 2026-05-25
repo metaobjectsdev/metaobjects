@@ -5,6 +5,7 @@ import type { DataType } from "../data-type.js";
 import type { MetaAttr } from "../core/attr/meta-attr.js";
 import { inferAttrSubType } from "../serializer-json.js";
 import { attrClassFor } from "../attr-class-map.js";
+import type { ErrorSource } from "../source.js";
 
 export type AttrValue = string | number | boolean | string[] | AttrObject;
 
@@ -56,6 +57,14 @@ export abstract class MetaData {
   // Registry-supplied coarse value type — set by the registry factory at node
   // construction (for field/attr nodes). Read via MetaField/MetaAttr.dataType.
   protected _dataType?: DataType;
+
+  // ADR-0009 provenance. Always populated; defaults to `{ format: "code" }`
+  // for programmatic construction (tests, factories, in-code builders). The
+  // JSON parser overwrites via setSource() during tree walk; future phases
+  // (overlay merge, super resolution) may overwrite with merged/resolved
+  // variants. Excluded from canonical JSON serialization — loader-derived
+  // state, not metadata.
+  private _source: ErrorSource = { format: "code" };
 
   // Per-instance read cache: only populated once the node is frozen.
   private readonly _cache = new Map<string, unknown>();
@@ -169,6 +178,25 @@ export abstract class MetaData {
   setDataType(dt: DataType): void {
     this._assertNotFrozen();
     this._dataType = dt;
+  }
+
+  // ---------------------------------------------------------------------------
+  // source (ADR-0009 provenance)
+  // ---------------------------------------------------------------------------
+
+  /** Provenance envelope for this node. Always populated. See ADR-0009. */
+  get source(): ErrorSource {
+    return this._source;
+  }
+
+  /**
+   * Loader-internal: assign provenance. Called by parser and merge phases as
+   * they build the tree. Honors the frozen-guard like other setters.
+   * @internal
+   */
+  setSource(s: ErrorSource): void {
+    this._assertNotFrozen();
+    this._source = s;
   }
 
   // ---------------------------------------------------------------------------

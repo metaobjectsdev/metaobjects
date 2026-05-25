@@ -100,6 +100,8 @@ export interface DeferredSuperFailure {
   nodeFqn: string;
   /** The raw super ref string that didn't resolve. */
   ref: string;
+  /** ADR-0009 provenance envelope of the referencing node (FR5a). */
+  source: import("./source.js").ErrorSource;
 }
 
 /**
@@ -128,7 +130,7 @@ export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
         // Frozen — ignore; the loader should resolve before freeze.
       }
     } else {
-      failures.push({ nodeFqn: node.fqn(), ref: node.superRef });
+      failures.push({ nodeFqn: node.fqn(), ref: node.superRef, source: node.source });
     }
   });
   return failures;

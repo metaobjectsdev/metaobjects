@@ -272,7 +272,8 @@ describe("MetaDataLoader — warnings propagated from parser", () => {
     const result = await loader.load([new InMemoryStringSource(json)]);
     expect(result.errors.length).toBe(0);
     expect(result.warnings.length).toBeGreaterThan(0);
-    expect(result.warnings[0]).toContain("unknownKey");
+    // FR5a: LoadResult.warnings is now LoaderWarning[] — inspect .message.
+    expect(result.warnings[0]!.message).toContain("unknownKey");
   });
 });
 
@@ -289,7 +290,7 @@ describe("MetaDataLoader — unresolvable super ref produces ParseError", () => 
     const parseErrors = result.errors.filter((e) => e instanceof ParseError);
     expect(parseErrors.length).toBeGreaterThan(0);
     expect(parseErrors[0]!.message).toContain("NonExistentBase");
-    const superWarnings = result.warnings.filter((w) => w.includes("Could not resolve"));
+    const superWarnings = result.warnings.filter((w) => w.message.includes("Could not resolve"));
     expect(superWarnings.length).toBe(0);
   });
 });
@@ -307,14 +308,17 @@ describe("MetaDataLoader — independent instances", () => {
   });
 });
 
-describe("MetaDataLoader — InMemoryStringSource id propagates to ParseError.source", () => {
-  it("source id appears in ParseError.source when parse fails", async () => {
+describe("MetaDataLoader — InMemoryStringSource id propagates to ParseError envelope (FR5a)", () => {
+  it("source id appears in ParseError.source.files[0] when parse fails", async () => {
     const loader = new MetaDataLoader();
     const result = await loader.load([
       new InMemoryStringSource("not json", { id: "my-source.json" }),
     ]);
     expect(result.errors.length).toBeGreaterThan(0);
     const pe = result.errors[0] as ParseError;
-    expect(pe.source).toBe("my-source.json");
+    expect(pe.source.format).toBe("json");
+    if (pe.source.format === "json") {
+      expect(pe.source.files).toEqual(["my-source.json"]);
+    }
   });
 });
