@@ -123,6 +123,18 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
+     * Hook for per-dialect identifier quoting in generated SQL (SELECT,
+     * WHERE, ORDER BY, UPDATE SET, etc.). Default: identity — the legacy
+     * unquoted form keeps Derby + the existing object-mapping consumers
+     * working unchanged. {@link com.metaobjects.manager.db.driver.PostgresDriver}
+     * overrides to wrap in {@code "..."} so mixed-case columns (e.g.
+     * {@code "programId"}) survive PG case-folding.
+     */
+    protected String quoteIdent(String name) {
+        return name;
+    }
+
+    /**
      * Deserializes a jsonb JSON string to a typed object.
      * <p>
      * Resolution order for the target class:
@@ -314,7 +326,7 @@ public class GenericSQLDriver implements DatabaseDriver {
             // Get next next MAX() sequence
             Statement s = conn.createStatement();
             try {
-                query.append("SELECT MAX( ").append(col.getName()).append(" )")
+                query.append("SELECT MAX( ").append(quoteIdent(col.getName())).append(" )")
                         .append("FROM ").append(
                         getProperName(col.getBaseTable().getNameDef()));
 
@@ -926,7 +938,7 @@ public class GenericSQLDriver implements DatabaseDriver {
             if (prefix != null) {
                 buf.append(prefix).append(".");
             }
-            buf.append(colDef.getName());
+            buf.append(quoteIdent(colDef.getName()));
 
             j++;
         }
@@ -990,7 +1002,7 @@ public class GenericSQLDriver implements DatabaseDriver {
             if (set.length() > 0) {
                 set.append(", ");
             }
-            set.append(colDef.getName());
+            set.append(quoteIdent(colDef.getName()));
             set.append("=?");
         }
 
@@ -1024,11 +1036,11 @@ public class GenericSQLDriver implements DatabaseDriver {
             if (mf instanceof com.metaobjects.field.StringField) {
                 b.append("UPPER(");
                 b.append(prefix).append(".");
-                b.append(colDef.getName());
+                b.append(quoteIdent(colDef.getName()));
                 b.append(')');
             } else {
                 b.append(prefix).append(".");
-                b.append(colDef.getName());
+                b.append(quoteIdent(colDef.getName()));
             }
 
             if (order.getOrder() == SortOrder.DESC) {
@@ -1088,13 +1100,13 @@ public class GenericSQLDriver implements DatabaseDriver {
                 if (prefix != null) {
                     set.append(prefix).append(".");
                 }
-                set.append(colDef.getName());
+                set.append(quoteIdent(colDef.getName()));
                 set.append(')');
             } else {
                 if (prefix != null) {
                     set.append(prefix).append(".");
                 }
-                set.append(colDef.getName());
+                set.append(quoteIdent(colDef.getName()));
             }
 
             set.append(' ');
@@ -1259,7 +1271,7 @@ public class GenericSQLDriver implements DatabaseDriver {
             if (where.length() > 0) {
                 where.append(" AND ");
             }
-            where.append(colDef.getName());
+            where.append(quoteIdent(colDef.getName()));
             where.append("=?");
         }
 
@@ -1418,7 +1430,7 @@ public class GenericSQLDriver implements DatabaseDriver {
                     query.append(tableStr).append(' ').append(prefix);
                     query.append(" ON ");
                     query.append(prefix--).append(idef.getColumnName())
-                            .append("=").append(prefix).append(idef.getRefColumn().getName());
+                            .append("=").append(prefix).append(quoteIdent(idef.getRefColumn().getName()));
                 }
             } else {
                 break;
@@ -1524,7 +1536,7 @@ public class GenericSQLDriver implements DatabaseDriver {
                     query.append(tableStr).append(' ').append(prefix);
                     query.append(" ON ");
                     query.append(prefix--).append(idef.getColumnName())
-                            .append("=").append(prefix).append(idef.getRefColumn().getName());
+                            .append("=").append(prefix).append(quoteIdent(idef.getRefColumn().getName()));
                 }
             } else {
                 break;

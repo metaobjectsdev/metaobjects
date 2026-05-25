@@ -348,13 +348,27 @@ public class PostgresDriver extends GenericSQLDriver {
 
     // --- Migration render support ---
 
+    /**
+     * Double-quote every identifier emitted in SELECT/WHERE/ORDER BY/UPDATE
+     * SET so mixed-case column names (e.g. {@code "programId"}) survive PG's
+     * case-folding pass. Cross-port: TS uses the same convention in its
+     * Kysely query builder; C# delegates to EF which quotes by default.
+     */
+    @Override
+    protected String quoteIdent(String name) {
+        if (name.indexOf('"') >= 0) throw new IllegalArgumentException("unsafe identifier: " + name);
+        return "\"" + name + "\"";
+    }
+
     /** Maps a canonical SqlType to its PostgreSQL DDL type string. */
     String pgType(SqlType t) {
         return switch (t) {
             case SqlType.Int i       -> i.bits() == 64 ? "BIGINT" : "INTEGER";
             case SqlType.Text tx     -> tx.maxLength() == null ? "TEXT" : "VARCHAR(" + tx.maxLength() + ")";
             case SqlType.Bool b      -> "BOOLEAN";
-            case SqlType.Timestamp ts -> "TIMESTAMP WITH TIME ZONE";
+            // Honor the withTimezone flag so a plain TIMESTAMP doesn't get
+            // gratuitously promoted to TIMESTAMPTZ (matches TS/C# behavior).
+            case SqlType.Timestamp ts -> ts.withTimezone() ? "TIMESTAMP WITH TIME ZONE" : "TIMESTAMP";
             case SqlType.Real r      -> "DOUBLE PRECISION";
             case SqlType.Numeric n   -> "NUMERIC";
             case SqlType.Json j      -> "JSONB";
@@ -365,21 +379,42 @@ public class PostgresDriver extends GenericSQLDriver {
     }
 
     /**
+     * Double-quote a Postgres identifier so mixed-case names (e.g. {@code programId})
+     * survive PG's case-folding pass. Cross-port: TS + C# both quote all idents
+     * in their migration DDL; matching this here lets {@code up-contains}
+     * substring assertions compare cleanly across ports.
+     */
+    private static String q(String ident) {
+        if (ident.indexOf('"') >= 0) throw new IllegalArgumentException("unsafe identifier: " + ident);
+        return "\"" + ident + "\"";
+    }
+
+    private static String joinQ(List<String> idents) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < idents.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(q(idents.get(i)));
+        }
+        return sb.toString();
+    }
+
+    /**
      * Renders a CREATE TABLE DDL string from a canonical TableDescriptor.
      * Used by {@link #render(Change)} for CreateTable changes.
      * The existing {@link #createTable(Connection, TableDef)} is left intact so FruitDBTest is unaffected.
      */
     String renderCreateTable(TableDescriptor table) {
-        StringBuilder sb = new StringBuilder("CREATE TABLE ").append(table.name()).append(" (");
+        StringBuilder sb = new StringBuilder("CREATE TABLE ").append(q(table.name())).append(" (");
         List<ColumnDescriptor> cols = table.columns();
         for (int i = 0; i < cols.size(); i++) {
             if (i > 0) sb.append(", ");
             ColumnDescriptor col = cols.get(i);
-            sb.append(col.name()).append(" ").append(pgType(col.sqlType()));
+            sb.append(q(col.name())).append(" ").append(pgType(col.sqlType()));
             if (!col.nullable()) sb.append(" NOT NULL");
         }
         if (!table.primaryKey().isEmpty()) {
-            sb.append(", PRIMARY KEY (").append(String.join(", ", table.primaryKey())).append(")");
+            sb.append(", CONSTRAINT ").append(q(table.name() + "_pkey"))
+              .append(" PRIMARY KEY (").append(joinQ(table.primaryKey())).append(")");
         }
         sb.append(")");
         return sb.toString();
@@ -390,30 +425,30 @@ public class PostgresDriver extends GenericSQLDriver {
         return switch (change) {
             case Change.CreateTable ct      -> renderCreateTable(ct.table());
             case Change.AddColumn a         ->
-                "ALTER TABLE " + a.table() + " ADD COLUMN " + a.column().name() + " " + pgType(a.column().sqlType());
+                "ALTER TABLE " + q(a.table()) + " ADD COLUMN " + q(a.column().name()) + " " + pgType(a.column().sqlType());
             case Change.ChangeColumnType ch ->
-                "ALTER TABLE " + ch.table() + " ALTER COLUMN " + ch.column() + " TYPE " + pgType(ch.to());
+                "ALTER TABLE " + q(ch.table()) + " ALTER COLUMN " + q(ch.column()) + " TYPE " + pgType(ch.to());
             case Change.RenameColumn rc     ->
-                "ALTER TABLE " + rc.table() + " RENAME COLUMN " + rc.from() + " TO " + rc.to();
+                "ALTER TABLE " + q(rc.table()) + " RENAME COLUMN " + q(rc.from()) + " TO " + q(rc.to());
             case Change.RenameTable rt      ->
-                "ALTER TABLE " + rt.from() + " RENAME TO " + rt.to();
+                "ALTER TABLE " + q(rt.from()) + " RENAME TO " + q(rt.to());
             case Change.AddIndex ai         ->
-                "CREATE " + (ai.index().unique() ? "UNIQUE " : "") + "INDEX " + ai.index().name() +
-                " ON " + ai.table() + "(" + String.join(",", ai.index().columns()) + ")";
+                "CREATE " + (ai.index().unique() ? "UNIQUE " : "") + "INDEX " + q(ai.index().name()) +
+                " ON " + q(ai.table()) + " (" + joinQ(ai.index().columns()) + ")";
             case Change.AddFk af            ->
-                "ALTER TABLE " + af.table() + " ADD CONSTRAINT " + af.fk().name() +
-                " FOREIGN KEY (" + String.join(",", af.fk().columns()) + ") REFERENCES " +
-                af.fk().refTable() + " (" + String.join(",", af.fk().refColumns()) + ")";
+                "ALTER TABLE " + q(af.table()) + " ADD CONSTRAINT " + q(af.fk().name()) +
+                " FOREIGN KEY (" + joinQ(af.fk().columns()) + ") REFERENCES " +
+                q(af.fk().refTable()) + " (" + joinQ(af.fk().refColumns()) + ")";
             case Change.CreateView cv       ->
-                "CREATE OR REPLACE VIEW " + cv.view().name() + " AS " + cv.view().sql();
+                "CREATE OR REPLACE VIEW " + q(cv.view().name()) + " AS " + cv.view().sql();
             case Change.DropColumn dc       ->
-                "ALTER TABLE " + dc.table() + " DROP COLUMN " + dc.column();
+                "ALTER TABLE " + q(dc.table()) + " DROP COLUMN " + q(dc.column());
             case Change.DropTable dt        ->
-                "DROP TABLE " + dt.table();
+                "DROP TABLE " + q(dt.table());
             case Change.DropIndex di        ->
-                "DROP INDEX " + di.index();
+                "DROP INDEX " + q(di.index());
             case Change.DropFk df           ->
-                "ALTER TABLE " + df.table() + " DROP CONSTRAINT " + df.fk();
+                "ALTER TABLE " + q(df.table()) + " DROP CONSTRAINT " + q(df.fk());
             default -> throw new UnsupportedOperationException(
                 "PostgresDriver does not support migration render for change kind: " + change.kind());
         };

@@ -4,7 +4,6 @@
     "attr-filter-explicit-ops",
     "attr-filter-shorthand",
     "attr-properties-basic",
-    "currency-default-usd",
     "currency-explicit-jpy",
     "currency-precedence-field-vs-view",
     "enum-abstract-extends",

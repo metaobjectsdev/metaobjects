@@ -89,9 +89,10 @@ Before promoting to `latest`, run the cross-language persistence suite against r
 end-to-end). It is **not** part of `bun test` / `dotnet test` because it requires a docker daemon:
 
 ```bash
-scripts/integration-test.sh           # all runners (typescript + c#)
+scripts/integration-test.sh           # all runners (typescript + c# + java)
 scripts/integration-test.sh ts        # just typescript
 scripts/integration-test.sh csharp    # just c#
+scripts/integration-test.sh java      # just java
 ```
 
 The corpus lives at [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/).

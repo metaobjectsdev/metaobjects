@@ -281,7 +281,6 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	protected int getSQLLength( MetaField mf ) {
 		// jsonb: store as CLOB (length > Derby's VARCHAR max of 32672 triggers CLOB in DerbyDriver)
 		if (isJsonbField(mf)) return 65536;
-		// TODO:  Support length on metafield as validator or attribute
 		switch( mf.getDataType() )
 		{
 			case BOOLEAN: return 1;
@@ -292,10 +291,27 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 			case LONG:
 			case FLOAT:
 			case DOUBLE: return 8;
-			case STRING: return 50;
+			case STRING: return readStringMaxLength(mf);
 			case OBJECT: return 100;
 			default: throw new IllegalArgumentException( "Unable to get SQL type for MetaField [" + mf + "] with type (" + mf.getDataType() + ")" );
 		}
+	}
+
+	/**
+	 * Read the @maxLength attribute on a string field; default 50 (matches
+	 * legacy behavior so any unannotated string keeps its old shape). Cross-port:
+	 * TS + C# both emit {@code VARCHAR(@maxLength)} when present, {@code TEXT}
+	 * (postgres) / {@code VARCHAR(MAX)} (mssql) when absent; Java's current emit
+	 * layer can't express "no length," so a numeric default stands in.
+	 */
+	protected int readStringMaxLength(MetaField mf) {
+		if (mf.hasMetaAttr(com.metaobjects.field.StringField.ATTR_MAX_LENGTH)) {
+			try {
+				return Integer.parseInt(
+					mf.getMetaAttr(com.metaobjects.field.StringField.ATTR_MAX_LENGTH).getValueAsString());
+			} catch (NumberFormatException ignored) { /* fall through */ }
+		}
+		return 50;
 	}
 
 	/**
@@ -476,14 +492,25 @@ public class SimpleMappingHandlerDB implements MappingHandler {
     }
 
     /**
-     * Retrieves the table column from the MetaField
+     * Retrieves the table column for the MetaField: the {@code @column}
+     * override if present, else the field name (literal — matching the C#
+     * port default + EF Core convention). Cross-port: TS defaults to
+     * snake_case via its persistence-layer config, but the Java omdb path
+     * doesn't carry a per-loader strategy knob yet, so literal is the safe
+     * default that any team can override with {@code @column}.
      *
-     * @return Returns the column name
-     * @throws MetaDataException An exception is thrown if the column is not persistable
+     * <p>Previously this returned {@code null} when {@code @column} was
+     * absent, causing the field to be silently skipped in
+     * {@link #loadColumns(java.util.Collection, com.metaobjects.manager.db.defs.BaseTableDef, ObjectMappingDB)}.
+     * The new-metadata fixtures don't require an explicit
+     * {@code @column} on every field (per the cross-port column-naming
+     * contract), so the old behavior emitted empty CREATE TABLEs against
+     * them.</p>
      */
     protected String getColumnRef( MetaField mf )
     {
-      return getPersistenceAttribute( mf, COL_REF );
+      String col = getPersistenceAttribute( mf, COL_REF );
+      return col != null ? col : mf.getName();
     }
     
     /**

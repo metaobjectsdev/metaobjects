@@ -29,6 +29,7 @@ public final class JdbcSqlTypes {
             case Types.DECIMAL:
                 return new SqlType.Numeric(null, null);
             case Types.TIMESTAMP:
+                return new SqlType.Timestamp(false);
             case Types.TIMESTAMP_WITH_TIMEZONE:
                 return new SqlType.Timestamp(true);
             case Types.DATE:
