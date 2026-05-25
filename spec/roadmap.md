@@ -60,6 +60,25 @@
     `docs/superpowers/specs/2026-05-22-fr-003-omdb-persistence-schema-migration-projections-design.md`.
 
 ## Planned
+- **0.6.x → 0.7.0 — TS consumer-friction reductions** (small/medium each; orthogonal to H4+)
+  Captured intent from a mid-0.6.0 adoption survey. Each is filed as a self-contained FR
+  in `docs/superpowers/specs/`:
+  - `2026-05-25-fr-stock-prompt-render-generator-and-fixture-coverage.md` — stock
+    `promptRender()` generator wrapping existing `generateRenderHandle()` +
+    `generatePayloadInterfaces()` helpers; `expected/prompts.ts` added to the
+    `template-prompt-simple` conformance fixture (cross-language).
+  - `2026-05-25-fr-param-passing-generated-repo-helpers-design.md` — design proposal:
+    generated query helpers take `db` as a parameter (Workers-compatible; matches the
+    idiomatic 2026 ORM-helper shape). Cross-language design; TS impl first.
+  - `2026-05-25-fr-cloudflare-workers-deploy-recipe.md` — README recipe for Vite + Workers
+    deploy. TS-only.
+  - `2026-05-25-fr-release-notes-and-naming-convention-docs.md` — `CHANGELOG.md` backfill
+    + camelCase TS ↔ snake_case SQL mapping docs. TS docs.
+  - `2026-05-25-fr-actionable-loader-error-messages-design.md` — design proposal:
+    JSON-shape loader errors gain a path + did-you-mean + fixture link. Cross-language.
+  - `2026-05-25-fr-template-output-codegen-pipeline-design.md` — design proposal:
+    structured-output codegen for `template.output` to parity with `template.prompt`.
+    Cross-language vocabulary; per-port codegen.
 - **H4 — TS codegen Java target** (2-3 wk)
   Refactor TS codegen to pluggable targets; Java target emits Spring JDBC DAOs, Spring MVC controllers, POJOs.
 - **H5 — First Java consumer migration** (3-4 wk)
