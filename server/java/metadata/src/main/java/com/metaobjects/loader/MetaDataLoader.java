@@ -26,11 +26,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -212,6 +214,112 @@ public class MetaDataLoader implements LoaderConfigurable {
         List<URI> uris = new ArrayList<>();
         for (String r : resources) uris.add(URIHelper.toURI("model:resource:" + r));
         return createFromURIs(name, uris);
+    }
+
+    ///////////////////////////////////////////////////////////////////////
+    // Unified static factories (cross-language consistent — see TS / C# / Python)
+
+    /**
+     * Build a {@link DirectorySource} for the given path and load all files
+     * in deterministic order. Convenience for the 99% case.
+     *
+     * @param name      the loader name
+     * @param directory the directory containing metadata files
+     * @return a fully-initialized loader with all directory files loaded
+     */
+    public static MetaDataLoader fromDirectory(String name, Path directory) {
+        return fromDirectory(name, directory, new DirectorySource.Options());
+    }
+
+    /**
+     * Build a {@link DirectorySource} for the given path with the supplied
+     * options and load all matching files.
+     *
+     * @param name      the loader name
+     * @param directory the directory containing metadata files
+     * @param opts      expansion options (exclude list, recursion)
+     * @return a fully-initialized loader with all directory files loaded
+     */
+    public static MetaDataLoader fromDirectory(String name, Path directory, DirectorySource.Options opts) {
+        MetaDataLoader loader = createManual(false, name);
+        try {
+            loader.init();
+            List<MetaDataSource> sources = new DirectorySource(directory, opts).expandToList();
+            loader.load(sources);
+            loader.register();
+        } catch (MetaDataLoadingException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new MetaDataLoadingException(
+                "Failed to load from directory " + directory, name,
+                loader.getLoadingState().getCurrentPhase(), 0, e);
+        }
+        return loader;
+    }
+
+    /**
+     * Build {@link UriSource}s and load them. Replaces the deprecated
+     * {@link #createFromURIs(String, List)} alias.
+     *
+     * @param name the loader name
+     * @param uris model URIs to load
+     * @return a fully-initialized loader with all URIs loaded
+     */
+    public static MetaDataLoader fromUris(String name, List<URI> uris) {
+        MetaDataLoader loader = createManual(false, name);
+        try {
+            loader.init();
+            List<MetaDataSource> sources = uris.stream()
+                .map(uri -> (MetaDataSource) new UriSource(uri))
+                .collect(Collectors.toList());
+            loader.load(sources);
+            loader.register();
+        } catch (MetaDataLoadingException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new MetaDataLoadingException(
+                "Failed to load from URIs", name,
+                loader.getLoadingState().getCurrentPhase(), 0, e);
+        }
+        return loader;
+    }
+
+    /**
+     * Load a list of classpath resource paths. Each path is wrapped as a
+     * {@code model:resource:<path>} URI and routed through {@link #fromUris(String, List)}.
+     *
+     * @param name      the loader name
+     * @param resources classpath resource paths (no {@code model:} prefix needed)
+     * @return a fully-initialized loader with all resources loaded
+     */
+    public static MetaDataLoader fromResources(String name, List<String> resources) {
+        List<URI> uris = new ArrayList<>();
+        for (String r : resources) uris.add(URIHelper.toURI("model:resource:" + r));
+        return fromUris(name, uris);
+    }
+
+    /**
+     * Load a single in-memory string of the given format.
+     *
+     * @param name    the loader name
+     * @param content the raw document content
+     * @param format  the document format
+     * @return a fully-initialized loader with the inline content loaded
+     */
+    public static MetaDataLoader fromString(String name, String content, MetaDataSource.MetaDataFormat format) {
+        MetaDataLoader loader = createManual(false, name);
+        try {
+            loader.init();
+            loader.load(List.of(new InMemoryStringSource(content, "<inline>", format)));
+            loader.register();
+        } catch (MetaDataLoadingException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new MetaDataLoadingException(
+                "Failed to load from string", name,
+                loader.getLoadingState().getCurrentPhase(), 0, e);
+        }
+        return loader;
     }
 
     ///////////////////////////////////////////////////////////////////////
