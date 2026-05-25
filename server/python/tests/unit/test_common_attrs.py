@@ -248,7 +248,7 @@ def test_doc_provider_registers_common_attrs() -> None:
 
 def test_stringarray_desugar_via_common_attr() -> None:
     """A string scalar for a stringArray common attr is desugared to a single-element list."""
-    from metaobjects.loader.meta_data_loader import load_directory
+    from metaobjects import MetaDataLoader
     import json
     import tempfile
     import os
@@ -275,7 +275,7 @@ def test_stringarray_desugar_via_common_attr() -> None:
         path = os.path.join(tmpdir, "meta.acme.json")
         with open(path, "w") as f:
             json.dump(fixture, f)
-        result = load_directory(tmpdir, providers=[core_provider, doc_provider])
+        result = MetaDataLoader.from_directory(tmpdir, providers=[core_provider, doc_provider])
 
     assert not result.errors, f"Unexpected errors: {result.errors}"
 

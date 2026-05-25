@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
+from metaobjects import MetaDataLoader
 from metaobjects.core_types import core_provider
 from metaobjects.errors import ErrorCode
-from metaobjects.loader.meta_data_loader import load_directory
 from metaobjects.meta.core.attr.attr_constants import ATTR_SUBTYPE_STRINGARRAY
 from metaobjects.meta.core.field.field_constants import FIELD_ATTR_VALUES, FIELD_SUBTYPE_ENUM
 from metaobjects.meta.core.field.meta_field import MetaField
@@ -34,7 +34,7 @@ def _load(doc: dict) -> tuple[list[str], str]:
     with tempfile.TemporaryDirectory() as tmpdir:
         path = os.path.join(tmpdir, "meta.test.json")
         Path(path).write_text(json.dumps(doc))
-        result = load_directory(tmpdir, providers=[core_provider])
+        result = MetaDataLoader.from_directory(tmpdir, providers=[core_provider])
         codes = [e.code.name for e in result.errors]
         canonical = canonical_serialize(result.root)
         return codes, canonical

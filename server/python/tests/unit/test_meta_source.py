@@ -10,8 +10,8 @@ import os
 import tempfile
 from pathlib import Path
 
+from metaobjects import MetaDataLoader
 from metaobjects.core_types import core_provider
-from metaobjects.loader.meta_data_loader import load_directory
 from metaobjects.meta.persistence.source.meta_source import MetaSource
 from metaobjects.meta.persistence.source.source_constants import (
     DEFAULT_SOURCE_KIND,
@@ -173,7 +173,7 @@ def _load(doc: dict) -> tuple[list[str], str]:
     with tempfile.TemporaryDirectory() as tmpdir:
         path = os.path.join(tmpdir, "meta.test.json")
         Path(path).write_text(json.dumps(doc))
-        result = load_directory(tmpdir, providers=[core_provider])
+        result = MetaDataLoader.from_directory(tmpdir, providers=[core_provider])
         codes = [e.code.name for e in result.errors]
         canonical = canonical_serialize(result.root)
         return codes, canonical
