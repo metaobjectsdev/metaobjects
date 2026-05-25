@@ -348,6 +348,18 @@ public class PostgresDriver extends GenericSQLDriver {
 
     // --- Migration render support ---
 
+    /**
+     * Double-quote every identifier emitted in SELECT/WHERE/ORDER BY/UPDATE
+     * SET so mixed-case column names (e.g. {@code "programId"}) survive PG's
+     * case-folding pass. Cross-port: TS uses the same convention in its
+     * Kysely query builder; C# delegates to EF which quotes by default.
+     */
+    @Override
+    protected String quoteIdent(String name) {
+        if (name.indexOf('"') >= 0) throw new IllegalArgumentException("unsafe identifier: " + name);
+        return "\"" + name + "\"";
+    }
+
     /** Maps a canonical SqlType to its PostgreSQL DDL type string. */
     String pgType(SqlType t) {
         return switch (t) {

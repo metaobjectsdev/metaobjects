@@ -5,7 +5,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -39,13 +38,10 @@ final class MigrationScenarioTests {
      */
     private static final Map<String, String> EXPECTED_FAILURES = Map.of();
 
-    private static List<MigrationScenario> SCENARIOS;
+    private static final List<MigrationScenario> SCENARIOS =
+        ScenarioLoader.loadMigrations(ScenarioLoader.findCorpusRoot().resolve("migrations"));
 
     static Stream<Arguments> scenarios() {
-        if (SCENARIOS == null) {
-            Path corpus = ScenarioLoader.findCorpusRoot();
-            SCENARIOS = ScenarioLoader.loadMigrations(corpus.resolve("migrations"));
-        }
         return SCENARIOS.stream().map(s -> Arguments.of(s.name(), s));
     }
 

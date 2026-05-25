@@ -143,7 +143,7 @@ public final class ExpectedSchemaBuilder {
     // Indexes (secondary identities)
     // -------------------------------------------------------------------------
 
-    private List<IndexDescriptor> buildIndexes(MetaObject mc) {
+    private static List<IndexDescriptor> buildIndexes(MetaObject mc) {
         List<IndexDescriptor> indexes = new ArrayList<>();
         for (SecondaryIdentity sec : mc.getSecondaryIdentities()) {
             List<String> cols = sec.getFields().stream().map(n -> columnFor(mc, n)).toList();
@@ -190,11 +190,10 @@ public final class ExpectedSchemaBuilder {
         return fks;
     }
 
-    private String resolvedTargetPkField(MetaObject target, ReferenceIdentity fk) {
+    private static String resolvedTargetPkField(MetaObject target, ReferenceIdentity fk) {
         if (fk.getTargetFields().size() == 1) return fk.getTargetFields().get(0);
         PrimaryIdentity pk = target.getPrimaryIdentity();
-        if (pk != null && !pk.getFields().isEmpty()) return pk.getFields().get(0);
-        return "id";
+        return (pk == null || pk.getFields().isEmpty()) ? "id" : pk.getFields().get(0);
     }
 
     /** Pair a reference identity to its matching relationship by @objectRef, read its @onDelete/@onUpdate. */
@@ -213,7 +212,7 @@ public final class ExpectedSchemaBuilder {
     // Field-name / column-name helpers
     // -------------------------------------------------------------------------
 
-    private MetaField<?> fieldForColumn(MetaObject mc, String column) {
+    private static MetaField<?> fieldForColumn(MetaObject mc, String column) {
         for (MetaField<?> mf : mc.getMetaFields()) {
             if (column.equalsIgnoreCase(columnNameOf(mf))) return mf;
         }
