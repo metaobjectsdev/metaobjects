@@ -42,7 +42,7 @@ public class DemoTests
 
     private static MetaRoot Load()
     {
-        var result = new MetaDataLoader().Load([new InMemorySource(Model, id: "demo.json")]);
+        var result = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "demo.json")]);
         Assert.Empty(result.Errors);
         return result.Root;
     }

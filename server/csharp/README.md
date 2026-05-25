@@ -32,7 +32,7 @@ The test suite includes per-fixture `Lint` and `Conformance` theories over the s
   - `CoreAttrSchemas.cs`, `CoreTypes.cs` — the `metaobjects-core-types` provider
   - `Parser.cs`, `SuperResolve.cs`, `SerializerJson.cs`
   - `YamlDesugar.cs`, `ParserYaml.cs` — YAML authoring front-end (ADR-0006)
-  - `Loader/` — `IMetaDataSource`, `InMemorySource`, `FileSource`, `MetaDataLoader`, `FileMetaDataLoader`, `ValidationPasses`
+  - `Loader/` — `IMetaDataSource`, `InMemoryStringSource`, `FileSource`, `DirectorySource`, `UriSource`, `MetaDataLoader` (with `FromDirectory`/`FromUris`/`FromString` static factories), `ValidationPasses`
 - `MetaObjects.Conformance.Tests/` — xUnit test project + conformance harness
   - `ConformanceAdapter.cs`, `FixtureDiscovery.cs`, `OperationScript.cs`, `FixtureLint.cs`, `Navigator.cs`, `CapabilityBinding.cs`, `Result.cs`, `ExpectedFailures.cs`, `conformance-expected-failures.json`, `ConformanceTests.cs`
   - `YamlConformanceTests.cs`, `YamlDesugarTests.cs`, `yaml-conformance-expected-failures.json` — YAML conformance + unit tests

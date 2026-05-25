@@ -23,7 +23,8 @@ namespace MetaObjects.Loader;
 public sealed record LoadResult(
     MetaRoot Root,
     IReadOnlyList<string> Warnings,
-    IReadOnlyList<MetaError> Errors);
+    IReadOnlyList<MetaError> Errors,
+    string State = "loaded");
 
 /// <summary>
 /// Core metadata loader pipeline. Consumes a list of
@@ -38,32 +39,17 @@ public class MetaDataLoader
     private readonly bool _strict;
 
     private string _state = "uninitialized";
-
-    /// <summary>
-    /// Protected setter so subclasses can transition state on failure paths
-    /// that bypass <see cref="Load"/> (e.g. directory-read failure in
-    /// <see cref="FileMetaDataLoader.LoadDirectory"/>).
-    /// </summary>
-    protected void SetState(string state) => _state = state;
     private MetaRoot? _root;
 
     // -------------------------------------------------------------------------
     // Constructors
     // -------------------------------------------------------------------------
 
-    /// <summary>
-    /// Construct with the default core-types registry, freeze=true, strict=false.
-    /// </summary>
+    /// <summary>Construct with the default core-types registry, freeze=true, strict=false.</summary>
     public MetaDataLoader()
         : this(DefaultRegistry()) { }
 
-    /// <summary>
-    /// Construct with a custom registry, freeze=true, strict=false.
-    /// </summary>
-    public MetaDataLoader(TypeRegistry registry)
-        : this(registry, freeze: true, strict: false) { }
-
-    /// <summary>Full constructor — registry, freeze, strict all configurable.</summary>
+    /// <summary>Full constructor — registry required; freeze and strict configurable (defaults: freeze=true, strict=false).</summary>
     public MetaDataLoader(TypeRegistry registry, bool freeze = true, bool strict = false)
     {
         _registry = registry;
@@ -73,6 +59,85 @@ public class MetaDataLoader
 
     private static TypeRegistry DefaultRegistry() =>
         Provider.ComposeRegistry([CoreTypes.CoreTypesProvider]);
+
+    // -------------------------------------------------------------------------
+    // Static factories (the 99% case, cross-language consistent)
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Convenience: build a <see cref="DirectorySource"/> for <paramref name="directory"/>
+    /// and load all discovered files in deterministic order.
+    /// </summary>
+    public static LoadResult FromDirectory(string directory, DirectorySource.Options? opts = null)
+        => FromDirectory(directory, DefaultRegistry(), opts);
+
+    /// <summary>
+    /// Registry-aware overload: build a <see cref="DirectorySource"/> and load
+    /// using the supplied <paramref name="registry"/>. A directory-read failure
+    /// is surfaced as a collected <see cref="MetaError"/> on a synthetic empty
+    /// root (no throw) — mirrors the TS <c>loadDirectory</c> behavior.
+    /// </summary>
+    public static LoadResult FromDirectory(string directory, TypeRegistry registry, DirectorySource.Options? opts = null)
+    {
+        var src = new DirectorySource(directory, opts);
+        List<IMetaDataSource> sources;
+        try
+        {
+            sources = src.Expand().Cast<IMetaDataSource>().ToList();
+        }
+        catch (Exception ex)
+        {
+            // Directory-read failure: synthesize an error result directly so
+            // state reflects "error" (calling Load([]) would set state to
+            // "loaded" because no errors had been collected yet at that point).
+            var loader = new MetaDataLoader(registry);
+            loader.SetState("error");
+            var root = MakeSyntheticRoot();
+            if (loader.Freeze)
+            {
+                root.Freeze();
+            }
+            var errors = new List<MetaError>
+            {
+                new($"Failed to read directory \"{directory}\": {ex.Message}", ErrorCode.ERR_UNKNOWN),
+            };
+            return new LoadResult(root, Array.Empty<string>(), errors.AsReadOnly(), "error");
+        }
+        return new MetaDataLoader(registry).Load(sources);
+    }
+
+    /// <summary>
+    /// Convenience: wrap each URI in a <see cref="UriSource"/> and load in order.
+    /// </summary>
+    public static LoadResult FromUris(IReadOnlyList<Uri> uris)
+        => FromUris(uris, DefaultRegistry());
+
+    /// <summary>
+    /// Registry-aware overload: wrap each URI in a <see cref="UriSource"/> and
+    /// load using the supplied <paramref name="registry"/>.
+    /// </summary>
+    public static LoadResult FromUris(IReadOnlyList<Uri> uris, TypeRegistry registry)
+    {
+        var loader = new MetaDataLoader(registry);
+        var sources = uris.Select(u => (IMetaDataSource)new UriSource(u)).ToList();
+        return loader.Load(sources);
+    }
+
+    /// <summary>
+    /// Convenience: load a single in-memory string of the given format.
+    /// </summary>
+    public static LoadResult FromString(string content, MetaDataFormat format)
+        => FromString(content, format, DefaultRegistry());
+
+    /// <summary>
+    /// Registry-aware overload: load a single in-memory string of the given
+    /// format using the supplied <paramref name="registry"/>.
+    /// </summary>
+    public static LoadResult FromString(string content, MetaDataFormat format, TypeRegistry registry)
+    {
+        var loader = new MetaDataLoader(registry);
+        return loader.Load(new IMetaDataSource[] { new InMemoryStringSource(content, format: format) });
+    }
 
     // -------------------------------------------------------------------------
     // Public properties
@@ -202,10 +267,9 @@ public class MetaDataLoader
         }
 
         // After the merge loop, BEFORE freeze — validation passes.
-
-        // Pass 1: resolveDeferredSupers — resolve cross-file extends refs against the full merged root.
         if (root is not null)
         {
+            // Pass 1: resolveDeferredSupers — resolve cross-file extends refs against the full merged root.
             var failures = SuperResolve.ResolveDeferredSupers(root);
             foreach (var failure in failures)
             {
@@ -213,10 +277,7 @@ public class MetaDataLoader
                     $"the SuperClass '{failure.Ref}' does not exist (referenced by {failure.NodeFqn})",
                     ErrorCode.ERR_UNRESOLVED_SUPER));
             }
-        }
 
-        if (root is not null)
-        {
             // Pass 2: subtype rules (value must not have primary identity; entity should have one)
             var subtypeResult = ValidationPasses.ValidateSubtypeRules(root);
             errors.AddRange(subtypeResult.Errors);
@@ -272,8 +333,15 @@ public class MetaDataLoader
         }
 
         _root = root;
-        return new LoadResult(root, warnings.AsReadOnly(), errors.AsReadOnly());
+        return new LoadResult(root, warnings.AsReadOnly(), errors.AsReadOnly(), _state);
     }
+
+    /// <summary>
+    /// Internal state setter — used by static factories (e.g. FromDirectory)
+    /// that need to short-circuit the pipeline on pre-Load failures and still
+    /// report state == "error".
+    /// </summary>
+    internal void SetState(string state) => _state = state;
 
     // -------------------------------------------------------------------------
     // Helpers

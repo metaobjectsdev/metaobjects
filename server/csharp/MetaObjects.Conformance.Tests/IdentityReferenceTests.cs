@@ -30,7 +30,7 @@ public class IdentityReferenceTests
 
     private static MetaObject Author()
     {
-        var r = new MetaDataLoader().Load([new InMemorySource(Model, id: "ref.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "ref.json")]);
         Assert.Empty(r.Errors);
         return r.Root.FindObject("Author")!;
     }

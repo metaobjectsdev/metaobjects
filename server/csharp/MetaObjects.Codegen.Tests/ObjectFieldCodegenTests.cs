@@ -32,7 +32,7 @@ public class ObjectFieldCodegenTests
 
     private static MetaRoot Load()
     {
-        var r = new MetaDataLoader().Load([new InMemorySource(Model, id: "obj.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "obj.json")]);
         Assert.Empty(r.Errors);
         return r.Root;
     }

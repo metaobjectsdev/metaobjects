@@ -71,7 +71,7 @@ public class ExpectedSchemaTests
 
     private static SchemaSnapshot Load()
     {
-        var r = new MetaDataLoader().Load([new InMemorySource(Model, id: "exp.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "exp.json")]);
         Assert.Empty(r.Errors);
         return ExpectedSchema.Build(r.Root);
     }
@@ -151,7 +151,7 @@ public class ExpectedSchemaTests
           ]}}
         ]}}
         """;
-        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "ck.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(m, id: "ck.json")]);
         Assert.Empty(r.Errors);
         var snap = ExpectedSchema.Build(r.Root);
         var idx = Assert.Single(snap.Tables.Single(t => t.Name == "links").Indexes);

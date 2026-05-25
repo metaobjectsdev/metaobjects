@@ -115,7 +115,7 @@ public static class MigrateCommand
 
     private static (IReadOnlyList<string> Errors, MetaRoot? Root) LoadRoot(string metadataDir)
     {
-        var load = new FileMetaDataLoader().LoadDirectory(metadataDir);
+        var load = MetaDataLoader.FromDirectory(metadataDir);
         var errs = load.Errors.Select(e => e.Code.ToString()).ToList();
         return (errs, errs.Count == 0 ? load.Root : null);
     }

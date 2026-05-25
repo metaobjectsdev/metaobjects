@@ -24,7 +24,7 @@ public static class GenCommand
 
     public static Outcome Run(string metadataDir, string outDir, string ns)
     {
-        var load = new FileMetaDataLoader().LoadDirectory(metadataDir);
+        var load = MetaDataLoader.FromDirectory(metadataDir);
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0)
             return new Outcome(loadErrors, null);
