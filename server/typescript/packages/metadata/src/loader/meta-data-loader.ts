@@ -108,30 +108,28 @@ export class MetaDataLoader {
     opts?: DirectoryFactoryOptions & LoadOptions,
   ): Promise<LoadResult> {
     const { exclude, recurse, ...loaderOpts } = opts ?? {};
-    const dirOpts: DirectoryFactoryOptions = {};
-    if (exclude !== undefined) dirOpts.exclude = exclude;
-    if (recurse !== undefined) dirOpts.recurse = recurse;
+    // Conditional spreads honor exactOptionalPropertyTypes — only forward keys
+    // when the caller supplied a value, so DirectorySource's own defaults apply.
+    const dirOpts: DirectoryFactoryOptions = {
+      ...(exclude !== undefined && { exclude }),
+      ...(recurse !== undefined && { recurse }),
+    };
     const { DirectorySource } = await import("./sources/directory-source.js");
     const loader = new MetaDataLoader(loaderOpts);
-    let sources;
     try {
-      sources = await new DirectorySource(dir, dirOpts).expand();
+      const sources = await new DirectorySource(dir, dirOpts).expand();
+      return loader.load(sources);
     } catch (err) {
       // Match the pre-unification contract: a missing/unreadable directory is
       // surfaced as a collected error on the LoadResult, not a throw. The
       // pipeline still completes with a synthetic empty root.
       const emptyResult = await loader.load([]);
-      return {
-        ...emptyResult,
-        errors: [
-          err instanceof Error
-            ? err
-            : new Error(`MetaDataLoader.fromDirectory: ${String(err)}`),
-          ...emptyResult.errors,
-        ],
-      };
+      const expandErr =
+        err instanceof Error
+          ? err
+          : new Error(`MetaDataLoader.fromDirectory: ${String(err)}`);
+      return { ...emptyResult, errors: [expandErr, ...emptyResult.errors] };
     }
-    return loader.load(sources);
   }
 
   /**
@@ -265,7 +263,7 @@ export class MetaDataLoader {
       return fn(content, parseOpts);
     }
     throw new Error(
-      `MetaDataLoader: unsupported source format "${(source as { format: string }).format}" ` +
+      `MetaDataLoader: unsupported source format "${source.format}" ` +
         `on source "${source.id}"`,
     );
   }
