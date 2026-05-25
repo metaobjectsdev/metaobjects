@@ -77,8 +77,20 @@
     deploy. TS-only.
   - `2026-05-25-fr-release-notes-and-naming-convention-docs.md` — `CHANGELOG.md` backfill
     + camelCase TS ↔ snake_case SQL mapping docs. TS docs.
-  - `2026-05-25-fr-actionable-loader-error-messages-design.md` — design proposal:
-    JSON-shape loader errors gain a path + did-you-mean + fixture link. Cross-language.
+  - **FR5 family — actionable loader errors** (brainstormed 2026-05-25). ADR-0009
+    (`spec/decisions/ADR-0009-loader-error-envelope-and-source-on-node.md`) is the
+    cross-language contract: every error carries a `{ code, message, source }`
+    envelope; every metadata node carries `source` on the class itself (mutated only
+    on real semantic change; duplicate declarations emit a warning). Per error class:
+    - `2026-05-25-fr5a-json-shape-loader-errors.md` — **plan-of-record**, coordinated
+      TS/C#/Java/Python landing. JSON-shape errors + envelope foundation + source-on-node.
+    - `2026-05-25-fr5b-yaml-loader-source-positions.md` — sketch. YAML authoring
+      positions via desugar source-map.
+    - `2026-05-25-fr5c-multi-file-merge-error-attribution.md` — sketch. Multi-file
+      overlay conflict attribution + `WARN_DUPLICATE_DECLARATION`.
+    - `2026-05-25-fr5d-reference-resolution-errors.md` — sketch. `extends`/`@via`/
+      `@objectRef`/`@payloadRef` resolution failures with referrer + target.
+    - `2026-05-25-fr5e-database-source-errors.md` — forward-looking. Gated on FR-003.
   - `2026-05-25-fr-template-output-codegen-pipeline-design.md` — design proposal:
     structured-output codegen for `template.output` to parity with `template.prompt`.
     Cross-language vocabulary; per-port codegen.
