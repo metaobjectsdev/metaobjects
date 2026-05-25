@@ -45,8 +45,16 @@ export const promptRender = function promptRender(opts?: PromptRenderOpts): Gene
       for (const p of payloads) {
         parts.push(generatePayloadInterfaces(ctx.loadedRoot, p.name));
       }
+      // Strip the `import type { ... } from "./payloads.js"` line that
+      // generateRenderHandle() emits for the standalone two-file scenario.
+      // In the single-file output here the payload interfaces are already
+      // defined above, so the import is a self-reference to a non-existent module.
       for (const t of prompts) {
-        parts.push(generateRenderHandle(ctx.loadedRoot, t.name));
+        const handle = generateRenderHandle(ctx.loadedRoot, t.name)
+          .split("\n")
+          .filter((line) => !line.startsWith("import type {") || !line.includes("./payloads.js"))
+          .join("\n");
+        parts.push(handle);
       }
       return [{
         path: outFile,

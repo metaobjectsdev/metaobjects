@@ -130,9 +130,6 @@ To override the SQL column name per-field, use `@dbColumn`:
 
 The mapping policy is project-wide via `columnNamingStrategy` in
 `metaobjects.config.ts`: `snake_case` (default) | `literal` | `kebab-case`.
-See the per-target output design doc at
-[`../../../../docs/superpowers/specs/2026-05-21-per-target-output-dirs-design.md`](../../../../docs/superpowers/specs/2026-05-21-per-target-output-dirs-design.md)
-for the full rationale.
 
 ## License
 

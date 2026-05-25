@@ -160,4 +160,4 @@ interface Env {
 
 > Note: `findUserById(db, id)` parameter-passing landing in 0.7.0 (FR2).
 > If you're on 0.6.x today, the generated queries import a module-level `db`
-> from `../db` instead — see the 0.6.0 release notes for migration guidance.
+> from `../db` instead — see the [0.6.0 release notes](../../CHANGELOG.md) for migration guidance.

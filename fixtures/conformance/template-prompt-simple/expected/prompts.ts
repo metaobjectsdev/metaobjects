@@ -4,7 +4,6 @@ export interface NpcPromptPayload {
 }
 
 import { render, type Provider } from "@metaobjectsdev/render";
-import type { NpcPromptPayload } from "./payloads.js";
 
 export function renderNpcTurn(payload: NpcPromptPayload, provider: Provider): string {
   return render({ ref: "npc/turn", payload, format: "xml", provider });
