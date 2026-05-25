@@ -33,13 +33,16 @@ public sealed class MigrateCommandTests : IDisposable
     [Fact]
     public void Migrate_writes_postgres_ddl()
     {
+        // Full-CREATE now routes through the engine, so the shape matches PostgresEmit:
+        // quoted idents, UPPERCASE types, named "{table}_pkey" PK constraint. That's the
+        // shape introspection (via --from-db) will see, so a subsequent diff is clean.
         var outcome = MigrateCommand.Run(MetaDir, OutFile);
         Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
         Assert.True(File.Exists(OutFile));
         var sql = File.ReadAllText(OutFile);
-        Assert.Contains("CREATE TABLE subscribers (", sql);
-        Assert.Contains("email text NOT NULL", sql);
-        Assert.Contains("PRIMARY KEY (id)", sql);
+        Assert.Contains("CREATE TABLE \"subscribers\" (", sql);
+        Assert.Contains("\"email\" TEXT NOT NULL", sql);
+        Assert.Contains("CONSTRAINT \"subscribers_pkey\" PRIMARY KEY (\"id\")", sql);
     }
 
     [Fact]

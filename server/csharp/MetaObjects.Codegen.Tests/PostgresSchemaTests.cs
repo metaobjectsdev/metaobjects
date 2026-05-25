@@ -5,16 +5,18 @@ using Xunit;
 
 namespace MetaObjects.Codegen.Tests;
 
+// Covers the supplemental Postgres-DDL surface that lives in PostgresSchema:
+//   * CreateView per read-only projection (passthrough / aggregate / @via / collection)
+//   * EnumCheckConstraints — ALTER TABLE ADD CONSTRAINT ... CHECK for scalar enums
+//   * TableAndColumnComments — COMMENT ON TABLE / COLUMN from @description
+//
+// Table/PK/FK/index/identity/storage DDL is covered by ExpectedSchemaTests +
+// PostgresEmitTests (the engine path that meta migrate now flows through).
 public class PostgresSchemaTests
 {
-    // Week + Program + Tag (tables). Week.fkProgram is the FK (identity.reference)
-    // and Week.program is the to-one navigation back to Program; Tag.fkProgramLogical
-    // is a logical-only (@enforce: false) reference. Program.homeAddress is a
-    // @storage flattened object field; Program.config is a default (jsonb) object.
-    //   ProgramView      — passthrough projection (plain columns).
-    //   ProgramStat      — aggregate (count over Program.weeks -> correlated subquery).
-    //   WeekDetail       — passthrough-@via (forwards Program.title via Week.program).
-    //   ProgramWithWeeks — collection (json_agg of Week rows via Program.weeks).
+    // Model used by the CreateView tests; mirrors a representative source-v2 model
+    // with both writable entities (Week, Tag, Program) and four read-only projections
+    // exercising each origin kind.
     private const string Model = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Week", "children": [
@@ -25,26 +27,12 @@ public class PostgresSchemaTests
         { "identity.reference": { "name": "fkProgram", "@fields": "programId", "@references": "Program" } },
         { "relationship.association": { "name": "program", "@objectRef": "Program", "@cardinality": "one" } }
       ]}},
-      { "object.entity": { "name": "Tag", "children": [
-        { "source.rdb": { "@table": "tags" } },
-        { "field.long": { "name": "id" } },
-        { "field.long": { "name": "programId" } },
-        { "identity.primary": { "@fields": "id" } },
-        { "identity.reference": { "name": "fkProgramLogical", "@fields": "programId", "@references": "Program", "@enforce": false } }
-      ]}},
-      { "object.value": { "name": "Address", "children": [
-        { "field.string": { "name": "street", "@required": true, "@maxLength": 120 } },
-        { "field.string": { "name": "city", "@maxLength": 80 } }
-      ]}},
       { "object.entity": { "name": "Program", "children": [
         { "source.rdb": { "@table": "programs" } },
         { "field.long":   { "name": "id" } },
         { "field.string": { "name": "title", "@required": true, "@maxLength": 200 } },
-        { "field.object": { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened" } },
-        { "field.object": { "name": "config", "@objectRef": "Address" } },
         { "relationship.aggregation": { "name": "weeks", "@objectRef": "Week", "@cardinality": "many" } },
-        { "identity.primary": { "@fields": "id" } },
-        { "identity.secondary": { "name": "byTitle", "@fields": "title", "@unique": true } }
+        { "identity.primary": { "@fields": "id" } }
       ]}},
       { "object.value": { "name": "ProgramView", "children": [
         { "source.rdb": { "@kind": "view", "@table": "v_program" } },
@@ -74,93 +62,29 @@ public class PostgresSchemaTests
     ]}}
     """;
 
-    private static MetaRoot Load()
+    private static MetaRoot Load() => LoadModel(Model);
+
+    private static MetaRoot LoadModel(string m)
     {
-        var r = new MetaDataLoader().Load([new InMemorySource(Model, id: "schema.json")]);
+        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "schema.json")]);
         Assert.Empty(r.Errors);
         return r.Root;
     }
 
-    [Fact]
-    public void CreateTable_emits_columns_pk_notnull_and_unique_index()
-    {
-        var warns = new List<string>();
-        var sql = PostgresSchema.BuildSchema(Load(), warns.Add);
+    private static string View(MetaRoot root, string projectionName, Action<string>? warn = null) =>
+        PostgresSchema.CreateView(
+            root.Objects().Single(o => o.Name == projectionName),
+            root,
+            warn ?? (_ => { }));
 
-        Assert.Contains("CREATE TABLE programs (", sql);
-        Assert.Contains("id bigint NOT NULL", sql);
-        Assert.Contains("title varchar(200) NOT NULL", sql);
-        Assert.Contains("PRIMARY KEY (id)", sql);
-        Assert.Contains("CREATE UNIQUE INDEX programs_byTitle_uniq ON programs (title);", sql);
-        Assert.Contains("CREATE TABLE weeks (", sql);
-    }
+    // -------------------------------------------------------------------------
+    // CreateView — one path per origin kind
+    // -------------------------------------------------------------------------
 
     [Fact]
-    public void CreateTable_emits_foreign_key_for_enforced_reference()
+    public void CreateView_passthrough_emits_plain_select_from_single_base()
     {
-        var sql = PostgresSchema.BuildSchema(Load());
-        // Week.fkProgram (@enforce default true) -> a physical FK to programs.id.
-        Assert.Contains(
-            "CONSTRAINT weeks_programId_fk FOREIGN KEY (programId) REFERENCES programs (id)",
-            sql);
-    }
-
-    [Fact]
-    public void CreateTable_omits_foreign_key_for_logical_only_reference()
-    {
-        var sql = PostgresSchema.BuildSchema(Load());
-        Assert.Contains("CREATE TABLE tags (", sql);
-        // Tag.fkProgramLogical is @enforce: false -> no physical FK constraint.
-        Assert.DoesNotContain("CONSTRAINT tags_", sql);
-    }
-
-    [Fact]
-    public void Composite_pk_and_unique_index_preserve_declared_field_order()
-    {
-        // @fields order ("b","a") differs from field-declaration order ("a","b");
-        // the DDL must follow @fields, not declaration order.
-        const string m = """
-        { "metadata.root": { "package": "acme", "children": [
-          { "object.entity": { "name": "Link", "children": [
-            { "source.rdb": { "@table": "links" } },
-            { "field.long": { "name": "a" } },
-            { "field.long": { "name": "b" } },
-            { "identity.primary": { "@fields": ["b", "a"] } },
-            { "identity.secondary": { "name": "byBA", "@fields": ["b", "a"], "@unique": true } }
-          ]}}
-        ]}}
-        """;
-        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "ck.json")]);
-        Assert.Empty(r.Errors);
-        var sql = PostgresSchema.BuildSchema(r.Root);
-
-        Assert.Contains("PRIMARY KEY (b, a)", sql);
-        Assert.Contains("CREATE UNIQUE INDEX links_byBA_uniq ON links (b, a);", sql);
-    }
-
-    [Fact]
-    public void Flattened_object_field_expands_to_prefixed_columns()
-    {
-        var sql = PostgresSchema.BuildSchema(Load());
-        // Program.homeAddress @storage flattened -> Address fields as "homeAddress_*";
-        // the parent object emits no column of its own.
-        Assert.Contains("homeAddress_street varchar(120) NOT NULL", sql);
-        Assert.Contains("homeAddress_city varchar(80)", sql);
-        Assert.DoesNotContain("homeAddress jsonb", sql);
-    }
-
-    [Fact]
-    public void Default_object_field_collapses_to_jsonb_column()
-    {
-        var sql = PostgresSchema.BuildSchema(Load());
-        // Program.config has no @storage -> single jsonb column (back-compat default).
-        Assert.Contains("config jsonb", sql);
-    }
-
-    [Fact]
-    public void CreateView_emits_select_for_passthrough_projection()
-    {
-        var sql = PostgresSchema.BuildSchema(Load());
+        var sql = View(Load(), "ProgramView");
         Assert.Contains("CREATE VIEW v_program AS", sql);
         Assert.Contains("id AS id", sql);
         Assert.Contains("title AS title", sql);
@@ -168,9 +92,9 @@ public class PostgresSchemaTests
     }
 
     [Fact]
-    public void Aggregate_projection_emits_correlated_subquery_with_resolved_fk()
+    public void CreateView_aggregate_emits_correlated_subquery_with_resolved_fk()
     {
-        var sql = PostgresSchema.BuildSchema(Load());
+        var sql = View(Load(), "ProgramStat");
         Assert.Contains("CREATE VIEW v_program_stat AS", sql);
         // FK resolved from Week.fkProgram (identity.reference @fields programId -> Program.id);
         // target aliased "t" so the subquery is self-reference safe.
@@ -181,9 +105,9 @@ public class PostgresSchemaTests
     }
 
     [Fact]
-    public void Passthrough_via_projection_forwards_to_one_field_via_base_fk()
+    public void CreateView_passthrough_via_forwards_to_one_field_via_base_fk()
     {
-        var sql = PostgresSchema.BuildSchema(Load());
+        var sql = View(Load(), "WeekDetail");
         Assert.Contains("CREATE VIEW v_week_detail AS", sql);
         Assert.Contains("id AS id", sql);
         // Week.program -> Program.title: FK lives on the base (Week.programId -> Program.id),
@@ -195,9 +119,9 @@ public class PostgresSchemaTests
     }
 
     [Fact]
-    public void Collection_projection_emits_json_agg_of_nested_rows()
+    public void CreateView_collection_emits_json_agg_of_nested_rows()
     {
-        var sql = PostgresSchema.BuildSchema(Load());
+        var sql = View(Load(), "ProgramWithWeeks");
         Assert.Contains("CREATE VIEW v_program_weeks AS", sql);
         // json_agg over the to-many (Week back-references Program via programId).
         Assert.Contains(
@@ -208,13 +132,61 @@ public class PostgresSchemaTests
     }
 
     // -------------------------------------------------------------------------
-    // Task 7.1 — COMMENT ON TABLE / COLUMN from @description
+    // EnumCheckConstraints — ALTER TABLE ADD CONSTRAINT ... CHECK per scalar enum
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void EnumCheckConstraints_emits_alter_constraint_per_scalar_enum()
+    {
+        var root = LoadModel("""
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Post", "children": [
+              { "source.rdb": { "@table": "posts" } },
+              { "field.long": { "name": "id" } },
+              { "field.enum": { "name": "status", "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"] } },
+              { "identity.primary": { "@fields": "id" } }
+            ]}}
+        ]}}
+        """);
+        var stmt = Assert.Single(PostgresSchema.EnumCheckConstraints(root));
+        // Engine-canonical shape: fully quoted, stable {table}_{column}_check name,
+        // standalone ALTER TABLE (not inline in CREATE TABLE).
+        Assert.Equal(
+            "ALTER TABLE \"posts\" ADD CONSTRAINT \"posts_status_check\" CHECK (\"status\" IN ('DRAFT', 'PUBLISHED', 'ARCHIVED'));",
+            stmt);
+    }
+
+    [Fact]
+    public void EnumCheckConstraints_suppresses_array_enum_columns()
+    {
+        // An array-of-enum is stored as jsonb; a per-row IN(...) CHECK is incorrect
+        // for an array value, so emission is suppressed.
+        var root = LoadModel("""
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Post", "children": [
+              { "source.rdb": { "@table": "posts" } },
+              { "field.long": { "name": "id" } },
+              { "field.enum": { "name": "tags", "@values": ["a", "b", "c"], "isArray": true } },
+              { "identity.primary": { "@fields": "id" } }
+            ]}}
+        ]}}
+        """);
+        Assert.Empty(PostgresSchema.EnumCheckConstraints(root));
+    }
+
+    // No enum-value escape test: the metamodel rejects any @values member that
+    // doesn't match ^[A-Za-z_][A-Za-z0-9_]*$, so an unsafe character can't legally
+    // reach the emitter. PgSql.Escape is still exercised by the description tests
+    // below.
+
+    // -------------------------------------------------------------------------
+    // TableAndColumnComments — COMMENT ON TABLE / COLUMN from @description
     // -------------------------------------------------------------------------
 
     [Fact]
     public void Comment_on_table_emits_from_entity_description()
     {
-        const string m = """
+        var root = LoadModel("""
         { "metadata.root": { "package": "acme", "children": [
           { "object.entity": { "name": "Item",
             "@description": "A catalog item.",
@@ -225,17 +197,16 @@ public class PostgresSchemaTests
             ]
           }}
         ]}}
-        """;
-        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "m.json")]);
-        Assert.Empty(r.Errors);
-        var sql = PostgresSchema.BuildSchema(r.Root);
-        Assert.Contains("COMMENT ON TABLE items IS 'A catalog item.';", sql);
+        """);
+        Assert.Contains(
+            "COMMENT ON TABLE \"items\" IS 'A catalog item.';",
+            PostgresSchema.TableAndColumnComments(root));
     }
 
     [Fact]
     public void Comment_on_column_emits_from_field_description()
     {
-        const string m = """
+        var root = LoadModel("""
         { "metadata.root": { "package": "acme", "children": [
           { "object.entity": { "name": "Item", "children": [
               { "source.rdb": { "@table": "items" } },
@@ -245,17 +216,16 @@ public class PostgresSchemaTests
             ]
           }}
         ]}}
-        """;
-        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "m.json")]);
-        Assert.Empty(r.Errors);
-        var sql = PostgresSchema.BuildSchema(r.Root);
-        Assert.Contains("COMMENT ON COLUMN items.\"sku\" IS 'Stock keeping unit.';", sql);
+        """);
+        Assert.Contains(
+            "COMMENT ON COLUMN \"items\".\"sku\" IS 'Stock keeping unit.';",
+            PostgresSchema.TableAndColumnComments(root));
     }
 
     [Fact]
-    public void Comment_on_column_single_quote_in_description_is_escaped()
+    public void Comment_single_quote_in_description_is_escaped()
     {
-        const string m = """
+        var root = LoadModel("""
         { "metadata.root": { "package": "acme", "children": [
           { "object.entity": { "name": "Item", "children": [
               { "source.rdb": { "@table": "items" } },
@@ -265,17 +235,16 @@ public class PostgresSchemaTests
             ]
           }}
         ]}}
-        """;
-        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "m.json")]);
-        Assert.Empty(r.Errors);
-        var sql = PostgresSchema.BuildSchema(r.Root);
-        Assert.Contains("COMMENT ON COLUMN items.\"label\" IS 'It''s a label.';", sql);
+        """);
+        Assert.Contains(
+            "COMMENT ON COLUMN \"items\".\"label\" IS 'It''s a label.';",
+            PostgresSchema.TableAndColumnComments(root));
     }
 
     [Fact]
     public void No_description_produces_no_comment_statements()
     {
-        const string m = """
+        var root = LoadModel("""
         { "metadata.root": { "package": "acme", "children": [
           { "object.entity": { "name": "Item", "children": [
               { "source.rdb": { "@table": "items" } },
@@ -284,17 +253,15 @@ public class PostgresSchemaTests
             ]
           }}
         ]}}
-        """;
-        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "m.json")]);
-        Assert.Empty(r.Errors);
-        var sql = PostgresSchema.BuildSchema(r.Root);
-        Assert.DoesNotContain("COMMENT ON", sql);
+        """);
+        Assert.Empty(PostgresSchema.TableAndColumnComments(root));
     }
 
     [Fact]
-    public void Notes_content_NEVER_appears_in_DDL()
+    public void Notes_content_NEVER_appears_in_comments_output()
     {
-        const string m = """
+        // @notes is the internal-only rationale slot — must never reach DDL (D5 contract).
+        var root = LoadModel("""
         { "metadata.root": { "package": "acme", "children": [
           { "object.entity": { "name": "Item",
             "@description": "Public description.",
@@ -306,10 +273,8 @@ public class PostgresSchemaTests
             ]
           }}
         ]}}
-        """;
-        var r = new MetaDataLoader().Load([new InMemorySource(m, id: "m.json")]);
-        Assert.Empty(r.Errors);
-        var sql = PostgresSchema.BuildSchema(r.Root);
-        Assert.DoesNotContain("__DDL_INTERNAL__", sql);
+        """);
+        var all = string.Join("\n", PostgresSchema.TableAndColumnComments(root));
+        Assert.DoesNotContain("__DDL_INTERNAL__", all);
     }
 }

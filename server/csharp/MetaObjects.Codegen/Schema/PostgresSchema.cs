@@ -1,32 +1,27 @@
-// PostgresSchema — emits Postgres DDL from metadata: CREATE TABLE per entity
-// (columns/PK/NOT NULL/UNIQUE) and CREATE VIEW per read-only projection.
+// PostgresSchema — supplemental Postgres DDL emission alongside the migration engine.
 //
-// Column + table names mirror the EF Core generators ([Table]/[Column] use the
-// dbTable/dbColumn override or the raw name), so the generated entities map onto
-// this schema. View SELECTs are derived from field origins: passthrough (plain
-// column), passthrough-@via (to-one correlated subquery), aggregate (to-many
-// correlated subquery), and collection (json_agg over a to-many). FK columns are
-// resolved from identity.reference; an unresolvable origin leaves a TODO comment
-// (+ warning) rather than emitting incorrect SQL.
+// Tables, primary keys, NOT NULL, FKs, unique indexes, identity columns, and array
+// columns all flow through ExpectedSchema + SchemaDiff + PostgresEmit (the engine).
+// This file holds DDL the engine snapshot doesn't yet model — invoked from
+// MigrateCommand.Run as a tail-append after the engine renders the table CREATEs:
 //
-// Shape note: aggregates use a correlated subquery per origin, not the TS
-// reference's LEFT JOIN + GROUP BY (view-ddl-emit.ts). Both produce the same view
-// rows; subqueries scope each to-many independently, so multiple aggregates over
-// different relationships can't fan-out/double-count (the reason TS needs
-// COUNT(DISTINCT), which still mis-sums SUM/AVG across joins). View DDL is a
-// generated artifact, not a conformance-pinned invariant — the SQL form is free.
+//   * CREATE VIEW per read-only projection. Derived from field origins —
+//     passthrough (plain column), passthrough-@via (to-one correlated subquery),
+//     aggregate (to-many subquery), collection (json_agg over a to-many) — with
+//     FK columns resolved from identity.reference. An unresolvable origin leaves
+//     a TODO comment (+ warning) rather than emitting incorrect SQL.
+//   * ALTER TABLE ADD CONSTRAINT ... CHECK for scalar enum-typed fields (with
+//     stable {table}_{column}_check naming, suppressed for array-of-enum which
+//     is jsonb).
+//   * COMMENT ON TABLE / COLUMN from the @description attr (@notes is never
+//     read — D5 documentation-provider contract).
 //
-// DIVERGENCE from Migrate/PostgresEmit (the incremental-migration engine): this
-// full-CREATE emitter uses unquoted identifiers, lowercase types (varchar/integer/
-// jsonb), an unnamed inline PRIMARY KEY, and "{table}_{name}_uniq" index names;
-// PostgresEmit uses quoted idents, UPPERCASE types, a "{table}_pkey" constraint, and
-// raw index names. The two MUST be reconciled before introspection-driven migration
-// goes live (else a diff sees spurious churn) — preferably by retiring this CREATE
-// TABLE in favor of routing full-CREATE through the snapshot+emit pipeline. Tracked
-// in the csharp-migration-pipeline-status memory.
+// Shape note: view aggregates use a correlated subquery per origin (not the TS
+// reference's LEFT JOIN + GROUP BY). Independent to-many aggregates can't
+// fan-out/double-count this way (TS needs COUNT(DISTINCT), which still mis-sums
+// SUM/AVG across joins). View DDL is a generated artifact, not a conformance-
+// pinned invariant — the SQL form is free.
 
-using System.Text;
-using MetaObjects.Codegen.Migrate;
 using MetaObjects.Core.Documentation;
 using MetaObjects.Meta;
 using static MetaObjects.Core.Field.FieldConstants;
@@ -37,185 +32,6 @@ namespace MetaObjects.Codegen.Schema;
 /// <summary>Postgres DDL generation from a loaded model.</summary>
 public static class PostgresSchema
 {
-    /// <summary>Field subtype -> Postgres column type (varchar(n) when @maxLength is set).</summary>
-    public static string PgType(MetaField field) => field.SubType switch
-    {
-        FIELD_SUBTYPE_STRING or FIELD_SUBTYPE_CLASS =>
-            field.MaxLength is long n ? $"varchar({n})" : "text",
-        FIELD_SUBTYPE_INT       => "integer",
-        FIELD_SUBTYPE_SHORT     => "smallint",
-        FIELD_SUBTYPE_BYTE      => "smallint",
-        FIELD_SUBTYPE_LONG      => "bigint",
-        FIELD_SUBTYPE_CURRENCY  => "bigint",      // integer minor units
-        FIELD_SUBTYPE_DOUBLE    => "double precision",
-        FIELD_SUBTYPE_FLOAT     => "real",
-        FIELD_SUBTYPE_DECIMAL   => field.Precision is long p
-            ? $"numeric({p}, {field.Scale ?? 0})" : "numeric",
-        FIELD_SUBTYPE_ENUM      => "text",        // string-backed; CHECK constraint added in CreateTable
-        FIELD_SUBTYPE_BOOLEAN   => "boolean",
-        FIELD_SUBTYPE_DATE      => "date",
-        FIELD_SUBTYPE_TIME      => "time",
-        FIELD_SUBTYPE_TIMESTAMP => "timestamp",
-        _ => "text",
-    };
-
-    /// <summary>
-    /// CREATE TABLE for a writable entity: scalar columns + object-field storage
-    /// (@storage flattened → prefixed columns; else a single jsonb column) + PK +
-    /// NOT NULL + UNIQUE indexes + FOREIGN KEY constraints (from enforced
-    /// identity.reference children).
-    /// </summary>
-    public static string CreateTable(MetaObject entity, MetaRoot root)
-    {
-        var table = CSharpNaming.Table(entity);
-        var pk = entity.PrimaryIdentity();
-
-        var lines = new List<string>();
-        foreach (var f in entity.Fields())
-        {
-            if (CSharpNaming.ScalarFor(f.SubType) is not null || f.SubType == FIELD_SUBTYPE_ENUM)
-            {
-                var notNull = CSharpNaming.IsRequired(entity, f) ? " NOT NULL" : string.Empty;
-                // isArray scalar/enum columns persist as jsonb (an array of values, not a
-                // single scalar). Consistent with object-array (.ToJson) and EF's
-                // primitive-collection jsonb mapping.
-                var pgType = f.IsArray ? "jsonb" : PgType(f);
-                lines.Add($"  {CSharpNaming.Column(f)} {pgType}{notNull}");
-            }
-            else if (f.SubType == FIELD_SUBTYPE_OBJECT)
-            {
-                lines.AddRange(ObjectFieldColumns(entity, f, root));
-            }
-        }
-        if (pk is not null && pk.Fields.Count > 0)
-        {
-            // Preserve the identity's declared @fields order (not field-declaration order).
-            var cols = pk.Fields.Select(name => ResolveColumn(entity, name));
-            lines.Add($"  PRIMARY KEY ({string.Join(", ", cols)})");
-        }
-        // FOREIGN KEY constraints from enforced identity.reference children.
-        foreach (var fk in entity.ReferenceIdentities().Where(r => r.Enforce))
-        {
-            if (ForeignKeyClause(entity, fk, root) is { } clause) lines.Add(clause);
-        }
-
-        // CHECK constraints for scalar enum-typed fields (one per non-array field with @values).
-        // Array-of-enum columns are jsonb (they hold a JSON array, not a single scalar value),
-        // so a per-row IN(...) CHECK is incorrect and must be suppressed.
-        foreach (var f in entity.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM &&
-                                                     !f.IsArray &&
-                                                     f.EffectiveEnumValues is { Count: > 0 }))
-        {
-            var col = CSharpNaming.Column(f);
-            var list = string.Join(", ", f.EffectiveEnumValues!.Select(v => $"'{PgSql.Escape(v)}'"));
-            lines.Add($"  CHECK ({col} IN ({list}))");
-        }
-
-        var sb = new StringBuilder();
-        sb.AppendLine($"CREATE TABLE {table} (");
-        sb.AppendLine(string.Join(",\n", lines));
-        sb.AppendLine(");");
-
-        // UNIQUE indexes from secondary identities marked unique.
-        foreach (var sec in entity.SecondaryIdentities().Where(i => i.Unique))
-        {
-            var cols = sec.Fields.Select(name => ResolveColumn(entity, name));
-            sb.AppendLine($"CREATE UNIQUE INDEX {table}_{sec.Name}_uniq ON {table} ({string.Join(", ", cols)});");
-        }
-
-        // COMMENT ON TABLE / COLUMN from the description attr (entity- and field-level).
-        // The notes attr is intentionally never read — D5 contract.
-        if (entity.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) is string entityDesc && entityDesc.Length > 0)
-        {
-            sb.AppendLine($"COMMENT ON TABLE {table} IS '{PgSql.Escape(entityDesc)}';");
-        }
-        foreach (var f in entity.Fields())
-        {
-            if (f.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) is string fieldDesc && fieldDesc.Length > 0)
-            {
-                var col = CSharpNaming.Column(f);
-                sb.AppendLine($"COMMENT ON COLUMN {table}.\"{col}\" IS '{PgSql.Escape(fieldDesc)}';");
-            }
-        }
-
-        return sb.ToString();
-    }
-
-    // Columns for an object-typed field. @storage flattened expands each nested
-    // scalar field as "{parentCol}_{nestedCol}" (the parent emits no column of its
-    // own); every other storage (jsonb / subdocument / absent) collapses to one
-    // jsonb column — a relational target can't materialize a document store inline.
-    private static IEnumerable<string> ObjectFieldColumns(MetaObject entity, MetaField f, MetaRoot root)
-    {
-        if (f.Storage == STORAGE_FLATTENED && f.ObjectRef is { } oref &&
-            root.FindObject(CSharpNaming.StripPkg(oref)) is { } nested)
-        {
-            var prefix = CSharpNaming.Column(f) + "_";
-            foreach (var nf in nested.Fields().Where(n => CSharpNaming.ScalarFor(n.SubType) is not null))
-            {
-                var notNull = CSharpNaming.IsRequired(nested, nf) ? " NOT NULL" : string.Empty;
-                yield return $"  {prefix}{CSharpNaming.Column(nf)} {PgType(nf)}{notNull}";
-            }
-            yield break;
-        }
-        var topNotNull = CSharpNaming.IsRequired(entity, f) ? " NOT NULL" : string.Empty;
-        yield return $"  {CSharpNaming.Column(f)} jsonb{topNotNull}";
-    }
-
-    // A table-level FOREIGN KEY constraint for an enforced reference identity.
-    // FK columns keep the reference's declared @fields order; target columns are
-    // the explicit dotted @references fields (multi-col) or the target's primary
-    // identity (single-col / bare form), falling back to "id". Referential
-    // actions (ON DELETE / ON UPDATE) come from the matching relationship's
-    // effective @onDelete / @onUpdate (source-v2 ADR-0007).
-    private static string? ForeignKeyClause(MetaObject entity, MetaReferenceIdentity fk, MetaRoot root)
-    {
-        if (fk.TargetEntity is not { } targetName || fk.Fields.Count == 0) return null;
-        var target = root.FindObject(CSharpNaming.StripPkg(targetName));
-        if (target is null) return null;
-
-        var fkCols = fk.Fields.Select(js => ResolveColumn(entity, js)).ToList();
-        var refCols = fk.TargetFields.Count > 1
-            ? fk.TargetFields.Select(tf => ResolveColumn(target, tf)).ToList()
-            : [ResolveColumn(target, ResolvedTargetPkField(target, fk))];
-
-        var name = $"{CSharpNaming.Table(entity)}_{fkCols[0]}_fk";
-        var refTable = CSharpNaming.Table(target);
-
-        // Resolve referential actions from the matching relationship (if any).
-        var actions = ReferentialActions.Resolve(entity, CSharpNaming.StripPkg(targetName));
-
-        // Set-null on a NOT NULL FK column is a contradiction — fail loudly so the
-        // user can tighten one side or the other. Mirrors Java SetNullNotNullableError.
-        if (actions.OnDelete is FkAction.SetNull)
-        {
-            foreach (var jsField in fk.Fields)
-            {
-                var field = entity.FindField(jsField);
-                if (field is not null && CSharpNaming.IsRequired(entity, field))
-                {
-                    throw new InvalidOperationException(
-                        $"FK {CSharpNaming.Table(entity)}.{ResolveColumn(entity, jsField)} → " +
-                        $"{refTable}: @onDelete \"set-null\" requires the FK column to be nullable, " +
-                        $"but {entity.Name}.{jsField} is NOT NULL. Either make the field nullable " +
-                        $"or change the relationship's @onDelete.");
-                }
-            }
-        }
-
-        var clause = $"  CONSTRAINT {name} FOREIGN KEY ({string.Join(", ", fkCols)}) " +
-                     $"REFERENCES {refTable} ({string.Join(", ", refCols)})";
-        if (actions.OnDelete is { } d) clause += $" ON DELETE {ReferentialActions.FkActionSql(d)}";
-        if (actions.OnUpdate is { } u) clause += $" ON UPDATE {ReferentialActions.FkActionSql(u)}";
-        return clause;
-    }
-
-    // The single target column a reference resolves to: the lone explicit @references
-    // field, else the target's primary-identity first field, else "id".
-    private static string ResolvedTargetPkField(MetaObject target, MetaReferenceIdentity fk) =>
-        fk.TargetFields.Count == 1
-            ? fk.TargetFields[0]
-            : target.PrimaryIdentity()?.Fields.FirstOrDefault() ?? "id";
 
     /// <summary>
     /// CREATE VIEW for a projection. Derives the SELECT from field origins:
@@ -364,25 +180,58 @@ public static class PostgresSchema
 
         return (target, CSharpNaming.Table(target), ResolveColumn(target, targetKeyField), baseFkCol);
     }
+    // -----------------------------------------------------------------------
+    // Engine-supplement tail-append helpers — invoked by MigrateCommand.Run
+    // after the engine emits the table DDL. Each emits per-entity SQL the
+    // engine snapshot does NOT yet model (introspection ignores them, so they
+    // never appear as drift in `meta migrate --from-db`).
+    // -----------------------------------------------------------------------
 
-    /// <summary>Full schema DDL: tables for writable entities, then views for projections.</summary>
-    public static string BuildSchema(MetaRoot root, Action<string>? warn = null)
-    {
-        var warnFn = warn ?? (_ => { });
-        var sb = new StringBuilder();
-        sb.AppendLine("-- Generated by MetaObjects meta migrate (Postgres). Do not edit by hand.");
-        sb.AppendLine();
+    /// <summary>
+    /// CHECK constraints for scalar enum fields, one per non-array enum with @values.
+    /// Emitted as standalone <c>ALTER TABLE ... ADD CONSTRAINT ... CHECK</c> rather than
+    /// inline inside CREATE TABLE so they layer cleanly on top of engine-emitted DDL.
+    /// Naming: <c>{table}_{column}_check</c> (stable enough for a future introspection
+    /// pass to match). Array-of-enum columns are jsonb and don't get a per-row IN check.
+    /// </summary>
+    public static IEnumerable<string> EnumCheckConstraints(MetaRoot root) =>
+        root.Objects()
+            .Where(o => o.IsEntity() && o.FindPrimaryWritableSource() is not null)
+            .OrderBy(o => o.Name, StringComparer.Ordinal)
+            .SelectMany(e =>
+            {
+                var table = CSharpNaming.Table(e);
+                return e.Fields()
+                    .Where(f => f.SubType == FIELD_SUBTYPE_ENUM && !f.IsArray
+                                && f.EffectiveEnumValues is { Count: > 0 })
+                    .Select(f =>
+                    {
+                        var col = CSharpNaming.Column(f);
+                        var list = string.Join(", ", f.EffectiveEnumValues!.Select(v => $"'{PgSql.Escape(v)}'"));
+                        return $"ALTER TABLE \"{table}\" ADD CONSTRAINT \"{table}_{col}_check\" CHECK (\"{col}\" IN ({list}));";
+                    });
+            });
 
-        foreach (var e in root.Objects().Where(o => o.IsEntity() && !o.IsReadOnlyProjection())
-                     .OrderBy(o => o.Name, StringComparer.Ordinal))
-        {
-            sb.AppendLine(CreateTable(e, root));
-        }
-        foreach (var p in root.Objects().Where(o => o.IsReadOnlyProjection())
-                     .OrderBy(o => o.Name, StringComparer.Ordinal))
-        {
-            sb.AppendLine(CreateView(p, root, warnFn));
-        }
-        return sb.ToString();
-    }
+    /// <summary>
+    /// <c>COMMENT ON TABLE</c> + <c>COMMENT ON COLUMN</c> statements from the
+    /// <c>@description</c> attr. The <c>@notes</c> attr is intentionally never read
+    /// (internal-only rationale slot, per the documentation provider D5 contract).
+    /// </summary>
+    public static IEnumerable<string> TableAndColumnComments(MetaRoot root) =>
+        root.Objects()
+            .Where(o => o.IsEntity() && o.FindPrimaryWritableSource() is not null)
+            .OrderBy(o => o.Name, StringComparer.Ordinal)
+            .SelectMany(e =>
+            {
+                var table = CSharpNaming.Table(e);
+                var statements = new List<string>();
+                if (e.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) is string entityDesc && entityDesc.Length > 0)
+                    statements.Add($"COMMENT ON TABLE \"{table}\" IS '{PgSql.Escape(entityDesc)}';");
+                foreach (var f in e.Fields())
+                {
+                    if (f.Attr(DocumentationConstants.DOC_ATTR_DESCRIPTION) is string fieldDesc && fieldDesc.Length > 0)
+                        statements.Add($"COMMENT ON COLUMN \"{table}\".\"{CSharpNaming.Column(f)}\" IS '{PgSql.Escape(fieldDesc)}';");
+                }
+                return statements;
+            });
 }

@@ -125,6 +125,33 @@ public class SchemaDiffTests
     }
 
     [Fact]
+    public void Identity_attach_and_detach_emit_change_column_identity()
+    {
+        // Identity attach: actual column has none, expected is increment.
+        var attach = SchemaDiff.Diff(
+            Snap(Table("t", [Col("id", new SqlType.Integer(64), nullable: false, identity: IdentityKind.Increment)])),
+            Snap(Table("t", [Col("id", new SqlType.Integer(64), nullable: false)])));
+        var add = Assert.IsType<Change.ChangeColumnIdentity>(Assert.Single(attach.Changes));
+        Assert.Null(add.From);
+        Assert.Equal(IdentityKind.Increment, add.To);
+        Assert.True(add.Status.Allowed);
+
+        // Identity detach: reverse direction.
+        var detach = SchemaDiff.Diff(
+            Snap(Table("t", [Col("id", new SqlType.Integer(64), nullable: false)])),
+            Snap(Table("t", [Col("id", new SqlType.Integer(64), nullable: false, identity: IdentityKind.Increment)])));
+        var drop = Assert.IsType<Change.ChangeColumnIdentity>(Assert.Single(detach.Changes));
+        Assert.Equal(IdentityKind.Increment, drop.From);
+        Assert.Null(drop.To);
+
+        // No change when both sides agree.
+        var same = SchemaDiff.Diff(
+            Snap(Table("t", [Col("id", new SqlType.Integer(64), nullable: false, identity: IdentityKind.Increment)])),
+            Snap(Table("t", [Col("id", new SqlType.Integer(64), nullable: false, identity: IdentityKind.Increment)])));
+        Assert.Empty(same.Changes);
+    }
+
+    [Fact]
     public void Index_shape_change_emits_drop_then_add()
     {
         var expected = Snap(Table("t", [Col("a", new SqlType.Text())], idx: [new IndexDescriptor("ix", ["a"], true)]));

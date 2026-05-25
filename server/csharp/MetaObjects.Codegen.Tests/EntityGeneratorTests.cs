@@ -223,12 +223,22 @@ public class EntityGeneratorTests
     [Fact]
     public void Postgres_schema_emits_text_column_with_check_constraint()
     {
+        // After the reconciliation cleanup, the engine emits the table DDL (enum → TEXT
+        // column) and PostgresSchema.EnumCheckConstraints is tail-appended for the
+        // CHECK. Together they reproduce what the previous BuildSchema rendered inline.
         var root = LoadEnum();
-        var sql = MetaObjects.Codegen.Schema.PostgresSchema.BuildSchema(root);
-        // The enum column maps to "text"
-        Assert.Contains("status text", sql);
-        // CHECK constraint with all values
-        Assert.Contains("CHECK (status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED'))", sql);
+        var snap = MetaObjects.Codegen.Migrate.ExpectedSchema.Build(root);
+        var ddl = MetaObjects.Codegen.Migrate.PostgresEmit
+            .Render(MetaObjects.Codegen.Migrate.SchemaDiff
+                .Diff(snap, new MetaObjects.Codegen.Migrate.SchemaSnapshot([])).Changes).Up;
+        var checks = string.Join("\n", MetaObjects.Codegen.Schema.PostgresSchema.EnumCheckConstraints(root));
+
+        // Enum column maps to TEXT (engine-canonical: quoted + UPPERCASE).
+        Assert.Contains("\"status\" TEXT", ddl);
+        // CHECK constraint with all values, fully quoted, stable {table}_{column}_check name.
+        Assert.Contains(
+            "ALTER TABLE \"orders\" ADD CONSTRAINT \"orders_status_check\" CHECK (\"status\" IN ('DRAFT', 'PUBLISHED', 'ARCHIVED'));",
+            checks);
     }
 
     [Fact]
