@@ -62,7 +62,7 @@ public class DbContextCompileTests
 
     private static MetaRoot Load()
     {
-        var r = new MetaDataLoader().Load([new InMemorySource(Model, id: "ef-compile.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "ef-compile.json")]);
         Assert.Empty(r.Errors);
         return r.Root;
     }

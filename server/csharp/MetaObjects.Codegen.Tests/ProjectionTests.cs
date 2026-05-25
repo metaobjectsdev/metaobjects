@@ -33,7 +33,7 @@ public class ProjectionTests
 
     private static MetaRoot Load()
     {
-        var r = new MetaDataLoader().Load([new InMemorySource(Model, id: "proj.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "proj.json")]);
         Assert.Empty(r.Errors);
         return r.Root;
     }

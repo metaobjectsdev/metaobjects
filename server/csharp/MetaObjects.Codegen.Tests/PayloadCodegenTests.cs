@@ -38,7 +38,7 @@ public class PayloadCodegenTests
 
     private static MetaRoot Load()
     {
-        var result = new MetaDataLoader().Load([new InMemorySource(Model, id: "codegen.json")]);
+        var result = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "codegen.json")]);
         Assert.Empty(result.Errors);
         return result.Root;
     }

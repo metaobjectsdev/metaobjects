@@ -25,10 +25,6 @@
         </dependency>
         <dependency>
             <groupId>com.metaobjects</groupId>
-            <artifactId>metaobjects-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.metaobjects</groupId>
             <artifactId>metaobjects-dynamic-core</artifactId>
         </dependency>
         <dependency>

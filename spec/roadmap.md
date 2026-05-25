@@ -60,6 +60,40 @@
     `docs/superpowers/specs/2026-05-22-fr-003-omdb-persistence-schema-migration-projections-design.md`.
 
 ## Planned
+- **0.6.x → 0.7.0 — TS consumer-friction reductions** (small/medium each; orthogonal to H4+)
+  Captured intent from a mid-0.6.0 adoption survey. Each is filed as a self-contained FR
+  in `docs/superpowers/specs/`:
+  - `2026-05-25-fr-stock-prompt-render-generator-and-fixture-coverage.md` — stock
+    `promptRender()` generator wrapping existing `generateRenderHandle()` +
+    `generatePayloadInterfaces()` helpers; `expected/prompts.ts` added to the
+    `template-prompt-simple` conformance fixture (cross-language).
+  - `2026-05-25-fr-param-passing-generated-repo-helpers-design.md` — **plan-of-record**
+    (brainstormed 2026-05-25): generated query helpers take `db` as a parameter
+    (Workers-compatible; matches the idiomatic 2026 ORM-helper shape). 0.7.0 hard break
+    on the queries-side only; `routesFile()` unchanged; consumer-facing docs recipe
+    bundled at `docs/recipes/wiring-generated-queries.md`. Cross-language principle
+    captured in `spec/decisions/ADR-0008-parameter-passing-generated-repo-helpers.md`.
+  - `2026-05-25-fr-cloudflare-workers-deploy-recipe.md` — README recipe for Vite + Workers
+    deploy. TS-only.
+  - `2026-05-25-fr-release-notes-and-naming-convention-docs.md` — `CHANGELOG.md` backfill
+    + camelCase TS ↔ snake_case SQL mapping docs. TS docs.
+  - **FR5 family — actionable loader errors** (brainstormed 2026-05-25). ADR-0009
+    (`spec/decisions/ADR-0009-loader-error-envelope-and-source-on-node.md`) is the
+    cross-language contract: every error carries a `{ code, message, source }`
+    envelope; every metadata node carries `source` on the class itself (mutated only
+    on real semantic change; duplicate declarations emit a warning). Per error class:
+    - `2026-05-25-fr5a-json-shape-loader-errors.md` — **plan-of-record**, coordinated
+      TS/C#/Java/Python landing. JSON-shape errors + envelope foundation + source-on-node.
+    - `2026-05-25-fr5b-yaml-loader-source-positions.md` — sketch. YAML authoring
+      positions via desugar source-map.
+    - `2026-05-25-fr5c-multi-file-merge-error-attribution.md` — sketch. Multi-file
+      overlay conflict attribution + `WARN_DUPLICATE_DECLARATION`.
+    - `2026-05-25-fr5d-reference-resolution-errors.md` — sketch. `extends`/`@via`/
+      `@objectRef`/`@payloadRef` resolution failures with referrer + target.
+    - `2026-05-25-fr5e-database-source-errors.md` — forward-looking. Gated on FR-003.
+  - `2026-05-25-fr-template-output-codegen-pipeline-design.md` — design proposal:
+    structured-output codegen for `template.output` to parity with `template.prompt`.
+    Cross-language vocabulary; per-port codegen.
 - **H4 — TS codegen Java target** (2-3 wk)
   Refactor TS codegen to pluggable targets; Java target emits Spring JDBC DAOs, Spring MVC controllers, POJOs.
 - **H5 — First Java consumer migration** (3-4 wk)

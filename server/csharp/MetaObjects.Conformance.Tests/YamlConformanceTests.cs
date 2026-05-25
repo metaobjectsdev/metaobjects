@@ -326,7 +326,7 @@ public class YamlConformanceTests
         // post-passes apply (single-source load of the YAML input).
         var loader2 = new MetaDataLoader(registry);
         var loadResult2 = loader2.Load(new[] {
-            (IMetaDataSource)new InMemorySource(yaml, "input.yaml", MetaDataFormat.Yaml)
+            (IMetaDataSource)new InMemoryStringSource(yaml, "input.yaml", MetaDataFormat.Yaml)
         });
         if (loadResult2.Errors.Count > 0)
         {

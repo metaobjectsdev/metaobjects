@@ -13,7 +13,7 @@ namespace MetaObjects.Conformance.Tests;
 public class ValidationTests
 {
     private static LoadResult Load(string fixture) =>
-        new FileMetaDataLoader().LoadDirectory(
+        MetaDataLoader.FromDirectory(
             System.IO.Path.Combine(CorpusRoot.Path, fixture, "input"));
 
     [Fact]
@@ -41,7 +41,7 @@ public class ValidationTests
 
     private static LoadResult LoadInline(string json)
     {
-        var src = new InMemorySource(json, id: "inline.json");
+        var src = new InMemoryStringSource(json, id: "inline.json");
         return new MetaDataLoader().Load([src]);
     }
 

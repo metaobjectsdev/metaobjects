@@ -52,7 +52,7 @@ public static class ConformanceAdapter
             .ToList();
 
         var registry = Provider.ComposeRegistry(resolved);
-        var result = new FileMetaDataLoader(registry).LoadDirectory(inputDir);
+        var result = MetaDataLoader.FromDirectory(inputDir, registry);
 
         return new LoadOutcome(
             result.Root,

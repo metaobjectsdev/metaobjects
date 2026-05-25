@@ -22,11 +22,7 @@ public sealed class FileSource : IMetaDataSource
     {
         FilePath = path;
         Id = System.IO.Path.GetFileName(path);
-        string ext = System.IO.Path.GetExtension(path);
-        Format = ext.Equals(".yaml", StringComparison.OrdinalIgnoreCase)
-                 || ext.Equals(".yml", StringComparison.OrdinalIgnoreCase)
-            ? MetaDataFormat.Yaml
-            : MetaDataFormat.Json;
+        Format = MetaDataFormats.InferFromExtension(path);
     }
 
     /// <summary>

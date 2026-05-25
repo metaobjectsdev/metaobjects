@@ -19,7 +19,7 @@ public class CommonAttrsTests
 
     private static LoadResult LoadInline(string json, TypeRegistry? registry = null)
     {
-        var src = new InMemorySource(json, id: "inline.json");
+        var src = new InMemoryStringSource(json, id: "inline.json");
         return registry is null
             ? new MetaDataLoader().Load([src])
             : new MetaDataLoader(registry).Load([src]);

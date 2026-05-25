@@ -27,28 +27,27 @@ public class LoaderTests
     {
         // The base pipeline takes sources directly — no filesystem knowledge.
         const string json = "{\"metadata.root\":{\"children\":[{\"object.entity\":{\"name\":\"W\"}}]}}";
-        var src = new InMemorySource(json, id: "inline.json");
+        var src = new InMemoryStringSource(json, id: "inline.json");
         var result = new MetaDataLoader().Load([src]);
         Assert.Empty(result.Errors);
         Assert.NotNull(result.Root.OwnChildByName("W"));
     }
 
     [Fact]
-    public void FileMetaDataLoader_discovers_and_merges_a_directory()
+    public void FromDirectory_discovers_and_merges_a_directory()
     {
-        var loader = new FileMetaDataLoader();
-        var result = loader.LoadDirectory(
+        var result = MetaDataLoader.FromDirectory(
             System.IO.Path.Combine(Corpus, "loader-basic-single-entity", "input"));
         Assert.Empty(result.Errors);
-        Assert.Equal("loaded", loader.State);
+        Assert.NotNull(result.Root);
     }
 
     [Fact]
-    public void FileMetaDataLoader_directory_read_failure_collects_error_and_state_is_error()
+    public void FromDirectory_read_failure_collects_error_on_synthetic_root()
     {
-        var loader = new FileMetaDataLoader();
-        var result = loader.LoadDirectory("/nonexistent/path/that/does/not/exist");
+        var result = MetaDataLoader.FromDirectory("/nonexistent/path/that/does/not/exist");
         Assert.NotEmpty(result.Errors);
-        Assert.Equal("error", loader.State);
+        Assert.NotNull(result.Root);
+        Assert.Equal("error", result.State);
     }
 }
