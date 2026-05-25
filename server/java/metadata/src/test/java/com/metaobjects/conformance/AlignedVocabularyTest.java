@@ -15,14 +15,20 @@ import static org.junit.Assert.*;
 
 /**
  * WA5 gate: the aligned cross-language vocabulary (object.entity/value +
- * source.rdb + @kind/@role + origin.* + camelCase) loads and canonical-
- * round-trips byte-faithfully in Java.
+ * source.rdb + @kind/@role + origin.passthrough + camelCase) loads and
+ * canonical-round-trips byte-faithfully in Java. Negatively asserts that
+ * none of the retired vocabulary (source.dbTable/dbView, object.pojo/map/
+ * proxy, @javaRuntime) leaks back into canonical output.
+ *
+ * <p>Scope note: only {@code origin.passthrough} is exercised here; the
+ * other origin subtypes ({@code origin.aggregate}, {@code origin.collection})
+ * are covered by their own conformance corpus fixtures.</p>
  */
 public class AlignedVocabularyTest extends SharedRegistryTestBase {
 
     private static final String FIXTURE = "{ \"metadata.root\": { \"package\": \"acme::commerce\", \"children\": [" +
         "  { \"object.entity\": { \"name\": \"Program\", \"children\": [" +
-        "    { \"source.rdb\":   { \"@table\": \"programs\" } }," +
+        "    { \"source.rdb\":   { \"@role\": \"primary\", \"@table\": \"programs\" } }," +
         "    { \"field.long\":   { \"name\": \"id\" } }," +
         "    { \"field.string\": { \"name\": \"title\" } }," +
         "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
@@ -59,6 +65,7 @@ public class AlignedVocabularyTest extends SharedRegistryTestBase {
         assertTrue("expected source.rdb",    json.contains("\"source.rdb\""));
         assertTrue("expected origin.passthrough", json.contains("\"origin.passthrough\""));
         assertTrue("expected @kind: view",   json.contains("\"@kind\": \"view\""));
+        assertTrue("expected @role: primary",json.contains("\"@role\": \"primary\""));
         assertTrue("expected @role: replica",json.contains("\"@role\": \"replica\""));
         assertTrue("expected @table",        json.contains("\"@table\""));
         assertTrue("expected @from",         json.contains("\"@from\""));
