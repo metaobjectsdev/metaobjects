@@ -3,22 +3,23 @@
 // Customize via Order.extra.ts in this directory (additional queries, custom logic).
 import { eq, sql } from "drizzle-orm";
 
-import { db } from "../../../db";
-import { type Order, OrderInsertSchema, orders } from "./Order";
-const findOrderByIdBase = db
-  .select()
-  .from(orders)
-  .where(eq(orders.id, sql.placeholder("id")));
-const findOrderByIdPrepared = findOrderByIdBase.prepare();
+import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
+type Db = BaseSQLiteDatabase<"async", Record<string, never>>;
 
-export async function findOrderById(id: number): Promise<Order | null> {
+import { type Order, OrderInsertSchema, orders } from "./Order";
+export async function findOrderById(db: Db, id: number): Promise<Order | null> {
+  const findOrderByIdBase = db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, sql.placeholder("id")));
+  const findOrderByIdPrepared = findOrderByIdBase.prepare();
   const [order] = await findOrderByIdPrepared.execute({ id });
   return order ?? null;
 }
-export async function listOrders(opts?: {
-  limit?: number;
-  offset?: number;
-}): Promise<Order[]> {
+export async function listOrders(
+  db: Db,
+  opts?: { limit?: number; offset?: number },
+): Promise<Order[]> {
   let q = db.select().from(orders).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -28,12 +29,13 @@ export async function listOrders(opts?: {
   }
   return q;
 }
-export async function createOrder(data: unknown): Promise<Order> {
+export async function createOrder(db: Db, data: unknown): Promise<Order> {
   const validated = OrderInsertSchema.parse(data);
   const [order] = await db.insert(orders).values(validated).returning();
   return order!;
 }
 export async function updateOrder(
+  db: Db,
   id: number,
   data: unknown,
 ): Promise<Order | null> {
@@ -45,7 +47,7 @@ export async function updateOrder(
     .returning();
   return order ?? null;
 }
-export async function deleteOrderById(id: number): Promise<boolean> {
+export async function deleteOrderById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
   const deleted = await db.delete(orders).where(eq(orders.id, id)).returning();

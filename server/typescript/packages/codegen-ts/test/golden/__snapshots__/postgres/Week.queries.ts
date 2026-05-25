@@ -3,22 +3,23 @@
 // Customize via Week.extra.ts in this directory (additional queries, custom logic).
 import { eq, sql } from "drizzle-orm";
 
-import { db } from "~/server/db";
-import { type Week, WeekInsertSchema, weeks } from "./Week";
-const findWeekByIdBase = db
-  .select()
-  .from(weeks)
-  .where(eq(weeks.id, sql.placeholder("id")));
-const findWeekByIdPrepared = findWeekByIdBase.prepare("find_week_by_id");
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+type Db = NodePgDatabase<Record<string, never>>;
 
-export async function findWeekById(id: number): Promise<Week | null> {
+import { type Week, WeekInsertSchema, weeks } from "./Week";
+export async function findWeekById(db: Db, id: number): Promise<Week | null> {
+  const findWeekByIdBase = db
+    .select()
+    .from(weeks)
+    .where(eq(weeks.id, sql.placeholder("id")));
+  const findWeekByIdPrepared = findWeekByIdBase.prepare("find_week_by_id");
   const [week] = await findWeekByIdPrepared.execute({ id });
   return week ?? null;
 }
-export async function listWeeks(opts?: {
-  limit?: number;
-  offset?: number;
-}): Promise<Week[]> {
+export async function listWeeks(
+  db: Db,
+  opts?: { limit?: number; offset?: number },
+): Promise<Week[]> {
   let q = db.select().from(weeks).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -28,12 +29,13 @@ export async function listWeeks(opts?: {
   }
   return q;
 }
-export async function createWeek(data: unknown): Promise<Week> {
+export async function createWeek(db: Db, data: unknown): Promise<Week> {
   const validated = WeekInsertSchema.parse(data);
   const [week] = await db.insert(weeks).values(validated).returning();
   return week!;
 }
 export async function updateWeek(
+  db: Db,
   id: number,
   data: unknown,
 ): Promise<Week | null> {
@@ -45,7 +47,7 @@ export async function updateWeek(
     .returning();
   return week ?? null;
 }
-export async function deleteWeekById(id: number): Promise<boolean> {
+export async function deleteWeekById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
   const deleted = await db.delete(weeks).where(eq(weeks.id, id)).returning();

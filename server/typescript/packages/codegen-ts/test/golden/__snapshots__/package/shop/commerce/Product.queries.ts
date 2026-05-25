@@ -3,22 +3,26 @@
 // Customize via Product.extra.ts in this directory (additional queries, custom logic).
 import { eq, sql } from "drizzle-orm";
 
-import { db } from "../../../db";
-import { type Product, ProductInsertSchema, products } from "./Product";
-const findProductByIdBase = db
-  .select()
-  .from(products)
-  .where(eq(products.id, sql.placeholder("id")));
-const findProductByIdPrepared = findProductByIdBase.prepare();
+import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
+type Db = BaseSQLiteDatabase<"async", Record<string, never>>;
 
-export async function findProductById(id: number): Promise<Product | null> {
+import { type Product, ProductInsertSchema, products } from "./Product";
+export async function findProductById(
+  db: Db,
+  id: number,
+): Promise<Product | null> {
+  const findProductByIdBase = db
+    .select()
+    .from(products)
+    .where(eq(products.id, sql.placeholder("id")));
+  const findProductByIdPrepared = findProductByIdBase.prepare();
   const [product] = await findProductByIdPrepared.execute({ id });
   return product ?? null;
 }
-export async function listProducts(opts?: {
-  limit?: number;
-  offset?: number;
-}): Promise<Product[]> {
+export async function listProducts(
+  db: Db,
+  opts?: { limit?: number; offset?: number },
+): Promise<Product[]> {
   let q = db.select().from(products).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -28,12 +32,13 @@ export async function listProducts(opts?: {
   }
   return q;
 }
-export async function createProduct(data: unknown): Promise<Product> {
+export async function createProduct(db: Db, data: unknown): Promise<Product> {
   const validated = ProductInsertSchema.parse(data);
   const [product] = await db.insert(products).values(validated).returning();
   return product!;
 }
 export async function updateProduct(
+  db: Db,
   id: number,
   data: unknown,
 ): Promise<Product | null> {
@@ -45,7 +50,7 @@ export async function updateProduct(
     .returning();
   return product ?? null;
 }
-export async function deleteProductById(id: number): Promise<boolean> {
+export async function deleteProductById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
   const deleted = await db

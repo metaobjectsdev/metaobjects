@@ -3,22 +3,26 @@
 // Customize via Customer.extra.ts in this directory (additional queries, custom logic).
 import { eq, sql } from "drizzle-orm";
 
-import { db } from "../../../db";
-import { type Customer, CustomerInsertSchema, customers } from "./Customer";
-const findCustomerByIdBase = db
-  .select()
-  .from(customers)
-  .where(eq(customers.id, sql.placeholder("id")));
-const findCustomerByIdPrepared = findCustomerByIdBase.prepare();
+import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
+type Db = BaseSQLiteDatabase<"async", Record<string, never>>;
 
-export async function findCustomerById(id: number): Promise<Customer | null> {
+import { type Customer, CustomerInsertSchema, customers } from "./Customer";
+export async function findCustomerById(
+  db: Db,
+  id: number,
+): Promise<Customer | null> {
+  const findCustomerByIdBase = db
+    .select()
+    .from(customers)
+    .where(eq(customers.id, sql.placeholder("id")));
+  const findCustomerByIdPrepared = findCustomerByIdBase.prepare();
   const [customer] = await findCustomerByIdPrepared.execute({ id });
   return customer ?? null;
 }
-export async function listCustomers(opts?: {
-  limit?: number;
-  offset?: number;
-}): Promise<Customer[]> {
+export async function listCustomers(
+  db: Db,
+  opts?: { limit?: number; offset?: number },
+): Promise<Customer[]> {
   let q = db.select().from(customers).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -28,12 +32,13 @@ export async function listCustomers(opts?: {
   }
   return q;
 }
-export async function createCustomer(data: unknown): Promise<Customer> {
+export async function createCustomer(db: Db, data: unknown): Promise<Customer> {
   const validated = CustomerInsertSchema.parse(data);
   const [customer] = await db.insert(customers).values(validated).returning();
   return customer!;
 }
 export async function updateCustomer(
+  db: Db,
   id: number,
   data: unknown,
 ): Promise<Customer | null> {
@@ -45,7 +50,7 @@ export async function updateCustomer(
     .returning();
   return customer ?? null;
 }
-export async function deleteCustomerById(id: number): Promise<boolean> {
+export async function deleteCustomerById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
   const deleted = await db

@@ -3,22 +3,23 @@
 // Customize via Video.extra.ts in this directory (additional queries, custom logic).
 import { eq, sql } from "drizzle-orm";
 
-import { db } from "~/server/db";
-import { type Video, VideoInsertSchema, videos } from "./Video";
-const findVideoByIdBase = db
-  .select()
-  .from(videos)
-  .where(eq(videos.id, sql.placeholder("id")));
-const findVideoByIdPrepared = findVideoByIdBase.prepare();
+import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
+type Db = BaseSQLiteDatabase<"async", Record<string, never>>;
 
-export async function findVideoById(id: number): Promise<Video | null> {
+import { type Video, VideoInsertSchema, videos } from "./Video";
+export async function findVideoById(db: Db, id: number): Promise<Video | null> {
+  const findVideoByIdBase = db
+    .select()
+    .from(videos)
+    .where(eq(videos.id, sql.placeholder("id")));
+  const findVideoByIdPrepared = findVideoByIdBase.prepare();
   const [video] = await findVideoByIdPrepared.execute({ id });
   return video ?? null;
 }
-export async function listVideos(opts?: {
-  limit?: number;
-  offset?: number;
-}): Promise<Video[]> {
+export async function listVideos(
+  db: Db,
+  opts?: { limit?: number; offset?: number },
+): Promise<Video[]> {
   let q = db.select().from(videos).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -28,12 +29,13 @@ export async function listVideos(opts?: {
   }
   return q;
 }
-export async function createVideo(data: unknown): Promise<Video> {
+export async function createVideo(db: Db, data: unknown): Promise<Video> {
   const validated = VideoInsertSchema.parse(data);
   const [video] = await db.insert(videos).values(validated).returning();
   return video!;
 }
 export async function updateVideo(
+  db: Db,
   id: number,
   data: unknown,
 ): Promise<Video | null> {
@@ -45,7 +47,7 @@ export async function updateVideo(
     .returning();
   return video ?? null;
 }
-export async function deleteVideoById(id: number): Promise<boolean> {
+export async function deleteVideoById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
   const deleted = await db.delete(videos).where(eq(videos.id, id)).returning();

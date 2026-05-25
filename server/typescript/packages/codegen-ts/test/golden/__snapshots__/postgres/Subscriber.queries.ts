@@ -3,30 +3,32 @@
 // Customize via Subscriber.extra.ts in this directory (additional queries, custom logic).
 import { eq, sql } from "drizzle-orm";
 
-import { db } from "~/server/db";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+type Db = NodePgDatabase<Record<string, never>>;
+
 import {
   type Subscriber,
   SubscriberInsertSchema,
   subscribers,
 } from "./Subscriber";
-const findSubscriberByIdBase = db
-  .select()
-  .from(subscribers)
-  .where(eq(subscribers.id, sql.placeholder("id")));
-const findSubscriberByIdPrepared = findSubscriberByIdBase.prepare(
-  "find_subscriber_by_id",
-);
-
 export async function findSubscriberById(
+  db: Db,
   id: number,
 ): Promise<Subscriber | null> {
+  const findSubscriberByIdBase = db
+    .select()
+    .from(subscribers)
+    .where(eq(subscribers.id, sql.placeholder("id")));
+  const findSubscriberByIdPrepared = findSubscriberByIdBase.prepare(
+    "find_subscriber_by_id",
+  );
   const [subscriber] = await findSubscriberByIdPrepared.execute({ id });
   return subscriber ?? null;
 }
-export async function listSubscribers(opts?: {
-  limit?: number;
-  offset?: number;
-}): Promise<Subscriber[]> {
+export async function listSubscribers(
+  db: Db,
+  opts?: { limit?: number; offset?: number },
+): Promise<Subscriber[]> {
   let q = db.select().from(subscribers).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -36,7 +38,10 @@ export async function listSubscribers(opts?: {
   }
   return q;
 }
-export async function createSubscriber(data: unknown): Promise<Subscriber> {
+export async function createSubscriber(
+  db: Db,
+  data: unknown,
+): Promise<Subscriber> {
   const validated = SubscriberInsertSchema.parse(data);
   const [subscriber] = await db
     .insert(subscribers)
@@ -45,6 +50,7 @@ export async function createSubscriber(data: unknown): Promise<Subscriber> {
   return subscriber!;
 }
 export async function updateSubscriber(
+  db: Db,
   id: number,
   data: unknown,
 ): Promise<Subscriber | null> {
@@ -56,7 +62,10 @@ export async function updateSubscriber(
     .returning();
   return subscriber ?? null;
 }
-export async function deleteSubscriberById(id: number): Promise<boolean> {
+export async function deleteSubscriberById(
+  db: Db,
+  id: number,
+): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
   const deleted = await db

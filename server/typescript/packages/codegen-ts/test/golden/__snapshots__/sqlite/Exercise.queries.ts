@@ -3,22 +3,26 @@
 // Customize via Exercise.extra.ts in this directory (additional queries, custom logic).
 import { eq, sql } from "drizzle-orm";
 
-import { db } from "~/server/db";
-import { type Exercise, ExerciseInsertSchema, exercises } from "./Exercise";
-const findExerciseByIdBase = db
-  .select()
-  .from(exercises)
-  .where(eq(exercises.id, sql.placeholder("id")));
-const findExerciseByIdPrepared = findExerciseByIdBase.prepare();
+import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
+type Db = BaseSQLiteDatabase<"async", Record<string, never>>;
 
-export async function findExerciseById(id: number): Promise<Exercise | null> {
+import { type Exercise, ExerciseInsertSchema, exercises } from "./Exercise";
+export async function findExerciseById(
+  db: Db,
+  id: number,
+): Promise<Exercise | null> {
+  const findExerciseByIdBase = db
+    .select()
+    .from(exercises)
+    .where(eq(exercises.id, sql.placeholder("id")));
+  const findExerciseByIdPrepared = findExerciseByIdBase.prepare();
   const [exercise] = await findExerciseByIdPrepared.execute({ id });
   return exercise ?? null;
 }
-export async function listExercises(opts?: {
-  limit?: number;
-  offset?: number;
-}): Promise<Exercise[]> {
+export async function listExercises(
+  db: Db,
+  opts?: { limit?: number; offset?: number },
+): Promise<Exercise[]> {
   let q = db.select().from(exercises).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -28,12 +32,13 @@ export async function listExercises(opts?: {
   }
   return q;
 }
-export async function createExercise(data: unknown): Promise<Exercise> {
+export async function createExercise(db: Db, data: unknown): Promise<Exercise> {
   const validated = ExerciseInsertSchema.parse(data);
   const [exercise] = await db.insert(exercises).values(validated).returning();
   return exercise!;
 }
 export async function updateExercise(
+  db: Db,
   id: number,
   data: unknown,
 ): Promise<Exercise | null> {
@@ -45,7 +50,7 @@ export async function updateExercise(
     .returning();
   return exercise ?? null;
 }
-export async function deleteExerciseById(id: number): Promise<boolean> {
+export async function deleteExerciseById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
   const deleted = await db

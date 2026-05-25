@@ -3,22 +3,26 @@
 // Customize via Purchase.extra.ts in this directory (additional queries, custom logic).
 import { eq, sql } from "drizzle-orm";
 
-import { db } from "~/server/db";
-import { type Purchase, PurchaseInsertSchema, purchases } from "./Purchase";
-const findPurchaseByIdBase = db
-  .select()
-  .from(purchases)
-  .where(eq(purchases.id, sql.placeholder("id")));
-const findPurchaseByIdPrepared = findPurchaseByIdBase.prepare();
+import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
+type Db = BaseSQLiteDatabase<"async", Record<string, never>>;
 
-export async function findPurchaseById(id: number): Promise<Purchase | null> {
+import { type Purchase, PurchaseInsertSchema, purchases } from "./Purchase";
+export async function findPurchaseById(
+  db: Db,
+  id: number,
+): Promise<Purchase | null> {
+  const findPurchaseByIdBase = db
+    .select()
+    .from(purchases)
+    .where(eq(purchases.id, sql.placeholder("id")));
+  const findPurchaseByIdPrepared = findPurchaseByIdBase.prepare();
   const [purchase] = await findPurchaseByIdPrepared.execute({ id });
   return purchase ?? null;
 }
-export async function listPurchases(opts?: {
-  limit?: number;
-  offset?: number;
-}): Promise<Purchase[]> {
+export async function listPurchases(
+  db: Db,
+  opts?: { limit?: number; offset?: number },
+): Promise<Purchase[]> {
   let q = db.select().from(purchases).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -28,12 +32,13 @@ export async function listPurchases(opts?: {
   }
   return q;
 }
-export async function createPurchase(data: unknown): Promise<Purchase> {
+export async function createPurchase(db: Db, data: unknown): Promise<Purchase> {
   const validated = PurchaseInsertSchema.parse(data);
   const [purchase] = await db.insert(purchases).values(validated).returning();
   return purchase!;
 }
 export async function updatePurchase(
+  db: Db,
   id: number,
   data: unknown,
 ): Promise<Purchase | null> {
@@ -45,7 +50,7 @@ export async function updatePurchase(
     .returning();
   return purchase ?? null;
 }
-export async function deletePurchaseById(id: number): Promise<boolean> {
+export async function deletePurchaseById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
   const deleted = await db

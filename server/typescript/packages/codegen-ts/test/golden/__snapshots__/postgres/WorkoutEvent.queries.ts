@@ -3,30 +3,32 @@
 // Customize via WorkoutEvent.extra.ts in this directory (additional queries, custom logic).
 import { eq, sql } from "drizzle-orm";
 
-import { db } from "~/server/db";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+type Db = NodePgDatabase<Record<string, never>>;
+
 import {
   type WorkoutEvent,
   WorkoutEventInsertSchema,
   workoutEvents,
 } from "./WorkoutEvent";
-const findWorkoutEventByIdBase = db
-  .select()
-  .from(workoutEvents)
-  .where(eq(workoutEvents.id, sql.placeholder("id")));
-const findWorkoutEventByIdPrepared = findWorkoutEventByIdBase.prepare(
-  "find_workout_event_by_id",
-);
-
 export async function findWorkoutEventById(
+  db: Db,
   id: number,
 ): Promise<WorkoutEvent | null> {
+  const findWorkoutEventByIdBase = db
+    .select()
+    .from(workoutEvents)
+    .where(eq(workoutEvents.id, sql.placeholder("id")));
+  const findWorkoutEventByIdPrepared = findWorkoutEventByIdBase.prepare(
+    "find_workout_event_by_id",
+  );
   const [workoutEvent] = await findWorkoutEventByIdPrepared.execute({ id });
   return workoutEvent ?? null;
 }
-export async function listWorkoutEvents(opts?: {
-  limit?: number;
-  offset?: number;
-}): Promise<WorkoutEvent[]> {
+export async function listWorkoutEvents(
+  db: Db,
+  opts?: { limit?: number; offset?: number },
+): Promise<WorkoutEvent[]> {
   let q = db.select().from(workoutEvents).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -36,7 +38,10 @@ export async function listWorkoutEvents(opts?: {
   }
   return q;
 }
-export async function createWorkoutEvent(data: unknown): Promise<WorkoutEvent> {
+export async function createWorkoutEvent(
+  db: Db,
+  data: unknown,
+): Promise<WorkoutEvent> {
   const validated = WorkoutEventInsertSchema.parse(data);
   const [workoutEvent] = await db
     .insert(workoutEvents)
@@ -45,6 +50,7 @@ export async function createWorkoutEvent(data: unknown): Promise<WorkoutEvent> {
   return workoutEvent!;
 }
 export async function updateWorkoutEvent(
+  db: Db,
   id: number,
   data: unknown,
 ): Promise<WorkoutEvent | null> {
@@ -56,7 +62,10 @@ export async function updateWorkoutEvent(
     .returning();
   return workoutEvent ?? null;
 }
-export async function deleteWorkoutEventById(id: number): Promise<boolean> {
+export async function deleteWorkoutEventById(
+  db: Db,
+  id: number,
+): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
   const deleted = await db

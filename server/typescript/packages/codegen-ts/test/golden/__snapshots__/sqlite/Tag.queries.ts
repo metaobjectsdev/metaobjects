@@ -3,22 +3,23 @@
 // Customize via Tag.extra.ts in this directory (additional queries, custom logic).
 import { eq, sql } from "drizzle-orm";
 
-import { db } from "~/server/db";
-import { type Tag, TagInsertSchema, tags } from "./Tag";
-const findTagByIdBase = db
-  .select()
-  .from(tags)
-  .where(eq(tags.id, sql.placeholder("id")));
-const findTagByIdPrepared = findTagByIdBase.prepare();
+import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
+type Db = BaseSQLiteDatabase<"async", Record<string, never>>;
 
-export async function findTagById(id: number): Promise<Tag | null> {
+import { type Tag, TagInsertSchema, tags } from "./Tag";
+export async function findTagById(db: Db, id: number): Promise<Tag | null> {
+  const findTagByIdBase = db
+    .select()
+    .from(tags)
+    .where(eq(tags.id, sql.placeholder("id")));
+  const findTagByIdPrepared = findTagByIdBase.prepare();
   const [tag] = await findTagByIdPrepared.execute({ id });
   return tag ?? null;
 }
-export async function listTags(opts?: {
-  limit?: number;
-  offset?: number;
-}): Promise<Tag[]> {
+export async function listTags(
+  db: Db,
+  opts?: { limit?: number; offset?: number },
+): Promise<Tag[]> {
   let q = db.select().from(tags).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -28,12 +29,13 @@ export async function listTags(opts?: {
   }
   return q;
 }
-export async function createTag(data: unknown): Promise<Tag> {
+export async function createTag(db: Db, data: unknown): Promise<Tag> {
   const validated = TagInsertSchema.parse(data);
   const [tag] = await db.insert(tags).values(validated).returning();
   return tag!;
 }
 export async function updateTag(
+  db: Db,
   id: number,
   data: unknown,
 ): Promise<Tag | null> {
@@ -45,7 +47,7 @@ export async function updateTag(
     .returning();
   return tag ?? null;
 }
-export async function deleteTagById(id: number): Promise<boolean> {
+export async function deleteTagById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
   const deleted = await db.delete(tags).where(eq(tags.id, id)).returning();

@@ -3,22 +3,26 @@
 // Customize via Program.extra.ts in this directory (additional queries, custom logic).
 import { eq, sql } from "drizzle-orm";
 
-import { db } from "~/server/db";
-import { type Program, ProgramInsertSchema, programs } from "./Program";
-const findProgramByIdBase = db
-  .select()
-  .from(programs)
-  .where(eq(programs.id, sql.placeholder("id")));
-const findProgramByIdPrepared = findProgramByIdBase.prepare();
+import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
+type Db = BaseSQLiteDatabase<"async", Record<string, never>>;
 
-export async function findProgramById(id: number): Promise<Program | null> {
+import { type Program, ProgramInsertSchema, programs } from "./Program";
+export async function findProgramById(
+  db: Db,
+  id: number,
+): Promise<Program | null> {
+  const findProgramByIdBase = db
+    .select()
+    .from(programs)
+    .where(eq(programs.id, sql.placeholder("id")));
+  const findProgramByIdPrepared = findProgramByIdBase.prepare();
   const [program] = await findProgramByIdPrepared.execute({ id });
   return program ?? null;
 }
-export async function listPrograms(opts?: {
-  limit?: number;
-  offset?: number;
-}): Promise<Program[]> {
+export async function listPrograms(
+  db: Db,
+  opts?: { limit?: number; offset?: number },
+): Promise<Program[]> {
   let q = db.select().from(programs).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -28,12 +32,13 @@ export async function listPrograms(opts?: {
   }
   return q;
 }
-export async function createProgram(data: unknown): Promise<Program> {
+export async function createProgram(db: Db, data: unknown): Promise<Program> {
   const validated = ProgramInsertSchema.parse(data);
   const [program] = await db.insert(programs).values(validated).returning();
   return program!;
 }
 export async function updateProgram(
+  db: Db,
   id: number,
   data: unknown,
 ): Promise<Program | null> {
@@ -45,7 +50,7 @@ export async function updateProgram(
     .returning();
   return program ?? null;
 }
-export async function deleteProgramById(id: number): Promise<boolean> {
+export async function deleteProgramById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
   const deleted = await db
