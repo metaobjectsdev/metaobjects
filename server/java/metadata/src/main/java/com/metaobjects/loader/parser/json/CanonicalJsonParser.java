@@ -102,10 +102,6 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      */
     public static final String JSON_ATTR_PREFIX = "@";
 
-    /** @deprecated use {@link #JSON_ATTR_PREFIX} */
-    @Deprecated
-    private static final String ATTR_PREFIX = JSON_ATTR_PREFIX;
-
     /** All reserved body keys — keys handled structurally (not as @-attrs). */
     private static final List<String> RESERVED_KEYS = Arrays.asList(
         KEY_NAME, KEY_PACKAGE, KEY_EXTENDS, KEY_ABSTRACT, KEY_OVERLAY,
@@ -546,7 +542,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                 continue;
             }
 
-            if (!key.startsWith(ATTR_PREFIX)) {
+            if (!key.startsWith(JSON_ATTR_PREFIX)) {
                 // Non-reserved, non-@-prefixed key — warn and skip
                 log.warn("Unknown key '{}' on node [{}:{}:{}] in file [{}] — " +
                     "must be reserved or @-prefixed",
@@ -555,7 +551,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             }
 
             // Strip the @ prefix
-            String attrName = key.substring(ATTR_PREFIX.length());
+            String attrName = key.substring(JSON_ATTR_PREFIX.length());
 
             // ADR-0006 §D1: reserved structural keywords must be written bare in canonical JSON.
             // Writing them as @-prefixed attributes (e.g. @isArray, @name) is unconditionally
@@ -564,7 +560,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_RESERVED_ATTR
                         + ": reserved structural key '" + attrName + "' must not be "
-                        + ATTR_PREFIX + "-prefixed on " + md.getType() + "." + md.getSubType()
+                        + JSON_ATTR_PREFIX + "-prefixed on " + md.getType() + "." + md.getSubType()
                         + " '" + md.getName() + "' in file [" + getFilename() + "] — write it bare",
                     ErrorCode.ERR_RESERVED_ATTR);
             }

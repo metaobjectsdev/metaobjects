@@ -99,6 +99,13 @@ public class ConformanceTest {
      *
      * <p>Declared BEFORE {@link #AVAILABLE_PROVIDERS} so it is initialised first
      * (JLS §12.4 — class-init runs static fields top-to-bottom).</p>
+     *
+     * <p><strong>Maintenance caveat:</strong> if Java ever drops or renames one
+     * of the 8 backing provider ids below, the {@code metaobjects-core-types}
+     * alias will silently disappear from {@link #AVAILABLE_PROVIDERS} and any
+     * fixture requiring it will fail honestly (as a missing-provider gap, not a
+     * silent skip). Keep this list in sync with the actual provider IDs declared
+     * in {@code META-INF/services/com.metaobjects.registry.MetaDataTypeProvider}.</p>
      */
     private static final java.util.Map<String, List<String>> PROVIDER_ALIASES =
         java.util.Map.of(

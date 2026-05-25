@@ -86,6 +86,14 @@ public class MetaDataRegistry {
      */
     private final Map<String, CommonAttributeDef> commonAttributes = new ConcurrentHashMap<>();
 
+    /**
+     * Fully-global parent-key tier in {@link #globalRequirements} — matches any
+     * (parentType, parentSubType). Used by {@link #registerCommonAttribute} so
+     * common attrs surface on every node via {@link #acceptsChild} /
+     * {@link #getChildRequirements}.
+     */
+    private static final String UNIVERSAL_PARENT_KEY = "*.*";
+
     private volatile boolean initialized = false;
     
     /**
@@ -355,8 +363,8 @@ public class MetaDataRegistry {
             }
         }
 
-        // Check fully-global "*.*" requirements (common attributes on any node)
-        List<ChildRequirement> universalReqs = globalRequirements.get("*.*");
+        // Check fully-global universal requirements (common attributes on any node)
+        List<ChildRequirement> universalReqs = globalRequirements.get(UNIVERSAL_PARENT_KEY);
         if (universalReqs != null) {
             for (ChildRequirement req : universalReqs) {
                 if (req.matches(childType, childSubType, childName)) {
@@ -398,8 +406,8 @@ public class MetaDataRegistry {
             requirements.addAll(wildcardReqs);
         }
 
-        // Add fully-global "*.*" requirements (common attributes on any node)
-        List<ChildRequirement> universalReqs = globalRequirements.get("*.*");
+        // Add fully-global universal requirements (common attributes on any node)
+        List<ChildRequirement> universalReqs = globalRequirements.get(UNIVERSAL_PARENT_KEY);
         if (universalReqs != null) {
             requirements.addAll(universalReqs);
         }
@@ -493,8 +501,8 @@ public class MetaDataRegistry {
         CommonAttributeDef def = new CommonAttributeDef(name, valueType, isArray);
         commonAttributes.put(name, def);
 
-        // 1. Global ChildRequirement under "*.*" — makes acceptsChild() return true
-        //    for this attr on any (parentType, parentSubType) pair.
+        // 1. Global ChildRequirement under the UNIVERSAL_PARENT_KEY tier — makes
+        //    acceptsChild() return true for this attr on any (parentType, parentSubType) pair.
         ChildRequirement req = new ChildRequirement(name, MetaAttribute.TYPE_ATTR, valueType, false);
         addGlobalChildRequirement("*", "*", req);
 
@@ -554,14 +562,19 @@ public class MetaDataRegistry {
      * {@code null} is permitted (optional), bracketed or comma-delimited string
      * forms are permitted. The actual structured list value (post-desugar) is a
      * {@code List<?>} which we also accept.
+     *
+     * <p>The empty-string acceptance is the desugar-invariant case (not author
+     * input): the canonical bare-string desugar in CanonicalJsonParser may emit
+     * an empty token through {@code convertJsonArrayToCommaDelimited} for an
+     * empty JSON array {@code []}. Authored empty values arrive as {@code null}
+     * via the optional-attr path.</p>
      */
     private static boolean isArrayShapedValue(Object value) {
         if (value == null) return true; // optional
         if (value instanceof List<?>) return true;
-        if (value instanceof String) {
-            String s = (String) value;
+        if (value instanceof String s) {
             return (s.startsWith("[") && s.endsWith("]")) || s.contains(",")
-                || s.isEmpty(); // empty post-desugar
+                || s.isEmpty(); // empty post-desugar (see Javadoc)
         }
         return false;
     }

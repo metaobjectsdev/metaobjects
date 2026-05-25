@@ -10,6 +10,7 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.registry.CommonAttributeDef;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.TypeDefinition;
 import com.metaobjects.registry.ChildRequirement;
@@ -864,8 +865,7 @@ public abstract class BaseMetaDataParser {
         // honour its declared value subtype. Checked BEFORE the wildcard "attr,*"
         // fallback so a non-string common attr (e.g. a future boolean) is not
         // silently coerced to "string" by the open-policy default.
-        com.metaobjects.registry.CommonAttributeDef commonDef =
-            getTypeRegistry().getCommonAttribute(attrName);
+        CommonAttributeDef commonDef = getTypeRegistry().getCommonAttribute(attrName);
         if (commonDef != null) {
             return commonDef.valueType();
         }
