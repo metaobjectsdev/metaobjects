@@ -10,7 +10,7 @@ import {
   IDENTITY_SUBTYPE_PRIMARY,
   OBJECT_SUBTYPE_ENTITY,
   MetaDataLoader,
-  InMemorySource,
+  InMemoryStringSource,
 } from "@metaobjectsdev/metadata";
 import { meta, metaRoot, metaObject, metaField } from "../_meta-build.js";
 import { renderEntityConstants } from "../../src/templates/entity-constants.js";
@@ -84,7 +84,7 @@ async function loadProjectionFixture() {
       ],
     },
   });
-  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
   if (result.errors.length > 0) throw new Error(result.errors.map((e) => e.message).join("\n"));
   return result.root;
 }

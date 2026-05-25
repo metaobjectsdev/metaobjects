@@ -1,9 +1,9 @@
 // FileSource — a MetaDataSource backed by a file on disk. Server-side only
-// (touches node:fs); lives under src/core/ so the browser-safe root never
-// imports it.
+// (touches node:fs); lives under src/loader/sources/ alongside the other
+// MetaDataSource implementations.
 
 import { basename, extname } from "node:path";
-import type { MetaDataFormat, MetaDataSource } from "../loader/meta-data-source.js";
+import type { MetaDataFormat, MetaDataSource } from "../meta-data-source.js";
 
 /** Infer a source format from a file extension. `.yaml`/`.yml` → "yaml";
  *  everything else (including `.json`) → "json", the canonical default. */

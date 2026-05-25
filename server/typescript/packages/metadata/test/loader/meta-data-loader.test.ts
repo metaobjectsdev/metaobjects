@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../../src/loader/meta-data-source.js";
-import { FileSource } from "../../src/core/file-source.js";
+import { InMemoryStringSource } from "../../src/loader/meta-data-source.js";
+import { FileSource } from "../../src/loader/sources/file-source.js";
 import { MetaRoot } from "../../src/shared/meta-root.js";
 import { TypeRegistry } from "../../src/registry.js";
 import { ParseError } from "../../src/errors.js";
@@ -46,7 +46,7 @@ describe("MetaDataLoader.load() — happy path", () => {
   it("minimal metadata.root → state 'loaded', root is MetaRoot, no errors, no warnings", async () => {
     const loader = new MetaDataLoader();
     const result = await loader.load([
-      new InMemorySource('{"metadata.root":{"children":[]}}'),
+      new InMemoryStringSource('{"metadata.root":{"children":[]}}'),
     ]);
     expect(loader.state).toBe("loaded");
     expect(result.root).toBeInstanceOf(MetaRoot);
@@ -59,7 +59,7 @@ describe("MetaDataLoader.load() — happy path", () => {
   it("returns the root name when set", async () => {
     const loader = new MetaDataLoader();
     const { root } = await loader.load([
-      new InMemorySource('{"metadata.root":{"name":"myRoot"}}'),
+      new InMemoryStringSource('{"metadata.root":{"name":"myRoot"}}'),
     ]);
     expect(root.name).toBe("myRoot");
   });
@@ -67,7 +67,7 @@ describe("MetaDataLoader.load() — happy path", () => {
   it("root is frozen by default", async () => {
     const loader = new MetaDataLoader();
     const { root } = await loader.load([
-      new InMemorySource('{"metadata.root":{}}'),
+      new InMemoryStringSource('{"metadata.root":{}}'),
     ]);
     expect(root.isFrozen()).toBe(true);
   });
@@ -75,7 +75,7 @@ describe("MetaDataLoader.load() — happy path", () => {
   it("freeze: false leaves the root mutable", async () => {
     const loader = new MetaDataLoader({ freeze: false });
     const { root } = await loader.load([
-      new InMemorySource('{"metadata.root":{}}'),
+      new InMemoryStringSource('{"metadata.root":{}}'),
     ]);
     expect(root.isFrozen()).toBe(false);
   });
@@ -88,7 +88,7 @@ describe("MetaDataLoader.load() — happy path", () => {
         children: [{ "object.entity": { name: "Product" } }],
       },
     });
-    await loader.load([new InMemorySource(json)]);
+    await loader.load([new InMemoryStringSource(json)]);
     const found = loader.findByName("Product");
     expect(found).toBeDefined();
     expect(found!.name).toBe("Product");
@@ -105,7 +105,7 @@ describe("MetaDataLoader.load() — error handling", () => {
   it("malformed JSON source → errors non-empty, still returns a result", async () => {
     const loader = new MetaDataLoader();
     const result = await loader.load([
-      new InMemorySource("this is not json at all"),
+      new InMemoryStringSource("this is not json at all"),
     ]);
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.root).toBeInstanceOf(MetaRoot);
@@ -128,7 +128,7 @@ describe("MetaDataLoader.load() — error handling", () => {
         children: [{ "object.entity": { name: "Widget" } }],
       },
     });
-    const goodSource = new InMemorySource(goodJson, { id: "good.json" });
+    const goodSource = new InMemoryStringSource(goodJson, { id: "good.json" });
     const result = await loader.load([badSource, goodSource]);
     // The read error is collected
     expect(result.errors.length).toBeGreaterThan(0);
@@ -147,10 +147,10 @@ describe("MetaDataLoader.load() — error handling", () => {
 describe("MetaDataLoader.load() — one-shot guard", () => {
   it("calling load() twice throws on the second call", async () => {
     const loader = new MetaDataLoader();
-    await loader.load([new InMemorySource('{"metadata.root":{}}')]);
+    await loader.load([new InMemoryStringSource('{"metadata.root":{}}')]);
     expect(loader.state).toBe("loaded");
     await expect(
-      loader.load([new InMemorySource('{"metadata.root":{}}')]),
+      loader.load([new InMemoryStringSource('{"metadata.root":{}}')]),
     ).rejects.toThrow();
   });
 
@@ -161,7 +161,7 @@ describe("MetaDataLoader.load() — one-shot guard", () => {
     // Single failing source: read error collected, synthetic root created → state is deterministically "error"
     expect(loader.state).toBe("error");
     await expect(
-      loader.load([new InMemorySource('{"metadata.root":{}}')]),
+      loader.load([new InMemoryStringSource('{"metadata.root":{}}')]),
     ).rejects.toThrow();
   });
 });
@@ -173,7 +173,7 @@ describe("MetaDataLoader.load() — one-shot guard", () => {
 describe("MetaDataLoader.load() — multi-source merge", () => {
   it("two sources with different entities are both present after load", async () => {
     const loader = new MetaDataLoader();
-    const src1 = new InMemorySource(
+    const src1 = new InMemoryStringSource(
       JSON.stringify({
         "metadata.root": {
           package: "test",
@@ -182,7 +182,7 @@ describe("MetaDataLoader.load() — multi-source merge", () => {
       }),
       { id: "src1.json" },
     );
-    const src2 = new InMemorySource(
+    const src2 = new InMemoryStringSource(
       JSON.stringify({
         "metadata.root": {
           package: "test",
@@ -228,7 +228,7 @@ describe("MetaDataLoader — BOM-prefixed JSON", () => {
     const loader = new MetaDataLoader();
     // Prepend UTF-8 BOM (U+FEFF)
     const jsonWithBOM = "﻿" + JSON.stringify({ "metadata.root": { package: "bom-test" } });
-    const result = await loader.load([new InMemorySource(jsonWithBOM, { id: "bom.json" })]);
+    const result = await loader.load([new InMemoryStringSource(jsonWithBOM, { id: "bom.json" })]);
     expect(result.errors.length).toBe(0);
     expect(result.root.package).toBe("bom-test");
   });
@@ -269,7 +269,7 @@ describe("MetaDataLoader — warnings propagated from parser", () => {
     const json = JSON.stringify({
       "metadata.root": { package: "x", unknownKey: "val" },
     });
-    const result = await loader.load([new InMemorySource(json)]);
+    const result = await loader.load([new InMemoryStringSource(json)]);
     expect(result.errors.length).toBe(0);
     expect(result.warnings.length).toBeGreaterThan(0);
     expect(result.warnings[0]).toContain("unknownKey");
@@ -284,7 +284,7 @@ describe("MetaDataLoader — unresolvable super ref produces ParseError", () => 
         children: [{ "object.base": { name: "Widget", extends: "NonExistentBase" } }],
       },
     });
-    const result = await loader.load([new InMemorySource(json)]);
+    const result = await loader.load([new InMemoryStringSource(json)]);
     expect(result.errors.length).toBeGreaterThan(0);
     const parseErrors = result.errors.filter((e) => e instanceof ParseError);
     expect(parseErrors.length).toBeGreaterThan(0);
@@ -299,19 +299,19 @@ describe("MetaDataLoader — independent instances", () => {
     const loader1 = new MetaDataLoader();
     const loader2 = new MetaDataLoader();
     const json = '{"metadata.root":{}}';
-    const r1 = await loader1.load([new InMemorySource(json)]);
-    const r2 = await loader2.load([new InMemorySource(json)]);
+    const r1 = await loader1.load([new InMemoryStringSource(json)]);
+    const r2 = await loader2.load([new InMemoryStringSource(json)]);
     expect(r1.root.type).toBe(r2.root.type);
     expect(r1.errors.length).toBe(0);
     expect(r2.errors.length).toBe(0);
   });
 });
 
-describe("MetaDataLoader — InMemorySource id propagates to ParseError.source", () => {
+describe("MetaDataLoader — InMemoryStringSource id propagates to ParseError.source", () => {
   it("source id appears in ParseError.source when parse fails", async () => {
     const loader = new MetaDataLoader();
     const result = await loader.load([
-      new InMemorySource("not json", { id: "my-source.json" }),
+      new InMemoryStringSource("not json", { id: "my-source.json" }),
     ]);
     expect(result.errors.length).toBeGreaterThan(0);
     const pe = result.errors[0] as ParseError;

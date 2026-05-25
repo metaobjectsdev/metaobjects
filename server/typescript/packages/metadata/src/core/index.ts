@@ -5,7 +5,7 @@
 // load-and-export convenience. The root `@metaobjectsdev/metadata` entry is
 // browser-safe and imports none of this. See the package README.
 
-export { FileSource } from "./file-source.js";
+export { FileSource } from "../loader/sources/file-source.js";
 export { FileMetaDataLoader } from "./file-meta-data-loader.js";
 export { parseYaml } from "./parser-yaml.js";
 export { loadAndExportJson } from "./export-json.js";

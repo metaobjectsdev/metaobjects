@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import {
   isProjection,
   isWriteThrough,
@@ -9,7 +9,7 @@ async function loadObj(objNode: unknown) {
   const json = JSON.stringify({
     "metadata.root": { package: "test", children: [objNode] },
   });
-  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
   return result.root.objects()[0]!;
 }
 

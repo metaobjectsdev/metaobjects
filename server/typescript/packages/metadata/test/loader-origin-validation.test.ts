@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 
 // Wraps a list of top-level object/source/field nodes in a minimal metadata
 // envelope and loads them through the MetaDataLoader pipeline.
@@ -9,7 +9,7 @@ async function load(children: unknown[]) {
   const json = JSON.stringify({
     "metadata.root": { package: "test", children },
   });
-  const result = await loader.load([new InMemorySource(json)]);
+  const result = await loader.load([new InMemoryStringSource(json)]);
   return {
     errors: result.errors.map((e) => e.message),
     warnings: result.warnings,

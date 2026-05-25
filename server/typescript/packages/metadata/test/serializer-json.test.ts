@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { serializeJson, canonicalSerialize } from "../src/serializer-json.js";
 import { parseJson } from "../src/parser-json.js";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import type { MetaData } from "../src/shared/meta-data.js";
 import { MetaRoot } from "../src/shared/meta-root.js";
 import { MetaObject } from "../src/core/object/meta-object.js";
@@ -713,7 +713,7 @@ describe("canonicalSerialize — deterministic output for cross-language conform
       },
     });
     const loader = new MetaDataLoader();
-    const { root } = await loader.load([new InMemorySource(json)]);
+    const { root } = await loader.load([new InMemoryStringSource(json)]);
     const output = canonicalSerialize(root);
     // @alpha must appear before @mid which must appear before @zindex
     const aIdx = output.indexOf('"@alpha"');
@@ -726,14 +726,14 @@ describe("canonicalSerialize — deterministic output for cross-language conform
 
   it("appends a trailing newline", async () => {
     const loader = new MetaDataLoader();
-    const { root } = await loader.load([new InMemorySource('{"metadata.root":{}}')]);
+    const { root } = await loader.load([new InMemoryStringSource('{"metadata.root":{}}')]);
     const output = canonicalSerialize(root);
     expect(output.endsWith("\n")).toBe(true);
   });
 
   it("uses 2-space indent", async () => {
     const loader = new MetaDataLoader();
-    const { root } = await loader.load([new InMemorySource('{"metadata.root":{"package":"acme"}}')]);
+    const { root } = await loader.load([new InMemoryStringSource('{"metadata.root":{"package":"acme"}}')]);
     const output = canonicalSerialize(root);
     expect(output).toContain('\n  "metadata.root"');
     expect(output).toContain('\n    "package": "acme"');
@@ -755,8 +755,8 @@ describe("canonicalSerialize — deterministic output for cross-language conform
         }],
       },
     });
-    const r1 = await new MetaDataLoader().load([new InMemorySource(json)]);
-    const r2 = await new MetaDataLoader().load([new InMemorySource(json)]);
+    const r1 = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
+    const r2 = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
     const out1 = canonicalSerialize(r1.root);
     const out2 = canonicalSerialize(r2.root);
     expect(out1).toBe(out2);

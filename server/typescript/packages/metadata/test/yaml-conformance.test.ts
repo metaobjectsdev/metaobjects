@@ -18,7 +18,7 @@ import { test, expect } from "bun:test";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { FileMetaDataLoader } from "../src/core/file-meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { canonicalSerialize } from "../src/serializer-json.js";
 import type { ParseError } from "../src/errors.js";
 
@@ -84,7 +84,7 @@ async function loadYaml(yaml: string): Promise<{
 }> {
   const loader = new FileMetaDataLoader();
   const result = await loader.load([
-    new InMemorySource(yaml, { id: "input.yaml", format: "yaml" }),
+    new InMemoryStringSource(yaml, { id: "input.yaml", format: "yaml" }),
   ]);
   return { root: result.root, errors: result.errors };
 }

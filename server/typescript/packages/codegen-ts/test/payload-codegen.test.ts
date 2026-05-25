@@ -1,11 +1,11 @@
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
-import { InMemorySource } from "@metaobjectsdev/metadata";
+import { InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { generatePayloadInterfaces, generateRenderHandle } from "../src/payload-codegen.js";
 
 async function loadRoot(children: unknown[]) {
   const res = await new MetaDataLoader().load([
-    new InMemorySource(JSON.stringify({ "metadata.root": { package: "acme::ai", children } })),
+    new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: "acme::ai", children } })),
   ]);
   expect(res.errors).toEqual([]);
   return res.root;

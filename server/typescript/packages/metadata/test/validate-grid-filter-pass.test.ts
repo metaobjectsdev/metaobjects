@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { ParseError } from "../src/errors.js";
 
 /** Build a minimal metadata doc with filterable + non-filterable fields, and
@@ -38,7 +38,7 @@ function docWith(filter: unknown) {
 async function filterErrorCodes(filter: unknown): Promise<number> {
   const loader = new MetaDataLoader();
   const { errors } = await loader.load([
-    new InMemorySource(JSON.stringify(docWith(filter)), { id: "test.json" }),
+    new InMemoryStringSource(JSON.stringify(docWith(filter)), { id: "test.json" }),
   ]);
   return errors.filter(
     (e): e is ParseError => e instanceof ParseError && e.code === "ERR_BAD_ATTR_FILTER",

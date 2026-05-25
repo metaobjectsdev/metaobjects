@@ -1,12 +1,12 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../src/expected-schema.js";
 import { diff } from "../src/diff/index.js";
 import { emit } from "../src/emit/index.js";
 
 async function loadAndEmitPostgres(json: object): Promise<string> {
   const result = await new MetaDataLoader().load([
-    new InMemorySource(JSON.stringify(json)),
+    new InMemoryStringSource(JSON.stringify(json)),
   ]);
   expect(result.errors).toEqual([]);
   const expected = buildExpectedSchema(result.root, { dialect: "postgres" });
@@ -101,7 +101,7 @@ describe("emit (postgres) — COMMENT ON from @description", () => {
   });
 
   test("SQLite: descriptions silently ignored — no COMMENT statements emitted", async () => {
-    const result = await new MetaDataLoader().load([new InMemorySource(JSON.stringify({
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
       "metadata.root": {
         children: [
           {

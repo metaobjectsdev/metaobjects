@@ -1,10 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { renderMermaidModel } from "../../src/templates/mermaid-er.js";
 
 async function loadRoot(doc: unknown) {
   const result = await new MetaDataLoader().load([
-    new InMemorySource(JSON.stringify(doc)),
+    new InMemoryStringSource(JSON.stringify(doc)),
   ]);
   expect(result.errors).toEqual([]);
   return result.root;

@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { generateMetadata } from "../src/generator.js";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 
 test("the same seed produces the same metadata (deterministic)", () => {
   const a = generateMetadata(42);
@@ -23,7 +23,7 @@ test("generateMetadata produces valid metadata for seeds 1–20 (loader roundtri
     const doc = generateMetadata(seed);
     const inputJson = JSON.stringify(doc, null, 2);
     const loader = new MetaDataLoader();
-    const source = new InMemorySource(inputJson, { id: "meta.json", format: "json" });
+    const source = new InMemoryStringSource(inputJson, { id: "meta.json", format: "json" });
     const result = await loader.load([source]);
     expect(
       result.errors,

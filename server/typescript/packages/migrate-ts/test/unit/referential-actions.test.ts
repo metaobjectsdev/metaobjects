@@ -3,7 +3,7 @@ import { resolveReferentialActions } from "../../src/referential-actions.js";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
 import { diff } from "../../src/diff/index.js";
 import { emit } from "../../src/emit/index.js";
-import { MetaDataLoader, InMemorySource, REFERENTIAL_ACTIONS } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource, REFERENTIAL_ACTIONS } from "@metaobjectsdev/metadata";
 
 // Invariant referenced by the as-FkAction cast in resolveReferentialActions:
 // REFERENTIAL_ACTIONS (metadata) and FkAction (migrate-ts) MUST be the same
@@ -18,7 +18,7 @@ describe("REFERENTIAL_ACTIONS / FkAction invariant", () => {
 });
 
 async function loadDoc(doc: unknown) {
-  return new MetaDataLoader().load([new InMemorySource(JSON.stringify(doc))]);
+  return new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
 }
 
 function weekDoc(rel: Record<string, unknown> | undefined) {

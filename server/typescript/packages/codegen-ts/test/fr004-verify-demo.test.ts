@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { verify, ERR_VAR_NOT_ON_PAYLOAD, type PayloadField } from "@metaobjectsdev/render";
 import { generatePayloadInterfaces, generateRenderHandle } from "../src/payload-codegen.js";
 
@@ -55,7 +55,7 @@ const model = [
 
 async function loadRoot() {
   const res = await new MetaDataLoader().load([
-    new InMemorySource(JSON.stringify({ "metadata.root": { package: "acme::ai", children: model } })),
+    new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: "acme::ai", children: model } })),
   ]);
   expect(res.errors).toEqual([]);
   return res.root;

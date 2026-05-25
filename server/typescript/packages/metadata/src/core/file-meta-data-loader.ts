@@ -6,7 +6,7 @@ import type { Stats } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { MetaDataLoader, type LoadResult } from "../loader/meta-data-loader.js";
-import { FileSource } from "./file-source.js";
+import { FileSource } from "../loader/sources/file-source.js";
 import { parseYaml } from "./parser-yaml.js";
 import type { ParseOptions, ParseResult } from "../parser-core.js";
 import type { MetaDataSource } from "../loader/meta-data-source.js";

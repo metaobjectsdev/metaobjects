@@ -18,7 +18,7 @@ import { describe, it, expect } from "bun:test";
 import { join } from "node:path";
 import { FileMetaDataLoader } from "../src/core/file-meta-data-loader.js";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import type { MetaData } from "../src/shared/meta-data.js";
 import { serializeJson } from "../src/serializer-json.js";
 import {
@@ -133,7 +133,7 @@ async function loadFixtures(names: string[]): Promise<{ root: MetaData; warnings
 async function roundTrip(root: MetaData): Promise<MetaData> {
   const serialized = serializeJson(root);
   const loader = new MetaDataLoader({ freeze: false });
-  const result = await loader.load([new InMemorySource(serialized, { id: "round-trip" })]);
+  const result = await loader.load([new InMemoryStringSource(serialized, { id: "round-trip" })]);
   if (result.errors.length > 0) {
     throw new Error(
       `Round-trip parse produced errors:\n${result.errors.map((e) => e.message).join("\n")}`,

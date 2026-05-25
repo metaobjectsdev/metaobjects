@@ -2,19 +2,19 @@ import { describe, it, expect } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { InMemorySource } from "../../src/loader/meta-data-source.js";
-import { FileSource } from "../../src/core/file-source.js";
+import { InMemoryStringSource } from "../../src/loader/meta-data-source.js";
+import { FileSource } from "../../src/loader/sources/file-source.js";
 
-describe("InMemorySource", () => {
+describe("InMemoryStringSource", () => {
   it("read() resolves the content; id/format default", async () => {
-    const s = new InMemorySource('{"metadata.root":{}}');
+    const s = new InMemoryStringSource('{"metadata.root":{}}');
     expect(s.format).toBe("json");
-    expect(s.id).toBe("<in-memory>");
+    expect(s.id).toBe("<inline>");
     expect(await s.read()).toBe('{"metadata.root":{}}');
   });
 
   it("honors an explicit id", async () => {
-    const s = new InMemorySource("x", { id: "fixture-a" });
+    const s = new InMemoryStringSource("x", { id: "fixture-a" });
     expect(s.id).toBe("fixture-a");
   });
 });

@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
-import { InMemorySource } from "../../src/loader/meta-data-source.js";
+import { InMemoryStringSource } from "../../src/loader/meta-data-source.js";
 import { navigate } from "./navigator.js";
 
 // A minimal document containing an `identity.primary` child — this node has
@@ -28,7 +28,7 @@ const DOC = JSON.stringify({
 
 async function loadTree() {
   const loader = new MetaDataLoader();
-  const source = new InMemorySource(DOC, { id: "meta.json", format: "json" });
+  const source = new InMemoryStringSource(DOC, { id: "meta.json", format: "json" });
   const result = await loader.load([source]);
   if (result.errors.length > 0) {
     throw new Error(

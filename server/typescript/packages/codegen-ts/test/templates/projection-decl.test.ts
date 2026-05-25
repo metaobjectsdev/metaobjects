@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { renderProjectionDecl } from "../../src/templates/projection-decl.js";
 
 // ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ async function makeMinimalProjection(projName: string, baseName: string) {
       ],
     },
   });
-  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
   if (result.errors.length > 0) throw new Error(result.errors.map((e) => e.message).join("\n"));
   const root = result.root;
   const projection = root.objects().find((o) => o.name === projName)!;
@@ -144,7 +144,7 @@ async function loadProjection() {
     },
   });
 
-  const result = await new MetaDataLoader().load([new InMemorySource(json)]);
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
   if (result.errors.length > 0) {
     throw new Error(
       `Loader errors:\n${result.errors.map((e) => e.message).join("\n")}`,

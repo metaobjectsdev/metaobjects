@@ -1,10 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemorySource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../src/expected-schema.js";
 
 async function loadDoc(doc: unknown) {
   const result = await new MetaDataLoader().load([
-    new InMemorySource(JSON.stringify(doc)),
+    new InMemoryStringSource(JSON.stringify(doc)),
   ]);
   return result.root;
 }
