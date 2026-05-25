@@ -1,8 +1,10 @@
 package com.metaobjects.metadata.ktx
 
 import com.metaobjects.render.InMemoryProvider
+import com.metaobjects.render.RenderException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class RenderTest {
 
@@ -41,5 +43,25 @@ class RenderTest {
             format = "html"
         }
         assertEquals("&lt;b&gt;raw&lt;/b&gt;", out)
+    }
+
+    @Test fun `render builder throws when neither template nor ref set`() {
+        assertFailsWith<RenderException> {
+            render {
+                payload = mapOf("k" to "v")
+                provider = InMemoryProvider(emptyMap())
+            }
+        }
+    }
+
+    @Test fun `render builder throws when both template and ref set`() {
+        assertFailsWith<RenderException> {
+            render {
+                template = "inline"
+                ref = "g/s"
+                payload = mapOf("k" to "v")
+                provider = InMemoryProvider(mapOf("g/s" to "via-ref"))
+            }
+        }
     }
 }
