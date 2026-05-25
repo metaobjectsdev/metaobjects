@@ -1,4 +1,17 @@
-"""Filesystem loader: discover -> parse -> merge -> freeze."""
+"""MetaDataLoader: source-polymorphic loader.
+
+The cross-language Tier-1 loader: takes a list of MetaDataSource impls,
+runs parse -> merge -> super-resolve -> validate -> freeze, and returns a
+LoadResult { root, errors, warnings }.
+
+Source format (JSON vs YAML) is declared by the source, not sniffed by the
+loader. This replaces both the per-file extension switch from the old
+free function and the TS FileMetaDataLoader.parseSource override.
+
+The three class-method factories (from_directory / from_uris / from_string)
+cover the 99% case; module-level shortcuts in `metaobjects.__init__` wrap
+them with Pythonic ergonomics.
+"""
 from __future__ import annotations
 
 import json
@@ -16,74 +29,138 @@ from ..registry import TypeRegistry
 from ..shared.base_types import SUBTYPE_ROOT, TYPE_METADATA
 from ..super_resolve import resolve_supers
 from .merge import merge_roots
+from .sources import (
+    DirectorySource,
+    InMemoryStringSource,
+    MetaDataFormat,
+    MetaDataSource,
+    UriSource,
+)
 from .validation_passes import run_validations
-
-# Authoring file formats this loader recognises. JSON is canonical interchange;
-# YAML is the sigil-free authoring front-end (ADR-0006).
-_JSON_SUFFIXES = (".json",)
-_YAML_SUFFIXES = (".yaml", ".yml")
 
 
 @dataclass
 class LoadResult:
+    """The Tier-1 load result. Same field shape across all four ports."""
+
     root: MetaData
     errors: list[MetaError] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
-def _parse_file(path: Path, registry: TypeRegistry, errors: list[MetaError]) -> ParseResult | None:
-    """Dispatch by file extension to the JSON or YAML front-end.
+def _empty_root() -> MetaRoot:
+    """Construct the canonical empty root (matches parse_document's seed)."""
+    return MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "")
 
-    Returns None if the file could not even be read/parsed at the syntax level
-    (e.g. malformed JSON/YAML); the caller adds the appropriate error to
-    *errors* and skips this file from the merge set.
+
+class MetaDataLoader:
+    """Source-polymorphic metadata loader.
+
+    Construct once with a provider list (defaults to ``[core_provider]``);
+    call ``.load(sources)`` for arbitrary source combinations, or use the
+    ``from_*`` class-method factories for the common cases.
     """
-    suffix = path.suffix.lower()
-    text = path.read_text(encoding="utf-8-sig")
-    if suffix in _YAML_SUFFIXES:
+
+    def __init__(self, providers: list[Provider] | None = None) -> None:
+        self._registry: TypeRegistry = compose_registry(
+            providers if providers is not None else [core_provider]
+        )
+
+    @property
+    def registry(self) -> TypeRegistry:
+        return self._registry
+
+    # --- core API ------------------------------------------------------
+
+    def load(self, sources: list[MetaDataSource]) -> LoadResult:
+        """Parse -> merge -> super-resolve -> validate -> freeze."""
+        result = LoadResult(root=_empty_root())
+        roots: list[MetaData] = []
+
+        for src in sources:
+            parsed = self._parse_source(src, result.errors)
+            if parsed is None:
+                continue
+            result.errors.extend(parsed.errors)
+            result.warnings.extend(parsed.warnings)
+            if not parsed.errors:
+                roots.append(parsed.root)
+
+        if roots:
+            result.root = merge_roots(roots, result.errors)
+            resolve_supers(result.root, result.errors)
+
+        run_validations(result.root, self._registry, result.errors, result.warnings)
+        result.root.freeze()
+        return result
+
+    # --- static factories (the 99% case, cross-language consistent) ----
+
+    @classmethod
+    def from_directory(
+        cls,
+        directory: Path | str,
+        providers: list[Provider] | None = None,
+        exclude: list[str] | None = None,
+        recurse: bool = True,
+    ) -> LoadResult:
+        """Load every JSON/YAML file under ``directory`` (recursive by default)."""
+        loader = cls(providers=providers)
+        sources = list(
+            DirectorySource(directory, exclude=exclude, recurse=recurse).expand()
+        )
+        return loader.load(sources)
+
+    @classmethod
+    def from_uris(
+        cls,
+        uris: list[str],
+        providers: list[Provider] | None = None,
+    ) -> LoadResult:
+        """Load metadata from a list of URIs (file:// or http(s)://)."""
+        loader = cls(providers=providers)
+        return loader.load([UriSource(u) for u in uris])
+
+    @classmethod
+    def from_string(
+        cls,
+        content: str,
+        format: MetaDataFormat = MetaDataFormat.JSON,
+        providers: list[Provider] | None = None,
+    ) -> LoadResult:
+        """Load metadata from an in-memory string (defaults to JSON)."""
+        loader = cls(providers=providers)
+        return loader.load([InMemoryStringSource(content, format=format)])
+
+    # --- internals -----------------------------------------------------
+
+    def _parse_source(
+        self, src: MetaDataSource, errors: list[MetaError]
+    ) -> ParseResult | None:
+        """Read a source's content and dispatch to the JSON or YAML parser.
+
+        Returns ``None`` if the source could not be read or its syntax was
+        malformed; the caller appends an error and skips this source from
+        the merge set.
+        """
         try:
-            return parse_yaml(text, registry, source=path.name)
-        except Exception as exc:  # ParseError from parse_yaml carries a code
-            code = getattr(exc, "code", ErrorCode.ERR_MALFORMED_YAML)
-            errors.append(MetaError(str(exc), code, path.name))
+            text = src.read()
+        except OSError as exc:
+            errors.append(MetaError(str(exc), ErrorCode.ERR_UNKNOWN, src.id))
             return None
-    # Default: JSON.
-    try:
-        doc = json.loads(text)
-    except json.JSONDecodeError as exc:
-        errors.append(MetaError(str(exc), ErrorCode.ERR_MALFORMED_JSON, path.name))
-        return None
-    return parse_document(doc, registry, source=path.name)
 
+        if src.format is MetaDataFormat.YAML:
+            try:
+                return parse_yaml(text, self._registry, source=src.id)
+            except Exception as exc:  # ParseError carries a code
+                code = getattr(exc, "code", ErrorCode.ERR_MALFORMED_YAML)
+                errors.append(MetaError(str(exc), code, src.id))
+                return None
 
-def load_directory(input_dir: str, providers: list[Provider] | None = None) -> LoadResult:
-    registry = compose_registry(providers if providers is not None else [core_provider])
-    result = LoadResult(root=MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, ""))
-
-    # Deterministic ordinal-filename order over JSON + YAML / YML.
-    # Overlay merge is order-sensitive (last-writer-wins on attr conflicts), so
-    # the scan must not depend on filesystem readdir order. Matches the TS
-    # FileMetaDataLoader.loadDirectory contract.
-    accepted = _JSON_SUFFIXES + _YAML_SUFFIXES
-    files = sorted(
-        (p for p in Path(input_dir).iterdir() if p.is_file() and p.suffix.lower() in accepted),
-        key=lambda p: p.name,
-    )
-
-    roots: list[MetaData] = []
-    for path in files:
-        parsed = _parse_file(path, registry, result.errors)
-        if parsed is None:
-            continue
-        result.errors.extend(parsed.errors)
-        result.warnings.extend(parsed.warnings)
-        if not parsed.errors:
-            roots.append(parsed.root)
-
-    if roots:
-        result.root = merge_roots(roots, result.errors)
-        resolve_supers(result.root, result.errors)
-
-    run_validations(result.root, registry, result.errors, result.warnings)
-    result.root.freeze()
-    return result
+        # Default: JSON.
+        try:
+            doc = json.loads(text)
+        except json.JSONDecodeError as exc:
+            errors.append(MetaError(str(exc), ErrorCode.ERR_MALFORMED_JSON, src.id))
+            return None
+        return parse_document(doc, self._registry, source=src.id)
