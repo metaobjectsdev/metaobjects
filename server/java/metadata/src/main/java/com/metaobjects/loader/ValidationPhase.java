@@ -14,6 +14,8 @@ import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
+import com.metaobjects.layout.DataGridLayout;
+import com.metaobjects.layout.MetaLayout;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.origin.AggregateOrigin;
@@ -86,6 +88,7 @@ public final class ValidationPhase {
         validateOrigins(root);
         validateObjectFieldStorage(root);
         validateIdentityFieldsAndGeneration(root);
+        validateDataGridLayouts(root);
         validateEntityHasPrimaryIdentity(root, loader);
         warnFilterableWithoutIndex(root, loader);
     }
@@ -746,6 +749,138 @@ public final class ValidationPhase {
                     ErrorCode.ERR_BAD_ATTR_VALUE);
             }
         }
+    }
+
+    // =========================================================================
+    // layout.dataGrid validation
+    //
+    //   @defaultSortField must name a real field on the owning entity
+    //       → ERR_BAD_DEFAULT_SORT_FIELD
+    //   @filter keys must reference fields declared @filterable: true
+    //       → ERR_BAD_ATTR_FILTER
+    //   @filter ops must be compatible with the target field's subtype
+    //       → ERR_BAD_ATTR_FILTER (boolean only supports eq/ne/isNull;
+    //         numeric/date support equality + ordering; string supports
+    //         equality + like + isNull + in)
+    //
+    // Cross-port: mirrors TS validation-passes.ts (validateDataGridLayout).
+    // =========================================================================
+
+    private static final java.util.Set<String> OPS_FOR_BOOLEAN =
+        java.util.Set.of("eq", "ne", "isNull");
+    private static final java.util.Set<String> OPS_FOR_NUMERIC =
+        java.util.Set.of("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull");
+    private static final java.util.Set<String> OPS_FOR_DATE =
+        java.util.Set.of("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull");
+    private static final java.util.Set<String> OPS_FOR_STRING =
+        java.util.Set.of("eq", "ne", "in", "like", "isNull");
+
+    static void validateDataGridLayouts(MetaRoot root) {
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            if (rootChild instanceof MetaObject) {
+                MetaObject obj = (MetaObject) rootChild;
+                for (MetaData c : obj.getChildren(MetaData.class, false)) {
+                    if (c instanceof DataGridLayout) {
+                        validateDataGridLayout(obj, (DataGridLayout) c);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void validateDataGridLayout(MetaObject obj, DataGridLayout grid) {
+        java.util.Map<String, MetaField> fieldsByName = new java.util.HashMap<>();
+        java.util.Set<String> filterable = new java.util.HashSet<>();
+        for (MetaField f : obj.getChildren(MetaField.class, false)) {
+            fieldsByName.put(f.getShortName(), f);
+            if (f.hasMetaAttr("filterable", false)) {
+                Object v = f.getMetaAttr("filterable", false).getValue();
+                boolean isFilterable =
+                    (v instanceof Boolean) ? (Boolean) v
+                    : (v instanceof String) ? "true".equalsIgnoreCase((String) v)
+                    : false;
+                if (isFilterable) filterable.add(f.getShortName());
+            }
+        }
+
+        // @defaultSortField
+        if (grid.hasMetaAttr(DataGridLayout.ATTR_DEFAULT_SORT_FIELD, false)) {
+            Object v = grid.getMetaAttr(DataGridLayout.ATTR_DEFAULT_SORT_FIELD, false).getValue();
+            String sortField = v == null ? null : v.toString();
+            if (sortField != null && !sortField.isEmpty() && !fieldsByName.containsKey(sortField)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_DEFAULT_SORT_FIELD
+                        + ": layout.dataGrid '" + grid.getShortName()
+                        + "' on '" + obj.getShortName()
+                        + "' @defaultSortField '" + sortField + "' does not reference a real field",
+                    ErrorCode.ERR_BAD_DEFAULT_SORT_FIELD);
+            }
+        }
+
+        // @filter
+        if (grid.hasMetaAttr(DataGridLayout.ATTR_FILTER, false)) {
+            Object raw = grid.getMetaAttr(DataGridLayout.ATTR_FILTER, false).getValue();
+            if (raw instanceof java.util.Map) {
+                validateFilterClause(obj, grid, (java.util.Map<?, ?>) raw, fieldsByName, filterable);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void validateFilterClause(MetaObject obj, DataGridLayout grid,
+                                              java.util.Map<?, ?> filter,
+                                              java.util.Map<String, MetaField> fieldsByName,
+                                              java.util.Set<String> filterable) {
+        for (java.util.Map.Entry<?, ?> e : filter.entrySet()) {
+            String key = e.getKey() == null ? "" : e.getKey().toString();
+            if ("and".equals(key) || "or".equals(key)) {
+                if (e.getValue() instanceof Iterable) {
+                    for (Object sub : (Iterable<?>) e.getValue()) {
+                        if (sub instanceof java.util.Map) {
+                            validateFilterClause(obj, grid, (java.util.Map<?, ?>) sub,
+                                fieldsByName, filterable);
+                        }
+                    }
+                }
+                continue;
+            }
+            MetaField field = fieldsByName.get(key);
+            if (field == null || !filterable.contains(key)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_FILTER
+                        + ": layout.dataGrid '" + grid.getShortName()
+                        + "' on '" + obj.getShortName()
+                        + "' @filter references '" + key + "' which is not a @filterable field",
+                    ErrorCode.ERR_BAD_ATTR_FILTER);
+            }
+            if (e.getValue() instanceof java.util.Map) {
+                java.util.Set<String> allowed = allowedOpsFor(field);
+                for (Object opKey : ((java.util.Map<?, ?>) e.getValue()).keySet()) {
+                    String op = opKey == null ? "" : opKey.toString();
+                    if (!allowed.contains(op)) {
+                        throw new MetaDataException(
+                            ErrorMessageConstants.ERR_BAD_ATTR_FILTER
+                                + ": layout.dataGrid '" + grid.getShortName()
+                                + "' on '" + obj.getShortName()
+                                + "' @filter op '" + op + "' is not valid for field '" + key
+                                + "' (subtype " + field.getSubType() + "); allowed: " + allowed,
+                            ErrorCode.ERR_BAD_ATTR_FILTER);
+                    }
+                }
+            }
+        }
+    }
+
+    private static java.util.Set<String> allowedOpsFor(MetaField field) {
+        String st = field.getSubType();
+        if ("boolean".equals(st)) return OPS_FOR_BOOLEAN;
+        if ("date".equals(st) || "time".equals(st) || "timestamp".equals(st)) return OPS_FOR_DATE;
+        if ("int".equals(st) || "long".equals(st) || "double".equals(st)
+                || "float".equals(st) || "decimal".equals(st) || "currency".equals(st)) {
+            return OPS_FOR_NUMERIC;
+        }
+        // string / enum / others fall through to string-shape ops.
+        return OPS_FOR_STRING;
     }
 
     // =========================================================================

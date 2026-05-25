@@ -724,7 +724,13 @@ public abstract class BaseMetaDataParser {
                 "] in file [" + getFilename() + "]";
 
             if (getLoader().getLoaderOptions().isStrict()) {
-                throw new MetaDataException(errMsg + ": " + e.getMessage(), e);
+                // Cross-port: a bad inline value (e.g. @pageSize: "twenty-five" on an
+                // int-typed attr) is an attr-value problem; surface it as
+                // ERR_BAD_ATTR_VALUE so fixtures and downstream consumers can
+                // discriminate parse-failure from missing-attr.
+                throw new MetaDataException(errMsg + ": " + e.getMessage(),
+                    null, null, e, java.util.Collections.emptyMap(),
+                    com.metaobjects.ErrorCode.ERR_BAD_ATTR_VALUE);
             } else {
                 log.warn(errMsg + ": " + e.getMessage());
             }

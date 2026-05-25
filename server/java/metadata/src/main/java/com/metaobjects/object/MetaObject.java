@@ -118,6 +118,9 @@ public abstract class MetaObject extends MetaData {
             // OBJECTS CAN CONTAIN VIEWS
             def.optionalChild(MetaView.TYPE_VIEW, "*", "*");
 
+            // OBJECTS CAN CONTAIN LAYOUTS (layout.dataGrid and future subtypes)
+            def.optionalChild("layout", "*", "*");
+
             // OBJECTS CAN CONTAIN RELATIONSHIPS
             def.optionalChild(MetaRelationship.TYPE_RELATIONSHIP, "*", "*");
 

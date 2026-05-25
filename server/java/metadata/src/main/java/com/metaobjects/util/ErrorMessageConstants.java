@@ -99,6 +99,21 @@ public final class ErrorMessageConstants {
      */
     public static final String ERR_STORAGE_WITHOUT_OBJECT_REF = "ERR_STORAGE_WITHOUT_OBJECT_REF";
 
+    /**
+     * Error code emitted when a {@code layout.dataGrid @filter} clause references
+     * a field that is not declared filterable, or applies an operator the field's
+     * subtype does not support.
+     * Cross-language contract: {@code ERR_BAD_ATTR_FILTER}.
+     */
+    public static final String ERR_BAD_ATTR_FILTER = "ERR_BAD_ATTR_FILTER";
+
+    /**
+     * Error code emitted when a {@code layout.dataGrid @defaultSortField} value
+     * does not name a real field on the owning entity.
+     * Cross-language contract: {@code ERR_BAD_DEFAULT_SORT_FIELD}.
+     */
+    public static final String ERR_BAD_DEFAULT_SORT_FIELD = "ERR_BAD_DEFAULT_SORT_FIELD";
+
     // === ERROR MESSAGE FORMATS ===
 
     /** Format template for not found errors */

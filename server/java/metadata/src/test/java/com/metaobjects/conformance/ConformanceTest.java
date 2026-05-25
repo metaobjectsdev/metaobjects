@@ -121,7 +121,8 @@ public class ConformanceTest {
                 "identity-types",
                 "relationship-types",
                 "source-types",
-                "view-types"
+                "view-types",
+                "layout-types"
             )
         );
 

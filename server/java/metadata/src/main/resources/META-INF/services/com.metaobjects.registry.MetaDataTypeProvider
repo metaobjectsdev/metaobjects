@@ -10,3 +10,4 @@ com.metaobjects.source.SourceTypesMetaDataProvider
 com.metaobjects.origin.OriginTypesMetaDataProvider
 com.metaobjects.documentation.DocumentationMetaDataProvider
 com.metaobjects.view.ViewTypesMetaDataProvider
+com.metaobjects.layout.LayoutTypesMetaDataProvider
