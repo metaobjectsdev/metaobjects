@@ -32,42 +32,50 @@ public static class ExpectedSchema
     /// </summary>
     public static SchemaSnapshot Build(MetaRoot root)
     {
-        var tables = root.Objects()
+        var writableEntities = root.Objects()
             .Where(o => o.IsEntity() && o.FindPrimaryWritableSource() is not null)
             .OrderBy(o => o.Name, StringComparer.Ordinal)
-            .Select(o => BuildTable(o, root))
             .ToList();
+        // FKs can only reference an entity that actually has a row in the snapshot —
+        // a reference to a value object or read-only projection would land an FK whose
+        // RefTable is never created. Gate FK emission on this set (mirrors the TS
+        // reference's resolveTargetTable callback dropping unknown targets).
+        var writableNames = writableEntities.Select(e => e.Name).ToHashSet(StringComparer.Ordinal);
+        var tables = writableEntities.Select(e => BuildTable(e, root, writableNames)).ToList();
         return new SchemaSnapshot(tables);
     }
 
-    private static TableDescriptor BuildTable(MetaObject entity, MetaRoot root)
+    private static TableDescriptor BuildTable(MetaObject entity, MetaRoot root, IReadOnlySet<string> writableEntityNames)
     {
         var source = entity.FindPrimaryWritableSource()!;
-        var tableName = source.TableName ?? entity.Name;
-        var schema = source.Schema;
         var pk = entity.PrimaryIdentity();
         var pkFieldNames = pk?.Fields ?? [];
         var pkSet = pkFieldNames.ToHashSet(StringComparer.Ordinal);
         var pkGeneration = (pk as MetaPrimaryIdentity)?.Generation;
 
-        var columns = BuildColumns(entity, root, pkSet, pkGeneration).ToList();
-        var primaryKey = pkFieldNames.Select(n => ResolveColumn(entity, n)).ToList();
-        var indexes = BuildIndexes(entity).ToList();
-        var foreignKeys = BuildForeignKeys(entity, root).ToList();
-
-        return new TableDescriptor(tableName, columns, indexes, foreignKeys, primaryKey, schema);
+        return new TableDescriptor(
+            Name: CSharpNaming.Table(entity),
+            Columns: BuildColumns(entity, root, pkSet, pkGeneration).ToList(),
+            Indexes: BuildIndexes(entity).ToList(),
+            ForeignKeys: BuildForeignKeys(entity, root, writableEntityNames).ToList(),
+            PrimaryKey: pkFieldNames.Select(n => ResolveColumn(entity, n)).ToList(),
+            Schema: source.Schema);
     }
 
-    // Columns in declared order: scalar → one ColumnDescriptor; object @storage
-    // flattened → expand each nested scalar as "{parentCol}_{nestedCol}" (parent
-    // contributes no column); other object storage → a single json column.
+    // Columns in declared order. The branches mirror PostgresSchema.CreateTable so
+    // codegen-time DDL and the snapshot describe the SAME columns (else `migrate`
+    // would see drift): scalar OR enum → one ColumnDescriptor (enum stored as text);
+    // any isArray (scalar/enum) collapses to a single json column (matches
+    // PostgresSchema's `f.IsArray ? "jsonb"` mapping); object @storage flattened →
+    // expand each nested scalar as "{parentCol}_{nestedCol}" (parent contributes no
+    // column); other object storage → a single json column.
     private static IEnumerable<ColumnDescriptor> BuildColumns(
         MetaObject entity, MetaRoot root,
         IReadOnlySet<string> pkSet, string? pkGeneration)
     {
         foreach (var f in entity.Fields())
         {
-            if (CSharpNaming.ScalarFor(f.SubType) is not null)
+            if (CSharpNaming.ScalarFor(f.SubType) is not null || f.SubType == FIELD_SUBTYPE_ENUM)
             {
                 var isPk = pkSet.Contains(f.Name);
                 yield return BuildColumn(entity, f, isPk, isPk ? pkGeneration : null);
@@ -82,14 +90,20 @@ public static class ExpectedSchema
     private static IEnumerable<ColumnDescriptor> ObjectFieldColumns(
         MetaObject entity, MetaField f, MetaRoot root)
     {
-        if (f.Storage == STORAGE_FLATTENED && f.ObjectRef is { } oref &&
-            root.FindObject(CSharpNaming.StripPkg(oref)) is { } nested)
+        if (f.Storage == STORAGE_FLATTENED)
         {
-            var prefix = CSharpNaming.Column(f) + "_";
-            foreach (var nf in nested.Fields().Where(n => CSharpNaming.ScalarFor(n.SubType) is not null))
+            // Flattened with an unresolvable @objectRef yields zero columns — same as
+            // the TS reference (flattenObjectField returns []). The alternative (a fall-
+            // through json column) would silently mask the @objectRef typo.
+            if (f.ObjectRef is { } oref &&
+                root.FindObject(CSharpNaming.StripPkg(oref)) is { } nested)
             {
-                var inner = BuildColumn(nested, nf, isPk: false, pkGeneration: null);
-                yield return inner with { Name = prefix + inner.Name };
+                var prefix = CSharpNaming.Column(f) + "_";
+                foreach (var nf in nested.Fields().Where(n => CSharpNaming.ScalarFor(n.SubType) is not null))
+                {
+                    var inner = BuildColumn(nested, nf, isPk: false, pkGeneration: null);
+                    yield return inner with { Name = prefix + inner.Name };
+                }
             }
             yield break;
         }
@@ -102,7 +116,10 @@ public static class ExpectedSchema
     private static ColumnDescriptor BuildColumn(
         MetaObject owner, MetaField field, bool isPk, string? pkGeneration)
     {
-        var sqlType = SubtypeToSqlType(field);
+        // isArray collapses any scalar/enum to a single json column — matches
+        // PostgresSchema.CreateTable's `f.IsArray ? "jsonb"` mapping. Sizing /
+        // precision / scale on the underlying type don't apply once the value is JSON.
+        var sqlType = field.IsArray ? new SqlType.Json() : SubtypeToSqlType(field);
         var required = CSharpNaming.IsRequired(owner, field);
         // PK columns are NOT NULL by definition (and their own @required is implicit).
         var nullable = !isPk && !required;
@@ -121,6 +138,10 @@ public static class ExpectedSchema
         FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_CURRENCY => new SqlType.Integer(64),
         FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT => new SqlType.Real(),
         FIELD_SUBTYPE_DECIMAL => new SqlType.Numeric(f.Precision, f.Scale),
+        // enum is string-backed (matches PostgresSchema PgType -> "text").
+        // The DB-side CHECK constraint enforcing membership isn't yet modeled in the
+        // snapshot — a known gap, harmless until introspection lands (#3).
+        FIELD_SUBTYPE_ENUM => new SqlType.Text(),
         FIELD_SUBTYPE_BOOLEAN => new SqlType.Boolean(),
         FIELD_SUBTYPE_DATE => new SqlType.Date(),
         FIELD_SUBTYPE_TIME => new SqlType.Text(),
@@ -138,28 +159,23 @@ public static class ExpectedSchema
 
     // Recognize common SQL expressions; everything else is treated as a literal so
     // the emit layer can quote it. Mirrors TS expected-schema.ts EXPR_DEFAULT_PATTERNS.
-    private static ColumnDefault? BuildDefault(MetaField f)
+    private static ColumnDefault? BuildDefault(MetaField f) => f.Default switch
     {
-        if (f.Default is not { } raw) return null;
-        if (raw is string s && s.Length > 0)
-        {
-            return IsExpressionLiteral(s)
-                ? new ColumnDefault(DefaultKind.Expr, s)
-                : new ColumnDefault(DefaultKind.Literal, s);
-        }
-        if (raw is bool b) return new ColumnDefault(DefaultKind.Literal, b ? "true" : "false");
-        if (raw is IFormattable n) return new ColumnDefault(DefaultKind.Literal, n.ToString(null, System.Globalization.CultureInfo.InvariantCulture));
-        return null;
-    }
+        string s when s.Length > 0 => new ColumnDefault(
+            IsExpressionLiteral(s) ? DefaultKind.Expr : DefaultKind.Literal, s),
+        bool b => new ColumnDefault(DefaultKind.Literal, b ? "true" : "false"),
+        IFormattable n => new ColumnDefault(
+            DefaultKind.Literal,
+            n.ToString(null, System.Globalization.CultureInfo.InvariantCulture)),
+        _ => null,
+    };
 
-    private static bool IsExpressionLiteral(string s)
-    {
-        // Common Postgres / ANSI date-time keywords + any function call (parens).
-        if (s.Contains('('))                                                 return true;
-        return string.Equals(s, "current_timestamp", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(s, "current_date",      StringComparison.OrdinalIgnoreCase)
-            || string.Equals(s, "current_time",      StringComparison.OrdinalIgnoreCase);
-    }
+    // Common Postgres / ANSI date-time keywords + any function call (parens).
+    private static bool IsExpressionLiteral(string s) =>
+        s.Contains('(')
+        || string.Equals(s, "current_timestamp", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(s, "current_date",      StringComparison.OrdinalIgnoreCase)
+        || string.Equals(s, "current_time",      StringComparison.OrdinalIgnoreCase);
 
     // Unique indexes come from secondary identities (unique unless @unique:false).
     // Index NAME = bare identity name (matches TS expected-schema.ts:204; diverges
@@ -177,26 +193,29 @@ public static class ExpectedSchema
     // (ON DELETE / ON UPDATE) goes through ReferentialActions.Resolve, which pairs
     // the FK to the matching relationship by @objectRef and reads its effective
     // referential actions (explicit attr → per-subtype default).
-    private static IEnumerable<FkDescriptor> BuildForeignKeys(MetaObject entity, MetaRoot root)
+    private static IEnumerable<FkDescriptor> BuildForeignKeys(
+        MetaObject entity, MetaRoot root, IReadOnlySet<string> writableEntityNames)
     {
-        var owningTable = entity.FindPrimaryWritableSource()?.TableName ?? entity.Name;
+        var owningTable = CSharpNaming.Table(entity);
         foreach (var refId in entity.ReferenceIdentities().Where(r => r.Enforce))
         {
             if (refId.TargetEntity is not { } targetName || refId.Fields.Count == 0) continue;
-            var target = root.FindObject(CSharpNaming.StripPkg(targetName));
-            if (target is null) continue;
+            var bareTarget = CSharpNaming.StripPkg(targetName);
+            // Drop FKs whose target isn't a writable entity (the target wouldn't appear
+            // in the snapshot's Tables, so emit-time the REFERENCES clause would dangle).
+            if (!writableEntityNames.Contains(bareTarget)) continue;
+            if (root.FindObject(bareTarget) is not { } target) continue;
 
             var cols = refId.Fields.Select(n => ResolveColumn(entity, n)).ToList();
             var refCols = refId.TargetFields.Count > 1
                 ? refId.TargetFields.Select(n => ResolveColumn(target, n)).ToList()
                 : [ResolveColumn(target, ResolvedTargetPkField(target, refId))];
-            var refTable = target.FindPrimaryWritableSource()?.TableName ?? target.Name;
             var actions = ReferentialActions.Resolve(entity, targetName);
 
             yield return new FkDescriptor(
                 Name: $"{owningTable}_{cols[0]}_fk",
                 Columns: cols,
-                RefTable: refTable,
+                RefTable: CSharpNaming.Table(target),
                 RefColumns: refCols,
                 OnDelete: actions.OnDelete,
                 OnUpdate: actions.OnUpdate);

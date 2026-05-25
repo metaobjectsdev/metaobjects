@@ -24,11 +24,20 @@ public class ExpectedSchemaTests
         { "field.long":     { "name": "id" } },
         { "field.string":   { "name": "title", "@required": true, "@maxLength": 200 } },
         { "field.currency": { "name": "priceCents" } },
+        { "field.enum":     { "name": "status", "@values": ["draft", "active", "archived"] } },
+        { "field.string":   { "name": "tags", "isArray": true } },
         { "field.object":   { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened" } },
         { "field.object":   { "name": "config",      "@objectRef": "Address" } },
         { "relationship.aggregation": { "name": "weeks", "@objectRef": "Week", "@cardinality": "many" } },
         { "identity.primary":   { "@fields": "id", "@generation": "increment" } },
         { "identity.secondary": { "name": "byTitle", "@fields": "title", "@unique": true } }
+      ]}},
+      { "object.entity": { "name": "Bad", "children": [
+        { "source.rdb": { "@table": "bad" } },
+        { "field.long": { "name": "id" } },
+        { "field.long": { "name": "addressId" } },
+        { "identity.primary":   { "@fields": "id", "@generation": "increment" } },
+        { "identity.reference": { "name": "fkAddress", "@fields": "addressId", "@references": "Address" } }
       ]}},
       { "object.entity": { "name": "Week", "children": [
         { "source.rdb": { "@table": "weeks" } },
@@ -73,8 +82,8 @@ public class ExpectedSchemaTests
         var snap = Load();
         // Address (value), ProgramView (read-only projection — only a read-only source).
         Assert.DoesNotContain(snap.Tables, t => t.Name is "Address" or "v_program");
-        // Only writable entities — alphabetical: Link, Program, Tag, Week.
-        Assert.Equal(["links", "programs", "tags", "weeks"], snap.Tables.Select(t => t.Name).ToArray());
+        // Only writable entities — alphabetical by metadata name: Bad, Link, Program, Tag, Week.
+        Assert.Equal(["bad", "links", "programs", "tags", "weeks"], snap.Tables.Select(t => t.Name).ToArray());
     }
 
     [Fact]
@@ -176,9 +185,42 @@ public class ExpectedSchemaTests
         Assert.Empty(result.Blocked);
         var createTables = result.Changes.OfType<Change.CreateTable>()
             .Select(c => c.Table.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
-        Assert.Equal(["links", "programs", "tags", "weeks"], createTables);
-        // The single secondary index + the single enforced FK arrive as separate change records.
+        Assert.Equal(["bad", "links", "programs", "tags", "weeks"], createTables);
+        // The single secondary index + the single enforced FK that survives the
+        // writable-target gate (Week→Program) arrive as separate change records.
         Assert.Single(result.Changes.OfType<Change.AddIndex>());
         Assert.Single(result.Changes.OfType<Change.AddFk>());
+    }
+
+    [Fact]
+    public void Enum_field_emits_text_column_matching_PostgresSchema()
+    {
+        // PostgresSchema.PgType maps FIELD_SUBTYPE_ENUM -> "text"; the snapshot must agree,
+        // else a post-gen migrate would propose a destructive drop of the actual column.
+        var program = Load().Tables.Single(t => t.Name == "programs");
+        var status = program.Columns.Single(c => c.Name == "status");
+        Assert.IsType<SqlType.Text>(status.SqlType);
+    }
+
+    [Fact]
+    public void IsArray_scalar_field_collapses_to_json_column()
+    {
+        // PostgresSchema renders f.IsArray as "jsonb" regardless of underlying subtype.
+        var program = Load().Tables.Single(t => t.Name == "programs");
+        var tags = program.Columns.Single(c => c.Name == "tags");
+        Assert.IsType<SqlType.Json>(tags.SqlType);
+    }
+
+    [Fact]
+    public void Fk_targeting_non_writable_entity_is_dropped()
+    {
+        var snap = Load();
+        var bad = snap.Tables.Single(t => t.Name == "bad");
+        // Bad declares identity.reference @references "Address" (a value object). Address
+        // isn't a writable entity, so the FK would dangle in REFERENCES — drop it instead.
+        Assert.Empty(bad.ForeignKeys);
+        // The FK column itself is still emitted (it's a real metadata field); only the
+        // physical constraint is suppressed.
+        Assert.Contains(bad.Columns, c => c.Name == "addressId");
     }
 }
