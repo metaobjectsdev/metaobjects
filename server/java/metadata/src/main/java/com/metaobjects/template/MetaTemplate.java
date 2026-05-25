@@ -91,11 +91,8 @@ public abstract class MetaTemplate extends MetaData {
     /** Returns the value of {@code @maxChars}, or {@code null} if absent. */
     public Integer getMaxChars() {
         if (!hasMetaAttr(ATTR_MAX_CHARS, false)) return null;
-        Object v = getMetaAttr(ATTR_MAX_CHARS, false).getValue();
-        if (v instanceof Number n) return n.intValue();
-        if (v instanceof String s) {
-            try { return Integer.parseInt(s); } catch (NumberFormatException e) { return null; }
-        }
-        return null;
+        // IntAttribute is parameterized on Integer; load-time conversion via
+        // DataConverter guarantees getValue() is Integer or null here.
+        return (Integer) getMetaAttr(ATTR_MAX_CHARS, false).getValue();
     }
 }

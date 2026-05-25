@@ -706,8 +706,8 @@ public final class ValidationPhase {
         // R2 + R3 only apply if @payloadRef is set
         if (payloadRef == null || payloadRef.isEmpty()) return;
 
-        MetaObject payloadVo = findRootValueObject(root, payloadRef);
-        if (payloadVo == null) {
+        MetaObject payloadVo = findRootObject(root, payloadRef);
+        if (payloadVo == null || !MetaObject.SUBTYPE_VALUE.equals(payloadVo.getSubType())) {
             throw new MetaDataException(
                 "template '" + template.getName() + "' @payloadRef '" + payloadRef
                     + "' does not resolve to an object.value at root",
@@ -715,32 +715,21 @@ public final class ValidationPhase {
         }
 
         // R3 — every @requiredSlots member must be a field on the payload VO
-        if (template instanceof PromptTemplate prompt) {
-            List<String> required = prompt.getRequiredSlots();
-            if (required != null && !required.isEmpty()) {
-                Set<String> available = collectPayloadFieldNames(payloadVo);
-                for (String slot : required) {
-                    if (slot == null || slot.isEmpty()) continue;
-                    if (!available.contains(slot)) {
-                        throw new MetaDataException(
-                            "template.prompt '" + template.getName()
-                                + "' @requiredSlots includes '" + slot
-                                + "' which is not a field on payload '" + payloadRef + "'",
-                            ErrorCode.ERR_INVALID_TEMPLATE);
-                    }
-                }
+        if (!(template instanceof PromptTemplate prompt)) return;
+        List<String> required = prompt.getRequiredSlots();
+        if (required == null || required.isEmpty()) return;
+
+        Set<String> available = collectPayloadFieldNames(payloadVo);
+        for (String slot : required) {
+            if (slot == null || slot.isEmpty()) continue;
+            if (!available.contains(slot)) {
+                throw new MetaDataException(
+                    "template.prompt '" + template.getName()
+                        + "' @requiredSlots includes '" + slot
+                        + "' which is not a field on payload '" + payloadRef + "'",
+                    ErrorCode.ERR_INVALID_TEMPLATE);
             }
         }
-    }
-
-    /** Find an {@code object.value} child at root whose short name matches {@code ref}. */
-    private static MetaObject findRootValueObject(MetaRoot root, String ref) {
-        for (MetaData child : root.getChildren(MetaData.class, false)) {
-            if (!(child instanceof MetaObject)) continue;
-            if (!MetaObject.SUBTYPE_VALUE.equals(child.getSubType())) continue;
-            if (nameMatches(child, ref)) return (MetaObject) child;
-        }
-        return null;
     }
 
     /**
@@ -751,18 +740,7 @@ public final class ValidationPhase {
     private static Set<String> collectPayloadFieldNames(MetaObject payloadVo) {
         Set<String> out = new HashSet<>();
         for (MetaData child : payloadVo.getChildren(MetaData.class, true)) {
-            if (!(child instanceof MetaField)) continue;
-            String shortName = child.getShortName();
-            if (shortName != null && !shortName.isEmpty()) {
-                out.add(shortName);
-                continue;
-            }
-            String full = child.getName();
-            if (full == null) continue;
-            int idx = full.lastIndexOf(MetaData.PKG_SEPARATOR);
-            out.add(idx >= 0
-                ? full.substring(idx + MetaData.PKG_SEPARATOR.length())
-                : full);
+            if (child instanceof MetaField) out.add(shortNameOf(child));
         }
         return out;
     }
@@ -925,13 +903,22 @@ public final class ValidationPhase {
      * segment from {@code getName()} (after the last {@code "::"}).
      */
     private static boolean nameMatches(MetaData child, String name) {
+        String bare = shortNameOf(child);
+        return bare != null && name.equals(bare);
+    }
+
+    /**
+     * Bare name for {@code child}: prefers {@code getShortName()}, falls back
+     * to the tail segment of {@code getName()} (after the last {@code "::"}).
+     * Returns {@code null} only when both are unavailable.
+     */
+    private static String shortNameOf(MetaData child) {
         String shortName = child.getShortName();
-        if (shortName != null && name.equals(shortName)) return true;
+        if (shortName != null && !shortName.isEmpty()) return shortName;
         String full = child.getName();
-        if (full == null) return false;
+        if (full == null) return null;
         int idx = full.lastIndexOf(MetaData.PKG_SEPARATOR);
-        String bare = (idx >= 0) ? full.substring(idx + MetaData.PKG_SEPARATOR.length()) : full;
-        return name.equals(bare);
+        return (idx >= 0) ? full.substring(idx + MetaData.PKG_SEPARATOR.length()) : full;
     }
 
 }
