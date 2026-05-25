@@ -1,6 +1,5 @@
 package com.metaobjects.registry;
 
-import com.metaobjects.loader.file.FileMetaDataLoader;
 import com.metaobjects.attr.PropertiesAttribute;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,6 +16,9 @@ public class CoreTypeInitializer {
 
     /**
      * Initialize all core types by loading their classes to trigger static blocks.
+     * Uses string-based Class.forName to avoid a compile-time dependency on classes
+     * that reside in a sibling module (file-IO loader lives in the same package after
+     * the WA4 move, but this class must compile independently from metadata).
      */
     public static synchronized void initializeCoreTypes() {
         if (initialized) {
@@ -26,8 +28,10 @@ public class CoreTypeInitializer {
         try {
             log.debug("Loading core MetaData types...");
 
-            // Load FileMetaDataLoader to trigger its static block
-            Class.forName(FileMetaDataLoader.class.getName());
+            // Load FileMetaDataLoader to trigger its static block.
+            // String literal avoids a compile-time dep; the class is always on the
+            // classpath at runtime (same artifact after WA4 completes).
+            Class.forName("com.metaobjects.loader.file.FileMetaDataLoader");
             log.debug("Loaded FileMetaDataLoader type");
 
             // Load PropertiesAttribute to trigger its static block
