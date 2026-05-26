@@ -105,6 +105,105 @@ class KotlinExposedTableGeneratorTest {
         }
     }
 
+    // === field.object + @storage coverage ===================================
+
+    /**
+     * Build a fixture: User entity + Address value-object, with a `field.object` on User
+     * referencing Address under the given [storageAttr] (null = no @storage attr).
+     */
+    private fun fieldObjectFixture(storageAttr: String?): String {
+        val storage = storageAttr?.let { ", \"@storage\": \"$it\"" } ?: ""
+        return """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.value": { "name": "Address", "children": [
+                { "field.string": { "name": "street", "@required": true } },
+                { "field.string": { "name": "city",   "@required": true } },
+                { "field.string": { "name": "zip" } }
+            ] } },
+            { "object.entity": { "name": "User", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.object": { "name": "address", "@objectRef": "Address"$storage } },
+                { "source.rdb":   { "@table": "users" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+    }
+
+    @Test fun storageFlattenedEmitsPrefixedColumns() {
+        val outDir = Files.createTempDirectory("ktbl-flat-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("flat", fieldObjectFixture("flattened")))
+
+            val userTable = outDir.resolve("acme/demo/UserTable.kt")
+            assertTrue(Files.exists(userTable),
+                "expected $userTable; files=${Files.walk(outDir).toList()}")
+            val src = Files.readString(userTable)
+            // Required sub-fields → no .nullable() on their columns.
+            assertTrue("val addressStreet = varchar(\"address_street\", 255)" in src,
+                "expected flattened addressStreet column; saw:\n$src")
+            assertTrue("val addressCity = varchar(\"address_city\", 255)" in src,
+                "expected flattened addressCity column; saw:\n$src")
+            // zip is NOT @required on Address → its flattened column is nullable.
+            assertTrue("val addressZip = varchar(\"address_zip\", 255).nullable()" in src,
+                "expected flattened nullable addressZip column; saw:\n$src")
+            // No jsonb import expected for the flattened case.
+            assertTrue("import org.jetbrains.exposed.sql.json.jsonb" !in src,
+                "should NOT import jsonb when storage=flattened; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun storageJsonbEmitsJsonbColumn() {
+        val outDir = Files.createTempDirectory("ktbl-jsonb-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("jsonb", fieldObjectFixture("jsonb")))
+
+            val userTable = outDir.resolve("acme/demo/UserTable.kt")
+            assertTrue(Files.exists(userTable))
+            val src = Files.readString(userTable)
+            assertTrue("import org.jetbrains.exposed.sql.json.jsonb" in src,
+                "expected jsonb import; saw:\n$src")
+            assertTrue("import kotlinx.serialization.json.Json" in src,
+                "expected Json import; saw:\n$src")
+            assertTrue(
+                "val address = jsonb(\"address\", { Json.encodeToString(it) }, { Json.decodeFromString(it) }).nullable()" in src,
+                "expected jsonb column initializer; saw:\n$src",
+            )
+            // Flattened sub-columns must NOT appear in the jsonb case.
+            assertTrue("addressStreet" !in src,
+                "should NOT emit flattened sub-columns when storage=jsonb; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun defaultStorageBehavesAsJsonb() {
+        val outDir = Files.createTempDirectory("ktbl-default-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("default", fieldObjectFixture(null)))
+
+            val userTable = outDir.resolve("acme/demo/UserTable.kt")
+            assertTrue(Files.exists(userTable))
+            val src = Files.readString(userTable)
+            assertTrue("import org.jetbrains.exposed.sql.json.jsonb" in src,
+                "expected jsonb import (default storage); saw:\n$src")
+            assertTrue(
+                "val address = jsonb(\"address\", { Json.encodeToString(it) }, { Json.decodeFromString(it) }).nullable()" in src,
+                "expected jsonb column when @storage absent; saw:\n$src",
+            )
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun `onDeleteCascadeAppendedToReferences`() {
         val withCascade = """{
           "metadata.root": { "package": "acme::demo", "children": [

@@ -66,8 +66,14 @@ object KotlinTypeMapper {
     }
 
     /** Map a MetaField to the Exposed `Table` column statement (e.g., `varchar("name", 100)`). */
-    fun exposedColumnSpec(field: MetaField<*>): String {
-        val colName = field.name
+    fun exposedColumnSpec(field: MetaField<*>): String = exposedColumnSpec(field, field.name)
+
+    /**
+     * Same as [exposedColumnSpec], but with an explicit physical column name. Used by the
+     * `@storage: "flattened"` codepath to emit prefixed columns (e.g., `address_street`)
+     * for nested object.value fields without mutating the underlying MetaField.
+     */
+    fun exposedColumnSpec(field: MetaField<*>, colName: String): String {
         return when {
             field is StringField    -> "varchar(\"$colName\", ${stringMaxLength(field)})"
             field is IntegerField   -> "integer(\"$colName\")"
