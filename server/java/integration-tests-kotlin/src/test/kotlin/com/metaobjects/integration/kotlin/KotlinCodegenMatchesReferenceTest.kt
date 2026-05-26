@@ -25,27 +25,41 @@ import kotlin.test.fail
 internal class KotlinCodegenMatchesReferenceTest {
 
     /** Expected `val <name> = <columnFamily>(...)` declarations per entity. */
-    private val expectations: Map<String, List<ExpectedColumn>> = mapOf(
-        "Program" to listOf(
-            ExpectedColumn("id", families = setOf("long")),
-            ExpectedColumn("title", families = setOf("varchar")),
-            ExpectedColumn("priceCents", families = setOf("long")),
-            ExpectedColumn("status", families = setOf("varchar", "enumerationByName")),
-            ExpectedColumn("createdAt", families = setOf("timestamp", "timestampWithTimeZone")),
+    private val expectations: Map<String, EntityExpectation> = mapOf(
+        "Program" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("id", families = setOf("long")),
+                ExpectedColumn("title", families = setOf("varchar")),
+                ExpectedColumn("priceCents", families = setOf("long")),
+                ExpectedColumn("status", families = setOf("varchar", "enumerationByName")),
+                ExpectedColumn("createdAt", families = setOf("timestamp", "timestampWithTimeZone")),
+            ),
         ),
-        "Week" to listOf(
-            ExpectedColumn("id", families = setOf("long")),
-            ExpectedColumn("programId", families = setOf("long")),
-            ExpectedColumn("label", families = setOf("varchar")),
+        "Week" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("id", families = setOf("long")),
+                ExpectedColumn("programId", families = setOf("long")),
+                ExpectedColumn("label", families = setOf("varchar")),
+            ),
+            // Week declares `identity.reference @fields="programId" @references="Program"`
+            // on the canonical fixture — the generated WeekTable must carry the
+            // matching FK constraint on its programId column.
+            foreignKeys = listOf(
+                ExpectedFk(columnName = "programId", targetTable = "ProgramTable"),
+            ),
         ),
-        "ProgramView" to listOf(
-            ExpectedColumn("id", families = setOf("long")),
-            ExpectedColumn("title", families = setOf("varchar")),
-            ExpectedColumn("status", families = setOf("varchar", "enumerationByName")),
+        "ProgramView" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("id", families = setOf("long")),
+                ExpectedColumn("title", families = setOf("varchar")),
+                ExpectedColumn("status", families = setOf("varchar", "enumerationByName")),
+            ),
         ),
-        "ProgramStat" to listOf(
-            ExpectedColumn("programId", families = setOf("long")),
-            ExpectedColumn("weekCount", families = setOf("long")),
+        "ProgramStat" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("programId", families = setOf("long")),
+                ExpectedColumn("weekCount", families = setOf("long")),
+            ),
         ),
     )
 
@@ -65,7 +79,8 @@ internal class KotlinCodegenMatchesReferenceTest {
                 val tableFile = findEmittedTableFile(outDir, "${entity}Table.kt")
                     ?: fail("Generator did not emit '${entity}Table.kt' under ${outDir.absolutePath}")
                 val source = tableFile.readText()
-                assertSourceContainsColumns(entity, source, expected)
+                assertSourceContainsColumns(entity, source, expected.columns)
+                assertSourceContainsForeignKeys(entity, source, expected.foreignKeys)
             }
         } finally {
             outDir.deleteRecursively()
@@ -92,5 +107,33 @@ internal class KotlinCodegenMatchesReferenceTest {
         }
     }
 
+    /**
+     * Assert each expected FK is present as a `.references(<TargetTable>.id...)`
+     * decoration on the named column. Catches the regression where the generator
+     * silently drops the FK constraint (e.g. ignoring `identity.reference`).
+     */
+    private fun assertSourceContainsForeignKeys(
+        entity: String,
+        source: String,
+        expected: List<ExpectedFk>,
+    ) {
+        for (fk in expected) {
+            // Match: `val <columnName> = <anyType>("...")[...].references(<TargetTable>.id...)`
+            // Allows the type/length surface and intermediate calls to vary without coupling.
+            val pattern = Regex(
+                """\bval\s+${Regex.escape(fk.columnName)}\s*=\s*[^\n]*\.references\s*\(\s*${Regex.escape(fk.targetTable)}\s*\.\s*id\b"""
+            )
+            assertTrue(
+                pattern.containsMatchIn(source),
+                "${entity}Table.kt: expected FK on column '${fk.columnName}' → ${fk.targetTable}.id; saw:\n$source",
+            )
+        }
+    }
+
     private data class ExpectedColumn(val name: String, val families: Set<String>)
+    private data class ExpectedFk(val columnName: String, val targetTable: String)
+    private data class EntityExpectation(
+        val columns: List<ExpectedColumn>,
+        val foreignKeys: List<ExpectedFk> = emptyList(),
+    )
 }
