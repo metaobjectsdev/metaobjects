@@ -47,12 +47,12 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // metadata used to decorate the field column with `.references(...)`
         // inline (rather than emit a separate FK row, which would duplicate the
         // field's regular column emission).
-        val refDecorMap = buildIdentityReferenceDecorations(loader)
+        val refDecorationMap = buildIdentityReferenceDecorations(loader)
 
         // Pass 1b: compute FK columns globally across all entities so the "many"
         // side (`relationship.composition @cardinality: many`) on Author can
         // contribute the FK column to PostTable even when Post has no reciprocal.
-        val fkMap = buildGlobalFkMap(loader, refDecorMap)
+        val fkMap = buildGlobalFkMap(loader, refDecorationMap)
 
         // Pass 2: emit one Table per entity using its own metadata + the
         // inbound FKs accumulated in Pass 1.
@@ -79,7 +79,7 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             }
             val fkColumns = if (isViewKind(sourceRdb)) emptyList() else fkMap[entity.name].orEmpty()
             val refDecorations =
-                if (isViewKind(sourceRdb)) emptyMap() else refDecorMap[entity.name].orEmpty()
+                if (isViewKind(sourceRdb)) emptyMap() else refDecorationMap[entity.name].orEmpty()
             emit(entity, sourceRdb, outRoot, loader, fkColumns, refDecorations)
         }
     }
@@ -192,11 +192,14 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 }
                 val withAuto = if (isPk && incrementPk) "$baseSpec.autoIncrement()" else baseSpec
                 // Decorate with .references(TargetTable.id[, onDelete=..., onUpdate=...])
-                // when an identity.reference on this entity names this field. The FK
-                // decoration applies BEFORE .nullable() so the chain reads naturally.
-                val decorated = refDecorations[field.name]?.let { d ->
-                    "$withAuto.references(${d.targetTable}.id${d.refSuffix})"
-                } ?: withAuto
+                // when an enforced identity.reference on this entity names this field.
+                // Soft references (@enforce: false) carry a null targetTable — the dedup
+                // pass still uses the entry to suppress an inferred FK, but no physical
+                // .references(...) call is emitted here. Decoration applies BEFORE
+                // .nullable() so the chain reads naturally.
+                val decoration = refDecorations[field.name]
+                val decorated = if (decoration != null && decoration.emitsReference)
+                    "$withAuto.references(${decoration.targetTable}.id${decoration.refSuffix})" else withAuto
                 val full = if (nullable) "$decorated.nullable()" else decorated
                 append("    val ${field.name} = $full\n")
             }
@@ -304,7 +307,12 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     private data class FkColumnSpec(
         val propertyName: String,
         val columnExpr: String,
-        val hasReferenceOption: Boolean,
+        /**
+         * Suffix appended after the target column inside `.references(...)`; either
+         * "" or {@code ", onDelete = ..., onUpdate = ..."}. Non-empty implies the
+         * file must import {@code ReferenceOption}.
+         */
+        val refSuffix: String,
         /**
          * `true` when authored directly on the FK-owning entity (to-one side);
          * `false` when inferred from the inverse to-many declaration on the
@@ -320,7 +328,10 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
          * must not double-emit a second FK to the same parent.
          */
         val targetTable: String,
-    )
+    ) {
+        /** True when {@link #refSuffix} mentions a ReferenceOption (drives the import). */
+        val hasReferenceOption: Boolean get() = refSuffix.isNotEmpty()
+    }
 
     /**
      * Pass 1: build a global FK map keyed by FQN of the entity that should
@@ -346,7 +357,7 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      */
     private fun buildGlobalFkMap(
         loader: MetaDataLoader,
-        refDecorMap: Map<String, Map<String, RefDecoration>>,
+        refDecorationMap: Map<String, Map<String, RefDecoration>>,
     ): Map<String, List<FkColumnSpec>> {
         // Use list-per-entity so the emit order is deterministic (insertion-ordered).
         val acc = linkedMapOf<String, MutableList<FkColumnSpec>>()
@@ -362,7 +373,7 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
                 if (child.cardinality == MetaRelationship.CARDINALITY_MANY) {
                     // Inferred: FK belongs on `target`, pointing back at `entity`.
-                    val spec = buildInverseFkSpec(entity, target, child) ?: continue
+                    val spec = buildInverseFkSpec(entity, child) ?: continue
                     acc.getOrPut(target.name) { mutableListOf() }.add(spec)
                 } else {
                     // Declared (cardinality "one" or unspecified): FK belongs on `entity`.
@@ -383,13 +394,15 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // suppresses any inferred FK to the same target table — the canonical
         // shape (Program many→Week, Week identity.reference→Program) would
         // otherwise emit `programId` twice on WeekTable (once as the decorated
-        // field column, once as a separate FK row).
+        // field column, once as a separate FK row). Soft references (no targetTable)
+        // still suppress by FIELD NAME — the field column already exists so the
+        // inferred FK row would duplicate the column.
         return acc.mapValues { (entityName, specs) ->
-            val declaredTargets = specs.filter { it.declared }.map { it.targetTable }.toSet()
-            val declaredNames = specs.filter { it.declared }.map { it.propertyName }.toSet()
-            val decoratedTargets = refDecorMap[entityName].orEmpty().values
-                .map { it.targetTable }.toSet()
-            val decoratedNames = refDecorMap[entityName].orEmpty().keys
+            val declaredTargets = specs.asSequence().filter { it.declared }.map { it.targetTable }.toSet()
+            val declaredNames = specs.asSequence().filter { it.declared }.map { it.propertyName }.toSet()
+            val decorations = refDecorationMap[entityName].orEmpty()
+            val decoratedTargets = decorations.values.mapNotNull { it.targetTable }.toSet()
+            val decoratedNames = decorations.keys
             specs.filterNot { spec ->
                 !spec.declared && (
                     spec.targetTable in declaredTargets || spec.propertyName in declaredNames ||
@@ -413,12 +426,11 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val targetTable = PackageMapping.splitFqn(target.name).second + "Table"
         val relShortName = rel.shortName ?: rel.name
         val propertyName = readColumnAttr(rel) ?: (relShortName + "Id")
-        val refArgs = buildReferenceOptionArgs(rel)
-        val expr = "long(\"$propertyName\").references($targetTable.id${refArgs.first})"
+        val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
-            columnExpr = expr,
-            hasReferenceOption = refArgs.second,
+            columnExpr = "long(\"$propertyName\").references($targetTable.id$refSuffix)",
+            refSuffix = refSuffix,
             declared = true,
             targetTable = targetTable,
         )
@@ -434,47 +446,37 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * {@code @onDelete} / {@code @onUpdate} attrs propagate into the inferred
      * FK's ReferenceOption arguments.
      */
-    private fun buildInverseFkSpec(
-        owner: MetaObject,
-        target: MetaObject,
-        rel: MetaRelationship,
-    ): FkColumnSpec? {
+    private fun buildInverseFkSpec(owner: MetaObject, rel: MetaRelationship): FkColumnSpec? {
+        // Skip when the owner has no rdb source — there would be no OwnerTable to reference.
+        if (owner.children.filterIsInstance<RdbSource>().firstOrNull() == null) return null
         val ownerShort = PackageMapping.splitFqn(owner.name).second
         val ownerTable = ownerShort + "Table"
-        // Verify the same-named Table exists in the loader; we don't strictly need it,
-        // but we want a deterministic skip when the owner entity has no source.rdb.
-        if (owner.children.filterIsInstance<RdbSource>().firstOrNull() == null) return null
         val propertyName = ownerShort.replaceFirstChar { it.lowercaseChar() } + "Id"
-        val refArgs = buildReferenceOptionArgs(rel)
-        val expr = "long(\"$propertyName\").references($ownerTable.id${refArgs.first})"
-        // `target` reference is kept in the signature for parity with the declared path
-        // and to allow future per-target customization (e.g. nullability inference).
-        @Suppress("UNUSED_PARAMETER") target
+        val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
-            columnExpr = expr,
-            hasReferenceOption = refArgs.second,
+            columnExpr = "long(\"$propertyName\").references($ownerTable.id$refSuffix)",
+            refSuffix = refSuffix,
             declared = false,
             targetTable = ownerTable,
         )
     }
 
     /**
-     * Lower a relationship's {@code @onDelete} / {@code @onUpdate} into the
-     * suffix portion of an Exposed {@code .references(...)} call.
+     * Lower a pair of {@code @onDelete} / {@code @onUpdate} raw attr values
+     * (kebab-case per the metamodel, e.g. {@code "cascade"} / {@code "set-null"})
+     * into the suffix portion of an Exposed {@code .references(...)} call.
      *
-     * Returns {@code (suffix, hasReferenceOption)}. Suffix is either "" (no
-     * options) or {@code ", onDelete = ..., onUpdate = ..."} ready to splice
-     * after the target column.
+     * Returns either "" (no options) or {@code ", onDelete = ..., onUpdate = ..."}
+     * ready to splice after the target column. Shared by both
+     * `relationship.composition` (declared + inferred) and `identity.reference`
+     * paths so the lowering rules stay in lockstep.
      */
-    private fun buildReferenceOptionArgs(rel: MetaRelationship): Pair<String, Boolean> {
-        val refParts = mutableListOf<String>()
-        val onDelete = rel.onDeleteRaw?.let { mapReferentialAction(it) }
-        val onUpdate = rel.onUpdateRaw?.let { mapReferentialAction(it) }
-        if (onDelete != null) refParts += "onDelete = ReferenceOption.$onDelete"
-        if (onUpdate != null) refParts += "onUpdate = ReferenceOption.$onUpdate"
-        val suffix = if (refParts.isEmpty()) "" else ", " + refParts.joinToString(", ")
-        return suffix to refParts.isNotEmpty()
+    private fun referentialActionSuffix(onDeleteRaw: String?, onUpdateRaw: String?): String {
+        val parts = mutableListOf<String>()
+        onDeleteRaw?.let { mapReferentialAction(it) }?.let { parts += "onDelete = ReferenceOption.$it" }
+        onUpdateRaw?.let { mapReferentialAction(it) }?.let { parts += "onUpdate = ReferenceOption.$it" }
+        return if (parts.isEmpty()) "" else ", " + parts.joinToString(", ")
     }
 
     // === identity.reference FK decoration ====================================
@@ -484,24 +486,37 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * names that field. The codegen appends `.references(targetTable.id[, refSuffix])`
      * to the field's column initializer (rather than emitting a separate FK row,
      * which would duplicate the column).
+     *
+     * A {@code null} {@link #targetTable} indicates a soft reference (`@enforce: false`):
+     * the entry still occupies the field-name key so dedup against an inferred FK works,
+     * but the column emission pass skips the `.references(...)` decoration.
      */
     private data class RefDecoration(
-        /** Target table object name (e.g. {@code "ProgramTable"}). */
-        val targetTable: String,
+        /** Target table object name (e.g. {@code "ProgramTable"}); null for soft refs. */
+        val targetTable: String?,
         /** Suffix portion after the target column — either "" or {@code ", onDelete = ..., onUpdate = ..."}. */
         val refSuffix: String,
-        /** True when {@code refSuffix} mentions a ReferenceOption (drives the import). */
-        val hasReferenceOption: Boolean,
-    )
+    ) {
+        /** True when {@link #refSuffix} mentions a ReferenceOption (drives the import). */
+        val hasReferenceOption: Boolean get() = refSuffix.isNotEmpty()
+        /** True when this decoration emits a `.references(...)` call (enforced + resolvable). */
+        val emitsReference: Boolean get() = targetTable != null
+    }
 
     /**
      * Pass 1a: walk every entity's `identity.reference` children and build a
      * map of {@code entity.name -> (fieldName -> RefDecoration)} so the column
      * emission pass can decorate the matching field column inline.
      *
-     * Single-field references only for v1; multi-field composite FKs ({@code @fields: "a,b"})
-     * are deferred — they require Exposed's compound-FK API and are uncommon in practice.
-     * The decoration silently skips such references (a future enhancement will warn).
+     * Single-field references only for v1; multi-field composite FKs
+     * ({@code @fields: "a,b"}) are deferred — they require Exposed's compound-FK
+     * API and are uncommon in practice. Skipped composites are logged as a WARN
+     * so a user authoring `@fields: ["a", "b"]` isn't silently ignored.
+     *
+     * Soft references ({@code @enforce: false}) still register an entry (with
+     * {@code targetTable = null}) so the FK-dedup pass can suppress a redundant
+     * inferred FK to the same column — but the column emission pass skips
+     * decoration so no physical constraint is generated.
      */
     private fun buildIdentityReferenceDecorations(
         loader: MetaDataLoader,
@@ -511,37 +526,30 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             for (child in entity.children) {
                 if (child !is ReferenceIdentity) continue
-                // Skip references that won't be physically enforced.
-                if (!child.isEnforced) continue
                 val fields = child.fields
-                if (fields.size != 1) continue  // composite FK deferred
+                if (fields.size != 1) {
+                    LOG.warn(
+                        "skipping identity.reference '{}' on {} — multi-field composite FKs (@fields={}) are not yet supported by KotlinExposedTableGenerator",
+                        child.name, entity.name, fields
+                    )
+                    continue
+                }
                 val fieldName = fields[0]
                 val targetEntityName = child.targetEntity ?: continue
                 val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, targetEntityName) ?: continue
                 // Skip when the target has no rdb source — Exposed cannot reference a non-table.
                 if (target.children.filterIsInstance<RdbSource>().firstOrNull() == null) continue
-                val targetTable = PackageMapping.splitFqn(target.name).second + "Table"
-                val (suffix, hasRefOpt) = buildIdentityReferenceArgs(child)
+                // Soft references register a null-targetTable entry so dedup-vs-inferred works,
+                // but column emission will skip the `.references(...)` decoration.
+                val targetTable = if (child.isEnforced)
+                    PackageMapping.splitFqn(target.name).second + "Table" else null
+                val refSuffix = if (child.isEnforced)
+                    referentialActionSuffix(child.onDeleteRaw, child.onUpdateRaw) else ""
                 acc.getOrPut(entity.name) { linkedMapOf() }[fieldName] =
-                    RefDecoration(targetTable, suffix, hasRefOpt)
+                    RefDecoration(targetTable, refSuffix)
             }
         }
         return acc
-    }
-
-    /**
-     * Lower a {@link ReferenceIdentity}'s {@code @onDelete} / {@code @onUpdate}
-     * attrs into the suffix portion of an Exposed {@code .references(...)} call.
-     * Parallel to {@link #buildReferenceOptionArgs} for relationship.composition.
-     */
-    private fun buildIdentityReferenceArgs(ref: ReferenceIdentity): Pair<String, Boolean> {
-        val refParts = mutableListOf<String>()
-        val onDelete = ref.onDeleteRaw?.let { mapReferentialAction(it) }
-        val onUpdate = ref.onUpdateRaw?.let { mapReferentialAction(it) }
-        if (onDelete != null) refParts += "onDelete = ReferenceOption.$onDelete"
-        if (onUpdate != null) refParts += "onUpdate = ReferenceOption.$onUpdate"
-        val suffix = if (refParts.isEmpty()) "" else ", " + refParts.joinToString(", ")
-        return suffix to refParts.isNotEmpty()
     }
 
     /** Read the `@column` attr on a relationship (inheritance allowed); null when absent. */
