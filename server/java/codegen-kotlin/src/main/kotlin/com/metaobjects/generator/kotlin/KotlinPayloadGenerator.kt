@@ -202,21 +202,17 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         emittedNestedFqns: MutableSet<String>,
         fallbackField: MetaField<*>,
     ): TypeName {
-        val via = origin.via ?: return KotlinTypeMapper.kotlinTypeName(fallbackField)
-        val (parentName, relName) = splitDottedRef(via)
-            ?: return KotlinTypeMapper.kotlinTypeName(fallbackField)
-        val parent = resolveObjectByShortOrFqn(loader, parentName)
-            ?: return KotlinTypeMapper.kotlinTypeName(fallbackField)
+        val fallbackType = { KotlinTypeMapper.kotlinTypeName(fallbackField) }
+        val via = origin.via ?: return fallbackType()
+        val (parentName, relName) = KotlinGenUtil.splitDottedRef(via) ?: return fallbackType()
+        val parent = KotlinGenUtil.resolveObjectByShortOrFqn(loader, parentName) ?: return fallbackType()
         val relationship = parent.children
             .filterIsInstance<MetaRelationship>()
             .firstOrNull { it.name == relName || it.name.substringAfterLast("::") == relName }
-            ?: return KotlinTypeMapper.kotlinTypeName(fallbackField)
-        val targetRef = relationship.objectRef
-            ?: return KotlinTypeMapper.kotlinTypeName(fallbackField)
-        val target = resolveObjectByShortOrFqn(loader, targetRef)
-            ?: return KotlinTypeMapper.kotlinTypeName(fallbackField)
-        val targetShort = PackageMapping.splitFqn(target.name).second
-        val nestedClassName = targetShort + "Payload"
+            ?: return fallbackType()
+        val targetRef = relationship.objectRef ?: return fallbackType()
+        val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, targetRef) ?: return fallbackType()
+        val nestedClassName = PackageMapping.splitFqn(target.name).second + "Payload"
 
         if (emittedNestedFqns.add(target.name)) {
             emitPayloadClass(
@@ -239,8 +235,8 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * name OR FQN match). Returns null when either half can't be resolved.
      */
     private fun resolveDottedFieldRef(loader: MetaDataLoader, dottedRef: String): MetaField<*>? {
-        val (entityName, fieldName) = splitDottedRef(dottedRef) ?: return null
-        val obj = resolveObjectByShortOrFqn(loader, entityName) ?: return null
+        val (entityName, fieldName) = KotlinGenUtil.splitDottedRef(dottedRef) ?: return null
+        val obj = KotlinGenUtil.resolveObjectByShortOrFqn(loader, entityName) ?: return null
         // Fields on a MetaObject are typically stored under their short name, but
         // be defensive against an FQN-stored field-name (matches relationship lookup).
         return obj.metaFields.firstOrNull {
@@ -248,31 +244,10 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         }
     }
 
-    /** Split `"A.b"` into `("A","b")`; null if the ref isn't a single-dot ref. */
-    private fun splitDottedRef(ref: String): Pair<String, String>? {
-        val dot = ref.indexOf('.')
-        if (dot <= 0 || dot >= ref.length - 1) return null
-        return ref.substring(0, dot) to ref.substring(dot + 1)
-    }
-
-    /** Resolve a MetaObject (entity OR value) by FQN match or short-name match. */
-    private fun resolveObjectByShortOrFqn(loader: MetaDataLoader, ref: String): MetaObject? {
-        for (child in loader.metaObjects) {
-            val short = child.name.substringAfterLast("::")
-            if (child.name == ref || short == ref) return child
-        }
-        return null
-    }
-
-    private fun resolveViewObject(loader: MetaDataLoader, ref: String): MetaObject? {
-        // Match by short name OR fully-qualified name; only accept object.value
-        for (child in loader.metaObjects) {
-            if (child.subType != MetaObject.SUBTYPE_VALUE) continue
-            val short = child.name.substringAfterLast("::")
-            if (child.name == ref || short == ref) return child
-        }
-        return null
-    }
+    /** Resolve a `@payloadRef` to its `object.value` (rejects entities — payloads must be VOs). */
+    private fun resolveViewObject(loader: MetaDataLoader, ref: String): MetaObject? =
+        KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref)
+            ?.takeIf { it.subType == MetaObject.SUBTYPE_VALUE }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
     override fun writeSingleFile(md: MetaObject, writer: GeneratorIOWriter<*>?) { /* unused */ }

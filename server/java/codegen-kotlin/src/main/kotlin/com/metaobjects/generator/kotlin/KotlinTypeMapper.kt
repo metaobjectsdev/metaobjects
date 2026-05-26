@@ -26,10 +26,10 @@ import com.squareup.kotlinpoet.TypeName
  * type per field subtype is identical across all language ports. The exact Kotlin/Exposed
  * names are Tier-2 idiomatic per port.
  *
- * Coverage: 7 primitive types + currency + enum + uuid (matched by metadata subtype name,
- * since `field.uuid` has no dedicated Java class yet — see {@code UUID_SUBTYPE} below).
- * Object / class / decimal etc. still throw IllegalArgumentException with a clear message;
- * add support per real consumer ask.
+ * Coverage: 7 primitive types + currency + enum + uuid. UUID is matched on metadata subtype
+ * name (`UUID_SUBTYPE`) because `field.uuid` has no dedicated Java class yet. Object / class
+ * / decimal etc. still throw IllegalArgumentException with a clear message; add support per
+ * real consumer ask.
  */
 object KotlinTypeMapper {
 
@@ -41,26 +41,30 @@ object KotlinTypeMapper {
      */
     private const val UUID_SUBTYPE = "uuid"
 
+    /** Default VARCHAR width for string-backed `field.enum` storage (v1). */
+    private const val ENUM_VARCHAR_LEN = 64
+
     /** Map a MetaField to its KotlinPoet data-class property TypeName. */
-    fun kotlinTypeName(field: MetaField<*>): TypeName = when {
-        field is StringField    -> STRING
-        field is IntegerField   -> INT
-        field is LongField      -> LONG
-        field is DoubleField    -> DOUBLE
-        field is BooleanField   -> BOOLEAN
-        field is DateField      -> ClassName("java.time", "LocalDate")
-        field is TimestampField -> ClassName("java.time", "Instant")
+    fun kotlinTypeName(field: MetaField<*>): TypeName = when (field) {
+        is StringField    -> STRING
+        is IntegerField   -> INT
+        is LongField      -> LONG
+        is DoubleField    -> DOUBLE
+        is BooleanField   -> BOOLEAN
+        is DateField      -> ClassName("java.time", "LocalDate")
+        is TimestampField -> ClassName("java.time", "Instant")
         // Currency: integer minor units on the wire (project-wide invariant). Same JVM
         // representation as Long; surfaced as its own arm so the semantic is documented
         // and downstream tooling can branch on subtype.
-        field is CurrencyField  -> LONG
+        is CurrencyField  -> LONG
         // Enum (string-backed v1): emit as Kotlin String. Generating a real enum class
         // requires materialising the `@values` set into a top-level declaration — deferred
         // until the enum-class generator lands (see field-constants enum design doc).
-        field is EnumField      -> STRING
-        // UUID: matched on subtype name because there is no UuidField class yet.
-        field.subType == UUID_SUBTYPE -> ClassName("java.util", "UUID")
-        else -> throw IllegalArgumentException(
+        is EnumField      -> STRING
+        // UUID is matched by subtype name (no UuidField class today); checked in the
+        // else arm so the typed-class arms above stay an exhaustive list.
+        else -> if (field.subType == UUID_SUBTYPE) ClassName("java.util", "UUID")
+        else throw IllegalArgumentException(
             "unsupported Kotlin type mapping for ${field::class.simpleName} '${field.name}'"
         )
     }
@@ -73,28 +77,27 @@ object KotlinTypeMapper {
      * `@storage: "flattened"` codepath to emit prefixed columns (e.g., `address_street`)
      * for nested object.value fields without mutating the underlying MetaField.
      */
-    fun exposedColumnSpec(field: MetaField<*>, colName: String): String {
-        return when {
-            field is StringField    -> "varchar(\"$colName\", ${stringMaxLength(field)})"
-            field is IntegerField   -> "integer(\"$colName\")"
-            field is LongField      -> "long(\"$colName\")"
-            field is DoubleField    -> "double(\"$colName\")"
-            field is BooleanField   -> "bool(\"$colName\")"
-            field is DateField      -> "date(\"$colName\")"
-            field is TimestampField -> "timestampWithTimeZone(\"$colName\")"
-            // Currency stored as BIGINT minor units — same as Long. Separate arm for
-            // semantic clarity (a future migration generator can branch on it).
-            field is CurrencyField  -> "long(\"$colName\")"
-            // Enum stored as VARCHAR(64) for v1. Proper enum-column handling needs the
-            // generated enum class (Exposed's `customEnumeration` / `enumerationByName`
-            // takes a KClass<E>) and is intentionally deferred.
-            field is EnumField      -> "varchar(\"$colName\", 64)"
-            // UUID column — Exposed has first-class `uuid(name)`.
-            field.subType == UUID_SUBTYPE -> "uuid(\"$colName\")"
-            else -> throw IllegalArgumentException(
-                "unsupported Exposed column mapping for ${field::class.simpleName} '${field.name}'"
-            )
-        }
+    fun exposedColumnSpec(field: MetaField<*>, colName: String): String = when (field) {
+        is StringField    -> "varchar(\"$colName\", ${stringMaxLength(field)})"
+        is IntegerField   -> "integer(\"$colName\")"
+        is LongField      -> "long(\"$colName\")"
+        is DoubleField    -> "double(\"$colName\")"
+        is BooleanField   -> "bool(\"$colName\")"
+        is DateField      -> "date(\"$colName\")"
+        is TimestampField -> "timestampWithTimeZone(\"$colName\")"
+        // Currency stored as BIGINT minor units — same as Long. Separate arm for
+        // semantic clarity (a future migration generator can branch on it).
+        is CurrencyField  -> "long(\"$colName\")"
+        // Enum stored as VARCHAR for v1. Proper enum-column handling needs the generated
+        // enum class (Exposed's `customEnumeration` / `enumerationByName` takes a KClass<E>)
+        // and is intentionally deferred.
+        is EnumField      -> "varchar(\"$colName\", $ENUM_VARCHAR_LEN)"
+        // UUID column — Exposed has first-class `uuid(name)`; matched by subtype since
+        // there is no UuidField JVM class to instanceof against.
+        else -> if (field.subType == UUID_SUBTYPE) "uuid(\"$colName\")"
+        else throw IllegalArgumentException(
+            "unsupported Exposed column mapping for ${field::class.simpleName} '${field.name}'"
+        )
     }
 
     /** Resolve @maxLength on a StringField; default 255. */

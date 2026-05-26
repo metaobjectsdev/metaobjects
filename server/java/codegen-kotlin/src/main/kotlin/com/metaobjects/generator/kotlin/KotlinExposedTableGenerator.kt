@@ -1,14 +1,14 @@
 package com.metaobjects.generator.kotlin
 
-import com.metaobjects.field.MetaField
+import com.metaobjects.database.CoreDBMetaDataProvider
 import com.metaobjects.field.ObjectField
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.identity.MetaIdentity
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
+import com.metaobjects.relationship.CompositionRelationship
 import com.metaobjects.relationship.MetaRelationship
-import com.metaobjects.source.MetaSource
 import com.metaobjects.source.RdbSource
 import java.io.OutputStream
 import java.io.PrintWriter
@@ -39,20 +39,22 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
         for (entity in loader.metaObjects) {
-            if (entity.subType != "entity") continue
-            val sourceRdb = findRdbSource(entity) ?: continue
+            if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
+            val sourceRdb = entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue
             emit(entity, sourceRdb, outRoot, loader)
         }
     }
 
-    private fun emit(entity: MetaObject, sourceRdb: MetaSource, outRoot: Path, loader: MetaDataLoader) {
+    private fun emit(entity: MetaObject, sourceRdb: RdbSource, outRoot: Path, loader: MetaDataLoader) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val tableObjectName = shortName + "Table"
         val tableName = sourceRdb.tableName ?: (shortName.lowercase() + "s")
 
-        val primary = findPrimaryIdentity(entity)
+        val primary = entity.children
+            .filterIsInstance<MetaIdentity>()
+            .firstOrNull { it.isPrimary }
         val primaryFieldName = primary?.fields?.firstOrNull()
-        val incrementPk = primary?.generation == MetaIdentity.GENERATION_INCREMENT
+        val incrementPk = primary?.isIncrement == true
 
         val fkColumns = buildFkColumns(entity, loader)
         val objectColumns = buildObjectColumns(entity, primaryFieldName, loader)
@@ -74,13 +76,11 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             append("/** GENERATED — do not hand-edit. Regenerated from metadata. */\n")
             append("object $tableObjectName : Table(\"$tableName\") {\n")
             for (field in entity.metaFields) {
-                if (field is ObjectField) {
-                    // ObjectField columns are produced by buildObjectColumns() so we can
-                    // emit @storage flattened (N columns) or jsonb (1 column) uniformly.
-                    continue
-                }
+                // ObjectField columns are produced by buildObjectColumns() so we can emit
+                // @storage flattened (N columns) or jsonb (1 column) uniformly.
+                if (field is ObjectField) continue
                 val isPk = field.name == primaryFieldName
-                val nullable = !isPk && !isRequired(field)
+                val nullable = !isPk && !KotlinGenUtil.isRequiredField(field)
                 val baseSpec = KotlinTypeMapper.exposedColumnSpec(field)
                 val withAuto = if (isPk && incrementPk) "$baseSpec.autoIncrement()" else baseSpec
                 val full = if (nullable) "$withAuto.nullable()" else withAuto
@@ -138,25 +138,23 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         for (field in entity.metaFields) {
             if (field !is ObjectField) continue
             val parentName = field.name
+            val parentNullable = parentName != primaryFieldName && !KotlinGenUtil.isRequiredField(field)
             val storage = readStorage(field)        // null → default to jsonb
             if (storage == STORAGE_FLATTENED) {
                 val ref = readObjectRef(field) ?: continue
-                val target = resolveObjectByShortOrFqn(loader, ref) ?: continue
-                val parentNullable = parentName != primaryFieldName && !isRequired(field)
+                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
                 for (subField in target.metaFields) {
                     val propertyName = parentName + subField.name.replaceFirstChar { it.uppercase() }
                     val colName = parentName + "_" + subField.name
                     val baseSpec = KotlinTypeMapper.exposedColumnSpec(subField, colName)
                     // Sub-column is nullable iff the parent is nullable OR the sub-field itself is.
-                    val nullable = parentNullable || !isRequired(subField)
+                    val nullable = parentNullable || !KotlinGenUtil.isRequiredField(subField)
                     val full = if (nullable) "$baseSpec.nullable()" else baseSpec
                     result.add(ObjectColumnSpec(propertyName, full, ObjectColumnKind.FLATTENED))
                 }
             } else {
                 // jsonb (explicit) OR absent (default per CLAUDE.md back-compat rule).
-                val colName = parentName
-                val expr = "jsonb(\"$colName\", { Json.encodeToString(it) }, { Json.decodeFromString(it) })"
-                val parentNullable = parentName != primaryFieldName && !isRequired(field)
+                val expr = "jsonb(\"$parentName\", { Json.encodeToString(it) }, { Json.decodeFromString(it) })"
                 val full = if (parentNullable) "$expr.nullable()" else expr
                 result.add(ObjectColumnSpec(parentName, full, ObjectColumnKind.JSONB))
             }
@@ -175,15 +173,6 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         if (!field.hasMetaAttr(ObjectField.ATTR_OBJECTREF, false)) return null
         return runCatching { field.getMetaAttr(ObjectField.ATTR_OBJECTREF, false).valueAsString }
             .getOrNull()
-    }
-
-    /** Resolve a MetaObject (entity OR value) by FQN match or short-name match. */
-    private fun resolveObjectByShortOrFqn(loader: MetaDataLoader, ref: String): MetaObject? {
-        for (child in loader.metaObjects) {
-            val short = child.name.substringAfterLast("::")
-            if (child.name == ref || short == ref) return child
-        }
-        return null
     }
 
     private companion object {
@@ -223,53 +212,39 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val result = mutableListOf<FkColumnSpec>()
         for (child in entity.children) {
             if (child !is MetaRelationship) continue
-            if (child.subType != "composition") continue
+            if (child.subType != CompositionRelationship.SUBTYPE_COMPOSITION) continue
             // Skip the "many" side — FK lives on the other entity.
             if (child.cardinality == MetaRelationship.CARDINALITY_MANY) continue
 
             val objectRef = child.objectRef ?: continue
-            val targetShortName = resolveTargetShortName(objectRef, loader) ?: continue
-            val targetTable = targetShortName + "Table"
+            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, objectRef) ?: continue
+            val targetTable = PackageMapping.splitFqn(target.name).second + "Table"
 
-            // Use shortName: relationship.name is fully-qualified after loading
-            // (e.g., "acme::demo::author"), which would produce an illegal Kotlin
-            // identifier with "::" embedded. shortName is the leaf authored token.
+            // Use shortName: relationship.name is fully-qualified after loading (e.g.
+            // "acme::demo::author"), which would produce an illegal Kotlin identifier with
+            // "::" embedded. shortName is the leaf authored token.
             val relShortName = child.shortName ?: child.name
-            val propertyName = if (child.hasMetaAttr(com.metaobjects.database.CoreDBMetaDataProvider.COLUMN, true)) {
-                runCatching { child.getMetaAttr(com.metaobjects.database.CoreDBMetaDataProvider.COLUMN, true).valueAsString }
-                    .getOrNull() ?: (relShortName + "Id")
-            } else {
-                relShortName + "Id"
-            }
+            val propertyName = readColumnAttr(child) ?: (relShortName + "Id")
 
             // Default Exposed FK is `long(...)`; refine later if other PK types appear.
-            val parts = StringBuilder("long(\"$propertyName\").references($targetTable.id")
-            var hasOption = false
+            val refParts = mutableListOf<String>()
             val onDelete = child.onDeleteRaw?.let { mapReferentialAction(it) }
             val onUpdate = child.onUpdateRaw?.let { mapReferentialAction(it) }
-            if (onDelete != null) {
-                parts.append(", onDelete = ReferenceOption.$onDelete")
-                hasOption = true
-            }
-            if (onUpdate != null) {
-                parts.append(", onUpdate = ReferenceOption.$onUpdate")
-                hasOption = true
-            }
-            parts.append(')')
-            result.add(FkColumnSpec(propertyName, parts.toString(), hasOption))
+            if (onDelete != null) refParts += "onDelete = ReferenceOption.$onDelete"
+            if (onUpdate != null) refParts += "onUpdate = ReferenceOption.$onUpdate"
+
+            val refArgs = if (refParts.isEmpty()) "" else ", " + refParts.joinToString(", ")
+            val expr = "long(\"$propertyName\").references($targetTable.id$refArgs)"
+            result.add(FkColumnSpec(propertyName, expr, hasReferenceOption = refParts.isNotEmpty()))
         }
         return result
     }
 
-    /** Resolve `@objectRef` (short name OR fully-qualified) to the target entity's short name. */
-    private fun resolveTargetShortName(objectRef: String, loader: MetaDataLoader): String? {
-        // Try exact match first (FQN), then by short name across all entities.
-        val direct = loader.metaObjects.firstOrNull { it.name == objectRef }
-        if (direct != null) return PackageMapping.splitFqn(direct.name).second
-        val byShortName = loader.metaObjects.firstOrNull {
-            PackageMapping.splitFqn(it.name).second == objectRef
-        }
-        return byShortName?.let { PackageMapping.splitFqn(it.name).second }
+    /** Read the `@column` attr on a relationship (inheritance allowed); null when absent. */
+    private fun readColumnAttr(rel: MetaRelationship): String? {
+        if (!rel.hasMetaAttr(CoreDBMetaDataProvider.COLUMN, true)) return null
+        return runCatching { rel.getMetaAttr(CoreDBMetaDataProvider.COLUMN, true).valueAsString }
+            .getOrNull()
     }
 
     /**
@@ -285,26 +260,6 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         MetaRelationship.ACTION_RESTRICT   -> "RESTRICT"
         MetaRelationship.ACTION_NO_ACTION  -> "NO_ACTION"
         else -> null
-    }
-
-    private fun findRdbSource(entity: MetaObject): MetaSource? =
-        entity.children.firstOrNull { it is RdbSource } as? MetaSource
-
-    private fun findPrimaryIdentity(entity: MetaObject): MetaIdentity? {
-        for (child in entity.children) {
-            if (child is MetaIdentity && child.subType == "primary") return child
-        }
-        return null
-    }
-
-    private fun isRequired(field: MetaField<*>): Boolean {
-        if (!field.hasMetaAttr(MetaField.ATTR_REQUIRED, true)) return false
-        val raw = runCatching { field.getMetaAttr(MetaField.ATTR_REQUIRED, true).value }.getOrNull()
-        return when (raw) {
-            is Boolean -> raw
-            is String -> raw.equals("true", ignoreCase = true)
-            else -> false
-        }
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
