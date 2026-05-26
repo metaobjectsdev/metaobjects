@@ -230,4 +230,4 @@ for the per-port pass/skip ledger.
 - [entities.md](entities.md) — the host node `object.entity`
 - [templates-and-payloads.md](templates-and-payloads.md) — `origin.*` subtypes used by views
 - [migrations-and-drift.md](migrations-and-drift.md) — how `meta migrate` emits view + table DDL
-- [ADR-0007](../../spec/decisions/ADR-0007-source-rdb-paradigm-subtypes.md) — design rationale
+- [ADR-0007](../../spec/decisions/ADR-0007-source-v2-paradigm-subtypes-multisource.md) — design rationale

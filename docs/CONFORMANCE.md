@@ -14,7 +14,7 @@ human-readable explanation somewhere, look it up in the
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 85 | 85 / 85 | 85 / 85 | inherits via `metadata-ktx` | source-v2 cluster + `doc-common-attrs-on-all-types` are open gaps | 91 / 91 (also gates loader extensions) |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 88 | 88 / 88 | 88 / 88 | inherits via `metadata-ktx` | source-v2 cluster + `doc-common-attrs-on-all-types` are open gaps | 91 / 91 (also gates loader extensions) |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 6 | 6 / 6 | 6 / 6 | inherits via Java | 6 / 6 | 6 / 6 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | 31 / 31 | 31 / 31 | inherits via Java | 31 / 31 | 31 / 31 |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 4 | 4 / 4 | 4 / 4 | inherits via Java | 4 / 4 | 4 / 4 |
