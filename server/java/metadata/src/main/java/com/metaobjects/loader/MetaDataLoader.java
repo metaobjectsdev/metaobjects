@@ -163,6 +163,11 @@ public class MetaDataLoader implements LoaderConfigurable {
      * Resolve queued cross-file/forward {@code extends} refs. Mirrors the
      * TS/C# behaviour: defer the lookup until every source has populated the
      * tree, then bind. Anything still unresolved throws ERR_UNRESOLVED_SUPER.
+     *
+     * <p><b>TODO: cycle detection.</b> Single-pass resolve matches TS reference
+     * behavior (parity, not regression), but a cycle (a → b → a) would land
+     * silently and only surface at usage time. Add a one-pass cycle check at
+     * queue drain when this becomes a real-world hazard.</p>
      */
     private void resolvePendingExtends() {
         if (pendingExtends.isEmpty()) return;

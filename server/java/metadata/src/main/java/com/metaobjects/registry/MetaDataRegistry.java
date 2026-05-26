@@ -294,8 +294,10 @@ public class MetaDataRegistry {
             
         } catch (Exception e) {
             throw new MetaDataException(
-                "Failed to create instance of type: " + typeId.toQualifiedName() + 
-                " with class: " + definition.getImplementationClass().getName(), e);
+                "Failed to create instance of type: " + typeId.toQualifiedName() +
+                " with class: " + definition.getImplementationClass().getName(),
+                null, null, e, java.util.Collections.emptyMap(),
+                com.metaobjects.ErrorCode.ERR_UNKNOWN);
         }
     }
     
