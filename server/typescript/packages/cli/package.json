@@ -41,6 +41,7 @@
     "@metaobjectsdev/codegen-ts-react": "workspace:*",
     "@metaobjectsdev/codegen-ts-tanstack": "workspace:*",
     "@metaobjectsdev/migrate-ts": "workspace:*",
+    "@metaobjectsdev/runtime-ts": "workspace:*",
     "jiti": "^2.4.0"
   },
   "peerDependencies": {

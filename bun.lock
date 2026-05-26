@@ -96,6 +96,7 @@
         "@metaobjectsdev/metadata": "workspace:*",
         "@metaobjectsdev/migrate-ts": "workspace:*",
         "@metaobjectsdev/render": "workspace:*",
+        "@metaobjectsdev/runtime-ts": "workspace:*",
         "@metaobjectsdev/sdk": "workspace:*",
         "jiti": "^2.4.0",
       },
