@@ -8,6 +8,7 @@ Kotlin codegen target for Spring-Boot-Kotlin consumers on Exposed + Flyway. Emit
 |---|---|---|
 | `KotlinEntityGenerator` | `<Entity>.kt` — `@Serializable data class` | every `object.entity` AND `object.value` |
 | `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object with PK + FK + `@storage` columns | every entity with `source.rdb` |
+| `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `cardinality=many` query helpers | entities with `cardinality=many` composition relationships |
 | `KotlinPayloadGenerator` | `<Template>Payload.kt` — `@Serializable` payload from `@payloadRef` view-object | every `template.prompt` / `template.output` |
 | `KotlinValidatorGenerator` | `MetadataStartupValidator.kt` + `ExposedTableValidator.kt` | once per project |
 | `KotlinSpringConfigGenerator` | `MetadataExposedConfig.kt` — `@Configuration` wiring `Database.connect()` + auto-validator | once per project |
@@ -54,7 +55,17 @@ object PostTable : Table("posts") {
 }
 ```
 
-`@cardinality: many` side is skipped (FK lives on the to-one side). Referential actions map kebab-case metadata → SCREAMING_SNAKE Exposed `ReferenceOption` enum names.
+`@cardinality: many` side is skipped on the table emitter (FK lives on the to-one side). Referential actions map kebab-case metadata → SCREAMING_SNAKE Exposed `ReferenceOption` enum names.
+
+Bidirectional emission: when entity X declares `@cardinality: many` to Y with no reciprocal, `KotlinExposedTableGenerator` infers the FK column on `YTable` (`<XShort.lowercased>Id`), and `KotlinRelationsGenerator` emits an ergonomic query helper on the parent side:
+
+```kotlin
+// AuthorRelations.kt — emitted alongside AuthorTable.kt
+fun AuthorTable.postsQuery(authorId: Long): Query =
+    PostTable.selectAll().where { PostTable.authorId eq authorId }
+```
+
+so consumers can write `AuthorTable.postsQuery(author.id).toList()` (or chain `.orderBy(...)` / `.limit(...)` first). One helper fn per to-many composition; the file is skipped entirely for entities with no to-many relationships.
 
 ## FR-004 payload origins
 
