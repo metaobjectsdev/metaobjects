@@ -26,7 +26,7 @@ Kotlin codegen target for Spring-Boot-Kotlin consumers on Exposed + Flyway. Emit
 | `field.timestamp` | `java.time.Instant` | `timestampWithTimeZone(name)` |
 | `field.currency` | `Long` (minor units — wire format invariant) | `long(name)` |
 | `field.uuid` | `java.util.UUID` | `uuid(name)` |
-| `field.enum` | `String` (TBD: typed enum class) | `varchar(name, 64)` |
+| `field.enum` | typed Kotlin `enum class` (separate `<Entity><Field>.kt` file with `@Serializable`) | `enumerationByName(name, 64, <Entity><Field>::class)` |
 | `field.object` (`@storage="flattened"`) | reference to the generated VO data class | per-sub-field columns: `<parent>_<sub>` |
 | `field.object` (`@storage="jsonb"` or default) | reference to the generated VO data class | single `jsonb(name, { Json.encodeToString(it) }, { Json.decodeFromString(it) })` |
 
@@ -165,4 +165,4 @@ The shared cross-language codegen conformance corpus is **FR-007** — see [`doc
 
 ## Test count
 
-45 tests in this module (`mvn -pl codegen-kotlin test`). Snapshot tests gate within-Java output stability; `kotlin-compile-testing` gates generated-code validity; an E2E test exercises the full loop including the Java `Renderer`.
+75 tests in this module (`mvn -pl codegen-kotlin test`). Snapshot tests gate within-Java output stability; `kotlin-compile-testing` gates generated-code validity; an E2E test exercises the full loop including the Java `Renderer`.
