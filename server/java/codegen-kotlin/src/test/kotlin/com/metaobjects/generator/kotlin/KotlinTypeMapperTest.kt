@@ -1,6 +1,8 @@
 package com.metaobjects.generator.kotlin
 
 import com.metaobjects.DataTypes
+import com.metaobjects.attr.IntAttribute
+import com.metaobjects.attr.StringAttribute
 import com.metaobjects.field.BooleanField
 import com.metaobjects.field.CurrencyField
 import com.metaobjects.field.DateField
@@ -149,6 +151,27 @@ class KotlinTypeMapperTest {
         // Non-enum fields → null (caller falls through to kotlinTypeName).
         val idField = entity.metaFields.first { it.name == "id" }
         assertNull(KotlinTypeMapper.enumTypeName(idField, entity))
+    }
+
+    // === Long-text dispatch (varchar vs text) ===
+
+    @Test fun `string with kind text maps to text column`() {
+        val f = StringField("body")
+        f.addMetaAttr(StringAttribute.create("kind", "text"))
+        assertEquals("text(\"body\")", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
+    @Test fun `string with maxLength over threshold maps to text column`() {
+        val f = StringField("description")
+        f.addMetaAttr(IntAttribute.create(StringField.ATTR_MAX_LENGTH, 10000))
+        assertEquals("text(\"description\")", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
+    @Test fun `string with no kind and small maxLength maps to varchar`() {
+        val f = StringField("name")
+        f.addMetaAttr(IntAttribute.create(StringField.ATTR_MAX_LENGTH, 100))
+        val spec = KotlinTypeMapper.exposedColumnSpec(f)
+        assertTrue(spec.contains("varchar") && spec.contains("100"), "got: $spec")
     }
 
     @Test fun `uuid field (matched by subtype) maps to java util UUID and uuid exposed column`() {
