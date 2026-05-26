@@ -33,10 +33,20 @@ export async function introspectD1(opts: IntrospectD1Options): Promise<SchemaSna
     return parseEnvelope(stdout);
   };
 
-  const versionRows = await exec("SELECT sqlite_version() AS v");
-  const meta: SnapshotMeta = {
-    sqliteVersion: String(versionRows[0]?.v ?? "0.0.0"),
-  };
+  // sqlite_version() is blocked by workerd's local D1 sandbox, so we fall back
+  // to a known-good static version (Cloudflare D1 ships a recent SQLite). Remote
+  // wrangler executions answer the function, so we try once and only fall back
+  // on failure. Keep this string ≥ any version-gated downstream feature checks
+  // (see emit/sqlite.ts → parseVersion).
+  let sqliteVersion = "3.44.0";
+  try {
+    const versionRows = await exec("SELECT sqlite_version() AS v");
+    const v = versionRows[0]?.v;
+    if (v !== undefined && v !== null) sqliteVersion = String(v);
+  } catch {
+    // Fall through to the static default — workerd local sandbox path.
+  }
+  const meta: SnapshotMeta = { sqliteVersion };
 
   const tableRows = await exec(
     "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__new_%' ORDER BY name",

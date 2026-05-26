@@ -74,6 +74,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 See [ADR-0010](spec/decisions/ADR-0010-template-output-parser-codegen.md)
 for the cross-port design.
 
+### Fixed
+- **`@metaobjectsdev/cli` now pulls `@metaobjectsdev/runtime-ts` transitively.**
+  Generated entity files emit `import type { FilterAllowlist, SortAllowlist }
+  from "@metaobjectsdev/runtime-ts/drizzle-fastify"` unconditionally; until
+  now, consumers who installed only `cli` (the recommended umbrella) hit
+  unresolved-import errors on the first `meta gen`. `cli` now declares
+  `runtime-ts` as a runtime dependency at the same pinned workspace version.
+  The imports are type-only, so the addition has no Worker/Lambda bundle
+  impact. (Reported from a 0.7.0-rc.1 Worker consumer.) Long-term, an opt-in
+  flag on `entityFile({ allowlists: false })` will let Workers consumers skip
+  the imports entirely — that's a separate follow-up.
+- **`meta migrate --dialect d1` no longer fails against wrangler's local D1
+  sandbox.** `introspectD1` was calling `SELECT sqlite_version()` to populate
+  `SnapshotMeta.sqliteVersion`, but workerd blocks that function in the local
+  D1 sandbox. The introspector now tries the call once and falls back to a
+  static known-good version (`"3.44.0"` — matches Cloudflare D1's shipped
+  SQLite) on failure. Remote `wrangler d1 execute` paths still answer the
+  function and use the live value. (Reported from the same 0.7.0-rc.1
+  consumer.)
+
 ## [0.6.0] — 2026-05-25
 
 ### Added
