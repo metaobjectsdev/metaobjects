@@ -142,14 +142,15 @@ public class ReferenceIdentity extends MetaIdentity {
      * Whether the reference is physically enforced by the backend.
      * Default true (hard FK constraint emitted). Explicit {@code @enforce: false}
      * marks the reference as logical-only — codegen skips physical constraints.
+     *
+     * The attr is registered as {@link BooleanAttribute#SUBTYPE_BOOLEAN}; the loader
+     * coerces values to a {@link Boolean} so the attr's raw value is either {@code null}
+     * (absent) or a {@link Boolean}. Default-true semantics: absent → true; only
+     * explicit {@code Boolean.TRUE} keeps the reference enforced.
      */
     public boolean isEnforced() {
         if (!hasMetaAttr(ATTR_ENFORCE)) return true;
-        MetaAttribute attr = getMetaAttr(ATTR_ENFORCE);
-        Object value = attr.getValue();
-        if (value instanceof Boolean) return (Boolean) value;
-        // String fallback for value coercion edge cases — explicit "false" means soft.
-        return !"false".equalsIgnoreCase(attr.getValueAsString());
+        return Boolean.TRUE.equals(getMetaAttr(ATTR_ENFORCE).getValue());
     }
 
     @Override
