@@ -11,6 +11,7 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.identity.SecondaryIdentity;
+import com.metaobjects.layout.MetaLayout;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.source.MetaSource;
@@ -119,7 +120,7 @@ public abstract class MetaObject extends MetaData {
             def.optionalChild(MetaView.TYPE_VIEW, "*", "*");
 
             // OBJECTS CAN CONTAIN LAYOUTS (layout.dataGrid and future subtypes)
-            def.optionalChild("layout", "*", "*");
+            def.optionalChild(MetaLayout.TYPE_LAYOUT, "*", "*");
 
             // OBJECTS CAN CONTAIN RELATIONSHIPS
             def.optionalChild(MetaRelationship.TYPE_RELATIONSHIP, "*", "*");

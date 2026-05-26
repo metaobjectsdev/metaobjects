@@ -21,6 +21,8 @@ _PG_OID_NUMERIC = 1700
 from ..meta.meta_root import MetaRoot
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.core.field.meta_field import MetaField
+from ..meta.core.field import field_constants as fc
+from ..meta.core.identity import identity_constants as ic
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source import source_constants as sc
 
@@ -160,7 +162,7 @@ class ObjectManager:
         pi = entity.primary_identity()
         if pi is None:
             raise ValueError(f"Entity '{entity.name}' has no primary identity")
-        raw = pi.attr("fields")
+        raw = pi.attr(ic.IDENTITY_ATTR_FIELDS)
         if isinstance(raw, str):
             return raw
         if isinstance(raw, (list, tuple)) and raw:
@@ -234,7 +236,7 @@ def _op_clause(col: str, op: str, value: Any) -> tuple[str, list[Any]]:
 def _column_of(field: MetaField | None) -> str:
     if field is None:
         return ""
-    col = field.attr("column")
+    col = field.attr(fc.FIELD_ATTR_COLUMN)
     return col if isinstance(col, str) and col else field.name
 
 

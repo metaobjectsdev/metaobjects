@@ -15,6 +15,7 @@ from ..meta.core.object.meta_object import MetaObject
 from ..meta.core.identity.meta_identity import MetaIdentity
 from ..meta.core.identity import identity_constants as ic
 from ..meta.core.field.meta_field import MetaField
+from ..meta.core.field import field_constants as fc
 from ..meta.core.relationship.meta_relationship import MetaRelationship
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source import source_constants as sc
@@ -185,7 +186,7 @@ def _identity_fields(identity: MetaIdentity) -> tuple[str, ...]:
 
 
 def _column_of(field: MetaField) -> str:
-    col = field.attr("column")
+    col = field.attr(fc.FIELD_ATTR_COLUMN)
     return col if isinstance(col, str) and col else field.name
 
 
