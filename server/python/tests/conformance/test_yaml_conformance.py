@@ -122,10 +122,16 @@ def test_yaml_conformance(fix: YamlFixture) -> None:
         assert codes == [], (
             f"{fix.name}: expected no errors but got {codes}"
         )
-        want_tree = json.loads((fix.dir / "expected.json").read_text())
-        got_tree = json.loads(canonical)
-        assert got_tree == want_tree, (
-            f"{fix.name}: canonical mismatch\n"
-            f"  want: {json.dumps(want_tree, indent=2, sort_keys=True)}\n"
-            f"  got:  {json.dumps(got_tree, indent=2, sort_keys=True)}"
+        # Byte-compare per the canonical-serializer contract
+        # (spec/conformance-tests.md): 2-space indent, sorted @-attrs,
+        # declaration-ordered children, trailing newline are ALL part of the
+        # cross-port contract. A tree compare would silently pass regressions
+        # in any of these. Trim only the trailing newline so authors don't
+        # have to fight editors-that-trim. TS does `expect(got).toBe(want)`;
+        # C# + Java do trimmed-string compare. Python now matches.
+        want = (fix.dir / "expected.json").read_text(encoding="utf-8")
+        assert canonical.strip() == want.strip(), (
+            f"{fix.name}: canonical byte mismatch\n"
+            f"--- want ---\n{want}\n"
+            f"--- got ---\n{canonical}"
         )
