@@ -6,6 +6,7 @@ import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.identity.MetaIdentity
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
+import com.metaobjects.relationship.MetaRelationship
 import com.metaobjects.source.MetaSource
 import com.metaobjects.source.RdbSource
 import java.io.OutputStream
@@ -39,11 +40,11 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         for (entity in loader.metaObjects) {
             if (entity.subType != "entity") continue
             val sourceRdb = findRdbSource(entity) ?: continue
-            emit(entity, sourceRdb, outRoot)
+            emit(entity, sourceRdb, outRoot, loader)
         }
     }
 
-    private fun emit(entity: MetaObject, sourceRdb: MetaSource, outRoot: Path) {
+    private fun emit(entity: MetaObject, sourceRdb: MetaSource, outRoot: Path, loader: MetaDataLoader) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val tableObjectName = shortName + "Table"
         val tableName = sourceRdb.tableName ?: (shortName.lowercase() + "s")
@@ -52,11 +53,17 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val primaryFieldName = primary?.fields?.firstOrNull()
         val incrementPk = primary?.generation == MetaIdentity.GENERATION_INCREMENT
 
+        val fkColumns = buildFkColumns(entity, loader)
+
         val source = buildString {
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")
             }
-            append("import org.jetbrains.exposed.sql.Table\n\n")
+            append("import org.jetbrains.exposed.sql.Table\n")
+            if (fkColumns.any { it.hasReferenceOption }) {
+                append("import org.jetbrains.exposed.sql.ReferenceOption\n")
+            }
+            append("\n")
             append("/** GENERATED — do not hand-edit. Regenerated from metadata. */\n")
             append("object $tableObjectName : Table(\"$tableName\") {\n")
             for (field in entity.metaFields) {
@@ -67,6 +74,9 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 val full = if (nullable) "$withAuto.nullable()" else withAuto
                 append("    val ${field.name} = $full\n")
             }
+            for (fk in fkColumns) {
+                append("    val ${fk.propertyName} = ${fk.columnExpr}\n")
+            }
             if (primaryFieldName != null) {
                 append("\n    override val primaryKey = PrimaryKey($primaryFieldName)\n")
             }
@@ -76,6 +86,101 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$tableObjectName.kt")
         outFile.parent?.let { Files.createDirectories(it) }
         Files.writeString(outFile, source)
+    }
+
+    // === FK column emission from relationship.composition ====================
+
+    /** A foreign-key column derived from a `relationship.composition` child. */
+    private data class FkColumnSpec(
+        val propertyName: String,
+        val columnExpr: String,
+        val hasReferenceOption: Boolean,
+    )
+
+    /**
+     * Build one FK column per `relationship.composition` to-one child.
+     *
+     * <ul>
+     *   <li>Cardinality "many" (one-to-many) ⇒ FK lives on the OTHER side; skip here.</li>
+     *   <li>Default cardinality is "one" (per {@link MetaRelationship#getCardinality()}).</li>
+     *   <li>Property name = literal {@code <relationshipName>Id} (camelCase, matches the
+     *       Kotlin property style). An explicit {@code @column} attr overrides it
+     *       verbatim — the user has named the physical column themselves.</li>
+     *   <li>Target table object = {@code <TargetShortName>Table} — looked up by short
+     *       name in the loader (Exposed objects are forward-referenceable at the JVM
+     *       level, so out-of-file references work without import bookkeeping when the
+     *       generated package is consistent).</li>
+     *   <li>{@code @onDelete} / {@code @onUpdate} (kebab-case in metadata, e.g.
+     *       {@code "set-null"}) lower to Exposed's SCREAMING_SNAKE
+     *       {@code ReferenceOption} enum.</li>
+     * </ul>
+     */
+    private fun buildFkColumns(entity: MetaObject, loader: MetaDataLoader): List<FkColumnSpec> {
+        val result = mutableListOf<FkColumnSpec>()
+        for (child in entity.children) {
+            if (child !is MetaRelationship) continue
+            if (child.subType != "composition") continue
+            // Skip the "many" side — FK lives on the other entity.
+            if (child.cardinality == MetaRelationship.CARDINALITY_MANY) continue
+
+            val objectRef = child.objectRef ?: continue
+            val targetShortName = resolveTargetShortName(objectRef, loader) ?: continue
+            val targetTable = targetShortName + "Table"
+
+            // Use shortName: relationship.name is fully-qualified after loading
+            // (e.g., "acme::demo::author"), which would produce an illegal Kotlin
+            // identifier with "::" embedded. shortName is the leaf authored token.
+            val relShortName = child.shortName ?: child.name
+            val propertyName = if (child.hasMetaAttr(com.metaobjects.database.CoreDBMetaDataProvider.COLUMN, true)) {
+                runCatching { child.getMetaAttr(com.metaobjects.database.CoreDBMetaDataProvider.COLUMN, true).valueAsString }
+                    .getOrNull() ?: (relShortName + "Id")
+            } else {
+                relShortName + "Id"
+            }
+
+            // Default Exposed FK is `long(...)`; refine later if other PK types appear.
+            val parts = StringBuilder("long(\"$propertyName\").references($targetTable.id")
+            var hasOption = false
+            val onDelete = child.onDeleteRaw?.let { mapReferentialAction(it) }
+            val onUpdate = child.onUpdateRaw?.let { mapReferentialAction(it) }
+            if (onDelete != null) {
+                parts.append(", onDelete = ReferenceOption.$onDelete")
+                hasOption = true
+            }
+            if (onUpdate != null) {
+                parts.append(", onUpdate = ReferenceOption.$onUpdate")
+                hasOption = true
+            }
+            parts.append(')')
+            result.add(FkColumnSpec(propertyName, parts.toString(), hasOption))
+        }
+        return result
+    }
+
+    /** Resolve `@objectRef` (short name OR fully-qualified) to the target entity's short name. */
+    private fun resolveTargetShortName(objectRef: String, loader: MetaDataLoader): String? {
+        // Try exact match first (FQN), then by short name across all entities.
+        val direct = loader.metaObjects.firstOrNull { it.name == objectRef }
+        if (direct != null) return PackageMapping.splitFqn(direct.name).second
+        val byShortName = loader.metaObjects.firstOrNull {
+            PackageMapping.splitFqn(it.name).second == objectRef
+        }
+        return byShortName?.let { PackageMapping.splitFqn(it.name).second }
+    }
+
+    /**
+     * Map a kebab-case metadata referential action to Exposed's `ReferenceOption` name.
+     * Metadata: `cascade | set-null | restrict | no-action` (per MetaRelationship).
+     * Exposed: `CASCADE | SET_NULL | RESTRICT | NO_ACTION | SET_DEFAULT`.
+     * Returns null for unknown values rather than throwing — keeps codegen resilient
+     * against future-vocabulary metadata; the loader already validates the enum set.
+     */
+    private fun mapReferentialAction(kebab: String): String? = when (kebab) {
+        MetaRelationship.ACTION_CASCADE    -> "CASCADE"
+        MetaRelationship.ACTION_SET_NULL   -> "SET_NULL"
+        MetaRelationship.ACTION_RESTRICT   -> "RESTRICT"
+        MetaRelationship.ACTION_NO_ACTION  -> "NO_ACTION"
+        else -> null
     }
 
     private fun findRdbSource(entity: MetaObject): MetaSource? =
