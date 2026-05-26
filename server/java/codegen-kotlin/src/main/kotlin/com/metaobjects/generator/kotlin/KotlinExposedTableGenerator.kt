@@ -10,12 +10,14 @@ import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.relationship.CompositionRelationship
 import com.metaobjects.relationship.MetaRelationship
+import com.metaobjects.source.MetaSource
 import com.metaobjects.source.RdbSource
 import java.io.OutputStream
 import java.io.PrintWriter
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import org.slf4j.LoggerFactory
 
 /**
  * Generator: one Exposed Table `object` per `object.entity` that has a `source.rdb` child.
@@ -50,9 +52,31 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         for (entity in loader.metaObjects) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             val sourceRdb = entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue
-            val fkColumns = fkMap[entity.name].orEmpty()
+            val kind = sourceRdb.effectiveKind
+            // table + view + materializedView → emit; view-like kinds are emitted read-only.
+            // storedProc / tableFunction → skip with a warning (Phase L will add support).
+            if (kind != MetaSource.KIND_TABLE && !isViewKind(sourceRdb)) {
+                LOG.warn(
+                    "skipping {} — source.rdb @kind='{}' is not supported by KotlinExposedTableGenerator (table/view/materializedView only)",
+                    entity.name, kind
+                )
+                continue
+            }
+            val fkColumns = if (isViewKind(sourceRdb)) emptyList() else fkMap[entity.name].orEmpty()
             emit(entity, sourceRdb, outRoot, loader, fkColumns)
         }
+    }
+
+    /**
+     * True when {@code source.rdb @kind} names a view-like construct
+     * (view / materializedView). View-like sources are read-only: the generator
+     * emits the Table declaration without auto-increment on the PK and without
+     * FK constraints (views inherit FKs from their underlying tables; declaring
+     * them again on the view confuses Exposed and serves no purpose).
+     */
+    private fun isViewKind(sourceRdb: RdbSource): Boolean {
+        val k = sourceRdb.effectiveKind
+        return k == MetaSource.KIND_VIEW || k == MetaSource.KIND_MATERIALIZED_VIEW
     }
 
     private fun emit(
@@ -63,6 +87,7 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         fkColumns: List<FkColumnSpec>,
     ) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
+        val isView = isViewKind(sourceRdb)
         val tableObjectName = shortName + "Table"
         val tableName = sourceRdb.tableName ?: (shortName.lowercase() + "s")
 
@@ -70,7 +95,10 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .filterIsInstance<MetaIdentity>()
             .firstOrNull { it.isPrimary }
         val primaryFieldName = primary?.fields?.firstOrNull()
-        val incrementPk = primary?.isIncrement == true
+        // Views inherit PKs from underlying tables — never emit autoIncrement on a
+        // view column, even when @generation=increment is declared on the primary
+        // identity (a relic of the parent entity's declaration).
+        val incrementPk = primary?.isIncrement == true && !isView
 
         val objectColumns = buildObjectColumns(entity, primaryFieldName, loader)
         val needsJsonbImport = objectColumns.any { it.kind == ObjectColumnKind.JSONB }
@@ -88,6 +116,9 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 append("import kotlinx.serialization.json.Json\n")
             }
             append("\n")
+            if (isView) {
+                append("/** READ-ONLY VIEW — generated from view metadata; do not insert/update/delete directly. */\n")
+            }
             append("/** GENERATED — do not hand-edit. Regenerated from metadata. */\n")
             append("object $tableObjectName : Table(\"$tableName\") {\n")
             for (field in entity.metaFields) {
@@ -204,6 +235,9 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         /** Cross-language @storage attr on field.object — values: flattened | jsonb (default). */
         const val ATTR_STORAGE = "storage"
         const val STORAGE_FLATTENED = "flattened"
+
+        @JvmStatic
+        val LOG = LoggerFactory.getLogger(KotlinExposedTableGenerator::class.java)
     }
 
     // === FK column emission from relationship.composition ====================

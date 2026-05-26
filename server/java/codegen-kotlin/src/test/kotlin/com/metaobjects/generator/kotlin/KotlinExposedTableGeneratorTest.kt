@@ -389,6 +389,131 @@ class KotlinExposedTableGeneratorTest {
      * The to-many side authors lifecycle intent — `@onDelete: cascade` on
      * Author's many-side must propagate into the inferred FK on PostTable.
      */
+    // === source.rdb @kind: "view" coverage ==================================
+
+    /**
+     * View fixture: AuthorSummary projects Author with @kind="view".
+     * Even though the primary identity declares @generation="increment", the
+     * generator must NOT emit .autoIncrement() on a view column (views inherit
+     * stable PKs from their underlying tables). The read-only KDoc must appear.
+     */
+    @Test fun viewKindEmitsReadOnlyTable() {
+        val viewFixture = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "AuthorSummary", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.string": { "name": "name", "@required": true } },
+                { "field.int":    { "name": "postCount" } },
+                { "source.rdb":   { "@table": "v_author_summary", "@kind": "view" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-view-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("view-ro", viewFixture))
+
+            val table = outDir.resolve("acme/demo/AuthorSummaryTable.kt")
+            assertTrue(Files.exists(table),
+                "expected $table; files=${Files.walk(outDir).toList()}")
+            val src = Files.readString(table)
+            assertTrue("READ-ONLY VIEW" in src,
+                "expected READ-ONLY VIEW KDoc; saw:\n$src")
+            // Columns of the entity are present.
+            assertTrue("val id = long(\"id\")" in src,
+                "expected id column; saw:\n$src")
+            assertTrue("val name = varchar(\"name\"" in src,
+                "expected name column; saw:\n$src")
+            assertTrue("val postCount = integer(\"postCount\")" in src,
+                "expected postCount column; saw:\n$src")
+            // PK MUST NOT autoIncrement — views inherit the PK from underlying tables.
+            assertTrue(".autoIncrement()" !in src,
+                "view columns must NOT use .autoIncrement(); saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Author declares a to-many composition to Post (inferred FK on Post). But
+     * Post is itself a VIEW — the generator must NOT emit a `.references(...)`
+     * call on a view (FKs live on the underlying tables, not the view).
+     */
+    @Test fun viewKindSkipsFkConstraints() {
+        val viewWithFk = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Author", "children": [
+                { "field.long":   { "name": "id" } },
+                { "relationship.composition": {
+                    "name": "posts", "@objectRef": "PostView", "@cardinality": "many"
+                } },
+                { "source.rdb":   { "@table": "authors" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } },
+            { "object.entity": { "name": "PostView", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.long":   { "name": "authorId" } },
+                { "field.string": { "name": "title", "@required": true } },
+                { "source.rdb":   { "@table": "v_posts", "@kind": "view" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-view-fk-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("view-fk", viewWithFk))
+
+            val postView = outDir.resolve("acme/demo/PostViewTable.kt")
+            assertTrue(Files.exists(postView),
+                "expected $postView; files=${Files.walk(outDir).toList()}")
+            val src = Files.readString(postView)
+            assertTrue("READ-ONLY VIEW" in src,
+                "expected READ-ONLY VIEW KDoc on the view; saw:\n$src")
+            // Plain column types only — no .references() in the view's Table body.
+            assertTrue(".references(" !in src,
+                "view must NOT emit FK .references(...); saw:\n$src")
+            // No ReferenceOption import either (no FK lines emitted).
+            assertTrue("import org.jetbrains.exposed.sql.ReferenceOption" !in src,
+                "view must NOT import ReferenceOption; saw:\n$src")
+            // The plain authorId column is still present so the view can be queried.
+            assertTrue("val authorId = long(\"authorId\")" in src,
+                "expected plain authorId column (no FK constraint); saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /** `source.rdb @table` flows through verbatim as the view's table name. */
+    @Test fun viewKindUsesSourceRdbTableNameAsViewName() {
+        val fixture = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "AuthorSummary", "children": [
+                { "field.long":   { "name": "id" } },
+                { "source.rdb":   { "@table": "v_author_summary", "@kind": "view" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-view-name-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("view-name", fixture))
+
+            val table = outDir.resolve("acme/demo/AuthorSummaryTable.kt")
+            assertTrue(Files.exists(table))
+            val src = Files.readString(table)
+            assertTrue("object AuthorSummaryTable : Table(\"v_author_summary\")" in src,
+                "expected view table name from @table; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun manyToOneInverseRespectsOnDelete() {
         val withCascadeOnMany = """{
           "metadata.root": { "package": "acme::demo", "children": [
