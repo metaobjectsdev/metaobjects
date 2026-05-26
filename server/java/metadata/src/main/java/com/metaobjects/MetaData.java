@@ -1597,6 +1597,13 @@ public class MetaData implements Cloneable, Serializable {
         // Used to provide support for OSGi and Maven Mojos
         v.metaDataClassLoader = metaDataClassLoader;
 
+        // FR5a / ADR-0009 — preserve provenance across clone(). The overlay path
+        // (overload() → clone()) would otherwise reset source to CodeSource.DEFAULT,
+        // dropping the node's parse-time JsonSource. The clone inherits this node's
+        // source unfrozen so FR5c can later set a MergedSource envelope post-clone.
+        v.source = this.source;
+        v.sourceFrozen = false;
+
         for (MetaData md : getChildren()) {
             v.addChild((MetaData) md.clone());
         }

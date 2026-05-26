@@ -10,6 +10,9 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.metaobjects.MetaData;
+import com.metaobjects.io.json.CanonicalJsonSerializer;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -60,6 +63,31 @@ public final class SemanticDiff {
      */
     public static boolean diff(JsonElement a, JsonElement b) {
         return !equal(a, b);
+    }
+
+    /**
+     * MetaData overload: serializes both nodes to canonical JSON and diffs the
+     * resulting trees. Useful for the overlay-merge consumer in FR5c.
+     *
+     * <p>Mirrors {@code SemanticDiff.Diff(MetaData, MetaData)} in the C# port.
+     * Fast-paths byte-identical canonical output to {@code false} (no diff)
+     * before falling through to the {@link JsonElement}-level structural
+     * compare.</p>
+     *
+     * @param a left tree (may be {@code null})
+     * @param b right tree (may be {@code null})
+     * @return {@code true} if the trees differ semantically, {@code false} if equal
+     */
+    public static boolean diff(MetaData a, MetaData b) {
+        if (a == null && b == null) return false;
+        if (a == null || b == null) return true;
+        String serializedA = CanonicalJsonSerializer.canonicalSerialize(a);
+        String serializedB = CanonicalJsonSerializer.canonicalSerialize(b);
+        // Fast path: byte-identical canonical output → no diff.
+        if (serializedA.equals(serializedB)) return false;
+        JsonElement nodeA = JsonParser.parseString(serializedA);
+        JsonElement nodeB = JsonParser.parseString(serializedB);
+        return diff(nodeA, nodeB);
     }
 
     // ---------------------------------------------------------------------

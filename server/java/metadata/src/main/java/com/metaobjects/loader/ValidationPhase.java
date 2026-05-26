@@ -269,7 +269,7 @@ public final class ValidationPhase {
                         + "' @kind '" + kind
                         + "' is not a valid value; allowed: table, view, materializedView,"
                         + " storedProc, tableFunction",
-                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
             }
         }
 
@@ -282,7 +282,7 @@ public final class ValidationPhase {
                         + ": source '" + node.getName()
                         + "' @role '" + role
                         + "' is not a valid value; allowed: primary, replica, index, cache, publish, mirror",
-                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
             }
         }
     }
@@ -355,7 +355,7 @@ public final class ValidationPhase {
                     + ": object '" + obj.getName()
                     + "' declares " + sources.size()
                     + " source(s) but none has role \"" + MetaSource.ROLE_PRIMARY + "\"",
-                ErrorCode.ERR_SOURCE_NO_PRIMARY);
+                ErrorCode.ERR_SOURCE_NO_PRIMARY, obj.getSource());
         }
 
         if (primaryCount > 1) {
@@ -365,7 +365,7 @@ public final class ValidationPhase {
                     + "' declares " + primaryCount
                     + " sources with role \"" + MetaSource.ROLE_PRIMARY
                     + "\"; exactly one is required",
-                ErrorCode.ERR_SOURCE_MULTIPLE_PRIMARY);
+                ErrorCode.ERR_SOURCE_MULTIPLE_PRIMARY, obj.getSource());
         }
     }
 
@@ -432,7 +432,7 @@ public final class ValidationPhase {
                         + ": relationship '" + node.getName()
                         + "' @onDelete '" + onDelete
                         + "' is not a valid value; allowed: cascade, set-null, restrict, no-action",
-                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
             }
         }
 
@@ -445,7 +445,7 @@ public final class ValidationPhase {
                         + ": relationship '" + node.getName()
                         + "' @onUpdate '" + onUpdate
                         + "' is not a valid value; allowed: cascade, set-null, restrict, no-action",
-                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
             }
         }
     }
@@ -486,7 +486,7 @@ public final class ValidationPhase {
                 ErrorMessageConstants.ERR_STORAGE_WITHOUT_OBJECT_REF
                     + ": field.object '" + field.getName()
                     + "' has @storage but no @objectRef — @storage shape only applies to referenced objects",
-                ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF);
+                ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF, field.getSource());
         }
 
         Object storageVal = node.getMetaAttr(ObjectField.ATTR_STORAGE, false).getValue();
@@ -496,7 +496,7 @@ public final class ValidationPhase {
                     + ": field.object '" + field.getName()
                     + "' @storage=\"flattened\" cannot be combined with isArray=true"
                     + " (use @storage=\"jsonb\" for owned-array storage)",
-                ErrorCode.ERR_STORAGE_FLATTENED_ARRAY);
+                ErrorCode.ERR_STORAGE_FLATTENED_ARRAY, field.getSource());
         }
     }
 
@@ -572,13 +572,13 @@ public final class ValidationPhase {
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
                         + ": origin.passthrough on " + obj.getName() + "." + field.getName()
                         + ": missing @from.",
-                    ErrorCode.ERR_INVALID_ORIGIN);
+                    ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
             }
             validateFromOrOfPath(from, root, obj.getName(), field.getName(),
-                "origin.passthrough.@from");
+                "origin.passthrough.@from", origin.getSource());
             String via = origin.getVia();
             if (via != null && !via.isEmpty()) {
-                validateViaPath(via, root, obj.getName(), field.getName());
+                validateViaPath(via, root, obj.getName(), field.getName(), origin.getSource());
             }
             return;
         }
@@ -594,7 +594,7 @@ public final class ValidationPhase {
                         + ": origin.aggregate on " + obj.getName() + "." + field.getName()
                         + " @agg '" + agg + "' is not a valid value; allowed: "
                         + "count, sum, avg, min, max",
-                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                    ErrorCode.ERR_BAD_ATTR_VALUE, origin.getSource());
             }
 
             String of = origin.getOf();
@@ -603,10 +603,10 @@ public final class ValidationPhase {
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
                         + ": origin.aggregate on " + obj.getName() + "." + field.getName()
                         + ": missing @of.",
-                    ErrorCode.ERR_INVALID_ORIGIN);
+                    ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
             }
             validateFromOrOfPath(of, root, obj.getName(), field.getName(),
-                "origin.aggregate.@of");
+                "origin.aggregate.@of", origin.getSource());
 
             String via = origin.getVia();
             if (via == null || via.isEmpty()) {
@@ -614,9 +614,9 @@ public final class ValidationPhase {
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
                         + ": origin.aggregate on " + obj.getName() + "." + field.getName()
                         + ": missing @via (aggregates require a relationship path).",
-                    ErrorCode.ERR_INVALID_ORIGIN);
+                    ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
             }
-            validateViaPath(via, root, obj.getName(), field.getName());
+            validateViaPath(via, root, obj.getName(), field.getName(), origin.getSource());
             return;
         }
 
@@ -630,7 +630,7 @@ public final class ValidationPhase {
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
                         + ": origin.collection on " + obj.getName() + "." + field.getName()
                         + ": missing @via.",
-                    ErrorCode.ERR_INVALID_ORIGIN);
+                    ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
             }
         }
     }
@@ -754,7 +754,7 @@ public final class ValidationPhase {
                 ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
                     + ": identity '" + identity.getName()
                     + "' is missing required @fields attribute",
-                ErrorCode.ERR_MISSING_REQUIRED_ATTR);
+                ErrorCode.ERR_MISSING_REQUIRED_ATTR, identity.getSource());
         }
         if (identity.hasMetaAttr(MetaIdentity.ATTR_GENERATION, false)) {
             Object v = identity.getMetaAttr(MetaIdentity.ATTR_GENERATION, false).getValue();
@@ -765,7 +765,7 @@ public final class ValidationPhase {
                         + ": identity '" + identity.getName()
                         + "' @generation '" + gen + "' is not a valid value;"
                         + " allowed: increment, uuid, assigned",
-                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                    ErrorCode.ERR_BAD_ATTR_VALUE, identity.getSource());
             }
         }
     }
@@ -835,7 +835,7 @@ public final class ValidationPhase {
                         + ": layout.dataGrid '" + grid.getShortName()
                         + "' on '" + obj.getShortName()
                         + "' @defaultSortField '" + sortField + "' does not reference a real field",
-                    ErrorCode.ERR_BAD_DEFAULT_SORT_FIELD);
+                    ErrorCode.ERR_BAD_DEFAULT_SORT_FIELD, grid.getSource());
             }
         }
 
@@ -873,7 +873,7 @@ public final class ValidationPhase {
                         + ": layout.dataGrid '" + grid.getShortName()
                         + "' on '" + obj.getShortName()
                         + "' @filter references '" + key + "' which is not a @filterable field",
-                    ErrorCode.ERR_BAD_ATTR_FILTER);
+                    ErrorCode.ERR_BAD_ATTR_FILTER, grid.getSource());
             }
             if (e.getValue() instanceof java.util.Map) {
                 java.util.Set<String> allowed = allowedOpsFor(field);
@@ -886,7 +886,7 @@ public final class ValidationPhase {
                                 + "' on '" + obj.getShortName()
                                 + "' @filter op '" + op + "' is not valid for field '" + key
                                 + "' (subtype " + field.getSubType() + "); allowed: " + allowed,
-                            ErrorCode.ERR_BAD_ATTR_FILTER);
+                            ErrorCode.ERR_BAD_ATTR_FILTER, grid.getSource());
                     }
                 }
             }
@@ -1052,7 +1052,7 @@ public final class ValidationPhase {
                         + "' @format '" + fmt
                         + "' is not a valid value; allowed: "
                         + TemplateConstants.ALLOWED_FORMATS,
-                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                    ErrorCode.ERR_BAD_ATTR_VALUE, template.getSource());
             }
         }
 
@@ -1062,7 +1062,7 @@ public final class ValidationPhase {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
                     + ": template.prompt '" + template.getName() + "' is missing required @payloadRef",
-                ErrorCode.ERR_MISSING_REQUIRED_ATTR);
+                ErrorCode.ERR_MISSING_REQUIRED_ATTR, template.getSource());
         }
 
         // R2 + R3 only apply if @payloadRef is set
@@ -1074,7 +1074,7 @@ public final class ValidationPhase {
                 ErrorMessageConstants.ERR_INVALID_TEMPLATE
                     + ": template '" + template.getName() + "' @payloadRef '" + payloadRef
                     + "' does not resolve to an object.value at root",
-                ErrorCode.ERR_INVALID_TEMPLATE);
+                ErrorCode.ERR_INVALID_TEMPLATE, template.getSource());
         }
 
         // R3 — every @requiredSlots member must be a field on the payload VO
@@ -1091,7 +1091,7 @@ public final class ValidationPhase {
                         + ": template.prompt '" + template.getName()
                         + "' @requiredSlots includes '" + slot
                         + "' which is not a field on payload '" + payloadRef + "'",
-                    ErrorCode.ERR_INVALID_TEMPLATE);
+                    ErrorCode.ERR_INVALID_TEMPLATE, template.getSource());
             }
         }
     }
@@ -1117,7 +1117,8 @@ public final class ValidationPhase {
      */
     private static void validateFromOrOfPath(String pathAttr, MetaRoot root,
                                              String projectionName, String fieldName,
-                                             String label) {
+                                             String label,
+                                             com.metaobjects.source.ErrorSource envelope) {
         int dotIdx = pathAttr.indexOf('.');
         if (dotIdx < 1 || dotIdx == pathAttr.length() - 1) {
             throw new MetaDataException(
@@ -1125,7 +1126,7 @@ public final class ValidationPhase {
                     + ": " + label + " \"" + pathAttr + "\" on "
                     + projectionName + "." + fieldName
                     + ": must be of form \"Entity.field\".",
-                ErrorCode.ERR_INVALID_ORIGIN);
+                ErrorCode.ERR_INVALID_ORIGIN, envelope);
         }
         String entityName = pathAttr.substring(0, dotIdx);
         String targetFieldName = pathAttr.substring(dotIdx + 1);
@@ -1137,7 +1138,7 @@ public final class ValidationPhase {
                     + ": " + label + " \"" + pathAttr + "\" on "
                     + projectionName + "." + fieldName
                     + ": no such entity \"" + entityName + "\".",
-                ErrorCode.ERR_INVALID_ORIGIN);
+                ErrorCode.ERR_INVALID_ORIGIN, envelope);
         }
 
         // Inherited fields included — getChildren(..., true) walks super data.
@@ -1155,7 +1156,7 @@ public final class ValidationPhase {
                     + projectionName + "." + fieldName
                     + ": no such field \"" + targetFieldName
                     + "\" on " + entityName + ".",
-                ErrorCode.ERR_INVALID_ORIGIN);
+                ErrorCode.ERR_INVALID_ORIGIN, envelope);
         }
     }
 
@@ -1167,7 +1168,8 @@ public final class ValidationPhase {
      * which becomes the next hop's current entity.
      */
     private static void validateViaPath(String viaAttr, MetaRoot root,
-                                        String projectionName, String fieldName) {
+                                        String projectionName, String fieldName,
+                                        com.metaobjects.source.ErrorSource envelope) {
         String[] segments = viaAttr.split("\\.");
         if (segments.length < 2) {
             throw new MetaDataException(
@@ -1175,7 +1177,7 @@ public final class ValidationPhase {
                     + ": origin.@via \"" + viaAttr + "\" on "
                     + projectionName + "." + fieldName
                     + ": must be of form \"Entity.relationship[.relationship...]\".",
-                ErrorCode.ERR_INVALID_ORIGIN);
+                ErrorCode.ERR_INVALID_ORIGIN, envelope);
         }
         String entityName = segments[0];
         MetaObject currentObj = findRootObject(root, entityName);
@@ -1185,7 +1187,7 @@ public final class ValidationPhase {
                     + ": origin.@via \"" + viaAttr + "\" on "
                     + projectionName + "." + fieldName
                     + ": no such entity \"" + entityName + "\".",
-                ErrorCode.ERR_INVALID_ORIGIN);
+                ErrorCode.ERR_INVALID_ORIGIN, envelope);
         }
         for (int i = 1; i < segments.length; i++) {
             String relName = segments[i];
@@ -1197,7 +1199,7 @@ public final class ValidationPhase {
                         + projectionName + "." + fieldName
                         + ": no such relationship \"" + relName
                         + "\" on " + currentObj.getName() + ".",
-                    ErrorCode.ERR_INVALID_ORIGIN);
+                    ErrorCode.ERR_INVALID_ORIGIN, envelope);
             }
             String refTarget = rel.hasMetaAttr(MetaRelationship.ATTR_OBJECT_REF)
                 ? rel.getMetaAttr(MetaRelationship.ATTR_OBJECT_REF).getValueAsString()
@@ -1209,7 +1211,7 @@ public final class ValidationPhase {
                         + projectionName + "." + fieldName
                         + ": relationship \"" + relName + "\" on "
                         + currentObj.getName() + " is missing @objectRef.",
-                    ErrorCode.ERR_INVALID_ORIGIN);
+                    ErrorCode.ERR_INVALID_ORIGIN, envelope);
             }
             MetaObject nextObj = findRootObject(root, refTarget);
             if (nextObj == null) {
@@ -1219,7 +1221,7 @@ public final class ValidationPhase {
                         + projectionName + "." + fieldName
                         + ": relationship \"" + relName
                         + "\" points to non-existent entity \"" + refTarget + "\".",
-                    ErrorCode.ERR_INVALID_ORIGIN);
+                    ErrorCode.ERR_INVALID_ORIGIN, envelope);
             }
             currentObj = nextObj;
         }

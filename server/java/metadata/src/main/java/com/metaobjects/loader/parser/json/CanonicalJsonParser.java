@@ -167,6 +167,41 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         return new JsonSource(java.util.List.of(getFilename()), jsonPathBuilder.toString());
     }
 
+    /**
+     * FR5a / ADR-0009 — Tags an inline-{@code @}-attribute MetaAttribute child
+     * (just added via {@link com.metaobjects.loader.parser.BaseMetaDataParser#parseInlineAttribute})
+     * with a {@link JsonSource} envelope rooted at the parent body's JSONPath.
+     *
+     * <p>Inline attributes share their parent body's JSON location because they
+     * are body keys (e.g. {@code "@filterable": true}), not separate child node
+     * wrappers. We look up the just-added attr by name (own-only) and stamp the
+     * current JSONPath onto it.</p>
+     *
+     * <p>No-op if the attr cannot be found (defensive — the base parser may
+     * have swallowed it) or if an attempt to set the source throws because the
+     * node is frozen.</p>
+     *
+     * @param parent the parent node the attr was just added to
+     * @param attrName the bare attribute name (no {@code @} prefix)
+     */
+    private void tagAttrChildWithJsonSource(MetaData parent, String attrName) {
+        if (parent == null || attrName == null) return;
+        if (!parent.hasMetaAttr(attrName, false)) return;
+        try {
+            com.metaobjects.attr.MetaAttribute<?> attr = parent.getMetaAttr(attrName, false);
+            if (attr == null) return;
+            // Skip if a JsonSource is already populated (overlay / re-emit path).
+            if (attr.getSource() instanceof JsonSource) return;
+            attr.setSource(new JsonSource(java.util.List.of(getFilename()), jsonPathBuilder.toString()));
+        } catch (IllegalStateException frozen) {
+            // Node frozen between phases — leave existing source intact.
+            log.debug("Attr child source frozen; preserving existing source for [{}.{}]", parent, attrName);
+        } catch (com.metaobjects.MetaDataNotFoundException nf) {
+            // Defensive — attr lookup raced; nothing to tag.
+            log.debug("Attr child lookup miss for [{}.{}] — skipping source tag", parent, attrName);
+        }
+    }
+
     // -----------------------------------------------------------------------
     // MetaDataFileParser / BaseMetaDataParser contract
     // -----------------------------------------------------------------------
@@ -500,6 +535,10 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         // looks for an "isAbstract" MetaAttribute with value Boolean.TRUE).
         if (Boolean.TRUE.equals(isAbstract)) {
             super.parseInlineAttribute(md, MetaData.ATTR_IS_ABSTRACT, "true");
+            // FR5a / ADR-0009 — tag the synthesized @isAbstract attr child with its
+            // JsonSource provenance (parent JSONPath, since `abstract` is a bare key
+            // on the body, not an @-attribute key in the JSON).
+            tagAttrChildWithJsonSource(md, MetaData.ATTR_IS_ABSTRACT);
         }
 
         // Apply isArray native property if specified
@@ -717,6 +756,13 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
 
             // Delegate to the base parser — handles type inference + array desugar
             super.parseInlineAttribute(md, attrName, stringValue);
+
+            // FR5a / ADR-0009 — tag the just-added inline attr child with its
+            // JsonSource provenance. The base parser adds the MetaAttribute as a
+            // child of `md`; we look it up by attrName (own-only) and stamp the
+            // current JSONPath (the parent body's path — inline attrs share the
+            // body's JSON location since they are body keys, not separate nodes).
+            tagAttrChildWithJsonSource(md, attrName);
         }
     }
 

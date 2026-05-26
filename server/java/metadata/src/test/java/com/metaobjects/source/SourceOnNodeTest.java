@@ -113,6 +113,50 @@ public class SourceOnNodeTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void parserTagsInlineAttributeChildrenWithJsonSource() {
+        // Inline @-attribute children (e.g. `@filterable: true`) on a field MUST
+        // also carry a JsonSource provenance — they're regular MetaAttribute child
+        // nodes, even though they share the parent body's JSON position. Without
+        // this tag they'd default to CodeSource.DEFAULT and any post-load
+        // validation error referencing the attr would lose its file/path.
+        String canonical = "{ \"metadata.root\": {"
+            + "\"package\": \"demo\","
+            + "\"children\": ["
+            + "  { \"object.entity\": {"
+            + "    \"name\": \"Widget\","
+            + "    \"children\": ["
+            + "      { \"field.string\": { \"name\": \"id\" } },"
+            + "      { \"field.string\": { \"name\": \"label\", \"@filterable\": true } },"
+            + "      { \"identity.primary\": { \"@fields\": [\"id\"] } }"
+            + "    ]"
+            + "  } }"
+            + "] } }";
+
+        MetaDataLoader loader = newTestLoader();
+        loader.load(List.of(new InMemoryStringSource(canonical, "inline-attrs.json")));
+
+        MetaData root = loader.getRoot();
+        MetaData entity = root.getChildOfType("object", "demo::Widget");
+        assertNotNull(entity);
+        MetaData labelField = entity.getChildOfType("field", "label");
+        assertNotNull(labelField);
+
+        // The @filterable inline attr is a child of label — verify it carries a
+        // JsonSource and not CodeSource.DEFAULT.
+        com.metaobjects.attr.MetaAttribute<?> filterable = labelField.getMetaAttr("filterable", false);
+        assertNotNull("inline @filterable attr must be present on field 'label'", filterable);
+        assertTrue("inline @filterable attr must carry a JsonSource (not CodeSource.DEFAULT)",
+            filterable.getSource() instanceof JsonSource);
+        JsonSource js = (JsonSource) filterable.getSource();
+        assertEquals(List.of("inline-attrs.json"), js.files());
+        // JSONPath is the parent body's path — inline attrs are body keys, not
+        // separate child wrappers — so we expect the field.string wrapper path.
+        assertTrue(
+            "expected JSONPath to anchor on the label field wrapper: " + js.jsonPath(),
+            js.jsonPath().contains("['field.string']"));
+    }
+
+    @Test
     public void parserPopulatesJsonSourceOnEveryNode() {
         String canonical = "{ \"metadata.root\": {"
             + "\"package\": \"demo\","

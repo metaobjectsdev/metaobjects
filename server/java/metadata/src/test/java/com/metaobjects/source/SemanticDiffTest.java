@@ -91,13 +91,14 @@ public class SemanticDiffTest {
 
     @Test
     public void bothNullSame() {
-        assertFalse(SemanticDiff.diff(null, null));
+        // Cast to disambiguate the JsonElement / MetaData overloads.
+        assertFalse(SemanticDiff.diff((JsonElement) null, (JsonElement) null));
     }
 
     @Test
     public void oneNullDiffs() {
         JsonElement a = parse("{}");
-        assertTrue(SemanticDiff.diff(a, null));
-        assertTrue(SemanticDiff.diff(null, a));
+        assertTrue(SemanticDiff.diff(a, (JsonElement) null));
+        assertTrue(SemanticDiff.diff((JsonElement) null, a));
     }
 }
