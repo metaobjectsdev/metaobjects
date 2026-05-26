@@ -514,6 +514,148 @@ class KotlinExposedTableGeneratorTest {
         }
     }
 
+    // === identity.reference FK emission =====================================
+
+    /**
+     * Week declares `identity.reference @fields="programId" @references="Program"` —
+     * the FK lives on the Week table on the existing programId field column. The
+     * generator must decorate the column with `.references(ProgramTable.id)` rather
+     * than emit a separate FK row (which would duplicate the column).
+     */
+    @Test fun identityReferenceEmitsFkOnFieldColumn() {
+        val refFixture = """{
+          "metadata.root": { "package": "x", "children": [
+            { "object.entity": { "name": "Program", "children": [
+                { "field.long": { "name": "id" } },
+                { "source.rdb": { "@table": "programs" } },
+                { "identity.primary": { "@fields": "id" } }
+            ] } },
+            { "object.entity": { "name": "Week", "children": [
+                { "field.long": { "name": "id" } },
+                { "field.long": { "name": "programId" } },
+                { "source.rdb": { "@table": "weeks" } },
+                { "identity.primary": { "@fields": "id" } },
+                { "identity.reference": { "name": "fkProgram", "@fields": "programId", "@references": "Program" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-idref-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("idref", refFixture))
+
+            val weekTable = outDir.resolve("x/WeekTable.kt")
+            assertTrue(Files.exists(weekTable),
+                "expected $weekTable; files=${Files.walk(outDir).toList()}")
+            val src = Files.readString(weekTable)
+            // FK decoration on the existing field column — NOT a separate row.
+            assertTrue(
+                "val programId = long(\"programId\").references(ProgramTable.id)" in src,
+                "expected programId column decorated with .references(); saw:\n$src",
+            )
+            // Exactly one programId declaration — no duplicated emission.
+            val programIdCount = Regex("""\bval\s+programId\s*=""").findAll(src).count()
+            assertTrue(programIdCount == 1,
+                "expected exactly 1 `val programId = ...` declaration, saw $programIdCount in:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Identity.reference may carry `@onDelete` / `@onUpdate` attrs (parity with
+     * the relationship.composition path); they map kebab-case → ReferenceOption.
+     */
+    @Test fun identityReferenceWithOnDeleteMapsToReferenceOption() {
+        val refWithCascade = """{
+          "metadata.root": { "package": "x", "children": [
+            { "object.entity": { "name": "Program", "children": [
+                { "field.long": { "name": "id" } },
+                { "source.rdb": { "@table": "programs" } },
+                { "identity.primary": { "@fields": "id" } }
+            ] } },
+            { "object.entity": { "name": "Week", "children": [
+                { "field.long": { "name": "id" } },
+                { "field.long": { "name": "programId" } },
+                { "source.rdb": { "@table": "weeks" } },
+                { "identity.primary": { "@fields": "id" } },
+                { "identity.reference": { "name": "fkProgram",
+                    "@fields": "programId", "@references": "Program",
+                    "@onDelete": "cascade", "@onUpdate": "restrict" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-idref-od-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("idref-od", refWithCascade))
+
+            val weekTable = outDir.resolve("x/WeekTable.kt")
+            assertTrue(Files.exists(weekTable))
+            val src = Files.readString(weekTable)
+            assertTrue("import org.jetbrains.exposed.sql.ReferenceOption" in src,
+                "expected ReferenceOption import; saw:\n$src")
+            assertTrue(
+                "val programId = long(\"programId\").references(ProgramTable.id, onDelete = ReferenceOption.CASCADE, onUpdate = ReferenceOption.RESTRICT)" in src,
+                "expected FK with onDelete + onUpdate options; saw:\n$src",
+            )
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Canonical-fixture shape: Program declares `relationship.composition many → Week`
+     * AND Week declares `identity.reference → Program`. Both paths point at the same
+     * programId FK on Week. The declared identity.reference must win; only ONE
+     * programId column with ONE `.references(ProgramTable.id)` call is emitted.
+     */
+    @Test fun identityReferenceWinsOverInverseManyComposition() {
+        val both = """{
+          "metadata.root": { "package": "x", "children": [
+            { "object.entity": { "name": "Program", "children": [
+                { "field.long": { "name": "id" } },
+                { "source.rdb": { "@table": "programs" } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+                { "relationship.composition": { "name": "weeks", "@objectRef": "Week", "@cardinality": "many" } }
+            ] } },
+            { "object.entity": { "name": "Week", "children": [
+                { "field.long": { "name": "id" } },
+                { "field.long": { "name": "programId" } },
+                { "source.rdb": { "@table": "weeks" } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+                { "identity.reference": { "name": "fkProgram", "@fields": "programId", "@references": "Program" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-idref-dedup-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("idref-dedup", both))
+
+            val weekTable = outDir.resolve("x/WeekTable.kt")
+            assertTrue(Files.exists(weekTable))
+            val src = Files.readString(weekTable)
+            // Exactly one programId column.
+            val programIdCount = Regex("""\bval\s+programId\s*=""").findAll(src).count()
+            assertTrue(programIdCount == 1,
+                "expected exactly 1 `val programId = ...` declaration, saw $programIdCount in:\n$src")
+            // Exactly one `.references(ProgramTable.id` call (decoration on the field column).
+            val refCount = src.split("references(ProgramTable.id").size - 1
+            assertTrue(refCount == 1,
+                "expected exactly 1 references(ProgramTable.id), saw $refCount in:\n$src")
+            assertTrue(
+                "val programId = long(\"programId\").references(ProgramTable.id)" in src,
+                "expected decorated programId field column; saw:\n$src",
+            )
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun manyToOneInverseRespectsOnDelete() {
         val withCascadeOnMany = """{
           "metadata.root": { "package": "acme::demo", "children": [
