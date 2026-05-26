@@ -45,15 +45,31 @@ public class UriSource implements MetaDataSource {
      * {@code .yaml} / {@code .yml} → {@link MetaDataFormat#YAML} (sigil-free authoring
      * front-end, ADR-0006); everything else falls back to {@link MetaDataFormat#JSON}
      * (the canonical interchange format).
+     *
+     * <p>URI args (anything after the first {@code ;}) are stripped before the
+     * extension check — model URIs frequently carry args such as
+     * {@code ;sourceDir=/abs/path} appended after the extension, which would
+     * otherwise defeat {@code endsWith} matching and force JSON parsing of
+     * YAML content.</p>
      */
     private static MetaDataFormat inferFormat(String uriString) {
         if (uriString != null) {
-            String lower = uriString.toLowerCase();
+            String lower = stripUriArgs(uriString).toLowerCase();
             if (lower.endsWith(".yaml") || lower.endsWith(".yml")) {
                 return MetaDataFormat.YAML;
             }
         }
         return MetaDataFormat.JSON;
+    }
+
+    /**
+     * Returns the portion of a URI string preceding the first {@code ;}, or the
+     * full string if no args are present. Used by {@link #inferFormat(String)}
+     * so that suffix-based extension matching is not defeated by trailing args.
+     */
+    private static String stripUriArgs(String uri) {
+        int semi = uri.indexOf(';');
+        return semi >= 0 ? uri.substring(0, semi) : uri;
     }
 
     @Override

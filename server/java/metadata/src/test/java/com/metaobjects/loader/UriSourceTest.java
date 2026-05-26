@@ -48,6 +48,29 @@ public class UriSourceTest {
         }
     }
 
+    @Test public void inferFormatStripsUriArgsBeforeExtensionCheck() {
+        // model:file:<path>;sourceDir=<dir> is the shape MetaDataLoader.processSources
+        // constructs when expanding a bare <source> path. The ;sourceDir=... suffix
+        // must not defeat extension-based format inference.
+        URI uri = URI.create("model:file:common/meta.base-entity.yaml;sourceDir=/tmp/foo");
+        UriSource src = new UriSource(uri);
+        assertEquals(MetaDataSource.MetaDataFormat.YAML, src.getFormat());
+    }
+
+    @Test public void inferFormatStripsUriArgsForYmlExtension() {
+        URI uri = URI.create("model:file:common/meta.thing.yml;sourceDir=/tmp/foo");
+        UriSource src = new UriSource(uri);
+        assertEquals(MetaDataSource.MetaDataFormat.YAML, src.getFormat());
+    }
+
+    @Test public void inferFormatJsonWithUriArgs() {
+        // JSON is the fallback, but verify args-after-extension still classify
+        // correctly (not silently flipping behaviour).
+        URI uri = URI.create("model:file:common/meta.base.json;sourceDir=/tmp/foo");
+        UriSource src = new UriSource(uri);
+        assertEquals(MetaDataSource.MetaDataFormat.JSON, src.getFormat());
+    }
+
     @Test public void readsViaModelFileUri() throws Exception {
         // model:file:<path> URIs route through URIHelper — verify the content
         // resolution path used by fromUris() / fromResources() works end-to-end.
