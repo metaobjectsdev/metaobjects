@@ -636,7 +636,7 @@ export class AppComponent implements OnInit {
 - [`docs/recipes/csharp-angular18.md`](../recipes/csharp-angular18.md) —
   end-to-end recipe for wiring an ASP.NET Minimal API backend (C# 12 / .NET 8)
   to an Angular 18 client built with these packages; covers CORS, dev-server
-  ports, and base-URL configuration. (Future — lands in FR-008 §2.4.)
+  ports, and base-URL configuration.
 
 ## See also
 
