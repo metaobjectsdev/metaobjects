@@ -48,10 +48,12 @@ class KotlinCodegenSnapshotTest {
             val loader = loadString(name, metaText)
             for (g in config.generators) {
                 val gen = when (g) {
-                    "entity"    -> KotlinEntityGenerator()
-                    "table"     -> KotlinExposedTableGenerator()
-                    "payload"   -> KotlinPayloadGenerator()
-                    "validator" -> KotlinValidatorGenerator()
+                    "entity"     -> KotlinEntityGenerator()
+                    "table"      -> KotlinExposedTableGenerator()
+                    "payload"    -> KotlinPayloadGenerator()
+                    "validator"  -> KotlinValidatorGenerator()
+                    "relations"  -> KotlinRelationsGenerator()
+                    "storedproc" -> KotlinStoredProcGenerator()
                     else -> fail("unknown generator name in config: $g")
                 }
                 val args = mutableMapOf("outputDir" to outDir.toString())
