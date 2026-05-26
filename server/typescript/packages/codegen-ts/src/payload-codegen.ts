@@ -55,7 +55,8 @@ function fieldTsType(field: MetaData): { type: string; refVo?: string } {
     if (typeof ref === "string") result.refVo = ref;
     return result;
   }
-  return { type: SCALAR_TS[field.subType] ?? "unknown" };
+  const scalar = SCALAR_TS[field.subType] ?? "unknown";
+  return { type: field.isArray ? `${scalar}[]` : scalar };
 }
 
 function emitInterface(root: MetaData, voName: string, emitted: Set<string>, out: string[]): void {
