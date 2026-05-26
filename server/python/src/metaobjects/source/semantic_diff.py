@@ -22,10 +22,10 @@ Mirrors:
 from __future__ import annotations
 
 import json
-from typing import Any, Union
+from typing import TYPE_CHECKING, Any, Union
 
-from ..meta.meta_data import MetaData
-from ..serializer_json import canonical_serialize
+if TYPE_CHECKING:  # avoid an import cycle (MetaData imports `..source`).
+    from ..meta.meta_data import MetaData
 
 # Keys excluded from the structural diff: ``source`` is loader output, not
 # metadata. Documented for parity with the C# constant set.
@@ -34,7 +34,7 @@ _EXCLUDED_KEYS: frozenset[str] = frozenset({"source"})
 JsonValue = Union[None, bool, int, float, str, list[Any], dict[str, Any]]
 
 
-def semantic_diff(a: Union[MetaData, JsonValue], b: Union[MetaData, JsonValue]) -> bool:
+def semantic_diff(a: "Union[MetaData, JsonValue]", b: "Union[MetaData, JsonValue]") -> bool:
     """Return ``True`` when *a* and *b* differ in any semantically-meaningful
     way; otherwise ``False``.
 
@@ -44,7 +44,12 @@ def semantic_diff(a: Union[MetaData, JsonValue], b: Union[MetaData, JsonValue]) 
           overlay-merge consumer in FR5c.
         * Two raw JSON values (dict / list / scalar) — compared directly.
     """
-    if isinstance(a, MetaData) and isinstance(b, MetaData):
+    # Lazy import to break the meta_data ↔ source cycle: MetaData imports
+    # `..source` at module load to default `_source` to CodeSource.DEFAULT.
+    from ..meta.meta_data import MetaData as _MetaData
+    from ..serializer_json import canonical_serialize
+
+    if isinstance(a, _MetaData) and isinstance(b, _MetaData):
         serialized_a = canonical_serialize(a)
         serialized_b = canonical_serialize(b)
         # Fast path: byte-identical canonical output → no diff.
@@ -87,7 +92,7 @@ def _equal(a: Any, b: Any) -> bool:  # noqa: ANN401 — recursive JSON value com
     # Scalars / mismatched container types fall through to value equality.
     # bool / int collapse the way Python does (True == 1) — matches what the TS
     # / C# canonical-JSON byte-compare produces on whole-number floats etc.
-    return a == b
+    return bool(a == b)
 
 
 __all__ = ["semantic_diff"]

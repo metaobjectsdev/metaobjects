@@ -20,6 +20,7 @@ from .shared.structural import (
     KEY_PACKAGE,
     KEY_VALUE,
 )
+from .source import CodeSource, ErrorSource, JsonPathBuilder, JsonSource
 
 # Reserved structural body keys — authoring any of these with the @-prefix is a
 # hard ERR_RESERVED_ATTR (ADR-0007). Detected inline as each @-key is processed.
@@ -42,17 +43,43 @@ class ParseResult:
     warnings: list[str] = field(default_factory=list)
 
 
+def _current_envelope(source: str | None, builder: JsonPathBuilder) -> ErrorSource:
+    """Build a JsonSource envelope for the current parser location.
+
+    Returns :class:`CodeSource` when *source* is missing (parser invoked
+    without a source id — emitting a JsonSource with an empty file list
+    would violate the FR5a length-1 invariant). Mirrors the C# fallback in
+    ``Parser.ParseState.CurrentSource``.
+    """
+    if source is None or source == "":
+        return CodeSource.DEFAULT
+    return JsonSource(files=(source,), json_path=builder.to_string())
+
+
 def parse_document(doc: object, registry: TypeRegistry, source: str) -> ParseResult:
+    builder = JsonPathBuilder()
     result = ParseResult(root=MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, ""))
     if not isinstance(doc, dict):
-        result.errors.append(MetaError("top-level is not an object", ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT, source))
+        result.errors.append(MetaError(
+            "top-level is not an object",
+            ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT,
+            source,
+            envelope=_current_envelope(source, builder),
+        ))
         return result
     if len(doc) != 1:
-        result.errors.append(MetaError("expected one wrapper key", ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT, source))
+        result.errors.append(MetaError(
+            "expected one wrapper key",
+            ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT,
+            source,
+            envelope=_current_envelope(source, builder),
+        ))
         return result
 
     (wrapper, body), = cast(list[tuple[str, object]], list(doc.items()))
-    node = _build(wrapper, body, registry, source, result)
+    builder.push_key(wrapper)
+    node = _build(wrapper, body, registry, source, result, builder)
+    builder.pop()
     if isinstance(node, MetaData):
         result.root = node
     return result
@@ -64,6 +91,7 @@ def _build(
     registry: TypeRegistry,
     source: str,
     result: ParseResult,
+    builder: JsonPathBuilder,
     ctx_pkg: str = "",
     parent_type: str = "",
 ) -> MetaData | None:
@@ -77,20 +105,37 @@ def _build(
     """
     type_, _, sub_type = wrapper.partition(FUSED_KEY_SEP)
     if not sub_type:
-        result.errors.append(MetaError(f"node '{wrapper}' omits subType", ErrorCode.ERR_MISSING_SUBTYPE, source))
+        result.errors.append(MetaError(
+            f"node '{wrapper}' omits subType",
+            ErrorCode.ERR_MISSING_SUBTYPE,
+            source,
+            envelope=_current_envelope(source, builder),
+        ))
         return None
     if not registry.has_type(type_):
-        result.errors.append(MetaError(f"unknown type '{type_}'", ErrorCode.ERR_UNKNOWN_TYPE, source))
+        result.errors.append(MetaError(
+            f"unknown type '{type_}'",
+            ErrorCode.ERR_UNKNOWN_TYPE,
+            source,
+            envelope=_current_envelope(source, builder),
+        ))
         return None
     definition = registry.find(type_, sub_type)
     if definition is None:
-        result.errors.append(MetaError(f"unknown subType '{type_}.{sub_type}'", ErrorCode.ERR_UNKNOWN_SUBTYPE, source))
+        result.errors.append(MetaError(
+            f"unknown subType '{type_}.{sub_type}'",
+            ErrorCode.ERR_UNKNOWN_SUBTYPE,
+            source,
+            envelope=_current_envelope(source, builder),
+        ))
         return None
 
     body_dict: dict[str, object] = body if isinstance(body, dict) else {}
     name = str(body_dict.get(KEY_NAME, "") or "")
     node = definition.factory(type_, sub_type, name)
     assert isinstance(node, MetaData)
+    # FR5a / ADR-0009 — every parser-constructed node carries its origin.
+    node.set_source(_current_envelope(source, builder))
 
     pkg = body_dict.get(KEY_PACKAGE)
     if pkg:
@@ -115,14 +160,17 @@ def _build(
             # ADR-0007: @-prefixing a reserved structural body key is invalid.
             # Detected inline as each @-attr key is processed (matches TS parser-core).
             if attr_name in _RESERVED_STRUCTURAL_KEYS:
+                builder.push_key(key)
                 result.errors.append(
                     MetaError(
                         f"node '{wrapper}' uses reserved structural key '{attr_name}' "
                         f"with @-prefix; bare '{attr_name}' is the canonical form",
                         ErrorCode.ERR_RESERVED_ATTR,
                         source,
+                        envelope=_current_envelope(source, builder),
                     )
                 )
+                builder.pop()
                 continue
             schema = registry.attr_schema(type_, sub_type, attr_name)
             node.set_attr(attr_name, value, sub_type=schema.value_type if schema else None)
@@ -130,14 +178,27 @@ def _build(
     # The context package for children: use this node's own package if set, else inherit.
     child_ctx_pkg = node.package or ctx_pkg
 
-    for cw, cbody in _iter_children(body_dict):
-        child_type, _, child_sub = cw.partition(FUSED_KEY_SEP)
-        if child_type == TYPE_ATTR:
-            _parse_attr_child(node, child_sub, cbody, registry, source, result)
-        else:
-            child = _build(cw, cbody, registry, source, result, ctx_pkg=child_ctx_pkg, parent_type=type_)
-            if child is not None:
-                node.add_child(child)
+    # Descend into children: push `children` key, then `[i]` index for each entry,
+    # then the child wrapper key, so JsonPath segments stack correctly.
+    children_entries = _iter_children(body_dict)
+    if children_entries:
+        builder.push_key(KEY_CHILDREN)
+        for idx, (cw, cbody) in enumerate(children_entries):
+            builder.push_index(idx)
+            builder.push_key(cw)
+            child_type, _, child_sub = cw.partition(FUSED_KEY_SEP)
+            if child_type == TYPE_ATTR:
+                _parse_attr_child(node, child_sub, cbody, registry, source, result, builder)
+            else:
+                child = _build(
+                    cw, cbody, registry, source, result, builder,
+                    ctx_pkg=child_ctx_pkg, parent_type=type_,
+                )
+                if child is not None:
+                    node.add_child(child)
+            builder.pop()
+            builder.pop()
+        builder.pop()
 
     return node
 
@@ -149,6 +210,7 @@ def _parse_attr_child(
     registry: TypeRegistry,
     source: str,
     result: ParseResult,
+    builder: JsonPathBuilder,
 ) -> None:
     """Handle a typed attr child: { "attr.<sub>": { "name": ..., "value": ... } }.
 
@@ -163,6 +225,7 @@ def _parse_attr_child(
                 f"attr child requires a non-empty 'name'",
                 ErrorCode.ERR_MISSING_REQUIRED_ATTR,
                 source,
+                envelope=_current_envelope(source, builder),
             )
         )
         return

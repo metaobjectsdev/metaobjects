@@ -195,6 +195,7 @@ def _validate_attr_schema(
                     MetaError(
                         f"{_node_label(node)} is missing required attribute '@{schema.name}'",
                         ErrorCode.ERR_MISSING_REQUIRED_ATTR,
+                        envelope=node.source,
                     )
                 )
 
@@ -218,6 +219,7 @@ def _validate_attr_schema(
                             f"{_node_label(node)} attribute '@{attr_node.name}' has value "
                             f"{raw_value!r} which does not match expected type '{schema.value_type}'",
                             ErrorCode.ERR_BAD_ATTR_VALUE,
+                            envelope=node.source,
                         )
                     )
                     continue  # type wrong — skip allowed_values check
@@ -231,6 +233,7 @@ def _validate_attr_schema(
                             f"{_node_label(node)} attribute '@{attr_node.name}' has value "
                             f"'{raw_value}' which is not one of the allowed values: {allowed_str}",
                             ErrorCode.ERR_BAD_ATTR_VALUE,
+                            envelope=node.source,
                         )
                     )
 
@@ -277,6 +280,7 @@ def _validate_enum_values(
                 MetaError(
                     f"{label} attribute '@{FIELD_ATTR_VALUES}' must not be empty",
                     ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=node.source,
                 )
             )
             continue  # further checks don't apply to empty list
@@ -289,6 +293,7 @@ def _validate_enum_values(
                         f"{label} attribute '@{FIELD_ATTR_VALUES}' member {member!r} "
                         f"is not a valid identifier (must match {ENUM_MEMBER_PATTERN})",
                         ErrorCode.ERR_BAD_ATTR_VALUE,
+                        envelope=node.source,
                     )
                 )
                 break  # one error per field is sufficient
@@ -299,6 +304,7 @@ def _validate_enum_values(
                 MetaError(
                     f"{label} attribute '@{FIELD_ATTR_VALUES}' contains duplicate members",
                     ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=node.source,
                 )
             )
 
@@ -337,6 +343,7 @@ def _validate_datagrid_sort_fields(
                         f"@defaultSortField='{sort_field}' which is not a field on this object "
                         f"(known fields: {sorted(field_names)})",
                         ErrorCode.ERR_BAD_DEFAULT_SORT_FIELD,
+                        envelope=child.source,
                     )
                 )
 
@@ -415,6 +422,7 @@ def _validate_datagrid_filter_values(
                             f"references field '{field_name}' which is not a filterable field "
                             f"on this object",
                             ErrorCode.ERR_BAD_ATTR_FILTER,
+                            envelope=child.source,
                         )
                     )
                     continue
@@ -434,6 +442,7 @@ def _validate_datagrid_filter_values(
                                 f"uses operator '{op}' on field '{field_name}' which is not "
                                 f"allowed for field subtype '{sub}'",
                                 ErrorCode.ERR_BAD_ATTR_FILTER,
+                                envelope=child.source,
                             )
                         )
 
@@ -480,12 +489,14 @@ def _validate_entity_field_ref(
     context: str,
     object_index: dict[str, MetaObject],
     errors: list[MetaError],
+    origin_node: MetaData,
 ) -> bool:
     """Validate a dotted 'Entity.fieldName' reference.
 
     Appends ERR_INVALID_ORIGIN to *errors* if invalid; returns True if valid.
     *attr_name* is used only for the error message text; *context* identifies the
-    origin node for diagnostic purposes.
+    origin node for diagnostic purposes; *origin_node* carries the provenance
+    envelope attached to any emitted error.
     """
     parts = ref.split(".", 1)
     if len(parts) != 2:
@@ -493,6 +504,7 @@ def _validate_entity_field_ref(
             MetaError(
                 f"{context} @{attr_name}='{ref}' must be in 'EntityName.fieldName' format",
                 ErrorCode.ERR_INVALID_ORIGIN,
+                envelope=origin_node.source,
             )
         )
         return False
@@ -503,6 +515,7 @@ def _validate_entity_field_ref(
             MetaError(
                 f"{context} @{attr_name}='{ref}' references unknown entity '{entity_name}'",
                 ErrorCode.ERR_INVALID_ORIGIN,
+                envelope=origin_node.source,
             )
         )
         return False
@@ -513,6 +526,7 @@ def _validate_entity_field_ref(
                 f"{context} @{attr_name}='{ref}' references field '{field_name}' which does "
                 f"not exist on entity '{entity_name}' (known fields: {sorted(field_names)})",
                 ErrorCode.ERR_INVALID_ORIGIN,
+                envelope=origin_node.source,
             )
         )
         return False
@@ -524,10 +538,12 @@ def _validate_via_path(
     context: str,
     object_index: dict[str, MetaObject],
     errors: list[MetaError],
+    origin_node: MetaData,
 ) -> bool:
     """Validate a dotted relationship path 'Entity.rel1[.rel2...]'.
 
     Returns True if valid; appends ERR_INVALID_ORIGIN and returns False if not.
+    *origin_node* carries the provenance envelope attached to any emitted error.
     """
     segments = via.split(".")
     if len(segments) < 2:
@@ -535,6 +551,7 @@ def _validate_via_path(
             MetaError(
                 f"{context} @via='{via}' must be in 'EntityName.relName[.relName...]' format",
                 ErrorCode.ERR_INVALID_ORIGIN,
+                envelope=origin_node.source,
             )
         )
         return False
@@ -547,6 +564,7 @@ def _validate_via_path(
             MetaError(
                 f"{context} @via='{via}' references unknown entity '{current_name}'",
                 ErrorCode.ERR_INVALID_ORIGIN,
+                envelope=origin_node.source,
             )
         )
         return False
@@ -561,6 +579,7 @@ def _validate_via_path(
                     f"{context} @via='{via}' — entity '{current_entity.name}' has no "
                     f"relationship '{rel_name}' (known relationships: {sorted(rels)})",
                     ErrorCode.ERR_INVALID_ORIGIN,
+                    envelope=origin_node.source,
                 )
             )
             return False
@@ -573,6 +592,7 @@ def _validate_via_path(
                     f"{context} @via='{via}' — relationship '{rel_name}' on entity "
                     f"'{current_entity.name}' has no @objectRef",
                     ErrorCode.ERR_INVALID_ORIGIN,
+                    envelope=origin_node.source,
                 )
             )
             return False
@@ -584,6 +604,7 @@ def _validate_via_path(
                     f"{context} @via='{via}' — relationship '{rel_name}' on entity "
                     f"'{current_entity.name}' references unknown entity '{obj_ref}'",
                     ErrorCode.ERR_INVALID_ORIGIN,
+                    envelope=origin_node.source,
                 )
             )
             return False
@@ -619,15 +640,16 @@ def _validate_origin_paths(
                         MetaError(
                             f"{ctx} is missing required attribute '@{ORIGIN_ATTR_FROM}'",
                             ErrorCode.ERR_INVALID_ORIGIN,
+                            envelope=origin.source,
                         )
                     )
                 else:
                     _validate_entity_field_ref(
-                        from_ref, ORIGIN_ATTR_FROM, ctx, object_index, errors
+                        from_ref, ORIGIN_ATTR_FROM, ctx, object_index, errors, origin,
                     )
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
-                    _validate_via_path(via, ctx, object_index, errors)
+                    _validate_via_path(via, ctx, object_index, errors, origin)
 
             elif origin.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
                 of_ref = origin.attr(ORIGIN_ATTR_OF)
@@ -636,11 +658,12 @@ def _validate_origin_paths(
                         MetaError(
                             f"{ctx} is missing required attribute '@{ORIGIN_ATTR_OF}'",
                             ErrorCode.ERR_INVALID_ORIGIN,
+                            envelope=origin.source,
                         )
                     )
                 else:
                     _validate_entity_field_ref(
-                        of_ref, ORIGIN_ATTR_OF, ctx, object_index, errors
+                        of_ref, ORIGIN_ATTR_OF, ctx, object_index, errors, origin,
                     )
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if not isinstance(via, str) or not via:
@@ -648,10 +671,11 @@ def _validate_origin_paths(
                         MetaError(
                             f"{ctx} is missing required attribute '@{ORIGIN_ATTR_VIA}'",
                             ErrorCode.ERR_INVALID_ORIGIN,
+                            envelope=origin.source,
                         )
                     )
                 else:
-                    _validate_via_path(via, ctx, object_index, errors)
+                    _validate_via_path(via, ctx, object_index, errors, origin)
 
 
 # ---------------------------------------------------------------------------
@@ -691,6 +715,7 @@ def _validate_one_primary_source(
                     f"{_node_label(node)} declares {len(sources)} source(s) but "
                     f"none has role '{SOURCE_ROLE_PRIMARY}'",
                     ErrorCode.ERR_SOURCE_NO_PRIMARY,
+                    envelope=node.source,
                 )
             )
         elif primary_count > 1:
@@ -699,6 +724,7 @@ def _validate_one_primary_source(
                     f"{_node_label(node)} declares {primary_count} sources with "
                     f"role '{SOURCE_ROLE_PRIMARY}'; exactly one is required",
                     ErrorCode.ERR_SOURCE_MULTIPLE_PRIMARY,
+                    envelope=node.source,
                 )
             )
 
@@ -736,6 +762,7 @@ def _validate_subtype_rules(
                     MetaError(
                         f"{_node_label(node)} is a value object but declares a primary identity",
                         ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
+                        envelope=node.source,
                     )
                 )
 
@@ -812,6 +839,7 @@ def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> N
                     f"field.object '{node.name}' has @storage but no @objectRef — "
                     f"@storage shape only applies to referenced objects"
                 ),
+                envelope=node.source,
             ))
             continue
         if storage == "flattened" and getattr(node, "is_array", False):
@@ -821,6 +849,7 @@ def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> N
                     f"field.object '{node.name}' @storage=\"flattened\" cannot be combined "
                     f"with isArray=true (use @storage=\"jsonb\" for owned-array storage)"
                 ),
+                envelope=node.source,
             ))
 
 
@@ -853,6 +882,7 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
             errors.append(MetaError(
                 code=ErrorCode.ERR_MISSING_REQUIRED_ATTR,
                 message=f"template.prompt '{tpl.name}' is missing required @payloadRef",
+                envelope=tpl.source,
             ))
             continue
 
@@ -868,6 +898,7 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
                     f"template '{tpl.name}' @payloadRef '{payload_ref}' "
                     f"does not resolve to an object.value at root"
                 ),
+                envelope=tpl.source,
             ))
             continue
 
@@ -885,6 +916,7 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
                                 f"template.prompt '{tpl.name}' @requiredSlots includes '{slot}' "
                                 f"which is not a field on payload '{payload_ref}'"
                             ),
+                            envelope=tpl.source,
                         ))
 
 
