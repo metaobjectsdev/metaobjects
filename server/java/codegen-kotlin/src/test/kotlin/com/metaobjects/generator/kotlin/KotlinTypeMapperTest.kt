@@ -19,6 +19,13 @@ import kotlin.test.assertTrue
 
 class KotlinTypeMapperTest {
 
+    companion object {
+        // Force full SPI/registry initialization before any direct MetaField instantiation,
+        // which would otherwise short-circuit the FieldTypesMetaDataProvider registration chain.
+        init { TestRegistryBootstrap.ensureInitialized() }
+    }
+
+
     @Test fun `string field maps to String`() {
         val f = StringField("name")
         assertEquals(STRING, KotlinTypeMapper.kotlinTypeName(f))
