@@ -174,6 +174,14 @@ def _build(
                 continue
             schema = registry.attr_schema(type_, sub_type, attr_name)
             node.set_attr(attr_name, value, sub_type=schema.value_type if schema else None)
+            # FR5a / ADR-0009 — stamp the just-constructed MetaAttribute node with
+            # its origin envelope. Mirrors C# Parser.cs:1039 (attrModel.SetSource).
+            # The attr's JsonPath points at the @-key on the parent body.
+            attr_node = node.own_meta_attr(attr_name)
+            if attr_node is not None:
+                builder.push_key(key)
+                attr_node.set_source(_current_envelope(source, builder))
+                builder.pop()
 
     # The context package for children: use this node's own package if set, else inherit.
     child_ctx_pkg = node.package or ctx_pkg
@@ -233,6 +241,12 @@ def _parse_attr_child(
     # Resolve the attr sub_type; fall back to base if unregistered.
     resolved_sub = sub_type if registry.find(TYPE_ATTR, sub_type) is not None else None
     parent.set_attr(attr_name, raw_value, sub_type=resolved_sub)
+    # FR5a / ADR-0009 — stamp the just-constructed MetaAttribute node with its
+    # origin envelope. Mirrors C# Parser.cs:1039 (attrModel.SetSource). The
+    # builder already points at the `attr.<sub>` wrapper (caller pushed it).
+    attr_node = parent.own_meta_attr(attr_name)
+    if attr_node is not None:
+        attr_node.set_source(_current_envelope(source, builder))
 
 
 def _iter_children(body: dict[str, object]) -> list[tuple[str, object]]:

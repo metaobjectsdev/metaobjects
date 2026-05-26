@@ -157,3 +157,90 @@ def test_metadata_subclass_inherits_source_attribute() -> None:
     root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "")
     assert isinstance(root, MetaData)
     assert root.source.format == "code"
+
+
+def test_parser_stamps_source_on_inline_attribute_nodes() -> None:
+    # FR5a / ADR-0009 — every parser-constructed MetaAttribute node (inline
+    # @-prefixed attr on a body) carries a JsonSource. Mirrors C# Parser.cs:1039
+    # (attrModel.SetSource). Without source-stamping the attr node wears
+    # CodeSource.DEFAULT, which violates the FR5a envelope-coverage invariant.
+    json_text = """
+        { "metadata.root": {
+            "package": "demo",
+            "children": [
+              { "object.entity": {
+                  "name": "Widget",
+                  "children": [
+                    { "field.string": { "name": "email", "@filterable": true } }
+                  ]
+              } }
+            ]
+        } }
+    """
+    loader = MetaDataLoader()
+    result = loader.load([
+        InMemoryStringSource(
+            json_text, format=MetaDataFormat.JSON, id="metaobjects/widget.json",
+        ),
+    ])
+    assert not result.errors
+
+    root = result.root
+    entity = next(c for c in root.own_children() if c.type == TYPE_OBJECT)
+    email = next(c for c in entity.own_children() if c.type == TYPE_FIELD)
+    filterable_attr = email.own_meta_attr("filterable")
+    assert filterable_attr is not None
+    assert isinstance(filterable_attr.source, JsonSource), (
+        f"expected JsonSource on inline @filterable attr node, "
+        f"got {type(filterable_attr.source).__name__}"
+    )
+    assert filterable_attr.source.files == ("metaobjects/widget.json",)
+    # The JsonPath points at the @-key on the parent body.
+    assert filterable_attr.source.json_path == (
+        "$['metadata.root'].children[0]['object.entity']"
+        ".children[0]['field.string']['@filterable']"
+    )
+
+
+def test_parser_stamps_source_on_typed_attr_child_nodes() -> None:
+    # FR5a / ADR-0009 — typed attr children (the `{ "attr.<sub>": {...} }` form)
+    # are also parser-constructed; they must carry a JsonSource too. Mirrors
+    # the same C# Parser.cs:1039 source-stamping path.
+    json_text = """
+        { "metadata.root": {
+            "package": "demo",
+            "children": [
+              { "object.entity": {
+                  "name": "Widget",
+                  "children": [
+                    { "field.string": { "name": "email", "children": [
+                      { "attr.boolean": { "name": "filterable", "value": true } }
+                    ] } }
+                  ]
+              } }
+            ]
+        } }
+    """
+    loader = MetaDataLoader()
+    result = loader.load([
+        InMemoryStringSource(
+            json_text, format=MetaDataFormat.JSON, id="metaobjects/widget.json",
+        ),
+    ])
+    assert not result.errors
+
+    root = result.root
+    entity = next(c for c in root.own_children() if c.type == TYPE_OBJECT)
+    email = next(c for c in entity.own_children() if c.type == TYPE_FIELD)
+    filterable_attr = email.own_meta_attr("filterable")
+    assert filterable_attr is not None
+    assert isinstance(filterable_attr.source, JsonSource), (
+        f"expected JsonSource on typed attr.boolean child node, "
+        f"got {type(filterable_attr.source).__name__}"
+    )
+    assert filterable_attr.source.files == ("metaobjects/widget.json",)
+    # Path threads to the attr.boolean wrapper key on the parent's children array.
+    assert filterable_attr.source.json_path == (
+        "$['metadata.root'].children[0]['object.entity']"
+        ".children[0]['field.string'].children[0]['attr.boolean']"
+    )

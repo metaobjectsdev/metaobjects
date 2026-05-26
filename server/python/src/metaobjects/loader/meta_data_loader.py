@@ -141,10 +141,13 @@ class MetaDataLoader:
         the merge set.
         """
         # FR5a / ADR-0009 — top-level envelope for the source. Until the parser
-        # walk descends, the offending location is the root (`$`).
+        # walk descends, the offending location is the root (`$`). Matches C#
+        # Parser.cs:140 — only fall back to CodeSource when there is no source
+        # id at all; "<inline>" is a valid source identifier and must yield a
+        # JsonSource so envelope formats remain consistent across error sites.
         envelope: ErrorSource = (
             JsonSource(files=(src.id,), json_path="$")
-            if src.id and src.id != "<inline>"
+            if src.id
             else CodeSource.DEFAULT
         )
 

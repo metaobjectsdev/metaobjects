@@ -139,11 +139,14 @@ def _effective_schemas(
     common_attrs: list[AttrSchema],
     registry: TypeRegistry,
     errors: list[MetaError],
+    node: MetaData,
 ) -> tuple[list[AttrSchema], dict[str, AttrSchema]]:
     """Compute the effective attr schema for a (type, sub_type).
 
     Per-type attrs win over common attrs of the same name. If any collision
     exists, append a single ERR_PROVIDER_ATTR_CONFLICT for this (type, sub_type).
+    *node* supplies the FR5a envelope for the conflict error (matches C#
+    ValidationPasses.cs:593-596 — ``Envelope: node.Source``).
     """
     per_type_attrs = registry.attrs_of(type_, sub_type)
     per_type_names = {s.name for s in per_type_attrs}
@@ -155,6 +158,7 @@ def _effective_schemas(
                     f"{type_}.{sub_type} has a per-type attr '@{ca.name}' "
                     f"that conflicts with a common attr of the same name",
                     ErrorCode.ERR_PROVIDER_ATTR_CONFLICT,
+                    envelope=node.source,
                 )
             )
             break  # one error per (type, sub_type) is sufficient
@@ -177,7 +181,7 @@ def _validate_attr_schema(
         key = (node.type, node.sub_type)
         cached = schema_cache.get(key)
         if cached is None:
-            cached = _effective_schemas(node.type, node.sub_type, common_attrs, registry, errors)
+            cached = _effective_schemas(node.type, node.sub_type, common_attrs, registry, errors, node)
             schema_cache[key] = cached
         schemas, schema_by_name = cached
 
