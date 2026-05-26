@@ -13,7 +13,7 @@ from metaobjects.migrate import build_expected_schema, diff, emit_postgres
 from metaobjects.migrate.types import SchemaSnapshot
 from metaobjects.runtime import ObjectManager, PostgresDriver
 
-from .normalization import canonical_rows_json, canonical_value_json, normalize_row, normalize_value
+from .normalization import canonical_rows_json, normalize_row
 from .postgres_container import PostgresContainer
 from .scenarios import QueryScenario, QuerySpec
 
@@ -127,8 +127,3 @@ def _canonicalize_actual(actual: Any, op: str) -> str:
     if op == "get":
         return json.dumps(normalize_row(actual), sort_keys=True, separators=(",", ":"))
     return canonical_rows_json(actual)
-
-
-# Touch normalize_value so it's not flagged unused — re-exported for ad-hoc test use.
-_ = normalize_value
-_ = canonical_value_json

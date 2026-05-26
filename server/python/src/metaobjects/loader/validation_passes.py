@@ -861,7 +861,7 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
 
         # R2 — @payloadRef must resolve to a root-level object.value
         payload = objects_by_name.get(payload_ref)
-        if payload is None or payload.sub_type != "value":
+        if payload is None or payload.sub_type != OBJECT_SUBTYPE_VALUE:
             errors.append(MetaError(
                 code=ErrorCode.ERR_INVALID_TEMPLATE,
                 message=(

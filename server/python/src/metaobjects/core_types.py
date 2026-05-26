@@ -18,7 +18,6 @@ from .meta.core.field.field_constants import (
     FIELD_ATTR_STORAGE,
     FIELD_ATTR_VALUES,
     FIELD_SUBTYPE_ENUM,
-    FIELD_SUBTYPE_OBJECT,
     STORAGE_VALUES,
 )
 from .meta.core.field.meta_field import MetaField
@@ -440,7 +439,8 @@ for _sub in LAYOUT_SUBTYPES:
 # validator.* — base + required (validates a field has a value at write time).
 # Sized to satisfy the cross-port corpus today; richer validator subtypes
 # (regex/length/numeric) can join later mirroring Java's ValidatorTypesMetaDataProvider.
-_VALIDATOR_SUBTYPES = (SUBTYPE_BASE, "required")
+VALIDATOR_SUBTYPE_REQUIRED = "required"
+_VALIDATOR_SUBTYPES = (SUBTYPE_BASE, VALIDATOR_SUBTYPE_REQUIRED)
 _register_subtypes(
     core_provider,
     TYPE_VALIDATOR,

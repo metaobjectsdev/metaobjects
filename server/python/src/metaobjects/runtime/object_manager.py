@@ -11,13 +11,6 @@ import decimal
 from collections.abc import Iterable
 from typing import Any, Protocol
 
-
-# pg8000 / psycopg type oids we coerce to string at extraction so the cross-port
-# normalization contract (BIGINT → string, NUMERIC → canonical decimal string)
-# is honored without leaking SQL-type awareness into the comparison layer.
-_PG_OID_BIGINT = 20
-_PG_OID_NUMERIC = 1700
-
 from ..meta.meta_root import MetaRoot
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.core.field.meta_field import MetaField
@@ -25,6 +18,13 @@ from ..meta.core.field import field_constants as fc
 from ..meta.core.identity import identity_constants as ic
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source import source_constants as sc
+
+
+# pg8000 / psycopg type oids coerced to string at extraction so the cross-port
+# normalization contract (BIGINT → string, NUMERIC → canonical decimal string)
+# is honored without leaking SQL-type awareness into the comparison layer.
+_PG_OID_BIGINT = 20
+_PG_OID_NUMERIC = 1700
 
 
 # Filter shape:
