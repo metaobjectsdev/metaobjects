@@ -1,0 +1,29 @@
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      { "object.entity": { "name": "Author", "children": [
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "name" } },
+          { "field.string": { "name": "bio" } },
+          { "relationship.association": { "name": "posts", "@objectRef": "Post" } }
+      ] } },
+      { "object.entity": { "name": "Post", "children": [
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "title" } },
+          { "relationship.composition": { "name": "author", "@objectRef": "Author" } }
+      ] } },
+      { "object.value": { "name": "AuthorReport", "children": [
+          { "field.string": { "name": "name", "children": [
+              { "origin.passthrough": { "@from": "Author.name" } }
+          ] } },
+          { "field.long":   { "name": "postCount", "children": [
+              { "origin.aggregate": { "@agg": "count", "@of": "Post.id", "@via": "Author.posts" } }
+          ] } }
+      ] } },
+      { "template.prompt": { "name": "AuthorBio",
+          "@payloadRef": "AuthorReport",
+          "@textRef": "ai/bio" } }
+    ]
+  }
+}

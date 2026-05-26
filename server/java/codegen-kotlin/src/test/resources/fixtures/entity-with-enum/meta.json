@@ -1,0 +1,14 @@
+{
+  "metadata.root": {
+    "package": "acme::game",
+    "children": [
+      { "object.entity": { "name": "Player", "children": [
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "username", "@maxLength": 50 } },
+          { "field.enum":   { "name": "status", "@values": ["ACTIVE", "INACTIVE", "BANNED"] } },
+          { "source.rdb":   { "@table": "players" } },
+          { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ] } }
+    ]
+  }
+}
