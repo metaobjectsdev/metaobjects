@@ -46,6 +46,20 @@ object KotlinTypeMapper {
     const val ENUM_VARCHAR_LEN = 64
 
     /**
+     * Threshold beyond which a [StringField]'s `@maxLength` is treated as unbounded text and
+     * emitted as Exposed `text(name)` rather than `varchar(name, N)`. Chosen at 4000 — the
+     * customary Postgres inline-VARCHAR cutoff (TOAST boundary); larger values are better
+     * served by `TEXT`, which Exposed maps to `text(name)`.
+     */
+    private const val VARCHAR_TEXT_THRESHOLD = 4000
+
+    /** Sentinel `@kind` value on a [StringField] that forces `text(name)` emission. */
+    private const val KIND_TEXT = "text"
+
+    /** Attribute name read off a [StringField] to dispatch to `text(name)` (kind=text). */
+    private const val ATTR_KIND = "kind"
+
+    /**
      * Compute the generated Kotlin enum-class name for an [EnumField] hung off [entity].
      *
      * Returns {@code null} when [field] is not an {@link EnumField} (the caller should
@@ -105,7 +119,16 @@ object KotlinTypeMapper {
      * for nested object.value fields without mutating the underlying MetaField.
      */
     fun exposedColumnSpec(field: MetaField<*>, colName: String): String = when (field) {
-        is StringField    -> "varchar(\"$colName\", ${stringMaxLength(field)})"
+        is StringField    -> {
+            // Dispatch to Exposed `text(name)` when the field is declared as unbounded text:
+            //   (1) explicit `@kind: "text"` opt-in, OR
+            //   (2) `@maxLength` exceeds the VARCHAR/TEXT cutoff (Postgres TOAST boundary).
+            // Otherwise emit `varchar(name, N)` with N defaulting to 255.
+            val kind = stringAttr(field, ATTR_KIND)
+            val maxLen = stringMaxLength(field)
+            if (kind == KIND_TEXT || maxLen > VARCHAR_TEXT_THRESHOLD) "text(\"$colName\")"
+            else "varchar(\"$colName\", $maxLen)"
+        }
         is IntegerField   -> "integer(\"$colName\")"
         is LongField      -> "long(\"$colName\")"
         is DoubleField    -> "double(\"$colName\")"
@@ -125,6 +148,20 @@ object KotlinTypeMapper {
         else throw IllegalArgumentException(
             "unsupported Exposed column mapping for ${field::class.simpleName} '${field.name}'"
         )
+    }
+
+    /**
+     * Best-effort read of a named string attribute (own-only) on [field]. Returns null when
+     * the attribute is absent, throws during lookup, or isn't a [com.metaobjects.attr.MetaAttribute].
+     * Used for non-typed dispatch keys (e.g. `@kind`) that aren't part of the registered
+     * StringField attribute schema.
+     */
+    private fun stringAttr(field: MetaField<*>, name: String): String? {
+        if (!field.hasMetaAttr(name, false)) return null
+        val attr = runCatching {
+            field.getMetaAttr(name, false)
+        }.getOrNull() as? com.metaobjects.attr.MetaAttribute<*> ?: return null
+        return attr.valueAsString
     }
 
     /** Resolve @maxLength on a StringField; default 255. */
