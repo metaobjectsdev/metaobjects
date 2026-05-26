@@ -55,7 +55,6 @@ public class JsonPathTests
     public void Array_indices_use_bracket_form()
     {
         var b = new JsonPathBuilder();
-        b.PushKey("metadata");
         b.PushKey("root");
         b.PushKey("children");
         b.PushIndex(0);
@@ -63,7 +62,7 @@ public class JsonPathTests
         b.PushKey("children");
         b.PushIndex(1);
         b.PushKey("field.enum");
-        Assert.Equal("$.metadata.root.children[0]['object.entity'].children[1]['field.enum']", b.ToString());
+        Assert.Equal("$.root.children[0]['object.entity'].children[1]['field.enum']", b.ToString());
     }
 
     [Fact]
@@ -109,9 +108,8 @@ public class JsonPathTests
     [Fact]
     public void Deep_nested_path_for_field_enum_values()
     {
-        // Mirrors the example in ADR-0009 §Decision.
+        // Mirrors the example in ADR-0009 §Decision (per-segment quoting).
         var b = new JsonPathBuilder();
-        b.PushKey("metadata");
         b.PushKey("root");
         b.PushKey("children");
         b.PushIndex(0);
@@ -121,7 +119,7 @@ public class JsonPathTests
         b.PushKey("field.enum");
         b.PushKey("@values");
         Assert.Equal(
-            "$.metadata.root.children[0]['object.entity'].children[1]['field.enum']['@values']",
+            "$.root.children[0]['object.entity'].children[1]['field.enum']['@values']",
             b.ToString());
     }
 
