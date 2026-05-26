@@ -68,6 +68,13 @@
       <version>1.6.0</version>
       <scope>test</scope>
     </dependency>
+    <!-- Required at test scope so kotlin-compile-testing can resolve @Serializable on generated code -->
+    <dependency>
+      <groupId>org.jetbrains.kotlinx</groupId>
+      <artifactId>kotlinx-serialization-core-jvm</artifactId>
+      <version>1.7.3</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
