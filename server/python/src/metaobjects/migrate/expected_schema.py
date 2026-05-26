@@ -177,7 +177,7 @@ def _build_indexes(entity: MetaObject):
         if not fields:
             continue
         cols = tuple(_column_for(entity, n) for n in fields)
-        unique_attr = child.attr("unique")
+        unique_attr = child.attr(ic.IDENTITY_ATTR_UNIQUE)
         unique = unique_attr is not False  # secondary is unique by default
         yield IndexDescriptor(name=child.name, columns=cols, unique=unique)
 
@@ -247,11 +247,11 @@ def _matching_relationship_actions(entity: MetaObject, target_entity: str) -> tu
     for child in entity.children():
         if not isinstance(child, MetaRelationship):
             continue
-        ref = child.object_ref
+        ref = child.object_ref()
         if ref is None:
             continue
         if _strip_pkg(ref) == _strip_pkg(target_entity):
-            return child.on_delete(), child.on_update
+            return child.on_delete(), child.on_update()
     return None, None
 
 
@@ -274,7 +274,7 @@ def _identity_fields(identity: MetaIdentity) -> tuple[str, ...]:
 
 def _column_of(field: MetaField) -> str:
     """@column override else field name (matches C# Literal default; cross-port)."""
-    col = field.attr("column")
+    col = field.attr(fc.FIELD_ATTR_COLUMN)
     return col if isinstance(col, str) and col else field.name
 
 

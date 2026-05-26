@@ -798,7 +798,7 @@ public final class ValidationPhase {
     private static void validateDataGridLayout(MetaObject obj, DataGridLayout grid) {
         java.util.Map<String, MetaField> fieldsByName = new java.util.HashMap<>();
         java.util.Set<String> filterable = new java.util.HashSet<>();
-        for (MetaField f : obj.getChildren(MetaField.class, false)) {
+        for (MetaField f : obj.getChildren(MetaField.class, true)) {
             fieldsByName.put(f.getShortName(), f);
             if (f.hasMetaAttr("filterable", false)) {
                 Object v = f.getMetaAttr("filterable", false).getValue();
