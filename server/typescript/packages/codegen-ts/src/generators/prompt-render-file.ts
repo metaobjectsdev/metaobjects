@@ -16,15 +16,27 @@ import {
   oncePerRun,
 } from "../generator.js";
 import {
-  generatePayloadInterfaces,
+  generatePayloadInterfacesBatch,
   generateRenderHandle,
 } from "../payload-codegen.js";
+import { GENERATED_HEADER } from "../constants.js";
 
 export interface PromptRenderOpts {
   /** Output file path relative to the target's outDir. Default: "prompts.ts". */
   outFile?: string;
   /** Optional named output target (registry key). Defaults to "default". */
   target?: string;
+}
+
+// Hoisted into the emitted file once. generateRenderHandle() emits this line
+// per-handle (for the standalone scenario); we strip its per-handle copies.
+const RENDER_IMPORT = `import { render, type Provider } from "@metaobjectsdev/render";`;
+
+// Matches the `import type { ... } from "./payloads.js";` that generateRenderHandle
+// emits for the standalone two-file scenario. In the single-file output here the
+// payload interfaces are already defined above, so the import is dead.
+function isStandalonePayloadImport(line: string): boolean {
+  return line.startsWith("import type {") && line.includes('"./payloads.js"');
 }
 
 export const promptRender = function promptRender(opts?: PromptRenderOpts): Generator {
@@ -41,21 +53,35 @@ export const promptRender = function promptRender(opts?: PromptRenderOpts): Gene
         return [];
       }
 
-      const parts: string[] = [];
-      for (const p of payloads) {
-        parts.push(generatePayloadInterfaces(ctx.loadedRoot, p.name));
+      const parts: string[] = [`// ${GENERATED_HEADER} — DO NOT EDIT.`];
+
+      // Hoist the @metaobjectsdev/render import once (only when prompts emit handles).
+      if (prompts.length > 0) {
+        parts.push(RENDER_IMPORT);
       }
-      // Strip the `import type { ... } from "./payloads.js"` line that
-      // generateRenderHandle() emits for the standalone two-file scenario.
-      // In the single-file output here the payload interfaces are already
-      // defined above, so the import is a self-reference to a non-existent module.
+
+      // Emit payload interfaces with a single shared dedupe set so a lens
+      // referenced by multiple payloads appears exactly once.
+      const payloadInterfaces = generatePayloadInterfacesBatch(
+        ctx.loadedRoot,
+        payloads.map((p) => p.name),
+      );
+      if (payloadInterfaces.length > 0) {
+        parts.push(payloadInterfaces);
+      }
+
+      // Append each render handle with its per-handle imports stripped — both
+      // the now-hoisted render/Provider import and the standalone payloads.js
+      // import. Also drop any leading blank lines left behind by the strip so
+      // the joined output doesn't accumulate double blank gaps between parts.
       for (const t of prompts) {
-        const handle = generateRenderHandle(ctx.loadedRoot, t.name)
+        const lines = generateRenderHandle(ctx.loadedRoot, t.name)
           .split("\n")
-          .filter((line) => !line.startsWith("import type {") || !line.includes("./payloads.js"))
-          .join("\n");
-        parts.push(handle);
+          .filter((line) => line !== RENDER_IMPORT && !isStandalonePayloadImport(line));
+        while (lines.length > 0 && lines[0]!.trim() === "") lines.shift();
+        parts.push(lines.join("\n"));
       }
+
       return [{
         path: outFile,
         content: parts.filter((s) => s.length > 0).map((s) => s.trimEnd()).join("\n\n") + "\n",

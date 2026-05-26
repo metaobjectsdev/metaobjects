@@ -82,6 +82,23 @@ export function generatePayloadInterfaces(root: MetaData, voName: string): strin
   return out.join("\n\n") + "\n";
 }
 
+/**
+ * Emit interfaces for several payloads at once, using a single shared dedupe
+ * set so nested types (e.g. lens projections referenced by multiple payloads)
+ * appear exactly once in the combined output.
+ *
+ * Returns the empty string when `voNames` is empty.
+ */
+export function generatePayloadInterfacesBatch(root: MetaData, voNames: readonly string[]): string {
+  if (voNames.length === 0) return "";
+  const out: string[] = [];
+  const emitted = new Set<string>();
+  for (const name of voNames) {
+    emitInterface(root, name, emitted, out);
+  }
+  return out.length === 0 ? "" : out.join("\n\n") + "\n";
+}
+
 function pascal(s: string): string {
   return s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s;
 }

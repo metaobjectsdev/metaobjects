@@ -44,4 +44,4 @@ export { emitViewDdl } from "./projection/view-ddl-emit.js";
 export type { EmitOptions as ViewDdlEmitOptions } from "./projection/view-ddl-emit.js";
 export type { JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec } from "./projection/view-spec.js";
 // Prompt construction (FR-004): typed payload + render-handle codegen.
-export { generatePayloadInterfaces, generateRenderHandle } from "./payload-codegen.js";
+export { generatePayloadInterfaces, generatePayloadInterfacesBatch, generateRenderHandle } from "./payload-codegen.js";
