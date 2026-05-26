@@ -49,7 +49,7 @@ Two modules:
 
 ## Configure
 
-The 7 generators in `codegen-kotlin`:
+The 8 generators in `codegen-kotlin`:
 
 | Generator | Output | Per |
 |---|---|---|
@@ -60,6 +60,7 @@ The 7 generators in `codegen-kotlin`:
 | `KotlinValidatorGenerator` | `MetadataStartupValidator.kt` + `ExposedTableValidator.kt` | once per project |
 | `KotlinSpringConfigGenerator` | `MetadataExposedConfig.kt` — `@Configuration` wiring `Database.connect()` + auto-validator | once per project |
 | `KotlinStoredProcGenerator` | Stored-procedure call wrappers | entities with `source.rdb @kind="storedProc"` |
+| `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController` (5 CRUD endpoints; cross-port API contract) | entities with `source.rdb @kind="table"` |
 
 Maven wiring:
 
@@ -189,6 +190,26 @@ val out = render {
 }
 ```
 
+## Angular 18 frontend
+
+`KotlinSpringControllerGenerator` emits a Spring `@RestController` per writable
+entity (`source.rdb @kind="table"`) conforming to the cross-port REST contract
+at [`docs/features/api-contract.md`](../features/api-contract.md). Any
+universal browser client built against that contract — including the
+`@metaobjectsdev/angular` runtime + the `@metaobjectsdev/codegen-ts-angular`
+codegen — consumes it directly: services, reactive forms, and grids point at
+the same URL grammar (`/api/<entity-plural>`), the same `?withCount=1`
+envelope, and the same JSON wire format used by the C# .NET 8 + ASP.NET
+Minimal API backend.
+
+The C#-side recipe at
+[`docs/recipes/csharp-angular18.md`](../recipes/csharp-angular18.md) walks
+through the dev-server CORS wiring, `provideHttpClient()`, and grid/form/
+service usage end-to-end. Swap the ASP.NET sections for Spring Boot
+configuration (Spring `WebMvcConfigurer` instead of `AddCors`, application
+port 8080 instead of 5000) — every other line carries over verbatim because
+the contract is universal.
+
 ## Drift detection (Tier-2 integration)
 
 | Drift source | Where caught | When |
@@ -208,6 +229,7 @@ val out = render {
 | Entities + fields | Yes |
 | Relationships + FK | Yes |
 | Source kinds (table / view / storedProc) | Yes — storedProc has its own generator |
+| REST controllers (Spring `@RestController`) | Yes — `KotlinSpringControllerGenerator` per writable entity; cross-port API contract |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes (incl. `flattened` per-sub-field columns) |
 | Templates + render (FR-004) | Yes (wraps the Java engine) |
 | Payload-VO codegen | Yes (`KotlinPayloadGenerator`) |
@@ -217,7 +239,7 @@ val out = render {
 
 ## Test count
 
-75 tests in `codegen-kotlin` (`mvn -pl codegen-kotlin test`). Snapshot tests gate
+84 tests in `codegen-kotlin` (`mvn -pl codegen-kotlin test`). Snapshot tests gate
 within-Java output stability; `kotlin-compile-testing` gates generated-code
 validity; an end-to-end test exercises the full loop including the Java
 `Renderer`. Persistence-conformance over the shared corpus runs in
