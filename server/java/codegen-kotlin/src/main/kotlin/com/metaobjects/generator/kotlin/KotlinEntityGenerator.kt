@@ -45,12 +45,11 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
+        // Emit a data class for entities AND value objects. Value objects (object.value) are
+        // referenced by field.object on entities; the value class must exist for the entity's
+        // typed property to resolve.
         for (obj in loader.metaObjects) {
-            // Emit a data class for both entities AND value objects. Value objects (object.value)
-            // are referenced by field.object on entities; the value class must exist for the
-            // entity's typed property to resolve.
-            if (obj.subType != MetaObject.SUBTYPE_ENTITY && obj.subType != MetaObject.SUBTYPE_VALUE) continue
-            emit(obj, outRoot, loader)
+            if (obj.subType in EMITTED_SUBTYPES) emit(obj, outRoot, loader)
         }
     }
 
@@ -66,7 +65,7 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val ctorBuilder = FunSpec.constructorBuilder()
         for (field in obj.metaFields) {
             val baseType = resolvePropertyType(field, loader)
-            val nullable = !isRequired(field)
+            val nullable = !KotlinGenUtil.isRequiredField(field)
             val propType = if (nullable) baseType.copy(nullable = true) else baseType
             val propName = field.name
             val param = ParameterSpec.builder(propName, propType)
@@ -95,12 +94,10 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     private fun resolvePropertyType(field: MetaField<*>, loader: MetaDataLoader): TypeName {
         if (field is ObjectField) {
             val ref = readObjectRef(field)
-            if (ref != null) {
-                val target = resolveObjectByShortOrFqn(loader, ref)
-                if (target != null) {
-                    val (targetPkg, targetShort) = PackageMapping.splitFqn(target.name)
-                    return ClassName(targetPkg, targetShort)
-                }
+            val target = ref?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+            if (target != null) {
+                val (targetPkg, targetShort) = PackageMapping.splitFqn(target.name)
+                return ClassName(targetPkg, targetShort)
             }
         }
         return KotlinTypeMapper.kotlinTypeName(field)
@@ -113,27 +110,9 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .getOrNull()
     }
 
-    /** Resolve a MetaObject (entity OR value) by FQN match or short-name match. */
-    private fun resolveObjectByShortOrFqn(loader: MetaDataLoader, ref: String): MetaObject? {
-        for (child in loader.metaObjects) {
-            val short = child.name.substringAfterLast("::")
-            if (child.name == ref || short == ref) return child
-        }
-        return null
-    }
-
-    /**
-     * Required iff explicit `@required: true` attribute is set on the field; otherwise nullable.
-     * MVP heuristic — refined when richer required-detection lands (see fr-003 spec).
-     */
-    private fun isRequired(field: MetaField<*>): Boolean {
-        if (!field.hasMetaAttr(MetaField.ATTR_REQUIRED, true)) return false
-        val raw = runCatching { field.getMetaAttr(MetaField.ATTR_REQUIRED, true).value }.getOrNull()
-        return when (raw) {
-            is Boolean -> raw
-            is String -> raw.equals("true", ignoreCase = true)
-            else -> false
-        }
+    private companion object {
+        /** MetaObject subtypes this generator emits a Kotlin data class for. */
+        val EMITTED_SUBTYPES = setOf(MetaObject.SUBTYPE_ENTITY, MetaObject.SUBTYPE_VALUE)
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

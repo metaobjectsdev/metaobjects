@@ -14,6 +14,7 @@ import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.TypeSpec
 import java.io.OutputStream
 import java.io.PrintWriter
 import java.nio.file.Paths
@@ -49,81 +50,83 @@ class KotlinSpringConfigGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         parseArgs()
         val pkg = getArg("packageName")
             ?: throw GeneratorException("packageName is required")
-        val className = getArg("className", "MetadataExposedConfig") ?: "MetadataExposedConfig"
+        val className = getArg("className", DEFAULT_CLASS_NAME) ?: DEFAULT_CLASS_NAME
         val validatorEnabled = (getArg("validatorEnabled", "true") ?: "true")
             .equals("true", ignoreCase = true)
-        val metadataResource = getArg("metadataResource", "meta.entities.json")
-            ?: "meta.entities.json"
-        val resources = metadataResource.split(",")
+        val resources = (getArg("metadataResource", DEFAULT_METADATA_RESOURCE) ?: DEFAULT_METADATA_RESOURCE)
+            .split(",")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
 
-        val outRoot = Paths.get(outDir.absolutePath)
-
-        val dataSource = ClassName("javax.sql", "DataSource")
-        val database = ClassName("org.jetbrains.exposed.sql", "Database")
-        val configuration = ClassName("org.springframework.context.annotation", "Configuration")
-        val eventListener = ClassName("org.springframework.context.event", "EventListener")
-        val applicationReadyEvent = ClassName(
-            "org.springframework.boot.context.event", "ApplicationReadyEvent"
-        )
-
-        val ctor = FunSpec.constructorBuilder()
-            .addParameter(ParameterSpec.builder("dataSource", dataSource).build())
-            .build()
-
-        val dsProp = PropertySpec.builder("dataSource", dataSource, KModifier.PRIVATE)
-            .initializer("dataSource")
-            .build()
-
-        val typeBuilder = com.squareup.kotlinpoet.TypeSpec.classBuilder(className)
+        val typeBuilder = TypeSpec.classBuilder(className)
             .addKdoc(
                 "GENERATED — wires Exposed's `Database.connect()` from the Spring " +
                     "[DataSource] bean\nand runs [MetadataStartupValidator.validate] at " +
                     "app startup.\n\nIf you don't want the validator auto-call, set " +
                     "`metaobjects.validator.enabled=false`.\n"
             )
-            .addAnnotation(configuration)
-            .primaryConstructor(ctor)
-            .addProperty(dsProp)
-            .addInitializerBlock(CodeBlock.of("%T.connect(dataSource)\n", database))
+            .addAnnotation(CONFIGURATION)
+            .primaryConstructor(
+                FunSpec.constructorBuilder()
+                    .addParameter(ParameterSpec.builder("dataSource", DATA_SOURCE).build())
+                    .build()
+            )
+            .addProperty(
+                PropertySpec.builder("dataSource", DATA_SOURCE, KModifier.PRIVATE)
+                    .initializer("dataSource")
+                    .build()
+            )
+            .addInitializerBlock(CodeBlock.of("%T.connect(dataSource)\n", DATABASE))
 
         if (validatorEnabled) {
-            val resourcesLiteral = buildString {
-                append("listOf(")
-                resources.forEachIndexed { idx, r ->
-                    if (idx > 0) append(", ")
-                    append("%S")
-                }
-                append(")")
-            }
-            val loadResources = MemberName("com.metaobjects.metadata.ktx", "loadResources")
-
-            val body = CodeBlock.builder()
-                .addStatement(
-                    "val loader = %M(%S, $resourcesLiteral)",
-                    loadResources, "app", *resources.toTypedArray()
-                )
-                .addStatement("MetadataStartupValidator.validate(loader)")
-                .build()
-
-            val listenerAnnotation = AnnotationSpec.builder(eventListener)
-                .addMember("%T::class", applicationReadyEvent)
-                .build()
-
-            val validateFn = FunSpec.builder("validateMetadata")
-                .addAnnotation(listenerAnnotation)
-                .returns(Unit::class)
-                .addCode(body)
-                .build()
-
-            typeBuilder.addFunction(validateFn)
+            typeBuilder.addFunction(buildValidatorFn(resources))
         }
 
         FileSpec.builder(pkg, className)
             .addType(typeBuilder.build())
             .build()
-            .writeTo(outRoot)
+            .writeTo(Paths.get(outDir.absolutePath))
+    }
+
+    /**
+     * Build the `@EventListener(ApplicationReadyEvent::class) fun validateMetadata()` function
+     * that calls `loadResources(...)` over [resources] and feeds the loader into the generated
+     * `MetadataStartupValidator`.
+     */
+    private fun buildValidatorFn(resources: List<String>): FunSpec {
+        // `listOf("a", "b", ...)` rendered as `listOf(%S, %S, ...)` placeholders so KotlinPoet
+        // string-escapes each resource path correctly.
+        val resourcesLiteral = resources.joinToString(prefix = "listOf(", postfix = ")") { "%S" }
+        val body = CodeBlock.builder()
+            .addStatement(
+                "val loader = %M(%S, $resourcesLiteral)",
+                LOAD_RESOURCES, "app", *resources.toTypedArray()
+            )
+            .addStatement("MetadataStartupValidator.validate(loader)")
+            .build()
+
+        val listenerAnnotation = AnnotationSpec.builder(EVENT_LISTENER)
+            .addMember("%T::class", APPLICATION_READY_EVENT)
+            .build()
+
+        return FunSpec.builder("validateMetadata")
+            .addAnnotation(listenerAnnotation)
+            .returns(Unit::class)
+            .addCode(body)
+            .build()
+    }
+
+    private companion object {
+        const val DEFAULT_CLASS_NAME = "MetadataExposedConfig"
+        const val DEFAULT_METADATA_RESOURCE = "meta.entities.json"
+
+        val DATA_SOURCE = ClassName("javax.sql", "DataSource")
+        val DATABASE = ClassName("org.jetbrains.exposed.sql", "Database")
+        val CONFIGURATION = ClassName("org.springframework.context.annotation", "Configuration")
+        val EVENT_LISTENER = ClassName("org.springframework.context.event", "EventListener")
+        val APPLICATION_READY_EVENT =
+            ClassName("org.springframework.boot.context.event", "ApplicationReadyEvent")
+        val LOAD_RESOURCES = MemberName("com.metaobjects.metadata.ktx", "loadResources")
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
