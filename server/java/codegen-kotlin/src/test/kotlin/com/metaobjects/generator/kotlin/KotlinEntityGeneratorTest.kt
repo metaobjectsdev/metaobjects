@@ -85,4 +85,61 @@ class KotlinEntityGeneratorTest {
             outDir.toFile().deleteRecursively()
         }
     }
+
+    // === field.enum coverage ===============================================
+
+    private val enumFixture = """{
+      "metadata.root": { "package": "acme::demo", "children": [
+        { "object.entity": { "name": "Player", "children": [
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "status", "@required": true,
+                "@values": ["ACTIVE", "INACTIVE", "BANNED"] } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    @Test fun enumFieldEmitsTypedEnumClass() {
+        val outDir = Files.createTempDirectory("kgen-enum-")
+        try {
+            val gen = KotlinEntityGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("enum-class", enumFixture))
+
+            // Separate file for the enum class, in the same package as the entity.
+            val enumKt = outDir.resolve("acme/demo/PlayerStatus.kt")
+            assertTrue(Files.exists(enumKt),
+                "expected $enumKt; files=${Files.walk(outDir).toList()}")
+            val enumSrc = Files.readString(enumKt)
+            assertTrue("@Serializable" in enumSrc, "expected @Serializable on enum:\n$enumSrc")
+            assertTrue("enum class PlayerStatus" in enumSrc, "expected enum class declaration:\n$enumSrc")
+            // Members emitted verbatim, preserving case.
+            assertTrue("ACTIVE" in enumSrc, "expected ACTIVE member:\n$enumSrc")
+            assertTrue("INACTIVE" in enumSrc, "expected INACTIVE member:\n$enumSrc")
+            assertTrue("BANNED" in enumSrc, "expected BANNED member:\n$enumSrc")
+            assertTrue("kotlinx.serialization.Serializable" in enumSrc,
+                "expected kotlinx.serialization import:\n$enumSrc")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun entityPropertyUsesEnumType() {
+        val outDir = Files.createTempDirectory("kgen-enum-prop-")
+        try {
+            val gen = KotlinEntityGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("enum-prop", enumFixture))
+
+            val playerKt = outDir.resolve("acme/demo/Player.kt")
+            assertTrue(Files.exists(playerKt))
+            val src = Files.readString(playerKt)
+            // status is @required → non-nullable typed enum, NOT String.
+            assertTrue("val status: PlayerStatus" in src,
+                "expected typed enum property `val status: PlayerStatus`; saw:\n$src")
+            assertTrue("val status: String" !in src,
+                "expected the property to NOT be String anymore; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
 }

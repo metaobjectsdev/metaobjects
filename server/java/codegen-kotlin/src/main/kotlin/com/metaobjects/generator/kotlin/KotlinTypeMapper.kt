@@ -10,6 +10,7 @@ import com.metaobjects.field.LongField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.TimestampField
+import com.metaobjects.`object`.MetaObject
 import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.DOUBLE
@@ -42,7 +43,33 @@ object KotlinTypeMapper {
     private const val UUID_SUBTYPE = "uuid"
 
     /** Default VARCHAR width for string-backed `field.enum` storage (v1). */
-    private const val ENUM_VARCHAR_LEN = 64
+    const val ENUM_VARCHAR_LEN = 64
+
+    /**
+     * Compute the generated Kotlin enum-class name for an [EnumField] hung off [entity].
+     *
+     * Returns {@code null} when [field] is not an {@link EnumField} (the caller should
+     * fall through to the generic [kotlinTypeName] mapping). Naming rule:
+     * {@code <EntityShortName><FieldNamePascalCase>}, in the same Kotlin package as the
+     * entity (derived from the entity's metadata FQN via [PackageMapping.splitFqn]).
+     *
+     * Entity-prefixing prevents collisions across entities (e.g., {@code Player.status} →
+     * {@code PlayerStatus}; {@code Game.status} → {@code GameStatus}). When [entity] is
+     * null (e.g., bare-mapper unit tests) the enum class is rendered with no package
+     * prefix and no entity-name prefix — only the field name pascalised — so the helper
+     * still produces a useful ClassName for documentation / debug output. Generators that
+     * actually emit code always pass the owning entity.
+     */
+    fun enumTypeName(field: MetaField<*>, entity: MetaObject?): ClassName? {
+        if (field !is EnumField) return null
+        val fieldPascal = field.name.replaceFirstChar { it.uppercase() }
+        return if (entity == null) {
+            ClassName("", fieldPascal)
+        } else {
+            val (pkg, entityShort) = PackageMapping.splitFqn(entity.name)
+            ClassName(pkg, entityShort + fieldPascal)
+        }
+    }
 
     /** Map a MetaField to its KotlinPoet data-class property TypeName. */
     fun kotlinTypeName(field: MetaField<*>): TypeName = when (field) {
