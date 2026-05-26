@@ -358,17 +358,6 @@ public final class CanonicalJsonSerializer {
     // ---------------------------------------------------------------------------
 
     /**
-     * Returns the "canonical package" for a node.
-     *
-     * <p>For {@link MetaRoot}, the node's full {@link MetaData#getName()} IS the
-     * package (e.g. {@code "acme::commerce"}). The default {@link MetaData#getPackage()}
-     * would split on the last {@code ::} and return only the first segment
-     * ({@code "acme"}), which is wrong for root nodes.</p>
-     *
-     * <p>For all other nodes the package is the prefix before the last {@code ::}
-     * in the fully-qualified name, i.e. {@link MetaData#getPackage()} is correct.</p>
-     */
-    /**
      * Returns the "authoring package" of a node — the package context an author
      * would use to write its {@code extends} ref. For root-level nodes this is
      * the root's own package; for child nodes it walks up to the nearest
@@ -382,23 +371,30 @@ public final class CanonicalJsonSerializer {
             if (current instanceof MetaRoot) {
                 return resolveNodePackage(current);
             }
-            // If we hit a non-root parent that isn't a MetaObject, keep walking
-            // up — the goal is the nearest containing entity OR the root.
             MetaData parent = current.getParent();
             if (parent == null) break;
-            if (parent instanceof MetaRoot) {
-                // current's authoring context = root's package
-                return resolveNodePackage(parent);
-            }
             if (parent instanceof com.metaobjects.object.MetaObject) {
                 // current is a child of an entity → authoring context = entity's package
                 return parent.getPackage();
             }
+            // Non-MetaObject parent (or MetaRoot): keep walking up; MetaRoot is
+            // caught on the next iteration's top-of-loop check.
             current = parent;
         }
         return node.getPackage();
     }
 
+    /**
+     * Returns the "canonical package" for a node.
+     *
+     * <p>For {@link MetaRoot}, the node's full {@link MetaData#getName()} IS the
+     * package (e.g. {@code "acme::commerce"}). The default {@link MetaData#getPackage()}
+     * would split on the last {@code ::} and return only the first segment
+     * ({@code "acme"}), which is wrong for root nodes.</p>
+     *
+     * <p>For all other nodes the package is the prefix before the last {@code ::}
+     * in the fully-qualified name, i.e. {@link MetaData#getPackage()} is correct.</p>
+     */
     private static String resolveNodePackage(MetaData node) {
         if (node instanceof MetaRoot) {
             // The root's name is the package itself — unless the loader had no

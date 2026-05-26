@@ -11,9 +11,19 @@ import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
+import com.metaobjects.field.BooleanField;
+import com.metaobjects.field.CurrencyField;
+import com.metaobjects.field.DateField;
+import com.metaobjects.field.DecimalField;
+import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.EnumField;
+import com.metaobjects.field.FloatField;
+import com.metaobjects.field.IntegerField;
+import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
+import com.metaobjects.field.TimeField;
+import com.metaobjects.field.TimestampField;
 import com.metaobjects.layout.DataGridLayout;
 import com.metaobjects.layout.MetaLayout;
 import com.metaobjects.identity.MetaIdentity;
@@ -773,6 +783,8 @@ public final class ValidationPhase {
     // Cross-port: mirrors TS validation-passes.ts (validateDataGridLayout).
     // =========================================================================
 
+    private static final String ATTR_FILTERABLE = "filterable";
+
     private static final java.util.Set<String> OPS_FOR_BOOLEAN =
         java.util.Set.of("eq", "ne", "isNull");
     private static final java.util.Set<String> OPS_FOR_NUMERIC =
@@ -800,8 +812,8 @@ public final class ValidationPhase {
         java.util.Set<String> filterable = new java.util.HashSet<>();
         for (MetaField f : obj.getChildren(MetaField.class, true)) {
             fieldsByName.put(f.getShortName(), f);
-            if (f.hasMetaAttr("filterable", false)) {
-                Object v = f.getMetaAttr("filterable", false).getValue();
+            if (f.hasMetaAttr(ATTR_FILTERABLE, false)) {
+                Object v = f.getMetaAttr(ATTR_FILTERABLE, false).getValue();
                 boolean isFilterable =
                     (v instanceof Boolean) ? (Boolean) v
                     : (v instanceof String) ? "true".equalsIgnoreCase((String) v)
@@ -880,10 +892,18 @@ public final class ValidationPhase {
 
     private static java.util.Set<String> allowedOpsFor(MetaField field) {
         String st = field.getSubType();
-        if ("boolean".equals(st)) return OPS_FOR_BOOLEAN;
-        if ("date".equals(st) || "time".equals(st) || "timestamp".equals(st)) return OPS_FOR_DATE;
-        if ("int".equals(st) || "long".equals(st) || "double".equals(st)
-                || "float".equals(st) || "decimal".equals(st) || "currency".equals(st)) {
+        if (BooleanField.SUBTYPE_BOOLEAN.equals(st)) return OPS_FOR_BOOLEAN;
+        if (DateField.SUBTYPE_DATE.equals(st)
+                || TimeField.SUBTYPE_TIME.equals(st)
+                || TimestampField.SUBTYPE_TIMESTAMP.equals(st)) {
+            return OPS_FOR_DATE;
+        }
+        if (IntegerField.SUBTYPE_INT.equals(st)
+                || LongField.SUBTYPE_LONG.equals(st)
+                || DoubleField.SUBTYPE_DOUBLE.equals(st)
+                || FloatField.SUBTYPE_FLOAT.equals(st)
+                || DecimalField.SUBTYPE_DECIMAL.equals(st)
+                || CurrencyField.SUBTYPE_CURRENCY.equals(st)) {
             return OPS_FOR_NUMERIC;
         }
         // string / enum / others fall through to string-shape ops.
@@ -902,8 +922,6 @@ public final class ValidationPhase {
     // Warning text MUST match the cross-port string exactly so fixtures'
     // expected-warnings.json compare byte-equal.
     // =========================================================================
-
-    private static final String ATTR_FILTERABLE = "filterable";
 
     static void warnFilterableWithoutIndex(MetaRoot root, MetaDataLoader loader) {
         if (loader == null) return;
@@ -1025,7 +1043,8 @@ public final class ValidationPhase {
         if (TemplateConstants.SUBTYPE_PROMPT.equals(subType)
                 && (payloadRef == null || payloadRef.isEmpty())) {
             throw new MetaDataException(
-                "template.prompt '" + template.getName() + "' is missing required @payloadRef",
+                ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
+                    + ": template.prompt '" + template.getName() + "' is missing required @payloadRef",
                 ErrorCode.ERR_MISSING_REQUIRED_ATTR);
         }
 
@@ -1035,7 +1054,8 @@ public final class ValidationPhase {
         MetaObject payloadVo = findRootObject(root, payloadRef);
         if (payloadVo == null || !MetaObject.SUBTYPE_VALUE.equals(payloadVo.getSubType())) {
             throw new MetaDataException(
-                "template '" + template.getName() + "' @payloadRef '" + payloadRef
+                ErrorMessageConstants.ERR_INVALID_TEMPLATE
+                    + ": template '" + template.getName() + "' @payloadRef '" + payloadRef
                     + "' does not resolve to an object.value at root",
                 ErrorCode.ERR_INVALID_TEMPLATE);
         }
@@ -1050,7 +1070,8 @@ public final class ValidationPhase {
             if (slot == null || slot.isEmpty()) continue;
             if (!available.contains(slot)) {
                 throw new MetaDataException(
-                    "template.prompt '" + template.getName()
+                    ErrorMessageConstants.ERR_INVALID_TEMPLATE
+                        + ": template.prompt '" + template.getName()
                         + "' @requiredSlots includes '" + slot
                         + "' which is not a field on payload '" + payloadRef + "'",
                     ErrorCode.ERR_INVALID_TEMPLATE);
