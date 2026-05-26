@@ -204,6 +204,19 @@ class Post:
     author_id: int  # FK to Author.id — relationship-as-runtime is on the roadmap
 ```
 
+## Verified by
+
+The following conformance fixtures gate this feature's behavior across ports:
+
+- [`fixtures/conformance/relationship-one-to-many/`](../../fixtures/conformance/relationship-one-to-many/) — `relationship.composition` 1:N with the parent owning the collection
+- [`fixtures/conformance/identity-reference-simple/`](../../fixtures/conformance/identity-reference-simple/) — `identity.reference` declares the FK column-set on the child
+- [`fixtures/conformance/source-rdb-referential-actions/`](../../fixtures/conformance/source-rdb-referential-actions/) — `@onDelete` / `@onUpdate` on relationships
+- [`fixtures/conformance/error-unknown-relationship-subtype/`](../../fixtures/conformance/error-unknown-relationship-subtype/) — unknown `relationship.<subtype>` rejected
+
+Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
+via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
+for the per-port pass/skip ledger.
+
 ## See also
 
 - [entities.md](entities.md) — host node `object.entity`

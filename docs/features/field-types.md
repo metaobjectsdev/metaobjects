@@ -217,6 +217,44 @@ class Author:
     created_at: Optional[datetime] = None
 ```
 
+## Verified by
+
+The following conformance fixtures gate this feature's behavior across ports:
+
+**Scalar field attributes**
+
+- [`fixtures/conformance/field-string-maxlength/`](../../fixtures/conformance/field-string-maxlength/) — `field.string @maxLength`
+- [`fixtures/conformance/field-decimal-precision-scale/`](../../fixtures/conformance/field-decimal-precision-scale/) — `field.decimal @precision @scale`
+
+**Currency**
+
+- [`fixtures/conformance/currency-default-usd/`](../../fixtures/conformance/currency-default-usd/) — `field.currency` defaults `@currency=USD` when omitted
+- [`fixtures/conformance/currency-explicit-jpy/`](../../fixtures/conformance/currency-explicit-jpy/) — explicit ISO 4217 honored
+- [`fixtures/conformance/currency-precedence-field-vs-view/`](../../fixtures/conformance/currency-precedence-field-vs-view/) — field `@currency` wins over `view.currency` override
+
+**Enum**
+
+- [`fixtures/conformance/enum-inline/`](../../fixtures/conformance/enum-inline/) — inline `field.enum @values`
+- [`fixtures/conformance/enum-array/`](../../fixtures/conformance/enum-array/) — array-of-enum field
+- [`fixtures/conformance/enum-abstract-extends/`](../../fixtures/conformance/enum-abstract-extends/) — reuse via abstract `field.enum` + `extends`
+- [`fixtures/conformance/error-enum-missing-values/`](../../fixtures/conformance/error-enum-missing-values/) — `ERR_MISSING_REQUIRED_ATTR` when `@values` absent
+- [`fixtures/conformance/error-enum-empty-values/`](../../fixtures/conformance/error-enum-empty-values/) — empty `@values` rejected
+- [`fixtures/conformance/error-enum-duplicate-member/`](../../fixtures/conformance/error-enum-duplicate-member/) — duplicate member symbols rejected
+- [`fixtures/conformance/error-enum-non-identifier-member/`](../../fixtures/conformance/error-enum-non-identifier-member/) — non-identifier member names rejected
+
+**Embedded value objects (`field.object` + `@storage`)**
+
+- [`fixtures/conformance/field-object-storage-flattened/`](../../fixtures/conformance/field-object-storage-flattened/) — `@storage=flattened` owned-type unfurled to columns
+- [`fixtures/conformance/field-object-storage-flattened-nullable/`](../../fixtures/conformance/field-object-storage-flattened-nullable/) — nullable owned-type with `@nullable: true`
+- [`fixtures/conformance/field-object-storage-jsonb-single/`](../../fixtures/conformance/field-object-storage-jsonb-single/) — `@storage=jsonb` single-record column
+- [`fixtures/conformance/field-object-storage-jsonb-array/`](../../fixtures/conformance/field-object-storage-jsonb-array/) — `@storage=jsonb` on array field
+- [`fixtures/conformance/error-field-object-storage-flattened-array/`](../../fixtures/conformance/error-field-object-storage-flattened-array/) — `@storage=flattened` on array field is illegal
+- [`fixtures/conformance/error-field-object-storage-no-object-ref/`](../../fixtures/conformance/error-field-object-storage-no-object-ref/) — `field.object` without `@objectRef` rejected
+
+Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
+via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
+for the per-port pass/skip ledger.
+
 ## See also
 
 - [entities.md](entities.md) — host node `object.entity`

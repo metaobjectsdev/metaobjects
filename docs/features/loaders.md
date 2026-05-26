@@ -164,6 +164,26 @@ identical bad input. See
 for the full enumeration; every entry has a matching `fixtures/conformance/error-*`
 fixture that pins the cross-port behavior.
 
+## Verified by
+
+The following conformance fixtures gate this feature's behavior across ports:
+
+**Basic loader behavior**
+
+- [`fixtures/conformance/loader-basic-single-entity/`](../../fixtures/conformance/loader-basic-single-entity/) — single entity file round-trip
+- [`fixtures/conformance/loader-basic-empty-package/`](../../fixtures/conformance/loader-basic-empty-package/) — empty `package` allowed (top-level namespace)
+- [`fixtures/conformance/loader-basic-explicit-subtype/`](../../fixtures/conformance/loader-basic-explicit-subtype/) — explicit `<type>.<subtype>` keying
+- [`fixtures/conformance/loader-basic-multi-file-same-package/`](../../fixtures/conformance/loader-basic-multi-file-same-package/) — multiple files in one package
+- [`fixtures/conformance/error-parse-malformed-json/`](../../fixtures/conformance/error-parse-malformed-json/) — malformed JSON surfaces a structured parse error
+
+**All `fixtures/conformance/error-*` fixtures** double as a loader-error matrix; see the
+[`ERROR-CODES.json`](../../fixtures/conformance/ERROR-CODES.json) enumeration. Each
+error code has at least one matching fixture that pins the cross-port behavior.
+
+Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
+via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
+for the per-port pass/skip ledger.
+
 ## See also
 
 - [yaml-authoring.md](yaml-authoring.md) — how YAML lowers to canonical JSON
