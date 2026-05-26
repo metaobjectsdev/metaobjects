@@ -66,20 +66,7 @@ internal class MigrationScenarioConformanceTest {
             val auq = bootstrap.expect.applyUpThenQuery
                 ?: error("Bootstrap scenario must declare apply-up-then-query")
 
-            val actualRows = DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
-                c.createStatement().use { stmt ->
-                    stmt.executeQuery(auq.sql).use { rs ->
-                        val out = mutableListOf<Map<String, Any?>>()
-                        val meta = rs.metaData
-                        while (rs.next()) {
-                            val row = LinkedHashMap<String, Any?>(meta.columnCount)
-                            for (i in 1..meta.columnCount) row[meta.getColumnLabel(i)] = rs.getObject(i)
-                            out.add(row)
-                        }
-                        out
-                    }
-                }
-            }
+            val actualRows = queryRows(pg, auq.sql)
 
             val expectedJson = Normalization.canonicalRowsJson(auq.rows)
             val actualJson = Normalization.canonicalRowsJson(actualRows)
@@ -92,6 +79,33 @@ internal class MigrationScenarioConformanceTest {
             assertColumnsExist(pg, "weeks", listOf("id", "programId", "label"))
         }
     }
+
+    /** Run [sql] against [pg], materialise the resultset to a list of column-name → value maps. */
+    private fun queryRows(pg: PostgresContainer, sql: String): List<Map<String, Any?>> =
+        DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
+            c.createStatement().use { stmt ->
+                stmt.executeQuery(sql).use { rs ->
+                    val out = mutableListOf<Map<String, Any?>>()
+                    val meta = rs.metaData
+                    while (rs.next()) {
+                        val row = LinkedHashMap<String, Any?>(meta.columnCount)
+                        for (i in 1..meta.columnCount) row[meta.getColumnLabel(i)] = rs.getObject(i)
+                        out.add(row)
+                    }
+                    out
+                }
+            }
+        }
+
+    /** List BASE TABLE names in the `public` schema via JDBC metadata. */
+    private fun listLiveTableNames(pg: PostgresContainer): Set<String> =
+        DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
+            val out = mutableSetOf<String>()
+            c.metaData.getTables(null, "public", "%", arrayOf("TABLE")).use { rs ->
+                while (rs.next()) out.add(rs.getString("TABLE_NAME"))
+            }
+            out
+        }
 
     @Test
     fun `add nullable column emits ALTER TABLE ADD COLUMN and preserves existing rows`() {
@@ -155,20 +169,7 @@ internal class MigrationScenarioConformanceTest {
 
             val auq = scenario.expect.applyUpThenQuery
                 ?: error("add-nullable-column scenario must declare apply-up-then-query")
-            val actualRows = DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
-                c.createStatement().use { stmt ->
-                    stmt.executeQuery(auq.sql).use { rs ->
-                        val out = mutableListOf<Map<String, Any?>>()
-                        val meta = rs.metaData
-                        while (rs.next()) {
-                            val row = LinkedHashMap<String, Any?>(meta.columnCount)
-                            for (i in 1..meta.columnCount) row[meta.getColumnLabel(i)] = rs.getObject(i)
-                            out.add(row)
-                        }
-                        out
-                    }
-                }
-            }
+            val actualRows = queryRows(pg, auq.sql)
             val expectedJson = Normalization.canonicalRowsJson(auq.rows)
             val actualJson = Normalization.canonicalRowsJson(actualRows)
             assertEquals(expectedJson, actualJson, "add-nullable-column post-query mismatch")
@@ -241,13 +242,7 @@ internal class MigrationScenarioConformanceTest {
             // 6. Critically: the `programs` table must still exist in the live
             //    schema. The corpus contract is "runner should NOT execute the
             //    up SQL when blocked" — apply() must be transactionally inert.
-            val liveTables = DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
-                val out = mutableSetOf<String>()
-                c.metaData.getTables(null, "public", "%", arrayOf("TABLE")).use { rs ->
-                    while (rs.next()) out.add(rs.getString("TABLE_NAME"))
-                }
-                out
-            }
+            val liveTables = listLiveTableNames(pg)
             assertTrue(
                 "programs" in liveTables,
                 "expected 'programs' to still exist after blocked apply; liveTables=$liveTables"
@@ -259,13 +254,7 @@ internal class MigrationScenarioConformanceTest {
             DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
                 ExposedMigrationEngine.apply(c, db, expectedTables, AllowOptions(allowDropTable = true))
             }
-            val liveTablesAfterAllow = DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
-                val out = mutableSetOf<String>()
-                c.metaData.getTables(null, "public", "%", arrayOf("TABLE")).use { rs ->
-                    while (rs.next()) out.add(rs.getString("TABLE_NAME"))
-                }
-                out
-            }
+            val liveTablesAfterAllow = listLiveTableNames(pg)
             assertFalse(
                 "programs" in liveTablesAfterAllow,
                 "expected 'programs' to be dropped once allowDropTable=true; liveTables=$liveTablesAfterAllow"
@@ -300,15 +289,7 @@ internal class MigrationScenarioConformanceTest {
              WHERE table_schema = 'public' AND table_name = '$table'
              ORDER BY column_name
         """.trimIndent()
-        val actualColumns = DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
-            c.createStatement().use { stmt ->
-                stmt.executeQuery(sql).use { rs ->
-                    val cols = mutableListOf<String>()
-                    while (rs.next()) cols.add(rs.getString(1))
-                    cols
-                }
-            }
-        }
+        val actualColumns = queryRows(pg, sql).map { it["column_name"] as String }
         for (col in expectedColumns) {
             assertTrue(
                 col in actualColumns,
