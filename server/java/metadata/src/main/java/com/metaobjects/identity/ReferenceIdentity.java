@@ -5,6 +5,7 @@ import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
+import com.metaobjects.relationship.MetaRelationship;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,6 +63,19 @@ public class ReferenceIdentity extends MetaIdentity {
             def.optionalAttributeWithConstraints(ATTR_ENFORCE).ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
+            // @onDelete / @onUpdate — parity with relationship.composition: same kebab-case
+            // enum vocabulary; lets identity.reference carry referential-action intent so
+            // codegen (e.g. KotlinExposedTableGenerator) can emit ReferenceOption arguments
+            // on the FK without the user also declaring a redundant composition relationship.
+            def.optionalAttributeWithConstraints(MetaRelationship.ATTR_ON_DELETE)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .withEnum(MetaRelationship.ACTION_CASCADE, MetaRelationship.ACTION_SET_NULL,
+                         MetaRelationship.ACTION_RESTRICT, MetaRelationship.ACTION_NO_ACTION);
+            def.optionalAttributeWithConstraints(MetaRelationship.ATTR_ON_UPDATE)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .withEnum(MetaRelationship.ACTION_CASCADE, MetaRelationship.ACTION_SET_NULL,
+                         MetaRelationship.ACTION_RESTRICT, MetaRelationship.ACTION_NO_ACTION);
+
             // ACCEPTS ANY ATTRIBUTES (for extensibility from service providers)
             def.optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");
         });
@@ -103,6 +117,25 @@ public class ReferenceIdentity extends MetaIdentity {
             if (!trimmed.isEmpty()) out.add(trimmed);
         }
         return out;
+    }
+
+    /**
+     * Raw value of {@code @onDelete} attr, or {@code null} if not set.
+     * Vocabulary mirrors {@link MetaRelationship} (cascade / set-null / restrict / no-action).
+     * Backend-default derivation (e.g. "hard FK with cascade") lives in consumer code.
+     */
+    public String getOnDeleteRaw() {
+        return hasMetaAttr(MetaRelationship.ATTR_ON_DELETE) ?
+               getMetaAttr(MetaRelationship.ATTR_ON_DELETE).getValueAsString() : null;
+    }
+
+    /**
+     * Raw value of {@code @onUpdate} attr, or {@code null} if not set.
+     * Vocabulary mirrors {@link MetaRelationship}.
+     */
+    public String getOnUpdateRaw() {
+        return hasMetaAttr(MetaRelationship.ATTR_ON_UPDATE) ?
+               getMetaAttr(MetaRelationship.ATTR_ON_UPDATE).getValueAsString() : null;
     }
 
     /**
