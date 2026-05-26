@@ -1,0 +1,4 @@
+{
+  "generators": ["entity", "table", "validator"],
+  "validatorPackage": "acme.demo"
+}

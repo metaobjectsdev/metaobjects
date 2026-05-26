@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "acme::demo",
+    "children": [
+      { "object.entity": { "name": "Author", "children": [
+          { "field.long":      { "name": "id" } },
+          { "field.string":    { "name": "name", "@maxLength": 100, "@required": true } },
+          { "field.string":    { "name": "bio" } },
+          { "field.int":       { "name": "age" } },
+          { "field.boolean":   { "name": "active" } },
+          { "field.double":    { "name": "ratio" } },
+          { "field.date":      { "name": "birthday" } },
+          { "field.timestamp": { "name": "createdAt" } },
+          { "source.rdb":      { "@table": "authors" } },
+          { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+      ] } }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      { "object.value": { "name": "Author", "children": [
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "name" } }
+      ] } },
+      { "template.prompt": { "name": "WelcomePrompt",
+          "@payloadRef": "Author", "@textRef": "ai/welcome" } }
+    ]
+  }
+}
