@@ -35,30 +35,29 @@ internal class QueryScenarioConformanceTest {
 
     companion object {
         /**
-         * Curated Day-1 subset — these scenarios only use op=count|get|list with at
-         * most `eq` filters and ascending sorts, all of which the Exposed runner
-         * handles today. Listed explicitly (not derived) so a new scenario file
-         * lands as 'skipped' rather than silently expanding the suite.
+         * Included scenarios — these run end-to-end against the Exposed substrate.
+         * Listed explicitly (not derived) so a new scenario file lands as 'skipped'
+         * rather than silently expanding the suite.
          */
         private val INCLUDED_SCENARIOS = setOf(
             "count",
             "get-by-id",
             "list-empty-table",
             "list-programs-sorted",
+            "filter-by-enum",
+            "filter-is-null",
+            "filter-like-and-ne",
+            "filter-range-and",
+            "projection-aggregate",
         )
 
         /**
-         * Scenarios deliberately left out of the Day-1 subset, with a one-line
-         * reason. Kept here so the deferral surface is visible in code review.
+         * Scenarios deliberately left out, with a concrete reason describing
+         * what would unblock each. Kept visible so the deferral surface is
+         * obvious in code review.
          */
         @Suppress("unused")
-        private val DEFERRED_SCENARIOS = mapOf(
-            "filter-by-enum" to "needs eq on string enum — works but corpus also exercises non-eq variants in sibling scenarios; bundled",
-            "filter-is-null" to "needs isNull operator — not yet wired in QueryScenarioRunner.applyFilter",
-            "filter-like-and-ne" to "needs like/ne operators — not yet wired",
-            "filter-range-and" to "needs gt/lt/range operators — not yet wired",
-            "projection-aggregate" to "needs view tables + aggregate projection — out of subset scope",
-        )
+        private val DEFERRED_SCENARIOS = emptyMap<String, String>()
 
         @JvmStatic
         fun scenarios(): Stream<Arguments> {
