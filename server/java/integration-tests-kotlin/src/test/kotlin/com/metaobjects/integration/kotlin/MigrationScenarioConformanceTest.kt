@@ -8,8 +8,10 @@ import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import java.sql.DriverManager
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -28,14 +30,13 @@ import kotlin.test.assertTrue
  *    invoke addMissingColumnsStatements with v2 → assert it surfaces
  *    `ALTER TABLE ... ADD COLUMN "subtitle" VARCHAR(200)` (Exposed's quoting
  *    matches the corpus `up-contains` expectation), apply it, then query.
- *
- * Deferred:
- *  - drop-table-blocked-without-allow: needs a destructive-change-blocking
- *    pipeline. Exposed has no analogue — its diff helpers
- *    (`addMissingColumnsStatements` / `statementsRequiredToActualizeScheme`)
- *    only ADD, never DROP. The "blocked" semantic is part of OMDB's
- *    SchemaMigrationEngine + AllowOptions, not the substrate. Re-evaluate
- *    only if a Kotlin-side migration façade is built on top of Exposed.
+ *  - [drop_table_blocked_without_allow]: bootstrap v1 (`programs`), declare
+ *    an empty expected table set (the target metadata has no entities), and
+ *    drive the diff through [ExposedMigrationEngine]. Asserts that
+ *    [ExposedMigrationEngine.diff] surfaces a blocked DropTable, that
+ *    [ExposedMigrationEngine.apply] throws [BlockedChangesError], and that
+ *    the `programs` table is NOT dropped from the live schema — closes the
+ *    last persistence-conformance gap for the Kotlin port.
  *
  * NOT registered in the parent reactor — run via:
  *   mvn -f server/java/integration-tests-kotlin/pom.xml test
@@ -171,6 +172,104 @@ internal class MigrationScenarioConformanceTest {
             val expectedJson = Normalization.canonicalRowsJson(auq.rows)
             val actualJson = Normalization.canonicalRowsJson(actualRows)
             assertEquals(expectedJson, actualJson, "add-nullable-column post-query mismatch")
+        }
+    }
+
+    @Test
+    fun `drop table blocked without allow refuses to drop and surfaces the block`() {
+        val corpus = ScenarioLoader.findCorpusRoot()
+        val scenarios = ScenarioLoader.loadMigrations(corpus.resolve("migrations"))
+        val scenario = scenarios.singleOrNull { it.name == "drop-table-blocked-without-allow" }
+            ?: error("Expected scenario 'drop-table-blocked-without-allow' in corpus")
+
+        PostgresContainer().use { pg ->
+            val db = Database.connect(pg.jdbcUrl, user = pg.username, password = pg.password)
+
+            // 1. Bootstrap the seed-metadata state — `programs` table with id + title.
+            //    Mirrors the v1 metadata in fixtures/persistence-conformance/migrations/states/program-v1/.
+            transaction(db) {
+                SchemaUtils.create(ProgramV1Table)
+            }
+
+            // 2. Build the "expected" Table set for the target metadata. The
+            //    target is empty (`target-metadata-inline: { ... children: [] }`),
+            //    so the expected set is empty too — the diff should surface a
+            //    drop-table for `programs`.
+            val expectedTables = emptyList<org.jetbrains.exposed.sql.Table>()
+
+            // 3. Drive the diff with allowDropTable = false (the scenario's
+            //    "without-allow" leg). Confirm the destructive change is
+            //    classified as blocked, not allowed.
+            val diff = DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
+                ExposedMigrationEngine.diff(c, expectedTables, AllowOptions(allowDropTable = false))
+            }
+
+            assertTrue(
+                diff.blocked.isNotEmpty(),
+                "expected drop-table to be blocked without allowDropTable; diff=$diff"
+            )
+            assertTrue(
+                diff.blocked.any { it is Change.DropTable && it.tableName == "programs" },
+                "expected blocked DropTable for 'programs'; blocked=${diff.blocked}"
+            )
+
+            // 4. Cross-check against the corpus expectation shape:
+            //    blocked[].kind == 'DropTable' and reason-contains 'allow.dropTable'.
+            for (expectedBlock in scenario.expect.blocked) {
+                val match = diff.blocked.any { it.kind == expectedBlock.kind }
+                assertTrue(match, "expected blocked kind '${expectedBlock.kind}' not found in $diff")
+            }
+
+            // 5. Calling apply() must throw BlockedChangesError, and the message
+            //    must name the `allow.dropTable` flag (the corpus's
+            //    `reason-contains` value).
+            val err = assertThrows<BlockedChangesError> {
+                DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
+                    ExposedMigrationEngine.apply(c, db, expectedTables, AllowOptions(allowDropTable = false))
+                }
+            }
+            for (expectedBlock in scenario.expect.blocked) {
+                val needle = expectedBlock.reasonContains
+                if (needle.isNotBlank()) {
+                    assertTrue(
+                        err.message!!.contains(needle),
+                        "expected BlockedChangesError message to contain '$needle'; got: ${err.message}"
+                    )
+                }
+            }
+
+            // 6. Critically: the `programs` table must still exist in the live
+            //    schema. The corpus contract is "runner should NOT execute the
+            //    up SQL when blocked" — apply() must be transactionally inert.
+            val liveTables = DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
+                val out = mutableSetOf<String>()
+                c.metaData.getTables(null, "public", "%", arrayOf("TABLE")).use { rs ->
+                    while (rs.next()) out.add(rs.getString("TABLE_NAME"))
+                }
+                out
+            }
+            assertTrue(
+                "programs" in liveTables,
+                "expected 'programs' to still exist after blocked apply; liveTables=$liveTables"
+            )
+
+            // 7. Sanity: passing allowDropTable=true allows the drop through —
+            //    proves the gate is the policy, not the substrate. (Same
+            //    engine, opposite leg of the same scenario.)
+            DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
+                ExposedMigrationEngine.apply(c, db, expectedTables, AllowOptions(allowDropTable = true))
+            }
+            val liveTablesAfterAllow = DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
+                val out = mutableSetOf<String>()
+                c.metaData.getTables(null, "public", "%", arrayOf("TABLE")).use { rs ->
+                    while (rs.next()) out.add(rs.getString("TABLE_NAME"))
+                }
+                out
+            }
+            assertFalse(
+                "programs" in liveTablesAfterAllow,
+                "expected 'programs' to be dropped once allowDropTable=true; liveTables=$liveTablesAfterAllow"
+            )
         }
     }
 
