@@ -45,11 +45,20 @@ working code.
 | Template-drift verify | Yes | Yes (`Renderer.verify`) | Yes (via Java) | Yes (`meta verify`) | Yes (`metaobjects.render.verify`) |
 | YAML authoring (sigil-free → JSON) | Yes | Yes | Yes (via Java) | Yes | Yes |
 | Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Roadmap |
+| React / UI client (browser) | Yes (`@metaobjectsdev/react` + `@metaobjectsdev/tanstack`; codegen + runtime) | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST |
+| Cross-port REST routes for the client | Generated (`routesFile()` → Fastify) | Hand-write Spring controller per contract | Hand-write Spring-Kotlin / Ktor per contract | Generated (`RoutesGenerator` → ASP.NET Minimal API) | Hand-write FastAPI router per contract |
 
 A "Yes" means the feature is covered by the shared conformance corpora at
 [`fixtures/`](fixtures/) for that port, or by a port-local test of equivalent
 scope. A "partial" means the loader recognizes the metamodel feature but the
 codegen / runtime tier doesn't fully exercise it yet.
+
+The React / UI client is TypeScript-only by construction (the browser is
+TS-native) but is **universal** — see
+[`docs/features/api-contract.md`](docs/features/api-contract.md) for the
+URL grammar + wire format the client speaks, and
+[`docs/ports/typescript-client.md`](docs/ports/typescript-client.md) for
+the consumer-side wiring.
 
 ## Four pillars
 

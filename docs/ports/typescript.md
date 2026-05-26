@@ -119,6 +119,19 @@ The `runtime-ts` package supplies the helpers that the generated routes lean on
 | Prompt-drift verify | Yes (`@metaobjectsdev/render`) |
 | Web client packages | Yes (`@metaobjectsdev/react`, `@metaobjectsdev/tanstack`) |
 
+## Client-side
+
+The browser-side TypeScript tier — React forms, TanStack hooks + grids,
+the framework-agnostic browser core — is documented separately and is
+**universal**: it consumes any backend (TS / Java / Kotlin / C# /
+Python) that speaks the cross-port REST contract.
+
+- [`typescript-client.md`](typescript-client.md) — the browser tier
+  (`@metaobjectsdev/runtime-web`, `@metaobjectsdev/react`,
+  `@metaobjectsdev/tanstack` + the matching codegen packages).
+- [`../features/api-contract.md`](../features/api-contract.md) — the
+  URL grammar + wire format the browser client speaks.
+
 ## Test counts
 
 - Server suite (`cd server/typescript && bun test`): 2500+ tests.
