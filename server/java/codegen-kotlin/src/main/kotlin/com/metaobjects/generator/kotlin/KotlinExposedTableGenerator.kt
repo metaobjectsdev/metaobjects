@@ -54,12 +54,20 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             val sourceRdb = entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue
             val kind = sourceRdb.effectiveKind
             // table + view + materializedView → emit; view-like kinds are emitted read-only.
-            // storedProc / tableFunction → skip with a warning (Phase L will add support).
+            // storedProc → skip; consumer should wire KotlinStoredProcGenerator for those entities.
+            // tableFunction → skip with a warning (no dedicated generator yet).
             if (kind != MetaSource.KIND_TABLE && !isViewKind(sourceRdb)) {
-                LOG.warn(
-                    "skipping {} — source.rdb @kind='{}' is not supported by KotlinExposedTableGenerator (table/view/materializedView only)",
-                    entity.name, kind
-                )
+                if (kind == MetaSource.KIND_STORED_PROC) {
+                    LOG.warn(
+                        "skipping {} — source.rdb @kind='storedProc' is not handled by KotlinExposedTableGenerator; use KotlinStoredProcGenerator for stored procs",
+                        entity.name
+                    )
+                } else {
+                    LOG.warn(
+                        "skipping {} — source.rdb @kind='{}' is not supported by KotlinExposedTableGenerator (table/view/materializedView only)",
+                        entity.name, kind
+                    )
+                }
                 continue
             }
             val fkColumns = if (isViewKind(sourceRdb)) emptyList() else fkMap[entity.name].orEmpty()
