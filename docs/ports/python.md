@@ -7,11 +7,13 @@ persistence + migration tier is in progress.
 
 ## Install
 
+> **Note — not yet published to PyPI.** Consume from source: clone the repo and `pip install -e server/python/` (or add a `path` dependency in your `pyproject.toml`):
+
 ```toml
 # pyproject.toml
 [project]
 dependencies = [
-    "metaobjects>=0.7.0rc1",
+    "metaobjects @ file:///path/to/metaobjects/server/python",
 ]
 
 [project.optional-dependencies]
@@ -19,7 +21,8 @@ dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6"]
 ```
 
 (Development is `uv`-based — the in-repo dev workflow is `uv run --extra dev
-pytest` from `server/python/`.)
+pytest` from `server/python/`. PyPI coordinates will land once the Python port
+is ready for release.)
 
 ## Configure
 

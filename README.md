@@ -121,14 +121,18 @@ ephemeral Postgres containers and exercises every shipped port's persistence
 layer against the shared scenario corpus:
 
 ```bash
-scripts/integration-test.sh            # all runners (ts + csharp + java)
+scripts/integration-test.sh            # all runners (ts + csharp + java + python)
 scripts/integration-test.sh ts         # just TypeScript
 scripts/integration-test.sh csharp     # just C#
 scripts/integration-test.sh java       # just Java
+scripts/integration-test.sh python     # just Python
+# Kotlin runs via Maven directly (not yet wired into the script):
+cd server/java && mvn -pl integration-tests-kotlin test
 ```
 
 The persistence corpus + the cross-port test harness are the contract: identical
-normalized results across every port, or it's a port bug.
+normalized results across every port, or it's a port bug. See
+[`docs/CONFORMANCE.md`](docs/CONFORMANCE.md) for the per-corpus + per-port pass status.
 
 ## How to contribute
 

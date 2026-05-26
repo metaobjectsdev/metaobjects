@@ -6,8 +6,10 @@ Postgres + Npgsql.
 
 ## Install
 
+> **Note — not yet published to NuGet.** Consume from source via a project reference, OR adopt the in-repo build (`dotnet build server/csharp/`) and link to the produced DLLs. NuGet coordinates land once the C# port is ready for release:
+
 ```xml
-<!-- YourApp.csproj -->
+<!-- YourApp.csproj — planned coordinates once published -->
 <ItemGroup>
   <PackageReference Include="MetaObjects"          Version="0.7.0-rc.1" />
   <PackageReference Include="MetaObjects.Codegen"  Version="0.7.0-rc.1" />
