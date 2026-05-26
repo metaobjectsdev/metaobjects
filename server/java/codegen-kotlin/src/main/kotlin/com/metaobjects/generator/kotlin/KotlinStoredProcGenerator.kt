@@ -20,7 +20,6 @@ import java.io.OutputStream
 import java.io.PrintWriter
 import java.nio.file.Files
 import java.nio.file.Paths
-import org.slf4j.LoggerFactory
 
 /**
  * Generator: one Kotlin `object` per `object.entity` that has a `source.rdb` child with
@@ -171,13 +170,12 @@ class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             // No-arg path: omit the bindings list entirely; Exposed's `exec(stmt, body)` is fine.
             append(") { rs ->\n")
         } else {
-            append(", listOf(\n")
-            for ((i, p) in params.withIndex()) {
-                append("            ${exposedColumnTypeCtor(p)} to ${p.name}")
-                if (i < params.size - 1) append(",")
-                append("\n")
+            val bindings = params.joinToString(",\n") { p ->
+                "            ${exposedColumnTypeCtor(p)} to ${p.name}"
             }
-            append("        )) { rs ->\n")
+            append(", listOf(\n")
+            append(bindings)
+            append("\n        )) { rs ->\n")
         }
 
         append("            while (rs.next()) {\n")
@@ -187,13 +185,12 @@ class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             // author can adjust their metadata. Per spec, we still produce a typed call.
             append("                results.add($shortName())\n")
         } else {
-            append("                results.add($shortName(\n")
-            for ((i, rf) in resultFields.withIndex()) {
-                append("                    ${rf.name} = ${rsGetterCall(rf)}")
-                if (i < resultFields.size - 1) append(",")
-                append("\n")
+            val rowMapping = resultFields.joinToString(",\n") { rf ->
+                "                    ${rf.name} = ${rsGetterCall(rf)}"
             }
-            append("                ))\n")
+            append("                results.add($shortName(\n")
+            append(rowMapping)
+            append("\n                ))\n")
         }
         append("            }\n")
         append("        }\n")
@@ -317,9 +314,6 @@ class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         /** Metadata subtype name for `field.uuid` (no UuidField JVM class yet). */
         const val SUBTYPE_UUID = "uuid"
-
-        @JvmStatic
-        val LOG = LoggerFactory.getLogger(KotlinStoredProcGenerator::class.java)
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

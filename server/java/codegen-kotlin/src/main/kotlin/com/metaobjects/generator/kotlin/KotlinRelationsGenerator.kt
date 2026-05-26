@@ -8,14 +8,13 @@ import com.metaobjects.`object`.MetaObject
 import com.metaobjects.relationship.CompositionRelationship
 import com.metaobjects.relationship.MetaRelationship
 import com.metaobjects.source.RdbSource
-import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.LONG
+import com.squareup.kotlinpoet.TypeName
 import java.io.OutputStream
 import java.io.PrintWriter
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import org.slf4j.LoggerFactory
 
 /**
  * Generator: one `<Entity>Relations.kt` per `object.entity` carrying at least
@@ -88,9 +87,9 @@ class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     ) {
         val (pkg, ownerShort) = PackageMapping.splitFqn(entity.name)
         val ownerTable = ownerShort + "Table"
-        val pkParamType = primaryKeyKotlinType(entity)
-        val pkParamSimpleName = (pkParamType as? com.squareup.kotlinpoet.ClassName)?.simpleName
-            ?: pkParamType.toString().substringAfterLast('.')
+        // TypeName.toString() yields the FQN (`kotlin.Long`, `java.util.UUID`, ...);
+        // grab the trailing simple name for the generated source.
+        val pkParamSimpleName = primaryKeyKotlinType(entity).toString().substringAfterLast('.')
         // FK column matches KotlinExposedTableGenerator.buildInverseFkSpec: <ownerShortLowercased>Id.
         val fkColName = ownerShort.replaceFirstChar { it.lowercaseChar() } + "Id"
 
@@ -159,9 +158,4 @@ class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         PackageMapping.splitFqn(md.name).first.replace('.', '/')
     override fun getSingleOutputFilename(md: MetaObject): String =
         PackageMapping.splitFqn(md.name).second + "Relations.kt"
-
-    private companion object {
-        @JvmStatic
-        val LOG = LoggerFactory.getLogger(KotlinRelationsGenerator::class.java)
-    }
 }
