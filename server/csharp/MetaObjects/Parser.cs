@@ -130,12 +130,15 @@ public static class Parser
 
         /// <summary>
         /// Build a <see cref="JsonSource"/> envelope for the current location.
-        /// The <c>Files</c> list is a length-1 array of <see cref="Source"/>
-        /// (the source id / file path), or an empty list when none is available.
+        /// When <see cref="Source"/> is null (parser invoked without a source id,
+        /// e.g. from a string buffer in tests), fall back to <see cref="CodeSource"/>
+        /// — emitting a JsonSource with an empty file list would violate the
+        /// FR5a length-1 invariant and produce an envelope shape no other port
+        /// emits. Matches the TS reference (parser-core.ts:104-114).
         /// </summary>
         public ErrorSource CurrentSource() =>
             Source is null
-                ? new JsonSource(Array.Empty<string>(), Builder.ToString())
+                ? CodeSource.Default
                 : new JsonSource(new[] { Source }, Builder.ToString());
     }
 

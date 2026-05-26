@@ -28,6 +28,17 @@ public abstract record ErrorSource
 /// <param name="JsonPath">Canonical JSONPath string for the node within <paramref name="Files"/>[0].</param>
 public sealed record JsonSource(IReadOnlyList<string> Files, string JsonPath) : ErrorSource
 {
+    /// <summary>
+    /// FR5a invariant: exactly one file. Multi-file provenance lives on
+    /// <see cref="MergedSource"/> (FR5c). Enforced at construction so the
+    /// type can be trusted by cross-port comparison.
+    /// </summary>
+    public IReadOnlyList<string> Files { get; init; } = Files.Count == 1
+        ? Files
+        : throw new ArgumentException(
+            $"JsonSource requires exactly one file path; got {Files.Count}. " +
+            "Use MergedSource for multi-file provenance.", nameof(Files));
+
     /// <inheritdoc/>
     public override string Format => "json";
 }
