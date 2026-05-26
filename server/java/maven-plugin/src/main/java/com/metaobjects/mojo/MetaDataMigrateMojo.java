@@ -21,6 +21,7 @@ import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
@@ -111,6 +112,23 @@ public class MetaDataMigrateMojo extends AbstractMojo {
     /** Opt-in: allow column type-change operations. */
     @Parameter(property = "allowTypeChange", defaultValue = "false")
     private boolean allowTypeChange;
+
+    /**
+     * When true, emit migrations into a Flyway-conventional directory using
+     * {@code <prefix><N>__<slug>.sql} naming (e.g., {@code V003__add_author_phone_field.sql}).
+     * The next version number is the highest existing {@code <prefix><N>__*.sql} file + 1.
+     */
+    @Parameter(property = "meta.migrate.flyway", defaultValue = "false")
+    private boolean flyway;
+
+    /** Flyway migrations directory (relative to project basedir). Only used when {@link #flyway} is true. */
+    @Parameter(property = "meta.migrate.flywayDir",
+               defaultValue = "src/main/resources/db/migration")
+    private String flywayDir;
+
+    /** Flyway version prefix (e.g., "V" or "U"). Only used when {@link #flyway} is true. */
+    @Parameter(property = "meta.migrate.flywayPrefix", defaultValue = "V")
+    private String flywayPrefix;
 
     /**
      * Metadata loader configuration (mirrors {@code AbstractMetaDataMojo}'s {@code <loader>}
@@ -213,11 +231,44 @@ public class MetaDataMigrateMojo extends AbstractMojo {
             getLog().info("Nothing to emit — schema is already in sync.");
             return;
         }
-        Path dir = Path.of(outputDir, timestamp() + "-" + sanitize(slug));
-        Files.createDirectories(dir);
         String content = up.endsWith("\n") ? up : up + "\n";
-        Files.writeString(dir.resolve("up.sql"), content);
-        getLog().info("Wrote migration script: " + dir.resolve("up.sql"));
+
+        Path target;
+        if (flyway) {
+            Path dir = Path.of(flywayDir);
+            Files.createDirectories(dir);
+            int nextVersion = nextFlywayVersion(dir, flywayPrefix);
+            String filename = String.format("%s%03d__%s.sql",
+                flywayPrefix, nextVersion, sanitize(slug));
+            target = dir.resolve(filename);
+        } else {
+            Path dir = Path.of(outputDir, timestamp() + "-" + sanitize(slug));
+            Files.createDirectories(dir);
+            target = dir.resolve("up.sql");
+        }
+        Files.writeString(target, content);
+        getLog().info("Wrote migration script: " + target);
+    }
+
+    /**
+     * Inspect {@code dir} for existing {@code <prefix><N>__*.sql} files and return the next
+     * unused version number. Returns 1 when the directory does not exist or contains no matches.
+     */
+    static int nextFlywayVersion(Path dir, String prefix) throws IOException {
+        if (!Files.isDirectory(dir)) return 1;
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+            "^" + java.util.regex.Pattern.quote(prefix) + "(\\d+)__.*\\.sql$");
+        int max = 0;
+        try (var stream = Files.list(dir)) {
+            for (Path f : stream.toList()) {
+                var m = p.matcher(f.getFileName().toString());
+                if (m.matches()) {
+                    int v = Integer.parseInt(m.group(1));
+                    if (v > max) max = v;
+                }
+            }
+        }
+        return max + 1;
     }
 
     private void runApply(SchemaMigrationEngine engine, Connection c, AllowOptions allow)
