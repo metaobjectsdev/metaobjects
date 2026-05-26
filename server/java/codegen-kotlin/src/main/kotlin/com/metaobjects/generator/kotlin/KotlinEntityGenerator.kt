@@ -1,6 +1,7 @@
 package com.metaobjects.generator.kotlin
 
 import com.metaobjects.field.MetaField
+import com.metaobjects.field.ObjectField
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.loader.MetaDataLoader
@@ -11,6 +12,7 @@ import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import java.io.OutputStream
 import java.io.PrintWriter
@@ -18,11 +20,16 @@ import java.nio.file.Path
 import java.nio.file.Paths
 
 /**
- * Generator: one @Serializable Kotlin data class per `object.entity`.
+ * Generator: one @Serializable Kotlin data class per `object.entity` and `object.value`.
  *
- * <p>Skips abstract objects, payload-only `object.value` instances, and any subType other
- * than `entity`. KotlinPoet emits whole files; the parent class's print-style writer
- * machinery is bypassed in favour of a direct override of [execute].
+ * <p>Skips abstract objects and any subType other than `entity` or `value`. KotlinPoet emits
+ * whole files; the parent class's print-style writer machinery is bypassed in favour of a
+ * direct override of [execute].
+ *
+ * <p>Nested objects: when a parent field is a `field.object` with `@objectRef`, the parent
+ * data class gets a typed property referencing the generated `object.value` data class
+ * (e.g., `val address: Address`). The `@storage` attr (`flattened` / `jsonb`) does not
+ * affect Kotlin type emission — it only affects the Exposed table's column shape.
  *
  * <p>Args:
  * <ul>
@@ -38,14 +45,17 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
-        for (entity in loader.metaObjects) {
-            if (entity.subType != "entity") continue   // ignore object.value; payload generator handles those
-            emit(entity, outRoot)
+        for (obj in loader.metaObjects) {
+            // Emit a data class for both entities AND value objects. Value objects (object.value)
+            // are referenced by field.object on entities; the value class must exist for the
+            // entity's typed property to resolve.
+            if (obj.subType != MetaObject.SUBTYPE_ENTITY && obj.subType != MetaObject.SUBTYPE_VALUE) continue
+            emit(obj, outRoot, loader)
         }
     }
 
-    private fun emit(entity: MetaObject, outRoot: Path) {
-        val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
+    private fun emit(obj: MetaObject, outRoot: Path, loader: MetaDataLoader) {
+        val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
         val serializable = ClassName("kotlinx.serialization", "Serializable")
 
         val typeBuilder = TypeSpec.classBuilder(shortName)
@@ -54,8 +64,8 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
 
         val ctorBuilder = FunSpec.constructorBuilder()
-        for (field in entity.metaFields) {
-            val baseType = KotlinTypeMapper.kotlinTypeName(field)
+        for (field in obj.metaFields) {
+            val baseType = resolvePropertyType(field, loader)
             val nullable = !isRequired(field)
             val propType = if (nullable) baseType.copy(nullable = true) else baseType
             val propName = field.name
@@ -73,6 +83,43 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .build()
 
         fileSpec.writeTo(outRoot)
+    }
+
+    /**
+     * Resolve the Kotlin TypeName for a single property. For `field.object` fields,
+     * the type is a reference to the generated data class of the field's `@objectRef`
+     * (e.g., `Address` for `field.object @objectRef="Address"`). The `@storage` attr
+     * is intentionally NOT consulted here — flattened vs jsonb only affects the
+     * persistence column shape, not the in-memory shape.
+     */
+    private fun resolvePropertyType(field: MetaField<*>, loader: MetaDataLoader): TypeName {
+        if (field is ObjectField) {
+            val ref = readObjectRef(field)
+            if (ref != null) {
+                val target = resolveObjectByShortOrFqn(loader, ref)
+                if (target != null) {
+                    val (targetPkg, targetShort) = PackageMapping.splitFqn(target.name)
+                    return ClassName(targetPkg, targetShort)
+                }
+            }
+        }
+        return KotlinTypeMapper.kotlinTypeName(field)
+    }
+
+    /** Read the `@objectRef` attr off a field (own-only); null if absent. */
+    private fun readObjectRef(field: MetaField<*>): String? {
+        if (!field.hasMetaAttr(ObjectField.ATTR_OBJECTREF, false)) return null
+        return runCatching { field.getMetaAttr(ObjectField.ATTR_OBJECTREF, false).valueAsString }
+            .getOrNull()
+    }
+
+    /** Resolve a MetaObject (entity OR value) by FQN match or short-name match. */
+    private fun resolveObjectByShortOrFqn(loader: MetaDataLoader, ref: String): MetaObject? {
+        for (child in loader.metaObjects) {
+            val short = child.name.substringAfterLast("::")
+            if (child.name == ref || short == ref) return child
+        }
+        return null
     }
 
     /**
