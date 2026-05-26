@@ -109,8 +109,15 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val tableObjectName = shortName + "Table"
         val tableName = sourceRdb.tableName ?: (shortName.lowercase() + "s")
 
-        val primary = entity.children
-            .filterIsInstance<MetaIdentity>()
+        // Walk the `extends` chain so identities declared on an abstract base
+        // entity (the BaseEntity pattern: `identity.primary` on `id`) are
+        // picked up by tables for concrete entities that extend it. Own-only
+        // collection misses inherited primary identities and the generated
+        // table comes out with no `override val primaryKey = PrimaryKey(...)`
+        // declaration. `getIdentities(true)` returns own + super-chain (with
+        // MetaData's dedupe by type+name letting an own-declared identity
+        // override an inherited one of the same name).
+        val primary = entity.getIdentities(true)
             .firstOrNull { it.isPrimary }
         val primaryFieldName = primary?.fields?.firstOrNull()
         // Views inherit PKs from underlying tables — never emit autoIncrement on a

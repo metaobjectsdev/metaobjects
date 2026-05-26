@@ -815,4 +815,50 @@ class KotlinExposedTableGeneratorTest {
             outDir.toFile().deleteRecursively()
         }
     }
+
+    // === inherited identity.primary coverage =================================
+
+    /**
+     * Wave 0 evidence: tables for entities extending an abstract base entity (which
+     * declares `identity.primary` on `id`) were generated without an
+     * `override val primaryKey = PrimaryKey(id)` line, because the emitter
+     * collected identities from `entity.children` only and never walked the
+     * `extends` chain. The fix uses `getIdentities(true)` so inherited primary
+     * identities are picked up. This regression test guards the fix.
+     */
+    @Test fun `inherited identity primary is emitted on child Table`() {
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Base", "abstract": true, "children": [
+                { "field.string":     { "name": "id" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+            ] } },
+            { "object.entity": { "name": "Child", "extends": "acme::demo::Base", "children": [
+                { "field.string": { "name": "label" } },
+                { "source.rdb":   { "@table": "children" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("ktbl-inherit-pk-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("inherit-pk", fx))
+
+            val childTable = outDir.resolve("acme/demo/ChildTable.kt").toFile()
+            assertTrue(childTable.exists(), "ChildTable.kt should be generated at $childTable")
+            val src = childTable.readText()
+            assertTrue(
+                "override val primaryKey" in src,
+                "ChildTable should declare primaryKey inherited from Base — was:\n$src",
+            )
+            assertTrue(
+                "PrimaryKey(id)" in src,
+                "primaryKey should reference id from Base — was:\n$src",
+            )
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
 }
