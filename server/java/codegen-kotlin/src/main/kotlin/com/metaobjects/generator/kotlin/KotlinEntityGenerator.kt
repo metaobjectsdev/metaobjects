@@ -1,5 +1,6 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.field.EnumField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.generator.GeneratorIOWriter
@@ -54,6 +55,12 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     }
 
     private fun emit(obj: MetaObject, outRoot: Path, loader: MetaDataLoader) {
+        // Emit one Kotlin enum class file per `field.enum` child BEFORE the data class
+        // so the resolved property type (a ClassName) points at a real file.
+        for (field in obj.metaFields) {
+            if (field is EnumField) emitEnumFile(obj, field, outRoot)
+        }
+
         val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
         val serializable = ClassName("kotlinx.serialization", "Serializable")
 
@@ -64,7 +71,7 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         val ctorBuilder = FunSpec.constructorBuilder()
         for (field in obj.metaFields) {
-            val baseType = resolvePropertyType(field, loader)
+            val baseType = resolvePropertyType(field, obj, loader)
             val nullable = !KotlinGenUtil.isRequiredField(field)
             val propType = if (nullable) baseType.copy(nullable = true) else baseType
             val propName = field.name
@@ -85,13 +92,53 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     }
 
     /**
+     * Emit a top-level `@Serializable enum class` for a [field.enum] hung off [owner].
+     * Members come from the field's required `@values` string-array attr — emitted
+     * verbatim to preserve case (typically SCREAMING_SNAKE_CASE per spec).
+     */
+    private fun emitEnumFile(owner: MetaObject, field: EnumField, outRoot: Path) {
+        val enumClassName = KotlinTypeMapper.enumTypeName(field, owner) ?: return
+        val members = readEnumValues(field)
+        if (members.isNullOrEmpty()) {
+            // Defensive: the loader's ValidationPhase already requires @values be
+            // non-empty. Skip emission rather than produce a syntactically broken file.
+            return
+        }
+        val serializable = ClassName("kotlinx.serialization", "Serializable")
+        val enumBuilder = TypeSpec.enumBuilder(enumClassName.simpleName)
+            .addAnnotation(serializable)
+            .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
+        for (member in members) {
+            enumBuilder.addEnumConstant(member)
+        }
+        FileSpec.builder(enumClassName.packageName, enumClassName.simpleName)
+            .addType(enumBuilder.build())
+            .build()
+            .writeTo(outRoot)
+    }
+
+    /** Read the `@values` string-array attr (own-only); null/empty if absent. */
+    private fun readEnumValues(field: EnumField): List<String>? {
+        if (!field.hasMetaAttr(EnumField.ATTR_VALUES, false)) return null
+        val raw = runCatching { field.getMetaAttr(EnumField.ATTR_VALUES, false).value }.getOrNull()
+        return when (raw) {
+            is List<*> -> raw.mapNotNull { it?.toString() }
+            else -> null
+        }
+    }
+
+    /**
      * Resolve the Kotlin TypeName for a single property. For `field.object` fields,
      * the type is a reference to the generated data class of the field's `@objectRef`
-     * (e.g., `Address` for `field.object @objectRef="Address"`). The `@storage` attr
-     * is intentionally NOT consulted here — flattened vs jsonb only affects the
-     * persistence column shape, not the in-memory shape.
+     * (e.g., `Address` for `field.object @objectRef="Address"`). For `field.enum`
+     * fields, the type is the typed enum class generated alongside the entity
+     * (e.g., `PlayerStatus` for `Player.status`). The `@storage` attr is intentionally
+     * NOT consulted here — flattened vs jsonb only affects the persistence column shape,
+     * not the in-memory shape.
      */
-    private fun resolvePropertyType(field: MetaField<*>, loader: MetaDataLoader): TypeName {
+    private fun resolvePropertyType(field: MetaField<*>, owner: MetaObject, loader: MetaDataLoader): TypeName {
+        // field.enum → typed enum class generated alongside this entity.
+        KotlinTypeMapper.enumTypeName(field, owner)?.let { return it }
         if (field is ObjectField) {
             val ref = readObjectRef(field)
             val target = ref?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }

@@ -11,6 +11,7 @@ import com.metaobjects.field.LongField
 import com.metaobjects.field.PrimitiveField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.TimestampField
+import com.metaobjects.metadata.ktx.loadString
 import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.DOUBLE
@@ -19,6 +20,7 @@ import com.squareup.kotlinpoet.LONG
 import com.squareup.kotlinpoet.STRING
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class KotlinTypeMapperTest {
@@ -122,6 +124,31 @@ class KotlinTypeMapperTest {
         // v1 enum representation: String + VARCHAR; full enum-class emission deferred.
         assertEquals(STRING, KotlinTypeMapper.kotlinTypeName(f))
         assertEquals("varchar(\"status\", 64)", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
+    @Test fun enumTypeNameComputesClassName() {
+        // Load a small fixture so we have a real MetaObject Player with field.enum status.
+        // The naming rule under test is <EntityShortName><FieldPascalCase> in the entity's package.
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Player", "children": [
+                { "field.long": { "name": "id" } },
+                { "field.enum": { "name": "status",
+                    "@values": ["ACTIVE", "INACTIVE", "BANNED"] } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val loader = loadString("enum-name", fx)
+        val entity = loader.metaObjects.first { it.name == "acme::demo::Player" }
+        val field = entity.metaFields.first { it.name == "status" } as EnumField
+
+        val name = KotlinTypeMapper.enumTypeName(field, entity)
+        assertEquals("acme.demo", name?.packageName)
+        assertEquals("PlayerStatus", name?.simpleName)
+
+        // Non-enum fields → null (caller falls through to kotlinTypeName).
+        val idField = entity.metaFields.first { it.name == "id" }
+        assertNull(KotlinTypeMapper.enumTypeName(idField, entity))
     }
 
     @Test fun `uuid field (matched by subtype) maps to java util UUID and uuid exposed column`() {

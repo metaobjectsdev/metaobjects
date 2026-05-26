@@ -204,6 +204,42 @@ class KotlinExposedTableGeneratorTest {
         }
     }
 
+    // === field.enum coverage ================================================
+
+    @Test fun enumFieldEmitsEnumerationByName() {
+        val enumFixture = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Player", "children": [
+                { "field.long": { "name": "id" } },
+                { "field.enum": { "name": "status", "@required": true,
+                    "@values": ["ACTIVE", "INACTIVE", "BANNED"] } },
+                { "source.rdb": { "@table": "players" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-enum-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("enum-table", enumFixture))
+
+            val playerTable = outDir.resolve("acme/demo/PlayerTable.kt")
+            assertTrue(Files.exists(playerTable),
+                "expected $playerTable; files=${Files.walk(outDir).toList()}")
+            val src = Files.readString(playerTable)
+            // Typed enum column, not a varchar.
+            assertTrue(
+                "val status = enumerationByName(\"status\", 64, PlayerStatus::class)" in src,
+                "expected enumerationByName column; saw:\n$src",
+            )
+            assertTrue("varchar(\"status\"" !in src,
+                "expected NO varchar fallback for the enum column; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun `onDeleteCascadeAppendedToReferences`() {
         val withCascade = """{
           "metadata.root": { "package": "acme::demo", "children": [

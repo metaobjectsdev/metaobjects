@@ -1,6 +1,7 @@
 package com.metaobjects.generator.kotlin
 
 import com.metaobjects.database.CoreDBMetaDataProvider
+import com.metaobjects.field.EnumField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
@@ -81,7 +82,17 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 if (field is ObjectField) continue
                 val isPk = field.name == primaryFieldName
                 val nullable = !isPk && !KotlinGenUtil.isRequiredField(field)
-                val baseSpec = KotlinTypeMapper.exposedColumnSpec(field)
+                val baseSpec = if (field is EnumField) {
+                    // field.enum → typed Exposed enumerationByName column referencing the
+                    // generated enum class. Length matches the historical VARCHAR fallback
+                    // (KotlinTypeMapper.ENUM_VARCHAR_LEN). Same-package class reference, so
+                    // no import is required.
+                    val enumName = KotlinTypeMapper.enumTypeName(field, entity)?.simpleName
+                        ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
+                    "enumerationByName(\"${field.name}\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $enumName::class)"
+                } else {
+                    KotlinTypeMapper.exposedColumnSpec(field)
+                }
                 val withAuto = if (isPk && incrementPk) "$baseSpec.autoIncrement()" else baseSpec
                 val full = if (nullable) "$withAuto.nullable()" else withAuto
                 append("    val ${field.name} = $full\n")
