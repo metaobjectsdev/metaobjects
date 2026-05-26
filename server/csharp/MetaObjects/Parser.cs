@@ -20,6 +20,7 @@
 
 using System.Text.Json;
 using MetaObjects.Meta;
+using MetaObjects.Source;
 
 namespace MetaObjects;
 
@@ -124,6 +125,21 @@ public static class Parser
         public required bool DeferSuperResolution { get; init; }
         public List<string> Warnings { get; } = new();
         public List<MetaError> Errors { get; } = new();
+        /// <summary>FR5a / ADR-0009 — canonical JSONPath of the currently-walked node.</summary>
+        public JsonPathBuilder Builder { get; } = new();
+
+        /// <summary>
+        /// Build a <see cref="JsonSource"/> envelope for the current location.
+        /// When <see cref="Source"/> is null (parser invoked without a source id,
+        /// e.g. from a string buffer in tests), fall back to <see cref="CodeSource"/>
+        /// — emitting a JsonSource with an empty file list would violate the
+        /// FR5a length-1 invariant and produce an envelope shape no other port
+        /// emits. Matches the TS reference (parser-core.ts:104-114).
+        /// </summary>
+        public ErrorSource CurrentSource() =>
+            Source is null
+                ? CodeSource.Default
+                : new JsonSource(new[] { Source }, Builder.ToString());
     }
 
     // -----------------------------------------------------------------------
@@ -133,12 +149,16 @@ public static class Parser
     private static void ReportProblem(
         string msg,
         ParseState st,
-        string path,
         ErrorCode? code = null)
     {
         if (st.Strict)
         {
-            throw new ParseException(msg, code ?? ErrorCode.ERR_UNKNOWN, st.Source, path);
+            throw new ParseException(
+                msg,
+                code ?? ErrorCode.ERR_UNKNOWN,
+                st.Source,
+                st.Builder.ToString(),
+                st.CurrentSource());
         }
         st.Warnings.Add(msg);
     }
@@ -217,7 +237,8 @@ public static class Parser
         {
             throw new ParseException(
                 "Top-level metadata must be an object",
-                ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT, st.Source, null);
+                ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT, st.Source, st.Builder.ToString(),
+                st.CurrentSource());
         }
 
         // --- Find the wrapper key (skip $schema) ---
@@ -234,23 +255,31 @@ public static class Parser
         {
             throw new ParseException(
                 "Top-level metadata object has no type wrapper key",
-                ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT, st.Source, null);
+                ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT, st.Source, st.Builder.ToString(),
+                st.CurrentSource());
         }
         if (wrapperKeys.Count > 1)
         {
             throw new ParseException(
                 $"Top-level metadata object must have exactly one wrapper key (found: {string.Join(", ", wrapperKeys)})",
-                ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT, st.Source, null);
+                ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT, st.Source, st.Builder.ToString(),
+                st.CurrentSource());
         }
 
         string rootKey = wrapperKeys[0];
         JsonElement rootData = parsed.GetProperty(rootKey);
 
+        // Push the root wrapper key onto the canonical-JSONPath builder. The
+        // builder now reflects the location of every error / node-source from
+        // here on.
+        st.Builder.PushKey(rootKey);
+
         if (rootData.ValueKind != JsonValueKind.Object)
         {
             throw new ParseException(
                 $"Top-level wrapper \"{rootKey}\" must contain an object",
-                ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT, st.Source, rootKey);
+                ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT, st.Source, st.Builder.ToString(),
+                st.CurrentSource());
         }
 
         SplitKey rootSplit = SplitTypeKey(rootKey, opts.Registry);
@@ -265,7 +294,8 @@ public static class Parser
                 : ErrorCode.ERR_UNKNOWN_TYPE;
             throw new ParseException(
                 $"Unknown root type \"{rootType}.{rootSubType}\" — not registered",
-                rootTypeCode, st.Source, rootKey);
+                rootTypeCode, st.Source, st.Builder.ToString(),
+                st.CurrentSource());
         }
 
         if (opts.IntoRoot is not null)
@@ -276,7 +306,7 @@ public static class Parser
             // from the NEW root's package, not the existing root's.
             string contextPkg = TryGetString(rootData, RESERVED_KEY_PACKAGE)
                 ?? opts.IntoRoot.Package ?? "";
-            ParseNodeInto(rootData, opts.IntoRoot, opts.IntoRoot, contextPkg, st, rootKey);
+            ParseNodeInto(rootData, opts.IntoRoot, opts.IntoRoot, contextPkg, st);
             return new ParseResult(opts.IntoRoot, st.Warnings, st.Errors);
         }
 
@@ -288,7 +318,7 @@ public static class Parser
             rootType, rootSubType, rootData,
             accumRoot: null,
             inheritedContextPkg: "",
-            st, rootKey,
+            st,
             parentType: null, parent: null);
 
         return new ParseResult((MetaRoot)root, st.Warnings, st.Errors);
@@ -312,7 +342,6 @@ public static class Parser
         MetaData? accumRoot,
         string inheritedContextPkg,
         ParseState st,
-        string path,
         string? parentType,
         MetaData? parent)
     {
@@ -326,9 +355,13 @@ public static class Parser
             else
             {
                 string msg = $"Unknown type \"{type}.{subType}\" — not registered";
-                st.Errors.Add(new MetaError(msg, ErrorCode.ERR_UNKNOWN_TYPE, st.Source, path));
+                string path = st.Builder.ToString();
+                st.Errors.Add(new MetaError(msg, ErrorCode.ERR_UNKNOWN_TYPE, st.Source, path,
+                    st.CurrentSource()));
                 string fallbackName = TryGetString(nodeData, RESERVED_KEY_NAME) ?? "";
-                return new MetaRoot(new TypeId(type, subType), fallbackName);
+                var fallback = new MetaRoot(new TypeId(type, subType), fallbackName);
+                fallback.SetSource(st.CurrentSource());
+                return fallback;
             }
         }
 
@@ -338,9 +371,11 @@ public static class Parser
         // --- Create the model ---
         TypeDefinition def = st.Registry.Find(type, subType)!;
         MetaData model = def.Factory(def.TypeId, name);
+        // FR5a / ADR-0009: attach the JSON-source envelope at construction time.
+        model.SetSource(st.CurrentSource());
 
         // --- Apply reserved keys (package, extends, abstract, isArray) ---
-        ApplyReservedKeys(model, nodeData, st, path, inheritedContextPkg);
+        ApplyReservedKeys(model, nodeData, st, inheritedContextPkg);
 
         // --- Inherit package from context if not explicitly set ---
         // Java rule (BaseMetaDataParser.shouldInheritPackageFromParent):
@@ -385,7 +420,8 @@ public static class Parser
             {
                 throw new ParseException(
                     $"the SuperClass '{model.SuperRef}' does not exist in file '{st.Source ?? "<unknown>"}'",
-                    ErrorCode.ERR_UNRESOLVED_SUPER, st.Source, path);
+                    ErrorCode.ERR_UNRESOLVED_SUPER, st.Source, st.Builder.ToString(),
+                    st.CurrentSource());
             }
         }
         else if (model.SuperRef is not null && accumRoot is null)
@@ -393,17 +429,17 @@ public static class Parser
             // Root node has a super ref — not resolvable against itself.
             ReportProblem(
                 $"super on root node ('{model.SuperRef}') is not supported and will be ignored",
-                st, path, ErrorCode.ERR_UNRESOLVED_SUPER);
+                st, ErrorCode.ERR_UNRESOLVED_SUPER);
         }
 
         // --- Process inline attributes and other keys ---
-        ApplyInlineAttrsAndUnknownKeys(model, nodeData, st, path);
+        ApplyInlineAttrsAndUnknownKeys(model, nodeData, st);
 
         // --- Process children ---
         // For the root node we use itself as the accumRoot for its children.
         MetaData childAccumRoot = accumRoot ?? model;
         string childInheritedContextPkg = model.Package ?? inheritedContextPkg;
-        ProcessChildren(model, nodeData, childAccumRoot, childInheritedContextPkg, st, path);
+        ProcessChildren(model, nodeData, childAccumRoot, childInheritedContextPkg, st);
 
         return model;
     }
@@ -420,16 +456,15 @@ public static class Parser
         MetaData target,
         MetaData accumRoot,
         string inheritedContextPkg,
-        ParseState st,
-        string path)
+        ParseState st)
     {
         // Apply inline attrs (not reserved keys — those stay on the existing model).
-        ApplyInlineAttrsAndUnknownKeys(target, nodeData, st, path);
+        ApplyInlineAttrsAndUnknownKeys(target, nodeData, st);
 
         // The effective package for children: use inheritedContextPkg (from the
         // new JSON's root) — not target.Package, because target is the existing
         // model being merged into.
-        ProcessChildren(target, nodeData, accumRoot, inheritedContextPkg, st, path);
+        ProcessChildren(target, nodeData, accumRoot, inheritedContextPkg, st);
     }
 
     // -----------------------------------------------------------------------
@@ -446,8 +481,7 @@ public static class Parser
         MetaData parent,
         MetaData accumRoot,
         string inheritedContextPkg,
-        ParseState st,
-        string path)
+        ParseState st)
     {
         // Only `overlay: true` re-opens an existing node.
         bool isOverlayNode = TryGetBool(nodeData, RESERVED_KEY_OVERLAY) == true;
@@ -467,23 +501,24 @@ public static class Parser
             {
                 throw new ParseException(
                     $"Overlay operation requested for [{type}:{name}] but no existing metadata found to merge into",
-                    ErrorCode.ERR_OVERLAY_NO_TARGET, st.Source, path);
+                    ErrorCode.ERR_OVERLAY_NO_TARGET, st.Source, st.Builder.ToString(),
+                    st.CurrentSource());
             }
             existing.SetIsMerge(true);
-            ParseNodeInto(nodeData, existing, accumRoot, inheritedContextPkg, st, path);
+            ParseNodeInto(nodeData, existing, accumRoot, inheritedContextPkg, st);
             return existing;
         }
 
         // Default: no operator → silently reuse existing or create new.
         if (existing is not null)
         {
-            ParseNodeInto(nodeData, existing, accumRoot, inheritedContextPkg, st, path);
+            ParseNodeInto(nodeData, existing, accumRoot, inheritedContextPkg, st);
             return existing;
         }
 
         // Not found (or unnamed) → create new.
         return ParseNodeFresh(
-            type, subType, nodeData, accumRoot, inheritedContextPkg, st, path,
+            type, subType, nodeData, accumRoot, inheritedContextPkg, st,
             parent.Type, parent);
     }
 
@@ -497,17 +532,18 @@ public static class Parser
         MetaData model,
         JsonElement nodeData,
         ParseState st,
-        string path,
         string contextPkg)
     {
+        string Path() => st.Builder.ToString();
+
         // package
         if (nodeData.TryGetProperty(RESERVED_KEY_PACKAGE, out JsonElement rawPkg))
         {
             if (rawPkg.ValueKind != JsonValueKind.String)
             {
                 ReportProblem(
-                    $"\"{RESERVED_KEY_PACKAGE}\" must be a string at {path}",
-                    st, path, ErrorCode.ERR_BAD_ATTR_VALUE);
+                    $"\"{RESERVED_KEY_PACKAGE}\" must be a string at {Path()}",
+                    st, ErrorCode.ERR_BAD_ATTR_VALUE);
             }
             else
             {
@@ -521,8 +557,8 @@ public static class Parser
             if (rawExtends.ValueKind != JsonValueKind.String)
             {
                 ReportProblem(
-                    $"\"{RESERVED_KEY_EXTENDS}\" must be a string at {path}",
-                    st, path, ErrorCode.ERR_UNRESOLVED_SUPER);
+                    $"\"{RESERVED_KEY_EXTENDS}\" must be a string at {Path()}",
+                    st, ErrorCode.ERR_UNRESOLVED_SUPER);
             }
             else
             {
@@ -536,8 +572,8 @@ public static class Parser
             if (rawAbstract.ValueKind != JsonValueKind.True && rawAbstract.ValueKind != JsonValueKind.False)
             {
                 ReportProblem(
-                    $"\"{RESERVED_KEY_ABSTRACT}\" must be a boolean at {path}",
-                    st, path, ErrorCode.ERR_BAD_ATTR_VALUE);
+                    $"\"{RESERVED_KEY_ABSTRACT}\" must be a boolean at {Path()}",
+                    st, ErrorCode.ERR_BAD_ATTR_VALUE);
             }
             else
             {
@@ -551,8 +587,8 @@ public static class Parser
             if (rawIsArray.ValueKind != JsonValueKind.True && rawIsArray.ValueKind != JsonValueKind.False)
             {
                 ReportProblem(
-                    $"\"{RESERVED_KEY_IS_ARRAY}\" must be a boolean at {path}",
-                    st, path, ErrorCode.ERR_BAD_ATTR_VALUE);
+                    $"\"{RESERVED_KEY_IS_ARRAY}\" must be a boolean at {Path()}",
+                    st, ErrorCode.ERR_BAD_ATTR_VALUE);
             }
             else
             {
@@ -674,8 +710,7 @@ public static class Parser
     private static void ApplyInlineAttrsAndUnknownKeys(
         MetaData model,
         JsonElement nodeData,
-        ParseState st,
-        string path)
+        ParseState st)
     {
         foreach (JsonProperty prop in nodeData.EnumerateObject())
         {
@@ -684,81 +719,95 @@ public static class Parser
             // Skip all reserved structural keys.
             if (RESERVED_KEYS.Contains(key)) continue;
 
-            if (!key.StartsWith(ATTR_PREFIX, StringComparison.Ordinal))
-            {
-                string displayName = model.Name != ""
-                    ? $"{model.Type}.{model.SubType} '{model.Name}'"
-                    : $"{model.Type}.{model.SubType}";
-                ReportProblem(
-                    $"Unknown key '{key}' on {displayName} at {path} (must be reserved or {ATTR_PREFIX}-prefixed)",
-                    st, path, ErrorCode.ERR_UNKNOWN_ATTR);
-                continue;
-            }
-
-            // Inline attribute (@-prefixed).
-            string attrName = key[ATTR_PREFIX.Length..];
-            JsonElement rawVal = prop.Value;
-
-            // ERR_RESERVED_ATTR: any @-prefixed reserved structural key (e.g. "@isArray",
-            // "@name") is always a metadata-author error and is reported as a hard
-            // error regardless of strict mode — downstream code must never see a
-            // bogus MetaAttr named after a reserved word. Mirrors the TS
-            // parser-core.ts (errors-sink-direct in lax mode, throw in strict) and
-            // Java CanonicalJsonParser. The YAML desugar layer has its own pre-check
-            // that fires first when authoring in YAML; the canonical parser is the
-            // last-line cross-language gate.
-            if (RESERVED_KEYS.Contains(attrName))
-            {
-                string displayName = model.Name != ""
-                    ? $"{model.Type}.{model.SubType} '{model.Name}'"
-                    : $"{model.Type}.{model.SubType}";
-                string msg = $"Reserved structural key '{attrName}' must not be " +
-                             $"{ATTR_PREFIX}-prefixed on {displayName} at {path} (write it bare)";
-                if (st.Strict)
-                {
-                    throw new ParseException(msg, ErrorCode.ERR_RESERVED_ATTR, st.Source, path);
-                }
-                st.Errors.Add(new MetaError(msg, ErrorCode.ERR_RESERVED_ATTR, st.Source, path));
-                continue;
-            }
-
-            AttrSchema? attrSpec = st.Registry
-                .AttrsOf(model.Type, model.SubType)
-                .FirstOrDefault(a => a.Name == attrName);
-
-            object? value;
+            // Push the attr key onto the builder so its canonical path is visible
+            // to any error / source envelope built within this iteration.
+            st.Builder.PushKey(key);
             try
             {
-                if (attrSpec is not null && attrSpec.ValueType is not null)
-                {
-                    // Declared attr with a concrete value-type — convert toward
-                    // that DataType.
-                    DataType dataType = st.Registry.Find(TYPE_ATTR, attrSpec.ValueType)?.DataType
-                        ?? DataType.String;
-                    value = DataConverter.ConvertToDataType(dataType, rawVal);
-                }
-                else
-                {
-                    // Undeclared @-attr OR declared-but-untyped — store the value
-                    // type-preserved, exactly as the JSON author wrote it.
-                    value = DataConverter.ToAttrValue(rawVal);
-                }
-            }
-            catch (FormatException err)
-            {
-                ReportProblem(
-                    $"Failed to convert attribute \"{ATTR_PREFIX}{attrName}\" at {path}: {err.Message}",
-                    st, path, ErrorCode.ERR_BAD_ATTR_VALUE);
-                continue;
-            }
+                string path = st.Builder.ToString();
 
-            // A bare string for a declared stringArray attr → one-element array.
-            object? normalized = NormalizeStringArrayAttr(
-                model.Type, model.SubType, attrName, value, st.Registry);
-            // An object-valued filter attr → canonical { field: { op: value } } form.
-            normalized = NormalizeFilterAttr(
-                model.Type, model.SubType, attrName, normalized, st.Registry);
-            model.SetAttr(attrName, normalized);
+                if (!key.StartsWith(ATTR_PREFIX, StringComparison.Ordinal))
+                {
+                    string displayName = model.Name != ""
+                        ? $"{model.Type}.{model.SubType} '{model.Name}'"
+                        : $"{model.Type}.{model.SubType}";
+                    ReportProblem(
+                        $"Unknown key '{key}' on {displayName} at {path} (must be reserved or {ATTR_PREFIX}-prefixed)",
+                        st, ErrorCode.ERR_UNKNOWN_ATTR);
+                    continue;
+                }
+
+                // Inline attribute (@-prefixed).
+                string attrName = key[ATTR_PREFIX.Length..];
+                JsonElement rawVal = prop.Value;
+
+                // ERR_RESERVED_ATTR: any @-prefixed reserved structural key (e.g. "@isArray",
+                // "@name") is always a metadata-author error and is reported as a hard
+                // error regardless of strict mode — downstream code must never see a
+                // bogus MetaAttr named after a reserved word. Mirrors the TS
+                // parser-core.ts (errors-sink-direct in lax mode, throw in strict) and
+                // Java CanonicalJsonParser. The YAML desugar layer has its own pre-check
+                // that fires first when authoring in YAML; the canonical parser is the
+                // last-line cross-language gate.
+                if (RESERVED_KEYS.Contains(attrName))
+                {
+                    string displayName = model.Name != ""
+                        ? $"{model.Type}.{model.SubType} '{model.Name}'"
+                        : $"{model.Type}.{model.SubType}";
+                    string msg = $"Reserved structural key '{attrName}' must not be " +
+                                 $"{ATTR_PREFIX}-prefixed on {displayName} at {path} (write it bare)";
+                    if (st.Strict)
+                    {
+                        throw new ParseException(msg, ErrorCode.ERR_RESERVED_ATTR, st.Source, path,
+                            st.CurrentSource());
+                    }
+                    st.Errors.Add(new MetaError(msg, ErrorCode.ERR_RESERVED_ATTR, st.Source, path,
+                        st.CurrentSource()));
+                    continue;
+                }
+
+                AttrSchema? attrSpec = st.Registry
+                    .AttrsOf(model.Type, model.SubType)
+                    .FirstOrDefault(a => a.Name == attrName);
+
+                object? value;
+                try
+                {
+                    if (attrSpec is not null && attrSpec.ValueType is not null)
+                    {
+                        // Declared attr with a concrete value-type — convert toward
+                        // that DataType.
+                        DataType dataType = st.Registry.Find(TYPE_ATTR, attrSpec.ValueType)?.DataType
+                            ?? DataType.String;
+                        value = DataConverter.ConvertToDataType(dataType, rawVal);
+                    }
+                    else
+                    {
+                        // Undeclared @-attr OR declared-but-untyped — store the value
+                        // type-preserved, exactly as the JSON author wrote it.
+                        value = DataConverter.ToAttrValue(rawVal);
+                    }
+                }
+                catch (FormatException err)
+                {
+                    ReportProblem(
+                        $"Failed to convert attribute \"{ATTR_PREFIX}{attrName}\" at {path}: {err.Message}",
+                        st, ErrorCode.ERR_BAD_ATTR_VALUE);
+                    continue;
+                }
+
+                // A bare string for a declared stringArray attr → one-element array.
+                object? normalized = NormalizeStringArrayAttr(
+                    model.Type, model.SubType, attrName, value, st.Registry);
+                // An object-valued filter attr → canonical { field: { op: value } } form.
+                normalized = NormalizeFilterAttr(
+                    model.Type, model.SubType, attrName, normalized, st.Registry);
+                model.SetAttr(attrName, normalized);
+            }
+            finally
+            {
+                st.Builder.Pop();
+            }
         }
     }
 
@@ -771,8 +820,7 @@ public static class Parser
         JsonElement nodeData,
         MetaData accumRoot,
         string inheritedContextPkg,
-        ParseState st,
-        string path)
+        ParseState st)
     {
         if (!nodeData.TryGetProperty(RESERVED_KEY_CHILDREN, out JsonElement rawChildren))
         {
@@ -784,112 +832,138 @@ public static class Parser
             // Reuses ERR_TOP_LEVEL_NOT_OBJECT per TS parity — the code is overloaded
             // for "structural shape violation" generally, not just the root level.
             ReportProblem(
-                $"\"{RESERVED_KEY_CHILDREN}\" must be an array at {path}",
-                st, path, ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT);
+                $"\"{RESERVED_KEY_CHILDREN}\" must be an array at {st.Builder}",
+                st, ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT);
             return;
         }
 
-        int i = 0;
-        foreach (JsonElement childEntry in rawChildren.EnumerateArray())
+        // Push "children" onto the canonical-JSONPath builder for the whole array.
+        st.Builder.PushKey(RESERVED_KEY_CHILDREN);
+        try
         {
-            string childPath = $"{path}.{RESERVED_KEY_CHILDREN}[{i}]";
-            i++;
-
-            if (childEntry.ValueKind != JsonValueKind.Object)
+            int i = 0;
+            foreach (JsonElement childEntry in rawChildren.EnumerateArray())
             {
-                ReportProblem(
-                    $"Child at {childPath} must be an object",
-                    st, childPath, ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT);
-                continue;
-            }
-
-            string? childKey = null;
-            int keyCount = 0;
-            foreach (JsonProperty p in childEntry.EnumerateObject())
-            {
-                childKey ??= p.Name;
-                keyCount++;
-                if (keyCount > 1) break;
-            }
-
-            if (keyCount != 1)
-            {
-                string msg;
-                if (keyCount == 0)
+                int childIndex = i++;
+                st.Builder.PushIndex(childIndex);
+                try
                 {
-                    msg = $"Child at {childPath} has no type wrapper key";
-                }
-                else
-                {
-                    // keyCount > 1: collect all keys only on this rare error path.
-                    var allKeys = new List<string>();
+                    string childPath = st.Builder.ToString();
+
+                    if (childEntry.ValueKind != JsonValueKind.Object)
+                    {
+                        ReportProblem(
+                            $"Child at {childPath} must be an object",
+                            st, ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT);
+                        continue;
+                    }
+
+                    string? childKey = null;
+                    int keyCount = 0;
                     foreach (JsonProperty p in childEntry.EnumerateObject())
-                        allKeys.Add(p.Name);
-                    msg = $"Child at {childPath} has multiple keys ({string.Join(", ", allKeys)}) — each child must have exactly one wrapper key";
+                    {
+                        childKey ??= p.Name;
+                        keyCount++;
+                        if (keyCount > 1) break;
+                    }
+
+                    if (keyCount != 1)
+                    {
+                        string msg;
+                        if (keyCount == 0)
+                        {
+                            msg = $"Child at {childPath} has no type wrapper key";
+                        }
+                        else
+                        {
+                            // keyCount > 1: collect all keys only on this rare error path.
+                            var allKeys = new List<string>();
+                            foreach (JsonProperty p in childEntry.EnumerateObject())
+                                allKeys.Add(p.Name);
+                            msg = $"Child at {childPath} has multiple keys ({string.Join(", ", allKeys)}) — each child must have exactly one wrapper key";
+                        }
+                        ReportProblem(msg, st, ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT);
+                        continue;
+                    }
+
+                    // keyCount == 1 guarantees childKey was assigned above (null-forgiving is safe).
+                    string singleChildKey = childKey!;
+                    JsonElement childData = childEntry.GetProperty(singleChildKey);
+                    st.Builder.PushKey(singleChildKey);
+                    try
+                    {
+                        string childNodePath = st.Builder.ToString();
+
+                        if (childData.ValueKind != JsonValueKind.Object)
+                        {
+                            ReportProblem(
+                                $"Child wrapper \"{singleChildKey}\" at {childNodePath} must contain an object",
+                                st, ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT);
+                            continue;
+                        }
+
+                        SplitKey childSplit = SplitTypeKey(singleChildKey, st.Registry);
+                        string childType = childSplit.Type;
+                        string childSubType = childSplit.SubType;
+                        bool explicitSubType = childSplit.Explicit;
+
+                        // --- Check if this child type is registered ---
+                        // An EXPLICIT unknown subType (fused into the key) is an error —
+                        // never silently downgraded to base. An OMITTED subType that resolves
+                        // to an unregistered default falls back to base.
+                        if (!st.Registry.Has(childType, childSubType))
+                        {
+                            if (!explicitSubType && st.Registry.Has(childType, SUBTYPE_BASE))
+                            {
+                                childSubType = SUBTYPE_BASE;
+                            }
+                            else
+                            {
+                                ErrorCode childTypeCode =
+                                    explicitSubType && st.Registry.AllSubTypesOf(childType).Count > 0
+                                        ? ErrorCode.ERR_UNKNOWN_SUBTYPE
+                                        : ErrorCode.ERR_UNKNOWN_TYPE;
+                                st.Errors.Add(new MetaError(
+                                    $"Unknown type \"{childType}.{childSubType}\" — not registered",
+                                    childTypeCode, st.Source, childNodePath,
+                                    st.CurrentSource()));
+                                continue; // skip this child
+                            }
+                        }
+
+                        // --- Special handling for "attr" child nodes ---
+                        if (childType == TYPE_ATTR)
+                        {
+                            ParseAttrChild(parent, childType, childSubType, childData, st);
+                        }
+                        else
+                        {
+                            MetaData? childModel = CreateOrFindMetaData(
+                                childType, childSubType, childData, parent, accumRoot,
+                                inheritedContextPkg, st);
+
+                            // Overlay and same-name-reuse paths in CreateOrFindMetaData return an existing
+                            // child that is already in parent's own children; only AddChild for freshly
+                            // created nodes to avoid duplicates.
+                            var owned = parent.OwnChildren();
+                            if (childModel is not null && !owned.Contains(childModel))
+                                parent.AddChild(childModel);
+                        }
+                    }
+                    finally
+                    {
+                        st.Builder.Pop(); // singleChildKey
+                    }
                 }
-                ReportProblem(msg, st, childPath, ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT);
-                continue;
-            }
-
-            // keyCount == 1 guarantees childKey was assigned above (null-forgiving is safe).
-            string singleChildKey = childKey!;
-            JsonElement childData = childEntry.GetProperty(singleChildKey);
-            string childNodePath = $"{childPath}.{singleChildKey}";
-
-            if (childData.ValueKind != JsonValueKind.Object)
-            {
-                ReportProblem(
-                    $"Child wrapper \"{singleChildKey}\" at {childNodePath} must contain an object",
-                    st, childNodePath, ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT);
-                continue;
-            }
-
-            SplitKey childSplit = SplitTypeKey(singleChildKey, st.Registry);
-            string childType = childSplit.Type;
-            string childSubType = childSplit.SubType;
-            bool explicitSubType = childSplit.Explicit;
-
-            // --- Check if this child type is registered ---
-            // An EXPLICIT unknown subType (fused into the key) is an error —
-            // never silently downgraded to base. An OMITTED subType that resolves
-            // to an unregistered default falls back to base.
-            if (!st.Registry.Has(childType, childSubType))
-            {
-                if (!explicitSubType && st.Registry.Has(childType, SUBTYPE_BASE))
+                finally
                 {
-                    childSubType = SUBTYPE_BASE;
-                }
-                else
-                {
-                    ErrorCode childTypeCode =
-                        explicitSubType && st.Registry.AllSubTypesOf(childType).Count > 0
-                            ? ErrorCode.ERR_UNKNOWN_SUBTYPE
-                            : ErrorCode.ERR_UNKNOWN_TYPE;
-                    st.Errors.Add(new MetaError(
-                        $"Unknown type \"{childType}.{childSubType}\" — not registered",
-                        childTypeCode, st.Source, childNodePath));
-                    continue; // skip this child
+                    st.Builder.Pop(); // child index
                 }
             }
-
-            // --- Special handling for "attr" child nodes ---
-            if (childType == TYPE_ATTR)
-            {
-                ParseAttrChild(parent, childType, childSubType, childData, st, childNodePath);
-            }
-            else
-            {
-                MetaData? childModel = CreateOrFindMetaData(
-                    childType, childSubType, childData, parent, accumRoot,
-                    inheritedContextPkg, st, childNodePath);
-
-                // Overlay and same-name-reuse paths in CreateOrFindMetaData return an existing
-                // child that is already in parent's own children; only AddChild for freshly
-                // created nodes to avoid duplicates.
-                var owned = parent.OwnChildren();
-                if (childModel is not null && !owned.Contains(childModel))
-                    parent.AddChild(childModel);
-            }
+        }
+        finally
+        {
+            st.Builder.Pop(); // "children"
         }
     }
 
@@ -906,9 +980,9 @@ public static class Parser
         string attrType,
         string attrSubType,
         JsonElement attrData,
-        ParseState st,
-        string path)
+        ParseState st)
     {
+        string path = st.Builder.ToString();
         string? attrName = TryGetString(attrData, RESERVED_KEY_NAME);
         bool hasValue = attrData.TryGetProperty(RESERVED_KEY_VALUE, out JsonElement attrValue);
 
@@ -916,7 +990,7 @@ public static class Parser
         {
             ReportProblem(
                 $"attr child at {path} requires a non-empty \"{RESERVED_KEY_NAME}\" string",
-                st, path, ErrorCode.ERR_MISSING_REQUIRED_ATTR);
+                st, ErrorCode.ERR_MISSING_REQUIRED_ATTR);
             return;
         }
 
@@ -924,7 +998,7 @@ public static class Parser
         {
             ReportProblem(
                 $"attr child \"{attrName}\" at {path} is missing \"{RESERVED_KEY_VALUE}\"",
-                st, path, ErrorCode.ERR_MISSING_REQUIRED_ATTR);
+                st, ErrorCode.ERR_MISSING_REQUIRED_ATTR);
             return;
         }
 
@@ -955,13 +1029,14 @@ public static class Parser
         {
             ReportProblem(
                 $"Failed to convert attr child \"{attrName}\" value at {path}: {err.Message}",
-                st, path, ErrorCode.ERR_BAD_ATTR_VALUE);
+                st, ErrorCode.ERR_BAD_ATTR_VALUE);
             return;
         }
 
         MetaData attrModel = attrDef is not null
             ? attrDef.Factory(attrDef.TypeId, attrName)
             : new MetaRoot(new TypeId(attrType, resolvedSubType), attrName);
+        attrModel.SetSource(st.CurrentSource());
 
         // A bare string for a declared stringArray attr → one-element array.
         // An object-valued filter attr → canonical { field: { op: value } } form.

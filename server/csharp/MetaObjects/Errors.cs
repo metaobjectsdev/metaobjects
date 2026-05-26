@@ -1,3 +1,5 @@
+using MetaObjects.Source;
+
 namespace MetaObjects;
 
 /// <summary>Stable, language-neutral error codes — mirrors fixtures/conformance/ERROR-CODES.json.</summary>
@@ -34,22 +36,57 @@ public enum ErrorCode
     ERR_UNKNOWN,
 }
 
-/// <summary>A collected load error. Carries the stable code the conformance runner compares.</summary>
-public sealed record MetaError(string Message, ErrorCode Code = ErrorCode.ERR_UNKNOWN,
-    string? Source = null, string? Path = null);
+/// <summary>
+/// A collected load error. Carries the stable code the conformance runner compares.
+///
+/// <para>
+/// FR5a / ADR-0009: <see cref="Envelope"/> is the structured provenance envelope
+/// every cross-language port emits — populated by the parser (JSON tree-walk) and
+/// by validation passes that have access to a node's <c>Source</c>. Legacy
+/// <see cref="Source"/> / <see cref="Path"/> remain for backward-compat (the
+/// conformance adapter only inspects <see cref="Code"/>); new sites should pass
+/// <see cref="Envelope"/>.
+/// </para>
+/// </summary>
+public sealed record MetaError(
+    string Message,
+    ErrorCode Code = ErrorCode.ERR_UNKNOWN,
+    string? Source = null,
+    string? Path = null,
+    ErrorSource? Envelope = null);
 
 /// <summary>Thrown for top-level structural parse failures the TS parser also throws on
 /// (malformed JSON, non-object root, unknown root type). The loader catches it and
 /// converts to a collected <see cref="MetaError"/>.</summary>
 public sealed class ParseException : System.Exception
 {
+    /// <summary>The stable cross-language error code.</summary>
     public ErrorCode Code { get; }
+
     /// <summary>The metadata source file path or identifier (distinct from Exception.Source).</summary>
     public string? SourceFile { get; }
+
+    /// <summary>The (canonical-JSONPath) path of the offending node.</summary>
     public string? NodePath { get; }
-    public ParseException(string message, ErrorCode code = ErrorCode.ERR_UNKNOWN,
-        string? sourceFile = null, string? nodePath = null) : base(message)
-        => (Code, SourceFile, NodePath) = (code, sourceFile, nodePath);
+
+    /// <summary>
+    /// FR5a / ADR-0009 envelope describing where the offending node came from.
+    /// Always populated when the parser raises; null for legacy/synthetic callers.
+    /// </summary>
+    public ErrorSource? Envelope { get; }
+
+    public ParseException(
+        string message,
+        ErrorCode code = ErrorCode.ERR_UNKNOWN,
+        string? sourceFile = null,
+        string? nodePath = null,
+        ErrorSource? envelope = null) : base(message)
+    {
+        Code = code;
+        SourceFile = sourceFile;
+        NodePath = nodePath;
+        Envelope = envelope;
+    }
 }
 
 /// <summary>Metamodel-level error that is not a parse error — provider composition
