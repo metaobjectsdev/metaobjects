@@ -1,10 +1,14 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.DataTypes
 import com.metaobjects.field.BooleanField
+import com.metaobjects.field.CurrencyField
 import com.metaobjects.field.DateField
 import com.metaobjects.field.DoubleField
+import com.metaobjects.field.EnumField
 import com.metaobjects.field.IntegerField
 import com.metaobjects.field.LongField
+import com.metaobjects.field.PrimitiveField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.TimestampField
 import com.squareup.kotlinpoet.BOOLEAN
@@ -101,5 +105,32 @@ class KotlinTypeMapperTest {
     @Test fun `timestamp field maps to timestampWithTimeZone exposed column`() {
         val f = TimestampField("createdAt")
         assertEquals("timestampWithTimeZone(\"createdAt\")", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
+    // === Currency / Enum / UUID coverage ===
+
+    @Test fun `currency field maps to Long and long exposed column`() {
+        val f = CurrencyField("priceCents")
+        // Wire/JVM type: Long (integer minor units invariant).
+        assertEquals(LONG, KotlinTypeMapper.kotlinTypeName(f))
+        // Exposed column reuses long() — same physical storage as LongField.
+        assertEquals("long(\"priceCents\")", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
+    @Test fun `enum field maps to String and varchar(64) exposed column`() {
+        val f = EnumField("status")
+        // v1 enum representation: String + VARCHAR; full enum-class emission deferred.
+        assertEquals(STRING, KotlinTypeMapper.kotlinTypeName(f))
+        assertEquals("varchar(\"status\", 64)", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
+    @Test fun `uuid field (matched by subtype) maps to java util UUID and uuid exposed column`() {
+        // `field.uuid` has no dedicated Java class today — mapper matches by subtype name.
+        // Use a minimal anonymous PrimitiveField with subType="uuid" to drive the path.
+        val f = object : PrimitiveField<String>("uuid", "externalId", DataTypes.STRING) {}
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        assertEquals("java.util", tn.packageName)
+        assertEquals("UUID", tn.simpleName)
+        assertEquals("uuid(\"externalId\")", KotlinTypeMapper.exposedColumnSpec(f))
     }
 }
