@@ -129,6 +129,26 @@ string output = Renderer.Render(new RenderRequest(
 `Verify` in `MetaObjects.Render` drift-checks every `template.*` against its
 `@payloadRef`. Wire it into your CI step or invoke `meta verify` directly.
 
+## Angular 18 frontend
+
+C# 12 / .NET 8 backends pair cleanly with an Angular 18 client built from
+the universal `@metaobjectsdev/angular` runtime + `@metaobjectsdev/codegen-ts-angular`
+codegen packages. The generated ASP.NET Minimal API routes (from
+`MetaObjects.Codegen` `RoutesGenerator`) speak the same URL grammar
+and wire format the Angular client expects — no special-casing.
+
+End-to-end recipe — CORS wiring, dev-server port conventions, base-URL
+configuration, the meta gen command sequence that emits both halves —
+lives at [`docs/recipes/csharp-angular18.md`](../recipes/csharp-angular18.md).
+
+Today's `RoutesGenerator` honours pagination (`?limit`/`?offset`), sort
+(`?sort=<field>:asc|desc` against a static per-entity allowlist), and the
+`?withCount=1` envelope (`{ rows, total }`) that the Angular grid hook
+always sends. Filter operators (`eq` / `ne` / `gt` / `gte` / `lt` / `lte`
+/ `in` / `like` / `isNull`) per [`api-contract.md`](../features/api-contract.md)
+are not yet generated — see
+[`server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md`](../../server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md).
+
 ## Capability snapshot
 
 | Feature | Status |

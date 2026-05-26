@@ -98,12 +98,49 @@ public class EntityGeneratorTests
 
         Assert.Contains("public static class SubscriberRoutes", src);
         Assert.Contains("public static IEndpointRouteBuilder MapSubscriberRoutes(this IEndpointRouteBuilder app, string prefix = \"/api\")", src);
-        Assert.Contains("app.MapGet(prefix + \"/subscribers\", async (AppDbContext db) =>", src);
+        // GET list now takes HttpContext (for qs parsing: limit/offset/sort/withCount).
+        Assert.Contains("app.MapGet(prefix + \"/subscribers\", async (HttpContext http, AppDbContext db) =>", src);
         Assert.Contains("app.MapGet(prefix + \"/subscribers/{id}\", async (long id, AppDbContext db) =>", src);
         Assert.Contains("db.Subscribers.FindAsync(id)", src);
         Assert.Contains("app.MapPost(prefix + \"/subscribers\", async (Subscriber input, AppDbContext db) =>", src);
-        Assert.Contains("app.MapPut(prefix + \"/subscribers/{id}\", async (long id, Subscriber input, AppDbContext db) =>", src);
+        // PATCH + PUT share the same update handler (matches TS reference).
+        Assert.Contains("async System.Threading.Tasks.Task<IResult> UpdateSubscriber(long id, Subscriber input, AppDbContext db)", src);
+        Assert.Contains("app.MapPatch(prefix + \"/subscribers/{id}\", UpdateSubscriber);", src);
+        Assert.Contains("app.MapPut(prefix + \"/subscribers/{id}\", UpdateSubscriber);", src);
         Assert.Contains("app.MapDelete(prefix + \"/subscribers/{id}\", async (long id, AppDbContext db) =>", src);
+    }
+
+    [Fact]
+    public void Routes_generator_emits_api_contract_qs_handling()
+    {
+        // Sort/limit/offset/withCount per docs/features/api-contract.md.
+        var ctx = Ctx(Load());
+        var src = Assert.Single(new RoutesGenerator().Generate(ctx)).Content;
+
+        // Sort allowlist contains the entity's scalar fields (Pascal-cased).
+        Assert.Contains("SortAllowlist", src);
+        Assert.Contains("\"Id\",", src);
+        Assert.Contains("\"Email\",", src);
+        Assert.Contains("\"Subscribed\",", src);
+        Assert.Contains("\"CreatedAt\",", src);
+
+        // Pagination + sort dispatch.
+        Assert.Contains("qs.TryGetValue(\"sort\"", src);
+        Assert.Contains("qs.TryGetValue(\"limit\"", src);
+        Assert.Contains("qs.TryGetValue(\"offset\"", src);
+
+        // withCount envelope: { rows, total }.
+        Assert.Contains("qs.TryGetValue(\"withCount\"", src);
+        Assert.Contains("Results.Ok(new { rows, total })", src);
+
+        // 404 error envelope.
+        Assert.Contains("Results.NotFound(new { error = \"not_found\" })", src);
+
+        // Validation error envelope (unknown sort field → 400).
+        Assert.Contains("Results.BadRequest(new { error = \"validation\"", src);
+
+        // Sort dispatch uses EF.Property (no runtime reflection).
+        Assert.Contains("EF.Property<object>", src);
     }
 
     // -------------------------------------------------------------------------
