@@ -1,0 +1,13 @@
+{
+  "extends": "../../../../server/typescript/tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "lib": ["ES2023", "DOM"],
+    "experimentalDecorators": false,
+    "useDefineForClassFields": false,
+    "verbatimModuleSyntax": false
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "test", "node_modules"]
+}
