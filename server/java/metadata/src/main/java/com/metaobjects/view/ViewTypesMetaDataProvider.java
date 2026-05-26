@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
  * <p>Cross-port: the TS/C# ports surface a "view-types" provider for the
  * same vocabulary (today: {@code view.currency}; future: validation views,
  * display views). Priority 10 mirrors the field/attr providers — runs after
- * {@code core-base-types} (0) so {@code metadata.base} is available.</p>
+ * {@code core-types} (0) so {@code metadata.base} is available.</p>
  *
  * @since 7.0.0
  */
@@ -34,7 +34,7 @@ public class ViewTypesMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String[] getDependencies() {
-        return new String[]{"core-base-types"};
+        return new String[]{"core-types"};
     }
 
     @Override

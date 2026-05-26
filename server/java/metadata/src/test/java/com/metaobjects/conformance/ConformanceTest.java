@@ -113,7 +113,7 @@ public class ConformanceTest {
             // into per-concern providers (core, fields, attrs, objects, validators,
             // identity, relationships, sources).
             "metaobjects-core-types", List.of(
-                "core-base-types",
+                "core-types",
                 "field-types",
                 "attribute-types",
                 "object-types",

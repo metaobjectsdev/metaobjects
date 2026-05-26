@@ -30,7 +30,7 @@ public class LayoutTypesMetaDataProvider implements MetaDataTypeProvider {
     @Override
     public String[] getDependencies() {
         // Depends on attribute-types so attr.filter is available for DataGridLayout's @filter.
-        return new String[]{"core-base-types", "attribute-types"};
+        return new String[]{"core-types", "attribute-types"};
     }
 
     @Override

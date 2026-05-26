@@ -76,7 +76,7 @@ public class FieldTypesMetaDataProvider implements MetaDataTypeProvider {
     @Override
     public String[] getDependencies() {
         // Depends on core base types to ensure metadata.base is available for field.base inheritance
-        return new String[]{"core-base-types"};
+        return new String[]{"core-types"};
     }
 
 
