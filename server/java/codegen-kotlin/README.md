@@ -1,13 +1,72 @@
 # MetaObjects :: Codegen :: Kotlin (`codegen-kotlin`)
 
-Kotlin codegen target. Emits idiomatic Kotlin code from MetaObjects metadata via KotlinPoet:
+Kotlin codegen target for Spring-Boot-Kotlin consumers on Exposed + Flyway. Emits idiomatic Kotlin via KotlinPoet — no MetaObjects runtime dep on the consumer's query path.
+
+## Generators
 
 | Generator | Output | Per |
 |---|---|---|
-| `KotlinEntityGenerator` | `<Entity>.kt` — @Serializable data class | every `object.entity` |
-| `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object | every entity with `source.rdb` |
-| `KotlinPayloadGenerator` | `<Template>Payload.kt` — @Serializable payload class | every `template.prompt` / `template.output` |
+| `KotlinEntityGenerator` | `<Entity>.kt` — `@Serializable data class` | every `object.entity` AND `object.value` |
+| `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object with PK + FK + `@storage` columns | every entity with `source.rdb` |
+| `KotlinPayloadGenerator` | `<Template>Payload.kt` — `@Serializable` payload from `@payloadRef` view-object | every `template.prompt` / `template.output` |
 | `KotlinValidatorGenerator` | `MetadataStartupValidator.kt` + `ExposedTableValidator.kt` | once per project |
+| `KotlinSpringConfigGenerator` | `MetadataExposedConfig.kt` — `@Configuration` wiring `Database.connect()` + auto-validator | once per project |
+
+## Type mapping (`KotlinTypeMapper`)
+
+| MetaField | Kotlin (data class) | Exposed column |
+|---|---|---|
+| `field.string` | `String` | `varchar(name, @maxLength ?: 255)` |
+| `field.int` | `Int` | `integer(name)` |
+| `field.long` | `Long` | `long(name)` |
+| `field.double` | `Double` | `double(name)` |
+| `field.boolean` | `Boolean` | `bool(name)` |
+| `field.date` | `java.time.LocalDate` | `date(name)` |
+| `field.timestamp` | `java.time.Instant` | `timestampWithTimeZone(name)` |
+| `field.currency` | `Long` (minor units — wire format invariant) | `long(name)` |
+| `field.uuid` | `java.util.UUID` | `uuid(name)` |
+| `field.enum` | `String` (TBD: typed enum class) | `varchar(name, 64)` |
+| `field.object` (`@storage="flattened"`) | reference to the generated VO data class | per-sub-field columns: `<parent>_<sub>` |
+| `field.object` (`@storage="jsonb"` or default) | reference to the generated VO data class | single `jsonb(name, { Json.encodeToString(it) }, { Json.decodeFromString(it) })` |
+
+## Relationships → FK columns
+
+`relationship.composition` children of an entity emit FK columns on the Exposed Table:
+
+```json
+{ "object.entity": { "name": "Post", "children": [
+    { "field.long":   { "name": "id" } },
+    { "field.string": { "name": "title" } },
+    { "relationship.composition": { "name": "author", "@objectRef": "Author", "@onDelete": "cascade" } },
+    { "source.rdb": { "@table": "posts" } },
+    { "identity.primary": { "@fields": "id" } }
+]}}
+```
+
+generates:
+
+```kotlin
+object PostTable : Table("posts") {
+    val id = long("id").autoIncrement()
+    val title = varchar("title", 255)
+    val authorId = long("author_id").references(AuthorTable.id, onDelete = ReferenceOption.CASCADE)
+    override val primaryKey = PrimaryKey(id)
+}
+```
+
+`@cardinality: many` side is skipped (FK lives on the to-one side). Referential actions map kebab-case metadata → SCREAMING_SNAKE Exposed `ReferenceOption` enum names.
+
+## FR-004 payload origins
+
+`KotlinPayloadGenerator` resolves all three origin subtypes on payload-VO fields:
+
+| Origin | Behavior |
+|---|---|
+| `origin.passthrough @from "Entity.field"` | payload property type = source field's type |
+| `origin.aggregate @agg count` | `Long` (regardless of `@of`) |
+| `origin.aggregate @agg avg` | `Double` |
+| `origin.aggregate @agg sum\|min\|max` | matches source field's type |
+| `origin.collection @via "Parent.rel"` | `List<NestedPayload>`; nested payload class generated recursively + deduplicated |
 
 ## Wiring in your `pom.xml`
 
@@ -39,35 +98,60 @@ Kotlin codegen target. Emits idiomatic Kotlin code from MetaObjects metadata via
           <packageName>com.yourapp</packageName>
         </args>
       </generator>
+      <generator>
+        <classname>com.metaobjects.generator.kotlin.KotlinSpringConfigGenerator</classname>
+        <args>
+          <outputDir>${project.build.directory}/generated-sources/kotlin</outputDir>
+          <packageName>com.yourapp</packageName>
+          <metadataResource>meta.entities.json</metadataResource>
+        </args>
+      </generator>
     </generators>
   </configuration>
 </plugin>
 ```
 
-## Runtime drift gate
+## Spring Boot + Exposed wiring (auto-generated)
 
-After codegen runs, your consumer wires the generated `MetadataStartupValidator` into Spring boot:
+The `KotlinSpringConfigGenerator` emits a `@Configuration` class that wires `Database.connect()` from the Spring `DataSource` bean and runs the validator at `ApplicationReadyEvent`:
 
 ```kotlin
-@SpringBootApplication
-class App {
+// GENERATED
+@Configuration
+class MetadataExposedConfig(private val dataSource: DataSource) {
+    init { Database.connect(dataSource) }
+
     @EventListener(ApplicationReadyEvent::class)
     fun validateMetadata() {
-        val loader = loadResources("app", listOf("meta.author.json"))
+        val loader = loadResources("app", listOf("meta.entities.json"))
         MetadataStartupValidator.validate(loader)
     }
 }
 ```
 
-This fails fast at boot if generated tables drift from metadata (drift source D7).
+No hand-written Exposed wiring needed.
 
-## Coverage status
+## Drift detection (Tier-2 integration)
 
-MVP ships 7 primitive types (`field.string`, `int`, `long`, `double`, `boolean`, `date`, `timestamp`).
-Less-common types (`field.enum`, `field.currency`, `field.object`, `field.uuid`) throw
-`IllegalArgumentException` at codegen time with a clear message. Add support per real consumer ask.
+| Drift source | Where caught | When |
+|---|---|---|
+| Code-vs-DB | Codegen (`KotlinEntityGenerator` + `KotlinExposedTableGenerator`) | Build time |
+| Code-vs-API-doc | Cross-port codegen from same metadata | Build time |
+| DB-vs-metadata | `meta:verify` Maven goal | CI on every PR |
+| Migration-vs-metadata | `meta:migrate --flyway` emits migrations FROM metadata diffs | Build time |
+| Generated-edited | `@generated` headers in KotlinPoet output | Code review |
+| Prompt-vs-payload | `KotlinPayloadGenerator` + Java `Renderer.verify` | Build time + runtime |
+| Generated-vs-runtime | `MetadataStartupValidator.validate(loader)` from Spring `ApplicationReadyEvent` | App startup |
 
-Flyway migration generation lives in the Maven plugin under the existing `meta:migrate` goal —
-pass `<flyway>true</flyway>` to switch output naming to Flyway conventions.
+## Maven plugin extensions
 
-CI drift detection lives in the new `meta:verify` goal — runs DB introspection + diffs vs metadata.
+- **`meta:migrate --flyway`** — emits `V<N>__<slug>.sql` into `src/main/resources/db/migration/` (configurable via `<flywayDir>` / `<flywayPrefix>`). Auto-versions by scanning existing migrations.
+- **`meta:verify`** — CI drift gate: introspects the live DB and fails the build if it has drifted from metadata-declared schema.
+
+## Cross-port codegen conformance (deferred)
+
+The shared cross-language codegen conformance corpus is **FR-007** — see [`docs/superpowers/specs/2026-05-25-fr-007-codegen-conformance-corpus-design.md`](../../docs/superpowers/specs/2026-05-25-fr-007-codegen-conformance-corpus-design.md). Until that lands, each port runs its own port-local snapshot tests; cross-port drift is undetected.
+
+## Test count
+
+45 tests in this module (`mvn -pl codegen-kotlin test`). Snapshot tests gate within-Java output stability; `kotlin-compile-testing` gates generated-code validity; an E2E test exercises the full loop including the Java `Renderer`.
