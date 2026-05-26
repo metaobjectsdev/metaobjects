@@ -186,12 +186,13 @@ public final class ValidationPhase {
         if (node.hasMetaAttr(EnumField.ATTR_VALUES, false)) {
             MetaAttribute<?> valuesAttr = node.getMetaAttr(EnumField.ATTR_VALUES, false);
             if (!EnumField.validateEnumValues(valuesAttr.getValue())) {
+                // FR5a — envelope carries the offending node's provenance.
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_BAD_ATTR_VALUE
                         + ": field.enum '" + node.getName()
                         + "' @values must be a non-empty list of identifier-safe, unique members"
                         + " (e.g. [\"DRAFT\",\"PUBLISHED\"])",
-                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
             }
             // Own @values present and valid — required check not needed.
             return;
@@ -200,11 +201,12 @@ public final class ValidationPhase {
         // --- Required check ---
         // No own @values. Valid only if there is a super reference (inheriting @values).
         if (node.getSuperData() == null) {
+            // FR5a — envelope carries the offending node's provenance.
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
                     + ": field.enum '" + node.getName()
                     + "' is missing required @values attribute",
-                ErrorCode.ERR_MISSING_REQUIRED_ATTR);
+                ErrorCode.ERR_MISSING_REQUIRED_ATTR, node.getSource());
         }
         // Has a super — inherits @values from the super, which is validated on its own node.
     }

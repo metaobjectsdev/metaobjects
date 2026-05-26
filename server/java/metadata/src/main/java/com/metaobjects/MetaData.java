@@ -22,6 +22,8 @@ import com.metaobjects.constraint.PlacementConstraint;
 import com.metaobjects.cache.CacheStrategy;
 import com.metaobjects.cache.HybridCache;
 import com.metaobjects.collections.IndexedMetaDataCollection;
+import com.metaobjects.source.CodeSource;
+import com.metaobjects.source.ErrorSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -277,6 +279,17 @@ public class MetaData implements Cloneable, Serializable {
     private WeakReference<MetaData> parentRef = null;
     private MetaDataLoader loader = null;
     private ClassLoader metaDataClassLoader=null;
+
+    // FR5a / ADR-0009 — Loader error envelope + source-on-node.
+    //
+    // Every metadata node carries its own provenance. `source` is always populated;
+    // the default for any node not built by a loader phase is CodeSource.DEFAULT
+    // (format == "code"). The loader's parser overwrites this with a JsonSource /
+    // YamlSource / MergedSource / ResolvedSource / DatabaseSource as it builds the
+    // tree. Mirrors C# MetaData.Source ({ get; private set; }) — settable through
+    // setSource(), frozen after freezeSource() is called.
+    private ErrorSource source = CodeSource.DEFAULT;
+    private boolean sourceFrozen = false;
 
     /**
      * Constructs a MetaData object with enhanced type system integration.
@@ -894,6 +907,71 @@ public class MetaData implements Cloneable, Serializable {
      */
     public boolean hasSuperData() {
         return superData != null;
+    }
+
+    ////////////////////////////////////////////////////
+    // FR5a / ADR-0009 — Source-on-node provenance
+
+    /**
+     * Returns the provenance envelope describing where this node was constructed.
+     *
+     * <p>Never returns {@code null}: nodes built programmatically (via the public
+     * Java API without a loader) default to {@link CodeSource#DEFAULT}. Nodes built
+     * by the loader pipeline carry a {@link com.metaobjects.source.JsonSource}
+     * (canonical-JSON parse), and post-load phases may overwrite this with a
+     * {@link com.metaobjects.source.MergedSource} or
+     * {@link com.metaobjects.source.ResolvedSource}.</p>
+     *
+     * @return the provenance envelope; never {@code null}
+     * @since FR5a / ADR-0009
+     */
+    public ErrorSource getSource() {
+        return source;
+    }
+
+    /**
+     * Sets the provenance envelope for this node.
+     *
+     * <p>Honors the freeze guard installed by {@link #freezeSource()}: once frozen,
+     * any further mutation throws {@link IllegalStateException}. The loader
+     * pipeline freezes after construction; this lets phases mutate source during
+     * load while preventing accidental mutation by runtime consumers.</p>
+     *
+     * @param source the provenance envelope; must not be {@code null}
+     * @throws NullPointerException if {@code source} is {@code null}
+     * @throws IllegalStateException if this node's source is already frozen
+     * @since FR5a / ADR-0009
+     */
+    public void setSource(ErrorSource source) {
+        if (source == null) {
+            throw new NullPointerException("MetaData source must not be null — use CodeSource.DEFAULT for the no-loader case");
+        }
+        if (sourceFrozen) {
+            throw new IllegalStateException("MetaData source is frozen and cannot be modified: " + this);
+        }
+        this.source = source;
+    }
+
+    /**
+     * Marks this node's {@code source} as frozen — subsequent {@link #setSource}
+     * calls throw {@link IllegalStateException}.
+     *
+     * <p>Idempotent: calling on an already-frozen node is a no-op.</p>
+     *
+     * @since FR5a / ADR-0009
+     */
+    public void freezeSource() {
+        this.sourceFrozen = true;
+    }
+
+    /**
+     * Returns whether this node's source is currently frozen.
+     *
+     * @return {@code true} if frozen, {@code false} otherwise
+     * @since FR5a / ADR-0009
+     */
+    public boolean isSourceFrozen() {
+        return sourceFrozen;
     }
 
     ////////////////////////////////////////////////////

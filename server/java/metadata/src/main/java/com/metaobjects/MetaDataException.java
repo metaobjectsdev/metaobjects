@@ -7,6 +7,7 @@
 
 package com.metaobjects;
 
+import com.metaobjects.source.ErrorSource;
 import com.metaobjects.util.MetaDataPath;
 
 import java.time.Instant;
@@ -48,6 +49,17 @@ public class MetaDataException extends RuntimeException {
      * validation path sets this in the first phase.
      */
     private final ErrorCode code;
+
+    /**
+     * FR5a / ADR-0009 — Loader error envelope provenance.
+     *
+     * <p>Populated when the exception is constructed via the envelope-aware
+     * constructor. Loader phases that have a node in scope pass
+     * {@code node.getSource()} here so consumers can report file path + JSONPath
+     * for the offending location. {@code null} when the exception was raised
+     * outside a loader context (legacy / runtime callers).</p>
+     */
+    private final ErrorSource envelope;
 
     /**
      * Creates a MetaDataException with a simple message.
@@ -121,9 +133,31 @@ public class MetaDataException extends RuntimeException {
     public MetaDataException(String message, MetaData source, String operation,
                            Throwable cause, Map<String, Object> additionalContext,
                            ErrorCode code) {
+        this(message, source, operation, cause, additionalContext, code, null);
+    }
+
+    /**
+     * FR5a / ADR-0009 — Full internal constructor with the loader error envelope.
+     *
+     * <p>When a loader phase has a node in scope, pass {@code node.getSource()} as
+     * {@code envelope} so consumers can report file path + JSONPath for the
+     * offending location.</p>
+     *
+     * @param message           the error message
+     * @param source            the MetaData object where the error occurred (may be null)
+     * @param operation         the operation being performed when the error occurred (may be null)
+     * @param cause             the underlying cause (may be null)
+     * @param additionalContext additional context information (may be empty)
+     * @param code              the structured {@link ErrorCode}; {@code null} if not applicable
+     * @param envelope          the loader error envelope provenance; {@code null} if not applicable
+     */
+    public MetaDataException(String message, MetaData source, String operation,
+                           Throwable cause, Map<String, Object> additionalContext,
+                           ErrorCode code, ErrorSource envelope) {
         super(buildEnhancedMessage(message, source, operation, additionalContext), cause);
 
         this.code = code;
+        this.envelope = envelope;
         this.metaDataPath = source != null ? MetaDataPath.buildPath(source) : null;
         this.operation = operation;
         this.context = new LinkedHashMap<>(additionalContext != null ? additionalContext : Collections.emptyMap());
@@ -137,6 +171,19 @@ public class MetaDataException extends RuntimeException {
             this.context.put("sourceSubType", source.getSubType());
             this.context.put("sourceName", source.getName());
         }
+    }
+
+    /**
+     * FR5a / ADR-0009 — Convenience constructor for loader sites: message + code +
+     * envelope.
+     *
+     * @param message  the error message
+     * @param code     the structured {@link ErrorCode}
+     * @param envelope the loader error envelope provenance; {@code null} permitted
+     *                 but defeats the purpose
+     */
+    public MetaDataException(String message, ErrorCode code, ErrorSource envelope) {
+        this(message, null, null, null, Collections.emptyMap(), code, envelope);
     }
 
     /**
@@ -189,6 +236,19 @@ public class MetaDataException extends RuntimeException {
      */
     public Optional<ErrorCode> getCode() {
         return Optional.ofNullable(code);
+    }
+
+    /**
+     * FR5a / ADR-0009 — Returns the loader error envelope provenance, if any.
+     *
+     * <p>{@code Optional.empty()} for exceptions raised outside a loader context
+     * (legacy / runtime callers); a populated value for envelope-aware loader
+     * sites.</p>
+     *
+     * @return Optional containing the {@link ErrorSource} envelope, or empty if none
+     */
+    public Optional<ErrorSource> getEnvelope() {
+        return Optional.ofNullable(envelope);
     }
 
     /**
