@@ -74,23 +74,27 @@ async function collectMetadataPaths(repoRoot: string): Promise<string[]> {
       for (const pkg of ordered) {
         // Each workspace package's metadata lives alongside its .meta/ dir
         const pkgRoot = join(pkg.metaDir, "..");
-        paths.push(...(await listJsonFiles(join(pkgRoot, DEFAULT_METADATA_DIR))));
+        paths.push(...(await listMetadataFiles(join(pkgRoot, DEFAULT_METADATA_DIR))));
       }
       return paths;
     }
   }
 
   // Single-package path: scan metaobjects/ at the project root
-  return listJsonFiles(join(repoRoot, DEFAULT_METADATA_DIR));
+  return listMetadataFiles(join(repoRoot, DEFAULT_METADATA_DIR));
 }
 
 /**
- * Recursively list *.json files under a directory, excluding _pending/ at
- * any level. Subdirectories (e.g. projections/) are walked depth-first.
- * Files within a directory are sorted alphabetically for deterministic load
- * order; subdirectories are visited after files at the same level.
+ * Recursively list metadata files (*.json, *.yaml, *.yml) under a directory,
+ * excluding _pending/ at any level. Subdirectories (e.g. projections/) are
+ * walked depth-first. Files within a directory are sorted alphabetically for
+ * deterministic load order; subdirectories are visited after files at the
+ * same level.
+ *
+ * Format selection (parsing) happens downstream in `FileSource` from
+ * `@metaobjectsdev/metadata`, which infers the parser from file extension.
  */
-async function listJsonFiles(dir: string): Promise<string[]> {
+async function listMetadataFiles(dir: string): Promise<string[]> {
   let entries: string[];
   try {
     entries = await readdir(dir);
@@ -105,13 +109,17 @@ async function listJsonFiles(dir: string): Promise<string[]> {
     const s = await stat(full);
     if (s.isDirectory()) {
       subdirs.push(full);
-    } else if (s.isFile() && entry.endsWith(".json")) {
+    } else if (s.isFile() && isMetadataFile(entry)) {
       paths.push(full);
     }
   }
   // Recurse into subdirectories after collecting files at this level
   for (const sub of subdirs.sort()) {
-    paths.push(...(await listJsonFiles(sub)));
+    paths.push(...(await listMetadataFiles(sub)));
   }
   return paths;
+}
+
+function isMetadataFile(name: string): boolean {
+  return name.endsWith(".json") || name.endsWith(".yaml") || name.endsWith(".yml");
 }

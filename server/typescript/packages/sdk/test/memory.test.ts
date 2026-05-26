@@ -109,11 +109,60 @@ describe("loadMemory", () => {
     }
   });
 
-  test("returns empty model when metaobjects/ has no .json files", async () => {
+  test("returns empty model when metaobjects/ has no metadata files", async () => {
     const root = makeMetaRoot();
     try {
       const meta = await loadMemory(root);
       expect(meta.ownChildren()).toHaveLength(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("loads .yaml metadata files alongside .json", async () => {
+    const root = makeMetaRoot();
+    try {
+      writeFileSync(
+        join(root, "metaobjects", "json-entity.json"),
+        JSON.stringify({
+          metadata: {
+            package: "test",
+            children: [
+              { object: { name: "FromJson", subType: "entity", children: [] } },
+            ],
+          },
+        }),
+      );
+      writeFileSync(
+        join(root, "metaobjects", "yaml-entity.yaml"),
+        [
+          "metadata:",
+          "  package: test",
+          "  children:",
+          "    - object.entity:",
+          "        name: FromYaml",
+          "        children: []",
+          "",
+        ].join("\n"),
+      );
+      writeFileSync(
+        join(root, "metaobjects", "yml-entity.yml"),
+        [
+          "metadata:",
+          "  package: test",
+          "  children:",
+          "    - object.entity:",
+          "        name: FromYml",
+          "        children: []",
+          "",
+        ].join("\n"),
+      );
+
+      const meta = await loadMemory(root);
+      const names = meta.ownChildren().map((c) => c.name);
+      expect(names).toContain("FromJson");
+      expect(names).toContain("FromYaml");
+      expect(names).toContain("FromYml");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
