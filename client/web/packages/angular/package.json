@@ -1,0 +1,61 @@
+{
+  "name": "@metaobjectsdev/angular",
+  "version": "0.6.0",
+  "description": "Angular 18 runtime for metaobjects: EntityFetcherToken, CurrencyInput component, EntityGrid, cell-renderer registry.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "bun test"
+  },
+  "license": "Apache-2.0",
+  "author": "Doug Mealing <doug@dougmealing.com>",
+  "homepage": "https://metaobjects.dev",
+  "bugs": { "url": "https://github.com/metaobjectsdev/metaobjects/issues" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metaobjectsdev/metaobjects.git",
+    "directory": "client/web/packages/angular"
+  },
+  "keywords": ["metaobjects", "angular", "angular18", "currency-input", "entity-grid"],
+  "publishConfig": { "access": "public" },
+  "dependencies": {
+    "@metaobjectsdev/runtime-web": "workspace:*"
+  },
+  "peerDependencies": {
+    "@angular/common": ">=18.0.0",
+    "@angular/core": ">=18.0.0",
+    "@angular/forms": ">=18.0.0",
+    "@tanstack/angular-table": ">=8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@angular/common": { "optional": true },
+    "@angular/core": { "optional": true },
+    "@angular/forms": { "optional": true },
+    "@tanstack/angular-table": { "optional": true }
+  },
+  "devDependencies": {
+    "@angular/common": "^18.2.0",
+    "@angular/compiler": "^18.2.0",
+    "@angular/core": "^18.2.0",
+    "@angular/forms": "^18.2.0",
+    "@angular/platform-browser": "^18.2.0",
+    "@angular/platform-browser-dynamic": "^18.2.0",
+    "@tanstack/angular-table": "^8.20.0",
+    "bun-types": "latest",
+    "rxjs": "^7.8.0",
+    "tslib": "^2.6.0",
+    "typescript": "^5.6.0",
+    "zone.js": "^0.15.0"
+  }
+}

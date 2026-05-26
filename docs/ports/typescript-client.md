@@ -493,6 +493,151 @@ controller that matches the contract (Java, Kotlin, Python). See
 per-port route-codegen status table and per-language hand-written
 examples.
 
+## Angular 18
+
+Angular 18 ships as a **second universal browser-side client tier** alongside
+the React + TanStack pair. Same architecture — one runtime package
+(`@metaobjectsdev/angular`) plus one codegen package
+(`@metaobjectsdev/codegen-ts-angular`). Same universality: any backend
+implementing the REST contract serves it.
+
+### Two new packages
+
+| Package | Purpose | Key exports |
+|---|---|---|
+| `@metaobjectsdev/angular` | Angular 18 runtime — standalone components, signals, peer-deps on `@angular/core`, `@angular/common`, `@angular/forms`, `@tanstack/angular-table` | `EntityFetcherToken`, `provideEntityFetcher`, `<mo-currency-input>` (`CurrencyInputComponent`), `<mo-entity-grid>` (`EntityGridComponent`), `CellRendererRegistry`, type `EntityGridColumn`; re-exports `EntityFetcher`, `GridConfig`, `formatCurrency`, `parseCurrency`, `buildFilterQs` from `runtime-web` |
+| `@metaobjectsdev/codegen-ts-angular` | Angular codegen — emits standalone components + signal-based services | `angularServiceFile()`, `angularFormFile()`, `angularGridFile()`, `barrel()` |
+
+Per-entity opt-out: mark an entity with `@emitAngular: false` and all three
+Angular outputs are skipped.
+
+### Wiring `provideEntityFetcher` in `app.config.ts`
+
+Angular DI replaces React context as the fetcher transport. The same
+`EntityFetcher` shape (`<T>(path, init?) => Promise<T>`) flows through the
+`EntityFetcherToken` injection token.
+
+```ts
+// app.config.ts
+import { ApplicationConfig } from "@angular/core";
+import { provideZoneChangeDetection } from "@angular/core";
+import { provideRouter } from "@angular/router";
+import { provideEntityFetcher } from "@metaobjectsdev/angular";
+import { routes } from "./app.routes";
+
+const fetcher = async <T,>(path: string, init?: RequestInit): Promise<T> => {
+  const res = await fetch(path, {
+    ...init,
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} on ${path}`);
+  return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+};
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideZoneChangeDetection({ eventCoalescing: true }),
+    provideRouter(routes),
+    provideEntityFetcher(fetcher),
+  ],
+};
+```
+
+### End-to-end: Author entity → service + form + grid
+
+Metadata (same `Author` entity as the React examples above):
+
+```jsonc
+// metaobjects/meta.blog.json
+{ "metadata.root": {
+    "package": "acme::blog",
+    "children": [
+      { "object.entity": {
+        "name": "Author",
+        "children": [
+          { "source.rdb":   { "@table": "authors" } },
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "name", "@required": true, "@maxLength": 200 } },
+          { "field.string": { "name": "bio",  "@maxLength": 2000 } },
+          { "field.boolean":{ "name": "active" } },
+          { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+          { "layout.dataGrid": {
+              "name": "default",
+              "@columns": ["name", "bio", "active"],
+              "@defaultSortField": "name",
+              "@defaultSortOrder": "asc",
+              "@pageSize": 25
+          }}
+        ]
+      }}
+    ]
+}}
+```
+
+`metaobjects.config.ts` adding the Angular generators:
+
+```ts
+import { defineConfig } from "@metaobjectsdev/cli";
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+import {
+  angularServiceFile,
+  angularFormFile,
+  angularGridFile,
+  barrel as angularBarrel,
+} from "@metaobjectsdev/codegen-ts-angular";
+
+export default defineConfig({
+  outDir: "packages/database/src/generated",
+  apiPrefix: "/api",
+  targets: {
+    angular: { outDir: "apps/angular-web/src/app/generated" },
+  },
+  entityModuleImportBase: "@acme/database/generated",
+  generators: [
+    entityFile(),
+    queriesFile(),
+    routesFile(),
+    angularServiceFile({ target: "angular" }),
+    angularFormFile({    target: "angular" }),
+    angularGridFile({    target: "angular" }),
+    angularBarrel({      target: "angular" }),
+    barrel(),
+  ],
+});
+```
+
+Consumer's Angular component composing the generated service + grid:
+
+```ts
+// app.component.ts
+import { Component, inject, OnInit } from "@angular/core";
+import { CommonModule } from "@angular/common";
+import { AuthorGridComponent, AuthorService } from "./generated/acme/blog";
+
+@Component({
+  selector: "app-root",
+  standalone: true,
+  imports: [CommonModule, AuthorGridComponent],
+  template: `<author-grid #grid />`,
+})
+export class AppComponent implements OnInit {
+  private readonly authors = inject(AuthorService);
+
+  async ngOnInit() {
+    const rows = await this.authors.list({ limit: 25, sort: "name:asc" });
+    // hand the rows to the grid component (in real code, signal binding or store)
+  }
+}
+```
+
+### See also
+
+- [`docs/recipes/csharp-angular18.md`](../recipes/csharp-angular18.md) —
+  end-to-end recipe for wiring an ASP.NET Minimal API backend (C# 12 / .NET 8)
+  to an Angular 18 client built with these packages; covers CORS, dev-server
+  ports, and base-URL configuration. (Future — lands in FR-008 §2.4.)
+
 ## See also
 
 - [`docs/features/api-contract.md`](../features/api-contract.md) — the

@@ -1,0 +1,57 @@
+{
+  "metadata.root": {
+    "package": "acme::blog",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Author",
+          "children": [
+            { "source.rdb": { "@table": "authors" } },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true,
+                "@maxLength": 200,
+                "children": [ { "view.text": {} } ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "bio",
+                "@maxLength": 2000,
+                "children": [ { "view.textarea": {} } ]
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "active",
+                "children": [ { "view.boolean": {} } ]
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": ["id"],
+                "@generation": "increment"
+              }
+            },
+            {
+              "layout.dataGrid": {
+                "name": "default",
+                "@columns": ["name", "bio", "active"],
+                "@defaultSortField": "name",
+                "@defaultSortOrder": "asc",
+                "@pageSize": 25,
+                "@filterable": true
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
