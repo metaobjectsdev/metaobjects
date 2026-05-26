@@ -191,6 +191,40 @@ class AuthorView:
     post_count: int
 ```
 
+## Verified by
+
+The following conformance fixtures gate this feature's behavior across ports:
+
+**`source.rdb` paradigm**
+
+- [`fixtures/conformance/source-rdb-column/`](../../fixtures/conformance/source-rdb-column/) — `@column` (renamed from `@dbColumn`) physical-name attr
+- [`fixtures/conformance/source-rdb-referential-actions/`](../../fixtures/conformance/source-rdb-referential-actions/) — `@onDelete` / `@onUpdate` on relationships
+
+**`@kind: "table"` (pre-v2 `source.dbTable`)**
+
+- [`fixtures/conformance/source-db-table-explicit/`](../../fixtures/conformance/source-db-table-explicit/) — explicit table source
+- [`fixtures/conformance/source-db-table-with-schema/`](../../fixtures/conformance/source-db-table-with-schema/) — `@schema` honored
+- [`fixtures/conformance/source-db-table-default-schema-omitted/`](../../fixtures/conformance/source-db-table-default-schema-omitted/) — default schema omitted from output
+
+**`@kind: "view"` projections (pre-v2 `source.dbView`)**
+
+- [`fixtures/conformance/source-db-view-projection/`](../../fixtures/conformance/source-db-view-projection/) — view with origins
+- [`fixtures/conformance/source-db-view-with-schema/`](../../fixtures/conformance/source-db-view-with-schema/) — `@schema` on view
+
+**Multi-source via `@role`**
+
+- [`fixtures/conformance/source-multi-source-roles/`](../../fixtures/conformance/source-multi-source-roles/) — primary + secondary sources on one object
+- [`fixtures/conformance/error-source-multiple-primary/`](../../fixtures/conformance/error-source-multiple-primary/) — exactly one primary required
+- [`fixtures/conformance/error-source-no-primary/`](../../fixtures/conformance/error-source-no-primary/) — at least one primary required
+
+**Query semantics against `source.rdb`** (cross-port runtime contract)
+
+- [`fixtures/persistence-conformance/queries/`](../../fixtures/persistence-conformance/queries/) — `get-by-id`, `list-*`, `count`, `filter-*`, `projection-aggregate` against the shared `canonical/` metadata. Every port that ships a runtime tier asserts identical normalized result rows.
+
+Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
+via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
+for the per-port pass/skip ledger.
+
 ## See also
 
 - [entities.md](entities.md) — the host node `object.entity`

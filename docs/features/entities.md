@@ -236,6 +236,76 @@ class Author:
     bio: Optional[str] = None
 ```
 
+## Verified by
+
+The following conformance fixtures gate this feature's behavior across ports:
+
+**Basic entity loading**
+
+- [`fixtures/conformance/smoke-empty-metadata/`](../../fixtures/conformance/smoke-empty-metadata/) — empty metadata loads without error
+- [`fixtures/conformance/loader-basic-single-entity/`](../../fixtures/conformance/loader-basic-single-entity/) — single `object.entity` round-trip
+- [`fixtures/conformance/subtype-entity-with-identity/`](../../fixtures/conformance/subtype-entity-with-identity/) — `object.entity` accepts `identity.primary`
+- [`fixtures/conformance/subtype-entity-missing-primary-warning/`](../../fixtures/conformance/subtype-entity-missing-primary-warning/) — warning when an entity has no primary identity
+- [`fixtures/conformance/subtype-value-without-identity/`](../../fixtures/conformance/subtype-value-without-identity/) — `object.value` does NOT require identity
+
+**Inheritance via `extends:`**
+
+- [`fixtures/conformance/extends-single-level/`](../../fixtures/conformance/extends-single-level/) — basic `extends` resolution
+- [`fixtures/conformance/extends-multi-level/`](../../fixtures/conformance/extends-multi-level/) — multi-hop ancestor chain
+- [`fixtures/conformance/extends-abstract-base/`](../../fixtures/conformance/extends-abstract-base/) — `abstract: true` parents are not instantiable
+- [`fixtures/conformance/extends-cross-file/`](../../fixtures/conformance/extends-cross-file/) — deferred resolution across files
+- [`fixtures/conformance/error-extends-nonexistent/`](../../fixtures/conformance/error-extends-nonexistent/) — `ERR_UNKNOWN_EXTENDS` when parent missing
+
+**Identity**
+
+- [`fixtures/conformance/identity-primary-and-secondary/`](../../fixtures/conformance/identity-primary-and-secondary/) — multiple identities on one entity
+- [`fixtures/conformance/identity-reference-simple/`](../../fixtures/conformance/identity-reference-simple/) — FK via `identity.reference`
+
+**Attributes (`@`-prefixed)**
+
+- [`fixtures/conformance/attr-properties-basic/`](../../fixtures/conformance/attr-properties-basic/) — typed attr parsing
+- [`fixtures/conformance/attr-default-polymorphic/`](../../fixtures/conformance/attr-default-polymorphic/) — `@default` adopts the field's value type
+- [`fixtures/conformance/error-attr-missing-required/`](../../fixtures/conformance/error-attr-missing-required/) — `ERR_MISSING_REQUIRED_ATTR`
+- [`fixtures/conformance/error-attr-wrong-type/`](../../fixtures/conformance/error-attr-wrong-type/) — `ERR_BAD_ATTR_VALUE` on type mismatch
+- [`fixtures/conformance/error-attr-bad-allowed-value/`](../../fixtures/conformance/error-attr-bad-allowed-value/) — out-of-enumeration attr value rejected
+- [`fixtures/conformance/error-reserved-word-as-attr/`](../../fixtures/conformance/error-reserved-word-as-attr/) — `ERR_RESERVED_ATTR` on `@`-prefixing a reserved word
+
+**Documentation common attrs (`description`, `notes`, `title`, …)**
+
+- [`fixtures/conformance/doc-common-attrs-basic/`](../../fixtures/conformance/doc-common-attrs-basic/) — single-line description
+- [`fixtures/conformance/doc-common-attrs-multiline/`](../../fixtures/conformance/doc-common-attrs-multiline/) — multi-line description preserved
+- [`fixtures/conformance/doc-common-attrs-on-all-types/`](../../fixtures/conformance/doc-common-attrs-on-all-types/) — common attrs accepted on every node kind
+- [`fixtures/conformance/doc-common-attrs-stringarray-shapes/`](../../fixtures/conformance/doc-common-attrs-stringarray-shapes/) — `seeAlso` / `aliases` array shapes
+
+**Auto-set timestamps**
+
+- [`fixtures/conformance/auto-set-on-create/`](../../fixtures/conformance/auto-set-on-create/) — `@autoSetOnCreate` honored
+- [`fixtures/conformance/auto-set-on-update/`](../../fixtures/conformance/auto-set-on-update/) — `@autoSetOnUpdate` honored
+- [`fixtures/conformance/auto-set-on-create-and-update/`](../../fixtures/conformance/auto-set-on-create-and-update/) — both flags coexist
+
+**Filter / sort / data-grid layout**
+
+- [`fixtures/conformance/attr-filter-shorthand/`](../../fixtures/conformance/attr-filter-shorthand/) — `@filterable: true` shorthand
+- [`fixtures/conformance/attr-filter-explicit-ops/`](../../fixtures/conformance/attr-filter-explicit-ops/) — explicit op-list form
+- [`fixtures/conformance/error-attr-filter-bad-field/`](../../fixtures/conformance/error-attr-filter-bad-field/) — `@filterable` on a non-field rejected
+- [`fixtures/conformance/error-attr-filter-bad-op/`](../../fixtures/conformance/error-attr-filter-bad-op/) — unknown operator rejected
+- [`fixtures/conformance/error-attr-filter-legacy-string/`](../../fixtures/conformance/error-attr-filter-legacy-string/) — legacy string form rejected
+- [`fixtures/conformance/loader-filterable-on-indexed-no-warning/`](../../fixtures/conformance/loader-filterable-on-indexed-no-warning/) — indexed field + `@filterable` is silent
+- [`fixtures/conformance/warning-filterable-no-index/`](../../fixtures/conformance/warning-filterable-no-index/) — `@filterable` without an index emits a warning
+- [`fixtures/conformance/layout-data-grid-basic/`](../../fixtures/conformance/layout-data-grid-basic/) — `layout.dataGrid` columns + sort
+- [`fixtures/conformance/layout-data-grid-multiple-named/`](../../fixtures/conformance/layout-data-grid-multiple-named/) — multiple named grids per entity
+- [`fixtures/conformance/error-data-grid-bad-sort-field/`](../../fixtures/conformance/error-data-grid-bad-sort-field/) — `@defaultSortField` must be a real field
+
+**Overlay / merge**
+
+- [`fixtures/conformance/overlay-same-object-different-files/`](../../fixtures/conformance/overlay-same-object-different-files/) — same `package` + `name` merge across files
+- [`fixtures/conformance/overlay-attr-last-writer-wins/`](../../fixtures/conformance/overlay-attr-last-writer-wins/) — attr conflict resolution
+- [`fixtures/conformance/overlay-merge-flag-explicit/`](../../fixtures/conformance/overlay-merge-flag-explicit/) — `overlay: true` is explicit-merge-intent
+
+Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
+via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
+for the per-port pass/skip ledger.
+
 ## See also
 
 - [field-types.md](field-types.md) — all `field.*` subtypes and their per-port mappings

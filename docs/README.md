@@ -15,6 +15,7 @@ copy-paste cross-port without context-switching.
 ```
 docs/
 ├── README.md                    # this file
+├── CONFORMANCE.md               # inverse index: fixture → feature doc + per-port pass status
 ├── features/                    # one file per metamodel feature
 │   ├── entities.md
 │   ├── source-kinds.md
@@ -42,6 +43,7 @@ docs/
 | Author metadata in YAML instead of JSON | [`features/yaml-authoring.md`](features/yaml-authoring.md) |
 | Wire prompt construction (FR-004) | [`features/templates-and-payloads.md`](features/templates-and-payloads.md) |
 | Know which feature is supported in which port today | the capability matrix in the root [`README.md`](../README.md) or the per-port "Capability snapshot" table |
+| See which conformance fixtures gate each feature (and which port passes which) | [`CONFORMANCE.md`](CONFORMANCE.md) |
 | Read the canonical spec (target-agnostic) | [`../spec/`](../spec/) |
 | Find a release recipe (Cloudflare D1, etc.) | [`recipes/`](recipes/) |
 | See the deeper design rationale for a feature | [`superpowers/specs/`](superpowers/specs/) |

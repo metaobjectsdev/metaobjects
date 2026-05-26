@@ -168,6 +168,25 @@ format the metadata was on disk in.
 | C# | Yes — `MetaObjects.Loader` desugars at load (via `YamlDotNet`) |
 | Python | Yes — `metaobjects.loader` desugars at load (via `PyYAML`) |
 
+## Verified by
+
+The following conformance fixtures gate this feature's behavior across ports:
+
+- [`fixtures/yaml-conformance/yaml-sigil-free-attrs/`](../../fixtures/yaml-conformance/yaml-sigil-free-attrs/) — bare attrs in YAML re-acquire `@` on lowering
+- [`fixtures/yaml-conformance/yaml-array-suffix/`](../../fixtures/yaml-conformance/yaml-array-suffix/) — `field.long[]: name` array-suffix sugar
+- [`fixtures/yaml-conformance/yaml-mixed-bare-and-prefixed/`](../../fixtures/yaml-conformance/yaml-mixed-bare-and-prefixed/) — bare + `@`-prefixed attrs coexist
+- [`fixtures/yaml-conformance/error-yaml-reserved-as-attr/`](../../fixtures/yaml-conformance/error-yaml-reserved-as-attr/) — reserved structural keyword cannot be used as a bare attr
+- [`fixtures/yaml-conformance/error-yaml-coerced-bool-in-string/`](../../fixtures/yaml-conformance/error-yaml-coerced-bool-in-string/) — YAML 1.1 bool-coercion guard for string fields
+- [`fixtures/yaml-conformance/error-yaml-coerced-num-in-enum/`](../../fixtures/yaml-conformance/error-yaml-coerced-num-in-enum/) — YAML 1.1 number-coercion guard for enum members
+
+Plus the [`error-parse-malformed-json`](../../fixtures/conformance/error-parse-malformed-json/)
+fixture in the metamodel corpus, which the YAML loader piggy-backs on through the
+JSON tail-stage of the pipeline.
+
+Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
+via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
+for the per-port pass/skip ledger.
+
 ## See also
 
 - [loaders.md](loaders.md) — the pipeline that consumes the desugared JSON

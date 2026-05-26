@@ -331,6 +331,40 @@ and checks each one exists on the payload VO. If a template references
 Every rule is conformance-gated by a fixture in
 [`fixtures/render-conformance/`](../../fixtures/render-conformance/).
 
+## Verified by
+
+The following conformance fixtures gate this feature's behavior across ports:
+
+**Template subtypes (metamodel)**
+
+- [`fixtures/conformance/template-output-simple/`](../../fixtures/conformance/template-output-simple/) — `template.output` with `@payloadRef`
+- [`fixtures/conformance/template-prompt-simple/`](../../fixtures/conformance/template-prompt-simple/) — `template.prompt` with `@payloadRef`
+- [`fixtures/conformance/template-output-and-prompt/`](../../fixtures/conformance/template-output-and-prompt/) — both subtypes coexist on one entity
+- [`fixtures/conformance/error-template-payload-ref-unresolved/`](../../fixtures/conformance/error-template-payload-ref-unresolved/) — `@payloadRef` must resolve at load
+- [`fixtures/conformance/error-template-prompt-missing-payload-ref/`](../../fixtures/conformance/error-template-prompt-missing-payload-ref/) — `template.prompt` requires `@payloadRef`
+- [`fixtures/conformance/error-template-required-slot-missing/`](../../fixtures/conformance/error-template-required-slot-missing/) — required slot declarations are checked
+
+**Payload origins (`origin.*`)**
+
+- [`fixtures/conformance/origin-passthrough-simple/`](../../fixtures/conformance/origin-passthrough-simple/) — `origin.passthrough` cross-entity field reference
+- [`fixtures/conformance/origin-aggregate-count/`](../../fixtures/conformance/origin-aggregate-count/) — `origin.aggregate @agg=count`
+- [`fixtures/conformance/origin-aggregate-sum/`](../../fixtures/conformance/origin-aggregate-sum/) — `origin.aggregate @agg=sum`
+- [`fixtures/conformance/origin-multi-level-via/`](../../fixtures/conformance/origin-multi-level-via/) — dotted-path `@via` traversal across hops
+- [`fixtures/conformance/origin-collection-simple/`](../../fixtures/conformance/origin-collection-simple/) — `origin.collection` for repeated-row payloads
+- [`fixtures/conformance/error-origin-bad-via-path/`](../../fixtures/conformance/error-origin-bad-via-path/) — unresolvable `@via` rejected
+- [`fixtures/conformance/error-origin-bad-aggregate-fn/`](../../fixtures/conformance/error-origin-bad-aggregate-fn/) — unknown `@agg` rejected
+
+**Render engine output (`fixtures/render-conformance/`)** — byte-identical Mustache output across ports
+
+- [`fixtures/render-conformance/render-example-prompt/`](../../fixtures/render-conformance/render-example-prompt/) — `template.prompt` end-to-end render
+- [`fixtures/render-conformance/render-example-email/`](../../fixtures/render-conformance/render-example-email/) — `template.output @format=html` (transactional email)
+- [`fixtures/render-conformance/render-example-spreadsheet/`](../../fixtures/render-conformance/render-example-spreadsheet/) — `@format=csv` with header row
+- [`fixtures/render-conformance/render-csv-injection/`](../../fixtures/render-conformance/render-csv-injection/) — OWASP CSV-injection escaping (leading `= + - @ \t \r`)
+
+Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
+via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
+for the per-port pass/skip ledger.
+
 ## See also
 
 - [entities.md](entities.md) — `object.value` is the payload's host type
