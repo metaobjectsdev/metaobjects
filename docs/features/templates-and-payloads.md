@@ -1,0 +1,340 @@
+# Templates and payloads (FR-004)
+
+The **fourth pillar** of MetaObjects: making LLM prompt construction (and any other
+rendered text artifact — emails, exports, docs, `llms.txt`) a first-class metamodel
+capability. A **template** is a typed pair: a logical reference to the prompt /
+output text (resolved at runtime by a provider, never inlined in metadata) and a
+**payload value-object** that declares exactly what shape of data the template
+expects.
+
+This buys four guarantees:
+
+1. **Drift detection** — a renamed field on the source entity breaks the build
+   (`Renderer.verify` reports it), not silently degrades a prompt.
+2. **Snapshot-testability** — `(payload VO, resolved text) → string` is a pure
+   function; pin the rendered output as a fixture.
+3. **Cache-stability** — a whitespace change can't silently break exact-prefix
+   prompt-cache hits because the rendered output is byte-identical across runs and
+   across language ports.
+4. **Cross-language conformance** — a Python eval renders exactly what the Java
+   production server sends.
+
+The vocabulary is `template.*` (the renderable unit) + `origin.*` (the projection
+fields that build the payload VO). Mustache is the chosen template engine — it has
+the only published cross-language spec + conformance suite.
+
+## Two template subtypes
+
+| Subtype | Use case | Carries |
+|---|---|---|
+| `template.prompt` | LLM-targeted | `@maxTokens`, `@requiredSlots`, `@model` (in addition to the generic attrs) |
+| `template.output` | Email / docs / config / export | Just the generic attrs |
+
+Both carry the same generic attributes:
+
+| Attr | Required | Purpose |
+|---|---|---|
+| `@payloadRef` | yes | The `object.value` view-object declaring the payload shape |
+| `@textRef` | yes | The 2-layer logical reference `group/source` resolved by a provider |
+| `@format` | no | `text` / `html` / `xml` / `csv` / `json` / `markdown` / `spreadsheet` — drives the escaper. Default: `text`. |
+| `@maxChars` | no | Build-time size budget |
+| `@owner` | no | Governance attribute |
+| `@since` | no | Governance attribute |
+
+## Payload origins
+
+A payload is an `object.value` view-object whose fields each declare an `origin.*`
+child. Three origin subtypes:
+
+| Origin | Behavior |
+|---|---|
+| `origin.passthrough @from "Entity.field"` | Payload property type matches the source field |
+| `origin.aggregate @agg <count\|sum\|avg\|min\|max>` | `count` → `Long`; `avg` → `Double`; others match source field |
+| `origin.collection @via "Parent.rel"` | `List<NestedPayload>` — assembled from a relationship |
+
+## Authoring
+
+The named example: a `WelcomePrompt` greets an `Author` by name and includes
+their post count + the first 3 post titles.
+
+### Canonical JSON
+
+```json
+{
+  "metadata.root": {
+    "package": "acme::blog",
+    "children": [
+      {
+        "object.value": {
+          "name": "WelcomePayload",
+          "children": [
+            { "field.string": { "name": "displayName",
+              "children": [ { "origin.passthrough": { "@from": "Author.name" } } ] } },
+            { "field.long":   { "name": "postCount",
+              "children": [ { "origin.aggregate": {
+                "@agg": "count", "@of": "Post.id", "@via": "Author.posts" } } ] } },
+            { "field.object": { "name": "posts", "@objectRef": "PostSummary",
+              "children": [ { "origin.collection": { "@via": "Author.posts" } } ] } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "PostSummary",
+          "children": [
+            { "field.string": { "name": "title",
+              "children": [ { "origin.passthrough": { "@from": "Post.title" } } ] } }
+          ]
+        }
+      },
+      {
+        "template.prompt": {
+          "name": "WelcomePrompt",
+          "@payloadRef": "WelcomePayload",
+          "@textRef": "lobby/welcome",
+          "@format": "xml",
+          "@maxTokens": 500
+        }
+      }
+    ]
+  }
+}
+```
+
+### Sigil-free YAML
+
+```yaml
+metadata:
+  package: acme::blog
+  children:
+    - object.value:
+        name: WelcomePayload
+        children:
+          - field.string:
+              name: displayName
+              children:
+                - origin.passthrough: { from: Author.name }
+          - field.long:
+              name: postCount
+              children:
+                - origin.aggregate:
+                    agg: count
+                    of: Post.id
+                    via: Author.posts
+          - field.object:
+              name: posts
+              objectRef: PostSummary
+              children:
+                - origin.collection: { via: Author.posts }
+
+    - object.value:
+        name: PostSummary
+        children:
+          - field.string:
+              name: title
+              children:
+                - origin.passthrough: { from: Post.title }
+
+    - template.prompt:
+        name: WelcomePrompt
+        payloadRef: WelcomePayload
+        textRef: lobby/welcome
+        format: xml
+        maxTokens: 500
+```
+
+## Provider-resolved text
+
+`@textRef` is a 2-layer logical reference `group/source` (folder/file ·
+table/key · collection/document). At runtime, a configured provider resolves the
+reference to the actual template text:
+
+- **`FilesystemProvider`** — L1 = folder, L2 = file. The default for dev.
+- **`InMemoryProvider`** — a `Map<String,String>`. Test-only.
+- **`ClasspathResourceProvider`** — Java/Kotlin: resolves through `getResourceAsStream`.
+
+A consumer can ship their own provider (RDB / Neo4j / Qdrant) — the engine takes
+the `Provider` interface and delegates. Locale, A/B, dynamic, and evolutionary
+prompts all live behind the provider seam without touching metadata.
+
+## The rendered output
+
+For the `lobby/welcome` template:
+
+```mustache
+<prompt>
+<author name="{{displayName}}" posts="{{postCount}}"/>
+<posts>
+{{#posts}}
+  <post title="{{title}}"/>
+{{/posts}}
+</posts>
+</prompt>
+```
+
+…and a payload `{ displayName: "Ada", postCount: 12, posts: [{title: "Hello"},
+{title: "Mustache"}, {title: "Prompts"}] }`, every port renders **byte-identical**:
+
+```xml
+<prompt>
+<author name="Ada" posts="12"/>
+<posts>
+  <post title="Hello"/>
+  <post title="Mustache"/>
+  <post title="Prompts"/>
+</posts>
+</prompt>
+```
+
+## What each port generates
+
+### TypeScript
+
+`@metaobjectsdev/render` ships the render engine + verify. Payload-VO codegen is
+shared with the projection codegen path (the payload IS an `object.value`).
+
+```ts
+import { render } from "@metaobjectsdev/render";
+import { FilesystemProvider } from "@metaobjectsdev/render/providers";
+
+const out: string = await render({
+  ref: "lobby/welcome",
+  payload: { displayName: "Ada", postCount: 12, posts: [{ title: "Hello" }] },
+  provider: new FilesystemProvider("./prompts"),
+  format: "xml",
+});
+```
+
+### Java
+
+`metaobjects-render` ships `Renderer` + `Provider` (Classpath, Filesystem,
+InMemory) + `Verify`. Payload-VO codegen is **not** shipped on the Java side — host
+code consumes the payload as a Java `Map<String,Object>` or a hand-coded value
+object.
+
+```java
+import com.metaobjects.render.*;
+
+Provider provider = new FilesystemProvider(Path.of("./prompts"));
+String out = Renderer.render(RenderRequest.builder()
+    .ref("lobby/welcome")
+    .payload(Map.of(
+        "displayName", "Ada",
+        "postCount", 12L,
+        "posts", List.of(Map.of("title", "Hello"))))
+    .provider(provider)
+    .format("xml")
+    .build());
+```
+
+### Kotlin
+
+`metaobjects-metadata-ktx` wraps `Renderer` in an idiomatic Kotlin builder.
+`KotlinPayloadGenerator` (in `codegen-kotlin`) emits a `@Serializable` payload data
+class per template, resolving all three origin subtypes.
+
+```kotlin
+import com.metaobjects.metadata.ktx.render
+import com.metaobjects.render.FilesystemProvider
+import java.nio.file.Path
+
+val out = render {
+    ref = "lobby/welcome"
+    payload = WelcomePayload(
+        displayName = "Ada",
+        postCount = 12,
+        posts = listOf(PostSummary("Hello")),
+    )
+    provider = FilesystemProvider(Path.of("./prompts"))
+    format = "xml"
+}
+```
+
+```kotlin
+// generated/acme/blog/WelcomePromptPayload.kt
+@Serializable
+data class WelcomePayload(
+    val displayName: String,
+    val postCount: Long,
+    val posts: List<PostSummary>,
+)
+
+@Serializable
+data class PostSummary(val title: String)
+```
+
+### C#
+
+`MetaObjects.Render` ships the render engine + verify. `MetaObjects.Codegen`
+ships payload-VO codegen.
+
+```csharp
+using MetaObjects.Render;
+
+var provider = new FilesystemProvider("./prompts");
+var payload = new WelcomePayload(
+    DisplayName: "Ada",
+    PostCount: 12,
+    Posts: new[] { new PostSummary("Hello") });
+
+string output = Renderer.Render(new RenderRequest(
+    Ref: "lobby/welcome",
+    Payload: payload,
+    Provider: provider,
+    Format: "xml"));
+```
+
+### Python
+
+`metaobjects.render` ships the Mustache engine + `Verify`. The Python loader
+recognizes `template.*` + `origin.*`. Payload-VO codegen is not yet emitted —
+consumers pass a `dict` (or any pystache-compatible mapping).
+
+```python
+from metaobjects.render import render, FilesystemProvider
+
+out = render(
+    ref="lobby/welcome",
+    payload={
+        "displayName": "Ada",
+        "postCount": 12,
+        "posts": [{"title": "Hello"}],
+    },
+    provider=FilesystemProvider("./prompts"),
+    format="xml",
+)
+```
+
+## Drift detection: `verify`
+
+For every template, `verify` resolves the text, parses the `{{...}}` references,
+and checks each one exists on the payload VO. If a template references
+`{{authorName}}` but the payload only has `displayName`, the build fails.
+
+| Port | Command |
+|---|---|
+| TypeScript | `meta verify` (CLI) |
+| Java | `mvn meta:verify` (Maven goal) |
+| Kotlin | `mvn meta:verify` (same Maven goal) |
+| C# | `meta verify <metadataDir> --templates <root>` |
+| Python | `python -m metaobjects.render.verify` |
+
+## Determinism contract
+
+- Arrays only for iteration (no object-key iteration — the engine sorts or rejects).
+- No locale/number/date formatting in the engine — pre-format on the payload.
+- Pinned trailing-newline + Mustache standalone-tag whitespace rules.
+- `@format` drives escaping via an engine-owned escaper registry (NOT the
+  Mustache lib's default), identical across ports.
+- CSV / spreadsheet escapers neutralize leading `= + - @ \t \r` (OWASP CSV-injection guard).
+
+Every rule is conformance-gated by a fixture in
+[`fixtures/render-conformance/`](../../fixtures/render-conformance/).
+
+## See also
+
+- [entities.md](entities.md) — `object.value` is the payload's host type
+- [field-types.md](field-types.md) — fields in payload VOs
+- [source-kinds.md](source-kinds.md) — `source.rdb` `@kind: "view"` for materialized payloads (FR-003)
+- [migrations-and-drift.md](migrations-and-drift.md) — the verify pillar
+- FR-004 spec: [2026-05-22-fr-004-cross-language-prompt-construction-design.md](../superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md)

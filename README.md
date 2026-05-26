@@ -1,46 +1,151 @@
 # MetaObjects
 
-A cross-language metadata standard for declaring typed entity models that drive code generation, runtime metadata access, and drift detection across multiple languages.
+A **cross-language metadata standard** for declaring typed entity models that
+drive code generation, runtime metadata access, drift detection, and prompt
+construction — across TypeScript, Java, Kotlin, C#, and Python.
 
-The metamodel is the durable spine; generated code is the disposable artifact. Substrate is local-first: typed metadata lives in your repo, generated code is idiomatic per-language output that runs without any MetaObjects dependency at runtime.
+The metamodel is the **durable spine**; generated code is the **disposable
+artifact**. Substrate is local-first: typed metadata lives in your repo,
+generated code is idiomatic per-language output that runs without any MetaObjects
+runtime dependency. If the package ecosystem disappears tomorrow, you keep
+working code.
+
+## Quick links
+
+- New here? Pick your language → [`docs/ports/`](docs/ports/) (TS / Java / Kotlin / C# / Python).
+- Want the metamodel feature reference? → [`docs/features/`](docs/features/).
+- Want the documentation index? → [`docs/README.md`](docs/README.md).
+- Want the design rationale? → [`spec/`](spec/) + [`docs/superpowers/specs/`](docs/superpowers/specs/).
+- Want the cross-language contract? → [`fixtures/`](fixtures/) (the conformance corpora are the oracle).
 
 ## Languages
 
-| Language | Status | Directory |
-|---|---|---|
-| TypeScript | Reference implementation — published on npm (`0.5.0`) | [`server/typescript/`](server/typescript/) · [`client/web/`](client/web/) |
-| Java | In progress (H3a shipped 2026-05-19; H3b active) | [`java/`](java/) |
-| Python | Planned | [`python/`](python/) |
-| C# | Loader + conformance shipped | [`csharp/`](csharp/) |
+| Language | Status | Quickstart | Source |
+|---|---|---|---|
+| TypeScript | Published to npm at `0.7.0-rc.1` (12 `@metaobjectsdev/*` packages) | [`docs/ports/typescript.md`](docs/ports/typescript.md) | [`server/typescript/`](server/typescript/) · [`client/web/`](client/web/) |
+| Java | Loader + OMDB + render + Maven plugin all shipped; full conformance green | [`docs/ports/java.md`](docs/ports/java.md) | [`server/java/`](server/java/) |
+| Kotlin | Codegen tier on top of Java — 7 generators (entity, Exposed table, relations, payload, validator, Spring config, storedProc); 12 / 12 persistence-conformance | [`docs/ports/kotlin.md`](docs/ports/kotlin.md) | [`server/java/codegen-kotlin/`](server/java/codegen-kotlin/) · [`server/java/metadata-ktx/`](server/java/metadata-ktx/) |
+| C# | Loader + conformance + EF Core codegen + render engine + `meta` CLI all shipped | [`docs/ports/csharp.md`](docs/ports/csharp.md) | [`server/csharp/`](server/csharp/) |
+| Python | Loader + conformance + render + entity-model codegen shipped; persistence + migration in progress | [`docs/ports/python.md`](docs/ports/python.md) | [`server/python/`](server/python/) |
 
-## What's in this repo
+## Capability matrix
 
-- [`CHANGELOG.md`](CHANGELOG.md) — release notes for the published `@metaobjectsdev/*` TypeScript packages
-- [`spec/`](spec/) — cross-language design docs, roadmap, conformance test documentation
-- [`fixtures/`](fixtures/) — shared cross-language conformance test fixtures
-- [`docs/recipes/`](docs/recipes/) — deployment recipes (Cloudflare Workers, more on the way)
-- [`server/typescript/`](server/typescript/) — server-side TypeScript (codegen, runtime, CLI, SDK); [`client/web/`](client/web/) — browser packages (React, TanStack, framework-agnostic runtime)
-- [`java/`](java/), [`csharp/`](csharp/), [`python/`](python/) — other language ports (see status table above)
+| Feature | TS | Java | Kotlin | C# | Python |
+|---|---|---|---|---|---|
+| Entities + fields | Yes | Yes | Yes | Yes | Yes |
+| Relationships + FK | Yes | Yes | Yes | Yes | Loader yes; codegen partial |
+| Source kinds (`table` / `view`) | Yes | Yes | Yes | Yes | Loader yes; codegen partial |
+| Source kinds (`storedProc` / `tableFunction` / `materializedView`) | Yes | Yes | Yes (storedProc generator) | Partial | Loader yes; codegen partial |
+| `field.currency` / `field.enum` | Yes | Yes | Yes | Yes | Yes |
+| `field.object` + `@storage=flattened` | Yes | Yes | Yes (per-sub-field columns) | Yes (EF Core `OwnsOne`) | Loader yes; codegen partial |
+| Templates + render (FR-004) | Yes | Yes | Yes (wraps Java) | Yes | Yes |
+| Payload-VO codegen | Yes (via projection) | – (consumers use `Map`) | Yes (`@Serializable`) | Yes | – (consumers use `dict`) |
+| Migration emission | `meta migrate` (Postgres / SQLite / D1) | `mvn meta:migrate --flyway` | `mvn meta:migrate --flyway` (via Java) | `meta migrate` | In progress |
+| DB-drift verify | `meta verify` | `mvn meta:verify` | `mvn meta:verify` (via Java) + startup validator | `meta verify` | In progress |
+| Template-drift verify | Yes | Yes (`Renderer.verify`) | Yes (via Java) | Yes (`meta verify`) | Yes (`metaobjects.render.verify`) |
+| YAML authoring (sigil-free → JSON) | Yes | Yes | Yes (via Java) | Yes | Yes |
+| Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Roadmap |
 
-## Getting started (TypeScript)
+A "Yes" means the feature is covered by the shared conformance corpora at
+[`fixtures/`](fixtures/) for that port, or by a port-local test of equivalent
+scope. A "partial" means the loader recognizes the metamodel feature but the
+codegen / runtime tier doesn't fully exercise it yet.
 
-```bash
-bun install                        # at the repo root (the JS/TS workspace root)
-cd server/typescript && bun test   # server suite
+## Four pillars
+
+Equal-weight. The first three ship per-language today; the fourth lands in
+`7.0.0`:
+
+1. **Codegen** — emit idiomatic per-language code (Drizzle/Zod + Fastify for TS,
+   POJO + OMDB for Java, `@Serializable data class` + Exposed for Kotlin, EF Core
+   record + ASP.NET routes for C#, `@dataclass` for Python). Hand-edit-preserving
+   regen via three-way merge.
+2. **Runtime metadata** — load metadata at runtime, drive behavior dynamically
+   (CRUD, validation, relationships, dynamic admin UIs, LLM tool registration).
+3. **Drift detection** — catch divergence across the 7 drift sources (code/DB,
+   code/API-doc, DB/metadata, migration/metadata, generated-edited, prompt/payload,
+   generated/runtime). See [`docs/features/migrations-and-drift.md`](docs/features/migrations-and-drift.md).
+4. **Prompt construction** *(landing in 7.0.0; foundation shipped)* — the prompt
+   is code too. Declare a prompt's payload as a typed projection (payload bloat
+   becomes a diff), keep its text external and provider-resolved, render it
+   deterministically (snapshot-testable, cache-stable, drift-checked at build
+   time, conformance-gated cross-language). See
+   [`docs/features/templates-and-payloads.md`](docs/features/templates-and-payloads.md).
+
+## Repo layout
+
+```
+metaobjects/
+├── README.md                       # you are here
+├── CLAUDE.md                       # project instructions for Claude
+├── spec/                           # canonical metamodel docs, ADRs, roadmap
+├── fixtures/                       # cross-language conformance corpora
+│   ├── conformance/                # metamodel (loader + serializer + navigation)
+│   ├── yaml-conformance/           # YAML authoring desugar
+│   ├── render-conformance/         # FR-004 byte-identical render oracle
+│   ├── verify-conformance/         # FR-004 template-drift gate
+│   └── persistence-conformance/    # on-demand integration tests vs real Postgres
+├── docs/
+│   ├── README.md                   # docs index
+│   ├── features/                   # feature reference (one file per metamodel feature)
+│   ├── ports/                      # per-port quickstarts
+│   ├── recipes/                    # deployment recipes (Cloudflare D1, …)
+│   ├── superpowers/specs/          # design specs
+│   └── RELEASING.md                # npm publish procedure
+│
+├── server/                         # runs on a server
+│   ├── typescript/                 # the reference port
+│   ├── java/                       # Java port (incl. codegen-kotlin + metadata-ktx)
+│   ├── csharp/                     # C# port
+│   └── python/                     # Python port
+│
+└── client/
+    └── web/                        # universal browser packages (React, TanStack, framework-agnostic)
 ```
 
-(Bun-first dev workflow; no separate build step. Typecheck across the workspace with `bun run --filter '*' typecheck` from the repo root. Published packages are on npm — consumers install via npm/pnpm/bun, e.g. `npm i @metaobjectsdev/cli`.)
+## Getting started
 
-CLI binary: `meta`. Project config: `metaobjects.config.ts`. Project marker directory: `.metaobjects/`.
+| Language | First command |
+|---|---|
+| TypeScript | `npm i @metaobjectsdev/cli && npx meta init` → [`docs/ports/typescript.md`](docs/ports/typescript.md) |
+| Java | Add `metaobjects-maven-plugin` to your `pom.xml` → [`docs/ports/java.md`](docs/ports/java.md) |
+| Kotlin | Add `metaobjects-codegen-kotlin` + `metaobjects-metadata-ktx` → [`docs/ports/kotlin.md`](docs/ports/kotlin.md) |
+| C# | `dotnet tool install --global MetaObjects.Cli` → [`docs/ports/csharp.md`](docs/ports/csharp.md) |
+| Python | `pip install metaobjects` → [`docs/ports/python.md`](docs/ports/python.md) |
+
+## Cross-language conformance
+
+Every port runs against the same fixture corpora at [`fixtures/`](fixtures/).
+Per-port unit tests stay container-free; the on-demand integration suite spins up
+ephemeral Postgres containers and exercises every shipped port's persistence
+layer against the shared scenario corpus:
+
+```bash
+scripts/integration-test.sh            # all runners (ts + csharp + java)
+scripts/integration-test.sh ts         # just TypeScript
+scripts/integration-test.sh csharp     # just C#
+scripts/integration-test.sh java       # just Java
+```
+
+The persistence corpus + the cross-port test harness are the contract: identical
+normalized results across every port, or it's a port bug.
+
+## How to contribute
+
+PRs welcome. Read [`CLAUDE.md`](CLAUDE.md) for the project conventions (TDD
+discipline, named-constants-for-metamodel-strings, no-`any` rule, cross-language
+porting contract). For significant new features, open an issue first to discuss
+the approach.
 
 ## Roadmap
 
-See [`spec/roadmap.md`](spec/roadmap.md) for current + planned work.
+[`spec/roadmap.md`](spec/roadmap.md) for current + planned work.
 
 ## Releasing
 
-Publishing the TypeScript packages to npm: see [`docs/RELEASING.md`](docs/RELEASING.md).
+[`docs/RELEASING.md`](docs/RELEASING.md) for the npm publish procedure
+(RC → smoke-test → promote).
 
 ## License
 
-Apache 2.0 (see [LICENSE](LICENSE)).
+Apache 2.0 ([LICENSE](LICENSE)).
