@@ -138,8 +138,12 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                 null, null, e, java.util.Collections.emptyMap(),
                 com.metaobjects.ErrorCode.ERR_MALFORMED_JSON);
         } catch (Exception e) {
+            // Fall-through: any other parse-time failure is treated as malformed JSON
+            // so callers see a stable conformance code rather than an untagged exception.
             throw new MetaDataException(
-                "Error loading canonical JSON from file [" + getFilename() + "]: " + e.getMessage(), e);
+                "Error loading canonical JSON from file [" + getFilename() + "]: " + e.getMessage(),
+                null, null, e, java.util.Collections.emptyMap(),
+                com.metaobjects.ErrorCode.ERR_MALFORMED_JSON);
         }
     }
 

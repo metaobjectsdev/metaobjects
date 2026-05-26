@@ -25,6 +25,7 @@ import {
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_REQUIRED_SLOTS,
 } from "../template/template-constants.js";
+import { OBJECT_SUBTYPE_VALUE } from "../core/object/object-constants.js";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
@@ -99,10 +100,10 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
     const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
     if (typeof payloadRef !== "string") continue; // absence handled by the required-attr schema check
     const payload = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === payloadRef);
-    if (!payload) {
+    if (!payload || payload.subType !== OBJECT_SUBTYPE_VALUE) {
       errors.push(
         new ParseError(
-          `template "${tmpl.name}" @payloadRef "${payloadRef}" does not resolve to a known object in this model`,
+          `template "${tmpl.name}" @payloadRef "${payloadRef}" does not resolve to an object.value at root`,
           { code: "ERR_INVALID_TEMPLATE", source: tmpl.source },
         ),
       );

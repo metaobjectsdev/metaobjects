@@ -1,0 +1,23 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Subscriber",
+          "children": [
+            { "field.long": { "name": "id" } },
+            {
+              "field.string": {
+                "name": "email",
+                "@filterable": true,
+                "@db.indexed": true
+              }
+            },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

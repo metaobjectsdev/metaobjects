@@ -784,6 +784,7 @@ public final class ValidationPhase {
     // =========================================================================
 
     private static final String ATTR_FILTERABLE = "filterable";
+    private static final String ATTR_DB_INDEXED = "db.indexed";
 
     private static final java.util.Set<String> OPS_FOR_BOOLEAN =
         java.util.Set.of("eq", "ne", "isNull");
@@ -933,9 +934,12 @@ public final class ValidationPhase {
     }
 
     private static void checkFilterableFields(MetaObject obj, MetaDataLoader loader) {
-        List<MetaField> indexedFieldNames = obj.getChildren(MetaField.class, false);
+        // Use effective (includes inherited via extends:/super:) so a child
+        // entity inheriting a @filterable field via BaseEntity is also gated.
+        // Mirrors TS validation-passes.ts:140 (`const effective = obj.children()`).
+        List<MetaField> fields = obj.getChildren(MetaField.class, true);
         java.util.Set<String> indexed = new java.util.HashSet<>();
-        for (MetaData child : obj.getChildren(MetaData.class, false)) {
+        for (MetaData child : obj.getChildren(MetaData.class, true)) {
             if (!(child instanceof MetaIdentity)) continue;
             MetaIdentity identity = (MetaIdentity) child;
             if (!identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, false)) continue;
@@ -943,7 +947,7 @@ public final class ValidationPhase {
             collectIdentityFields(raw, indexed);
         }
 
-        for (MetaField field : indexedFieldNames) {
+        for (MetaField field : fields) {
             if (!field.hasMetaAttr(ATTR_FILTERABLE, false)) continue;
             Object v = field.getMetaAttr(ATTR_FILTERABLE, false).getValue();
             boolean filterable =
@@ -951,6 +955,17 @@ public final class ValidationPhase {
                 : (v instanceof String) ? "true".equalsIgnoreCase((String) v)
                 : false;
             if (!filterable) continue;
+            // @db.indexed: true is an explicit escape hatch — author asserts a
+            // backing index exists (or will, when supported). Mirrors TS
+            // validation-passes.ts:155.
+            if (field.hasMetaAttr(ATTR_DB_INDEXED, false)) {
+                Object iv = field.getMetaAttr(ATTR_DB_INDEXED, false).getValue();
+                boolean dbIndexed =
+                    (iv instanceof Boolean) ? (Boolean) iv
+                    : (iv instanceof String) ? "true".equalsIgnoreCase((String) iv)
+                    : false;
+                if (dbIndexed) continue;
+            }
             if (indexed.contains(field.getShortName())) continue;
             String objName = obj.getShortName() != null ? obj.getShortName() : obj.getName();
             loader.addWarning(

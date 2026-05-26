@@ -887,10 +887,10 @@ public static class ValidationPasses
 
             var payload = root.OwnChildren()
                 .FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
-            if (payload is null)
+            if (payload is null || payload.SubType != OBJECT_SUBTYPE_VALUE)
             {
                 errors.Add(new MetaError(
-                    $"template \"{tmpl.Name}\" @payloadRef \"{payloadRef}\" does not resolve to a known object in this model",
+                    $"template \"{tmpl.Name}\" @payloadRef \"{payloadRef}\" does not resolve to an object.value at root",
                     ErrorCode.ERR_INVALID_TEMPLATE));
                 continue;
             }

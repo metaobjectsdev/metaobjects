@@ -354,6 +354,26 @@ public class MetaData implements Cloneable, Serializable {
      * Validate MetaData name during construction
      */
     private void validateName(String name) {
+        // Attributes may use dotted names to namespace persistence-concern
+        // attrs from core attrs (e.g., @db.indexed, @db.column). TS + Python
+        // accept these; the cross-port contract requires Java match. Also
+        // accept FQN-qualified attr names (`pkg::name::attr` form) which the
+        // loader synthesises for cross-package attr lookups.
+        if ("attr".equals(type)) {
+            if (name.contains("::")) {
+                for (String part : name.split("::")) {
+                    if (!part.matches("^[a-zA-Z][a-zA-Z0-9_.]*$")) {
+                        throw new IllegalArgumentException(
+                            "Invalid attr name part '" + part + "' in '" + name
+                                + "': must follow pattern ^[a-zA-Z][a-zA-Z0-9_.]*$");
+                    }
+                }
+            } else if (!name.matches("^[a-zA-Z][a-zA-Z0-9_.]*$")) {
+                throw new IllegalArgumentException(
+                    "Invalid attr name '" + name + "': must follow pattern ^[a-zA-Z][a-zA-Z0-9_.]*$");
+            }
+            return;
+        }
         // Loaders and views can have more flexible naming (allow hyphens). Views
         // also accept package-qualified names because the loader synthesises
         // FQNs like `pkg::Entity::currency1` for unnamed children.
