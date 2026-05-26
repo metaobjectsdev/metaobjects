@@ -122,6 +122,36 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val needsJsonbImport = objectColumns.any { it.kind == ObjectColumnKind.JSONB }
         val needsRefOptForDecor = refDecorations.values.any { it.hasReferenceOption }
 
+        // Walk every field that will actually become a Table column and collect the
+        // imports its column function requires. Member functions on Table (varchar,
+        // integer, long, etc.) return null and are skipped; extension functions from
+        // org.jetbrains.exposed.sql.javatime (date / timestampWithTimeZone / ...)
+        // return their FQN so the generated file imports them. Without this the
+        // generated tables compile-fail with unresolved-reference errors. Flattened
+        // object sub-fields are walked too — they emit columns of their own.
+        val columnFunctionImports = sortedSetOf<String>()
+        for (field in entity.metaFields) {
+            if (field is ObjectField) continue
+            // EnumField uses enumerationByName (a Table member) when generated, regardless
+            // of what the type-mapper would return for a bare column emission — skip it
+            // here so it doesn't accidentally drag in a non-applicable import.
+            if (field is EnumField) continue
+            KotlinTypeMapper.exposedColumnImport(field)?.let { columnFunctionImports += it }
+        }
+        // Flattened object sub-columns also contribute column functions (and thus
+        // potentially imports). Walk the field.object children's referenced object.value
+        // sub-fields the same way buildObjectColumns does.
+        for (field in entity.metaFields) {
+            if (field !is ObjectField) continue
+            if (readStorage(field) != STORAGE_FLATTENED) continue
+            val ref = readObjectRef(field) ?: continue
+            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+            for (subField in target.metaFields) {
+                if (subField is EnumField) continue
+                KotlinTypeMapper.exposedColumnImport(subField)?.let { columnFunctionImports += it }
+            }
+        }
+
         val source = buildString {
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")
@@ -129,6 +159,9 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             append("import org.jetbrains.exposed.sql.Table\n")
             if (fkColumns.any { it.hasReferenceOption } || needsRefOptForDecor) {
                 append("import org.jetbrains.exposed.sql.ReferenceOption\n")
+            }
+            for (imp in columnFunctionImports) {
+                append("import $imp\n")
             }
             if (needsJsonbImport) {
                 append("import org.jetbrains.exposed.sql.json.jsonb\n")

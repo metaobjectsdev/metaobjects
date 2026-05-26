@@ -1,6 +1,8 @@
 package acme.demo
 
 import org.jetbrains.exposed.sql.Table
+import org.jetbrains.exposed.sql.javatime.date
+import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone
 
 /** GENERATED — do not hand-edit. Regenerated from metadata. */
 object AuthorTable : Table("authors") {

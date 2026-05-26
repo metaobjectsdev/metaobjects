@@ -656,6 +656,127 @@ class KotlinExposedTableGeneratorTest {
         }
     }
 
+    // === non-default Exposed column-function imports ========================
+
+    /**
+     * Regression: date / timestamp fields emit column functions that live in
+     * `org.jetbrains.exposed.sql.javatime.*` (extension functions on Table — NOT
+     * Table member methods like varchar/integer/long). Without the matching imports
+     * the generated file compile-fails with "unresolved reference: date /
+     * timestampWithTimeZone". See also the comment on
+     * [KotlinTypeMapper.exposedColumnImport].
+     */
+    @Test fun dateAndTimestampFieldsEmitJavatimeImports() {
+        val withDateAndTs = """{
+          "metadata.root": { "package": "x", "children": [
+            { "object.entity": { "name": "Event", "children": [
+                { "field.long":      { "name": "id" } },
+                { "field.date":      { "name": "occursOn" } },
+                { "field.timestamp": { "name": "loggedAt" } },
+                { "source.rdb":      { "@table": "events" } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-jt-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("jt", withDateAndTs))
+
+            val table = outDir.resolve("x/EventTable.kt")
+            assertTrue(Files.exists(table),
+                "expected $table; files=${Files.walk(outDir).toList()}")
+            val src = Files.readString(table)
+            assertTrue("import org.jetbrains.exposed.sql.javatime.date" in src,
+                "expected javatime.date import for field.date; saw:\n$src")
+            assertTrue("import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone" in src,
+                "expected javatime.timestampWithTimeZone import for field.timestamp; saw:\n$src")
+            // And the column functions are still emitted in the body.
+            assertTrue("val occursOn = date(\"occursOn\")" in src, src)
+            assertTrue("val loggedAt = timestampWithTimeZone(\"loggedAt\")" in src, src)
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Tables with only primitive columns (varchar / integer / long / bool / double /
+     * uuid / text / enumerationByName) emit ONLY the `Table` import — no spurious
+     * javatime / json imports. The header should stay minimal when no extension-function
+     * column functions are used.
+     */
+    @Test fun primitiveOnlyTableEmitsNoExtraImports() {
+        val primitivesOnly = """{
+          "metadata.root": { "package": "x", "children": [
+            { "object.entity": { "name": "Plain", "children": [
+                { "field.long":    { "name": "id" } },
+                { "field.string":  { "name": "name", "@required": true } },
+                { "field.int":     { "name": "count" } },
+                { "field.boolean": { "name": "active" } },
+                { "source.rdb":    { "@table": "plain" } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-prim-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("prim", primitivesOnly))
+
+            val table = outDir.resolve("x/PlainTable.kt")
+            assertTrue(Files.exists(table))
+            val src = Files.readString(table)
+            assertTrue("import org.jetbrains.exposed.sql.Table" in src, src)
+            assertTrue("import org.jetbrains.exposed.sql.javatime" !in src,
+                "should NOT emit javatime imports for a primitives-only table; saw:\n$src")
+            assertTrue("import org.jetbrains.exposed.sql.json" !in src,
+                "should NOT emit json imports for a primitives-only table; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Flattened object sub-columns also feed the import collector — if a value-object
+     * has a date sub-field, the flattened column emits `date(...)` and therefore
+     * needs the matching javatime import on the owning entity's Table file.
+     */
+    @Test fun flattenedSubFieldDateContributesImport() {
+        val flatWithDate = """{
+          "metadata.root": { "package": "x", "children": [
+            { "object.value": { "name": "Window", "children": [
+                { "field.date": { "name": "openOn", "@required": true } },
+                { "field.date": { "name": "closeOn", "@required": true } }
+            ] } },
+            { "object.entity": { "name": "Booking", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.object": { "name": "window", "@objectRef": "Window", "@storage": "flattened", "@required": true } },
+                { "source.rdb":   { "@table": "bookings" } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-flatdate-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("flatdate", flatWithDate))
+
+            val table = outDir.resolve("x/BookingTable.kt")
+            assertTrue(Files.exists(table),
+                "expected $table; files=${Files.walk(outDir).toList()}")
+            val src = Files.readString(table)
+            assertTrue("import org.jetbrains.exposed.sql.javatime.date" in src,
+                "flattened sub-field date should contribute the javatime.date import; saw:\n$src")
+            assertTrue("val windowOpenOn = date(\"window_openOn\")" in src, src)
+            assertTrue("val windowCloseOn = date(\"window_closeOn\")" in src, src)
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun manyToOneInverseRespectsOnDelete() {
         val withCascadeOnMany = """{
           "metadata.root": { "package": "acme::demo", "children": [

@@ -114,6 +114,30 @@ object KotlinTypeMapper {
     fun exposedColumnSpec(field: MetaField<*>): String = exposedColumnSpec(field, field.name)
 
     /**
+     * Return the fully-qualified import required for the Exposed column function this
+     * field maps to, or `null` when the column function is a member of [org.jetbrains.exposed.sql.Table]
+     * (no import beyond `Table` itself needed).
+     *
+     * Used by [KotlinExposedTableGenerator] to assemble the per-file import block — without
+     * this, generated tables that use `date(...)`, `timestampWithTimeZone(...)`, etc.
+     * compile-fail with unresolved-reference errors. Extension functions from the
+     * `org.jetbrains.exposed.sql.javatime` package must be imported explicitly.
+     *
+     * Returns `null` for column functions that are members of `Table` itself
+     * (`varchar`, `integer`, `long`, `double`, `bool`, `text`, `uuid`, `enumerationByName`,
+     * `binary`) — those are inherited by the `object FooTable : Table(...)` declaration
+     * and don't need their own import line.
+     */
+    fun exposedColumnImport(field: MetaField<*>): String? = when (field) {
+        is DateField      -> "org.jetbrains.exposed.sql.javatime.date"
+        is TimestampField -> "org.jetbrains.exposed.sql.javatime.timestampWithTimeZone"
+        // StringField, IntegerField, LongField, DoubleField, BooleanField, CurrencyField,
+        // EnumField, and UUID-subtype fields all map to member functions on Table.
+        // No additional import required.
+        else -> null
+    }
+
+    /**
      * Same as [exposedColumnSpec], but with an explicit physical column name. Used by the
      * `@storage: "flattened"` codepath to emit prefixed columns (e.g., `address_street`)
      * for nested object.value fields without mutating the underlying MetaField.
