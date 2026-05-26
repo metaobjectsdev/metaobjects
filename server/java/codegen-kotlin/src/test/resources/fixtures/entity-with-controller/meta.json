@@ -1,0 +1,13 @@
+{
+  "metadata.root": {
+    "package": "acme::blog",
+    "children": [
+      { "object.entity": { "name": "Author", "children": [
+          { "field.long":      { "name": "id" } },
+          { "field.string":    { "name": "name", "@maxLength": 100, "@required": true } },
+          { "source.rdb":      { "@table": "authors" } },
+          { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+      ] } }
+    ]
+  }
+}

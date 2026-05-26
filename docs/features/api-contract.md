@@ -169,7 +169,7 @@ retryable / log-only.
 | TypeScript | shipped — `@metaobjectsdev/codegen-ts` `routesFile()` → Fastify (`@metaobjectsdev/runtime-ts/drizzle-fastify`) | Reference implementation; full filter/sort + `withCount` support. |
 | C# | shipped — `MetaObjects.Codegen` `RoutesGenerator` → ASP.NET Minimal API | `MapGet` / `MapPost` / `MapPut` / `MapDelete` mounted under `apiPrefix`; full CRUD. |
 | Java | planned | Hand-write a Spring `@RestController` (or any HTTP-server framework) matching the URL grammar. OMDB persistence + the Maven plugin ship; only the controller layer is missing. |
-| Kotlin | planned (deferred per [codegen-kotlin](../superpowers/specs/2026-05-25-codegen-kotlin-design.md) §9) | Hand-write a Spring-Kotlin `@RestController` or Ktor route handler. |
+| Kotlin | shipped — `metaobjects-codegen-kotlin` `KotlinSpringControllerGenerator` → Spring `@RestController` | One controller per writable entity (`source.rdb @kind="table"`); 5 CRUD endpoints (GET list / GET by id / POST / PATCH+PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Filter operators (`eq/ne/...`) deferred. |
 | Python | planned | Hand-write a FastAPI router matching the URL grammar. Entity-model codegen ships; persistence + migration in progress. |
 
 ## Hand-writing a conforming controller
