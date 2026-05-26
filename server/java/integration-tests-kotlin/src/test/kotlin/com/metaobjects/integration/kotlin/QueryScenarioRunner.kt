@@ -2,6 +2,7 @@ package com.metaobjects.integration.kotlin
 
 import com.metaobjects.integration.kotlin.Scenarios.QueryScenario
 import com.metaobjects.integration.kotlin.Scenarios.QuerySpec
+import com.metaobjects.integration.kotlin.tables.ProgramStatView
 import com.metaobjects.integration.kotlin.tables.ProgramTable
 import com.metaobjects.integration.kotlin.tables.WeekTable
 import org.jetbrains.exposed.sql.AndOp
@@ -13,6 +14,8 @@ import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder
+import org.jetbrains.exposed.sql.IsNotNullOp
+import org.jetbrains.exposed.sql.IsNullOp
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -58,6 +61,15 @@ object QueryScenarioRunner {
             }
         }
 
+        // 2b. Projection views — only created when a scenario actually touches
+        // the relevant projection entity. Cheap and explicit; avoids running
+        // view DDL on scenarios that don't need it.
+        if (scenario.queries.any { it.entity == "ProgramStat" }) {
+            DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
+                c.createStatement().use { it.execute(ProgramStatView.VIEW_DDL) }
+            }
+        }
+
         // 3. Run queries; each gets its own Exposed transaction.
         for (spec in scenario.queries) {
             val actual = transaction(db) { dispatch(spec) }
@@ -97,6 +109,7 @@ object QueryScenarioRunner {
     private fun tableFor(entity: String): Table = when (entity) {
         "Program" -> ProgramTable
         "Week" -> WeekTable
+        "ProgramStat" -> ProgramStatView
         else -> error("No Exposed Table registered for entity '$entity' — extend QueryScenarioRunner.tableFor")
     }
 
@@ -115,29 +128,81 @@ object QueryScenarioRunner {
     }
 
     /**
-     * Translate a YAML filter block into Exposed `Op<Boolean>`. Only the
-     * operators surfaced by the curated query-scenario subset are
-     * implemented (eq); broader operator support belongs in a follow-up
-     * once more scenarios land.
+     * Translate a YAML filter block into Exposed `Op<Boolean>`. Supports the
+     * cross-language filter vocabulary: eq, ne, gt, gte, lt, lte, in, like,
+     * isNull. Also supports the top-level `and: [...]` combinator the corpus
+     * uses for two-op-on-one-field range queries (filter-range-and).
      */
     @Suppress("UNCHECKED_CAST")
     private fun applyFilter(q: Query, table: Table, filter: Map<String, Any?>?) {
         if (filter.isNullOrEmpty()) return
+        val combined = buildFilterOp(table, filter) ?: return
+        q.adjustWhere { combined }
+    }
+
+    /**
+     * Recursively build an `Op<Boolean>` from a filter map. A filter map is
+     * either:
+     *  - a single-entry map `{ and: [<filter>, <filter>, ...] }` (combinator),
+     *  - or a per-field map `{ fieldName: { op: value, ... }, ... }` ANDed together.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun buildFilterOp(table: Table, filter: Map<String, Any?>): Op<Boolean>? {
+        // Combinator: `and: [...]` — recurse on each child filter map, AND together.
+        if (filter.size == 1 && filter.containsKey("and")) {
+            val list = filter["and"] as? List<Map<String, Any?>>
+                ?: error("`and` value must be a list of filter maps; got: ${filter["and"]}")
+            val childOps = list.mapNotNull { buildFilterOp(table, it) }
+            return combine(childOps)
+        }
         val ops = mutableListOf<Op<Boolean>>()
         for ((field, opsRaw) in filter) {
             val col = columnFor(table, field)
             val opMap = opsRaw as? Map<String, Any?>
                 ?: error("filter for '$field' must be an op-map (e.g. { eq: ... }); got: $opsRaw")
             for ((op, raw) in opMap) {
-                val coerced = coerce(raw, col)
-                ops += when (op) {
-                    "eq" -> buildEq(col, coerced)
-                    else -> error("Unsupported filter op '$op' for ${col.name} — extend QueryScenarioRunner.applyFilter")
-                }
+                ops += buildOp(col, op, raw)
             }
         }
-        val combined = combine(ops) ?: return
-        q.adjustWhere { combined }
+        return combine(ops)
+    }
+
+    /**
+     * Build a single Exposed `Op<Boolean>` from `(column, op-name, raw-value)`.
+     * `isNull` is value-shaped: `{ isNull: true }` → IS NULL, `{ isNull: false }` → IS NOT NULL.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun buildOp(col: Column<*>, op: String, raw: Any?): Op<Boolean> {
+        val any = col as Column<Any?>
+        // Comparable cast — gt/gte/lt/lte require `T: Comparable<T>`; YAML scalars
+        // (Long, String, Instant) all satisfy that at runtime, but the static type
+        // system needs the explicit shape. UNCHECKED_CAST suppression covers it.
+        val cmp = col as Column<Comparable<Any>>
+        return when (op) {
+            "eq" -> buildEq(col, coerce(raw, col))
+            "ne" -> with(SqlExpressionBuilder) { any neq coerce(raw, col) }
+            "gt" -> with(SqlExpressionBuilder) { cmp greater (coerce(raw, col) as Comparable<Any>) }
+            "gte" -> with(SqlExpressionBuilder) { cmp greaterEq (coerce(raw, col) as Comparable<Any>) }
+            "lt" -> with(SqlExpressionBuilder) { cmp less (coerce(raw, col) as Comparable<Any>) }
+            "lte" -> with(SqlExpressionBuilder) { cmp lessEq (coerce(raw, col) as Comparable<Any>) }
+            "like" -> {
+                val pattern = (raw as? String)
+                    ?: error("`like` value must be a string pattern; got: $raw")
+                with(SqlExpressionBuilder) { (col as Column<String>) like pattern }
+            }
+            "in" -> {
+                val list = (raw as? List<Any?>)
+                    ?: error("`in` value must be a list; got: $raw")
+                val coerced = list.map { coerce(it, col) }
+                with(SqlExpressionBuilder) { any inList coerced }
+            }
+            "isNull" -> {
+                val flag = raw as? Boolean
+                    ?: error("`isNull` value must be a boolean; got: $raw")
+                if (flag) IsNullOp(col) else IsNotNullOp(col)
+            }
+            else -> error("Unsupported filter op '$op' for ${col.name} — extend QueryScenarioRunner.buildOp")
+        }
     }
 
     /**
