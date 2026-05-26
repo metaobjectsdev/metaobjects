@@ -14,6 +14,16 @@ using System.Text.RegularExpressions;
 namespace MetaObjects.Source;
 
 /// <summary>
+/// Shared identifier regex for dot-vs-bracket key dispatch. Used by both
+/// <see cref="JsonPathBuilder"/> and the <see cref="JsonPath"/> static helpers.
+/// </summary>
+internal static class JsonPathRegex
+{
+    public static readonly Regex Ident =
+        new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
+}
+
+/// <summary>
 /// Builds the canonical JSONPath string for a node as the parser walks the
 /// JSON tree. Push a key or index when descending; pop when returning.
 ///
@@ -24,9 +34,6 @@ namespace MetaObjects.Source;
 /// </summary>
 public sealed class JsonPathBuilder
 {
-    private static readonly Regex IdentRe =
-        new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
-
     private readonly List<Segment> _segments = new();
 
     /// <summary>Push an object key segment (e.g. <c>.foo</c> or <c>['my-key']</c>).</summary>
@@ -61,7 +68,7 @@ public sealed class JsonPathBuilder
             else
             {
                 string key = seg.Key!;
-                if (IdentRe.IsMatch(key))
+                if (JsonPathRegex.Ident.IsMatch(key))
                 {
                     sb.Append('.').Append(key);
                 }
@@ -84,16 +91,13 @@ public sealed class JsonPathBuilder
 /// </summary>
 public static class JsonPath
 {
-    private static readonly Regex IdentRe =
-        new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
-
     /// <summary>
     /// Render a single object-key segment as it would appear in canonical form,
     /// without the leading <c>$</c> — i.e. <c>.foo</c> or <c>['my-key']</c>.
     /// </summary>
     public static string SegmentForKey(string key)
     {
-        return IdentRe.IsMatch(key)
+        return JsonPathRegex.Ident.IsMatch(key)
             ? $".{key}"
             : $"['{key.Replace("'", "\\'")}']";
     }

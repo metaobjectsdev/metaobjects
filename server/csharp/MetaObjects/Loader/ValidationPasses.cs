@@ -314,8 +314,8 @@ public static class ValidationPasses
         string projectionName,
         string fieldName,
         List<MetaError> errors,
-        string label = "origin.passthrough.@from",
-        ErrorSource? originSource = null)
+        string label,
+        ErrorSource originSource)
     {
         int dotIdx = fromAttr.IndexOf('.', StringComparison.Ordinal);
         if (dotIdx < 1 || dotIdx == fromAttr.Length - 1)
@@ -363,7 +363,7 @@ public static class ValidationPasses
         string projectionName,
         string fieldName,
         List<MetaError> errors,
-        ErrorSource? originSource = null)
+        ErrorSource originSource)
     {
         var segments = viaAttr.Split('.');
         if (segments.Length < 2)
@@ -502,7 +502,7 @@ public static class ValidationPasses
         string entityName,
         string layoutName,
         List<MetaError> errors,
-        ErrorSource? layoutSource = null)
+        ErrorSource layoutSource)
     {
         foreach (var (key, clause) in filter)
         {
