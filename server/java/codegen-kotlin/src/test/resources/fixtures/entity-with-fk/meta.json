@@ -1,0 +1,22 @@
+{
+  "metadata.root": {
+    "package": "acme::blog",
+    "children": [
+      { "object.entity": { "name": "Author", "children": [
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "name", "@maxLength": 100 } },
+          { "source.rdb":   { "@table": "authors" } },
+          { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ] } },
+      { "object.entity": { "name": "Post", "children": [
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "title", "@maxLength": 255 } },
+          { "relationship.composition": { "name": "author",
+              "@objectRef": "Author",
+              "@onDelete": "cascade" } },
+          { "source.rdb":   { "@table": "posts" } },
+          { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ] } }
+    ]
+  }
+}
