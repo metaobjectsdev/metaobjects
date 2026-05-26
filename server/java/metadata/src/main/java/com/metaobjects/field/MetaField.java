@@ -452,19 +452,15 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
      * @return true if @isArray=true is set on this field, false otherwise
      */
     public boolean isArrayType() {
+        // Prefer the native flag (set by the canonical parser for structural
+        // `isArray: true`) and fall back to a child MetaAttribute for callers
+        // that may set the attribute directly.
+        if (isArray) return true;
         if (hasMetaAttr(ATTR_IS_ARRAY)) {
             MetaAttribute attr = getMetaAttr(ATTR_IS_ARRAY);
             String value = attr.getValueAsString();
-
-            // Handle both BooleanAttribute and StringAttribute cases
-            // This is needed because the inline parsing may create StringAttribute instead of BooleanAttribute
-            if ("true".equalsIgnoreCase(value)) {
-                return true;
-            } else if ("false".equalsIgnoreCase(value)) {
-                return false;
-            }
-
-            // For proper BooleanAttribute, use standard boolean parsing
+            if ("true".equalsIgnoreCase(value)) return true;
+            if ("false".equalsIgnoreCase(value)) return false;
             return Boolean.parseBoolean(value);
         }
         return false;

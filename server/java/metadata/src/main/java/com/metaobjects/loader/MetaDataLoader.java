@@ -129,6 +129,74 @@ public class MetaDataLoader implements LoaderConfigurable {
     private final List<String> warnings = new ArrayList<>();
 
     /**
+     * Deferred-extends queue. The parser cannot always resolve a node's
+     * {@code extends} ref at parse time (e.g. cross-file forward references).
+     * It queues unresolved cases here; {@link #resolvePendingExtends()} runs
+     * after all sources in a batch are parsed and either binds them or throws
+     * {@code ERR_UNRESOLVED_SUPER}.
+     */
+    private final List<PendingExtends> pendingExtends = new ArrayList<>();
+
+    /** One row in the deferred-extends queue. */
+    public static final class PendingExtends {
+        public final MetaData child;
+        public final String typeName;
+        public final String superName;
+        public final String packageName;
+        public final String filename;
+        public PendingExtends(MetaData child, String typeName, String superName,
+                              String packageName, String filename) {
+            this.child = child;
+            this.typeName = typeName;
+            this.superName = superName;
+            this.packageName = packageName;
+            this.filename = filename;
+        }
+    }
+
+    /** Queue an unresolved {@code extends} for post-load resolution. */
+    public void addPendingExtends(PendingExtends pending) {
+        if (pending != null) pendingExtends.add(pending);
+    }
+
+    /**
+     * Resolve queued cross-file/forward {@code extends} refs. Mirrors the
+     * TS/C# behaviour: defer the lookup until every source has populated the
+     * tree, then bind. Anything still unresolved throws ERR_UNRESOLVED_SUPER.
+     */
+    private void resolvePendingExtends() {
+        if (pendingExtends.isEmpty()) return;
+        for (PendingExtends p : pendingExtends) {
+            MetaData superData = null;
+            try {
+                String sn = p.superName;
+                String pkg = p.packageName == null ? "" : p.packageName;
+                if (sn.indexOf(PKG_SEPARATOR) < 0 && !pkg.isEmpty()) {
+                    superData = getChildOfType(p.typeName, pkg + PKG_SEPARATOR + sn);
+                }
+            } catch (com.metaobjects.MetaDataNotFoundException ignore) {
+                // fall through to FQN lookup
+            }
+            if (superData == null) {
+                try {
+                    superData = getChildOfType(p.typeName, p.superName);
+                } catch (com.metaobjects.MetaDataNotFoundException ignore) {
+                    // still unresolved
+                }
+            }
+            if (superData == null) {
+                throw new com.metaobjects.MetaDataException(
+                    "Invalid MetaData [" + p.typeName + "][" + p.child.getShortName()
+                        + "], the SuperClass [" + p.superName + "] does not exist (deferred resolution)"
+                        + " in file [" + p.filename + "]",
+                    com.metaobjects.ErrorCode.ERR_UNRESOLVED_SUPER);
+            }
+            p.child.setSuperData(superData);
+        }
+        pendingExtends.clear();
+    }
+
+    /**
      * Convenience constructor accepting only a name.
      * Uses {@link LoaderOptions} defaults (no-register, non-verbose, strict) and
      * {@link #SUBTYPE_MANUAL} as the subType.
@@ -163,8 +231,15 @@ public class MetaDataLoader implements LoaderConfigurable {
         this.name = name;
         // Produce the tree-root node. The root's name must satisfy the metadata
         // identifier pattern, so loader-name hyphens are normalized to underscores.
+        // When the loader name is empty we fall back to a sentinel and mark the
+        // root as synthesized so the canonical serializer does not leak it as a
+        // top-level `package`.
+        boolean synthesized = (name == null || name.isEmpty());
         this.root = new MetaRoot( sanitizeRootName( name ) );
         this.root.setLoader( this );
+        if (synthesized) {
+            this.root.markSynthesizedName();
+        }
     }
 
     /** Normalize a loader name into a metadata-identifier-safe root name. */
@@ -977,6 +1052,7 @@ public class MetaDataLoader implements LoaderConfigurable {
         // Reset the per-load warning accumulator so callers see only warnings
         // produced by THIS batch.
         clearWarnings();
+        pendingExtends.clear();
 
         for (MetaDataSource source : sources) {
             String content;
@@ -1000,6 +1076,11 @@ public class MetaDataLoader implements LoaderConfigurable {
             }
             parser.loadFromStream(is);
         }
+
+        // Resolve any deferred {@code extends} refs before validation runs —
+        // cross-file forward references show up here. Anything still unresolved
+        // becomes ERR_UNRESOLVED_SUPER.
+        resolvePendingExtends();
 
         // Run post-load validation passes after all sources in this batch are parsed.
         // Fires both when called from init() (via loadSourceURIsIfPresent) and when

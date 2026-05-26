@@ -10,6 +10,7 @@ TYPE_VIEW = "view"
 TYPE_LAYOUT = "layout"
 TYPE_SOURCE = "source"
 TYPE_ORIGIN = "origin"
+TYPE_TEMPLATE = "template"
 
 SUBTYPE_BASE = "base"
 SUBTYPE_ROOT = "root"

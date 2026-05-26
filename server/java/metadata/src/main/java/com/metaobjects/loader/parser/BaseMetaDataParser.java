@@ -379,9 +379,12 @@ public abstract class BaseMetaDataParser {
             // Add to the parent metadata
             parent.addChild(md);
 
-            // Set the super data class if one exists
             if (superData != null) {
                 md.setSuperData(superData);
+            } else if (superName != null && !superName.isEmpty()) {
+                // Forward / cross-file extends — queue for post-load resolution.
+                getLoader().addPendingExtends(new com.metaobjects.loader.MetaDataLoader.PendingExtends(
+                    md, typeName, superName, packageName, getFilename()));
             }
         }
 
@@ -444,8 +447,12 @@ public abstract class BaseMetaDataParser {
                     //log.info( "packageName="+packageName+", parentPkg="+(parent==null?null:parent.getPackage())
                     //        +", pkg="+pkg+", superName="+superName+", sn="+sn);
                     //log.error("Invalid MetaData [" +typeName+ "][" +name+ "] on parent ["+parent+"], the SuperClass [" + superName + "] does not exist in file ["+getFilename()+"]");
-                    throw new MetaDataException("Invalid MetaData [" +typeName+ "][" +name+ "] on parent ["+parent
-                            +"], the SuperClass [" + superName + "] does not exist in file ["+getFilename()+"]");
+                    // Defer cross-file forward references — the loader
+                    // resolves the queue after all sources are parsed and
+                    // throws ERR_UNRESOLVED_SUPER if any are still unbound.
+                    // We return null here; caller proceeds to attach the child
+                    // without a super, and resolvePendingExtends() sets it.
+                    return null;
                 }
             }
         }
@@ -723,7 +730,13 @@ public abstract class BaseMetaDataParser {
                 "] in file [" + getFilename() + "]";
 
             if (getLoader().getLoaderOptions().isStrict()) {
-                throw new MetaDataException(errMsg + ": " + e.getMessage(), e);
+                // Cross-port: a bad inline value (e.g. @pageSize: "twenty-five" on an
+                // int-typed attr) is an attr-value problem; surface it as
+                // ERR_BAD_ATTR_VALUE so fixtures and downstream consumers can
+                // discriminate parse-failure from missing-attr.
+                throw new MetaDataException(errMsg + ": " + e.getMessage(),
+                    null, null, e, java.util.Collections.emptyMap(),
+                    com.metaobjects.ErrorCode.ERR_BAD_ATTR_VALUE);
             } else {
                 log.warn(errMsg + ": " + e.getMessage());
             }

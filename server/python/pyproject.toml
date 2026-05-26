@@ -11,6 +11,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6", "pydantic>=2"]
+# On-demand cross-language persistence-conformance suite. pg8000 is pure-python
+# so this extra installs cleanly without native deps; the harness shells out
+# to the docker CLI directly (matches the TS/Java pattern of bypassing
+# testcontainers wrappers entirely).
+integration = ["pg8000>=1.31"]
 
 [build-system]
 requires = ["hatchling"]

@@ -39,6 +39,11 @@ FIELD_ATTR_MAX_LENGTH = "maxLength"
 FIELD_ATTR_OBJECT_REF = "objectRef"
 FIELD_ATTR_DEFAULT = "default"
 FIELD_ATTR_VALUES = "values"
+# Persistence-side storage shape for owned field.object data. Cross-port values.
+FIELD_ATTR_STORAGE = "storage"
+STORAGE_VALUES = ("flattened", "jsonb", "subdocument")
+# Physical column name override (cross-port; renamed from @dbColumn).
+FIELD_ATTR_COLUMN = "column"
 
 # Regex pattern for enum member symbols — must be identifier-safe.
 # Cross-language contract: every port enforces this pattern.

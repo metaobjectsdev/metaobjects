@@ -33,7 +33,7 @@
 - [ ] **Step 1: Read the reference pom**
 
 ```bash
-cat /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java/omdb-ktx/pom.xml
+cat <repo-root>/.claude/worktrees/<branch>/server/java/omdb-ktx/pom.xml
 ```
 
 The metadata-ktx pom is a near-direct copy with these changes:
@@ -123,7 +123,7 @@ Inspect `server/java/omdb-ktx/pom.xml` for the exact `<build><plugins>` block (k
 - [ ] **Step 3: Register the module + create directories**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 mkdir -p server/java/metadata-ktx/src/main/kotlin/com/metaobjects/metadata/ktx
 mkdir -p server/java/metadata-ktx/src/test/kotlin/com/metaobjects/metadata/ktx
 ```
@@ -146,7 +146,7 @@ No forking, no reimplementation — just idiomatic Kotlin syntax on top of the e
 - [ ] **Step 5: Verify the module compiles empty**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java
+cd <repo-root>/.claude/worktrees/<branch>/server/java
 mvn -pl metadata-ktx validate -q 2>&1 | tail -3
 ```
 
@@ -155,7 +155,7 @@ Expected: success.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/metadata-ktx/pom.xml server/java/metadata-ktx/README.md server/java/pom.xml
 git commit -m "build(java): scaffold metaobjects-metadata-ktx module"
 ```
@@ -257,7 +257,7 @@ Expected: 2 tests PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/metadata-ktx
 git commit -m "feat(metadata-ktx): Loader — top-level loadDirectory/loadUris/loadResources/loadString fns"
 ```
@@ -1034,7 +1034,7 @@ Expected: all tests PASS (Tasks 2–8 + README.kt = ~25+ tests).
 - [ ] **Step 5: Run full reactor**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn test -q 2>&1 | grep -E 'BUILD|Tests run:' | tail -3
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn test -q 2>&1 | grep -E 'BUILD|Tests run:' | tail -3
 ```
 
 Expected: BUILD SUCCESS.
@@ -1066,17 +1066,17 @@ Code-simplifier scope: same files.
 - [ ] **Step 3: Merge to main**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git fetch origin main
 git merge --no-ff origin/main -m "Merge origin/main into worktree-metadata-ktx (pre-merge sync)"
 cd server/java && mvn test -q
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git push -u origin worktree-metadata-ktx
 
-git -C /home/doug/Development/metaobjects pull --ff-only origin main
-git -C /home/doug/Development/metaobjects merge --no-ff worktree-metadata-ktx \
+git -C <repo-root> pull --ff-only origin main
+git -C <repo-root> merge --no-ff worktree-metadata-ktx \
   -m "Merge metadata-ktx — Kotlin facade over Java MetaObjects + FR-004 render"
-git -C /home/doug/Development/metaobjects push origin main
+git -C <repo-root> push origin main
 ```
 
 ---

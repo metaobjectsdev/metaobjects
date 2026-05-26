@@ -132,6 +132,11 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             buildTree(parseToCanonical(is));
         } catch (MetaDataException e) {
             throw e;
+        } catch (com.google.gson.JsonSyntaxException e) {
+            throw new MetaDataException(
+                "Error loading canonical JSON from file [" + getFilename() + "]: " + e.getMessage(),
+                null, null, e, java.util.Collections.emptyMap(),
+                com.metaobjects.ErrorCode.ERR_MALFORMED_JSON);
         } catch (Exception e) {
             throw new MetaDataException(
                 "Error loading canonical JSON from file [" + getFilename() + "]: " + e.getMessage(), e);
@@ -573,6 +578,27 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             // This lets the base parser's existing [...]  → comma-delimited → isArray=true
             // path fire correctly, without any hardcoded attribute names.
             JsonElement rawValue = entry.getValue();
+            // Cross-port: object-valued attrs (e.g. attr.filter) MUST be authored as
+            // a JSON object. The legacy form `@filter: "..."` (string-quoted JSON) is
+            // rejected here so the loader surfaces ERR_BAD_ATTR_VALUE before the
+            // attribute's setValueAsString silently re-parses the string.
+            if (rawValue.isJsonPrimitive() && rawValue.getAsJsonPrimitive().isString()) {
+                com.metaobjects.registry.TypeDefinition parentDef =
+                    getTypeRegistry().getTypeDefinition(md.getType(), md.getSubType());
+                if (parentDef != null) {
+                    com.metaobjects.registry.ChildRequirement req = parentDef.getChildRequirement(attrName);
+                    if (req != null
+                            && MetaAttribute.TYPE_ATTR.equals(req.getExpectedType())
+                            && com.metaobjects.attr.FilterAttribute.SUBTYPE_FILTER.equals(req.getExpectedSubType())) {
+                        throw new MetaDataException(
+                            ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                                + ": @" + attrName + " on " + md.getType() + "." + md.getSubType()
+                                + " '" + md.getName() + "' must be a JSON object, not a string"
+                                + " (legacy string-quoted filter form is rejected) in file [" + getFilename() + "]",
+                            ErrorCode.ERR_BAD_ATTR_VALUE);
+                    }
+                }
+            }
             String stringValue;
             if (rawValue.isJsonPrimitive() && rawValue.getAsJsonPrimitive().isString()) {
                 String arrayConstraintId = md.getType() + "." + md.getSubType() + "." + attrName + ".array";

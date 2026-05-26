@@ -11,8 +11,21 @@ import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
+import com.metaobjects.field.BooleanField;
+import com.metaobjects.field.CurrencyField;
+import com.metaobjects.field.DateField;
+import com.metaobjects.field.DecimalField;
+import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.EnumField;
+import com.metaobjects.field.FloatField;
+import com.metaobjects.field.IntegerField;
+import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
+import com.metaobjects.field.ObjectField;
+import com.metaobjects.field.TimeField;
+import com.metaobjects.field.TimestampField;
+import com.metaobjects.layout.DataGridLayout;
+import com.metaobjects.layout.MetaLayout;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.origin.AggregateOrigin;
@@ -22,6 +35,7 @@ import com.metaobjects.origin.PassthroughOrigin;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.template.MetaTemplate;
+import com.metaobjects.template.OutputTemplate;
 import com.metaobjects.template.PromptTemplate;
 import com.metaobjects.template.TemplateConstants;
 import com.metaobjects.util.ErrorMessageConstants;
@@ -88,8 +102,12 @@ public final class ValidationPhase {
         validateOnePrimarySource(root);
         validateRelationshipReferentialActions(root);
         validateOrigins(root);
+        validateObjectFieldStorage(root);
+        validateIdentityFieldsAndGeneration(root);
+        validateDataGridLayouts(root);
         validateTemplates(root);
         validateEntityHasPrimaryIdentity(root, loader);
+        warnFilterableWithoutIndex(root, loader);
     }
 
     /**
@@ -431,6 +449,56 @@ public final class ValidationPhase {
     }
 
     // =========================================================================
+    // field.object @storage validation
+    //
+    // Two rules, matching the cross-port spec:
+    //   1. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY
+    //      (flattened storage materialises one column-per-field; arrays would
+    //       require a side table, which is what @storage="jsonb" is for.)
+    //   2. @storage set without @objectRef → ERR_STORAGE_WITHOUT_OBJECT_REF
+    //      (storage shape only makes sense when there IS a referenced object).
+    //
+    // Only field.object nodes are inspected; @storage on other field subtypes is
+    // already rejected by the constraint phase.
+    // =========================================================================
+
+    static void validateObjectFieldStorage(MetaRoot root) {
+        walkObjectFieldStorage(root);
+    }
+
+    private static void walkObjectFieldStorage(MetaData node) {
+        validateObjectFieldStorageNode(node);
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkObjectFieldStorage(child);
+        }
+    }
+
+    private static void validateObjectFieldStorageNode(MetaData node) {
+        if (!(node instanceof ObjectField)) return;
+        if (!node.hasMetaAttr(ObjectField.ATTR_STORAGE, false)) return;
+
+        ObjectField field = (ObjectField) node;
+
+        if (!node.hasMetaAttr(ObjectField.ATTR_OBJECTREF, false)) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_STORAGE_WITHOUT_OBJECT_REF
+                    + ": field.object '" + field.getName()
+                    + "' has @storage but no @objectRef — @storage shape only applies to referenced objects",
+                ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF);
+        }
+
+        Object storageVal = node.getMetaAttr(ObjectField.ATTR_STORAGE, false).getValue();
+        if ("flattened".equals(String.valueOf(storageVal)) && field.isArrayType()) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_STORAGE_FLATTENED_ARRAY
+                    + ": field.object '" + field.getName()
+                    + "' @storage=\"flattened\" cannot be combined with isArray=true"
+                    + " (use @storage=\"jsonb\" for owned-array storage)",
+                ErrorCode.ERR_STORAGE_FLATTENED_ARRAY);
+        }
+    }
+
+    // =========================================================================
     // Origin validation (passthrough / aggregate / collection)
     //
     // Mirrors the TS validateOriginPaths pass (server/typescript/packages/metadata/
@@ -649,6 +717,265 @@ public final class ValidationPhase {
                 + "(add an identity child or mark @isAbstract: true)");
     }
 
+    // =========================================================================
+    // Identity @fields (required) + @generation (enum) validation
+    //
+    // The unified registry exposes withEnum() but the runtime doesn't currently
+    // walk those constraints post-load (only validators with side-effect passes
+    // do). For cross-port parity (TS / C# both throw on these shapes) we run a
+    // dedicated pass here.
+    //
+    //   @fields  is required on every identity.* node → ERR_MISSING_REQUIRED_ATTR
+    //   @generation, if present, must be one of increment / uuid / assigned →
+    //       ERR_BAD_ATTR_VALUE
+    // =========================================================================
+
+    static void validateIdentityFieldsAndGeneration(MetaRoot root) {
+        walkIdentityFieldsAndGeneration(root);
+    }
+
+    private static void walkIdentityFieldsAndGeneration(MetaData node) {
+        if (node instanceof MetaIdentity) {
+            validateIdentityNode((MetaIdentity) node);
+        }
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkIdentityFieldsAndGeneration(child);
+        }
+    }
+
+    private static final java.util.Set<String> VALID_IDENTITY_GENERATIONS =
+        java.util.Set.of("increment", "uuid", "assigned");
+
+    private static void validateIdentityNode(MetaIdentity identity) {
+        if (!identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, false)) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
+                    + ": identity '" + identity.getName()
+                    + "' is missing required @fields attribute",
+                ErrorCode.ERR_MISSING_REQUIRED_ATTR);
+        }
+        if (identity.hasMetaAttr(MetaIdentity.ATTR_GENERATION, false)) {
+            Object v = identity.getMetaAttr(MetaIdentity.ATTR_GENERATION, false).getValue();
+            String gen = v == null ? null : v.toString();
+            if (gen != null && !VALID_IDENTITY_GENERATIONS.contains(gen)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": identity '" + identity.getName()
+                        + "' @generation '" + gen + "' is not a valid value;"
+                        + " allowed: increment, uuid, assigned",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+    }
+
+    // =========================================================================
+    // layout.dataGrid validation
+    //
+    //   @defaultSortField must name a real field on the owning entity
+    //       → ERR_BAD_DEFAULT_SORT_FIELD
+    //   @filter keys must reference fields declared @filterable: true
+    //       → ERR_BAD_ATTR_FILTER
+    //   @filter ops must be compatible with the target field's subtype
+    //       → ERR_BAD_ATTR_FILTER (boolean only supports eq/ne/isNull;
+    //         numeric/date support equality + ordering; string supports
+    //         equality + like + isNull + in)
+    //
+    // Cross-port: mirrors TS validation-passes.ts (validateDataGridLayout).
+    // =========================================================================
+
+    private static final String ATTR_FILTERABLE = "filterable";
+
+    private static final java.util.Set<String> OPS_FOR_BOOLEAN =
+        java.util.Set.of("eq", "ne", "isNull");
+    private static final java.util.Set<String> OPS_FOR_NUMERIC =
+        java.util.Set.of("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull");
+    private static final java.util.Set<String> OPS_FOR_DATE =
+        java.util.Set.of("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull");
+    private static final java.util.Set<String> OPS_FOR_STRING =
+        java.util.Set.of("eq", "ne", "in", "like", "isNull");
+
+    static void validateDataGridLayouts(MetaRoot root) {
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            if (rootChild instanceof MetaObject) {
+                MetaObject obj = (MetaObject) rootChild;
+                for (MetaData c : obj.getChildren(MetaData.class, false)) {
+                    if (c instanceof DataGridLayout) {
+                        validateDataGridLayout(obj, (DataGridLayout) c);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void validateDataGridLayout(MetaObject obj, DataGridLayout grid) {
+        java.util.Map<String, MetaField> fieldsByName = new java.util.HashMap<>();
+        java.util.Set<String> filterable = new java.util.HashSet<>();
+        for (MetaField f : obj.getChildren(MetaField.class, true)) {
+            fieldsByName.put(f.getShortName(), f);
+            if (f.hasMetaAttr(ATTR_FILTERABLE, false)) {
+                Object v = f.getMetaAttr(ATTR_FILTERABLE, false).getValue();
+                boolean isFilterable =
+                    (v instanceof Boolean) ? (Boolean) v
+                    : (v instanceof String) ? "true".equalsIgnoreCase((String) v)
+                    : false;
+                if (isFilterable) filterable.add(f.getShortName());
+            }
+        }
+
+        // @defaultSortField
+        if (grid.hasMetaAttr(DataGridLayout.ATTR_DEFAULT_SORT_FIELD, false)) {
+            Object v = grid.getMetaAttr(DataGridLayout.ATTR_DEFAULT_SORT_FIELD, false).getValue();
+            String sortField = v == null ? null : v.toString();
+            if (sortField != null && !sortField.isEmpty() && !fieldsByName.containsKey(sortField)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_DEFAULT_SORT_FIELD
+                        + ": layout.dataGrid '" + grid.getShortName()
+                        + "' on '" + obj.getShortName()
+                        + "' @defaultSortField '" + sortField + "' does not reference a real field",
+                    ErrorCode.ERR_BAD_DEFAULT_SORT_FIELD);
+            }
+        }
+
+        // @filter
+        if (grid.hasMetaAttr(DataGridLayout.ATTR_FILTER, false)) {
+            Object raw = grid.getMetaAttr(DataGridLayout.ATTR_FILTER, false).getValue();
+            if (raw instanceof java.util.Map) {
+                validateFilterClause(obj, grid, (java.util.Map<?, ?>) raw, fieldsByName, filterable);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void validateFilterClause(MetaObject obj, DataGridLayout grid,
+                                              java.util.Map<?, ?> filter,
+                                              java.util.Map<String, MetaField> fieldsByName,
+                                              java.util.Set<String> filterable) {
+        for (java.util.Map.Entry<?, ?> e : filter.entrySet()) {
+            String key = e.getKey() == null ? "" : e.getKey().toString();
+            if ("and".equals(key) || "or".equals(key)) {
+                if (e.getValue() instanceof Iterable) {
+                    for (Object sub : (Iterable<?>) e.getValue()) {
+                        if (sub instanceof java.util.Map) {
+                            validateFilterClause(obj, grid, (java.util.Map<?, ?>) sub,
+                                fieldsByName, filterable);
+                        }
+                    }
+                }
+                continue;
+            }
+            MetaField field = fieldsByName.get(key);
+            if (field == null || !filterable.contains(key)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_FILTER
+                        + ": layout.dataGrid '" + grid.getShortName()
+                        + "' on '" + obj.getShortName()
+                        + "' @filter references '" + key + "' which is not a @filterable field",
+                    ErrorCode.ERR_BAD_ATTR_FILTER);
+            }
+            if (e.getValue() instanceof java.util.Map) {
+                java.util.Set<String> allowed = allowedOpsFor(field);
+                for (Object opKey : ((java.util.Map<?, ?>) e.getValue()).keySet()) {
+                    String op = opKey == null ? "" : opKey.toString();
+                    if (!allowed.contains(op)) {
+                        throw new MetaDataException(
+                            ErrorMessageConstants.ERR_BAD_ATTR_FILTER
+                                + ": layout.dataGrid '" + grid.getShortName()
+                                + "' on '" + obj.getShortName()
+                                + "' @filter op '" + op + "' is not valid for field '" + key
+                                + "' (subtype " + field.getSubType() + "); allowed: " + allowed,
+                            ErrorCode.ERR_BAD_ATTR_FILTER);
+                    }
+                }
+            }
+        }
+    }
+
+    private static java.util.Set<String> allowedOpsFor(MetaField field) {
+        String st = field.getSubType();
+        if (BooleanField.SUBTYPE_BOOLEAN.equals(st)) return OPS_FOR_BOOLEAN;
+        if (DateField.SUBTYPE_DATE.equals(st)
+                || TimeField.SUBTYPE_TIME.equals(st)
+                || TimestampField.SUBTYPE_TIMESTAMP.equals(st)) {
+            return OPS_FOR_DATE;
+        }
+        if (IntegerField.SUBTYPE_INT.equals(st)
+                || LongField.SUBTYPE_LONG.equals(st)
+                || DoubleField.SUBTYPE_DOUBLE.equals(st)
+                || FloatField.SUBTYPE_FLOAT.equals(st)
+                || DecimalField.SUBTYPE_DECIMAL.equals(st)
+                || CurrencyField.SUBTYPE_CURRENCY.equals(st)) {
+            return OPS_FOR_NUMERIC;
+        }
+        // string / enum / others fall through to string-shape ops.
+        return OPS_FOR_STRING;
+    }
+
+    // =========================================================================
+     // @filterable without backing index — warning pass
+    //
+    // Mirrors TS validation-passes.ts (filterable-without-index). For every
+    // field carrying @filterable: true that is NOT a member of any identity
+    // on its owning object (primary or secondary), emit a warning. Authors
+    // should either remove @filterable or add a backing index (a secondary
+    // identity / @db.indexed).
+    //
+    // Warning text MUST match the cross-port string exactly so fixtures'
+    // expected-warnings.json compare byte-equal.
+    // =========================================================================
+
+    static void warnFilterableWithoutIndex(MetaRoot root, MetaDataLoader loader) {
+        if (loader == null) return;
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            if (rootChild instanceof MetaObject) {
+                checkFilterableFields((MetaObject) rootChild, loader);
+            }
+        }
+    }
+
+    private static void checkFilterableFields(MetaObject obj, MetaDataLoader loader) {
+        List<MetaField> indexedFieldNames = obj.getChildren(MetaField.class, false);
+        java.util.Set<String> indexed = new java.util.HashSet<>();
+        for (MetaData child : obj.getChildren(MetaData.class, false)) {
+            if (!(child instanceof MetaIdentity)) continue;
+            MetaIdentity identity = (MetaIdentity) child;
+            if (!identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, false)) continue;
+            Object raw = identity.getMetaAttr(MetaIdentity.ATTR_FIELDS, false).getValue();
+            collectIdentityFields(raw, indexed);
+        }
+
+        for (MetaField field : indexedFieldNames) {
+            if (!field.hasMetaAttr(ATTR_FILTERABLE, false)) continue;
+            Object v = field.getMetaAttr(ATTR_FILTERABLE, false).getValue();
+            boolean filterable =
+                (v instanceof Boolean) ? (Boolean) v
+                : (v instanceof String) ? "true".equalsIgnoreCase((String) v)
+                : false;
+            if (!filterable) continue;
+            if (indexed.contains(field.getShortName())) continue;
+            String objName = obj.getShortName() != null ? obj.getShortName() : obj.getName();
+            loader.addWarning(
+                "[filterable-without-index] field \"" + objName + "." + field.getShortName()
+                    + "\" has @filterable: true but is not part of any identity."
+                    + " Filtering on this field will sequential-scan."
+                    + " Add @db.indexed: true to the field (when supported),"
+                    + " or remove @filterable: true.");
+        }
+    }
+
+    private static void collectIdentityFields(Object raw, java.util.Set<String> out) {
+        if (raw == null) return;
+        if (raw instanceof String) {
+            for (String s : ((String) raw).split(",")) {
+                String t = s.trim();
+                if (!t.isEmpty()) out.add(t);
+            }
+        } else if (raw instanceof Iterable<?>) {
+            for (Object o : (Iterable<?>) raw) {
+                if (o != null) out.add(o.toString());
+            }
+        }
+    }
+
     /**
      * True if the node has an own {@code @isAbstract} attribute set to
      * boolean-true. Reads only the own attribute (not effective) — matches the
@@ -716,7 +1043,8 @@ public final class ValidationPhase {
         if (TemplateConstants.SUBTYPE_PROMPT.equals(subType)
                 && (payloadRef == null || payloadRef.isEmpty())) {
             throw new MetaDataException(
-                "template.prompt '" + template.getName() + "' is missing required @payloadRef",
+                ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
+                    + ": template.prompt '" + template.getName() + "' is missing required @payloadRef",
                 ErrorCode.ERR_MISSING_REQUIRED_ATTR);
         }
 
@@ -726,7 +1054,8 @@ public final class ValidationPhase {
         MetaObject payloadVo = findRootObject(root, payloadRef);
         if (payloadVo == null || !MetaObject.SUBTYPE_VALUE.equals(payloadVo.getSubType())) {
             throw new MetaDataException(
-                "template '" + template.getName() + "' @payloadRef '" + payloadRef
+                ErrorMessageConstants.ERR_INVALID_TEMPLATE
+                    + ": template '" + template.getName() + "' @payloadRef '" + payloadRef
                     + "' does not resolve to an object.value at root",
                 ErrorCode.ERR_INVALID_TEMPLATE);
         }
@@ -741,7 +1070,8 @@ public final class ValidationPhase {
             if (slot == null || slot.isEmpty()) continue;
             if (!available.contains(slot)) {
                 throw new MetaDataException(
-                    "template.prompt '" + template.getName()
+                    ErrorMessageConstants.ERR_INVALID_TEMPLATE
+                        + ": template.prompt '" + template.getName()
                         + "' @requiredSlots includes '" + slot
                         + "' which is not a field on payload '" + payloadRef + "'",
                     ErrorCode.ERR_INVALID_TEMPLATE);

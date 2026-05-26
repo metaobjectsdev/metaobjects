@@ -266,8 +266,9 @@ public class MetaDataRegistry {
         
         if (definition == null) {
             throw new MetaDataException(
-                "No type registered for: " + typeId.toQualifiedName() + 
-                ". Available types: " + getRegisteredTypeNames()
+                "No type registered for: " + typeId.toQualifiedName() +
+                ". Available types: " + getRegisteredTypeNames(),
+                com.metaobjects.ErrorCode.ERR_UNKNOWN_SUBTYPE
             );
         }
         

@@ -161,7 +161,7 @@ public final class TemplateConstants {
 - [ ] **Step 2: Compile**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl metadata compile -q
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn -pl metadata compile -q
 ```
 
 Expected: success.
@@ -169,7 +169,7 @@ Expected: success.
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/metadata/src/main/java/com/metaobjects/template/TemplateConstants.java
 git commit -m "feat(metadata): TemplateConstants — type/subtype/attr/format vocabulary for FR-004 template.*"
 ```
@@ -272,7 +272,7 @@ public abstract class MetaTemplate extends MetaData {
 - [ ] **Step 2: Compile**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl metadata compile -q
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn -pl metadata compile -q
 ```
 
 Expected: success. If compile fails on attribute-helper method names, look at how `MetaOrigin` does typed attr access in `getFrom()`, `getVia()` etc. and use the same pattern.
@@ -280,7 +280,7 @@ Expected: success. If compile fails on attribute-helper method names, look at ho
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/metadata/src/main/java/com/metaobjects/template/MetaTemplate.java
 git commit -m "feat(metadata): MetaTemplate abstract base + shared attribute registration"
 ```
@@ -346,8 +346,8 @@ Same caveat as Task 1.2 — if the registry builder method names differ (`inheri
 - [ ] **Step 2: Compile + commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl metadata compile -q
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn -pl metadata compile -q
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/metadata/src/main/java/com/metaobjects/template/PromptTemplate.java
 git commit -m "feat(metadata): PromptTemplate concrete (template.prompt + LLM overlay attrs)"
 ```
@@ -393,8 +393,8 @@ public final class OutputTemplate extends MetaTemplate {
 - [ ] **Step 2: Compile + commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl metadata compile -q
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn -pl metadata compile -q
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/metadata/src/main/java/com/metaobjects/template/OutputTemplate.java
 git commit -m "feat(metadata): OutputTemplate concrete (template.output for non-LLM artifacts)"
 ```
@@ -462,7 +462,7 @@ com.metaobjects.template.TemplateTypesMetaDataProvider
 - [ ] **Step 3: Compile + run a smoke test that proves type discovery**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl metadata test -q -Dtest=ConformanceTest#conformance[template-output-simple] 2>&1 | tail -20
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn -pl metadata test -q -Dtest=ConformanceTest#conformance[template-output-simple] 2>&1 | tail -20
 ```
 
 Expected: the test now LOADS the template (no "Unknown type 'template'" warning). It may still fail on canonical serialization comparison if the metatype registration is incomplete, but the load step must succeed.
@@ -470,7 +470,7 @@ Expected: the test now LOADS the template (no "Unknown type 'template'" warning)
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/metadata/src/main/java/com/metaobjects/template/TemplateTypesMetaDataProvider.java \
         server/java/metadata/src/main/resources/META-INF/services/com.metaobjects.registry.MetaDataTypeProvider
 git commit -m "feat(metadata): TemplateTypesMetaDataProvider + SPI registration"
@@ -565,7 +565,7 @@ public class TemplateValidationTest extends SharedRegistryTestBase {
 - [ ] **Step 2: Verify test fails**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl metadata test -q -Dtest=TemplateValidationTest 2>&1 | tail -15
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn -pl metadata test -q -Dtest=TemplateValidationTest 2>&1 | tail -15
 ```
 
 Expected: FAIL — `validateTemplates` not yet wired; templates load without erroring.
@@ -664,7 +664,7 @@ The `nameMatches` helper already exists in `ValidationPhase` (per the inventory,
 - [ ] **Step 4: Verify tests pass**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl metadata test -q -Dtest=TemplateValidationTest 2>&1 | tail -10
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn -pl metadata test -q -Dtest=TemplateValidationTest 2>&1 | tail -10
 ```
 
 Expected: 3 tests PASS.
@@ -680,7 +680,7 @@ Expected: BUILD SUCCESS, no failures.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/metadata/src/main/java/com/metaobjects/loader/ValidationPhase.java \
         server/java/metadata/src/test/java/com/metaobjects/template/TemplateValidationTest.java
 git commit -m "feat(metadata): validateTemplates() pass — @payloadRef resolution + @requiredSlots membership"
@@ -778,13 +778,13 @@ public class TemplateLoaderTest extends SharedRegistryTestBase {
 - [ ] **Step 2: Run + commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl metadata test -q -Dtest=TemplateLoaderTest 2>&1 | tail -5
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn -pl metadata test -q -Dtest=TemplateLoaderTest 2>&1 | tail -5
 ```
 
 Expected: 2 tests PASS.
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/metadata/src/test/java/com/metaobjects/template/TemplateLoaderTest.java
 git commit -m "test(metadata): TemplateLoaderTest — round-trip + typed accessor coverage"
 ```
@@ -798,7 +798,7 @@ The 6 `template-*` conformance fixtures in `fixtures/conformance/` should now lo
 - [ ] **Step 1: Run the conformance harness**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl metadata test -q -Dtest=ConformanceTest 2>&1 | grep -E 'FAIL|template' | head -20
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn -pl metadata test -q -Dtest=ConformanceTest 2>&1 | grep -E 'FAIL|template' | head -20
 ```
 
 Expected: zero `FAIL` lines. The 6 fixtures `template-output-simple`, `template-prompt-simple`, `template-output-and-prompt`, `error-template-payload-ref-unresolved`, `error-template-required-slot-missing`, `error-template-prompt-missing-payload-ref` all pass.
@@ -818,7 +818,7 @@ Expected: BUILD SUCCESS.
 If the conformance harness needed any adjustment (e.g., a fixture's `expected.json` needed regeneration), commit it as a separate commit:
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add -p server/java/metadata
 git commit -m "test(metadata): align template conformance fixtures with Java loader output"
 ```
@@ -844,24 +844,24 @@ Code-simplifier scope: same files.
 - [ ] **Step 3: Re-run full reactor**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn test -q
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn test -q
 ```
 
 - [ ] **Step 4: Merge to main**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git fetch origin main
 git merge --no-ff origin/main -m "Merge origin/main into worktree-fr004-java-template (pre-merge sync)"
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn test -q   # verify post-merge
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn test -q   # verify post-merge
+cd <repo-root>/.claude/worktrees/<branch>
 git push -u origin worktree-fr004-java-template
 
 # In the main checkout:
-git -C /home/doug/Development/metaobjects pull --ff-only origin main
-git -C /home/doug/Development/metaobjects merge --no-ff worktree-fr004-java-template \
+git -C <repo-root> pull --ff-only origin main
+git -C <repo-root> merge --no-ff worktree-fr004-java-template \
   -m "Merge FR-004 Java Layer 1: template.* metatype + load-time validation"
-git -C /home/doug/Development/metaobjects push origin main
+git -C <repo-root> push origin main
 ```
 
 ---
@@ -967,7 +967,7 @@ git -C /home/doug/Development/metaobjects push origin main
 - [ ] **Step 2: Register the module + create directories**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 mkdir -p server/java/render/src/main/java/com/metaobjects/render
 mkdir -p server/java/render/src/test/java/com/metaobjects/render
 mkdir -p server/java/render/src/test/resources/snapshots
@@ -982,7 +982,7 @@ Edit `server/java/pom.xml`. In the `<modules>` block, after `<module>codegen-mus
 - [ ] **Step 3: Verify the module is recognized**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl render validate -q 2>&1 | tail -5
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn -pl render validate -q 2>&1 | tail -5
 ```
 
 Expected: success — empty module compiles cleanly.
@@ -990,7 +990,7 @@ Expected: success — empty module compiles cleanly.
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/pom.xml server/java/render/pom.xml
 git commit -m "build(java): scaffold metaobjects-render module (FR-004 Layer 2)"
 ```
@@ -1032,7 +1032,7 @@ public class InMemoryProviderTest {
 - [ ] **Step 2: Verify failure**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl render test -q -Dtest=InMemoryProviderTest 2>&1 | tail -10
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn -pl render test -q -Dtest=InMemoryProviderTest 2>&1 | tail -10
 ```
 
 Expected: FAIL — Provider/InMemoryProvider don't exist.
@@ -1090,7 +1090,7 @@ Expected: 2 tests PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/render/src/main/java/com/metaobjects/render/Provider.java \
         server/java/render/src/main/java/com/metaobjects/render/InMemoryProvider.java \
         server/java/render/src/test/java/com/metaobjects/render/InMemoryProviderTest.java
@@ -1239,7 +1239,7 @@ mvn -pl render test -q -Dtest=FilesystemProviderTest 2>&1 | tail -5
 Expected: 4 tests PASS.
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/render
 git commit -m "feat(render): FilesystemProvider (filesystem-rooted Provider with path-traversal guard)"
 ```
@@ -1352,7 +1352,7 @@ mvn -pl render test -q -Dtest=ClasspathResourceProviderTest 2>&1 | tail -5
 Expected: 3 tests PASS.
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/render
 git commit -m "feat(render): ClasspathResourceProvider (classpath-rooted Provider)"
 ```
@@ -1539,7 +1539,7 @@ Expected: 11 tests PASS. If any fail, compare against C# `Escapers.cs` byte-for-
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/render
 git commit -m "feat(render): Escapers — format-keyed registry (text/html/xml/csv/json/markdown/spreadsheet) with OWASP CSV guard"
 ```
@@ -1862,7 +1862,7 @@ mvn -pl render test -q -Dtest=RendererTest 2>&1 | tail -5
 Expected: 11 tests PASS.
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/render
 git commit -m "feat(render): Renderer + RenderRequest + RenderException — pipeline with partial pre-expansion + cycle guard"
 ```
@@ -2174,7 +2174,7 @@ Expected: 10 tests PASS after the port is complete. If some fail, compare specif
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/render
 git commit -m "feat(render): Verify — token-walking drift detection over template + payload field tree"
 ```
@@ -2286,7 +2286,7 @@ public class RenderSnapshotTest {
 - [ ] **Step 2: First run — generates snapshots**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl render test -q -Dtest=RenderSnapshotTest 2>&1 | tail -20
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn -pl render test -q -Dtest=RenderSnapshotTest 2>&1 | tail -20
 ```
 
 Expected: every fixture FAILS with "snapshot created for ... — review + commit". Inspect each generated `server/java/render/src/test/resources/snapshots/<name>.txt` file by hand — confirm the rendered output is reasonable (no garbled escaping, sensible whitespace).
@@ -2294,11 +2294,11 @@ Expected: every fixture FAILS with "snapshot created for ... — review + commit
 - [ ] **Step 3: Commit snapshots + re-run to confirm green**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/render/src/test/resources/snapshots/
 git commit -m "test(render): initial render snapshots for fixtures/render-conformance/* corpus"
 
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl render test -q -Dtest=RenderSnapshotTest 2>&1 | tail -5
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn -pl render test -q -Dtest=RenderSnapshotTest 2>&1 | tail -5
 ```
 
 Expected: all parameterized tests PASS.
@@ -2306,7 +2306,7 @@ Expected: all parameterized tests PASS.
 - [ ] **Step 4: Commit the harness**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/render/src/test/java/com/metaobjects/render/RenderSnapshotTest.java
 git commit -m "test(render): RenderSnapshotTest — within-Java snapshot gate for fixtures/render-conformance/"
 ```
@@ -2445,13 +2445,13 @@ When you find a drift in `RenderCrossPortReportTest` output:
 - [ ] **Step 3: Run + commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl render test -q -Dtest=RenderCrossPortReportTest 2>&1 | tail -10
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn -pl render test -q -Dtest=RenderCrossPortReportTest 2>&1 | tail -10
 ```
 
 Expected: PASS (no failing assertions). Stdout may print drift reports — that's expected, not a failure.
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git add server/java/render
 git commit -m "test(render): RenderCrossPortReportTest (report-only) + KNOWN_DRIFT.md"
 ```
@@ -2463,7 +2463,7 @@ git commit -m "test(render): RenderCrossPortReportTest (report-only) + KNOWN_DRI
 - [ ] **Step 1: Run full reactor**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn test -q 2>&1 | grep -E 'BUILD SUCCESS|BUILD FAILURE|Tests run:' | tail -3
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn test -q 2>&1 | grep -E 'BUILD SUCCESS|BUILD FAILURE|Tests run:' | tail -3
 ```
 
 Expected: BUILD SUCCESS, full reactor green (was 788 tests before Phase 1; after Phase 1+2: 788 + ~50 = ~838 tests).
@@ -2482,24 +2482,24 @@ Code-simplifier scope: same.
 - [ ] **Step 3: Apply Important findings; re-run reactor**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn test -q 2>&1 | grep -E 'BUILD SUCCESS|BUILD FAILURE|Tests run:' | tail -3
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn test -q 2>&1 | grep -E 'BUILD SUCCESS|BUILD FAILURE|Tests run:' | tail -3
 ```
 
 - [ ] **Step 4: Push + merge to main**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>
 git fetch origin main
 git merge --no-ff origin/main -m "Merge origin/main into worktree-fr004-java-template (pre-Layer-2-merge sync)"
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn test -q
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/<branch>/server/java && mvn test -q
+cd <repo-root>/.claude/worktrees/<branch>
 git push origin worktree-fr004-java-template
 
 # In the main checkout:
-git -C /home/doug/Development/metaobjects pull --ff-only origin main
-git -C /home/doug/Development/metaobjects merge --no-ff worktree-fr004-java-template \
+git -C <repo-root> pull --ff-only origin main
+git -C <repo-root> merge --no-ff worktree-fr004-java-template \
   -m "Merge FR-004 Java Layer 2: metaobjects-render module (Provider + Renderer + Verify)"
-git -C /home/doug/Development/metaobjects push origin main
+git -C <repo-root> push origin main
 ```
 
 ---
