@@ -39,14 +39,29 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
+
+        // Pass 1: compute FK columns globally across all entities so the "many"
+        // side (`relationship.composition @cardinality: many`) on Author can
+        // contribute the FK column to PostTable even when Post has no reciprocal.
+        val fkMap = buildGlobalFkMap(loader)
+
+        // Pass 2: emit one Table per entity using its own metadata + the
+        // inbound FKs accumulated in Pass 1.
         for (entity in loader.metaObjects) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             val sourceRdb = entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue
-            emit(entity, sourceRdb, outRoot, loader)
+            val fkColumns = fkMap[entity.name].orEmpty()
+            emit(entity, sourceRdb, outRoot, loader, fkColumns)
         }
     }
 
-    private fun emit(entity: MetaObject, sourceRdb: RdbSource, outRoot: Path, loader: MetaDataLoader) {
+    private fun emit(
+        entity: MetaObject,
+        sourceRdb: RdbSource,
+        outRoot: Path,
+        loader: MetaDataLoader,
+        fkColumns: List<FkColumnSpec>,
+    ) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val tableObjectName = shortName + "Table"
         val tableName = sourceRdb.tableName ?: (shortName.lowercase() + "s")
@@ -57,7 +72,6 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val primaryFieldName = primary?.fields?.firstOrNull()
         val incrementPk = primary?.isIncrement == true
 
-        val fkColumns = buildFkColumns(entity, loader)
         val objectColumns = buildObjectColumns(entity, primaryFieldName, loader)
         val needsJsonbImport = objectColumns.any { it.kind == ObjectColumnKind.JSONB }
 
@@ -199,56 +213,164 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val propertyName: String,
         val columnExpr: String,
         val hasReferenceOption: Boolean,
+        /**
+         * `true` when authored directly on the FK-owning entity (to-one side);
+         * `false` when inferred from the inverse to-many declaration on the
+         * other entity. Declared specs take precedence over inferred specs
+         * pointing at the same target table.
+         */
+        val declared: Boolean,
+        /**
+         * Target table object the FK references (e.g. {@code "AuthorTable"}).
+         * Used to suppress an inferred FK when a declared FK already covers
+         * the same target table — the FK-owning side has already named the
+         * relationship physically (possibly with a custom column name) and we
+         * must not double-emit a second FK to the same parent.
+         */
+        val targetTable: String,
     )
 
     /**
-     * Build one FK column per `relationship.composition` to-one child.
+     * Pass 1: build a global FK map keyed by FQN of the entity that should
+     * carry the column. Combines two sources:
      *
      * <ul>
-     *   <li>Cardinality "many" (one-to-many) ⇒ FK lives on the OTHER side; skip here.</li>
-     *   <li>Default cardinality is "one" (per {@link MetaRelationship#getCardinality()}).</li>
-     *   <li>Property name = literal {@code <relationshipName>Id} (camelCase, matches the
-     *       Kotlin property style). An explicit {@code @column} attr overrides it
-     *       verbatim — the user has named the physical column themselves.</li>
-     *   <li>Target table object = {@code <TargetShortName>Table} — looked up by short
-     *       name in the loader (Exposed objects are forward-referenceable at the JVM
-     *       level, so out-of-file references work without import bookkeeping when the
-     *       generated package is consistent).</li>
-     *   <li>{@code @onDelete} / {@code @onUpdate} (kebab-case in metadata, e.g.
-     *       {@code "set-null"}) lower to Exposed's SCREAMING_SNAKE
-     *       {@code ReferenceOption} enum.</li>
+     *   <li><b>Declared</b> — every `relationship.composition @cardinality: one` (default)
+     *       child on entity X contributes a column to {@code X}'s table pointing at
+     *       {@code @objectRef}'s table. Same behavior as the old per-entity scan.</li>
+     *   <li><b>Inferred</b> — every `relationship.composition @cardinality: many` on
+     *       entity X contributes a column to the {@code @objectRef} entity's table
+     *       (since the FK in a one-to-many lives on the many side). Column name
+     *       defaults to {@code <X.shortNameLowercased>Id}; {@code @onDelete} /
+     *       {@code @onUpdate} propagate so the side that authored the lifecycle
+     *       intent (e.g. {@code "the parent cascades into its children"}) shapes
+     *       the inferred FK.</li>
      * </ul>
+     *
+     * Dedup: when a column name on a given target entity is contributed by both
+     * a declared (to-one) spec and an inferred (inverse to-many) spec, the
+     * declared spec wins — the FK-owning entity authored its own physical name
+     * and we don't double-emit.
      */
-    private fun buildFkColumns(entity: MetaObject, loader: MetaDataLoader): List<FkColumnSpec> {
-        val result = mutableListOf<FkColumnSpec>()
-        for (child in entity.children) {
-            if (child !is MetaRelationship) continue
-            if (child.subType != CompositionRelationship.SUBTYPE_COMPOSITION) continue
-            // Skip the "many" side — FK lives on the other entity.
-            if (child.cardinality == MetaRelationship.CARDINALITY_MANY) continue
+    private fun buildGlobalFkMap(loader: MetaDataLoader): Map<String, List<FkColumnSpec>> {
+        // Use list-per-entity so the emit order is deterministic (insertion-ordered).
+        val acc = linkedMapOf<String, MutableList<FkColumnSpec>>()
 
-            val objectRef = child.objectRef ?: continue
-            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, objectRef) ?: continue
-            val targetTable = PackageMapping.splitFqn(target.name).second + "Table"
+        for (entity in loader.metaObjects) {
+            if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
+            for (child in entity.children) {
+                if (child !is MetaRelationship) continue
+                if (child.subType != CompositionRelationship.SUBTYPE_COMPOSITION) continue
 
-            // Use shortName: relationship.name is fully-qualified after loading (e.g.
-            // "acme::demo::author"), which would produce an illegal Kotlin identifier with
-            // "::" embedded. shortName is the leaf authored token.
-            val relShortName = child.shortName ?: child.name
-            val propertyName = readColumnAttr(child) ?: (relShortName + "Id")
+                val objectRef = child.objectRef ?: continue
+                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, objectRef) ?: continue
 
-            // Default Exposed FK is `long(...)`; refine later if other PK types appear.
-            val refParts = mutableListOf<String>()
-            val onDelete = child.onDeleteRaw?.let { mapReferentialAction(it) }
-            val onUpdate = child.onUpdateRaw?.let { mapReferentialAction(it) }
-            if (onDelete != null) refParts += "onDelete = ReferenceOption.$onDelete"
-            if (onUpdate != null) refParts += "onUpdate = ReferenceOption.$onUpdate"
-
-            val refArgs = if (refParts.isEmpty()) "" else ", " + refParts.joinToString(", ")
-            val expr = "long(\"$propertyName\").references($targetTable.id$refArgs)"
-            result.add(FkColumnSpec(propertyName, expr, hasReferenceOption = refParts.isNotEmpty()))
+                if (child.cardinality == MetaRelationship.CARDINALITY_MANY) {
+                    // Inferred: FK belongs on `target`, pointing back at `entity`.
+                    val spec = buildInverseFkSpec(entity, target, child) ?: continue
+                    acc.getOrPut(target.name) { mutableListOf() }.add(spec)
+                } else {
+                    // Declared (cardinality "one" or unspecified): FK belongs on `entity`.
+                    val spec = buildDeclaredFkSpec(target, child) ?: continue
+                    acc.getOrPut(entity.name) { mutableListOf() }.add(spec)
+                }
+            }
         }
-        return result
+
+        // Dedup: a declared (to-one) FK suppresses any inferred FK pointing at
+        // the same target table. Catches both shapes:
+        //   (a) declared + inferred share a property name (rare but possible
+        //       when the user picks `<owner>Id` themselves).
+        //   (b) declared uses a custom column name (e.g. `creatorId`) — the
+        //       inferred `<owner>Id` (e.g. `authorId`) must NOT also be
+        //       emitted; the FK-owning side already named the relationship.
+        return acc.mapValues { (_, specs) ->
+            val declaredTargets = specs.filter { it.declared }.map { it.targetTable }.toSet()
+            val declaredNames = specs.filter { it.declared }.map { it.propertyName }.toSet()
+            specs.filterNot { spec ->
+                !spec.declared && (
+                    spec.targetTable in declaredTargets || spec.propertyName in declaredNames
+                )
+            }
+        }
+    }
+
+    /**
+     * Build the FK spec for a to-one (declared) composition relationship on the
+     * FK-owning entity. Returns null when {@code @objectRef} fails to resolve.
+     *
+     * Naming: property name = {@code @column} attr (verbatim) if present, else
+     * literal {@code <relationshipShortName>Id}. {@code shortName} is used
+     * because relationship.name is fully-qualified after loading (e.g.
+     * "acme::demo::author") and would produce an illegal Kotlin identifier with
+     * "::" embedded.
+     */
+    private fun buildDeclaredFkSpec(target: MetaObject, rel: MetaRelationship): FkColumnSpec? {
+        val targetTable = PackageMapping.splitFqn(target.name).second + "Table"
+        val relShortName = rel.shortName ?: rel.name
+        val propertyName = readColumnAttr(rel) ?: (relShortName + "Id")
+        val refArgs = buildReferenceOptionArgs(rel)
+        val expr = "long(\"$propertyName\").references($targetTable.id${refArgs.first})"
+        return FkColumnSpec(
+            propertyName = propertyName,
+            columnExpr = expr,
+            hasReferenceOption = refArgs.second,
+            declared = true,
+            targetTable = targetTable,
+        )
+    }
+
+    /**
+     * Build the FK spec for the inverse side of a to-many composition
+     * relationship: when entity X declares `cardinality: many` to Y, Y's table
+     * carries a column pointing back at X's table.
+     *
+     * Naming: column = {@code <ownerShortName.lowercased()>Id} (e.g. Author →
+     * {@code "authorId"}). The to-many side is the lifecycle authority, so its
+     * {@code @onDelete} / {@code @onUpdate} attrs propagate into the inferred
+     * FK's ReferenceOption arguments.
+     */
+    private fun buildInverseFkSpec(
+        owner: MetaObject,
+        target: MetaObject,
+        rel: MetaRelationship,
+    ): FkColumnSpec? {
+        val ownerShort = PackageMapping.splitFqn(owner.name).second
+        val ownerTable = ownerShort + "Table"
+        // Verify the same-named Table exists in the loader; we don't strictly need it,
+        // but we want a deterministic skip when the owner entity has no source.rdb.
+        if (owner.children.filterIsInstance<RdbSource>().firstOrNull() == null) return null
+        val propertyName = ownerShort.replaceFirstChar { it.lowercaseChar() } + "Id"
+        val refArgs = buildReferenceOptionArgs(rel)
+        val expr = "long(\"$propertyName\").references($ownerTable.id${refArgs.first})"
+        // `target` reference is kept in the signature for parity with the declared path
+        // and to allow future per-target customization (e.g. nullability inference).
+        @Suppress("UNUSED_PARAMETER") target
+        return FkColumnSpec(
+            propertyName = propertyName,
+            columnExpr = expr,
+            hasReferenceOption = refArgs.second,
+            declared = false,
+            targetTable = ownerTable,
+        )
+    }
+
+    /**
+     * Lower a relationship's {@code @onDelete} / {@code @onUpdate} into the
+     * suffix portion of an Exposed {@code .references(...)} call.
+     *
+     * Returns {@code (suffix, hasReferenceOption)}. Suffix is either "" (no
+     * options) or {@code ", onDelete = ..., onUpdate = ..."} ready to splice
+     * after the target column.
+     */
+    private fun buildReferenceOptionArgs(rel: MetaRelationship): Pair<String, Boolean> {
+        val refParts = mutableListOf<String>()
+        val onDelete = rel.onDeleteRaw?.let { mapReferentialAction(it) }
+        val onUpdate = rel.onUpdateRaw?.let { mapReferentialAction(it) }
+        if (onDelete != null) refParts += "onDelete = ReferenceOption.$onDelete"
+        if (onUpdate != null) refParts += "onUpdate = ReferenceOption.$onUpdate"
+        val suffix = if (refParts.isEmpty()) "" else ", " + refParts.joinToString(", ")
+        return suffix to refParts.isNotEmpty()
     }
 
     /** Read the `@column` attr on a relationship (inheritance allowed); null when absent. */

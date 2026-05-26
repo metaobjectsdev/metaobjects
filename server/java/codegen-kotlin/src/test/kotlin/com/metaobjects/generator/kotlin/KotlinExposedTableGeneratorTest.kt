@@ -278,4 +278,153 @@ class KotlinExposedTableGeneratorTest {
             outDir.toFile().deleteRecursively()
         }
     }
+
+    // === Bidirectional FK: inverse to-many infers FK on target table =========
+
+    /**
+     * Author declares `cardinality="many"` to Post; Post has NO reciprocal
+     * relationship. The FK column on a one-to-many lives on the many side, so
+     * the generator must contribute `authorId` to PostTable from Author's
+     * inverse declaration alone.
+     */
+    @Test fun inverseManyToOneEmitsFkOnTargetTable() {
+        val inverseOnly = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Author", "children": [
+                { "field.long":   { "name": "id" } },
+                { "relationship.composition": {
+                    "name": "posts", "@objectRef": "Post", "@cardinality": "many"
+                } },
+                { "source.rdb":   { "@table": "authors" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } },
+            { "object.entity": { "name": "Post", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.string": { "name": "title", "@required": true } },
+                { "source.rdb":   { "@table": "posts" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-inv-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("inv1", inverseOnly))
+
+            val postTable = outDir.resolve("acme/demo/PostTable.kt")
+            assertTrue(Files.exists(postTable),
+                "expected $postTable; files=${Files.walk(outDir).toList()}")
+            val postSrc = Files.readString(postTable)
+            assertTrue(
+                "val authorId = long(\"authorId\").references(AuthorTable.id)" in postSrc,
+                "expected inferred FK column on PostTable pointing at AuthorTable; saw:\n$postSrc",
+            )
+            // Author's own table must NOT carry a postId column — the FK belongs on the many side.
+            val authorTable = outDir.resolve("acme/demo/AuthorTable.kt")
+            val authorSrc = Files.readString(authorTable)
+            assertTrue("postId" !in authorSrc,
+                "AuthorTable must NOT carry the inverse FK column; saw:\n$authorSrc")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Author declares `cardinality="many"` to Post AND Post declares its own
+     * `cardinality="one"` to Author with a custom column name `creator`. The
+     * declared (to-one) side wins: PostTable carries exactly one FK to Author
+     * — `creatorId`, not `authorId`.
+     */
+    @Test fun explicitToOneWinsOverInverseMany() {
+        val bothSides = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Author", "children": [
+                { "field.long":   { "name": "id" } },
+                { "relationship.composition": {
+                    "name": "posts", "@objectRef": "Post", "@cardinality": "many"
+                } },
+                { "source.rdb":   { "@table": "authors" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } },
+            { "object.entity": { "name": "Post", "children": [
+                { "field.long":   { "name": "id" } },
+                { "relationship.composition": {
+                    "name": "creator", "@objectRef": "Author"
+                } },
+                { "source.rdb":   { "@table": "posts" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-dedup-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("dedup", bothSides))
+
+            val postTable = outDir.resolve("acme/demo/PostTable.kt")
+            assertTrue(Files.exists(postTable))
+            val src = Files.readString(postTable)
+            assertTrue(
+                "val creatorId = long(\"creatorId\").references(AuthorTable.id)" in src,
+                "expected declared creatorId FK column; saw:\n$src",
+            )
+            // The inferred authorId from Author's many-side must NOT be present —
+            // the declared (to-one) side wins. Note: declared creator's name is
+            // "creator" so it does not collide on name; the dedup rule is about
+            // not double-emitting a SECOND FK to the same target.
+            assertTrue("val authorId = " !in src,
+                "should NOT also emit inferred authorId FK when explicit to-one exists on Post; saw:\n$src")
+            // Sanity: exactly one references(AuthorTable.id) call in PostTable.
+            val refCount = src.split("references(AuthorTable.id").size - 1
+            assertTrue(refCount == 1,
+                "expected exactly 1 FK to AuthorTable, saw $refCount in:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * The to-many side authors lifecycle intent — `@onDelete: cascade` on
+     * Author's many-side must propagate into the inferred FK on PostTable.
+     */
+    @Test fun manyToOneInverseRespectsOnDelete() {
+        val withCascadeOnMany = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Author", "children": [
+                { "field.long":   { "name": "id" } },
+                { "relationship.composition": {
+                    "name": "posts", "@objectRef": "Post",
+                    "@cardinality": "many", "@onDelete": "cascade"
+                } },
+                { "source.rdb":   { "@table": "authors" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } },
+            { "object.entity": { "name": "Post", "children": [
+                { "field.long":   { "name": "id" } },
+                { "source.rdb":   { "@table": "posts" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-invcas-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("invcas", withCascadeOnMany))
+
+            val postTable = outDir.resolve("acme/demo/PostTable.kt")
+            assertTrue(Files.exists(postTable))
+            val src = Files.readString(postTable)
+            assertTrue("import org.jetbrains.exposed.sql.ReferenceOption" in src,
+                "expected ReferenceOption import for inferred FK with onDelete; saw:\n$src")
+            assertTrue(
+                "val authorId = long(\"authorId\").references(AuthorTable.id, onDelete = ReferenceOption.CASCADE)" in src,
+                "expected inferred FK to carry onDelete=CASCADE from the many-side declaration; saw:\n$src",
+            )
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
 }
