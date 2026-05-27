@@ -63,6 +63,36 @@ function isSqlExprDefault(value: string): boolean {
   return SQL_EXPR_PATTERNS.some((re) => re.test(value));
 }
 
+/**
+ * For an isArray:true field stored in SQLite as text(...,{mode:"json"}), return
+ * the TS element type used in the emitted .$type<E[]>() chain. Returns undefined
+ * when the field's subType doesn't have a stable scalar TS mapping (e.g.,
+ * field.object — leave the inferred `unknown[]` so the consumer can layer a
+ * richer schema on top).
+ */
+function sqliteJsonArrayElementTsType(subType: string): string | undefined {
+  switch (subType) {
+    case FIELD_SUBTYPE_STRING:
+    case FIELD_SUBTYPE_ENUM:
+    case FIELD_SUBTYPE_CLASS:
+    case FIELD_SUBTYPE_DATE:
+    case FIELD_SUBTYPE_TIME:
+    case FIELD_SUBTYPE_TIMESTAMP:
+    case FIELD_SUBTYPE_DECIMAL:
+      return "string";
+    case FIELD_SUBTYPE_INT:
+    case FIELD_SUBTYPE_LONG:
+    case FIELD_SUBTYPE_CURRENCY:
+    case FIELD_SUBTYPE_DOUBLE:
+    case FIELD_SUBTYPE_FLOAT:
+      return "number";
+    case FIELD_SUBTYPE_BOOLEAN:
+      return "boolean";
+    default:
+      return undefined;
+  }
+}
+
 /** Map a recognized SQL expression to its canonical raw form (uppercase keywords). */
 function canonicalizeSqlExpr(value: string): string {
   const lower = value.toLowerCase();
@@ -224,6 +254,18 @@ export function mapColumnType(
 
   if (dialect === "postgres" && isArray) {
     modifiers.push(".array()");
+  }
+
+  // SQLite stores arrays as JSON in a text column; Drizzle's text(...,{mode:"json"})
+  // infers the column as `unknown` without a $type<T>() annotation, so consumers
+  // who pull the inferred type can't see the element type. Emit $type<E[]>()
+  // so the inferred TS type is element-precise. Postgres uses .array() above
+  // which is already element-typed by Drizzle.
+  if (dialect === "sqlite" && isArray) {
+    const elementType = sqliteJsonArrayElementTsType(subType);
+    if (elementType !== undefined) {
+      modifiers.push(`.$type<${elementType}[]>()`);
+    }
   }
 
   if (isRequired(field)) {
