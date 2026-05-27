@@ -1,5 +1,9 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.MetaData;
+import com.metaobjects.object.MetaObject;
+import com.metaobjects.source.RdbSource;
+
 /**
  * Internal naming helpers for the Spring codegen package. Parallels the
  * {@code PackageMapping} object in {@code codegen-kotlin}; kept package-private
@@ -20,6 +24,14 @@ package com.metaobjects.generator.spring;
 final class SpringNaming {
 
     private SpringNaming() { /* no instances */ }
+
+    /** First {@link RdbSource} child of {@code entity}, or {@code null} when absent. */
+    static RdbSource firstRdbSource(MetaObject entity) {
+        for (MetaData child : entity.getChildren()) {
+            if (child instanceof RdbSource) return (RdbSource) child;
+        }
+        return null;
+    }
 
     /** Convert metadata package separator {@code ::} to Java {@code .}. */
     static String toJavaPackage(String metadataPackage) {

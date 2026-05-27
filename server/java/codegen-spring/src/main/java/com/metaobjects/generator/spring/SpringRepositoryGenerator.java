@@ -7,6 +7,7 @@ import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.source.RdbSource;
+import static com.metaobjects.generator.spring.SpringNaming.firstRdbSource;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -100,14 +101,6 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
             throw new GeneratorException(
                 "failed writing " + repoName + ".java for entity " + entity.getName() + ": " + e, e);
         }
-    }
-
-    /** First {@link RdbSource} child of {@code entity}, or {@code null} when absent. */
-    private static RdbSource firstRdbSource(MetaObject entity) {
-        for (com.metaobjects.MetaData child : entity.getChildren()) {
-            if (child instanceof RdbSource) return (RdbSource) child;
-        }
-        return null;
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

@@ -14,8 +14,10 @@ import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
 
 /**
  * Generator: one Java 21 {@code record} per {@code object.entity}, used as the
@@ -99,8 +101,8 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * not an {@link ObjectField}. The {@code field.object} arm is deliberately
      * deferred (see class javadoc).
      */
-    private static java.util.List<MetaField> scalarFields(MetaObject entity) {
-        java.util.List<MetaField> out = new java.util.ArrayList<>();
+    private static List<MetaField> scalarFields(MetaObject entity) {
+        List<MetaField> out = new ArrayList<>();
         for (MetaField field : entity.getMetaFields()) {
             if (field instanceof ObjectField) continue;
             out.add(field);

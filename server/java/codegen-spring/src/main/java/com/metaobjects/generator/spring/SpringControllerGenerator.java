@@ -9,6 +9,7 @@ import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.source.RdbSource;
+import static com.metaobjects.generator.spring.SpringNaming.firstRdbSource;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -82,9 +83,6 @@ import org.slf4j.LoggerFactory;
 public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<MetaObject> {
 
     private static final Logger LOG = LoggerFactory.getLogger(SpringControllerGenerator.class);
-
-    /** Default primary-key field name when the entity declares no {@code identity.primary}. */
-    private static final String DEFAULT_PK_FIELD = "id";
 
     @Override
     protected Class<MetaObject> getFilterClass() {
@@ -275,23 +273,6 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             throw new GeneratorException(
                 "failed writing " + controllerName + ".java for entity " + entity.getName() + ": " + e, e);
         }
-    }
-
-    /** First {@link RdbSource} child of {@code entity}, or {@code null} when absent. */
-    private static RdbSource firstRdbSource(MetaObject entity) {
-        for (com.metaobjects.MetaData child : entity.getChildren()) {
-            if (child instanceof RdbSource) return (RdbSource) child;
-        }
-        return null;
-    }
-
-    // Unused — kept for parity with KotlinSpringControllerGenerator + future per-entity PK
-    // resolution. The current generated controllers always assume {@code Long id} on the
-    // path; an extension that respects the entity's actual {@code identity.primary} field
-    // type would call into this helper.
-    @SuppressWarnings("unused")
-    private static String defaultPkField() {
-        return DEFAULT_PK_FIELD;
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

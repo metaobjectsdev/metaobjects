@@ -1,6 +1,7 @@
 package com.metaobjects.generator.spring;
 
-import com.metaobjects.MetaData;
+import static com.metaobjects.generator.spring.SpringNaming.firstRdbSource;
+
 import com.metaobjects.field.BooleanField;
 import com.metaobjects.field.CurrencyField;
 import com.metaobjects.field.DateField;
@@ -209,13 +210,6 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
             throw new GeneratorException(
                 "failed writing " + className + ".java for entity " + entity.getName() + ": " + e, e);
         }
-    }
-
-    private static RdbSource firstRdbSource(MetaObject entity) {
-        for (MetaData child : entity.getChildren()) {
-            if (child instanceof RdbSource) return (RdbSource) child;
-        }
-        return null;
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
