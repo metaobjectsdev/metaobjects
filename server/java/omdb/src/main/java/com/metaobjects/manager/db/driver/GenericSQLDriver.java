@@ -1673,14 +1673,21 @@ public class GenericSQLDriver implements DatabaseDriver {
      * because jsonb serialization depends on driver-local state
      * ({@link #isJsonbField} and {@link #serializeJsonb}), not on field
      * subtype alone.
+     *
+     * <p>Ordering preservation: in the original ladder, jsonb was checked
+     * AFTER explicit field-subtype branches (e.g. StringField) and BEFORE
+     * the ObjectField/default branch. Gate the jsonb branch on
+     * {@code codec == defaultCodec()} so explicit per-subtype codecs always
+     * win, matching prior behavior.
      */
     protected void setStatementValue(PreparedStatement s, MetaField f, int index, Object value) throws SQLException {
-        if (isJsonbField(f)) {
+        com.metaobjects.manager.db.codec.JdbcFieldCodec codec = com.metaobjects.manager.db.codec.JdbcCodecs.forField(f);
+        if (codec == com.metaobjects.manager.db.codec.JdbcCodecs.defaultCodec() && isJsonbField(f)) {
             if (value == null) s.setNull(index, Types.VARCHAR);
             else s.setString(index, serializeJsonb(f, value));
             return;
         }
-        com.metaobjects.manager.db.codec.JdbcCodecs.forField(f).write(s, f, index, value);
+        codec.write(s, f, index, value);
     }
 
     /**

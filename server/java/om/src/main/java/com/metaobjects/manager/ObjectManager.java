@@ -159,12 +159,27 @@ public abstract class ObjectManager
 				c.commit();
 				return result;
 			} catch (java.sql.SQLException e) {
-				c.rollback();
+				safeRollback(c, e);
 				throw new MetaDataException("Transaction failed: " + e.getMessage(), e);
 			} catch (RuntimeException e) {
-				c.rollback();
+				safeRollback(c, e);
 				throw e;
 			}
+		}
+	}
+
+	/**
+	 * Rolls {@code c} back, suppressing any rollback-time exception against
+	 * the original cause. ObjectConnection.commit/rollback both throw
+	 * PersistenceException (a RuntimeException); a naive rollback() inside a
+	 * catch can mask the original cause when the connection is already in a
+	 * bad state. Suppressed-exception preserves it for the caller.
+	 */
+	private static void safeRollback( ObjectConnection c, Throwable cause ) {
+		try {
+			c.rollback();
+		} catch (Throwable t) {
+			cause.addSuppressed(t);
 		}
 	}
 
