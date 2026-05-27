@@ -22,6 +22,17 @@ import com.metaobjects.attr.StringArrayAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.ChildRequirement;
 import com.metaobjects.registry.MetaDataRegistry;
+import com.metaobjects.source.YamlPosition;
+import com.metaobjects.source.YamlPositions;
+import com.metaobjects.source.YamlPositions.PositionMap;
+import com.metaobjects.source.YamlPositions.SideTable;
+import org.yaml.snakeyaml.nodes.MappingNode;
+import org.yaml.snakeyaml.nodes.Node;
+import org.yaml.snakeyaml.nodes.NodeId;
+import org.yaml.snakeyaml.nodes.NodeTuple;
+import org.yaml.snakeyaml.nodes.ScalarNode;
+import org.yaml.snakeyaml.nodes.SequenceNode;
+import org.yaml.snakeyaml.nodes.Tag;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -139,10 +150,24 @@ public final class YamlDesugar {
         public final JsonObject canonical;
         /** Collected desugar problems (never thrown). */
         public final List<CollectedError> errors;
+        /**
+         * FR5b — side table of {@code JsonObject → PositionMap} populated when the
+         * desugar was invoked with a SnakeYAML {@link Node} input (via
+         * {@link #desugar(Node, MetaDataRegistry)}); empty when invoked with the
+         * legacy {@code Object} input (no position info available from
+         * {@code Yaml.load()}).
+         */
+        public final SideTable positions;
 
         public DesugarResult(JsonObject canonical, List<CollectedError> errors) {
+            this(canonical, errors, new SideTable());
+        }
+
+        public DesugarResult(JsonObject canonical, List<CollectedError> errors,
+                             SideTable positions) {
             this.canonical = canonical;
             this.errors = errors;
+            this.positions = positions;
         }
     }
 
@@ -153,6 +178,12 @@ public final class YamlDesugar {
     /**
      * Desugar a parsed-YAML authoring document into a canonical-shaped {@link JsonObject}.
      *
+     * <p>Legacy entry point — takes the raw SnakeYAML-parsed object (typically a
+     * {@link Map}) from {@code Yaml.load()}. The returned {@link DesugarResult} carries
+     * an EMPTY {@link SideTable} because the {@code Object} shape has no source-position
+     * information; for FR5b position tracking use the {@link #desugar(Node, MetaDataRegistry)}
+     * overload with input from {@code Yaml.compose(reader)}.</p>
+     *
      * @param input    the raw SnakeYAML-parsed object (typically a {@link Map}); never thrown on
      * @param registry the type registry used for default-subType resolution + coercion checks
      * @return the canonical JSON object and any collected diagnostics
@@ -162,6 +193,37 @@ public final class YamlDesugar {
         JsonObject node = desugarNode(input, registry, errors, "<root>");
         JsonObject canonical = node != null ? node : new JsonObject();
         return new DesugarResult(canonical, errors);
+    }
+
+    /**
+     * FR5b — desugar entry point that takes a SnakeYAML {@link Node} tree (from
+     * {@code Yaml.compose(reader)}) so source-position marks are preserved.
+     *
+     * <p>Walks the Node tree, building the canonical {@link JsonObject} in lockstep
+     * with a {@link SideTable} of {@code JsonObject → PositionMap} entries. The four
+     * sugar rules carry positions through as follows:</p>
+     * <ul>
+     *   <li><b>Rule 1</b> (bare type → fused) — wrapper-key position recorded under
+     *       the canonical (fused) key on the wrapper object's PositionMap.</li>
+     *   <li><b>Rule 2</b> (scalar body → {@code name}) — the synthesized {@code name}
+     *       slot inherits the wrapper key's position (the body has no YAML-side key).</li>
+     *   <li><b>Rule 3</b> ({@code []} array suffix) — wrapper-key position recorded
+     *       under the canonical (suffixless) key.</li>
+     *   <li><b>Rule 4 / D1</b> (sigil-free attr → {@code @}-prefixed) — body-key
+     *       position re-keyed under the rewritten {@code @<name>} canonical key.</li>
+     * </ul>
+     *
+     * @param input    SnakeYAML node tree (from {@code Yaml.compose}); {@code null} →
+     *                 empty canonical + a "must be a mapping" error
+     * @param registry type registry used for default-subType resolution + coercion checks
+     * @return the canonical JSON object, any collected diagnostics, and the side table
+     */
+    public static DesugarResult desugar(Node input, MetaDataRegistry registry) {
+        List<CollectedError> errors = new ArrayList<>();
+        SideTable positions = new SideTable();
+        JsonObject node = desugarNodeFromYaml(input, registry, errors, positions, "<root>");
+        JsonObject canonical = node != null ? node : new JsonObject();
+        return new DesugarResult(canonical, errors, positions);
     }
 
     // -----------------------------------------------------------------------
@@ -613,5 +675,584 @@ public final class YamlDesugar {
         if (raw instanceof String) return (String) raw;
         if (raw instanceof List) return Arrays.toString(((List<?>) raw).toArray());
         return String.valueOf(raw);
+    }
+
+    // =======================================================================
+    // FR5b — SnakeYAML Node-tree desugar path
+    //
+    // Mirrors the Object-tree path above but walks SnakeYAML's Node tree so
+    // each scalar key's start-mark is available for the position side table.
+    // The four sugar rules are applied identically; the only structural
+    // difference is that this path attaches a PositionMap to every produced
+    // wrapper / body JsonObject via the supplied SideTable.
+    //
+    // Java port of:
+    //   server/csharp/MetaObjects/YamlDesugar.cs (Rule-1–5 + position carrier)
+    //   server/typescript/packages/metadata/src/core/yaml-desugar.ts (reference)
+    // =======================================================================
+
+    /**
+     * Desugar one node from a SnakeYAML {@link Node} tree — a single-key mapping
+     * {@code { "type.subType": body }}.
+     *
+     * <p>Returns the canonical wrapper {@link JsonObject}, or {@code null} when the
+     * input is not a usable node (the caller substitutes a placeholder). Attaches
+     * a {@link PositionMap} entry on the wrapper for the canonical key, and on the
+     * produced body for each body key (after Rule-4 / Rule-2 rewrites).</p>
+     */
+    private static JsonObject desugarNodeFromYaml(Node input, MetaDataRegistry registry,
+                                                  List<CollectedError> errors,
+                                                  SideTable positions, String path) {
+        if (input == null) {
+            errors.add(new CollectedError(
+                "Node at " + path + " must be a mapping with one type key"));
+            return null;
+        }
+        if (input.getNodeId() != NodeId.mapping) {
+            errors.add(new CollectedError(
+                "Node at " + path + " must be a mapping with one type key"));
+            return null;
+        }
+        MappingNode map = (MappingNode) input;
+        List<NodeTuple> tuples = map.getValue();
+        if (tuples.size() != 1) {
+            String found;
+            if (tuples.isEmpty()) {
+                found = "none";
+            } else {
+                List<String> keyStrs = new ArrayList<>(tuples.size());
+                for (NodeTuple t : tuples) keyStrs.add(yamlNodeToString(t.getKeyNode()));
+                found = String.join(", ", keyStrs);
+            }
+            errors.add(new CollectedError(
+                "Node at " + path + " must have exactly one type key (found: " + found + ")"));
+            return null;
+        }
+        NodeTuple entry = tuples.get(0);
+        Node rawKeyNode = entry.getKeyNode();
+        if (rawKeyNode.getNodeId() != NodeId.scalar) {
+            errors.add(new CollectedError(
+                "Node key at " + path + " must be a string"));
+            return null;
+        }
+        ScalarNode keyScalar = (ScalarNode) rawKeyNode;
+        String rawKey = keyScalar.getValue();
+        if (rawKey == null) {
+            errors.add(new CollectedError(
+                "Node key at " + path + " must be a string"));
+            return null;
+        }
+        Node rawBody = entry.getValueNode();
+
+        // FR5b — capture the wrapper-key's YAML position BEFORE any rewrites.
+        // The author's raw key (with possible `[]` suffix and possibly omitted
+        // subType) is at this (line, col); we emit this position under the
+        // CANONICAL key on the wrapper's position map.
+        YamlPosition wrapperKeyPos = YamlPositions.positionOf(keyScalar);
+
+        // Rule 4: a trailing "[]" on the key → isArray.
+        String key = rawKey;
+        boolean isArray = false;
+        if (key.endsWith(ARRAY_SUFFIX)) {
+            key = key.substring(0, key.length() - ARRAY_SUFFIX.length());
+            isArray = true;
+        }
+
+        // Rule 1: a bare `type` key → the type's registry default subType.
+        String canonicalKey = resolveKey(key, registry, errors, path);
+
+        // Rule 2: a scalar body → { name: <scalar> }. The body-builder also gets
+        // the wrapper-key position so Rule-2 synthesis (name slot) can inherit it.
+        JsonObject body = desugarBodyFromYaml(rawBody, registry, canonicalKey, errors,
+            positions, path, wrapperKeyPos);
+
+        // Rule 4 (cont.): stamp isArray onto the canonical body.
+        if (isArray) {
+            body.addProperty(KEY_IS_ARRAY, true);
+        }
+
+        // Recurse into children (a YAML sequence) — desugar each element so deeper
+        // wrappers carry their own positions.
+        if (rawBody != null && rawBody.getNodeId() == NodeId.mapping) {
+            MappingNode bodyMap = (MappingNode) rawBody;
+            for (NodeTuple bt : bodyMap.getValue()) {
+                if (bt.getKeyNode().getNodeId() != NodeId.scalar) continue;
+                String bk = ((ScalarNode) bt.getKeyNode()).getValue();
+                if (!KEY_CHILDREN.equals(bk)) continue;
+                Node childrenNode = bt.getValueNode();
+                if (childrenNode != null && childrenNode.getNodeId() == NodeId.sequence) {
+                    SequenceNode seq = (SequenceNode) childrenNode;
+                    JsonArray children = new JsonArray(seq.getValue().size());
+                    for (int i = 0; i < seq.getValue().size(); i++) {
+                        String childPath = path + "." + KEY_CHILDREN + "[" + i + "]";
+                        JsonObject child = desugarNodeFromYaml(seq.getValue().get(i),
+                            registry, errors, positions, childPath);
+                        children.add(child != null ? child : new JsonObject());
+                    }
+                    body.add(KEY_CHILDREN, children);
+                }
+                break;
+            }
+        }
+
+        JsonObject wrapper = new JsonObject();
+        wrapper.add(canonicalKey, body);
+
+        // FR5b — stamp wrapper-level position-by-key map (canonicalKey → raw-key pos).
+        // The transformation rawKey → canonicalKey (Rule 1's fuse + Rule 4's `[]`
+        // strip) preserves the position; the canonical wrapper still resolves to the
+        // YAML line that authored it.
+        if (wrapperKeyPos != null) {
+            PositionMap wp = new PositionMap();
+            wp.set(canonicalKey, wrapperKeyPos);
+            positions.setMap(wrapper, wp);
+        }
+        return wrapper;
+    }
+
+    /**
+     * Rule 2 + 4 — normalize a node body (from a SnakeYAML {@link Node}) into a
+     * canonical mapping, attaching a {@link PositionMap} for the body keys.
+     *
+     * <p>Reserved structural keys stay bare; every other key is {@code @}-prefixed
+     * (Rule 4 / ADR-0006 D1). The body-key's position is re-keyed under the
+     * rewritten output key.</p>
+     *
+     * <p>Also runs the D2 type-coercion guard against the registry-declared
+     * value types for each attr.</p>
+     */
+    private static JsonObject desugarBodyFromYaml(Node rawBody, MetaDataRegistry registry,
+                                                  String canonicalKey,
+                                                  List<CollectedError> errors,
+                                                  SideTable positions, String path,
+                                                  YamlPosition wrapperKeyPos) {
+        JsonObject out = new JsonObject();
+        if (rawBody == null) {
+            // Empty body (`field.string:` with nothing) → empty node, no body positions.
+            return out;
+        }
+
+        if (rawBody.getNodeId() == NodeId.scalar) {
+            ScalarNode scalar = (ScalarNode) rawBody;
+            if (isYamlNull(scalar)) {
+                return out;
+            }
+            out.add(KEY_NAME, scalarToJsonElementYaml(scalar));
+            // FR5b — the synthesized `{ name: rawBody }` has no YAML-side key;
+            // attribute the `name` slot to the wrapper-key's position. Mirrors C#
+            // YamlDesugar.cs Rule-2 inheritance.
+            if (wrapperKeyPos != null) {
+                PositionMap pm = new PositionMap();
+                pm.set(KEY_NAME, wrapperKeyPos);
+                positions.setMap(out, pm);
+            }
+            return out;
+        }
+
+        if (rawBody.getNodeId() == NodeId.sequence) {
+            errors.add(new CollectedError(
+                "Node body at " + path + " must be a scalar or mapping, not a list"));
+            return out;
+        }
+
+        if (rawBody.getNodeId() != NodeId.mapping) {
+            errors.add(new CollectedError(
+                "Node body at " + path + " must be a scalar or mapping"));
+            return out;
+        }
+
+        MappingNode src = (MappingNode) rawBody;
+        Map<String, ChildRequirement> attrSchemaIndex = buildAttrSchemaIndex(registry, canonicalKey);
+        ParentKey parent = splitCanonicalKey(canonicalKey);
+
+        // FR5b — translate body-key positions across the sigil-free rewrite. The
+        // author's bare `filterable` maps to canonical `@filterable`; we record
+        // the position under the rewritten name so the parser's JSONPath lookup
+        // (which walks canonical JSON) lands on the right entry.
+        PositionMap outPositions = null;
+
+        for (NodeTuple bt : src.getValue()) {
+            Node keyNode = bt.getKeyNode();
+            if (keyNode.getNodeId() != NodeId.scalar) {
+                errors.add(new CollectedError(
+                    "Body key at " + path + " must be a string"));
+                continue;
+            }
+            ScalarNode keyScalar = (ScalarNode) keyNode;
+            String key = keyScalar.getValue();
+            if (key == null) {
+                errors.add(new CollectedError(
+                    "Body key at " + path + " must be a string"));
+                continue;
+            }
+            Node valueNode = bt.getValueNode();
+
+            YamlPosition bodyKeyPos = YamlPositions.positionOf(keyScalar);
+            String outKey;
+
+            // KEY_CHILDREN — copy placeholder; the caller replaces it with the desugared array.
+            if (key.equals(KEY_CHILDREN)) {
+                out.add(KEY_CHILDREN, yamlNodeToJsonElement(valueNode));
+                outKey = KEY_CHILDREN;
+            } else if (RESERVED_KEYS.contains(key) || key.startsWith(ATTR_PREFIX)) {
+                out.add(key, yamlNodeToJsonElement(valueNode));
+                outKey = key;
+                if (key.startsWith(ATTR_PREFIX)) {
+                    String attrName = key.substring(ATTR_PREFIX.length());
+                    if (!attrName.isEmpty() && !RESERVED_KEYS.contains(attrName)) {
+                        checkCoercionYaml(attrName, valueNode, attrSchemaIndex, registry,
+                            parent, errors, path);
+                    }
+                }
+            } else {
+                // Rule 4 (D1) — sigil-free attr: re-prefix with `@` on lowering.
+                outKey = ATTR_PREFIX + key;
+                out.add(outKey, yamlNodeToJsonElement(valueNode));
+                checkCoercionYaml(key, valueNode, attrSchemaIndex, registry, parent,
+                    errors, path);
+            }
+
+            if (bodyKeyPos != null) {
+                if (outPositions == null) outPositions = new PositionMap();
+                outPositions.set(outKey, bodyKeyPos);
+            }
+        }
+        if (outPositions != null && outPositions.any()) {
+            positions.setMap(out, outPositions);
+        }
+        return out;
+    }
+
+    // -----------------------------------------------------------------------
+    // SnakeYAML Node → Gson JsonElement (preserves YAML 1.2 core-schema types,
+    // including quoted-as-string).
+    // -----------------------------------------------------------------------
+
+    private static JsonElement yamlNodeToJsonElement(Node node) {
+        if (node == null) return JsonNull.INSTANCE;
+        switch (node.getNodeId()) {
+            case scalar: return scalarToJsonElementYaml((ScalarNode) node);
+            case sequence: {
+                SequenceNode seq = (SequenceNode) node;
+                JsonArray arr = new JsonArray();
+                for (Node el : seq.getValue()) arr.add(yamlNodeToJsonElement(el));
+                return arr;
+            }
+            case mapping: {
+                MappingNode m = (MappingNode) node;
+                JsonObject obj = new JsonObject();
+                for (NodeTuple t : m.getValue()) {
+                    Node k = t.getKeyNode();
+                    String ks = (k.getNodeId() == NodeId.scalar)
+                        ? ((ScalarNode) k).getValue()
+                        : k.toString();
+                    obj.add(ks, yamlNodeToJsonElement(t.getValueNode()));
+                }
+                return obj;
+            }
+            default: return JsonNull.INSTANCE;
+        }
+    }
+
+    private static JsonElement scalarToJsonElementYaml(ScalarNode scalar) {
+        String value = scalar.getValue();
+        Tag tag = scalar.getTag();
+        if (value == null) return JsonNull.INSTANCE;
+        if (Tag.NULL.equals(tag)) return JsonNull.INSTANCE;
+
+        // Quoted scalars → strings. SnakeYAML's PLAIN style returns a null Character
+        // from getChar(); only the quoted styles ('\'', '"', '|', '>') have a real char.
+        if (isQuotedScalar(scalar)) {
+            return new JsonPrimitive(value);
+        }
+
+        if (Tag.STR.equals(tag)) return new JsonPrimitive(value);
+        if (Tag.BOOL.equals(tag)) {
+            Boolean b = parseYamlBool(value);
+            return b != null ? new JsonPrimitive(b) : new JsonPrimitive(value);
+        }
+        if (Tag.INT.equals(tag)) {
+            Long l = parseYamlInt(value);
+            return l != null ? new JsonPrimitive(l) : new JsonPrimitive(value);
+        }
+        if (Tag.FLOAT.equals(tag)) {
+            Double d = parseYamlFloat(value);
+            return d != null ? new JsonPrimitive(d) : new JsonPrimitive(value);
+        }
+
+        // Plain scalars — YAML 1.2 core: null/bool first, then int, then float, fallback string.
+        if (isPlainYamlNull(value)) return JsonNull.INSTANCE;
+        Boolean b = parseYamlBool(value);
+        if (b != null) return new JsonPrimitive(b);
+        Long l = parseYamlInt(value);
+        if (l != null) return new JsonPrimitive(l);
+        Double d = parseYamlFloat(value);
+        if (d != null) return new JsonPrimitive(d);
+        return new JsonPrimitive(value);
+    }
+
+    private static boolean isYamlNull(ScalarNode scalar) {
+        Tag tag = scalar.getTag();
+        if (Tag.NULL.equals(tag)) return true;
+        if (scalar.getValue() == null) return true;
+        // Plain (unquoted) null literals only — quoted "null" is a string.
+        if (isQuotedScalar(scalar)) return false;
+        return isPlainYamlNull(scalar.getValue());
+    }
+
+    private static boolean isPlainYamlNull(String raw) {
+        return raw.isEmpty() || "~".equals(raw) || "null".equals(raw)
+            || "Null".equals(raw) || "NULL".equals(raw);
+    }
+
+    /**
+     * True if the scalar's style is one of the quoted/block styles (single-quoted,
+     * double-quoted, literal {@code |}, or folded {@code >}). SnakeYAML's
+     * {@code ScalarStyle.PLAIN.getChar()} returns {@code null}, so callers must guard
+     * before invoking {@code charValue()}.
+     */
+    private static boolean isQuotedScalar(ScalarNode s) {
+        org.yaml.snakeyaml.DumperOptions.ScalarStyle style = s.getScalarStyle();
+        if (style == null) return false;
+        Character ch = style.getChar();
+        if (ch == null) return false; // PLAIN
+        char c = ch.charValue();
+        return c == '\'' || c == '"' || c == '|' || c == '>';
+    }
+
+    private static Boolean parseYamlBool(String raw) {
+        if ("true".equals(raw) || "True".equals(raw) || "TRUE".equals(raw)) return Boolean.TRUE;
+        if ("false".equals(raw) || "False".equals(raw) || "FALSE".equals(raw)) return Boolean.FALSE;
+        return null;
+    }
+
+    private static Long parseYamlInt(String raw) {
+        if (raw.indexOf('.') >= 0 || raw.indexOf('e') >= 0 || raw.indexOf('E') >= 0) return null;
+        // Accept the YAML 1.1 carryover SnakeYAML's default resolver still recognizes:
+        // hex (0xFF), octal (0o77 / 077), and decimal.
+        try {
+            String s = raw;
+            boolean neg = false;
+            if (s.startsWith("+")) s = s.substring(1);
+            else if (s.startsWith("-")) { neg = true; s = s.substring(1); }
+            long val;
+            if (s.startsWith("0x") || s.startsWith("0X")) {
+                val = Long.parseLong(s.substring(2), 16);
+            } else if (s.startsWith("0o") || s.startsWith("0O")) {
+                val = Long.parseLong(s.substring(2), 8);
+            } else {
+                val = Long.parseLong(s, 10);
+            }
+            return neg ? -val : val;
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static Double parseYamlFloat(String raw) {
+        if (".inf".equals(raw) || ".Inf".equals(raw) || ".INF".equals(raw))
+            return Double.POSITIVE_INFINITY;
+        if ("-.inf".equals(raw) || "-.Inf".equals(raw) || "-.INF".equals(raw))
+            return Double.NEGATIVE_INFINITY;
+        if (".nan".equals(raw) || ".NaN".equals(raw) || ".NAN".equals(raw))
+            return Double.NaN;
+        if (raw.indexOf('.') < 0 && raw.indexOf('e') < 0 && raw.indexOf('E') < 0) return null;
+        try { return Double.valueOf(raw); }
+        catch (NumberFormatException ex) { return null; }
+    }
+
+    private static String yamlNodeToString(Node node) {
+        if (node == null) return "null";
+        if (node.getNodeId() == NodeId.scalar) return ((ScalarNode) node).getValue();
+        return node.toString();
+    }
+
+    // -----------------------------------------------------------------------
+    // D2 coercion guard — Node-tree variant.
+    //
+    // The Object-tree guard above uses raw Java values. For the Node tree we
+    // unwrap the scalar value the same way the YAML 1.2 core schema would
+    // (so a plain `true` is a boolean, a plain `25` is a number) and call
+    // through to the same emitCoercion helper for the message.
+    // -----------------------------------------------------------------------
+
+    private static void checkCoercionYaml(String attrName, Node rawNode,
+                                          Map<String, ChildRequirement> schemaIndex,
+                                          MetaDataRegistry registry,
+                                          ParentKey parent,
+                                          List<CollectedError> errors, String path) {
+        if (schemaIndex == null) return;
+        ChildRequirement spec = schemaIndex.get(attrName);
+        if (spec == null) return;
+        String declared = spec.getExpectedSubType();
+        if (declared == null || "*".equals(declared)) return;
+
+        boolean isArrayAttr = isStringArraySubType(declared)
+            || isArrayConstraintRegistered(registry, parent, attrName);
+        if (isArrayAttr) {
+            checkArrayCoercionYaml(attrName, rawNode, declared, errors, path);
+            return;
+        }
+
+        if (StringAttribute.SUBTYPE_STRING.equals(declared)
+            || ClassAttribute.SUBTYPE_CLASS.equals(declared)) {
+            if (!isYamlString(rawNode)) {
+                emitCoercion(attrName, unwrapForMessage(rawNode), "string", errors, path);
+            }
+            return;
+        }
+        if (BooleanAttribute.SUBTYPE_BOOLEAN.equals(declared)) {
+            if (!isYamlBoolean(rawNode)) {
+                emitCoercion(attrName, unwrapForMessage(rawNode), "boolean", errors, path);
+            }
+            return;
+        }
+        if (IntAttribute.SUBTYPE_INT.equals(declared)
+            || LongAttribute.SUBTYPE_LONG.equals(declared)
+            || DoubleAttribute.SUBTYPE_DOUBLE.equals(declared)) {
+            if (!isYamlNumber(rawNode)) {
+                emitCoercion(attrName, unwrapForMessage(rawNode), "number", errors, path);
+            }
+            return;
+        }
+        // Object-shaped attrs — accept anything.
+    }
+
+    private static void checkArrayCoercionYaml(String attrName, Node rawNode,
+                                               String declaredElementSubType,
+                                               List<CollectedError> errors, String path) {
+        if (isYamlString(rawNode)) return; // legitimate one-element shorthand
+        if (rawNode == null || rawNode.getNodeId() != NodeId.sequence) {
+            String expected = isStringArrayLike(declaredElementSubType)
+                ? "string-array (or single string)"
+                : declaredElementSubType + "-array (or single " + declaredElementSubType + ")";
+            emitCoercion(attrName, unwrapForMessage(rawNode), expected, errors, path);
+            return;
+        }
+        SequenceNode seq = (SequenceNode) rawNode;
+        for (int i = 0; i < seq.getValue().size(); i++) {
+            Node el = seq.getValue().get(i);
+            if (!matchesYamlElementSubType(el, declaredElementSubType)) {
+                emitCoercion(attrName + "[" + i + "]", unwrapForMessage(el),
+                    elementExpectedLabel(declaredElementSubType), errors, path);
+            }
+        }
+    }
+
+    private static boolean matchesYamlElementSubType(Node el, String elementSubType) {
+        if (isStringArrayLike(elementSubType)) return isYamlString(el);
+        if (BooleanAttribute.SUBTYPE_BOOLEAN.equals(elementSubType)) return isYamlBoolean(el);
+        if (IntAttribute.SUBTYPE_INT.equals(elementSubType)
+            || LongAttribute.SUBTYPE_LONG.equals(elementSubType)
+            || DoubleAttribute.SUBTYPE_DOUBLE.equals(elementSubType)) {
+            return isYamlNumber(el);
+        }
+        return true;
+    }
+
+    private static boolean isYamlString(Node node) {
+        if (node == null || node.getNodeId() != NodeId.scalar) return false;
+        ScalarNode s = (ScalarNode) node;
+        String v = s.getValue();
+        if (v == null) return false;
+        // Quoted → string.
+        if (isQuotedScalar(s)) return true;
+        Tag tag = s.getTag();
+        if (Tag.STR.equals(tag)) return true;
+        // SnakeYAML's resolver may have tagged the plain scalar as int/float/bool/null
+        // (e.g. `0xFF` → INT via the YAML 1.1 carryover). Respect that — those are
+        // YAML coercions, NOT strings.
+        if (Tag.INT.equals(tag) || Tag.FLOAT.equals(tag)
+            || Tag.BOOL.equals(tag) || Tag.NULL.equals(tag)) {
+            return false;
+        }
+        // Plain scalar with no specific tag — string only if it doesn't parse as
+        // another core type.
+        if (isYamlNull(s)) return false;
+        if (parseYamlBool(v) != null) return false;
+        if (parseYamlInt(v) != null) return false;
+        if (parseYamlFloat(v) != null) return false;
+        return true;
+    }
+
+    private static boolean isYamlBoolean(Node node) {
+        if (node == null || node.getNodeId() != NodeId.scalar) return false;
+        ScalarNode s = (ScalarNode) node;
+        String v = s.getValue();
+        if (v == null) return false;
+        if (isQuotedScalar(s)) {
+            return Tag.BOOL.equals(s.getTag()) && parseYamlBool(v) != null;
+        }
+        Tag tag = s.getTag();
+        if (Tag.BOOL.equals(tag)) return parseYamlBool(v) != null;
+        // Plain scalar — implicit resolution: any value that parses as a bool is a bool.
+        return parseYamlBool(v) != null;
+    }
+
+    private static boolean isYamlNumber(Node node) {
+        if (node == null || node.getNodeId() != NodeId.scalar) return false;
+        ScalarNode s = (ScalarNode) node;
+        String v = s.getValue();
+        if (v == null) return false;
+        if (isQuotedScalar(s)) {
+            Tag t = s.getTag();
+            return Tag.INT.equals(t) || Tag.FLOAT.equals(t);
+        }
+        Tag tag = s.getTag();
+        if (Tag.INT.equals(tag)) return parseYamlInt(v) != null;
+        if (Tag.FLOAT.equals(tag)) return parseYamlFloat(v) != null;
+        // Booleans must not pretend to be numbers (YAML 1.2 core has no overlap).
+        if (parseYamlBool(v) != null) return false;
+        return parseYamlInt(v) != null || parseYamlFloat(v) != null;
+    }
+
+    /**
+     * Unwrap a SnakeYAML scalar to a Java value for the "got {0}" portion of the
+     * coercion error message. Mirrors the YAML 1.2 core-schema resolution used by
+     * the existing Object-tree path.
+     */
+    private static Object unwrapForMessage(Node node) {
+        if (node == null) return null;
+        if (node.getNodeId() == NodeId.scalar) {
+            ScalarNode s = (ScalarNode) node;
+            String v = s.getValue();
+            if (v == null) return null;
+            if (isQuotedScalar(s)) return v;
+            Tag tag = s.getTag();
+            if (Tag.STR.equals(tag)) return v;
+            if (Tag.NULL.equals(tag)) return null;
+            if (Tag.BOOL.equals(tag)) {
+                Boolean b = parseYamlBool(v);
+                return b != null ? b : v;
+            }
+            if (Tag.INT.equals(tag)) {
+                Long l = parseYamlInt(v);
+                return l != null ? l : v;
+            }
+            if (Tag.FLOAT.equals(tag)) {
+                Double d = parseYamlFloat(v);
+                return d != null ? d : v;
+            }
+            // Plain scalars — apply core schema.
+            if (isPlainYamlNull(v)) return null;
+            Boolean b = parseYamlBool(v);
+            if (b != null) return b;
+            Long l = parseYamlInt(v);
+            if (l != null) return l;
+            Double d = parseYamlFloat(v);
+            if (d != null) return d;
+            return v;
+        }
+        if (node.getNodeId() == NodeId.sequence) {
+            List<Object> list = new ArrayList<>();
+            for (Node el : ((SequenceNode) node).getValue()) list.add(unwrapForMessage(el));
+            return list;
+        }
+        if (node.getNodeId() == NodeId.mapping) {
+            // Just return the toString as a placeholder; coercion errors over
+            // map-shaped values are not produced by the current schema.
+            return node.toString();
+        }
+        return node.toString();
     }
 }
