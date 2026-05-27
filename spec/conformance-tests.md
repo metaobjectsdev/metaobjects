@@ -29,13 +29,33 @@ Every fixture is a directory under `metaobjects/fixtures/conformance/`. Each fix
 │   ├── meta.foo.json
 │   └── meta.bar.json            # multiple files for overlay/multi-file scenarios
 ├── expected.json                # happy-path: canonical metamodel
-├── expected-errors.json         # error case: array of {"code": "ERR_*"} objects
+├── expected-errors.json         # error case: FR5a envelope { errors: [...], warnings: [] }
 └── expected-warnings.json       # optional: array of warning message strings
 ```
 
 **Exactly one** of `expected.json` or `expected-errors.json` must be present:
 - `expected.json` → the Loader is expected to succeed (no errors). The canonical serialized output of the loaded root MUST deep-equal this file. The canonical shape is the **fused-key form** documented in [`wire-format.md`](wire-format.md) — every node is `{ "<type>.<subType>": <body> }`.
-- `expected-errors.json` → the Loader is expected to emit errors. It is a JSON array of objects, each `{ "code": "ERR_*" }` (a stable `ErrorCode`; message text is NOT compared — it is Tier-2 idiomatic per language). The set of emitted error **codes** MUST equal the set of `code` values in this list (compared as sorted sets — order-independent).
+- `expected-errors.json` → the Loader is expected to emit errors. Post-FR5a (ADR-0009), the file is an envelope object:
+
+  ```jsonc
+  {
+    "errors": [
+      {
+        "code": "ERR_BAD_ATTR_VALUE",
+        "source": {
+          "format": "json",
+          "files": ["meta.users.json"],
+          "jsonPath": "$['metadata.root'].children[0]['object.entity']..."
+        }
+      }
+    ],
+    "warnings": []
+  }
+  ```
+
+  Per ADR-0009, every port's harness asserts (in declaration order, per error): `code`, `source.format`, `source.files`, and `source.jsonPath`. Error *message text* is NOT compared — only the stable `ErrorCode`; message wording is Tier-2 (idiomatic per language). Other envelope fields (`suggestions`, `fixture`, `node`, `yamlPosition`) are RECOMMENDED-only and are not asserted by the cross-port harness.
+
+  The legacy `[{ "code": "ERR_*" }]` array shape remains accepted by every port's parser for backward compat (the envelope assertion is skipped, only the code-set is compared) — pre-FR5a fixtures continue to work without rewrite. The cross-port migration of the corpus to the envelope shape lands in the FR5a coordinated work.
 
 `expected-warnings.json` is optional. When present, the set of warnings MUST equal this list. When absent on a happy-path fixture, warnings are asserted empty.
 
@@ -83,12 +103,16 @@ These are the **only** reserved structural keys. Everything else inside a body i
 - **Children in declaration order**. The order of children inside `children: [...]` reflects authoring order, not alphabetical order. Overlay merge appends; it does NOT re-sort.
 - **`@fields` normalization**. Authoring may write `"@fields": "id"` (scalar); canonical form is always the array form `"@fields": ["id"]`.
 
-### Errors and warnings as sorted sets
+### Errors and warnings: code-set + envelope-deep-equal
 
-Errors are compared as **sorted sets of `code` values** (the `code` field of each
-`expected-errors.json` object), and warnings as **sorted sets of message strings**, to avoid
-ordering issues across validation passes. Each is sorted before comparison. Error *message text*
-is never compared — only the stable `ErrorCode`; message wording is Tier-2 (idiomatic per language).
+Errors are compared at two layers (per FR5a / ADR-0009):
+
+1. **Code-set check** — sorted sets of `code` values from `expected-errors.json` (envelope or legacy form) vs the loader-emitted codes. Order-independent (mirrors validation-pass dispatch order quirks).
+2. **Envelope assertion (envelope-shape fixtures only)** — for every error in declaration order, the harness asserts `code`, `source.format`, `source.files`, and `source.jsonPath` exactly. JSONPath is the canonical form per [ADR-0009](decisions/ADR-0009-loader-error-envelope-and-source-on-node.md) — byte-identical across ports.
+
+Warnings remain compared as **sorted sets of message strings**. Error *message text* is never compared — only the stable `ErrorCode`; message wording is Tier-2 (idiomatic per language).
+
+Pre-FR5a fixtures using the legacy `[{"code": "..."}]` array shape get only the code-set check; the envelope assertion is skipped.
 
 ## TS conformance runner
 
@@ -102,7 +126,15 @@ for each subdirectory of fixtures/conformance/:
     load result = Loader().loadFromDirectory(inputDir)
 
     if expected-errors.json exists:
-        assert sorted(result.errors) == sorted(expected-errors.json)
+        envelope = parse(expected-errors.json)   # envelope or legacy array
+        assert sorted(codes(result.errors)) == sorted(codes(envelope))
+        if envelope is FR5a-shaped (not legacy array):
+            for i, (want, got) in enumerate(zip(envelope.errors, result.errors)):
+                assert want.code == got.code
+                assert want.source.format == got.source.format
+                assert want.source.files == got.source.files
+                assert want.source.jsonPath == got.source.jsonPath
+            assert len(envelope.warnings) == len(result.warnings)
         stop
 
     assert result.errors is empty
@@ -138,7 +170,7 @@ fixture.
 2. Add one or more `meta.*.json` files to `input/`.
 3. Decide if it's happy-path, error, or warning:
    - Happy-path → add `expected.json` (canonical metamodel) and optionally `expected-warnings.json`.
-   - Error → add `expected-errors.json` (sorted list of error message strings).
+   - Error → add `expected-errors.json` (FR5a envelope: `{ "errors": [{ "code": "ERR_*", "source": { "format": "...", "files": [...], "jsonPath": "$..." } }], "warnings": [] }`).
 4. Run the TS conformance test — the new directory is auto-discovered:
    `cd typescript/packages/metadata && bun test test/conformance.test.ts -t "<fixture-name>"`
 5. If the test fails with "actual vs expected" diff, you have a choice:
