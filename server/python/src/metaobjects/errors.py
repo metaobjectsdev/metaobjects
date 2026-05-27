@@ -66,7 +66,7 @@ class MetaError:
         code: ErrorCode = ErrorCode.ERR_UNKNOWN,
         source: str | None = None,
         path: str | None = None,
-        envelope: "Optional[ErrorSource]" = None,
+        envelope: Optional[ErrorSource] = None,
     ) -> None:
         self.message = message
         self.code = code

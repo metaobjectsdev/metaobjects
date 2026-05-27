@@ -147,12 +147,10 @@ class CodeSource(ErrorSource):
     caller: Optional[str] = None
     format: ClassVar[str] = "code"
 
-    # Canonical singleton for the no-caller case. Frozen dataclasses are
-    # hash-equal across instances, but a single shared default makes intent
-    # explicit and matches the C# `CodeSource.Default` convention. Declared
-    # here as a forward reference so static analyzers see `CodeSource.DEFAULT`
-    # as a `CodeSource` (the assignment lives below).
-    DEFAULT: ClassVar["CodeSource"]
+    # Canonical singleton for the no-caller case (mirrors C# `CodeSource.Default`).
+    # The actual assignment lives below — Python doesn't allow self-reference in
+    # the dataclass body.
+    DEFAULT: ClassVar[CodeSource]
 
 
 CodeSource.DEFAULT = CodeSource(caller=None)
