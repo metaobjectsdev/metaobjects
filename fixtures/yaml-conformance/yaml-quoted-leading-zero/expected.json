@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "children": [
+            {
+              "field.string": {
+                "name": "code",
+                "@column": "007"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

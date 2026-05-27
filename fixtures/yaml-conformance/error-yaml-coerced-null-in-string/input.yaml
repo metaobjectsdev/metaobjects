@@ -1,0 +1,8 @@
+metadata:
+  children:
+    - object.entity:
+        name: Product
+        children:
+          - field.string:
+              name: sku
+              column: ~

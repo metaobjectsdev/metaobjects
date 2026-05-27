@@ -1,0 +1,8 @@
+metadata:
+  package: acme
+  children:
+    - object.entity:
+        name: Product
+        description: |
+          The product entity.
+          Has two lines.
