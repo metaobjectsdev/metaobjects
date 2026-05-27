@@ -36,6 +36,7 @@
     <module>metadata</module>
     <module>codegen-base</module>
     <module>codegen-mustache</module>
+    <module>codegen-spring</module>
     <module>render</module>
     <module>metadata-ktx</module>
     <module>codegen-kotlin</module>
