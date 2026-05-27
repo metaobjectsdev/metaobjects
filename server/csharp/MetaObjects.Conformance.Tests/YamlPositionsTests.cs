@@ -11,10 +11,10 @@
 //      JSONPath-keyed dictionary; the canonical parser stamps
 //      `JsonSource.YamlPosition` on every constructed node.
 //
-// Per the FR5b cross-port-safety decision: YAML-input-emitted source envelopes
-// keep `format: "json"` (not `"yaml"`) until ALL four ports ship FR5b, so the
-// existing yaml-conformance fixtures' format discriminator stays byte-stable.
-// The new tier is the OPTIONAL `YamlPosition` field on `JsonSource`.
+// FR5b finalized 2026-05-27 — all four ports flipped YAML-input source envelopes
+// from `JsonSource` (format "json") to `YamlSource` (format "yaml") and the
+// yaml-conformance fixtures' format discriminator was mass-updated. The
+// envelope continues to carry the optional `YamlPosition` from the desugar.
 
 using System.Text.Json.Nodes;
 using MetaObjects.Source;
@@ -182,20 +182,20 @@ public class YamlPositionsTests
         Assert.Empty(result.Errors);
 
         // Root
-        var rootSrc = Assert.IsType<JsonSource>(result.Root.Source);
-        Assert.Equal("json", rootSrc.Format); // FR5b: format stays "json" cross-port
+        var rootSrc = Assert.IsType<YamlSource>(result.Root.Source);
+        Assert.Equal("yaml", rootSrc.Format); // FR5b finalized 2026-05-27
         Assert.Equal(new YamlPosition(1, 1), rootSrc.YamlPosition);
 
         // Object.entity
         var foo = result.Root.OwnChildren()[0];
         Assert.Equal(TYPE_OBJECT, foo.Type);
-        var fooSrc = Assert.IsType<JsonSource>(foo.Source);
+        var fooSrc = Assert.IsType<YamlSource>(foo.Source);
         Assert.Equal(new YamlPosition(4, 7), fooSrc.YamlPosition);
 
         // field.string
         var id = foo.OwnChildren()[0];
         Assert.Equal(TYPE_FIELD, id.Type);
-        var idSrc = Assert.IsType<JsonSource>(id.Source);
+        var idSrc = Assert.IsType<YamlSource>(id.Source);
         Assert.Equal(new YamlPosition(7, 13), idSrc.YamlPosition);
     }
 
@@ -234,7 +234,7 @@ public class YamlPositionsTests
         var field = result.Root.OwnChildren()[0].OwnChildren()[0];
         Assert.Equal("sku", field.Name);
         // Wrapper key `field.string:` is on line 7.
-        var src = Assert.IsType<JsonSource>(field.Source);
+        var src = Assert.IsType<YamlSource>(field.Source);
         Assert.Equal(new YamlPosition(7, 13), src.YamlPosition);
     }
 
@@ -254,7 +254,7 @@ public class YamlPositionsTests
         var result = ParserYaml.ParseYaml(yaml, opts);
         Assert.Empty(result.Errors);
         var field = result.Root.OwnChildren()[0];
-        var src = Assert.IsType<JsonSource>(field.Source);
+        var src = Assert.IsType<YamlSource>(field.Source);
         Assert.Equal(new YamlPosition(3, 7), src.YamlPosition);
     }
 
@@ -277,7 +277,7 @@ public class YamlPositionsTests
         Assert.NotEmpty(result.Errors);
         var err = result.Errors.FirstOrDefault(e => e.Code == ErrorCode.ERR_RESERVED_ATTR);
         Assert.NotNull(err);
-        var src = Assert.IsType<JsonSource>(err!.Envelope);
+        var src = Assert.IsType<YamlSource>(err!.Envelope);
         // The error fires while the parser is inside object.entity, so the
         // current yamlPosition is the object.entity wrapper-key's line (4).
         Assert.Equal(new YamlPosition(4, 7), src.YamlPosition);

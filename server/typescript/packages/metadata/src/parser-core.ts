@@ -110,17 +110,18 @@ export interface ParseResult {
 
 export function errSource(): ErrorSource {
   if (_currentPath !== undefined && _currentSourceId !== undefined) {
-    // FR5b note — when parsing a YAML input, buildTree-emitted errors keep
-    // `format: "json"` (the cross-port FR5a default) and surface the
-    // optional `yamlPosition` instead. This preserves the existing
-    // yaml-conformance fixtures' format-discriminator until C#/Java/Python
-    // also ship FR5b. See `source.ts` for the type-level rationale.
-    if (_currentFormat === "yaml" && _currentYamlPosition !== undefined) {
+    // FR5b (finalized 2026-05-27, all four ports) — buildTree-emitted errors
+    // from a YAML input now emit `format: "yaml"` (was `"json"` interim while
+    // each port shipped yamlPosition tracking). The optional `yamlPosition`
+    // rides along when the desugar's position map covers the current node.
+    if (_currentFormat === "yaml") {
       return {
-        format: "json",
+        format: "yaml",
         files: [_currentSourceId],
         jsonPath: _currentPath.toString(),
-        yamlPosition: _currentYamlPosition,
+        ...(_currentYamlPosition !== undefined
+          ? { yamlPosition: _currentYamlPosition }
+          : {}),
       };
     }
     return {
@@ -242,18 +243,19 @@ let _currentYamlPosition: YamlPosition | undefined;
  *  node. No-op when invoked outside buildTree's setup (defensive — the
  *  module-level state will always be populated during a normal parse).
  *
- *  FR5b note — see `errSource()` for the cross-port rationale on why YAML
- *  inputs still emit `format: "json"` plus an optional `yamlPosition`,
- *  rather than `format: "yaml"`, until C#/Java/Python ship FR5b and the
- *  yaml-conformance fixtures' format discriminator is mass-updated. */
+ *  FR5b (finalized 2026-05-27) — YAML-input nodes get `format: "yaml"`
+ *  envelopes (was `"json"` interim). The optional `yamlPosition` rides
+ *  along when the desugar's position map covers the current node. */
 function populateNodeSource(node: MetaData): void {
   if (_currentPath === undefined || _currentSourceId === undefined) return;
-  if (_currentFormat === "yaml" && _currentYamlPosition !== undefined) {
+  if (_currentFormat === "yaml") {
     node.setSource({
-      format: "json",
+      format: "yaml",
       files: [_currentSourceId],
       jsonPath: _currentPath.toString(),
-      yamlPosition: _currentYamlPosition,
+      ...(_currentYamlPosition !== undefined
+        ? { yamlPosition: _currentYamlPosition }
+        : {}),
     });
     return;
   }

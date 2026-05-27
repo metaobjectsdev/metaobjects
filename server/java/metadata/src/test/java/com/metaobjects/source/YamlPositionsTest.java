@@ -52,10 +52,11 @@ import static org.junit.Assert.assertTrue;
  *       {@link JsonSource#yamlPosition()} on every constructed node.</li>
  * </ol>
  *
- * <p>Per the FR5b cross-port-safety decision: YAML-input-emitted source envelopes
- * keep {@code format: "json"} (not {@code "yaml"}) until ALL four ports ship FR5b,
- * so the existing yaml-conformance fixtures' format discriminator stays byte-stable.
- * The new tier is the OPTIONAL {@link YamlPosition} field on {@link JsonSource}.</p>
+ * <p>FR5b finalized 2026-05-27 — all four ports flipped YAML-input-emitted source
+ * envelopes from {@link JsonSource} (format {@code "json"}) to {@link YamlSource}
+ * (format {@code "yaml"}) and the yaml-conformance fixtures' format discriminator
+ * was mass-updated. The envelope continues to carry the optional
+ * {@link YamlPosition} when the desugar tracked a position for the node.</p>
  */
 public class YamlPositionsTest {
 
@@ -204,22 +205,22 @@ public class YamlPositionsTest {
 
         // MetaRoot — wrapper key `metadata.root` on line 1, col 1.
         ErrorSource rootSrc = loader.getRoot().getSource();
-        assertTrue("root carries JsonSource", rootSrc instanceof JsonSource);
-        JsonSource rootJs = (JsonSource) rootSrc;
-        assertEquals("json", rootJs.format());  // FR5b: format stays "json" cross-port
-        assertEquals(new YamlPosition(1, 1), rootJs.yamlPosition());
+        assertTrue("root carries YamlSource (FR5b finalized)", rootSrc instanceof YamlSource);
+        YamlSource rootYs = (YamlSource) rootSrc;
+        assertEquals("yaml", rootYs.format());
+        assertEquals(new YamlPosition(1, 1), rootYs.yamlPosition());
 
         // The Product object.entity — `object.entity:` on line 4, col 7.
         assertEquals(1, loader.getRoot().getChildren().size());
         MetaData foo = loader.getRoot().getChildren().get(0);
-        JsonSource fooJs = (JsonSource) foo.getSource();
-        assertEquals(new YamlPosition(4, 7), fooJs.yamlPosition());
+        YamlSource fooYs = (YamlSource) foo.getSource();
+        assertEquals(new YamlPosition(4, 7), fooYs.yamlPosition());
 
         // The id field.string — `field.string:` on line 7, col 13.
         assertEquals(1, foo.getChildren().size());
         MetaData id = foo.getChildren().get(0);
-        JsonSource idJs = (JsonSource) id.getSource();
-        assertEquals(new YamlPosition(7, 13), idJs.yamlPosition());
+        YamlSource idYs = (YamlSource) id.getSource();
+        assertEquals(new YamlPosition(7, 13), idYs.yamlPosition());
     }
 
     @Test
@@ -258,8 +259,8 @@ public class YamlPositionsTest {
         assertNotNull("field.string child", fieldNode);
         assertEquals("sku", fieldNode.getName());
         // Wrapper key `field.string:` is on line 7, col 13.
-        JsonSource js = (JsonSource) fieldNode.getSource();
-        assertEquals(new YamlPosition(7, 13), js.yamlPosition());
+        YamlSource ys = (YamlSource) fieldNode.getSource();
+        assertEquals(new YamlPosition(7, 13), ys.yamlPosition());
     }
 
     @Test
@@ -276,9 +277,9 @@ public class YamlPositionsTest {
         parser.loadFromStream(bytes(yaml));
 
         MetaData foo = loader.getRoot().getChildren().get(0);
-        JsonSource js = (JsonSource) foo.getSource();
+        YamlSource ys = (YamlSource) foo.getSource();
         // `object.entity:` is at line 3, col 7.
-        assertEquals(new YamlPosition(3, 7), js.yamlPosition());
+        assertEquals(new YamlPosition(3, 7), ys.yamlPosition());
     }
 
     @Test
@@ -303,12 +304,12 @@ public class YamlPositionsTest {
         } catch (MetaDataException ex) {
             // If thrown, the envelope must carry the position for the offending node.
             ex.getEnvelope().ifPresent(env -> {
-                assertTrue("envelope is JsonSource", env instanceof JsonSource);
-                JsonSource js = (JsonSource) env;
+                assertTrue("envelope is YamlSource (FR5b finalized)", env instanceof YamlSource);
+                YamlSource ys = (YamlSource) env;
                 // The reserved-attr check fires inside the object.entity body — the
                 // current JSONPath includes `['object.entity']`, so yamlPosition
                 // points at that wrapper-key's line (4, 7).
-                assertEquals(new YamlPosition(4, 7), js.yamlPosition());
+                assertEquals(new YamlPosition(4, 7), ys.yamlPosition());
             });
             return;
         }

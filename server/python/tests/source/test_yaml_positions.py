@@ -9,13 +9,12 @@ mapping; the desugar (metaobjects.yaml_desugar) preserves it through
 Rule-1/2/4/5 rewrites; parser.py reads the wrapper's position when stamping
 ``source.yaml_position`` on each constructed MetaData node.
 
-FR5b implementation note (matches TS reference, see source/error_source.py
-JsonSource docstring): until ALL four ports ship FR5b, YAML-input-emitted
-source envelopes keep ``format: "json"`` so the cross-port yaml-conformance
-fixtures stay byte-stable. The new tier is the OPTIONAL ``yaml_position``
-field — empty for nodes the desugar synthesized without a YAML source
-position (e.g. an empty body), populated for every node that traces directly
-back to a YAML key.
+FR5b finalized 2026-05-27 — all four ports flipped YAML-input source envelopes
+from :class:`JsonSource` (format ``"json"``) to :class:`YamlSource` (format
+``"yaml"``) and the cross-port yaml-conformance fixtures' format discriminator
+was mass-updated. The envelope continues to carry the optional
+``yaml_position`` — populated for every node that traces directly back to a
+YAML key, empty for nodes the desugar synthesized without a source position.
 """
 from __future__ import annotations
 
@@ -25,7 +24,7 @@ from metaobjects.parser_yaml import parse_yaml
 from metaobjects.provider import compose_registry
 from metaobjects.registry import TypeRegistry
 from metaobjects.shared.base_types import TYPE_FIELD, TYPE_OBJECT
-from metaobjects.source import JsonSource, YamlPosition
+from metaobjects.source import JsonSource, YamlPosition, YamlSource
 from metaobjects.source.yaml_positions import (
     YamlPositionMap,
     get_position_map,
@@ -194,27 +193,27 @@ def test_loader_every_yaml_loaded_node_carries_source_yaml_position() -> None:
 
     # Root.
     root = result.root
-    assert isinstance(root.source, JsonSource)
-    # FR5b note: format stays "json" cross-port for now.
-    assert root.source.format == "json"
+    assert isinstance(root.source, YamlSource)
+    # FR5b finalized 2026-05-27 — YAML inputs emit format="yaml".
+    assert root.source.format == "yaml"
     assert root.source.yaml_position == YamlPosition(line=1, col=1)
 
     # object.entity child.
     foo = root.own_children()[0] if hasattr(root, "own_children") else root._children[0]
     assert foo.type == TYPE_OBJECT
-    assert isinstance(foo.source, JsonSource)
+    assert isinstance(foo.source, YamlSource)
     assert foo.source.yaml_position == YamlPosition(line=4, col=7)
 
     # field.string grandchild.
     id_field = foo._children[0]
     assert id_field.type == TYPE_FIELD
-    assert isinstance(id_field.source, JsonSource)
+    assert isinstance(id_field.source, YamlSource)
     assert id_field.source.yaml_position == YamlPosition(line=7, col=13)
 
 
 def test_loader_json_loaded_node_has_no_yaml_position_control() -> None:
-    # The JSON parser path does not enable the FR5b yaml-format branch; the
-    # node's `source` is the FR5a envelope with no yaml_position field.
+    # The JSON parser path doesn't take the FR5b YamlSource branch; the
+    # node's `source` is a JsonSource with no yaml_position field.
     result = parse_document(
         {"metadata.root": {"package": "acme", "children": []}},
         _registry(),
@@ -241,7 +240,7 @@ def test_loader_rule2_scalar_body_yaml_position_points_at_wrapper_line() -> None
     field = result.root._children[0]._children[0]
     assert field.name == "sku"
     # Wrapper key `field.string:` is on line 7.
-    assert isinstance(field.source, JsonSource)
+    assert isinstance(field.source, YamlSource)
     assert field.source.yaml_position == YamlPosition(line=7, col=13)
 
 
@@ -262,7 +261,7 @@ def test_loader_parse_error_for_reserved_at_attr_carries_yaml_position() -> None
     reserved_errors = [e for e in result.errors if e.code.name == "ERR_RESERVED_ATTR"]
     assert len(reserved_errors) == 1
     src = reserved_errors[0].envelope
-    assert isinstance(src, JsonSource)
+    assert isinstance(src, YamlSource)
     # The error fires while the parser is INSIDE object.entity, so the
     # current yaml_position is the object.entity wrapper key's line (4).
     assert src.yaml_position == YamlPosition(line=4, col=7)
@@ -283,5 +282,5 @@ def test_loader_empty_body_node_inherits_wrapper_yaml_position() -> None:
     assert result.errors == []
     field = result.root._children[0]
     # Wrapper position survives even when the body is empty.
-    assert isinstance(field.source, JsonSource)
+    assert isinstance(field.source, YamlSource)
     assert field.source.yaml_position == YamlPosition(line=3, col=7)

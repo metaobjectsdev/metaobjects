@@ -6,9 +6,9 @@
 // reads the wrapper's position when stamping `source.yamlPosition` on each
 // constructed MetaData.
 //
-// FR5b TS implementation note (see source.ts comment): until ALL four
-// ports ship FR5b, YAML-input-emitted source envelopes keep
-// `format: "json"` so the cross-port yaml-conformance fixtures stay
+// FR5b finalized 2026-05-27 — all four ports flipped YAML-input source
+// envelopes from `format: "json"` to `format: "yaml"` and the cross-port
+// yaml-conformance fixtures' format discriminator was mass-updated to stay
 // byte-stable. The new tier is the OPTIONAL `yamlPosition: {line, col}`
 // field — empty for nodes the desugar synthesized without a YAML source
 // position (e.g. an empty body), populated for every node that traces
@@ -203,7 +203,7 @@ test("loader: every YAML-loaded node carries source.yamlPosition", () => {
 
   // Root
   const root = result.root;
-  expect(root.source.format).toBe("json"); // FR5b note: format stays "json" cross-port
+  expect(root.source.format).toBe("yaml"); // FR5b finalized 2026-05-27
   expect("yamlPosition" in root.source ? root.source.yamlPosition : undefined)
     .toEqual({ line: 1, col: 1 });
 

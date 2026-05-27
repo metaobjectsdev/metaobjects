@@ -252,9 +252,20 @@ public class YamlConformanceTests
             //    canonical-parse + validation codes (e.g. ERR_BAD_ATTR_VALUE on a
             //    coerced enum value where the bad element survived stringification).
             string canonicalJson = desugared.Canonical.ToJsonString();
+            // FR5b (finalized 2026-05-27): pass the YAML format + position map so
+            // buildTree-emitted envelopes carry format="yaml" + yamlPosition.
+            var yamlParseOpts = new ParseOptions(registry)
+            {
+                Strict = parseOpts.Strict,
+                SourceName = parseOpts.SourceName,
+                IntoRoot = parseOpts.IntoRoot,
+                DeferSuperResolution = parseOpts.DeferSuperResolution,
+                SourceFormat = MetaDataFormat.Yaml,
+                YamlPositionsByPath = desugared.PositionsByPath,
+            };
             try
             {
-                var result = Parser.ParseJson(canonicalJson, parseOpts);
+                var result = Parser.ParseJson(canonicalJson, yamlParseOpts);
                 foreach (var e in result.Errors) AddEnvelope(e);
 
                 // 3. Run the post-load validation passes against the parsed tree —

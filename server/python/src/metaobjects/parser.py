@@ -20,7 +20,14 @@ from .shared.structural import (
     KEY_PACKAGE,
     KEY_VALUE,
 )
-from .source import CodeSource, ErrorSource, JsonPathBuilder, JsonSource, YamlPosition
+from .source import (
+    CodeSource,
+    ErrorSource,
+    JsonPathBuilder,
+    JsonSource,
+    YamlPosition,
+    YamlSource,
+)
 from .source.yaml_positions import get_yaml_position
 
 # Reserved structural body keys — authoring any of these with the @-prefix is a
@@ -44,26 +51,39 @@ class ParseResult:
     warnings: list[str] = field(default_factory=list)
 
 
+# FR5b — module-level source-format discriminant. Set at the top of
+# :func:`parse_document` and read by :func:`_current_envelope`. Safe because
+# parse_document is fully synchronous — no reentrancy within a single parse
+# call. Mirrors TS's ``_currentFormat`` module-level state in parser-core.ts.
+_current_source_format: str = "json"
+
+
 def _current_envelope(
     source: str | None,
     builder: JsonPathBuilder,
     yaml_position: YamlPosition | None = None,
 ) -> ErrorSource:
-    """Build a JsonSource envelope for the current parser location.
+    """Build a source envelope for the current parser location.
 
     Returns :class:`CodeSource` when *source* is missing (parser invoked
     without a source id — emitting a JsonSource with an empty file list
     would violate the FR5a length-1 invariant). Mirrors the C# fallback in
     ``Parser.ParseState.CurrentSource``.
 
-    FR5b — when the parser is walking a YAML-sourced document, *yaml_position*
-    carries the current node's (line, col). It rides on the JsonSource as the
-    optional ``yaml_position`` field; the envelope's ``format`` discriminator
-    stays ``"json"`` for cross-port stability (see source.error_source
-    JsonSource docstring + TS reference).
+    FR5b finalized 2026-05-27 — when the module-level
+    :data:`_current_source_format` is ``"yaml"`` (set by :func:`parse_document`'s
+    ``source_format`` kwarg, supplied by :func:`parse_yaml`), emits a
+    :class:`YamlSource` (format ``"yaml"``) carrying the optional
+    *yaml_position*. Otherwise emits a :class:`JsonSource`.
     """
     if source is None or source == "":
         return CodeSource.DEFAULT
+    if _current_source_format == "yaml":
+        return YamlSource(
+            files=(source,),
+            json_path=builder.to_string(),
+            yaml_position=yaml_position,
+        )
     return JsonSource(
         files=(source,),
         json_path=builder.to_string(),
@@ -71,7 +91,26 @@ def _current_envelope(
     )
 
 
-def parse_document(doc: object, registry: TypeRegistry, source: str) -> ParseResult:
+def parse_document(
+    doc: object,
+    registry: TypeRegistry,
+    source: str,
+    *,
+    source_format: str = "json",
+) -> ParseResult:
+    # FR5b — set the module-level source-format discriminant for the duration
+    # of this parse call. parse_yaml passes source_format="yaml" so every
+    # envelope emitted during this run is a YamlSource (format "yaml").
+    global _current_source_format
+    prior_format = _current_source_format
+    _current_source_format = source_format
+    try:
+        return _parse_document_inner(doc, registry, source)
+    finally:
+        _current_source_format = prior_format
+
+
+def _parse_document_inner(doc: object, registry: TypeRegistry, source: str) -> ParseResult:
     builder = JsonPathBuilder()
     result = ParseResult(root=MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, ""))
     if not isinstance(doc, dict):

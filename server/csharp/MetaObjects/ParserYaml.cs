@@ -28,12 +28,16 @@ namespace MetaObjects;
 
 /// <summary>
 /// Combined desugar output — the canonical JSON ready for buildTree, plus the
-/// desugar's collected diagnostics. The conformance harness uses this to union
-/// the desugar codes with any subsequent buildTree validation codes.
+/// desugar's collected diagnostics and the flattened JSONPath-keyed YAML
+/// position map (FR5b). The conformance harness uses this to union the desugar
+/// codes with any subsequent buildTree validation codes and to pass positions
+/// through <see cref="ParseOptions.YamlPositionsByPath"/> on the second-leg
+/// canonical parse.
 /// </summary>
 public sealed record YamlParseCollectingResult(
     JsonObject Canonical,
-    IReadOnlyList<YamlCollectedError> Errors);
+    IReadOnlyList<YamlCollectedError> Errors,
+    IReadOnlyDictionary<string, YamlPosition> PositionsByPath);
 
 /// <summary>
 /// YAML authoring front-end. Entry point: <see cref="ParseYaml"/>.
@@ -67,17 +71,12 @@ public static class ParserYaml
                 null);
         }
 
-        // FR5b — flatten the desugar's per-JsonObject PositionMap side table
-        // into a JSONPath-keyed dictionary so the canonical parser (which walks
-        // JsonElement, not JsonObject) can stamp `yamlPosition` on each node's
-        // source envelope by JSONPath lookup. The flat map keys mirror the
-        // path the parser has on its JsonPathBuilder when it reaches each node.
-        var positionsByPath = new Dictionary<string, YamlPosition>(StringComparer.Ordinal);
-        FlattenPositions(collected.Canonical, parentPath: "$", positionsByPath);
-
         // Hand the canonical JSON to the existing canonical parser.
         // ToJsonString() emits standard JSON; round-trip is byte-safe for the
         // shapes the desugar produces (strings/numbers/bools/null/objects/arrays).
+        // FR5b — pass the desugar's flattened JSONPath→YamlPosition map so the
+        // canonical parser stamps `yamlPosition` (and `format: "yaml"`) on
+        // every constructed node's source envelope.
         string canonicalJson = collected.Canonical.ToJsonString();
         var yamlOpts = new ParseOptions(opts.Registry)
         {
@@ -86,7 +85,7 @@ public static class ParserYaml
             IntoRoot = opts.IntoRoot,
             DeferSuperResolution = opts.DeferSuperResolution,
             SourceFormat = MetaDataFormat.Yaml,
-            YamlPositionsByPath = positionsByPath,
+            YamlPositionsByPath = collected.PositionsByPath,
         };
         return Parser.ParseJson(canonicalJson, yamlOpts);
     }
@@ -208,6 +207,13 @@ public static class ParserYaml
         YamlNode? root = stream.Documents.Count > 0 ? stream.Documents[0].RootNode : null;
 
         YamlDesugarResult desugared = YamlDesugar.Desugar(root, opts.Registry);
-        return new YamlParseCollectingResult(desugared.Canonical, desugared.Errors);
+
+        // FR5b — flatten the per-JsonObject PositionMap side-table into a
+        // JSONPath-keyed dictionary so the canonical parser can stamp source
+        // envelopes via O(1) lookup.
+        var positionsByPath = new Dictionary<string, YamlPosition>(StringComparer.Ordinal);
+        FlattenPositions(desugared.Canonical, parentPath: "$", positionsByPath);
+
+        return new YamlParseCollectingResult(desugared.Canonical, desugared.Errors, positionsByPath);
     }
 }

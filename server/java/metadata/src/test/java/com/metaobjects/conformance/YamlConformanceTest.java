@@ -162,9 +162,11 @@ public class YamlConformanceTest {
             }
             // 3. Hand the canonical to buildTree — capture any subsequent build-time
             //    error (e.g. ERR_RESERVED_ATTR raised inline by the canonical parser).
+            //    FR5b (finalized 2026-05-27): pass the position map so buildTree-
+            //    emitted envelopes carry format="yaml" + yamlPosition for YAML input.
             boolean buildTreeOk = true;
             try {
-                parser.buildTree(yamlResult.canonical);
+                parser.buildTree(yamlResult.canonical, yamlResult.positionsByPath);
             } catch (MetaDataException ex) {
                 String code = extractErrorCode(ex);
                 if (codesSeen.add(code)) envelopesSeen.add(buildYamlEnvelopeFromException(ex, code));

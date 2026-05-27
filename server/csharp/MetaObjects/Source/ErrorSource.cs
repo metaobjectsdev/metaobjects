@@ -25,17 +25,11 @@ public abstract record ErrorSource
 /// Authoring-time: single JSON file (FR5a).
 ///
 /// <para>
-/// FR5b (2026-05-26 — C# reference port): <see cref="YamlPosition"/> is also
-/// allowed as an OPTIONAL field on this <c>format: "json"</c> variant so that
-/// errors emitted from a YAML input (lowered through the desugar to canonical
-/// JSON, then through the same buildTree pipeline as JSON) can still carry the
-/// source position without re-flagging the format discriminator. Until ALL four
-/// ports ship FR5b — at which point buildTree-emitted errors from YAML inputs
-/// flip to <see cref="YamlSource"/> and the cross-port yaml-conformance
-/// fixtures are mass-updated — keeping the discriminator at <c>"json"</c>
-/// preserves cross-port fixture parity (the yaml-conformance fixtures whose
-/// buildTree-side errors are format-keyed <c>"json"</c> would otherwise diverge
-/// until C#/Java/Python catch up). See the FR5b implementation report.
+/// FR5b finalized 2026-05-27 — buildTree-emitted errors from a YAML input now
+/// emit <see cref="YamlSource"/> (format <c>"yaml"</c>) carrying the optional
+/// <see cref="YamlPosition"/>. The <see cref="YamlPosition"/> field stays
+/// declared on this variant for backward shape-compat with any FR5b-interim
+/// envelopes still serialized to disk; new YAML errors no longer use it.
 /// </para>
 /// </summary>
 /// <param name="Files">Length-1 file list (FR5a invariant: exactly one file for JSON-source errors).</param>
