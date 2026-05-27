@@ -58,7 +58,7 @@ def test_merge_same_name_merges_children_and_attrs() -> None:
 
     root_b = _root("acme")
     obj_b = _node("object", "entity", "Product")
-    obj_b.set_attr("displayName", "v2")  # last-writer-wins
+    obj_b.set_attr("displayName", "v2")  # last-writer-wins (with FR5c warning)
     fld_desc = _node("field", "string", "description")
     obj_b.add_child(fld_desc)
     root_b.add_child(obj_b)
@@ -66,13 +66,19 @@ def test_merge_same_name_merges_children_and_attrs() -> None:
     errors: list[MetaError] = []
     merged = merge_roots([root_a, root_b], errors)
 
-    assert not errors
+    # FR5c — setting the same @attr to two different non-empty values across
+    # contributing files is an ERR_MERGE_CONFLICT. Last-writer-wins is still
+    # how the merged tree resolves the value, but the conflict surfaces so
+    # consumers can fix the metadata. The merge itself proceeds.
+    assert len(errors) == 1
+    assert errors[0].code == ErrorCode.ERR_MERGE_CONFLICT
+
     children = merged.children()
     assert len(children) == 1  # one merged Product
 
     product = children[0]
     assert product.name == "Product"
-    # attr: last-writer-wins
+    # attr: last-writer-wins (despite the conflict report)
     assert product.attr("displayName") == "v2"
     # children: both accumulated
     pchildren = product.children()

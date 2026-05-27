@@ -27,6 +27,8 @@ from .error_source import (
     MergedSource,
     NodeContext,
     ResolvedSource,
+    WARN_DUPLICATE_DECLARATION,
+    WARN_LEGACY,
     YamlPosition,
     YamlSource,
     resolved_source,
@@ -58,6 +60,9 @@ __all__ = [
     "YamlPosition",
     "LoaderError",
     "LoaderWarning",
+    # FR5c — warning code constants
+    "WARN_DUPLICATE_DECLARATION",
+    "WARN_LEGACY",
     # JSONPath
     "JsonPathBuilder",
     "JsonPath",

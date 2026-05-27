@@ -240,10 +240,11 @@ class LoaderError:
 class LoaderWarning:
     """Warning envelope — same shape as :class:`LoaderError` but a ``WARN_*`` code.
 
-    Today's only initial warning code is ``WARN_DUPLICATE_DECLARATION``
-    (emitted by overlay-merge when a duplicate-with-no-change is detected;
-    FR5c will produce these). FR5a does not raise warnings via this channel —
-    legacy ``warnings: list[str]`` continues to flow through the loader.
+    Today's initial warning codes:
+        * ``WARN_DUPLICATE_DECLARATION`` — emitted by overlay-merge when a
+          duplicate-with-no-change is detected (FR5c).
+        * ``WARN_LEGACY`` — legacy ``warnings: list[str]`` messages wrapped at
+          the loader boundary so the envelope channel is uniform.
     """
 
     code: str
@@ -252,3 +253,10 @@ class LoaderWarning:
     suggestions: tuple[str, ...] = field(default_factory=tuple)
     fixture: Optional[str] = None
     node: Optional[NodeContext] = None
+
+
+# FR5c — string constants for warning codes. Mirrors the TS WARNING_CODES
+# export. Keeping the values aligned across ports is part of the conformance
+# contract.
+WARN_DUPLICATE_DECLARATION: str = "WARN_DUPLICATE_DECLARATION"
+WARN_LEGACY: str = "WARN_LEGACY"
