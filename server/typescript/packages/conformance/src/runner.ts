@@ -95,6 +95,25 @@ export async function runFixture(
                 detail: `envelope[${i}].source.jsonPath: expected '${w.source.jsonPath}', got '${g.source.jsonPath}'`,
               });
             }
+            // FR5d — referrer + target are part of the cross-port contract for
+            // `format=resolved` envelopes. Assert them when present on the
+            // expected entry (the schema enforces both-present when format
+            // is "resolved", so this also catches a port that emitted format
+            // ='resolved' but failed to populate either field).
+            if (w.source.referrer !== undefined && w.source.referrer !== g.source.referrer) {
+              checks.push({
+                kind: "expected-errors",
+                passed: false,
+                detail: `envelope[${i}].source.referrer: expected '${w.source.referrer}', got '${g.source.referrer}'`,
+              });
+            }
+            if (w.source.target !== undefined && w.source.target !== g.source.target) {
+              checks.push({
+                kind: "expected-errors",
+                passed: false,
+                detail: `envelope[${i}].source.target: expected '${w.source.target}', got '${g.source.target}'`,
+              });
+            }
           }
         }
         // warnings — assert length matches (the new envelope always carries

@@ -7,11 +7,17 @@ import type { NormalizedResult } from "./result.js";
  * minimum cross-port-asserted shape (ADR-0009): `format`, `files`, `jsonPath`.
  * Other envelope fields (suggestions, fixture, node, yamlPosition, ...) are
  * RECOMMENDED-only and not enforced by the cross-port harness.
+ *
+ * FR5d — for `format === "resolved"` envelopes, `referrer` and `target` are
+ * part of the cross-port contract: a fixture that opts into `format=resolved`
+ * MUST supply both, and the runner asserts them.
  */
 export interface ExpectedErrorSource {
   readonly format: string;
   readonly files: readonly string[];
   readonly jsonPath?: string;
+  readonly referrer?: string;
+  readonly target?: string;
 }
 
 export interface ExpectedError {
@@ -33,7 +39,7 @@ function parseSource(raw: unknown, i: number): ExpectedErrorSource | undefined {
     throw new Error(`expected-errors.json entry ${i}: 'source' is not an object`);
   }
   const r = raw as Record<string, unknown>;
-  const { format, files, jsonPath } = r;
+  const { format, files, jsonPath, referrer, target } = r;
   if (typeof format !== "string") {
     throw new Error(`expected-errors.json entry ${i}: 'source.format' must be a string`);
   }
@@ -43,9 +49,32 @@ function parseSource(raw: unknown, i: number): ExpectedErrorSource | undefined {
   if (jsonPath !== undefined && typeof jsonPath !== "string") {
     throw new Error(`expected-errors.json entry ${i}: 'source.jsonPath' must be a string`);
   }
-  const out: ExpectedErrorSource = jsonPath !== undefined
-    ? { format, files: files as string[], jsonPath }
-    : { format, files: files as string[] };
+  if (referrer !== undefined && typeof referrer !== "string") {
+    throw new Error(`expected-errors.json entry ${i}: 'source.referrer' must be a string`);
+  }
+  if (target !== undefined && typeof target !== "string") {
+    throw new Error(`expected-errors.json entry ${i}: 'source.target' must be a string`);
+  }
+  // FR5d — `format=resolved` requires both referrer and target so the fixture
+  // captures the full cross-port contract.
+  if (format === "resolved") {
+    if (referrer === undefined) {
+      throw new Error(`expected-errors.json entry ${i}: 'source.referrer' is required when format='resolved'`);
+    }
+    if (target === undefined) {
+      throw new Error(`expected-errors.json entry ${i}: 'source.target' is required when format='resolved'`);
+    }
+  }
+  const base: { format: string; files: readonly string[] } = {
+    format,
+    files: files as string[],
+  };
+  const out: ExpectedErrorSource = {
+    ...base,
+    ...(jsonPath !== undefined ? { jsonPath } : {}),
+    ...(referrer !== undefined ? { referrer } : {}),
+    ...(target !== undefined ? { target } : {}),
+  };
   return out;
 }
 

@@ -43,14 +43,13 @@ import static org.junit.Assert.fail;
  * <p>Mirrors the TS reference in
  * {@code server/typescript/packages/metadata/test/fr5d-reference-resolution-errors.test.ts}.</p>
  *
- * <p><strong>Cross-port referrer-FQN caveat:</strong> TS's {@code MetaData.fqn()}
- * does NOT propagate the root {@code package:} to root-level objects (so
- * {@code obj.fqn()} returns the bare entity name, e.g. {@code "Premium"}). Java
- * DOES propagate the root package to top-level object names — every object child
- * of the root carries {@code <package>::<name>} as its {@link com.metaobjects.MetaData#getName()}.
- * The assertions below reflect the Java shape; the TS-equivalent assertions in
- * the same-named TS test use the bare name. This divergence will resolve when
- * the cross-port-FQN contract is normalised across all four ports.</p>
+ * <p><strong>Referrer FQN contract:</strong> the FR5d {@code referrer} is the
+ * bare (short) name of the declaring node, matching the TS reference — TS's
+ * {@code MetaData.fqn()} does NOT propagate the root {@code package:} to
+ * root-level objects (so {@code obj.fqn()} returns {@code "Premium"}, not
+ * {@code "acme::Premium"}). Java's {@code MetaData.getName()} DOES propagate the
+ * root package, so the FR5d throw sites use {@link com.metaobjects.MetaData#getShortName()}
+ * to emit the same bare form. Cross-port byte-identical envelopes.</p>
  */
 public class Fr5dReferenceResolutionTest extends SharedRegistryTestBase {
 
@@ -113,13 +112,12 @@ public class Fr5dReferenceResolutionTest extends SharedRegistryTestBase {
             loader.load(List.of(new InMemoryStringSource(canonical, "meta.bad.json")));
             fail("expected MetaDataException for unresolved extends");
         } catch (MetaDataException ex) {
-            // Cross-port caveat: Java's MetaData.getName() returns the
-            // package-qualified FQN ("acme::Premium"), where TS's
-            // MetaData.fqn() returns the bare name ("Premium") for root-level
-            // objects.
+            // FR5d referrer is the bare (short) name, matching TS/C#/Python —
+            // the reference contract does not propagate the root `package:` to
+            // root-level objects.
             assertResolved(ex,
                 ErrorCode.ERR_UNRESOLVED_SUPER,
-                "acme::Premium",
+                "Premium",
                 "DoesNotExist",
                 List.of("meta.bad.json"));
         }
@@ -155,10 +153,10 @@ public class Fr5dReferenceResolutionTest extends SharedRegistryTestBase {
             loader.load(List.of(new InMemoryStringSource(canonical, "meta.ai.json")));
             fail("expected MetaDataException for unresolved @payloadRef");
         } catch (MetaDataException ex) {
-            // Java's template name is package-qualified ("acme::ai::npcTurn").
+            // FR5d referrer is the bare template name (matches TS/C#/Python).
             assertResolved(ex,
                 ErrorCode.ERR_INVALID_TEMPLATE,
-                "acme::ai::npcTurn",
+                "npcTurn",
                 "NpcPromptPayload",
                 List.of("meta.ai.json"));
         }
@@ -190,7 +188,7 @@ public class Fr5dReferenceResolutionTest extends SharedRegistryTestBase {
         } catch (MetaDataException ex) {
             assertResolved(ex,
                 ErrorCode.ERR_INVALID_TEMPLATE,
-                "acme::ai::tmpl",
+                "tmpl",
                 "PromptPayload.doesNotExist",
                 List.of("meta.ai.json"));
             // Message must name the bad slot for human readability.
@@ -240,7 +238,7 @@ public class Fr5dReferenceResolutionTest extends SharedRegistryTestBase {
         } catch (MetaDataException ex) {
             assertResolved(ex,
                 ErrorCode.ERR_INVALID_ORIGIN,
-                "acme::commerce::ProgramSummary::weekCount",
+                "ProgramSummary::weekCount",
                 "Program.notARealRelationship",
                 List.of("meta.commerce.json"));
             // Deepest-valid-prefix is "Program" — the entity resolved before the
@@ -295,7 +293,7 @@ public class Fr5dReferenceResolutionTest extends SharedRegistryTestBase {
         } catch (MetaDataException ex) {
             assertResolved(ex,
                 ErrorCode.ERR_INVALID_ORIGIN,
-                "acme::commerce::ProgramSummary::deepCount",
+                "ProgramSummary::deepCount",
                 "Program.weeks.notReal",
                 null);
             // The walk got past Program.weeks (resolved to Week) and failed on
@@ -354,7 +352,7 @@ public class Fr5dReferenceResolutionTest extends SharedRegistryTestBase {
         } catch (MetaDataException ex) {
             assertResolved(ex,
                 ErrorCode.ERR_INVALID_ORIGIN,
-                "acme::commerce::ProgramSummary::weekCount",
+                "ProgramSummary::weekCount",
                 "GhostEntity.id",
                 null);
         }
@@ -404,7 +402,7 @@ public class Fr5dReferenceResolutionTest extends SharedRegistryTestBase {
         } catch (MetaDataException ex) {
             assertResolved(ex,
                 ErrorCode.ERR_INVALID_ORIGIN,
-                "acme::commerce::ProgramSummary::weekCount",
+                "ProgramSummary::weekCount",
                 "Week.ghostField",
                 null);
             assertTrue("message should name the missing field, got: " + ex.getMessage(),

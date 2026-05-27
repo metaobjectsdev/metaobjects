@@ -39,11 +39,15 @@ public static class OperationScriptParser
     /// <summary>
     /// One expected source token for an envelope-shaped expected-errors.json.
     /// The cross-port harness asserts <c>Format</c>, <c>Files</c>, <c>JsonPath</c>.
+    /// FR5d — for <c>format=resolved</c> envelopes, <c>Referrer</c> + <c>Target</c>
+    /// are required by the schema and asserted by the runner.
     /// </summary>
     public sealed record ExpectedErrorSource(
         string Format,
         IReadOnlyList<string> Files,
-        string? JsonPath);
+        string? JsonPath,
+        string? Referrer = null,
+        string? Target = null);
 
     /// <summary>
     /// One expected error in the parsed expected-errors.json. <c>Source</c>
@@ -135,7 +139,30 @@ public static class OperationScriptParser
                 {
                     jsonPath = jpEl.GetString();
                 }
-                source = new ExpectedErrorSource(fmtEl.GetString()!, files, jsonPath);
+                string? referrer = null;
+                if (srcEl.TryGetProperty("referrer", out var refEl) &&
+                    refEl.ValueKind == JsonValueKind.String)
+                {
+                    referrer = refEl.GetString();
+                }
+                string? target = null;
+                if (srcEl.TryGetProperty("target", out var tgtEl) &&
+                    tgtEl.ValueKind == JsonValueKind.String)
+                {
+                    target = tgtEl.GetString();
+                }
+                // FR5d — format=resolved requires both referrer and target.
+                var fmt = fmtEl.GetString()!;
+                if (fmt == "resolved")
+                {
+                    if (referrer is null)
+                        throw new InvalidOperationException(
+                            $"expected-errors.json entry {idx}: 'source.referrer' is required when format='resolved'");
+                    if (target is null)
+                        throw new InvalidOperationException(
+                            $"expected-errors.json entry {idx}: 'source.target' is required when format='resolved'");
+                }
+                source = new ExpectedErrorSource(fmt, files, jsonPath, referrer, target);
             }
             errors.Add(new ExpectedError(codeProp.GetString()!, source));
             idx++;

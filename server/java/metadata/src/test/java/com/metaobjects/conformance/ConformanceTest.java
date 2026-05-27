@@ -343,6 +343,15 @@ public class ConformanceTest {
                             failures.add("envelope[" + i + "].source.jsonPath: expected '"
                                 + w.source.jsonPath + "', got '" + g.jsonPath + "'");
                         }
+                        // FR5d — assert referrer + target for format=resolved envelopes.
+                        if (w.source.referrer != null && !w.source.referrer.equals(g.referrer)) {
+                            failures.add("envelope[" + i + "].source.referrer: expected '"
+                                + w.source.referrer + "', got '" + g.referrer + "'");
+                        }
+                        if (w.source.target != null && !w.source.target.equals(g.target)) {
+                            failures.add("envelope[" + i + "].source.target: expected '"
+                                + w.source.target + "', got '" + g.target + "'");
+                        }
                     }
                 }
                 // Loader warnings — must match envelope.warningsCount.
@@ -557,11 +566,20 @@ public class ConformanceTest {
         final String format;
         final List<String> files;
         final String jsonPath;
-        EnvelopeRecord(String code, String format, List<String> files, String jsonPath) {
+        // FR5d — populated for format=resolved envelopes; null otherwise.
+        final String referrer;
+        final String target;
+        EnvelopeRecord(String code, String format, List<String> files, String jsonPath,
+                       String referrer, String target) {
             this.code = code;
             this.format = format;
             this.files = files;
             this.jsonPath = jsonPath;
+            this.referrer = referrer;
+            this.target = target;
+        }
+        EnvelopeRecord(String code, String format, List<String> files, String jsonPath) {
+            this(code, format, files, jsonPath, null, null);
         }
     }
 
@@ -583,7 +601,9 @@ public class ConformanceTest {
             return new EnvelopeRecord(code, "merged", relativizeFiles(ms.files(), inputDir), ms.jsonPath());
         }
         if (env instanceof ResolvedSource rs) {
-            return new EnvelopeRecord(code, "resolved", relativizeFiles(rs.files(), inputDir), rs.jsonPath());
+            // FR5d — surface referrer + target so the cross-port runner can assert them.
+            return new EnvelopeRecord(code, "resolved", relativizeFiles(rs.files(), inputDir),
+                rs.jsonPath(), rs.referrer(), rs.target());
         }
         if (env instanceof CodeSource) {
             return new EnvelopeRecord(code, "code", Collections.emptyList(), null);
