@@ -49,18 +49,18 @@ def _build_envelope(err, input_dir: Path) -> ErrorEnvelopeRecord:
     """Convert a Python MetaError into the cross-port envelope record."""
     code = err.code.name
     env = err.envelope
+
+    def rel_files() -> tuple[str, ...]:
+        return tuple(_relativize(f, input_dir) for f in env.files)
+
     if isinstance(env, JsonSource):
-        files = tuple(_relativize(f, input_dir) for f in env.files)
-        return ErrorEnvelopeRecord(code, "json", files, env.json_path)
+        return ErrorEnvelopeRecord(code, "json", rel_files(), env.json_path)
     if isinstance(env, YamlSource):
-        files = tuple(_relativize(f, input_dir) for f in env.files)
-        return ErrorEnvelopeRecord(code, "yaml", files, env.json_path)
+        return ErrorEnvelopeRecord(code, "yaml", rel_files(), env.json_path)
     if isinstance(env, MergedSource):
-        files = tuple(_relativize(f, input_dir) for f in env.files)
-        return ErrorEnvelopeRecord(code, "merged", files, env.json_path)
+        return ErrorEnvelopeRecord(code, "merged", rel_files(), env.json_path)
     if isinstance(env, ResolvedSource):
-        files = tuple(_relativize(f, input_dir) for f in env.files)
-        return ErrorEnvelopeRecord(code, "resolved", files, env.json_path)
+        return ErrorEnvelopeRecord(code, "resolved", rel_files(), env.json_path)
     if isinstance(env, CodeSource):
         return ErrorEnvelopeRecord(code, "code", (), None)
     # No envelope — synthesize a minimal root-level shape.

@@ -62,8 +62,7 @@ public final class FixtureLint {
         // expected-errors.json — each code must be in the registry
         if (fix.hasExpectedErrors) {
             try {
-                JsonElement parsed = readJson(fix.dir.resolve("expected-errors.json").toString(),
-                    Files.readAllBytes(fix.dir.resolve("expected-errors.json")));
+                JsonElement parsed = readJsonFile(fix.dir.resolve("expected-errors.json"));
                 List<String> codes = parseExpectedErrors(parsed);
                 for (String code : codes) {
                     if (!registeredErrorCodes.contains(code)) {
@@ -79,8 +78,7 @@ public final class FixtureLint {
         // script.json — shape + navigate-segment grammar
         if (fix.hasScript) {
             try {
-                JsonElement parsed = readJson(fix.dir.resolve("script.json").toString(),
-                    Files.readAllBytes(fix.dir.resolve("script.json")));
+                JsonElement parsed = readJsonFile(fix.dir.resolve("script.json"));
                 lintScriptShape(fix, parsed, problems);
             } catch (Exception ex) {
                 problems.add(fix.name + ": malformed script.json — " + ex.getMessage());
@@ -94,8 +92,9 @@ public final class FixtureLint {
     // helpers
     // ---------------------------------------------------------------------
 
-    private static JsonElement readJson(String path, byte[] bytes) {
-        return JsonParser.parseString(new String(bytes, StandardCharsets.UTF_8));
+    private static JsonElement readJsonFile(java.nio.file.Path path) throws IOException {
+        return JsonParser.parseString(
+            new String(Files.readAllBytes(path), StandardCharsets.UTF_8));
     }
 
     /**

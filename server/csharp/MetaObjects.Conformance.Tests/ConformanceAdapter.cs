@@ -82,29 +82,18 @@ public static class ConformanceAdapter
     private static ErrorEnvelopeRecord BuildEnvelope(MetaError err, string inputDir)
     {
         var code = err.Code.ToString();
-        var src = err.Envelope;
-        if (src is JsonSource js)
+        IReadOnlyList<string> Rel(IEnumerable<string> files) =>
+            files.Select(f => RelativizeFile(f, inputDir)).ToList();
+        return err.Envelope switch
         {
-            return new ErrorEnvelopeRecord(code, "json", js.Files.Select(f => RelativizeFile(f, inputDir)).ToList(), js.JsonPath);
-        }
-        if (src is YamlSource ys)
-        {
-            return new ErrorEnvelopeRecord(code, "yaml", ys.Files.Select(f => RelativizeFile(f, inputDir)).ToList(), ys.JsonPath);
-        }
-        if (src is MergedSource ms)
-        {
-            return new ErrorEnvelopeRecord(code, "merged", ms.Files.Select(f => RelativizeFile(f, inputDir)).ToList(), ms.JsonPath);
-        }
-        if (src is ResolvedSource rs)
-        {
-            return new ErrorEnvelopeRecord(code, "resolved", rs.Files.Select(f => RelativizeFile(f, inputDir)).ToList(), rs.JsonPath);
-        }
-        if (src is CodeSource)
-        {
-            return new ErrorEnvelopeRecord(code, "code", new List<string>(), null);
-        }
-        // Pre-FR5a fallback: no envelope. Synthesize a minimal $-rooted JSON shape.
-        return new ErrorEnvelopeRecord(code, "json", new List<string>(), "$");
+            JsonSource js     => new ErrorEnvelopeRecord(code, "json",     Rel(js.Files), js.JsonPath),
+            YamlSource ys     => new ErrorEnvelopeRecord(code, "yaml",     Rel(ys.Files), ys.JsonPath),
+            MergedSource ms   => new ErrorEnvelopeRecord(code, "merged",   Rel(ms.Files), ms.JsonPath),
+            ResolvedSource rs => new ErrorEnvelopeRecord(code, "resolved", Rel(rs.Files), rs.JsonPath),
+            CodeSource        => new ErrorEnvelopeRecord(code, "code",     new List<string>(), null),
+            // Pre-FR5a fallback: no envelope. Synthesize a minimal $-rooted JSON shape.
+            _                 => new ErrorEnvelopeRecord(code, "json",     new List<string>(), "$"),
+        };
     }
 
     private static string RelativizeFile(string filePath, string inputDir)

@@ -394,29 +394,20 @@ public class YamlConformanceTests
     /// YAML fixtures' file token is always "input.yaml" (the authoring file
     /// the consumer sees), not the per-port internal source id.
     /// </summary>
-    private static ErrorEnvelopeRecord BuildYamlEnvelope(MetaError err)
-    {
-        var code = err.Code.ToString();
-        var env = err.Envelope;
-        return env switch
-        {
-            JsonSource js => new ErrorEnvelopeRecord(code, "json", new[] { "input.yaml" }, js.JsonPath),
-            YamlSource ys => new ErrorEnvelopeRecord(code, "yaml", new[] { "input.yaml" }, ys.JsonPath),
-            MergedSource ms => new ErrorEnvelopeRecord(code, "merged", ms.Files, ms.JsonPath),
-            ResolvedSource rs => new ErrorEnvelopeRecord(code, "resolved", rs.Files, rs.JsonPath),
-            CodeSource => new ErrorEnvelopeRecord(code, "code", Array.Empty<string>(), null),
-            _ => new ErrorEnvelopeRecord(code, "yaml", new[] { "input.yaml" }, "$"),
-        };
-    }
+    private static ErrorEnvelopeRecord BuildYamlEnvelope(MetaError err) =>
+        BuildYamlEnvelope(err.Code.ToString(), err.Envelope);
 
-    private static ErrorEnvelopeRecord BuildYamlEnvelopeFromException(ParseException ex)
-    {
-        var code = ex.Code.ToString();
-        var env = ex.Envelope;
-        if (env is JsonSource js)
-            return new ErrorEnvelopeRecord(code, "json", new[] { "input.yaml" }, js.JsonPath);
-        if (env is YamlSource ys)
-            return new ErrorEnvelopeRecord(code, "yaml", new[] { "input.yaml" }, ys.JsonPath);
-        return new ErrorEnvelopeRecord(code, "yaml", new[] { "input.yaml" }, "$");
-    }
+    private static ErrorEnvelopeRecord BuildYamlEnvelopeFromException(ParseException ex) =>
+        BuildYamlEnvelope(ex.Code.ToString(), ex.Envelope);
+
+    private static ErrorEnvelopeRecord BuildYamlEnvelope(string code, ErrorSource? envelope) =>
+        envelope switch
+        {
+            JsonSource js     => new ErrorEnvelopeRecord(code, "json",     new[] { "input.yaml" }, js.JsonPath),
+            YamlSource ys     => new ErrorEnvelopeRecord(code, "yaml",     new[] { "input.yaml" }, ys.JsonPath),
+            MergedSource ms   => new ErrorEnvelopeRecord(code, "merged",   ms.Files, ms.JsonPath),
+            ResolvedSource rs => new ErrorEnvelopeRecord(code, "resolved", rs.Files, rs.JsonPath),
+            CodeSource        => new ErrorEnvelopeRecord(code, "code",     Array.Empty<string>(), null),
+            _                 => new ErrorEnvelopeRecord(code, "yaml",     new[] { "input.yaml" }, "$"),
+        };
 }

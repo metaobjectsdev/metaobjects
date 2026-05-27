@@ -380,16 +380,6 @@ public class YamlConformanceTest {
         return ErrorCode.ERR_UNKNOWN.name();
     }
 
-    private static List<String> parseExpectedErrors(Path file) {
-        try {
-            JsonElement el = JsonParser.parseString(new String(
-                Files.readAllBytes(file), StandardCharsets.UTF_8));
-            return FixtureLint.parseExpectedErrors(el);
-        } catch (IOException ex) {
-            throw new AssertionError("expected-errors.json read error: " + ex.getMessage(), ex);
-        }
-    }
-
     /** Parse the YAML fixture's expected-errors.json into the FR5a envelope shape. */
     private static FixtureLint.ExpectedErrorsEnvelope parseExpectedErrorsEnvelope(Path file) {
         try {

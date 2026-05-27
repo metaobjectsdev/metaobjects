@@ -62,23 +62,23 @@ export const tsAdapter: ConformanceAdapter = {
     // relative to the fixture's inputDir so the cross-port assertion has a
     // portable file token. Errors without an envelope (rare; only non-ParseError)
     // synthesize a minimal $-rooted shape.
+    function relativize(f: string): string {
+      const fwd = f.replace(/\\/g, "/");
+      return f.startsWith(inputDir) ? relative(inputDir, f).replace(/\\/g, "/") : fwd;
+    }
     const envelopes: ErrorEnvelopeRecord[] = result.errors.map((err) => {
       if (err instanceof ParseError) {
         const src = err.source;
-        if (src.format === "json" || src.format === "yaml") {
-          const files = src.files.map((f) => {
-            if (f.startsWith(inputDir)) return relative(inputDir, f).replace(/\\/g, "/");
-            return f.replace(/\\/g, "/");
-          });
-          return { code: err.code, source: { format: src.format, files, jsonPath: src.jsonPath } };
-        }
-        if (src.format === "merged" || src.format === "resolved") {
-          const files = src.files.map((f) => {
-            if (f.startsWith(inputDir)) return relative(inputDir, f).replace(/\\/g, "/");
-            return f.replace(/\\/g, "/");
-          });
+        if (src.format === "json" || src.format === "yaml"
+          || src.format === "merged" || src.format === "resolved") {
+          const files = src.files.map(relativize);
           const jp = (src as { jsonPath?: string }).jsonPath;
-          return { code: err.code, source: jp !== undefined ? { format: src.format, files, jsonPath: jp } : { format: src.format, files } };
+          return {
+            code: err.code,
+            source: jp !== undefined
+              ? { format: src.format, files, jsonPath: jp }
+              : { format: src.format, files },
+          };
         }
         return { code: err.code, source: { format: src.format, files: [] } };
       }
