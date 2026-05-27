@@ -190,11 +190,15 @@ public class MetaDataLoader implements LoaderConfigurable {
                 }
             }
             if (superData == null) {
+                // FR5a / ADR-0009 — pass the unresolved child's source envelope so
+                // the cross-port harness can report the offending node's
+                // file + JSONPath rather than a root-of-file shape.
                 throw new com.metaobjects.MetaDataException(
                     "Invalid MetaData [" + p.typeName + "][" + p.child.getShortName()
                         + "], the SuperClass [" + p.superName + "] does not exist (deferred resolution)"
                         + " in file [" + p.filename + "]",
-                    com.metaobjects.ErrorCode.ERR_UNRESOLVED_SUPER);
+                    com.metaobjects.ErrorCode.ERR_UNRESOLVED_SUPER,
+                    p.child.getSource());
             }
             p.child.setSuperData(superData);
         }
