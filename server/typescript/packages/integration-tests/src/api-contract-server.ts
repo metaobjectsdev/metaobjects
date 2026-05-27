@@ -20,7 +20,7 @@
 // driver, so the persistence semantics are the same code-path other tests
 // exercise.
 
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type RouteHandlerMethod } from "fastify";
 import { type MetaRoot } from "@metaobjectsdev/metadata";
 import { ObjectManager, type Filter } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
@@ -155,23 +155,16 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     return reply;
   });
 
-  // PATCH /api/authors/:id
-  fastify.patch(`${ROUTE_BASE}/:id`, async (req, reply) => {
+  // PATCH + PUT /api/authors/:id — same body shape per the cross-port contract.
+  const updateHandler: RouteHandlerMethod = async (req, reply) => {
     const { id } = req.params as { id: string };
     const row = await om.update(ENTITY, Number(id), req.body as Record<string, unknown>, { ifMissing: "ignore" });
     if (row) return row;
     reply.code(404).send({ error: "not_found" });
     return reply;
-  });
-
-  // PUT /api/authors/:id — same body shape as PATCH per the cross-port contract.
-  fastify.put(`${ROUTE_BASE}/:id`, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const row = await om.update(ENTITY, Number(id), req.body as Record<string, unknown>, { ifMissing: "ignore" });
-    if (row) return row;
-    reply.code(404).send({ error: "not_found" });
-    return reply;
-  });
+  };
+  fastify.patch(`${ROUTE_BASE}/:id`, updateHandler);
+  fastify.put(`${ROUTE_BASE}/:id`, updateHandler);
 
   // DELETE /api/authors/:id
   fastify.delete(`${ROUTE_BASE}/:id`, async (req, reply) => {
@@ -261,7 +254,7 @@ function parseFilterFromUrl(
     if (!rule.ops.has(e.op)) return { error: "invalid_filter_op" };
     const coerced = coerceFilterValue(e.value, rule.subType, e.op);
     if (coerced === INVALID) return { error: "invalid_filter_value" };
-    subFilters.push({ [e.field]: opToFilterValue(e.op, coerced) } as Filter);
+    subFilters.push({ [e.field]: { [`$${e.op}`]: coerced } } as Filter);
   }
 
   if (subFilters.length === 1) return { filter: subFilters[0]! };
@@ -291,8 +284,9 @@ function coerceFilterValue(
   }
   switch (subType) {
     case "string":
-      return raw;
     case "datetime":
+      // The repository binds these via parameterized SQL; the driver coerces
+      // the raw string to the column type (varchar / timestamp respectively).
       return raw;
     case "boolean":
       if (raw === "true") return true;
@@ -303,21 +297,6 @@ function coerceFilterValue(
       if (!Number.isFinite(n)) return INVALID;
       return n;
     }
-  }
-}
-
-function opToFilterValue(op: string, value: unknown): unknown {
-  switch (op) {
-    case "eq":     return { $eq: value };
-    case "ne":     return { $ne: value };
-    case "gt":     return { $gt: value };
-    case "gte":    return { $gte: value };
-    case "lt":     return { $lt: value };
-    case "lte":    return { $lte: value };
-    case "in":     return { $in: value };
-    case "like":   return { $like: value };
-    case "isNull": return { $isNull: value };
-    default:       return { $eq: value };
   }
 }
 
