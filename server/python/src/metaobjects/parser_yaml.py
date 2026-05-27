@@ -61,11 +61,13 @@ def parse_yaml(text: str, registry: TypeRegistry, source: str) -> ParseResult:
             if first is not None and first.code is not None
             else ErrorCode.ERR_MALFORMED_YAML
         )
-        parse_result = parse_document({}, registry, source)
+        parse_result = parse_document({}, registry, source, source_format="yaml")
         parse_result.errors.insert(0, MetaError(message, code, source))
         return parse_result
 
-    parsed_result = parse_document(result.canonical, registry, source)
+    # FR5b — pass source_format="yaml" so parse_document emits YamlSource
+    # envelopes (format "yaml") on every node and error from this YAML input.
+    parsed_result = parse_document(result.canonical, registry, source, source_format="yaml")
 
     # Merge collected desugar errors ahead of parse_document's own errors.
     desugar_metaerrors = [

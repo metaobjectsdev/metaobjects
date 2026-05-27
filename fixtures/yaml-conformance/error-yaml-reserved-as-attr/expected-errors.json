@@ -3,11 +3,12 @@
     {
       "code": "ERR_RESERVED_ATTR",
       "source": {
-        "format": "json",
+        "format": "yaml",
         "files": [
           "input.yaml"
         ],
-        "jsonPath": "$['metadata.root'].children[0]['object.entity']"
+        "jsonPath": "$['metadata.root'].children[0]['object.entity']",
+        "yamlPosition": { "line": 3, "col": 7 }
       }
     }
   ],

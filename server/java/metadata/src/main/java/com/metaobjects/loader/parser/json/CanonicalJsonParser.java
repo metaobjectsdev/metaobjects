@@ -13,6 +13,7 @@ import com.metaobjects.source.ErrorSource;
 import com.metaobjects.source.JsonPath;
 import com.metaobjects.source.JsonSource;
 import com.metaobjects.source.YamlPosition;
+import com.metaobjects.source.YamlSource;
 import com.metaobjects.util.ErrorMessageConstants;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.parser.BaseMetaDataParser;
@@ -130,10 +131,11 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
     /**
      * FR5b — optional JSONPath → {@link YamlPosition} map, populated by
      * {@link com.metaobjects.loader.parser.yaml.ParserYaml} when the input was YAML.
-     * When non-null, {@link #currentJsonSource()} and {@link #tagNodeWithJsonSource(MetaData)}
-     * stamp the position on the produced {@link JsonSource}'s optional
-     * {@code yamlPosition} field. Format stays {@code "json"} cross-port (see
-     * {@link JsonSource}'s class-doc).
+     * When non-null, {@link #currentSourceEnvelope()} and {@link #tagNodeWithJsonSource(MetaData)}
+     * emit a {@link YamlSource} (FR5b finalized 2026-05-27, was {@link JsonSource}
+     * with optional {@code yamlPosition} during the per-port rollout). The
+     * envelope carries the optional {@link YamlPosition} when the desugar's map
+     * has a position for the current JSONPath.
      */
     private Map<String, YamlPosition> yamlPositionsByPath = null;
 
@@ -160,13 +162,13 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      */
     private void tagNodeWithJsonSource(MetaData node) {
         if (node == null) return;
-        // Skip if a JsonSource is already populated (overlay path); the merge phase
-        // owns transitions to MergedSource. CodeSource.DEFAULT (the constructor
-        // default) is overwritten on first parse.
+        // Skip if a JSON or YAML source is already populated (overlay path);
+        // the merge phase owns transitions to MergedSource. CodeSource.DEFAULT
+        // (the constructor default) is overwritten on first parse.
         ErrorSource existing = node.getSource();
-        if (existing instanceof JsonSource) return;
+        if (existing instanceof JsonSource || existing instanceof YamlSource) return;
         try {
-            node.setSource(buildCurrentJsonSource());
+            node.setSource(buildCurrentSourceEnvelope());
         } catch (IllegalStateException frozen) {
             // Node was frozen between phases — leave existing source intact.
             log.debug("Node source frozen; preserving existing source for [{}]", node);
@@ -174,26 +176,35 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
     }
 
     /**
-     * FR5a / ADR-0009 — Constructs a {@link JsonSource} envelope at the
+     * FR5a / ADR-0009 — Constructs an {@link ErrorSource} envelope at the
      * current JSONPath for use in parse-error envelopes.
+     *
+     * <p>FR5b finalized 2026-05-27 — when the input was YAML (i.e. the
+     * desugar populated {@link #yamlPositionsByPath}), this returns a
+     * {@link YamlSource} (format {@code "yaml"}). Otherwise it returns a
+     * {@link JsonSource} (format {@code "json"}).</p>
      */
-    private JsonSource currentJsonSource() {
-        return buildCurrentJsonSource();
+    private ErrorSource currentSourceEnvelope() {
+        return buildCurrentSourceEnvelope();
     }
 
     /**
-     * FR5a + FR5b — build a {@link JsonSource} envelope at the current JSONPath,
-     * optionally enriched with a {@link YamlPosition} when the parser was invoked
-     * from {@link com.metaobjects.loader.parser.yaml.ParserYaml} and the current
-     * JSONPath is known to the desugar's flattened position map.
+     * FR5a + FR5b — build the source envelope at the current JSONPath.
+     *
+     * <p>FR5b finalized 2026-05-27 — emits a {@link YamlSource} (format
+     * {@code "yaml"}) when the parser was invoked from
+     * {@link com.metaobjects.loader.parser.yaml.ParserYaml} and a position
+     * map was supplied; the optional {@link YamlPosition} rides along when
+     * the desugar's flattened position map covers the current JSONPath.
+     * Otherwise emits a {@link JsonSource}.</p>
      */
-    private JsonSource buildCurrentJsonSource() {
+    private ErrorSource buildCurrentSourceEnvelope() {
         String path = jsonPathBuilder.toString();
-        YamlPosition pos = null;
         if (yamlPositionsByPath != null) {
-            pos = yamlPositionsByPath.get(path);
+            YamlPosition pos = yamlPositionsByPath.get(path);
+            return new YamlSource(List.of(getFilename()), path, pos);
         }
-        return new JsonSource(List.of(getFilename()), path, pos);
+        return new JsonSource(List.of(getFilename()), path);
     }
 
     /**
@@ -206,7 +217,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      * legacy code-string-in-message exceptions whose code-extraction code
      * never sees the envelope), this method preserves the original. Otherwise
      * it constructs a new {@link MetaDataException} that mirrors the original
-     * message + code but adds {@link #currentJsonSource()} as its envelope.</p>
+     * message + code but adds {@link #currentSourceEnvelope()} as its envelope.</p>
      *
      * <p>Returns the (possibly re-wrapped) exception so the caller can write
      * {@code throw rethrowWithEnvelope(ex);}.</p>
@@ -223,7 +234,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             ex,
             Collections.emptyMap(),
             ex.getCode().orElse(null),
-            currentJsonSource());
+            currentSourceEnvelope());
     }
 
     /**
@@ -249,9 +260,10 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         try {
             MetaAttribute<?> attr = parent.getMetaAttr(attrName, false);
             if (attr == null) return;
-            // Skip if a JsonSource is already populated (overlay / re-emit path).
-            if (attr.getSource() instanceof JsonSource) return;
-            attr.setSource(buildCurrentJsonSource());
+            // Skip if a JSON or YAML source is already populated (overlay / re-emit path).
+            if (attr.getSource() instanceof JsonSource ||
+                attr.getSource() instanceof YamlSource) return;
+            attr.setSource(buildCurrentSourceEnvelope());
         } catch (IllegalStateException frozen) {
             // Node frozen between phases — leave existing source intact.
             log.debug("Attr child source frozen; preserving existing source for [{}.{}]", parent, attrName);
@@ -358,7 +370,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      * {@link YamlPosition} map produced by
      * {@link com.metaobjects.loader.parser.yaml.ParserYaml} when the input was
      * YAML. The map is consulted from
-     * {@link #buildCurrentJsonSource()} so every node's {@link JsonSource} gets
+     * {@link #buildCurrentSourceEnvelope()} so every node's {@link JsonSource} gets
      * stamped with the optional {@code yamlPosition} field.
      *
      * @param canonical       the canonical JSON object (BOM-stripped + parsed)
@@ -384,7 +396,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                     throw new MetaDataException(
                         "Top-level canonical JSON must have exactly one wrapper key in file ["
                             + getFilename() + "]",
-                        null, currentJsonSource());
+                        null, currentSourceEnvelope());
                 }
                 rootKey = key;
             }
@@ -392,7 +404,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         if (rootKey == null) {
             throw new MetaDataException(
                 "Top-level canonical JSON has no wrapper key in file [" + getFilename() + "]",
-                null, currentJsonSource());
+                null, currentSourceEnvelope());
         }
 
         // FR5a / ADR-0009 — push the wrapper key as the first JSONPath segment.
@@ -407,14 +419,14 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             if (!getTypeRegistry().hasType(rootType)) {
                 throw new MetaDataException(
                     "Unknown root type '" + rootType + "' in canonical JSON file [" + getFilename() + "]",
-                    ErrorCode.ERR_UNKNOWN_TYPE, currentJsonSource());
+                    ErrorCode.ERR_UNKNOWN_TYPE, currentSourceEnvelope());
             }
 
             JsonElement rootBodyEl = canonical.get(rootKey);
             if (!rootBodyEl.isJsonObject()) {
                 throw new MetaDataException(
                     "Root wrapper '" + rootKey + "' must contain an object in file [" + getFilename() + "]",
-                    null, currentJsonSource());
+                    null, currentSourceEnvelope());
             }
             JsonObject rootBody = rootBodyEl.getAsJsonObject();
 
@@ -805,7 +817,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                         + ": reserved structural key '" + attrName + "' must not be "
                         + JSON_ATTR_PREFIX + "-prefixed on " + md.getType() + "." + md.getSubType()
                         + " '" + md.getName() + "' in file [" + getFilename() + "] — write it bare",
-                    ErrorCode.ERR_RESERVED_ATTR, currentJsonSource());
+                    ErrorCode.ERR_RESERVED_ATTR, currentSourceEnvelope());
             }
 
             // Canonical bare-string → JSON-array desugar for array-declared attributes.
@@ -833,7 +845,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                                 + ": @" + attrName + " on " + md.getType() + "." + md.getSubType()
                                 + " '" + md.getName() + "' must be a JSON object, not a string"
                                 + " (legacy string-quoted filter form is rejected) in file [" + getFilename() + "]",
-                            ErrorCode.ERR_BAD_ATTR_VALUE, currentJsonSource());
+                            ErrorCode.ERR_BAD_ATTR_VALUE, currentSourceEnvelope());
                     }
                 }
             }

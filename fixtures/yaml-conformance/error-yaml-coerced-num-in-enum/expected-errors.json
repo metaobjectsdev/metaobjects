@@ -13,11 +13,12 @@
     {
       "code": "ERR_BAD_ATTR_VALUE",
       "source": {
-        "format": "json",
+        "format": "yaml",
         "files": [
           "input.yaml"
         ],
-        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[0]['field.enum']"
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[0]['field.enum']",
+        "yamlPosition": { "line": 6, "col": 13 }
       }
     }
   ],

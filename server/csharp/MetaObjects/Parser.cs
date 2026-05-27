@@ -156,7 +156,7 @@ public static class Parser
         public JsonPathBuilder Builder { get; } = new();
 
         /// <summary>
-        /// Build a <see cref="JsonSource"/> envelope for the current location.
+        /// Build the source envelope for the current location.
         /// When <see cref="Source"/> is null (parser invoked without a source id,
         /// e.g. from a string buffer in tests), fall back to <see cref="CodeSource"/>
         /// — emitting a JsonSource with an empty file list would violate the
@@ -164,26 +164,28 @@ public static class Parser
         /// emits. Matches the TS reference (parser-core.ts:104-114).
         ///
         /// <para>
-        /// FR5b — when the source is a YAML input and a position is known for
-        /// the current JSONPath, the envelope carries an optional
-        /// <see cref="YamlPosition"/>. Format stays <c>"json"</c> for cross-port
-        /// parity (the yaml-conformance fixtures' format discriminator is
-        /// frozen at <c>"json"</c> until all four ports ship FR5b — see
-        /// <see cref="JsonSource"/>'s XML-doc).
+        /// FR5b finalized 2026-05-27 — when <see cref="SourceFormat"/> is
+        /// <see cref="MetaDataFormat.Yaml"/>, emits a <see cref="YamlSource"/>
+        /// (format <c>"yaml"</c>) carrying the optional <see cref="YamlPosition"/>
+        /// when the desugar's position map covers the current JSONPath. Otherwise
+        /// emits a <see cref="JsonSource"/>.
         /// </para>
         /// </summary>
         public ErrorSource CurrentSource()
         {
             if (Source is null) return CodeSource.Default;
             string path = Builder.ToString();
-            YamlPosition? pos = null;
-            if (SourceFormat == MetaDataFormat.Yaml &&
-                YamlPositionsByPath is not null &&
-                YamlPositionsByPath.TryGetValue(path, out YamlPosition? found))
+            if (SourceFormat == MetaDataFormat.Yaml)
             {
-                pos = found;
+                YamlPosition? pos = null;
+                if (YamlPositionsByPath is not null &&
+                    YamlPositionsByPath.TryGetValue(path, out YamlPosition? found))
+                {
+                    pos = found;
+                }
+                return new YamlSource(new[] { Source }, path, pos);
             }
-            return new JsonSource(new[] { Source }, path, pos);
+            return new JsonSource(new[] { Source }, path);
         }
     }
 
