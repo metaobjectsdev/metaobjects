@@ -11,7 +11,7 @@
 
 import type { MetaData } from "../shared/meta-data.js";
 import { ParseError } from "../errors.js";
-import type { ErrorSource } from "../source.js";
+import { resolvedSource, type ErrorSource } from "../source.js";
 import {
   TYPE_OBJECT,
   TYPE_FIELD,
@@ -101,10 +101,15 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
     if (typeof payloadRef !== "string") continue; // absence handled by the required-attr schema check
     const payload = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === payloadRef);
     if (!payload || payload.subType !== OBJECT_SUBTYPE_VALUE) {
+      // FR5d — @payloadRef is a reference; emit format=resolved with
+      // referrer=template FQN, target=the unresolved payloadRef string.
       errors.push(
         new ParseError(
           `template "${tmpl.name}" @payloadRef "${payloadRef}" does not resolve to an object.value at root`,
-          { code: "ERR_INVALID_TEMPLATE", source: tmpl.source },
+          {
+            code: "ERR_INVALID_TEMPLATE",
+            source: resolvedSource(tmpl.source, tmpl.fqn(), payloadRef),
+          },
         ),
       );
       continue;
@@ -116,11 +121,17 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
     const slotList = Array.isArray(slots) ? slots : typeof slots === "string" ? [slots] : [];
     for (const slot of slotList) {
       if (typeof slot === "string" && !fieldNames.has(slot)) {
+        // FR5d — @requiredSlots is a field-on-payload reference; emit
+        // format=resolved with referrer=template FQN, target=`payloadRef.slot`
+        // (the dotted ref that did not resolve to a payload field).
         errors.push(
           new ParseError(
             `template "${tmpl.name}" @requiredSlots "${slot}" is not a field on payload "${payloadRef}". ` +
             `Available fields: ${[...fieldNames].join(", ")}`,
-            { code: "ERR_INVALID_TEMPLATE", source: tmpl.source },
+            {
+              code: "ERR_INVALID_TEMPLATE",
+              source: resolvedSource(tmpl.source, tmpl.fqn(), `${payloadRef}.${slot}`),
+            },
           ),
         );
       }
@@ -196,18 +207,28 @@ function _findRelationship(obj: MetaData, name: string): MetaData | undefined {
 function _validateFromPath(
   fromAttr: string,
   root: MetaData,
-  projectionName: string,
+  projection: MetaData,
   fieldName: string,
   originSource: ErrorSource,
   errors: ParseError[],
   label: string = "origin.passthrough.@from",
 ): void {
+  const projectionName = projection.name;
+  // FR5d — referrer is `<projection-FQN>::<fieldName>` (the canonical
+  // "where the broken reference lives" identifier).
+  const referrer = `${projection.fqn()}::${fieldName}`;
   const dotIdx = fromAttr.indexOf(".");
   if (dotIdx < 1 || dotIdx === fromAttr.length - 1) {
+    // Malformed shape (not "Entity.field") — not a reference resolution
+    // failure per se, but emit format=resolved with target=the bad string
+    // so consumers see the same envelope shape across all FR5d sites.
     errors.push(
       new ParseError(
         `${label} "${fromAttr}" on ${projectionName}.${fieldName}: must be of form "Entity.field".`,
-        { code: "ERR_INVALID_ORIGIN", source: originSource },
+        {
+          code: "ERR_INVALID_ORIGIN",
+          source: resolvedSource(originSource, referrer, fromAttr),
+        },
       ),
     );
     return;
@@ -216,20 +237,28 @@ function _validateFromPath(
   const targetFieldName = fromAttr.slice(dotIdx + 1);
   const sourceObj = _findObject(root, entityName);
   if (!sourceObj) {
+    // FR5d — entity half of the ref didn't resolve. target = full ref.
     errors.push(
       new ParseError(
         `${label} "${fromAttr}" on ${projectionName}.${fieldName}: no such entity "${entityName}".`,
-        { code: "ERR_INVALID_ORIGIN", source: originSource },
+        {
+          code: "ERR_INVALID_ORIGIN",
+          source: resolvedSource(originSource, referrer, fromAttr),
+        },
       ),
     );
     return;
   }
   const sourceField = _findField(sourceObj, targetFieldName);
   if (!sourceField) {
+    // FR5d — entity resolved, field on it did not. target = full ref.
     errors.push(
       new ParseError(
         `${label} "${fromAttr}" on ${projectionName}.${fieldName}: no such field "${targetFieldName}" on ${entityName}.`,
-        { code: "ERR_INVALID_ORIGIN", source: originSource },
+        {
+          code: "ERR_INVALID_ORIGIN",
+          source: resolvedSource(originSource, referrer, fromAttr),
+        },
       ),
     );
   }
@@ -238,17 +267,23 @@ function _validateFromPath(
 function _validateViaPath(
   viaAttr: string,
   root: MetaData,
-  projectionName: string,
+  projection: MetaData,
   fieldName: string,
   originSource: ErrorSource,
   errors: ParseError[],
 ): void {
+  const projectionName = projection.name;
+  // FR5d — referrer is `<projection-FQN>::<fieldName>`.
+  const referrer = `${projection.fqn()}::${fieldName}`;
   const segments = viaAttr.split(".");
   if (segments.length < 2) {
     errors.push(
       new ParseError(
         `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: must be of form "Entity.relationship[.relationship...]".`,
-        { code: "ERR_INVALID_ORIGIN", source: originSource },
+        {
+          code: "ERR_INVALID_ORIGIN",
+          source: resolvedSource(originSource, referrer, viaAttr),
+        },
       ),
     );
     return;
@@ -259,18 +294,32 @@ function _validateViaPath(
     errors.push(
       new ParseError(
         `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: no such entity "${entityName}".`,
-        { code: "ERR_INVALID_ORIGIN", source: originSource },
+        {
+          code: "ERR_INVALID_ORIGIN",
+          source: resolvedSource(originSource, referrer, viaAttr),
+        },
       ),
     );
     return;
   }
+  // FR5d — track the deepest-valid-prefix as we walk. The prefix grows
+  // segment-by-segment; on a hop failure the error message names the prefix
+  // that DID resolve, so authors can fix multi-hop typos quickly.
+  // After the entity lookup above, the deepest valid prefix is just the
+  // entity name; each successful relationship hop appends a segment.
+  const validSegments: string[] = [entityName];
   for (const relName of relSegments) {
     const rel = _findRelationship(currentObj, relName);
     if (!rel) {
+      const prefix = validSegments.join(".");
       errors.push(
         new ParseError(
-          `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: no such relationship "${relName}" on ${currentObj.name}.`,
-          { code: "ERR_INVALID_ORIGIN", source: originSource },
+          `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: no such relationship "${relName}" on ${currentObj.name}. ` +
+          `Deepest valid prefix was "${prefix}".`,
+          {
+            code: "ERR_INVALID_ORIGIN",
+            source: resolvedSource(originSource, referrer, viaAttr),
+          },
         ),
       );
       return;
@@ -280,21 +329,32 @@ function _validateViaPath(
       errors.push(
         new ParseError(
           `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: relationship "${relName}" on ${currentObj.name} is missing @objectRef.`,
-          { code: "ERR_INVALID_ORIGIN", source: originSource },
+          {
+            code: "ERR_INVALID_ORIGIN",
+            source: resolvedSource(originSource, referrer, viaAttr),
+          },
         ),
       );
       return;
     }
     const nextObj = _findObject(root, refTarget);
     if (!nextObj) {
+      // FR5d — relationship's @objectRef points at a missing entity. This
+      // is the @objectRef-resolution edge of the via-path walk (the "5th
+      // site" in FR5d's scope list for @objectRef references encountered
+      // transitively).
       errors.push(
         new ParseError(
           `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: relationship "${relName}" points to non-existent entity "${refTarget}".`,
-          { code: "ERR_INVALID_ORIGIN", source: originSource },
+          {
+            code: "ERR_INVALID_ORIGIN",
+            source: resolvedSource(originSource, referrer, refTarget),
+          },
         ),
       );
       return;
     }
+    validSegments.push(relName);
     currentObj = nextObj;
   }
 }
@@ -307,6 +367,8 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
         if (origin.subType === ORIGIN_SUBTYPE_PASSTHROUGH) {
           const from = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
           if (typeof from !== "string" || from === "") {
+            // Missing-attr (not a reference resolution failure) — keep the
+            // node's own source envelope (json/yaml/merged).
             errors.push(
               new ParseError(
                 `origin.passthrough on ${obj.name}.${field.name}: missing @from.`,
@@ -315,10 +377,10 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             );
             continue;
           }
-          _validateFromPath(from, root, obj.name, field.name, origin.source, errors);
+          _validateFromPath(from, root, obj, field.name, origin.source, errors);
           const via = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
           if (typeof via === "string" && via !== "") {
-            _validateViaPath(via, root, obj.name, field.name, origin.source, errors);
+            _validateViaPath(via, root, obj, field.name, origin.source, errors);
           }
         } else if (origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
           const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF);
@@ -331,7 +393,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             );
             continue;
           }
-          _validateFromPath(of_, root, obj.name, field.name, origin.source, errors, "origin.aggregate.@of");
+          _validateFromPath(of_, root, obj, field.name, origin.source, errors, "origin.aggregate.@of");
           const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
           if (typeof via !== "string" || via === "") {
             errors.push(
@@ -342,7 +404,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             );
             continue;
           }
-          _validateViaPath(via, root, obj.name, field.name, origin.source, errors);
+          _validateViaPath(via, root, obj, field.name, origin.source, errors);
         }
       }
     }

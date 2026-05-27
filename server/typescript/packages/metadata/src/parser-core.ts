@@ -29,7 +29,7 @@ import { MetaRoot } from "./shared/meta-root.js";
 import { MetaAttr } from "./core/attr/meta-attr.js";
 import { inferAttrSubType } from "./serializer-json.js";
 import { ParseError, type ErrorCode } from "./errors.js";
-import type { ErrorSource } from "./source.js";
+import { resolvedSource, type ErrorSource } from "./source.js";
 import { resolveSuperRef } from "./super-resolve.js";
 import { JsonPathBuilder } from "./json-path.js";
 import { getYamlPosition, type YamlPosition } from "./core/yaml-positions.js";
@@ -502,9 +502,15 @@ function parseNodeFresh(
     if (superModel !== undefined) {
       model.setSuperResolved(superModel);
     } else {
+      // FR5d — emit format=resolved with referrer + target. referrer is the
+      // declaring node's FQN (we just built it above); target is the
+      // unresolved supertype ref string.
       throw new ParseError(
         `the SuperClass '${model.superRef}' does not exist in file '${source ?? "<unknown>"}'`,
-        { code: "ERR_UNRESOLVED_SUPER", source: errSource() },
+        {
+          code: "ERR_UNRESOLVED_SUPER",
+          source: resolvedSource(errSource(), model.fqn(), model.superRef),
+        },
       );
     }
   } else if (model.superRef !== undefined && accumRoot === undefined) {
