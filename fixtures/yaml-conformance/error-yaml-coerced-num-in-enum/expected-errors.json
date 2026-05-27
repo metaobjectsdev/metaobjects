@@ -1,4 +1,26 @@
-[
-  { "code": "ERR_YAML_COERCION" },
-  { "code": "ERR_BAD_ATTR_VALUE" }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_YAML_COERCION",
+      "source": {
+        "format": "yaml",
+        "files": [
+          "input.yaml"
+        ],
+        "jsonPath": "$"
+      }
+    },
+    {
+      "code": "ERR_BAD_ATTR_VALUE",
+      "source": {
+        "format": "yaml",
+        "files": [
+          "input.yaml"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[0]['field.enum']",
+        "yamlPosition": { "line": 6, "col": 13 }
+      }
+    }
+  ],
+  "warnings": []
+}

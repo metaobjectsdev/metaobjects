@@ -85,27 +85,77 @@ public class ConformanceTests
         // ── expected-errors check ──────────────────────────────────────────────
         if (fix.HasExpectedErrors)
         {
-            IReadOnlyList<string>? want = null;
+            OperationScriptParser.ExpectedErrorsEnvelope? envelope = null;
             try
             {
                 var raw = File.ReadAllText(
                     System.IO.Path.Combine(fix.Dir, "expected-errors.json"));
                 var parsed = JsonSerializer.Deserialize<JsonElement>(raw);
-                want = OperationScriptParser.ParseExpectedErrors(parsed);
+                envelope = OperationScriptParser.ParseExpectedErrorsEnvelope(parsed);
             }
             catch (Exception ex)
             {
                 failures.Add($"expected-errors.json parse error: {ex.Message}");
             }
 
-            if (want != null)
+            if (envelope != null)
             {
-                var wantSorted = want.Order(StringComparer.Ordinal).ToList();
-                var gotSorted = outcome.ErrorCodes.Order(StringComparer.Ordinal).ToList();
-                if (!wantSorted.SequenceEqual(gotSorted, StringComparer.Ordinal))
+                // Code-set check (order-independent) — legacy semantics, always run.
+                var wantCodes = envelope.Errors.Select(e => e.Code).Order(StringComparer.Ordinal).ToList();
+                var gotCodes = outcome.ErrorCodes.Order(StringComparer.Ordinal).ToList();
+                if (!wantCodes.SequenceEqual(gotCodes, StringComparer.Ordinal))
                     failures.Add(
-                        $"expected errors [{string.Join(", ", wantSorted)}], " +
-                        $"got [{string.Join(", ", gotSorted)}]");
+                        $"expected codes [{string.Join(", ", wantCodes)}], " +
+                        $"got [{string.Join(", ", gotCodes)}]");
+
+                // FR5a / ADR-0009 — when the fixture uses the envelope shape,
+                // assert per-error source.format / source.files / source.jsonPath
+                // in declaration order.
+                if (!envelope.Legacy)
+                {
+                    if (envelope.Errors.Count != outcome.Errors.Count)
+                    {
+                        failures.Add(
+                            $"envelope length mismatch: expected {envelope.Errors.Count}, " +
+                            $"got {outcome.Errors.Count}");
+                    }
+                    else
+                    {
+                        for (int i = 0; i < envelope.Errors.Count; i++)
+                        {
+                            var w = envelope.Errors[i];
+                            var g = outcome.Errors[i];
+                            if (w.Code != g.Code)
+                            {
+                                failures.Add(
+                                    $"envelope[{i}].code: expected '{w.Code}', got '{g.Code}'");
+                                continue;
+                            }
+                            if (w.Source is null) continue;
+                            if (w.Source.Format != g.Format)
+                                failures.Add(
+                                    $"envelope[{i}].source.format: expected '{w.Source.Format}', got '{g.Format}'");
+                            if (!w.Source.Files.SequenceEqual(g.Files, StringComparer.Ordinal))
+                                failures.Add(
+                                    $"envelope[{i}].source.files: expected [{string.Join(",", w.Source.Files)}], " +
+                                    $"got [{string.Join(",", g.Files)}]");
+                            if (w.Source.JsonPath != null && w.Source.JsonPath != g.JsonPath)
+                                failures.Add(
+                                    $"envelope[{i}].source.jsonPath: expected '{w.Source.JsonPath}', got '{g.JsonPath}'");
+                            // FR5d — assert referrer / target for format=resolved envelopes.
+                            if (w.Source.Referrer != null && w.Source.Referrer != g.Referrer)
+                                failures.Add(
+                                    $"envelope[{i}].source.referrer: expected '{w.Source.Referrer}', got '{g.Referrer}'");
+                            if (w.Source.Target != null && w.Source.Target != g.Target)
+                                failures.Add(
+                                    $"envelope[{i}].source.target: expected '{w.Source.Target}', got '{g.Target}'");
+                        }
+                    }
+                    if (envelope.WarningsCount != outcome.Warnings.Count)
+                        failures.Add(
+                            $"warnings count: expected {envelope.WarningsCount}, " +
+                            $"got {outcome.Warnings.Count}");
+                }
             }
         }
 

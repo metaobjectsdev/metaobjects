@@ -1,0 +1,16 @@
+# Conformance fixtures rely on byte-exact cross-port comparison. Force LF on
+# all fixture inputs/outputs so a Windows clone with default
+# `core.autocrlf=true` doesn't silently rewrite line endings and break the
+# byte-equality gate for filesystem reasons rather than engine reasons.
+#
+# Files affected:
+# - fixtures/conformance/*/expected.json + input/*.json (canonical metamodel)
+# - fixtures/yaml-conformance/*/{input.yaml,expected.json}
+# - fixtures/render-conformance/*/{expected.txt,template.mustache,payload.json,meta.json}
+# - fixtures/verify-conformance/*/{template.mustache,payload.json,expected-drift.json,options.json,partials/*.mustache}
+# - fixtures/persistence-conformance/**/*.yaml
+fixtures/** text eol=lf
+
+# Mustache templates carry cross-port byte-exact contracts elsewhere too
+# (test resources, snapshots).
+*.mustache text eol=lf

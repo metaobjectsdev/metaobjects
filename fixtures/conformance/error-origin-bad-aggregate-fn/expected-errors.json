@@ -1,5 +1,15 @@
-[
-  {
-    "code": "ERR_BAD_ATTR_VALUE"
-  }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_BAD_ATTR_VALUE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.commerce.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['object.entity'].children[1]['field.int'].children[0]['origin.aggregate']"
+      }
+    }
+  ],
+  "warnings": []
+}

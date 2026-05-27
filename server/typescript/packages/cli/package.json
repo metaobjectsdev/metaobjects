@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/cli",
-  "version": "0.6.0",
+  "version": "0.7.0-rc.1",
   "description": "CLI for MetaObjects: scaffold, codegen, migrate, and drift-detection commands.",
   "type": "module",
   "main": "./dist/src/index.js",
@@ -41,6 +41,7 @@
     "@metaobjectsdev/codegen-ts-react": "workspace:*",
     "@metaobjectsdev/codegen-ts-tanstack": "workspace:*",
     "@metaobjectsdev/migrate-ts": "workspace:*",
+    "@metaobjectsdev/runtime-ts": "workspace:*",
     "jiti": "^2.4.0"
   },
   "peerDependencies": {

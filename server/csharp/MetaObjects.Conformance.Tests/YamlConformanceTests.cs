@@ -23,6 +23,7 @@
 using System.Text.Json;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
+using MetaObjects.Source;
 using Xunit;
 
 namespace MetaObjects.Conformance.Tests;
@@ -204,9 +205,18 @@ public class YamlConformanceTests
 
         var codesSeen = new HashSet<string>(StringComparer.Ordinal);
         var orderedCodes = new List<string>();
+        var orderedEnvelopes = new List<ErrorEnvelopeRecord>();
         void AddCode(string c)
         {
             if (codesSeen.Add(c)) orderedCodes.Add(c);
+        }
+        void AddEnvelope(MetaError err)
+        {
+            if (codesSeen.Add(err.Code.ToString()))
+            {
+                orderedCodes.Add(err.Code.ToString());
+                orderedEnvelopes.Add(BuildYamlEnvelope(err));
+            }
         }
 
         // 1. Desugar — collect every desugar diagnostic (multi-error path).
@@ -218,13 +228,21 @@ public class YamlConformanceTests
         catch (ParseException ex)
         {
             AddCode(ex.Code.ToString());
+            orderedEnvelopes.Add(BuildYamlEnvelopeFromException(ex));
         }
 
         if (desugared is not null)
         {
             foreach (var err in desugared.Errors)
             {
-                AddCode((err.Code ?? ErrorCode.ERR_MALFORMED_YAML).ToString());
+                // YAML desugar errors don't carry an envelope yet — synthesize a
+                // root-level YAML envelope so cross-port assertions still apply.
+                var code = (err.Code ?? ErrorCode.ERR_MALFORMED_YAML).ToString();
+                if (codesSeen.Add(code))
+                {
+                    orderedCodes.Add(code);
+                    orderedEnvelopes.Add(new ErrorEnvelopeRecord(code, "yaml", new[] { "input.yaml" }, "$"));
+                }
             }
 
             // 2. Hand the canonical (regardless of desugar errors) to Parser.ParseJson
@@ -234,65 +252,103 @@ public class YamlConformanceTests
             //    canonical-parse + validation codes (e.g. ERR_BAD_ATTR_VALUE on a
             //    coerced enum value where the bad element survived stringification).
             string canonicalJson = desugared.Canonical.ToJsonString();
+            // FR5b (finalized 2026-05-27): pass the YAML format + position map so
+            // buildTree-emitted envelopes carry format="yaml" + yamlPosition.
+            var yamlParseOpts = new ParseOptions(registry)
+            {
+                Strict = parseOpts.Strict,
+                SourceName = parseOpts.SourceName,
+                IntoRoot = parseOpts.IntoRoot,
+                DeferSuperResolution = parseOpts.DeferSuperResolution,
+                SourceFormat = MetaDataFormat.Yaml,
+                YamlPositionsByPath = desugared.PositionsByPath,
+            };
             try
             {
-                var result = Parser.ParseJson(canonicalJson, parseOpts);
-                foreach (var e in result.Errors) AddCode(e.Code.ToString());
+                var result = Parser.ParseJson(canonicalJson, yamlParseOpts);
+                foreach (var e in result.Errors) AddEnvelope(e);
 
                 // 3. Run the post-load validation passes against the parsed tree —
                 //    mirrors what MetaDataLoader.Load() does after each source.
                 //    We call them directly because Load() would short-circuit on
                 //    ParseException from a coercion-flagged desugar.
                 MetaData root = result.Root;
-                // Super-resolution is internal; the canonical parser already attempted
-                // it during the build-tree pass when DeferSuperResolution is false (the
-                // default). We don't re-run it here for this reason.
-                foreach (var e in ValidationPasses.ValidateSubtypeRules(root).Errors)
-                    AddCode(e.Code.ToString());
-                foreach (var e in ValidationPasses.ValidateDataGridSortFields(root))
-                    AddCode(e.Code.ToString());
-                foreach (var e in ValidationPasses.ValidateOriginPaths(root))
-                    AddCode(e.Code.ToString());
-                foreach (var e in ValidationPasses.ValidateAttrSchema(root, registry).Errors)
-                    AddCode(e.Code.ToString());
-                foreach (var e in ValidationPasses.ValidateDataGridFilterValues(root))
-                    AddCode(e.Code.ToString());
-                foreach (var e in ValidationPasses.ValidateFieldObjectStorage(root))
-                    AddCode(e.Code.ToString());
-                foreach (var e in ValidationPasses.ValidateTemplatePayloadRefs(root))
-                    AddCode(e.Code.ToString());
-                foreach (var e in ValidationPasses.ValidateEnumValues(root))
-                    AddCode(e.Code.ToString());
+                foreach (var e in ValidationPasses.ValidateSubtypeRules(root).Errors) AddEnvelope(e);
+                foreach (var e in ValidationPasses.ValidateDataGridSortFields(root)) AddEnvelope(e);
+                foreach (var e in ValidationPasses.ValidateOriginPaths(root)) AddEnvelope(e);
+                foreach (var e in ValidationPasses.ValidateAttrSchema(root, registry).Errors) AddEnvelope(e);
+                foreach (var e in ValidationPasses.ValidateDataGridFilterValues(root)) AddEnvelope(e);
+                foreach (var e in ValidationPasses.ValidateFieldObjectStorage(root)) AddEnvelope(e);
+                foreach (var e in ValidationPasses.ValidateTemplatePayloadRefs(root)) AddEnvelope(e);
+                foreach (var e in ValidationPasses.ValidateEnumValues(root)) AddEnvelope(e);
             }
             catch (ParseException ex)
             {
                 AddCode(ex.Code.ToString());
+                orderedEnvelopes.Add(BuildYamlEnvelopeFromException(ex));
             }
         }
 
         // -- expected-errors check ------------------------------------------
         if (fix.HasExpectedErrors)
         {
-            IReadOnlyList<string>? want = null;
+            OperationScriptParser.ExpectedErrorsEnvelope? envelope = null;
             try
             {
                 var raw = File.ReadAllText(System.IO.Path.Combine(fix.Dir, "expected-errors.json"));
                 var parsed = JsonSerializer.Deserialize<JsonElement>(raw);
-                want = ParseExpectedErrors(parsed);
+                envelope = OperationScriptParser.ParseExpectedErrorsEnvelope(parsed);
             }
             catch (Exception ex)
             {
                 failures.Add($"expected-errors.json parse error: {ex.Message}");
             }
 
-            if (want is not null)
+            if (envelope is not null)
             {
-                var wantSorted = want.Order(StringComparer.Ordinal).ToList();
-                var gotSorted = orderedCodes.Order(StringComparer.Ordinal).ToList();
-                if (!wantSorted.SequenceEqual(gotSorted, StringComparer.Ordinal))
+                // Code-set check (order-independent) — legacy semantics.
+                var wantCodes = envelope.Errors.Select(e => e.Code).Order(StringComparer.Ordinal).ToList();
+                var gotCodes = orderedCodes.Order(StringComparer.Ordinal).ToList();
+                if (!wantCodes.SequenceEqual(gotCodes, StringComparer.Ordinal))
                     failures.Add(
-                        $"expected errors [{string.Join(", ", wantSorted)}], " +
-                        $"got [{string.Join(", ", gotSorted)}]");
+                        $"expected codes [{string.Join(", ", wantCodes)}], " +
+                        $"got [{string.Join(", ", gotCodes)}]");
+
+                // FR5a — per-error envelope assertion (in declaration order).
+                if (!envelope.Legacy)
+                {
+                    if (envelope.Errors.Count != orderedEnvelopes.Count)
+                    {
+                        failures.Add(
+                            $"envelope length mismatch: expected {envelope.Errors.Count}, " +
+                            $"got {orderedEnvelopes.Count}");
+                    }
+                    else
+                    {
+                        for (int i = 0; i < envelope.Errors.Count; i++)
+                        {
+                            var w = envelope.Errors[i];
+                            var g = orderedEnvelopes[i];
+                            if (w.Code != g.Code)
+                            {
+                                failures.Add(
+                                    $"envelope[{i}].code: expected '{w.Code}', got '{g.Code}'");
+                                continue;
+                            }
+                            if (w.Source is null) continue;
+                            if (w.Source.Format != g.Format)
+                                failures.Add(
+                                    $"envelope[{i}].source.format: expected '{w.Source.Format}', got '{g.Format}'");
+                            if (!w.Source.Files.SequenceEqual(g.Files, StringComparer.Ordinal))
+                                failures.Add(
+                                    $"envelope[{i}].source.files: expected [{string.Join(",", w.Source.Files)}], " +
+                                    $"got [{string.Join(",", g.Files)}]");
+                            if (w.Source.JsonPath != null && w.Source.JsonPath != g.JsonPath)
+                                failures.Add(
+                                    $"envelope[{i}].source.jsonPath: expected '{w.Source.JsonPath}', got '{g.JsonPath}'");
+                        }
+                    }
+                }
             }
             return;
         }
@@ -345,34 +401,24 @@ public class YamlConformanceTests
     }
 
     /// <summary>
-    /// Parse <c>expected-errors.json</c> — accepts either an array of objects
-    /// (<c>[{ "code": "ERR_X" }, ...]</c>) or an array of strings
-    /// (<c>["ERR_X", ...]</c>) for forward-compat with simpler formats.
+    /// Build a cross-port envelope record from a YAML-runner MetaError. The
+    /// YAML fixtures' file token is always "input.yaml" (the authoring file
+    /// the consumer sees), not the per-port internal source id.
     /// </summary>
-    private static IReadOnlyList<string> ParseExpectedErrors(JsonElement el)
-    {
-        if (el.ValueKind != JsonValueKind.Array)
-            throw new InvalidOperationException("expected-errors.json must be a JSON array");
+    private static ErrorEnvelopeRecord BuildYamlEnvelope(MetaError err) =>
+        BuildYamlEnvelope(err.Code.ToString(), err.Envelope);
 
-        var codes = new List<string>();
-        foreach (var entry in el.EnumerateArray())
+    private static ErrorEnvelopeRecord BuildYamlEnvelopeFromException(ParseException ex) =>
+        BuildYamlEnvelope(ex.Code.ToString(), ex.Envelope);
+
+    private static ErrorEnvelopeRecord BuildYamlEnvelope(string code, ErrorSource? envelope) =>
+        envelope switch
         {
-            if (entry.ValueKind == JsonValueKind.String)
-            {
-                codes.Add(entry.GetString()!);
-            }
-            else if (entry.ValueKind == JsonValueKind.Object
-                && entry.TryGetProperty("code", out var c)
-                && c.ValueKind == JsonValueKind.String)
-            {
-                codes.Add(c.GetString()!);
-            }
-            else
-            {
-                throw new InvalidOperationException(
-                    "expected-errors.json entries must be strings or { \"code\": \"ERR_X\" } objects");
-            }
-        }
-        return codes;
-    }
+            JsonSource js     => new ErrorEnvelopeRecord(code, "json",     new[] { "input.yaml" }, js.JsonPath),
+            YamlSource ys     => new ErrorEnvelopeRecord(code, "yaml",     new[] { "input.yaml" }, ys.JsonPath),
+            MergedSource ms   => new ErrorEnvelopeRecord(code, "merged",   ms.Files, ms.JsonPath),
+            ResolvedSource rs => new ErrorEnvelopeRecord(code, "resolved", rs.Files, rs.JsonPath),
+            CodeSource        => new ErrorEnvelopeRecord(code, "code",     Array.Empty<string>(), null),
+            _                 => new ErrorEnvelopeRecord(code, "yaml",     new[] { "input.yaml" }, "$"),
+        };
 }

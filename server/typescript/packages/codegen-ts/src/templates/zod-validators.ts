@@ -2,18 +2,24 @@
 // Auto-generated PKs are EXCLUDED from InsertSchema (caller doesn't provide them).
 // @autoSet fields: INSERT → .optional().transform(() => new Date().toISOString())
 //                 UPDATE → onCreate fields omitted entirely; onUpdate gets same transform
+//
+// field.object isArray:true objectRef:<Ref> — emits z.array(<Ref>InsertSchema)
+// with a cross-module imp() so consumers passing the schema to
+// zod-to-json-schema get a properly element-typed array. Without this, every
+// object-array field collapsed to z.array(z.string()) and the JSON Schema sent
+// downstream (e.g. to LLM tool_use input_schema) lost the nested object shape.
 
-import { code, imp, type Code } from "ts-poet";
+import { code, joinCode, imp, type Code } from "ts-poet";
 import { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
-  FIELD_SUBTYPE_ENUM,
+  FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_OBJECT,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
-  FIELD_ATTR_AUTO_SET, AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE,
+  FIELD_ATTR_AUTO_SET, FIELD_ATTR_OBJECT_REF, AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE,
   VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_PATTERN,
   GENERATION_INCREMENT, GENERATION_UUID,
 } from "@metaobjectsdev/metadata";
@@ -33,22 +39,20 @@ export function renderZodValidators(obj: MetaObject): Code {
     }
   }
 
-  const insertFieldLines: string[] = [];
-  const updateFieldLines: string[] = [];
+  const insertFieldLines: Code[] = [];
+  const updateFieldLines: Code[] = [];
   for (const child of obj.fields()) {
     if (autoGenPkFields.has(child.name)) continue;
 
     const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
 
     // Insert schema: @autoSet fields use transform (always override client input).
-    // NOTE: use "z" as a literal string here — these lines are embedded in the
-    // `code` template tag below which resolves the imp("z@zod") import.
     if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) {
       insertFieldLines.push(
-        `  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
+        code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
     } else {
-      insertFieldLines.push(`  ${child.name}: ${zodFieldExpr(child)}`);
+      insertFieldLines.push(code`  ${child.name}: ${zodFieldExpr(child)}`);
     }
 
     // Update schema: @autoSet onCreate → omit entirely; onUpdate → transform
@@ -56,13 +60,16 @@ export function renderZodValidators(obj: MetaObject): Code {
       // Omit: creation timestamps cannot be changed after creation
     } else if (autoSet === AUTO_SET_ON_UPDATE) {
       updateFieldLines.push(
-        `  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
+        code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
     } else {
-      // All non-autoSet fields are optional in the update schema (PATCH semantics)
-      const expr = zodFieldExpr(child);
-      const optionalExpr = expr.endsWith(".optional()") ? expr : `${expr}.optional()`;
-      updateFieldLines.push(`  ${child.name}: ${optionalExpr}`);
+      // All non-autoSet fields are optional in the update schema (PATCH semantics).
+      // zodFieldExpr already appends .optional() when the field is non-required
+      // OR has a default; only append once more when it didn't.
+      const baseExpr = zodFieldExpr(child);
+      updateFieldLines.push(
+        fieldWillBeOptional(child) ? code`  ${child.name}: ${baseExpr}` : code`  ${child.name}: ${baseExpr}.optional()`,
+      );
     }
   }
 
@@ -74,48 +81,82 @@ export function renderZodValidators(obj: MetaObject): Code {
 
   return code`
 ${docsPrefix}export const ${insertSchemaName} = ${z}.object({
-${insertFieldLines.join(",\n")}
+${joinCode(insertFieldLines, { on: ",\n" })}
 });
 
 ${docsPrefix}export const ${updateSchemaName} = ${z}.object({
-${updateFieldLines.join(",\n")}
+${joinCode(updateFieldLines, { on: ",\n" })}
 });
 `;
 }
 
-function zodFieldExpr(field: MetaField): string {
-  let base: string;
+function zodFieldExpr(field: MetaField): Code {
+  // FIELD_SUBTYPE_OBJECT: emit z.array(<Ref>InsertSchema) / <Ref>InsertSchema
+  // via an imp() so ts-poet hoists the cross-module import. Without this the
+  // field used to collapse to z.string() / z.array(z.string()) and downstream
+  // JSON Schema (e.g. LLM tool_use input_schema) lost the nested object shape.
+  if (field.subType === FIELD_SUBTYPE_OBJECT) {
+    const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+    if (typeof ref === "string" && ref.length > 0) {
+      const refImp = imp(`${ref}InsertSchema@./${ref}.js`);
+      let base: Code = code`${refImp}`;
+      if (field.isArray) base = code`z.array(${base})`;
+      return appendValidatorChain(base, field);
+    }
+    // No resolvable @objectRef — fall through to z.unknown(); downstream code
+    // can still pass a value through but loses validation.
+    let base: Code = code`z.unknown()`;
+    if (field.isArray) base = code`z.array(${base})`;
+    return appendValidatorChain(base, field);
+  }
+
+  let baseStr: string;
   switch (field.subType) {
     case FIELD_SUBTYPE_INT:
     case FIELD_SUBTYPE_CURRENCY:
     case FIELD_SUBTYPE_LONG:
-      base = "z.number().int()";
+      baseStr = "z.number().int()";
       break;
     case FIELD_SUBTYPE_DOUBLE:
     case FIELD_SUBTYPE_FLOAT:
-      base = "z.number()";
+      baseStr = "z.number()";
       break;
     case FIELD_SUBTYPE_BOOLEAN:
-      base = "z.boolean()";
+      baseStr = "z.boolean()";
       break;
     case FIELD_SUBTYPE_DATE:
     case FIELD_SUBTYPE_TIME:
     case FIELD_SUBTYPE_TIMESTAMP:
-      base = "z.string()";
+      baseStr = "z.string()";
       break;
     case FIELD_SUBTYPE_ENUM: {
       const values = enumValues(field);
-      base = values !== undefined ? zodEnumExpr(values) : "z.string()";
+      baseStr = values !== undefined ? zodEnumExpr(values) : "z.string()";
       break;
     }
     case FIELD_SUBTYPE_STRING:
     default:
-      base = "z.string()";
+      baseStr = "z.string()";
       break;
   }
 
-  if (field.isArray) base = `z.array(${base})`;
+  if (field.isArray) baseStr = `z.array(${baseStr})`;
+  return appendValidatorChain(code`${baseStr}`, field);
+}
 
+/** Mirrors the optional-or-not decision inside appendValidatorChain so the update-schema
+ *  caller can avoid stacking a second `.optional()` onto an already-optional expression. */
+function fieldWillBeOptional(field: MetaField): boolean {
+  let isRequired = field.ownAttr(FIELD_ATTR_REQUIRED) === true;
+  for (const child of field.validators()) {
+    if (child.subType === VALIDATOR_SUBTYPE_REQUIRED) isRequired = true;
+  }
+  const hasDefault = field.ownAttr(FIELD_ATTR_DEFAULT) !== undefined;
+  return !isRequired || hasDefault;
+}
+
+/** Append .min/.max/.regex/.optional() based on field-level validators + required state. */
+function appendValidatorChain(base: Code, field: MetaField): Code {
   let isRequired = field.ownAttr(FIELD_ATTR_REQUIRED) === true;
   let maxLen: number | undefined = field.ownAttr(FIELD_ATTR_MAX_LENGTH) as number | undefined;
   let minLen: number | undefined;
@@ -134,18 +175,18 @@ function zodFieldExpr(field: MetaField): string {
     }
   }
 
-  let chain = base;
+  let chain: Code = base;
   if (field.subType === FIELD_SUBTYPE_STRING && !field.isArray) {
-    if (minLen !== undefined) chain += `.min(${minLen})`;
-    else if (isRequired) chain += `.min(1)`;
-    if (maxLen !== undefined) chain += `.max(${maxLen})`;
-    if (pattern !== undefined) chain += `.regex(new RegExp(${JSON.stringify(pattern)}))`;
+    if (minLen !== undefined) chain = code`${chain}.min(${minLen})`;
+    else if (isRequired) chain = code`${chain}.min(1)`;
+    if (maxLen !== undefined) chain = code`${chain}.max(${maxLen})`;
+    if (pattern !== undefined) chain = code`${chain}.regex(new RegExp(${JSON.stringify(pattern)}))`;
   }
 
   // Fields with DB-level defaults are optional in the InsertSchema: the caller
   // can omit them and the DB will fill in. Otherwise required-with-default
   // would force callers to repeat the default at every call site.
   const hasDefault = field.ownAttr(FIELD_ATTR_DEFAULT) !== undefined;
-  if (!isRequired || hasDefault) chain += `.optional()`;
+  if (!isRequired || hasDefault) chain = code`${chain}.optional()`;
   return chain;
 }

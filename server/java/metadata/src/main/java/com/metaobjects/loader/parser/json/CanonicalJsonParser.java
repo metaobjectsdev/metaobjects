@@ -7,7 +7,13 @@ import com.google.gson.JsonParser;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
+import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.attr.MetaAttribute;
+import com.metaobjects.source.ErrorSource;
+import com.metaobjects.source.JsonPath;
+import com.metaobjects.source.JsonSource;
+import com.metaobjects.source.YamlPosition;
+import com.metaobjects.source.YamlSource;
 import com.metaobjects.util.ErrorMessageConstants;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.parser.BaseMetaDataParser;
@@ -19,6 +25,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -112,9 +119,158 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
     // Constructor
     // -----------------------------------------------------------------------
 
+    /**
+     * FR5a / ADR-0009 — JSONPath builder threaded through the tree walk.
+     *
+     * <p>Push/pop keys + indices as we descend so every constructed MetaData
+     * node and every error raised mid-parse can be tagged with a canonical
+     * JSONPath string for the offending location.</p>
+     */
+    private final JsonPath.Builder jsonPathBuilder = new JsonPath.Builder();
+
+    /**
+     * FR5b — optional JSONPath → {@link YamlPosition} map, populated by
+     * {@link com.metaobjects.loader.parser.yaml.ParserYaml} when the input was YAML.
+     * When non-null, {@link #currentSourceEnvelope()} and {@link #tagNodeWithJsonSource(MetaData)}
+     * emit a {@link YamlSource} (FR5b finalized 2026-05-27, was {@link JsonSource}
+     * with optional {@code yamlPosition} during the per-port rollout). The
+     * envelope carries the optional {@link YamlPosition} when the desugar's map
+     * has a position for the current JSONPath.
+     */
+    private Map<String, YamlPosition> yamlPositionsByPath = null;
+
     /** Creates a {@code CanonicalJsonParser} for the given loader and filename. */
     public CanonicalJsonParser(MetaDataLoader loader, String filename) {
         super(loader, filename);
+    }
+
+    // -----------------------------------------------------------------------
+    // FR5a — source-envelope helpers
+    // -----------------------------------------------------------------------
+
+    /**
+     * FR5a / ADR-0009 — Tags a freshly-constructed node with a
+     * {@link JsonSource} envelope describing where it came from.
+     *
+     * <p>Idempotent: if the node already carries a JsonSource (overlay path
+     * where the node was loaded from an earlier file), the existing source is
+     * preserved — overlay/merge phases own subsequent transitions to
+     * {@link com.metaobjects.source.MergedSource}.</p>
+     *
+     * <p>The filename comes from {@link #getFilename()}; the JSONPath from the
+     * builder's current state.</p>
+     */
+    private void tagNodeWithJsonSource(MetaData node) {
+        if (node == null) return;
+        // Skip if a JSON or YAML source is already populated (overlay path);
+        // the merge phase owns transitions to MergedSource. CodeSource.DEFAULT
+        // (the constructor default) is overwritten on first parse.
+        ErrorSource existing = node.getSource();
+        if (existing instanceof JsonSource || existing instanceof YamlSource) return;
+        try {
+            node.setSource(buildCurrentSourceEnvelope());
+        } catch (IllegalStateException frozen) {
+            // Node was frozen between phases — leave existing source intact.
+            log.debug("Node source frozen; preserving existing source for [{}]", node);
+        }
+    }
+
+    /**
+     * FR5a / ADR-0009 — Constructs an {@link ErrorSource} envelope at the
+     * current JSONPath for use in parse-error envelopes.
+     *
+     * <p>FR5b finalized 2026-05-27 — when the input was YAML (i.e. the
+     * desugar populated {@link #yamlPositionsByPath}), this returns a
+     * {@link YamlSource} (format {@code "yaml"}). Otherwise it returns a
+     * {@link JsonSource} (format {@code "json"}).</p>
+     */
+    private ErrorSource currentSourceEnvelope() {
+        return buildCurrentSourceEnvelope();
+    }
+
+    /**
+     * FR5a + FR5b — build the source envelope at the current JSONPath.
+     *
+     * <p>FR5b finalized 2026-05-27 — emits a {@link YamlSource} (format
+     * {@code "yaml"}) when the parser was invoked from
+     * {@link com.metaobjects.loader.parser.yaml.ParserYaml} and a position
+     * map was supplied; the optional {@link YamlPosition} rides along when
+     * the desugar's flattened position map covers the current JSONPath.
+     * Otherwise emits a {@link JsonSource}.</p>
+     */
+    private ErrorSource buildCurrentSourceEnvelope() {
+        String path = jsonPathBuilder.toString();
+        if (yamlPositionsByPath != null) {
+            YamlPosition pos = yamlPositionsByPath.get(path);
+            return new YamlSource(List.of(getFilename()), path, pos);
+        }
+        return new JsonSource(List.of(getFilename()), path);
+    }
+
+    /**
+     * FR5a / ADR-0009 — Re-throw a {@link MetaDataException} that escaped a
+     * registry/base-parser call site without an envelope, stamping it with the
+     * current JSONPath so the cross-port harness sees the offending node's
+     * location rather than {@code $}.
+     *
+     * <p>If the exception already carries an envelope (or it is one of the
+     * legacy code-string-in-message exceptions whose code-extraction code
+     * never sees the envelope), this method preserves the original. Otherwise
+     * it constructs a new {@link MetaDataException} that mirrors the original
+     * message + code but adds {@link #currentSourceEnvelope()} as its envelope.</p>
+     *
+     * <p>Returns the (possibly re-wrapped) exception so the caller can write
+     * {@code throw rethrowWithEnvelope(ex);}.</p>
+     */
+    private MetaDataException rethrowWithEnvelope(MetaDataException ex) {
+        if (ex.getEnvelope().isPresent()) return ex;
+        // Preserve the original message and structured code (if any) — only the
+        // envelope is missing. Cause is the original exception so the stack
+        // trace is preserved.
+        return new MetaDataException(
+            ex.getMessage(),
+            null,
+            null,
+            ex,
+            Collections.emptyMap(),
+            ex.getCode().orElse(null),
+            currentSourceEnvelope());
+    }
+
+    /**
+     * FR5a / ADR-0009 — Tags an inline-{@code @}-attribute MetaAttribute child
+     * (just added via {@link com.metaobjects.loader.parser.BaseMetaDataParser#parseInlineAttribute})
+     * with a {@link JsonSource} envelope rooted at the parent body's JSONPath.
+     *
+     * <p>Inline attributes share their parent body's JSON location because they
+     * are body keys (e.g. {@code "@filterable": true}), not separate child node
+     * wrappers. We look up the just-added attr by name (own-only) and stamp the
+     * current JSONPath onto it.</p>
+     *
+     * <p>No-op if the attr cannot be found (defensive — the base parser may
+     * have swallowed it) or if an attempt to set the source throws because the
+     * node is frozen.</p>
+     *
+     * @param parent the parent node the attr was just added to
+     * @param attrName the bare attribute name (no {@code @} prefix)
+     */
+    private void tagAttrChildWithJsonSource(MetaData parent, String attrName) {
+        if (parent == null || attrName == null) return;
+        if (!parent.hasMetaAttr(attrName, false)) return;
+        try {
+            MetaAttribute<?> attr = parent.getMetaAttr(attrName, false);
+            if (attr == null) return;
+            // Skip if a JSON or YAML source is already populated (overlay / re-emit path).
+            if (attr.getSource() instanceof JsonSource ||
+                attr.getSource() instanceof YamlSource) return;
+            attr.setSource(buildCurrentSourceEnvelope());
+        } catch (IllegalStateException frozen) {
+            // Node frozen between phases — leave existing source intact.
+            log.debug("Attr child source frozen; preserving existing source for [{}.{}]", parent, attrName);
+        } catch (MetaDataNotFoundException nf) {
+            // Defensive — attr lookup raced; nothing to tag.
+            log.debug("Attr child lookup miss for [{}.{}] — skipping source tag", parent, attrName);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -132,9 +288,20 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             buildTree(parseToCanonical(is));
         } catch (MetaDataException e) {
             throw e;
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
+            // Any non-MetaDataException parse-time failure (Gson syntax error or
+            // other runtime fault) is reported as malformed JSON so callers see a
+            // stable conformance code rather than an untagged exception.
+            //
+            // FR5a / ADR-0009 — attach a root-of-file JsonSource envelope so the
+            // conformance harness sees source.files = [<filename>] and
+            // source.jsonPath = "$" (the parse failed before any path could be
+            // pushed onto the builder).
             throw new MetaDataException(
-                "Error loading canonical JSON from file [" + getFilename() + "]: " + e.getMessage(), e);
+                "Error loading canonical JSON from file [" + getFilename() + "]: " + e.getMessage(),
+                null, null, e, Collections.emptyMap(),
+                ErrorCode.ERR_MALFORMED_JSON,
+                new JsonSource(List.of(getFilename()), "$"));
         }
     }
 
@@ -195,6 +362,32 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      *                  parsed by {@link #parseToCanonical})
      */
     public void buildTree(JsonObject canonical) {
+        buildTree(canonical, null);
+    }
+
+    /**
+     * FR5b — registry-driven builder overload that accepts a JSONPath →
+     * {@link YamlPosition} map produced by
+     * {@link com.metaobjects.loader.parser.yaml.ParserYaml} when the input was
+     * YAML. The map is consulted from
+     * {@link #buildCurrentSourceEnvelope()} so every node's {@link JsonSource} gets
+     * stamped with the optional {@code yamlPosition} field.
+     *
+     * @param canonical       the canonical JSON object (BOM-stripped + parsed)
+     * @param positionsByPath FR5b position map (may be {@code null} for JSON input)
+     */
+    public void buildTree(JsonObject canonical, Map<String, YamlPosition> positionsByPath) {
+        this.yamlPositionsByPath = positionsByPath;
+        try {
+            buildTreeInternal(canonical);
+        } finally {
+            // Clear so a subsequent buildTree (in pathological re-use) doesn't
+            // inherit positions. The Parser is one-shot per file, but defensive.
+            this.yamlPositionsByPath = null;
+        }
+    }
+
+    private void buildTreeInternal(JsonObject canonical) {
         // Find the single wrapper key (skip $schema if present)
         String rootKey = null;
         for (String key : canonical.keySet()) {
@@ -202,46 +395,57 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                 if (rootKey != null) {
                     throw new MetaDataException(
                         "Top-level canonical JSON must have exactly one wrapper key in file ["
-                            + getFilename() + "]");
+                            + getFilename() + "]",
+                        null, currentSourceEnvelope());
                 }
                 rootKey = key;
             }
         }
         if (rootKey == null) {
             throw new MetaDataException(
-                "Top-level canonical JSON has no wrapper key in file [" + getFilename() + "]");
+                "Top-level canonical JSON has no wrapper key in file [" + getFilename() + "]",
+                null, currentSourceEnvelope());
         }
 
-        // Split the root key → type + subType
-        SplitKey rootSplit = splitTypeKey(rootKey);
-        String rootType = rootSplit.type;
-        String rootSubType = rootSplit.subType;
+        // FR5a / ADR-0009 — push the wrapper key as the first JSONPath segment.
+        // For the canonical root `metadata.root`, the literal `.` forces bracket-quoted form.
+        jsonPathBuilder.pushKey(rootKey);
+        try {
+            // Split the root key → type + subType
+            SplitKey rootSplit = splitTypeKey(rootKey);
+            String rootType = rootSplit.type;
 
-        // Validate that the root type is known
-        if (!getTypeRegistry().hasType(rootType)) {
-            throw new MetaDataException(
-                "Unknown root type '" + rootType + "' in canonical JSON file [" + getFilename() + "]");
+            // Validate that the root type is known
+            if (!getTypeRegistry().hasType(rootType)) {
+                throw new MetaDataException(
+                    "Unknown root type '" + rootType + "' in canonical JSON file [" + getFilename() + "]",
+                    ErrorCode.ERR_UNKNOWN_TYPE, currentSourceEnvelope());
+            }
+
+            JsonElement rootBodyEl = canonical.get(rootKey);
+            if (!rootBodyEl.isJsonObject()) {
+                throw new MetaDataException(
+                    "Root wrapper '" + rootKey + "' must contain an object in file [" + getFilename() + "]",
+                    null, currentSourceEnvelope());
+            }
+            JsonObject rootBody = rootBodyEl.getAsJsonObject();
+
+            // Extract package from the root body and set as the default package for this file.
+            // The canonical "package" key sets the default-package context for this file; the
+            // loader owns the MetaRoot name and it is not overwritten here.
+            String pkgValue = getStringOrNull(rootBody, KEY_PACKAGE);
+            if (pkgValue != null) {
+                setDefaultPackageName(pkgValue);
+            }
+
+            // Process the root body's children into the loader's existing MetaRoot.
+            // FR5a — tag the MetaRoot itself with a JsonSource pointing at the wrapper key.
+            MetaData loaderRoot = getRootMetaData();
+            tagNodeWithJsonSource(loaderRoot);
+            processBody(loaderRoot, rootBody);
+        } finally {
+            jsonPathBuilder.pop();
         }
-
-        JsonElement rootBodyEl = canonical.get(rootKey);
-        if (!rootBodyEl.isJsonObject()) {
-            throw new MetaDataException(
-                "Root wrapper '" + rootKey + "' must contain an object in file [" + getFilename() + "]");
-        }
-        JsonObject rootBody = rootBodyEl.getAsJsonObject();
-
-        // Extract package from the root body and set as the default package for this file.
-        // The canonical "package" key sets the default-package context for this file; the
-        // loader owns the MetaRoot name and it is not overwritten here.
-        String pkgValue = getStringOrNull(rootBody, KEY_PACKAGE);
-        if (pkgValue != null) {
-            setDefaultPackageName(pkgValue);
-        }
-
-        // Process the root body's children into the loader's existing MetaRoot.
-        // Attributes on the root body (rare) are processed first.
-        MetaData loaderRoot = getRootMetaData();
-        processBody(loaderRoot, rootBody);
     }
 
     // -----------------------------------------------------------------------
@@ -263,7 +467,13 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         if (body.has(KEY_CHILDREN)) {
             JsonElement childrenEl = body.get(KEY_CHILDREN);
             if (childrenEl.isJsonArray()) {
-                processChildrenArray(rootNode, childrenEl.getAsJsonArray(), true);
+                // FR5a — push the `children` segment for the recursion.
+                jsonPathBuilder.pushKey(KEY_CHILDREN);
+                try {
+                    processChildrenArray(rootNode, childrenEl.getAsJsonArray(), true);
+                } finally {
+                    jsonPathBuilder.pop();
+                }
             } else {
                 log.warn("'children' key is not an array in file [{}]", getFilename());
             }
@@ -282,50 +492,62 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      *                 the document root → placed under {@link #getRootMetaData()})
      */
     private void processChildrenArray(MetaData parent, JsonArray children, boolean isRoot) {
+        int idx = 0;
         for (JsonElement childEl : children) {
-            if (!childEl.isJsonObject()) {
-                log.warn("Child element in 'children' array is not an object in file [{}]", getFilename());
-                continue;
+            // FR5a — push the array index segment for this child.
+            jsonPathBuilder.pushIndex(idx);
+            try {
+                if (!childEl.isJsonObject()) {
+                    log.warn("Child element in 'children' array is not an object in file [{}]", getFilename());
+                    continue;
+                }
+                JsonObject childWrapper = childEl.getAsJsonObject();
+
+                // Each child must have exactly one key (the fused type.subType wrapper)
+                if (childWrapper.size() != 1) {
+                    log.warn("Child node must have exactly one wrapper key (found {}) in file [{}]",
+                        childWrapper.size(), getFilename());
+                    continue;
+                }
+
+                String childKey = childWrapper.keySet().iterator().next();
+                JsonElement childBodyEl = childWrapper.get(childKey);
+
+                if (!childBodyEl.isJsonObject()) {
+                    log.warn("Child wrapper '{}' must contain an object in file [{}]", childKey, getFilename());
+                    continue;
+                }
+                JsonObject childBody = childBodyEl.getAsJsonObject();
+
+                // Split fused key → type + subType
+                SplitKey split = splitTypeKey(childKey);
+                String type = split.type;
+                String subType = split.subType;
+
+                // FR5a — push the fused wrapper key as a JSONPath segment so the
+                // node (and any error raised below) carries the full canonical path.
+                jsonPathBuilder.pushKey(childKey);
+                try {
+                    // Registry check — skip unknown types with a warning
+                    if (!getTypeRegistry().hasType(type)) {
+                        log.warn("Unknown type '{}' in canonical JSON file [{}] — skipping", type, getFilename());
+                        continue;
+                    }
+
+                    // Attr child nodes: { "attr.<subType>": { "name": "...", "value": <v> } }
+                    if (MetaAttribute.TYPE_ATTR.equals(type)) {
+                        processAttrChildNode(parent, subType, childBody);
+                        continue;
+                    }
+
+                    processNode(parent, type, subType, childBody, isRoot);
+                } finally {
+                    jsonPathBuilder.pop();
+                }
+            } finally {
+                jsonPathBuilder.pop();
+                idx++;
             }
-            JsonObject childWrapper = childEl.getAsJsonObject();
-
-            // Each child must have exactly one key (the fused type.subType wrapper)
-            if (childWrapper.size() != 1) {
-                log.warn("Child node must have exactly one wrapper key (found {}) in file [{}]",
-                    childWrapper.size(), getFilename());
-                continue;
-            }
-
-            String childKey = childWrapper.keySet().iterator().next();
-            JsonElement childBodyEl = childWrapper.get(childKey);
-
-            if (!childBodyEl.isJsonObject()) {
-                log.warn("Child wrapper '{}' must contain an object in file [{}]", childKey, getFilename());
-                continue;
-            }
-            JsonObject childBody = childBodyEl.getAsJsonObject();
-
-            // Split fused key → type + subType
-            SplitKey split = splitTypeKey(childKey);
-            String type = split.type;
-            String subType = split.subType;
-
-            // Registry check — skip unknown types with a warning
-            if (!getTypeRegistry().hasType(type)) {
-                log.warn("Unknown type '{}' in canonical JSON file [{}] — skipping", type, getFilename());
-                continue;
-            }
-
-            // Attr child nodes: { "attr.<subType>": { "name": "...", "value": <v> } }
-            // The value would otherwise be silently lost via the generic createOrOverlayMetaData path.
-            // Mirror parseAttrChild in parser-core.ts: read name + value, delegate to parseInlineAttribute
-            // for typed conversion, so the subtype is used for type-consistent creation.
-            if (MetaAttribute.TYPE_ATTR.equals(type)) {
-                processAttrChildNode(parent, subType, childBody);
-                continue;
-            }
-
-            processNode(parent, type, subType, childBody, isRoot);
         }
     }
 
@@ -380,19 +602,30 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         // method uses it for naming validation only; the actual abstract flag is
         // set via a MetaAttribute below (matching the serializer's isAbstract attribute
         // convention used by CanonicalJsonSerializer).
-        MetaData md = createOrOverlayMetaData(
-            isRoot,
-            parent,
-            type,
-            subType,
-            name,
-            pkg,
-            superRef,
-            /*isAbstract=*/ null,   // set below via attribute
-            /*isInterface=*/ null,
-            /*implementsArray=*/ null,
-            isOverlay
-        );
+        //
+        // FR5a / ADR-0009 — createOrOverlayMetaData can throw ERR_UNKNOWN_SUBTYPE
+        // (and other envelope-less MetaDataExceptions) from the registry layer,
+        // which has no JSONPath context. Catch and stamp the current JSONPath
+        // here so the cross-port envelope sees the offending node's location
+        // rather than $.
+        MetaData md;
+        try {
+            md = createOrOverlayMetaData(
+                isRoot,
+                parent,
+                type,
+                subType,
+                name,
+                pkg,
+                superRef,
+                /*isAbstract=*/ null,   // set below via attribute
+                /*isInterface=*/ null,
+                /*implementsArray=*/ null,
+                isOverlay
+            );
+        } catch (MetaDataException ex) {
+            throw rethrowWithEnvelope(ex);
+        }
 
         if (md == null) {
             log.warn("createOrOverlayMetaData returned null for [{}:{}:{}] in file [{}]",
@@ -400,11 +633,18 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             return;
         }
 
+        // FR5a / ADR-0009 — tag the node with its JsonSource provenance.
+        tagNodeWithJsonSource(md);
+
         // Apply abstract flag: canonical "abstract": true → create _isAbstract=true MetaAttribute.
         // This mirrors how CanonicalJsonSerializer reads it back (via getIsAbstractValue which
         // looks for an "isAbstract" MetaAttribute with value Boolean.TRUE).
         if (Boolean.TRUE.equals(isAbstract)) {
             super.parseInlineAttribute(md, MetaData.ATTR_IS_ABSTRACT, "true");
+            // FR5a / ADR-0009 — tag the synthesized @isAbstract attr child with its
+            // JsonSource provenance (parent JSONPath, since `abstract` is a bare key
+            // on the body, not an @-attribute key in the JSON).
+            tagAttrChildWithJsonSource(md, MetaData.ATTR_IS_ABSTRACT);
         }
 
         // Apply isArray native property if specified
@@ -412,14 +652,26 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             super.handleNativeIsArrayProperty(md, "true");
         }
 
-        // Apply @-attributes
-        processAttributes(md, body);
+        // Apply @-attributes — wrap so envelope-less attribute-value errors
+        // (e.g. ERR_BAD_ATTR_VALUE from a bad inline value like
+        // @pageSize: "twenty-five") get stamped with the parent node's JSONPath.
+        try {
+            processAttributes(md, body);
+        } catch (MetaDataException ex) {
+            throw rethrowWithEnvelope(ex);
+        }
 
         // Recurse into children
         if (body.has(KEY_CHILDREN)) {
             JsonElement childrenEl = body.get(KEY_CHILDREN);
             if (childrenEl.isJsonArray()) {
-                processChildrenArray(md, childrenEl.getAsJsonArray(), false);
+                // FR5a — push the `children` segment for the recursion.
+                jsonPathBuilder.pushKey(KEY_CHILDREN);
+                try {
+                    processChildrenArray(md, childrenEl.getAsJsonArray(), false);
+                } finally {
+                    jsonPathBuilder.pop();
+                }
             }
         }
 
@@ -507,6 +759,9 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             attr.setArray(true);
         }
 
+        // FR5a / ADR-0009 — tag the attr with its JsonSource provenance.
+        tagNodeWithJsonSource(attr);
+
         // Step 4: Attach the attribute to the parent.
         parent.addChild(attr);
     }
@@ -562,7 +817,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                         + ": reserved structural key '" + attrName + "' must not be "
                         + JSON_ATTR_PREFIX + "-prefixed on " + md.getType() + "." + md.getSubType()
                         + " '" + md.getName() + "' in file [" + getFilename() + "] — write it bare",
-                    ErrorCode.ERR_RESERVED_ATTR);
+                    ErrorCode.ERR_RESERVED_ATTR, currentSourceEnvelope());
             }
 
             // Canonical bare-string → JSON-array desugar for array-declared attributes.
@@ -573,6 +828,27 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             // This lets the base parser's existing [...]  → comma-delimited → isArray=true
             // path fire correctly, without any hardcoded attribute names.
             JsonElement rawValue = entry.getValue();
+            // Cross-port: object-valued attrs (e.g. attr.filter) MUST be authored as
+            // a JSON object. The legacy form `@filter: "..."` (string-quoted JSON) is
+            // rejected here so the loader surfaces ERR_BAD_ATTR_VALUE before the
+            // attribute's setValueAsString silently re-parses the string.
+            if (rawValue.isJsonPrimitive() && rawValue.getAsJsonPrimitive().isString()) {
+                com.metaobjects.registry.TypeDefinition parentDef =
+                    getTypeRegistry().getTypeDefinition(md.getType(), md.getSubType());
+                if (parentDef != null) {
+                    com.metaobjects.registry.ChildRequirement req = parentDef.getChildRequirement(attrName);
+                    if (req != null
+                            && MetaAttribute.TYPE_ATTR.equals(req.getExpectedType())
+                            && com.metaobjects.attr.FilterAttribute.SUBTYPE_FILTER.equals(req.getExpectedSubType())) {
+                        throw new MetaDataException(
+                            ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                                + ": @" + attrName + " on " + md.getType() + "." + md.getSubType()
+                                + " '" + md.getName() + "' must be a JSON object, not a string"
+                                + " (legacy string-quoted filter form is rejected) in file [" + getFilename() + "]",
+                            ErrorCode.ERR_BAD_ATTR_VALUE, currentSourceEnvelope());
+                    }
+                }
+            }
             String stringValue;
             if (rawValue.isJsonPrimitive() && rawValue.getAsJsonPrimitive().isString()) {
                 String arrayConstraintId = md.getType() + "." + md.getSubType() + "." + attrName + ".array";
@@ -592,6 +868,13 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
 
             // Delegate to the base parser — handles type inference + array desugar
             super.parseInlineAttribute(md, attrName, stringValue);
+
+            // FR5a / ADR-0009 — tag the just-added inline attr child with its
+            // JsonSource provenance. The base parser adds the MetaAttribute as a
+            // child of `md`; we look it up by attrName (own-only) and stamp the
+            // current JSONPath (the parent body's path — inline attrs share the
+            // body's JSON location since they are body keys, not separate nodes).
+            tagAttrChildWithJsonSource(md, attrName);
         }
     }
 

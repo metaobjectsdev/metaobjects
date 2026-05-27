@@ -1,9 +1,28 @@
 # FR-007 — Cross-language codegen conformance corpus
 
 - **Date:** 2026-05-25
-- **Status:** Design (deferred — not blocking) — placeholder for a future cross-language codegen conformance gate.
-- **Target version:** 7.0.0+ (post-codegen-kotlin)
+- **Status:** **Rejected 2026-05-26** — superseded by existing behavior-corpora coverage. See §0 for rationale. The design below is preserved for reference; it is NOT a backlog item.
+- **Target version:** N/A (will not be implemented)
 - **Scope:** Define a `fixtures/codegen-conformance/` corpus that gates **what** each port's codegen emits — file inventory, generator catalog, type-mapping table, FR-004 payload-VO shape — independently of *how* (each port emits its own ecosystem's native code).
+
+## 0. Rejection rationale (2026-05-26)
+
+Rejected after walking each Tier-1 invariant against the existing five corpora (`fixtures/conformance/`, `fixtures/yaml-conformance/`, `fixtures/persistence-conformance/`, `fixtures/render-conformance/`, `fixtures/verify-conformance/`).
+
+The premise — that codegen needs its own cross-language conformance gate — does not hold up:
+
+- **Codegen is intentionally per-port-divergent.** TS emits Drizzle/Fastify, C# emits EF Core/ASP.NET, Java emits jOOQ, Kotlin emits KotlinPoet/Exposed. They are not meant to converge, and §3 of this spec already concedes that under "Tier 2."
+- **Every Tier-1 invariant the spec proposed is either misframed or already gated:**
+  - *Generator-catalog membership* — premise is false. Each port has its own generator catalog by design (TS `entityFile/queriesFile/routesFile/formFile/tanstackQuery/...` ≠ C# `entities/AppDbContext/routes/DDL` ≠ Kotlin `Entity/ExposedTable/Payload/Validator/SpringConfig`). There is no shared catalog to gate.
+  - *Field-type semantic* (`field.long` → 64-bit int) — already gated by `persistence-conformance` executing the generated DDL + queries. A 32-bit regression would explode there.
+  - *Required vs nullable* — same path; also gated at the metamodel layer.
+  - *`@maxLength` propagation* — `persistence-conformance` inspects resulting DDL.
+  - *FR-004 payload-VO field tree* — `render-conformance` gates byte-identical rendered output across ports; a missing/wrong VO field surfaces there.
+- **Tier-2 per-port goldens** are just rebranded local snapshot tests, which each port's codegen suite already maintains.
+
+The general pattern: **codegen is a substrate; the five behavior corpora gate its observable consequences.** Codegen drift that produces behavior drift is caught. Codegen drift that doesn't produce behavior drift is by definition not a correctness issue — at worst dead code, surfaced in normal review.
+
+Net new coverage from FR-007: ~0. Maintenance cost: real. Conclusion: drop, and don't revisit unless a concrete codegen-drift incident slips past the behavior corpora.
 
 ## 1. Background
 

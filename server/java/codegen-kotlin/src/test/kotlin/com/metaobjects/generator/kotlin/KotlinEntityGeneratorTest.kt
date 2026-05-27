@@ -3,6 +3,8 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.metadata.ktx.loadString
 import java.nio.file.Files
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class KotlinEntityGeneratorTest {
@@ -118,6 +120,49 @@ class KotlinEntityGeneratorTest {
             assertTrue("BANNED" in enumSrc, "expected BANNED member:\n$enumSrc")
             assertTrue("kotlinx.serialization.Serializable" in enumSrc,
                 "expected kotlinx.serialization import:\n$enumSrc")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun `abstract entities are skipped by KotlinEntityGenerator`() {
+        // AbstractBase has @isAbstract=true (reserved "abstract" JSON key) — must NOT emit.
+        // Concrete extends AbstractBase and must emit normally; the abstract check is
+        // local-only (own attribute, not inherited from supers).
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "AbstractBase", "abstract": true, "children": [
+                { "field.string": { "name": "id" } }
+            ] } },
+            { "object.entity": { "name": "Concrete", "extends": "acme::demo::AbstractBase", "children": [
+                { "field.string": { "name": "label" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("kgen-abstract-")
+        try {
+            val gen = KotlinEntityGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("abstract-skip", fx))
+
+            val generatedFiles = outDir.toFile().walkTopDown()
+                .filter { it.extension == "kt" }
+                .map { it.name }
+                .toList()
+                .sorted()
+
+            assertEquals(
+                listOf("Concrete.kt"),
+                generatedFiles,
+                "Expected only Concrete.kt — AbstractBase.kt should be skipped because " +
+                    "the entity is marked @isAbstract=true. Got: $generatedFiles",
+            )
+
+            val concreteKt = outDir.resolve("acme/demo/Concrete.kt")
+            assertTrue(Files.exists(concreteKt), "Concrete.kt should exist at $concreteKt")
+            val absentKt = outDir.resolve("acme/demo/AbstractBase.kt")
+            assertFalse(Files.exists(absentKt), "AbstractBase.kt MUST NOT exist at $absentKt")
         } finally {
             outDir.toFile().deleteRecursively()
         }

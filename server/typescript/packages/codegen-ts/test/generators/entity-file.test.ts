@@ -45,6 +45,39 @@ describe("entityFile() factory", () => {
     expect(post!.content).toContain("PostInsertSchema");
   });
 
+  test("allowlists: false produces a generated file with no runtime-ts/drizzle-fastify imports", async () => {
+    // End-to-end: factory → generate → emitted file content. Verifies the
+    // option threads from the user-facing factory all the way through to the
+    // formatted output that gets written to disk.
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new FileSource(FIXTURE)]);
+    const entities = root.objects();
+
+    const renderContext = makeRenderContext({
+      dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
+      dbImport: "../db", extStyle: "none",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    const ctx: GenContext = {
+      entities, loadedRoot: root,
+      matches: () => true,
+      config: { outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
+      renderContext,
+      warn: () => {},
+    };
+
+    const files = await entityFile({ allowlists: false }).generate(ctx);
+    const post = files.find(f => f.path === "Post.ts");
+    expect(post).toBeDefined();
+    expect(post!.content).not.toContain("FilterAllowlist");
+    expect(post!.content).not.toContain("SortAllowlist");
+    expect(post!.content).not.toContain("@metaobjectsdev/runtime-ts/drizzle-fastify");
+    // Sanity: the rest of the entity file still emits.
+    expect(post!.content).toContain(GENERATED_HEADER);
+    expect(post!.content).toContain("sqliteTable");
+    expect(post!.content).toContain("PostInsertSchema");
+  });
+
   test("filter option narrows generated entities", async () => {
     const loader = new MetaDataLoader();
     const { root } = await loader.load([new FileSource(FIXTURE)]);

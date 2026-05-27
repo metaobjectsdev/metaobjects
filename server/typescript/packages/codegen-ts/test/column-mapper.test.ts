@@ -51,12 +51,29 @@ describe("mapColumnType — SQLite", () => {
     expect(spec.dbName).toBe("given_name");
   });
 
-  test("@isArray on string → text with mode json", () => {
+  test("@isArray on string → text with mode json and $type<string[]>() chain", () => {
     const f = metaField(FIELD_SUBTYPE_STRING, "tags");
     f.setIsArray(true);
     const spec = mapColumnType(f, "sqlite");
     expect(spec.fnName).toBe("text");
     expect(spec.fnOptions).toEqual({ mode: "json" });
+    expect(spec.modifiers).toContain(".$type<string[]>()");
+  });
+
+  test("@isArray on int → text with mode json and $type<number[]>() chain", () => {
+    const f = metaField(FIELD_SUBTYPE_INT, "scores");
+    f.setIsArray(true);
+    const spec = mapColumnType(f, "sqlite");
+    expect(spec.fnName).toBe("text");
+    expect(spec.modifiers).toContain(".$type<number[]>()");
+  });
+
+  test("@isArray on boolean → text with mode json and $type<boolean[]>() chain", () => {
+    const f = metaField(FIELD_SUBTYPE_BOOLEAN, "flags");
+    f.setIsArray(true);
+    const spec = mapColumnType(f, "sqlite");
+    expect(spec.fnName).toBe("text");
+    expect(spec.modifiers).toContain(".$type<boolean[]>()");
   });
 
   test("decimal → text with leadingComment surfacing the precision-fallback", () => {

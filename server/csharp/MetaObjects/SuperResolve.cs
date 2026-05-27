@@ -115,8 +115,10 @@ internal static class SuperResolve
     // Deferred resolution — second pass after all files parsed
     // -----------------------------------------------------------------------
 
-    /// <summary>One node whose extends reference could not be resolved against the full tree.</summary>
-    public sealed record DeferredSuperFailure(string NodeFqn, string Ref);
+    /// <summary>One node whose extends reference could not be resolved against the full tree.
+    /// <see cref="Node"/> is the offending referrer node (useful for FR5a / ADR-0009 to
+    /// attach <c>node.Source</c> to the loader error envelope).</summary>
+    public sealed record DeferredSuperFailure(string NodeFqn, string Ref, MetaData? Node = null);
 
     /// <summary>
     /// Walk the tree, resolve every node's SuperRef against the full root,
@@ -146,7 +148,7 @@ internal static class SuperResolve
             }
             else
             {
-                failures.Add(new DeferredSuperFailure(node.Fqn(), node.SuperRef));
+                failures.Add(new DeferredSuperFailure(node.Fqn(), node.SuperRef, node));
             }
         });
         return failures.AsReadOnly();

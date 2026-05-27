@@ -212,7 +212,17 @@ public final class CanonicalJsonSerializer {
         // does not exist yet; that is the Task 2 work.
         String nodePackage = resolveNodePackage(node);
         if (nodePackage != null && !nodePackage.isEmpty()) {
-            if (parentPackage == null || !nodePackage.equals(parentPackage)) {
+            boolean differsFromParent = (parentPackage == null) || !nodePackage.equals(parentPackage);
+            // Cross-port: abstract field-type nodes declared at root level
+            // (e.g. an abstract field.enum bound as a shared type) always emit
+            // their package, even when it equals the root's package — they are
+            // addressable library entries that need a stable qualifier so other
+            // entities can reference them via `extends`. Objects / templates /
+            // layouts at root do not need the redundant emission.
+            boolean rootAbstractFieldType = (node.getParent() instanceof MetaRoot)
+                && (node instanceof com.metaobjects.field.MetaField)
+                && getIsAbstractValue(node);
+            if (differsFromParent || rootAbstractFieldType) {
                 body.addProperty(KEY_PACKAGE, nodePackage);
             }
         }
@@ -223,16 +233,19 @@ public final class CanonicalJsonSerializer {
         // so that round-trip loading can resolve it correctly.
         if (node.hasSuperData()) {
             MetaData superData = node.getSuperData();
-            String nodePackageForSuper = resolveNodePackage(node);
+            // For "same-package" detection we want the NODE's AUTHORING context
+            // (closest MetaObject/MetaRoot ancestor's package — a field `status`
+            // inside `Order` in `acme` has getPackage() == "acme::Order" but
+            // authors think of it as living in "acme") compared against the
+            // SUPER's own declared package (from its FQN), so synthetic
+            // tree-misalignments still emit FQN extends when the names diverge.
+            String authoringPackage = authoringPackageFor(node);
             String superPackage = resolveNodePackage(superData);
             String superRef;
-            if (nodePackageForSuper != null && !nodePackageForSuper.isEmpty()
-                    && nodePackageForSuper.equals(superPackage)) {
-                // Same package — short name is unambiguous
+            if (authoringPackage != null && !authoringPackage.isEmpty()
+                    && authoringPackage.equals(superPackage)) {
                 superRef = superData.getShortName();
             } else {
-                // Different package — emit the fully-qualified name so the
-                // canonical parser can resolve it without the original context
                 superRef = superData.getName();
             }
             if (superRef != null && !superRef.isEmpty()) {
@@ -345,6 +358,33 @@ public final class CanonicalJsonSerializer {
     // ---------------------------------------------------------------------------
 
     /**
+     * Returns the "authoring package" of a node — the package context an author
+     * would use to write its {@code extends} ref. For root-level nodes this is
+     * the root's own package; for child nodes it walks up to the nearest
+     * MetaObject (entity / value) and returns that ancestor's package. Used by
+     * extends-ref serialization so a field inside an entity in package X
+     * references a sibling in X by short name (not by FQN).
+     */
+    private static String authoringPackageFor(MetaData node) {
+        MetaData current = node;
+        while (current != null) {
+            if (current instanceof MetaRoot) {
+                return resolveNodePackage(current);
+            }
+            MetaData parent = current.getParent();
+            if (parent == null) break;
+            if (parent instanceof com.metaobjects.object.MetaObject) {
+                // current is a child of an entity → authoring context = entity's package
+                return parent.getPackage();
+            }
+            // Non-MetaObject parent (or MetaRoot): keep walking up; MetaRoot is
+            // caught on the next iteration's top-of-loop check.
+            current = parent;
+        }
+        return node.getPackage();
+    }
+
+    /**
      * Returns the "canonical package" for a node.
      *
      * <p>For {@link MetaRoot}, the node's full {@link MetaData#getName()} IS the
@@ -357,7 +397,12 @@ public final class CanonicalJsonSerializer {
      */
     private static String resolveNodePackage(MetaData node) {
         if (node instanceof MetaRoot) {
-            // The root's name is the package itself.
+            // The root's name is the package itself — unless the loader had no
+            // authored name to bind it to, in which case the canonical wire
+            // form is "no package" (TS/C#/Python parity).
+            if (((MetaRoot) node).hasSynthesizedName()) {
+                return null;
+            }
             return node.getName();
         }
         return node.getPackage();
@@ -474,12 +519,27 @@ public final class CanonicalJsonSerializer {
 
         // OBJECT-datatype attr with a Map value: emit as a JSON object.
         // Guard: DataTypes.OBJECT ensures only attrs that explicitly declare object
-        // semantics (e.g. FilterAttribute) take this path. PropertiesAttribute uses
-        // DataTypes.CUSTOM and is unaffected. Gson.toJsonTree handles nested
-        // Maps/Lists/primitives natively, so the full desugared filter structure
-        // ({field: {op: value}, ...}) round-trips correctly.
+        // semantics (e.g. FilterAttribute) take this path. Gson.toJsonTree handles
+        // nested Maps/Lists/primitives natively, so the full desugared filter
+        // structure ({field: {op: value}, ...}) round-trips correctly.
         if (attr.getDataType() == DataTypes.OBJECT && value instanceof Map) {
             return GSON.toJsonTree(value);
+        }
+
+        // PropertiesAttribute (DataTypes.CUSTOM, value is java.util.Properties):
+        // emit as a JSON object with string-valued keys. Cross-port: TS/C# both
+        // serialize attr.properties as `@<name>: { key: value, ... }`.
+        if (value instanceof java.util.Properties) {
+            java.util.Properties props = (java.util.Properties) value;
+            JsonObject obj = new JsonObject();
+            java.util.TreeMap<String, String> sorted = new java.util.TreeMap<>();
+            for (String name : props.stringPropertyNames()) {
+                sorted.put(name, props.getProperty(name));
+            }
+            for (Map.Entry<String, String> e : sorted.entrySet()) {
+                obj.addProperty(e.getKey(), e.getValue());
+            }
+            return obj;
         }
 
         // StringArrayAttribute: value is List<String>

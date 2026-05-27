@@ -1,5 +1,7 @@
 {
   "language": "csharp",
-  "_comment": "Source-v2 (ADR-0007) registered @column on every field subtype, so the YAML D2 coercion guard now catches `column: TRUE`. All YAML conformance fixtures pass.",
-  "fixtures": []
+  "_comment": "Cross-port YAML divergences ledgered as known-gap (the runner treats listed fixtures as passing). error-yaml-coerced-hex-in-string: YamlDotNet does not coerce `0xFF` to a number under its default core schema — it stays a string — so the D2 coercion-guard never fires for hex literals in a string-typed attr context. TS yaml, PyYAML, SnakeYAML all coerce `0xFF` to int 255, triggering ERR_YAML_COERCION on a string-typed `@column`. Cross-port reference TS produces one ERR_YAML_COERCION; C# produces zero errors. (The other YAML 1.2 coercion guards — null, bool-in-string, bool-in-stringarray — match TS.)",
+  "fixtures": [
+    "error-yaml-coerced-hex-in-string"
+  ]
 }

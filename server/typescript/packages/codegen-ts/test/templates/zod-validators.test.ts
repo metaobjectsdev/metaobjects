@@ -98,6 +98,85 @@ describe("renderZodValidators", () => {
     expect(occurrences).toBe(2);
   });
 
+  test("field.object isArray:true objectRef:Ref emits z.array(RefInsertSchema)", async () => {
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
+      "metadata.root": {
+        "package": "acme",
+        "children": [
+          {
+            "object.value": {
+              "name": "Citation",
+              "children": [
+                { "field.string": { "name": "url", "@required": true } },
+              ],
+            },
+          },
+          {
+            "object.value": {
+              "name": "Take",
+              "children": [
+                { "field.string": { "name": "stance", "@required": true } },
+                {
+                  "field.object": {
+                    "name": "citations",
+                    "@objectRef": "Citation",
+                    "isArray": true,
+                    "@required": true,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    }))]);
+    expect(result.errors).toEqual([]);
+    const take = result.root.objects().find((o) => o.name === "Take")!;
+    const out = renderZodValidators(take).toString();
+    // The citations field uses CitationInsertSchema as the array element schema —
+    // NOT z.string() (the pre-patch bug).
+    expect(out).toContain("citations: z.array(CitationInsertSchema)");
+    expect(out).not.toContain("citations: z.array(z.string())");
+    // ts-poet hoists the cross-module import.
+    expect(out).toMatch(/import\s+\{[^}]*CitationInsertSchema[^}]*\}\s+from\s+["']\.\/Citation\.js["']/);
+  });
+
+  test("field.object (non-array) objectRef:Ref emits RefInsertSchema bare", async () => {
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
+      "metadata.root": {
+        "package": "acme",
+        "children": [
+          {
+            "object.value": {
+              "name": "Address",
+              "children": [{ "field.string": { "name": "city", "@required": true } }],
+            },
+          },
+          {
+            "object.value": {
+              "name": "Person",
+              "children": [
+                {
+                  "field.object": {
+                    "name": "home",
+                    "@objectRef": "Address",
+                    "@required": true,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    }))]);
+    expect(result.errors).toEqual([]);
+    const person = result.root.objects().find((o) => o.name === "Person")!;
+    const out = renderZodValidators(person).toString();
+    expect(out).toContain("home: AddressInsertSchema");
+    expect(out).not.toContain("home: z.string()");
+    expect(out).toMatch(/import\s+\{[^}]*AddressInsertSchema[^}]*\}\s+from\s+["']\.\/Address\.js["']/);
+  });
+
   test("renderZodValidators does NOT emit `notes` content (D5)", async () => {
     const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
       "metadata.root": {

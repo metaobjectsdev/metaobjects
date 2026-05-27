@@ -17,6 +17,7 @@ import {
   TYPE_TEMPLATE,
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
+  FIELD_ATTR_REQUIRED,
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_FORMAT,
@@ -55,7 +56,13 @@ function fieldTsType(field: MetaData): { type: string; refVo?: string } {
     if (typeof ref === "string") result.refVo = ref;
     return result;
   }
-  return { type: SCALAR_TS[field.subType] ?? "unknown" };
+  const scalar = SCALAR_TS[field.subType] ?? "unknown";
+  return { type: field.isArray ? `${scalar}[]` : scalar };
+}
+
+/** True iff the field's @required is explicitly set to true. */
+function isFieldRequired(field: MetaData): boolean {
+  return field.ownAttr(FIELD_ATTR_REQUIRED) === true;
 }
 
 function emitInterface(root: MetaData, voName: string, emitted: Set<string>, out: string[]): void {
@@ -67,7 +74,15 @@ function emitInterface(root: MetaData, voName: string, emitted: Set<string>, out
   const refs: string[] = [];
   for (const f of vo.children().filter((c) => c.type === TYPE_FIELD)) {
     const { type, refVo } = fieldTsType(f);
-    lines.push(`  ${f.name}: ${type};`);
+    // Required fields: `name: T;`
+    // Optional fields: `name?: T | null;` — the `| null` lets values from
+    // Drizzle entity rows (which return `null` for nullable columns) flow
+    // straight in. Without it, TS treats undefined-vs-null as a hard error
+    // at the entity → payload boundary.
+    const isRequired = isFieldRequired(f);
+    const tsType = isRequired ? type : `${type} | null`;
+    const optional = isRequired ? "" : "?";
+    lines.push(`  ${f.name}${optional}: ${tsType};`);
     if (refVo) refs.push(refVo);
   }
   lines.push("}");
@@ -80,6 +95,23 @@ export function generatePayloadInterfaces(root: MetaData, voName: string): strin
   const out: string[] = [];
   emitInterface(root, voName, new Set<string>(), out);
   return out.join("\n\n") + "\n";
+}
+
+/**
+ * Emit interfaces for several payloads at once, using a single shared dedupe
+ * set so nested types (e.g. lens projections referenced by multiple payloads)
+ * appear exactly once in the combined output.
+ *
+ * Returns the empty string when `voNames` is empty.
+ */
+export function generatePayloadInterfacesBatch(root: MetaData, voNames: readonly string[]): string {
+  if (voNames.length === 0) return "";
+  const out: string[] = [];
+  const emitted = new Set<string>();
+  for (const name of voNames) {
+    emitInterface(root, name, emitted, out);
+  }
+  return out.length === 0 ? "" : out.join("\n\n") + "\n";
 }
 
 function pascal(s: string): string {

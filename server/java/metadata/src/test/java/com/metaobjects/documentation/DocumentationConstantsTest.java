@@ -94,9 +94,9 @@ public class DocumentationConstantsTest {
     }
 
     @Test
-    public void provider_depends_on_core_base_types() {
+    public void provider_depends_on_core_types() {
         String[] deps = new DocumentationMetaDataProvider().getDependencies();
         assertEquals(1, deps.length);
-        assertEquals("core-base-types", deps[0]);
+        assertEquals("core-types", deps[0]);
     }
 }

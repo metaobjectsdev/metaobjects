@@ -1,0 +1,8 @@
+{
+  "appName": "Demo",
+  "version": "1.0",
+  "users": [
+    { "id": 1, "name": "Alice" },
+    { "id": 2, "name": "Bob" }
+  ]
+}

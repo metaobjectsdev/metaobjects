@@ -30,6 +30,8 @@
 // Parser does not double-report.
 
 using System.Text.Json.Nodes;
+using MetaObjects.Source;
+using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
 
 namespace MetaObjects;
@@ -133,6 +135,17 @@ public static class YamlDesugar
         string rawKey = keyScalar.Value;
         YamlNode rawBody = entry.Value;
 
+        // FR5b — capture the wrapper-key's YAML position BEFORE any rewrites.
+        // The author's raw key (with `[]` suffix and possibly omitted subType)
+        // is at this (line, col); the desugar emits this position under the
+        // CANONICAL key on the wrapper's position map.
+        YamlPosition? wrapperKeyPos = null;
+        Mark keyStart = keyScalar.Start;
+        if (keyStart.Line > 0 || keyStart.Column > 0)
+        {
+            wrapperKeyPos = new YamlPosition((int)keyStart.Line, (int)keyStart.Column);
+        }
+
         // Rule 3: a trailing "[]" on the key → isArray.
         string key = rawKey;
         bool isArray = false;
@@ -146,7 +159,9 @@ public static class YamlDesugar
         string canonicalKey = ResolveKey(key, registry, errors, path);
 
         // Rule 2: a scalar body → { name: <scalar> }.
-        JsonObject body = DesugarBody(rawBody, registry, canonicalKey, errors, path);
+        // FR5b — pass the wrapper-key position so the scalar-body synthesis
+        // (Rule 2) can attribute the synthesized `name` slot to the wrapper.
+        JsonObject body = DesugarBody(rawBody, registry, canonicalKey, errors, path, wrapperKeyPos);
 
         // Rule 3 (cont.): stamp isArray onto the canonical body.
         if (isArray)
@@ -183,6 +198,17 @@ public static class YamlDesugar
         {
             [canonicalKey] = body,
         };
+        // FR5b — stamp the wrapper-level position-by-key map (canonicalKey →
+        // raw-key position). The single key transformation is rawKey → canonicalKey
+        // (Rule 1 fuses the subType, Rule 3 strips `[]`); the YAML position is
+        // unchanged. Flattened later by ParserYaml into a JSONPath-keyed lookup
+        // for the canonical parser.
+        if (wrapperKeyPos is YamlPosition wp)
+        {
+            var wrapperPositions = new PositionMap();
+            wrapperPositions.Set(canonicalKey, wp);
+            YamlPositions.SetMap(wrapper, wrapperPositions);
+        }
         return wrapper;
     }
 
@@ -223,12 +249,18 @@ public static class YamlDesugar
         TypeRegistry registry,
         string canonicalKey,
         List<YamlCollectedError> errors,
-        string path)
+        string path,
+        // FR5b — position of the WRAPPER key (the `field.string:` line). Used
+        // to back-fill the `name` slot on Rule-2 scalar-body synthesis; for
+        // mapping bodies, we read each body-key's own position from the
+        // YAML AST (the per-kvp scan below).
+        YamlPosition? wrapperKeyPos)
     {
         var output = new JsonObject();
         if (rawBody is null)
         {
             // An empty body (`field.string:` with nothing after) → an empty node.
+            // No body-side positions; the wrapper carries the node's position.
             return output;
         }
 
@@ -241,6 +273,16 @@ public static class YamlDesugar
                 return output;
             }
             output[RESERVED_KEY_NAME] = ScalarToJsonValue(scalar);
+            // FR5b — the synthesized `{ name: rawBody }` has no YAML-side
+            // counterpart; attribute the `name` slot to the wrapper-key's
+            // position (the only YAML position that meaningfully belongs to
+            // this Rule-2 synthesis). Matches TS yaml-desugar.ts:160-167.
+            if (wrapperKeyPos is YamlPosition wp)
+            {
+                var pm = new PositionMap();
+                pm.Set(RESERVED_KEY_NAME, wp);
+                YamlPositions.SetMap(output, pm);
+            }
             return output;
         }
 
@@ -261,6 +303,14 @@ public static class YamlDesugar
         // Map case — apply Rule 4 (sigil-free attrs) + Rule D2 (coercion guard).
         IReadOnlyDictionary<string, AttrSchema>? schemaIndex = BuildAttrSchemaIndex(registry, canonicalKey);
 
+        // FR5b — translate body-key YAML positions across the sigil-free rewrite.
+        // A bare `filterable` key in the source maps to `@filterable` in the canonical
+        // body; the YAML position belongs to BOTH names (the author only wrote one).
+        // We re-key the position map to match the canonical body's keys so the parser
+        // can find each node's position via the canonical key. Matches TS
+        // yaml-desugar.ts:222-244.
+        PositionMap? outPositions = null;
+
         foreach (var kvp in src.Children)
         {
             if (kvp.Key is not YamlScalarNode keyScalar || keyScalar.Value is null)
@@ -272,46 +322,64 @@ public static class YamlDesugar
             string key = keyScalar.Value;
             YamlNode value = kvp.Value;
 
+            // FR5b — capture this body-key's YAML position once; we re-attach it
+            // under the rewritten output key below.
+            YamlPosition? bodyKeyPos = null;
+            Mark bodyKeyStart = keyScalar.Start;
+            if (bodyKeyStart.Line > 0 || bodyKeyStart.Column > 0)
+            {
+                bodyKeyPos = new YamlPosition((int)bodyKeyStart.Line, (int)bodyKeyStart.Column);
+            }
+
+            string outKey;
+
             // KEY_CHILDREN is reserved but its sequence is recursed-into by the caller.
             // Copy the raw value here as a placeholder; the caller will replace it with
             // a JsonArray of desugared children.
             if (key == RESERVED_KEY_CHILDREN)
             {
                 output[RESERVED_KEY_CHILDREN] = YamlToJsonNode(value);
-                continue;
+                outKey = RESERVED_KEY_CHILDREN;
             }
-
-            if (RESERVED_KEYS.Contains(key))
+            else if (RESERVED_KEYS.Contains(key) ||
+                key.StartsWith(ATTR_PREFIX, StringComparison.Ordinal))
             {
-                // Reserved structural key, written bare — accept as-is.
+                // Reserved structural key written bare, OR author-written `@<name>:`
+                // form — pass through as-is. An `@`-prefixed RESERVED keyword (e.g.
+                // "@isArray") is NOT caught here: the canonical parser owns
+                // ERR_RESERVED_ATTR and emits it with the proper FR5a envelope
+                // (format=json, jsonPath at the parent node). Mirrors TS
+                // yaml-desugar.ts:197-203 and Java YamlDesugar.java:340-349.
                 output[key] = YamlToJsonNode(value);
-            }
-            else if (key.StartsWith(ATTR_PREFIX, StringComparison.Ordinal))
-            {
-                // Author wrote `@<name>:` directly. Two sub-cases:
-                //   (a) @-prefixed RESERVED keyword (e.g. "@isArray") — ERR_RESERVED_ATTR.
-                //       Drop the entry so the canonical parser doesn't double-report.
-                //   (b) @-prefixed regular attr — accept; D2 coercion guard still applies.
-                string attrName = key[ATTR_PREFIX.Length..];
-                if (attrName != "" && RESERVED_KEYS.Contains(attrName))
+                outKey = key;
+                if (key.StartsWith(ATTR_PREFIX, StringComparison.Ordinal))
                 {
-                    errors.Add(new YamlCollectedError(
-                        $"Reserved structural key '{attrName}' must not be {ATTR_PREFIX}-prefixed at {path} (write it bare)",
-                        ErrorCode.ERR_RESERVED_ATTR));
-                    continue;
-                }
-                output[key] = YamlToJsonNode(value);
-                if (attrName != "")
-                {
-                    CheckCoercion(attrName, value, schemaIndex, errors, path);
+                    // D2 coercion guard also applies to author-written @-keys (the
+                    // awkward form) — but only for non-reserved attr names.
+                    string attrName = key[ATTR_PREFIX.Length..];
+                    if (attrName != "" && !RESERVED_KEYS.Contains(attrName))
+                    {
+                        CheckCoercion(attrName, value, schemaIndex, errors, path);
+                    }
                 }
             }
             else
             {
                 // Rule 4 — sigil-free attr: re-prefix with `@` when lowering to canonical.
-                output[$"{ATTR_PREFIX}{key}"] = YamlToJsonNode(value);
+                outKey = $"{ATTR_PREFIX}{key}";
+                output[outKey] = YamlToJsonNode(value);
                 CheckCoercion(key, value, schemaIndex, errors, path);
             }
+
+            if (bodyKeyPos is YamlPosition bp)
+            {
+                outPositions ??= new PositionMap();
+                outPositions.Set(outKey, bp);
+            }
+        }
+        if (outPositions is not null && outPositions.Any)
+        {
+            YamlPositions.SetMap(output, outPositions);
         }
         return output;
     }

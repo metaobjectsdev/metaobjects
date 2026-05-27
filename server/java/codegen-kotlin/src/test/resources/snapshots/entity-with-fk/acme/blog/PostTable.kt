@@ -7,7 +7,7 @@ import org.jetbrains.exposed.sql.ReferenceOption
 object PostTable : Table("posts") {
     val id = long("id").autoIncrement()
     val title = varchar("title", 255).nullable()
-    val authorId = long("authorId").references(AuthorTable.id, onDelete = ReferenceOption.CASCADE)
+    val authorId = long("author_id").references(AuthorTable.id, onDelete = ReferenceOption.CASCADE)
 
     override val primaryKey = PrimaryKey(id)
 }

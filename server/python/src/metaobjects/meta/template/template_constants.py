@@ -1,0 +1,39 @@
+"""Template subtype vocabulary (FR-004 cross-language prompt construction)."""
+from ...shared.base_types import SUBTYPE_BASE
+
+TEMPLATE_SUBTYPE_PROMPT = "prompt"
+TEMPLATE_SUBTYPE_OUTPUT = "output"
+TEMPLATE_SUBTYPES = (SUBTYPE_BASE, TEMPLATE_SUBTYPE_PROMPT, TEMPLATE_SUBTYPE_OUTPUT)
+
+# Shared attrs across template.prompt and template.output.
+TEMPLATE_ATTR_PAYLOAD_REF = "payloadRef"
+TEMPLATE_ATTR_TEXT_REF = "textRef"
+TEMPLATE_ATTR_FORMAT = "format"
+TEMPLATE_ATTR_MAX_CHARS = "maxChars"
+TEMPLATE_ATTR_OWNER = "owner"
+TEMPLATE_ATTR_SINCE = "since"
+TEMPLATE_ATTR_REQUIRED_TAGS = "requiredTags"
+
+# Prompt-overlay attrs (template.prompt only).
+TEMPLATE_ATTR_MAX_TOKENS = "maxTokens"
+TEMPLATE_ATTR_REQUIRED_SLOTS = "requiredSlots"
+TEMPLATE_ATTR_MODEL = "model"
+
+# Closed-set values for @format. Cross-port invariant.
+TEMPLATE_FORMAT_TEXT = "text"
+TEMPLATE_FORMAT_HTML = "html"
+TEMPLATE_FORMAT_XML = "xml"
+TEMPLATE_FORMAT_CSV = "csv"
+TEMPLATE_FORMAT_JSON = "json"
+TEMPLATE_FORMAT_MARKDOWN = "markdown"
+TEMPLATE_FORMAT_SPREADSHEET = "spreadsheet"
+ALLOWED_FORMATS = (
+    TEMPLATE_FORMAT_TEXT,
+    TEMPLATE_FORMAT_HTML,
+    TEMPLATE_FORMAT_XML,
+    TEMPLATE_FORMAT_CSV,
+    TEMPLATE_FORMAT_JSON,
+    TEMPLATE_FORMAT_MARKDOWN,
+    TEMPLATE_FORMAT_SPREADSHEET,
+)
+TEMPLATE_FORMAT_DEFAULT = TEMPLATE_FORMAT_TEXT

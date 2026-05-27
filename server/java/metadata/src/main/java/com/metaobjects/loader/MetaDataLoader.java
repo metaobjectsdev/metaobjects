@@ -7,6 +7,7 @@
 package com.metaobjects.loader;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.loader.parser.json.CanonicalJsonParser;
@@ -128,6 +129,108 @@ public class MetaDataLoader implements LoaderConfigurable {
     // restricted to the loader package (where {@link ValidationPhase} lives).
     private final List<String> warnings = new ArrayList<>();
 
+    // Validation-phase errors accumulator.
+    //
+    // Mirrors {@link #warnings} but for ErrorCode-bearing validation errors that
+    // a phase chose to RECORD rather than eager-throw. The Java loader continues
+    // to be eager-throw on the first hard error in any phase, but phases may
+    // opt to call {@link #addError(MetaDataException)} when they have collected
+    // multiple recoverable errors in a single pass — see the conformance contract
+    // (spec/conformance-tests.md): the sorted set of error codes from a load
+    // attempt MUST equal the expected set, so multi-error fixtures need every
+    // collected error visible to the harness.
+    //
+    // Cleared at the start of every {@link #load(List)} so a subsequent load on
+    // the same loader does not see stale errors. The conformance harness reads
+    // this list AFTER catching the load's (final) thrown MetaDataException and
+    // merges the two into a single per-fixture error set.
+    private final List<MetaDataException> errors = new ArrayList<>();
+
+    /**
+     * Deferred-extends queue. The parser cannot always resolve a node's
+     * {@code extends} ref at parse time (e.g. cross-file forward references).
+     * It queues unresolved cases here; {@link #resolvePendingExtends()} runs
+     * after all sources in a batch are parsed and either binds them or throws
+     * {@code ERR_UNRESOLVED_SUPER}.
+     */
+    private final List<PendingExtends> pendingExtends = new ArrayList<>();
+
+    /** One row in the deferred-extends queue. */
+    public static final class PendingExtends {
+        public final MetaData child;
+        public final String typeName;
+        public final String superName;
+        public final String packageName;
+        public final String filename;
+        public PendingExtends(MetaData child, String typeName, String superName,
+                              String packageName, String filename) {
+            this.child = child;
+            this.typeName = typeName;
+            this.superName = superName;
+            this.packageName = packageName;
+            this.filename = filename;
+        }
+    }
+
+    /** Queue an unresolved {@code extends} for post-load resolution. */
+    public void addPendingExtends(PendingExtends pending) {
+        if (pending != null) pendingExtends.add(pending);
+    }
+
+    /**
+     * Resolve queued cross-file/forward {@code extends} refs. Mirrors the
+     * TS/C# behaviour: defer the lookup until every source has populated the
+     * tree, then bind. Anything still unresolved throws ERR_UNRESOLVED_SUPER.
+     *
+     * <p><b>TODO: cycle detection.</b> Single-pass resolve matches TS reference
+     * behavior (parity, not regression), but a cycle (a → b → a) would land
+     * silently and only surface at usage time. Add a one-pass cycle check at
+     * queue drain when this becomes a real-world hazard.</p>
+     */
+    private void resolvePendingExtends() {
+        if (pendingExtends.isEmpty()) return;
+        for (PendingExtends p : pendingExtends) {
+            MetaData superData = null;
+            try {
+                String sn = p.superName;
+                String pkg = p.packageName == null ? "" : p.packageName;
+                if (sn.indexOf(PKG_SEPARATOR) < 0 && !pkg.isEmpty()) {
+                    superData = getChildOfType(p.typeName, pkg + PKG_SEPARATOR + sn);
+                }
+            } catch (com.metaobjects.MetaDataNotFoundException ignore) {
+                // fall through to FQN lookup
+            }
+            if (superData == null) {
+                try {
+                    superData = getChildOfType(p.typeName, p.superName);
+                } catch (com.metaobjects.MetaDataNotFoundException ignore) {
+                    // still unresolved
+                }
+            }
+            if (superData == null) {
+                // FR5d — emit format=resolved with referrer + target. The referrer's
+                // parse-time source supplies files + jsonPath (the location of the
+                // broken `extends:` on disk); referrer = the declaring node's bare
+                // (short) name to match the TS/C#/Python reference (TS's MetaData
+                // .fqn() does not propagate the root `package:` to root-level
+                // objects); target = the unresolved supertype ref. Mirrors TS
+                // `resolveDeferredSupers` in server/typescript/packages/metadata/
+                // src/loader/meta-data-loader.ts.
+                com.metaobjects.source.ErrorSource envelope =
+                    com.metaobjects.source.ResolvedSource.from(
+                        p.child.getSource(), p.child.getShortName(), p.superName);
+                throw new com.metaobjects.MetaDataException(
+                    "Invalid MetaData [" + p.typeName + "][" + p.child.getShortName()
+                        + "], the SuperClass [" + p.superName + "] does not exist (deferred resolution)"
+                        + " in file [" + p.filename + "]",
+                    com.metaobjects.ErrorCode.ERR_UNRESOLVED_SUPER,
+                    envelope);
+            }
+            p.child.setSuperData(superData);
+        }
+        pendingExtends.clear();
+    }
+
     /**
      * Convenience constructor accepting only a name.
      * Uses {@link LoaderOptions} defaults (no-register, non-verbose, strict) and
@@ -163,8 +266,15 @@ public class MetaDataLoader implements LoaderConfigurable {
         this.name = name;
         // Produce the tree-root node. The root's name must satisfy the metadata
         // identifier pattern, so loader-name hyphens are normalized to underscores.
+        // When the loader name is empty we fall back to a sentinel and mark the
+        // root as synthesized so the canonical serializer does not leak it as a
+        // top-level `package`.
+        boolean synthesized = (name == null || name.isEmpty());
         this.root = new MetaRoot( sanitizeRootName( name ) );
         this.root.setLoader( this );
+        if (synthesized) {
+            this.root.markSynthesizedName();
+        }
     }
 
     /** Normalize a loader name into a metadata-identifier-safe root name. */
@@ -412,6 +522,49 @@ public class MetaDataLoader implements LoaderConfigurable {
      */
     void clearWarnings() {
         warnings.clear();
+    }
+
+    /**
+     * Returns the validation errors RECORDED by the most recent {@link #load(List)}
+     * call. The list is reset at the start of every {@link #load(List)} invocation.
+     *
+     * <p>The Java loader is eager-throw: hard errors raised from any phase
+     * abort the load. This list captures errors that a phase COLLECTED before a
+     * subsequent throw (or, in a future evolution, instead of throwing) so
+     * downstream consumers — primarily the conformance harness — can see the
+     * full set of errors from one load attempt rather than only the first.</p>
+     *
+     * <p>Today the list is typically empty (no phase records errors here),
+     * which preserves the current behaviour: harnesses extract the single code
+     * from the thrown {@link MetaDataException} and that's the per-load
+     * error-set. Phases may begin emitting into this list as needs arise; the
+     * harness side merges {@link #getErrors()} with the thrown exception so
+     * either form is honoured.</p>
+     *
+     * @return an unmodifiable snapshot of recorded errors (never {@code null})
+     */
+    public List<MetaDataException> getErrors() {
+        return Collections.unmodifiableList(new ArrayList<>(errors));
+    }
+
+    /**
+     * Append a validation error. Package-private — only the loader-package
+     * validation passes should be calling this.
+     *
+     * @param error the error to record; ignored when {@code null}
+     */
+    void addError(MetaDataException error) {
+        if (error == null) return;
+        errors.add(error);
+    }
+
+    /**
+     * Clear accumulated errors. Called at the start of {@link #load(List)} so
+     * a fresh batch does not see stale errors from a prior load on the same
+     * loader instance.
+     */
+    void clearErrors() {
+        errors.clear();
     }
 
     ///////////////////////////////////////////////////////////////////////
@@ -974,9 +1127,11 @@ public class MetaDataLoader implements LoaderConfigurable {
     public MetaDataLoader load(List<MetaDataSource> sources) {
         if (sources == null) throw new IllegalArgumentException("sources must not be null");
 
-        // Reset the per-load warning accumulator so callers see only warnings
-        // produced by THIS batch.
+        // Reset the per-load warning + error accumulators so callers see only
+        // diagnostics produced by THIS batch.
         clearWarnings();
+        clearErrors();
+        pendingExtends.clear();
 
         for (MetaDataSource source : sources) {
             String content;
@@ -1000,6 +1155,11 @@ public class MetaDataLoader implements LoaderConfigurable {
             }
             parser.loadFromStream(is);
         }
+
+        // Resolve any deferred {@code extends} refs before validation runs —
+        // cross-file forward references show up here. Anything still unresolved
+        // becomes ERR_UNRESOLVED_SUPER.
+        resolvePendingExtends();
 
         // Run post-load validation passes after all sources in this batch are parsed.
         // Fires both when called from init() (via loadSourceURIsIfPresent) and when

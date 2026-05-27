@@ -29,15 +29,15 @@ export function lintFixture(fix: Fixture, errorCodes: readonly string[]): string
 
   if (fix.hasExpectedErrors) {
     // Fix 1: use parseExpectedErrors for validated parsing instead of a blind cast.
-    let codes: { code: string }[];
+    let envelope;
     try {
-      codes = parseExpectedErrors(
+      envelope = parseExpectedErrors(
         JSON.parse(readFileSync(join(fix.dir, "expected-errors.json"), "utf8")));
     } catch (err) {
       problems.push(`${fix.name}: malformed expected-errors.json — ${(err as Error).message}`);
       return problems;
     }
-    for (const { code } of codes) {
+    for (const { code } of envelope.errors) {
       if (!errorCodes.includes(code)) {
         problems.push(`${fix.name}: unregistered error code '${code}'`);
       }

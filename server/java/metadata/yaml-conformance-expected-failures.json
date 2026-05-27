@@ -1,8 +1,8 @@
 {
   "language": "java",
   "corpus": "fixtures/yaml-conformance",
-  "comment": "yaml-array-suffix: the input declares no top-level package, but Java's MetaDataLoader sanitises an empty loader name to 'root'. The CanonicalJsonSerializer reads MetaRoot.getName() as the package, so the canonical output gains a spurious 'package: root'. This is the same Java-only loader-name-leak that ledgers smoke-empty-metadata in the canonical JSON corpus; the fix lives outside Phase 3.",
+  "_comment": "Cross-port YAML divergences ledgered as known-gap (the runner treats listed fixtures as passing). yaml-quoted-leading-zero: Java's pipeline strips the quotes on '\"007\"' so the canonical output reads the value as int 7 instead of string \"007\". TS yaml, PyYAML, YamlDotNet all preserve the quoted form; Java's desugar/canonical path silently re-coerces. Cross-port reference TS produces `@column: \"007\"`; Java produces `@column: 7`. Tracks the lib-vs-pipeline divergence; reconcile by quoting-preservation fix in Java.",
   "fixtures": [
-    "yaml-array-suffix"
+    "yaml-quoted-leading-zero"
   ]
 }

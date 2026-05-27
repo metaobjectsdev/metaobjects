@@ -38,7 +38,7 @@ public class CoreTypeMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String getProviderId() {
-        return "core-base-types";
+        return "core-types";
     }
 
     @Override

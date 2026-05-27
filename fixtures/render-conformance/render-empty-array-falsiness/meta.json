@@ -1,0 +1,1 @@
+{ "format": "text", "note": "empty array section renders nothing; non-empty array renders body per item" }

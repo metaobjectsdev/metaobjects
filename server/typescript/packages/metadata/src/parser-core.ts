@@ -29,9 +29,10 @@ import { MetaRoot } from "./shared/meta-root.js";
 import { MetaAttr } from "./core/attr/meta-attr.js";
 import { inferAttrSubType } from "./serializer-json.js";
 import { ParseError, type ErrorCode } from "./errors.js";
-import type { ErrorSource } from "./source.js";
+import { resolvedSource, type ErrorSource } from "./source.js";
 import { resolveSuperRef } from "./super-resolve.js";
 import { JsonPathBuilder } from "./json-path.js";
+import { getYamlPosition, type YamlPosition } from "./core/yaml-positions.js";
 import {
   TYPE_ATTR,
   TYPE_FIELD,
@@ -82,6 +83,13 @@ export interface ParseOptions {
    * another file parsed later.
    */
   deferSuperResolution?: boolean;
+  /**
+   * FR5b — discriminant for the source-on-node envelope's `format` field.
+   * Defaults to `"json"` (parseJson supplies nothing). parseYaml passes
+   * `"yaml"` so populateNodeSource emits `format: "yaml"` and, when the
+   * desugar attached one, the optional `yamlPosition`.
+   */
+  sourceFormat?: "json" | "yaml";
 }
 
 export interface ParseResult {
@@ -102,6 +110,20 @@ export interface ParseResult {
 
 export function errSource(): ErrorSource {
   if (_currentPath !== undefined && _currentSourceId !== undefined) {
+    // FR5b (finalized 2026-05-27, all four ports) — buildTree-emitted errors
+    // from a YAML input now emit `format: "yaml"` (was `"json"` interim while
+    // each port shipped yamlPosition tracking). The optional `yamlPosition`
+    // rides along when the desugar's position map covers the current node.
+    if (_currentFormat === "yaml") {
+      return {
+        format: "yaml",
+        files: [_currentSourceId],
+        jsonPath: _currentPath.toString(),
+        ...(_currentYamlPosition !== undefined
+          ? { yamlPosition: _currentYamlPosition }
+          : {}),
+      };
+    }
     return {
       format: "json",
       files: [_currentSourceId],
@@ -203,17 +225,40 @@ let _currentErrors: ParseError[] | undefined;
 // FR5a / ADR-0009 — Module-level JSONPath builder + source id, set at
 // buildTree entry and updated by recursive descent (push on the way down,
 // pop on the way back up). Used by populateNodeSource() to stamp every
-// constructed MetaData with `{ format: "json", files: [sourceId], jsonPath }`.
+// constructed MetaData with `{ format: "json"|"yaml", files: [sourceId],
+// jsonPath, [yamlPosition?] }`.
 // Safe because buildTree is synchronous — same reentrancy argument as
 // _currentErrors above.
 let _currentPath: JsonPathBuilder | undefined;
 let _currentSourceId: string | undefined;
+// FR5b — source format discriminant + current node's YAML position, set
+// by the per-child iteration in processChildren (and at root) right before
+// the parseNodeFresh call. The position is read from the wrapper object's
+// position-by-key map (attached by the YAML walker in core/yaml-positions.ts
+// and preserved through core/yaml-desugar.ts).
+let _currentFormat: "json" | "yaml" = "json";
+let _currentYamlPosition: YamlPosition | undefined;
 
-/** Set the parsed-from-JSON provenance envelope on a freshly-created node.
- *  No-op when the parser is invoked outside buildTree's setup (defensive — the
- *  module-level state will always be populated during a normal parse). */
+/** FR5a/FR5b — stamp the source-provenance envelope on a freshly-created
+ *  node. No-op when invoked outside buildTree's setup (defensive — the
+ *  module-level state will always be populated during a normal parse).
+ *
+ *  FR5b (finalized 2026-05-27) — YAML-input nodes get `format: "yaml"`
+ *  envelopes (was `"json"` interim). The optional `yamlPosition` rides
+ *  along when the desugar's position map covers the current node. */
 function populateNodeSource(node: MetaData): void {
   if (_currentPath === undefined || _currentSourceId === undefined) return;
+  if (_currentFormat === "yaml") {
+    node.setSource({
+      format: "yaml",
+      files: [_currentSourceId],
+      jsonPath: _currentPath.toString(),
+      ...(_currentYamlPosition !== undefined
+        ? { yamlPosition: _currentYamlPosition }
+        : {}),
+    });
+    return;
+  }
   node.setSource({
     format: "json",
     files: [_currentSourceId],
@@ -245,6 +290,10 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
   // calls from tests).
   _currentPath = new JsonPathBuilder();
   _currentSourceId = source ?? "<unknown>";
+  // FR5b — propagate the per-parse source-format discriminant. parseJson
+  // omits the option (defaults to "json"); parseYaml supplies "yaml".
+  _currentFormat = opts.sourceFormat ?? "json";
+  _currentYamlPosition = undefined;
 
   try {
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -304,6 +353,11 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
     // populated with the current source's id (correct: the existing root was
     // already stamped from the file that created it).
     _currentPath!.pushKey(rootKey);
+    // FR5b — look up the root wrapper's YAML position (when in yaml mode)
+    // so parseNodeFresh stamps `source.yamlPosition` on the root node.
+    if (_currentFormat === "yaml") {
+      _currentYamlPosition = getYamlPosition(topLevel, rootKey);
+    }
 
     if (opts.intoRoot !== undefined) {
       // --- Merge mode: parse root's attrs/children into the existing root ---
@@ -356,6 +410,8 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
     _currentErrors = undefined;
     _currentPath = undefined;
     _currentSourceId = undefined;
+    _currentFormat = "json";
+    _currentYamlPosition = undefined;
   }
 }
 
@@ -446,9 +502,15 @@ function parseNodeFresh(
     if (superModel !== undefined) {
       model.setSuperResolved(superModel);
     } else {
+      // FR5d — emit format=resolved with referrer + target. referrer is the
+      // declaring node's FQN (we just built it above); target is the
+      // unresolved supertype ref string.
       throw new ParseError(
         `the SuperClass '${model.superRef}' does not exist in file '${source ?? "<unknown>"}'`,
-        { code: "ERR_UNRESOLVED_SUPER", source: errSource() },
+        {
+          code: "ERR_UNRESOLVED_SUPER",
+          source: resolvedSource(errSource(), model.fqn(), model.superRef),
+        },
       );
     }
   } else if (model.superRef !== undefined && accumRoot === undefined) {
@@ -794,6 +856,14 @@ function processChildren(
     const childData = childRecord[childKey];
     const childNodePath = `${childPath}.${childKey}`;
     _currentPath?.pushKey(childKey);
+    // FR5b — set the current node's YAML position (if any) before the
+    // create/merge call. Save the parent's position to restore after the
+    // recursion returns (children may push deeper positions during their
+    // own processChildren walk).
+    const savedYamlPosition = _currentYamlPosition;
+    if (_currentFormat === "yaml") {
+      _currentYamlPosition = getYamlPosition(childRecord, childKey);
+    }
 
     if (typeof childData !== "object" || childData === null || Array.isArray(childData)) {
       reportProblem(
@@ -802,6 +872,7 @@ function processChildren(
       );
       _currentPath?.pop(); // pop child wrapper key
       _currentPath?.pop(); // pop array index
+      _currentYamlPosition = savedYamlPosition; // FR5b — restore parent's pos
       continue;
     }
 
@@ -828,6 +899,7 @@ function processChildren(
         );
         _currentPath?.pop(); // pop child wrapper key
         _currentPath?.pop(); // pop array index
+        _currentYamlPosition = savedYamlPosition; // FR5b — restore parent's pos
         continue; // skip this child
       }
     }
@@ -858,6 +930,7 @@ function processChildren(
     }
     _currentPath?.pop(); // pop child wrapper key
     _currentPath?.pop(); // pop array index
+    _currentYamlPosition = savedYamlPosition; // FR5b — restore parent's pos
   }
   _currentPath?.pop(); // pop the "children" key
 }

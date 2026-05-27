@@ -1,3 +1,16 @@
-[
-  { "code": "ERR_RESERVED_ATTR" }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_RESERVED_ATTR",
+      "source": {
+        "format": "yaml",
+        "files": [
+          "input.yaml"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity']",
+        "yamlPosition": { "line": 3, "col": 7 }
+      }
+    }
+  ],
+  "warnings": []
+}

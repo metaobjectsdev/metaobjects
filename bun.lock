@@ -43,7 +43,7 @@
     },
     "client/web/packages/react": {
       "name": "@metaobjectsdev/react",
-      "version": "0.6.0",
+      "version": "0.7.0-rc.1",
       "dependencies": {
         "@metaobjectsdev/runtime-web": "workspace:*",
       },
@@ -75,7 +75,7 @@
     },
     "client/web/packages/runtime-web": {
       "name": "@metaobjectsdev/runtime-web",
-      "version": "0.6.0",
+      "version": "0.7.0-rc.1",
       "dependencies": {
         "@metaobjectsdev/metadata": "workspace:*",
         "qs": "^6.13.0",
@@ -88,7 +88,7 @@
     },
     "client/web/packages/tanstack": {
       "name": "@metaobjectsdev/tanstack",
-      "version": "0.6.0",
+      "version": "0.7.0-rc.1",
       "dependencies": {
         "@metaobjectsdev/react": "workspace:*",
         "@metaobjectsdev/runtime-web": "workspace:*",
@@ -118,7 +118,7 @@
     },
     "server/typescript/packages/cli": {
       "name": "@metaobjectsdev/cli",
-      "version": "0.6.0",
+      "version": "0.7.0-rc.1",
       "bin": {
         "meta": "./dist/bin/meta.js",
       },
@@ -129,6 +129,7 @@
         "@metaobjectsdev/metadata": "workspace:*",
         "@metaobjectsdev/migrate-ts": "workspace:*",
         "@metaobjectsdev/render": "workspace:*",
+        "@metaobjectsdev/runtime-ts": "workspace:*",
         "@metaobjectsdev/sdk": "workspace:*",
         "jiti": "^2.4.0",
       },
@@ -155,7 +156,7 @@
     },
     "server/typescript/packages/codegen-ts": {
       "name": "@metaobjectsdev/codegen-ts",
-      "version": "0.6.0",
+      "version": "0.7.0-rc.1",
       "dependencies": {
         "@biomejs/js-api": "^0.7.0",
         "@biomejs/wasm-nodejs": "^1.9.4",
@@ -195,7 +196,7 @@
     },
     "server/typescript/packages/codegen-ts-react": {
       "name": "@metaobjectsdev/codegen-ts-react",
-      "version": "0.6.0",
+      "version": "0.7.0-rc.1",
       "dependencies": {
         "@metaobjectsdev/codegen-ts": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
@@ -212,7 +213,7 @@
     },
     "server/typescript/packages/codegen-ts-tanstack": {
       "name": "@metaobjectsdev/codegen-ts-tanstack",
-      "version": "0.6.0",
+      "version": "0.7.0-rc.1",
       "dependencies": {
         "@metaobjectsdev/codegen-ts": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
@@ -273,7 +274,7 @@
     },
     "server/typescript/packages/metadata": {
       "name": "@metaobjectsdev/metadata",
-      "version": "0.6.0",
+      "version": "0.7.0-rc.1",
       "dependencies": {
         "yaml": "^2.9.0",
       },
@@ -286,7 +287,7 @@
     },
     "server/typescript/packages/migrate-ts": {
       "name": "@metaobjectsdev/migrate-ts",
-      "version": "0.6.0",
+      "version": "0.7.0-rc.1",
       "dependencies": {
         "@iarna/toml": "^2.2.5",
         "@metaobjectsdev/metadata": "workspace:*",
@@ -306,7 +307,7 @@
     },
     "server/typescript/packages/render": {
       "name": "@metaobjectsdev/render",
-      "version": "0.6.0",
+      "version": "0.7.0-rc.1",
       "dependencies": {
         "mustache": "^4.2.0",
       },
@@ -318,7 +319,7 @@
     },
     "server/typescript/packages/runtime-ts": {
       "name": "@metaobjectsdev/runtime-ts",
-      "version": "0.6.0",
+      "version": "0.7.0-rc.1",
       "dependencies": {
         "@metaobjectsdev/metadata": "workspace:*",
         "qs": "^6.13.0",
@@ -351,7 +352,7 @@
     },
     "server/typescript/packages/sdk": {
       "name": "@metaobjectsdev/sdk",
-      "version": "0.6.0",
+      "version": "0.7.0-rc.1",
       "dependencies": {
         "@metaobjectsdev/metadata": "workspace:*",
         "zod": "^3.23.0",

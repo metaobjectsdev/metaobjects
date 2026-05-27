@@ -80,13 +80,23 @@ public class YamlDesugarTests
     }
 
     [Fact]
-    public void AtPrefixedReservedKey_IsErrReservedAttr()
+    public void AtPrefixedReservedKey_PassesThroughToCanonicalParser()
     {
-        // Author wrote `@isArray: true` — reserved word with sigil, must be flagged.
+        // Author wrote `@isArray: true` — reserved word with sigil. The YAML
+        // desugar passes it THROUGH to canonical JSON (it does not pre-empt the
+        // diagnostic). The canonical parser is the cross-language owner of the
+        // ERR_RESERVED_ATTR check and emits it with the proper FR5a envelope
+        // (format=json + parent JSONPath). Mirrors TS yaml-desugar.ts:197-203
+        // and Java YamlDesugar.java:340-349.
         var yaml = "object.entity:\n  name: Product\n  \"@isArray\": true\n";
         var result = Desugar(yaml);
-        Assert.Contains(result.Errors,
+        // Desugar itself does NOT emit ERR_RESERVED_ATTR.
+        Assert.DoesNotContain(result.Errors,
             e => e.Code == ErrorCode.ERR_RESERVED_ATTR);
+        // The @-prefixed reserved key survives in the canonical JSON, where the
+        // downstream canonical parser will flag it.
+        var json = result.Canonical.ToJsonString();
+        Assert.Contains("\"@isArray\"", json);
     }
 
     [Fact]

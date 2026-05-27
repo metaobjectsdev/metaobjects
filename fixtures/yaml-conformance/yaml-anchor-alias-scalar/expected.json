@@ -1,0 +1,26 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "children": [
+            {
+              "field.string": {
+                "name": "sku",
+                "@column": "sku_code"
+              }
+            },
+            {
+              "field.string": {
+                "name": "altSku",
+                "@column": "sku_code"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

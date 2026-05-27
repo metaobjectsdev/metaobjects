@@ -3,24 +3,129 @@
 import type { NormalizedResult } from "./result.js";
 
 /**
- * Parse + validate a parsed expected-errors.json value.
- * Throws a clear Error if `raw` is not an array of objects each with a string
- * `code` — mirrors the validation style of `parseOperationScript`.
+ * One entry in the post-FR5a expected-errors.json envelope. `source` is the
+ * minimum cross-port-asserted shape (ADR-0009): `format`, `files`, `jsonPath`.
+ * Other envelope fields (suggestions, fixture, node, yamlPosition, ...) are
+ * RECOMMENDED-only and not enforced by the cross-port harness.
+ *
+ * FR5d — for `format === "resolved"` envelopes, `referrer` and `target` are
+ * part of the cross-port contract: a fixture that opts into `format=resolved`
+ * MUST supply both, and the runner asserts them.
  */
-export function parseExpectedErrors(raw: unknown): { code: string }[] {
-  if (!Array.isArray(raw)) {
-    throw new Error("expected-errors.json must be a JSON array");
+export interface ExpectedErrorSource {
+  readonly format: string;
+  readonly files: readonly string[];
+  readonly jsonPath?: string;
+  readonly referrer?: string;
+  readonly target?: string;
+}
+
+export interface ExpectedError {
+  readonly code: string;
+  /** Present in the FR5a envelope shape; absent in legacy `[{code}]` form. */
+  readonly source?: ExpectedErrorSource;
+}
+
+export interface ExpectedErrorsEnvelope {
+  readonly errors: readonly ExpectedError[];
+  readonly warnings: readonly unknown[];
+  /** True when the file used the legacy `[{code}]` array shape (no source). */
+  readonly legacy: boolean;
+}
+
+function parseSource(raw: unknown, i: number): ExpectedErrorSource | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== "object" || raw === null) {
+    throw new Error(`expected-errors.json entry ${i}: 'source' is not an object`);
   }
-  return raw.map((item, i) => {
+  const r = raw as Record<string, unknown>;
+  const { format, files, jsonPath, referrer, target } = r;
+  if (typeof format !== "string") {
+    throw new Error(`expected-errors.json entry ${i}: 'source.format' must be a string`);
+  }
+  if (!Array.isArray(files) || !files.every((f) => typeof f === "string")) {
+    throw new Error(`expected-errors.json entry ${i}: 'source.files' must be a string[]`);
+  }
+  if (jsonPath !== undefined && typeof jsonPath !== "string") {
+    throw new Error(`expected-errors.json entry ${i}: 'source.jsonPath' must be a string`);
+  }
+  if (referrer !== undefined && typeof referrer !== "string") {
+    throw new Error(`expected-errors.json entry ${i}: 'source.referrer' must be a string`);
+  }
+  if (target !== undefined && typeof target !== "string") {
+    throw new Error(`expected-errors.json entry ${i}: 'source.target' must be a string`);
+  }
+  // FR5d — `format=resolved` requires both referrer and target so the fixture
+  // captures the full cross-port contract.
+  if (format === "resolved") {
+    if (referrer === undefined) {
+      throw new Error(`expected-errors.json entry ${i}: 'source.referrer' is required when format='resolved'`);
+    }
+    if (target === undefined) {
+      throw new Error(`expected-errors.json entry ${i}: 'source.target' is required when format='resolved'`);
+    }
+  }
+  const base: { format: string; files: readonly string[] } = {
+    format,
+    files: files as string[],
+  };
+  const out: ExpectedErrorSource = {
+    ...base,
+    ...(jsonPath !== undefined ? { jsonPath } : {}),
+    ...(referrer !== undefined ? { referrer } : {}),
+    ...(target !== undefined ? { target } : {}),
+  };
+  return out;
+}
+
+/**
+ * Parse + validate a parsed expected-errors.json value.
+ *
+ * Accepts both shapes:
+ *  - **Legacy** (`[{code}]`) — pre-FR5a; no source assertion.
+ *  - **FR5a envelope** (`{ errors: [{code, source}], warnings: [] }`) —
+ *    ADR-0009 shape; source asserted by the cross-port harness.
+ *
+ * Throws a clear Error if `raw` matches neither shape. Mirrors the validation
+ * style of `parseOperationScript`.
+ */
+export function parseExpectedErrors(raw: unknown): ExpectedErrorsEnvelope {
+  // Legacy shape — plain array of `{code}`.
+  if (Array.isArray(raw)) {
+    const errors = raw.map((item, i): ExpectedError => {
+      if (typeof item !== "object" || item === null) {
+        throw new Error(`expected-errors.json entry ${i} is not an object`);
+      }
+      const { code } = item as Record<string, unknown>;
+      if (typeof code !== "string") {
+        throw new Error(`expected-errors.json entry ${i} missing string 'code' field`);
+      }
+      return { code };
+    });
+    return { errors, warnings: [], legacy: true };
+  }
+  // FR5a envelope shape — `{ errors: [...], warnings: [...] }`.
+  if (typeof raw !== "object" || raw === null) {
+    throw new Error("expected-errors.json must be either an array (legacy) or an object with 'errors'");
+  }
+  const env = raw as Record<string, unknown>;
+  const rawErrors = env.errors;
+  if (!Array.isArray(rawErrors)) {
+    throw new Error("expected-errors.json: 'errors' must be an array");
+  }
+  const errors = rawErrors.map((item, i): ExpectedError => {
     if (typeof item !== "object" || item === null) {
       throw new Error(`expected-errors.json entry ${i} is not an object`);
     }
-    const { code } = item as Record<string, unknown>;
-    if (typeof code !== "string") {
+    const r = item as Record<string, unknown>;
+    if (typeof r.code !== "string") {
       throw new Error(`expected-errors.json entry ${i} missing string 'code' field`);
     }
-    return { code };
+    const source = parseSource(r.source, i);
+    return source !== undefined ? { code: r.code, source } : { code: r.code };
   });
+  const warnings = Array.isArray(env.warnings) ? env.warnings : [];
+  return { errors, warnings, legacy: false };
 }
 
 /** capability-id grammar: `<type>.<capability>`, both kebab-case. */

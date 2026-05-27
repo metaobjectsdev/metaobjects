@@ -11,6 +11,7 @@ from __future__ import annotations
 from .errors import ErrorCode, MetaError
 from .meta.meta_data import MetaData
 from .shared.separators import PACKAGE_SEP
+from .source import resolved_source
 
 
 def resolve_supers(root: MetaData, errors: list[MetaError]) -> None:
@@ -35,11 +36,15 @@ def _walk(
         effective_pkg = node.package or ctx_pkg or None
         target = _resolve(node.super_ref, effective_pkg, index)
         if target is None:
+            # FR5d / ADR-0009: emit a ResolvedSource envelope carrying the
+            # referrer's files / json_path plus the referrer FQN + unresolved
+            # target. Mirrors TS resolveDeferredSupers in meta-data-loader.ts.
             errors.append(MetaError(
                 f"the SuperClass '{node.super_ref}' does not exist "
                 f"(referenced by {node.fqn()})",
                 ErrorCode.ERR_UNRESOLVED_SUPER,
                 path=node.fqn(),
+                envelope=resolved_source(node.source, node.fqn(), node.super_ref),
             ))
         else:
             node.super_data = target

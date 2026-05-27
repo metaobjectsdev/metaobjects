@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using MetaObjects.Source;
 
 namespace MetaObjects.Meta;
 
@@ -56,6 +57,16 @@ public abstract class MetaData
 
     /// <summary>Read-only accessor for <see cref="_dataType"/>; available to subclasses.</summary>
     protected DataType? DataTypeValue => _dataType;
+
+    /// <summary>
+    /// ADR-0009 provenance. Always populated; defaults to <see cref="CodeSource.Default"/>
+    /// for programmatic construction (tests, factories, in-code builders). The
+    /// JSON parser overwrites via <see cref="SetSource"/> during the tree walk;
+    /// future phases (overlay merge, super resolution) may overwrite with merged /
+    /// resolved variants. Excluded from canonical JSON serialization — loader-derived
+    /// state, not metadata.
+    /// </summary>
+    private ErrorSource _source = CodeSource.Default;
 
     /// <summary>Per-instance read cache: only populated once the node is frozen.</summary>
     private readonly Dictionary<string, object?> _cache = new();
@@ -169,6 +180,23 @@ public abstract class MetaData
     {
         AssertNotFrozen();
         _dataType = dt;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Source (ADR-0009 provenance)
+    // ---------------------------------------------------------------------------
+
+    /// <summary>Provenance envelope for this node. Always populated. See ADR-0009.</summary>
+    public ErrorSource Source => _source;
+
+    /// <summary>
+    /// Loader-internal: assign provenance. Called by parser and merge phases as
+    /// they build the tree. Honors the frozen-guard like other setters.
+    /// </summary>
+    public void SetSource(ErrorSource src)
+    {
+        AssertNotFrozen();
+        _source = src;
     }
 
     // ---------------------------------------------------------------------------

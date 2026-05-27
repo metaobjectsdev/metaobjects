@@ -18,7 +18,28 @@ import { GENERATED_HEADER } from "../constants.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { renderProjectionDecl } from "./projection-decl.js";
 
-export function renderEntityFile(entity: MetaObject, ctx: RenderContext): string {
+/**
+ * Render-time options for the entity-file composer.
+ *
+ * `allowlists` (default `true`) controls whether the Fastify-flavored
+ * `<Entity>FilterAllowlist` + `<Entity>SortAllowlist` blocks (plus their
+ * `runtime-ts/drizzle-fastify` type-only imports) are emitted. Workers/Lambda
+ * consumers that don't mount Fastify-style server routes can pass `false` and
+ * drop `@metaobjectsdev/runtime-ts` from their deps entirely. The client-side
+ * `<Entity>Filter` type is always emitted — consumers still want it for typed
+ * client calls regardless of how the server is wired.
+ */
+export interface RenderEntityFileOpts {
+  readonly allowlists?: boolean;
+}
+
+export function renderEntityFile(
+  entity: MetaObject,
+  ctx: RenderContext,
+  opts?: RenderEntityFileOpts,
+): string {
+  const allowlists = opts?.allowlists ?? true;
+
   // --- Projection path (read-only: view-backed entity with no table source) ---
   // Projections intentionally get the z.enum() validator but NOT a named enum
   // type alias — emitting aliases here is a deliberate v1 scope decision.
@@ -38,8 +59,7 @@ export function renderEntityFile(entity: MetaObject, ctx: RenderContext): string
     ...(enumAliases !== null ? [enumAliases] : []),
     renderZodValidators(entity),
     renderEntityConstants(entity, ctx.apiPrefix),
-    renderFilterAllowlist(entity),
-    renderSortAllowlist(entity),
+    ...(allowlists ? [renderFilterAllowlist(entity), renderSortAllowlist(entity)] : []),
     renderFilterType(entity),
   ];
 

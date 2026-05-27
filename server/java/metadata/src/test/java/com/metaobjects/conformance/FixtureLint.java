@@ -62,8 +62,7 @@ public final class FixtureLint {
         // expected-errors.json — each code must be in the registry
         if (fix.hasExpectedErrors) {
             try {
-                JsonElement parsed = readJson(fix.dir.resolve("expected-errors.json").toString(),
-                    Files.readAllBytes(fix.dir.resolve("expected-errors.json")));
+                JsonElement parsed = readJsonFile(fix.dir.resolve("expected-errors.json"));
                 List<String> codes = parseExpectedErrors(parsed);
                 for (String code : codes) {
                     if (!registeredErrorCodes.contains(code)) {
@@ -79,8 +78,7 @@ public final class FixtureLint {
         // script.json — shape + navigate-segment grammar
         if (fix.hasScript) {
             try {
-                JsonElement parsed = readJson(fix.dir.resolve("script.json").toString(),
-                    Files.readAllBytes(fix.dir.resolve("script.json")));
+                JsonElement parsed = readJsonFile(fix.dir.resolve("script.json"));
                 lintScriptShape(fix, parsed, problems);
             } catch (Exception ex) {
                 problems.add(fix.name + ": malformed script.json — " + ex.getMessage());
@@ -94,40 +92,174 @@ public final class FixtureLint {
     // helpers
     // ---------------------------------------------------------------------
 
-    private static JsonElement readJson(String path, byte[] bytes) {
-        return JsonParser.parseString(new String(bytes, StandardCharsets.UTF_8));
+    private static JsonElement readJsonFile(java.nio.file.Path path) throws IOException {
+        return JsonParser.parseString(
+            new String(Files.readAllBytes(path), StandardCharsets.UTF_8));
     }
 
     /**
-     * Parse the {@code expected-errors.json} payload into an ordered list of code
-     * strings. Accepts both shapes seen in the corpus:
+     * One expected source token (FR5a / ADR-0009 envelope shape).
+     */
+    public static final class ExpectedErrorSource {
+        public final String format;
+        public final List<String> files;
+        public final String jsonPath;  // nullable
+        // FR5d — referrer + target are required for format=resolved, optional otherwise.
+        public final String referrer;  // nullable
+        public final String target;    // nullable
+        public ExpectedErrorSource(String format, List<String> files, String jsonPath,
+                                   String referrer, String target) {
+            this.format = format;
+            this.files = files;
+            this.jsonPath = jsonPath;
+            this.referrer = referrer;
+            this.target = target;
+        }
+    }
+
+    /** One expected error (envelope shape). */
+    public static final class ExpectedError {
+        public final String code;
+        public final ExpectedErrorSource source; // nullable in legacy shape
+        public ExpectedError(String code, ExpectedErrorSource source) {
+            this.code = code;
+            this.source = source;
+        }
+    }
+
+    /** Parsed expected-errors.json — envelope-shape-aware. */
+    public static final class ExpectedErrorsEnvelope {
+        public final List<ExpectedError> errors;
+        public final int warningsCount;
+        public final boolean legacy;
+        public ExpectedErrorsEnvelope(List<ExpectedError> errors, int warningsCount, boolean legacy) {
+            this.errors = errors;
+            this.warningsCount = warningsCount;
+            this.legacy = legacy;
+        }
+    }
+
+    /**
+     * Parse the {@code expected-errors.json} payload — accepts both
+     * shapes seen in the corpus:
      * <ul>
-     *   <li>An array of strings (e.g. {@code ["ERR_BAD_ATTR_VALUE"]})</li>
-     *   <li>An array of objects with a {@code "code"} string</li>
+     *   <li>Legacy: an array of strings or {@code {"code":"ERR_X"}} objects.</li>
+     *   <li>FR5a envelope: {@code {"errors": [{code, source: {format, files, jsonPath}}], "warnings": []}}.</li>
      * </ul>
      */
-    static List<String> parseExpectedErrors(JsonElement el) {
-        if (!el.isJsonArray()) {
-            throw new IllegalArgumentException("expected-errors.json must be a JSON array");
-        }
-        JsonArray arr = el.getAsJsonArray();
-        List<String> codes = new ArrayList<>(arr.size());
-        for (JsonElement item : arr) {
-            if (item.isJsonPrimitive() && item.getAsJsonPrimitive().isString()) {
-                codes.add(item.getAsString());
-            } else if (item.isJsonObject()) {
-                JsonObject obj = item.getAsJsonObject();
-                JsonElement code = obj.get("code");
-                if (code == null || !code.isJsonPrimitive() || !code.getAsJsonPrimitive().isString()) {
+    public static ExpectedErrorsEnvelope parseExpectedErrorsEnvelope(JsonElement el) {
+        // Legacy: array.
+        if (el.isJsonArray()) {
+            JsonArray arr = el.getAsJsonArray();
+            List<ExpectedError> errors = new ArrayList<>(arr.size());
+            for (JsonElement item : arr) {
+                if (item.isJsonPrimitive() && item.getAsJsonPrimitive().isString()) {
+                    errors.add(new ExpectedError(item.getAsString(), null));
+                } else if (item.isJsonObject()) {
+                    JsonObject obj = item.getAsJsonObject();
+                    JsonElement code = obj.get("code");
+                    if (code == null || !code.isJsonPrimitive() || !code.getAsJsonPrimitive().isString()) {
+                        throw new IllegalArgumentException(
+                            "expected-errors entry object must have a string 'code' field");
+                    }
+                    errors.add(new ExpectedError(code.getAsString(), null));
+                } else {
                     throw new IllegalArgumentException(
-                        "expected-errors entry object must have a string 'code' field");
+                        "expected-errors entry must be a string or an object with a 'code' field");
                 }
-                codes.add(code.getAsString());
-            } else {
-                throw new IllegalArgumentException(
-                    "expected-errors entry must be a string or an object with a 'code' field");
             }
+            return new ExpectedErrorsEnvelope(errors, 0, true);
         }
+        // FR5a envelope.
+        if (!el.isJsonObject()) {
+            throw new IllegalArgumentException(
+                "expected-errors.json must be either an array (legacy) or an object with 'errors'");
+        }
+        JsonObject root = el.getAsJsonObject();
+        JsonElement errorsEl = root.get("errors");
+        if (errorsEl == null || !errorsEl.isJsonArray()) {
+            throw new IllegalArgumentException("expected-errors.json: 'errors' must be an array");
+        }
+        List<ExpectedError> errors = new ArrayList<>();
+        int idx = 0;
+        for (JsonElement item : errorsEl.getAsJsonArray()) {
+            if (!item.isJsonObject()) {
+                throw new IllegalArgumentException(
+                    "expected-errors.json entry " + idx + " is not an object");
+            }
+            JsonObject obj = item.getAsJsonObject();
+            JsonElement code = obj.get("code");
+            if (code == null || !code.isJsonPrimitive() || !code.getAsJsonPrimitive().isString()) {
+                throw new IllegalArgumentException(
+                    "expected-errors.json entry " + idx + " missing string 'code' field");
+            }
+            ExpectedErrorSource source = null;
+            JsonElement srcEl = obj.get("source");
+            if (srcEl != null && srcEl.isJsonObject()) {
+                JsonObject srcObj = srcEl.getAsJsonObject();
+                JsonElement fmtEl = srcObj.get("format");
+                if (fmtEl == null || !fmtEl.isJsonPrimitive() || !fmtEl.getAsJsonPrimitive().isString()) {
+                    throw new IllegalArgumentException(
+                        "expected-errors.json entry " + idx + " source.format must be a string");
+                }
+                JsonElement filesEl = srcObj.get("files");
+                if (filesEl == null || !filesEl.isJsonArray()) {
+                    throw new IllegalArgumentException(
+                        "expected-errors.json entry " + idx + " source.files must be a string[]");
+                }
+                List<String> files = new ArrayList<>();
+                for (JsonElement fe : filesEl.getAsJsonArray()) {
+                    if (!fe.isJsonPrimitive() || !fe.getAsJsonPrimitive().isString()) {
+                        throw new IllegalArgumentException(
+                            "expected-errors.json entry " + idx + " source.files contains non-string");
+                    }
+                    files.add(fe.getAsString());
+                }
+                String jsonPath = null;
+                JsonElement jpEl = srcObj.get("jsonPath");
+                if (jpEl != null && jpEl.isJsonPrimitive() && jpEl.getAsJsonPrimitive().isString()) {
+                    jsonPath = jpEl.getAsString();
+                }
+                String referrer = null;
+                JsonElement refEl = srcObj.get("referrer");
+                if (refEl != null && refEl.isJsonPrimitive() && refEl.getAsJsonPrimitive().isString()) {
+                    referrer = refEl.getAsString();
+                }
+                String target = null;
+                JsonElement tgtEl = srcObj.get("target");
+                if (tgtEl != null && tgtEl.isJsonPrimitive() && tgtEl.getAsJsonPrimitive().isString()) {
+                    target = tgtEl.getAsString();
+                }
+                // FR5d — format=resolved requires both referrer and target.
+                String fmt = fmtEl.getAsString();
+                if ("resolved".equals(fmt)) {
+                    if (referrer == null) {
+                        throw new IllegalArgumentException(
+                            "expected-errors.json entry " + idx + " source.referrer is required when format='resolved'");
+                    }
+                    if (target == null) {
+                        throw new IllegalArgumentException(
+                            "expected-errors.json entry " + idx + " source.target is required when format='resolved'");
+                    }
+                }
+                source = new ExpectedErrorSource(fmt, files, jsonPath, referrer, target);
+            }
+            errors.add(new ExpectedError(code.getAsString(), source));
+            idx++;
+        }
+        int warningsCount = 0;
+        JsonElement warnEl = root.get("warnings");
+        if (warnEl != null && warnEl.isJsonArray()) {
+            warningsCount = warnEl.getAsJsonArray().size();
+        }
+        return new ExpectedErrorsEnvelope(errors, warningsCount, false);
+    }
+
+    /** Backward-compat helper — returns just the codes from either shape. */
+    static List<String> parseExpectedErrors(JsonElement el) {
+        ExpectedErrorsEnvelope env = parseExpectedErrorsEnvelope(el);
+        List<String> codes = new ArrayList<>(env.errors.size());
+        for (ExpectedError e : env.errors) codes.add(e.code);
         return codes;
     }
 

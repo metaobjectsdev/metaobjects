@@ -1,19 +1,31 @@
 // Authoring YAML parser.
 //
-// parseYaml is a front-end: yaml.parse → desugar → the shared buildTree
-// (parser-core.ts). The desugar applies the four authoring-sugar rules so the
-// resulting typed tree is identical to the one the equivalent canonical JSON
-// produces.
+// parseYaml is a front-end: parseYamlWithPositions → desugar → the shared
+// buildTree (parser-core.ts). The desugar applies the four authoring-sugar
+// rules so the resulting typed tree is identical to the one the equivalent
+// canonical JSON produces.
+//
+// FR5b: the parse phase now preserves YAML source positions through the
+// pipeline. parseYamlWithPositions attaches a Symbol-keyed position-by-key
+// map onto every mapping object; desugar shallow-copies that property; and
+// buildTree's `format: "yaml"` mode reads the position when stamping
+// `node.source.yamlPosition` (see parser-core.ts).
 
-import { parse as parseYamlText } from "yaml";
 import { ParseError } from "../errors.js";
 import { buildTree } from "../parser-core.js";
 import type { ParseOptions, ParseResult } from "../parser-core.js";
 import type { ErrorSource } from "../source.js";
 import { desugar } from "./yaml-desugar.js";
+import { parseYamlWithPositions } from "./yaml-positions-walker.js";
 
 /** FR5a / ADR-0009 — build a YAML-source envelope rooted at "$".
- *  yamlPosition is FR5b territory and not populated here. */
+ *  yamlPosition on the envelope is left undefined here; envelopes for
+ *  THROWN parser errors carry positions only when the parse phase pushed
+ *  the path into the live parser-core builder (see populateNodeSource in
+ *  parser-core.ts). Errors raised before buildTree (e.g. yaml syntax
+ *  failures, an empty desugar result) lack a node — `yamlPosition` is
+ *  intentionally omitted, per the spec's "skip on desugar-synthesized
+ *  nodes" decision. */
 function yamlSource(sourceName: string | undefined): ErrorSource {
   return {
     format: "yaml",
@@ -31,7 +43,7 @@ export function parseYaml(content: string, opts: ParseOptions): ParseResult {
   // The loader's per-source try/catch collects the throw into LoadResult.errors.
   let parsed: unknown;
   try {
-    parsed = parseYamlText(normalizedContent);
+    parsed = parseYamlWithPositions(normalizedContent).value;
   } catch (err) {
     throw new ParseError(
       `Invalid YAML: ${(err as Error).message}`,
@@ -52,7 +64,10 @@ export function parseYaml(content: string, opts: ParseOptions): ParseResult {
     );
   }
 
-  const result = buildTree(canonical, opts);
+  // FR5b — buildTree needs to know the source-format discriminant so
+  // populateNodeSource emits `format: "yaml"` envelopes (with the
+  // optional yamlPosition) instead of the default `format: "json"`.
+  const result = buildTree(canonical, { ...opts, sourceFormat: "yaml" });
 
   // Merge collected desugar errors ahead of buildTree's own collected errors.
   // Each CollectedError carries its own stable code when set (e.g.

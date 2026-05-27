@@ -1,0 +1,19 @@
+section-standalone:
+inside
+end-section
+
+section-inline: preMIDpost
+
+list-standalone:
+- a
+- b
+end-list
+
+list-inline: [a,b,]
+
+comment-standalone:
+after-comment
+
+partial-standalone:
+note-body
+after-partial

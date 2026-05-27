@@ -1,0 +1,5 @@
+escaped: &lt;b class=&quot;warn&quot;&gt;A&amp;B&lt;/b&gt;
+triple: <b class="warn">A&B</b>
+ampersand: <b class="warn">A&B</b>
+plain-escaped: plain text
+plain-triple: plain text

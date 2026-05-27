@@ -39,6 +39,11 @@ import {
   TYPE_SUBTYPE_SEPARATOR,
 } from "../shared/structural.js";
 import {
+  getPositionMap,
+  setPositionMap,
+  type PositionMap,
+} from "./yaml-positions.js";
+import {
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_CLASS,
   ATTR_SUBTYPE_INT,
@@ -99,6 +104,11 @@ function desugarNode(
   const rawKey = entries[0]!;
   const rawBody = (input as Record<string, unknown>)[rawKey];
 
+  // FR5b — capture the wrapper-level position-by-key map BEFORE re-keying.
+  // The author's raw key (with `[]` suffix and possibly omitted subType) is
+  // the lookup key; the desugar's canonical key is what we emit.
+  const wrapperPositions = getPositionMap(input);
+
   // Rule 4: a trailing "[]" on the key → isArray.
   let key = rawKey;
   let isArray = false;
@@ -111,7 +121,10 @@ function desugarNode(
   const canonicalKey = resolveKey(key, registry, errors, path);
 
   // Rule 2: a scalar body → { name: <scalar> }.
-  const body = desugarBody(rawBody, registry, canonicalKey, errors, path);
+  // FR5b — propagate the wrapper-key's position into the synthesized body
+  // when the input body was a scalar (no body-side positions to inherit).
+  const wrapperKeyPos = wrapperPositions?.[rawKey];
+  const body = desugarBody(rawBody, registry, canonicalKey, errors, path, wrapperKeyPos);
 
   // Rule 4 (cont.): stamp isArray onto the canonical body.
   if (isArray) body[RESERVED_KEY_IS_ARRAY] = true;
@@ -131,7 +144,16 @@ function desugarNode(
   }
   // A non-array `children` value is left untouched — buildTree reports it.
 
-  return { [canonicalKey]: body };
+  // FR5b — emit a wrapper-level position-by-key map for the canonical wrapper
+  // so buildTree's per-child iteration can read the position via the same
+  // lookup it uses for JSON input. The single key transformation is
+  // rawKey → canonicalKey (Rule 1 fuses the subType, Rule 4 strips `[]`).
+  const outWrapper: Record<string, unknown> = { [canonicalKey]: body };
+  if (wrapperKeyPos !== undefined) {
+    setPositionMap(outWrapper, { [canonicalKey]: wrapperKeyPos });
+  }
+
+  return outWrapper;
 }
 
 // Rule 1 — resolve a possibly-bare key to a fused `type.subType` token.
@@ -169,16 +191,30 @@ function desugarBody(
   canonicalKey: string,
   errors: CollectedError[],
   path: string,
+  /** FR5b — position of the WRAPPER key (the `field.string:` line). Used to
+   *  back-fill `yamlPosition` on synthesized bodies (Rule 2's scalar lift) +
+   *  empty bodies; for mapping bodies we use the body's own position-by-key
+   *  map. */
+  wrapperKeyPos: { line: number; col: number } | undefined,
 ): Record<string, unknown> {
   if (
     typeof rawBody === "string" ||
     typeof rawBody === "number" ||
     typeof rawBody === "boolean"
   ) {
-    return { [RESERVED_KEY_NAME]: rawBody };
+    // FR5b — the synthesized `{ name: rawBody }` has no YAML-side
+    // counterpart; we attribute the `name` slot to the wrapper-key's
+    // position (the only YAML position that meaningfully belongs to this
+    // synthesis).
+    const out: Record<string, unknown> = { [RESERVED_KEY_NAME]: rawBody };
+    if (wrapperKeyPos !== undefined) {
+      setPositionMap(out, { [RESERVED_KEY_NAME]: wrapperKeyPos });
+    }
+    return out;
   }
   if (rawBody === null || rawBody === undefined) {
     // An empty body (`field.string:` with nothing after) → an empty node.
+    // No body keys to position; the wrapper carries the node's position.
     return {};
   }
   if (Array.isArray(rawBody)) {
@@ -192,20 +228,38 @@ function desugarBody(
   // Rule D2 (type-coercion guard).
   const src = rawBody as Record<string, unknown>;
   const out: Record<string, unknown> = {};
+  // FR5b — translate the body's position-by-key map across the sigil-free
+  // rewrite. A bare `filterable` key in the source maps to `@filterable` in
+  // the canonical body; the YAML position belongs to BOTH names (the YAML
+  // author only wrote one). We re-key the position map to match the canonical
+  // body's keys so buildTree's per-attr inspection (FR5b follow-ups, e.g.
+  // ERR_BAD_ATTR_VALUE) can find the position via the canonical key.
+  const srcPositions = getPositionMap(src);
+  const outPositions: PositionMap = {};
+  let hasOutPositions = false;
   const schemaIndex = attrSchemaIndex(registry, canonicalKey);
   for (const key of Object.keys(src)) {
+    let outKey: string;
     if (RESERVED_KEYS.has(key) || key.startsWith(ATTR_PREFIX)) {
       out[key] = src[key];
+      outKey = key;
       // D2 also applies to author-written @-keys (the awkward form).
       const attrName = key.startsWith(ATTR_PREFIX) ? key.slice(ATTR_PREFIX.length) : "";
       if (attrName !== "" && !RESERVED_KEYS.has(attrName)) {
         checkCoercion(attrName, src[key], schemaIndex, errors, path);
       }
     } else {
-      out[`${ATTR_PREFIX}${key}`] = src[key];
+      outKey = `${ATTR_PREFIX}${key}`;
+      out[outKey] = src[key];
       checkCoercion(key, src[key], schemaIndex, errors, path);
     }
+    const pos = srcPositions?.[key];
+    if (pos !== undefined) {
+      outPositions[outKey] = pos;
+      hasOutPositions = true;
+    }
   }
+  if (hasOutPositions) setPositionMap(out, outPositions);
   return out;
 }
 

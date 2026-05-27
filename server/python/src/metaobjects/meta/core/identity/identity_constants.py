@@ -6,6 +6,7 @@ IDENTITY_SUBTYPES = (IDENTITY_SUBTYPE_PRIMARY, IDENTITY_SUBTYPE_SECONDARY, IDENT
 
 IDENTITY_ATTR_FIELDS = "fields"
 IDENTITY_ATTR_GENERATION = "generation"
+IDENTITY_ATTR_UNIQUE = "unique"
 
 # Allowed values for @generation on identity.primary
 GENERATION_INCREMENT = "increment"

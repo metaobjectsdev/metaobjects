@@ -1,11 +1,17 @@
-// `meta verify` — the build-time prompt drift gate (FR-004 Plan #3, T6).
+// `meta verify` — the build-time template drift gate (FR-004 Plan #3, T6;
+// extended to template.output by FR6, ADR-0010).
 //
-// Loads metadata from a directory; for each template node resolves its @textRef
-// text via a filesystem provider, derives the @payloadRef view-object's field
-// tree from the loaded metadata, and runs the engine's verify() — reporting drift
-// (a template variable the payload doesn't declare, an unresolved partial) so CI
-// fails before a renamed field can silently break a prompt. Runs at the last
-// fixed point before serve, never on the request path.
+// Loads metadata from a directory; for each template node derives the
+// @payloadRef view-object's field tree and dispatches on subtype:
+//
+//   template.prompt — resolves @textRef via a filesystem provider and runs the
+//                     engine's Verify (template variable ↔ payload field drift,
+//                     unresolved partials, missing output tags).
+//   template.output — payload-VO resolution check only (the generator derives
+//                     the parser schema from the same VO, so any field-tree
+//                     drift surfaces here as well as at gen time).
+//
+// Runs at the last fixed point before serve, never on the request path.
 
 using MetaObjects.Codegen;
 using MetaObjects.Loader;
@@ -18,7 +24,8 @@ namespace MetaObjects.Cli;
 /// <summary>The verify command's pure logic — no console I/O, so it is testable.</summary>
 public static class VerifyCommand
 {
-    public sealed record Drift(string Template, string Code, string Path);
+    /// <summary><c>Kind</c> distinguishes prompt vs. output drift findings (ADR-0010).</summary>
+    public sealed record Drift(string Template, string Kind, string Code, string Path);
 
     public sealed record Outcome(
         IReadOnlyList<string> LoadErrors,
@@ -29,6 +36,16 @@ public static class VerifyCommand
         /// <summary>Clean iff no load errors, no drift errors, and every @textRef resolved.</summary>
         public bool Ok => LoadErrors.Count == 0 && Errors.Count == 0 && UnresolvedText.Count == 0;
     }
+
+    /// <summary>Drift-finding kind constant — set on every <see cref="Drift"/>.</summary>
+    public const string KIND_PROMPT = "prompt";
+    /// <summary>Drift-finding kind constant — set on every <see cref="Drift"/>.</summary>
+    public const string KIND_OUTPUT = "output";
+
+    /// <summary>A drift error code emitted when a template's @payloadRef does not resolve
+    /// to a loaded object.value. Both subtypes raise this; the codegen would otherwise
+    /// fail at gen time, but verify catches it at the build-time fixed point.</summary>
+    public const string ERR_PAYLOAD_REF_UNRESOLVED = "ERR_PAYLOAD_REF_UNRESOLVED";
 
     /// <summary>Coerce a string-array attr (array, or a single string) into a string list.</summary>
     private static IReadOnlyList<string> AsStringList(object? attr) => attr switch
@@ -51,9 +68,32 @@ public static class VerifyCommand
 
         foreach (var tmpl in load.Root.OwnChildren().Where(c => c.Type == TYPE_TEMPLATE))
         {
-            // Missing @textRef / @payloadRef are already load errors (Pass 9 + schema).
-            if (tmpl.OwnAttr(TEMPLATE_ATTR_TEXT_REF) is not string textRef ||
-                tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef)
+            // Missing @payloadRef is already a load error (template schema requires it).
+            if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef)
+                continue;
+
+            var kind = tmpl.SubType == TEMPLATE_SUBTYPE_OUTPUT ? KIND_OUTPUT : KIND_PROMPT;
+
+            // Both subtypes: @payloadRef must resolve to a loaded object.value (=>
+            // non-empty derived field tree). Catches a renamed VO before codegen.
+            var fields = PayloadCodegen.BuildPayloadFieldTree(load.Root, payloadRef);
+            if (fields.Count == 0)
+            {
+                errors.Add(new Drift(tmpl.Name, kind, ERR_PAYLOAD_REF_UNRESOLVED, payloadRef));
+                continue;
+            }
+
+            if (tmpl.SubType == TEMPLATE_SUBTYPE_OUTPUT)
+            {
+                // Output's parser schema is derived from the same VO that drives prompt
+                // rendering — payload-VO resolution above covers FR6's drift contract.
+                // No @textRef walk: output templates may not carry one (the parser is
+                // schema-driven), and the generator surfaces gen-time issues directly.
+                continue;
+            }
+
+            // template.prompt branch — existing Mustache + tag/slot checks.
+            if (tmpl.OwnAttr(TEMPLATE_ATTR_TEXT_REF) is not string textRef)
                 continue;
 
             var text = provider.Resolve(textRef);
@@ -63,7 +103,6 @@ public static class VerifyCommand
                 continue;
             }
 
-            var fields = PayloadCodegen.BuildPayloadFieldTree(load.Root, payloadRef);
             var requiredSlots = AsStringList(tmpl.OwnAttr(TEMPLATE_ATTR_REQUIRED_SLOTS));
             var requiredTags = AsStringList(tmpl.OwnAttr(TEMPLATE_ATTR_REQUIRED_TAGS));
 
@@ -75,7 +114,7 @@ public static class VerifyCommand
             };
             foreach (var e in Verify.Check(text, fields, verifyOptions))
             {
-                var drift = new Drift(tmpl.Name, e.Code, e.Path);
+                var drift = new Drift(tmpl.Name, kind, e.Code, e.Path);
                 if (e.Code == Verify.ERR_REQUIRED_SLOT_UNUSED) warnings.Add(drift);
                 else errors.Add(drift);
             }

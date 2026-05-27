@@ -1,0 +1,8 @@
+true-flag: [body]
+false-flag: []
+null-value: []
+empty-string: []
+non-empty-string: [body]
+empty-array: []
+non-empty-array: [1;2;]
+object-with-name: [Ada]

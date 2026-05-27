@@ -1,5 +1,15 @@
-[
-  {
-    "code": "ERR_SOURCE_NO_PRIMARY"
-  }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_SOURCE_NO_PRIMARY",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.commerce.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity']"
+      }
+    }
+  ],
+  "warnings": []
+}

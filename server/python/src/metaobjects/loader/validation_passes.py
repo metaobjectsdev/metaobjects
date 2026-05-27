@@ -10,7 +10,14 @@ from __future__ import annotations
 import re
 
 from ..errors import ErrorCode, MetaError
-from ..meta.core.field.field_constants import ENUM_MEMBER_PATTERN, FIELD_ATTR_VALUES, FIELD_SUBTYPE_ENUM
+from ..meta.core.field.field_constants import (
+    ENUM_MEMBER_PATTERN,
+    FIELD_ATTR_OBJECT_REF,
+    FIELD_ATTR_STORAGE,
+    FIELD_ATTR_VALUES,
+    FIELD_SUBTYPE_ENUM,
+    FIELD_SUBTYPE_OBJECT,
+)
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.meta_data import MetaData
 from ..meta.persistence.source.meta_source import MetaSource
@@ -24,7 +31,9 @@ from ..shared.base_types import (
     TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
     TYPE_SOURCE,
+    TYPE_TEMPLATE,
 )
+from ..meta.template import template_constants as tc
 from ..meta.presentation.layout.layout_constants import (
     LAYOUT_ATTR_DEFAULT_SORT_FIELD,
     LAYOUT_ATTR_FILTER,
@@ -40,6 +49,7 @@ from ..meta.persistence.origin.origin_constants import (
 from ..meta.core.relationship.relationship_constants import RELATIONSHIP_ATTR_OBJECT_REF
 from ..meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE
 from ..meta.core.identity.identity_constants import IDENTITY_ATTR_FIELDS
+from ..source import resolved_source
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -62,6 +72,8 @@ def run_validations(
     _validate_datagrid_filter_values(root, errors)
     _validate_origin_paths(root, errors)
     _validate_one_primary_source(root, errors)
+    _validate_field_object_storage(root, errors)
+    _validate_templates(root, errors)
     _validate_subtype_rules(root, errors, warnings)
     _validate_filterable_has_index(root, warnings)
 
@@ -128,11 +140,14 @@ def _effective_schemas(
     common_attrs: list[AttrSchema],
     registry: TypeRegistry,
     errors: list[MetaError],
+    node: MetaData,
 ) -> tuple[list[AttrSchema], dict[str, AttrSchema]]:
     """Compute the effective attr schema for a (type, sub_type).
 
     Per-type attrs win over common attrs of the same name. If any collision
     exists, append a single ERR_PROVIDER_ATTR_CONFLICT for this (type, sub_type).
+    *node* supplies the FR5a envelope for the conflict error (matches C#
+    ValidationPasses.cs:593-596 — ``Envelope: node.Source``).
     """
     per_type_attrs = registry.attrs_of(type_, sub_type)
     per_type_names = {s.name for s in per_type_attrs}
@@ -144,6 +159,7 @@ def _effective_schemas(
                     f"{type_}.{sub_type} has a per-type attr '@{ca.name}' "
                     f"that conflicts with a common attr of the same name",
                     ErrorCode.ERR_PROVIDER_ATTR_CONFLICT,
+                    envelope=node.source,
                 )
             )
             break  # one error per (type, sub_type) is sufficient
@@ -166,7 +182,7 @@ def _validate_attr_schema(
         key = (node.type, node.sub_type)
         cached = schema_cache.get(key)
         if cached is None:
-            cached = _effective_schemas(node.type, node.sub_type, common_attrs, registry, errors)
+            cached = _effective_schemas(node.type, node.sub_type, common_attrs, registry, errors, node)
             schema_cache[key] = cached
         schemas, schema_by_name = cached
 
@@ -184,6 +200,7 @@ def _validate_attr_schema(
                     MetaError(
                         f"{_node_label(node)} is missing required attribute '@{schema.name}'",
                         ErrorCode.ERR_MISSING_REQUIRED_ATTR,
+                        envelope=node.source,
                     )
                 )
 
@@ -207,6 +224,7 @@ def _validate_attr_schema(
                             f"{_node_label(node)} attribute '@{attr_node.name}' has value "
                             f"{raw_value!r} which does not match expected type '{schema.value_type}'",
                             ErrorCode.ERR_BAD_ATTR_VALUE,
+                            envelope=node.source,
                         )
                     )
                     continue  # type wrong — skip allowed_values check
@@ -220,6 +238,7 @@ def _validate_attr_schema(
                             f"{_node_label(node)} attribute '@{attr_node.name}' has value "
                             f"'{raw_value}' which is not one of the allowed values: {allowed_str}",
                             ErrorCode.ERR_BAD_ATTR_VALUE,
+                            envelope=node.source,
                         )
                     )
 
@@ -266,6 +285,7 @@ def _validate_enum_values(
                 MetaError(
                     f"{label} attribute '@{FIELD_ATTR_VALUES}' must not be empty",
                     ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=node.source,
                 )
             )
             continue  # further checks don't apply to empty list
@@ -278,6 +298,7 @@ def _validate_enum_values(
                         f"{label} attribute '@{FIELD_ATTR_VALUES}' member {member!r} "
                         f"is not a valid identifier (must match {ENUM_MEMBER_PATTERN})",
                         ErrorCode.ERR_BAD_ATTR_VALUE,
+                        envelope=node.source,
                     )
                 )
                 break  # one error per field is sufficient
@@ -288,6 +309,7 @@ def _validate_enum_values(
                 MetaError(
                     f"{label} attribute '@{FIELD_ATTR_VALUES}' contains duplicate members",
                     ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=node.source,
                 )
             )
 
@@ -326,6 +348,7 @@ def _validate_datagrid_sort_fields(
                         f"@defaultSortField='{sort_field}' which is not a field on this object "
                         f"(known fields: {sorted(field_names)})",
                         ErrorCode.ERR_BAD_DEFAULT_SORT_FIELD,
+                        envelope=child.source,
                     )
                 )
 
@@ -404,6 +427,7 @@ def _validate_datagrid_filter_values(
                             f"references field '{field_name}' which is not a filterable field "
                             f"on this object",
                             ErrorCode.ERR_BAD_ATTR_FILTER,
+                            envelope=child.source,
                         )
                     )
                     continue
@@ -423,6 +447,7 @@ def _validate_datagrid_filter_values(
                                 f"uses operator '{op}' on field '{field_name}' which is not "
                                 f"allowed for field subtype '{sub}'",
                                 ErrorCode.ERR_BAD_ATTR_FILTER,
+                                envelope=child.source,
                             )
                         )
 
@@ -469,39 +494,53 @@ def _validate_entity_field_ref(
     context: str,
     object_index: dict[str, MetaObject],
     errors: list[MetaError],
+    origin_node: MetaData,
+    referrer: str,
 ) -> bool:
     """Validate a dotted 'Entity.fieldName' reference.
 
     Appends ERR_INVALID_ORIGIN to *errors* if invalid; returns True if valid.
+
     *attr_name* is used only for the error message text; *context* identifies the
-    origin node for diagnostic purposes.
+    origin node for diagnostic purposes; *origin_node* carries the parse-time
+    envelope (files/json_path); *referrer* is the canonical referrer FQN
+    (``<projection-FQN>::<fieldName>``) attached to the FR5d ResolvedSource
+    envelope so consumers know which node declared the broken reference.
     """
     parts = ref.split(".", 1)
     if len(parts) != 2:
+        # Malformed shape — not a reference-resolution failure per se, but TS
+        # emits format=resolved here too (with target=the bad string) so every
+        # FR5d site is shape-consistent across the four ports.
         errors.append(
             MetaError(
                 f"{context} @{attr_name}='{ref}' must be in 'EntityName.fieldName' format",
                 ErrorCode.ERR_INVALID_ORIGIN,
+                envelope=resolved_source(origin_node.source, referrer, ref),
             )
         )
         return False
     entity_name, field_name = parts
     entity = object_index.get(entity_name)
     if entity is None:
+        # FR5d — entity half of the ref didn't resolve. target = full ref.
         errors.append(
             MetaError(
                 f"{context} @{attr_name}='{ref}' references unknown entity '{entity_name}'",
                 ErrorCode.ERR_INVALID_ORIGIN,
+                envelope=resolved_source(origin_node.source, referrer, ref),
             )
         )
         return False
     field_names = {f.name for f in entity.fields()}
     if field_name not in field_names:
+        # FR5d — entity resolved, field on it did not. target = full ref.
         errors.append(
             MetaError(
                 f"{context} @{attr_name}='{ref}' references field '{field_name}' which does "
                 f"not exist on entity '{entity_name}' (known fields: {sorted(field_names)})",
                 ErrorCode.ERR_INVALID_ORIGIN,
+                envelope=resolved_source(origin_node.source, referrer, ref),
             )
         )
         return False
@@ -513,10 +552,20 @@ def _validate_via_path(
     context: str,
     object_index: dict[str, MetaObject],
     errors: list[MetaError],
+    origin_node: MetaData,
+    referrer: str,
 ) -> bool:
     """Validate a dotted relationship path 'Entity.rel1[.rel2...]'.
 
     Returns True if valid; appends ERR_INVALID_ORIGIN and returns False if not.
+
+    *origin_node* carries the parse-time envelope (files/json_path); *referrer*
+    is the canonical referrer FQN (``<projection-FQN>::<fieldName>``) attached
+    to the FR5d ResolvedSource envelope.
+
+    Multi-hop walks track the deepest-valid-prefix and name it in the error
+    message on a hop failure (mirrors TS reference at validation-passes.ts
+    L304-L325).
     """
     segments = via.split(".")
     if len(segments) < 2:
@@ -524,6 +573,7 @@ def _validate_via_path(
             MetaError(
                 f"{context} @via='{via}' must be in 'EntityName.relName[.relName...]' format",
                 ErrorCode.ERR_INVALID_ORIGIN,
+                envelope=resolved_source(origin_node.source, referrer, via),
             )
         )
         return False
@@ -536,20 +586,28 @@ def _validate_via_path(
             MetaError(
                 f"{context} @via='{via}' references unknown entity '{current_name}'",
                 ErrorCode.ERR_INVALID_ORIGIN,
+                envelope=resolved_source(origin_node.source, referrer, via),
             )
         )
         return False
 
-    # Remaining segments: relationship hops
+    # FR5d — track the deepest-valid-prefix as we walk. The prefix starts at
+    # the entity name (resolved above) and grows by one segment per successful
+    # relationship hop. On hop failure the message names the prefix that DID
+    # resolve so authors can fix multi-hop typos quickly.
+    valid_segments: list[str] = [current_name]
     for rel_name in segments[1:]:
         rels = _relationships_by_name(current_entity)
         rel_node = rels.get(rel_name)
         if rel_node is None:
+            prefix = ".".join(valid_segments)
             errors.append(
                 MetaError(
                     f"{context} @via='{via}' — entity '{current_entity.name}' has no "
-                    f"relationship '{rel_name}' (known relationships: {sorted(rels)})",
+                    f"relationship '{rel_name}' (known relationships: {sorted(rels)}). "
+                    f'Deepest valid prefix was "{prefix}".',
                     ErrorCode.ERR_INVALID_ORIGIN,
+                    envelope=resolved_source(origin_node.source, referrer, via),
                 )
             )
             return False
@@ -562,21 +620,26 @@ def _validate_via_path(
                     f"{context} @via='{via}' — relationship '{rel_name}' on entity "
                     f"'{current_entity.name}' has no @objectRef",
                     ErrorCode.ERR_INVALID_ORIGIN,
+                    envelope=resolved_source(origin_node.source, referrer, via),
                 )
             )
             return False
 
         next_entity = object_index.get(obj_ref)
         if next_entity is None:
+            # FR5d — relationship's @objectRef points at a missing entity.
+            # target=the @objectRef value (mirrors TS validation-passes.ts L342-353).
             errors.append(
                 MetaError(
                     f"{context} @via='{via}' — relationship '{rel_name}' on entity "
                     f"'{current_entity.name}' references unknown entity '{obj_ref}'",
                     ErrorCode.ERR_INVALID_ORIGIN,
+                    envelope=resolved_source(origin_node.source, referrer, obj_ref),
                 )
             )
             return False
 
+        valid_segments.append(rel_name)
         current_entity = next_entity
 
     return True
@@ -596,27 +659,42 @@ def _validate_origin_paths(
     for node in _walk(root):
         if node.type != TYPE_FIELD:
             continue
+        # The projection that owns this field. The field walks via _walk so the
+        # field's parent is the containing object (.projection in source-v2).
+        projection = node.parent if hasattr(node, "parent") else None
         for origin in node.children():
             if origin.type != TYPE_ORIGIN:
                 continue
             ctx = f"field '{node.name}' origin.{origin.sub_type}"
+            # FR5d — referrer is `<projection-FQN>::<fieldName>` (the canonical
+            # "where the broken reference lives" identifier). When we cannot
+            # find a projection (defensive), fall back to the field's own FQN.
+            if projection is not None and hasattr(projection, "fqn"):
+                referrer = f"{projection.fqn()}::{node.name}"
+            else:
+                referrer = node.fqn() if hasattr(node, "fqn") else node.name
 
             if origin.sub_type == ORIGIN_SUBTYPE_PASSTHROUGH:
                 from_ref = origin.attr(ORIGIN_ATTR_FROM)
                 if not isinstance(from_ref, str) or not from_ref:
+                    # Missing-attr (not a reference resolution failure) — keep
+                    # the origin node's own source envelope (json/yaml/merged).
+                    # Mirrors TS validation-passes.ts L370-378.
                     errors.append(
                         MetaError(
                             f"{ctx} is missing required attribute '@{ORIGIN_ATTR_FROM}'",
                             ErrorCode.ERR_INVALID_ORIGIN,
+                            envelope=origin.source,
                         )
                     )
                 else:
                     _validate_entity_field_ref(
-                        from_ref, ORIGIN_ATTR_FROM, ctx, object_index, errors
+                        from_ref, ORIGIN_ATTR_FROM, ctx, object_index, errors, origin,
+                        referrer,
                     )
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
-                    _validate_via_path(via, ctx, object_index, errors)
+                    _validate_via_path(via, ctx, object_index, errors, origin, referrer)
 
             elif origin.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
                 of_ref = origin.attr(ORIGIN_ATTR_OF)
@@ -625,11 +703,13 @@ def _validate_origin_paths(
                         MetaError(
                             f"{ctx} is missing required attribute '@{ORIGIN_ATTR_OF}'",
                             ErrorCode.ERR_INVALID_ORIGIN,
+                            envelope=origin.source,
                         )
                     )
                 else:
                     _validate_entity_field_ref(
-                        of_ref, ORIGIN_ATTR_OF, ctx, object_index, errors
+                        of_ref, ORIGIN_ATTR_OF, ctx, object_index, errors, origin,
+                        referrer,
                     )
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if not isinstance(via, str) or not via:
@@ -637,10 +717,11 @@ def _validate_origin_paths(
                         MetaError(
                             f"{ctx} is missing required attribute '@{ORIGIN_ATTR_VIA}'",
                             ErrorCode.ERR_INVALID_ORIGIN,
+                            envelope=origin.source,
                         )
                     )
                 else:
-                    _validate_via_path(via, ctx, object_index, errors)
+                    _validate_via_path(via, ctx, object_index, errors, origin, referrer)
 
 
 # ---------------------------------------------------------------------------
@@ -680,6 +761,7 @@ def _validate_one_primary_source(
                     f"{_node_label(node)} declares {len(sources)} source(s) but "
                     f"none has role '{SOURCE_ROLE_PRIMARY}'",
                     ErrorCode.ERR_SOURCE_NO_PRIMARY,
+                    envelope=node.source,
                 )
             )
         elif primary_count > 1:
@@ -688,6 +770,7 @@ def _validate_one_primary_source(
                     f"{_node_label(node)} declares {primary_count} sources with "
                     f"role '{SOURCE_ROLE_PRIMARY}'; exactly one is required",
                     ErrorCode.ERR_SOURCE_MULTIPLE_PRIMARY,
+                    envelope=node.source,
                 )
             )
 
@@ -725,6 +808,7 @@ def _validate_subtype_rules(
                     MetaError(
                         f"{_node_label(node)} is a value object but declares a primary identity",
                         ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
+                        envelope=node.source,
                     )
                 )
 
@@ -774,3 +858,127 @@ def _validate_filterable_has_index(
                 f"but is not part of any identity. Filtering on this field will sequential-scan. "
                 f"Add @db.indexed: true to the field (when supported), or remove @filterable: true."
             )
+
+
+# ---------------------------------------------------------------------------
+# Pass: field.object @storage validation
+# ---------------------------------------------------------------------------
+# Two cross-port rules:
+#   1. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY (flattened
+#      materialises one-column-per-field; arrays require @storage="jsonb").
+#   2. @storage set without @objectRef → ERR_STORAGE_WITHOUT_OBJECT_REF
+#      (storage shape only applies to referenced objects).
+
+
+def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_FIELD or node.sub_type != FIELD_SUBTYPE_OBJECT:
+            continue
+        storage = node.attr(FIELD_ATTR_STORAGE)
+        if storage is None:
+            continue
+        object_ref = node.attr(FIELD_ATTR_OBJECT_REF)
+        if not (isinstance(object_ref, str) and object_ref):
+            errors.append(MetaError(
+                code=ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF,
+                message=(
+                    f"field.object '{node.name}' has @storage but no @objectRef — "
+                    f"@storage shape only applies to referenced objects"
+                ),
+                envelope=node.source,
+            ))
+            continue
+        if storage == "flattened" and getattr(node, "is_array", False):
+            errors.append(MetaError(
+                code=ErrorCode.ERR_STORAGE_FLATTENED_ARRAY,
+                message=(
+                    f"field.object '{node.name}' @storage=\"flattened\" cannot be combined "
+                    f"with isArray=true (use @storage=\"jsonb\" for owned-array storage)"
+                ),
+                envelope=node.source,
+            ))
+
+
+# ---------------------------------------------------------------------------
+# Pass: template.* validation (FR-004)
+# ---------------------------------------------------------------------------
+# Four cross-port rules:
+#   R1 — template.prompt requires @payloadRef     → ERR_MISSING_REQUIRED_ATTR
+#   R2 — @payloadRef resolves to a root-level object.value → ERR_INVALID_TEMPLATE
+#   R3 — @requiredSlots entries are fields on the payload → ERR_INVALID_TEMPLATE
+#   R4 — @format (if set) is in the closed enum set → ERR_BAD_ATTR_VALUE
+#        (handled by AttrSchema.allowed_values already; included for parity).
+
+
+def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
+    objects_by_name: dict[str, MetaData] = {}
+    for child in root.own_children():
+        if child.type == TYPE_OBJECT:
+            objects_by_name.setdefault(child.name, child)
+
+    for tpl in root.own_children():
+        if tpl.type != TYPE_TEMPLATE:
+            continue
+        is_prompt = tpl.sub_type == tc.TEMPLATE_SUBTYPE_PROMPT
+        payload_ref = tpl.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)
+        has_payload_ref = isinstance(payload_ref, str) and payload_ref
+
+        # R1 — prompt requires @payloadRef
+        if is_prompt and not has_payload_ref:
+            errors.append(MetaError(
+                code=ErrorCode.ERR_MISSING_REQUIRED_ATTR,
+                message=f"template.prompt '{tpl.name}' is missing required @payloadRef",
+                envelope=tpl.source,
+            ))
+            continue
+
+        if not has_payload_ref:
+            continue
+
+        # R2 — @payloadRef must resolve to a root-level object.value
+        # FR5d — @payloadRef is a reference; emit format=resolved with
+        # referrer=template FQN, target=the unresolved payloadRef string.
+        payload = objects_by_name.get(payload_ref)
+        if payload is None or payload.sub_type != OBJECT_SUBTYPE_VALUE:
+            errors.append(MetaError(
+                code=ErrorCode.ERR_INVALID_TEMPLATE,
+                message=(
+                    f"template '{tpl.name}' @payloadRef '{payload_ref}' "
+                    f"does not resolve to an object.value at root"
+                ),
+                envelope=resolved_source(tpl.source, tpl.fqn(), payload_ref),
+            ))
+            continue
+
+        # R3 — required-slots membership
+        if is_prompt:
+            slots_raw = tpl.attr(tc.TEMPLATE_ATTR_REQUIRED_SLOTS)
+            slots = _parse_string_list(slots_raw)
+            if slots:
+                payload_fields = {f.name for f in payload.own_children() if f.type == TYPE_FIELD}
+                for slot in slots:
+                    if slot not in payload_fields:
+                        # FR5d — @requiredSlots is a field-on-payload reference;
+                        # emit format=resolved with target=`payloadRef.slot`
+                        # (the dotted ref that did not resolve to a payload
+                        # field). Mirrors TS validation-passes.ts L122-137.
+                        errors.append(MetaError(
+                            code=ErrorCode.ERR_INVALID_TEMPLATE,
+                            message=(
+                                f"template.prompt '{tpl.name}' @requiredSlots includes '{slot}' "
+                                f"which is not a field on payload '{payload_ref}'"
+                            ),
+                            envelope=resolved_source(
+                                tpl.source, tpl.fqn(), f"{payload_ref}.{slot}",
+                            ),
+                        ))
+
+
+def _parse_string_list(raw: object) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        return tuple(s.strip() for s in raw.split(",") if s.strip())
+    if isinstance(raw, (list, tuple)):
+        return tuple(str(x) for x in raw)
+    return ()

@@ -1,5 +1,15 @@
-[
-  {
-    "code": "ERR_UNKNOWN_SUBTYPE"
-  }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_UNKNOWN_SUBTYPE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.commerce.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[1]['relationship.oneToMany']"
+      }
+    }
+  ],
+  "warnings": []
+}

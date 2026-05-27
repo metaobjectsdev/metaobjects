@@ -1,0 +1,11 @@
+{
+  "trueFlag": true,
+  "falseFlag": false,
+  "nullValue": null,
+  "emptyString": "",
+  "nonEmptyString": "hello",
+  "emptyArray": [],
+  "nonEmptyArray": [{"n": 1}, {"n": 2}],
+  "emptyObject": {},
+  "objectWithName": { "name": "Ada" }
+}

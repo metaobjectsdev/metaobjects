@@ -1,0 +1,5 @@
+{
+  "language": "python",
+  "_comment": "FR5a envelope-shape gate: ledger empty — Python's parser ERR_RESERVED_ATTR site (shared with the JSON path; the YAML desugar lowers to canonical JSON before the parser walks it) now emits the same canonical jsonPath TS does (reconciled 2026-05-26).",
+  "fixtures": []
+}

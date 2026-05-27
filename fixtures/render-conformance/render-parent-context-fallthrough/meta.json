@@ -1,0 +1,1 @@
+{ "format": "text", "note": "name lookup falls through inner section context to enclosing parent context when not found" }

@@ -106,19 +106,53 @@ class KotlinTypeMapperTest {
         assertEquals("date(\"birthday\")", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
-    @Test fun `timestamp field maps to timestampWithTimeZone exposed column`() {
+    @Test fun `timestamp field defaults to plain timestamp exposed column with snake_case column name`() {
+        // Default for field.timestamp is plain `timestamp(...)` (Postgres `timestamp
+        // without time zone` — the more common shape). Column name is snake_case-d.
         val f = TimestampField("createdAt")
-        assertEquals("timestampWithTimeZone(\"createdAt\")", KotlinTypeMapper.exposedColumnSpec(f))
+        assertEquals("timestamp(\"created_at\")", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
+    @Test fun `timestamp field with dbColumnType=timestamp_with_tz emits timestampWithTimeZone`() {
+        // Opt-in: `@dbColumnType=timestamp_with_tz` selects Postgres `timestamp with time zone`.
+        val f = TimestampField("createdAt")
+        f.addMetaAttr(StringAttribute.create("dbColumnType", "timestamp_with_tz"))
+        assertEquals("timestampWithTimeZone(\"created_at\")", KotlinTypeMapper.exposedColumnSpec(f))
+        // And the import switches accordingly.
+        assertEquals(
+            "org.jetbrains.exposed.sql.javatime.timestampWithTimeZone",
+            KotlinTypeMapper.exposedColumnImport(f),
+        )
+    }
+
+    @Test fun `timestamp field default import is plain javatime timestamp`() {
+        val f = TimestampField("createdAt")
+        assertEquals(
+            "org.jetbrains.exposed.sql.javatime.timestamp",
+            KotlinTypeMapper.exposedColumnImport(f),
+        )
+    }
+
+    @Test fun `string field with dbColumnType=uuid emits uuid column instead of varchar`() {
+        // `@dbColumnType=uuid` on a `field.string` selects the native Postgres uuid column
+        // type. Kotlin property type stays `String` (no change to the data class shape;
+        // Exposed coerces String ↔ uuid at the SQL boundary).
+        val f = StringField("userId")
+        f.addMetaAttr(StringAttribute.create("dbColumnType", "uuid"))
+        assertEquals("uuid(\"user_id\")", KotlinTypeMapper.exposedColumnSpec(f))
+        // Kotlin type unchanged — still String.
+        assertEquals(STRING, KotlinTypeMapper.kotlinTypeName(f))
     }
 
     // === Currency / Enum / UUID coverage ===
 
-    @Test fun `currency field maps to Long and long exposed column`() {
+    @Test fun `currency field maps to Long and long exposed column with snake_case name`() {
         val f = CurrencyField("priceCents")
         // Wire/JVM type: Long (integer minor units invariant).
         assertEquals(LONG, KotlinTypeMapper.kotlinTypeName(f))
         // Exposed column reuses long() — same physical storage as LongField.
-        assertEquals("long(\"priceCents\")", KotlinTypeMapper.exposedColumnSpec(f))
+        // Column name snake_case-d for Postgres convention.
+        assertEquals("long(\"price_cents\")", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
     @Test fun `enum field maps to String and varchar(64) exposed column`() {
@@ -181,6 +215,7 @@ class KotlinTypeMapperTest {
         val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
         assertEquals("java.util", tn.packageName)
         assertEquals("UUID", tn.simpleName)
-        assertEquals("uuid(\"externalId\")", KotlinTypeMapper.exposedColumnSpec(f))
+        // Column name snake_case-d for Postgres convention.
+        assertEquals("uuid(\"external_id\")", KotlinTypeMapper.exposedColumnSpec(f))
     }
 }

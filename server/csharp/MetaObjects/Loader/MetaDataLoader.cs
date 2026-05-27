@@ -12,6 +12,7 @@
 // This is a one-shot pipeline: calling Load() again after completion throws.
 
 using MetaObjects.Meta;
+using MetaObjects.Source;
 
 namespace MetaObjects.Loader;
 
@@ -238,10 +239,13 @@ public class MetaDataLoader
             }
             catch (Exception ex)
             {
+                // FR5a / ADR-0009: a read failure has a file but no JSONPath yet.
+                var envelope = new JsonSource(new[] { source.Id }, "$");
                 errors.Add(new MetaError(
                     $"Failed to read source \"{source.Id}\": {ex.Message}",
                     ErrorCode.ERR_UNKNOWN,
-                    source.Id));
+                    source.Id,
+                    Envelope: envelope));
                 continue;
             }
 
@@ -262,7 +266,7 @@ public class MetaDataLoader
             }
             catch (ParseException ex)
             {
-                errors.Add(new MetaError(ex.Message, ex.Code, ex.SourceFile, ex.NodePath));
+                errors.Add(new MetaError(ex.Message, ex.Code, ex.SourceFile, ex.NodePath, ex.Envelope));
             }
         }
 
@@ -273,9 +277,20 @@ public class MetaDataLoader
             var failures = SuperResolve.ResolveDeferredSupers(root);
             foreach (var failure in failures)
             {
+                // FR5d — emit format=resolved with referrer + target. The
+                // referrer's parse-time source supplies files + jsonPath (the
+                // location of the broken `extends:` on disk); referrer = the
+                // declaring node's FQN; target = the unresolved supertype ref.
+                ErrorSource envelope = failure.Node is not null
+                    ? ResolvedSource.From(failure.Node.Source, failure.NodeFqn, failure.Ref)
+                    : new ResolvedSource(
+                        Files: Array.Empty<string>(),
+                        Referrer: failure.NodeFqn,
+                        Target: failure.Ref);
                 errors.Add(new MetaError(
                     $"the SuperClass '{failure.Ref}' does not exist (referenced by {failure.NodeFqn})",
-                    ErrorCode.ERR_UNRESOLVED_SUPER));
+                    ErrorCode.ERR_UNRESOLVED_SUPER,
+                    Envelope: envelope));
             }
 
             // Pass 2: subtype rules (value must not have primary identity; entity should have one)

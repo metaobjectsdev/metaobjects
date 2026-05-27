@@ -1,0 +1,12 @@
+metadata:
+  package: acme
+  children:
+    - object.entity:
+        name: Product
+        children:
+          - field.string:
+              name: sku
+              column: &col sku_code
+          - field.string:
+              name: altSku
+              column: *col

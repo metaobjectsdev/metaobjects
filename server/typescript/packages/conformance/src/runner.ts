@@ -25,11 +25,9 @@ export async function runFixture(
   if (fix.hasExpectedErrors) {
     // Fix 1: use parseExpectedErrors — throws a clear Error on malformed input.
     // Fix 2: wrap the read+parse so a bad file produces a failed check, not a throw.
-    let want: string[] | undefined;
+    let envelope: ReturnType<typeof parseExpectedErrors> | undefined;
     try {
-      want = parseExpectedErrors(await readJson(join(fix.dir, "expected-errors.json")))
-        .map((e) => e.code)
-        .sort();
+      envelope = parseExpectedErrors(await readJson(join(fix.dir, "expected-errors.json")));
     } catch (err) {
       checks.push({
         kind: "expected-errors",
@@ -37,14 +35,98 @@ export async function runFixture(
         detail: `expected-errors.json parse error: ${(err as Error).message}`,
       });
     }
-    if (want !== undefined) {
+    if (envelope !== undefined) {
+      // Always run the order-independent code-set check (legacy semantics).
+      const want = envelope.errors.map((e) => e.code).slice().sort();
       const got = [...outcome.errorCodes].sort();
-      const passed = want.length === got.length && want.every((c, i) => c === got[i]);
+      const codesPassed = want.length === got.length && want.every((c, i) => c === got[i]);
       checks.push({
         kind: "expected-errors",
-        passed,
-        ...(passed ? {} : { detail: `expected [${want}], got [${got}]` }),
+        passed: codesPassed,
+        ...(codesPassed ? {} : { detail: `expected codes [${want}], got [${got}]` }),
       });
+
+      // FR5a / ADR-0009 — when the fixture is in the post-migration envelope
+      // shape AND the adapter exposes envelopes, assert source.format /
+      // source.files / source.jsonPath per-error. Order MUST match because
+      // the cross-port contract is "errors[i] aligns with expected[i]".
+      if (!envelope.legacy && outcome.errors !== undefined) {
+        const expected = envelope.errors;
+        const got = outcome.errors;
+        if (expected.length !== got.length) {
+          checks.push({
+            kind: "expected-errors",
+            passed: false,
+            detail: `envelope length mismatch: expected ${expected.length}, got ${got.length}`,
+          });
+        } else {
+          for (let i = 0; i < expected.length; i++) {
+            const w = expected[i]!;
+            const g = got[i]!;
+            if (w.code !== g.code) {
+              checks.push({
+                kind: "expected-errors",
+                passed: false,
+                detail: `envelope[${i}].code: expected '${w.code}', got '${g.code}'`,
+              });
+              continue;
+            }
+            if (w.source === undefined) continue;
+            if (w.source.format !== g.source.format) {
+              checks.push({
+                kind: "expected-errors",
+                passed: false,
+                detail: `envelope[${i}].source.format: expected '${w.source.format}', got '${g.source.format}'`,
+              });
+            }
+            const wf = [...w.source.files];
+            const gf = [...g.source.files];
+            if (wf.length !== gf.length || !wf.every((f, j) => f === gf[j])) {
+              checks.push({
+                kind: "expected-errors",
+                passed: false,
+                detail: `envelope[${i}].source.files: expected [${wf.join(",")}], got [${gf.join(",")}]`,
+              });
+            }
+            if (w.source.jsonPath !== undefined && w.source.jsonPath !== g.source.jsonPath) {
+              checks.push({
+                kind: "expected-errors",
+                passed: false,
+                detail: `envelope[${i}].source.jsonPath: expected '${w.source.jsonPath}', got '${g.source.jsonPath}'`,
+              });
+            }
+            // FR5d — referrer + target are part of the cross-port contract for
+            // `format=resolved` envelopes. Assert them when present on the
+            // expected entry (the schema enforces both-present when format
+            // is "resolved", so this also catches a port that emitted format
+            // ='resolved' but failed to populate either field).
+            if (w.source.referrer !== undefined && w.source.referrer !== g.source.referrer) {
+              checks.push({
+                kind: "expected-errors",
+                passed: false,
+                detail: `envelope[${i}].source.referrer: expected '${w.source.referrer}', got '${g.source.referrer}'`,
+              });
+            }
+            if (w.source.target !== undefined && w.source.target !== g.source.target) {
+              checks.push({
+                kind: "expected-errors",
+                passed: false,
+                detail: `envelope[${i}].source.target: expected '${w.source.target}', got '${g.source.target}'`,
+              });
+            }
+          }
+        }
+        // warnings — assert length matches (the new envelope always carries
+        // a `warnings` array; FR5a fixtures all have []). Detailed warning
+        // envelope assertion lives in FR5c when WARN_* fixtures land.
+        if (envelope.warnings.length !== outcome.warnings.length) {
+          checks.push({
+            kind: "expected-errors",
+            passed: false,
+            detail: `warnings count: expected ${envelope.warnings.length}, got ${outcome.warnings.length}`,
+          });
+        }
+      }
     }
   }
 

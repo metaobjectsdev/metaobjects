@@ -36,7 +36,7 @@ public class DocumentationMetaDataProvider implements MetaDataTypeProvider {
     public String[] getDependencies() {
         // Depends on core-types because the common-attr registration references
         // StringAttribute.SUBTYPE_STRING (a core type subtype).
-        return new String[]{"core-base-types"};
+        return new String[]{"core-types"};
     }
 
     @Override

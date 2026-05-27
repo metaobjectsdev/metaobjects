@@ -17,6 +17,12 @@ import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.MetaDataSource;
 import com.metaobjects.registry.MetaDataTypeProvider;
+import com.metaobjects.source.CodeSource;
+import com.metaobjects.source.ErrorSource;
+import com.metaobjects.source.JsonSource;
+import com.metaobjects.source.MergedSource;
+import com.metaobjects.source.ResolvedSource;
+import com.metaobjects.source.YamlSource;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -30,7 +36,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -113,14 +118,17 @@ public class ConformanceTest {
             // into per-concern providers (core, fields, attrs, objects, validators,
             // identity, relationships, sources).
             "metaobjects-core-types", List.of(
-                "core-base-types",
+                "core-types",
                 "field-types",
                 "attribute-types",
                 "object-types",
                 "validator-types",
                 "identity-types",
                 "relationship-types",
-                "source-types"
+                "source-types",
+                "view-types",
+                "layout-types",
+                "template-types"
             )
         );
 
@@ -225,9 +233,7 @@ public class ConformanceTest {
         // expected-warnings.json is now supported — the assertion lives below,
         // after the loader has run (so loader.getWarnings() has a value to
         // compare against).
-        if (fix.hasScript) {
-            failures.add("script.json (operation scripts) not supported by Java harness");
-        }
+        // script.json is handled below — after the loader has run.
 
         // -- Load all input files --------------------------------------------
         List<Path> inputFiles = listInputFiles(fix.inputDir);
@@ -245,7 +251,23 @@ public class ConformanceTest {
         MetaDataLoader loader = new MetaDataLoader(opts, MetaDataLoader.SUBTYPE_MANUAL, loaderName);
         loader.init();
 
+        // Per the conformance contract (spec/conformance-tests.md): the sorted
+        // set of error codes from a load attempt MUST equal the expected set.
+        // We collect ALL errors visible after the load — both the ones the
+        // loader RECORDED (via {@link MetaDataLoader#addError}) and the final
+        // thrown one (if any) — so a multi-error fixture is honoured even
+        // though the loader stays eager-throw on the first hard error.
+        //
+        // TS/Python/C# adapters expose a per-load errors collection directly;
+        // Java mirrors that with {@link MetaDataLoader#getErrors()} plus the
+        // thrown exception. Today no Java phase records into getErrors(), so
+        // the practical effect is unchanged on the existing corpus — but the
+        // harness shape is now correct for any future multi-error fixture
+        // (and for any future phase that opts into the record-instead-of-throw
+        // path).
         List<String> errorCodesSeen = new ArrayList<>();
+        List<EnvelopeRecord> envelopesSeen = new ArrayList<>();
+        MetaDataException thrown = null;
         try {
             List<MetaDataSource> sources = new ArrayList<>(inputFiles.size());
             for (Path file : inputFiles) {
@@ -254,7 +276,7 @@ public class ConformanceTest {
             }
             loader.load(sources);
         } catch (MetaDataException ex) {
-            errorCodesSeen.add(extractErrorCode(ex));
+            thrown = ex;
         } catch (IOException ex) {
             failures.add("input read error: " + ex.getMessage());
             return;
@@ -264,23 +286,80 @@ public class ConformanceTest {
                 + ex.getClass().getSimpleName() + ": " + ex.getMessage());
             return;
         }
+        // Drain the loader-level accumulator first (errors recorded BEFORE the
+        // throw, in source order), then append the thrown error if present.
+        for (MetaDataException recorded : loader.getErrors()) {
+            errorCodesSeen.add(extractErrorCode(recorded));
+            envelopesSeen.add(buildEnvelope(recorded, fix.inputDir));
+        }
+        if (thrown != null) {
+            errorCodesSeen.add(extractErrorCode(thrown));
+            envelopesSeen.add(buildEnvelope(thrown, fix.inputDir));
+        }
 
         // -- expected-errors check ------------------------------------------
         if (fix.hasExpectedErrors) {
-            List<String> want;
+            FixtureLint.ExpectedErrorsEnvelope envelope;
             try {
                 JsonElement parsed = JsonParser.parseString(new String(
                     Files.readAllBytes(fix.dir.resolve("expected-errors.json")),
                     StandardCharsets.UTF_8));
-                want = FixtureLint.parseExpectedErrors(parsed);
+                envelope = FixtureLint.parseExpectedErrorsEnvelope(parsed);
             } catch (Exception ex) {
                 failures.add("expected-errors.json parse error: " + ex.getMessage());
                 return;
             }
-            TreeSet<String> wantSet = new TreeSet<>(want);
+            // Code-set check (order-insensitive) — legacy semantics, always run.
+            TreeSet<String> wantSet = new TreeSet<>();
+            for (FixtureLint.ExpectedError e : envelope.errors) wantSet.add(e.code);
             TreeSet<String> gotSet = new TreeSet<>(errorCodesSeen);
             if (!wantSet.equals(gotSet)) {
                 failures.add("expected errors " + wantSet + ", got " + gotSet);
+            }
+            // FR5a — per-error envelope assertion.
+            if (!envelope.legacy) {
+                if (envelope.errors.size() != envelopesSeen.size()) {
+                    failures.add("envelope length mismatch: expected " + envelope.errors.size()
+                        + ", got " + envelopesSeen.size());
+                } else {
+                    for (int i = 0; i < envelope.errors.size(); i++) {
+                        FixtureLint.ExpectedError w = envelope.errors.get(i);
+                        EnvelopeRecord g = envelopesSeen.get(i);
+                        if (!w.code.equals(g.code)) {
+                            failures.add("envelope[" + i + "].code: expected '" + w.code
+                                + "', got '" + g.code + "'");
+                            continue;
+                        }
+                        if (w.source == null) continue;
+                        if (!w.source.format.equals(g.format)) {
+                            failures.add("envelope[" + i + "].source.format: expected '"
+                                + w.source.format + "', got '" + g.format + "'");
+                        }
+                        if (!w.source.files.equals(g.files)) {
+                            failures.add("envelope[" + i + "].source.files: expected "
+                                + w.source.files + ", got " + g.files);
+                        }
+                        if (w.source.jsonPath != null && !w.source.jsonPath.equals(g.jsonPath)) {
+                            failures.add("envelope[" + i + "].source.jsonPath: expected '"
+                                + w.source.jsonPath + "', got '" + g.jsonPath + "'");
+                        }
+                        // FR5d — assert referrer + target for format=resolved envelopes.
+                        if (w.source.referrer != null && !w.source.referrer.equals(g.referrer)) {
+                            failures.add("envelope[" + i + "].source.referrer: expected '"
+                                + w.source.referrer + "', got '" + g.referrer + "'");
+                        }
+                        if (w.source.target != null && !w.source.target.equals(g.target)) {
+                            failures.add("envelope[" + i + "].source.target: expected '"
+                                + w.source.target + "', got '" + g.target + "'");
+                        }
+                    }
+                }
+                // Loader warnings — must match envelope.warningsCount.
+                int gotWarnings = loader.getWarnings().size();
+                if (envelope.warningsCount != gotWarnings) {
+                    failures.add("warnings count: expected " + envelope.warningsCount
+                        + ", got " + gotWarnings);
+                }
             }
             return;
         }
@@ -340,6 +419,18 @@ public class ConformanceTest {
             }
         } else if (fix.hasExpected && !gotWarnings.isEmpty()) {
             failures.add("loader emitted unexpected warnings: " + gotWarnings);
+        }
+
+        // -- script.json check ----------------------------------------------
+        if (fix.hasScript) {
+            try {
+                JsonElement scriptEl = JsonParser.parseString(new String(
+                    Files.readAllBytes(fix.dir.resolve("script.json")),
+                    StandardCharsets.UTF_8));
+                ScriptRunner.run(loader, scriptEl, failures);
+            } catch (Exception ex) {
+                failures.add("script.json parse error: " + ex.getMessage());
+            }
         }
 
         // -- no-expectation safeguard ---------------------------------------
@@ -467,6 +558,73 @@ public class ConformanceTest {
             }
         }
         return Collections.unmodifiableSet(ids);
+    }
+
+    /** Cross-port envelope record for the Java conformance runner. */
+    private static final class EnvelopeRecord {
+        final String code;
+        final String format;
+        final List<String> files;
+        final String jsonPath;
+        // FR5d — populated for format=resolved envelopes; null otherwise.
+        final String referrer;
+        final String target;
+        EnvelopeRecord(String code, String format, List<String> files, String jsonPath,
+                       String referrer, String target) {
+            this.code = code;
+            this.format = format;
+            this.files = files;
+            this.jsonPath = jsonPath;
+            this.referrer = referrer;
+            this.target = target;
+        }
+        EnvelopeRecord(String code, String format, List<String> files, String jsonPath) {
+            this(code, format, files, jsonPath, null, null);
+        }
+    }
+
+    /**
+     * Build the cross-port envelope from a MetaDataException, normalising
+     * file paths to be relative to the fixture's input directory so the
+     * cross-port harness has a portable file token.
+     */
+    private static EnvelopeRecord buildEnvelope(MetaDataException ex, Path inputDir) {
+        String code = extractErrorCode(ex);
+        ErrorSource env = ex.getEnvelope().orElse(null);
+        if (env instanceof JsonSource js) {
+            return new EnvelopeRecord(code, "json", relativizeFiles(js.files(), inputDir), js.jsonPath());
+        }
+        if (env instanceof YamlSource ys) {
+            return new EnvelopeRecord(code, "yaml", relativizeFiles(ys.files(), inputDir), ys.jsonPath());
+        }
+        if (env instanceof MergedSource ms) {
+            return new EnvelopeRecord(code, "merged", relativizeFiles(ms.files(), inputDir), ms.jsonPath());
+        }
+        if (env instanceof ResolvedSource rs) {
+            // FR5d — surface referrer + target so the cross-port runner can assert them.
+            return new EnvelopeRecord(code, "resolved", relativizeFiles(rs.files(), inputDir),
+                rs.jsonPath(), rs.referrer(), rs.target());
+        }
+        if (env instanceof CodeSource) {
+            return new EnvelopeRecord(code, "code", Collections.emptyList(), null);
+        }
+        // No envelope — synthesise a minimal root-of-file shape.
+        return new EnvelopeRecord(code, "json", Collections.emptyList(), "$");
+    }
+
+    private static List<String> relativizeFiles(List<String> files, Path inputDir) {
+        List<String> out = new ArrayList<>(files.size());
+        String inputDirStr = inputDir.toAbsolutePath().toString();
+        for (String f : files) {
+            if (f.startsWith(inputDirStr)) {
+                Path rel = inputDir.toAbsolutePath().relativize(Paths.get(f));
+                out.add(rel.toString().replace('\\', '/'));
+            } else {
+                // Already a basename or a relative path; normalize separators.
+                out.add(f.replace('\\', '/'));
+            }
+        }
+        return out;
     }
 
     /**

@@ -109,18 +109,63 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val tableObjectName = shortName + "Table"
         val tableName = sourceRdb.tableName ?: (shortName.lowercase() + "s")
 
-        val primary = entity.children
-            .filterIsInstance<MetaIdentity>()
+        // Walk the `extends` chain so identities declared on an abstract base
+        // entity (the BaseEntity pattern: `identity.primary` on `id`) are
+        // picked up by tables for concrete entities that extend it. Own-only
+        // collection misses inherited primary identities and the generated
+        // table comes out with no `override val primaryKey = PrimaryKey(...)`
+        // declaration. `getIdentities(true)` returns own + super-chain (with
+        // MetaData's dedupe by type+name letting an own-declared identity
+        // override an inherited one of the same name).
+        val primary = entity.getIdentities(true)
             .firstOrNull { it.isPrimary }
-        val primaryFieldName = primary?.fields?.firstOrNull()
+        // Composite PKs (e.g. a junction table keyed by (userId, roleId)) must
+        // emit `PrimaryKey(userId, roleId)` — earlier code only took the FIRST
+        // field and silently truncated. Every PK-member field is non-nullable
+        // (it's part of the primary key). autoIncrement only applies to the
+        // single-field case; a composite tuple can't be auto-generated, so the
+        // generator falls back to the LLM/DB-side default.
+        val primaryFieldNames = primary?.fields.orEmpty()
+        val primaryFieldSet = primaryFieldNames.toSet()
+        val singlePrimaryFieldName = primaryFieldNames.singleOrNull()
         // Views inherit PKs from underlying tables — never emit autoIncrement on a
         // view column, even when @generation=increment is declared on the primary
         // identity (a relic of the parent entity's declaration).
-        val incrementPk = primary?.isIncrement == true && !isView
+        val incrementPk = primary?.isIncrement == true && !isView && singlePrimaryFieldName != null
 
-        val objectColumns = buildObjectColumns(entity, primaryFieldName, loader)
+        val objectColumns = buildObjectColumns(entity, primaryFieldSet, loader)
         val needsJsonbImport = objectColumns.any { it.kind == ObjectColumnKind.JSONB }
         val needsRefOptForDecor = refDecorations.values.any { it.hasReferenceOption }
+
+        // Walk every field that will actually become a Table column and collect the
+        // imports its column function requires. Member functions on Table (varchar,
+        // integer, long, etc.) return null and are skipped; extension functions from
+        // org.jetbrains.exposed.sql.javatime (date / timestampWithTimeZone / ...)
+        // return their FQN so the generated file imports them. Without this the
+        // generated tables compile-fail with unresolved-reference errors. Flattened
+        // object sub-fields are walked too — they emit columns of their own.
+        val columnFunctionImports = sortedSetOf<String>()
+        for (field in entity.metaFields) {
+            if (field is ObjectField) continue
+            // EnumField uses enumerationByName (a Table member) when generated, regardless
+            // of what the type-mapper would return for a bare column emission — skip it
+            // here so it doesn't accidentally drag in a non-applicable import.
+            if (field is EnumField) continue
+            KotlinTypeMapper.exposedColumnImport(field)?.let { columnFunctionImports += it }
+        }
+        // Flattened object sub-columns also contribute column functions (and thus
+        // potentially imports). Walk the field.object children's referenced object.value
+        // sub-fields the same way buildObjectColumns does.
+        for (field in entity.metaFields) {
+            if (field !is ObjectField) continue
+            if (readStorage(field) != STORAGE_FLATTENED) continue
+            val ref = readObjectRef(field) ?: continue
+            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+            for (subField in target.metaFields) {
+                if (subField is EnumField) continue
+                KotlinTypeMapper.exposedColumnImport(subField)?.let { columnFunctionImports += it }
+            }
+        }
 
         val source = buildString {
             if (pkg.isNotEmpty()) {
@@ -129,6 +174,9 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             append("import org.jetbrains.exposed.sql.Table\n")
             if (fkColumns.any { it.hasReferenceOption } || needsRefOptForDecor) {
                 append("import org.jetbrains.exposed.sql.ReferenceOption\n")
+            }
+            for (imp in columnFunctionImports) {
+                append("import $imp\n")
             }
             if (needsJsonbImport) {
                 append("import org.jetbrains.exposed.sql.json.jsonb\n")
@@ -144,16 +192,18 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 // ObjectField columns are produced by buildObjectColumns() so we can emit
                 // @storage flattened (N columns) or jsonb (1 column) uniformly.
                 if (field is ObjectField) continue
-                val isPk = field.name == primaryFieldName
+                val isPk = field.name in primaryFieldSet
                 val nullable = !isPk && !KotlinGenUtil.isRequiredField(field)
                 val baseSpec = if (field is EnumField) {
                     // field.enum → typed Exposed enumerationByName column referencing the
                     // generated enum class. Length matches the historical VARCHAR fallback
                     // (KotlinTypeMapper.ENUM_VARCHAR_LEN). Same-package class reference, so
-                    // no import is required.
+                    // no import is required. Column name is snake_case-d for Postgres
+                    // convention (matches the StringField/varchar path).
                     val enumName = KotlinTypeMapper.enumTypeName(field, entity)?.simpleName
                         ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
-                    "enumerationByName(\"${field.name}\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $enumName::class)"
+                    val colName = KotlinGenUtil.camelToSnake(field.name)
+                    "enumerationByName(\"$colName\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $enumName::class)"
                 } else {
                     KotlinTypeMapper.exposedColumnSpec(field)
                 }
@@ -176,8 +226,8 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             for (fk in fkColumns) {
                 append("    val ${fk.propertyName} = ${fk.columnExpr}\n")
             }
-            if (primaryFieldName != null) {
-                append("\n    override val primaryKey = PrimaryKey($primaryFieldName)\n")
+            if (primaryFieldNames.isNotEmpty()) {
+                append("\n    override val primaryKey = PrimaryKey(${primaryFieldNames.joinToString(", ")})\n")
             }
             append("}\n")
         }
@@ -215,21 +265,24 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      */
     private fun buildObjectColumns(
         entity: MetaObject,
-        primaryFieldName: String?,
+        primaryFieldNames: Set<String>,
         loader: MetaDataLoader,
     ): List<ObjectColumnSpec> {
         val result = mutableListOf<ObjectColumnSpec>()
         for (field in entity.metaFields) {
             if (field !is ObjectField) continue
             val parentName = field.name
-            val parentNullable = parentName != primaryFieldName && !KotlinGenUtil.isRequiredField(field)
+            val parentNullable = parentName !in primaryFieldNames && !KotlinGenUtil.isRequiredField(field)
             val storage = readStorage(field)        // null → default to jsonb
             if (storage == STORAGE_FLATTENED) {
                 val ref = readObjectRef(field) ?: continue
                 val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
                 for (subField in target.metaFields) {
                     val propertyName = parentName + subField.name.replaceFirstChar { it.uppercase() }
-                    val colName = parentName + "_" + subField.name
+                    // Physical column name: snake-join parent + sub-field, both snake_case-d.
+                    // E.g. parent "homeAddress" + sub "streetLine1" → "home_address_street_line1".
+                    val colName = KotlinGenUtil.camelToSnake(parentName) + "_" +
+                        KotlinGenUtil.camelToSnake(subField.name)
                     val baseSpec = KotlinTypeMapper.exposedColumnSpec(subField, colName)
                     // Sub-column is nullable iff the parent is nullable OR the sub-field itself is.
                     val nullable = parentNullable || !KotlinGenUtil.isRequiredField(subField)
@@ -238,7 +291,9 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 }
             } else {
                 // jsonb (explicit) OR absent (default per CLAUDE.md back-compat rule).
-                val expr = "jsonb(\"$parentName\", { Json.encodeToString(it) }, { Json.decodeFromString(it) })"
+                // Physical column name snake_case-d to match the rest of the column emission.
+                val colName = KotlinGenUtil.camelToSnake(parentName)
+                val expr = "jsonb(\"$colName\", { Json.encodeToString(it) }, { Json.decodeFromString(it) })"
                 val full = if (parentNullable) "$expr.nullable()" else expr
                 result.add(ObjectColumnSpec(parentName, full, ObjectColumnKind.JSONB))
             }
@@ -393,10 +448,11 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val targetTable = PackageMapping.splitFqn(target.name).second + "Table"
         val relShortName = rel.shortName ?: rel.name
         val propertyName = readColumnAttr(rel) ?: (relShortName + "Id")
+        val colName = KotlinGenUtil.camelToSnake(propertyName)
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
-            columnExpr = "long(\"$propertyName\").references($targetTable.id$refSuffix)",
+            columnExpr = "long(\"$colName\").references($targetTable.id$refSuffix)",
             refSuffix = refSuffix,
             declared = true,
             targetTable = targetTable,
@@ -419,10 +475,11 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val ownerShort = PackageMapping.splitFqn(owner.name).second
         val ownerTable = ownerShort + "Table"
         val propertyName = ownerShort.replaceFirstChar { it.lowercaseChar() } + "Id"
+        val colName = KotlinGenUtil.camelToSnake(propertyName)
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
-            columnExpr = "long(\"$propertyName\").references($ownerTable.id$refSuffix)",
+            columnExpr = "long(\"$colName\").references($ownerTable.id$refSuffix)",
             refSuffix = refSuffix,
             declared = false,
             targetTable = ownerTable,

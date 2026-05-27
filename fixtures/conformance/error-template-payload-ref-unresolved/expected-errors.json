@@ -1,3 +1,17 @@
-[
-  { "code": "ERR_INVALID_TEMPLATE" }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_INVALID_TEMPLATE",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.ai.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['template.prompt']",
+        "referrer": "npcTurn",
+        "target": "NpcPromptPayload"
+      }
+    }
+  ],
+  "warnings": []
+}

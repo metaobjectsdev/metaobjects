@@ -1,0 +1,1 @@
+{ "format": "html", "note": "triple-stache {{{x}}} and {{&x}} bypass format escaping; double-stache {{x}} escapes" }

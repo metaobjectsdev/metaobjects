@@ -16,14 +16,46 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [typescript]   # java, python, csharp added as ports land
+        language: [typescript, csharp, java, python]
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install
+
+      - name: Set up Bun (TS)
+        if: matrix.language == 'typescript'
+        uses: oven-sh/setup-bun@v2
+
+      - name: Set up .NET (C#)
+        if: matrix.language == 'csharp'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Set up JDK (Java)
+        if: matrix.language == 'java'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up uv (Python)
+        if: matrix.language == 'python'
+        uses: astral-sh/setup-uv@v3
+
       - name: TypeScript conformance
         if: matrix.language == 'typescript'
-        run: cd server/typescript/packages/metadata && bun test test/conformance.test.ts
+        run: bun install && cd server/typescript/packages/metadata && bun test test/conformance.test.ts test/yaml-conformance.test.ts
+
+      - name: C# conformance
+        if: matrix.language == 'csharp'
+        run: cd server/csharp && dotnet test MetaObjects.Conformance.Tests/MetaObjects.Conformance.Tests.csproj --nologo --verbosity quiet
+
+      - name: Java conformance
+        if: matrix.language == 'java'
+        run: cd server/java && mvn -pl metadata test -Dtest='ConformanceTest,YamlConformanceTest' -q
+
+      - name: Python conformance
+        if: matrix.language == 'python'
+        run: cd server/python && uv run pytest tests/conformance -q
 
   completeness-gate:
     needs: conformance
