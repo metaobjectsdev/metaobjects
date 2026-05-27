@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_MERGE_CONFLICT",
+      "source": {
+        "format": "merged",
+        "files": [
+          "meta.commerce.json",
+          "meta.commerce.overlay.json"
+        ]
+      }
+    }
+  ],
+  "warnings": []
+}
