@@ -116,15 +116,62 @@ export async function runFixture(
             }
           }
         }
-        // warnings — assert length matches (the new envelope always carries
-        // a `warnings` array; FR5a fixtures all have []). Detailed warning
-        // envelope assertion lives in FR5c when WARN_* fixtures land.
-        if (envelope.warnings.length !== outcome.warnings.length) {
+      }
+      // FR5c-finalize — warnings: when the fixture's envelope declares
+      // warning entries with `source`, assert per-warning envelope shape
+      // (same algorithm as errors above). The block lives outside the
+      // `outcome.errors !== undefined` gate so a port that ships
+      // `warningEnvelopes` but not `errors` (rare) still gets the
+      // assertion. When the fixture declares only counts (warnings:
+      // [{code}] without source) or empty `[]`, the length check still
+      // runs; the per-element source assertion is skipped element-by-
+      // element when expected.source is undefined.
+      if (envelope !== undefined && !envelope.legacy) {
+        const expectedW = envelope.warnings;
+        const gotW = outcome.warningEnvelopes;
+        if (expectedW.length !== outcome.warnings.length) {
           checks.push({
-            kind: "expected-errors",
+            kind: "expected-warnings",
             passed: false,
-            detail: `warnings count: expected ${envelope.warnings.length}, got ${outcome.warnings.length}`,
+            detail: `warnings count: expected ${expectedW.length}, got ${outcome.warnings.length}`,
           });
+        } else if (gotW !== undefined && expectedW.length === gotW.length) {
+          for (let i = 0; i < expectedW.length; i++) {
+            const w = expectedW[i]!;
+            const g = gotW[i]!;
+            if (w.code !== g.code) {
+              checks.push({
+                kind: "expected-warnings",
+                passed: false,
+                detail: `warning[${i}].code: expected '${w.code}', got '${g.code}'`,
+              });
+              continue;
+            }
+            if (w.source === undefined) continue;
+            if (w.source.format !== g.source.format) {
+              checks.push({
+                kind: "expected-warnings",
+                passed: false,
+                detail: `warning[${i}].source.format: expected '${w.source.format}', got '${g.source.format}'`,
+              });
+            }
+            const wf = [...w.source.files];
+            const gf = [...g.source.files];
+            if (wf.length !== gf.length || !wf.every((f, j) => f === gf[j])) {
+              checks.push({
+                kind: "expected-warnings",
+                passed: false,
+                detail: `warning[${i}].source.files: expected [${wf.join(",")}], got [${gf.join(",")}]`,
+              });
+            }
+            if (w.source.jsonPath !== undefined && w.source.jsonPath !== g.source.jsonPath) {
+              checks.push({
+                kind: "expected-warnings",
+                passed: false,
+                detail: `warning[${i}].source.jsonPath: expected '${w.source.jsonPath}', got '${g.source.jsonPath}'`,
+              });
+            }
+          }
         }
       }
     }
@@ -218,8 +265,10 @@ export async function runFixture(
           ...(passed ? {} : { detail: `expected [${want}], got [${got}]` }),
         });
       }
-    } else if (fix.hasExpected) {
+    } else if (fix.hasExpected && !fix.hasExpectedErrors) {
       // Happy-path fixture with no expected-warnings.json — assert no warnings.
+      // Skip when the fixture uses expected-errors.json (envelope shape); that
+      // block above already asserted warning count + per-element envelope.
       const passed = outcome.warnings.length === 0;
       if (!passed) {
         checks.push({

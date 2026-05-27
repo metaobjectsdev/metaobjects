@@ -48,6 +48,15 @@ export interface LoadOutcome {
    * shape. When absent, the runner falls back to code-set comparison only.
    */
   readonly errors?: readonly ErrorEnvelopeRecord[];
+  /**
+   * Full warning envelopes (FR5c-finalize). Same shape as `errors` —
+   * `{ code, source: { format, files, jsonPath?, contributors? } }`. When
+   * present AND the fixture's expected-errors.json declares envelope-shape
+   * warnings, the runner asserts per-warning envelope alignment (mirrors the
+   * error-side assertion). When absent, the runner falls back to comparing
+   * `warnings` as a flat string list against expected-warnings.json.
+   */
+  readonly warningEnvelopes?: readonly ErrorEnvelopeRecord[];
 }
 
 export interface ConformanceAdapter {
