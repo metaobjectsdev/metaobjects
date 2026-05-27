@@ -1,0 +1,8 @@
+{
+  "title": "Report",
+  "owner": "Ada",
+  "items": [
+    { "label": "alpha" },
+    { "label": "beta" }
+  ]
+}

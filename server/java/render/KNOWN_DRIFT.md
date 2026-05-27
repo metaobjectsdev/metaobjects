@@ -9,7 +9,7 @@ surprised when reading `RenderCrossPortReportTest` output.
 
 | Fixture | Drift type | Notes |
 |---|---|---|
-| (none) | — | Java's render output is byte-identical to the TS baseline for all 4 fixtures currently in the corpus (render-csv-injection, render-example-email, render-example-prompt, render-example-spreadsheet). |
+| render-standalone-tag-stripping | trailing newline after `{{! comment }}` | Mustache.java does NOT apply the standalone-line whitespace strip rule to comments — it leaves the trailing newline. TS (`mustache.js`), C# (Stubble), and Python (purpose-built interpreter) all strip it. Symptom: one extra blank line after the comment-standalone block. Same fixture's `{{#section}}`, `{{>partial}}`, etc. standalone-strip correctly in Java. |
 
 When you find a drift in `RenderCrossPortReportTest` output:
 1. Decide if it's worth fixing (most aren't — see FR-004 Java spec §6.4).

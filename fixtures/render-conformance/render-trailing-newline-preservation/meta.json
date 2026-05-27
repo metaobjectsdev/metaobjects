@@ -1,0 +1,1 @@
+{ "format": "text", "note": "template ends without trailing newline; expected.txt also has no trailing newline — exact byte-for-byte preservation" }

@@ -1,0 +1,1 @@
+{ "format": "text", "note": "section truthiness — false, null, empty string, empty array are falsy; non-empty arrays iterate; non-empty objects render once" }
