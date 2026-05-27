@@ -2,8 +2,9 @@
 // into one file with the @generated header. ts-poet deduplicates imports.
 //
 // Dispatch:
-//   isProjection(entity)  → renderProjectionDecl (read-only: view declaration + Zod + filter sections)
-//   vanilla / write-through entity → Drizzle table path
+//   isProjection(entity)               → renderProjectionDecl (read-only: view declaration + Zod + filter sections)
+//   !hasWritableRdbSource(entity)      → renderValueObjectFile (in-memory / transit shape: interface + Zod schema)
+//   vanilla / write-through entity     → Drizzle table path
 
 import { joinCode, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
@@ -17,6 +18,8 @@ import { renderFilterType } from "./filter-type.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { renderProjectionDecl } from "./projection-decl.js";
+import { hasWritableRdbSource } from "../source-detect.js";
+import { renderValueObjectFile } from "./value-object-file.js";
 
 /**
  * Render-time options for the entity-file composer.
@@ -49,6 +52,14 @@ export function renderEntityFile(
       dialect: ctx.dialect,
       apiPrefix: ctx.apiPrefix,
     });
+  }
+
+  // --- Value-only path (no writable source.rdb: in-memory / transit shape) ---
+  // No Drizzle table, no migration footprint. Consumers that need to validate
+  // the shape (LLM tool_use input_schema, REST body parsing) use the Zod
+  // schema; consumers that need the type use the interface.
+  if (!hasWritableRdbSource(entity)) {
+    return renderValueObjectFile(entity);
   }
 
   // --- Vanilla / write-through entity path ---

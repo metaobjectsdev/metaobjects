@@ -27,7 +27,7 @@ from ..parser_yaml import parse_yaml
 from ..provider import Provider, compose_registry
 from ..registry import TypeRegistry
 from ..shared.base_types import SUBTYPE_ROOT, TYPE_METADATA
-from ..source import CodeSource, ErrorSource, JsonSource
+from ..source import CodeSource, ErrorSource, JsonSource, LoaderWarning
 from ..super_resolve import resolve_supers
 from .merge import merge_roots
 from .sources import (
@@ -47,6 +47,26 @@ class LoadResult:
     root: MetaData
     errors: list[MetaError] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # FR5c — envelope-shaped warnings (e.g. ``WARN_DUPLICATE_DECLARATION``)
+    # produced during parse / merge. Distinct from the legacy
+    # ``warnings: list[str]`` channel: those flow through the parser /
+    # validator surface as plain strings and get wrapped at the loader
+    # boundary (or surfaced verbatim by the conformance runner for the
+    # expected-warnings.json check); envelope warnings already carry their
+    # own ``code`` + ``source``. Mirrors TS ``LoadResult.warnings`` (whose
+    # singular channel ships ``LoaderWarning`` envelopes after the FR5c
+    # WARN_LEGACY-wrapping pass).
+    envelope_warnings: list[LoaderWarning] = field(default_factory=list)
+
+    def get_envelope_warnings(self) -> list[LoaderWarning]:
+        """FR5c — accessor mirroring TS ``loader.envelopeWarnings`` /
+        Java ``loader.getEnvelopeWarnings()``.
+
+        Returns the in-order list of envelope-shaped warnings (typed with a
+        ``code`` + ``source`` envelope) produced during parse / merge. The
+        legacy string channel (``self.warnings``) is unchanged.
+        """
+        return list(self.envelope_warnings)
 
 
 class MetaDataLoader:
@@ -80,11 +100,25 @@ class MetaDataLoader:
                 continue
             result.errors.extend(parsed.errors)
             result.warnings.extend(parsed.warnings)
+            # FR5c — collect envelope-shaped warnings from each parse pass.
+            # Today these only arrive from merge sites (see merge_roots);
+            # the channel is exposed here for future parser-emitted ones.
+            result.envelope_warnings.extend(parsed.envelope_warnings)
             if not parsed.errors:
                 roots.append(parsed.root)
 
         if roots:
-            result.root = merge_roots(roots, result.errors)
+            # FR5c — merge_roots is the site that emits ERR_MERGE_CONFLICT
+            # into errors and WARN_DUPLICATE_DECLARATION into both channels
+            # (legacy string + envelope) so the conformance runner's
+            # expected-warnings.json check sees the string forms while
+            # downstream tooling can consume the envelope shape.
+            result.root = merge_roots(
+                roots,
+                result.errors,
+                result.warnings,
+                result.envelope_warnings,
+            )
             resolve_supers(result.root, result.errors)
 
         run_validations(result.root, self._registry, result.errors, result.warnings)

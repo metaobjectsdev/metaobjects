@@ -3,7 +3,7 @@ import { TypeId, TYPE_IDENTITY,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_ENUM,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
          MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
-import { meta, metaRoot, metaObject, metaField } from "../_meta-build.js";
+import { meta, metaRoot, metaObject, metaField, attachRdbSource } from "../_meta-build.js";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
@@ -197,6 +197,7 @@ describe("renderEntityFile", () => {
             "object.entity": {
               "name": "User",
               "children": [
+                { "source.rdb": { "@table": "users" } },
                 { "field.long": { "name": "id" } },
                 { "field.string": { "name": "email", "@description": "Primary email address." } },
                 { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
@@ -267,6 +268,7 @@ describe("renderEntityFile", () => {
     // those consumers can omit `runtime-ts` from their deps entirely.
     const root = metaRoot();
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    attachRdbSource(post, "posts");
     const id = metaField(FIELD_SUBTYPE_LONG, "id");
     post.addChild(id);
     const title = metaField(FIELD_SUBTYPE_STRING, "title");
@@ -307,6 +309,7 @@ describe("renderEntityFile", () => {
   test("allowlists default (omitted) preserves back-compat — allowlists ARE emitted", () => {
     const root = metaRoot();
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    attachRdbSource(post, "posts");
     const id = metaField(FIELD_SUBTYPE_LONG, "id");
     post.addChild(id);
     const title = metaField(FIELD_SUBTYPE_STRING, "title");
@@ -336,6 +339,7 @@ describe("renderEntityFile", () => {
   test("emits @generated header + table + types + validators", () => {
     const root = metaRoot();
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    attachRdbSource(post, "posts");
     const id = metaField(FIELD_SUBTYPE_LONG, "id");
     post.addChild(id);
     const title = metaField(FIELD_SUBTYPE_STRING, "title");

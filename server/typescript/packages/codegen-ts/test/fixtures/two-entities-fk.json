@@ -6,6 +6,7 @@
         "object.entity": {
           "name": "User",
           "children": [
+            { "source.rdb": { "@table": "users" } },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "email", "@required": true } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } }
@@ -16,6 +17,7 @@
         "object.entity": {
           "name": "Post",
           "children": [
+            { "source.rdb": { "@table": "posts" } },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "title", "@required": true } },
             { "field.long": { "name": "authorId", "@required": true } },

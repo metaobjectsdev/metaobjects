@@ -1066,6 +1066,167 @@ class KotlinExposedTableGeneratorTest {
         }
     }
 
+    // === identity.secondary coverage =========================================
+
+    /**
+     * `identity.secondary` declares an alternate uniqueness constraint (e.g.
+     * `roles.name UNIQUE`). The generator must emit a matching Exposed
+     * {@code uniqueIndex(...)} call inside an `init { }` block so Exposed-side
+     * query/lookup APIs can see the index. Without this, the DB-level UNIQUE
+     * still enforces the constraint but the Exposed metadata is incomplete and
+     * downstream adopters can't use the index name for refactor / introspection.
+     */
+    @Test fun `identity secondary emits Exposed uniqueIndex`() {
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Role", "children": [
+                { "field.string": { "name": "id",   "@required": true, "@dbColumnType": "uuid" } },
+                { "field.string": { "name": "name", "@required": true, "@maxLength": 64 } },
+                { "source.rdb":   { "@table": "roles" } },
+                { "identity.primary":   { "name": "pk",      "@fields": ["id"] } },
+                { "identity.secondary": { "name": "by_name", "@fields": ["name"] } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-secondary-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("secondary", fx))
+
+            val roleTable = outDir.resolve("acme/demo/RoleTable.kt").toFile()
+            assertTrue(roleTable.exists(),
+                "RoleTable.kt should be generated at $roleTable")
+            val src = roleTable.readText()
+            assertTrue(
+                "uniqueIndex(\"by_name\", name)" in src,
+                "Expected uniqueIndex declaration for identity.secondary 'by_name' — was:\n$src",
+            )
+            // The uniqueIndex call must live inside an init { } block so it runs
+            // when the Table object is initialized.
+            assertTrue(
+                Regex("""init\s*\{[^}]*uniqueIndex\("by_name", name\)""", RegexOption.DOT_MATCHES_ALL).containsMatchIn(src),
+                "uniqueIndex should be inside an init { } block — was:\n$src",
+            )
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Multi-field `identity.secondary` (composite unique key, e.g. (tenantId, slug)
+     * unique within a tenant) emits a single uniqueIndex call with all fields in
+     * declaration order.
+     */
+    @Test fun `composite identity secondary emits multi-column uniqueIndex`() {
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Page", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.string": { "name": "tenantId", "@required": true } },
+                { "field.string": { "name": "slug",     "@required": true } },
+                { "source.rdb":   { "@table": "pages" } },
+                { "identity.primary":   { "name": "pk",            "@fields": ["id"], "@generation": "increment" } },
+                { "identity.secondary": { "name": "by_tenant_slug","@fields": ["tenantId", "slug"] } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-secondary-multi-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("secondary-multi", fx))
+
+            val pageTable = outDir.resolve("acme/demo/PageTable.kt").toFile()
+            assertTrue(pageTable.exists())
+            val src = pageTable.readText()
+            assertTrue(
+                "uniqueIndex(\"by_tenant_slug\", tenantId, slug)" in src,
+                "Expected multi-column uniqueIndex — was:\n$src",
+            )
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Multiple `identity.secondary` declarations on one entity emit multiple
+     * uniqueIndex calls grouped inside a single init { } block.
+     */
+    @Test fun `multiple identity secondary entries share an init block`() {
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "User", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.string": { "name": "email",     "@required": true } },
+                { "field.string": { "name": "username",  "@required": true } },
+                { "source.rdb":   { "@table": "users" } },
+                { "identity.primary":   { "name": "pk",          "@fields": ["id"], "@generation": "increment" } },
+                { "identity.secondary": { "name": "by_email",    "@fields": ["email"] } },
+                { "identity.secondary": { "name": "by_username", "@fields": ["username"] } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-secondary-many-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("secondary-many", fx))
+
+            val userTable = outDir.resolve("acme/demo/UserTable.kt").toFile()
+            assertTrue(userTable.exists())
+            val src = userTable.readText()
+            assertTrue("uniqueIndex(\"by_email\", email)" in src,
+                "Expected by_email uniqueIndex — was:\n$src")
+            assertTrue("uniqueIndex(\"by_username\", username)" in src,
+                "Expected by_username uniqueIndex — was:\n$src")
+            // Exactly one init { } block — both calls share it.
+            val initCount = Regex("""\binit\s*\{""").findAll(src).count()
+            assertTrue(initCount == 1,
+                "Expected exactly 1 init { } block, saw $initCount — was:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Inherited `identity.secondary` (declared on an abstract base entity) must
+     * also be emitted on the concrete child's Table — parity with how
+     * `identity.primary` is walked through {@code getIdentities(true)}.
+     */
+    @Test fun `inherited identity secondary is emitted on child Table`() {
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Named", "abstract": true, "children": [
+                { "field.string": { "name": "id",   "@required": true } },
+                { "field.string": { "name": "name", "@required": true, "@maxLength": 64 } },
+                { "identity.primary":   { "name": "pk",      "@fields": ["id"] } },
+                { "identity.secondary": { "name": "by_name", "@fields": ["name"] } }
+            ] } },
+            { "object.entity": { "name": "Tag", "extends": "acme::demo::Named", "children": [
+                { "source.rdb":   { "@table": "tags" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-secondary-inherit-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("secondary-inherit", fx))
+
+            val tagTable = outDir.resolve("acme/demo/TagTable.kt").toFile()
+            assertTrue(tagTable.exists(),
+                "TagTable.kt should be generated at $tagTable")
+            val src = tagTable.readText()
+            assertTrue(
+                "uniqueIndex(\"by_name\", name)" in src,
+                "TagTable should pick up inherited identity.secondary from Named — was:\n$src",
+            )
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun `inherited identity primary is emitted on child Table`() {
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [

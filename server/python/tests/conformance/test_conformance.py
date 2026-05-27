@@ -108,11 +108,13 @@ def _run_checks(fix: Fixture) -> tuple[bool, str]:
                     f"warnings count: expected {expected_warnings_count}, "
                     f"got {len(warnings)}")
 
-    tree_blocked = bool(codes) and not fix.has_expected_errors and fix.has_expected
-    if tree_blocked:
-        failures.append(f"load produced errors {codes}; cannot run tree checks")
-
-    if fix.has_expected and not tree_blocked:
+    # Tree-check: run whenever expected.json exists, matching the TS reference
+    # runner. A load that produced errors still gets its tree compared —
+    # canonical_serialize emits whatever subtree the loader built before
+    # bailing, and the comparison surfaces real divergence. Fixtures that
+    # legitimately can't produce a tree have no expected.json (they ship
+    # expected-errors.json instead).
+    if fix.has_expected:
         want_tree = json.loads((fix.dir / "expected.json").read_text())
         got_tree = json.loads(canonical)
         if want_tree != got_tree:
@@ -122,7 +124,7 @@ def _run_checks(fix: Fixture) -> tuple[bool, str]:
         want_w = sorted(json.loads((fix.dir / "expected-warnings.json").read_text()))
         if want_w != sorted(warnings):
             failures.append(f"warnings: want {want_w} got {sorted(warnings)}")
-    elif fix.has_expected and not tree_blocked and warnings:
+    elif fix.has_expected and warnings:
         failures.append(f"unexpected warnings: {warnings}")
 
     if fix.has_script:

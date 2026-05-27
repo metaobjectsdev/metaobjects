@@ -162,7 +162,13 @@ public class EntityHasPrimaryIdentityValidationTest extends SharedRegistryTestBa
         // so the second load re-visits it and would re-warn — that is the
         // expected behaviour. The contract is "warnings reflect this batch's
         // validation", and the validation pass IS re-run over the full tree.
-        loader.load(List.of(new InMemoryStringSource(firstBatch, "batch-2.json")));
+        //
+        // FR5c: reuse the SAME source id so the merge-attribution code does
+        // not see a NEW contributor on the second load and emit a
+        // WARN_DUPLICATE_DECLARATION (which would be correct per FR5c
+        // semantics but is orthogonal to this test's intent — verifying that
+        // {@code load()} resets the per-batch warning accumulator).
+        loader.load(List.of(new InMemoryStringSource(firstBatch, "batch-1.json")));
         // Still exactly one warning (one Subscriber, one missing-identity).
         assertEquals(1, loader.getWarnings().size());
     }

@@ -9,9 +9,14 @@ import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.attr.MetaAttribute;
+import com.metaobjects.io.json.CanonicalJsonSerializer;
+import com.metaobjects.source.Contributor;
 import com.metaobjects.source.ErrorSource;
 import com.metaobjects.source.JsonPath;
 import com.metaobjects.source.JsonSource;
+import com.metaobjects.source.LoaderWarning;
+import com.metaobjects.source.MergedSource;
+import com.metaobjects.source.SemanticDiff;
 import com.metaobjects.source.YamlPosition;
 import com.metaobjects.source.YamlSource;
 import com.metaobjects.util.ErrorMessageConstants;
@@ -24,10 +29,15 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Canonical JSON reader for the MetaObjects canonical format.
@@ -162,11 +172,21 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      */
     private void tagNodeWithJsonSource(MetaData node) {
         if (node == null) return;
-        // Skip if a JSON or YAML source is already populated (overlay path);
-        // the merge phase owns transitions to MergedSource. CodeSource.DEFAULT
+        // Skip if a JSON / YAML / Merged source is already populated (overlay
+        // path); the merge phase owns subsequent transitions. CodeSource.DEFAULT
         // (the constructor default) is overwritten on first parse.
+        //
+        // FR5c — MergedSource MUST be preserved here. Once a node has been
+        // upgraded to MergedSource by the merge-attribution code, a subsequent
+        // contributor (third file or later) must not have its source reset
+        // back to a single-file JsonSource — the next attributeMerge() pass
+        // reads the saved {@code preMergeSource} but a no-op (identical
+        // re-declaration) leaves the source untouched, and without this
+        // preservation the upgrade would silently revert.
         ErrorSource existing = node.getSource();
-        if (existing instanceof JsonSource || existing instanceof YamlSource) return;
+        if (existing instanceof JsonSource
+            || existing instanceof YamlSource
+            || existing instanceof MergedSource) return;
         try {
             node.setSource(buildCurrentSourceEnvelope());
         } catch (IllegalStateException frozen) {
@@ -633,6 +653,28 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             return;
         }
 
+        // FR5c — capture pre-merge state BEFORE re-tagging the node's source.
+        // If the existing source is a JsonSource / YamlSource / MergedSource, a
+        // prior file already declared this node and the current file is a
+        // contributor to an overlay merge. We snapshot the pre-merge canonical
+        // shape (for SemanticDiff) and the pre-merge own-attrs map (for
+        // attribute conflict detection) here so the upcoming processAttributes
+        // + processChildrenArray walk does not contaminate the baseline.
+        ErrorSource preMergeSource = md.getSource();
+        boolean isFr5cMergeCandidate = (preMergeSource instanceof JsonSource
+            || preMergeSource instanceof YamlSource
+            || preMergeSource instanceof MergedSource);
+        String preMergeCanonical = null;
+        Map<String, String> preMergeAttrSnapshot = null;
+        if (isFr5cMergeCandidate) {
+            preMergeCanonical = CanonicalJsonSerializer.canonicalSerialize(md);
+            preMergeAttrSnapshot = snapshotOwnAttrs(md);
+            // Detect attr conflicts up-front. The base-parser's parseInlineAttribute
+            // is last-writer-wins (the existing attr child is deleted and replaced),
+            // so we must compare BEFORE that replacement happens.
+            detectAttrMergeConflicts(md, body, preMergeAttrSnapshot, preMergeSource);
+        }
+
         // FR5a / ADR-0009 — tag the node with its JsonSource provenance.
         tagNodeWithJsonSource(md);
 
@@ -675,9 +717,235 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             }
         }
 
+        // FR5c — overlay-merge attribution. When a prior file already declared
+        // this node (isFr5cMergeCandidate), compare pre/post canonical via
+        // SemanticDiff: either upgrade the node's source to MergedSource (real
+        // semantic overlay) or emit WARN_DUPLICATE_DECLARATION (identical
+        // re-declaration). The decision mirrors the TS reference's behaviour
+        // (parser-core.ts parseNodeInto FR5c block).
+        if (isFr5cMergeCandidate) {
+            attributeMerge(md, preMergeSource, preMergeCanonical);
+        }
+
         // Note: per-type content validation (e.g. field.enum @values) now runs in
         // ValidationPhase.run() after all sources are fully loaded — not here.
         // The parser builds the tree; ValidationPhase validates it post-load.
+    }
+
+    /**
+     * FR5c — snapshot a node's own (non-inherited) inline-attribute values
+     * keyed by attribute name. The snapshot is taken BEFORE the new
+     * contribution's attrs land so we can detect cross-file conflicts (same
+     * attr, different non-empty values).
+     *
+     * <p>Values are captured as the attribute's {@code getValueAsString()} —
+     * the same canonical form used when serializing back out. {@code null}
+     * values are omitted (the conflict-detection rule excludes empty/unset).</p>
+     */
+    private static Map<String, String> snapshotOwnAttrs(MetaData node) {
+        Map<String, String> snapshot = new HashMap<>();
+        for (MetaAttribute<?> attr : node.getMetaAttrs(false)) {
+            String value = attr.getValueAsString();
+            if (value != null) {
+                snapshot.put(attr.getName(), value);
+            }
+        }
+        return snapshot;
+    }
+
+    /**
+     * FR5c — detect attribute-level merge conflicts: for every {@code @attr}
+     * key in {@code body}, if {@code preAttrs} already has the same attr with
+     * a different non-empty value, accumulate an {@code ERR_MERGE_CONFLICT}
+     * (envelope {@code format: "merged"}) on the loader's per-load errors
+     * channel.
+     *
+     * <p>Last-writer-wins remains the merge default for non-conflicting cases
+     * (one side unset, same value); the parser proceeds to overwrite via the
+     * existing {@link MetaData#addChild(MetaData)} delete-and-replace path
+     * after this call. The error surfaces the divergence so a consumer can
+     * fix it.</p>
+     *
+     * <p>The mismatched value comparison is registry-relaxed for booleans
+     * (Java boolean attrs serialize as {@code "true"/"false"}; the new value
+     * comes from the JSON as the same form via {@code jsonElementToString}),
+     * so a string-vs-typed compare is sufficient here.</p>
+     */
+    private void detectAttrMergeConflicts(MetaData target, JsonObject body,
+                                           Map<String, String> preAttrs,
+                                           ErrorSource preMergeSource) {
+        if (preAttrs.isEmpty()) return;
+        List<String> existingFiles = filesOf(preMergeSource);
+        String currentFile = getFilename();
+
+        for (Map.Entry<String, JsonElement> entry : body.entrySet()) {
+            String key = entry.getKey();
+            if (!key.startsWith(JSON_ATTR_PREFIX)) continue;
+            if (RESERVED_KEYS.contains(key)) continue;
+            String attrName = key.substring(JSON_ATTR_PREFIX.length());
+            if (RESERVED_KEYS.contains(attrName)) continue;
+
+            String existingVal = preAttrs.get(attrName);
+            if (existingVal == null) continue;
+            if (isEmptyJsonValue(entry.getValue())) continue;
+            if (existingVal.isEmpty()) continue;
+
+            // Normalize the new JSON value to the same comma-delimited form
+            // that {@link MetaAttribute#getValueAsString()} returns for arrays,
+            // so a JSON array (e.g. {@code ["a","b"]}) compares equal to the
+            // stored {@code "a,b"} representation. This matches the base
+            // parser's {@code convertJsonArrayToCommaDelimited} treatment of
+            // array-shaped inline attrs.
+            String newVal = normalizeAttrValueForCompare(entry.getValue());
+            if (newVal == null || newVal.isEmpty()) continue;
+            if (existingVal.equals(newVal)) continue;
+
+            // Real conflict — emit ERR_MERGE_CONFLICT with merged envelope.
+            List<String> allFiles = unionFilesAlphabetical(existingFiles, currentFile);
+            List<Contributor> contributors = buildContributors(allFiles);
+
+            String jsonPath = jsonPathBuilder.toString() + "." + JSON_ATTR_PREFIX + attrName;
+            MergedSource envelope = new MergedSource(allFiles, jsonPath, contributors);
+            String message = "attr '" + JSON_ATTR_PREFIX + attrName + "' conflicts: existing value "
+                + jsonQuote(existingVal) + " differs from new value " + jsonQuote(newVal)
+                + " on " + target.getShortName();
+            getLoader().addError(new MetaDataException(message, ErrorCode.ERR_MERGE_CONFLICT, envelope));
+        }
+    }
+
+    /**
+     * FR5c — post-process merge attribution. Compares pre/post canonical
+     * serialisations of {@code md} (excluding the {@code source} field — see
+     * {@link SemanticDiff}) and either upgrades the node's source to
+     * {@link MergedSource} (real semantic overlay) or emits
+     * {@code WARN_DUPLICATE_DECLARATION} (identical re-declaration).
+     *
+     * <p>The new contributor file is {@link #getFilename()}; the pre-merge
+     * file list comes from {@code preMergeSource.files()}. Both lists are
+     * unioned alphabetically per the cross-port load-order contract.</p>
+     */
+    private void attributeMerge(MetaData md, ErrorSource preMergeSource, String preMergeCanonical) {
+        String postMergeCanonical = CanonicalJsonSerializer.canonicalSerialize(md);
+        boolean changed;
+        if (preMergeCanonical.equals(postMergeCanonical)) {
+            changed = false;
+        } else {
+            JsonElement preEl = JsonParser.parseString(preMergeCanonical);
+            JsonElement postEl = JsonParser.parseString(postMergeCanonical);
+            changed = SemanticDiff.diff(preEl, postEl);
+        }
+
+        List<String> existingFiles = filesOf(preMergeSource);
+        String currentFile = getFilename();
+        boolean newContributor = !existingFiles.contains(currentFile);
+
+        if (changed) {
+            // Real overlay — upgrade source to merged with contributors.
+            List<String> allFiles = unionFilesAlphabetical(existingFiles, currentFile);
+            String jsonPath = jsonPathOf(preMergeSource);
+            try {
+                md.setSource(new MergedSource(allFiles, jsonPath, buildContributors(allFiles)));
+            } catch (IllegalStateException frozen) {
+                log.debug("Node source frozen; cannot upgrade to MergedSource for [{}]", md);
+            }
+        } else if (newContributor && !existingFiles.isEmpty()) {
+            // Identical re-declaration from a different file → warn.
+            List<String> allFiles = unionFilesAlphabetical(existingFiles, currentFile);
+            String jsonPath = jsonPathOf(preMergeSource);
+            MergedSource warnSource = new MergedSource(allFiles, jsonPath, buildContributors(allFiles));
+            String message = "duplicate declaration of " + md.getShortName()
+                + " with no semantic change";
+            getLoader().addEnvelopeWarning(
+                new LoaderWarning("WARN_DUPLICATE_DECLARATION", message, warnSource));
+        }
+    }
+
+    /** FR5c — extract the {@code files} list from an envelope (variant-by-variant). */
+    private static List<String> filesOf(ErrorSource src) {
+        if (src instanceof JsonSource js) return js.files();
+        if (src instanceof YamlSource ys) return ys.files();
+        if (src instanceof MergedSource ms) return ms.files();
+        return Collections.emptyList();
+    }
+
+    /** FR5c — extract the {@code jsonPath} from an envelope (variant-by-variant). */
+    private static String jsonPathOf(ErrorSource src) {
+        if (src instanceof JsonSource js) return js.jsonPath();
+        if (src instanceof YamlSource ys) return ys.jsonPath();
+        if (src instanceof MergedSource ms) return ms.jsonPath();
+        return "$";
+    }
+
+    /**
+     * FR5c — union an existing file list with a new contributor file and
+     * return the alphabetically-sorted, de-duplicated result. The
+     * alphabetical order is the cross-port load-order contract; the dedup
+     * handles the case where the new contributor was already present (e.g.
+     * a fixture's {@code DirectorySource} re-yields the same file id).
+     */
+    private static List<String> unionFilesAlphabetical(List<String> existing, String newFile) {
+        Set<String> deduped = new LinkedHashSet<>(existing);
+        deduped.add(newFile);
+        return new ArrayList<>(new TreeSet<>(deduped));
+    }
+
+    /**
+     * FR5c — build a {@link Contributor} list for an alphabetised file list.
+     * Position 0 is {@code overlay-base}; all subsequent positions are
+     * {@code overlay-extension}. Matches the cross-port role taxonomy in
+     * {@link Contributor}.
+     */
+    private static List<Contributor> buildContributors(List<String> files) {
+        List<Contributor> out = new ArrayList<>(files.size());
+        for (int i = 0; i < files.size(); i++) {
+            out.add(new Contributor(files.get(i), i == 0 ? "overlay-base" : "overlay-extension"));
+        }
+        return out;
+    }
+
+    /**
+     * FR5c — normalize a raw JSON inline-attr value into the same form
+     * {@link MetaAttribute#getValueAsString()} returns when round-tripped
+     * through the base parser. JSON arrays {@code [...]} are converted to
+     * comma-delimited form so {@code ["a","b"]} compares equal to a stored
+     * {@code "a,b"} — matching the base parser's array desugar.
+     */
+    private String normalizeAttrValueForCompare(JsonElement el) {
+        String raw = jsonElementToString(el);
+        if (raw == null) return null;
+        String trimmed = raw.trim();
+        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+            return convertJsonArrayToCommaDelimited(trimmed);
+        }
+        return raw;
+    }
+
+    /** FR5c — empty-value check matching the TS reference. */
+    private static boolean isEmptyJsonValue(JsonElement el) {
+        if (el == null || el.isJsonNull()) return true;
+        if (el.isJsonArray() && el.getAsJsonArray().size() == 0) return true;
+        if (el.isJsonPrimitive() && el.getAsJsonPrimitive().isString()
+            && el.getAsString().isEmpty()) return true;
+        return false;
+    }
+
+    /** Quote a string for embedding in error messages (matches TS JSON.stringify behaviour). */
+    private static String jsonQuote(String s) {
+        StringBuilder sb = new StringBuilder(s.length() + 2);
+        sb.append('"');
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"': sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                default: sb.append(c);
+            }
+        }
+        sb.append('"');
+        return sb.toString();
     }
 
     /**

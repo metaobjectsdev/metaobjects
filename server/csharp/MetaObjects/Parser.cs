@@ -72,10 +72,19 @@ public sealed class ParseOptions(TypeRegistry registry)
 }
 
 /// <summary>The result of a parse run.</summary>
+/// <param name="EnvelopeWarnings">
+/// FR5c — envelope-shaped warnings (e.g. <c>WARN_DUPLICATE_DECLARATION</c>)
+/// produced during the parse/merge pipeline. Distinct from the legacy
+/// <see cref="Warnings"/> string channel: those messages get wrapped in a
+/// <c>WARN_LEGACY</c> envelope at the loader boundary, while envelope warnings
+/// already carry their own code + source and are surfaced unchanged. Defaults
+/// to an empty list when no envelope warnings were emitted.
+/// </param>
 public sealed record ParseResult(
     MetaRoot Root,
     IReadOnlyList<string> Warnings,
-    IReadOnlyList<MetaError> Errors);
+    IReadOnlyList<MetaError> Errors,
+    IReadOnlyList<LoaderWarning>? EnvelopeWarnings = null);
 
 // ---------------------------------------------------------------------------
 // Parser
@@ -152,6 +161,13 @@ public static class Parser
         public required IReadOnlyDictionary<string, YamlPosition>? YamlPositionsByPath { get; init; }
         public List<string> Warnings { get; } = new();
         public List<MetaError> Errors { get; } = new();
+        /// <summary>
+        /// FR5c — envelope-shaped warnings (e.g. <c>WARN_DUPLICATE_DECLARATION</c>)
+        /// emitted during the merge phase. Distinct from the legacy
+        /// <see cref="Warnings"/> string channel: these already carry their own
+        /// code + source.
+        /// </summary>
+        public List<LoaderWarning> EnvelopeWarnings { get; } = new();
         /// <summary>FR5a / ADR-0009 — canonical JSONPath of the currently-walked node.</summary>
         public JsonPathBuilder Builder { get; } = new();
 
@@ -356,7 +372,7 @@ public static class Parser
             string contextPkg = TryGetString(rootData, RESERVED_KEY_PACKAGE)
                 ?? opts.IntoRoot.Package ?? "";
             ParseNodeInto(rootData, opts.IntoRoot, opts.IntoRoot, contextPkg, st);
-            return new ParseResult(opts.IntoRoot, st.Warnings, st.Errors);
+            return new ParseResult(opts.IntoRoot, st.Warnings, st.Errors, st.EnvelopeWarnings);
         }
 
         // --- Fresh root mode: create a new root from the JSON ---
@@ -370,7 +386,7 @@ public static class Parser
             st,
             parentType: null, parent: null);
 
-        return new ParseResult((MetaRoot)root, st.Warnings, st.Errors);
+        return new ParseResult((MetaRoot)root, st.Warnings, st.Errors, st.EnvelopeWarnings);
     }
 
     // -----------------------------------------------------------------------
@@ -501,6 +517,17 @@ public static class Parser
     //
     // Used for intoRoot mode, overlay: true nodes, and the default same-name
     // reuse path. Does NOT re-apply reserved keys.
+    //
+    // FR5c — this is the overlay-merge attribution hub:
+    //   1. Snapshot pre-merge state (canonical shape + own attrs).
+    //   2. Detect per-attr conflicts (same @attr, different non-empty values)
+    //      → emit ERR_MERGE_CONFLICT with a `format: "merged"` envelope.
+    //   3. Run the merge (last-writer-wins overlay semantics).
+    //   4. Compare pre/post canonical (byte-identical → no semantic change,
+    //      since canonicalSerialize sorts attrs / omits source / is deterministic):
+    //        - Changed → upgrade target.Source to MergedSource with contributors[].
+    //        - Unchanged → emit WARN_DUPLICATE_DECLARATION via the envelope-
+    //          warnings channel; target.Source stays unchanged.
     // -----------------------------------------------------------------------
 
     private static void ParseNodeInto(
@@ -510,6 +537,41 @@ public static class Parser
         string inheritedContextPkg,
         ParseState st)
     {
+        // FR5c — capture pre-merge state so we can decide whether this contribution
+        // produced any semantic change. The "new contributor" is the file currently
+        // being parsed (st.Source). The "base contributor" is whichever file(s) the
+        // existing target already records on its source envelope.
+        string newContributorFile = st.Source ?? "<unknown>";
+        bool targetIsRoot = target is MetaRoot && target.Type == TYPE_METADATA;
+        // The root is a synthetic accumulator: it is not a metadata-author node —
+        // every file declares { "metadata.root": ... } and the loader merges into
+        // a single root. We don't run FR5c diagnostics on the root itself; the
+        // merge attribution applies to author-meaningful nodes (object/field/etc).
+        bool fr5cActive = !targetIsRoot && target.Name != "";
+
+        string? preMergeShape = null;
+        Dictionary<string, object?>? preMergeAttrSnapshot = null;
+        if (fr5cActive)
+        {
+            preMergeShape = SerializerJson.CanonicalSerialize(target);
+            // Snapshot of own attrs (name → value) — used to detect ERR_MERGE_CONFLICT
+            // when a new contribution sets an attr the target already declared to a
+            // different non-empty value.
+            preMergeAttrSnapshot = new Dictionary<string, object?>(target.OwnAttrs(), StringComparer.Ordinal);
+        }
+
+        // FR5c — detect attribute-level merge conflicts: for each @-prefixed inline
+        // attr in nodeData, if the target already has an own attr of that name
+        // with a non-empty value, AND the new value differs from the existing
+        // value (both sides non-empty), emit ERR_MERGE_CONFLICT with a
+        // `format: "merged"` envelope. Last-writer-wins is preserved for
+        // non-conflicting cases (one side unset, same value, etc.) — those carry
+        // through to the existing ApplyInlineAttrsAndUnknownKeys logic below.
+        if (fr5cActive && preMergeAttrSnapshot is not null)
+        {
+            DetectAttrMergeConflicts(target, nodeData, preMergeAttrSnapshot, newContributorFile, st);
+        }
+
         // Apply inline attrs (not reserved keys — those stay on the existing model).
         ApplyInlineAttrsAndUnknownKeys(target, nodeData, st);
 
@@ -517,6 +579,207 @@ public static class Parser
         // new JSON's root) — not target.Package, because target is the existing
         // model being merged into.
         ProcessChildren(target, nodeData, accumRoot, inheritedContextPkg, st);
+
+        // FR5c — after merge: compare pre/post shape. If no semantic change → emit
+        // WARN_DUPLICATE_DECLARATION (the new contribution declared the same thing
+        // the target already had). If there was a change → upgrade the target's
+        // source envelope to MergedSource with both contributors listed.
+        if (fr5cActive && preMergeShape is not null)
+        {
+            // Canonical serialization is deterministic: attrs sorted, children
+            // in order, source omitted. Byte-identical pre/post → no semantic
+            // change (matches TS's semanticDiff which is the equivalent check
+            // on the parsed JSON shape).
+            string postMergeShape = SerializerJson.CanonicalSerialize(target);
+            bool changed = !string.Equals(preMergeShape, postMergeShape, StringComparison.Ordinal);
+
+            // Pull the existing contributor file(s) off the target's current source
+            // envelope (set at parse-fresh time or by a previous merge).
+            ErrorSource existing = target.Source;
+            IReadOnlyList<string> existingFiles = existing switch
+            {
+                JsonSource js => js.Files,
+                YamlSource ys => ys.Files,
+                MergedSource ms => ms.Files,
+                _ => Array.Empty<string>(),
+            };
+            string? existingJsonPath = existing switch
+            {
+                JsonSource js => js.JsonPath,
+                YamlSource ys => ys.JsonPath,
+                MergedSource ms => ms.JsonPath,
+                _ => null,
+            };
+
+            if (changed)
+            {
+                // Real overlay — upgrade source to merged with contributors.
+                IReadOnlyList<string> allFiles = SortedUnion(existingFiles, newContributorFile);
+                IReadOnlyList<Contributor> contributors = BuildContributors(allFiles);
+                target.SetSource(new MergedSource(
+                    Files: allFiles,
+                    JsonPath: existingJsonPath ?? st.Builder.ToString(),
+                    Contributors: contributors));
+            }
+            else if (existingFiles.Count > 0 && !existingFiles.Contains(newContributorFile, StringComparer.Ordinal))
+            {
+                // Identical re-declaration from a different file → warn.
+                IReadOnlyList<string> allFiles = SortedUnion(existingFiles, newContributorFile);
+                IReadOnlyList<Contributor> contributors = BuildContributors(allFiles);
+                var warnSource = new MergedSource(
+                    Files: allFiles,
+                    JsonPath: existingJsonPath ?? st.Builder.ToString(),
+                    Contributors: contributors);
+                st.EnvelopeWarnings.Add(new LoaderWarning(
+                    Code: WarningCodes.WARN_DUPLICATE_DECLARATION,
+                    Message: $"duplicate declaration of {target.Name} with no semantic change",
+                    Source: warnSource));
+            }
+        }
+    }
+
+    /// <summary>
+    /// FR5c — alphabetically sort the union of an existing file list and a new
+    /// contributor file (deduplicating). Sort order matches the cross-port
+    /// alphabetical load-order contract from <c>DirectorySource</c>, giving
+    /// deterministic <c>files[]</c> output across ports.
+    /// </summary>
+    private static IReadOnlyList<string> SortedUnion(IReadOnlyList<string> existing, string newFile)
+    {
+        var set = new SortedSet<string>(existing, StringComparer.Ordinal) { newFile };
+        return set.ToList();
+    }
+
+    /// <summary>
+    /// FR5c — build a <see cref="Contributor"/> list from an alphabetically-
+    /// sorted file list. The first file is <c>overlay-base</c>; later files
+    /// are <c>overlay-extension</c>.
+    /// </summary>
+    private static IReadOnlyList<Contributor> BuildContributors(IReadOnlyList<string> sortedFiles)
+    {
+        var list = new List<Contributor>(sortedFiles.Count);
+        for (int i = 0; i < sortedFiles.Count; i++)
+        {
+            list.Add(new Contributor(sortedFiles[i], i == 0 ? "overlay-base" : "overlay-extension"));
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// FR5c — for every @-prefixed inline attr in <paramref name="nodeData"/>,
+    /// check whether the target already declares the same attr (in
+    /// <paramref name="preAttrs"/>) with a different non-empty value. If so,
+    /// emit <see cref="ErrorCode.ERR_MERGE_CONFLICT"/> with a
+    /// <see cref="MergedSource"/> envelope naming both contributors.
+    ///
+    /// <para>
+    /// The merge itself proceeds (existing last-writer-wins) so the loader sees
+    /// one canonical tree; the error surfaces the conflict so a consumer can
+    /// fix the metadata.
+    /// </para>
+    /// </summary>
+    private static void DetectAttrMergeConflicts(
+        MetaData target,
+        JsonElement nodeData,
+        IReadOnlyDictionary<string, object?> preAttrs,
+        string newContributorFile,
+        ParseState st)
+    {
+        IReadOnlyList<string> existingFiles = target.Source switch
+        {
+            JsonSource js => js.Files,
+            YamlSource ys => ys.Files,
+            MergedSource ms => ms.Files,
+            _ => Array.Empty<string>(),
+        };
+
+        foreach (JsonProperty prop in nodeData.EnumerateObject())
+        {
+            string key = prop.Name;
+            if (!key.StartsWith(ATTR_PREFIX, StringComparison.Ordinal)) continue;
+            if (RESERVED_KEYS.Contains(key)) continue;
+            string attrName = key[ATTR_PREFIX.Length..];
+            if (RESERVED_KEYS.Contains(attrName)) continue;
+
+            if (!preAttrs.TryGetValue(attrName, out object? existingVal)) continue;
+
+            object? newValRaw;
+            try
+            {
+                newValRaw = DataConverter.ToAttrValue(prop.Value);
+            }
+            catch (FormatException)
+            {
+                // Conversion failures surface through the regular apply-attrs path;
+                // skip conflict-detection here so we don't double-report.
+                continue;
+            }
+
+            if (IsEmptyAttrValue(newValRaw) || IsEmptyAttrValue(existingVal)) continue;
+            // Both sides set a non-empty value — compare. If equal, last-writer-wins
+            // is a no-op; if different, that's a conflict.
+            if (AttrValuesEqual(existingVal, newValRaw)) continue;
+
+            IReadOnlyList<string> allFiles = SortedUnion(existingFiles, newContributorFile);
+            IReadOnlyList<Contributor> contributors = BuildContributors(allFiles);
+            string jsonPath = $"{st.Builder}.{ATTR_PREFIX}{attrName}";
+            var conflictSource = new MergedSource(
+                Files: allFiles,
+                JsonPath: jsonPath,
+                Contributors: contributors);
+            string msg = $"attr '{ATTR_PREFIX}{attrName}' conflicts: existing value " +
+                $"{FormatAttrForMsg(existingVal)} differs from new value " +
+                $"{FormatAttrForMsg(newValRaw)} on {target.Fqn()}";
+            st.Errors.Add(new MetaError(
+                msg,
+                ErrorCode.ERR_MERGE_CONFLICT,
+                st.Source,
+                jsonPath,
+                conflictSource));
+        }
+    }
+
+    private static bool IsEmptyAttrValue(object? v)
+    {
+        if (v is null) return true;
+        if (v is string s && s == "") return true;
+        if (v is System.Collections.ICollection col && col.Count == 0) return true;
+        return false;
+    }
+
+    private static bool AttrValuesEqual(object? a, object? b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a is null || b is null) return false;
+        // Scalars (string/long/double/bool/decimal/...): default equality is fine.
+        if (a is string sa && b is string sb) return string.Equals(sa, sb, StringComparison.Ordinal);
+        if (a is System.Collections.IList la && b is System.Collections.IList lb)
+        {
+            if (la.Count != lb.Count) return false;
+            for (int i = 0; i < la.Count; i++)
+            {
+                if (!AttrValuesEqual(la[i], lb[i])) return false;
+            }
+            return true;
+        }
+        if (a is System.Collections.IDictionary da && b is System.Collections.IDictionary db)
+        {
+            if (da.Count != db.Count) return false;
+            foreach (object? k in da.Keys)
+            {
+                if (!db.Contains(k)) return false;
+                if (!AttrValuesEqual(da[k], db[k])) return false;
+            }
+            return true;
+        }
+        return a.Equals(b);
+    }
+
+    private static string FormatAttrForMsg(object? v)
+    {
+        if (v is null) return "null";
+        if (v is string s) return $"\"{s}\"";
+        return v.ToString() ?? "null";
     }
 
     // -----------------------------------------------------------------------
