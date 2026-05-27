@@ -1,6 +1,8 @@
 {
   "language": "csharp",
   "_comment": "FR5a envelope-shape gates: TS is the reference port for source.format / source.files / source.jsonPath. C# is now reconciled with TS on the JSON-side FR5a envelopes (parser malformed-JSON catch builds a $-rooted JsonSource with the source-file name; inline-attr loop reports ERR_RESERVED_ATTR / ERR_UNKNOWN_ATTR / ERR_BAD_ATTR_VALUE at the parent's path — not key-deeper). Keep this file as the documented ledger surface.",
-  "_notes": "FR5d (finalized 2026-05-27, all four ports): reference-resolution errors emit format=resolved with referrer + target; the cross-port fixtures now encode the resolved envelope and all four ports load byte-identically. No interim known-gaps.",
-  "fixtures": []
+  "_notes": "FR5c (2026-05-27): ERR_MERGE_CONFLICT now fires when an `overlay: true` reopen sets the same `@attr` to a different non-empty value (cross-port contract per ADR-0009). The `overlay-attr-last-writer-wins` fixture predates FR5c and exercises exactly that case (`@displayName` flips v1→v2 across two files). TS's conformance runner still PASSES this fixture because TS's runner does not gate tree-check on the presence of unexpected errors; C#'s runner DOES gate (matches Java). Listing here documents the cross-port runner-strictness divergence (TS-side runner change is the proper fix; out-of-scope for FR5c port). FR5d (finalized 2026-05-27, all four ports): reference-resolution errors emit format=resolved with referrer + target; the cross-port fixtures now encode the resolved envelope and all four ports load byte-identically.",
+  "fixtures": [
+    "overlay-attr-last-writer-wins"
+  ]
 }
