@@ -1,0 +1,15 @@
+name: filter-eq
+description: >
+  GET /api/authors?filter[name][eq]=Ada%20Lovelace — exact-match filter on a
+  string field returns the single matching row. Verifies the `eq` operator
+  and that the cross-port URL grammar `?filter[<field>][<op>]=<value>` is
+  honored.
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?filter[name][eq]=Ada%20Lovelace
+    expect:
+      status: 200
+      body:
+        ids: [1]
+        length: 1

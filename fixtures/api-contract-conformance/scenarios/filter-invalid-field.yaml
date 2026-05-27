@@ -1,0 +1,13 @@
+name: filter-invalid-field
+description: >
+  GET /api/authors?filter[unknown][eq]=x — the field `unknown` is not on the
+  entity's filter allowlist. The server rejects with HTTP 400 and the
+  cross-port `invalid_filter_field` error envelope.
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?filter[unknown][eq]=x
+    expect:
+      status: 400
+      body:
+        error: "invalid_filter_field"

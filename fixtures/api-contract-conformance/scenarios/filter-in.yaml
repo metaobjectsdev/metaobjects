@@ -1,0 +1,14 @@
+name: filter-in
+description: >
+  GET /api/authors?filter[name][in]=Ada%20Lovelace,Alan%20Turing — `in` takes
+  a comma-separated list and returns rows whose name matches any list
+  member. Two seed rows match (ids 1 and 2).
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?filter[name][in]=Ada%20Lovelace,Alan%20Turing
+    expect:
+      status: 200
+      body:
+        ids: [1, 2]
+        length: 2

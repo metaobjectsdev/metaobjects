@@ -1,0 +1,14 @@
+name: filter-isnull-true
+description: >
+  GET /api/authors?filter[bio][isNull]=true — `isNull=true` returns rows
+  whose `bio` column is SQL NULL. Two seed rows have a null bio (Alan
+  Turing id=2 and Edsger Dijkstra id=5).
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?filter[bio][isNull]=true
+    expect:
+      status: 200
+      body:
+        ids: [2, 5]
+        length: 2

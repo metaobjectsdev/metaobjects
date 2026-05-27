@@ -1,0 +1,14 @@
+name: filter-ne
+description: >
+  GET /api/authors?filter[name][ne]=Ada%20Lovelace — `ne` returns every row
+  whose name is not the supplied value (4 of the 5 seed rows). Default sort
+  is by id ascending, so the result is the seed minus id=1.
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?filter[name][ne]=Ada%20Lovelace
+    expect:
+      status: 200
+      body:
+        ids: [2, 3, 4, 5]
+        length: 4

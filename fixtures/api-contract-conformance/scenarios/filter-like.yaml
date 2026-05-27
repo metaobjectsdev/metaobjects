@@ -1,0 +1,14 @@
+name: filter-like
+description: >
+  GET /api/authors?filter[name][like]=A%25 — `like` uses SQL LIKE semantics
+  with `%` as the wildcard. The pattern `A%` (URL-encoded `A%25`) matches
+  any name starting with `A`: Ada Lovelace (id=1) and Alan Turing (id=2).
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?filter[name][like]=A%25
+    expect:
+      status: 200
+      body:
+        ids: [1, 2]
+        length: 2

@@ -1,0 +1,14 @@
+name: filter-invalid-op
+description: >
+  GET /api/authors?filter[name][gt]=Ada — the `gt` operator is not valid for
+  a string field (`gt` is gated to numeric/date/currency subtypes per the
+  cross-port operator-subtype matrix). The server rejects with HTTP 400 and
+  the cross-port `invalid_filter_op` error envelope.
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?filter[name][gt]=Ada
+    expect:
+      status: 400
+      body:
+        error: "invalid_filter_op"
