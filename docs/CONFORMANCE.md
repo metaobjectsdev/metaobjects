@@ -19,7 +19,7 @@ human-readable explanation somewhere, look it up in the
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | 31 / 31 | 31 / 31 | inherits via Java | 31 / 31 | 31 / 31 |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 4 | 4 / 4 | 4 / 4 | inherits via Java | 4 / 4 | 4 / 4 |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 12 (9 query + 3 migration) | 12 / 12 | 12 / 12 | 12 / 12 (via Exposed) | 12 / 12 | 12 / 12 |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 10 | 10 / 10 (Fastify reference runner) | 10 / 10 (embedded HTTP + JDBC reference runner) | 10 / 10 (embedded HTTP + Exposed reference runner) | 10 / 10 (HttpListener + Npgsql reference runner) | 10 / 10 (FastAPI + pg8000 reference runner) |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 20 | 20 / 20 (Fastify reference runner) | 10 / 20 (embedded HTTP + JDBC reference runner — filter operators deferred, see FR-009) | 10 / 20 (embedded HTTP + Exposed reference runner — filter operators deferred, see FR-009) | 10 / 20 (HttpListener + Npgsql reference runner — filter operators deferred, see FR-009) | 10 / 20 (FastAPI + pg8000 reference runner — filter operators deferred, see FR-009) |
 | `fixtures/codegen-conformance/` (FR-007 — DROPPED in favor of `persistence-conformance` participation) | 0 | n/a | n/a | n/a | n/a | n/a |
 
 Per-port runners + commands:
@@ -79,16 +79,21 @@ All 31 fixtures → [features/migrations-and-drift.md](features/migrations-and-d
 - `migrations/*` (3) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
 - `queries/*` (9) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
-### `fixtures/api-contract-conformance/` (10)
+### `fixtures/api-contract-conformance/` (20)
 
-All 10 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
+All 20 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
 REST API URL grammar + JSON wire format). Verifies every backend's emitted CRUD
 routes answer identically over HTTP — list / get / create / patch+put / delete,
 plus pagination (`limit`/`offset`), sort (`sort=field:dir`), the `withCount=1`
 envelope, the `not_found` / `invalid_sort` error envelopes, and the 201 / 204
-status codes. Filter operators (`eq`/`ne`/...) deferred — backends defer these
-per their `KNOWN_GAPS.md`; conformance for filter operators arrives when the
-operators ship per port.
+status codes.
+
+The corpus also covers the 9 cross-port filter operators (`eq`, `ne`, `gt`,
+`lt`, `in`, `like`, `isNull`, plus the implicit-AND combinator and 2 error
+shapes — `invalid_filter_field` / `invalid_filter_op`) under the URL grammar
+`?filter[<field>][<op>]=<value>` (FR-009). Only TS satisfies these 10 today;
+Java / Kotlin / C# / Python still defer filter operators per their respective
+`KNOWN_GAPS.md` and pick up the new scenarios as each port lands FR-009.
 
 ## Orphaned fixtures (tested but not yet documented)
 

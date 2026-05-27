@@ -28,7 +28,17 @@ fixtures/api-contract-conformance/
     ├── create-201.yaml
     ├── update-patch-and-put.yaml
     ├── delete-204-and-404.yaml
-    └── invalid-sort-400.yaml
+    ├── invalid-sort-400.yaml
+    ├── filter-eq.yaml             # FR-009 filter operators
+    ├── filter-ne.yaml
+    ├── filter-gt.yaml
+    ├── filter-lt.yaml
+    ├── filter-in.yaml
+    ├── filter-like.yaml
+    ├── filter-isnull-true.yaml
+    ├── filter-and.yaml
+    ├── filter-invalid-field.yaml
+    └── filter-invalid-op.yaml
 ```
 
 `meta.json` declares a single canonical `Author` entity in the `acme::blog`
@@ -84,6 +94,34 @@ requests:
 Runners are responsible for normalizing `createdAt` (and any other
 non-deterministic fields) before comparison. The keys listed above are
 the only ones a runner must understand to be conformant.
+
+## Filter operator coverage (FR-009)
+
+The `filter-*` scenarios pin the 9 cross-port filter operators declared in
+[`docs/features/api-contract.md`](../../docs/features/api-contract.md) under
+the URL grammar `?filter[<field>][<op>]=<value>` (with bare `?filter[<field>]=<value>`
+sugar = `eq`). Coverage:
+
+| Scenario | Operator | Path |
+|---|---|---|
+| `filter-eq` | `eq` | `?filter[name][eq]=Ada%20Lovelace` |
+| `filter-ne` | `ne` | `?filter[name][ne]=Ada%20Lovelace` |
+| `filter-gt` | `gt` (numeric) | `?filter[id][gt]=2` |
+| `filter-lt` | `lt` (numeric) | `?filter[id][lt]=3` |
+| `filter-in` | `in` (comma-sep) | `?filter[name][in]=Ada%20Lovelace,Alan%20Turing` |
+| `filter-like` | `like` (SQL `%` wildcard, URL-encoded `%25`) | `?filter[name][like]=A%25` |
+| `filter-isnull-true` | `isNull=true` | `?filter[bio][isNull]=true` |
+| `filter-and` | implicit-AND combinator across multiple `filter[...]` params | `?filter[name][like]=A%25&filter[id][gt]=1` |
+| `filter-invalid-field` | error: unknown field → 400 `{"error":"invalid_filter_field"}` | `?filter[unknown][eq]=x` |
+| `filter-invalid-op` | error: op-subtype mismatch → 400 `{"error":"invalid_filter_op"}` | `?filter[name][gt]=Ada` |
+
+`gte` and `lte` are derivable from `gt`/`lt` + boundary value; the corpus pins
+the 9 listed above to keep the matrix focused. Per the cross-port operator-
+subtype matrix (`docs/features/api-contract.md`):
+
+- **string** subtypes accept `eq`, `ne`, `in`, `like`, `isNull`
+- **numeric / date / timestamp** subtypes accept `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `isNull`
+- **boolean** subtypes accept `eq`, `isNull`
 
 ## How a port's runner works
 
