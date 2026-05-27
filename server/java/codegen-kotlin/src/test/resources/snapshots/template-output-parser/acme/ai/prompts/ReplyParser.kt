@@ -1,7 +1,6 @@
 // GENERATED — DO NOT EDIT — parser for template.output `acme::ai::Reply`
 package acme.ai.prompts
 
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 
 /** Parser for LLM responses matching the `Reply` template.output. */
@@ -12,7 +11,7 @@ object ReplyParser {
     /**
      * Parse an LLM response into a typed [ReplyPayload].
      *
-     * @throws SerializationException when the input is not valid JSON for the payload schema.
+     * @throws kotlinx.serialization.SerializationException when the input is not valid JSON for the payload schema.
      */
     fun parseReply(text: String): ReplyPayload =
         json.decodeFromString<ReplyPayload>(text)

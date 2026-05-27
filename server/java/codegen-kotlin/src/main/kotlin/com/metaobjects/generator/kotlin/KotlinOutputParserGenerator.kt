@@ -51,6 +51,15 @@ import org.slf4j.LoggerFactory
  * (`<entity-pkg>.prompts`) so the payload data class import is implicit
  * (same-package reference).
  *
+ * <p><b>Consumer dependency.</b> The emitted parser file imports from
+ * `kotlinx.serialization.json` and calls `Json.decodeFromString&lt;T&gt;(text)`.
+ * Consumers must add `org.jetbrains.kotlinx:kotlinx-serialization-json` (the
+ * JSON artifact, not just `kotlinx-serialization-core` which is already
+ * needed for `@Serializable`) to their build's runtime classpath, plus the
+ * `kotlin("plugin.serialization")` Gradle plugin to compile the payload
+ * class's `@Serializable` annotation. See `KNOWN_GAPS.md` for the
+ * consumer-wiring contract.
+ *
  * <p>Substrate justification (hand-rolled string builder rather than KotlinPoet):
  * the parser file is ~25 lines of trivial Kotlin with no generic type machinery,
  * so the hand-rolled emit is clearer than the equivalent KotlinPoet dance with
@@ -112,12 +121,9 @@ class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             append("// GENERATED — DO NOT EDIT — parser for template.output `")
             append(template.name)
             append("`\n")
-            if (outPkg.isNotEmpty()) {
-                append("package ")
-                append(outPkg)
-                append("\n\n")
-            }
-            append("import kotlinx.serialization.SerializationException\n")
+            append("package ")
+            append(outPkg)
+            append("\n\n")
             append("import kotlinx.serialization.json.Json\n")
             append("\n")
             append("/** Parser for LLM responses matching the `")
@@ -134,7 +140,7 @@ class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             append(payloadClass)
             append("].\n")
             append("     *\n")
-            append("     * @throws SerializationException when the input is not valid JSON for the payload schema.\n")
+            append("     * @throws kotlinx.serialization.SerializationException when the input is not valid JSON for the payload schema.\n")
             append("     */\n")
             append("    fun ")
             append(parseFn)

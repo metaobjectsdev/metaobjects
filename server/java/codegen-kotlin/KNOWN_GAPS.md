@@ -1,13 +1,39 @@
 # `metaobjects-codegen-kotlin` — known gaps
 
 This document tracks deliberate Day-1 deferrals in the Kotlin codegen target.
-Where a gap is shared with the Java Spring codegen, this file points at
+Several gaps share the same rationale as the Java Spring codegen — those
+sections point at
 [`../codegen-spring/.../KNOWN_GAPS.md`](../codegen-spring/src/main/java/com/metaobjects/generator/spring/KNOWN_GAPS.md)
-for the full rationale rather than repeating it.
+for the full reasoning rather than restating it. The gap itself lives in
+the Kotlin codepath; only the rationale is shared.
+
+## Consumer dependency: `kotlinx-serialization-json` is required for FR-006 output
+
+**Status:** consumer-wired, not a code gap — documented here so adopters know what to add.
+
+`KotlinOutputParserGenerator` emits files that import
+`kotlinx.serialization.json.Json` and call `Json.decodeFromString<T>(text)`.
+The `kotlinx-serialization-core` artifact (already pulled in transitively
+by anything using `@Serializable`) does NOT include the JSON format.
+Consumers using FR-006 output-parser generation must add to their build:
+
+```kotlin
+plugins { kotlin("plugin.serialization") version "1.9.x" }
+dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.x")
+}
+```
+
+`KotlinPayloadGenerator` (which emits the `@Serializable` data class the
+parser returns) needs the same plugin + the `core` artifact. The codegen
+module itself depends only on `kotlinx-serialization-core-jvm` for its own
+tests; **consumer-side wiring is the consumer's responsibility**, in line
+with the cross-port pattern (TS consumers add `zod`; C# uses BCL
+`System.Text.Json` — no add needed there; Python consumers add `pydantic`).
 
 ## Single-field, `Long`-typed primary keys only
 
-**Status:** assumption baked into Day 1.
+**Status:** assumption baked into Day 1 — same rationale as codegen-spring.
 
 `KotlinSpringControllerGenerator` assumes the entity's primary key is a single
 field of type `Long` (the canonical `BaseEntity` convention across the
@@ -15,16 +41,13 @@ shared corpus). Composite primary keys would require a URL grammar for
 composite ids that the cross-port contract has not yet specified. Entities
 with non-`Long` single-field PKs (e.g. `UUID`) will still generate, but the
 `@PathVariable id: Long` typing in the generated controller will need a
-hand-edit until typed-PK threading lands.
-
-**Why deferred:** identical reasoning to codegen-spring — non-`Long` PKs are
-uncommon and composite PKs are rarer still; threading the PK type through
-the generator is a cross-port contract change that should be discussed at
-the FR level first.
+hand-edit until typed-PK threading lands. See the codegen-spring gap doc
+for the cross-port "settle PK URL grammar first" reasoning that gates
+fixing this in both ports together.
 
 ## Single `<Entity>` data-class for request + response
 
-**Status:** intentional Day-1 simplification.
+**Status:** intentional Day-1 simplification — parallel to codegen-spring's combined-DTO choice.
 
 The generated controller uses one `<Entity>` data class for both
 request and response bodies across `POST` / `PATCH` / `PUT`. This differs
@@ -41,22 +64,34 @@ flagging needs metadata-level expression (an `@updateRequired` attr or
 similar) that hasn't been settled cross-port; a follow-up FR can add
 the typed split once the partial-update story converges.
 
-## `EnumField` payloads / Exposed columns emitted as `String`
+## `EnumField` on payload VOs emitted as `String`
 
-**Status:** intentional Day-1 fallback, paired with [`docs/superpowers/specs/2026-05-23-enum-datatype-design.md`](../../../docs/superpowers/specs/2026-05-23-enum-datatype-design.md).
+**Status:** Day-1 fallback on the payload-VO codepath only. Entities and Exposed columns already emit typed enum classes.
 
-[`KotlinTypeMapper.kt:124`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinTypeMapper.kt#L124) emits `field.enum`
-as `String` on the payload side; line 219 emits the same as a `varchar`
-column on the Exposed-table side. Cross-port consistent today — TS emits a
-`z.enum([...])` schema, C# emits `enum` with `HasConversion<string>()`, the
-storage shape is the same `varchar` everywhere — but Kotlin doesn't yet emit
-a native Kotlin `enum class` per `@values` member-set.
+[`KotlinTypeMapper.kt:126`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinTypeMapper.kt#L126)
+maps `EnumField` to `STRING` in `kotlinTypeName(...)`, which is the type
+function `KotlinPayloadGenerator` calls when building each payload-VO
+data-class property. The resulting payload class therefore exposes the
+enum as a `String` — the wire-stable shape for kotlinx.serialization JSON
+output. The deferral comment at lines 123-125 explains the rationale and
+points at the cross-port enum-design spec
+[`docs/superpowers/specs/2026-05-23-enum-datatype-design.md`](../../../docs/superpowers/specs/2026-05-23-enum-datatype-design.md).
 
-**Why deferred:** enum-class emission needs a generator pass that creates
-the `enum class` file (one per declared `field.enum`'s `@values`), wires
-the Exposed `customEnumeration(...)` binding, and threads the typed enum
-through payload + controller. Tracked centrally in the enum-design spec
-linked above; ships cross-port together rather than per-port.
+**What's NOT gappy** (corrects a common misread):
+
+- Entity data classes already emit typed enum classes —
+  [`KotlinEntityGenerator.kt:79`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinEntityGenerator.kt#L79)
+  emits a top-level `@Serializable enum class` per `field.enum` before the
+  data class, and the field is typed as that enum.
+- Exposed table columns already emit typed `enumerationByName(...)` —
+  [`KotlinExposedTableGenerator.kt:229`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinExposedTableGenerator.kt#L229)
+  uses the generated enum class via `KotlinTypeMapper.enumTypeName(field, entity)`.
+
+So the only path still using `String` is the payload-VO. Migrating it to
+the typed enum class is a small generator change — gated on the cross-port
+enum-design spec settling the wire-vs-Kotlin representation question (does
+the JSON wire stay string-valued? Use `@SerialName` per member? Use an
+int-backed `@values` form?).
 
 ## Composite-FK relationships not emitted
 

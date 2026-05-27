@@ -82,9 +82,11 @@ class KotlinOutputParserGeneratorTest {
             assertTrue("fun parseReply(text: String): ReplyPayload" in src, src)
             assertTrue("fun safeParseReply(text: String): Result<ReplyPayload>" in src, src)
 
-            // Imports
+            // Imports — only the Json import is needed; SerializationException
+            // is referenced via FQN in the KDoc so consumers with `-Werror`
+            // don't trip on an unused-import warning.
             assertTrue("import kotlinx.serialization.json.Json" in src, src)
-            assertTrue("import kotlinx.serialization.SerializationException" in src, src)
+            assertTrue("@throws kotlinx.serialization.SerializationException" in src, src)
 
             // Package matches KotlinPayloadGenerator's `<entity-pkg>.prompts` convention.
             assertTrue("package acme.demo.prompts" in src, src)
