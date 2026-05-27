@@ -162,16 +162,127 @@ forthcoming), so any future port automatically inherits the contract.
 ## When to write a provider vs. inline metadata
 
 Use a provider when the new vocabulary applies across **multiple** metadata
-files or **multiple** projects, and the semantics belong in the metamodel:
-
-- ✅ `template.toolcall` (LLM tool-call envelope) — applies to any template
-  that drives an LLM with structured-output tooling.
-- ✅ `field.slug` (URL-safe opaque short identifier) — applies to any entity
-  whose primary key is a generated slug.
-- ✅ Cross-cutting attrs like `@audit-trail: true` on `field.*`.
-
+files or **multiple** projects, and the semantics belong in the metamodel.
 Don't write a provider for one-shot project-specific data — that's what
 authored YAML / JSON metadata is for.
+
+## When to add a subtype vs. an attr vs. an abstract
+
+A provider can shape the metamodel three ways. Pick the lightest mechanism
+that fits — every new subtype is a new line item in the cross-port registry,
+in conformance tests, and in every consumer's mental model.
+
+### Default: extend an existing subtype with attrs (`registry.extend`)
+
+If the new concept is structurally identical to an existing subtype and only
+adds configuration, **extend the existing subtype with new attrs**. No new
+node class, no new cross-port mapping, no new childRules.
+
+Example — an LLM tool-call envelope is structurally identical to
+`template.output` (both have a typed payload + a rendered template + a
+parser). What makes it a *tool-call* is the configuration: the tool name,
+the retry-with-reminder string, the optional fallback shape. Express it as:
+
+```ts
+registry.extend(TYPE_TEMPLATE, "output", {
+  attributes: [
+    { name: "toolName",      valueType: ATTR_SUBTYPE_STRING, required: false },
+    { name: "retryReminder", valueType: ATTR_SUBTYPE_STRING, required: false },
+    { name: "fallback",      valueType: ATTR_SUBTYPE_OBJECT, required: false },
+  ],
+});
+```
+
+YAML authors then write `template.output:` with `@toolName: emit_x`. The
+custom generator scans `template.output` nodes and branches on
+`node.hasAttr("toolName")` to decide whether to emit a tool-call wrapper.
+**Same end result, zero new metamodel surface.**
+
+### When abstracts shine: reusable constraint sets via `extends`
+
+If multiple metadata instances need the **same shape of constraints** that
+should change together, declare an **abstract** instance and have concrete
+fields reference it via `extends`. No provider code, no new subtype — just
+authored metadata that other authored metadata inherits from.
+
+`abstract` and `extends` are **structural keys** (bare, no `@` prefix) —
+the same machinery that powers
+[`entities.md § extends for shared abstract bases`](entities.md#extends-for-shared-abstract-bases).
+The loader resolves `extends:` after all files load, so the abstract can
+live in any file in the corpus.
+
+Example — a short opaque slug identifier (URL-safe, fixed length, restricted
+alphabet) that may appear on multiple entities:
+
+```yaml
+# metaobjects/abstracts/meta-slug-fields.yaml
+metadata:
+  package: yourpkg
+  children:
+    - field.string:
+        name: shortSlug
+        abstract: true
+        "@maxLength": 8
+        children:
+          - validator.regex:
+              "@pattern": "^[A-Z2-9]{8}$"
+          - validator.required: {}
+```
+
+```yaml
+# meta-council.yaml
+- field.string:
+    name: id
+    extends: shortSlug
+```
+
+Codegen propagates the regex into the Drizzle CHECK constraint and the Zod
+validator automatically. Change the alphabet in `shortSlug` once; every
+field that extends it updates. **Zero new metamodel surface, zero
+provider code.**
+
+See [`abstracts-and-inheritance.md`](abstracts-and-inheritance.md) for the
+full author-side reference (multi-level chains, cross-file resolution,
+overlay semantics, common patterns).
+
+### Escalate to a new subtype only when…
+
+…at least one of these is true:
+
+- **Different runtime node class** (`factory: ...` returns a different
+  subclass of `MetaData`). Example: `source.rdb` registers a `MetaSource`
+  with `isWritable()` / `tableName` methods that other source kinds wouldn't
+  share.
+- **Different `childRules`** that can't be expressed as additional attrs.
+  Example: `field.enum` requires an `enum.values` attr and a constrained set
+  of child types that plain `field.string` doesn't.
+- **The semantic concept is so universal it deserves a name in the closed
+  core vocabulary.** Example: `source.rdb` is a persistence-paradigm split —
+  there will eventually be `source.kv`, `source.graph`, etc., and they all
+  need first-class subtype identity for cross-port codegen routing.
+
+If the only argument for a new subtype is "the name reads nicer," add an
+attr instead. A subtype is a permanent commitment in every port's registry;
+an attr is a one-line additive change.
+
+### Decision table
+
+| You want to add… | Mechanism | Why |
+|---|---|---|
+| A configuration knob on an existing concept (e.g., `@toolName` on outputs) | **`registry.extend` + attr** | No structural change; just configuration |
+| A reusable shape that multiple fields share (e.g., slug constraint) | **Abstract + `extends`** | Per-instance inheritance, no metamodel growth |
+| A new persistence paradigm or rendering kind | **`registry.register` + subtype** | Genuine structural divergence; new factory/childRules |
+| A cross-cutting attribute on all fields (e.g., `@audit-trail`) | **`registry.extend` on each `field.*`** | Same attr, broadcast across an existing closed set |
+
+### Why this hierarchy matters
+
+Every new subtype is a contract that all five ports must understand. A
+new attr is just a config knob the existing nodes already accept. An
+abstract is pure data the loader resolves at parse time. The marginal cost
+goes up sharply at each step: **attr (cheap) < abstract (free) < subtype
+(expensive)**. Defaulting to subtypes inflates the metamodel without
+adding power; defaulting to attrs keeps the vocabulary narrow and the
+configuration rich.
 
 ## Cross-port parity status (as of 0.7.0-rc.3)
 

@@ -25,7 +25,8 @@ docs/
 │   ├── loaders.md
 │   ├── migrations-and-drift.md
 │   ├── api-contract.md          # cross-port REST contract (the universal browser client speaks it)
-│   ├── extending-with-providers.md  # custom metamodel subtypes via MetaDataTypeProvider
+│   ├── abstracts-and-inheritance.md # abstract: true + extends: — author-side shape reuse
+│   ├── extending-with-providers.md  # custom metamodel subtypes/attrs via MetaDataTypeProvider
 │   └── yaml-authoring.md
 └── ports/                       # one file per language/framework port
     ├── typescript.md
@@ -45,7 +46,8 @@ docs/
 | Compare what TS vs Java vs Kotlin vs C# vs Python emit for the same metadata | any [`features/*.md`](features/) — every feature shows all five ports side-by-side |
 | Author metadata in YAML instead of JSON | [`features/yaml-authoring.md`](features/yaml-authoring.md) |
 | Wire prompt construction (FR-004) | [`features/templates-and-payloads.md`](features/templates-and-payloads.md) |
-| Add a custom metamodel subtype to a downstream project | [`features/extending-with-providers.md`](features/extending-with-providers.md) + [`recipes/extending-metaobjects-with-providers.md`](recipes/extending-metaobjects-with-providers.md) |
+| Share a metadata shape across multiple instances (abstracts, `extends:`) | [`features/abstracts-and-inheritance.md`](features/abstracts-and-inheritance.md) |
+| Add a custom metamodel subtype or attribute to a downstream project | [`features/extending-with-providers.md`](features/extending-with-providers.md) + [`recipes/extending-metaobjects-with-providers.md`](recipes/extending-metaobjects-with-providers.md) |
 | Wire the universal browser client (React + TanStack) to any backend | [`ports/typescript-client.md`](ports/typescript-client.md) + [`features/api-contract.md`](features/api-contract.md) |
 | Know which feature is supported in which port today | the capability matrix in the root [`README.md`](../README.md) or the per-port "Capability snapshot" table |
 | See which conformance fixtures gate each feature (and which port passes which) | [`CONFORMANCE.md`](CONFORMANCE.md) |
