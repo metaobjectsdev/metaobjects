@@ -56,6 +56,12 @@ from .shared.structural import (
     KEY_PACKAGE,
     KEY_VALUE,
 )
+from .source import YamlPosition
+from .source.yaml_positions import (
+    YamlPositionMap,
+    get_position_map,
+    set_position_map,
+)
 
 ARRAY_SUFFIX = "[]"
 
@@ -131,6 +137,11 @@ def _desugar_node(
         return None
     raw_body = input_obj[raw_key]
 
+    # FR5b - capture the wrapper-level position-by-key map BEFORE re-keying.
+    # The author's raw key (with `[]` suffix and possibly omitted subType) is
+    # the lookup key; the desugar's canonical key is what we emit.
+    wrapper_positions = get_position_map(input_obj)
+
     # Rule 4: a trailing "[]" on the key -> isArray.
     key = raw_key
     is_array = False
@@ -141,8 +152,17 @@ def _desugar_node(
     # Rule 1: a bare `type` key -> the type's registry default subType.
     canonical_key = _resolve_key(key, registry, errors, path)
 
+    # FR5b - position of the wrapper key (the `field.string:` line). Used to
+    # back-fill `yaml_position` on synthesized bodies (Rule 2 scalar lift) and
+    # on the canonical wrapper after Rule 1 / Rule 4 rewrites.
+    wrapper_key_pos = (
+        wrapper_positions.get(raw_key) if wrapper_positions is not None else None
+    )
+
     # Rule 2: a scalar body -> { name: <scalar> }.
-    body = _desugar_body(raw_body, registry, canonical_key, errors, path)
+    body = _desugar_body(
+        raw_body, registry, canonical_key, errors, path, wrapper_key_pos,
+    )
 
     # Rule 4 (cont.): stamp isArray onto the canonical body.
     if is_array:
@@ -161,7 +181,14 @@ def _desugar_node(
         body[KEY_CHILDREN] = children
     # A non-list `children` value is left untouched - parse_document reports it.
 
-    return {canonical_key: body}
+    # FR5b - emit a wrapper-level position-by-key map for the canonical wrapper
+    # so parse_document's per-child iteration can read the position via the
+    # same lookup it uses for JSON input. The single key transformation is
+    # raw_key -> canonical_key (Rule 1 fuses the subType, Rule 4 strips `[]`).
+    out_wrapper = YamlPositionMap({canonical_key: body})
+    if wrapper_key_pos is not None:
+        set_position_map(out_wrapper, {canonical_key: wrapper_key_pos})
+    return out_wrapper
 
 
 def _resolve_key(
@@ -191,6 +218,7 @@ def _desugar_body(
     canonical_key: str,
     errors: list[CollectedError],
     path: str,
+    wrapper_key_pos: YamlPosition | None = None,
 ) -> dict[str, Any]:
     """Rule 2 + 5 - normalize a node body into a canonical mapping.
 
@@ -204,31 +232,54 @@ def _desugar_body(
     value's type was silently coerced by YAML 1.2 to something incompatible
     (e.g. a `bool` for a `string`-declared attr), an ERR_YAML_COERCION is
     collected.
+
+    FR5b — *wrapper_key_pos* is the YAML position of the wrapper key (the
+    ``field.string:`` line) used to back-fill ``yaml_position`` on synthesized
+    bodies (Rule 2 scalar lift). Reserved structural keys keep their bare
+    form and carry their own positions from the source body's position map;
+    sigil-free attrs (Rule 5) re-key the position map across the ``@``-prefix
+    rewrite.
     """
     if isinstance(raw_body, str) or isinstance(raw_body, bool) or (
         isinstance(raw_body, (int, float)) and not isinstance(raw_body, bool)
     ):
-        return {KEY_NAME: raw_body}
+        # FR5b - the synthesized `{ name: rawBody }` has no YAML-side
+        # counterpart; we attribute the `name` slot to the wrapper-key's
+        # position (the only YAML position that meaningfully belongs to
+        # this synthesis).
+        out_scalar = YamlPositionMap({KEY_NAME: raw_body})
+        if wrapper_key_pos is not None:
+            set_position_map(out_scalar, {KEY_NAME: wrapper_key_pos})
+        return out_scalar
     if raw_body is None:
         # An empty body (`field.string:` with nothing after) -> an empty node.
-        return {}
+        # No body keys to position; the wrapper carries the node's position.
+        return YamlPositionMap()
     if isinstance(raw_body, list):
         errors.append(CollectedError(
             message=f"Node body at {path} must be a scalar or mapping, not a list",
         ))
-        return {}
+        return YamlPositionMap()
     if not isinstance(raw_body, dict):
         # Catch-all for non-dict, non-scalar shapes (e.g. tuples).
         errors.append(CollectedError(
             message=f"Node body at {path} must be a scalar or mapping",
         ))
-        return {}
+        return YamlPositionMap()
 
     # A mapping - shallow-copy so isArray / children replacement do not mutate
     # the caller's parsed-YAML object, AND apply Rule 5 (sigil-free attrs) +
     # Rule D2 (type-coercion guard).
-    out: dict[str, Any] = {}
+    out = YamlPositionMap()
     schema_index = _attr_schema_index(registry, canonical_key)
+    # FR5b - translate the body's position-by-key map across the sigil-free
+    # rewrite. A bare `filterable` key in the source maps to `@filterable`
+    # in the canonical body; the YAML position belongs to BOTH names (the
+    # YAML author only wrote one). We re-key the position map to match
+    # the canonical body's keys so parse_document's per-attr inspection
+    # can find the position via the canonical key.
+    src_positions = get_position_map(raw_body)
+    out_positions: dict[str, YamlPosition] = {}
     for key, value in raw_body.items():
         if not isinstance(key, str):
             errors.append(CollectedError(
@@ -241,15 +292,24 @@ def _desugar_body(
 
         if key in RESERVED_KEYS or key.startswith(ATTR_PREFIX):
             out[key] = value
+            out_key = key
             # D2 also applies to author-written @-keys (the awkward form).
             if key.startswith(ATTR_PREFIX):
                 attr_name = key[len(ATTR_PREFIX):]
                 if attr_name and attr_name not in RESERVED_KEYS:
                     _check_coercion(attr_name, value, schema_index, errors, path)
         else:
-            out[f"{ATTR_PREFIX}{key}"] = value
+            out_key = f"{ATTR_PREFIX}{key}"
+            out[out_key] = value
             _check_coercion(key, value, schema_index, errors, path)
 
+        if src_positions is not None:
+            pos = src_positions.get(key)
+            if pos is not None:
+                out_positions[out_key] = pos
+
+    if out_positions:
+        set_position_map(out, out_positions)
     return out
 
 

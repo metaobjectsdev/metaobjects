@@ -38,6 +38,14 @@ class ErrorSource:
 
 
 @dataclass(frozen=True)
+class YamlPosition:
+    """Optional YAML line/col source position (FR5b). 1-based."""
+
+    line: int
+    col: int
+
+
+@dataclass(frozen=True)
 class JsonSource(ErrorSource):
     """Authoring-time: single JSON file (FR5a).
 
@@ -46,10 +54,18 @@ class JsonSource(ErrorSource):
             invariant guarantees exactly one file — multi-file provenance lives
             on :class:`MergedSource` (FR5c). Enforced at construction.
         json_path: Canonical JSONPath string for the node within ``files[0]``.
+        yaml_position: FR5b — optional YAML line/col position. Populated by
+            the YAML loader when the JSON document was authored as YAML; for
+            cross-port-safety, the envelope's ``format`` discriminator stays
+            ``"json"`` (so the yaml-conformance fixtures stay byte-stable
+            until all four ports ship FR5b and the discriminator flips to
+            ``"yaml"``). See TS reference (server/typescript/packages/metadata/
+            src/source.ts) for the rationale.
     """
 
     files: tuple[str, ...]
     json_path: str
+    yaml_position: Optional[YamlPosition] = None
     format: ClassVar[str] = "json"
 
     def __post_init__(self) -> None:
@@ -61,14 +77,6 @@ class JsonSource(ErrorSource):
                 f"JsonSource requires exactly one file path; got {len(self.files)}. "
                 "Use MergedSource for multi-file provenance."
             )
-
-
-@dataclass(frozen=True)
-class YamlPosition:
-    """Optional YAML line/col source position (FR5b). 1-based."""
-
-    line: int
-    col: int
 
 
 @dataclass(frozen=True)
