@@ -1,10 +1,5 @@
 {
   "language": "python",
-  "_comment": "FR5a envelope-shape gate: Python's emitted source field differs from TS (the FR5a reference port) for these YAML fixtures. The code-set check still runs; only the full-envelope assertion is skipped. Each entry MUST be accompanied by the drift summary below. Reconcile per the FR5a follow-up — make Python's error-construction sites emit the same canonical jsonPath TS does.",
-  "fixtures": [
-    "error-yaml-reserved-as-attr"
-  ],
-  "_drifts": {
-    "error-yaml-reserved-as-attr": "Python threads source one level deeper, to the offending @attr; TS stops at the parent object.entity."
-  }
+  "_comment": "FR5a envelope-shape gate: ledger empty — Python's parser ERR_RESERVED_ATTR site (shared with the JSON path; the YAML desugar lowers to canonical JSON before the parser walks it) now emits the same canonical jsonPath TS does (reconciled 2026-05-26).",
+  "fixtures": []
 }

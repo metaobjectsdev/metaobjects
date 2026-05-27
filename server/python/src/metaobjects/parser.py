@@ -159,8 +159,11 @@ def _build(
             attr_name = key[len(ATTR_PREFIX):]
             # ADR-0007: @-prefixing a reserved structural body key is invalid.
             # Detected inline as each @-attr key is processed (matches TS parser-core).
+            # FR5a: emit the envelope at the PARENT body level (do NOT push the
+            # offending @-key onto the path) — matches TS parser-core which calls
+            # errSource() without descending into the @-key. Pushing would emit
+            # a deeper jsonPath than the reference port.
             if attr_name in _RESERVED_STRUCTURAL_KEYS:
-                builder.push_key(key)
                 result.errors.append(
                     MetaError(
                         f"node '{wrapper}' uses reserved structural key '{attr_name}' "
@@ -170,7 +173,6 @@ def _build(
                         envelope=_current_envelope(source, builder),
                     )
                 )
-                builder.pop()
                 continue
             schema = registry.attr_schema(type_, sub_type, attr_name)
             node.set_attr(attr_name, value, sub_type=schema.value_type if schema else None)
