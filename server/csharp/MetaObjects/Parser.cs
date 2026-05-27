@@ -19,6 +19,7 @@
 // (TYPE_ATTR / TYPE_FIELD / TYPE_OBJECT / TYPE_VALIDATOR).
 
 using System.Text.Json;
+using MetaObjects.Loader;
 using MetaObjects.Meta;
 using MetaObjects.Source;
 
@@ -54,6 +55,20 @@ public sealed class ParseOptions(TypeRegistry registry)
     /// after all input files are parsed.
     /// </summary>
     public bool DeferSuperResolution { get; init; }
+
+    /// <summary>
+    /// FR5b — source-format discriminant. Default <see cref="MetaDataFormat.Json"/>;
+    /// <see cref="ParserYaml.ParseYaml"/> sets this to <see cref="MetaDataFormat.Yaml"/>
+    /// so the parser stamps <c>yamlPosition</c> on <c>source</c> envelopes when
+    /// <see cref="YamlPositionsByPath"/> has a position for the current canonical JSONPath.
+    /// </summary>
+    public MetaDataFormat SourceFormat { get; init; } = MetaDataFormat.Json;
+
+    /// <summary>
+    /// FR5b — flat JSONPath-keyed map of YAML positions, populated by ParserYaml
+    /// from the desugar's per-node position maps. Null when parsing JSON.
+    /// </summary>
+    public IReadOnlyDictionary<string, YamlPosition>? YamlPositionsByPath { get; init; }
 }
 
 /// <summary>The result of a parse run.</summary>
@@ -131,6 +146,10 @@ public static class Parser
         public required bool Strict { get; init; }
         public required string? Source { get; init; }
         public required bool DeferSuperResolution { get; init; }
+        /// <summary>FR5b — source-format discriminant (set from <see cref="ParseOptions"/>).</summary>
+        public required MetaDataFormat SourceFormat { get; init; }
+        /// <summary>FR5b — JSONPath-keyed YAML position lookup (set when parsing YAML input).</summary>
+        public required IReadOnlyDictionary<string, YamlPosition>? YamlPositionsByPath { get; init; }
         public List<string> Warnings { get; } = new();
         public List<MetaError> Errors { get; } = new();
         /// <summary>FR5a / ADR-0009 — canonical JSONPath of the currently-walked node.</summary>
@@ -143,11 +162,29 @@ public static class Parser
         /// — emitting a JsonSource with an empty file list would violate the
         /// FR5a length-1 invariant and produce an envelope shape no other port
         /// emits. Matches the TS reference (parser-core.ts:104-114).
+        ///
+        /// <para>
+        /// FR5b — when the source is a YAML input and a position is known for
+        /// the current JSONPath, the envelope carries an optional
+        /// <see cref="YamlPosition"/>. Format stays <c>"json"</c> for cross-port
+        /// parity (the yaml-conformance fixtures' format discriminator is
+        /// frozen at <c>"json"</c> until all four ports ship FR5b — see
+        /// <see cref="JsonSource"/>'s XML-doc).
+        /// </para>
         /// </summary>
-        public ErrorSource CurrentSource() =>
-            Source is null
-                ? CodeSource.Default
-                : new JsonSource(new[] { Source }, Builder.ToString());
+        public ErrorSource CurrentSource()
+        {
+            if (Source is null) return CodeSource.Default;
+            string path = Builder.ToString();
+            YamlPosition? pos = null;
+            if (SourceFormat == MetaDataFormat.Yaml &&
+                YamlPositionsByPath is not null &&
+                YamlPositionsByPath.TryGetValue(path, out YamlPosition? found))
+            {
+                pos = found;
+            }
+            return new JsonSource(new[] { Source }, path, pos);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -239,6 +276,8 @@ public static class Parser
             Strict = opts.Strict,
             Source = opts.SourceName,
             DeferSuperResolution = opts.DeferSuperResolution,
+            SourceFormat = opts.SourceFormat,
+            YamlPositionsByPath = opts.YamlPositionsByPath,
         };
 
         if (parsed.ValueKind != JsonValueKind.Object)
