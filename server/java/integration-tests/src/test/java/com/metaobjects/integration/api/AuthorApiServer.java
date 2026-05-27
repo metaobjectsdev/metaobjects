@@ -48,6 +48,28 @@ final class AuthorApiServer implements AutoCloseable {
     // Mirrors the TS server's SORT_ALLOWLIST; cross-port contract.
     private static final Set<String> SORT_ALLOWLIST = Set.of("id", "name", "createdAt");
 
+    // Cross-port FILTER_ALLOWLIST — mirrors the TS api-contract-server. Per
+    // FR-009 §5 the operator set per field is gated by its subtype:
+    //   string                     → eq, ne, in, like, isNull
+    //   number / date / timestamp  → eq, ne, gt, gte, lt, lte, in, isNull
+    //   boolean                    → eq, isNull
+    private record FilterRule(String subType, Set<String> ops) {}
+    private static final Map<String, FilterRule> FILTER_ALLOWLIST = Map.of(
+        "id",        new FilterRule("number",   Set.of("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull")),
+        "name",      new FilterRule("string",   Set.of("eq", "ne", "in", "like", "isNull")),
+        "bio",       new FilterRule("string",   Set.of("eq", "ne", "in", "like", "isNull")),
+        "createdAt", new FilterRule("datetime", Set.of("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"))
+    );
+
+    /** A single parsed predicate: field, op, coerced value object. */
+    private record FilterPredicate(String field, String op, Object value) {}
+
+    /** Result of parsing filter params: either predicates or an error envelope key. */
+    private record FilterResult(List<FilterPredicate> predicates, String error) {
+        static FilterResult ok(List<FilterPredicate> ps) { return new FilterResult(ps, null); }
+        static FilterResult err(String e) { return new FilterResult(List.of(), e); }
+    }
+
     private final PostgresContainer pg;
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpServer httpServer;
@@ -178,22 +200,46 @@ final class AuthorApiServer implements AutoCloseable {
         if (offset == null) offset = 0L;
         boolean withCount = "1".equals(qs.get("withCount")) || "true".equals(qs.get("withCount"));
 
+        // Parse filter[<field>][<op>]=<value> from the raw query string. Returns
+        // an error envelope key (invalid_filter_field / invalid_filter_op /
+        // invalid_filter_value) → 400, or a list of validated + coerced predicates.
+        String rawQuery = exchange.getRequestURI().getRawQuery();
+        FilterResult filter = parseFilter(rawQuery == null ? "" : rawQuery);
+        if (filter.error() != null) {
+            sendJson(exchange, 400, Map.of("error", filter.error()));
+            return;
+        }
+
+        // Build WHERE clause from predicates. Parameters are bound positionally
+        // via a PreparedStatement so SQL injection isn't a concern even though
+        // the field/op tokens come from the URL — both are validated against
+        // FILTER_ALLOWLIST before reaching here.
+        List<Object> bindParams = new ArrayList<>();
+        String whereClause = buildWhere(filter.predicates(), bindParams);
+
         StringBuilder sql = new StringBuilder("SELECT id, name, bio, \"createdAt\" FROM \"authors\"");
+        sql.append(whereClause);
         sql.append(" ORDER BY \"").append(sortField).append("\" ").append(sortDir);
         if (limit != null) sql.append(" LIMIT ").append(limit);
         sql.append(" OFFSET ").append(offset);
 
         List<Map<String, Object>> rows = new ArrayList<>();
-        try (Connection c = connect(); Statement st = c.createStatement(); ResultSet rs = st.executeQuery(sql.toString())) {
-            while (rs.next()) rows.add(rowToMap(rs));
+        try (Connection c = connect(); PreparedStatement ps = c.prepareStatement(sql.toString())) {
+            bindAll(ps, bindParams);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) rows.add(rowToMap(rs));
+            }
         }
 
         if (withCount) {
             long total;
-            try (Connection c = connect(); Statement st = c.createStatement();
-                 ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM \"authors\"")) {
-                rs.next();
-                total = rs.getLong(1);
+            String countSql = "SELECT COUNT(*) FROM \"authors\"" + whereClause;
+            try (Connection c = connect(); PreparedStatement ps = c.prepareStatement(countSql)) {
+                bindAll(ps, bindParams);
+                try (ResultSet rs = ps.executeQuery()) {
+                    rs.next();
+                    total = rs.getLong(1);
+                }
             }
             Map<String, Object> envelope = new LinkedHashMap<>();
             envelope.put("rows", rows);
@@ -202,6 +248,140 @@ final class AuthorApiServer implements AutoCloseable {
         } else {
             sendJson(exchange, 200, rows);
         }
+    }
+
+    /**
+     * Parse the bracketed-qs filter grammar {@code filter[<field>][<op>]=<value>}
+     * (and the {@code filter[<field>]=<value>} sugar form for {@code eq}) from a
+     * raw URL query string. Validates each entry against {@link #FILTER_ALLOWLIST}
+     * and coerces the value to the field's substrate type.
+     *
+     * <p>Returns {@code FilterResult.err(envelope)} on the first failure (unknown
+     * field / disallowed op / invalid value coercion) so the controller can emit
+     * the cross-port 400 envelope without partial-progress side-effects.</p>
+     */
+    private static FilterResult parseFilter(String rawQuery) {
+        if (rawQuery.isEmpty()) return FilterResult.ok(List.of());
+        List<FilterPredicate> out = new ArrayList<>();
+        for (String pair : rawQuery.split("&")) {
+            if (pair.isEmpty()) continue;
+            int eq = pair.indexOf('=');
+            String rawKey = eq < 0 ? pair : pair.substring(0, eq);
+            String rawValue = eq < 0 ? "" : pair.substring(eq + 1);
+            String key = URLDecoder.decode(rawKey, StandardCharsets.UTF_8);
+            String value = URLDecoder.decode(rawValue, StandardCharsets.UTF_8);
+            if (!key.startsWith("filter[")) continue;
+            // Match filter[field] or filter[field][op]; bracket payload is opaque (no
+            // nested brackets in the spec).
+            int firstClose = key.indexOf(']', 7);
+            if (firstClose < 0) continue;
+            String field = key.substring(7, firstClose);
+            String op;
+            int rest = firstClose + 1;
+            if (rest >= key.length()) {
+                op = "eq";
+            } else if (key.charAt(rest) == '[') {
+                int secondClose = key.indexOf(']', rest + 1);
+                if (secondClose < 0) continue;
+                op = key.substring(rest + 1, secondClose);
+            } else {
+                continue;
+            }
+            FilterRule rule = FILTER_ALLOWLIST.get(field);
+            if (rule == null) return FilterResult.err("invalid_filter_field");
+            if (!rule.ops().contains(op)) return FilterResult.err("invalid_filter_op");
+            Object coerced = coerceValue(value, rule.subType(), op);
+            if (coerced == INVALID_VALUE) return FilterResult.err("invalid_filter_value");
+            out.add(new FilterPredicate(field, op, coerced));
+        }
+        return FilterResult.ok(out);
+    }
+
+    private static final Object INVALID_VALUE = new Object();
+
+    /** Coerce a raw URL-decoded string into a JDBC-bindable value for {@code op}. */
+    private static Object coerceValue(String raw, String subType, String op) {
+        if (op.equals("isNull")) {
+            if (raw.equals("true")) return Boolean.TRUE;
+            if (raw.equals("false")) return Boolean.FALSE;
+            return INVALID_VALUE;
+        }
+        if (op.equals("in")) {
+            String[] parts = raw.split(",");
+            List<Object> list = new ArrayList<>(parts.length);
+            for (String p : parts) {
+                Object v = coerceScalar(p.trim(), subType);
+                if (v == INVALID_VALUE) return INVALID_VALUE;
+                list.add(v);
+            }
+            return list;
+        }
+        return coerceScalar(raw, subType);
+    }
+
+    /** Coerce a single value (non-list, non-isNull) into a JDBC-bindable. */
+    private static Object coerceScalar(String raw, String subType) {
+        switch (subType) {
+            case "string": return raw;
+            case "datetime":
+                try { return Timestamp.valueOf(parseTimestamp(raw)); }
+                catch (Exception e) { return INVALID_VALUE; }
+            case "boolean":
+                if (raw.equals("true")) return Boolean.TRUE;
+                if (raw.equals("false")) return Boolean.FALSE;
+                return INVALID_VALUE;
+            case "number":
+                try { return Long.parseLong(raw); }
+                catch (NumberFormatException e) { return INVALID_VALUE; }
+            default: return INVALID_VALUE;
+        }
+    }
+
+    /**
+     * Append a {@code " WHERE ..."} clause built from {@code predicates} (or
+     * an empty string when the list is empty), pushing each bind value onto
+     * {@code bindParams} in positional order. Multiple predicates AND together.
+     */
+    private static String buildWhere(List<FilterPredicate> predicates, List<Object> bindParams) {
+        if (predicates.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder(" WHERE ");
+        boolean first = true;
+        for (FilterPredicate p : predicates) {
+            if (!first) sb.append(" AND ");
+            first = false;
+            String col = "\"" + p.field() + "\"";
+            switch (p.op()) {
+                case "eq"  -> { sb.append(col).append(" = ?");  bindParams.add(p.value()); }
+                case "ne"  -> { sb.append(col).append(" <> ?"); bindParams.add(p.value()); }
+                case "gt"  -> { sb.append(col).append(" > ?");  bindParams.add(p.value()); }
+                case "gte" -> { sb.append(col).append(" >= ?"); bindParams.add(p.value()); }
+                case "lt"  -> { sb.append(col).append(" < ?");  bindParams.add(p.value()); }
+                case "lte" -> { sb.append(col).append(" <= ?"); bindParams.add(p.value()); }
+                case "like" -> { sb.append(col).append(" LIKE ?"); bindParams.add(p.value()); }
+                case "isNull" -> {
+                    if (Boolean.TRUE.equals(p.value())) sb.append(col).append(" IS NULL");
+                    else sb.append(col).append(" IS NOT NULL");
+                }
+                case "in" -> {
+                    @SuppressWarnings("unchecked")
+                    List<Object> items = (List<Object>) p.value();
+                    sb.append(col).append(" IN (");
+                    for (int i = 0; i < items.size(); i++) {
+                        if (i > 0) sb.append(", ");
+                        sb.append('?');
+                        bindParams.add(items.get(i));
+                    }
+                    sb.append(')');
+                }
+                default -> throw new IllegalStateException("unknown filter op: " + p.op());
+            }
+        }
+        return sb.toString();
+    }
+
+    /** Bind each value positionally; lets the JDBC driver pick the right type. */
+    private static void bindAll(PreparedStatement ps, List<Object> values) throws SQLException {
+        for (int i = 0; i < values.size(); i++) ps.setObject(i + 1, values.get(i));
     }
 
     private void getAuthor(HttpExchange exchange, String idStr) throws IOException, SQLException {
