@@ -117,8 +117,16 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // declaration. `getIdentities(true)` returns own + super-chain (with
         // MetaData's dedupe by type+name letting an own-declared identity
         // override an inherited one of the same name).
-        val primary = entity.getIdentities(true)
-            .firstOrNull { it.isPrimary }
+        val allIdentities = entity.getIdentities(true)
+        val primary = allIdentities.firstOrNull { it.isPrimary }
+        // Secondary identities → Exposed `uniqueIndex(name, col1, ...)` calls.
+        // Views inherit uniqueness from their underlying tables; never emit
+        // uniqueIndex on a view (Exposed can't add indexes to a view object).
+        // Walks the `extends` chain via the same `getIdentities(true)` path
+        // used for the primary identity so secondaries on an abstract base
+        // entity (e.g. `Named` with `identity.secondary by_name`) are picked
+        // up by concrete child tables. Stable order = declaration order.
+        val secondaries = if (isView) emptyList() else allIdentities.filter { it.isSecondary }
         // Composite PKs (e.g. a junction table keyed by (userId, roleId)) must
         // emit `PrimaryKey(userId, roleId)` — earlier code only took the FIRST
         // field and silently truncated. Every PK-member field is non-nullable
@@ -251,6 +259,24 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             }
             if (primaryFieldNames.isNotEmpty()) {
                 append("\n    override val primaryKey = PrimaryKey(${primaryFieldNames.joinToString(", ")})\n")
+            }
+            // Emit `init { uniqueIndex("<name>", col1, col2, ...) }` for every
+            // identity.secondary. Single init block holds all calls so the
+            // generated body stays compact. Skips secondaries whose fields list
+            // is empty (defensive — the metadata constraint already requires
+            // at least one field).
+            val emittableSecondaries = secondaries.filter { it.fields.isNotEmpty() }
+            if (emittableSecondaries.isNotEmpty()) {
+                append("\n    init {\n")
+                for (sec in emittableSecondaries) {
+                    val cols = sec.fields.joinToString(", ")
+                    // shortName strips the package prefix the loader adds
+                    // (`acme::demo::by_name` → `by_name`) — same pattern used
+                    // for relationship.composition's FK property name above.
+                    val indexName = sec.shortName ?: sec.name
+                    append("        uniqueIndex(\"$indexName\", $cols)\n")
+                }
+                append("    }\n")
             }
             append("}\n")
         }
