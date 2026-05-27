@@ -28,7 +28,6 @@ import {
   TEMPLATE_ATTR_REQUIRED_SLOTS,
   TEMPLATE_ATTR_MODEL,
   TEMPLATE_ATTR_TOOL_NAME,
-  TEMPLATE_ATTR_DESCRIPTION,
   TEMPLATE_FORMATS,
 } from "./template-constants.js";
 
@@ -111,6 +110,10 @@ const promptOverlayAttrs: AttrSchema[] = [
 // renderable text body — the body IS the structured output schema resolved
 // via @payloadRef. This is the design rationale for toolcall being its own
 // subtype rather than template.output + @toolName.
+//
+// @description is intentionally NOT declared here — it's already a documentation
+// common attr added to every type by docProvider. Tool descriptions surfaced to
+// the LLM read the same @description common attr that doc-gen uses.
 const toolcallAttrs: AttrSchema[] = [
   {
     name: TEMPLATE_ATTR_TOOL_NAME,
@@ -123,12 +126,6 @@ const toolcallAttrs: AttrSchema[] = [
     valueType: ATTR_SUBTYPE_STRING,
     required: true,
     description: "Output value-object the tool produces (resolved against the metamodel).",
-  },
-  {
-    name: TEMPLATE_ATTR_DESCRIPTION,
-    valueType: ATTR_SUBTYPE_STRING,
-    required: false,
-    description: "Tool description surfaced to the LLM for selection at runtime.",
   },
   {
     name: TEMPLATE_ATTR_OWNER,

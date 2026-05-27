@@ -49,8 +49,12 @@ export const TEMPLATE_ATTR_MODEL = "model";
 // Toolcall-specific attrs (template.toolcall only). Vendor-agnostic; vendor
 // wire details (retry semantics, fallback shapes, etc.) are added by consumer
 // providers via registry.extend per ADR-0011.
+//
+// @description is intentionally NOT a toolcall-specific constant — every type
+// gets @description via the documentation common-attrs provider. Tool
+// descriptions surfaced to the LLM use the same @description common attr
+// doc-gen uses.
 export const TEMPLATE_ATTR_TOOL_NAME = "toolName";
-export const TEMPLATE_ATTR_DESCRIPTION = "description";
 
 // Closed format set — escaping/whitespace behavior is keyed off this in the
 // render engine's escaper registry (FR-004 R7).

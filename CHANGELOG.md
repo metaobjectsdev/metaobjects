@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.7.0-rc.6] — 2026-05-27
+
+### Fixed
+- **rc.5 declared `@description` as a per-subtype attr on `template.toolcall`**,
+  which conflicted with the `@description` common-attr that `docProvider` adds
+  to every type — surfacing as `"Common attr 'description' conflicts with
+  per-type attr on template.toolcall"` at load time. rc.5 was therefore
+  unusable for any consumer with template.toolcall metadata. rc.6 removes
+  the duplicate declaration; tool descriptions surfaced to the LLM read the
+  same `@description` common attr that doc-gen uses. No consumer-facing API
+  shift beyond the bug fix.
+
 ## [0.7.0-rc.5] — 2026-05-27
 
 ### Added
