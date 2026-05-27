@@ -1,5 +1,7 @@
 {
   "language": "csharp",
-  "_comment": "FR5a envelope-shape gates: C# YAML pipeline is now reconciled with TS — the YAML desugar no longer pre-empts ERR_RESERVED_ATTR (it passed-through `@<reserved>` keys, mirroring TS yaml-desugar.ts and Java YamlDesugar.java), so the canonical parser owns the diagnostic and emits a JsonSource envelope (format=\"json\") with the parent node's JSONPath. Keep this file as the documented ledger surface (empty = full FR5a envelope parity with TS for the YAML corpus).",
-  "fixtures": []
+  "_comment": "Cross-port YAML divergences ledgered as known-gap (the runner treats listed fixtures as passing). error-yaml-coerced-hex-in-string: YamlDotNet does not coerce `0xFF` to a number under its default core schema — it stays a string — so the D2 coercion-guard never fires for hex literals in a string-typed attr context. TS yaml, PyYAML, SnakeYAML all coerce `0xFF` to int 255, triggering ERR_YAML_COERCION on a string-typed `@column`. Cross-port reference TS produces one ERR_YAML_COERCION; C# produces zero errors. (The other YAML 1.2 coercion guards — null, bool-in-string, bool-in-stringarray — match TS.)",
+  "fixtures": [
+    "error-yaml-coerced-hex-in-string"
+  ]
 }

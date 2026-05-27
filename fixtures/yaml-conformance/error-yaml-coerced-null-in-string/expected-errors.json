@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_YAML_COERCION",
+      "source": {
+        "format": "yaml",
+        "files": [
+          "input.yaml"
+        ],
+        "jsonPath": "$"
+      }
+    }
+  ],
+  "warnings": []
+}

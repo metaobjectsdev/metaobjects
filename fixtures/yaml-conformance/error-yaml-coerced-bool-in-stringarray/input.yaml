@@ -1,0 +1,8 @@
+metadata:
+  children:
+    - object.entity:
+        name: Product
+        children:
+          - field.enum:
+              name: status
+              values: ["DRAFT", true, "PUBLISHED"]
