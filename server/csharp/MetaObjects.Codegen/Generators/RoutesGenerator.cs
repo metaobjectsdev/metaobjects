@@ -17,9 +17,13 @@
 //   - Update accepts BOTH PATCH and PUT (TS reference exposes both; we match).
 //   - 404 responses carry a JSON envelope: { "error": "not_found" }.
 //
-// Filter operators (eq/ne/gt/gte/lt/lte/in/like/isNull) are a known gap;
-// see Generators/KNOWN_GAPS.md. The handlers parse ?sort= and ?limit/?offset/
-// ?withCount only — any filter[...] keys present in the qs are ignored today.
+// Filter operators (eq/ne/gt/gte/lt/lte/in/like/isNull) ship via FR-009 — the
+// generated list handler calls FilterParser.Parse against the per-entity
+// <Entity>FilterAllowlist (emitted by FilterAllowlistGenerator), then
+// dispatches the resulting predicates onto the IQueryable<T> via
+// EfCoreFilterDispatch.ApplyFilter. Both helpers live in
+// MetaObjects.Codegen.Runtime — consumers reference the codegen assembly
+// at runtime in their ASP.NET host.
 
 using System.Text;
 using MetaObjects.Meta;
@@ -70,6 +74,7 @@ public sealed class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("using Microsoft.AspNetCore.Http;");
         sb.AppendLine("using Microsoft.AspNetCore.Routing;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
+        sb.AppendLine("using MetaObjects.Codegen.Runtime;");
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
@@ -91,6 +96,12 @@ public sealed class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("        {");
         sb.AppendLine("            var qs = http.Request.Query;");
         sb.AppendLine($"            IQueryable<{cls}> q = db." + dbSet + ".AsNoTracking();");
+        sb.AppendLine();
+        sb.AppendLine("            // Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.");
+        sb.AppendLine($"            var filter = FilterParser.Parse(qs, {cls}FilterAllowlist.Fields, {cls}FilterAllowlist.OpsByField);");
+        sb.AppendLine("            if (filter.ErrorEnvelope is not null)");
+        sb.AppendLine("                return Results.BadRequest(new { error = filter.ErrorEnvelope });");
+        sb.AppendLine($"            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);");
         sb.AppendLine();
         sb.AppendLine("            // Sort: ?sort=field:asc|desc against the static allowlist.");
         sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
@@ -114,7 +125,8 @@ public sealed class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            // withCount=1 → { rows, total } envelope; otherwise bare row array.");
         sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
         sb.AppendLine("            if (!withCount) return Results.Ok(rows);");
-        sb.AppendLine("            var total = await db." + dbSet + ".AsNoTracking().CountAsync();");
+        sb.AppendLine($"            var totalQ = EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.AsNoTracking(), filter.Predicates);");
+        sb.AppendLine("            var total = await totalQ.CountAsync();");
         sb.AppendLine("            return Results.Ok(new { rows, total });");
         sb.AppendLine("        });");
 

@@ -19,7 +19,7 @@ human-readable explanation somewhere, look it up in the
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | 31 / 31 | 31 / 31 | inherits via Java | 31 / 31 | 31 / 31 |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 4 | 4 / 4 | 4 / 4 | inherits via Java | 4 / 4 | 4 / 4 |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 12 (9 query + 3 migration) | 12 / 12 | 12 / 12 | 12 / 12 (via Exposed) | 12 / 12 | 12 / 12 |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 20 | 20 / 20 (Fastify reference runner) | 20 / 20 (embedded HTTP + JDBC reference runner) | 20 / 20 (embedded HTTP + Exposed reference runner) | 10 / 20 (HttpListener + Npgsql reference runner — filter operators deferred, see FR-009) | 10 / 20 (FastAPI + pg8000 reference runner — filter operators deferred, see FR-009) |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 20 | 20 / 20 (Fastify reference runner) | 20 / 20 (embedded HTTP + JDBC reference runner) | 20 / 20 (embedded HTTP + Exposed reference runner) | 20 / 20 (HttpListener + Npgsql reference runner) | 10 / 20 (FastAPI + pg8000 reference runner — filter operators deferred, see FR-009) |
 | `fixtures/codegen-conformance/` (FR-007 — DROPPED in favor of `persistence-conformance` participation) | 0 | n/a | n/a | n/a | n/a | n/a |
 
 Per-port runners + commands:

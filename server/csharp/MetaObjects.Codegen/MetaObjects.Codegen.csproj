@@ -11,4 +11,12 @@
     <ProjectReference Include="../MetaObjects/MetaObjects.csproj" />
     <ProjectReference Include="../MetaObjects.Render/MetaObjects.Render.csproj" />
   </ItemGroup>
+  <!-- Runtime helpers under Runtime/ are referenced by generated consumer code:
+       FilterParser uses IQueryCollection (ASP.NET), EfCoreFilterDispatch uses
+       IQueryable<T> + EF.Property<>. Consumers reference this assembly at
+       runtime in their ASP.NET Core host. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
+  </ItemGroup>
 </Project>
