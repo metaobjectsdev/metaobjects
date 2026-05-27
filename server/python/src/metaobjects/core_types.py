@@ -14,10 +14,23 @@ from .meta.core.attr.attr_constants import (
 )
 from .meta.core.field import field_constants as fc
 from .meta.core.field.field_constants import (
+    AUTO_SET_VALUES,
+    FIELD_ATTR_AUTO_SET,
+    FIELD_ATTR_COLUMN,
+    FIELD_ATTR_DEFAULT,
+    FIELD_ATTR_FILTERABLE,
+    FIELD_ATTR_MAX_LENGTH,
     FIELD_ATTR_OBJECT_REF,
+    FIELD_ATTR_PRECISION,
+    FIELD_ATTR_REQUIRED,
+    FIELD_ATTR_SCALE,
+    FIELD_ATTR_SORTABLE,
+    FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
     FIELD_ATTR_STORAGE,
+    FIELD_ATTR_UNIQUE,
     FIELD_ATTR_VALUES,
     FIELD_SUBTYPE_ENUM,
+    SORT_ORDER_VALUES,
     STORAGE_VALUES,
 )
 from .meta.core.field.meta_field import MetaField
@@ -175,14 +188,20 @@ _FIELD_CHILD_RULES = [
     ChildRule(TYPE_VIEW, "*"),
     ChildRule(TYPE_VALIDATOR, "*"),
 ]
-# Common field attrs declared by the core port. `@column` carries a declared
-# string valueType so the YAML desugar's D2 type-coercion guard (ADR-0006) can
-# detect a YAML 1.2 silently-coerced unquoted boolean/number value
-# (e.g. `column: TRUE` → boolean True instead of the string "TRUE"). The TS
-# port registers this through a dedicated dbProvider that extends field types;
-# Python keeps it on the core field defs until a full Python db-codegen port lands.
+# Common field attrs declared by the core port. Each attr carries a declared
+# `value_type` so the YAML desugar's D2 type-coercion guard (ADR-0006) can
+# detect a YAML 1.2 silently-coerced unquoted value (e.g. `maxLength: true`
+# coerced to boolean instead of the int it should be).
+#
+# Mirrors server/typescript/packages/metadata/src/core/field/field-schema.ts
+# `commonFieldAttrs` and server/csharp/MetaObjects/Core/Field/FieldSchema.cs
+# `CommonFieldAttrs` so Python's coercion coverage stays at parity.
+#
+# The TS port registers `@column` through a dedicated dbProvider that extends
+# field types; Python keeps it on the core field defs until a full Python
+# db-codegen port lands.
 _FIELD_COMMON_ATTRS = [
-    AttrSchema(name="column", value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=FIELD_ATTR_OBJECT_REF, value_type=ATTR_SUBTYPE_STRING, required=False),
     # @storage applies to field.object only (cross-port); validation_passes enforces
     # the shape rules + non-object-subtype guard. Declared at the common level so
     # the AttrSchema parser doesn't reject it on field.object before validation runs.
@@ -192,10 +211,31 @@ _FIELD_COMMON_ATTRS = [
         required=False,
         allowed_values=STORAGE_VALUES,
     ),
-    # @objectRef is the cross-entity reference for field.object — declared on the
-    # common attrs so an inline @objectRef on any field subtype routes correctly
-    # (validation lives in validation_passes.py).
-    AttrSchema(name=FIELD_ATTR_OBJECT_REF, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=FIELD_ATTR_REQUIRED, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+    AttrSchema(name=FIELD_ATTR_UNIQUE, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+    # @default is polymorphic: its value type follows the OWNING field's
+    # subtype. No single fixed valueType can capture that, so value_type is
+    # intentionally None (declared-but-untyped). The YAML coercion guard
+    # skips entries with value_type=None.
+    AttrSchema(name=FIELD_ATTR_DEFAULT, value_type=None, required=False),
+    AttrSchema(name=FIELD_ATTR_MAX_LENGTH, value_type=ATTR_SUBTYPE_INT, required=False),
+    AttrSchema(name=FIELD_ATTR_PRECISION, value_type=ATTR_SUBTYPE_INT, required=False),
+    AttrSchema(name=FIELD_ATTR_SCALE, value_type=ATTR_SUBTYPE_INT, required=False),
+    AttrSchema(name=FIELD_ATTR_FILTERABLE, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+    AttrSchema(name=FIELD_ATTR_SORTABLE, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+    AttrSchema(
+        name=FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
+        value_type=ATTR_SUBTYPE_STRING,
+        required=False,
+        allowed_values=SORT_ORDER_VALUES,
+    ),
+    AttrSchema(
+        name=FIELD_ATTR_AUTO_SET,
+        value_type=ATTR_SUBTYPE_STRING,
+        required=False,
+        allowed_values=AUTO_SET_VALUES,
+    ),
+    AttrSchema(name=FIELD_ATTR_COLUMN, value_type=ATTR_SUBTYPE_STRING, required=False),
 ]
 _register_subtypes(
     core_provider,
@@ -206,21 +246,21 @@ _register_subtypes(
     attrs=_FIELD_COMMON_ATTRS,
 )
 
-# field.enum — dedicated registration with required @values attr
+# field.enum — dedicated registration with required @values attr.
+# Inherits every common field attr (column / required / unique / default /
+# maxLength / filterable / sortable / etc.) so the D2 type-coercion guard
+# applies uniformly across all fields.
 core_provider.add(
     TypeDefinition(
         type=TYPE_FIELD,
         sub_type=FIELD_SUBTYPE_ENUM,
         factory=MetaField,
-        attrs=[
+        attrs=list(_FIELD_COMMON_ATTRS) + [
             AttrSchema(
                 name=FIELD_ATTR_VALUES,
                 value_type=ATTR_SUBTYPE_STRINGARRAY,
                 required=True,
             ),
-            # See _FIELD_COMMON_ATTRS above — `@column` is declared on enum too
-            # so the D2 type-coercion guard applies uniformly across all fields.
-            AttrSchema(name="column", value_type=ATTR_SUBTYPE_STRING, required=False),
         ],
         child_rules=_FIELD_CHILD_RULES,
     )
