@@ -1070,13 +1070,15 @@ public final class ValidationPhase {
         MetaObject payloadVo = findRootObject(root, payloadRef);
         if (payloadVo == null || !MetaObject.SUBTYPE_VALUE.equals(payloadVo.getSubType())) {
             // FR5d — @payloadRef is a reference; emit format=resolved with
-            // referrer=template FQN, target=the unresolved payloadRef string.
+            // referrer=template bare (short) name to match TS/C#/Python (the
+            // reference contract does not propagate the root `package:` to
+            // root-level objects); target=the unresolved payloadRef string.
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_INVALID_TEMPLATE
                     + ": template '" + template.getName() + "' @payloadRef '" + payloadRef
                     + "' does not resolve to an object.value at root",
                 ErrorCode.ERR_INVALID_TEMPLATE,
-                ResolvedSource.from(template.getSource(), template.getName(), payloadRef));
+                ResolvedSource.from(template.getSource(), template.getShortName(), payloadRef));
         }
 
         // R3 — every @requiredSlots member must be a field on the payload VO
@@ -1089,15 +1091,16 @@ public final class ValidationPhase {
             if (slot == null || slot.isEmpty()) continue;
             if (!available.contains(slot)) {
                 // FR5d — @requiredSlots is a field-on-payload reference; emit
-                // format=resolved with referrer=template FQN, target=`payloadRef.slot`
-                // (the dotted ref that did not resolve to a payload field).
+                // format=resolved with referrer=template bare (short) name to
+                // match TS/C#/Python; target=`payloadRef.slot` (the dotted ref
+                // that did not resolve to a payload field).
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_TEMPLATE
                         + ": template.prompt '" + template.getName()
                         + "' @requiredSlots includes '" + slot
                         + "' which is not a field on payload '" + payloadRef + "'",
                     ErrorCode.ERR_INVALID_TEMPLATE,
-                    ResolvedSource.from(template.getSource(), template.getName(),
+                    ResolvedSource.from(template.getSource(), template.getShortName(),
                         payloadRef + "." + slot));
             }
         }
@@ -1133,10 +1136,12 @@ public final class ValidationPhase {
                                              MetaObject projection, String fieldName,
                                              String label,
                                              com.metaobjects.source.ErrorSource envelope) {
-        // FR5d — referrer is `<projection-FQN>::<fieldName>` (the canonical
-        // "where the broken reference lives" identifier).
+        // FR5d — referrer is `<projection-bare-name>::<fieldName>` (the canonical
+        // "where the broken reference lives" identifier). Matches TS/C#/Python:
+        // the reference contract does not propagate the root `package:` to
+        // root-level objects, so the bare entity name is used.
         String projectionName = projection.getName();
-        String referrer = projection.getName() + "::" + fieldName;
+        String referrer = projection.getShortName() + "::" + fieldName;
         int dotIdx = pathAttr.indexOf('.');
         if (dotIdx < 1 || dotIdx == pathAttr.length() - 1) {
             // Malformed shape (not "Entity.field") — not a reference resolution
@@ -1196,9 +1201,10 @@ public final class ValidationPhase {
     private static void validateViaPath(String viaAttr, MetaRoot root,
                                         MetaObject projection, String fieldName,
                                         com.metaobjects.source.ErrorSource envelope) {
-        // FR5d — referrer is `<projection-FQN>::<fieldName>`.
+        // FR5d — referrer is `<projection-bare-name>::<fieldName>` (matches
+        // TS/C#/Python: bare entity name, not package-qualified).
         String projectionName = projection.getName();
-        String referrer = projection.getName() + "::" + fieldName;
+        String referrer = projection.getShortName() + "::" + fieldName;
         String[] segments = viaAttr.split("\\.");
         if (segments.length < 2) {
             throw new MetaDataException(

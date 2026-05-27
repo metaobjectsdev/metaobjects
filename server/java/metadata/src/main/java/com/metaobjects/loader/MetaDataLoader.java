@@ -210,13 +210,15 @@ public class MetaDataLoader implements LoaderConfigurable {
             if (superData == null) {
                 // FR5d — emit format=resolved with referrer + target. The referrer's
                 // parse-time source supplies files + jsonPath (the location of the
-                // broken `extends:` on disk); referrer = the declaring node's FQN;
-                // target = the unresolved supertype ref. Mirrors TS
+                // broken `extends:` on disk); referrer = the declaring node's bare
+                // (short) name to match the TS/C#/Python reference (TS's MetaData
+                // .fqn() does not propagate the root `package:` to root-level
+                // objects); target = the unresolved supertype ref. Mirrors TS
                 // `resolveDeferredSupers` in server/typescript/packages/metadata/
                 // src/loader/meta-data-loader.ts.
                 com.metaobjects.source.ErrorSource envelope =
                     com.metaobjects.source.ResolvedSource.from(
-                        p.child.getSource(), p.child.getName(), p.superName);
+                        p.child.getSource(), p.child.getShortName(), p.superName);
                 throw new com.metaobjects.MetaDataException(
                     "Invalid MetaData [" + p.typeName + "][" + p.child.getShortName()
                         + "], the SuperClass [" + p.superName + "] does not exist (deferred resolution)"
