@@ -1,0 +1,14 @@
+name: list-with-withcount
+description: >
+  GET /api/authors?limit=2&withCount=1 returns the envelope {rows, total}
+  where total is the unfiltered row count and rows is the paginated slice.
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?limit=2&withCount=1
+    expect:
+      status: 200
+      body:
+        envelope: true
+        rowsLength: 2
+        total: 5

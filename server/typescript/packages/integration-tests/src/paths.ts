@@ -12,3 +12,7 @@ export const CORPUS_DIR = resolve(repoRoot, "fixtures", "persistence-conformance
 export const CANONICAL_DIR = resolve(CORPUS_DIR, "canonical");
 export const MIGRATIONS_DIR = resolve(CORPUS_DIR, "migrations");
 export const QUERIES_DIR = resolve(CORPUS_DIR, "queries");
+
+// fixtures/api-contract-conformance/ — cross-port REST API contract corpus.
+export const API_CONTRACT_DIR = resolve(repoRoot, "fixtures", "api-contract-conformance");
+export const API_CONTRACT_SCENARIOS_DIR = resolve(API_CONTRACT_DIR, "scenarios");

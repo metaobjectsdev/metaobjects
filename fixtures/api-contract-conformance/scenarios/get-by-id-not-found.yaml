@@ -1,0 +1,12 @@
+name: get-by-id-not-found
+description: >
+  GET /api/authors/999 (no such row) returns HTTP 404 with the cross-port
+  error envelope { "error": "not_found" }.
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors/999
+    expect:
+      status: 404
+      body:
+        error: "not_found"

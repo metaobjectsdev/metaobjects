@@ -1,0 +1,20 @@
+name: delete-204-and-404
+description: >
+  DELETE /api/authors/2 returns HTTP 204 (no body) on first call. The second
+  DELETE /api/authors/2 returns HTTP 404 with the cross-port error envelope
+  because the row no longer exists. Verifies idempotency-safe error shape.
+requests:
+  - id: r1
+    method: DELETE
+    path: /api/authors/2
+    expect:
+      status: 204
+      body:
+        empty: true
+  - id: r2
+    method: DELETE
+    path: /api/authors/2
+    expect:
+      status: 404
+      body:
+        error: "not_found"

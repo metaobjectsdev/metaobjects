@@ -1,0 +1,9 @@
+{
+  "rows": [
+    { "id": 1, "name": "Ada Lovelace",     "bio": "First computer programmer",       "createdAt": "2026-01-01T10:00:00" },
+    { "id": 2, "name": "Alan Turing",      "bio": null,                              "createdAt": "2026-01-02T10:00:00" },
+    { "id": 3, "name": "Grace Hopper",     "bio": "Invented the compiler",           "createdAt": "2026-01-03T10:00:00" },
+    { "id": 4, "name": "Donald Knuth",     "bio": "The Art of Computer Programming", "createdAt": "2026-01-04T10:00:00" },
+    { "id": 5, "name": "Edsger Dijkstra",  "bio": null,                              "createdAt": "2026-01-05T10:00:00" }
+  ]
+}

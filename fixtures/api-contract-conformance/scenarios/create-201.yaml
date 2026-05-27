@@ -1,0 +1,20 @@
+name: create-201
+description: >
+  POST /api/authors with a valid body returns HTTP 201 and a row with the
+  server-assigned id. Verifies the create verb returns the persisted entity.
+requests:
+  - id: r1
+    method: POST
+    path: /api/authors
+    body:
+      name: "Brian Kernighan"
+      bio: "Co-author of The C Programming Language"
+      createdAt: "2026-02-01T10:00:00"
+    expect:
+      status: 201
+      body:
+        row:
+          name: "Brian Kernighan"
+          bio: "Co-author of The C Programming Language"
+        # The exact id depends on autoincrement state, but it MUST be present.
+        hasId: true

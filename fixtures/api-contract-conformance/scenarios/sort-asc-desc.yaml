@@ -1,0 +1,21 @@
+name: sort-asc-desc
+description: >
+  GET /api/authors?sort=name:asc orders rows by name ascending; sort=name:desc
+  orders by name descending. Verifies both directions of the cross-port sort
+  grammar (field:dir).
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?sort=name:asc
+    expect:
+      status: 200
+      body:
+        # Names alphabetically ascending: Ada, Alan, Donald, Edsger, Grace.
+        names: ["Ada Lovelace", "Alan Turing", "Donald Knuth", "Edsger Dijkstra", "Grace Hopper"]
+  - id: r2
+    method: GET
+    path: /api/authors?sort=name:desc
+    expect:
+      status: 200
+      body:
+        names: ["Grace Hopper", "Edsger Dijkstra", "Donald Knuth", "Alan Turing", "Ada Lovelace"]

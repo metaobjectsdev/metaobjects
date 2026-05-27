@@ -1,0 +1,14 @@
+name: list-empty
+description: >
+  GET /api/authors against an empty table returns an empty JSON array.
+  Scenario clears the seeded rows in its setup step.
+setup:
+  truncate: true
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors
+    expect:
+      status: 200
+      body:
+        equals: []
