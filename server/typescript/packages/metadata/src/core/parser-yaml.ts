@@ -84,5 +84,6 @@ export function parseYaml(content: string, opts: ParseOptions): ParseResult {
     root: result.root,
     warnings: result.warnings,
     errors: [...desugarParseErrors, ...result.errors],
+    envelopeWarnings: result.envelopeWarnings,
   };
 }
