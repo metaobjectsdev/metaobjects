@@ -130,6 +130,44 @@ public abstract class ObjectManager
 
 	public abstract void releaseConnection( ObjectConnection oc ) throws MetaDataException;
 
+	/**
+	 * Runs {@code work} inside a transaction on a fresh connection: disables
+	 * auto-commit, commits on normal return, rolls back and rethrows on any
+	 * exception, always closes the connection. The non-Spring lifecycle
+	 * companion to the Spring-tx-aware {@code SpringObjectConnections} adapter
+	 * — Spring consumers were already covered; this closes the gap for plain
+	 * Java callers (FR-003 Plan 4, Debt 3).
+	 *
+	 * <p>Pattern reference: Spring {@code TransactionTemplate.execute} +
+	 * jOOQ {@code DSLContext.transactionResult}. Use a named
+	 * {@link TransactionWork} callback (not {@code Function}) so JDBC
+	 * {@link java.sql.SQLException} flows naturally and transaction sites
+	 * are grep-able by symbol.
+	 *
+	 * @param <T>  the work's return type
+	 * @param work the transactional callback
+	 * @return whatever {@code work} returned on normal completion
+	 * @throws MetaDataException wrapping any {@link java.sql.SQLException} the
+	 *                           work threw after rolling back; runtime
+	 *                           exceptions are rethrown unchanged after rollback
+	 */
+	public <T> T inTransaction( TransactionWork<T> work ) throws MetaDataException {
+		try (ObjectConnection c = getConnection()) {
+			c.setAutoCommit(false);
+			try {
+				T result = work.apply(c);
+				c.commit();
+				return result;
+			} catch (java.sql.SQLException e) {
+				c.rollback();
+				throw new MetaDataException("Transaction failed: " + e.getMessage(), e);
+			} catch (RuntimeException e) {
+				c.rollback();
+				throw e;
+			}
+		}
+	}
+
 	///////////////////////////////////////////////////////
 	// ABSTRACT PERSISTENCE METHODS
 	//
