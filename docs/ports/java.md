@@ -90,6 +90,47 @@ Drop metadata under `src/main/metaobjects/`:
 }}
 ```
 
+### Custom providers (optional)
+
+Java uses **SPI auto-discovery** for type providers — drop your provider
+class on the classpath, list its FQCN in
+`META-INF/services/com.metaobjects.registry.MetaDataTypeProvider`, and
+`MetaDataRegistry.getInstance()` will compose it in dependency order
+alongside the core providers:
+
+```java
+// src/main/java/com/example/wizards/WizardsToolcallProvider.java
+package com.example.wizards;
+
+import com.metaobjects.registry.MetaDataTypeProvider;
+import com.metaobjects.registry.MetaDataRegistry;
+
+public class WizardsToolcallProvider implements MetaDataTypeProvider {
+    @Override public String getProviderId()   { return "wizards-template-toolcall"; }
+    @Override public String[] getDependencies() { return new String[] { "core-types" }; }
+    @Override public void registerTypes(MetaDataRegistry registry) {
+        // registry.register(...) — see the cross-port contract
+    }
+}
+```
+
+```
+# src/main/resources/META-INF/services/com.metaobjects.registry.MetaDataTypeProvider
+com.example.wizards.WizardsToolcallProvider
+```
+
+The provider contract is structurally identical to TS / C# / Python (id +
+dependencies + description + `registerTypes` body); the loader composes
+all providers via Kahn's algorithm and emits the same stable error codes
+on failure (`ERR_PROVIDER_DUPLICATE_ID`, `_MISSING_DEPENDENCY`,
+`_DEPENDENCY_CYCLE`).
+
+A programmatic `MetaDataRegistry.compose(List<MetaDataTypeProvider>)`
+factory (matching the explicit-list approach used by TS / C# / Python) is
+on the follow-up backlog for callers who want to bypass SPI auto-discovery
+in tests or embedded scenarios. The conceptual reference lives in
+[`../features/extending-with-providers.md`](../features/extending-with-providers.md).
+
 ## Generate
 
 ```bash

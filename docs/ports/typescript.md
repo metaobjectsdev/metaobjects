@@ -45,8 +45,43 @@ export default defineConfig({
   apiPrefix: "/api",
   columnNamingStrategy: "snake_case",  // "snake_case" | "literal" | "kebab-case"
   generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+  // providers: [yourProvider],        // optional — add custom metamodel subtypes/attrs
 });
 ```
+
+### Custom providers (optional)
+
+If your app needs a metamodel subtype the core doesn't ship (e.g.
+`template.toolcall` for LLM tool-use envelopes), declare a
+`MetaDataTypeProvider` and pass it through `defineConfig({ providers })`:
+
+```ts
+import type { MetaDataTypeProvider } from "@metaobjectsdev/metadata";
+import { yourProvider } from "./codegen/your-provider";
+
+export default defineConfig({
+  // … other fields
+  providers: [yourProvider],
+});
+```
+
+The CLI threads the list into every `meta gen` / `meta verify` / `meta
+migrate` / `meta prompt-snapshot` invocation. At the SDK level the same
+list is accepted directly:
+
+```ts
+import { loadMemory } from "@metaobjectsdev/sdk";
+
+const root = await loadMemory("./", { providers: [yourProvider] });
+```
+
+Default composition is `[...coreProviders, forgeTypesProvider,
+...callerProviders]`. Pass `{ replaceDefaults: true }` to skip the core
+bundle entirely (rare — usually only useful in tests). See
+[`../features/extending-with-providers.md`](../features/extending-with-providers.md)
+for the full contract and
+[`../recipes/extending-metaobjects-with-providers.md`](../recipes/extending-metaobjects-with-providers.md)
+for an end-to-end walkthrough.
 
 Drop your metadata under `metaobjects/`:
 

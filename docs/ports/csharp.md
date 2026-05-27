@@ -44,6 +44,33 @@ Drop metadata under `metadata/`:
 }}
 ```
 
+### Custom providers (optional)
+
+If your app needs a metamodel subtype the core doesn't ship, declare an
+`IMetaDataTypeProvider` and compose it into the registry before loading:
+
+```csharp
+using MetaObjects.Metadata;
+using MetaObjects.Loader;
+
+var registry = Provider.ComposeRegistry(new IMetaDataTypeProvider[] {
+    CoreTypesProvider.Instance,
+    ForgeTypesProvider.Instance,
+    yourProvider,            // adds your custom subtype/attrs
+});
+
+var loader = MetaDataLoader.FromDirectory("./metadata", registry);
+```
+
+The provider object has the same four-member contract (`Id`, `Dependencies`,
+`Description`, `RegisterTypes(registry)`) as TS / Python. Composition errors
+surface `ERR_PROVIDER_DUPLICATE_ID`, `ERR_PROVIDER_MISSING_DEPENDENCY`,
+`ERR_PROVIDER_DEPENDENCY_CYCLE` — codes match the cross-port contract. See
+[`../features/extending-with-providers.md`](../features/extending-with-providers.md)
+for the full reference and
+[`../recipes/extending-metaobjects-with-providers.md`](../recipes/extending-metaobjects-with-providers.md)
+for a worked example.
+
 ## Generate
 
 ```bash

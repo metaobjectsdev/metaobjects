@@ -110,6 +110,18 @@ Maven wiring:
 </plugin>
 ```
 
+### Custom providers (optional)
+
+Kotlin inherits Java's SPI-based provider discovery directly — write a
+`MetaDataTypeProvider` implementation (or its Kotlin DSL equivalent in
+`metadata-ktx`), drop the FQCN into
+`META-INF/services/com.metaobjects.registry.MetaDataTypeProvider`, and the
+loader picks it up alongside the core providers. See the Java port's
+[Custom providers section](java.md#custom-providers-optional) for the
+mechanism; the
+[`../features/extending-with-providers.md`](../features/extending-with-providers.md)
+reference covers the cross-port contract.
+
 ## Generate
 
 ```bash

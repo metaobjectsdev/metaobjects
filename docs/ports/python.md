@@ -52,6 +52,28 @@ metadata:
               generation: increment
 ```
 
+### Custom providers (optional)
+
+If your app needs a metamodel subtype the core doesn't ship, declare a
+`MetaDataTypeProvider` and pass it through `from_directory`:
+
+```python
+from metaobjects.provider import MetaDataTypeProvider
+from metaobjects.loader import MetaDataLoader
+from .providers import your_provider
+
+loader = MetaDataLoader.from_directory("./metadata", providers=[your_provider])
+```
+
+The provider object has the same four-member contract (`id`, `dependencies`,
+`description`, `register_types(registry)`) as TS / C#. Composition errors
+surface `ERR_PROVIDER_DUPLICATE_ID`, `ERR_PROVIDER_MISSING_DEPENDENCY`,
+`ERR_PROVIDER_DEPENDENCY_CYCLE` — codes match the cross-port contract. See
+[`../features/extending-with-providers.md`](../features/extending-with-providers.md)
+for the full reference and
+[`../recipes/extending-metaobjects-with-providers.md`](../recipes/extending-metaobjects-with-providers.md)
+for a worked example.
+
 ## Generate
 
 ```bash
