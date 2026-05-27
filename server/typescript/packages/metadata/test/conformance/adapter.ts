@@ -38,15 +38,25 @@ import { binding } from "./binding.js";
 // the same set so fixture-declared provider ids resolve identically.
 // ---------------------------------------------------------------------------
 
-/** Adds a `template.toolcall` subtype with @payloadRef + @textRef + @toolName. */
-const wizardsTemplateToolcallProvider: MetaDataTypeProvider = {
-  id: "wizards-template-toolcall",
+/**
+ * Adds a hypothetical `template.briefing` subtype with @payloadRef + @author
+ * + @recipient. Fictional — not a real template kind that MO core ships. Used
+ * only by the provider-extension-* fixtures to exercise the registry.register
+ * machinery without colliding with real core subtypes.
+ *
+ * (Pre-ADR-0011 this fixture-only subtype was named "toolcall"; now that
+ * template.toolcall is a real core subtype the test-only one had to move to
+ * a different name so the fixture still meaningfully tests "registering a
+ * NEW subtype works".)
+ */
+const wizardsTemplateBriefingProvider: MetaDataTypeProvider = {
+  id: "wizards-template-briefing",
   dependencies: ["metaobjects-core-types"],
-  description: "Test-only — registers a template.toolcall subtype.",
+  description: "Test-only — registers a fictional template.briefing subtype.",
   registerTypes(registry) {
     registry.register({
-      typeId: new TypeId(TYPE_TEMPLATE, "toolcall"),
-      description: "Template that emits an LLM tool-call envelope.",
+      typeId: new TypeId(TYPE_TEMPLATE, "briefing"),
+      description: "Hypothetical briefing template — test-only.",
       factory: (typeId, name) => new MetaTemplate(typeId, name),
       childRules: [
         {
@@ -56,9 +66,9 @@ const wizardsTemplateToolcallProvider: MetaDataTypeProvider = {
         },
       ],
       attributes: [
-        { name: "payloadRef", valueType: ATTR_SUBTYPE_STRING, required: true, description: "Tool-input payload reference." },
-        { name: "textRef",    valueType: ATTR_SUBTYPE_STRING, required: true, description: "Tool-call template body reference." },
-        { name: "toolName",   valueType: ATTR_SUBTYPE_STRING, required: true, description: "Name of the tool to invoke." },
+        { name: "payloadRef", valueType: ATTR_SUBTYPE_STRING, required: true, description: "Briefing-input payload reference." },
+        { name: "author",     valueType: ATTR_SUBTYPE_STRING, required: true, description: "Author of the briefing." },
+        { name: "recipient",  valueType: ATTR_SUBTYPE_STRING, required: true, description: "Intended recipient role." },
       ],
     });
   },
@@ -107,7 +117,7 @@ const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
   [dbProvider.id]: dbProvider,               // "metaobjects-db"
   [docProvider.id]: docProvider,             // "metaobjects-documentation"
   // Test-only — provider-extension-* fixtures.
-  "wizards-template-toolcall": wizardsTemplateToolcallProvider,
+  "wizards-template-briefing": wizardsTemplateBriefingProvider,
   "cycle-a": cycleAProvider,
   "cycle-b": cycleBProvider,
   "depends-on-missing": dependsOnMissingProvider,

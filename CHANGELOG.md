@@ -7,6 +7,46 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.7.0-rc.5] — 2026-05-27
+
+### Added
+- **`template.toolcall` is now a core MO subtype** (`@metaobjectsdev/metadata`)
+  per [ADR-0011](spec/decisions/ADR-0011-template-toolcall-as-core-subtype.md).
+  Three vendor-agnostic attrs: `@toolName` (required), `@payloadRef`
+  (required, points at the output value-object), `@description` (optional,
+  surfaced to the LLM for tool selection). Plus the governance attrs
+  `@owner` / `@since`.
+
+  Critically: **`template.toolcall` does NOT inherit `genericAttrs`** the way
+  `template.prompt` and `template.output` do. No `@textRef` requirement — a
+  tool-call has no renderable text body; the body IS the structured output
+  schema resolved via `@payloadRef`. This is the design rationale for
+  toolcall being its own subtype rather than `template.output + @toolName`.
+
+  Vendor wire details (Anthropic's retry-with-reminder, OpenAI's function-
+  calling envelope, MCP's tool definitions, etc.) are NOT in core. Consumers
+  add vendor specifics via `registry.extend(TYPE_TEMPLATE, "toolcall",
+  { attributes: [...] })` — same pattern `dbProvider` uses for `source.rdb`.
+
+  Cross-port rollout: TS ships in rc.5; Java / C# / Python in a follow-up.
+  Kotlin inherits the Java port.
+
+### Changed
+- Conformance fixtures `provider-extension-new-subtype-success` and
+  `provider-extension-missing-provider-fails` swap their test-only provider
+  from `wizards-template-toolcall` (now meaningless — toolcall is core) to
+  `wizards-template-briefing` (a hypothetical briefing template, clearly
+  fictional). The fixtures still demonstrate `registry.register` of a new
+  subtype, just using a name that doesn't collide with the new core
+  subtype. TS / C# / Python adapter providers and fixture inputs/expected
+  files updated to match.
+
+- `template-constants.ts` design comment refreshed to acknowledge three
+  template subtypes (prompt / output / toolcall) and document each one's
+  attr-schema basis. Internal-only — no consumer-facing change beyond the
+  ADR + the new exports (`TEMPLATE_SUBTYPE_TOOLCALL`, `TEMPLATE_ATTR_TOOL_NAME`,
+  `TEMPLATE_ATTR_DESCRIPTION`).
+
 ## [0.7.0-rc.4] — 2026-05-27
 
 ### Fixed

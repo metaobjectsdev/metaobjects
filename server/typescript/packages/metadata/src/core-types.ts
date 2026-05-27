@@ -279,10 +279,13 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     );
   }
 
-  // template — renderable text artifacts (FR-004). prompt + output; attr-only
-  // children. A single MetaTemplate class backs both subtypes (mirrors source);
-  // per-subtype attr schemas drive validation (both require @payloadRef +
-  // @textRef; @format is a closed enum; template.prompt adds the LLM overlay).
+  // template — renderable text artifacts (FR-004) + tool-call envelopes
+  // (ADR-0011). Three subtypes: prompt + output + toolcall; attr-only children.
+  // A single MetaTemplate class backs all three subtypes (mirrors source);
+  // per-subtype attr schemas drive validation (prompt + output require
+  // @payloadRef + @textRef + @format closed enum; prompt adds the LLM overlay;
+  // toolcall has its own set — @toolName + @payloadRef + @description, no
+  // @textRef requirement since toolcalls have no renderable body).
   for (const subType of TEMPLATE_SUBTYPES) {
     const templateAttrs = TEMPLATE_ATTRS_MAP.get(subType) ?? [];
     registry.register(

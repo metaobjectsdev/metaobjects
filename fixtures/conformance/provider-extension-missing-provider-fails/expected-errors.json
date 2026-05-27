@@ -4,8 +4,8 @@
       "code": "ERR_UNKNOWN_SUBTYPE",
       "source": {
         "format": "json",
-        "files": ["meta.toolcall.json"],
-        "jsonPath": "$['metadata.root'].children[1]['template.toolcall']"
+        "files": ["meta.briefing.json"],
+        "jsonPath": "$['metadata.root'].children[1]['template.briefing']"
       }
     }
   ],

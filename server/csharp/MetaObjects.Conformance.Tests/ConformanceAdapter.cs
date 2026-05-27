@@ -23,16 +23,21 @@ namespace MetaObjects.Conformance.Tests;
 // the same set so fixture-declared provider ids resolve identically.
 // ---------------------------------------------------------------------------
 
-internal sealed class WizardsTemplateToolcallProvider : IMetaDataTypeProvider
+// Adds a hypothetical `template.briefing` subtype with @payloadRef + @author
+// + @recipient. Fictional — used only by the provider-extension-* fixtures
+// to exercise registry.Register without colliding with real core subtypes.
+// (Pre-ADR-0011 this was a "toolcall" subtype; toolcall is now core, so the
+// test-only one moved to a clearly-fictional name.)
+internal sealed class WizardsTemplateBriefingProvider : IMetaDataTypeProvider
 {
-    public string Id => "wizards-template-toolcall";
+    public string Id => "wizards-template-briefing";
     public IReadOnlyList<string> Dependencies => new[] { "metaobjects-core-types" };
 
     public void RegisterTypes(TypeRegistry registry)
     {
         registry.Register(new TypeDefinition(
-            typeId: new TypeId("template", "toolcall"),
-            description: "Template that emits an LLM tool-call envelope.",
+            typeId: new TypeId("template", "briefing"),
+            description: "Hypothetical briefing template — test-only.",
             childRules: new List<ChildRule>
             {
                 new ChildRule(
@@ -43,9 +48,9 @@ internal sealed class WizardsTemplateToolcallProvider : IMetaDataTypeProvider
             factory: (typeId, name) => new MetaTemplate(typeId, name),
             attributes: new List<AttrSchema>
             {
-                new AttrSchema("payloadRef", "string", Required: true, Description: "Tool-input payload reference."),
-                new AttrSchema("textRef",    "string", Required: true, Description: "Tool-call template body reference."),
-                new AttrSchema("toolName",   "string", Required: true, Description: "Name of the tool to invoke."),
+                new AttrSchema("payloadRef", "string", Required: true, Description: "Briefing-input payload reference."),
+                new AttrSchema("author",     "string", Required: true, Description: "Author of the briefing."),
+                new AttrSchema("recipient",  "string", Required: true, Description: "Intended recipient role."),
             }));
     }
 }
@@ -111,7 +116,7 @@ public static class ConformanceAdapter
             ["metaobjects-core-types"]    = CoreTypes.CoreTypesProvider,
             ["metaobjects-documentation"] = DocumentationTypes.DocTypesProvider,
             // Test-only — provider-extension-* fixtures.
-            ["wizards-template-toolcall"] = new WizardsTemplateToolcallProvider(),
+            ["wizards-template-briefing"] = new WizardsTemplateBriefingProvider(),
             ["cycle-a"]                   = new NoopTestProvider("cycle-a", "cycle-b"),
             ["cycle-b"]                   = new NoopTestProvider("cycle-b", "cycle-a"),
             ["depends-on-missing"]        = new NoopTestProvider("depends-on-missing", "does-not-exist"),

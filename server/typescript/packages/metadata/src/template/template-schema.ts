@@ -16,6 +16,7 @@ import { SUBTYPE_BASE } from "../shared/base-types.js";
 import {
   TEMPLATE_SUBTYPE_PROMPT,
   TEMPLATE_SUBTYPE_OUTPUT,
+  TEMPLATE_SUBTYPE_TOOLCALL,
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_FORMAT,
@@ -26,6 +27,8 @@ import {
   TEMPLATE_ATTR_MAX_TOKENS,
   TEMPLATE_ATTR_REQUIRED_SLOTS,
   TEMPLATE_ATTR_MODEL,
+  TEMPLATE_ATTR_TOOL_NAME,
+  TEMPLATE_ATTR_DESCRIPTION,
   TEMPLATE_FORMATS,
 } from "./template-constants.js";
 
@@ -99,8 +102,51 @@ const promptOverlayAttrs: AttrSchema[] = [
   },
 ];
 
+// Toolcall attrs (template.toolcall only — does NOT inherit genericAttrs).
+// Per ADR-0011: vendor-agnostic in core; vendor wire details (retry semantics,
+// fallback shapes, parallel invocation, cache hints) added by consumer
+// providers via registry.extend(TYPE_TEMPLATE, "toolcall", { attributes: [...] }).
+//
+// Critical: @textRef is intentionally NOT required here. A tool-call has no
+// renderable text body — the body IS the structured output schema resolved
+// via @payloadRef. This is the design rationale for toolcall being its own
+// subtype rather than template.output + @toolName.
+const toolcallAttrs: AttrSchema[] = [
+  {
+    name: TEMPLATE_ATTR_TOOL_NAME,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: true,
+    description: "Wire tool name surfaced to the LLM (vendor-specific format).",
+  },
+  {
+    name: TEMPLATE_ATTR_PAYLOAD_REF,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: true,
+    description: "Output value-object the tool produces (resolved against the metamodel).",
+  },
+  {
+    name: TEMPLATE_ATTR_DESCRIPTION,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    description: "Tool description surfaced to the LLM for selection at runtime.",
+  },
+  {
+    name: TEMPLATE_ATTR_OWNER,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    description: "Governance: the owner of this toolcall.",
+  },
+  {
+    name: TEMPLATE_ATTR_SINCE,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    description: "Governance: the version this toolcall was introduced in.",
+  },
+];
+
 export const TEMPLATE_ATTRS_MAP = new Map<string, AttrSchema[]>([
   [SUBTYPE_BASE, []],
   [TEMPLATE_SUBTYPE_PROMPT, [...genericAttrs, ...promptOverlayAttrs]],
   [TEMPLATE_SUBTYPE_OUTPUT, [...genericAttrs]],
+  [TEMPLATE_SUBTYPE_TOOLCALL, [...toolcallAttrs]],
 ]);

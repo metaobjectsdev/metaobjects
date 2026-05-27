@@ -1,10 +1,14 @@
-// template.* subtype vocabulary + reserved attribute names (FR-004, R1).
+// template.* subtype vocabulary + reserved attribute names (FR-004, R1; ADR-0011).
 //
-// `template` is the fourth-pillar base type: a renderable text artifact bound to
-// a typed payload. Two subtypes (by audience/structure, NOT by format):
-//   - prompt: LLM-targeted; carries the prompt-overlay attrs and is the home for
-//     future structured-prompt (role/turn/tool) divergence.
+// `template` is the fourth-pillar base type — a typed payload bound to either
+// a rendered text artifact (prompt/output) or to a tool-call envelope.
+// Three subtypes:
+//   - prompt: LLM-targeted renderable text. Carries the prompt-overlay attrs.
+//             Renderable body required via @textRef.
 //   - output: every other rendered artifact (email, export, docs, config).
+//             Renderable body required via @textRef.
+//   - toolcall: LLM tool-call envelope (no renderable body — the body IS the
+//               structured output schema resolved via @payloadRef). Per ADR-0011.
 //
 // Format is the @format ATTRIBUTE (closed set below), never a subtype — the
 // render engine keys its escaper off @format, so a new format costs one escaper
@@ -14,15 +18,18 @@ import { SUBTYPE_BASE } from "../shared/base-types.js";
 
 export const TEMPLATE_SUBTYPE_PROMPT = "prompt";
 export const TEMPLATE_SUBTYPE_OUTPUT = "output";
+export const TEMPLATE_SUBTYPE_TOOLCALL = "toolcall";
 
 export const TEMPLATE_SUBTYPES = [
   SUBTYPE_BASE,
   TEMPLATE_SUBTYPE_PROMPT,
   TEMPLATE_SUBTYPE_OUTPUT,
+  TEMPLATE_SUBTYPE_TOOLCALL,
 ] as const;
 export type TemplateSubType = (typeof TEMPLATE_SUBTYPES)[number];
 
-// Generic reserved attrs (both subtypes). The "@" is applied at wire time.
+// Generic reserved attrs (prompt + output). The "@" is applied at wire time.
+// NOT inherited by toolcall — toolcall has no renderable body.
 export const TEMPLATE_ATTR_PAYLOAD_REF = "payloadRef";
 export const TEMPLATE_ATTR_TEXT_REF = "textRef";
 export const TEMPLATE_ATTR_FORMAT = "format";
@@ -38,6 +45,12 @@ export const TEMPLATE_ATTR_REQUIRED_TAGS = "requiredTags";
 export const TEMPLATE_ATTR_MAX_TOKENS = "maxTokens";
 export const TEMPLATE_ATTR_REQUIRED_SLOTS = "requiredSlots";
 export const TEMPLATE_ATTR_MODEL = "model";
+
+// Toolcall-specific attrs (template.toolcall only). Vendor-agnostic; vendor
+// wire details (retry semantics, fallback shapes, etc.) are added by consumer
+// providers via registry.extend per ADR-0011.
+export const TEMPLATE_ATTR_TOOL_NAME = "toolName";
+export const TEMPLATE_ATTR_DESCRIPTION = "description";
 
 // Closed format set — escaping/whitespace behavior is keyed off this in the
 // render engine's escaper registry (FR-004 R7).

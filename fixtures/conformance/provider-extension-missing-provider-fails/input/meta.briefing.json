@@ -6,24 +6,16 @@
         "object.value": {
           "name": "BriefingNotes",
           "children": [
-            {
-              "field.string": {
-                "name": "summary"
-              }
-            },
-            {
-              "field.string": {
-                "name": "context"
-              }
-            }
+            { "field.string": { "name": "summary" } },
+            { "field.string": { "name": "context" } }
           ]
         }
       },
       {
         "template.briefing": {
           "name": "DailyBriefing",
-          "@author": "Lorekeeper",
           "@payloadRef": "BriefingNotes",
+          "@author": "Lorekeeper",
           "@recipient": "Council"
         }
       }

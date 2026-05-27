@@ -30,20 +30,26 @@ from metaobjects.source.error_source import (
 # ---------------------------------------------------------------------------
 
 
-def _wizards_template_toolcall_provider() -> Provider:
+def _wizards_template_briefing_provider() -> Provider:
+    """Adds a hypothetical `template.briefing` subtype. Fictional — used only
+    by the provider-extension-* fixtures to exercise registry.register without
+    colliding with real core subtypes. (Pre-ADR-0011 this was a "toolcall"
+    subtype; toolcall is now core, so the test-only one moved to a clearly-
+    fictional name.)
+    """
     p = Provider(
-        "wizards-template-toolcall",
+        "wizards-template-briefing",
         dependencies=("metaobjects-core-types",),
     )
     p.add(
         TypeDefinition(
             type="template",
-            sub_type="toolcall",
+            sub_type="briefing",
             factory=lambda t, s, n: MetaTemplate(t, s, n),
             attrs=[
                 AttrSchema("payloadRef", "string", required=True),
-                AttrSchema("textRef", "string", required=True),
-                AttrSchema("toolName", "string", required=True),
+                AttrSchema("author", "string", required=True),
+                AttrSchema("recipient", "string", required=True),
             ],
             child_rules=[ChildRule(TYPE_ATTR, "*")],
         )
@@ -64,7 +70,7 @@ _PROVIDER_MAP: dict[str, Provider] = {
     core_provider.id: core_provider,                # "metaobjects-core-types"
     doc_provider.id: doc_provider,                  # "metaobjects-documentation"
     # Test-only — provider-extension-* fixtures.
-    "wizards-template-toolcall": _wizards_template_toolcall_provider(),
+    "wizards-template-briefing": _wizards_template_briefing_provider(),
     "cycle-a": _noop_provider("cycle-a", "cycle-b"),
     "cycle-b": _noop_provider("cycle-b", "cycle-a"),
     "depends-on-missing": _noop_provider("depends-on-missing", "does-not-exist"),
