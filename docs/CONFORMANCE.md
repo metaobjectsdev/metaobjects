@@ -14,7 +14,7 @@ human-readable explanation somewhere, look it up in the
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 91 | 91 / 91 | 89 / 91 (2 FR5c-pending: `error-merge-conflict-attr`, `warning-duplicate-declaration`) | inherits via `metadata-ktx` | 89 / 91 (same 2 FR5c-pending) | 89 / 91 (same 2 FR5c-pending) |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 91 | 91 / 91 | 91 / 91 | inherits via `metadata-ktx` | 91 / 91 | 91 / 91 |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 13 | 13 / 13 | 12 / 13 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 12 / 13 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 13 / 13 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | 31 / 31 | 31 / 31 | inherits via Java | 31 / 31 | 31 / 31 |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 14 | 14 / 14 | 14 / 14 | inherits via Java | 14 / 14 | 14 / 14 |
