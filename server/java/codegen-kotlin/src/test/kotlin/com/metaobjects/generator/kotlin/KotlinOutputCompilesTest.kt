@@ -44,4 +44,5 @@ class KotlinOutputCompilesTest {
             outDir.toFile().deleteRecursively()
         }
     }
+
 }
