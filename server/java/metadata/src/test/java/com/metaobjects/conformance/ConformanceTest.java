@@ -364,10 +364,19 @@ public class ConformanceTest {
             return;
         }
 
-        // If the fixture is NOT an expected-errors fixture but the load
-        // produced an error, we can't continue with tree-dependent checks.
-        if (!errorCodesSeen.isEmpty()) {
-            failures.add("load produced errors " + errorCodesSeen
+        // If the fixture is NOT an expected-errors fixture but the loader
+        // THREW (vs. recorded errors via {@link MetaDataLoader#addError}),
+        // the tree is mid-build and we can't run tree-dependent checks.
+        //
+        // FR5c — errors recorded via {@code addError} (e.g.
+        // {@code ERR_MERGE_CONFLICT} from the merge-attribution site) do NOT
+        // halt tree building. Existing happy-path fixtures (e.g.
+        // {@code overlay-attr-last-writer-wins}) exercise scenarios that now
+        // surface a recorded error AND a valid tree; TS conformance behaves
+        // the same way (no error-set check unless {@code expected-errors.json}
+        // is declared). Only a thrown exception means the tree is unsafe.
+        if (thrown != null) {
+            failures.add("load threw " + extractErrorCode(thrown)
                 + " — cannot run tree-dependent checks");
             return;
         }
