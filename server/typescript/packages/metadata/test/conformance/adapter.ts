@@ -22,18 +22,97 @@ import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
 import type { MetaData } from "../../src/shared/meta-data.js";
 import { canonicalSerialize, canonicalSerializeEffective } from "../../src/serializer-json.js";
 import { ParseError } from "../../src/errors.js";
+import { TypeId } from "../../src/registry.js";
+import { MetaTemplate } from "../../src/template/meta-template.js";
+import { TYPE_TEMPLATE, TYPE_ATTR } from "../../src/shared/base-types.js";
+import { CHILD_RULE_WILDCARD } from "../../src/shared/structural.js";
+import { ATTR_SUBTYPE_STRING } from "../../src/core/attr/attr-constants.js";
 import { navigate } from "./navigator.js";
 import { binding } from "./binding.js";
+
+// ---------------------------------------------------------------------------
+// Test-only providers exercised by the provider-extension-* fixtures.
+//
+// These are NOT shipped — they live in test code to verify the cross-port
+// composition contract end-to-end. Each adapter (TS / C# / Python) carries
+// the same set so fixture-declared provider ids resolve identically.
+// ---------------------------------------------------------------------------
+
+/** Adds a `template.toolcall` subtype with @payloadRef + @textRef + @toolName. */
+const wizardsTemplateToolcallProvider: MetaDataTypeProvider = {
+  id: "wizards-template-toolcall",
+  dependencies: ["metaobjects-core-types"],
+  description: "Test-only — registers a template.toolcall subtype.",
+  registerTypes(registry) {
+    registry.register({
+      typeId: new TypeId(TYPE_TEMPLATE, "toolcall"),
+      description: "Template that emits an LLM tool-call envelope.",
+      factory: (typeId, name) => new MetaTemplate(typeId, name),
+      childRules: [
+        {
+          childType: TYPE_ATTR,
+          childSubType: CHILD_RULE_WILDCARD,
+          childName: CHILD_RULE_WILDCARD,
+        },
+      ],
+      attributes: [
+        { name: "payloadRef", valueType: ATTR_SUBTYPE_STRING, required: true, description: "Tool-input payload reference." },
+        { name: "textRef",    valueType: ATTR_SUBTYPE_STRING, required: true, description: "Tool-call template body reference." },
+        { name: "toolName",   valueType: ATTR_SUBTYPE_STRING, required: true, description: "Name of the tool to invoke." },
+      ],
+    });
+  },
+};
+
+/** Two providers that name each other as a dependency — surfaces ERR_PROVIDER_DEPENDENCY_CYCLE. */
+const cycleAProvider: MetaDataTypeProvider = {
+  id: "cycle-a",
+  dependencies: ["cycle-b"],
+  registerTypes() {},
+};
+const cycleBProvider: MetaDataTypeProvider = {
+  id: "cycle-b",
+  dependencies: ["cycle-a"],
+  registerTypes() {},
+};
+
+/** Provider declaring a dependency on a non-existent id — surfaces ERR_PROVIDER_MISSING_DEPENDENCY. */
+const dependsOnMissingProvider: MetaDataTypeProvider = {
+  id: "depends-on-missing",
+  dependencies: ["does-not-exist"],
+  registerTypes() {},
+};
+
+/** A pair that report the same id from two provider objects — surfaces ERR_PROVIDER_DUPLICATE_ID. */
+const duplicateXProvider: MetaDataTypeProvider = {
+  id: "duplicate-x",
+  registerTypes() {},
+};
+// A second provider whose ALIAS-LIKE registered id collides with duplicate-x.
+// Its lookup key in the adapter PROVIDERS map is "duplicate-x-clone", but its
+// real `.id` is the same "duplicate-x" — the collision surfaces at compose.
+const duplicateXCloneProvider: MetaDataTypeProvider = {
+  id: "duplicate-x",
+  registerTypes() {},
+};
 
 /**
  * Provider-id → provider object. The fixture corpus names providers by their
  * stable `id` (e.g. "metaobjects-core-types"). loadFixture maps those ids to
- * the actual provider objects to compose a registry.
+ * the actual provider objects to compose a registry. Test-only providers
+ * (suffixed below) feed the provider-extension-* fixtures.
  */
 const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
   [coreTypesProvider.id]: coreTypesProvider, // "metaobjects-core-types"
   [dbProvider.id]: dbProvider,               // "metaobjects-db"
   [docProvider.id]: docProvider,             // "metaobjects-documentation"
+  // Test-only — provider-extension-* fixtures.
+  "wizards-template-toolcall": wizardsTemplateToolcallProvider,
+  "cycle-a": cycleAProvider,
+  "cycle-b": cycleBProvider,
+  "depends-on-missing": dependsOnMissingProvider,
+  "duplicate-x": duplicateXProvider,
+  "duplicate-x-clone": duplicateXCloneProvider,
 };
 
 /** Pull a `.code` off a collected loader error, if it carries one. */
@@ -56,7 +135,27 @@ export const tsAdapter: ConformanceAdapter = {
       }
       return provider;
     });
-    const registry = composeRegistry(resolved);
+    // Provider composition errors (duplicate id / missing dep / cycle) are
+    // first-class fixture outcomes: surface them as a code-only LoadOutcome
+    // so the cross-port runner can compare expected-errors.json directly.
+    let registry;
+    try {
+      registry = composeRegistry(resolved);
+    } catch (err) {
+      const code = (err as { code?: unknown }).code;
+      const codeStr = typeof code === "string" ? code : "ERR_UNKNOWN";
+      const compErr: ErrorEnvelopeRecord = {
+        code: codeStr,
+        source: { format: "code", files: [] },
+      };
+      return {
+        tree: undefined as unknown as TreeHandle,
+        errorCodes: [codeStr],
+        warnings: [],
+        errors: [compErr],
+        warningEnvelopes: [],
+      };
+    }
     const result = await MetaDataLoader.fromDirectory(inputDir, { registry });
     // FR5a — surface the full ParseError envelopes; normalize files[] to be
     // relative to the fixture's inputDir so the cross-port assertion has a

@@ -1,0 +1,12 @@
+{
+  "errors": [
+    {
+      "code": "ERR_PROVIDER_DEPENDENCY_CYCLE",
+      "source": {
+        "format": "code",
+        "files": []
+      }
+    }
+  ],
+  "warnings": []
+}

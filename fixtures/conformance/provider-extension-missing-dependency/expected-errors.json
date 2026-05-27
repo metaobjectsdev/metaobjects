@@ -1,0 +1,12 @@
+{
+  "errors": [
+    {
+      "code": "ERR_PROVIDER_MISSING_DEPENDENCY",
+      "source": {
+        "format": "code",
+        "files": []
+      }
+    }
+  ],
+  "warnings": []
+}

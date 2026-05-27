@@ -1,0 +1,12 @@
+{
+  "errors": [
+    {
+      "code": "ERR_PROVIDER_DUPLICATE_ID",
+      "source": {
+        "format": "code",
+        "files": []
+      }
+    }
+  ],
+  "warnings": []
+}

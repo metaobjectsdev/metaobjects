@@ -11,8 +11,51 @@ using MetaObjects.Core.Documentation;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 using MetaObjects.Source;
+using MetaObjects.Shared;
 
 namespace MetaObjects.Conformance.Tests;
+
+// ---------------------------------------------------------------------------
+// Test-only providers exercised by the provider-extension-* fixtures.
+//
+// These are NOT shipped — they live in test code to verify the cross-port
+// composition contract end-to-end. Each adapter (TS / C# / Python) carries
+// the same set so fixture-declared provider ids resolve identically.
+// ---------------------------------------------------------------------------
+
+internal sealed class WizardsTemplateToolcallProvider : IMetaDataTypeProvider
+{
+    public string Id => "wizards-template-toolcall";
+    public IReadOnlyList<string> Dependencies => new[] { "metaobjects-core-types" };
+
+    public void RegisterTypes(TypeRegistry registry)
+    {
+        registry.Register(new TypeDefinition(
+            typeId: new TypeId("template", "toolcall"),
+            description: "Template that emits an LLM tool-call envelope.",
+            childRules: new List<ChildRule>
+            {
+                new ChildRule(
+                    BaseTypes.TYPE_ATTR,
+                    Structural.CHILD_RULE_WILDCARD,
+                    Structural.CHILD_RULE_WILDCARD),
+            },
+            factory: (typeId, name) => new MetaTemplate(typeId, name),
+            attributes: new List<AttrSchema>
+            {
+                new AttrSchema("payloadRef", "string", Required: true, Description: "Tool-input payload reference."),
+                new AttrSchema("textRef",    "string", Required: true, Description: "Tool-call template body reference."),
+                new AttrSchema("toolName",   "string", Required: true, Description: "Name of the tool to invoke."),
+            }));
+    }
+}
+
+internal sealed class NoopTestProvider(string id, params string[] deps) : IMetaDataTypeProvider
+{
+    public string Id { get; } = id;
+    public IReadOnlyList<string> Dependencies { get; } = deps;
+    public void RegisterTypes(TypeRegistry registry) { }
+}
 
 /// <summary>
 /// Cross-port envelope record surfaced by <see cref="LoadOutcome.Errors"/>.
@@ -58,12 +101,23 @@ public static class ConformanceAdapter
     /// <summary>
     /// Provider-id → provider. The fixture corpus names providers by stable id;
     /// this maps them to provider objects. An unknown id throws (parity with the TS adapter).
+    /// Test-only providers (provider-extension-* fixtures) live alongside the
+    /// shipped ones — they are guarded by the fixture's providers.json so they
+    /// never feed a production code path.
     /// </summary>
     private static readonly IReadOnlyDictionary<string, IMetaDataTypeProvider> Providers =
         new Dictionary<string, IMetaDataTypeProvider>(StringComparer.Ordinal)
         {
             ["metaobjects-core-types"]    = CoreTypes.CoreTypesProvider,
             ["metaobjects-documentation"] = DocumentationTypes.DocTypesProvider,
+            // Test-only — provider-extension-* fixtures.
+            ["wizards-template-toolcall"] = new WizardsTemplateToolcallProvider(),
+            ["cycle-a"]                   = new NoopTestProvider("cycle-a", "cycle-b"),
+            ["cycle-b"]                   = new NoopTestProvider("cycle-b", "cycle-a"),
+            ["depends-on-missing"]        = new NoopTestProvider("depends-on-missing", "does-not-exist"),
+            ["duplicate-x"]               = new NoopTestProvider("duplicate-x"),
+            // Same `.Id` as duplicate-x — surfaces ERR_PROVIDER_DUPLICATE_ID at compose time.
+            ["duplicate-x-clone"]         = new NoopTestProvider("duplicate-x"),
         };
 
     /// <summary>
@@ -77,7 +131,25 @@ public static class ConformanceAdapter
                 : throw new ArgumentException($"Unknown provider id \"{id}\""))
             .ToList();
 
-        var registry = Provider.ComposeRegistry(resolved);
+        // Provider composition errors (duplicate id / missing dep / cycle) are
+        // first-class fixture outcomes: surface them as a code-only LoadOutcome
+        // so the cross-port runner can compare expected-errors.json directly.
+        TypeRegistry registry;
+        try
+        {
+            registry = Provider.ComposeRegistry(resolved);
+        }
+        catch (MetaModelException ex)
+        {
+            var codeStr = ex.Code.ToString();
+            var compErr = new ErrorEnvelopeRecord(codeStr, "code", Array.Empty<string>(), null);
+            return new LoadOutcome(
+                Tree: null!,
+                ErrorCodes: new[] { codeStr },
+                Warnings: Array.Empty<string>(),
+                Errors: new[] { compErr },
+                WarningEnvelopes: Array.Empty<ErrorEnvelopeRecord>());
+        }
         var result = MetaDataLoader.FromDirectory(inputDir, registry);
 
         // FR5a — surface the full envelope per error. Normalize files[] to
