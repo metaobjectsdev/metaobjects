@@ -2,26 +2,45 @@
 
 ## What this project is
 
-MetaObjects is a **cross-language metadata standard** for declaring typed entity models that drive code generation, runtime metadata access, and drift detection — across TypeScript, Java, Python, and (eventually) C#.
+MetaObjects is a **cross-language metadata standard** for declaring typed entity models that drive code generation, runtime metadata access, and drift detection — across TypeScript, C#, Java, Python, and Kotlin (Kotlin runs on the JVM via `metadata-ktx` + `codegen-kotlin`).
 
 The metamodel is the **durable spine**; generated code is the **disposable artifact**. Substrate is local-first: typed metadata lives in your repo, generated code is idiomatic per-language output that runs without any MetaObjects dependency at runtime. If `@metaobjectsdev/*` disappears tomorrow, you keep working code.
 
 ## Four pillars
 
-Equal weight. Three ship per-language today; the fourth is committed for 7.0.0:
+Equal weight — all four ship per-language today across the five ports (TS / C# / Java / Python / Kotlin), with cross-port conformance corpora verifying byte-identical behavior:
 
-1. **Codegen** — emit idiomatic per-language code (Drizzle/Zod + Fastify for TS, JOOQ/Spring for Java, Pydantic/FastAPI for Python). Hand-edit-preserving regen via three-way merge.
-2. **Runtime metadata** — load metadata at runtime, drive behavior dynamically (CRUD, validation, relationships, dynamic admin UIs, LLM tool registration). On Kysely (TS), SQLAlchemy Core (Python), modernized JDBC/jOOQ (Java).
-3. **Drift detection** — catch divergence between code and metadata. Quality-of-life on top of codegen + runtime.
-4. **Prompt construction** *(landing in 7.0.0)* — the prompt is code too, not a string scattered across services. Declare a prompt's payload as a typed projection (payload bloat becomes a diff), keep its text external and provider-resolved, and render it deterministically: snapshot-testable, cache-stable (no whitespace change silently breaking exact-prefix prompt-cache hits), and drift-checked at build time so a renamed field can't degrade a prompt. Conformance-gated, so the guarantee holds in every language port (and a Python eval renders exactly what prod ships). Designed in `docs/superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md`; depends on the FR-003 projection substrate.
+1. **Codegen** — emit idiomatic per-language code (Drizzle/Zod + Fastify for TS, EF Core + ASP.NET for C#, Spring REST + DTO + Repository for Java via `codegen-spring`, Pydantic + FastAPI for Python, KotlinPoet + Exposed + Spring for Kotlin via `codegen-kotlin`). Hand-edit-preserving regen via three-way merge.
+2. **Runtime metadata** — load metadata at runtime, drive behavior dynamically (CRUD, validation, relationships, dynamic admin UIs, LLM tool registration). On Kysely (TS), SQLAlchemy Core (Python), modernized JDBC + Spring-tx via OMDB (Java), Exposed (Kotlin), EF Core (C#).
+3. **Drift detection** — `meta verify` catches divergence between code and metadata (covers entity codegen, prompt templates, output parsers, schema). Quality-of-life on top of codegen + runtime.
+4. **Prompt construction** — a prompt is code, not a string scattered across services. Declare a prompt's payload as a typed projection (payload bloat becomes a diff), keep its text external and provider-resolved, and render it deterministically: snapshot-testable, cache-stable (no whitespace change silently breaking exact-prefix prompt-cache hits), and drift-checked at build time so a renamed field can't degrade a prompt. Conformance-gated, so the guarantee holds in every language port. **Render + payload-VO codegen + `verify` + `template.output` parser-on-receipt (FR-006) ship in all five ports today.** The remaining 7.0.0 work (tracked as H6 in `spec/roadmap.md`) is the full pillar consolidation — MCP exposure, eval harness, and the end-to-end declared-prompt story. Designed in `docs/superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md`.
 
 ## Status
 
-TypeScript reference implementation is **published to npm at `0.6.0`** (12 `@metaobjectsdev/*` packages on the `latest` tag) — Projects D–G shipped end-to-end with 2500+ tests passing; the 0.6.0 release adds the Cloudflare D1 dialect to `meta migrate` (`--dialect d1`, `meta init --d1`). Java port is in progress: H3a (loader restructure) shipped 2026-05-19; H3b (conformance harness) is active. **C# is a first-class full-stack target.** Loader + conformance shipped (loader, canonical serializer, and a `dotnet test` conformance runner over the full shared corpus; metadata layer largely caught up — known-gap list now tracks the `source.rdb` source-v2 paradigm cluster + `doc-common-attrs-on-all-types`, all blocked on the source-v2 port). The FR-004 tier ships: the **render engine (`MetaObjects.Render`)** renders the shared `fixtures/render-conformance` corpus byte-identical to TS, plus payload-VO codegen and `verify`. **The EF Core + ASP.NET codegen tier ships** (`MetaObjects.Codegen` + the `meta` CLI: `verify`/`gen`/`migrate`): entities, `AppDbContext` (DbSets, projection `.ToView`, `@storage` owned types via `OwnsOne`), CRUD minimal-API routes, and Postgres DDL (`CREATE TABLE` with PK/NOT NULL/UNIQUE/FK + `@storage` columns; `CREATE VIEW` for projections incl. aggregate/passthrough-`@via`/collection origins). Remaining tiers — introspection-driven incremental migration (`migrate` is full-CREATE today) and the runtime-metadata pillar — are being built out (no part of MetaObjects is out of scope for C#). Python is planned post-H3.
+_Last refreshed 2026-05-27._
 
-The 7.0.0 line is specced: FR-003 brings the Java OMDB persistence engine, metadata-driven schema migration, and dynamic projections onto current core; FR-004 builds the fourth pillar (cross-language prompt construction) on top of FR-003's projections. Both are design-stage plan-of-record (`docs/superpowers/specs/2026-05-22-fr-003-*` and `*-fr-004-*`), not yet implemented.
+**TypeScript reference implementation** is **published to npm at `0.7.0-rc.2`** (`@metaobjectsdev/*` packages, 12 packages on the `latest` tag). 2500+ tests passing across the workspace.
 
-Cross-language conformance fixtures live at `fixtures/conformance/` (85 fixtures + a `CAPABILITIES.json` manifest). See `spec/roadmap.md` for current + planned work.
+**All five ports ship loader + canonical serializer + conformance + codegen + render + payload-VO + `verify`:**
+
+- **TypeScript** — `codegen-ts` (Vite-style plugins; Drizzle, Zod, Fastify) + `runtime-ts` + `migrate-ts` + the universal web client packages (`runtime-web`, `react`, `tanstack`).
+- **C#** — `MetaObjects` (loader + canonical serializer + conformance) + `MetaObjects.Render` (Mustache + payload-VO + `verify`) + `MetaObjects.Codegen` (EF Core entities + `AppDbContext` + CRUD minimal-API routes + Postgres DDL via full-CREATE and incremental introspect/diff/migrate). The `meta` CLI (`verify`/`gen`/`migrate`/`--from-db`) is the entry point.
+- **Java** — `metadata` + `omdb` + `om` + `dynamic` + `core-spring` + `metadata-ktx` (Kotlin facade) + `codegen-spring` (Spring controllers + DTOs + repositories + filter allowlists + payload records + output parsers) + `codegen-mustache` + `codegen-plantuml` + `render` + `maven-plugin` (`meta:gen`/`meta:migrate`/`meta:verify`). FR-003 (OMDB persistence + diff-and-converge migration + binding registry + typed jsonb + Spring-tx + source/origin metamodel) fully shipped, including Plan 4 (engine-debt remediation: atomic mapping cache, JDBC codec registry, `inTransaction` template).
+- **Python** — `metaobjects` (loader + canonical serializer + conformance + render + verify + codegen) + `migrate` + an `ObjectManager` runtime layer. All five conformance corpora green.
+- **Kotlin** — `codegen-kotlin` (KotlinPoet on JVM): entity + Exposed table + Spring controller + payload + relations + filter allowlist + validator + stored-proc + output-parser generators. `integration-tests-kotlin` runs the persistence-conformance corpus through Exposed against Testcontainers Postgres.
+
+**Cross-port conformance corpora** (every port runs the shared corpus):
+- Metamodel: `fixtures/conformance/` (~90 fixtures). TS / C# / Java / Python all green.
+- Render: `fixtures/render-conformance/`. TS / C# / Java / Kotlin / Python byte-identical.
+- Persistence: `fixtures/persistence-conformance/`. TS / C# / Java / Kotlin / Python all 12/12 against Testcontainers Postgres / Derby.
+- API-contract: `fixtures/api-contract-conformance/`. TS / C# / Java / Kotlin / Python all 20/20.
+- YAML / verify corpora green across the ports that ship those layers.
+
+**Key cross-language features shipped:** FR5 family (a/b/c/d/e + WARN envelope-shape — actionable loader errors per ADR-0009); FR-003 (Java RDB persistence + meta migrate + projections); FR-006 (template.output parser-on-receipt codegen per ADR-0010 in all 5 ports); FR-008 + FR-009 (cross-port REST API contract + 10 filter operators); source v2 paradigm (ADR-0007); metadata-ktx Kotlin facade; per-target output directories (TS codegen).
+
+**Current release line.** `0.7.0-rc.2` accumulates the 0.6.x → 0.7.0 consumer-friction batch (stock `promptRender()` generator, `db`-parameter generated repo helpers per ADR-0008, Cloudflare Workers deploy recipe, CHANGELOG backfill + naming-convention docs) plus the FR5 + FR-003 Plan 4 + FR-006 Java work. GA promotion is the next release move.
+
+See `spec/roadmap.md` for the active + planned work picture.
 
 ## Public repository hygiene
 
@@ -486,5 +505,6 @@ See `spec/roadmap.md` for current and planned work across the H1-H10 project ser
 ## Open questions
 
 - [TECHNICAL] Field-type → Drizzle-column-type mapping table (needed for complete TS codegen coverage).
-- [TECHNICAL] ObjectManagerDB modernization scope (jOOQ migration, Spring Boot 3 starter, async via virtual threads).
-- [TECHNICAL] Conformance test format specification (H2 deliverable).
+- [TECHNICAL] ObjectManagerDB further modernization (jOOQ migration, Spring Boot 3 starter, async via virtual threads). FR-003 Plan 4 (2026-05-27) closed the three engine-debt anti-patterns identified at the time — atomic mapping cache off shared `MetaObject`, JDBC codec registry replacing the type ladders (ADR-0002), and `inTransaction` template method. The remaining items above are larger architectural moves rather than near-term cleanups.
+- [TECHNICAL] Payload `origin.*` resolution in `codegen-spring` (Day-1 deferral — see `server/java/codegen-spring/src/main/java/com/metaobjects/generator/spring/KNOWN_GAPS.md`). Kotlin's `KotlinPayloadGenerator` is the cross-port reference.
+- [TECHNICAL] WARN envelope-shape assertion on cross-port `expected-warnings.json` (closed 2026-05-27 — runners now assert envelope shape on warnings; legacy string-list path retired).
