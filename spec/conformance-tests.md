@@ -116,12 +116,14 @@ Pre-FR5a fixtures using the legacy `[{"code": "..."}]` array shape get only the 
 
 ### Multi-file load order (FR5c)
 
-When a fixture's `input/` directory contains more than one `meta.*.json` file, every port loads them in **case-sensitive alphabetical order of basename** before merging. This is a cross-port contract — the order determines:
+Finalized 2026-05-27 across all four ports (TS / C# / Java / Python). When a fixture's `input/` directory contains more than one `meta.*.json` file, every port loads them in **case-sensitive alphabetical order of basename** before merging. This is a cross-port contract — the order determines:
 
 - which file is the `overlay-base` (alphabetically first) and which are `overlay-extension`s on a merged node's `source.contributors[]`;
 - the `files[]` list inside an `ERR_MERGE_CONFLICT` or `WARN_DUPLICATE_DECLARATION` envelope (also alphabetical, byte-identical across ports).
 
 Last-writer-wins still governs non-conflicting attr overlays (one side unset, or both sides set to the same value). When both contributors set the same `@attr` to *different* non-empty values, the loader raises `ERR_MERGE_CONFLICT` with a `format: "merged"` envelope listing both contributors. When two files declare a node and the second contributes no semantic change (per the FR5a `semantic_diff`), the loader emits `WARN_DUPLICATE_DECLARATION` and the merged node's `source` is **not** upgraded to `format: "merged"`.
+
+**WARN envelope-shape assertion**: as of FR5c-finalize the cross-port runners assert envelope shape on `errors[]` but compare `warnings[]` as a flat string list against `expected-warnings.json`. The error-side envelope assertion (code + source.format + source.files + source.jsonPath) is the cross-port contract; lifting the same assertion onto warnings is queued as follow-up work and is gated on a fixture migration from `expected-warnings.json` (string array) to `expected-errors.json#warnings[]` (envelope shape). All four ports currently exercise the FR5c `warning-duplicate-declaration` fixture under the string-list contract.
 
 ## TS conformance runner
 
