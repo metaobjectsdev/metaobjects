@@ -119,13 +119,21 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // override an inherited one of the same name).
         val primary = entity.getIdentities(true)
             .firstOrNull { it.isPrimary }
-        val primaryFieldName = primary?.fields?.firstOrNull()
+        // Composite PKs (e.g. a junction table keyed by (userId, roleId)) must
+        // emit `PrimaryKey(userId, roleId)` — earlier code only took the FIRST
+        // field and silently truncated. Every PK-member field is non-nullable
+        // (it's part of the primary key). autoIncrement only applies to the
+        // single-field case; a composite tuple can't be auto-generated, so the
+        // generator falls back to the LLM/DB-side default.
+        val primaryFieldNames = primary?.fields.orEmpty()
+        val primaryFieldSet = primaryFieldNames.toSet()
+        val singlePrimaryFieldName = primaryFieldNames.singleOrNull()
         // Views inherit PKs from underlying tables — never emit autoIncrement on a
         // view column, even when @generation=increment is declared on the primary
         // identity (a relic of the parent entity's declaration).
-        val incrementPk = primary?.isIncrement == true && !isView
+        val incrementPk = primary?.isIncrement == true && !isView && singlePrimaryFieldName != null
 
-        val objectColumns = buildObjectColumns(entity, primaryFieldName, loader)
+        val objectColumns = buildObjectColumns(entity, primaryFieldSet, loader)
         val needsJsonbImport = objectColumns.any { it.kind == ObjectColumnKind.JSONB }
         val needsRefOptForDecor = refDecorations.values.any { it.hasReferenceOption }
 
@@ -184,7 +192,7 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 // ObjectField columns are produced by buildObjectColumns() so we can emit
                 // @storage flattened (N columns) or jsonb (1 column) uniformly.
                 if (field is ObjectField) continue
-                val isPk = field.name == primaryFieldName
+                val isPk = field.name in primaryFieldSet
                 val nullable = !isPk && !KotlinGenUtil.isRequiredField(field)
                 val baseSpec = if (field is EnumField) {
                     // field.enum → typed Exposed enumerationByName column referencing the
@@ -216,8 +224,8 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             for (fk in fkColumns) {
                 append("    val ${fk.propertyName} = ${fk.columnExpr}\n")
             }
-            if (primaryFieldName != null) {
-                append("\n    override val primaryKey = PrimaryKey($primaryFieldName)\n")
+            if (primaryFieldNames.isNotEmpty()) {
+                append("\n    override val primaryKey = PrimaryKey(${primaryFieldNames.joinToString(", ")})\n")
             }
             append("}\n")
         }
@@ -255,14 +263,14 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      */
     private fun buildObjectColumns(
         entity: MetaObject,
-        primaryFieldName: String?,
+        primaryFieldNames: Set<String>,
         loader: MetaDataLoader,
     ): List<ObjectColumnSpec> {
         val result = mutableListOf<ObjectColumnSpec>()
         for (field in entity.metaFields) {
             if (field !is ObjectField) continue
             val parentName = field.name
-            val parentNullable = parentName != primaryFieldName && !KotlinGenUtil.isRequiredField(field)
+            val parentNullable = parentName !in primaryFieldNames && !KotlinGenUtil.isRequiredField(field)
             val storage = readStorage(field)        // null → default to jsonb
             if (storage == STORAGE_FLATTENED) {
                 val ref = readObjectRef(field) ?: continue

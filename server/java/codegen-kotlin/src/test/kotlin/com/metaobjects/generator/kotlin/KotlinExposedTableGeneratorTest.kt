@@ -826,6 +826,58 @@ class KotlinExposedTableGeneratorTest {
      * `extends` chain. The fix uses `getIdentities(true)` so inherited primary
      * identities are picked up. This regression test guards the fix.
      */
+    // === composite identity.primary coverage =================================
+
+    /**
+     * Regression: `identity.primary` with multiple fields (composite PK, e.g.
+     * a junction table keyed by (userId, roleId)) silently truncated to the
+     * first field — generating `PrimaryKey(userId)` instead of
+     * `PrimaryKey(userId, roleId)`. The fix joins every field in the
+     * identity's `fields` list. Surfaced by a downstream adopter that
+     * authored its first composite-keyed entity; every prior user had
+     * single-field PKs.
+     */
+    @Test fun `composite identity primary emits all fields in PrimaryKey`() {
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Membership", "children": [
+                { "field.string": { "name": "userId", "@required": true } },
+                { "field.string": { "name": "roleId", "@required": true } },
+                { "source.rdb":   { "@table": "memberships" } },
+                { "identity.primary": { "name": "pk", "@fields": ["userId", "roleId"] } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-composite-pk-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("composite-pk", fx))
+
+            val tableFile = outDir.resolve("acme/demo/MembershipTable.kt").toFile()
+            assertTrue(tableFile.exists(),
+                "MembershipTable.kt should be generated at $tableFile")
+            val src = tableFile.readText()
+            assertTrue(
+                "override val primaryKey = PrimaryKey(userId, roleId)" in src,
+                "Composite PK should emit both fields — was:\n$src",
+            )
+            // Both PK fields must be non-nullable (they're part of the PK).
+            assertTrue(
+                "val userId = varchar(\"userId\", 255)\n" in src ||
+                    "val userId = varchar(\"userId\", 255)\r\n" in src ||
+                    ("val userId = varchar(\"userId\", 255)" in src && "userId = varchar(\"userId\", 255).nullable" !in src),
+                "userId (PK member) should NOT be .nullable() — was:\n$src",
+            )
+            assertTrue(
+                "roleId = varchar(\"roleId\", 255).nullable" !in src,
+                "roleId (PK member) should NOT be .nullable() — was:\n$src",
+            )
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun `inherited identity primary is emitted on child Table`() {
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
