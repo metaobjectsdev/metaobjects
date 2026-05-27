@@ -93,6 +93,63 @@ public sealed record ResolvedSource(
 {
     /// <inheritdoc/>
     public override string Format => "resolved";
+
+    /// <summary>
+    /// FR5d — build a <see cref="ResolvedSource"/> from a referrer node's
+    /// source envelope (typically a <see cref="JsonSource"/> or
+    /// <see cref="YamlSource"/> parse-time source) plus the referrer FQN and
+    /// unresolved target string.
+    ///
+    /// <para>
+    /// The resolved envelope carries:
+    /// <list type="bullet">
+    ///   <item><description><c>Files</c>: the referrer's source files (so
+    ///   editors can jump to it),</description></item>
+    ///   <item><description><c>JsonPath</c>: the referrer's jsonPath when
+    ///   known (the location of the broken reference on disk),</description></item>
+    ///   <item><description><c>Referrer</c>: the FQN of the metadata node
+    ///   that declared the broken reference (e.g. "myapp::content::Video"),</description></item>
+    ///   <item><description><c>Target</c>: the unresolved reference string
+    ///   itself (e.g. "BaseEntity", "Program.weeks.invalid", "DoesNotExist").</description></item>
+    /// </list>
+    /// </para>
+    ///
+    /// <para>
+    /// <paramref name="referrerSource"/> may be any FR5a variant — we read
+    /// its files/jsonPath best-effort and fall back to an empty
+    /// <c>Files: []</c> when the referrer's source is itself a
+    /// <see cref="CodeSource"/> / <see cref="DatabaseSource"/> envelope.
+    /// </para>
+    ///
+    /// <para>
+    /// Mirrors TS <c>resolvedSource()</c> in
+    /// <c>typescript/packages/metadata/src/source.ts</c>.
+    /// </para>
+    /// </summary>
+    public static ResolvedSource From(
+        ErrorSource referrerSource,
+        string referrer,
+        string target)
+    {
+        IReadOnlyList<string> files = referrerSource switch
+        {
+            JsonSource js => js.Files,
+            YamlSource ys => ys.Files,
+            MergedSource ms => ms.Files,
+            ResolvedSource rs => rs.Files,
+            _ => Array.Empty<string>(),
+        };
+        string? jsonPath = referrerSource switch
+        {
+            JsonSource js => js.JsonPath,
+            YamlSource ys => ys.JsonPath,
+            MergedSource ms => ms.JsonPath,
+            ResolvedSource rs => rs.JsonPath,
+            DatabaseSource ds => ds.JsonPath,
+            _ => null,
+        };
+        return new ResolvedSource(files, jsonPath, referrer, target);
+    }
 }
 
 /// <summary>

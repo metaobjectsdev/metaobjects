@@ -277,10 +277,20 @@ public class MetaDataLoader
             var failures = SuperResolve.ResolveDeferredSupers(root);
             foreach (var failure in failures)
             {
+                // FR5d — emit format=resolved with referrer + target. The
+                // referrer's parse-time source supplies files + jsonPath (the
+                // location of the broken `extends:` on disk); referrer = the
+                // declaring node's FQN; target = the unresolved supertype ref.
+                ErrorSource envelope = failure.Node is not null
+                    ? ResolvedSource.From(failure.Node.Source, failure.NodeFqn, failure.Ref)
+                    : new ResolvedSource(
+                        Files: Array.Empty<string>(),
+                        Referrer: failure.NodeFqn,
+                        Target: failure.Ref);
                 errors.Add(new MetaError(
                     $"the SuperClass '{failure.Ref}' does not exist (referenced by {failure.NodeFqn})",
                     ErrorCode.ERR_UNRESOLVED_SUPER,
-                    Envelope: failure.Node?.Source));
+                    Envelope: envelope));
             }
 
             // Pass 2: subtype rules (value must not have primary identity; entity should have one)
