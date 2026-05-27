@@ -7,6 +7,62 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.7.0-rc.3] — 2026-05-27
+
+### Added
+- **Consumer-supplied providers via `loadMemory({ providers })`**
+  (`@metaobjectsdev/sdk`, `@metaobjectsdev/codegen-ts`, `@metaobjectsdev/cli`) —
+  the SDK's `loadMemory(repoRoot, opts?)` now accepts a `providers?:
+  readonly MetaDataTypeProvider[]` option. Consumers (and the codegen
+  config) can register additional metamodel subtypes/attrs without
+  forking the loader.
+
+  - Defaults stay back-compatible: the bundle composed is
+    `[...coreProviders, forgeTypesProvider, ...(opts.providers ?? [])]`.
+    `forgeTypesProvider` is now a first-class `MetaDataTypeProvider`
+    (id `"metaobjects-forge"`, depends on `"metaobjects-core-types"`);
+    the legacy `registerForgeTypes()` is a thin back-compat wrapper.
+  - Advanced opt-out: `loadMemory(root, { providers: [...], replaceDefaults:
+    true })` skips the default bundle entirely; the caller owns the full
+    provider set.
+  - Codegen config: `MetaobjectsGenConfig.providers?` lets a project's
+    `metaobjects.config.ts` declare its providers once. The CLI's `gen`
+    / `verify` / `migrate` / `prompt-snapshot` commands all read the
+    config and thread `config.providers` into `loadMemory` — no silent
+    skipping, no per-command divergence.
+  - Stable error codes: composition surfaces `ERR_PROVIDER_DUPLICATE_ID`,
+    `ERR_PROVIDER_MISSING_DEPENDENCY`, `ERR_PROVIDER_DEPENDENCY_CYCLE`
+    via `composeRegistry`. The contract is identical across Java, TS,
+    C#, and Python.
+
+- **Cross-port parity (TS / C# / Python; Java deferred).** Java already
+  has SPI auto-discovery for type providers; a programmatic `compose()`
+  factory parallel to TS `composeRegistry` is deferred to a follow-up.
+
+  - **C#:** the runtime API entry is `MetaDataLoader.FromDirectory(dir,
+    registry)`, which already takes a custom registry; `Provider.
+    ComposeRegistry(providers)` is the supported composition surface.
+    New `ProviderExtensionTests` (6 cases) assert the cross-port
+    contract end-to-end.
+  - **Python:** `MetaDataLoader.from_directory(dir, providers=...)`
+    already accepts a provider list; the conformance adapter now
+    discovers `providers.json` per fixture (parity with C#). New
+    `tests/unit/test_provider_extension.py` (5 cases) mirrors the TS
+    test suite.
+
+- **5 conformance fixtures** under `fixtures/conformance/` exercising
+  the contract cross-port:
+  `provider-extension-new-subtype-success` (positive: a test-only
+  `wizards-template-toolcall` provider registers `template.toolcall`),
+  `provider-extension-missing-provider-fails` (`ERR_UNKNOWN_SUBTYPE`),
+  `provider-extension-dependency-cycle` (`ERR_PROVIDER_DEPENDENCY_CYCLE`),
+  `provider-extension-missing-dependency`
+  (`ERR_PROVIDER_MISSING_DEPENDENCY`), and
+  `provider-extension-duplicate-id` (`ERR_PROVIDER_DUPLICATE_ID`).
+  Each fixture's `providers.json` is the public seam — explicit
+  `providers` declarations bypass any ambient discovery, so the
+  fixture's declared set is exactly the set the loader composes.
+
 ## [0.7.0-rc.2] — 2026-05-27
 
 ### Added
