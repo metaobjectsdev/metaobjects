@@ -1,0 +1,17 @@
+// ApiContractCorpusPaths — locate the api-contract-conformance corpus directory
+// relative to the test assembly. Mirrors the Java runner's findCorpusRoot()
+// walk so the fixture path resolves identically across ports.
+
+namespace MetaObjects.IntegrationTests.Api;
+
+internal static class ApiContractCorpusPaths
+{
+    // Test assemblies run from bin/Debug/net8.0; the corpus lives 6 levels up
+    // at the repo root. AppContext.BaseDirectory points at the bin dir.
+    public static readonly string Repo = Path.GetFullPath(
+        Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
+
+    public static readonly string Corpus = Path.Combine(Repo, "fixtures", "api-contract-conformance");
+    public static readonly string ScenariosDir = Path.Combine(Corpus, "scenarios");
+    public static readonly string SeedFile = Path.Combine(Corpus, "seed.json");
+}
