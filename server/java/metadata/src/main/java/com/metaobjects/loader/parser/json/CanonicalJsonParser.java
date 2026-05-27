@@ -171,6 +171,36 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
     }
 
     /**
+     * FR5a / ADR-0009 — Re-throw a {@link MetaDataException} that escaped a
+     * registry/base-parser call site without an envelope, stamping it with the
+     * current JSONPath so the cross-port harness sees the offending node's
+     * location rather than {@code $}.
+     *
+     * <p>If the exception already carries an envelope (or it is one of the
+     * legacy code-string-in-message exceptions whose code-extraction code
+     * never sees the envelope), this method preserves the original. Otherwise
+     * it constructs a new {@link MetaDataException} that mirrors the original
+     * message + code but adds {@link #currentJsonSource()} as its envelope.</p>
+     *
+     * <p>Returns the (possibly re-wrapped) exception so the caller can write
+     * {@code throw rethrowWithEnvelope(ex);}.</p>
+     */
+    private MetaDataException rethrowWithEnvelope(MetaDataException ex) {
+        if (ex.getEnvelope().isPresent()) return ex;
+        // Preserve the original message and structured code (if any) — only the
+        // envelope is missing. Cause is the original exception so the stack
+        // trace is preserved.
+        return new MetaDataException(
+            ex.getMessage(),
+            null,
+            null,
+            ex,
+            Collections.emptyMap(),
+            ex.getCode().orElse(null),
+            currentJsonSource());
+    }
+
+    /**
      * FR5a / ADR-0009 — Tags an inline-{@code @}-attribute MetaAttribute child
      * (just added via {@link com.metaobjects.loader.parser.BaseMetaDataParser#parseInlineAttribute})
      * with a {@link JsonSource} envelope rooted at the parent body's JSONPath.
@@ -224,10 +254,16 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             // Any non-MetaDataException parse-time failure (Gson syntax error or
             // other runtime fault) is reported as malformed JSON so callers see a
             // stable conformance code rather than an untagged exception.
+            //
+            // FR5a / ADR-0009 — attach a root-of-file JsonSource envelope so the
+            // conformance harness sees source.files = [<filename>] and
+            // source.jsonPath = "$" (the parse failed before any path could be
+            // pushed onto the builder).
             throw new MetaDataException(
                 "Error loading canonical JSON from file [" + getFilename() + "]: " + e.getMessage(),
                 null, null, e, Collections.emptyMap(),
-                ErrorCode.ERR_MALFORMED_JSON);
+                ErrorCode.ERR_MALFORMED_JSON,
+                new JsonSource(List.of(getFilename()), "$"));
         }
     }
 
@@ -502,19 +538,30 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         // method uses it for naming validation only; the actual abstract flag is
         // set via a MetaAttribute below (matching the serializer's isAbstract attribute
         // convention used by CanonicalJsonSerializer).
-        MetaData md = createOrOverlayMetaData(
-            isRoot,
-            parent,
-            type,
-            subType,
-            name,
-            pkg,
-            superRef,
-            /*isAbstract=*/ null,   // set below via attribute
-            /*isInterface=*/ null,
-            /*implementsArray=*/ null,
-            isOverlay
-        );
+        //
+        // FR5a / ADR-0009 — createOrOverlayMetaData can throw ERR_UNKNOWN_SUBTYPE
+        // (and other envelope-less MetaDataExceptions) from the registry layer,
+        // which has no JSONPath context. Catch and stamp the current JSONPath
+        // here so the cross-port envelope sees the offending node's location
+        // rather than $.
+        MetaData md;
+        try {
+            md = createOrOverlayMetaData(
+                isRoot,
+                parent,
+                type,
+                subType,
+                name,
+                pkg,
+                superRef,
+                /*isAbstract=*/ null,   // set below via attribute
+                /*isInterface=*/ null,
+                /*implementsArray=*/ null,
+                isOverlay
+            );
+        } catch (MetaDataException ex) {
+            throw rethrowWithEnvelope(ex);
+        }
 
         if (md == null) {
             log.warn("createOrOverlayMetaData returned null for [{}:{}:{}] in file [{}]",
@@ -541,8 +588,14 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             super.handleNativeIsArrayProperty(md, "true");
         }
 
-        // Apply @-attributes
-        processAttributes(md, body);
+        // Apply @-attributes — wrap so envelope-less attribute-value errors
+        // (e.g. ERR_BAD_ATTR_VALUE from a bad inline value like
+        // @pageSize: "twenty-five") get stamped with the parent node's JSONPath.
+        try {
+            processAttributes(md, body);
+        } catch (MetaDataException ex) {
+            throw rethrowWithEnvelope(ex);
+        }
 
         // Recurse into children
         if (body.has(KEY_CHILDREN)) {
