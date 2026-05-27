@@ -35,7 +35,9 @@ export async function genCommand(args: string[], cwd: string): Promise<number> {
 
   let metadata;
   try {
-    metadata = await loadMemory(projectRoot);
+    metadata = await loadMemory(projectRoot, {
+      ...(forgeConfig.providers !== undefined ? { providers: forgeConfig.providers } : {}),
+    });
   } catch (err) {
     const msg = (err as Error).message;
     if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {

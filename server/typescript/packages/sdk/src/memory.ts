@@ -1,13 +1,14 @@
 import { join } from "node:path";
 import { readdir, stat } from "node:fs/promises";
 import {
+  composeRegistry,
+  coreProviders,
   MetaDataLoader,
-  TypeRegistry,
-  registerCoreTypes,
+  type MetaDataTypeProvider,
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
-import { registerForgeTypes } from "./forge-types.js";
+import { forgeTypesProvider } from "./forge-types.js";
 import { discoverWorkspace, resolveExtendsOrder } from "./workspace.js";
 
 /**
@@ -24,6 +25,36 @@ export const DEFAULT_METADATA_DIR = "metaobjects";
 export const DEFAULT_METAOBJECTS_DIR = ".metaobjects";
 
 /**
+ * Options for {@link loadMemory}. Consumers can supply additional
+ * {@link MetaDataTypeProvider}s to extend the metamodel with their own
+ * subtypes/attrs (e.g. a `template.toolcall` subtype).
+ */
+export interface LoadMemoryOptions {
+  /**
+   * Consumer-supplied providers. Composed AFTER the default core providers
+   * (core-types + db + documentation + forge) unless `replaceDefaults: true`
+   * is set. Use this to register additional subtypes or extend existing
+   * ones without forking the loader.
+   */
+  providers?: readonly MetaDataTypeProvider[];
+  /**
+   * Skip the default core providers; supply your own full set. Advanced —
+   * use only when you need to compose a custom metamodel from scratch.
+   * Throws if `providers` is absent or empty.
+   */
+  replaceDefaults?: boolean;
+}
+
+/** Default provider bundle threaded by {@link loadMemory} when no options
+ *  override is supplied. Exposed for tests/inspection; callers shouldn't need
+ *  to spread this manually — `loadMemory(root, { providers: [mine] })`
+ *  composes `[...defaultLoadMemoryProviders, mine]` automatically. */
+export const defaultLoadMemoryProviders: readonly MetaDataTypeProvider[] = [
+  ...coreProviders,
+  forgeTypesProvider,
+];
+
+/**
  * Load all metadata files from `<repoRoot>/metaobjects/` into a single
  * MetaData. If `<repoRoot>/.meta/package.meta.json` declares `extends:` deps
  * and a workspace can be discovered (pnpm-workspace.yaml or package.json
@@ -31,18 +62,35 @@ export const DEFAULT_METAOBJECTS_DIR = ".metaobjects";
  *
  * Excludes `_pending/`. Registers metaobjects core types plus Meta Forge's
  * descriptive top-level types (decision, principle, etc.) so mixed content
- * parses without warnings.
+ * parses without warnings. Consumer-supplied providers (via
+ * {@link LoadMemoryOptions.providers}) are composed AFTER the defaults so
+ * they may depend on core/forge ids.
  *
  * Throws if `metaobjects/` doesn't exist (callers should run `meta init`).
  *
  * @param repoRoot The project's working-directory root (e.g. process.cwd()).
  *   `loadMemory` resolves `metaobjects/` and (if workspace-aware) the
  *   transitive `extends:` graph automatically.
+ * @param options Optional {@link LoadMemoryOptions} — supply additional
+ *   providers or replace the default bundle entirely.
  */
-export async function loadMemory(repoRoot: string): Promise<MetaRoot> {
-  const registry = new TypeRegistry();
-  registerCoreTypes(registry);
-  registerForgeTypes(registry);
+export async function loadMemory(
+  repoRoot: string,
+  options?: LoadMemoryOptions,
+): Promise<MetaRoot> {
+  const extra = options?.providers ?? [];
+  let providers: readonly MetaDataTypeProvider[];
+  if (options?.replaceDefaults === true) {
+    if (extra.length === 0) {
+      throw new Error(
+        "loadMemory: `replaceDefaults: true` requires at least one provider in `providers`.",
+      );
+    }
+    providers = extra;
+  } else {
+    providers = [...defaultLoadMemoryProviders, ...extra];
+  }
+  const registry = composeRegistry(providers);
 
   // Collect all metadata file paths to load. Order matters for the parser's
   // deferred-resolution pass (it parses in array order, then resolves supers

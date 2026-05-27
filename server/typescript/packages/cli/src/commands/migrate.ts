@@ -160,9 +160,22 @@ export async function migrateCommand(
     return 2;
   }
 
+  // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
+  // providers. migrate's postgres/sqlite path also reads the config later
+  // for columnNamingStrategy; we load it once here and reuse below.
+  let postgresConfigProviders: readonly import("@metaobjectsdev/codegen-ts").MetaDataTypeProvider[] | undefined;
+  try {
+    const forgeConfig = await loadMetaobjectsConfig(metaRoot);
+    postgresConfigProviders = forgeConfig.providers;
+  } catch {
+    postgresConfigProviders = undefined;
+  }
+
   let metadata;
   try {
-    metadata = await loadMemory(metaRoot);
+    metadata = await loadMemory(metaRoot, {
+      ...(postgresConfigProviders !== undefined ? { providers: postgresConfigProviders } : {}),
+    });
   } catch (err) {
     const msg = (err as Error).message;
     if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {
@@ -420,10 +433,21 @@ async function runD1Migrate(
     return stdout;
   };
 
-  // 3. Load metadata.
+  // 3. Load metadata. Best-effort config read for consumer providers; falls
+  //    back to default core+forge bundle if metaobjects.config.ts is absent.
+  let d1ConfigProviders: readonly import("@metaobjectsdev/codegen-ts").MetaDataTypeProvider[] | undefined;
+  try {
+    const forgeConfig = await loadMetaobjectsConfig(metaRoot);
+    d1ConfigProviders = forgeConfig.providers;
+  } catch {
+    d1ConfigProviders = undefined;
+  }
+
   let metadata;
   try {
-    metadata = await loadMemory(metaRoot);
+    metadata = await loadMemory(metaRoot, {
+      ...(d1ConfigProviders !== undefined ? { providers: d1ConfigProviders } : {}),
+    });
   } catch (err) {
     const msg = (err as Error).message;
     if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {

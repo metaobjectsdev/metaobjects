@@ -14,6 +14,7 @@ import { parsePromptSnapshotArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { snapshotPaths, unifiedDiff } from "../lib/snapshot.js";
+import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { loadMemory } from "@metaobjectsdev/sdk";
 import { TYPE_TEMPLATE, TEMPLATE_ATTR_TEXT_REF, TEMPLATE_ATTR_FORMAT } from "@metaobjectsdev/metadata";
 import { render, ESCAPERS, type RenderFormat } from "@metaobjectsdev/render";
@@ -29,9 +30,23 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
     return 2;
   }
 
+  // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
+  // providers. prompt-snapshot doesn't require codegen config; if it's absent
+  // or invalid, fall back to defaults — the loader still works for any
+  // metadata that only uses core+forge subtypes.
+  let configProviders: NonNullable<Awaited<ReturnType<typeof loadMetaobjectsConfig>>["providers"]> | undefined;
+  try {
+    const forgeConfig = await loadMetaobjectsConfig(cwd);
+    configProviders = forgeConfig.providers;
+  } catch {
+    configProviders = undefined;
+  }
+
   let root;
   try {
-    root = await loadMemory(cwd);
+    root = await loadMemory(cwd, {
+      ...(configProviders !== undefined ? { providers: configProviders } : {}),
+    });
   } catch (err) {
     const msg = (err as Error).message;
     if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {

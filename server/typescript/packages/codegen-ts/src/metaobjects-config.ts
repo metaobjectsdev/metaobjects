@@ -1,11 +1,11 @@
-import { DEFAULT_COLUMN_NAMING_STRATEGY, type ColumnNamingStrategy } from "@metaobjectsdev/metadata";
+import { DEFAULT_COLUMN_NAMING_STRATEGY, type ColumnNamingStrategy, type MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 import type { Generator } from "./generator.js";
 import type { ExtStyle } from "./render-context.js";
 import type { OutputLayout, ResolvedTarget } from "./import-path.js";
 
 export type Dialect = "sqlite" | "postgres";
 /** Re-exported from metadata so codegen-ts consumers see one canonical type. */
-export type { ColumnNamingStrategy } from "@metaobjectsdev/metadata";
+export type { ColumnNamingStrategy, MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 export type { ExtStyle };
 export type { OutputLayout };
 export type { ResolvedTarget };
@@ -41,6 +41,13 @@ export interface MetaobjectsGenConfig extends ResolvedGenConfig {
   targets?: Record<string, TargetConfig>;
   /** importBase for the default target (top-level outDir). */
   importBase?: string;
+  /**
+   * Consumer-supplied {@link MetaDataTypeProvider}s. Threaded to `loadMemory`
+   * by the CLI's gen/migrate commands so a project can register its own
+   * subtypes/attrs (e.g. a `template.toolcall` subtype) without forking the
+   * loader. Composed AFTER the default core+forge bundle.
+   */
+  providers?: readonly MetaDataTypeProvider[];
 }
 
 /** MetaobjectsGenConfig after applying defaults. All fields required.

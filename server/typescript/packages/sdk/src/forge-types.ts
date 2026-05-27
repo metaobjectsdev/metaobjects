@@ -104,6 +104,7 @@ export type ForgeAttr = (typeof FORGE_ATTRS)[number];
 
 import {
   type ChildRule,
+  type MetaDataTypeProvider,
   type TypeDefinition,
   TypeId,
   TypeRegistry,
@@ -139,29 +140,46 @@ function def(
 }
 
 /**
+ * The Meta Forge provider — registers Meta Forge's five descriptive top-level
+ * types (decision, principle, convention, glossary, failure) plus their
+ * subtypes. Composed AFTER `metaobjects-core-types` so the structural attr
+ * type is available for forge child rules.
+ *
+ * Use via `composeRegistry([...coreProviders, forgeTypesProvider])` or via
+ * `loadMemory()`'s default bundle (forge is included by default).
+ */
+export const forgeTypesProvider: MetaDataTypeProvider = {
+  id: "metaobjects-forge",
+  dependencies: ["metaobjects-core-types"],
+  description: "Meta Forge descriptive top-level types (decision, principle, convention, glossary, failure).",
+  registerTypes(registry: TypeRegistry): void {
+    const forgeChildRules = [wildcardOf(TYPE_ATTR)];
+
+    for (const subType of FORGE_DECISION_SUBTYPES) {
+      registry.register(def(FORGE_TYPE_DECISION, subType, `Forge decision (${subType})`, forgeChildRules));
+    }
+    for (const subType of FORGE_PRINCIPLE_SUBTYPES) {
+      registry.register(def(FORGE_TYPE_PRINCIPLE, subType, `Forge principle (${subType})`, forgeChildRules));
+    }
+    for (const subType of FORGE_CONVENTION_SUBTYPES) {
+      registry.register(def(FORGE_TYPE_CONVENTION, subType, `Forge convention (${subType})`, forgeChildRules));
+    }
+    for (const subType of FORGE_GLOSSARY_SUBTYPES) {
+      registry.register(def(FORGE_TYPE_GLOSSARY, subType, `Forge glossary entry (${subType})`, forgeChildRules));
+    }
+    for (const subType of FORGE_FAILURE_SUBTYPES) {
+      registry.register(def(FORGE_TYPE_FAILURE, subType, `Forge failure record (${subType})`, forgeChildRules));
+    }
+  },
+};
+
+/**
  * Register Meta Forge's five descriptive top-level types into the given
  * registry. Must be called AFTER `registerCoreTypes()`.
  *
- * Each type accepts `attr` children for expanded-form @forge* attributes.
- * Loader's default permissive mode tolerates these new types as children
- * of the metadata wrapper (unknowns are warned, not errored).
+ * Thin back-compat wrapper over `forgeTypesProvider.registerTypes`; prefer
+ * the provider directly for new code (composes correctly with other providers).
  */
 export function registerForgeTypes(registry: TypeRegistry): void {
-  const forgeChildRules = [wildcardOf(TYPE_ATTR)];
-
-  for (const subType of FORGE_DECISION_SUBTYPES) {
-    registry.register(def(FORGE_TYPE_DECISION, subType, `Forge decision (${subType})`, forgeChildRules));
-  }
-  for (const subType of FORGE_PRINCIPLE_SUBTYPES) {
-    registry.register(def(FORGE_TYPE_PRINCIPLE, subType, `Forge principle (${subType})`, forgeChildRules));
-  }
-  for (const subType of FORGE_CONVENTION_SUBTYPES) {
-    registry.register(def(FORGE_TYPE_CONVENTION, subType, `Forge convention (${subType})`, forgeChildRules));
-  }
-  for (const subType of FORGE_GLOSSARY_SUBTYPES) {
-    registry.register(def(FORGE_TYPE_GLOSSARY, subType, `Forge glossary entry (${subType})`, forgeChildRules));
-  }
-  for (const subType of FORGE_FAILURE_SUBTYPES) {
-    registry.register(def(FORGE_TYPE_FAILURE, subType, `Forge failure record (${subType})`, forgeChildRules));
-  }
+  forgeTypesProvider.registerTypes(registry);
 }
