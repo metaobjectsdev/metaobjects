@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.7.0-rc.4] — 2026-05-27
+
+### Fixed
+- **rc.3 was packed with stale `dist/`** — the CLI's `meta gen` /
+  `meta verify` / `meta migrate` / `meta prompt-snapshot` commands did
+  not actually thread `config.providers` through to `loadMemory` on
+  npm, even though the source had the change. Same for `loadMemory`'s
+  `providers` option support in `@metaobjectsdev/sdk`. rc.4 ships with
+  a fresh build so the providers API is actually live for consumers.
+- Side-effect of the fixture refactor investigation: the docs
+  `extending-with-providers.md` § "When to add a subtype vs. an attr"
+  gained two real-world escalation triggers (existing subtype's
+  required attrs don't apply; load-time error detection requires
+  subtype since `@-attrs` follow open policy).
+
+No API change vs. rc.3 — only the published artifacts now match the
+documented behavior.
+
 ## [0.7.0-rc.3] — 2026-05-27
 
 ### Added
