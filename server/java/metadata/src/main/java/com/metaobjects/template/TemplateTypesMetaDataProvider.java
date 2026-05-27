@@ -6,10 +6,11 @@ import com.metaobjects.registry.MetaDataTypeProvider;
 /**
  * Template Types MetaData provider.
  *
- * <p>Registers the abstract {@code template.base} type plus the two concrete
- * subtypes {@code template.prompt} and {@code template.output} (FR-004 fourth
- * pillar: cross-language prompt construction). Depends on {@code core-types}
- * for {@code metadata.base} inheritance.</p>
+ * <p>Registers the abstract {@code template.base} type plus the three concrete
+ * subtypes {@code template.prompt}, {@code template.output} (FR-004 fourth
+ * pillar: cross-language prompt construction) and {@code template.toolcall}
+ * (ADR-0011: LLM tool-call envelope). Depends on {@code core-types} for
+ * {@code metadata.base} inheritance.</p>
  *
  * <p>Discovered via the standard {@link MetaDataTypeProvider} ServiceLoader
  * mechanism — wired through
@@ -25,6 +26,10 @@ public class TemplateTypesMetaDataProvider implements MetaDataTypeProvider {
         // Register concrete template subtypes.
         PromptTemplate.registerTypes(registry);
         OutputTemplate.registerTypes(registry);
+        // ADR-0011 — toolcall is a sibling subtype that does NOT inherit
+        // template.base's shared attrs (no @textRef requirement; the body IS
+        // the structured output schema resolved via @payloadRef).
+        ToolcallTemplate.registerTypes(registry);
 
         // Root-level acceptance for template.* is declared on metadata.root in
         // MetaRoot's static initializer alongside object/field/attr/validator/view/
@@ -43,6 +48,6 @@ public class TemplateTypesMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String getDescription() {
-        return "Template Types (prompt / output — FR-004 cross-language prompt construction)";
+        return "Template Types (prompt / output / toolcall — FR-004 + ADR-0011 cross-language prompt construction)";
     }
 }

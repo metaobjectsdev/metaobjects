@@ -1064,6 +1064,26 @@ public final class ValidationPhase {
                 ErrorCode.ERR_MISSING_REQUIRED_ATTR, template.getSource());
         }
 
+        // R1b — template.toolcall requires @toolName + @payloadRef (ADR-0011).
+        // Mirrors the TS toolcallAttrs schema (both marked required: true).
+        if (TemplateConstants.SUBTYPE_TOOLCALL.equals(subType)) {
+            String toolName = template.hasMetaAttr(TemplateConstants.ATTR_TOOL_NAME, false)
+                ? template.getMetaAttr(TemplateConstants.ATTR_TOOL_NAME, false).getValueAsString()
+                : null;
+            if (toolName == null || toolName.isEmpty()) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
+                        + ": template.toolcall '" + template.getName() + "' is missing required @toolName",
+                    ErrorCode.ERR_MISSING_REQUIRED_ATTR, template.getSource());
+            }
+            if (payloadRef == null || payloadRef.isEmpty()) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
+                        + ": template.toolcall '" + template.getName() + "' is missing required @payloadRef",
+                    ErrorCode.ERR_MISSING_REQUIRED_ATTR, template.getSource());
+            }
+        }
+
         // R2 + R3 only apply if @payloadRef is set
         if (payloadRef == null || payloadRef.isEmpty()) return;
 

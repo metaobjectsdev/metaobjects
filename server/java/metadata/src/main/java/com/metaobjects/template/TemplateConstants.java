@@ -18,8 +18,16 @@ public final class TemplateConstants {
     public static final String SUBTYPE_BASE = "base";
     public static final String SUBTYPE_PROMPT = "prompt";
     public static final String SUBTYPE_OUTPUT = "output";
+    /**
+     * LLM tool-call envelope subtype (ADR-0011). Does NOT inherit the
+     * generic prompt/output attrs — declares its own minimal set
+     * ({@code @toolName} required, {@code @payloadRef} required, plus
+     * governance {@code @owner} / {@code @since}). No {@code @textRef}
+     * requirement: a tool-call has no renderable text body.
+     */
+    public static final String SUBTYPE_TOOLCALL = "toolcall";
 
-    // --- Generic attributes (both subtypes) ---
+    // --- Generic attributes (prompt + output; NOT inherited by toolcall) ---
     public static final String ATTR_PAYLOAD_REF = "payloadRef";
     public static final String ATTR_TEXT_REF = "textRef";
     public static final String ATTR_FORMAT = "format";
@@ -32,6 +40,18 @@ public final class TemplateConstants {
     public static final String ATTR_MAX_TOKENS = "maxTokens";
     public static final String ATTR_REQUIRED_SLOTS = "requiredSlots";
     public static final String ATTR_MODEL = "model";
+
+    // --- Toolcall-specific attributes (template.toolcall only — ADR-0011) ---
+    //
+    // Vendor-agnostic in core; vendor wire details (retry semantics, fallback
+    // shapes, parallel invocation, cache hints) are added by consumer providers
+    // — the cross-port equivalent of TypeScript's registry.extend.
+    //
+    // @description is intentionally NOT a toolcall-specific constant — every type
+    // gets @description via the documentation common-attrs provider. Tool
+    // descriptions surfaced to the LLM use the same @description common attr
+    // doc-gen uses.
+    public static final String ATTR_TOOL_NAME = "toolName";
 
     // --- @format closed value set ---
     public static final String FORMAT_TEXT = "text";
