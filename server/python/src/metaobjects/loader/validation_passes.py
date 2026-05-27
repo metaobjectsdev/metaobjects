@@ -49,6 +49,7 @@ from ..meta.persistence.origin.origin_constants import (
 from ..meta.core.relationship.relationship_constants import RELATIONSHIP_ATTR_OBJECT_REF
 from ..meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE
 from ..meta.core.identity.identity_constants import IDENTITY_ATTR_FIELDS
+from ..source import resolved_source
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -494,43 +495,52 @@ def _validate_entity_field_ref(
     object_index: dict[str, MetaObject],
     errors: list[MetaError],
     origin_node: MetaData,
+    referrer: str,
 ) -> bool:
     """Validate a dotted 'Entity.fieldName' reference.
 
     Appends ERR_INVALID_ORIGIN to *errors* if invalid; returns True if valid.
+
     *attr_name* is used only for the error message text; *context* identifies the
-    origin node for diagnostic purposes; *origin_node* carries the provenance
-    envelope attached to any emitted error.
+    origin node for diagnostic purposes; *origin_node* carries the parse-time
+    envelope (files/json_path); *referrer* is the canonical referrer FQN
+    (``<projection-FQN>::<fieldName>``) attached to the FR5d ResolvedSource
+    envelope so consumers know which node declared the broken reference.
     """
     parts = ref.split(".", 1)
     if len(parts) != 2:
+        # Malformed shape — not a reference-resolution failure per se, but TS
+        # emits format=resolved here too (with target=the bad string) so every
+        # FR5d site is shape-consistent across the four ports.
         errors.append(
             MetaError(
                 f"{context} @{attr_name}='{ref}' must be in 'EntityName.fieldName' format",
                 ErrorCode.ERR_INVALID_ORIGIN,
-                envelope=origin_node.source,
+                envelope=resolved_source(origin_node.source, referrer, ref),
             )
         )
         return False
     entity_name, field_name = parts
     entity = object_index.get(entity_name)
     if entity is None:
+        # FR5d — entity half of the ref didn't resolve. target = full ref.
         errors.append(
             MetaError(
                 f"{context} @{attr_name}='{ref}' references unknown entity '{entity_name}'",
                 ErrorCode.ERR_INVALID_ORIGIN,
-                envelope=origin_node.source,
+                envelope=resolved_source(origin_node.source, referrer, ref),
             )
         )
         return False
     field_names = {f.name for f in entity.fields()}
     if field_name not in field_names:
+        # FR5d — entity resolved, field on it did not. target = full ref.
         errors.append(
             MetaError(
                 f"{context} @{attr_name}='{ref}' references field '{field_name}' which does "
                 f"not exist on entity '{entity_name}' (known fields: {sorted(field_names)})",
                 ErrorCode.ERR_INVALID_ORIGIN,
-                envelope=origin_node.source,
+                envelope=resolved_source(origin_node.source, referrer, ref),
             )
         )
         return False
@@ -543,11 +553,19 @@ def _validate_via_path(
     object_index: dict[str, MetaObject],
     errors: list[MetaError],
     origin_node: MetaData,
+    referrer: str,
 ) -> bool:
     """Validate a dotted relationship path 'Entity.rel1[.rel2...]'.
 
     Returns True if valid; appends ERR_INVALID_ORIGIN and returns False if not.
-    *origin_node* carries the provenance envelope attached to any emitted error.
+
+    *origin_node* carries the parse-time envelope (files/json_path); *referrer*
+    is the canonical referrer FQN (``<projection-FQN>::<fieldName>``) attached
+    to the FR5d ResolvedSource envelope.
+
+    Multi-hop walks track the deepest-valid-prefix and name it in the error
+    message on a hop failure (mirrors TS reference at validation-passes.ts
+    L304-L325).
     """
     segments = via.split(".")
     if len(segments) < 2:
@@ -555,7 +573,7 @@ def _validate_via_path(
             MetaError(
                 f"{context} @via='{via}' must be in 'EntityName.relName[.relName...]' format",
                 ErrorCode.ERR_INVALID_ORIGIN,
-                envelope=origin_node.source,
+                envelope=resolved_source(origin_node.source, referrer, via),
             )
         )
         return False
@@ -568,22 +586,28 @@ def _validate_via_path(
             MetaError(
                 f"{context} @via='{via}' references unknown entity '{current_name}'",
                 ErrorCode.ERR_INVALID_ORIGIN,
-                envelope=origin_node.source,
+                envelope=resolved_source(origin_node.source, referrer, via),
             )
         )
         return False
 
-    # Remaining segments: relationship hops
+    # FR5d — track the deepest-valid-prefix as we walk. The prefix starts at
+    # the entity name (resolved above) and grows by one segment per successful
+    # relationship hop. On hop failure the message names the prefix that DID
+    # resolve so authors can fix multi-hop typos quickly.
+    valid_segments: list[str] = [current_name]
     for rel_name in segments[1:]:
         rels = _relationships_by_name(current_entity)
         rel_node = rels.get(rel_name)
         if rel_node is None:
+            prefix = ".".join(valid_segments)
             errors.append(
                 MetaError(
                     f"{context} @via='{via}' — entity '{current_entity.name}' has no "
-                    f"relationship '{rel_name}' (known relationships: {sorted(rels)})",
+                    f"relationship '{rel_name}' (known relationships: {sorted(rels)}). "
+                    f'Deepest valid prefix was "{prefix}".',
                     ErrorCode.ERR_INVALID_ORIGIN,
-                    envelope=origin_node.source,
+                    envelope=resolved_source(origin_node.source, referrer, via),
                 )
             )
             return False
@@ -596,23 +620,26 @@ def _validate_via_path(
                     f"{context} @via='{via}' — relationship '{rel_name}' on entity "
                     f"'{current_entity.name}' has no @objectRef",
                     ErrorCode.ERR_INVALID_ORIGIN,
-                    envelope=origin_node.source,
+                    envelope=resolved_source(origin_node.source, referrer, via),
                 )
             )
             return False
 
         next_entity = object_index.get(obj_ref)
         if next_entity is None:
+            # FR5d — relationship's @objectRef points at a missing entity.
+            # target=the @objectRef value (mirrors TS validation-passes.ts L342-353).
             errors.append(
                 MetaError(
                     f"{context} @via='{via}' — relationship '{rel_name}' on entity "
                     f"'{current_entity.name}' references unknown entity '{obj_ref}'",
                     ErrorCode.ERR_INVALID_ORIGIN,
-                    envelope=origin_node.source,
+                    envelope=resolved_source(origin_node.source, referrer, obj_ref),
                 )
             )
             return False
 
+        valid_segments.append(rel_name)
         current_entity = next_entity
 
     return True
@@ -632,14 +659,27 @@ def _validate_origin_paths(
     for node in _walk(root):
         if node.type != TYPE_FIELD:
             continue
+        # The projection that owns this field. The field walks via _walk so the
+        # field's parent is the containing object (.projection in source-v2).
+        projection = node.parent if hasattr(node, "parent") else None
         for origin in node.children():
             if origin.type != TYPE_ORIGIN:
                 continue
             ctx = f"field '{node.name}' origin.{origin.sub_type}"
+            # FR5d — referrer is `<projection-FQN>::<fieldName>` (the canonical
+            # "where the broken reference lives" identifier). When we cannot
+            # find a projection (defensive), fall back to the field's own FQN.
+            if projection is not None and hasattr(projection, "fqn"):
+                referrer = f"{projection.fqn()}::{node.name}"
+            else:
+                referrer = node.fqn() if hasattr(node, "fqn") else node.name
 
             if origin.sub_type == ORIGIN_SUBTYPE_PASSTHROUGH:
                 from_ref = origin.attr(ORIGIN_ATTR_FROM)
                 if not isinstance(from_ref, str) or not from_ref:
+                    # Missing-attr (not a reference resolution failure) — keep
+                    # the origin node's own source envelope (json/yaml/merged).
+                    # Mirrors TS validation-passes.ts L370-378.
                     errors.append(
                         MetaError(
                             f"{ctx} is missing required attribute '@{ORIGIN_ATTR_FROM}'",
@@ -650,10 +690,11 @@ def _validate_origin_paths(
                 else:
                     _validate_entity_field_ref(
                         from_ref, ORIGIN_ATTR_FROM, ctx, object_index, errors, origin,
+                        referrer,
                     )
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
-                    _validate_via_path(via, ctx, object_index, errors, origin)
+                    _validate_via_path(via, ctx, object_index, errors, origin, referrer)
 
             elif origin.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
                 of_ref = origin.attr(ORIGIN_ATTR_OF)
@@ -668,6 +709,7 @@ def _validate_origin_paths(
                 else:
                     _validate_entity_field_ref(
                         of_ref, ORIGIN_ATTR_OF, ctx, object_index, errors, origin,
+                        referrer,
                     )
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if not isinstance(via, str) or not via:
@@ -679,7 +721,7 @@ def _validate_origin_paths(
                         )
                     )
                 else:
-                    _validate_via_path(via, ctx, object_index, errors, origin)
+                    _validate_via_path(via, ctx, object_index, errors, origin, referrer)
 
 
 # ---------------------------------------------------------------------------
@@ -894,6 +936,8 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
             continue
 
         # R2 — @payloadRef must resolve to a root-level object.value
+        # FR5d — @payloadRef is a reference; emit format=resolved with
+        # referrer=template FQN, target=the unresolved payloadRef string.
         payload = objects_by_name.get(payload_ref)
         if payload is None or payload.sub_type != OBJECT_SUBTYPE_VALUE:
             errors.append(MetaError(
@@ -902,7 +946,7 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
                     f"template '{tpl.name}' @payloadRef '{payload_ref}' "
                     f"does not resolve to an object.value at root"
                 ),
-                envelope=tpl.source,
+                envelope=resolved_source(tpl.source, tpl.fqn(), payload_ref),
             ))
             continue
 
@@ -914,13 +958,19 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
                 payload_fields = {f.name for f in payload.own_children() if f.type == TYPE_FIELD}
                 for slot in slots:
                     if slot not in payload_fields:
+                        # FR5d — @requiredSlots is a field-on-payload reference;
+                        # emit format=resolved with target=`payloadRef.slot`
+                        # (the dotted ref that did not resolve to a payload
+                        # field). Mirrors TS validation-passes.ts L122-137.
                         errors.append(MetaError(
                             code=ErrorCode.ERR_INVALID_TEMPLATE,
                             message=(
                                 f"template.prompt '{tpl.name}' @requiredSlots includes '{slot}' "
                                 f"which is not a field on payload '{payload_ref}'"
                             ),
-                            envelope=tpl.source,
+                            envelope=resolved_source(
+                                tpl.source, tpl.fqn(), f"{payload_ref}.{slot}",
+                            ),
                         ))
 
 
