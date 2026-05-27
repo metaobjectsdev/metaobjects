@@ -3,9 +3,18 @@ from ...shared.base_types import SUBTYPE_BASE
 
 TEMPLATE_SUBTYPE_PROMPT = "prompt"
 TEMPLATE_SUBTYPE_OUTPUT = "output"
-TEMPLATE_SUBTYPES = (SUBTYPE_BASE, TEMPLATE_SUBTYPE_PROMPT, TEMPLATE_SUBTYPE_OUTPUT)
+# template.toolcall — ADR-0011: LLM tool-call envelope (no renderable body —
+# the body IS the structured output schema resolved via @payloadRef).
+TEMPLATE_SUBTYPE_TOOLCALL = "toolcall"
+TEMPLATE_SUBTYPES = (
+    SUBTYPE_BASE,
+    TEMPLATE_SUBTYPE_PROMPT,
+    TEMPLATE_SUBTYPE_OUTPUT,
+    TEMPLATE_SUBTYPE_TOOLCALL,
+)
 
-# Shared attrs across template.prompt and template.output.
+# Shared attrs across template.prompt and template.output (NOT inherited by
+# template.toolcall — see ADR-0011).
 TEMPLATE_ATTR_PAYLOAD_REF = "payloadRef"
 TEMPLATE_ATTR_TEXT_REF = "textRef"
 TEMPLATE_ATTR_FORMAT = "format"
@@ -18,6 +27,19 @@ TEMPLATE_ATTR_REQUIRED_TAGS = "requiredTags"
 TEMPLATE_ATTR_MAX_TOKENS = "maxTokens"
 TEMPLATE_ATTR_REQUIRED_SLOTS = "requiredSlots"
 TEMPLATE_ATTR_MODEL = "model"
+
+# Toolcall-specific attrs (template.toolcall only — see ADR-0011).
+# Vendor-agnostic in core; vendor wire details (retry semantics, fallback
+# shapes, parallel invocation, cache hints) added by consumer providers via
+# registry.extend("template", "toolcall", attributes=[...]).
+#
+# @description is intentionally NOT declared here — it's already a documentation
+# common attr added to every type by the doc provider. Tool descriptions
+# surfaced to the LLM read the same @description common attr.
+#
+# @textRef is intentionally NOT required — a tool-call has no renderable text
+# body. The body IS the structured output schema resolved via @payloadRef.
+TEMPLATE_ATTR_TOOL_NAME = "toolName"
 
 # Closed-set values for @format. Cross-port invariant.
 TEMPLATE_FORMAT_TEXT = "text"

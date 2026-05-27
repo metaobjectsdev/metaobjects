@@ -489,9 +489,13 @@ _register_subtypes(
     child_rules=[ChildRule(TYPE_ATTR, "*")],
 )
 
-# template.* (FR-004) — base + prompt + output. @payloadRef / @textRef / @format /
-# @maxChars / @owner / @since / @requiredTags are shared; prompt also carries
-# @maxTokens / @requiredSlots / @model. Validation in validation_passes.py.
+# template.* (FR-004) — base + prompt + output + toolcall. @payloadRef / @textRef
+# / @format / @maxChars / @owner / @since / @requiredTags are shared across prompt
+# + output; prompt also carries @maxTokens / @requiredSlots / @model. toolcall
+# (ADR-0011) does NOT inherit the shared attrs — it declares its own
+# (@toolName required + @payloadRef required + @owner + @since). No @textRef
+# requirement: a tool-call has no renderable text body.
+# Validation in validation_passes.py.
 _TEMPLATE_SHARED_ATTRS = [
     AttrSchema(name=tc.TEMPLATE_ATTR_PAYLOAD_REF, value_type=ATTR_SUBTYPE_STRING),
     AttrSchema(name=tc.TEMPLATE_ATTR_TEXT_REF, value_type=ATTR_SUBTYPE_STRING),
@@ -509,6 +513,12 @@ _TEMPLATE_PROMPT_ATTRS = list(_TEMPLATE_SHARED_ATTRS) + [
     AttrSchema(name=tc.TEMPLATE_ATTR_MAX_TOKENS, value_type=ATTR_SUBTYPE_INT),
     AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_SLOTS, value_type=ATTR_SUBTYPE_STRINGARRAY),
     AttrSchema(name=tc.TEMPLATE_ATTR_MODEL, value_type=ATTR_SUBTYPE_STRING),
+]
+_TEMPLATE_TOOLCALL_ATTRS = [
+    AttrSchema(name=tc.TEMPLATE_ATTR_TOOL_NAME, value_type=ATTR_SUBTYPE_STRING, required=True),
+    AttrSchema(name=tc.TEMPLATE_ATTR_PAYLOAD_REF, value_type=ATTR_SUBTYPE_STRING, required=True),
+    AttrSchema(name=tc.TEMPLATE_ATTR_OWNER, value_type=ATTR_SUBTYPE_STRING),
+    AttrSchema(name=tc.TEMPLATE_ATTR_SINCE, value_type=ATTR_SUBTYPE_STRING),
 ]
 core_provider.add(
     TypeDefinition(
@@ -534,6 +544,15 @@ core_provider.add(
         sub_type=tc.TEMPLATE_SUBTYPE_PROMPT,
         factory=MetaTemplate,
         attrs=list(_TEMPLATE_PROMPT_ATTRS),
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_TEMPLATE,
+        sub_type=tc.TEMPLATE_SUBTYPE_TOOLCALL,
+        factory=MetaTemplate,
+        attrs=list(_TEMPLATE_TOOLCALL_ATTRS),
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
 )
