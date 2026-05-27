@@ -156,13 +156,12 @@ directory, same canonical output. Auto-discovers fixtures from
 produces a different canonical string for any fixture, that's a bug in C#'s Loader or
 serializer — not in the fixture.
 
-## Java conformance runner (in progress, H3b)
+## Java conformance runner
 
-Same algorithm. H3a (loader-restructure) shipped 2026-05-19; H3b (conformance harness) is
-in progress. Will live at `java/<module>/src/test/java/com/metaobjects/ConformanceTest.java`.
-Same fixtures, same canonical output. If the Java implementation produces a different
-canonical string for any fixture, that's a bug in Java's Loader or serializer — not in the
-fixture.
+Lives at `server/java/metadata/src/test/java/com/metaobjects/conformance/ConformanceTest.java`
+and runs via `mvn -pl metadata test`. Same fixture directory, same canonical output.
+If the Java implementation produces a different canonical string for any fixture,
+that's a bug in Java's Loader or serializer — not in the fixture.
 
 ## Adding a new fixture
 

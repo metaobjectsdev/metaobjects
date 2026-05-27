@@ -105,15 +105,17 @@ def _discover() -> list[YamlFixture]:
 
 _FIXTURES = _discover()
 
-# FR5a envelope-shape gates — fixtures where Python's emitted source differs from
-# TS's (the FR5a reference port) by more than the jsonPath alone. Listed here so
-# the YAML conformance suite stays green; per-port reconciliation tracked in the
-# FR5a follow-up. Each entry MUST be accompanied by the drift summary.
-_FR5A_ENVELOPE_DRIFT_FIXTURES = {
-    # Python threads source one level deeper, to the offending @attr; TS stops
-    # at the parent object.entity.
-    "error-yaml-reserved-as-attr",
-}
+# FR5a envelope-shape gates — sourced from a sibling ledger file (matching the
+# C# / Java pattern). Each entry is a known cross-port drift where Python's
+# emitted source field differs from TS's (the FR5a reference port) by more
+# than the jsonPath alone. The code-set check still runs; only the full-envelope
+# assertion is skipped. Reconcile per the FR5a follow-up.
+_LEDGER_PATH = Path(__file__).parent / "yaml-conformance-expected-failures.json"
+_FR5A_ENVELOPE_DRIFT_FIXTURES = (
+    set(json.loads(_LEDGER_PATH.read_text(encoding="utf-8")).get("fixtures", []))
+    if _LEDGER_PATH.exists()
+    else set()
+)
 
 
 def _load_yaml_to_canonical(yaml_text: str) -> tuple[str, list[str], list[MetaError], list[str]]:
