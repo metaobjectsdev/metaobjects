@@ -40,8 +40,8 @@ describe("promptRender() factory", () => {
         "object.value": {
           name: "NpcPromptPayload",
           children: [
-            { "field.string": { name: "name" } },
-            { "field.string": { name: "mood" } },
+            { "field.string": { name: "name", "@required": true } },
+            { "field.string": { name: "mood", "@required": true } },
           ],
         },
       },
@@ -66,7 +66,7 @@ describe("promptRender() factory", () => {
 
   test("honors a custom outFile option", async () => {
     const root = await loadRoot([
-      { "object.value": { name: "P", children: [{ "field.string": { name: "x" } }] } },
+      { "object.value": { name: "P", children: [{ "field.string": { name: "x", "@required": true } }] } },
       { "template.prompt": { name: "p1", "@payloadRef": "P", "@textRef": "p/1", "@format": "text" } },
     ]);
     const gen = promptRender({ outFile: "src/render/generated/prompts.ts" });
@@ -80,7 +80,7 @@ describe("promptRender() factory", () => {
       {
         "object.value": {
           name: "JustAPayload",
-          children: [{ "field.string": { name: "msg" } }],
+          children: [{ "field.string": { name: "msg", "@required": true } }],
         },
       },
     ]);
@@ -100,7 +100,7 @@ describe("promptRender() factory", () => {
       {
         "object.value": {
           name: "Holder",
-          children: [{ "field.string": { name: "x" } }],
+          children: [{ "field.string": { name: "x", "@required": true } }],
         },
       },
       {
@@ -126,7 +126,7 @@ describe("promptRender() factory", () => {
 
   test("output carries the @generated sentinel header", async () => {
     const root = await loadRoot([
-      { "object.value": { name: "P", children: [{ "field.string": { name: "x" } }] } },
+      { "object.value": { name: "P", children: [{ "field.string": { name: "x", "@required": true } }] } },
       { "template.prompt": { name: "p1", "@payloadRef": "P", "@textRef": "p/1", "@format": "text" } },
     ]);
     const out = await promptRender().generate(makeCtx(root));
@@ -135,7 +135,7 @@ describe("promptRender() factory", () => {
 
   test("hoists the @metaobjectsdev/render import exactly once across many prompts", async () => {
     const root = await loadRoot([
-      { "object.value": { name: "P", children: [{ "field.string": { name: "x" } }] } },
+      { "object.value": { name: "P", children: [{ "field.string": { name: "x", "@required": true } }] } },
       { "template.prompt": { name: "alpha",   "@payloadRef": "P", "@textRef": "p/a", "@format": "text" } },
       { "template.prompt": { name: "beta",    "@payloadRef": "P", "@textRef": "p/b", "@format": "text" } },
       { "template.prompt": { name: "gamma",   "@payloadRef": "P", "@textRef": "p/c", "@format": "text" } },
@@ -154,7 +154,7 @@ describe("promptRender() factory", () => {
 
   test("strips the standalone payloads.js import that generateRenderHandle emits", async () => {
     const root = await loadRoot([
-      { "object.value": { name: "P", children: [{ "field.string": { name: "x" } }] } },
+      { "object.value": { name: "P", children: [{ "field.string": { name: "x", "@required": true } }] } },
       { "template.prompt": { name: "p1", "@payloadRef": "P", "@textRef": "p/1", "@format": "text" } },
     ]);
     const out = await promptRender().generate(makeCtx(root));

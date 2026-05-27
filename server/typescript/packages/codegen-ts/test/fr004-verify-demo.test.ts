@@ -25,18 +25,19 @@ import { generatePayloadInterfaces, generateRenderHandle } from "../src/payload-
 
 // The AuthorBrief projection over the trainerWebsite test entities (Plan #3 T3/T4).
 const model = [
-  { "object.value": { name: "PostBrief", children: [{ "field.string": { name: "title" } }] } },
+  { "object.value": { name: "PostBrief", children: [{ "field.string": { name: "title", "@required": true } }] } },
   {
     "object.value": {
       name: "AuthorBrief",
       children: [
-        { "field.string": { name: "displayName" } },
-        { "field.int": { name: "postCount" } },
+        { "field.string": { name: "displayName", "@required": true } },
+        { "field.int": { name: "postCount", "@required": true } },
         {
           "field.object": {
             name: "posts",
             "isArray": true,
             "@objectRef": "PostBrief",
+            "@required": true,
             children: [{ "origin.collection": { "@via": "Author.posts" } }],
           },
         },

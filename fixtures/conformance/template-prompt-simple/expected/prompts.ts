@@ -3,8 +3,8 @@
 import { render, type Provider } from "@metaobjectsdev/render";
 
 export interface NpcPromptPayload {
-  name: string;
-  mood: string;
+  name?: string;
+  mood?: string;
 }
 
 export function renderNpcTurn(payload: NpcPromptPayload, provider: Provider): string {

@@ -12,18 +12,19 @@ async function loadRoot(children: unknown[]) {
 }
 
 const model = [
-  { "object.value": { name: "PostBrief", children: [{ "field.string": { name: "title" } }] } },
+  { "object.value": { name: "PostBrief", children: [{ "field.string": { name: "title", "@required": true } }] } },
   {
     "object.value": {
       name: "AuthorBrief",
       children: [
-        { "field.string": { name: "displayName" } },
-        { "field.int": { name: "postCount" } },
+        { "field.string": { name: "displayName", "@required": true } },
+        { "field.int": { name: "postCount", "@required": true } },
         {
           "field.object": {
             name: "posts",
             "isArray": true,
             "@objectRef": "PostBrief",
+            "@required": true,
             children: [{ "origin.collection": { "@via": "Author.posts" } }],
           },
         },
@@ -58,10 +59,10 @@ describe("payload-codegen — typed payload interface (types only, no class/VO)"
         "object.value": {
           name: "Lists",
           children: [
-            { "field.string":  { name: "tags",     isArray: true } },
-            { "field.int":     { name: "scores",   isArray: true } },
-            { "field.boolean": { name: "flags",    isArray: true } },
-            { "field.string":  { name: "solo" } },
+            { "field.string":  { name: "tags",     isArray: true, "@required": true } },
+            { "field.int":     { name: "scores",   isArray: true, "@required": true } },
+            { "field.boolean": { name: "flags",    isArray: true, "@required": true } },
+            { "field.string":  { name: "solo",                    "@required": true } },
           ],
         },
       },
@@ -72,6 +73,25 @@ describe("payload-codegen — typed payload interface (types only, no class/VO)"
     expect(out).toContain("flags: boolean[];");
     // Non-array scalars stay scalar.
     expect(out).toContain("solo: string;");
+  });
+
+  test("fields without required:true emit as optional (TS `?:`)", async () => {
+    const root = await loadRoot([
+      {
+        "object.value": {
+          name: "MixedOptional",
+          children: [
+            { "field.string": { name: "mandatory", "@required": true } },
+            { "field.string": { name: "discretionary" } },                  // implicit not-required
+            { "field.string": { name: "explicitlyOptional", "@required": false } },
+          ],
+        },
+      },
+    ]);
+    const out = generatePayloadInterfaces(root, "MixedOptional");
+    expect(out).toContain("mandatory: string;");
+    expect(out).toContain("discretionary?: string;");
+    expect(out).toContain("explicitlyOptional?: string;");
   });
 });
 
@@ -85,13 +105,13 @@ describe("payload-codegen — generatePayloadInterfacesBatch", () => {
 
   test("dedupes a nested type across multiple payloads", async () => {
     const root = await loadRoot([
-      { "object.value": { name: "Lens", children: [{ "field.string": { name: "id" } }] } },
+      { "object.value": { name: "Lens", children: [{ "field.string": { name: "id", "@required": true } }] } },
       {
         "object.value": {
           name: "A",
           children: [
-            { "field.string": { name: "qa" } },
-            { "field.object": { name: "items", "@objectRef": "Lens", isArray: true } },
+            { "field.string": { name: "qa", "@required": true } },
+            { "field.object": { name: "items", "@objectRef": "Lens", isArray: true, "@required": true } },
           ],
         },
       },
@@ -99,8 +119,8 @@ describe("payload-codegen — generatePayloadInterfacesBatch", () => {
         "object.value": {
           name: "B",
           children: [
-            { "field.string": { name: "qb" } },
-            { "field.object": { name: "items", "@objectRef": "Lens", isArray: true } },
+            { "field.string": { name: "qb", "@required": true } },
+            { "field.object": { name: "items", "@objectRef": "Lens", isArray: true, "@required": true } },
           ],
         },
       },

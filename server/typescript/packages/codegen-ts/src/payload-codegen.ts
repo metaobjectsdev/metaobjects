@@ -17,6 +17,7 @@ import {
   TYPE_TEMPLATE,
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
+  FIELD_ATTR_REQUIRED,
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_FORMAT,
@@ -59,6 +60,11 @@ function fieldTsType(field: MetaData): { type: string; refVo?: string } {
   return { type: field.isArray ? `${scalar}[]` : scalar };
 }
 
+/** True iff the field's @required is explicitly set to true. */
+function isFieldRequired(field: MetaData): boolean {
+  return field.ownAttr(FIELD_ATTR_REQUIRED) === true;
+}
+
 function emitInterface(root: MetaData, voName: string, emitted: Set<string>, out: string[]): void {
   if (emitted.has(voName)) return;
   const vo = findObject(root, voName);
@@ -68,7 +74,8 @@ function emitInterface(root: MetaData, voName: string, emitted: Set<string>, out
   const refs: string[] = [];
   for (const f of vo.children().filter((c) => c.type === TYPE_FIELD)) {
     const { type, refVo } = fieldTsType(f);
-    lines.push(`  ${f.name}: ${type};`);
+    const optional = isFieldRequired(f) ? "" : "?";
+    lines.push(`  ${f.name}${optional}: ${type};`);
     if (refVo) refs.push(refVo);
   }
   lines.push("}");
