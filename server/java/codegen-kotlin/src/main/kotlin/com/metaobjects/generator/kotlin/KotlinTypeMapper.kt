@@ -60,6 +60,28 @@ object KotlinTypeMapper {
     private const val ATTR_KIND = "kind"
 
     /**
+     * Attribute name read off any field to override the default Exposed column type.
+     * Recognised values (case-insensitive):
+     * - `uuid` (on [StringField]) — emit Exposed `uuid("col")` instead of `varchar("col", N)`.
+     *   Postgres maps this to the native `uuid` column type. Kotlin data class property type
+     *   stays `String` for minimum-change today (Exposed coerces String ↔ uuid at the SQL
+     *   boundary). A future enhancement can promote to a typed `UUID` Kotlin property.
+     * - `timestamp_with_tz` (on [TimestampField]) — emit Exposed `timestampWithTimeZone("col")`
+     *   (Postgres `timestamp with time zone`). Opt-in: the default for `field.timestamp` is
+     *   plain `timestamp("col")` (Postgres `timestamp without time zone`) because that is the
+     *   more common shape in real schemas; TZ-aware is the rarer specialisation.
+     *
+     * Unknown values fall through to the default mapping for the field type.
+     */
+    private const val ATTR_DB_COLUMN_TYPE = "dbColumnType"
+
+    /** `@dbColumnType` value on [StringField] that selects Exposed `uuid("col")`. */
+    private const val DB_COLUMN_TYPE_UUID = "uuid"
+
+    /** `@dbColumnType` value on [TimestampField] that opts in to Exposed `timestampWithTimeZone("col")`. */
+    private const val DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ = "timestamp_with_tz"
+
+    /**
      * Compute the generated Kotlin enum-class name for an [EnumField] hung off [entity].
      *
      * Returns {@code null} when [field] is not an {@link EnumField} (the caller should
@@ -110,8 +132,16 @@ object KotlinTypeMapper {
         )
     }
 
-    /** Map a MetaField to the Exposed `Table` column statement (e.g., `varchar("name", 100)`). */
-    fun exposedColumnSpec(field: MetaField<*>): String = exposedColumnSpec(field, field.name)
+    /**
+     * Map a MetaField to the Exposed `Table` column statement (e.g., `varchar("name", 100)`).
+     *
+     * The default physical column name is [field.name] snake_case-d (Postgres convention:
+     * `displayName` → `display_name`). Callers needing a verbatim column name (or a custom
+     * one — e.g., the flattened `@storage` path that prefix-joins parent + sub field) use
+     * the two-arg overload [exposedColumnSpec] and pass the column name explicitly.
+     */
+    fun exposedColumnSpec(field: MetaField<*>): String =
+        exposedColumnSpec(field, KotlinGenUtil.camelToSnake(field.name))
 
     /**
      * Return the fully-qualified import required for the Exposed column function this
@@ -130,7 +160,15 @@ object KotlinTypeMapper {
      */
     fun exposedColumnImport(field: MetaField<*>): String? = when (field) {
         is DateField      -> "org.jetbrains.exposed.sql.javatime.date"
-        is TimestampField -> "org.jetbrains.exposed.sql.javatime.timestampWithTimeZone"
+        // Default for field.timestamp is plain `timestamp(...)` (Postgres `timestamp
+        // without time zone` — the more common shape). Opt-in `@dbColumnType=timestamp_with_tz`
+        // switches to `timestampWithTimeZone(...)` (Postgres `timestamp with time zone`).
+        is TimestampField -> {
+            if (timestampWithTzOptIn(field))
+                "org.jetbrains.exposed.sql.javatime.timestampWithTimeZone"
+            else
+                "org.jetbrains.exposed.sql.javatime.timestamp"
+        }
         // StringField, IntegerField, LongField, DoubleField, BooleanField, CurrencyField,
         // EnumField, and UUID-subtype fields all map to member functions on Table.
         // No additional import required.
@@ -144,21 +182,35 @@ object KotlinTypeMapper {
      */
     fun exposedColumnSpec(field: MetaField<*>, colName: String): String = when (field) {
         is StringField    -> {
-            // Dispatch to Exposed `text(name)` when the field is declared as unbounded text:
-            //   (1) explicit `@kind: "text"` opt-in, OR
-            //   (2) `@maxLength` exceeds the VARCHAR/TEXT cutoff (Postgres TOAST boundary).
-            // Otherwise emit `varchar(name, N)` with N defaulting to 255.
-            val kind = stringAttr(field, ATTR_KIND)
-            val maxLen = stringMaxLength(field)
-            if (kind == KIND_TEXT || maxLen > VARCHAR_TEXT_THRESHOLD) "text(\"$colName\")"
-            else "varchar(\"$colName\", $maxLen)"
+            // `@dbColumnType=uuid` opt-in: emit `uuid("col")` instead of varchar. The Kotlin
+            // data class property stays `String` for now (Exposed coerces String ↔ uuid at
+            // the SQL boundary), so adopters can convert a string-shaped FK column to the
+            // native Postgres uuid type without changing their data class shape.
+            if (dbColumnType(field) == DB_COLUMN_TYPE_UUID) {
+                "uuid(\"$colName\")"
+            } else {
+                // Dispatch to Exposed `text(name)` when the field is declared as unbounded text:
+                //   (1) explicit `@kind: "text"` opt-in, OR
+                //   (2) `@maxLength` exceeds the VARCHAR/TEXT cutoff (Postgres TOAST boundary).
+                // Otherwise emit `varchar(name, N)` with N defaulting to 255.
+                val kind = stringAttr(field, ATTR_KIND)
+                val maxLen = stringMaxLength(field)
+                if (kind == KIND_TEXT || maxLen > VARCHAR_TEXT_THRESHOLD) "text(\"$colName\")"
+                else "varchar(\"$colName\", $maxLen)"
+            }
         }
         is IntegerField   -> "integer(\"$colName\")"
         is LongField      -> "long(\"$colName\")"
         is DoubleField    -> "double(\"$colName\")"
         is BooleanField   -> "bool(\"$colName\")"
         is DateField      -> "date(\"$colName\")"
-        is TimestampField -> "timestampWithTimeZone(\"$colName\")"
+        // Default for field.timestamp is plain `timestamp(...)` — Postgres `timestamp
+        // without time zone` is the more common shape. Opt in to TZ-aware via
+        // `@dbColumnType=timestamp_with_tz`.
+        is TimestampField -> {
+            if (timestampWithTzOptIn(field)) "timestampWithTimeZone(\"$colName\")"
+            else "timestamp(\"$colName\")"
+        }
         // Currency stored as BIGINT minor units — same as Long. Separate arm for
         // semantic clarity (a future migration generator can branch on it).
         is CurrencyField  -> "long(\"$colName\")"
@@ -173,6 +225,20 @@ object KotlinTypeMapper {
             "unsupported Exposed column mapping for ${field::class.simpleName} '${field.name}'"
         )
     }
+
+    /**
+     * Read the `@dbColumnType` attribute (own-only, case-folded) for column-type overrides.
+     * Returns null when absent. See [ATTR_DB_COLUMN_TYPE] for recognised values.
+     */
+    private fun dbColumnType(field: MetaField<*>): String? =
+        stringAttr(field, ATTR_DB_COLUMN_TYPE)?.lowercase()
+
+    /**
+     * True iff [field] carries `@dbColumnType=timestamp_with_tz` (case-insensitive).
+     * Centralised so the type spec and the import set stay in lockstep — both call this.
+     */
+    private fun timestampWithTzOptIn(field: MetaField<*>): Boolean =
+        dbColumnType(field) == DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ
 
     /**
      * Best-effort read of a named string attribute (own-only) on [field]. Returns null when

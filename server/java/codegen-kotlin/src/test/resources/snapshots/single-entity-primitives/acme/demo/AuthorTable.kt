@@ -2,7 +2,7 @@ package acme.demo
 
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.javatime.date
-import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone
+import org.jetbrains.exposed.sql.javatime.timestamp
 
 /** GENERATED — do not hand-edit. Regenerated from metadata. */
 object AuthorTable : Table("authors") {
@@ -13,7 +13,7 @@ object AuthorTable : Table("authors") {
     val active = bool("active").nullable()
     val ratio = double("ratio").nullable()
     val birthday = date("birthday").nullable()
-    val createdAt = timestampWithTimeZone("createdAt").nullable()
+    val createdAt = timestamp("created_at").nullable()
 
     override val primaryKey = PrimaryKey(id)
 }

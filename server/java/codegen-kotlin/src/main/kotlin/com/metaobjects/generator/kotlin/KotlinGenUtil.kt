@@ -46,4 +46,43 @@ internal object KotlinGenUtil {
             else -> false
         }
     }
+
+    /**
+     * Convert a camelCase identifier to snake_case for use as a physical SQL column name.
+     *
+     * Used by [KotlinExposedTableGenerator] so the column-name string argument matches the
+     * snake_case convention nearly every Postgres schema uses, while the Kotlin property name
+     * stays camelCase (Kotlin convention). Examples:
+     * ```
+     * camelToSnake("displayName") == "display_name"
+     * camelToSnake("htmlContent") == "html_content"
+     * camelToSnake("id")          == "id"
+     * camelToSnake("userId")      == "user_id"
+     * camelToSnake("URLPath")     == "url_path"   // leading run of caps treated as one word
+     * ```
+     *
+     * The algorithm inserts `_` before any uppercase letter that is preceded by either a
+     * lowercase letter OR by another uppercase letter immediately followed by a lowercase
+     * letter (the second rule splits "URLPath" into "url_path" rather than "u_r_l_path").
+     * The whole result is then lowercased. Non-ASCII letters are passed through unchanged.
+     */
+    fun camelToSnake(name: String): String {
+        if (name.isEmpty()) return name
+        val sb = StringBuilder(name.length + 4)
+        for (i in name.indices) {
+            val c = name[i]
+            if (i > 0 && c.isUpperCase()) {
+                val prev = name[i - 1]
+                val next = if (i + 1 < name.length) name[i + 1] else null
+                // Insert underscore between [lower|digit][Upper] (standard camelCase boundary)
+                // OR between [Upper][Upper][lower] (acronym → word boundary, e.g. URLPath → URL_Path)
+                if (prev.isLowerCase() || prev.isDigit() ||
+                    (prev.isUpperCase() && next != null && next.isLowerCase())) {
+                    sb.append('_')
+                }
+            }
+            sb.append(c.lowercaseChar())
+        }
+        return sb.toString()
+    }
 }

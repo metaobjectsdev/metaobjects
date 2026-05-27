@@ -6,8 +6,8 @@ import org.jetbrains.exposed.sql.Table
 /** GENERATED — do not hand-edit. Regenerated from metadata. */
 object SalesReportTable : Table("v_sales_report") {
     val id = long("id")
-    val regionName = varchar("regionName", 100).nullable()
-    val totalCents = long("totalCents").nullable()
+    val regionName = varchar("region_name", 100).nullable()
+    val totalCents = long("total_cents").nullable()
 
     override val primaryKey = PrimaryKey(id)
 }

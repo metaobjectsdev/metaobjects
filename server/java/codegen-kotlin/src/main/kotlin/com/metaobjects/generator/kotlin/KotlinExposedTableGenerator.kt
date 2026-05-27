@@ -198,10 +198,12 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                     // field.enum → typed Exposed enumerationByName column referencing the
                     // generated enum class. Length matches the historical VARCHAR fallback
                     // (KotlinTypeMapper.ENUM_VARCHAR_LEN). Same-package class reference, so
-                    // no import is required.
+                    // no import is required. Column name is snake_case-d for Postgres
+                    // convention (matches the StringField/varchar path).
                     val enumName = KotlinTypeMapper.enumTypeName(field, entity)?.simpleName
                         ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
-                    "enumerationByName(\"${field.name}\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $enumName::class)"
+                    val colName = KotlinGenUtil.camelToSnake(field.name)
+                    "enumerationByName(\"$colName\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $enumName::class)"
                 } else {
                     KotlinTypeMapper.exposedColumnSpec(field)
                 }
@@ -277,7 +279,10 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
                 for (subField in target.metaFields) {
                     val propertyName = parentName + subField.name.replaceFirstChar { it.uppercase() }
-                    val colName = parentName + "_" + subField.name
+                    // Physical column name: snake-join parent + sub-field, both snake_case-d.
+                    // E.g. parent "homeAddress" + sub "streetLine1" → "home_address_street_line1".
+                    val colName = KotlinGenUtil.camelToSnake(parentName) + "_" +
+                        KotlinGenUtil.camelToSnake(subField.name)
                     val baseSpec = KotlinTypeMapper.exposedColumnSpec(subField, colName)
                     // Sub-column is nullable iff the parent is nullable OR the sub-field itself is.
                     val nullable = parentNullable || !KotlinGenUtil.isRequiredField(subField)
@@ -286,7 +291,9 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 }
             } else {
                 // jsonb (explicit) OR absent (default per CLAUDE.md back-compat rule).
-                val expr = "jsonb(\"$parentName\", { Json.encodeToString(it) }, { Json.decodeFromString(it) })"
+                // Physical column name snake_case-d to match the rest of the column emission.
+                val colName = KotlinGenUtil.camelToSnake(parentName)
+                val expr = "jsonb(\"$colName\", { Json.encodeToString(it) }, { Json.decodeFromString(it) })"
                 val full = if (parentNullable) "$expr.nullable()" else expr
                 result.add(ObjectColumnSpec(parentName, full, ObjectColumnKind.JSONB))
             }
@@ -441,10 +448,11 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val targetTable = PackageMapping.splitFqn(target.name).second + "Table"
         val relShortName = rel.shortName ?: rel.name
         val propertyName = readColumnAttr(rel) ?: (relShortName + "Id")
+        val colName = KotlinGenUtil.camelToSnake(propertyName)
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
-            columnExpr = "long(\"$propertyName\").references($targetTable.id$refSuffix)",
+            columnExpr = "long(\"$colName\").references($targetTable.id$refSuffix)",
             refSuffix = refSuffix,
             declared = true,
             targetTable = targetTable,
@@ -467,10 +475,11 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val ownerShort = PackageMapping.splitFqn(owner.name).second
         val ownerTable = ownerShort + "Table"
         val propertyName = ownerShort.replaceFirstChar { it.lowercaseChar() } + "Id"
+        val colName = KotlinGenUtil.camelToSnake(propertyName)
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
-            columnExpr = "long(\"$propertyName\").references($ownerTable.id$refSuffix)",
+            columnExpr = "long(\"$colName\").references($ownerTable.id$refSuffix)",
             refSuffix = refSuffix,
             declared = false,
             targetTable = ownerTable,

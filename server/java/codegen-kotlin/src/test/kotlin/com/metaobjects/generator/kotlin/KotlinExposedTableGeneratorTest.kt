@@ -95,7 +95,7 @@ class KotlinExposedTableGeneratorTest {
             assertTrue(Files.exists(postTable),
                 "expected $postTable; files=${Files.walk(outDir).toList()}")
             val src = Files.readString(postTable)
-            assertTrue("val authorId = long(\"authorId\").references(AuthorTable.id)" in src,
+            assertTrue("val authorId = long(\"author_id\").references(AuthorTable.id)" in src,
                 "expected FK column with references() but saw:\n$src")
             // No ReferenceOption import when no onDelete/onUpdate is set.
             assertTrue("import org.jetbrains.exposed.sql.ReferenceOption" !in src,
@@ -271,7 +271,7 @@ class KotlinExposedTableGeneratorTest {
             assertTrue("import org.jetbrains.exposed.sql.ReferenceOption" in src,
                 "expected ReferenceOption import; saw:\n$src")
             assertTrue(
-                "val authorId = long(\"authorId\").references(AuthorTable.id, onDelete = ReferenceOption.CASCADE, onUpdate = ReferenceOption.RESTRICT)" in src,
+                "val authorId = long(\"author_id\").references(AuthorTable.id, onDelete = ReferenceOption.CASCADE, onUpdate = ReferenceOption.RESTRICT)" in src,
                 "expected FK with onDelete + onUpdate options; saw:\n$src",
             )
         } finally {
@@ -317,7 +317,7 @@ class KotlinExposedTableGeneratorTest {
                 "expected $postTable; files=${Files.walk(outDir).toList()}")
             val postSrc = Files.readString(postTable)
             assertTrue(
-                "val authorId = long(\"authorId\").references(AuthorTable.id)" in postSrc,
+                "val authorId = long(\"author_id\").references(AuthorTable.id)" in postSrc,
                 "expected inferred FK column on PostTable pointing at AuthorTable; saw:\n$postSrc",
             )
             // Author's own table must NOT carry a postId column — the FK belongs on the many side.
@@ -367,7 +367,7 @@ class KotlinExposedTableGeneratorTest {
             assertTrue(Files.exists(postTable))
             val src = Files.readString(postTable)
             assertTrue(
-                "val creatorId = long(\"creatorId\").references(AuthorTable.id)" in src,
+                "val creatorId = long(\"creator_id\").references(AuthorTable.id)" in src,
                 "expected declared creatorId FK column; saw:\n$src",
             )
             // The inferred authorId from Author's many-side must NOT be present —
@@ -426,7 +426,7 @@ class KotlinExposedTableGeneratorTest {
                 "expected id column; saw:\n$src")
             assertTrue("val name = varchar(\"name\"" in src,
                 "expected name column; saw:\n$src")
-            assertTrue("val postCount = integer(\"postCount\")" in src,
+            assertTrue("val postCount = integer(\"post_count\")" in src,
                 "expected postCount column; saw:\n$src")
             // PK MUST NOT autoIncrement — views inherit the PK from underlying tables.
             assertTrue(".autoIncrement()" !in src,
@@ -480,7 +480,7 @@ class KotlinExposedTableGeneratorTest {
             assertTrue("import org.jetbrains.exposed.sql.ReferenceOption" !in src,
                 "view must NOT import ReferenceOption; saw:\n$src")
             // The plain authorId column is still present so the view can be queried.
-            assertTrue("val authorId = long(\"authorId\")" in src,
+            assertTrue("val authorId = long(\"author_id\")" in src,
                 "expected plain authorId column (no FK constraint); saw:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
@@ -551,7 +551,7 @@ class KotlinExposedTableGeneratorTest {
             val src = Files.readString(weekTable)
             // FK decoration on the existing field column — NOT a separate row.
             assertTrue(
-                "val programId = long(\"programId\").references(ProgramTable.id)" in src,
+                "val programId = long(\"program_id\").references(ProgramTable.id)" in src,
                 "expected programId column decorated with .references(); saw:\n$src",
             )
             // Exactly one programId declaration — no duplicated emission.
@@ -598,7 +598,7 @@ class KotlinExposedTableGeneratorTest {
             assertTrue("import org.jetbrains.exposed.sql.ReferenceOption" in src,
                 "expected ReferenceOption import; saw:\n$src")
             assertTrue(
-                "val programId = long(\"programId\").references(ProgramTable.id, onDelete = ReferenceOption.CASCADE, onUpdate = ReferenceOption.RESTRICT)" in src,
+                "val programId = long(\"program_id\").references(ProgramTable.id, onDelete = ReferenceOption.CASCADE, onUpdate = ReferenceOption.RESTRICT)" in src,
                 "expected FK with onDelete + onUpdate options; saw:\n$src",
             )
         } finally {
@@ -648,7 +648,7 @@ class KotlinExposedTableGeneratorTest {
             assertTrue(refCount == 1,
                 "expected exactly 1 references(ProgramTable.id), saw $refCount in:\n$src")
             assertTrue(
-                "val programId = long(\"programId\").references(ProgramTable.id)" in src,
+                "val programId = long(\"program_id\").references(ProgramTable.id)" in src,
                 "expected decorated programId field column; saw:\n$src",
             )
         } finally {
@@ -662,9 +662,13 @@ class KotlinExposedTableGeneratorTest {
      * Regression: date / timestamp fields emit column functions that live in
      * `org.jetbrains.exposed.sql.javatime.*` (extension functions on Table — NOT
      * Table member methods like varchar/integer/long). Without the matching imports
-     * the generated file compile-fails with "unresolved reference: date /
-     * timestampWithTimeZone". See also the comment on
-     * [KotlinTypeMapper.exposedColumnImport].
+     * the generated file compile-fails with "unresolved reference: date / timestamp".
+     * See also the comment on [KotlinTypeMapper.exposedColumnImport].
+     *
+     * Default for `field.timestamp` is the plain `timestamp(...)` (Postgres
+     * `timestamp without time zone`) — the more common shape. Column names are
+     * snake_case-d for Postgres convention. The opt-in TZ-aware variant is
+     * covered by [timestampFieldWithDbColumnTypeTimestampWithTzEmitsTzVariant].
      */
     @Test fun dateAndTimestampFieldsEmitJavatimeImports() {
         val withDateAndTs = """{
@@ -690,11 +694,125 @@ class KotlinExposedTableGeneratorTest {
             val src = Files.readString(table)
             assertTrue("import org.jetbrains.exposed.sql.javatime.date" in src,
                 "expected javatime.date import for field.date; saw:\n$src")
+            assertTrue("import org.jetbrains.exposed.sql.javatime.timestamp\n" in src ||
+                src.endsWith("import org.jetbrains.exposed.sql.javatime.timestamp"),
+                "expected javatime.timestamp (plain) import for field.timestamp; saw:\n$src")
+            // Default `field.timestamp` MUST NOT bring in the timestampWithTimeZone variant.
+            assertTrue("timestampWithTimeZone" !in src,
+                "default field.timestamp should NOT emit timestampWithTimeZone; saw:\n$src")
+            // Column names are snake_case-d for Postgres convention.
+            assertTrue("val occursOn = date(\"occurs_on\")" in src, src)
+            assertTrue("val loggedAt = timestamp(\"logged_at\")" in src, src)
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Opt-in: `@dbColumnType=timestamp_with_tz` on a `field.timestamp` selects the
+     * Postgres `timestamp with time zone` variant — emits `timestampWithTimeZone("col")`
+     * with the matching javatime.timestampWithTimeZone import.
+     */
+    @Test fun timestampFieldWithDbColumnTypeTimestampWithTzEmitsTzVariant() {
+        val tzFixture = """{
+          "metadata.root": { "package": "x", "children": [
+            { "object.entity": { "name": "Event", "children": [
+                { "field.long":      { "name": "id" } },
+                { "field.timestamp": { "name": "occurredAt", "@dbColumnType": "timestamp_with_tz" } },
+                { "source.rdb":      { "@table": "events" } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-jt-tz-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("jt-tz", tzFixture))
+
+            val src = Files.readString(outDir.resolve("x/EventTable.kt"))
             assertTrue("import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone" in src,
-                "expected javatime.timestampWithTimeZone import for field.timestamp; saw:\n$src")
-            // And the column functions are still emitted in the body.
-            assertTrue("val occursOn = date(\"occursOn\")" in src, src)
-            assertTrue("val loggedAt = timestampWithTimeZone(\"loggedAt\")" in src, src)
+                "expected javatime.timestampWithTimeZone import for opt-in TZ-aware; saw:\n$src")
+            assertTrue("val occurredAt = timestampWithTimeZone(\"occurred_at\")" in src,
+                "expected timestampWithTimeZone column for opt-in TZ-aware; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * `@dbColumnType=uuid` on a `field.string` emits an Exposed `uuid("col")` column
+     * (Postgres native uuid type) instead of `varchar(...)`. The Kotlin data class
+     * property type stays `String` — Exposed coerces String ↔ uuid at the SQL boundary.
+     */
+    @Test fun stringFieldWithDbColumnTypeUuidEmitsUuidColumn() {
+        val uuidFixture = """{
+          "metadata.root": { "package": "x", "children": [
+            { "object.entity": { "name": "Account", "children": [
+                { "field.string": { "name": "id", "@required": true, "@dbColumnType": "uuid" } },
+                { "field.string": { "name": "userId", "@required": true, "@dbColumnType": "uuid" } },
+                { "field.string": { "name": "displayName" } },
+                { "source.rdb":   { "@table": "accounts" } },
+                { "identity.primary": { "@fields": "id" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-uuid-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("uuid", uuidFixture))
+
+            val src = Files.readString(outDir.resolve("x/AccountTable.kt"))
+            // uuid columns from @dbColumnType=uuid — NOT varchar.
+            assertTrue("val id = uuid(\"id\")" in src,
+                "expected uuid id column (not varchar); saw:\n$src")
+            assertTrue("val userId = uuid(\"user_id\")" in src,
+                "expected uuid userId column with snake_case name; saw:\n$src")
+            // Regular field.string without @dbColumnType=uuid stays as varchar.
+            assertTrue("val displayName = varchar(\"display_name\", 255)" in src,
+                "expected plain varchar for displayName (no @dbColumnType); saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Snake_case column-name conversion is applied uniformly: regular fields,
+     * the snake-cased physical column matches Postgres convention; the Kotlin
+     * property name stays camelCase (Kotlin convention).
+     */
+    @Test fun camelCaseFieldNamesEmitSnakeCaseColumnNames() {
+        val camelFixture = """{
+          "metadata.root": { "package": "x", "children": [
+            { "object.entity": { "name": "User", "children": [
+                { "field.long":      { "name": "id" } },
+                { "field.string":    { "name": "displayName", "@required": true } },
+                { "field.string":    { "name": "htmlContent" } },
+                { "field.int":       { "name": "loginCount" } },
+                { "source.rdb":      { "@table": "users" } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-snake-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("snake", camelFixture))
+
+            val src = Files.readString(outDir.resolve("x/UserTable.kt"))
+            assertTrue("val displayName = varchar(\"display_name\", 255)" in src,
+                "expected snake_case column for camelCase field; saw:\n$src")
+            assertTrue("val htmlContent = varchar(\"html_content\", 255).nullable()" in src,
+                "expected snake_case column for camelCase field; saw:\n$src")
+            assertTrue("val loginCount = integer(\"login_count\")" in src,
+                "expected snake_case column for camelCase int field; saw:\n$src")
+            // Verbatim camelCase column NAMES (the string in quotes) must NOT appear.
+            assertTrue("\"displayName\"" !in src,
+                "should NOT emit camelCase column name string; saw:\n$src")
+            assertTrue("\"htmlContent\"" !in src,
+                "should NOT emit camelCase column name string; saw:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -770,8 +888,9 @@ class KotlinExposedTableGeneratorTest {
             val src = Files.readString(table)
             assertTrue("import org.jetbrains.exposed.sql.javatime.date" in src,
                 "flattened sub-field date should contribute the javatime.date import; saw:\n$src")
-            assertTrue("val windowOpenOn = date(\"window_openOn\")" in src, src)
-            assertTrue("val windowCloseOn = date(\"window_closeOn\")" in src, src)
+            // Flattened sub-column physical name is snake-joined: parent + sub, both snake_case-d.
+            assertTrue("val windowOpenOn = date(\"window_open_on\")" in src, src)
+            assertTrue("val windowCloseOn = date(\"window_close_on\")" in src, src)
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -808,7 +927,7 @@ class KotlinExposedTableGeneratorTest {
             assertTrue("import org.jetbrains.exposed.sql.ReferenceOption" in src,
                 "expected ReferenceOption import for inferred FK with onDelete; saw:\n$src")
             assertTrue(
-                "val authorId = long(\"authorId\").references(AuthorTable.id, onDelete = ReferenceOption.CASCADE)" in src,
+                "val authorId = long(\"author_id\").references(AuthorTable.id, onDelete = ReferenceOption.CASCADE)" in src,
                 "expected inferred FK to carry onDelete=CASCADE from the many-side declaration; saw:\n$src",
             )
         } finally {
@@ -863,14 +982,15 @@ class KotlinExposedTableGeneratorTest {
                 "Composite PK should emit both fields — was:\n$src",
             )
             // Both PK fields must be non-nullable (they're part of the PK).
+            // Column names are snake_case-d for Postgres convention.
             assertTrue(
-                "val userId = varchar(\"userId\", 255)\n" in src ||
-                    "val userId = varchar(\"userId\", 255)\r\n" in src ||
-                    ("val userId = varchar(\"userId\", 255)" in src && "userId = varchar(\"userId\", 255).nullable" !in src),
+                "val userId = varchar(\"user_id\", 255)\n" in src ||
+                    "val userId = varchar(\"user_id\", 255)\r\n" in src ||
+                    ("val userId = varchar(\"user_id\", 255)" in src && "userId = varchar(\"user_id\", 255).nullable" !in src),
                 "userId (PK member) should NOT be .nullable() — was:\n$src",
             )
             assertTrue(
-                "roleId = varchar(\"roleId\", 255).nullable" !in src,
+                "roleId = varchar(\"role_id\", 255).nullable" !in src,
                 "roleId (PK member) should NOT be .nullable() — was:\n$src",
             )
         } finally {
