@@ -281,29 +281,25 @@ public static class YamlDesugar
                 continue;
             }
 
-            if (RESERVED_KEYS.Contains(key))
+            if (RESERVED_KEYS.Contains(key) ||
+                key.StartsWith(ATTR_PREFIX, StringComparison.Ordinal))
             {
-                // Reserved structural key, written bare — accept as-is.
+                // Reserved structural key written bare, OR author-written `@<name>:`
+                // form — pass through as-is. An `@`-prefixed RESERVED keyword (e.g.
+                // "@isArray") is NOT caught here: the canonical parser owns
+                // ERR_RESERVED_ATTR and emits it with the proper FR5a envelope
+                // (format=json, jsonPath at the parent node). Mirrors TS
+                // yaml-desugar.ts:197-203 and Java YamlDesugar.java:340-349.
                 output[key] = YamlToJsonNode(value);
-            }
-            else if (key.StartsWith(ATTR_PREFIX, StringComparison.Ordinal))
-            {
-                // Author wrote `@<name>:` directly. Two sub-cases:
-                //   (a) @-prefixed RESERVED keyword (e.g. "@isArray") — ERR_RESERVED_ATTR.
-                //       Drop the entry so the canonical parser doesn't double-report.
-                //   (b) @-prefixed regular attr — accept; D2 coercion guard still applies.
-                string attrName = key[ATTR_PREFIX.Length..];
-                if (attrName != "" && RESERVED_KEYS.Contains(attrName))
+                if (key.StartsWith(ATTR_PREFIX, StringComparison.Ordinal))
                 {
-                    errors.Add(new YamlCollectedError(
-                        $"Reserved structural key '{attrName}' must not be {ATTR_PREFIX}-prefixed at {path} (write it bare)",
-                        ErrorCode.ERR_RESERVED_ATTR));
-                    continue;
-                }
-                output[key] = YamlToJsonNode(value);
-                if (attrName != "")
-                {
-                    CheckCoercion(attrName, value, schemaIndex, errors, path);
+                    // D2 coercion guard also applies to author-written @-keys (the
+                    // awkward form) — but only for non-reserved attr names.
+                    string attrName = key[ATTR_PREFIX.Length..];
+                    if (attrName != "" && !RESERVED_KEYS.Contains(attrName))
+                    {
+                        CheckCoercion(attrName, value, schemaIndex, errors, path);
+                    }
                 }
             }
             else

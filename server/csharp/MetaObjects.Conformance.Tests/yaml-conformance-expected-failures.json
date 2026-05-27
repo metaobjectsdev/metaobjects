@@ -1,7 +1,5 @@
 {
   "language": "csharp",
-  "_comment": "FR5a envelope-shape gate: error-yaml-reserved-as-attr is a known cross-port drift — TS labels the cascading post-desugar error as format=\"json\" (the user only sees YAML; the JSON format leaks through TS's desugar pipeline), whereas C# threads format=\"yaml\" all the way through. C# is arguably MORE correct here per ADR-0009 §Decision, but TS is the FR5a reference port and the fixture matches what TS emits. Track until TS narrows its YAML→JSON envelope handoff (or the cross-port contract relaxes to allow either label).",
-  "fixtures": [
-    "error-yaml-reserved-as-attr"
-  ]
+  "_comment": "FR5a envelope-shape gates: C# YAML pipeline is now reconciled with TS — the YAML desugar no longer pre-empts ERR_RESERVED_ATTR (it passed-through `@<reserved>` keys, mirroring TS yaml-desugar.ts and Java YamlDesugar.java), so the canonical parser owns the diagnostic and emits a JsonSource envelope (format=\"json\") with the parent node's JSONPath. Keep this file as the documented ledger surface (empty = full FR5a envelope parity with TS for the YAML corpus).",
+  "fixtures": []
 }
