@@ -399,6 +399,22 @@ internal sealed class AuthorApiServer : IAsyncDisposable
     /// onto <paramref name="bindParams"/> in positional order. Multiple
     /// predicates AND together.
     /// </summary>
+    /// <summary>
+    /// Map from FR-009 scalar-comparison op → SQL operator. Excludes the three
+    /// shape-special ops (<c>isNull</c> → IS NULL/IS NOT NULL,
+    /// <c>in</c> → expanded IN list) which need bespoke emit paths below.
+    /// </summary>
+    private static readonly Dictionary<string, string> ScalarOpSql = new(StringComparer.Ordinal)
+    {
+        ["eq"]   = "=",
+        ["ne"]   = "<>",
+        ["gt"]   = ">",
+        ["gte"]  = ">=",
+        ["lt"]   = "<",
+        ["lte"]  = "<=",
+        ["like"] = "LIKE",
+    };
+
     private static string BuildWhere(List<FilterPredicate> predicates, List<object?> bindParams)
     {
         if (predicates.Count == 0) return "";
@@ -409,31 +425,30 @@ internal sealed class AuthorApiServer : IAsyncDisposable
             if (!first) sb.Append(" AND ");
             first = false;
             string col = "\"" + p.Field + "\"";
-            switch (p.Op)
+            if (ScalarOpSql.TryGetValue(p.Op, out var sqlOp))
             {
-                case "eq":  sb.Append(col).Append(" = @p").Append(bindParams.Count);  bindParams.Add(p.Value); break;
-                case "ne":  sb.Append(col).Append(" <> @p").Append(bindParams.Count); bindParams.Add(p.Value); break;
-                case "gt":  sb.Append(col).Append(" > @p").Append(bindParams.Count);  bindParams.Add(p.Value); break;
-                case "gte": sb.Append(col).Append(" >= @p").Append(bindParams.Count); bindParams.Add(p.Value); break;
-                case "lt":  sb.Append(col).Append(" < @p").Append(bindParams.Count);  bindParams.Add(p.Value); break;
-                case "lte": sb.Append(col).Append(" <= @p").Append(bindParams.Count); bindParams.Add(p.Value); break;
-                case "like": sb.Append(col).Append(" LIKE @p").Append(bindParams.Count); bindParams.Add(p.Value); break;
-                case "isNull":
-                    if (p.Value is true) sb.Append(col).Append(" IS NULL");
-                    else sb.Append(col).Append(" IS NOT NULL");
-                    break;
-                case "in":
-                    var items = (List<object?>)p.Value!;
-                    sb.Append(col).Append(" IN (");
-                    for (int i = 0; i < items.Count; i++)
-                    {
-                        if (i > 0) sb.Append(", ");
-                        sb.Append("@p").Append(bindParams.Count);
-                        bindParams.Add(items[i]);
-                    }
-                    sb.Append(')');
-                    break;
-                default: throw new InvalidOperationException("unknown filter op: " + p.Op);
+                sb.Append(col).Append(' ').Append(sqlOp).Append(" @p").Append(bindParams.Count);
+                bindParams.Add(p.Value);
+            }
+            else if (p.Op == "isNull")
+            {
+                sb.Append(col).Append(p.Value is true ? " IS NULL" : " IS NOT NULL");
+            }
+            else if (p.Op == "in")
+            {
+                var items = (List<object?>)p.Value!;
+                sb.Append(col).Append(" IN (");
+                for (int i = 0; i < items.Count; i++)
+                {
+                    if (i > 0) sb.Append(", ");
+                    sb.Append("@p").Append(bindParams.Count);
+                    bindParams.Add(items[i]);
+                }
+                sb.Append(')');
+            }
+            else
+            {
+                throw new InvalidOperationException("unknown filter op: " + p.Op);
             }
         }
         return sb.ToString();
