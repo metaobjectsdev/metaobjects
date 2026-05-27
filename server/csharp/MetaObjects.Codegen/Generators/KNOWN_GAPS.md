@@ -37,7 +37,15 @@ Update when a gap closes or a new one surfaces.
 
 **Today.** We emit `{ "error": "not_found" }` for 404 and `{ "error": "validation", "message": "..." }` for the sort-validation 400. The TS reference emits `{ "error": "validation", "issues": [...] }` (Zod issue array) for body-validation 400; we currently rely on ASP.NET's default model-validation response for POST/PATCH bodies — that is per-port idiomatic (Tier 2), not a Tier-1 gap.
 
-### G5 — CORS
+### G5 — `EfCoreFilterDispatch` ordered-comparison fallback
+
+**Contract.** `gt` / `gte` / `lt` / `lte` work uniformly for all numeric/date subtypes.
+
+**Today.** [`EfCoreFilterDispatch.BuildComparison<T>`](../Runtime/EfCoreFilterDispatch.cs) tries `long.TryParse` first and falls through to lexicographic `string.Compare`. Works for `long` columns and for ISO 8601 string-backed dates (which sort lexicographically). Fragile for `decimal` / `double` / non-ISO date columns — those degrade silently to string-compare semantics. The contract still holds for the operator vocabulary; only the comparison precision is gappy.
+
+**Workaround.** Consumers can hand-write a typed dispatcher in their repository layer that materializes `Expression<Func<T,bool>>` with the column's CLR type. A future closure pass would add `decimal.TryParse` + `DateTime.TryParse` to the dispatcher; tracked here rather than auto-closed because the right fix is per-port substrate-aware emit, not a runtime tweak.
+
+### G6 — CORS
 
 **Contract.** Generated controllers should NOT enforce CORS themselves — the consumer's `Program.cs` wires `app.UseCors(...)` per their origin policy. The Angular dev-server case is documented in [`docs/recipes/csharp-angular18.md`](../../../../docs/recipes/csharp-angular18.md).
 

@@ -113,9 +113,13 @@ public sealed class FilterAllowlistGenerator : PerEntityGenerator
         return out_;
     }
 
-    /// <summary>True iff <paramref name="field"/> carries <c>@filterable: true</c>.</summary>
-    private static bool IsFilterable(MetaField field) =>
-        field.OwnAttr(FIELD_ATTR_FILTERABLE) is true;
+    /// <summary>True iff <paramref name="field"/> carries <c>@filterable: true</c> (bool true or case-insensitive "true" — matches Java/Kotlin/Python tolerance).</summary>
+    private static bool IsFilterable(MetaField field) => field.OwnAttr(FIELD_ATTR_FILTERABLE) switch
+    {
+        true => true,
+        string s => string.Equals(s, "true", StringComparison.OrdinalIgnoreCase),
+        _ => false,
+    };
 
     /// <summary>Operator set for <paramref name="subType"/>, or empty for unsupported subtypes.</summary>
     internal static IReadOnlyList<string> OpsForSubtype(string? subType) => subType switch

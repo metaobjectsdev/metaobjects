@@ -9,7 +9,7 @@
 
 Ship a Kotlin codegen target that closes all 7 known drift sources for a Spring-Boot-Kotlin consumer using Exposed + Flyway + kotlinx.serialization. Build-time codegen + Flyway migration generation + runtime startup validation, all driven from a single metadata source.
 
-This is **Tier 2** integration: build-time codegen does the heavy lifting; runtime MetaObjects presence is a ~30 LOC startup validator that fails fast if generated code drifts from metadata. NO metadata-driven runtime adapter (party-lore-class consumers don't need dynamic projections).
+This is **Tier 2** integration: build-time codegen does the heavy lifting; runtime MetaObjects presence is a ~30 LOC startup validator that fails fast if generated code drifts from metadata. NO metadata-driven runtime adapter (the driving Kotlin consumers don't need dynamic projections).
 
 ## 2. Substrate decision
 
@@ -327,7 +327,7 @@ Same three layers as the existing render module's tests:
 ## 11. Risks
 
 1. **KotlinPoet 1.18 API churn** — pin version, bump deliberately.
-2. **Exposed Spring Boot integration via community starter** — the de-facto starter is `org.springframework.boot.experimental:spring-boot-starter-exposed` (community-maintained); verify it's still active when party-lore adopts. Fallback: wire Exposed manually via Spring beans. Either way, NOT codegen-kotlin's concern.
+2. **Exposed Spring Boot integration via community starter** — the de-facto starter is `org.springframework.boot.experimental:spring-boot-starter-exposed` (community-maintained); verify it's still active when consumers adopt. Fallback: wire Exposed manually via Spring beans. Either way, NOT codegen-kotlin's concern.
 3. **`meta:verify` requires JDBC connection at build time in CI** — needs the CI Postgres service available. Same constraint as `persistence-conformance` integration tests; acceptable.
 4. **Generated `MetadataStartupValidator` adds Spring AppReady-time latency** — measure once at first deploy; expect <100ms for a few dozen tables. Skip during integration tests via a flag if it bites.
 5. **Flyway version naming collisions** — two developers regen migrations simultaneously, both get `V010`. Mitigation: `meta:migrate --flyway` warns if any existing `V<N>__*.sql` with conflicting next-version exists; manual resolution required. Standard Flyway hazard, not novel.

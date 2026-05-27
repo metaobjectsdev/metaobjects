@@ -60,7 +60,7 @@ New module: `server/java/codegen-spring/` (mirrors `codegen-kotlin/`).
 
 **Option B: Ktor route handlers.** New generator emitting `<Entity>Routes.kt` with `Route.<Entity>Routes()` extension installing the 5 CRUD endpoints on a Ktor `Application`. More Kotlin-native; not Spring-coupled.
 
-**Recommendation:** ship Spring-Kotlin first (party-lore-class consumers are Spring-based). Add Ktor as a follow-up substrate once a Ktor-stack consumer surfaces.
+**Recommendation:** ship Spring-Kotlin first (the driving Kotlin consumer is Spring-based). Add Ktor as a follow-up substrate once a Ktor-stack consumer surfaces.
 
 ### 2.3 Python route codegen (FastAPI)
 
@@ -172,7 +172,7 @@ This is the analog of `persistence-conformance/` for the API tier. Reuses the sa
 
 ## 4. Driving consumers
 
-- **Party-lore-class** (Spring Boot + Kotlin + Exposed + Postgres): wants 2.2 (Kotlin Spring controllers)
+- **Spring-Boot/Kotlin/Exposed/Postgres consumer**: wants 2.2 (Kotlin Spring controllers)
 - **C# .NET 8 + Angular 18 adopter** (new addition this FR): wants 2.4 (C# refinement) + 2.5 (Angular client) + a docs recipe
 - **Future TS-only React adopter**: covered today, gets 2.5 Angular as an alternate client option
 - **Future Python/FastAPI adopter**: wants 2.3
@@ -192,7 +192,7 @@ Each sub-project (2.1–2.6) is independently implementable. Recommended sequenc
 
 1. **2.5 Angular client tier** first — unblocks the C#-Angular adopter immediately (C# routes already ship). Validates the universal-client architecture.
 2. **2.4 C# refinement** — small audit; lands in parallel with 2.5.
-3. **2.2 Kotlin Spring controllers** — party-lore-class consumer.
+3. **2.2 Kotlin Spring controllers** — driving Kotlin consumer.
 4. **2.6 API contract conformance corpus** — once 2+ ports have route codegen, the corpus has something to verify cross-port.
 5. **2.1 Java Spring controllers** — when a Spring/Java consumer surfaces.
 6. **2.3 Python FastAPI routes** — when a FastAPI consumer surfaces.
