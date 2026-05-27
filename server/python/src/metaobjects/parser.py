@@ -25,6 +25,7 @@ from .source import (
     ErrorSource,
     JsonPathBuilder,
     JsonSource,
+    LoaderWarning,
     YamlPosition,
     YamlSource,
 )
@@ -49,6 +50,12 @@ class ParseResult:
     root: MetaData
     errors: list[MetaError] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # FR5c — envelope-shaped warnings (e.g. WARN_DUPLICATE_DECLARATION)
+    # produced during parse. Distinct from the legacy ``warnings: list[str]``
+    # channel: those get wrapped in a ``WARN_LEGACY`` envelope at the loader
+    # boundary, while envelope warnings already carry their own ``code`` +
+    # ``source`` and surface unchanged. Empty by default.
+    envelope_warnings: list[LoaderWarning] = field(default_factory=list)
 
 
 # FR5b — module-level source-format discriminant. Set at the top of

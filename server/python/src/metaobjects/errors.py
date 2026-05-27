@@ -27,6 +27,10 @@ class ErrorCode(str, Enum):
     ERR_PROVIDER_ATTR_CONFLICT = "ERR_PROVIDER_ATTR_CONFLICT"
     ERR_SUBTYPE_RULE_VIOLATION = "ERR_SUBTYPE_RULE_VIOLATION"
     ERR_OVERLAY_NO_TARGET = "ERR_OVERLAY_NO_TARGET"
+    # FR5c — two contributing files set the same @attr to different non-empty
+    # values on the same node. Carries a `MergedSource` envelope with both
+    # contributors listed (ADR-0009 §Overlay-merge).
+    ERR_MERGE_CONFLICT = "ERR_MERGE_CONFLICT"
     ERR_MALFORMED_YAML = "ERR_MALFORMED_YAML"
     # YAML 1.2 silently coerced an unquoted scalar to a type incompatible with the
     # declared attr valueType (ADR-0006 D2). Authors should quote the value.
