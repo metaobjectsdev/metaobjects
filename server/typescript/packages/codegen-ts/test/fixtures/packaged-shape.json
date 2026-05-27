@@ -6,6 +6,7 @@
           "name": "Order",
           "package": "shop::commerce",
           "children": [
+            { "source.rdb": { "@table": "orders" } },
             { "field.long": { "name": "id" } },
             { "field.long": { "name": "customerId", "@required": true } },
             { "field.long": { "name": "productId", "@required": true } },
@@ -23,6 +24,7 @@
           "name": "Product",
           "package": "shop::commerce",
           "children": [
+            { "source.rdb": { "@table": "products" } },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "name", "@required": true, "@maxLength": 200 } },
             { "field.long": { "name": "tagId", "@required": true } },
@@ -37,6 +39,7 @@
           "name": "Customer",
           "package": "shop::users",
           "children": [
+            { "source.rdb": { "@table": "customers" } },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "email", "@required": true, "@maxLength": 255 } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } }
@@ -47,6 +50,7 @@
         "object.entity": {
           "name": "Tag",
           "children": [
+            { "source.rdb": { "@table": "tags" } },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "label", "@required": true, "@maxLength": 100 } },
             { "field.long": { "name": "customerId", "@required": true } },

@@ -5,6 +5,7 @@
         "object.entity": {
           "name": "Subscriber",
           "children": [
+            { "source.rdb": { "@table": "subscribers" } },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "email", "@filterable": true } },
             { "field.string": { "name": "firstName", "@filterable": true } },
@@ -27,6 +28,7 @@
         "object.entity": {
           "name": "Product",
           "children": [
+            { "source.rdb": { "@table": "products" } },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "title" } },
             { "field.decimal": { "name": "price", "@sortable": true } },

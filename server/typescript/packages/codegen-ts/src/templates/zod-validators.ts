@@ -26,18 +26,63 @@ import {
 import { enumValues, zodEnumExpr } from "../enum-meta.js";
 import { renderDocsFor } from "./jsdoc.js";
 
-export function renderZodValidators(obj: MetaObject): Code {
-  const z = imp("z@zod");
+/** Auto-generated PK field names that should be omitted from InsertSchema. */
+function autoGenPkFieldNames(obj: MetaObject): Set<string> {
+  const out = new Set<string>();
   const primary = obj.primaryIdentity();
-  const autoGenPkFields = new Set<string>();
   if (primary) {
     const generation = primary.ownAttr(IDENTITY_ATTR_GENERATION);
     if (generation === GENERATION_INCREMENT || generation === GENERATION_UUID) {
       const fields = primary.ownAttr(IDENTITY_ATTR_FIELDS);
       const fieldsList = Array.isArray(fields) ? fields : (typeof fields === "string" ? [fields] : []);
-      for (const f of fieldsList) autoGenPkFields.add(String(f));
+      for (const f of fieldsList) out.add(String(f));
     }
   }
+  return out;
+}
+
+/**
+ * Emit ONLY the `<Name>InsertSchema`. Used by the value-object file emitter
+ * for metaobjects with no writable source.rdb — those have no PATCH/update
+ * semantics, so emitting an UpdateSchema would be misleading.
+ *
+ * The schema name is kept as `<Name>InsertSchema` even for pure value objects
+ * so consumer imports don't churn. A future polish PR could add a `<Name>Schema`
+ * alias for clarity.
+ */
+export function renderInsertSchemaOnly(obj: MetaObject): Code {
+  const z = imp("z@zod");
+  const autoGenPkFields = autoGenPkFieldNames(obj);
+
+  const insertFieldLines: Code[] = [];
+  for (const child of obj.fields()) {
+    if (autoGenPkFields.has(child.name)) continue;
+
+    const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
+
+    if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) {
+      insertFieldLines.push(
+        code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
+      );
+    } else {
+      insertFieldLines.push(code`  ${child.name}: ${zodFieldExpr(child)}`);
+    }
+  }
+
+  const insertSchemaName = `${obj.name}InsertSchema`;
+  const docs = renderDocsFor(obj);
+  const docsPrefix = docs ? `${docs}\n` : "";
+
+  return code`
+${docsPrefix}export const ${insertSchemaName} = ${z}.object({
+${joinCode(insertFieldLines, { on: ",\n" })}
+});
+`;
+}
+
+export function renderZodValidators(obj: MetaObject): Code {
+  const z = imp("z@zod");
+  const autoGenPkFields = autoGenPkFieldNames(obj);
 
   const insertFieldLines: Code[] = [];
   const updateFieldLines: Code[] = [];

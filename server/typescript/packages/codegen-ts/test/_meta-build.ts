@@ -22,6 +22,8 @@ import {
   IDENTITY_SUBTYPE_REFERENCE,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
+  SOURCE_SUBTYPE_RDB,
+  SOURCE_ATTR_TABLE,
   MetaRoot,
   MetaObject,
   MetaField,
@@ -99,4 +101,19 @@ export function metaObject(subType: string, name: string): MetaObject {
 /** Build a MetaField node (type=field) with the given subType and name. */
 export function metaField(subType: string, name: string): MetaField {
   return meta(new TypeId(TYPE_FIELD, subType), name) as MetaField;
+}
+
+/**
+ * Attach a writable source.rdb child (table-backed source) to the given entity.
+ * Use in imperative test builders that need the entity to flow through the
+ * Drizzle code path — the value-only emission path is taken when no writable
+ * source.rdb child is present, so tests that hand-build entities without one
+ * now bypass the Drizzle output. Helper centralizes the wiring so the table
+ * name and source-attr shape stay consistent with the YAML/JSON fixtures.
+ */
+export function attachRdbSource(entity: MetaObject, table: string): MetaObject {
+  const source = meta(new TypeId(TYPE_SOURCE, SOURCE_SUBTYPE_RDB), "source") as MetaSource;
+  source.setAttr(SOURCE_ATTR_TABLE, table);
+  entity.addChild(source);
+  return entity;
 }

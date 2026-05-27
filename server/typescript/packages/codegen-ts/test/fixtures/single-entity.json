@@ -6,6 +6,7 @@
         "object.entity": {
           "name": "Post",
           "children": [
+            { "source.rdb": { "@table": "posts" } },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "title", "@required": true, "@maxLength": 200 } },
             { "field.string": { "name": "body" } },

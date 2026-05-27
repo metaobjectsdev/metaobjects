@@ -5,7 +5,7 @@ import { TypeId, TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION,
          FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_INT,
          FIELD_SUBTYPE_TIMESTAMP, IDENTITY_SUBTYPE_PRIMARY, IDENTITY_SUBTYPE_SECONDARY,
          OBJECT_SUBTYPE_ENTITY, TYPE_FIELD, TYPE_IDENTITY, FIELD_SUBTYPE_ENUM } from "@metaobjectsdev/metadata";
-import { meta, metaRoot, metaObject, metaField } from "../_meta-build.js";
+import { meta, metaRoot, metaObject, metaField, attachRdbSource } from "../_meta-build.js";
 import { renderDrizzleSchema } from "../../src/templates/drizzle-schema.js";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
@@ -20,6 +20,7 @@ function makeRoot(entities: MetaObject[]): MetaRoot {
 
 function makePost(): MetaObject {
   const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+  attachRdbSource(post, "posts");
   const id = metaField(FIELD_SUBTYPE_LONG, "id");
   post.addChild(id);
   const title = metaField(FIELD_SUBTYPE_STRING, "title");
@@ -54,6 +55,7 @@ function makePostWithAuthor(): MetaObject {
 
 function makeUser(): MetaObject {
   const user = metaObject(OBJECT_SUBTYPE_ENTITY, "User");
+  attachRdbSource(user, "users");
   const id = metaField(FIELD_SUBTYPE_LONG, "id");
   user.addChild(id);
   const email = metaField(FIELD_SUBTYPE_STRING, "email");
