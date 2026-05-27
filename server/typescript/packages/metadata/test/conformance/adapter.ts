@@ -95,6 +95,29 @@ export const tsAdapter: ConformanceAdapter = {
         source: { format: "json", files: [], jsonPath: "$" },
       };
     });
+    // FR5c-finalize — surface warning envelopes (same envelope shape as
+    // errors). Loader warnings already carry full `LoaderWarning` envelopes;
+    // mirror the error-envelope normalization (relativize files; preserve
+    // jsonPath / referrer / target when present on the source variant).
+    const warningEnvelopes: ErrorEnvelopeRecord[] = result.warnings.map((w) => {
+      const src = w.source;
+      if (src.format === "json" || src.format === "yaml"
+        || src.format === "merged" || src.format === "resolved") {
+        const files = src.files.map(relativize);
+        const jp = (src as { jsonPath?: string }).jsonPath;
+        const referrer = (src as { referrer?: string }).referrer;
+        const target = (src as { target?: string }).target;
+        const source: ErrorEnvelopeRecord["source"] = {
+          format: src.format,
+          files,
+          ...(jp !== undefined ? { jsonPath: jp } : {}),
+          ...(referrer !== undefined ? { referrer } : {}),
+          ...(target !== undefined ? { target } : {}),
+        };
+        return { code: w.code, source };
+      }
+      return { code: w.code, source: { format: src.format, files: [] } };
+    });
     return {
       tree: result.root,
       errorCodes: result.errors.map(errorCode),
@@ -103,6 +126,7 @@ export const tsAdapter: ConformanceAdapter = {
       // message for cross-port string-equality comparison.
       warnings: result.warnings.map((w) => w.message),
       errors: envelopes,
+      warningEnvelopes,
     };
   },
 

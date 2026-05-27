@@ -28,7 +28,13 @@ export interface ExpectedError {
 
 export interface ExpectedErrorsEnvelope {
   readonly errors: readonly ExpectedError[];
-  readonly warnings: readonly unknown[];
+  /**
+   * Warning entries. FR5c-finalize: when each entry is `{code, source}`,
+   * the runner asserts envelope shape on warnings (mirroring errors). Older
+   * fixtures may still carry an empty array; the cross-port runner falls
+   * back to flat string comparison against expected-warnings.json.
+   */
+  readonly warnings: readonly ExpectedError[];
   /** True when the file used the legacy `[{code}]` array shape (no source). */
   readonly legacy: boolean;
 }
@@ -124,7 +130,18 @@ export function parseExpectedErrors(raw: unknown): ExpectedErrorsEnvelope {
     const source = parseSource(r.source, i);
     return source !== undefined ? { code: r.code, source } : { code: r.code };
   });
-  const warnings = Array.isArray(env.warnings) ? env.warnings : [];
+  const rawWarnings = Array.isArray(env.warnings) ? env.warnings : [];
+  const warnings = rawWarnings.map((item, i): ExpectedError => {
+    if (typeof item !== "object" || item === null) {
+      throw new Error(`expected-errors.json warnings entry ${i} is not an object`);
+    }
+    const r = item as Record<string, unknown>;
+    if (typeof r.code !== "string") {
+      throw new Error(`expected-errors.json warnings entry ${i} missing string 'code' field`);
+    }
+    const source = parseSource(r.source, i);
+    return source !== undefined ? { code: r.code, source } : { code: r.code };
+  });
   return { errors, warnings, legacy: false };
 }
 

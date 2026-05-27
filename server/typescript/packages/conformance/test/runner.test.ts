@@ -217,3 +217,135 @@ test("malformed script.json (bad JSON) → failed check, no throw", async () => 
   expect(errCheck!.passed).toBe(false);
   expect(errCheck!.detail).toMatch(/parse error/);
 });
+
+// ── FR5c-finalize — warning envelope-shape assertion ────────────────────────
+
+test("expected-errors warnings: matching envelope shape → pass", async () => {
+  const warnAdapter: ConformanceAdapter = {
+    ...fake,
+    async loadFixture() {
+      return {
+        tree: { ok: true },
+        errorCodes: [],
+        warnings: ["dup decl"],
+        warningEnvelopes: [{
+          code: "WARN_DUPLICATE_DECLARATION",
+          source: { format: "merged", files: ["meta.a.json", "meta.b.json"] },
+        }],
+      };
+    },
+  };
+  const root = await fixture({
+    "input/m.json": "{}",
+    "expected.json": '{"ok":true}',
+    "expected-errors.json": JSON.stringify({
+      errors: [],
+      warnings: [{
+        code: "WARN_DUPLICATE_DECLARATION",
+        source: { format: "merged", files: ["meta.a.json", "meta.b.json"] },
+      }],
+    }),
+  });
+  const [fix] = await discoverFixtures(root);
+  const report = await runFixture(fix!, warnAdapter);
+  expect(report.status).toBe("pass");
+});
+
+test("expected-errors warnings: mismatched code → fail with warning[i].code detail", async () => {
+  const warnAdapter: ConformanceAdapter = {
+    ...fake,
+    async loadFixture() {
+      return {
+        tree: { ok: true },
+        errorCodes: [],
+        warnings: ["something else"],
+        warningEnvelopes: [{
+          code: "WARN_SOMETHING_ELSE",
+          source: { format: "merged", files: ["meta.a.json"] },
+        }],
+      };
+    },
+  };
+  const root = await fixture({
+    "input/m.json": "{}",
+    "expected.json": '{"ok":true}',
+    "expected-errors.json": JSON.stringify({
+      errors: [],
+      warnings: [{
+        code: "WARN_DUPLICATE_DECLARATION",
+        source: { format: "merged", files: ["meta.a.json"] },
+      }],
+    }),
+  });
+  const [fix] = await discoverFixtures(root);
+  const report = await runFixture(fix!, warnAdapter);
+  expect(report.status).toBe("fail");
+  const detail = report.checks.filter((c) => !c.passed).map((c) => c.detail).join("; ");
+  expect(detail).toMatch(/warning\[0\]\.code/);
+});
+
+test("expected-errors warnings: mismatched files → fail with warning[i].source.files detail", async () => {
+  const warnAdapter: ConformanceAdapter = {
+    ...fake,
+    async loadFixture() {
+      return {
+        tree: { ok: true },
+        errorCodes: [],
+        warnings: ["dup decl"],
+        warningEnvelopes: [{
+          code: "WARN_DUPLICATE_DECLARATION",
+          source: { format: "merged", files: ["meta.a.json", "meta.c.json"] },
+        }],
+      };
+    },
+  };
+  const root = await fixture({
+    "input/m.json": "{}",
+    "expected.json": '{"ok":true}',
+    "expected-errors.json": JSON.stringify({
+      errors: [],
+      warnings: [{
+        code: "WARN_DUPLICATE_DECLARATION",
+        source: { format: "merged", files: ["meta.a.json", "meta.b.json"] },
+      }],
+    }),
+  });
+  const [fix] = await discoverFixtures(root);
+  const report = await runFixture(fix!, warnAdapter);
+  expect(report.status).toBe("fail");
+  const detail = report.checks.filter((c) => !c.passed).map((c) => c.detail).join("; ");
+  expect(detail).toMatch(/warning\[0\]\.source\.files/);
+});
+
+test("expected-errors warnings: count mismatch → fail with warnings count detail", async () => {
+  const warnAdapter: ConformanceAdapter = {
+    ...fake,
+    async loadFixture() {
+      return {
+        tree: { ok: true },
+        errorCodes: [],
+        warnings: ["only one"],
+        warningEnvelopes: [{
+          code: "WARN_DUPLICATE_DECLARATION",
+          source: { format: "merged", files: ["meta.a.json"] },
+        }],
+      };
+    },
+  };
+  const root = await fixture({
+    "input/m.json": "{}",
+    "expected.json": '{"ok":true}',
+    "expected-errors.json": JSON.stringify({
+      errors: [],
+      warnings: [
+        { code: "WARN_DUPLICATE_DECLARATION", source: { format: "merged", files: ["meta.a.json"] } },
+        { code: "WARN_DUPLICATE_DECLARATION", source: { format: "merged", files: ["meta.a.json"] } },
+      ],
+    }),
+  });
+  const [fix] = await discoverFixtures(root);
+  const report = await runFixture(fix!, warnAdapter);
+  expect(report.status).toBe("fail");
+  const detail = report.checks.filter((c) => !c.passed).map((c) => c.detail).join("; ");
+  expect(detail).toMatch(/warnings count: expected 2, got 1/);
+});

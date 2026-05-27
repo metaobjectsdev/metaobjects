@@ -1,0 +1,35 @@
+{
+  "errors": [],
+  "warnings": [
+    {
+      "code": "WARN_DUPLICATE_DECLARATION",
+      "source": {
+        "format": "merged",
+        "files": [
+          "meta.a.json",
+          "meta.b.json"
+        ]
+      }
+    },
+    {
+      "code": "WARN_DUPLICATE_DECLARATION",
+      "source": {
+        "format": "merged",
+        "files": [
+          "meta.a.json",
+          "meta.b.json"
+        ]
+      }
+    },
+    {
+      "code": "WARN_DUPLICATE_DECLARATION",
+      "source": {
+        "format": "merged",
+        "files": [
+          "meta.a.json",
+          "meta.b.json"
+        ]
+      }
+    }
+  ]
+}
