@@ -19,7 +19,7 @@ human-readable explanation somewhere, look it up in the
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | 31 / 31 | 31 / 31 | inherits via Java | 31 / 31 | 31 / 31 |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 4 | 4 / 4 | 4 / 4 | inherits via Java | 4 / 4 | 4 / 4 |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 12 (9 query + 3 migration) | 12 / 12 | 12 / 12 | 12 / 12 (via Exposed) | 12 / 12 | 12 / 12 |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 10 | 10 / 10 (Fastify reference runner) | not yet wired | 10 / 10 (embedded HTTP + Exposed reference runner) | not yet wired | not yet wired |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 10 | 10 / 10 (Fastify reference runner) | 10 / 10 (embedded HTTP + JDBC reference runner) | 10 / 10 (embedded HTTP + Exposed reference runner) | not yet wired | not yet wired |
 | `fixtures/codegen-conformance/` (FR-007 — DROPPED in favor of `persistence-conformance` participation) | 0 | n/a | n/a | n/a | n/a | n/a |
 
 Per-port runners + commands:
@@ -27,7 +27,7 @@ Per-port runners + commands:
 | Port | Metamodel + YAML + render + verify | Persistence | API contract |
 |---|---|---|---|
 | TypeScript | `cd server/typescript && bun test` (per-package, `~3s`) | `scripts/integration-test.sh ts` (needs Docker) | `cd server/typescript/packages/integration-tests && bun test test/api-contract.test.ts` (needs Docker) |
-| Java | `mvn -pl metaobjects-conformance test` (and per-tier `-pl render`, etc.) | `scripts/integration-test.sh java` (needs Docker) | not yet wired |
+| Java | `mvn -pl metaobjects-conformance test` (and per-tier `-pl render`, etc.) | `scripts/integration-test.sh java` (needs Docker) | `mvn -f server/java/integration-tests/pom.xml test -Dtest=ApiContractConformanceTest` (needs Docker) |
 | Kotlin | `mvn -pl codegen-kotlin test` (snapshot suite) | `mvn -pl integration-tests-kotlin test` (needs Docker) | `mvn -f server/java/integration-tests-kotlin/pom.xml test -Dtest=ApiContractConformanceTest` (needs Docker) |
 | C# | `dotnet test` (per project) | `scripts/integration-test.sh csharp` (needs Docker) | not yet wired |
 | Python | `pytest` (per package) | `scripts/integration-test.sh python` (needs Docker) | not yet wired |
