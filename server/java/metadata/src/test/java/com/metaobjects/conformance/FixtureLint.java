@@ -127,14 +127,23 @@ public final class FixtureLint {
         }
     }
 
-    /** Parsed expected-errors.json — envelope-shape-aware. */
+    /**
+     * Parsed expected-errors.json — envelope-shape-aware.
+     *
+     * <p>FR5c-finalize: {@code warnings} carries envelope-shape entries
+     * (mirroring {@code errors}). When the fixture's {@code warnings} array
+     * is empty or entries omit {@code source}, the per-element source check
+     * is skipped element-by-element; the count check still runs.</p>
+     */
     public static final class ExpectedErrorsEnvelope {
         public final List<ExpectedError> errors;
-        public final int warningsCount;
+        public final List<ExpectedError> warnings;
         public final boolean legacy;
-        public ExpectedErrorsEnvelope(List<ExpectedError> errors, int warningsCount, boolean legacy) {
+        public ExpectedErrorsEnvelope(List<ExpectedError> errors,
+                                     List<ExpectedError> warnings,
+                                     boolean legacy) {
             this.errors = errors;
-            this.warningsCount = warningsCount;
+            this.warnings = warnings;
             this.legacy = legacy;
         }
     }
@@ -168,7 +177,7 @@ public final class FixtureLint {
                         "expected-errors entry must be a string or an object with a 'code' field");
                 }
             }
-            return new ExpectedErrorsEnvelope(errors, 0, true);
+            return new ExpectedErrorsEnvelope(errors, new ArrayList<>(), true);
         }
         // FR5a envelope.
         if (!el.isJsonObject()) {
@@ -180,18 +189,41 @@ public final class FixtureLint {
         if (errorsEl == null || !errorsEl.isJsonArray()) {
             throw new IllegalArgumentException("expected-errors.json: 'errors' must be an array");
         }
-        List<ExpectedError> errors = new ArrayList<>();
+        List<ExpectedError> errors = parseEnvelopeEntries(errorsEl.getAsJsonArray(), "errors");
+
+        // FR5c-finalize — warnings carry envelope shape too. Empty array is
+        // valid (no warnings expected); entries without `source` skip the
+        // per-element source assertion but still participate in the count.
+        List<ExpectedError> warnings = new ArrayList<>();
+        JsonElement warnEl = root.get("warnings");
+        if (warnEl != null) {
+            if (!warnEl.isJsonArray()) {
+                throw new IllegalArgumentException("expected-errors.json: 'warnings' must be an array");
+            }
+            warnings = parseEnvelopeEntries(warnEl.getAsJsonArray(), "warnings");
+        }
+        return new ExpectedErrorsEnvelope(errors, warnings, false);
+    }
+
+    /**
+     * Parse a {@code [{code, source?}, ...]} array — shared between the
+     * {@code errors} and {@code warnings} channels in the envelope. The
+     * {@code label} parameter ({@code "errors"} / {@code "warnings"}) is woven
+     * into thrown messages so corpus errors say which channel was malformed.
+     */
+    private static List<ExpectedError> parseEnvelopeEntries(JsonArray arr, String label) {
+        List<ExpectedError> out = new ArrayList<>(arr.size());
         int idx = 0;
-        for (JsonElement item : errorsEl.getAsJsonArray()) {
+        for (JsonElement item : arr) {
             if (!item.isJsonObject()) {
                 throw new IllegalArgumentException(
-                    "expected-errors.json entry " + idx + " is not an object");
+                    "expected-errors.json " + label + " entry " + idx + " is not an object");
             }
             JsonObject obj = item.getAsJsonObject();
             JsonElement code = obj.get("code");
             if (code == null || !code.isJsonPrimitive() || !code.getAsJsonPrimitive().isString()) {
                 throw new IllegalArgumentException(
-                    "expected-errors.json entry " + idx + " missing string 'code' field");
+                    "expected-errors.json " + label + " entry " + idx + " missing string 'code' field");
             }
             ExpectedErrorSource source = null;
             JsonElement srcEl = obj.get("source");
@@ -200,18 +232,18 @@ public final class FixtureLint {
                 JsonElement fmtEl = srcObj.get("format");
                 if (fmtEl == null || !fmtEl.isJsonPrimitive() || !fmtEl.getAsJsonPrimitive().isString()) {
                     throw new IllegalArgumentException(
-                        "expected-errors.json entry " + idx + " source.format must be a string");
+                        "expected-errors.json " + label + " entry " + idx + " source.format must be a string");
                 }
                 JsonElement filesEl = srcObj.get("files");
                 if (filesEl == null || !filesEl.isJsonArray()) {
                     throw new IllegalArgumentException(
-                        "expected-errors.json entry " + idx + " source.files must be a string[]");
+                        "expected-errors.json " + label + " entry " + idx + " source.files must be a string[]");
                 }
                 List<String> files = new ArrayList<>();
                 for (JsonElement fe : filesEl.getAsJsonArray()) {
                     if (!fe.isJsonPrimitive() || !fe.getAsJsonPrimitive().isString()) {
                         throw new IllegalArgumentException(
-                            "expected-errors.json entry " + idx + " source.files contains non-string");
+                            "expected-errors.json " + label + " entry " + idx + " source.files contains non-string");
                     }
                     files.add(fe.getAsString());
                 }
@@ -235,24 +267,21 @@ public final class FixtureLint {
                 if ("resolved".equals(fmt)) {
                     if (referrer == null) {
                         throw new IllegalArgumentException(
-                            "expected-errors.json entry " + idx + " source.referrer is required when format='resolved'");
+                            "expected-errors.json " + label + " entry " + idx
+                                + " source.referrer is required when format='resolved'");
                     }
                     if (target == null) {
                         throw new IllegalArgumentException(
-                            "expected-errors.json entry " + idx + " source.target is required when format='resolved'");
+                            "expected-errors.json " + label + " entry " + idx
+                                + " source.target is required when format='resolved'");
                     }
                 }
                 source = new ExpectedErrorSource(fmt, files, jsonPath, referrer, target);
             }
-            errors.add(new ExpectedError(code.getAsString(), source));
+            out.add(new ExpectedError(code.getAsString(), source));
             idx++;
         }
-        int warningsCount = 0;
-        JsonElement warnEl = root.get("warnings");
-        if (warnEl != null && warnEl.isJsonArray()) {
-            warningsCount = warnEl.getAsJsonArray().size();
-        }
-        return new ExpectedErrorsEnvelope(errors, warningsCount, false);
+        return out;
     }
 
     /** Backward-compat helper — returns just the codes from either shape. */

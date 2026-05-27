@@ -317,48 +317,34 @@ public class ConformanceTest {
                 failures.add("expected errors " + wantSet + ", got " + gotSet);
             }
             // FR5a — per-error envelope assertion.
+            // FR5c-finalize — same algorithm now also runs over warnings
+            // when the fixture declares envelope-shape warnings.
             if (!envelope.legacy) {
-                if (envelope.errors.size() != envelopesSeen.size()) {
-                    failures.add("envelope length mismatch: expected " + envelope.errors.size()
-                        + ", got " + envelopesSeen.size());
+                assertEnvelopeAlignment("envelope", envelope.errors, envelopesSeen, failures);
+
+                // FR5c-finalize — warning length check uses the LEGACY warning
+                // channel (mirrors the TS runner: any warning, envelope-shaped
+                // or not, counts toward the total). The per-element envelope
+                // shape assertion runs against the envelope-shaped channel,
+                // and only when counts agree (otherwise the message already
+                // names the count delta and per-element output would be noise).
+                int expectedCount = envelope.warnings.size();
+                int gotCount = loader.getWarnings().size();
+                if (expectedCount != gotCount) {
+                    failures.add("warning length mismatch: expected " + expectedCount
+                        + ", got " + gotCount);
                 } else {
-                    for (int i = 0; i < envelope.errors.size(); i++) {
-                        FixtureLint.ExpectedError w = envelope.errors.get(i);
-                        EnvelopeRecord g = envelopesSeen.get(i);
-                        if (!w.code.equals(g.code)) {
-                            failures.add("envelope[" + i + "].code: expected '" + w.code
-                                + "', got '" + g.code + "'");
-                            continue;
-                        }
-                        if (w.source == null) continue;
-                        if (!w.source.format.equals(g.format)) {
-                            failures.add("envelope[" + i + "].source.format: expected '"
-                                + w.source.format + "', got '" + g.format + "'");
-                        }
-                        if (!w.source.files.equals(g.files)) {
-                            failures.add("envelope[" + i + "].source.files: expected "
-                                + w.source.files + ", got " + g.files);
-                        }
-                        if (w.source.jsonPath != null && !w.source.jsonPath.equals(g.jsonPath)) {
-                            failures.add("envelope[" + i + "].source.jsonPath: expected '"
-                                + w.source.jsonPath + "', got '" + g.jsonPath + "'");
-                        }
-                        // FR5d — assert referrer + target for format=resolved envelopes.
-                        if (w.source.referrer != null && !w.source.referrer.equals(g.referrer)) {
-                            failures.add("envelope[" + i + "].source.referrer: expected '"
-                                + w.source.referrer + "', got '" + g.referrer + "'");
-                        }
-                        if (w.source.target != null && !w.source.target.equals(g.target)) {
-                            failures.add("envelope[" + i + "].source.target: expected '"
-                                + w.source.target + "', got '" + g.target + "'");
-                        }
+                    List<EnvelopeRecord> warningEnvelopesSeen = new ArrayList<>();
+                    for (com.metaobjects.source.LoaderWarning lw : loader.getEnvelopeWarnings()) {
+                        warningEnvelopesSeen.add(buildEnvelope(lw, fix.inputDir));
                     }
-                }
-                // Loader warnings — must match envelope.warningsCount.
-                int gotWarnings = loader.getWarnings().size();
-                if (envelope.warningsCount != gotWarnings) {
-                    failures.add("warnings count: expected " + envelope.warningsCount
-                        + ", got " + gotWarnings);
+                    // Only run per-element assertion when the envelope channel
+                    // matches the expected count too (legacy-only warnings
+                    // would otherwise produce a confusing index mismatch).
+                    if (expectedCount == warningEnvelopesSeen.size()) {
+                        assertEnvelopeAlignment("warning", envelope.warnings,
+                            warningEnvelopesSeen, failures);
+                    }
                 }
             }
             return;
@@ -472,6 +458,67 @@ public class ConformanceTest {
             out.add(el.getAsString());
         }
         return out;
+    }
+
+    /**
+     * Assert per-element envelope alignment between the expected list (from
+     * {@code expected-errors.json}, either the {@code errors} or
+     * {@code warnings} channel) and what the loader surfaced. Mirrors the TS
+     * runner's identical block for errors + warnings.
+     *
+     * <p>Algorithm:</p>
+     * <ul>
+     *   <li>Length mismatch is a single failure (no per-element checks run).</li>
+     *   <li>Per element: {@code code} must match. When the expected entry has
+     *       no {@code source}, the per-element source check is skipped (count
+     *       alone is the contract). Otherwise {@code format} + {@code files}
+     *       always assert; {@code jsonPath}, {@code referrer}, {@code target}
+     *       assert only when the expected entry declares them.</li>
+     * </ul>
+     *
+     * @param label   "envelope" for errors, "warning" for warnings — woven
+     *                into failure messages so the channel is unambiguous.
+     */
+    private static void assertEnvelopeAlignment(String label,
+                                                 List<FixtureLint.ExpectedError> expected,
+                                                 List<EnvelopeRecord> got,
+                                                 List<String> failures) {
+        if (expected.size() != got.size()) {
+            failures.add(label + " length mismatch: expected " + expected.size()
+                + ", got " + got.size());
+            return;
+        }
+        for (int i = 0; i < expected.size(); i++) {
+            FixtureLint.ExpectedError w = expected.get(i);
+            EnvelopeRecord g = got.get(i);
+            if (!w.code.equals(g.code)) {
+                failures.add(label + "[" + i + "].code: expected '" + w.code
+                    + "', got '" + g.code + "'");
+                continue;
+            }
+            if (w.source == null) continue;
+            if (!w.source.format.equals(g.format)) {
+                failures.add(label + "[" + i + "].source.format: expected '"
+                    + w.source.format + "', got '" + g.format + "'");
+            }
+            if (!w.source.files.equals(g.files)) {
+                failures.add(label + "[" + i + "].source.files: expected "
+                    + w.source.files + ", got " + g.files);
+            }
+            if (w.source.jsonPath != null && !w.source.jsonPath.equals(g.jsonPath)) {
+                failures.add(label + "[" + i + "].source.jsonPath: expected '"
+                    + w.source.jsonPath + "', got '" + g.jsonPath + "'");
+            }
+            // FR5d — assert referrer + target for format=resolved envelopes.
+            if (w.source.referrer != null && !w.source.referrer.equals(g.referrer)) {
+                failures.add(label + "[" + i + "].source.referrer: expected '"
+                    + w.source.referrer + "', got '" + g.referrer + "'");
+            }
+            if (w.source.target != null && !w.source.target.equals(g.target)) {
+                failures.add(label + "[" + i + "].source.target: expected '"
+                    + w.source.target + "', got '" + g.target + "'");
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -598,8 +645,24 @@ public class ConformanceTest {
      * cross-port harness has a portable file token.
      */
     private static EnvelopeRecord buildEnvelope(MetaDataException ex, Path inputDir) {
-        String code = extractErrorCode(ex);
-        ErrorSource env = ex.getEnvelope().orElse(null);
+        return buildEnvelope(extractErrorCode(ex), ex.getEnvelope().orElse(null), inputDir);
+    }
+
+    /**
+     * FR5c-finalize — build the cross-port envelope from a
+     * {@link com.metaobjects.source.LoaderWarning}. Shares the variant-by-
+     * variant dispatch with the exception-side {@link #buildEnvelope(MetaDataException, Path)}.
+     */
+    private static EnvelopeRecord buildEnvelope(com.metaobjects.source.LoaderWarning warning,
+                                                 Path inputDir) {
+        return buildEnvelope(warning.code(), warning.source(), inputDir);
+    }
+
+    /**
+     * Shared envelope builder — same algorithm whether the source comes from
+     * a thrown exception, a recorded error, or a {@code LoaderWarning}.
+     */
+    private static EnvelopeRecord buildEnvelope(String code, ErrorSource env, Path inputDir) {
         if (env instanceof JsonSource js) {
             return new EnvelopeRecord(code, "json", relativizeFiles(js.files(), inputDir), js.jsonPath());
         }
