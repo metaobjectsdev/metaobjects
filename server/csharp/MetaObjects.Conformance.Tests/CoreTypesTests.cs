@@ -28,14 +28,16 @@ public class CoreTypesTests
     }
 
     [Fact]
-    public void Core_provider_registers_exactly_69_types()
+    public void Core_provider_registers_exactly_70_types()
     {
         // Guard: if a subtype array gains an entry without a matching
         // FieldDataType / AttrDataType mapping, RegisterCoreTypeDefs throws and
         // this test catches the mismatch before it reaches downstream callers.
-        // 69 = was 70 (source had 3 subtypes: base, dbTable, dbView)
-        // - source-v2 (ADR-0007) collapses to 2 subtypes (base, rdb).
+        // 70 = was 69 + 1 (template.toolcall added per ADR-0011 in 0.7.0-rc.7).
+        // Earlier delta: was 70 (source had 3 subtypes: base, dbTable, dbView)
+        // - source-v2 (ADR-0007) collapsed to 2 subtypes (base, rdb) → 69
+        // + template.toolcall (ADR-0011) → 70.
         var reg = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
-        Assert.Equal(69, reg.AllTypes().Count);
+        Assert.Equal(70, reg.AllTypes().Count);
     }
 }

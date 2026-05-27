@@ -86,9 +86,51 @@ public static class TemplateSchema
             Description: "Target model id (LLM-specific)."),
     ];
 
+    // Toolcall attrs (template.toolcall only — does NOT inherit GenericAttrs).
+    // Per ADR-0011: vendor-agnostic in core; vendor wire details (retry semantics,
+    // fallback shapes, parallel invocation, cache hints) added by consumer
+    // providers via TypeRegistry.Extend("template", "toolcall", attributes: [...]).
+    //
+    // Critical: @textRef is intentionally NOT required here. A tool-call has no
+    // renderable text body — the body IS the structured output schema resolved
+    // via @payloadRef. This is the design rationale for toolcall being its own
+    // subtype rather than template.output + @toolName.
+    //
+    // @description is intentionally NOT declared here — it's already a documentation
+    // common attr added to every type by the documentation provider. Tool
+    // descriptions surfaced to the LLM read the same @description common attr
+    // that doc-gen uses.
+    private static readonly IReadOnlyList<AttrSchema> ToolcallAttrs =
+    [
+        new AttrSchema(
+            Name: TemplateConstants.TEMPLATE_ATTR_TOOL_NAME,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: true,
+            Description: "Wire tool name surfaced to the LLM (vendor-specific format)."),
+
+        new AttrSchema(
+            Name: TemplateConstants.TEMPLATE_ATTR_PAYLOAD_REF,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: true,
+            Description: "Output value-object the tool produces (resolved against the metamodel)."),
+
+        new AttrSchema(
+            Name: TemplateConstants.TEMPLATE_ATTR_OWNER,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "Governance: the owner of this toolcall."),
+
+        new AttrSchema(
+            Name: TemplateConstants.TEMPLATE_ATTR_SINCE,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "Governance: the version this toolcall was introduced in."),
+    ];
+
     /// <summary>
     /// Attrs per template subtype. base has none; output carries the generic attrs;
-    /// prompt carries the generic attrs plus the LLM overlay.
+    /// prompt carries the generic attrs plus the LLM overlay; toolcall declares
+    /// its own minimal set (ADR-0011 — NOT inherited from generic attrs).
     /// </summary>
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<AttrSchema>> TemplateAttrsMap =
         new Dictionary<string, IReadOnlyList<AttrSchema>>
@@ -96,5 +138,6 @@ public static class TemplateSchema
             [BaseTypes.SUBTYPE_BASE]                       = [],
             [TemplateConstants.TEMPLATE_SUBTYPE_PROMPT]    = [.. GenericAttrs, .. PromptOverlayAttrs],
             [TemplateConstants.TEMPLATE_SUBTYPE_OUTPUT]    = [.. GenericAttrs],
+            [TemplateConstants.TEMPLATE_SUBTYPE_TOOLCALL]  = [.. ToolcallAttrs],
         };
 }
