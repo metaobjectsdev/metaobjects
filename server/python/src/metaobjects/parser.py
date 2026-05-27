@@ -20,7 +20,8 @@ from .shared.structural import (
     KEY_PACKAGE,
     KEY_VALUE,
 )
-from .source import CodeSource, ErrorSource, JsonPathBuilder, JsonSource
+from .source import CodeSource, ErrorSource, JsonPathBuilder, JsonSource, YamlPosition
+from .source.yaml_positions import get_yaml_position
 
 # Reserved structural body keys — authoring any of these with the @-prefix is a
 # hard ERR_RESERVED_ATTR (ADR-0007). Detected inline as each @-key is processed.
@@ -43,17 +44,31 @@ class ParseResult:
     warnings: list[str] = field(default_factory=list)
 
 
-def _current_envelope(source: str | None, builder: JsonPathBuilder) -> ErrorSource:
+def _current_envelope(
+    source: str | None,
+    builder: JsonPathBuilder,
+    yaml_position: YamlPosition | None = None,
+) -> ErrorSource:
     """Build a JsonSource envelope for the current parser location.
 
     Returns :class:`CodeSource` when *source* is missing (parser invoked
     without a source id — emitting a JsonSource with an empty file list
     would violate the FR5a length-1 invariant). Mirrors the C# fallback in
     ``Parser.ParseState.CurrentSource``.
+
+    FR5b — when the parser is walking a YAML-sourced document, *yaml_position*
+    carries the current node's (line, col). It rides on the JsonSource as the
+    optional ``yaml_position`` field; the envelope's ``format`` discriminator
+    stays ``"json"`` for cross-port stability (see source.error_source
+    JsonSource docstring + TS reference).
     """
     if source is None or source == "":
         return CodeSource.DEFAULT
-    return JsonSource(files=(source,), json_path=builder.to_string())
+    return JsonSource(
+        files=(source,),
+        json_path=builder.to_string(),
+        yaml_position=yaml_position,
+    )
 
 
 def parse_document(doc: object, registry: TypeRegistry, source: str) -> ParseResult:
@@ -78,7 +93,14 @@ def parse_document(doc: object, registry: TypeRegistry, source: str) -> ParseRes
 
     (wrapper, body), = cast(list[tuple[str, object]], list(doc.items()))
     builder.push_key(wrapper)
-    node = _build(wrapper, body, registry, source, result, builder)
+    # FR5b — look up the root wrapper's YAML position (when the input was
+    # YAML-loaded). For JSON input, this returns None and the envelope
+    # remains a plain JsonSource with no yaml_position.
+    root_yaml_position = get_yaml_position(doc, wrapper)
+    node = _build(
+        wrapper, body, registry, source, result, builder,
+        yaml_position=root_yaml_position,
+    )
     builder.pop()
     if isinstance(node, MetaData):
         result.root = node
@@ -94,6 +116,7 @@ def _build(
     builder: JsonPathBuilder,
     ctx_pkg: str = "",
     parent_type: str = "",
+    yaml_position: YamlPosition | None = None,
 ) -> MetaData | None:
     """Build a node from a fused-key wrapper and its body dict.
 
@@ -102,6 +125,10 @@ def _build(
     for the field-package-inheritance rule: fields NOT inside objects inherit the
     context package, mirroring the TS/Java loader behaviour for abstract fields
     declared at the root level).
+
+    *yaml_position* is the FR5b YAML line/col of the wrapper key (if the input
+    was YAML-loaded); ``None`` for JSON input. Stamped onto the constructed
+    node's source envelope.
     """
     type_, _, sub_type = wrapper.partition(FUSED_KEY_SEP)
     if not sub_type:
@@ -109,7 +136,7 @@ def _build(
             f"node '{wrapper}' omits subType",
             ErrorCode.ERR_MISSING_SUBTYPE,
             source,
-            envelope=_current_envelope(source, builder),
+            envelope=_current_envelope(source, builder, yaml_position),
         ))
         return None
     if not registry.has_type(type_):
@@ -117,7 +144,7 @@ def _build(
             f"unknown type '{type_}'",
             ErrorCode.ERR_UNKNOWN_TYPE,
             source,
-            envelope=_current_envelope(source, builder),
+            envelope=_current_envelope(source, builder, yaml_position),
         ))
         return None
     definition = registry.find(type_, sub_type)
@@ -126,7 +153,7 @@ def _build(
             f"unknown subType '{type_}.{sub_type}'",
             ErrorCode.ERR_UNKNOWN_SUBTYPE,
             source,
-            envelope=_current_envelope(source, builder),
+            envelope=_current_envelope(source, builder, yaml_position),
         ))
         return None
 
@@ -135,7 +162,8 @@ def _build(
     node = definition.factory(type_, sub_type, name)
     assert isinstance(node, MetaData)
     # FR5a / ADR-0009 — every parser-constructed node carries its origin.
-    node.set_source(_current_envelope(source, builder))
+    # FR5b — when YAML-sourced, the envelope also carries yaml_position.
+    node.set_source(_current_envelope(source, builder, yaml_position))
 
     pkg = body_dict.get(KEY_PACKAGE)
     if pkg:
@@ -170,7 +198,7 @@ def _build(
                         f"with @-prefix; bare '{attr_name}' is the canonical form",
                         ErrorCode.ERR_RESERVED_ATTR,
                         source,
-                        envelope=_current_envelope(source, builder),
+                        envelope=_current_envelope(source, builder, yaml_position),
                     )
                 )
                 continue
@@ -181,8 +209,15 @@ def _build(
             # The attr's JsonPath points at the @-key on the parent body.
             attr_node = node.own_meta_attr(attr_name)
             if attr_node is not None:
+                # FR5b — the inline attr's YAML position is the body's
+                # position-by-key map entry for this canonical key (the
+                # desugar re-keys sigil-free attrs to @-prefixed form, so
+                # the lookup key matches `key` directly).
+                attr_yaml_pos = get_yaml_position(body_dict, key)
                 builder.push_key(key)
-                attr_node.set_source(_current_envelope(source, builder))
+                attr_node.set_source(
+                    _current_envelope(source, builder, attr_yaml_pos),
+                )
                 builder.pop()
 
     # The context package for children: use this node's own package if set, else inherit.
@@ -193,16 +228,24 @@ def _build(
     children_entries = _iter_children(body_dict)
     if children_entries:
         builder.push_key(KEY_CHILDREN)
-        for idx, (cw, cbody) in enumerate(children_entries):
+        for idx, (entry_dict, cw, cbody) in enumerate(children_entries):
             builder.push_index(idx)
             builder.push_key(cw)
             child_type, _, child_sub = cw.partition(FUSED_KEY_SEP)
+            # FR5b — the child wrapper's YAML position lives on the entry
+            # dict (the one-key wrapper holding `{cw: cbody}`). For JSON
+            # input, get_yaml_position returns None.
+            child_yaml_pos = get_yaml_position(entry_dict, cw)
             if child_type == TYPE_ATTR:
-                _parse_attr_child(node, child_sub, cbody, registry, source, result, builder)
+                _parse_attr_child(
+                    node, child_sub, cbody, registry, source, result, builder,
+                    yaml_position=child_yaml_pos,
+                )
             else:
                 child = _build(
                     cw, cbody, registry, source, result, builder,
                     ctx_pkg=child_ctx_pkg, parent_type=type_,
+                    yaml_position=child_yaml_pos,
                 )
                 if child is not None:
                     node.add_child(child)
@@ -221,11 +264,15 @@ def _parse_attr_child(
     source: str,
     result: ParseResult,
     builder: JsonPathBuilder,
+    yaml_position: YamlPosition | None = None,
 ) -> None:
     """Handle a typed attr child: { "attr.<sub>": { "name": ..., "value": ... } }.
 
     Attaches via set_attr (not add_child) — attrs are not structural children.
     Uses the child's own sub_type to pick the correct attr class (coerce + desugar).
+
+    FR5b — *yaml_position* is the YAML line/col of the attr child's wrapper key
+    (when YAML-loaded); stamped on the resulting attribute node's source.
     """
     body_dict: dict[str, object] = body if isinstance(body, dict) else {}
     attr_name = body_dict.get(KEY_NAME)
@@ -235,7 +282,7 @@ def _parse_attr_child(
                 f"attr child requires a non-empty 'name'",
                 ErrorCode.ERR_MISSING_REQUIRED_ATTR,
                 source,
-                envelope=_current_envelope(source, builder),
+                envelope=_current_envelope(source, builder, yaml_position),
             )
         )
         return
@@ -248,15 +295,23 @@ def _parse_attr_child(
     # builder already points at the `attr.<sub>` wrapper (caller pushed it).
     attr_node = parent.own_meta_attr(attr_name)
     if attr_node is not None:
-        attr_node.set_source(_current_envelope(source, builder))
+        attr_node.set_source(_current_envelope(source, builder, yaml_position))
 
 
-def _iter_children(body: dict[str, object]) -> list[tuple[str, object]]:
+def _iter_children(
+    body: dict[str, object],
+) -> list[tuple[dict[str, object], str, object]]:
+    """Iterate over a body's `children` entries.
+
+    Returns a list of ``(entry_dict, wrapper_key, body_value)`` triples. The
+    ``entry_dict`` is the original one-key wrapper from the children array,
+    retained so callers can read its FR5b YAML position-by-key map.
+    """
     raw = body.get(KEY_CHILDREN, [])
-    out: list[tuple[str, object]] = []
+    out: list[tuple[dict[str, object], str, object]] = []
     if isinstance(raw, list):
         for entry in raw:
             if isinstance(entry, dict) and len(entry) == 1:
                 (cw, cbody), = cast(list[tuple[str, object]], list(entry.items()))
-                out.append((cw, cbody))
+                out.append((entry, cw, cbody))
     return out

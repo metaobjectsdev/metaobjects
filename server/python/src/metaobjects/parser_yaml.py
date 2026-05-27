@@ -15,6 +15,7 @@ import yaml  # type: ignore[import-untyped]  # PyYAML ships no type stubs
 from .errors import ErrorCode, MetaError, ParseError
 from .parser import ParseResult, parse_document
 from .registry import TypeRegistry
+from .source.yaml_positions import parse_yaml_with_positions
 from .yaml_desugar import desugar
 
 
@@ -23,10 +24,15 @@ def parse_yaml(text: str, registry: TypeRegistry, source: str) -> ParseResult:
 
     Steps mirror TS parser-yaml.ts:
       1. Strip UTF-8 BOM if present (consistent with parse_document).
-      2. yaml.safe_load -> raw Python object (PyYAML's safe loader uses the
-         YAML 1.2 core schema; coercion is intentional and reported by D2).
-      3. desugar(raw, registry) -> canonical-JSON-shaped dict + CollectedErrors.
-      4. parse_document(canonical, registry, source) -> ParseResult.
+      2. parse_yaml_with_positions -> a Python object whose mappings carry
+         line/col positions for each key (FR5b). Functionally equivalent to
+         ``yaml.safe_load`` for downstream consumers; YamlPositionMap is a
+         dict subclass.
+      3. desugar(raw, registry) -> canonical-JSON-shaped dict + CollectedErrors
+         (positions are preserved across Rules 1, 2, 4, 5).
+      4. parse_document(canonical, registry, source) -> ParseResult; the
+         parser detects position-tagged dicts and populates
+         ``source.yaml_position`` on every node it builds.
       5. Merge desugar errors (each carrying its own stable code, e.g.
          ERR_YAML_COERCION) ahead of parse_document's errors.
 
@@ -38,7 +44,7 @@ def parse_yaml(text: str, registry: TypeRegistry, source: str) -> ParseResult:
         text = text[1:]
 
     try:
-        parsed = yaml.safe_load(text)
+        parsed = parse_yaml_with_positions(text)
     except yaml.YAMLError as exc:
         raise ParseError(f"Invalid YAML: {exc}", ErrorCode.ERR_MALFORMED_YAML) from exc
 
