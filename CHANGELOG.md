@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.7.0-rc.2] — 2026-05-27
+
 ### Added
 - **`entityFile({ allowlists: false })` opt-in flag** (`@metaobjectsdev/codegen-ts`) —
   Worker/Lambda consumers can disable the Fastify-flavored
@@ -50,8 +52,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   corpus gains `input/meta.npc.json`, `expected.json`, and
   `expected/NpcResponseOutput.output.ts` byte-exact codegen artifact. TS
   conformance runner verifies `outputParser()`'s output matches.
-
-### Changed
+- **`source.rdb` discriminator filters entity-file emission**
+  (`@metaobjectsdev/codegen-ts`) — metaobjects without a writable
+  `source.rdb` child now route through a streamlined value-only path
+  emitting only the structural TS interface + `<Name>InsertSchema` Zod
+  schema. The Drizzle table, `InferSelectModel`/`InferInsertModel`
+  aliases, `<Entity>FilterAllowlist`/`<Entity>SortAllowlist`,
+  `<Entity>Filter` type, and `$entity`/`$table`/`$path` constants object
+  are skipped entirely. Pure metadata-driven discriminator (type=`source`,
+  subtype=`rdb`, `MetaSource.isWritable()`) — not an `object.value`
+  vs `object.entity` type-ID gate, so the same filter also covers
+  transient / in-memory shapes that declare no source. Closes the
+  "dead generated tables" smell in consumers that model nested response
+  payloads as value objects. Branch slots between `isProjection` and
+  the existing vanilla-entity path; both pre-existing paths are
+  unchanged. New helper `hasWritableRdbSource(entity)` from
+  `@metaobjectsdev/codegen-ts/source-detect`.
 - `meta verify` log line format adds `(<subtype>)` after the template name
   (e.g., `[npcTurn] (prompt) ERR_*`). A pre-FR6 log scraper that matched
   on the bare `[name]` prefix needs to update its regex.
@@ -103,6 +119,23 @@ for the cross-port design.
   SQLite) on failure. Remote `wrangler d1 execute` paths still answer the
   function and use the live value. (Reported from the same 0.7.0-rc.1
   consumer.)
+- **`field.enum` columns emit Drizzle `text({ enum: [...] as const })`**
+  (`@metaobjectsdev/codegen-ts`) — CHECK-constrained enum columns now
+  carry an `enum` option on the `text()` call, narrowing Drizzle's
+  inferred select-model type from bare `string` to a literal union
+  (e.g. `"supports" | "opposes" | ...`). The `as const` suffix is what
+  Drizzle's type signature requires to lift the values into the type
+  position. Affects every non-array `field.enum`; isArray enum columns
+  remain `text({ mode: "json" })` (Zod still validates element membership).
+- **`field.object isArray:true objectRef:RefName` emits
+  `text({ mode: "json" }).$type<RefName[]>()`**
+  (`@metaobjectsdev/codegen-ts`) — SQLite JSON columns storing arrays
+  of nested objects now carry a typed element annotation via ts-poet
+  `imp()` cross-module hoisting (e.g. `citations: text("citations", {
+  mode: "json" }).$type<SourceLens[]>()`). Sibling fix to the scalar
+  `.$type<E[]>()` patch from 0.7.0-rc.1; closes the last row-type
+  widening case that forced consumers to `as unknown as z.ZodType<>`
+  cast the codegen'd `<Name>InsertSchema` at the LLM-tool-use boundary.
 
 ## [0.6.0] — 2026-05-25
 

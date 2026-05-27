@@ -6,7 +6,17 @@
         "object.entity": {
           "name": "Lonely",
           "children": [
-            {"field": {"name": "id", "extends": "..::nonexistent::id"}}
+            {
+              "source.rdb": {
+                "@table": "lonelys"
+              }
+            },
+            {
+              "field": {
+                "name": "id",
+                "extends": "..::nonexistent::id"
+              }
+            }
           ]
         }
       }

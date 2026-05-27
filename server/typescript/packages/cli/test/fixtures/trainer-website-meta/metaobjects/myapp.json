@@ -11,6 +11,11 @@
           "@forgePrimaryLocation": "src/db/users.schema.ts",
           "children": [
             {
+              "source.rdb": {
+                "@table": "users"
+              }
+            },
+            {
               "field.long": {
                 "name": "id",
                 "@column": "id"
@@ -69,6 +74,11 @@
           "@forgeSource": "human",
           "@forgePrimaryLocation": "src/db/posts.schema.ts",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "posts"
+              }
+            },
             {
               "field.long": {
                 "name": "id",
@@ -140,6 +150,11 @@
           "@forgeConfidence": 0.9,
           "@forgeSource": "human",
           "children": [
+            {
+              "source.rdb": {
+                "@table": "tags"
+              }
+            },
             {
               "field.long": {
                 "name": "id",

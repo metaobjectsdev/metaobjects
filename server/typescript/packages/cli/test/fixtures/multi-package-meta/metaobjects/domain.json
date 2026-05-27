@@ -8,6 +8,11 @@
           "@dbTable": "widgets",
           "children": [
             {
+              "source.rdb": {
+                "@table": "widgets"
+              }
+            },
+            {
               "field": {
                 "name": "id",
                 "extends": "::demo::common::id"
