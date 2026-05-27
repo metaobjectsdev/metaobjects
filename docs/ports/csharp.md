@@ -184,6 +184,9 @@ public static class NpcResponseParser
 }
 ```
 
+The `[NotNullWhen]` attributes mean nullable-flow analysis lets you use `npc`
+without a null-check after a `true` return, and `error` without one after `false`.
+
 Consumer wiring:
 
 ```csharp

@@ -198,7 +198,6 @@ would be un-Pythonic).
 
 ```python
 # generated/npc_response_output_parser.py
-from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel

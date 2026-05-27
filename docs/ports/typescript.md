@@ -170,6 +170,7 @@ const NpcResponseSchema = z.object({
 });
 
 export type NpcResponseData = z.infer<typeof NpcResponseSchema>;
+export type NpcResponseValidationError = z.ZodError;  // alias for consumer error-handlers
 
 export function parseNpcResponse(text: string): NpcResponseData {
   return NpcResponseSchema.parse(JSON.parse(text));  // throws ZodError

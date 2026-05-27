@@ -375,6 +375,14 @@ file — the parser imports the payload class rather than redeclaring it. `meta 
 extends to walk `template.output` nodes the same way it walks `template.prompt`,
 catching payload-VO ↔ parser drift at build time.
 
+**On malformed metadata, generators behave slightly differently** — TS throws
+from `renderOutputParser` (aborts the run); C# / Python / Kotlin warn and skip
+the malformed template (the run continues, the affected parser file is not
+emitted). In practice the loader's template-validation pass rejects malformed
+`@payloadRef` declarations before codegen runs, so this divergence is not
+user-visible under normal flow; it only matters for defensive paths in
+custom embedding scenarios. Tracked as a cross-port consistency item.
+
 ## Drift detection: `verify`
 
 For every template, `verify` resolves the text, parses the `{{...}}` references,
