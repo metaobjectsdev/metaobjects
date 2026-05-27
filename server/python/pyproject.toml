@@ -11,6 +11,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6", "pydantic>=2"]
+# On-demand cross-language api-contract-conformance suite. pg8000 is pure-python
+# so this extra installs cleanly without native deps; FastAPI + httpx (the
+# starlette TestClient transport) drive the reference Author API in-process.
+integration = ["pg8000>=1.31", "fastapi>=0.110", "httpx>=0.27"]
 
 [build-system]
 requires = ["hatchling"]
