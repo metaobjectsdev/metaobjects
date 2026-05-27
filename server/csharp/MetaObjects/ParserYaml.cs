@@ -19,6 +19,8 @@
 //                                          conformance harness.
 
 using System.Text.Json.Nodes;
+using MetaObjects.Loader;
+using MetaObjects.Source;
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
 
@@ -65,11 +67,95 @@ public static class ParserYaml
                 null);
         }
 
+        // FR5b — flatten the desugar's per-JsonObject PositionMap side table
+        // into a JSONPath-keyed dictionary so the canonical parser (which walks
+        // JsonElement, not JsonObject) can stamp `yamlPosition` on each node's
+        // source envelope by JSONPath lookup. The flat map keys mirror the
+        // path the parser has on its JsonPathBuilder when it reaches each node.
+        var positionsByPath = new Dictionary<string, YamlPosition>(StringComparer.Ordinal);
+        FlattenPositions(collected.Canonical, parentPath: "$", positionsByPath);
+
         // Hand the canonical JSON to the existing canonical parser.
         // ToJsonString() emits standard JSON; round-trip is byte-safe for the
         // shapes the desugar produces (strings/numbers/bools/null/objects/arrays).
         string canonicalJson = collected.Canonical.ToJsonString();
-        return Parser.ParseJson(canonicalJson, opts);
+        var yamlOpts = new ParseOptions(opts.Registry)
+        {
+            Strict = opts.Strict,
+            SourceName = opts.SourceName,
+            IntoRoot = opts.IntoRoot,
+            DeferSuperResolution = opts.DeferSuperResolution,
+            SourceFormat = MetaDataFormat.Yaml,
+            YamlPositionsByPath = positionsByPath,
+        };
+        return Parser.ParseJson(canonicalJson, yamlOpts);
+    }
+
+    // -------------------------------------------------------------------------
+    // FR5b position flattening
+    //
+    // Walk the desugar's canonical JsonObject and emit JSONPath→YamlPosition
+    // entries for every wrapper-key in the tree. The canonical structure is:
+    //
+    //   {"metadata.root":{"package":..., "children":[
+    //     {"object.entity":{"name":..., "children":[
+    //       {"field.string":{"name":...}}
+    //     ]}}
+    //   ]}}
+    //
+    // For each JsonObject in the tree, its position map (if any) carries
+    // entries like {"object.entity":(4,7)}. We emit:
+    //   $.metadata.root          → wrapper-key position of "metadata.root"
+    //   $.metadata.root.children[0].object.entity → position of "object.entity"
+    //   $.metadata.root.children[0].object.entity.children[0].field.string → ...
+    //
+    // The body keys (`package`, `name`, etc.) are also in the position maps
+    // (carried by the desugar across Rule-5 sigil-free rewrites), but the
+    // canonical parser does NOT push body keys onto its JsonPathBuilder when
+    // stamping source on the OWNING node — so we only need the wrapper-key
+    // entries for the per-node source envelope. Body-key positions remain
+    // available to future tooling via YamlPositions.GetMap (the side table is
+    // still attached to each JsonObject).
+    // -------------------------------------------------------------------------
+
+    private static void FlattenPositions(
+        JsonNode? node,
+        string parentPath,
+        Dictionary<string, YamlPosition> output)
+    {
+        if (node is null) return;
+        if (node is JsonObject obj)
+        {
+            PositionMap? map = YamlPositions.GetMap(obj);
+            foreach (KeyValuePair<string, JsonNode?> kvp in obj)
+            {
+                string key = kvp.Key;
+                string keySegment = JsonPath.SegmentForKey(key);
+                string childPath = parentPath + keySegment;
+                // Emit a position entry for every wrapper-key that the desugar
+                // recorded a position for. The parser's JsonPathBuilder will
+                // hit `childPath` precisely when it reaches that wrapper-key,
+                // so populateNodeSource can stamp the position on the node it
+                // is about to construct.
+                YamlPosition? pos = map?.Get(key);
+                if (pos is not null)
+                {
+                    output[childPath] = pos;
+                }
+                FlattenPositions(kvp.Value, childPath, output);
+            }
+            return;
+        }
+        if (node is JsonArray arr)
+        {
+            for (int i = 0; i < arr.Count; i++)
+            {
+                string childPath = parentPath + JsonPath.SegmentForIndex(i);
+                FlattenPositions(arr[i], childPath, output);
+            }
+            return;
+        }
+        // JsonValue (scalar) — no descent, no positions.
     }
 
     /// <summary>
