@@ -15,7 +15,7 @@ import { composeRegistry } from "../provider.js";
 import { TYPE_METADATA, SUBTYPE_ROOT } from "../shared/base-types.js";
 import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
-import { codeSource } from "../source.js";
+import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs } from "./validation-passes.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
@@ -379,10 +379,17 @@ export class MetaDataLoader {
     if (root !== undefined) {
       const failures = resolveDeferredSupers(root);
       for (const failure of failures) {
+        // FR5d — emit format=resolved with referrer + target. The referrer's
+        // parse-time source supplies files + jsonPath (the location of the
+        // broken `extends:` on disk); referrer = the declaring node's FQN;
+        // target = the unresolved supertype ref.
         errors.push(
           new ParseError(
             `the SuperClass '${failure.ref}' does not exist (referenced by ${failure.nodeFqn})`,
-            { code: "ERR_UNRESOLVED_SUPER", source: failure.source },
+            {
+              code: "ERR_UNRESOLVED_SUPER",
+              source: resolvedSource(failure.source, failure.nodeFqn, failure.ref),
+            },
           ),
         );
       }

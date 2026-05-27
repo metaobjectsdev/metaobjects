@@ -67,3 +67,33 @@ export interface LoaderWarning {
 export function codeSource(caller?: string): ErrorSource {
   return caller ? { format: "code", caller } : { format: "code" };
 }
+
+/** FR5d — build a `format: "resolved"` envelope from a referrer node's source
+ *  envelope (typically a `format: "json"` or `format: "yaml"` parse-time
+ *  source) plus the referrer FQN and unresolved target string.
+ *
+ *  The resolved envelope carries:
+ *    - `files`: the referrer's source files (so editors can jump to it),
+ *    - `jsonPath`: the referrer's jsonPath when known (the location of the
+ *       broken reference on disk),
+ *    - `referrer`: the FQN of the metadata node that declared the broken
+ *       reference (e.g. "myapp::content::Video"),
+ *    - `target`:  the unresolved reference string itself (e.g. "BaseEntity",
+ *       "Program.weeks.invalid", "DoesNotExist").
+ *
+ *  `referrerSource` may be any FR5a variant — we read its files/jsonPath
+ *  best-effort and fall back to an empty `files: []` when the referrer's
+ *  source is itself a `code`/`database` envelope. */
+export function resolvedSource(
+  referrerSource: ErrorSource,
+  referrer: string,
+  target: string,
+): ErrorSource {
+  const files = "files" in referrerSource ? [...referrerSource.files] : [];
+  const jsonPath = "jsonPath" in referrerSource ? referrerSource.jsonPath : undefined;
+  const out: ErrorSource = { format: "resolved", files, referrer, target };
+  if (jsonPath !== undefined) {
+    (out as { jsonPath?: string }).jsonPath = jsonPath;
+  }
+  return out;
+}
