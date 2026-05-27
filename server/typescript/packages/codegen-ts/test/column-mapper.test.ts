@@ -8,6 +8,7 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_ENUM,
+  FIELD_SUBTYPE_OBJECT,
 } from "@metaobjectsdev/metadata";
 import { meta, metaField } from "./_meta-build.js";
 import { mapColumnType, type ColumnSpec } from "../src/column-mapper.js";
@@ -51,29 +52,46 @@ describe("mapColumnType — SQLite", () => {
     expect(spec.dbName).toBe("given_name");
   });
 
-  test("@isArray on string → text with mode json and $type<string[]>() chain", () => {
+  test("@isArray on string → text with mode json and $type scalar:string", () => {
     const f = metaField(FIELD_SUBTYPE_STRING, "tags");
     f.setIsArray(true);
     const spec = mapColumnType(f, "sqlite");
     expect(spec.fnName).toBe("text");
     expect(spec.fnOptions).toEqual({ mode: "json" });
-    expect(spec.modifiers).toContain(".$type<string[]>()");
+    expect(spec.dollarTypeRef).toEqual({ kind: "scalar", tsType: "string" });
   });
 
-  test("@isArray on int → text with mode json and $type<number[]>() chain", () => {
+  test("@isArray on int → text with mode json and $type scalar:number", () => {
     const f = metaField(FIELD_SUBTYPE_INT, "scores");
     f.setIsArray(true);
     const spec = mapColumnType(f, "sqlite");
     expect(spec.fnName).toBe("text");
-    expect(spec.modifiers).toContain(".$type<number[]>()");
+    expect(spec.dollarTypeRef).toEqual({ kind: "scalar", tsType: "number" });
   });
 
-  test("@isArray on boolean → text with mode json and $type<boolean[]>() chain", () => {
+  test("@isArray on boolean → text with mode json and $type scalar:boolean", () => {
     const f = metaField(FIELD_SUBTYPE_BOOLEAN, "flags");
     f.setIsArray(true);
     const spec = mapColumnType(f, "sqlite");
     expect(spec.fnName).toBe("text");
-    expect(spec.modifiers).toContain(".$type<boolean[]>()");
+    expect(spec.dollarTypeRef).toEqual({ kind: "scalar", tsType: "boolean" });
+  });
+
+  test("@isArray on field.object → text with mode json and $type objectRef", () => {
+    const f = metaField(FIELD_SUBTYPE_OBJECT, "citations");
+    f.setAttr("objectRef", "SourceLens");
+    f.setIsArray(true);
+    const spec = mapColumnType(f, "sqlite");
+    expect(spec.fnName).toBe("text");
+    expect(spec.fnOptions).toEqual({ mode: "json" });
+    expect(spec.dollarTypeRef).toEqual({ kind: "objectRef", name: "SourceLens", module: "./SourceLens.js" });
+  });
+
+  test("@isArray on field.object without objectRef leaves dollarTypeRef unset", () => {
+    const f = metaField(FIELD_SUBTYPE_OBJECT, "stuff");
+    f.setIsArray(true);
+    const spec = mapColumnType(f, "sqlite");
+    expect(spec.dollarTypeRef).toBeUndefined();
   });
 
   test("decimal → text with leadingComment surfacing the precision-fallback", () => {

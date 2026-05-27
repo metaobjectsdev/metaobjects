@@ -308,7 +308,23 @@ function renderColumn(
     ? `.$defaultFn(() => new Date().toISOString())`
     : "";
 
-  const columnLine = code`  ${field.name}: ${baseCall}${modifiersStr}${autoSetSuffix}${sqlDefaultSegment ?? ""}${fkRefSegment ?? ""}`;
+  // $type<E[]>() chain — emitted as Code (not a string modifier) so ts-poet can
+  // hoist the cross-module type import for objectRef variants. Positioned
+  // immediately after the baseCall so the chain reads `.text(...).$type<...>().notNull()...`
+  // which Drizzle accepts in any order but is conventional for "type narrowing
+  // first."
+  let dollarTypeSegment: Code | string = "";
+  if (spec.dollarTypeRef !== undefined) {
+    const ref = spec.dollarTypeRef;
+    if (ref.kind === "scalar") {
+      dollarTypeSegment = `.$type<${ref.tsType}[]>()`;
+    } else {
+      const refSym = imp(`${ref.name}@${ref.module}`);
+      dollarTypeSegment = code`.$type<${refSym}[]>()`;
+    }
+  }
+
+  const columnLine = code`  ${field.name}: ${baseCall}${dollarTypeSegment}${modifiersStr}${autoSetSuffix}${sqlDefaultSegment ?? ""}${fkRefSegment ?? ""}`;
   return spec.leadingComment !== undefined
     ? code`  // ${spec.leadingComment}\n${columnLine}`
     : columnLine;
