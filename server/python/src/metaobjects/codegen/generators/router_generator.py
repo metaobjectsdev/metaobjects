@@ -13,9 +13,16 @@ FR-008 §2.3. Conforms to the cross-port REST API contract
 * HTTP 404 envelope: ``{"error": "not_found"}``.
 
 View / materializedView / storedProc / tableFunction kinds are skipped
-(read-only — would need a different router shape). Filter operators
-(``eq``/``ne``/...) are a known gap — see ``KNOWN_GAPS.md`` (matches the
-Java/Kotlin/C# pattern).
+(read-only — would need a different router shape).
+
+Filter operators are wired by delegating to the per-entity
+``<entity_snake>_filter_allowlist.py`` module (FR-009 §3.5) and the
+shared ``metaobjects.codegen.runtime.filter_parser`` helper. Only fields
+with ``@filterable: true`` appear in the allowlist; everything else
+returns ``invalid_filter_field`` per the cross-port wire envelope. The
+generated ``list`` handler accepts the FastAPI ``Request`` to read raw
+query params, calls ``parse_filter`` against the allowlist, and threads
+the resulting predicate list through the repository ``Protocol``.
 
 The generated router declares a ``Protocol`` interface for the consumer's
 repository — the consumer wires SQLAlchemy / asyncpg / etc. via FastAPI's
@@ -109,6 +116,10 @@ def render_router(entity: MetaObject) -> str | None:
     pk_param = f"{snake}_id"
     repo_class = f"{short_name}Repository"
     sort_fields = [f.name for f in _scalar_fields(entity)]
+    upper = short_name.upper()
+    fields_const = f"{upper}_FILTER_FIELDS"
+    ops_const = f"{upper}_FILTER_OPS_BY_FIELD"
+    allowlist_module = f"{snake}_filter_allowlist"
 
     sort_set_body = "set()" if not sort_fields else (
         "{\n" + "".join(f'    "{name}",\n' for name in sort_fields) + "}"
@@ -123,8 +134,15 @@ def render_router(entity: MetaObject) -> str | None:
     parts.append("")
     parts.append("from typing import Annotated, Any, Protocol")
     parts.append("")
-    parts.append("from fastapi import APIRouter, Depends, HTTPException, Query, status")
+    parts.append("from fastapi import APIRouter, Depends, HTTPException, Query, Request, status")
     parts.append("from pydantic import BaseModel")
+    parts.append("")
+    parts.append("from metaobjects.codegen.runtime.filter_parser import (")
+    parts.append("    FilterPredicate,")
+    parts.append("    parse_filter,")
+    parts.append(")")
+    parts.append("")
+    parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
     parts.append("")
     parts.append(f'router = APIRouter(prefix="/api/{plural}", tags=["{plural}"])')
     parts.append("")
@@ -157,8 +175,14 @@ def render_router(entity: MetaObject) -> str | None:
     # cycle between sibling generated files).
     parts.append(f"class {repo_class}(Protocol):")
     parts.append(f'    """GENERATED — consumer implements with their preferred persistence layer."""')
-    parts.append("    def list(self, limit: int, offset: int, sort: _SortClause | None) -> list[Any]: ...")
-    parts.append("    def count(self) -> int: ...")
+    parts.append("    def list(")
+    parts.append("        self,")
+    parts.append("        limit: int,")
+    parts.append("        offset: int,")
+    parts.append("        sort: _SortClause | None,")
+    parts.append("        filters: list[FilterPredicate],")
+    parts.append("    ) -> list[Any]: ...")
+    parts.append("    def count(self, filters: list[FilterPredicate]) -> int: ...")
     parts.append("    def find_by_id(self, id: int) -> Any | None: ...")
     parts.append("    def create(self, dto: Any) -> Any: ...")
     parts.append("    def update(self, id: int, dto: Any) -> Any | None: ...")
@@ -170,9 +194,10 @@ def render_router(entity: MetaObject) -> str | None:
     parts.append('    raise NotImplementedError("Override get_repository via FastAPI dependency_overrides in the consumer app")')
     parts.append("")
     parts.append("")
-    # GET / — list with pagination, sort, withCount envelope.
+    # GET / — list with pagination, sort, filter, withCount envelope.
     parts.append('@router.get("")')
     parts.append(f"def list_{plural}(")
+    parts.append("    request: Request,")
     parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
     parts.append("    limit: int | None = Query(None),")
     parts.append("    offset: int | None = Query(None),")
@@ -186,9 +211,13 @@ def render_router(entity: MetaObject) -> str | None:
     parts.append("        sort_clause = _parse_sort(sort)")
     parts.append("        if sort_clause is None:")
     parts.append('            raise HTTPException(status_code=400, detail={"error": "invalid_sort"})')
-    parts.append("    rows = repo.list(actual_limit, actual_offset, sort_clause)")
+    parts.append(f"    filter_result = parse_filter(request.query_params, {fields_const}, {ops_const})")
+    parts.append("    if filter_result.error_envelope is not None:")
+    parts.append("        raise HTTPException(status_code=400, detail=filter_result.error_envelope)")
+    parts.append("    predicates = filter_result.predicates")
+    parts.append("    rows = repo.list(actual_limit, actual_offset, sort_clause, predicates)")
     parts.append("    if with_count == 1:")
-    parts.append("        total = repo.count()")
+    parts.append("        total = repo.count(predicates)")
     parts.append('        return {"rows": rows, "total": total}')
     parts.append("    return rows")
     parts.append("")

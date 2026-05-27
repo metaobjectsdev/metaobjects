@@ -39,6 +39,10 @@ FIELD_ATTR_MAX_LENGTH = "maxLength"
 FIELD_ATTR_OBJECT_REF = "objectRef"
 FIELD_ATTR_DEFAULT = "default"
 FIELD_ATTR_VALUES = "values"
+# Marks a field as filterable for the cross-port FR-009 filter allowlist
+# (`<Entity>_filter_allowlist.py`). Mirror of the Java/Kotlin/C# `@filterable`
+# attribute. Read by `filter_allowlist_generator`.
+FIELD_ATTR_FILTERABLE = "filterable"
 
 # Regex pattern for enum member symbols — must be identifier-safe.
 # Cross-language contract: every port enforces this pattern.
