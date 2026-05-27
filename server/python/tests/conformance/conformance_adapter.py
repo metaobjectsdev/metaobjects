@@ -49,11 +49,13 @@ def _relativize(file_path: str, input_dir: Path) -> str:
         return file_path.replace("\\", "/")
 
 
-def _build_envelope(err, input_dir: Path) -> ErrorEnvelopeRecord:
-    """Convert a Python MetaError into the cross-port envelope record."""
-    code = err.code.name
-    env = err.envelope
+def _build_envelope_from_source(code: str, env, input_dir: Path) -> ErrorEnvelopeRecord:
+    """Build an envelope record from a (code, ErrorSource) pair.
 
+    Shared between error-side and warning-side normalization so both channels
+    produce structurally identical records (mirrors the TS adapter's single
+    normalization path).
+    """
     def rel_files() -> tuple[str, ...]:
         return tuple(_relativize(f, input_dir) for f in env.files)
 
@@ -75,6 +77,20 @@ def _build_envelope(err, input_dir: Path) -> ErrorEnvelopeRecord:
     return ErrorEnvelopeRecord(code, "json", (), "$")
 
 
+def _build_envelope(err, input_dir: Path) -> ErrorEnvelopeRecord:
+    """Convert a Python MetaError into the cross-port envelope record."""
+    return _build_envelope_from_source(err.code.name, err.envelope, input_dir)
+
+
+def _build_warning_envelope(warn, input_dir: Path) -> ErrorEnvelopeRecord:
+    """Convert a Python LoaderWarning into the cross-port envelope record.
+
+    FR5c-finalize — mirrors :func:`_build_envelope` so the cross-port runner
+    can assert warning envelopes the same way it asserts error envelopes.
+    """
+    return _build_envelope_from_source(warn.code, warn.source, input_dir)
+
+
 def load_fixture(input_dir: Path) -> tuple[list[str], list[str], str]:
     """Return (error_codes, warnings, canonical_serialization)."""
     result = MetaDataLoader.from_directory(input_dir, providers=_PROVIDERS)
@@ -85,17 +101,30 @@ def load_fixture(input_dir: Path) -> tuple[list[str], list[str], str]:
 
 def load_fixture_with_envelopes(
     input_dir: Path,
-) -> tuple[list[str], list[ErrorEnvelopeRecord], list[str], str]:
-    """Return (error_codes, error_envelopes, warnings, canonical_serialization).
+) -> tuple[
+    list[str],
+    list[ErrorEnvelopeRecord],
+    list[str],
+    list[ErrorEnvelopeRecord],
+    str,
+]:
+    """Return (error_codes, error_envelopes, warnings, warning_envelopes, canonical).
 
     FR5a / ADR-0009 — provides the per-error envelope alongside the legacy
     code-list so the conformance runner can do the envelope assertion.
+
+    FR5c-finalize — additionally provides per-warning envelopes (same
+    normalization as the error side) so the runner can assert warning
+    envelope shape when ``expected-errors.json#warnings[]`` declares it.
     """
     result = MetaDataLoader.from_directory(input_dir, providers=_PROVIDERS)
     codes = [e.code.name for e in result.errors]
     envelopes = [_build_envelope(e, input_dir) for e in result.errors]
+    warning_envelopes = [
+        _build_warning_envelope(w, input_dir) for w in result.get_envelope_warnings()
+    ]
     canonical = canonical_serialize(result.root)
-    return codes, envelopes, list(result.warnings), canonical
+    return codes, envelopes, list(result.warnings), warning_envelopes, canonical
 
 
 def load_fixture_result(input_dir: Path) -> LoadResult:

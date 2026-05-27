@@ -15,13 +15,20 @@ from .navigator import navigate
 _FIXTURES = discover_fixtures(corpus_root())
 
 
-def _parse_expected_errors(raw: object) -> tuple[list[dict], int, bool]:
+def _parse_expected_errors(raw: object) -> tuple[list[dict], list[dict], bool]:
     """Accept both legacy ``[{code}]`` and FR5a envelope shapes.
 
-    Returns (errors, warnings_count, legacy_flag).
+    Returns (errors, warnings, legacy_flag) where each entry is
+    ``{"code": str, "source": dict | None}``.
+
+    FR5c-finalize — ``warnings[]`` entries may now carry ``source`` (envelope
+    shape) so the runner can assert per-warning envelope alignment. Legacy
+    fixtures (empty ``[]`` or pre-finalize envelope-of-counts-only) parse
+    cleanly with ``source = None`` and the per-element source assertion is
+    skipped element-by-element below.
     """
     if isinstance(raw, list):
-        return ([{"code": e["code"], "source": None} for e in raw], 0, True)
+        return ([{"code": e["code"], "source": None} for e in raw], [], True)
     if isinstance(raw, dict) and "errors" in raw and isinstance(raw["errors"], list):
         errors = []
         for idx, e in enumerate(raw["errors"]):
@@ -41,20 +48,36 @@ def _parse_expected_errors(raw: object) -> tuple[list[dict], int, bool]:
                 "code": e["code"],
                 "source": src if isinstance(src, dict) else None,
             })
-        warnings = raw.get("warnings", [])
-        wc = len(warnings) if isinstance(warnings, list) else 0
-        return (errors, wc, False)
+        raw_warnings = raw.get("warnings", [])
+        warnings: list[dict] = []
+        if isinstance(raw_warnings, list):
+            for idx, w in enumerate(raw_warnings):
+                if not isinstance(w, dict):
+                    raise ValueError(
+                        f"expected-errors.json warnings entry {idx} is not an object")
+                if not isinstance(w.get("code"), str):
+                    raise ValueError(
+                        f"expected-errors.json warnings entry {idx} "
+                        "missing string 'code' field")
+                src = w.get("source")
+                warnings.append({
+                    "code": w["code"],
+                    "source": src if isinstance(src, dict) else None,
+                })
+        return (errors, warnings, False)
     raise ValueError(
         "expected-errors.json must be a legacy array or an FR5a envelope object")
 
 
 def _run_checks(fix: Fixture) -> tuple[bool, str]:
-    codes, envelopes, warnings, canonical = load_fixture_with_envelopes(fix.input_dir)
+    codes, envelopes, warnings, warning_envelopes, canonical = load_fixture_with_envelopes(
+        fix.input_dir
+    )
     failures: list[str] = []
 
     if fix.has_expected_errors:
         raw = json.loads((fix.dir / "expected-errors.json").read_text())
-        expected_errors, expected_warnings_count, legacy = _parse_expected_errors(raw)
+        expected_errors, expected_warnings, legacy = _parse_expected_errors(raw)
 
         # Code-set check (order-independent) — legacy semantics, always run.
         want = sorted(e["code"] for e in expected_errors)
@@ -102,11 +125,39 @@ def _run_checks(fix: Fixture) -> tuple[bool, str]:
                         failures.append(
                             f"envelope[{i}].source.target: expected '{want_tgt}', "
                             f"got '{g.target}'")
-            # warnings count check (FR5a fixtures all have []).
-            if expected_warnings_count != len(warnings):
+            # FR5c-finalize — warnings: assert count first, then per-element
+            # envelope shape when the fixture declares ``source`` on a warning
+            # entry. Mirrors the error-side block above (and TS runner.ts).
+            # When the fixture omits ``source`` on a warning entry, only the
+            # count + per-element code are asserted for that entry.
+            if len(expected_warnings) != len(warnings):
                 failures.append(
-                    f"warnings count: expected {expected_warnings_count}, "
-                    f"got {len(warnings)}")
+                    f"warnings count: expected {len(expected_warnings)}, "
+                    f"got {len(warnings)}"
+                )
+            elif len(expected_warnings) == len(warning_envelopes):
+                for i, (w, g) in enumerate(zip(expected_warnings, warning_envelopes)):
+                    if w["code"] != g.code:
+                        failures.append(
+                            f"warning[{i}].code: expected '{w['code']}', got '{g.code}'")
+                        continue
+                    src = w["source"]
+                    if src is None:
+                        continue
+                    if src["format"] != g.format:
+                        failures.append(
+                            f"warning[{i}].source.format: expected '{src['format']}', "
+                            f"got '{g.format}'")
+                    want_files = tuple(src["files"])
+                    if want_files != g.files:
+                        failures.append(
+                            f"warning[{i}].source.files: expected {list(want_files)}, "
+                            f"got {list(g.files)}")
+                    want_path = src.get("jsonPath")
+                    if want_path is not None and want_path != g.json_path:
+                        failures.append(
+                            f"warning[{i}].source.jsonPath: expected '{want_path}', "
+                            f"got '{g.json_path}'")
 
     # Tree-check: run whenever expected.json exists, matching the TS reference
     # runner. A load that produced errors still gets its tree compared —
@@ -124,7 +175,11 @@ def _run_checks(fix: Fixture) -> tuple[bool, str]:
         want_w = sorted(json.loads((fix.dir / "expected-warnings.json").read_text()))
         if want_w != sorted(warnings):
             failures.append(f"warnings: want {want_w} got {sorted(warnings)}")
-    elif fix.has_expected and warnings:
+    elif fix.has_expected and not fix.has_expected_errors and warnings:
+        # FR5c-finalize — skip the happy-path "unexpected warnings" guard when
+        # the fixture uses expected-errors.json (envelope shape); the block
+        # above already asserted warning count + per-element envelope. Mirrors
+        # the TS runner's `!fix.hasExpectedErrors` guard.
         failures.append(f"unexpected warnings: {warnings}")
 
     if fix.has_script:
