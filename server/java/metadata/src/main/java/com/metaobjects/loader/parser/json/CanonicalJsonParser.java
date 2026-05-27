@@ -12,6 +12,7 @@ import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.source.ErrorSource;
 import com.metaobjects.source.JsonPath;
 import com.metaobjects.source.JsonSource;
+import com.metaobjects.source.YamlPosition;
 import com.metaobjects.util.ErrorMessageConstants;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.parser.BaseMetaDataParser;
@@ -126,6 +127,16 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      */
     private final JsonPath.Builder jsonPathBuilder = new JsonPath.Builder();
 
+    /**
+     * FR5b — optional JSONPath → {@link YamlPosition} map, populated by
+     * {@link com.metaobjects.loader.parser.yaml.ParserYaml} when the input was YAML.
+     * When non-null, {@link #currentJsonSource()} and {@link #tagNodeWithJsonSource(MetaData)}
+     * stamp the position on the produced {@link JsonSource}'s optional
+     * {@code yamlPosition} field. Format stays {@code "json"} cross-port (see
+     * {@link JsonSource}'s class-doc).
+     */
+    private Map<String, YamlPosition> yamlPositionsByPath = null;
+
     /** Creates a {@code CanonicalJsonParser} for the given loader and filename. */
     public CanonicalJsonParser(MetaDataLoader loader, String filename) {
         super(loader, filename);
@@ -155,7 +166,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         ErrorSource existing = node.getSource();
         if (existing instanceof JsonSource) return;
         try {
-            node.setSource(new JsonSource(List.of(getFilename()), jsonPathBuilder.toString()));
+            node.setSource(buildCurrentJsonSource());
         } catch (IllegalStateException frozen) {
             // Node was frozen between phases — leave existing source intact.
             log.debug("Node source frozen; preserving existing source for [{}]", node);
@@ -167,7 +178,22 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      * current JSONPath for use in parse-error envelopes.
      */
     private JsonSource currentJsonSource() {
-        return new JsonSource(List.of(getFilename()), jsonPathBuilder.toString());
+        return buildCurrentJsonSource();
+    }
+
+    /**
+     * FR5a + FR5b — build a {@link JsonSource} envelope at the current JSONPath,
+     * optionally enriched with a {@link YamlPosition} when the parser was invoked
+     * from {@link com.metaobjects.loader.parser.yaml.ParserYaml} and the current
+     * JSONPath is known to the desugar's flattened position map.
+     */
+    private JsonSource buildCurrentJsonSource() {
+        String path = jsonPathBuilder.toString();
+        YamlPosition pos = null;
+        if (yamlPositionsByPath != null) {
+            pos = yamlPositionsByPath.get(path);
+        }
+        return new JsonSource(List.of(getFilename()), path, pos);
     }
 
     /**
@@ -225,7 +251,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             if (attr == null) return;
             // Skip if a JsonSource is already populated (overlay / re-emit path).
             if (attr.getSource() instanceof JsonSource) return;
-            attr.setSource(new JsonSource(List.of(getFilename()), jsonPathBuilder.toString()));
+            attr.setSource(buildCurrentJsonSource());
         } catch (IllegalStateException frozen) {
             // Node frozen between phases — leave existing source intact.
             log.debug("Attr child source frozen; preserving existing source for [{}.{}]", parent, attrName);
@@ -324,6 +350,32 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      *                  parsed by {@link #parseToCanonical})
      */
     public void buildTree(JsonObject canonical) {
+        buildTree(canonical, null);
+    }
+
+    /**
+     * FR5b — registry-driven builder overload that accepts a JSONPath →
+     * {@link YamlPosition} map produced by
+     * {@link com.metaobjects.loader.parser.yaml.ParserYaml} when the input was
+     * YAML. The map is consulted from
+     * {@link #buildCurrentJsonSource()} so every node's {@link JsonSource} gets
+     * stamped with the optional {@code yamlPosition} field.
+     *
+     * @param canonical       the canonical JSON object (BOM-stripped + parsed)
+     * @param positionsByPath FR5b position map (may be {@code null} for JSON input)
+     */
+    public void buildTree(JsonObject canonical, Map<String, YamlPosition> positionsByPath) {
+        this.yamlPositionsByPath = positionsByPath;
+        try {
+            buildTreeInternal(canonical);
+        } finally {
+            // Clear so a subsequent buildTree (in pathological re-use) doesn't
+            // inherit positions. The Parser is one-shot per file, but defensive.
+            this.yamlPositionsByPath = null;
+        }
+    }
+
+    private void buildTreeInternal(JsonObject canonical) {
         // Find the single wrapper key (skip $schema if present)
         String rootKey = null;
         for (String key : canonical.keySet()) {

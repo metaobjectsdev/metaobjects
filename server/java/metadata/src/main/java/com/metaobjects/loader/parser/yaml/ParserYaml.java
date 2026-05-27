@@ -6,6 +6,8 @@
  */
 package com.metaobjects.loader.parser.yaml;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
@@ -13,17 +15,26 @@ import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.parser.MetaDataFileParser;
 import com.metaobjects.loader.parser.json.CanonicalJsonParser;
 import com.metaobjects.registry.MetaDataRegistry;
+import com.metaobjects.source.JsonPath;
+import com.metaobjects.source.YamlPosition;
+import com.metaobjects.source.YamlPositions;
+import com.metaobjects.source.YamlPositions.PositionMap;
+import com.metaobjects.source.YamlPositions.SideTable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.error.YAMLException;
+import org.yaml.snakeyaml.nodes.Node;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * YAML authoring front-end: {@code text → desugar → canonical → CanonicalJsonParser.buildTree}.
@@ -90,7 +101,9 @@ public final class ParserYaml extends CanonicalJsonParser implements MetaDataFil
                 throw new MetaDataException(
                     first.message + " (file [" + getFilename() + "])", code);
             }
-            buildTree(result.canonical);
+            // FR5b — pass the flattened JSONPath → YamlPosition map to buildTree
+            // so every node's JsonSource carries the optional yamlPosition.
+            buildTree(result.canonical, result.positionsByPath);
         } catch (MetaDataException e) {
             throw e;
         } catch (Exception e) {
@@ -133,12 +146,12 @@ public final class ParserYaml extends CanonicalJsonParser implements MetaDataFil
             content = content.substring(1);
         }
 
-        Object parsed;
+        // FR5b — use Yaml.compose() instead of Yaml.load() so each scalar key carries
+        // its (line, col) Mark; the desugar's Node-tree path attaches a PositionMap
+        // to every wrapper/body JsonObject in a fresh SideTable.
+        Node rootNode;
         try {
-            // SnakeYAML's default Yaml() returns LinkedHashMap for mappings, ArrayList
-            // for sequences, plus boxed scalars — exactly the input shape
-            // YamlDesugar.desugar expects.
-            parsed = new Yaml().load(content);
+            rootNode = new Yaml().compose(new StringReader(content));
         } catch (YAMLException ex) {
             throw new MetaDataException(
                 "Invalid YAML in file [" + getFilename() + "]: " + ex.getMessage(),
@@ -146,14 +159,72 @@ public final class ParserYaml extends CanonicalJsonParser implements MetaDataFil
         }
 
         MetaDataRegistry registry = MetaDataRegistry.getInstance();
-        YamlDesugar.DesugarResult result = YamlDesugar.desugar(parsed, registry);
+        YamlDesugar.DesugarResult result = YamlDesugar.desugar(rootNode, registry);
+
+        // FR5b — flatten the per-JsonObject PositionMap side table into a
+        // JSONPath-keyed map so the canonical parser (which walks the
+        // JsonObject tree node-by-node) can stamp `yamlPosition` on each
+        // node's source envelope via O(1) lookup. The keys mirror the path
+        // the parser has on its JsonPath.Builder when it reaches each wrapper.
+        Map<String, YamlPosition> positionsByPath = new LinkedHashMap<>();
+        if (!result.positions.isEmpty()) {
+            flattenPositions(result.canonical, "$", result.positions, positionsByPath);
+        }
 
         if (log.isDebugEnabled()) {
-            log.debug("Desugared YAML to canonical JSON for file [{}]: {} top-level key(s), {} diagnostic(s)",
-                getFilename(), result.canonical.size(), result.errors.size());
+            log.debug("Desugared YAML to canonical JSON for file [{}]: {} top-level key(s), {} diagnostic(s), {} position(s)",
+                getFilename(), result.canonical.size(), result.errors.size(), positionsByPath.size());
         }
-        return new YamlResult(result.canonical,
-            Collections.unmodifiableList(new ArrayList<>(result.errors)));
+        return new YamlResult(
+            result.canonical,
+            Collections.unmodifiableList(new ArrayList<>(result.errors)),
+            Collections.unmodifiableMap(positionsByPath));
+    }
+
+    // ---------------------------------------------------------------------------
+    // FR5b — flatten the per-JsonObject PositionMap side table into a
+    // JSONPath → YamlPosition map.
+    //
+    // For each JsonObject in the tree, its PositionMap (if any) holds entries like
+    //   { "object.entity" → (4,7), "@filterable" → (5,9), ... }
+    // We emit one entry per (parentPath, key) pair, so the canonical parser hits
+    // each wrapper-key entry exactly when its JsonPath.Builder reaches that path.
+    //
+    // Body-key entries (`@filterable` under `object.entity`) are also emitted into
+    // the flat map but the canonical parser does not push body keys onto its
+    // builder when stamping source on the OWNING node — so they remain available
+    // to future tooling via getMap() but the per-node source envelope only
+    // benefits from the wrapper-key entries.
+    // ---------------------------------------------------------------------------
+
+    private static void flattenPositions(JsonElement node, String parentPath,
+                                          SideTable positions,
+                                          Map<String, YamlPosition> output) {
+        if (node == null || node.isJsonNull()) return;
+        if (node.isJsonObject()) {
+            JsonObject obj = node.getAsJsonObject();
+            PositionMap map = positions.getMap(obj);
+            for (Map.Entry<String, JsonElement> e : obj.entrySet()) {
+                String key = e.getKey();
+                String childPath = parentPath + JsonPath.segmentForKey(key);
+                if (map != null) {
+                    YamlPosition pos = map.get(key);
+                    if (pos != null) {
+                        output.put(childPath, pos);
+                    }
+                }
+                flattenPositions(e.getValue(), childPath, positions, output);
+            }
+            return;
+        }
+        if (node.isJsonArray()) {
+            JsonArray arr = node.getAsJsonArray();
+            for (int i = 0; i < arr.size(); i++) {
+                String childPath = parentPath + JsonPath.segmentForIndex(i);
+                flattenPositions(arr.get(i), childPath, positions, output);
+            }
+        }
+        // Primitives have no descent + no positions.
     }
 
     /**
@@ -161,14 +232,27 @@ public final class ParserYaml extends CanonicalJsonParser implements MetaDataFil
      * the desugar's collected diagnostics. The conformance harness consumes this so it
      * can union the desugar codes with any subsequent {@code buildTree} validation
      * codes (e.g. {@code ERR_BAD_ATTR_VALUE} on a coerced enum value).
+     *
+     * <p>FR5b — {@link #positionsByPath} carries the flattened JSONPath →
+     * {@link YamlPosition} map; pass it to
+     * {@link CanonicalJsonParser#buildTree(JsonObject, Map)} so every node's
+     * {@code JsonSource} envelope gets stamped with its source position. Empty
+     * when no position info was tracked (e.g. malformed YAML reached buildTree).</p>
      */
     public static final class YamlResult {
         public final JsonObject canonical;
         public final List<YamlDesugar.CollectedError> errors;
+        public final Map<String, YamlPosition> positionsByPath;
 
         public YamlResult(JsonObject canonical, List<YamlDesugar.CollectedError> errors) {
+            this(canonical, errors, Collections.emptyMap());
+        }
+
+        public YamlResult(JsonObject canonical, List<YamlDesugar.CollectedError> errors,
+                          Map<String, YamlPosition> positionsByPath) {
             this.canonical = canonical;
             this.errors = errors;
+            this.positionsByPath = positionsByPath;
         }
     }
 }
