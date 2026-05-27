@@ -7,7 +7,9 @@ import com.google.gson.JsonParser;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
+import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.attr.MetaAttribute;
+import com.metaobjects.source.ErrorSource;
 import com.metaobjects.source.JsonPath;
 import com.metaobjects.source.JsonSource;
 import com.metaobjects.util.ErrorMessageConstants;
@@ -21,6 +23,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -149,10 +152,10 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         // Skip if a JsonSource is already populated (overlay path); the merge phase
         // owns transitions to MergedSource. CodeSource.DEFAULT (the constructor
         // default) is overwritten on first parse.
-        com.metaobjects.source.ErrorSource existing = node.getSource();
+        ErrorSource existing = node.getSource();
         if (existing instanceof JsonSource) return;
         try {
-            node.setSource(new JsonSource(java.util.List.of(getFilename()), jsonPathBuilder.toString()));
+            node.setSource(new JsonSource(List.of(getFilename()), jsonPathBuilder.toString()));
         } catch (IllegalStateException frozen) {
             // Node was frozen between phases — leave existing source intact.
             log.debug("Node source frozen; preserving existing source for [{}]", node);
@@ -164,7 +167,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      * current JSONPath for use in parse-error envelopes.
      */
     private JsonSource currentJsonSource() {
-        return new JsonSource(java.util.List.of(getFilename()), jsonPathBuilder.toString());
+        return new JsonSource(List.of(getFilename()), jsonPathBuilder.toString());
     }
 
     /**
@@ -188,15 +191,15 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         if (parent == null || attrName == null) return;
         if (!parent.hasMetaAttr(attrName, false)) return;
         try {
-            com.metaobjects.attr.MetaAttribute<?> attr = parent.getMetaAttr(attrName, false);
+            MetaAttribute<?> attr = parent.getMetaAttr(attrName, false);
             if (attr == null) return;
             // Skip if a JsonSource is already populated (overlay / re-emit path).
             if (attr.getSource() instanceof JsonSource) return;
-            attr.setSource(new JsonSource(java.util.List.of(getFilename()), jsonPathBuilder.toString()));
+            attr.setSource(new JsonSource(List.of(getFilename()), jsonPathBuilder.toString()));
         } catch (IllegalStateException frozen) {
             // Node frozen between phases — leave existing source intact.
             log.debug("Attr child source frozen; preserving existing source for [{}.{}]", parent, attrName);
-        } catch (com.metaobjects.MetaDataNotFoundException nf) {
+        } catch (MetaDataNotFoundException nf) {
             // Defensive — attr lookup raced; nothing to tag.
             log.debug("Attr child lookup miss for [{}.{}] — skipping source tag", parent, attrName);
         }
@@ -217,18 +220,14 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             buildTree(parseToCanonical(is));
         } catch (MetaDataException e) {
             throw e;
-        } catch (com.google.gson.JsonSyntaxException e) {
+        } catch (RuntimeException e) {
+            // Any non-MetaDataException parse-time failure (Gson syntax error or
+            // other runtime fault) is reported as malformed JSON so callers see a
+            // stable conformance code rather than an untagged exception.
             throw new MetaDataException(
                 "Error loading canonical JSON from file [" + getFilename() + "]: " + e.getMessage(),
-                null, null, e, java.util.Collections.emptyMap(),
-                com.metaobjects.ErrorCode.ERR_MALFORMED_JSON);
-        } catch (Exception e) {
-            // Fall-through: any other parse-time failure is treated as malformed JSON
-            // so callers see a stable conformance code rather than an untagged exception.
-            throw new MetaDataException(
-                "Error loading canonical JSON from file [" + getFilename() + "]: " + e.getMessage(),
-                null, null, e, java.util.Collections.emptyMap(),
-                com.metaobjects.ErrorCode.ERR_MALFORMED_JSON);
+                null, null, e, Collections.emptyMap(),
+                ErrorCode.ERR_MALFORMED_JSON);
         }
     }
 
@@ -297,7 +296,6 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                     throw new MetaDataException(
                         "Top-level canonical JSON must have exactly one wrapper key in file ["
                             + getFilename() + "]",
-                        null, null, null, java.util.Collections.emptyMap(),
                         null, currentJsonSource());
                 }
                 rootKey = key;
@@ -306,7 +304,6 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         if (rootKey == null) {
             throw new MetaDataException(
                 "Top-level canonical JSON has no wrapper key in file [" + getFilename() + "]",
-                null, null, null, java.util.Collections.emptyMap(),
                 null, currentJsonSource());
         }
 
@@ -322,7 +319,6 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             if (!getTypeRegistry().hasType(rootType)) {
                 throw new MetaDataException(
                     "Unknown root type '" + rootType + "' in canonical JSON file [" + getFilename() + "]",
-                    null, null, null, java.util.Collections.emptyMap(),
                     ErrorCode.ERR_UNKNOWN_TYPE, currentJsonSource());
             }
 
@@ -330,7 +326,6 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             if (!rootBodyEl.isJsonObject()) {
                 throw new MetaDataException(
                     "Root wrapper '" + rootKey + "' must contain an object in file [" + getFilename() + "]",
-                    null, null, null, java.util.Collections.emptyMap(),
                     null, currentJsonSource());
             }
             JsonObject rootBody = rootBodyEl.getAsJsonObject();

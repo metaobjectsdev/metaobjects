@@ -8,7 +8,6 @@ package com.metaobjects.source;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.metaobjects.MetaData;
@@ -143,11 +142,5 @@ public final class SemanticDiff {
         }
         Collections.sort(keys);
         return keys;
-    }
-
-    /** Convenience: classify a JsonNull as such for explicit comparison. */
-    @SuppressWarnings("unused")
-    private static boolean isNull(JsonElement el) {
-        return el == null || el instanceof JsonNull;
     }
 }

@@ -186,7 +186,6 @@ public final class ValidationPhase {
         if (node.hasMetaAttr(EnumField.ATTR_VALUES, false)) {
             MetaAttribute<?> valuesAttr = node.getMetaAttr(EnumField.ATTR_VALUES, false);
             if (!EnumField.validateEnumValues(valuesAttr.getValue())) {
-                // FR5a — envelope carries the offending node's provenance.
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_BAD_ATTR_VALUE
                         + ": field.enum '" + node.getName()
@@ -201,7 +200,6 @@ public final class ValidationPhase {
         // --- Required check ---
         // No own @values. Valid only if there is a super reference (inheriting @values).
         if (node.getSuperData() == null) {
-            // FR5a — envelope carries the offending node's provenance.
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
                     + ": field.enum '" + node.getName()
