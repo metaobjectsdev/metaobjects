@@ -34,6 +34,7 @@ import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.origin.PassthroughOrigin;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.source.MetaSource;
+import com.metaobjects.source.ResolvedSource;
 import com.metaobjects.template.MetaTemplate;
 import com.metaobjects.template.OutputTemplate;
 import com.metaobjects.template.PromptTemplate;
@@ -572,11 +573,11 @@ public final class ValidationPhase {
                         + ": missing @from.",
                     ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
             }
-            validateFromOrOfPath(from, root, obj.getName(), field.getName(),
+            validateFromOrOfPath(from, root, obj, field.getName(),
                 "origin.passthrough.@from", origin.getSource());
             String via = origin.getVia();
             if (via != null && !via.isEmpty()) {
-                validateViaPath(via, root, obj.getName(), field.getName(), origin.getSource());
+                validateViaPath(via, root, obj, field.getName(), origin.getSource());
             }
             return;
         }
@@ -603,7 +604,7 @@ public final class ValidationPhase {
                         + ": missing @of.",
                     ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
             }
-            validateFromOrOfPath(of, root, obj.getName(), field.getName(),
+            validateFromOrOfPath(of, root, obj, field.getName(),
                 "origin.aggregate.@of", origin.getSource());
 
             String via = origin.getVia();
@@ -614,7 +615,7 @@ public final class ValidationPhase {
                         + ": missing @via (aggregates require a relationship path).",
                     ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
             }
-            validateViaPath(via, root, obj.getName(), field.getName(), origin.getSource());
+            validateViaPath(via, root, obj, field.getName(), origin.getSource());
             return;
         }
 
@@ -1068,11 +1069,14 @@ public final class ValidationPhase {
 
         MetaObject payloadVo = findRootObject(root, payloadRef);
         if (payloadVo == null || !MetaObject.SUBTYPE_VALUE.equals(payloadVo.getSubType())) {
+            // FR5d — @payloadRef is a reference; emit format=resolved with
+            // referrer=template FQN, target=the unresolved payloadRef string.
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_INVALID_TEMPLATE
                     + ": template '" + template.getName() + "' @payloadRef '" + payloadRef
                     + "' does not resolve to an object.value at root",
-                ErrorCode.ERR_INVALID_TEMPLATE, template.getSource());
+                ErrorCode.ERR_INVALID_TEMPLATE,
+                ResolvedSource.from(template.getSource(), template.getName(), payloadRef));
         }
 
         // R3 — every @requiredSlots member must be a field on the payload VO
@@ -1084,12 +1088,17 @@ public final class ValidationPhase {
         for (String slot : required) {
             if (slot == null || slot.isEmpty()) continue;
             if (!available.contains(slot)) {
+                // FR5d — @requiredSlots is a field-on-payload reference; emit
+                // format=resolved with referrer=template FQN, target=`payloadRef.slot`
+                // (the dotted ref that did not resolve to a payload field).
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_TEMPLATE
                         + ": template.prompt '" + template.getName()
                         + "' @requiredSlots includes '" + slot
                         + "' which is not a field on payload '" + payloadRef + "'",
-                    ErrorCode.ERR_INVALID_TEMPLATE, template.getSource());
+                    ErrorCode.ERR_INVALID_TEMPLATE,
+                    ResolvedSource.from(template.getSource(), template.getName(),
+                        payloadRef + "." + slot));
             }
         }
     }
@@ -1112,31 +1121,48 @@ public final class ValidationPhase {
      * and aggregate's @of). The entity must exist at the root, and the field
      * must exist on that entity (inherited fields are included via the standard
      * children() traversal).
+     *
+     * <p>FR5d: emits {@code format=resolved} envelopes for every throw. The
+     * referrer FQN format is {@code "<projection-FQN>::<fieldName>"} (mirrors
+     * the TS {@code _validateFromPath} contract); the target is the bad ref
+     * string itself.</p>
+     *
+     * @param projection the projection node that owns the field carrying the origin
      */
     private static void validateFromOrOfPath(String pathAttr, MetaRoot root,
-                                             String projectionName, String fieldName,
+                                             MetaObject projection, String fieldName,
                                              String label,
                                              com.metaobjects.source.ErrorSource envelope) {
+        // FR5d — referrer is `<projection-FQN>::<fieldName>` (the canonical
+        // "where the broken reference lives" identifier).
+        String projectionName = projection.getName();
+        String referrer = projection.getName() + "::" + fieldName;
         int dotIdx = pathAttr.indexOf('.');
         if (dotIdx < 1 || dotIdx == pathAttr.length() - 1) {
+            // Malformed shape (not "Entity.field") — not a reference resolution
+            // failure per se, but emit format=resolved with target=the bad string
+            // so consumers see the same envelope shape across all FR5d sites.
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_INVALID_ORIGIN
                     + ": " + label + " \"" + pathAttr + "\" on "
                     + projectionName + "." + fieldName
                     + ": must be of form \"Entity.field\".",
-                ErrorCode.ERR_INVALID_ORIGIN, envelope);
+                ErrorCode.ERR_INVALID_ORIGIN,
+                ResolvedSource.from(envelope, referrer, pathAttr));
         }
         String entityName = pathAttr.substring(0, dotIdx);
         String targetFieldName = pathAttr.substring(dotIdx + 1);
 
         MetaObject sourceObj = findRootObject(root, entityName);
         if (sourceObj == null) {
+            // FR5d — entity half of the ref didn't resolve. target = full ref.
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_INVALID_ORIGIN
                     + ": " + label + " \"" + pathAttr + "\" on "
                     + projectionName + "." + fieldName
                     + ": no such entity \"" + entityName + "\".",
-                ErrorCode.ERR_INVALID_ORIGIN, envelope);
+                ErrorCode.ERR_INVALID_ORIGIN,
+                ResolvedSource.from(envelope, referrer, pathAttr));
         }
 
         // Inherited fields included — getChildren(..., true) walks super data.
@@ -1148,13 +1174,15 @@ public final class ValidationPhase {
             }
         }
         if (!fieldExists) {
+            // FR5d — entity resolved, field on it did not. target = full ref.
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_INVALID_ORIGIN
                     + ": " + label + " \"" + pathAttr + "\" on "
                     + projectionName + "." + fieldName
                     + ": no such field \"" + targetFieldName
                     + "\" on " + entityName + ".",
-                ErrorCode.ERR_INVALID_ORIGIN, envelope);
+                ErrorCode.ERR_INVALID_ORIGIN,
+                ResolvedSource.from(envelope, referrer, pathAttr));
         }
     }
 
@@ -1166,8 +1194,11 @@ public final class ValidationPhase {
      * which becomes the next hop's current entity.
      */
     private static void validateViaPath(String viaAttr, MetaRoot root,
-                                        String projectionName, String fieldName,
+                                        MetaObject projection, String fieldName,
                                         com.metaobjects.source.ErrorSource envelope) {
+        // FR5d — referrer is `<projection-FQN>::<fieldName>`.
+        String projectionName = projection.getName();
+        String referrer = projection.getName() + "::" + fieldName;
         String[] segments = viaAttr.split("\\.");
         if (segments.length < 2) {
             throw new MetaDataException(
@@ -1175,7 +1206,8 @@ public final class ValidationPhase {
                     + ": origin.@via \"" + viaAttr + "\" on "
                     + projectionName + "." + fieldName
                     + ": must be of form \"Entity.relationship[.relationship...]\".",
-                ErrorCode.ERR_INVALID_ORIGIN, envelope);
+                ErrorCode.ERR_INVALID_ORIGIN,
+                ResolvedSource.from(envelope, referrer, viaAttr));
         }
         String entityName = segments[0];
         MetaObject currentObj = findRootObject(root, entityName);
@@ -1185,19 +1217,30 @@ public final class ValidationPhase {
                     + ": origin.@via \"" + viaAttr + "\" on "
                     + projectionName + "." + fieldName
                     + ": no such entity \"" + entityName + "\".",
-                ErrorCode.ERR_INVALID_ORIGIN, envelope);
+                ErrorCode.ERR_INVALID_ORIGIN,
+                ResolvedSource.from(envelope, referrer, viaAttr));
         }
+        // FR5d — track the deepest-valid-prefix as we walk. The prefix grows
+        // segment-by-segment; on a hop failure the error message names the prefix
+        // that DID resolve, so authors can fix multi-hop typos quickly. After the
+        // entity lookup above, the deepest valid prefix is just the entity name;
+        // each successful relationship hop appends a segment.
+        java.util.List<String> validSegments = new java.util.ArrayList<>();
+        validSegments.add(entityName);
         for (int i = 1; i < segments.length; i++) {
             String relName = segments[i];
             MetaRelationship rel = findRelationship(currentObj, relName);
             if (rel == null) {
+                String prefix = String.join(".", validSegments);
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
                         + ": origin.@via \"" + viaAttr + "\" on "
                         + projectionName + "." + fieldName
                         + ": no such relationship \"" + relName
-                        + "\" on " + currentObj.getName() + ".",
-                    ErrorCode.ERR_INVALID_ORIGIN, envelope);
+                        + "\" on " + currentObj.getName() + ". "
+                        + "Deepest valid prefix was \"" + prefix + "\".",
+                    ErrorCode.ERR_INVALID_ORIGIN,
+                    ResolvedSource.from(envelope, referrer, viaAttr));
             }
             String refTarget = rel.hasMetaAttr(MetaRelationship.ATTR_OBJECT_REF)
                 ? rel.getMetaAttr(MetaRelationship.ATTR_OBJECT_REF).getValueAsString()
@@ -1209,18 +1252,25 @@ public final class ValidationPhase {
                         + projectionName + "." + fieldName
                         + ": relationship \"" + relName + "\" on "
                         + currentObj.getName() + " is missing @objectRef.",
-                    ErrorCode.ERR_INVALID_ORIGIN, envelope);
+                    ErrorCode.ERR_INVALID_ORIGIN,
+                    ResolvedSource.from(envelope, referrer, viaAttr));
             }
             MetaObject nextObj = findRootObject(root, refTarget);
             if (nextObj == null) {
+                // FR5d — relationship's @objectRef points at a missing entity. This
+                // is the @objectRef-resolution edge of the via-path walk (the "5th
+                // site" in FR5d's scope list for @objectRef references encountered
+                // transitively). Target = the @objectRef value (the missing entity name).
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
                         + ": origin.@via \"" + viaAttr + "\" on "
                         + projectionName + "." + fieldName
                         + ": relationship \"" + relName
                         + "\" points to non-existent entity \"" + refTarget + "\".",
-                    ErrorCode.ERR_INVALID_ORIGIN, envelope);
+                    ErrorCode.ERR_INVALID_ORIGIN,
+                    ResolvedSource.from(envelope, referrer, refTarget));
             }
+            validSegments.add(relName);
             currentObj = nextObj;
         }
     }

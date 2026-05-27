@@ -1,5 +1,11 @@
 {
   "language": "java",
-  "_comment": "FR5a envelope-shape gates: empty ledger.",
-  "fixtures": []
+  "_comment": "FR5d (2026-05-27): Java port emits format=resolved for reference-resolution errors (extends:, @via, @of, @payloadRef, @requiredSlots). Fixtures still encode the FR5a-era format=json envelope per the cross-port-safety stance — these will migrate once all four ports ship FR5d, at which point the ledger entries can be removed.",
+  "fixtures": [
+    "error-extends-nonexistent",
+    "error-origin-bad-via-path",
+    "error-template-payload-ref-not-value",
+    "error-template-payload-ref-unresolved",
+    "error-template-required-slot-missing"
+  ]
 }
