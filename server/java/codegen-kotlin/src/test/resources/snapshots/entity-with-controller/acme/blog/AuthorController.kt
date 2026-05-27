@@ -134,8 +134,8 @@ private fun coerceAuthorDouble(op: String, raw: String): AuthorCoercedValue? {
     return AuthorCoercedValue(parse(raw) ?: return null)
 }
 
-private fun coerceAuthorBoolean(op: String, raw: String): AuthorCoercedValue? {
-    val parse: (String) -> Boolean? = { s -> when (s) { "true" -> true; "false" -> false; else -> null } }
+private fun coerceAuthorDate(op: String, raw: String): AuthorCoercedValue? {
+    val parse: (String) -> Any? = { s -> runCatching { LocalDate.parse(s) }.getOrNull() }
     if (op == "in") {
         val parts = raw.split(",").map { it.trim() }
         val list = parts.map { parse(it) ?: return null }
@@ -144,8 +144,8 @@ private fun coerceAuthorBoolean(op: String, raw: String): AuthorCoercedValue? {
     return AuthorCoercedValue(parse(raw) ?: return null)
 }
 
-private fun coerceAuthorDate(op: String, raw: String): AuthorCoercedValue? {
-    val parse: (String) -> LocalDate? = { s -> runCatching { LocalDate.parse(s) }.getOrNull() }
+private fun coerceAuthorTime(op: String, raw: String): AuthorCoercedValue? {
+    val parse: (String) -> Any? = { s -> runCatching { LocalTime.parse(s) }.getOrNull() }
     if (op == "in") {
         val parts = raw.split(",").map { it.trim() }
         val list = parts.map { parse(it) ?: return null }
@@ -166,8 +166,8 @@ private fun coerceAuthorTimestamp(op: String, raw: String): AuthorCoercedValue? 
     return AuthorCoercedValue(parse(raw) ?: return null)
 }
 
-private fun coerceAuthorTime(op: String, raw: String): AuthorCoercedValue? {
-    val parse: (String) -> LocalTime? = { s -> runCatching { LocalTime.parse(s) }.getOrNull() }
+private fun coerceAuthorBoolean(op: String, raw: String): AuthorCoercedValue? {
+    val parse: (String) -> Boolean? = { s -> when (s) { "true" -> true; "false" -> false; else -> null } }
     if (op == "in") {
         val parts = raw.split(",").map { it.trim() }
         val list = parts.map { parse(it) ?: return null }

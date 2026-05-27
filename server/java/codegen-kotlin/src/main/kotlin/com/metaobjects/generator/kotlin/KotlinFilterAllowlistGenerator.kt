@@ -135,18 +135,18 @@ class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         Files.writeString(outFile, src)
     }
 
-    internal companion object {
+    private companion object {
         /** Metadata attribute marking a field as filterable in the generated allowlist. */
-        internal const val ATTR_FILTERABLE: String = "filterable"
+        const val ATTR_FILTERABLE: String = "filterable"
 
         /** Operator set for string-shaped subtypes. */
-        private val OPS_STRING: Set<String> = linkedSetOf("eq", "ne", "in", "like", "isNull")
+        val OPS_STRING: Set<String> = linkedSetOf("eq", "ne", "in", "like", "isNull")
 
         /** Operator set for numeric / date / timestamp / currency subtypes. */
-        private val OPS_NUMERIC: Set<String> = linkedSetOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull")
+        val OPS_NUMERIC: Set<String> = linkedSetOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull")
 
         /** Operator set for boolean subtype. */
-        private val OPS_BOOLEAN: Set<String> = linkedSetOf("eq", "isNull")
+        val OPS_BOOLEAN: Set<String> = linkedSetOf("eq", "isNull")
 
         /**
          * Build the `(fieldName → opSet)` map for `entity`. Only fields with
@@ -154,7 +154,7 @@ class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObject>(
          * collapse to the empty op-set (defensive — the allowlist becomes an effective
          * "field is unknown" gate).
          */
-        internal fun computeFilterableOps(entity: MetaObject): Map<String, Set<String>> {
+        fun computeFilterableOps(entity: MetaObject): Map<String, Set<String>> {
             val out = linkedMapOf<String, Set<String>>()
             for (field in entity.metaFields) {
                 if (field is ObjectField) continue

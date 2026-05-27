@@ -448,29 +448,16 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
         out.append("}\n\n")
 
         // Per-type coercion helpers. Each tolerates the `in` operator (returns List<T>)
-        // and the scalar comparison ops (returns the bare type). Numeric parse failure
+        // and the scalar comparison ops (returns the bare type). Parse failure
         // → null → bubbled up as `invalid_filter_value`.
         emitTypedCoercer(out, shortName, "Long", "java.lang.Long.parseLong")
         emitTypedCoercer(out, shortName, "Int", "java.lang.Integer.parseInt")
         emitTypedCoercer(out, shortName, "Double", "java.lang.Double.parseDouble")
-        out.append("private fun coerce${shortName}Boolean(op: String, raw: String): ${shortName}CoercedValue? {\n")
-        out.append("    val parse: (String) -> Boolean? = { s -> when (s) { \"true\" -> true; \"false\" -> false; else -> null } }\n")
-        out.append("    if (op == \"in\") {\n")
-        out.append("        val parts = raw.split(\",\").map { it.trim() }\n")
-        out.append("        val list = parts.map { parse(it) ?: return null }\n")
-        out.append("        return ${shortName}CoercedValue(list)\n")
-        out.append("    }\n")
-        out.append("    return ${shortName}CoercedValue(parse(raw) ?: return null)\n")
-        out.append("}\n\n")
-        out.append("private fun coerce${shortName}Date(op: String, raw: String): ${shortName}CoercedValue? {\n")
-        out.append("    val parse: (String) -> LocalDate? = { s -> runCatching { LocalDate.parse(s) }.getOrNull() }\n")
-        out.append("    if (op == \"in\") {\n")
-        out.append("        val parts = raw.split(\",\").map { it.trim() }\n")
-        out.append("        val list = parts.map { parse(it) ?: return null }\n")
-        out.append("        return ${shortName}CoercedValue(list)\n")
-        out.append("    }\n")
-        out.append("    return ${shortName}CoercedValue(parse(raw) ?: return null)\n")
-        out.append("}\n\n")
+        emitTypedCoercer(out, shortName, "Date", "LocalDate.parse")
+        emitTypedCoercer(out, shortName, "Time", "LocalTime.parse")
+        // Timestamp needs a per-entity formatter (the cross-port wire form is
+        // 'yyyy-MM-dd\'T\'HH:mm:ss' without a zone), so it can't share the simple
+        // single-arg parse-fn path of emitTypedCoercer.
         out.append("private val ${shortName}TimestampFmt: DateTimeFormatter = DateTimeFormatter.ofPattern(\"yyyy-MM-dd'T'HH:mm:ss\")\n\n")
         out.append("private fun coerce${shortName}Timestamp(op: String, raw: String): ${shortName}CoercedValue? {\n")
         out.append("    val parse: (String) -> LocalDateTime? = { s -> runCatching { LocalDateTime.parse(s, ${shortName}TimestampFmt) }.getOrNull() }\n")
@@ -481,8 +468,11 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
         out.append("    }\n")
         out.append("    return ${shortName}CoercedValue(parse(raw) ?: return null)\n")
         out.append("}\n\n")
-        out.append("private fun coerce${shortName}Time(op: String, raw: String): ${shortName}CoercedValue? {\n")
-        out.append("    val parse: (String) -> LocalTime? = { s -> runCatching { LocalTime.parse(s) }.getOrNull() }\n")
+        // Boolean has its own non-throwing parse (when/else) — can't ride on
+        // runCatching, which would convert a malformed input to a thrown
+        // IllegalArgumentException then swallow it.
+        out.append("private fun coerce${shortName}Boolean(op: String, raw: String): ${shortName}CoercedValue? {\n")
+        out.append("    val parse: (String) -> Boolean? = { s -> when (s) { \"true\" -> true; \"false\" -> false; else -> null } }\n")
         out.append("    if (op == \"in\") {\n")
         out.append("        val parts = raw.split(\",\").map { it.trim() }\n")
         out.append("        val list = parts.map { parse(it) ?: return null }\n")
