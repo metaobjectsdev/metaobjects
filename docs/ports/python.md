@@ -73,6 +73,62 @@ class Author:
     bio: Optional[str] = None
 ```
 
+The router generator emits one FastAPI `APIRouter` per writable entity
+(`source.rdb` with `@kind="table"`):
+
+```python
+# generated/acme/blog/author_router.py (excerpt)
+router = APIRouter(prefix="/api/authors", tags=["authors"])
+
+class AuthorRepository(Protocol):
+    def list(self, limit: int, offset: int, sort: _SortClause | None) -> list[Any]: ...
+    def count(self) -> int: ...
+    def find_by_id(self, id: int) -> Any | None: ...
+    def create(self, dto: Any) -> Any: ...
+    def update(self, id: int, dto: Any) -> Any | None: ...
+    def delete(self, id: int) -> bool: ...
+
+def get_repository() -> AuthorRepository:
+    raise NotImplementedError("Override get_repository via FastAPI dependency_overrides")
+
+@router.get("")  # list with ?limit / ?offset / ?sort / ?withCount=1
+@router.get("/{author_id}")
+@router.post("", status_code=status.HTTP_201_CREATED)
+@router.patch("/{author_id}")
+@router.put("/{author_id}")
+@router.delete("/{author_id}", status_code=status.HTTP_204_NO_CONTENT)
+```
+
+The router conforms to the cross-port API contract
+([`docs/features/api-contract.md`](../features/api-contract.md)):
+`?withCount=1` returns `{"rows", "total"}`; `?sort=field:asc|desc` uses
+a static per-entity allowlist (HTTP 400 envelope on unknown field); 404
+envelope is `{"error": "not_found"}`. Filter operators
+(`eq` / `ne` / ...) are a known gap — see
+[`server/python/src/metaobjects/codegen/KNOWN_GAPS.md`](../../server/python/src/metaobjects/codegen/KNOWN_GAPS.md).
+
+Wire the router into your consumer FastAPI app:
+
+```python
+from fastapi import FastAPI
+from acme.blog.author_router import router as author_router, get_repository
+from my_app.persistence import SqlAlchemyAuthorRepository
+
+app = FastAPI()
+app.include_router(author_router)
+app.dependency_overrides[get_repository] = lambda: SqlAlchemyAuthorRepository(session)
+```
+
+### Universal browser-client hookup (React / Angular 18)
+
+The router conforms to the same URL grammar as every other backend port,
+so the universal browser client — React/TanStack today, Angular 18 once
+FR-008 §2.5 lands — works against a FastAPI backend with no FastAPI-
+specific client code. The same generated TanStack hooks (or Angular
+services) that talk to a TS Fastify, Java Spring, Kotlin Ktor, or C#
+ASP.NET backend will talk to this FastAPI router; the only consumer
+wiring is the `EntityFetcher` base URL + auth.
+
 ## Use
 
 The loader API is symmetric with the other ports — `from_directory` /
