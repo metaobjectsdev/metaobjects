@@ -35,11 +35,15 @@ def _walk(
         effective_pkg = node.package or ctx_pkg or None
         target = _resolve(node.super_ref, effective_pkg, index)
         if target is None:
+            # FR5a / ADR-0009: attach the referrer node's source envelope so the
+            # error carries provenance (files[]/jsonPath). Without this, the
+            # envelope defaults to an empty/code source — divergent from TS.
             errors.append(MetaError(
                 f"the SuperClass '{node.super_ref}' does not exist "
                 f"(referenced by {node.fqn()})",
                 ErrorCode.ERR_UNRESOLVED_SUPER,
                 path=node.fqn(),
+                envelope=node.source,
             ))
         else:
             node.super_data = target
