@@ -1,0 +1,14 @@
+name: list-with-pagination
+description: >
+  GET /api/authors?limit=2&offset=1 returns rows 2 and 3 (1-based seed ids,
+  zero-based offset). Asserts ordered identity by id ascending.
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?limit=2&offset=1
+    expect:
+      status: 200
+      body:
+        # Default sort is by id ascending; offset=1 skips id=1, so we get 2,3.
+        ids: [2, 3]
+        length: 2

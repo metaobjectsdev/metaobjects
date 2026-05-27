@@ -1,0 +1,34 @@
+name: update-patch-and-put
+description: >
+  PATCH /api/authors/1 with a body updates fields and returns the new row.
+  PUT /api/authors/1 also accepts the same body shape (TS contract allows
+  both verbs; Kotlin/Java/C#/Python controllers map both methods to the same
+  handler). Verifies both verbs reach the update path.
+requests:
+  - id: r1
+    method: PATCH
+    path: /api/authors/1
+    body:
+      name: "Ada (Augusta) Lovelace"
+      bio: "First computer programmer (PATCH)"
+      createdAt: "2026-01-01T10:00:00"
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          name: "Ada (Augusta) Lovelace"
+          bio: "First computer programmer (PATCH)"
+  - id: r2
+    method: PUT
+    path: /api/authors/1
+    body:
+      name: "Ada Lovelace (PUT)"
+      bio: "First computer programmer"
+      createdAt: "2026-01-01T10:00:00"
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          name: "Ada Lovelace (PUT)"

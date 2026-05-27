@@ -305,10 +305,24 @@ which every port runs against an ephemeral Postgres container via
 `scripts/integration-test.sh`. Identical normalized results across every
 port is the contract; deviation is a port bug.
 
-The URL-grammar half (qs parsing, route mounting, error shape) is
-covered by per-port HTTP-layer tests today; a shared
-`fixtures/api-conformance/` corpus is planned as part of the future
-route-codegen FR.
+The URL-grammar half (qs parsing, route mounting, status codes, JSON
+envelope shape) is exercised by the cross-port corpus at
+[`fixtures/api-contract-conformance/`](../../fixtures/api-contract-conformance/)
+(10 scenarios — `list-empty`, `list-with-pagination`, `list-with-withcount`,
+`sort-asc-desc`, `get-by-id`, `get-by-id-not-found`, `create-201`,
+`update-patch-and-put`, `delete-204-and-404`, `invalid-sort-400`). Each
+port's runner spins up a real HTTP server hosting its emitted routes for the
+canonical `Author` entity, walks the scenarios, and asserts byte-shape
+identical responses against the cross-port `expect.body.*` vocabulary.
+TypeScript + Kotlin runners ship; Java / C# / Python runners are planned
+follow-ups. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md) for per-port pass
+status.
+
+Filter operator coverage (`eq` / `ne` / `gt` / `like` / `in` / `isNull`) is
+deferred from the API-contract corpus on purpose — backends defer those per
+their `KNOWN_GAPS.md`, so a scenario for `filter[name][like]=...` would fail
+on every port today. Filter-operator scenarios land alongside the per-port
+operator implementations.
 
 ## See also
 

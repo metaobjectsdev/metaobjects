@@ -1,7 +1,7 @@
 # Conformance coverage
 
-The MetaObjects standard has 5 cross-language conformance corpora plus a deferred
-6th (`codegen-conformance/`, tracked as FR-007). Every port runs every applicable
+The MetaObjects standard has 6 cross-language conformance corpora plus a deferred
+7th (`codegen-conformance/`, tracked as FR-007). Every port runs every applicable
 corpus and asserts the same expected behavior against the same fixtures. **This
 page is the inverse index**: fixture → feature doc + per-port pass status.
 
@@ -19,17 +19,18 @@ human-readable explanation somewhere, look it up in the
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | 31 / 31 | 31 / 31 | inherits via Java | 31 / 31 | 31 / 31 |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 4 | 4 / 4 | 4 / 4 | inherits via Java | 4 / 4 | 4 / 4 |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 12 (9 query + 3 migration) | 12 / 12 | 12 / 12 | 12 / 12 (via Exposed) | 12 / 12 | 12 / 12 |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 10 | 10 / 10 (Fastify reference runner) | not yet wired | 10 / 10 (embedded HTTP + Exposed reference runner) | not yet wired | not yet wired |
 | `fixtures/codegen-conformance/` (FR-007 — DROPPED in favor of `persistence-conformance` participation) | 0 | n/a | n/a | n/a | n/a | n/a |
 
 Per-port runners + commands:
 
-| Port | Metamodel + YAML + render + verify | Persistence |
-|---|---|---|
-| TypeScript | `cd server/typescript && bun test` (per-package, `~3s`) | `scripts/integration-test.sh ts` (needs Docker) |
-| Java | `mvn -pl metaobjects-conformance test` (and per-tier `-pl render`, etc.) | `scripts/integration-test.sh java` (needs Docker) |
-| Kotlin | `mvn -pl codegen-kotlin test` (snapshot suite) | `mvn -pl integration-tests-kotlin test` (needs Docker) |
-| C# | `dotnet test` (per project) | `scripts/integration-test.sh csharp` (needs Docker) |
-| Python | `pytest` (per package) | `scripts/integration-test.sh python` (needs Docker) |
+| Port | Metamodel + YAML + render + verify | Persistence | API contract |
+|---|---|---|---|
+| TypeScript | `cd server/typescript && bun test` (per-package, `~3s`) | `scripts/integration-test.sh ts` (needs Docker) | `cd server/typescript/packages/integration-tests && bun test test/api-contract.test.ts` (needs Docker) |
+| Java | `mvn -pl metaobjects-conformance test` (and per-tier `-pl render`, etc.) | `scripts/integration-test.sh java` (needs Docker) | not yet wired |
+| Kotlin | `mvn -pl codegen-kotlin test` (snapshot suite) | `mvn -pl integration-tests-kotlin test` (needs Docker) | `mvn -f server/java/integration-tests-kotlin/pom.xml test -Dtest=ApiContractConformanceTest` (needs Docker) |
+| C# | `dotnet test` (per project) | `scripts/integration-test.sh csharp` (needs Docker) | not yet wired |
+| Python | `pytest` (per package) | `scripts/integration-test.sh python` (needs Docker) | not yet wired |
 
 The `persistence-conformance` corpus is intentionally **on-demand** — none of the
 unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
@@ -78,9 +79,20 @@ All 31 fixtures → [features/migrations-and-drift.md](features/migrations-and-d
 - `migrations/*` (3) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
 - `queries/*` (9) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
+### `fixtures/api-contract-conformance/` (10)
+
+All 10 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
+REST API URL grammar + JSON wire format). Verifies every backend's emitted CRUD
+routes answer identically over HTTP — list / get / create / patch+put / delete,
+plus pagination (`limit`/`offset`), sort (`sort=field:dir`), the `withCount=1`
+envelope, the `not_found` / `invalid_sort` error envelopes, and the 201 / 204
+status codes. Filter operators (`eq`/`ne`/...) deferred — backends defer these
+per their `KNOWN_GAPS.md`; conformance for filter operators arrives when the
+operators ship per port.
+
 ## Orphaned fixtures (tested but not yet documented)
 
-All 138 fixtures across the 5 active corpora map to a feature doc. None are
+All 148 fixtures across the 6 active corpora map to a feature doc. None are
 orphaned today.
 
 If you add a new fixture and don't see a clear home for it, either:

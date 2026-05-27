@@ -1,0 +1,15 @@
+name: get-by-id
+description: >
+  GET /api/authors/3 returns the single row with id=3 as a bare JSON object
+  (no envelope). Verifies the single-resource endpoint shape.
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors/3
+    expect:
+      status: 200
+      body:
+        row:
+          id: 3
+          name: "Grace Hopper"
+          bio: "Invented the compiler"
