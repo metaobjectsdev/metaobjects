@@ -7,9 +7,21 @@
 // them byte-identically.
 
 /** Discriminated union over the provenance variants a metadata node or error
- *  can carry. See ADR-0009 §Decision for the canonical shape. */
+ *  can carry. See ADR-0009 §Decision for the canonical shape.
+ *
+ *  FR5b note (TS reference port, 2026-05-26): `yamlPosition` is also
+ *  allowed as an OPTIONAL field on the `format: "json"` variant so that
+ *  buildTree-emitted errors from a YAML input can still carry the source
+ *  position without re-flagging the format discriminator. Until ALL four
+ *  ports ship FR5b — at which point buildTree-emitted errors flip to
+ *  `format: "yaml"` and the conformance fixtures are mass-updated — keeping
+ *  the discriminator at `"json"` preserves cross-port fixture parity (the
+ *  3 yaml-conformance fixtures whose buildTree-side errors are
+ *  format-keyed `"json"` would otherwise diverge until C#/Java/Python
+ *  catch up). See the FR5b TS implementation report. */
 export type ErrorSource =
-  | { format: "json"; files: [string]; jsonPath: string }
+  | { format: "json"; files: [string]; jsonPath: string;
+      yamlPosition?: { line: number; col: number } }
   | { format: "yaml"; files: [string]; jsonPath: string;
       yamlPosition?: { line: number; col: number } }
   | { format: "merged"; files: string[]; jsonPath: string;
