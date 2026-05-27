@@ -174,29 +174,37 @@ in conformance tests, and in every consumer's mental model.
 
 ### Default: extend an existing subtype with attrs (`registry.extend`)
 
-If the new concept is structurally identical to an existing subtype and only
-adds configuration, **extend the existing subtype with new attrs**. No new
-node class, no new cross-port mapping, no new childRules.
+If the new concept is structurally identical to an existing subtype, only
+adds configuration, and the existing subtype's required attrs ALL apply,
+**extend the existing subtype with new attrs**. No new node class, no new
+cross-port mapping, no new childRules.
 
-Example — an LLM tool-call envelope is structurally identical to
-`template.output` (both have a typed payload + a rendered template + a
-parser). What makes it a *tool-call* is the configuration: the tool name,
-the retry-with-reminder string, the optional fallback shape. Express it as:
+Example — a `@audit-trail: true` flag on every `field.*` subtype, marking
+columns whose changes get logged:
 
 ```ts
-registry.extend(TYPE_TEMPLATE, "output", {
-  attributes: [
-    { name: "toolName",      valueType: ATTR_SUBTYPE_STRING, required: false },
-    { name: "retryReminder", valueType: ATTR_SUBTYPE_STRING, required: false },
-    { name: "fallback",      valueType: ATTR_SUBTYPE_OBJECT, required: false },
-  ],
-});
+// "metaobjects-audit-trail" provider's registerTypes body:
+for (const subType of FIELD_SUBTYPES) {
+  registry.extend(TYPE_FIELD, subType, {
+    attributes: [
+      { name: "auditTrail", valueType: ATTR_SUBTYPE_BOOLEAN, required: false,
+        description: "Log changes to this column in the audit-trail table." },
+    ],
+  });
+}
 ```
 
-YAML authors then write `template.output:` with `@toolName: emit_x`. The
-custom generator scans `template.output` nodes and branches on
-`node.hasAttr("toolName")` to decide whether to emit a tool-call wrapper.
-**Same end result, zero new metamodel surface.**
+YAML authors then write `field.string: { "@auditTrail": true }`. A custom
+generator scans every field and emits audit-table wiring for those with
+`@auditTrail: true`. **Same end result, zero new metamodel surface.** This
+is exactly what the built-in `dbProvider` does to add `@column` and
+`@db.indexed` to every field subtype.
+
+**When extend doesn't fit:** if the existing subtype has REQUIRED attrs
+that don't apply to your concept (e.g., `template.output` requires
+`@textRef` for the renderable body, which a non-renderable tool-call
+envelope doesn't have), escalation to a new subtype is honest. See the
+escalation criteria below.
 
 ### When abstracts shine: reusable constraint sets via `extends`
 
@@ -256,10 +264,27 @@ overlay semantics, common patterns).
 - **Different `childRules`** that can't be expressed as additional attrs.
   Example: `field.enum` requires an `enum.values` attr and a constrained set
   of child types that plain `field.string` doesn't.
+- **The closest existing subtype has required attrs that don't apply to
+  your concept.** Example: `template.output` requires `@payloadRef` AND
+  `@textRef` (both are renderable-template invariants). An LLM tool-call
+  envelope needs `@toolName` but has no renderable text body — `@textRef`
+  doesn't apply. Extending `template.output` with `@toolName` would force
+  every toolcall to declare a stub `@textRef`. A new subtype
+  (`template.toolcall` with `@payloadRef` + `@toolName` required, no
+  `@textRef`) is the honest fit.
 - **The semantic concept is so universal it deserves a name in the closed
   core vocabulary.** Example: `source.rdb` is a persistence-paradigm split —
   there will eventually be `source.kv`, `source.graph`, etc., and they all
   need first-class subtype identity for cross-port codegen routing.
+- **You need load-time error detection when the provider is missing.** The
+  loader treats undeclared `@-attrs` as **open policy** — they're silently
+  accepted, no error or warning (`attr-schema-validate.ts:15`). Only the
+  *subtype* itself is validated against the registry. So if your concept's
+  correctness depends on the provider being loaded (e.g., a custom generator
+  must run when the metadata is present), subtype registration is the only
+  mechanism that catches "consumer forgot to wire the provider" at load
+  time via `ERR_UNKNOWN_SUBTYPE`. With pure attr-extension, missing
+  providers silently no-op.
 
 If the only argument for a new subtype is "the name reads nicer," add an
 attr instead. A subtype is a permanent commitment in every port's registry;
