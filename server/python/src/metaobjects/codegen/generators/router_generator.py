@@ -44,11 +44,6 @@ from metaobjects.shared.base_types import TYPE_SOURCE
 from metaobjects.shared.separators import PACKAGE_SEP
 
 
-# Default PK field name when the entity declares no identity.primary. Matches
-# the convention used by the Java/Kotlin generators ("id").
-_DEFAULT_PK_FIELD = "id"
-
-
 def _effective_fqn(entity: MetaObject) -> str:
     """``package::name``, resolving package from the nearest ancestor that carries
     one. Mirrors the entity-model generator's helper of the same name."""
@@ -266,10 +261,6 @@ def render_router(entity: MetaObject) -> str | None:
     parts.append(f"    if not repo.delete({pk_param}):")
     parts.append('        raise HTTPException(status_code=404, detail={"error": "not_found"})')
     parts.append("")
-
-    # The `_DEFAULT_PK_FIELD` constant is exposed at module level for downstream
-    # readers; suppress the unused-import warning if it ever appears.
-    _ = _DEFAULT_PK_FIELD
 
     return "\n".join(parts)
 

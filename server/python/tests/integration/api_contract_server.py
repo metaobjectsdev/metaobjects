@@ -63,6 +63,19 @@ _AUTHOR_FIELD_SUBTYPE: dict[str, str] = {
     "createdAt": "datetime",
 }
 
+# FR-009 scalar-comparison op → SQL operator. Excludes the two shape-special
+# ops (isNull → IS NULL/IS NOT NULL, in → expanded IN list) which need bespoke
+# emit paths in _build_where.
+_SCALAR_OP_SQL: dict[str, str] = {
+    "eq": "=",
+    "ne": "<>",
+    "gt": ">",
+    "gte": ">=",
+    "lt": "<",
+    "lte": "<=",
+    "like": "LIKE",
+}
+
 # ISO-8601 without zone, matching the seed.json + cross-port wire format.
 _TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%S"
 
@@ -131,22 +144,10 @@ def _build_where(predicates: list[FilterPredicate]) -> tuple[str, list[Any], str
         scalar = _coerce_scalar(str(value), sub_type)
         if scalar is _INVALID_COERCION:
             return "", [], "invalid_filter_value"
-        if op == "eq":
-            sql_parts.append(f"{col} = %s")
-        elif op == "ne":
-            sql_parts.append(f"{col} <> %s")
-        elif op == "gt":
-            sql_parts.append(f"{col} > %s")
-        elif op == "gte":
-            sql_parts.append(f"{col} >= %s")
-        elif op == "lt":
-            sql_parts.append(f"{col} < %s")
-        elif op == "lte":
-            sql_parts.append(f"{col} <= %s")
-        elif op == "like":
-            sql_parts.append(f"{col} LIKE %s")
-        else:
+        sql_op = _SCALAR_OP_SQL.get(op)
+        if sql_op is None:
             return "", [], "invalid_filter_value"
+        sql_parts.append(f"{col} {sql_op} %s")
         params.append(scalar)
     return " WHERE " + " AND ".join(sql_parts), params, None
 
