@@ -1,0 +1,59 @@
+name: integration-tests
+
+# Enforces the release-gate documented in docs/RELEASING.md — every release
+# tag run the on-demand persistence-conformance suite against a real Postgres
+# (via Testcontainers). Per-language jobs run in parallel; any port red
+# blocks the gate.
+#
+# Triggers:
+#   - tag push matching v* (release path)
+#   - labeled PR with `run-integration` (opt-in for big PRs)
+#   - manual dispatch (workflow_dispatch)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+
+jobs:
+  release-gate:
+    # Run on tag pushes always; on PRs only if the run-integration label was applied.
+    if: github.event_name != 'pull_request' || github.event.label.name == 'run-integration'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        port: [ts, csharp, java, kotlin, python]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Bun (TS port)
+        if: matrix.port == 'ts'
+        uses: oven-sh/setup-bun@v2
+
+      - name: Set up .NET (C# port)
+        if: matrix.port == 'csharp'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Set up JDK (Java and Kotlin ports)
+        if: matrix.port == 'java' || matrix.port == 'kotlin'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up uv (Python port)
+        if: matrix.port == 'python'
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install workspace deps
+        if: matrix.port == 'ts'
+        run: bun install
+
+      - name: Run integration tests
+        run: ./scripts/integration-test.sh ${{ matrix.port }}
