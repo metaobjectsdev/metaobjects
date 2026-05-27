@@ -361,6 +361,19 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`fixtures/render-conformance/render-example-spreadsheet/`](../../fixtures/render-conformance/render-example-spreadsheet/) — `@format=csv` with header row
 - [`fixtures/render-conformance/render-csv-injection/`](../../fixtures/render-conformance/render-csv-injection/) — OWASP CSV-injection escaping (leading `= + - @ \t \r`)
 
+**Render engine semantics** — Mustache-spec behavior pinned cross-port (every port's renderer must emit byte-identical output)
+
+- [`fixtures/render-conformance/render-dotted-path-lookup/`](../../fixtures/render-conformance/render-dotted-path-lookup/) — `{{a.b.c}}` traversal across nested objects
+- [`fixtures/render-conformance/render-parent-context-fallthrough/`](../../fixtures/render-conformance/render-parent-context-fallthrough/) — a key missing in the current section falls through to the parent context
+- [`fixtures/render-conformance/render-empty-array-falsiness/`](../../fixtures/render-conformance/render-empty-array-falsiness/) — `{{#xs}}…{{/xs}}` over an empty array renders nothing (vs. iterates)
+- [`fixtures/render-conformance/render-falsy-values/`](../../fixtures/render-conformance/render-falsy-values/) — `false`, `null`, empty string, `0` — which are truthy for `{{#x}}` sections (per Mustache spec, not JS truthiness)
+- [`fixtures/render-conformance/render-inverted-section/`](../../fixtures/render-conformance/render-inverted-section/) — `{{^x}}…{{/x}}` renders when `x` is falsy/absent
+- [`fixtures/render-conformance/render-nested-partials/`](../../fixtures/render-conformance/render-nested-partials/) — `{{>partial}}` resolves through the provider, supports nesting
+- [`fixtures/render-conformance/render-standalone-tag-stripping/`](../../fixtures/render-conformance/render-standalone-tag-stripping/) — a line containing only a section/partial tag is removed (whitespace + newline)
+- [`fixtures/render-conformance/render-raw-html-bypass/`](../../fixtures/render-conformance/render-raw-html-bypass/) — `{{{x}}}` (or `{{&x}}`) emits raw, unescaped under `@format=html`
+- [`fixtures/render-conformance/render-trailing-newline-preservation/`](../../fixtures/render-conformance/render-trailing-newline-preservation/) — final-line newline preserved (prompt-cache stability invariant)
+- [`fixtures/render-conformance/render-unicode-multibyte/`](../../fixtures/render-conformance/render-unicode-multibyte/) — multibyte input handled without truncation or re-encoding
+
 Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
 via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
 for the per-port pass/skip ledger.

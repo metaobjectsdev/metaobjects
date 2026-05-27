@@ -14,13 +14,19 @@ human-readable explanation somewhere, look it up in the
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 88 | 88 / 88 | 88 / 88 | inherits via `metadata-ktx` | source-v2 cluster + `doc-common-attrs-on-all-types` are open gaps | 91 / 91 (also gates loader extensions) |
-| [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 6 | 6 / 6 | 6 / 6 | inherits via Java | 6 / 6 | 6 / 6 |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 88 | 88 / 88 | 88 / 88 | inherits via `metadata-ktx` | 88 / 88 | 88 / 88 |
+| [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 13 | 13 / 13 | 12 / 13 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 12 / 13 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 13 / 13 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | 31 / 31 | 31 / 31 | inherits via Java | 31 / 31 | 31 / 31 |
-| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 4 | 4 / 4 | 4 / 4 | inherits via Java | 4 / 4 | 4 / 4 |
+| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 14 | 14 / 14 | 14 / 14 | inherits via Java | 14 / 14 | 14 / 14 |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 12 (9 query + 3 migration) | 12 / 12 | 12 / 12 | 12 / 12 (via Exposed) | 12 / 12 | 12 / 12 |
 | [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 20 | 20 / 20 (Fastify reference runner) | 20 / 20 (embedded HTTP + JDBC reference runner) | 20 / 20 (embedded HTTP + Exposed reference runner) | 20 / 20 (HttpListener + Npgsql reference runner) | 20 / 20 (FastAPI + pg8000 reference runner) |
 | `fixtures/codegen-conformance/` (FR-007 — DROPPED in favor of `persistence-conformance` participation) | 0 | n/a | n/a | n/a | n/a | n/a |
+
+The two ledgered YAML fixtures are documented library-vs-pipeline divergences (see the
+`_comment` block in each port's `yaml-conformance-expected-failures.json` for the
+full reconciliation note). They are tracked as known-gaps rather than silently
+patched — the runner treats listed fixtures as passing, but a future port-level
+reconciliation pass would close them.
 
 Per-port runners + commands:
 
@@ -39,7 +45,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (85)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (88)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -60,14 +66,22 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 | `origin-*`, `error-origin-*` | [features/templates-and-payloads.md](features/templates-and-payloads.md) (payload origins) |
 | `smoke-empty-metadata` | [features/entities.md](features/entities.md) |
 
-### `fixtures/yaml-conformance/` (6)
+### `fixtures/yaml-conformance/` (13)
 
-All 6 fixtures → [features/yaml-authoring.md](features/yaml-authoring.md).
+All 13 fixtures → [features/yaml-authoring.md](features/yaml-authoring.md). The corpus
+splits into 7 happy-path fixtures (sigil-free attrs, array suffix, anchor/alias,
+block scalars, mixed bare-and-prefixed, quoted leading zero, etc.) and 6
+`error-yaml-*` fixtures that pin the YAML 1.1 coercion guards (bool / null / hex
+in string contexts; numeric in enum contexts; reserved-as-attr).
 
-### `fixtures/render-conformance/` (4)
+### `fixtures/render-conformance/` (14)
 
-All 4 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
-(render engine output section).
+All 14 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
+(render engine output section). 4 are end-to-end shape examples (prompt / email /
+spreadsheet / CSV-injection escape); 10 pin Mustache-engine semantics — dotted-path
+lookup, parent-context fallthrough, falsy/empty-array section behavior, inverted
+sections, nested partials, standalone-tag whitespace stripping, raw-HTML bypass,
+trailing-newline preservation, and unicode multibyte handling.
 
 ### `fixtures/verify-conformance/` (31)
 
@@ -89,14 +103,15 @@ envelope, the `not_found` / `invalid_sort` error envelopes, and the 201 / 204
 status codes.
 
 The corpus also covers the 9 cross-port filter operators (`eq`, `ne`, `gt`,
-`lt`, `in`, `like`, `isNull`, plus the implicit-AND combinator and 2 error
-shapes — `invalid_filter_field` / `invalid_filter_op`) under the URL grammar
-`?filter[<field>][<op>]=<value>` (FR-009). All 5 ports — TS, Java, Kotlin,
-C#, Python — satisfy these 10 scenarios today.
+`gte`, `lt`, `lte`, `in`, `like`, `isNull`) plus the implicit-AND combinator
+and 2 error shapes (`invalid_filter_field` / `invalid_filter_op`) under the
+URL grammar `?filter[<field>][<op>]=<value>` (FR-009) — 10 filter scenarios
+on top of the 10 base CRUD scenarios. All 5 ports — TS, Java, Kotlin, C#,
+Python — satisfy all 20 scenarios today.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-All 148 fixtures across the 6 active corpora map to a feature doc. None are
+All 178 fixtures across the 6 active corpora map to a feature doc. None are
 orphaned today.
 
 If you add a new fixture and don't see a clear home for it, either:
