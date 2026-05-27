@@ -1,0 +1,20 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Subscriber",
+          "children": [
+            {
+              "field.string": {
+                "name": "email",
+                "@description": "Backup contact email."
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

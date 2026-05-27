@@ -52,8 +52,23 @@ export const ERROR_CODES = [
   // ADR-0006 D2 — YAML type-coercion guard. Emitted by every port's YAML
   // loader when a coerced scalar mismatches the schema-declared type.
   "ERR_YAML_COERCION",
+  // FR5c — multi-file overlay merge produced a conflicting attribute value:
+  // two contributors set the same @attr to different non-empty values.
+  "ERR_MERGE_CONFLICT",
   "ERR_UNKNOWN",
 ] as const;
+
+/** Warning codes — same envelope shape as errors but advisory. */
+export const WARNING_CODES = [
+  // FR5c — two contributors declared the same node identically (no semantic
+  // change). Emitted at the overlay-merge boundary.
+  "WARN_DUPLICATE_DECLARATION",
+  // Pre-FR5c legacy: parser/validator messages still surface as plain
+  // strings; wrapped at the loader boundary into the envelope shape with
+  // this code. Retired as those sites are migrated to envelopes.
+  "WARN_LEGACY",
+] as const;
+export type WarningCode = (typeof WARNING_CODES)[number];
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

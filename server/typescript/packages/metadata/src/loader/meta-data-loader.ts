@@ -321,6 +321,11 @@ export class MetaDataLoader {
     this._state = "loading";
     const warnings: string[] = [];
     const errors: Error[] = [];
+    // FR5c — envelope-shaped warnings (WARN_DUPLICATE_DECLARATION et al.)
+    // surface here untouched. Distinct from the legacy `warnings: string[]`
+    // channel: those are wrapped in a WARN_LEGACY envelope at the boundary,
+    // while these already carry their own code + source.
+    const envelopeWarnings: LoaderWarning[] = [];
 
     // Pre-load the YAML parser via dynamic import if any source declares
     // YAML format. This keeps `parseSource` synchronous and the package root
@@ -363,6 +368,10 @@ export class MetaDataLoader {
         const parseResult = this.parseSource(content, source, parseOpts);
         warnings.push(...parseResult.warnings);
         errors.push(...parseResult.errors);
+        // FR5c — collect envelope-shaped warnings (already carry code +
+        // source). The legacy `warnings` channel still flows into the
+        // WARN_LEGACY-wrapping path below for unchanged behavior.
+        envelopeWarnings.push(...parseResult.envelopeWarnings);
         root = parseResult.root;
       } catch (err) {
         errors.push(
@@ -454,13 +463,17 @@ export class MetaDataLoader {
     // LoaderWarning envelopes at the loader boundary. The parser/validator
     // surface keeps its `string[]` shape internally (parser-core is shared
     // with parseJson() / parseYaml() callers who consume string warnings
-    // directly). FR5c will retire WARN_LEGACY by routing the duplicate-
-    // declaration site through a proper envelope-shaped emit helper.
-    const envelopeWarnings: LoaderWarning[] = warnings.map((msg) => ({
+    // directly). FR5c-onward sites emit proper envelopes via parseResult.
+    // envelopeWarnings (collected above) — those surface unchanged.
+    const wrappedLegacy: LoaderWarning[] = warnings.map((msg) => ({
       code: "WARN_LEGACY",
       message: msg,
       source: codeSource("MetaDataLoader"),
     }));
-    return { root, warnings: envelopeWarnings, errors };
+    return {
+      root,
+      warnings: [...envelopeWarnings, ...wrappedLegacy],
+      errors,
+    };
   }
 }

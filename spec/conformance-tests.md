@@ -114,6 +114,15 @@ Warnings remain compared as **sorted sets of message strings**. Error *message t
 
 Pre-FR5a fixtures using the legacy `[{"code": "..."}]` array shape get only the code-set check; the envelope assertion is skipped.
 
+### Multi-file load order (FR5c)
+
+When a fixture's `input/` directory contains more than one `meta.*.json` file, every port loads them in **case-sensitive alphabetical order of basename** before merging. This is a cross-port contract — the order determines:
+
+- which file is the `overlay-base` (alphabetically first) and which are `overlay-extension`s on a merged node's `source.contributors[]`;
+- the `files[]` list inside an `ERR_MERGE_CONFLICT` or `WARN_DUPLICATE_DECLARATION` envelope (also alphabetical, byte-identical across ports).
+
+Last-writer-wins still governs non-conflicting attr overlays (one side unset, or both sides set to the same value). When both contributors set the same `@attr` to *different* non-empty values, the loader raises `ERR_MERGE_CONFLICT` with a `format: "merged"` envelope listing both contributors. When two files declare a node and the second contributes no semantic change (per the FR5a `semantic_diff`), the loader emits `WARN_DUPLICATE_DECLARATION` and the merged node's `source` is **not** upgraded to `format: "merged"`.
+
 ## TS conformance runner
 
 Lives at `typescript/packages/metadata/test/conformance.test.ts`. Algorithm:
