@@ -8,7 +8,11 @@ from typing import Callable
 @dataclass(frozen=True)
 class AttrSchema:
     name: str
-    value_type: str  # an attr subtype name, e.g. "string", "boolean", "stringArray"
+    # An attr subtype name, e.g. "string", "boolean", "stringArray".
+    # Optional: a None value_type declares the attr as "known but untyped",
+    # which the YAML coercion guard skips. Used for polymorphic attrs like
+    # @default whose value type follows the OWNING field's subtype.
+    value_type: str | None
     required: bool = False
     allowed_values: tuple[str, ...] | None = None
     default: object | None = None
