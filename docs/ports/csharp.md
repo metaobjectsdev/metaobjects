@@ -156,6 +156,55 @@ string output = Renderer.Render(new RenderRequest(
 `Verify` in `MetaObjects.Render` drift-checks every `template.*` against its
 `@payloadRef`. Wire it into your CI step or invoke `meta verify` directly.
 
+## FR-006 — output parsing
+
+`OutputParserGenerator` (in `MetaObjects.Codegen`) emits one
+`<TemplateName>.output.cs` file per `template.output` declaration. The static
+`<TemplateName>Parser` class follows the BCL `Parse`/`TryParse` dual-API
+convention — `Parse` throws on bad input, `TryParse` returns a bool plus an
+out-error string.
+
+```csharp
+// generated/NpcResponse.output.cs
+public static class NpcResponseParser
+{
+    private static readonly JsonSerializerOptions Options = new()
+    {
+        PropertyNameCaseInsensitive = false,
+    };
+
+    /// <exception cref="JsonException">malformed JSON or schema mismatch.</exception>
+    public static NpcResponse Parse(string text) =>
+        JsonSerializer.Deserialize<NpcResponse>(text, Options)
+            ?? throw new JsonException("deserialized to null");
+
+    public static bool TryParse(string text,
+        [NotNullWhen(true)] out NpcResponse? value,
+        [NotNullWhen(false)] out string? error) { ... }
+}
+```
+
+Consumer wiring:
+
+```csharp
+string llmResponse = await myLlmClient.CompleteAsync(promptText);
+
+// Throwing path
+var npc = NpcResponseParser.Parse(llmResponse);
+
+// TryParse for explicit error handling
+if (NpcResponseParser.TryParse(llmResponse, out var npc, out var error))
+    return Ok(npc);
+else
+    return BadRequest(new { error });
+```
+
+`MetaObjects.Render`'s `Verify` walks `template.output` nodes the same way
+it walks `template.prompt`, catching payload-VO ↔ parser drift at build time.
+Cross-port design is at [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
+the feature reference is at
+[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
+
 ## Angular 18 frontend
 
 C# 12 / .NET 8 backends pair cleanly with an Angular 18 client built from
@@ -185,20 +234,22 @@ are not yet generated — see
 | Source kinds (table / view / storedProc) | `table` + `view` fully shipped; `storedProc` / `tableFunction` / `materializedView` partial |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes (incl. EF Core `OwnsOne` for `flattened`) |
 | Templates + render (FR-004) | Yes (`MetaObjects.Render`) |
+| Output parser codegen (FR-006) | Yes (`OutputParserGenerator` — `Parse`/`TryParse` BCL pattern) |
 | Payload-VO codegen | Yes (`MetaObjects.Codegen`) |
 | Migrations | `meta migrate` — full CREATE today; introspection-driven incremental landing |
 | Drift verify | `meta verify` (template drift); DB-drift verify on the same incremental path |
 | Runtime metadata | Loader API + render engine; ObjectManager-style runtime tier on the roadmap |
 
-## Conformance status (as of 2026-05-25)
+## Conformance status (as of 2026-05-27)
 
 | Corpus | Result |
 |---|---|
-| Metamodel (`fixtures/conformance/`) | Largely caught up — known-gap list tracks the `source.rdb` paradigm cluster + `doc-common-attrs-on-all-types` |
-| YAML authoring (`fixtures/yaml-conformance/`) | Yes |
-| Render (`fixtures/render-conformance/`) | Yes — byte-identical to TS |
-| Verify (`fixtures/verify-conformance/`) | Yes |
-| Persistence (`fixtures/persistence-conformance/`) | Yes — 12 / 12 (runnable via `scripts/integration-test.sh csharp`) |
+| Metamodel (`fixtures/conformance/`) | 91 / 91 |
+| YAML authoring (`fixtures/yaml-conformance/`) | 12 / 13 (1 ledgered — `error-yaml-coerced-hex-in-string`, YamlDotNet doesn't coerce `0xFF`) |
+| Render (`fixtures/render-conformance/`) | 14 / 14 — byte-identical to TS |
+| Verify (`fixtures/verify-conformance/`) | 31 / 31 |
+| Persistence (`fixtures/persistence-conformance/`) | 12 / 12 (runnable via `scripts/integration-test.sh csharp`) |
+| API contract (`fixtures/api-contract-conformance/`) | 20 / 20 |
 
 ## See also
 

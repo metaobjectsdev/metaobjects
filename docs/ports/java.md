@@ -244,20 +244,22 @@ configuration model that has not yet been specced.
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes |
 | Templates + render (FR-004) | Yes (`metaobjects-render`) |
 | Payload-VO codegen | Not on Java itself — consumers use `Map<String,Object>` or hand-coded VOs. See [Kotlin port](kotlin.md) for `@Serializable` payload codegen. |
+| Output parser codegen (FR-006) | Not yet — gated on Java codegen layer (per the [FR-006 cross-port spec](../superpowers/specs/2026-05-25-fr6-template-output-parser-codegen.md)). Java consumers needing typed `template.output` parsing today should drive their codegen through the [Kotlin port](kotlin.md) (`KotlinOutputParserGenerator`) or hand-write a Jackson `readValue` call. |
 | Migrations | `mvn meta:migrate` / `mvn meta:migrate -Dflyway=true` |
 | Drift verify | `mvn meta:verify` (DB) + `Renderer.verify` (prompts) |
 | Runtime metadata | Full — OMDB ObjectManager |
 | REST controller codegen | Spring Web MVC — `metaobjects-codegen-spring` (FR-008 §2.1) |
 
-## Conformance status (as of 2026-05-25)
+## Conformance status (as of 2026-05-27)
 
 | Corpus | Result |
 |---|---|
-| Metamodel (`fixtures/conformance/`) | 85 / 85 |
-| YAML authoring (`fixtures/yaml-conformance/`) | 6 / 6 |
-| Render (`fixtures/render-conformance/`) | 4 / 4 |
+| Metamodel (`fixtures/conformance/`) | 91 / 91 |
+| YAML authoring (`fixtures/yaml-conformance/`) | 12 / 13 (1 ledgered — `yaml-quoted-leading-zero`, Java pipeline strips quotes off `"007"`) |
+| Render (`fixtures/render-conformance/`) | 14 / 14 |
 | Verify (`fixtures/verify-conformance/`) | 31 / 31 |
 | Persistence (`fixtures/persistence-conformance/`) | 12 / 12 |
+| API contract (`fixtures/api-contract-conformance/`) | 20 / 20 |
 
 ## See also
 

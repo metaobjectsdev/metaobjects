@@ -49,7 +49,7 @@ Two modules:
 
 ## Configure
 
-The 8 generators in `codegen-kotlin`:
+The 9 generators in `codegen-kotlin`:
 
 | Generator | Output | Per |
 |---|---|---|
@@ -57,6 +57,7 @@ The 8 generators in `codegen-kotlin`:
 | `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object with PK + FK + `@storage` columns | entities with `source.rdb` |
 | `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `cardinality=many` query helpers | entities with to-many relationships |
 | `KotlinPayloadGenerator` | `<Template>Payload.kt` — `@Serializable` payload from `@payloadRef` view-object | every `template.prompt` / `template.output` |
+| `KotlinOutputParserGenerator` | `<Template>Parser.kt` — `object` with `parseXxx` (throws `SerializationException`) + `safeParseXxx` (returns `Result<TPayload>`) | every `template.output` (FR-006) |
 | `KotlinValidatorGenerator` | `MetadataStartupValidator.kt` + `ExposedTableValidator.kt` | once per project |
 | `KotlinSpringConfigGenerator` | `MetadataExposedConfig.kt` — `@Configuration` wiring `Database.connect()` + auto-validator | once per project |
 | `KotlinStoredProcGenerator` | Stored-procedure call wrappers | entities with `source.rdb @kind="storedProc"` |
@@ -202,6 +203,60 @@ val out = render {
 }
 ```
 
+## FR-006 — output parsing
+
+`KotlinOutputParserGenerator` emits a typed parser per `template.output` beside
+the payload class. The dual-API matches kotlinx.serialization's exception model
+(`SerializationException`) plus the Kotlin stdlib's `Result<T>` Result-style
+convention.
+
+```kotlin
+// generated/acme/ai/prompts/NpcResponseParser.kt
+object NpcResponseParser {
+    private val json: Json = Json { ignoreUnknownKeys = false }
+
+    /** Throws kotlinx.serialization.SerializationException on bad input. */
+    fun parseNpcResponse(text: String): NpcResponsePayload =
+        json.decodeFromString<NpcResponsePayload>(text)
+
+    /** Result-style — does not throw. */
+    fun safeParseNpcResponse(text: String): Result<NpcResponsePayload> =
+        runCatching { parseNpcResponse(text) }
+}
+```
+
+Consumer wiring:
+
+```kotlin
+val response: String = myLlmClient.complete(promptText)
+
+// Throwing path — propagate to your error handler
+val npc = NpcResponseParser.parseNpcResponse(response)
+
+// Or Result-style
+NpcResponseParser.safeParseNpcResponse(response)
+    .onSuccess { npc -> /* use it */ }
+    .onFailure { ex -> log.warn("LLM returned malformed payload", ex) }
+```
+
+**Consumer dependency.** The emitted parser uses `kotlinx.serialization.json.Json`.
+Consumers must add the JSON artifact + the serialization plugin:
+
+```kotlin
+plugins { kotlin("plugin.serialization") version "1.9.x" }
+dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.x")
+}
+```
+
+The `kotlinx-serialization-core` artifact alone (which `@Serializable` needs)
+does NOT include the JSON format. See
+[`codegen-kotlin/KNOWN_GAPS.md`](../../server/java/codegen-kotlin/KNOWN_GAPS.md)
+for the full consumer-wiring contract. Cross-port design is at
+[ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
+the feature reference is at
+[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
+
 ## Angular 18 frontend
 
 `KotlinSpringControllerGenerator` emits a Spring `@RestController` per writable
@@ -244,6 +299,7 @@ the contract is universal.
 | REST controllers (Spring `@RestController`) | Yes — `KotlinSpringControllerGenerator` per writable entity; cross-port API contract |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes (incl. `flattened` per-sub-field columns) |
 | Templates + render (FR-004) | Yes (wraps the Java engine) |
+| Output parser codegen (FR-006) | Yes (`KotlinOutputParserGenerator` — kotlinx.serialization + `Result<T>` dual API) |
 | Payload-VO codegen | Yes (`KotlinPayloadGenerator`) |
 | Migrations | Via Java `meta:migrate --flyway` |
 | Drift verify | Via Java `meta:verify` + startup validator |
@@ -251,11 +307,12 @@ the contract is universal.
 
 ## Test count
 
-84 tests in `codegen-kotlin` (`mvn -pl codegen-kotlin test`). Snapshot tests gate
+122 tests in `codegen-kotlin` (`mvn -pl codegen-kotlin test`). Snapshot tests gate
 within-Java output stability; `kotlin-compile-testing` gates generated-code
 validity; an end-to-end test exercises the full loop including the Java
-`Renderer`. Persistence-conformance over the shared corpus runs in
-`integration-tests-kotlin` (12 / 12).
+`Renderer`. Persistence-conformance + the cross-port API contract run in
+`integration-tests-kotlin` (33 / 33 — 12 persistence + 20 api-contract + 1
+codegen-matches-reference, all runnable via `scripts/integration-test.sh kotlin`).
 
 ## See also
 

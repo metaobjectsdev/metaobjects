@@ -305,6 +305,76 @@ out = render(
 )
 ```
 
+## Output parsing (FR-006)
+
+Symmetric story for the reverse direction: for every declared `template.output`,
+codegen emits a typed parser that turns an LLM response (raw text) into the
+`@payloadRef` value-object. Reuses the same payload-VO `template.prompt` does;
+no new metadata authoring. See [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md)
+for the cross-port principle and [FR-006](../superpowers/specs/2026-05-25-fr6-template-output-parser-codegen.md)
+for the design.
+
+### Cross-port API
+
+Each port emits the parser in its idiomatic shape — throw-only by default, plus a
+Result-style "safe" variant where the language has an idiomatic precedent:
+
+| Port | Throwing API | Result-style API | Substrate |
+|---|---|---|---|
+| TypeScript | `parseXxx(text): T` | `safeParseXxx(text)` → `{ success, data \| error }` | Zod |
+| C# | `XxxParser.Parse(string): T` | `XxxParser.TryParse(text, out T, out string)` → `bool` | `System.Text.Json` |
+| Python | `parse_xxx(text: str) -> T` | — (Pythonic norm is throw-only; consumers `try/except`) | Pydantic v2 |
+| Kotlin | `XxxParser.parseXxx(text): TPayload` | `XxxParser.safeParseXxx(text): Result<TPayload>` | `kotlinx.serialization.json` |
+| Java | — (gated on Java codegen layer) | — | (planned: Jackson) |
+
+The throwing API matches the substrate's native deserialization exception
+(Zod `ZodError`, `JsonException`, `ValidationError`, `SerializationException`).
+The Result-style API wraps the throwing API and does not throw on validation
+failure. All four shipped ports satisfy the same conformance fixture
+([`template-output-simple`](../../fixtures/conformance/template-output-simple/)).
+
+### Consumer-side usage (Kotlin example)
+
+```kotlin
+import acme.ai.prompts.NpcResponseParser
+import acme.ai.prompts.WelcomePromptPayload
+import com.metaobjects.metadata.ktx.render
+
+// 1. Render the prompt
+val promptText = render {
+    ref = "ai/npc-prompt"
+    payload = WelcomePromptPayload(scenario = "tavern-encounter", playerLevel = 4)
+    provider = FilesystemProvider(Path.of("./prompts"))
+}
+
+// 2. Call your LLM provider (out of scope — pick your client)
+val llmResponse: String = myLlmClient.complete(promptText)
+
+// 3. Parse the response
+val npc = NpcResponseParser.parseNpcResponse(llmResponse)         // throws
+val safe = NpcResponseParser.safeParseNpcResponse(llmResponse)    // Result<NpcResponsePayload>
+safe.onSuccess { npc -> /* use it */ }.onFailure { ex -> /* log */ }
+```
+
+TS, C#, and Python follow the same three-step pattern — render the prompt
+via the existing engine, call the LLM client (provider-agnostic — codegen
+does NOT emit provider-side schema artifacts), then parse the response with
+the generated parser.
+
+### Generated file naming
+
+| Port | File | Class/module |
+|---|---|---|
+| TypeScript | `<TemplateName>.output.ts` | `parse<TemplateName>` + `safeParse<TemplateName>` functions |
+| C# | `<TemplateName>.output.cs` | `static class <TemplateName>Parser` |
+| Python | `<template_name>_output_parser.py` | `parse_<template_name>` function + `<TemplateName>Data` BaseModel |
+| Kotlin | `<TemplateShortName>Parser.kt` | `object <TemplateShortName>Parser` (same package as the payload class) |
+
+The parser file is a companion to (not a replacement for) the existing payload-VO
+file — the parser imports the payload class rather than redeclaring it. `meta verify`
+extends to walk `template.output` nodes the same way it walks `template.prompt`,
+catching payload-VO ↔ parser drift at build time.
+
 ## Drift detection: `verify`
 
 For every template, `verify` resolves the text, parses the `{{...}}` references,

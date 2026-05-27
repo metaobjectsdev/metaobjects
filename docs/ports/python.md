@@ -187,6 +187,63 @@ out = render(
 `@payloadRef`. The Python renderer is conformance-gated to render byte-identical
 output against the shared `fixtures/render-conformance/` corpus.
 
+## FR-006 — output parsing
+
+`output_parser_generator` (in `metaobjects.codegen.generators`) emits one
+`<template_name>_output_parser.py` module per `template.output` declaration.
+Pythonic single-API throw-only convention — Pydantic raises `ValidationError`
+on bad input; callers wrap in `try/except` per their own error policy (matches
+the pydantic / Instructor / FastAPI / LangChain norm; a Result-style wrapper
+would be un-Pythonic).
+
+```python
+# generated/npc_response_output_parser.py
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel
+
+
+class NpcResponseData(BaseModel):
+    name: str
+    level: int
+    role: Literal["merchant", "guard", "elder"]
+
+
+def parse_npc_response(text: str) -> NpcResponseData:
+    """Parse an LLM response into a typed NpcResponseData.
+
+    Raises:
+        pydantic.ValidationError: when the input does not match the schema.
+    """
+    return NpcResponseData.model_validate_json(text)
+
+
+__all__ = ["NpcResponseData", "parse_npc_response"]
+```
+
+Consumer wiring:
+
+```python
+from pydantic import ValidationError
+from generated.npc_response_output_parser import parse_npc_response
+
+llm_response: str = my_llm_client.complete(prompt_text)
+
+try:
+    npc = parse_npc_response(llm_response)
+except ValidationError as e:
+    log.warning("LLM returned malformed payload: %s", e)
+    return None
+```
+
+The parser module is self-contained (the `BaseModel` class lives in the same
+file — Python doesn't have a payload-VO generator yet). `metaobjects.render.verify`
+extends to walk `template.output` nodes the same way it walks `template.prompt`.
+Cross-port design is at [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
+the feature reference is at
+[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
+
 ## Capability snapshot
 
 | Feature | Status |
@@ -196,20 +253,22 @@ output against the shared `fixtures/render-conformance/` corpus.
 | Source kinds (table / view / storedProc) | Loader-level yes; codegen for non-`table` kinds is in progress |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Loader-level yes; codegen for `field.object` `flattened` storage is in progress |
 | Templates + render (FR-004) | Yes (`metaobjects.render`) |
+| Output parser codegen (FR-006) | Yes (`output_parser_generator` — Pydantic throw-only) |
 | Payload-VO codegen | Not yet — consumers pass a `dict` to the renderer |
 | Migrations | In progress (`python -m metaobjects.migrate` planned) |
 | Drift verify | Yes — template / payload drift (`metaobjects.render.verify`) |
 | Runtime metadata | Loader API + render engine; SQLAlchemy ObjectManager-equivalent on the roadmap |
 
-## Conformance status (as of 2026-05-25)
+## Conformance status (as of 2026-05-27)
 
 | Corpus | Result |
 |---|---|
 | Metamodel (`fixtures/conformance/`) | 91 / 91 |
-| YAML authoring (`fixtures/yaml-conformance/`) | 6 / 6 |
-| Render (`fixtures/render-conformance/`) | 4 / 4 |
+| YAML authoring (`fixtures/yaml-conformance/`) | 13 / 13 |
+| Render (`fixtures/render-conformance/`) | 14 / 14 |
 | Verify (`fixtures/verify-conformance/`) | 31 / 31 |
-| Persistence (`fixtures/persistence-conformance/`) | Persistence tier under construction; not yet wired into `scripts/integration-test.sh` |
+| Persistence (`fixtures/persistence-conformance/`) | 12 / 12 (runnable via `scripts/integration-test.sh python`) |
+| API contract (`fixtures/api-contract-conformance/`) | 20 / 20 |
 
 ## See also
 

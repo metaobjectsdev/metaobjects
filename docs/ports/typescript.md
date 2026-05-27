@@ -139,6 +139,70 @@ await app.listen({ port: 3000 });
 The `runtime-ts` package supplies the helpers that the generated routes lean on
 (`parseFilterParams`, the `ObjectManager` for full-runtime CRUD).
 
+## FR-006 — output parsing
+
+For every `template.output`, `outputParser()` (from `@metaobjectsdev/codegen-ts/generators`)
+emits `<TemplateName>.output.ts` with a Zod-backed dual-API: `parseXxx(text)`
+throws on bad input; `safeParseXxx(text)` returns a `{ success, data | error }`
+discriminated union — matches Zod's idiomatic shape.
+
+```ts
+// metaobjects.config.ts (additions)
+import { promptRender, outputParser } from "@metaobjectsdev/codegen-ts/generators";
+
+export default defineConfig({
+  generators: [
+    entityFile(), queriesFile(), routesFile(), barrel(),
+    promptRender(),    // renderXxx() per template.prompt
+    outputParser(),    // parseXxx() / safeParseXxx() per template.output
+  ],
+});
+```
+
+```ts
+// generated/NpcResponse.output.ts
+import { z } from "zod";
+
+const NpcResponseSchema = z.object({
+  name: z.string(),
+  level: z.number().int(),
+  role: z.enum(["merchant", "guard", "elder"]),
+});
+
+export type NpcResponseData = z.infer<typeof NpcResponseSchema>;
+
+export function parseNpcResponse(text: string): NpcResponseData {
+  return NpcResponseSchema.parse(JSON.parse(text));  // throws ZodError
+}
+
+export function safeParseNpcResponse(text: string):
+  | { success: true; data: NpcResponseData }
+  | { success: false; error: z.ZodError } { ... }
+```
+
+Consumer wiring:
+
+```ts
+import { parseNpcResponse, safeParseNpcResponse } from "./generated/NpcResponse.output";
+
+const llmResponse = await myLlmProvider.call(promptText);
+
+// Throwing path
+const npc = parseNpcResponse(llmResponse);
+
+// Result-style
+const r = safeParseNpcResponse(llmResponse);
+if (!r.success) log.warn("LLM returned malformed payload", r.error);
+else handle(r.data);
+```
+
+`meta verify` extends to walk `template.output` nodes (FR-006) the same way it
+walks `template.prompt` (FR-004), catching payload-VO ↔ parser drift at build
+time. Cross-port design is at
+[ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
+the feature reference is at
+[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
+
 ## Capability snapshot
 
 | Feature | Status |
@@ -148,6 +212,7 @@ The `runtime-ts` package supplies the helpers that the generated routes lean on
 | Source kinds (table / view / storedProc) | Yes |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes |
 | Templates + render (FR-004) | Yes |
+| Output parser codegen (FR-006) | Yes (`outputParser()` — Zod dual API) |
 | Payload-VO codegen | Yes (via projection codegen) |
 | Migrations | `meta migrate` (Postgres / SQLite / D1) |
 | Drift verify | `meta verify` (DB drift) |
