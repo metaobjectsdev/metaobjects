@@ -21,6 +21,8 @@ import org.slf4j.LoggerFactory;
 import java.util.Collection;
 import java.util.Date;
 import java.util.LinkedList;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -36,17 +38,21 @@ import javax.sql.DataSource;
 public class ObjectManagerDB extends ObjectManager implements DBOperations {
 
     private static final Logger log = LoggerFactory.getLogger(ObjectManagerDB.class);
-    private final static String CREATE_MAP_ATTR = "dbCreateMap";
-    private final static String READ_MAP_ATTR = "dbReadMap";
-    private final static String UPDATE_MAP_ATTR = "dbUpdateMap";
-    private final static String DELETE_MAP_ATTR = "dbDeleteMap";
-    private final static String HAS_CREATE_MAP_ATTR = "hasDbCreateMap";
-    private final static String HAS_READ_MAP_ATTR = "hasDbReadMap";
-    private final static String HAS_UPDATE_MAP_ATTR = "hasDbUpdateMap";
-    private final static String HAS_DELETE_MAP_ATTR = "hasDbDeleteMap";
     public final static String ALLOW_DIRTY_WRITE = "dbAllowDirtyWrite";
     public final static String DIRTY_WRITE_CHECK_FIELD = "dbDirtyWriteCheckField";
     public final static String POPULATE_FILE = "dbPopulateFile";
+
+    // FR-003 Plan 4 (Debt 2): per-manager atomic mapping caches.
+    // Mapping state must NOT live on the shared MetaObject metamodel instance:
+    // the loaded metamodel is shared across requests, so a check-then-act on
+    // MetaData.cacheValue races under concurrency. computeIfAbsent forbids null
+    // values, so we wrap with Optional to represent the legitimate "no mapping"
+    // outcome (formerly the has*Map=false case).
+    private final ConcurrentHashMap<MetaObject, Optional<ObjectMapping>> createMappings = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<MetaObject, Optional<ObjectMapping>> readMappings = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<MetaObject, Optional<ObjectMapping>> updateMappings = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<MetaObject, Optional<ObjectMapping>> deleteMappings = new ConcurrentHashMap<>();
+
     private MappingHandler mMappingHandler = null;
     private DatabaseDriver mDriver = null;
     private DataSource mSource = null;
@@ -226,125 +232,61 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
      * Gets the create mapping
      */
     protected ObjectMapping getCreateMapping(MetaObject mc) {
-        ObjectMapping mapping = (ObjectMapping) mc.getCacheValue(CREATE_MAP_ATTR);
-        if (mapping == null) {
-            mapping = getMappingHandler().getCreateMapping(mc);
-            if (mapping != null) {
-                mc.setCacheValue(CREATE_MAP_ATTR, mapping);
-            }
-        }
-        return mapping;
+        return createMappings.computeIfAbsent(mc,
+            k -> Optional.ofNullable(getMappingHandler().getCreateMapping(k))).orElse(null);
     }
 
     /**
      * Gets the read mapping
      */
     protected ObjectMapping getReadMapping(MetaObject mc) {
-        ObjectMapping mapping = (ObjectMapping) mc.getCacheValue(READ_MAP_ATTR);
-        if (mapping == null) {
-            mapping = getMappingHandler().getReadMapping(mc);
-            if (mapping != null) {
-                mc.setCacheValue(READ_MAP_ATTR, mapping);
-                mc.setCacheValue(HAS_READ_MAP_ATTR, Boolean.TRUE);
-            } else {
-                mc.setCacheValue(HAS_READ_MAP_ATTR, Boolean.FALSE);
-            }
-        }
-        return mapping;
+        return readMappings.computeIfAbsent(mc,
+            k -> Optional.ofNullable(getMappingHandler().getReadMapping(k))).orElse(null);
     }
 
     /**
      * Gets the update mapping
      */
     protected ObjectMapping getUpdateMapping(MetaObject mc) {
-        ObjectMapping mapping = (ObjectMapping) mc.getCacheValue(UPDATE_MAP_ATTR);
-        if (mapping == null) {
-            mapping = getMappingHandler().getUpdateMapping(mc);
-            if (mapping != null) {
-                mc.setCacheValue(UPDATE_MAP_ATTR, mapping);
-                mc.setCacheValue(HAS_UPDATE_MAP_ATTR, Boolean.TRUE);
-            } else {
-                mc.setCacheValue(HAS_UPDATE_MAP_ATTR, Boolean.FALSE);
-            }
-        }
-        return mapping;
+        return updateMappings.computeIfAbsent(mc,
+            k -> Optional.ofNullable(getMappingHandler().getUpdateMapping(k))).orElse(null);
     }
 
     /**
-     * Gets the delete mapping
+     * Gets the delete mapping. The legacy handler reuses the update mapping for
+     * deletes — preserved here to keep behavior identical.
      */
     protected ObjectMapping getDeleteMapping(MetaObject mc) {
-        ObjectMapping mapping = (ObjectMapping) mc.getCacheValue(DELETE_MAP_ATTR);
-        if (mapping == null) {
-            mapping = getMappingHandler().getUpdateMapping(mc);
-            if (mapping != null) {
-                mc.setCacheValue(DELETE_MAP_ATTR, mapping);
-                mc.setCacheValue(HAS_DELETE_MAP_ATTR, Boolean.TRUE);
-            } else {
-                mc.setCacheValue(HAS_DELETE_MAP_ATTR, Boolean.FALSE);
-            }
-        }
-        return mapping;
+        return deleteMappings.computeIfAbsent(mc,
+            k -> Optional.ofNullable(getMappingHandler().getUpdateMapping(k))).orElse(null);
     }
 
     /**
      * Is this a createable class
      */
     public boolean isCreateableClass(MetaObject mc) {
-        Boolean hasMapping = (Boolean) mc.getCacheValue(HAS_CREATE_MAP_ATTR);
-        if (hasMapping == null) {
-            if (getCreateMapping(mc) == null) {
-                return false;
-            } else {
-                return true;
-            }
-        }
-        return hasMapping.booleanValue();
+        return getCreateMapping(mc) != null;
     }
 
     /**
      * Is this a readable class
      */
     public boolean isReadableClass(MetaObject mc) {
-        Boolean hasMapping = (Boolean) mc.getCacheValue(HAS_READ_MAP_ATTR);
-        if (hasMapping == null) {
-            if (getReadMapping(mc) == null) {
-                return false;
-            } else {
-                return true;
-            }
-        }
-        return hasMapping.booleanValue();
+        return getReadMapping(mc) != null;
     }
 
     /**
-     * Gets the update mapping to the DB
+     * Is this an updateable class
      */
     public boolean isUpdateableClass(MetaObject mc) {
-        Boolean hasMapping = (Boolean) mc.getCacheValue(HAS_UPDATE_MAP_ATTR);
-        if (hasMapping == null) {
-            if (getUpdateMapping(mc) == null) {
-                return false;
-            } else {
-                return true;
-            }
-        }
-        return hasMapping.booleanValue();
+        return getUpdateMapping(mc) != null;
     }
 
     /**
-     * Gets the delete mapping to the DB
+     * Is this a deleteable class
      */
     public boolean isDeleteableClass(MetaObject mc) {
-        Boolean hasMapping = (Boolean) mc.getCacheValue(HAS_DELETE_MAP_ATTR);
-        if (hasMapping == null) {
-            if (getDeleteMapping(mc) == null) {
-                return false;
-            } else {
-                return true;
-            }
-        }
-        return hasMapping.booleanValue();
+        return getDeleteMapping(mc) != null;
     }
 
     /**
@@ -427,38 +369,12 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
     }
 
     /**
-     * Enhanced field parsing with better type handling and null safety
+     * Reads a column into a field on the target object via the
+     * {@link com.metaobjects.manager.db.codec.JdbcCodecs} registry
+     * (FR-003 Plan 4, Debt 1 — ADR-0002).
      */
     protected void parseField(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
-        if (f instanceof com.metaobjects.field.BooleanField) {
-            boolean bv = rs.getBoolean(j);
-            f.setBoolean(o, rs.wasNull() ? null : bv);
-        } else if (f instanceof com.metaobjects.field.DecimalField) {
-            java.math.BigDecimal dv = rs.getBigDecimal(j);
-            f.setObject(o, rs.wasNull() ? null : dv);
-        } else if (f instanceof com.metaobjects.field.IntegerField) {
-            int iv = rs.getInt(j);
-            f.setInt(o, rs.wasNull() ? null : iv);
-        } else if (f instanceof com.metaobjects.field.DateField) {
-            Timestamp tv = rs.getTimestamp(j);
-            f.setDate(o, rs.wasNull() ? null : new java.util.Date(tv.getTime()));
-        } else if (f instanceof com.metaobjects.field.LongField) {
-            long lv = rs.getLong(j);
-            f.setLong(o, rs.wasNull() ? null : lv);
-        } else if (f instanceof com.metaobjects.field.FloatField) {
-            float fv = rs.getFloat(j);
-            f.setFloat(o, rs.wasNull() ? null : fv);
-        } else if (f instanceof com.metaobjects.field.DoubleField) {
-            double dv = rs.getDouble(j);
-            f.setDouble(o, rs.wasNull() ? null : dv);
-        } else if (f instanceof com.metaobjects.field.StringField) {
-            f.setString(o, rs.getString(j));
-        } else if (f instanceof com.metaobjects.field.ObjectField) {
-            f.setObject(o, rs.getObject(j));
-        } else {
-            log.warn("Unknown field type {} for field {}", f.getClass().getSimpleName(), f.getName());
-            f.setObject(o, rs.getObject(j));
-        }
+        com.metaobjects.manager.db.codec.JdbcCodecs.forField(f).readInto(o, f, rs, j);
     }
 
     /**

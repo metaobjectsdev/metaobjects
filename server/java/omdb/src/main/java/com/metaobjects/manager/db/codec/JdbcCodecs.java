@@ -1,0 +1,202 @@
+/*
+ * Copyright (c) 2026 Doug Mealing LLC. All Rights Reserved.
+ *
+ * FR-003 Plan 4 (Debt 1) — JDBC codec registry. Replaces the if/else type
+ * ladders in ObjectManagerDB.parseField and GenericSQLDriver.setStatementValue
+ * with explicit per-subtype codecs (ADR-0002 Open-Closed).
+ *
+ * Each nested codec is a verbatim transcription of the original ladder branch.
+ * Extending OMDB to a new field subtype is one register() call.
+ *
+ * Pattern reference: MyBatis TypeHandlerRegistry + Jackson SimpleModule —
+ * explicit static registration, no ServiceLoader (which hides registration
+ * from grep + tracing). Keep all codecs in this single file so a reader sees
+ * the full type-handling surface at once.
+ */
+package com.metaobjects.manager.db.codec;
+
+import com.metaobjects.field.BooleanField;
+import com.metaobjects.field.DateField;
+import com.metaobjects.field.DecimalField;
+import com.metaobjects.field.DoubleField;
+import com.metaobjects.field.FloatField;
+import com.metaobjects.field.IntegerField;
+import com.metaobjects.field.LongField;
+import com.metaobjects.field.MetaField;
+import com.metaobjects.field.ObjectField;
+import com.metaobjects.field.StringField;
+import com.metaobjects.field.TimeField;
+
+import java.math.BigDecimal;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.sql.Types;
+import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+public final class JdbcCodecs {
+
+    private static final Map<Class<? extends MetaField>, JdbcFieldCodec> BY_TYPE = new ConcurrentHashMap<>();
+    private static final JdbcFieldCodec DEFAULT = new ObjectCodec();
+
+    private JdbcCodecs() {}
+
+    /** Register a codec for a field subtype. A new field type adds one line here. */
+    public static void register(Class<? extends MetaField> type, JdbcFieldCodec codec) {
+        BY_TYPE.put(type, codec);
+    }
+
+    public static JdbcFieldCodec defaultCodec() {
+        return DEFAULT;
+    }
+
+    public static JdbcFieldCodec forField(MetaField f) {
+        return BY_TYPE.getOrDefault(f.getClass(), DEFAULT);
+    }
+
+    static {
+        register(BooleanField.class, new BooleanCodec());
+        register(DecimalField.class, new DecimalCodec());
+        register(IntegerField.class, new IntegerCodec());
+        register(DateField.class, new DateCodec());
+        register(TimeField.class, new TimeCodec());
+        register(LongField.class, new LongCodec());
+        register(FloatField.class, new FloatCodec());
+        register(DoubleField.class, new DoubleCodec());
+        register(StringField.class, new StringCodec());
+        register(ObjectField.class, DEFAULT);  // identity with the fallback codec
+    }
+
+    // ── codecs (each body = verbatim transcription of its prior ladder branch) ──
+
+    static final class BooleanCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            boolean bv = rs.getBoolean(j);
+            f.setBoolean(o, rs.wasNull() ? null : bv);
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) s.setNull(j, Types.BIT);
+            else if (v instanceof Boolean) s.setBoolean(j, (Boolean) v);
+            else s.setBoolean(j, Boolean.valueOf(v.toString()));
+        }
+    }
+
+    static final class DecimalCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            BigDecimal dv = rs.getBigDecimal(j);
+            f.setObject(o, rs.wasNull() ? null : dv);
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) s.setNull(j, Types.DECIMAL);
+            else if (v instanceof BigDecimal) s.setBigDecimal(j, (BigDecimal) v);
+            else s.setBigDecimal(j, new BigDecimal(v.toString()));
+        }
+    }
+
+    static final class IntegerCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            int iv = rs.getInt(j);
+            f.setInt(o, rs.wasNull() ? null : iv);
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) s.setNull(j, Types.INTEGER);
+            else if (v instanceof Integer) s.setInt(j, (Integer) v);
+            else s.setInt(j, Integer.valueOf(v.toString()));
+        }
+    }
+
+    /** Date is stored as a timestamp at the SQL layer (legacy OMDB convention). */
+    static final class DateCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            Timestamp tv = rs.getTimestamp(j);
+            f.setDate(o, rs.wasNull() ? null : new java.util.Date(tv.getTime()));
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) s.setNull(j, Types.TIMESTAMP);
+            else if (v instanceof java.util.Date) s.setTimestamp(j, new Timestamp(((java.util.Date) v).getTime()));
+            else s.setTimestamp(j, new Timestamp(Long.valueOf(v.toString())));
+        }
+    }
+
+    /**
+     * TimeField has a write-side path (LocalTime → java.sql.Time) but no read
+     * branch in the original ladder; reads fall through to the default
+     * setObject behavior (matches prior runtime behavior for TimeField rows).
+     */
+    static final class TimeCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            f.setObject(o, rs.getObject(j));
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) s.setNull(j, Types.TIME);
+            else if (v instanceof LocalTime) s.setTime(j, java.sql.Time.valueOf((LocalTime) v));
+            else {
+                try {
+                    s.setTime(j, java.sql.Time.valueOf(LocalTime.parse(v.toString())));
+                } catch (DateTimeParseException e) {
+                    throw new SQLException("Invalid time format: " + v, e);
+                }
+            }
+        }
+    }
+
+    static final class LongCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            long lv = rs.getLong(j);
+            f.setLong(o, rs.wasNull() ? null : lv);
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) s.setNull(j, Types.BIGINT);
+            else if (v instanceof Long) s.setLong(j, (Long) v);
+            else s.setLong(j, Long.valueOf(v.toString()));
+        }
+    }
+
+    static final class FloatCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            float fv = rs.getFloat(j);
+            f.setFloat(o, rs.wasNull() ? null : fv);
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) s.setNull(j, Types.FLOAT);
+            else if (v instanceof Float) s.setFloat(j, (Float) v);
+            else s.setFloat(j, Float.valueOf(v.toString()));
+        }
+    }
+
+    static final class DoubleCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            double dv = rs.getDouble(j);
+            f.setDouble(o, rs.wasNull() ? null : dv);
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) s.setNull(j, Types.DOUBLE);
+            else if (v instanceof Double) s.setDouble(j, (Double) v);
+            else s.setDouble(j, Double.valueOf(v.toString()));
+        }
+    }
+
+    static final class StringCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            f.setString(o, rs.getString(j));
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) s.setNull(j, Types.VARCHAR);
+            else s.setString(j, v.toString());
+        }
+    }
+
+    /** Default fallback: pass-through via JDBC's getObject/setObject. */
+    static final class ObjectCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            f.setObject(o, rs.getObject(j));
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            s.setObject(j, v);
+        }
+    }
+}
