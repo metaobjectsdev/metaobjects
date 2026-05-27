@@ -251,8 +251,23 @@ public class ConformanceTest {
         MetaDataLoader loader = new MetaDataLoader(opts, MetaDataLoader.SUBTYPE_MANUAL, loaderName);
         loader.init();
 
+        // Per the conformance contract (spec/conformance-tests.md): the sorted
+        // set of error codes from a load attempt MUST equal the expected set.
+        // We collect ALL errors visible after the load — both the ones the
+        // loader RECORDED (via {@link MetaDataLoader#addError}) and the final
+        // thrown one (if any) — so a multi-error fixture is honoured even
+        // though the loader stays eager-throw on the first hard error.
+        //
+        // TS/Python/C# adapters expose a per-load errors collection directly;
+        // Java mirrors that with {@link MetaDataLoader#getErrors()} plus the
+        // thrown exception. Today no Java phase records into getErrors(), so
+        // the practical effect is unchanged on the existing corpus — but the
+        // harness shape is now correct for any future multi-error fixture
+        // (and for any future phase that opts into the record-instead-of-throw
+        // path).
         List<String> errorCodesSeen = new ArrayList<>();
         List<EnvelopeRecord> envelopesSeen = new ArrayList<>();
+        MetaDataException thrown = null;
         try {
             List<MetaDataSource> sources = new ArrayList<>(inputFiles.size());
             for (Path file : inputFiles) {
@@ -261,8 +276,7 @@ public class ConformanceTest {
             }
             loader.load(sources);
         } catch (MetaDataException ex) {
-            errorCodesSeen.add(extractErrorCode(ex));
-            envelopesSeen.add(buildEnvelope(ex, fix.inputDir));
+            thrown = ex;
         } catch (IOException ex) {
             failures.add("input read error: " + ex.getMessage());
             return;
@@ -271,6 +285,16 @@ public class ConformanceTest {
             failures.add("unexpected runtime exception during load: "
                 + ex.getClass().getSimpleName() + ": " + ex.getMessage());
             return;
+        }
+        // Drain the loader-level accumulator first (errors recorded BEFORE the
+        // throw, in source order), then append the thrown error if present.
+        for (MetaDataException recorded : loader.getErrors()) {
+            errorCodesSeen.add(extractErrorCode(recorded));
+            envelopesSeen.add(buildEnvelope(recorded, fix.inputDir));
+        }
+        if (thrown != null) {
+            errorCodesSeen.add(extractErrorCode(thrown));
+            envelopesSeen.add(buildEnvelope(thrown, fix.inputDir));
         }
 
         // -- expected-errors check ------------------------------------------

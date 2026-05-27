@@ -7,6 +7,7 @@
 package com.metaobjects.loader;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.loader.parser.json.CanonicalJsonParser;
@@ -127,6 +128,23 @@ public class MetaDataLoader implements LoaderConfigurable {
     // Package-private mutator ({@link #addWarning(String)}) keeps callers
     // restricted to the loader package (where {@link ValidationPhase} lives).
     private final List<String> warnings = new ArrayList<>();
+
+    // Validation-phase errors accumulator.
+    //
+    // Mirrors {@link #warnings} but for ErrorCode-bearing validation errors that
+    // a phase chose to RECORD rather than eager-throw. The Java loader continues
+    // to be eager-throw on the first hard error in any phase, but phases may
+    // opt to call {@link #addError(MetaDataException)} when they have collected
+    // multiple recoverable errors in a single pass — see the conformance contract
+    // (spec/conformance-tests.md): the sorted set of error codes from a load
+    // attempt MUST equal the expected set, so multi-error fixtures need every
+    // collected error visible to the harness.
+    //
+    // Cleared at the start of every {@link #load(List)} so a subsequent load on
+    // the same loader does not see stale errors. The conformance harness reads
+    // this list AFTER catching the load's (final) thrown MetaDataException and
+    // merges the two into a single per-fixture error set.
+    private final List<MetaDataException> errors = new ArrayList<>();
 
     /**
      * Deferred-extends queue. The parser cannot always resolve a node's
@@ -496,6 +514,49 @@ public class MetaDataLoader implements LoaderConfigurable {
      */
     void clearWarnings() {
         warnings.clear();
+    }
+
+    /**
+     * Returns the validation errors RECORDED by the most recent {@link #load(List)}
+     * call. The list is reset at the start of every {@link #load(List)} invocation.
+     *
+     * <p>The Java loader is eager-throw: hard errors raised from any phase
+     * abort the load. This list captures errors that a phase COLLECTED before a
+     * subsequent throw (or, in a future evolution, instead of throwing) so
+     * downstream consumers — primarily the conformance harness — can see the
+     * full set of errors from one load attempt rather than only the first.</p>
+     *
+     * <p>Today the list is typically empty (no phase records errors here),
+     * which preserves the current behaviour: harnesses extract the single code
+     * from the thrown {@link MetaDataException} and that's the per-load
+     * error-set. Phases may begin emitting into this list as needs arise; the
+     * harness side merges {@link #getErrors()} with the thrown exception so
+     * either form is honoured.</p>
+     *
+     * @return an unmodifiable snapshot of recorded errors (never {@code null})
+     */
+    public List<MetaDataException> getErrors() {
+        return Collections.unmodifiableList(new ArrayList<>(errors));
+    }
+
+    /**
+     * Append a validation error. Package-private — only the loader-package
+     * validation passes should be calling this.
+     *
+     * @param error the error to record; ignored when {@code null}
+     */
+    void addError(MetaDataException error) {
+        if (error == null) return;
+        errors.add(error);
+    }
+
+    /**
+     * Clear accumulated errors. Called at the start of {@link #load(List)} so
+     * a fresh batch does not see stale errors from a prior load on the same
+     * loader instance.
+     */
+    void clearErrors() {
+        errors.clear();
     }
 
     ///////////////////////////////////////////////////////////////////////
@@ -1058,9 +1119,10 @@ public class MetaDataLoader implements LoaderConfigurable {
     public MetaDataLoader load(List<MetaDataSource> sources) {
         if (sources == null) throw new IllegalArgumentException("sources must not be null");
 
-        // Reset the per-load warning accumulator so callers see only warnings
-        // produced by THIS batch.
+        // Reset the per-load warning + error accumulators so callers see only
+        // diagnostics produced by THIS batch.
         clearWarnings();
+        clearErrors();
         pendingExtends.clear();
 
         for (MetaDataSource source : sources) {
