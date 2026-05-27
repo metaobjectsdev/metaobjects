@@ -32,6 +32,13 @@ from .error_source import (
 )
 from .json_path import JsonPath, JsonPathBuilder
 from .semantic_diff import semantic_diff
+from .yaml_positions import (
+    YamlPositionMap,
+    get_position_map,
+    get_yaml_position,
+    parse_yaml_with_positions,
+    set_position_map,
+)
 
 __all__ = [
     # ErrorSource hierarchy
@@ -54,4 +61,10 @@ __all__ = [
     "JsonPath",
     # Semantic diff
     "semantic_diff",
+    # FR5b — YAML positions
+    "YamlPositionMap",
+    "get_position_map",
+    "get_yaml_position",
+    "set_position_map",
+    "parse_yaml_with_positions",
 ]
