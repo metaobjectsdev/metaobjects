@@ -22,7 +22,7 @@
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { type MetaRoot } from "@metaobjectsdev/metadata";
-import { ObjectManager } from "@metaobjectsdev/runtime-ts";
+import { ObjectManager, type Filter } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { Kysely, PostgresDialect } from "kysely";
 import pg, { Pool } from "pg";
@@ -39,6 +39,20 @@ const ROUTE_BASE = "/api/authors";
 // Cross-port contract: the sort allowlist is the set of fields the server will
 // accept in `?sort=<field>:asc|desc`. Anything else → 400 invalid_sort.
 const SORT_ALLOWLIST = new Set(["id", "name", "createdAt"]);
+
+// Cross-port contract: the filter allowlist gates which fields accept which
+// operators in `?filter[<field>][<op>]=<value>`. Per FR-009 §5, operators are
+// gated by field subtype:
+//   string  → eq, ne, in, like, isNull
+//   number  → eq, ne, gt, gte, lt, lte, in, isNull
+//   date/timestamp → eq, ne, gt, gte, lt, lte, in, isNull
+//   boolean → eq, isNull
+const FILTER_ALLOWLIST: Record<string, { subType: "string" | "number" | "datetime" | "boolean"; ops: Set<string> }> = {
+  id:        { subType: "number",   ops: new Set(["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"]) },
+  name:      { subType: "string",   ops: new Set(["eq", "ne", "in", "like", "isNull"]) },
+  bio:       { subType: "string",   ops: new Set(["eq", "ne", "in", "like", "isNull"]) },
+  createdAt: { subType: "datetime", ops: new Set(["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"]) },
+};
 
 export interface ServerHandle {
   fastify: FastifyInstance;
@@ -90,12 +104,21 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
   // explicitly and return the reply object (Fastify's recommended async pattern
   // for branches with non-200 status codes).
 
-  // GET /api/authors — list with sort + pagination + withCount envelope.
+  // GET /api/authors — list with filter + sort + pagination + withCount envelope.
   fastify.get(ROUTE_BASE, async (req, reply) => {
     const qs = req.query as Record<string, string | undefined>;
     const sort = parseSort(qs["sort"]);
     if (sort === "invalid") {
       reply.code(400).send({ error: "invalid_sort" });
+      return reply;
+    }
+
+    // Filter parsing — Fastify's default qs parser leaves bracket-nested keys
+    // flat (`filter[name][eq]` becomes a single string key), so we parse the
+    // raw URL search string ourselves. Returns { error } on validation failure.
+    const filterResult = parseFilterFromUrl(req.url);
+    if ("error" in filterResult) {
+      reply.code(400).send({ error: filterResult.error });
       return reply;
     }
 
@@ -110,9 +133,9 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     if (limit !== undefined) opts.limit = limit;
     if (offset !== undefined) opts.offset = offset;
 
-    const rows = await om.findMany(ENTITY, undefined, opts);
+    const rows = await om.findMany(ENTITY, filterResult.filter, opts);
     if (!withCount) return rows;
-    const total = await om.count(ENTITY);
+    const total = await om.count(ENTITY, filterResult.filter);
     return { rows, total };
   });
 
@@ -190,6 +213,112 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
       await kysely.destroy();
     },
   };
+}
+
+/**
+ * Parse `filter[<field>][<op>]=<value>` (and the `filter[<field>]=<value>` =eq
+ * sugar form) from a raw request URL. Multiple `filter[...]` params combine
+ * with implicit-AND.
+ *
+ * The hand-rolled raw parse is deliberate: Fastify's default querystring
+ * parser flattens bracket keys into single strings (`filter[name][eq]`),
+ * and the runtime-ts/drizzle-fastify parser is Drizzle-SQL-specific. We
+ * only need to produce an ObjectManager `Filter` for this reference server.
+ *
+ * Returns `{ filter }` on success (filter is `undefined` when no filter params
+ * are present) or `{ error }` on validation failure.
+ */
+function parseFilterFromUrl(
+  url: string,
+): { filter: Filter | undefined } | { error: "invalid_filter_field" | "invalid_filter_op" | "invalid_filter_value" } {
+  const qIdx = url.indexOf("?");
+  if (qIdx === -1) return { filter: undefined };
+  const search = url.slice(qIdx + 1);
+
+  const entries: { field: string; op: string; value: string }[] = [];
+  for (const pair of search.split("&")) {
+    if (!pair) continue;
+    const eqIdx = pair.indexOf("=");
+    const rawKey = eqIdx === -1 ? pair : pair.slice(0, eqIdx);
+    const rawValue = eqIdx === -1 ? "" : pair.slice(eqIdx + 1);
+    const key = decodeURIComponent(rawKey.replace(/\+/g, "%20"));
+    const value = decodeURIComponent(rawValue.replace(/\+/g, "%20"));
+    if (!key.startsWith("filter[")) continue;
+    // Match filter[field] or filter[field][op]
+    const match = key.match(/^filter\[([^\]]+)\](?:\[([^\]]+)\])?$/);
+    if (!match) continue;
+    const field = match[1]!;
+    const op = match[2] ?? "eq";
+    entries.push({ field, op, value });
+  }
+
+  if (entries.length === 0) return { filter: undefined };
+
+  const subFilters: Filter[] = [];
+  for (const e of entries) {
+    const rule = FILTER_ALLOWLIST[e.field];
+    if (!rule) return { error: "invalid_filter_field" };
+    if (!rule.ops.has(e.op)) return { error: "invalid_filter_op" };
+    const coerced = coerceFilterValue(e.value, rule.subType, e.op);
+    if (coerced === INVALID) return { error: "invalid_filter_value" };
+    subFilters.push({ [e.field]: opToFilterValue(e.op, coerced) } as Filter);
+  }
+
+  if (subFilters.length === 1) return { filter: subFilters[0]! };
+  return { filter: { $and: subFilters } };
+}
+
+const INVALID = Symbol("invalid-filter-value");
+
+function coerceFilterValue(
+  raw: string,
+  subType: "string" | "number" | "datetime" | "boolean",
+  op: string,
+): string | number | boolean | (string | number)[] | typeof INVALID {
+  if (op === "isNull") {
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    return INVALID;
+  }
+  if (op === "in") {
+    const parts = raw.split(",").map((s) => s.trim());
+    if (subType === "number") {
+      const nums = parts.map((s) => Number(s));
+      if (nums.some((n) => !Number.isFinite(n))) return INVALID;
+      return nums;
+    }
+    return parts;
+  }
+  switch (subType) {
+    case "string":
+      return raw;
+    case "datetime":
+      return raw;
+    case "boolean":
+      if (raw === "true") return true;
+      if (raw === "false") return false;
+      return INVALID;
+    case "number": {
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return INVALID;
+      return n;
+    }
+  }
+}
+
+function opToFilterValue(op: string, value: unknown): unknown {
+  switch (op) {
+    case "eq":     return { $eq: value };
+    case "ne":     return { $ne: value };
+    case "gt":     return { $gt: value };
+    case "gte":    return { $gte: value };
+    case "lt":     return { $lt: value };
+    case "lte":    return { $lte: value };
+    case "in":     return { $in: value };
+    case "like":   return { $like: value };
+    case "isNull": return { $isNull: value };
+    default:       return { $eq: value };
+  }
 }
 
 /**

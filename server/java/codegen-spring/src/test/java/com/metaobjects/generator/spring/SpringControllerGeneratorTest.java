@@ -161,6 +161,72 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void listHandlerWiresFilterParserAndPredicates() throws Exception {
+        // FR-009: the generated list() must take HttpServletRequest (for the raw
+        // query string), call FilterParser.parse against the per-entity allowlist,
+        // 400 on parse error, and pass the List<FilterPredicate> down to the
+        // repository (both list + count paths).
+        Path outDir = tempFolder.newFolder("ctrl-filter").toPath();
+        Path workspace = tempFolder.newFolder("ctrl-filter-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "author-filter", AUTHOR_FIXTURE);
+
+        SpringControllerGenerator gen = new SpringControllerGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        String src = Files.readString(outDir.resolve("acme/blog/AuthorController.java"));
+
+        // HttpServletRequest is the load-bearing arg: Spring's @RequestParam
+        // collapses repeated keys so we MUST go through the raw query string.
+        assertTrue("expected HttpServletRequest arg on list(); saw:\n" + src,
+            src.contains("HttpServletRequest request"));
+        // FilterParser must be called with the entity's allowlist.
+        assertTrue("expected FilterParser.parse(...) call against AuthorFilterAllowlist; saw:\n" + src,
+            src.contains("FilterParser.parse(")
+                && src.contains("AuthorFilterAllowlist.FIELDS")
+                && src.contains("AuthorFilterAllowlist.OPS_BY_FIELD"));
+        // 400 envelope on parse failure mirrors the cross-port shape.
+        assertTrue("expected invalid_filter_* 400 envelope on parse failure; saw:\n" + src,
+            src.contains("Map.of(\"error\", filter.error())"));
+        // Predicates must flow into BOTH list + count repository calls (the count
+        // path is what powers ?withCount=1; same filter must apply to both).
+        assertTrue("expected predicates passed into repository.list; saw:\n" + src,
+            src.contains("repository.list(actualLimit, actualOffset, sortClause, filters)"));
+        assertTrue("expected predicates passed into repository.count; saw:\n" + src,
+            src.contains("repository.count(filters)"));
+    }
+
+    @Test
+    public void filterAllowlistEmittedAlongsideController() throws Exception {
+        // The codegen contract: when SpringFilterAllowlistGenerator runs against
+        // the same entity, it emits <Entity>FilterAllowlist.java with FIELDS +
+        // OPS_BY_FIELD constants the controller can refer to.
+        Path outDir = tempFolder.newFolder("ctrl-allowlist").toPath();
+        Path workspace = tempFolder.newFolder("ctrl-allowlist-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "author-allowlist", AUTHOR_FIXTURE);
+
+        SpringFilterAllowlistGenerator gen = new SpringFilterAllowlistGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        Path allowlist = outDir.resolve("acme/blog/AuthorFilterAllowlist.java");
+        assertTrue("expected " + allowlist + " emitted alongside the controller",
+            Files.exists(allowlist));
+        String src = Files.readString(allowlist);
+        // Author has no @filterable fields in the controller-test fixture (we share
+        // the same fixture across tests), so the allowlist is empty — but the
+        // file MUST still be present for the controller to reference.
+        assertTrue("expected FIELDS Set in allowlist file; saw:\n" + src,
+            src.contains("public static final Set<String> FIELDS"));
+        assertTrue("expected OPS_BY_FIELD Map in allowlist file; saw:\n" + src,
+            src.contains("public static final Map<String, Set<String>> OPS_BY_FIELD"));
+    }
+
+    @Test
     public void viewKindEntitiesAreSkipped() throws Exception {
         // SalesReport has @kind="view" — must NOT produce a controller (read-only).
         Path outDir = tempFolder.newFolder("ctrl-view").toPath();

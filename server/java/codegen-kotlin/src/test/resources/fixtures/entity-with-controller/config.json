@@ -1,1 +1,1 @@
-{ "generators": ["entity", "table", "controller"] }
+{ "generators": ["entity", "table", "controller", "filter-allowlist"] }

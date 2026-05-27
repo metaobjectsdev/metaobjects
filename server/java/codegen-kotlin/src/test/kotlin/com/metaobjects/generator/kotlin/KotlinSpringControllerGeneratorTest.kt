@@ -122,6 +122,79 @@ class KotlinSpringControllerGeneratorTest {
         }
     }
 
+    @Test fun filterAllowlistEmittedAlongsideController() {
+        // Running the controller AND the filter-allowlist generator over the same
+        // entity must produce both files in the same package. The pair is the
+        // FR-009 contract: the controller's parseAuthorFilter is a closed-over
+        // reference to the allowlist's FIELDS + OPS_BY_FIELD.
+        val outDir = Files.createTempDirectory("kctrl-pair-")
+        try {
+            val ctrl = KotlinSpringControllerGenerator()
+            ctrl.setArgs(mapOf("outputDir" to outDir.toString()))
+            val allow = KotlinFilterAllowlistGenerator()
+            allow.setArgs(mapOf("outputDir" to outDir.toString()))
+            val filterableFixture = """{
+              "metadata.root": { "package": "acme::blog", "children": [
+                { "object.entity": { "name": "Author", "children": [
+                    { "field.long":   { "name": "id" } },
+                    { "field.string": { "name": "name", "@maxLength": 100, "@required": true, "@filterable": true } },
+                    { "source.rdb":   { "@table": "authors" } },
+                    { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+                ] } }
+              ] }
+            }""".trimIndent()
+            val loader = loadString("ctrl-pair", filterableFixture)
+            ctrl.execute(loader)
+            allow.execute(loader)
+
+            val controller = outDir.resolve("acme/blog/AuthorController.kt")
+            val allowlist = outDir.resolve("acme/blog/AuthorFilterAllowlist.kt")
+            assertTrue(Files.exists(controller), "expected $controller")
+            assertTrue(Files.exists(allowlist), "expected $allowlist")
+            val allowSrc = Files.readString(allowlist)
+            // FIELDS contains the @filterable field 'name'.
+            assertTrue("\"name\"" in allowSrc,
+                "expected name in allowlist FIELDS; saw:\n$allowSrc")
+            // OPS_BY_FIELD has the string-shape ops for name.
+            assertTrue("\"name\" to setOf(\"eq\", \"ne\", \"in\", \"like\", \"isNull\")" in allowSrc,
+                "expected string ops for name; saw:\n$allowSrc")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun controllerListHandlerCallsFilterParser() {
+        // FR-009 — the generated list handler must call into parseAuthorFilter
+        // + AuthorWhereOp and short-circuit on the cross-port error envelope.
+        // Don't try to reproduce exact line shapes; assert the call site +
+        // envelope + import surface that a real consumer needs.
+        val outDir = Files.createTempDirectory("kctrl-filter-")
+        try {
+            val gen = KotlinSpringControllerGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("ctrl-filter", authorFixture))
+
+            val src = Files.readString(outDir.resolve("acme/blog/AuthorController.kt"))
+            // List handler now accepts a `Map<String,String>` of all params so the
+            // bracketed filter keys reach the parser intact.
+            assertTrue("@RequestParam allParams: Map<String, String>" in src,
+                "expected the list handler to accept allParams; saw:\n$src")
+            // Filter parse call (generated function name is parse<Entity>Filter).
+            assertTrue("parseAuthorFilter(allParams)" in src,
+                "expected list handler to call parseAuthorFilter(allParams); saw:\n$src")
+            // 400 envelope path on any of invalid_filter_field / invalid_filter_op /
+            // invalid_filter_value — the parser puts the envelope KEY in `filterResult.error`
+            // and the controller threads it into the response body verbatim.
+            assertTrue("mapOf(\"error\" to filterResult.error)" in src,
+                "expected the controller to thread filterResult.error into a 400 envelope; saw:\n$src")
+            // AND the WHERE clause wires through AuthorWhereOp(predicates).
+            assertTrue("AuthorWhereOp(filterResult.predicates)" in src,
+                "expected controller to feed predicates into AuthorWhereOp; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun viewKindSkipped() {
         // SalesReport has @kind="view" — must NOT produce a controller (read-only).
         val viewFixture = """{

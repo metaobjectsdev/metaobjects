@@ -111,6 +111,45 @@ public class EntityGeneratorTests
     }
 
     [Fact]
+    public void Routes_generator_list_handler_calls_FilterParser()
+    {
+        // FR-009: the generated list handler must parse filter[...] qs against
+        // the per-entity allowlist + dispatch via EfCoreFilterDispatch. Both
+        // are runtime helpers shipped under MetaObjects.Codegen.Runtime.
+        var ctx = Ctx(Load());
+        var src = Assert.Single(new RoutesGenerator().Generate(ctx)).Content;
+
+        // Imports the runtime namespace.
+        Assert.Contains("using MetaObjects.Codegen.Runtime;", src);
+        // Parses filter against the per-entity allowlist.
+        Assert.Contains("FilterParser.Parse(qs, SubscriberFilterAllowlist.Fields, SubscriberFilterAllowlist.OpsByField)", src);
+        // 400 envelope on parse error.
+        Assert.Contains("Results.BadRequest(new { error = filter.ErrorEnvelope })", src);
+        // Dispatches predicates onto the IQueryable<T>.
+        Assert.Contains("EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates)", src);
+        // The withCount query is also filtered so total reflects the filtered count.
+        Assert.Contains("EfCoreFilterDispatch.ApplyFilter(db.Subscribers.AsNoTracking(), filter.Predicates)", src);
+    }
+
+    [Fact]
+    public void FilterAllowlist_file_emitted_per_entity_with_expected_fields()
+    {
+        // FR-009: filter-allowlist-generator emits <Entity>FilterAllowlist.cs
+        // listing the filterable fields + per-field operator set. The base
+        // Subscriber model in this test doesn't mark any field @filterable,
+        // so the file is emitted with empty collections (consumer + routes
+        // can unconditionally reference them).
+        var ctx = Ctx(Load());
+        var file = Assert.Single(new FilterAllowlistGenerator().Generate(ctx));
+        Assert.Equal("SubscriberFilterAllowlist.g.cs", file.Path);
+        var src = file.Content;
+        Assert.Contains("namespace Acme.Generated;", src);
+        Assert.Contains("public static class SubscriberFilterAllowlist", src);
+        Assert.Contains("public static readonly HashSet<string> Fields", src);
+        Assert.Contains("public static readonly Dictionary<string, HashSet<string>> OpsByField", src);
+    }
+
+    [Fact]
     public void Routes_generator_emits_api_contract_qs_handling()
     {
         // Sort/limit/offset/withCount per docs/features/api-contract.md.

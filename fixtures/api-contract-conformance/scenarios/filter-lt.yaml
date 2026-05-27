@@ -1,0 +1,13 @@
+name: filter-lt
+description: >
+  GET /api/authors?filter[id][lt]=3 — `lt` on a numeric field returns rows
+  whose id is strictly less than 3 (ids 1, 2).
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?filter[id][lt]=3
+    expect:
+      status: 200
+      body:
+        ids: [1, 2]
+        length: 2

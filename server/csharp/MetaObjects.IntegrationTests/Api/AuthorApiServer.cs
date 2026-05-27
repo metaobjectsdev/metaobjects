@@ -28,6 +28,33 @@ internal sealed class AuthorApiServer : IAsyncDisposable
     private static readonly HashSet<string> SortAllowlist = new(StringComparer.Ordinal)
         { "id", "name", "createdAt" };
 
+    // Cross-port FILTER_ALLOWLIST — mirrors the Java/Kotlin api-contract server.
+    // Per FR-009 §5 the operator set per field is gated by its subtype:
+    //   string                     → eq, ne, in, like, isNull
+    //   number / date / timestamp  → eq, ne, gt, gte, lt, lte, in, isNull
+    //   boolean                    → eq, isNull
+    private sealed record FilterRule(string SubType, HashSet<string> Ops);
+
+    private static readonly Dictionary<string, FilterRule> FilterAllowlist = new(StringComparer.Ordinal)
+    {
+        ["id"]        = new("number",   new(StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" }),
+        ["name"]      = new("string",   new(StringComparer.Ordinal) { "eq", "ne", "in", "like", "isNull" }),
+        ["bio"]       = new("string",   new(StringComparer.Ordinal) { "eq", "ne", "in", "like", "isNull" }),
+        ["createdAt"] = new("datetime", new(StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" }),
+    };
+
+    /// <summary>A single parsed predicate: field, op, coerced value.</summary>
+    private sealed record FilterPredicate(string Field, string Op, object? Value);
+
+    /// <summary>Result of parsing filter params: either predicates or an error envelope key.</summary>
+    private sealed record FilterResult(List<FilterPredicate> Predicates, string? Error)
+    {
+        public static FilterResult Ok(List<FilterPredicate> p) => new(p, null);
+        public static FilterResult Err(string e) => new(new(), e);
+    }
+
+    private static readonly object InvalidValue = new();
+
     // ISO-8601 without zone — matches the seed/wire format and the Java/Kotlin
     // runners' formatter. NB: the corpus carries trailing fractional seconds
     // for round-tripped timestamps; .NET 's' standard format produces the same
@@ -162,6 +189,8 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         string method = ctx.Request.HttpMethod.ToUpperInvariant();
         string rawPath = ctx.Request.Url?.AbsolutePath ?? "";
         var qs = ctx.Request.QueryString;
+        string rawQuery = ctx.Request.Url?.Query ?? "";
+        if (rawQuery.StartsWith("?")) rawQuery = rawQuery.Substring(1);
 
         string trimmed = rawPath.StartsWith("/api/authors")
             ? rawPath.Substring("/api/authors".Length)
@@ -169,7 +198,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         trimmed = trimmed.Trim('/');
         string? idSegment = trimmed.Length == 0 ? null : trimmed;
 
-        if (method == "GET" && idSegment is null) { await ListAuthorsAsync(ctx, qs); return; }
+        if (method == "GET" && idSegment is null) { await ListAuthorsAsync(ctx, qs, rawQuery); return; }
         if (method == "GET" && idSegment is not null) { await GetAuthorAsync(ctx, idSegment); return; }
         if (method == "POST" && idSegment is null) { await CreateAuthorAsync(ctx); return; }
         if ((method == "PATCH" || method == "PUT") && idSegment is not null)
@@ -181,7 +210,10 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         await SendJsonAsync(ctx, 404, new Dictionary<string, object?> { ["error"] = "not_found" });
     }
 
-    private async Task ListAuthorsAsync(HttpListenerContext ctx, System.Collections.Specialized.NameValueCollection qs)
+    private async Task ListAuthorsAsync(
+        HttpListenerContext ctx,
+        System.Collections.Specialized.NameValueCollection qs,
+        string rawQuery)
     {
         string sortField = "id";
         string sortDir = "ASC";
@@ -209,7 +241,25 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         string? wc = qs["withCount"];
         bool withCount = wc == "1" || wc == "true";
 
+        // Parse filter[<field>][<op>]=<value> from the raw query string. Returns
+        // an error envelope key (invalid_filter_field / invalid_filter_op /
+        // invalid_filter_value) → 400, or a list of validated + coerced predicates.
+        FilterResult filter = ParseFilter(rawQuery);
+        if (filter.Error is not null)
+        {
+            await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = filter.Error });
+            return;
+        }
+
+        // Build WHERE clause from predicates. Parameters are bound positionally
+        // (Npgsql @p0/@p1/...) so SQL injection isn't a concern even though the
+        // field/op tokens come from the URL — both are validated against the
+        // allowlist before reaching here.
+        var bindParams = new List<object?>();
+        string whereClause = BuildWhere(filter.Predicates, bindParams);
+
         var sql = new StringBuilder("SELECT id, name, bio, \"createdAt\" FROM \"authors\"");
+        sql.Append(whereClause);
         sql.Append(" ORDER BY \"").Append(sortField).Append("\" ").Append(sortDir);
         if (limit is int lim) sql.Append(" LIMIT ").Append(lim);
         sql.Append(" OFFSET ").Append(offset);
@@ -220,6 +270,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         await using (var cmd = c.CreateCommand())
         {
             cmd.CommandText = sql.ToString();
+            BindAll(cmd, bindParams);
             await using var rdr = await cmd.ExecuteReaderAsync();
             while (await rdr.ReadAsync()) rows.Add(RowToMap(rdr));
         }
@@ -229,7 +280,8 @@ internal sealed class AuthorApiServer : IAsyncDisposable
             long total;
             await using (var cmd = c.CreateCommand())
             {
-                cmd.CommandText = "SELECT COUNT(*) FROM \"authors\"";
+                cmd.CommandText = "SELECT COUNT(*) FROM \"authors\"" + whereClause;
+                BindAll(cmd, bindParams);
                 total = Convert.ToInt64(await cmd.ExecuteScalarAsync());
             }
             var envelope = new Dictionary<string, object?>
@@ -243,6 +295,155 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         {
             await SendJsonAsync(ctx, 200, rows);
         }
+    }
+
+    /// <summary>
+    /// Parse the bracketed-qs filter grammar <c>filter[&lt;field&gt;][&lt;op&gt;]=&lt;value&gt;</c>
+    /// (and the <c>filter[&lt;field&gt;]=&lt;value&gt;</c> sugar form for <c>eq</c>) from a
+    /// raw URL query string. Validates each entry against <see cref="FilterAllowlist"/>
+    /// and coerces the value to the field's substrate type.
+    /// </summary>
+    private static FilterResult ParseFilter(string rawQuery)
+    {
+        if (string.IsNullOrEmpty(rawQuery)) return FilterResult.Ok(new());
+        var predicates = new List<FilterPredicate>();
+        foreach (var pair in rawQuery.Split('&'))
+        {
+            if (pair.Length == 0) continue;
+            int eq = pair.IndexOf('=');
+            string rawKey = eq < 0 ? pair : pair.Substring(0, eq);
+            string rawValue = eq < 0 ? "" : pair.Substring(eq + 1);
+            string key = Uri.UnescapeDataString(rawKey.Replace('+', ' '));
+            string value = Uri.UnescapeDataString(rawValue.Replace('+', ' '));
+            if (!key.StartsWith("filter[", StringComparison.Ordinal)) continue;
+
+            int firstClose = key.IndexOf(']', 7);
+            if (firstClose < 0) continue;
+            string field = key.Substring(7, firstClose - 7);
+            string op;
+            int rest = firstClose + 1;
+            if (rest >= key.Length)
+            {
+                op = "eq";
+            }
+            else if (key[rest] == '[')
+            {
+                int secondClose = key.IndexOf(']', rest + 1);
+                if (secondClose < 0) continue;
+                op = key.Substring(rest + 1, secondClose - rest - 1);
+            }
+            else
+            {
+                continue;
+            }
+
+            if (!FilterAllowlist.TryGetValue(field, out var rule))
+                return FilterResult.Err("invalid_filter_field");
+            if (!rule.Ops.Contains(op))
+                return FilterResult.Err("invalid_filter_op");
+            object? coerced = CoerceValue(value, rule.SubType, op);
+            if (ReferenceEquals(coerced, InvalidValue))
+                return FilterResult.Err("invalid_filter_value");
+            predicates.Add(new FilterPredicate(field, op, coerced));
+        }
+        return FilterResult.Ok(predicates);
+    }
+
+    /// <summary>Coerce a raw URL-decoded string into a Npgsql-bindable value for <paramref name="op"/>.</summary>
+    private static object? CoerceValue(string raw, string subType, string op)
+    {
+        if (op == "isNull")
+        {
+            if (raw == "true") return true;
+            if (raw == "false") return false;
+            return InvalidValue;
+        }
+        if (op == "in")
+        {
+            var parts = raw.Split(',');
+            var list = new List<object?>(parts.Length);
+            foreach (var p in parts)
+            {
+                var v = CoerceScalar(p.Trim(), subType);
+                if (ReferenceEquals(v, InvalidValue)) return InvalidValue;
+                list.Add(v);
+            }
+            return list;
+        }
+        return CoerceScalar(raw, subType);
+    }
+
+    /// <summary>Coerce a single value (non-list, non-isNull) into a Npgsql-bindable.</summary>
+    private static object? CoerceScalar(string raw, string subType)
+    {
+        switch (subType)
+        {
+            case "string": return raw;
+            case "datetime":
+                try { return ParseTimestamp(raw); }
+                catch (Exception) { return InvalidValue; }
+            case "boolean":
+                if (raw == "true") return true;
+                if (raw == "false") return false;
+                return InvalidValue;
+            case "number":
+                if (long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)) return n;
+                return InvalidValue;
+            default: return InvalidValue;
+        }
+    }
+
+    /// <summary>
+    /// Append a <c>" WHERE ..."</c> clause built from <paramref name="predicates"/>
+    /// (or an empty string when the list is empty), pushing each bind value
+    /// onto <paramref name="bindParams"/> in positional order. Multiple
+    /// predicates AND together.
+    /// </summary>
+    private static string BuildWhere(List<FilterPredicate> predicates, List<object?> bindParams)
+    {
+        if (predicates.Count == 0) return "";
+        var sb = new StringBuilder(" WHERE ");
+        bool first = true;
+        foreach (var p in predicates)
+        {
+            if (!first) sb.Append(" AND ");
+            first = false;
+            string col = "\"" + p.Field + "\"";
+            switch (p.Op)
+            {
+                case "eq":  sb.Append(col).Append(" = @p").Append(bindParams.Count);  bindParams.Add(p.Value); break;
+                case "ne":  sb.Append(col).Append(" <> @p").Append(bindParams.Count); bindParams.Add(p.Value); break;
+                case "gt":  sb.Append(col).Append(" > @p").Append(bindParams.Count);  bindParams.Add(p.Value); break;
+                case "gte": sb.Append(col).Append(" >= @p").Append(bindParams.Count); bindParams.Add(p.Value); break;
+                case "lt":  sb.Append(col).Append(" < @p").Append(bindParams.Count);  bindParams.Add(p.Value); break;
+                case "lte": sb.Append(col).Append(" <= @p").Append(bindParams.Count); bindParams.Add(p.Value); break;
+                case "like": sb.Append(col).Append(" LIKE @p").Append(bindParams.Count); bindParams.Add(p.Value); break;
+                case "isNull":
+                    if (p.Value is true) sb.Append(col).Append(" IS NULL");
+                    else sb.Append(col).Append(" IS NOT NULL");
+                    break;
+                case "in":
+                    var items = (List<object?>)p.Value!;
+                    sb.Append(col).Append(" IN (");
+                    for (int i = 0; i < items.Count; i++)
+                    {
+                        if (i > 0) sb.Append(", ");
+                        sb.Append("@p").Append(bindParams.Count);
+                        bindParams.Add(items[i]);
+                    }
+                    sb.Append(')');
+                    break;
+                default: throw new InvalidOperationException("unknown filter op: " + p.Op);
+            }
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>Bind each value positionally as <c>@p0..@pN</c>.</summary>
+    private static void BindAll(NpgsqlCommand cmd, List<object?> values)
+    {
+        for (int i = 0; i < values.Count; i++)
+            cmd.Parameters.AddWithValue("@p" + i, values[i] ?? (object)DBNull.Value);
     }
 
     private async Task GetAuthorAsync(HttpListenerContext ctx, string idStr)

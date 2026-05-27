@@ -55,6 +55,7 @@ class KotlinCodegenSnapshotTest {
                     "relations"  -> KotlinRelationsGenerator()
                     "storedproc" -> KotlinStoredProcGenerator()
                     "controller" -> KotlinSpringControllerGenerator()
+                    "filter-allowlist" -> KotlinFilterAllowlistGenerator()
                     else -> fail("unknown generator name in config: $g")
                 }
                 val args = mutableMapOf("outputDir" to outDir.toString())

@@ -114,3 +114,45 @@ def test_view_kind_skipped() -> None:
         package="acme::blog",
     )
     assert render_router(view) is None
+
+
+def test_router_imports_filter_allowlist_module_and_parser() -> None:
+    """FR-009: the router must import the per-entity allowlist constants from
+    the sibling `<entity_snake>_filter_allowlist.py` module + the shared
+    `parse_filter` helper from `metaobjects.codegen.runtime.filter_parser`."""
+    out = _require(_author())
+    # Shared runtime helper import — used by the list handler.
+    assert "from metaobjects.codegen.runtime.filter_parser import" in out
+    assert "FilterPredicate" in out
+    assert "parse_filter" in out
+    # Sibling allowlist module import — emitted as a relative import so the
+    # router + allowlist live in the same generated package.
+    assert "from .author_filter_allowlist import" in out
+    assert "AUTHOR_FILTER_FIELDS" in out
+    assert "AUTHOR_FILTER_OPS_BY_FIELD" in out
+
+
+def test_router_list_handler_calls_parse_filter() -> None:
+    """FR-009: the generated `list_authors` handler must accept the FastAPI
+    Request, call `parse_filter(request.query_params, FIELDS, OPS)`, raise
+    400 on `error_envelope`, and thread `predicates` into `repo.list` /
+    `repo.count`."""
+    out = _require(_author())
+    # Handler takes the Request (so it can read raw bracketed-qs params).
+    assert "request: Request" in out
+    # FastAPI's Request import must be present in the import line.
+    assert "from fastapi import" in out and "Request" in out
+    # Calls the shared parser against the allowlist constants.
+    assert (
+        "parse_filter(request.query_params, AUTHOR_FILTER_FIELDS, AUTHOR_FILTER_OPS_BY_FIELD)"
+        in out
+    )
+    # On error_envelope -> 400 with the envelope as the detail body.
+    assert "filter_result.error_envelope" in out
+    assert "raise HTTPException(status_code=400, detail=filter_result.error_envelope)" in out
+    # Predicates thread through to the repository's list + count.
+    assert "predicates = filter_result.predicates" in out
+    assert "repo.list(actual_limit, actual_offset, sort_clause, predicates)" in out
+    assert "repo.count(predicates)" in out
+    # Repository protocol gains the filters parameter on list + count.
+    assert "filters: list[FilterPredicate]" in out

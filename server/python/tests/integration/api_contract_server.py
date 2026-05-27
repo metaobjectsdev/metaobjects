@@ -3,12 +3,19 @@
 
 Why hand-rolled (vs running ``router_generator`` + a real consumer): the
 generator emits a router that depends on a consumer-supplied
-``AuthorRepository`` protocol implementation; for a 10-route contract test,
+``AuthorRepository`` protocol implementation; for a 20-route contract test,
 hand-wiring an equivalent FastAPI app + a thin psycopg-like repo against
 the testcontainer is the minimum-friction path. The handler shape, status
 codes, and wire envelopes mirror the generator output byte-for-byte (and
 the cross-port Java / Kotlin / C# servers). The corpus is the contract
 both must satisfy.
+
+Filter handling (FR-009): the FastAPI app parses
+``filter[<field>][<op>]=<value>`` via the shared
+``metaobjects.codegen.runtime.filter_parser`` (the same helper the
+generated routers import), validates against the per-entity allowlist
+below, and builds a pg8000-parameterized WHERE clause. Mirrors the
+cross-port wire grammar exactly.
 
 Backend: pg8000 (pure-python DB-API driver — same driver used by the
 existing ``query_runner.py``). Schema is applied with raw DDL because
@@ -24,6 +31,8 @@ import pg8000.dbapi as pg8000
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse, Response
 
+from metaobjects.codegen.runtime.filter_parser import FilterPredicate, parse_filter
+
 from .postgres_container import PostgresInfo
 
 
@@ -31,8 +40,115 @@ from .postgres_container import PostgresInfo
 # fields outside it elicit the cross-port 400 invalid_sort envelope.
 _SORT_ALLOWLIST: frozenset[str] = frozenset({"id", "name", "createdAt"})
 
+# Per-entity FR-009 filter allowlist for Author. Mirror of what
+# `filter_allowlist_generator` would emit for the Author entity (the
+# integration test is hand-wired so we duplicate the constants here; the
+# codegen-side `test_filter_allowlist_generator.py` covers the
+# generator-emitted shape against a separate Author fixture).
+_AUTHOR_FILTER_FIELDS: frozenset[str] = frozenset({"id", "name", "bio", "createdAt"})
+_AUTHOR_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {
+    "id": frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}),
+    "name": frozenset({"eq", "ne", "in", "like", "isNull"}),
+    "bio": frozenset({"eq", "ne", "in", "like", "isNull"}),
+    "createdAt": frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "isNull"}),
+}
+
+# Substrate subtypes per field — drives pg8000 value coercion for the
+# parameter binds (the cross-port parser is substrate-agnostic; the
+# scalar→DB-type coercion lives in the repository / server layer).
+_AUTHOR_FIELD_SUBTYPE: dict[str, str] = {
+    "id": "number",
+    "name": "string",
+    "bio": "string",
+    "createdAt": "datetime",
+}
+
 # ISO-8601 without zone, matching the seed.json + cross-port wire format.
 _TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%S"
+
+
+# Sentinel for coercion failure (mirrors AuthorApiServer.java).
+_INVALID_COERCION = object()
+
+
+def _coerce_scalar(raw: str, sub_type: str) -> Any:
+    """Coerce a raw URL-decoded string to a pg8000-bindable value for a single
+    column subtype. Returns _INVALID_COERCION on parse failure."""
+    if sub_type == "string":
+        return raw
+    if sub_type == "number":
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return _INVALID_COERCION
+    if sub_type == "datetime":
+        try:
+            return _parse_timestamp(raw)
+        except (TypeError, ValueError):
+            return _INVALID_COERCION
+    if sub_type == "boolean":
+        if raw == "true":
+            return True
+        if raw == "false":
+            return False
+        return _INVALID_COERCION
+    return _INVALID_COERCION
+
+
+def _build_where(predicates: list[FilterPredicate]) -> tuple[str, list[Any], str | None]:
+    """Build a `" WHERE ..."` clause + bound params from `predicates`.
+
+    Returns `(sql_fragment, bind_params, error_envelope_key)`. On a
+    coercion failure (numeric-op on non-numeric URL value), returns
+    `("", [], "invalid_filter_value")` so the caller can emit the
+    cross-port 400 envelope. Multiple predicates AND together.
+    """
+    if not predicates:
+        return "", [], None
+    sql_parts: list[str] = []
+    params: list[Any] = []
+    for p in predicates:
+        col = f'"{p.field}"'
+        sub_type = _AUTHOR_FIELD_SUBTYPE.get(p.field, "string")
+        op = p.op
+        value = p.value
+        if op == "isNull":
+            sql_parts.append(f"{col} IS NULL" if value is True else f"{col} IS NOT NULL")
+            continue
+        if op == "in":
+            assert isinstance(value, list)
+            coerced: list[Any] = []
+            for raw in value:
+                c = _coerce_scalar(raw, sub_type)
+                if c is _INVALID_COERCION:
+                    return "", [], "invalid_filter_value"
+                coerced.append(c)
+            placeholders = ", ".join(["%s"] * len(coerced))
+            sql_parts.append(f"{col} IN ({placeholders})")
+            params.extend(coerced)
+            continue
+        # eq / ne / gt / gte / lt / lte / like → single scalar bind.
+        scalar = _coerce_scalar(str(value), sub_type)
+        if scalar is _INVALID_COERCION:
+            return "", [], "invalid_filter_value"
+        if op == "eq":
+            sql_parts.append(f"{col} = %s")
+        elif op == "ne":
+            sql_parts.append(f"{col} <> %s")
+        elif op == "gt":
+            sql_parts.append(f"{col} > %s")
+        elif op == "gte":
+            sql_parts.append(f"{col} >= %s")
+        elif op == "lt":
+            sql_parts.append(f"{col} < %s")
+        elif op == "lte":
+            sql_parts.append(f"{col} <= %s")
+        elif op == "like":
+            sql_parts.append(f"{col} LIKE %s")
+        else:
+            return "", [], "invalid_filter_value"
+        params.append(scalar)
+    return " WHERE " + " AND ".join(sql_parts), params, None
 
 
 # ---------------------------------------------------------------------------
@@ -92,25 +208,47 @@ class AuthorRepository:
 
     # ----- Query verbs ------------------------------------------------------
 
-    def list(self, limit: int | None, offset: int, sort_field: str, sort_dir: str) -> list[dict[str, Any]]:
+    def list(
+        self,
+        limit: int | None,
+        offset: int,
+        sort_field: str,
+        sort_dir: str,
+        where_clause: str = "",
+        where_params: list[Any] | None = None,
+    ) -> list[dict[str, Any]]:
         sql = 'SELECT id, name, bio, "createdAt" FROM "authors"'
+        sql += where_clause
         sql += f' ORDER BY "{sort_field}" {sort_dir}'
         if limit is not None:
             sql += f" LIMIT {int(limit)}"
         sql += f" OFFSET {int(offset)}"
+        params = tuple(where_params or ())
         with closing(self._connect()) as conn:
             cur = conn.cursor()
             try:
-                cur.execute(sql)
+                if params:
+                    cur.execute(sql, params)
+                else:
+                    cur.execute(sql)
                 return [_row_to_dict(row) for row in cur.fetchall()]
             finally:
                 cur.close()
 
-    def count(self) -> int:
+    def count(
+        self,
+        where_clause: str = "",
+        where_params: list[Any] | None = None,
+    ) -> int:
+        sql = 'SELECT COUNT(*) FROM "authors"' + where_clause
+        params = tuple(where_params or ())
         with closing(self._connect()) as conn:
             cur = conn.cursor()
             try:
-                cur.execute('SELECT COUNT(*) FROM "authors"')
+                if params:
+                    cur.execute(sql, params)
+                else:
+                    cur.execute(sql)
                 return int(cur.fetchone()[0])
             finally:
                 cur.close()
@@ -228,6 +366,7 @@ def make_app(repo: AuthorRepository) -> FastAPI:
     # GET /api/authors
     @app.get("/api/authors")
     def list_authors(
+        request: Request,
         limit: int | None = None,
         offset: int | None = None,
         sort: str | None = None,
@@ -244,9 +383,21 @@ def make_app(repo: AuthorRepository) -> FastAPI:
             if direction not in ("asc", "desc"):
                 return JSONResponse(status_code=400, content={"error": "invalid_sort"})
             sort_field, sort_dir = field, direction.upper()
-        rows = repo.list(limit, actual_offset, sort_field, sort_dir)
+        # FR-009: parse `filter[<field>][<op>]=<value>` from the raw query
+        # params via the shared codegen-runtime helper, then coerce to a
+        # pg8000-parameterized WHERE clause + bind params (column subtype
+        # drives the coercion). Same parser the generated routers call.
+        filter_result = parse_filter(
+            request.query_params, _AUTHOR_FILTER_FIELDS, _AUTHOR_FILTER_OPS_BY_FIELD
+        )
+        if filter_result.error_envelope is not None:
+            return JSONResponse(status_code=400, content=filter_result.error_envelope)
+        where_clause, where_params, where_err = _build_where(filter_result.predicates)
+        if where_err is not None:
+            return JSONResponse(status_code=400, content={"error": where_err})
+        rows = repo.list(limit, actual_offset, sort_field, sort_dir, where_clause, where_params)
         if withCount == 1:
-            return {"rows": rows, "total": repo.count()}
+            return {"rows": rows, "total": repo.count(where_clause, where_params)}
         return rows
 
     # GET /api/authors/{id}

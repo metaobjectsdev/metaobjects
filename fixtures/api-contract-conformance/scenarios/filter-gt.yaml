@@ -1,0 +1,13 @@
+name: filter-gt
+description: >
+  GET /api/authors?filter[id][gt]=2 — `gt` on a numeric field returns rows
+  whose id is strictly greater than 2 (ids 3, 4, 5).
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?filter[id][gt]=2
+    expect:
+      status: 200
+      body:
+        ids: [3, 4, 5]
+        length: 3

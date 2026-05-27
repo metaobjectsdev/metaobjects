@@ -1,0 +1,15 @@
+name: filter-and
+description: >
+  GET /api/authors?filter[name][like]=A%25&filter[id][gt]=1 — multiple filter
+  params AND together implicitly. Names starting with `A` AND id > 1 leaves
+  only Alan Turing (id=2). Verifies the implicit-AND combinator across
+  multiple `filter[...]` query parameters.
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?filter[name][like]=A%25&filter[id][gt]=1
+    expect:
+      status: 200
+      body:
+        ids: [2]
+        length: 1

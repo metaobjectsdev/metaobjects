@@ -3,33 +3,6 @@
 This document tracks deliberate Day-1 deferrals in the Python codegen
 (`metaobjects.codegen.generators`).
 
-## Filter operators (`eq` / `ne` / `gt` / `gte` / `lt` / `lte` / `in` / `like` / `isNull`)
-
-**Status:** deferred (`router_generator` only). Matches the Java / Kotlin / C#
-Day-1 deferral pattern.
-
-The cross-port REST API contract
-([`docs/features/api-contract.md`](../../../../../docs/features/api-contract.md))
-describes a bracketed query-string grammar (`filter[<field>][<op>]=<value>`)
-with eight operators, gated per field subtype. The TypeScript reference
-port ships full support via `parseFilterParams` in
-`@metaobjectsdev/runtime-ts/drizzle-fastify`.
-
-The Python `router_generator` does **not** parse this grammar at the
-router layer in Day 1. Only `sort`, `limit`, `offset`, and `withCount`
-are honoured. A request containing `filter[...]=...` parameters is
-currently silently ignored by the generated router. Consumers that need
-filter support today must add their own query-string handling via a
-FastAPI dependency that reads `request.query_params` and pass through to
-the repository.
-
-**When it ships:** a future `filter_allowlist_generator` will emit a
-static `<Entity>FilterAllowlist` per entity (mirroring TS Project D +
-the cross-port allowlist shape), and the generated `list_*()` handler
-will delegate to a `parse_filter_qs(qs, allowlist)` helper that returns
-either a Pydantic-validated filter object or a typed query-builder
-expression for the repository to apply.
-
 ## Single-field, `int`-typed primary keys only
 
 **Status:** assumption baked into Day 1.

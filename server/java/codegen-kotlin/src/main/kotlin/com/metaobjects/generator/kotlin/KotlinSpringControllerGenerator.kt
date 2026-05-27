@@ -1,6 +1,18 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.field.BooleanField
+import com.metaobjects.field.CurrencyField
+import com.metaobjects.field.DateField
+import com.metaobjects.field.DecimalField
+import com.metaobjects.field.DoubleField
+import com.metaobjects.field.EnumField
+import com.metaobjects.field.FloatField
+import com.metaobjects.field.IntegerField
+import com.metaobjects.field.LongField
 import com.metaobjects.field.ObjectField
+import com.metaobjects.field.StringField
+import com.metaobjects.field.TimeField
+import com.metaobjects.field.TimestampField
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.identity.MetaIdentity
@@ -35,8 +47,15 @@ import org.slf4j.LoggerFactory
  *   <li>HTTP 400 envelope: {@code { "error": "invalid_<thing>" }}.</li>
  * </ul>
  *
- * <p>Filter operators ({@code eq/ne/gt/...}) are a known gap, mirroring the C# port's
- * {@code Generators/KNOWN_GAPS.md}; only sort/pagination/withCount are honoured today.
+ * <p>FR-009 filter operators ({@code eq / ne / gt / gte / lt / lte / in /
+ * like / isNull}) ship via the {@code <Entity>FilterAllowlist} constant
+ * emitted by {@link KotlinFilterAllowlistGenerator}. The controller emits an
+ * inline {@code parse<Entity>Filter} + {@code <Entity>WhereOp} helper pair —
+ * the former parses the bracketed-qs grammar against the allowlist, the
+ * latter translates each predicate into an Exposed {@code Op<Boolean>}
+ * bound against the generated {@code <Entity>Table}. Multiple predicates
+ * AND together; error envelopes are the cross-port
+ * {@code invalid_filter_field / invalid_filter_op / invalid_filter_value}.
  *
  * <p>The generated controller delegates to the {@code <Entity>Table} Exposed object
  * emitted by {@link KotlinExposedTableGenerator}, wrapped in {@code transaction { }}
@@ -121,12 +140,23 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
             .filterNot { it is ObjectField }
             .map { it.name }
 
+        // Per-field subtype map (filter dispatch); only used inside the generated
+        // file. Field subtype drives both the per-field dispatch arm (string vs
+        // numeric vs boolean vs timestamp) and the value coercion path.
+        val scalarFields: List<Pair<String, String?>> = entity.metaFields
+            .filterNot { it is ObjectField }
+            .map { it.name to it.subType }
+
+        val allowlistName = "${shortName}FilterAllowlist"
         val source = buildString {
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")
             }
+            append("import org.jetbrains.exposed.sql.Op\n")
             append("import org.jetbrains.exposed.sql.SortOrder\n")
             append("import org.jetbrains.exposed.sql.ResultRow\n")
+            append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
+            append("import org.jetbrains.exposed.sql.and\n")
             append("import org.jetbrains.exposed.sql.deleteWhere\n")
             append("import org.jetbrains.exposed.sql.insert\n")
             append("import org.jetbrains.exposed.sql.selectAll\n")
@@ -144,6 +174,13 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
             append("import org.springframework.web.bind.annotation.RequestMapping\n")
             append("import org.springframework.web.bind.annotation.RequestParam\n")
             append("import org.springframework.web.bind.annotation.RestController\n")
+            append("import java.net.URLDecoder\n")
+            append("import java.nio.charset.StandardCharsets\n")
+            append("import java.sql.Timestamp\n")
+            append("import java.time.LocalDate\n")
+            append("import java.time.LocalDateTime\n")
+            append("import java.time.LocalTime\n")
+            append("import java.time.format.DateTimeFormatter\n")
             append("\n")
             // Sort allowlist — static set; unknown fields → 400. Emitted at file level so it
             // remains accessible to the handler functions without polluting the controller's
@@ -172,6 +209,19 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
             append("    return field to dir\n")
             append("}\n\n")
 
+            // FR-009 filter pipeline. Three stages:
+            //   1. data class ${shortName}FilterPredicate — parsed + validated one
+            //      filter[<f>][<op>]=<v> entry (value already coerced to a Kotlin type).
+            //   2. parse${shortName}Filter — walks the raw key→value map (each key is
+            //      URL-decoded by Spring), matching the bracketed grammar against
+            //      ${allowlistName}.FIELDS + .OPS_BY_FIELD. Returns either predicates or
+            //      one of the cross-port error envelope keys.
+            //   3. ${shortName}WhereOp — converts the predicate list into an Exposed
+            //      Op<Boolean> bound against ${tableObjectName}'s columns. Multiple
+            //      predicates AND together. Per-field arms know each column's Kotlin
+            //      type at compile time (no reflection / runtime cast surprises).
+            emitFilterPipeline(this, shortName, tableObjectName, allowlistName, scalarFields)
+
             // rowTo<Entity>: ResultRow → data class. Scalar fields only; ObjectField is
             // skipped here for the same reason as the sort allowlist (the Table object's
             // jsonb/flattened column shape would require type-specific deserialization
@@ -189,15 +239,29 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
             append("@RequestMapping(\"$routeBase\")\n")
             append("class ${shortName}Controller {\n\n")
 
-            // List handler — pagination + sort + withCount.
+            // List handler — pagination + sort + withCount + FR-009 filter operators.
+            //
+            // `allParams: Map<String, String>` is Spring's collapsed view of every query
+            // parameter; the bracketed filter keys survive (Spring does not strip [ ] /
+            // they are URL-decoded but otherwise opaque). Same-key collisions in repeat
+            // params would only retain one value — none of the cross-port FR-009
+            // scenarios exercise that case (each filter[<f>][<op>] occurs at most once
+            // per request).
             append("    @GetMapping\n")
             append("    fun list(\n")
             append("        @RequestParam(required = false) limit: Int?,\n")
             append("        @RequestParam(required = false) offset: Int?,\n")
             append("        @RequestParam(required = false) sort: String?,\n")
             append("        @RequestParam(required = false, name = \"withCount\") withCount: Int?,\n")
+            append("        @RequestParam allParams: Map<String, String>,\n")
             append("    ): ResponseEntity<Any> = transaction {\n")
-            append("        var q = ${tableObjectName}.selectAll()\n")
+            append("        // FR-009 filter operators — short-circuit 400 on invalid field/op/value.\n")
+            append("        val filterResult = parse${shortName}Filter(allParams)\n")
+            append("        if (filterResult.error != null) {\n")
+            append("            return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error) as Any)\n")
+            append("        }\n")
+            append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
+            append("        var q = if (whereOp != null) ${tableObjectName}.selectAll().where { whereOp } else ${tableObjectName}.selectAll()\n")
             append("        if (sort != null) {\n")
             append("            val parsed = parse${shortName}Sort(sort)\n")
             append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\") as Any)\n")
@@ -269,6 +333,259 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("${shortName}Controller.kt")
         outFile.parent?.let { Files.createDirectories(it) }
         Files.writeString(outFile, source)
+    }
+
+    /**
+     * Emit the three-piece FR-009 filter pipeline (data class + parse function +
+     * Exposed dispatch function) into [out]. The dispatcher uses
+     * {@code SqlExpressionBuilder.{eq,less,greater,inList,like}} extension functions
+     * — these resolve against the generated {@code <Entity>Table}'s typed
+     * {@code Column<T>} members so each per-field arm is type-safe at compile time.
+     *
+     * <p>[scalarFields] is the {@code (name, subType)} pair list filtered to scalar
+     * columns (no [ObjectField]). The subtype drives:
+     * <ul>
+     *   <li>which value-coercion path runs in {@code parse<Entity>Filter}
+     *       (string passthrough vs {@code Long.parseLong} vs {@code Timestamp.valueOf}
+     *       vs {@code Boolean} parse, etc.);</li>
+     *   <li>the dispatch arm shape in {@code <Entity>WhereOp} (a {@code Long} field
+     *       handles {@code gt/gte/lt/lte} via Exposed's overload-on-T comparison
+     *       extensions; a {@code String} field only handles {@code like}).</li>
+     * </ul>
+     */
+    private fun emitFilterPipeline(
+        out: StringBuilder,
+        shortName: String,
+        tableObjectName: String,
+        allowlistName: String,
+        scalarFields: List<Pair<String, String?>>,
+    ) {
+        out.append("/** GENERATED — single parsed + validated FR-009 filter predicate. */\n")
+        out.append("private data class ${shortName}FilterPredicate(val field: String, val op: String, val value: Any?)\n\n")
+
+        out.append("/** GENERATED — parse outcome: either a list of predicates or a cross-port error envelope key. */\n")
+        out.append("private data class ${shortName}FilterResult(val predicates: List<${shortName}FilterPredicate>, val error: String?)\n\n")
+
+        // Parser — walks the URL-decoded Map<String, String> and matches each
+        // filter[<f>][<op>]=<v> key against the per-entity FIELDS + OPS_BY_FIELD
+        // allowlist. coerce<X>Value() lookups own the per-subtype value coercion.
+        out.append("/**\n")
+        out.append(" * GENERATED — parse the bracketed-qs FR-009 filter grammar from a URL-decoded\n")
+        out.append(" * {@code allParams} map. Returns either a list of validated predicates or one of\n")
+        out.append(" * the cross-port error envelope keys ({@code invalid_filter_field /\n")
+        out.append(" * invalid_filter_op / invalid_filter_value}).\n")
+        out.append(" */\n")
+        out.append("private fun parse${shortName}Filter(allParams: Map<String, String>): ${shortName}FilterResult {\n")
+        out.append("    val out = mutableListOf<${shortName}FilterPredicate>()\n")
+        out.append("    for ((rawKey, value) in allParams) {\n")
+        out.append("        if (!rawKey.startsWith(\"filter[\")) continue\n")
+        out.append("        val firstClose = rawKey.indexOf(']', 7)\n")
+        out.append("        if (firstClose < 0) continue\n")
+        out.append("        val field = rawKey.substring(7, firstClose)\n")
+        out.append("        val rest = firstClose + 1\n")
+        out.append("        val op: String = when {\n")
+        out.append("            rest >= rawKey.length -> \"eq\"\n")
+        out.append("            rawKey[rest] == '[' -> {\n")
+        out.append("                val secondClose = rawKey.indexOf(']', rest + 1)\n")
+        out.append("                if (secondClose < 0) continue\n")
+        out.append("                rawKey.substring(rest + 1, secondClose)\n")
+        out.append("            }\n")
+        out.append("            else -> continue\n")
+        out.append("        }\n")
+        out.append("        if (field !in ${allowlistName}.FIELDS) return ${shortName}FilterResult(emptyList(), \"invalid_filter_field\")\n")
+        out.append("        val ops = ${allowlistName}.OPS_BY_FIELD[field]\n")
+        out.append("        if (ops == null || op !in ops) return ${shortName}FilterResult(emptyList(), \"invalid_filter_op\")\n")
+        out.append("        val coerced = coerce${shortName}Value(field, op, value)\n")
+        out.append("            ?: return ${shortName}FilterResult(emptyList(), \"invalid_filter_value\")\n")
+        out.append("        out.add(${shortName}FilterPredicate(field, op, coerced.value))\n")
+        out.append("    }\n")
+        out.append("    return ${shortName}FilterResult(out, null)\n")
+        out.append("}\n\n")
+
+        // Boxed result so we can distinguish "coercion failed" (null return) from
+        // "valid null value" (Box(null)).
+        out.append("/** Box result: null = invalid; Box(value) = coerced. Distinguishes failure from a legitimate null. */\n")
+        out.append("private data class ${shortName}CoercedValue(val value: Any?)\n\n")
+
+        // Value coercion — split by field then by op. `isNull` is universal (true/false).
+        // `in` returns a List<T>. Scalar ops return the bare Kotlin type for that field.
+        out.append("private fun coerce${shortName}Value(field: String, op: String, raw: String): ${shortName}CoercedValue? {\n")
+        out.append("    if (op == \"isNull\") return when (raw) {\n")
+        out.append("        \"true\" -> ${shortName}CoercedValue(true)\n")
+        out.append("        \"false\" -> ${shortName}CoercedValue(false)\n")
+        out.append("        else -> null\n")
+        out.append("    }\n")
+        out.append("    return when (field) {\n")
+        for ((fname, subType) in scalarFields) {
+            out.append("        \"$fname\" -> ")
+            when (subType) {
+                StringField.SUBTYPE_STRING, EnumField.SUBTYPE_ENUM ->
+                    out.append("if (op == \"in\") ${shortName}CoercedValue(raw.split(\",\").map { it.trim() }) else ${shortName}CoercedValue(raw)\n")
+                IntegerField.SUBTYPE_INT ->
+                    out.append("coerce${shortName}Int(op, raw)\n")
+                LongField.SUBTYPE_LONG, CurrencyField.SUBTYPE_CURRENCY ->
+                    out.append("coerce${shortName}Long(op, raw)\n")
+                FloatField.SUBTYPE_FLOAT, DoubleField.SUBTYPE_DOUBLE, DecimalField.SUBTYPE_DECIMAL ->
+                    out.append("coerce${shortName}Double(op, raw)\n")
+                BooleanField.SUBTYPE_BOOLEAN ->
+                    out.append("coerce${shortName}Boolean(op, raw)\n")
+                DateField.SUBTYPE_DATE ->
+                    out.append("coerce${shortName}Date(op, raw)\n")
+                TimestampField.SUBTYPE_TIMESTAMP ->
+                    out.append("coerce${shortName}Timestamp(op, raw)\n")
+                TimeField.SUBTYPE_TIME ->
+                    out.append("coerce${shortName}Time(op, raw)\n")
+                else ->
+                    // Unrecognized subtype — fall through to a string pass-through. This branch
+                    // is unreachable for fields that are actually @filterable (those subtypes
+                    // would have been rejected by the allowlist's op gating already) but covers
+                    // the dispatch's `when` exhaustiveness.
+                    out.append("if (op == \"in\") ${shortName}CoercedValue(raw.split(\",\").map { it.trim() }) else ${shortName}CoercedValue(raw)\n")
+            }
+        }
+        out.append("        else -> null\n")
+        out.append("    }\n")
+        out.append("}\n\n")
+
+        // Per-type coercion helpers. Each tolerates the `in` operator (returns List<T>)
+        // and the scalar comparison ops (returns the bare type). Numeric parse failure
+        // → null → bubbled up as `invalid_filter_value`.
+        emitTypedCoercer(out, shortName, "Long", "java.lang.Long.parseLong")
+        emitTypedCoercer(out, shortName, "Int", "java.lang.Integer.parseInt")
+        emitTypedCoercer(out, shortName, "Double", "java.lang.Double.parseDouble")
+        out.append("private fun coerce${shortName}Boolean(op: String, raw: String): ${shortName}CoercedValue? {\n")
+        out.append("    val parse: (String) -> Boolean? = { s -> when (s) { \"true\" -> true; \"false\" -> false; else -> null } }\n")
+        out.append("    if (op == \"in\") {\n")
+        out.append("        val parts = raw.split(\",\").map { it.trim() }\n")
+        out.append("        val list = parts.map { parse(it) ?: return null }\n")
+        out.append("        return ${shortName}CoercedValue(list)\n")
+        out.append("    }\n")
+        out.append("    return ${shortName}CoercedValue(parse(raw) ?: return null)\n")
+        out.append("}\n\n")
+        out.append("private fun coerce${shortName}Date(op: String, raw: String): ${shortName}CoercedValue? {\n")
+        out.append("    val parse: (String) -> LocalDate? = { s -> runCatching { LocalDate.parse(s) }.getOrNull() }\n")
+        out.append("    if (op == \"in\") {\n")
+        out.append("        val parts = raw.split(\",\").map { it.trim() }\n")
+        out.append("        val list = parts.map { parse(it) ?: return null }\n")
+        out.append("        return ${shortName}CoercedValue(list)\n")
+        out.append("    }\n")
+        out.append("    return ${shortName}CoercedValue(parse(raw) ?: return null)\n")
+        out.append("}\n\n")
+        out.append("private val ${shortName}TimestampFmt: DateTimeFormatter = DateTimeFormatter.ofPattern(\"yyyy-MM-dd'T'HH:mm:ss\")\n\n")
+        out.append("private fun coerce${shortName}Timestamp(op: String, raw: String): ${shortName}CoercedValue? {\n")
+        out.append("    val parse: (String) -> LocalDateTime? = { s -> runCatching { LocalDateTime.parse(s, ${shortName}TimestampFmt) }.getOrNull() }\n")
+        out.append("    if (op == \"in\") {\n")
+        out.append("        val parts = raw.split(\",\").map { it.trim() }\n")
+        out.append("        val list = parts.map { parse(it) ?: return null }\n")
+        out.append("        return ${shortName}CoercedValue(list)\n")
+        out.append("    }\n")
+        out.append("    return ${shortName}CoercedValue(parse(raw) ?: return null)\n")
+        out.append("}\n\n")
+        out.append("private fun coerce${shortName}Time(op: String, raw: String): ${shortName}CoercedValue? {\n")
+        out.append("    val parse: (String) -> LocalTime? = { s -> runCatching { LocalTime.parse(s) }.getOrNull() }\n")
+        out.append("    if (op == \"in\") {\n")
+        out.append("        val parts = raw.split(\",\").map { it.trim() }\n")
+        out.append("        val list = parts.map { parse(it) ?: return null }\n")
+        out.append("        return ${shortName}CoercedValue(list)\n")
+        out.append("    }\n")
+        out.append("    return ${shortName}CoercedValue(parse(raw) ?: return null)\n")
+        out.append("}\n\n")
+
+        // Exposed `Op<Boolean>` dispatch. Per-field arm is inlined directly in
+        // <Entity>WhereOp under a single `with(SqlExpressionBuilder)` block. This
+        // keeps the column reference's compile-time Column<T> type and gives each
+        // arm access to the typed eq/less/greater/inList/like extension functions
+        // without needing context receivers (which would require an experimental
+        // compiler flag).
+        out.append("/**\n")
+        out.append(" * GENERATED — fold a list of validated predicates into an Exposed\n")
+        out.append(" * {@code Op<Boolean>}, AND-combining each predicate's column-op-value triple\n")
+        out.append(" * against ${tableObjectName}. Returns null when [predicates] is empty so the\n")
+        out.append(" * caller can elide the WHERE clause entirely.\n")
+        out.append(" */\n")
+        out.append("@Suppress(\"UNCHECKED_CAST\")\n")
+        out.append("private fun ${shortName}WhereOp(predicates: List<${shortName}FilterPredicate>): Op<Boolean>? {\n")
+        out.append("    if (predicates.isEmpty()) return null\n")
+        out.append("    return with(SqlExpressionBuilder) {\n")
+        out.append("        var combined: Op<Boolean>? = null\n")
+        out.append("        for (p in predicates) {\n")
+        out.append("            val op: Op<Boolean> = when (p.field) {\n")
+        for ((fname, subType) in scalarFields) {
+            val isStringLike = (subType == StringField.SUBTYPE_STRING || subType == EnumField.SUBTYPE_ENUM)
+            val isBoolean = (subType == BooleanField.SUBTYPE_BOOLEAN)
+            emitPerFieldDispatchArm(
+                out,
+                tableObjectName = tableObjectName,
+                fieldName = fname,
+                isStringLike = isStringLike,
+                isBoolean = isBoolean,
+            )
+        }
+        out.append("                else -> continue\n")
+        out.append("            }\n")
+        out.append("            combined = combined?.and(op) ?: op\n")
+        out.append("        }\n")
+        out.append("        combined\n")
+        out.append("    }\n")
+        out.append("}\n\n")
+    }
+
+    /**
+     * Emit one per-field arm of the {@code <Entity>WhereOp}'s {@code when (p.field)}.
+     * Each arm opens a nested {@code when (p.op)} on the 9 FR-009 ops, gated by
+     * field subtype shape: string-like fields skip the comparison ops; booleans
+     * skip everything but eq/isNull.
+     */
+    private fun emitPerFieldDispatchArm(
+        out: StringBuilder,
+        tableObjectName: String,
+        fieldName: String,
+        isStringLike: Boolean,
+        isBoolean: Boolean,
+    ) {
+        out.append("                \"$fieldName\" -> when (p.op) {\n")
+        out.append("                    \"eq\" -> ${tableObjectName}.${fieldName} eq (p.value as Any?)\n")
+        if (!isBoolean) {
+            out.append("                    \"ne\" -> ${tableObjectName}.${fieldName} neq (p.value as Any?)\n")
+        }
+        if (!isStringLike && !isBoolean) {
+            out.append("                    \"gt\" -> ${tableObjectName}.${fieldName} greater p.value!!\n")
+            out.append("                    \"gte\" -> ${tableObjectName}.${fieldName} greaterEq p.value!!\n")
+            out.append("                    \"lt\" -> ${tableObjectName}.${fieldName} less p.value!!\n")
+            out.append("                    \"lte\" -> ${tableObjectName}.${fieldName} lessEq p.value!!\n")
+        }
+        if (!isBoolean) {
+            out.append("                    \"in\" -> ${tableObjectName}.${fieldName} inList (p.value as List<Any?>)\n")
+        }
+        if (isStringLike) {
+            out.append("                    \"like\" -> ${tableObjectName}.${fieldName} like (p.value as String)\n")
+        }
+        out.append("                    \"isNull\" -> if (p.value as Boolean) ${tableObjectName}.${fieldName}.isNull() else ${tableObjectName}.${fieldName}.isNotNull()\n")
+        out.append("                    else -> throw IllegalStateException(\"unsupported op for $fieldName: \" + p.op)\n")
+        out.append("                }\n")
+    }
+
+    /**
+     * Emit a generic-shaped value coercer (handles both scalar ops and `in`) named
+     * {@code coerce<Entity><TypeSuffix>(op, raw)} that uses [parseFn] to parse a
+     * single string into the target type. Parse failure → null → propagates as
+     * {@code invalid_filter_value}.
+     */
+    private fun emitTypedCoercer(
+        out: StringBuilder,
+        shortName: String,
+        typeSuffix: String,
+        parseFn: String,
+    ) {
+        out.append("private fun coerce${shortName}${typeSuffix}(op: String, raw: String): ${shortName}CoercedValue? {\n")
+        out.append("    val parse: (String) -> Any? = { s -> runCatching { $parseFn(s) }.getOrNull() }\n")
+        out.append("    if (op == \"in\") {\n")
+        out.append("        val parts = raw.split(\",\").map { it.trim() }\n")
+        out.append("        val list = parts.map { parse(it) ?: return null }\n")
+        out.append("        return ${shortName}CoercedValue(list)\n")
+        out.append("    }\n")
+        out.append("    return ${shortName}CoercedValue(parse(raw) ?: return null)\n")
+        out.append("}\n\n")
     }
 
     /**

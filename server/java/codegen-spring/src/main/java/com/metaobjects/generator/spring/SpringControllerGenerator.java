@@ -52,9 +52,12 @@ import org.slf4j.LoggerFactory;
  *   <li>HTTP 400 envelope: {@code { "error": "invalid_<thing>" }}.</li>
  * </ul>
  *
- * <p>Filter operators ({@code eq/ne/gt/...}) are a known gap (see
- * {@code KNOWN_GAPS.md}); only sort / pagination / withCount are honoured
- * today. Mirrors the same Day-1 deferral the C# and Kotlin ports made.</p>
+ * <p>FR-009 filter operators ({@code eq / ne / gt / gte / lt / lte / in /
+ * like / isNull}) ship via the {@code <Entity>FilterAllowlist} constant
+ * emitted by {@link SpringFilterAllowlistGenerator} plus the runtime
+ * {@code FilterParser} helper — the list handler validates the
+ * {@code filter[<field>][<op>]=<value>} grammar against the allowlist and
+ * passes a {@code List<FilterPredicate>} down to the repository.</p>
  *
  * <p>The generated controller delegates to the {@code <Entity>Repository}
  * interface emitted by {@link SpringRepositoryGenerator}, which the
@@ -151,6 +154,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import org.springframework.web.bind.annotation.RequestMapping;\n");
         src.append("import org.springframework.web.bind.annotation.RequestParam;\n");
         src.append("import org.springframework.web.bind.annotation.RestController;\n");
+        src.append("import com.metaobjects.generator.spring.runtime.FilterParseResult;\n");
+        src.append("import com.metaobjects.generator.spring.runtime.FilterParser;\n");
+        src.append("import com.metaobjects.generator.spring.runtime.FilterPredicate;\n");
+        src.append("import jakarta.servlet.http.HttpServletRequest;\n");
         src.append("import java.util.List;\n");
         src.append("import java.util.Map;\n");
         src.append("import java.util.Set;\n\n");
@@ -177,13 +184,18 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        this.repository = repository;\n");
         src.append("    }\n\n");
 
-        // GET (list) — pagination + sort + withCount.
+        // GET (list) — pagination + sort + withCount + FR-009 filter operators.
+        // HttpServletRequest carries the raw query string so the bracketed
+        // filter[<field>][<op>]=<value> grammar reaches FilterParser intact
+        // (Spring's @RequestParam would collapse same-key occurrences).
+        String allowlistName = shortName + "FilterAllowlist";
         src.append("    @GetMapping\n");
         src.append("    public ResponseEntity<?> list(\n");
         src.append("            @RequestParam(required = false) Integer limit,\n");
         src.append("            @RequestParam(required = false) Integer offset,\n");
         src.append("            @RequestParam(required = false) String sort,\n");
-        src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount) {\n");
+        src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount,\n");
+        src.append("            HttpServletRequest request) {\n");
         src.append("        int actualLimit = limit != null ? limit : 50;\n");
         src.append("        int actualOffset = offset != null ? offset : 0;\n");
         src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
@@ -193,9 +205,17 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\"));\n");
         src.append("            }\n");
         src.append("        }\n");
-        src.append("        List<").append(dtoName).append("> rows = repository.list(actualLimit, actualOffset, sortClause);\n");
+        src.append("        FilterParseResult filter = FilterParser.parse(\n");
+        src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
+           .append(allowlistName).append(".OPS_BY_FIELD);\n");
+        src.append("        if (filter.error() != null) {\n");
+        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error()));\n");
+        src.append("        }\n");
+        src.append("        List<FilterPredicate> filters = filter.predicates();\n");
+        src.append("        List<").append(dtoName)
+           .append("> rows = repository.list(actualLimit, actualOffset, sortClause, filters);\n");
         src.append("        if (withCount != null && withCount == 1) {\n");
-        src.append("            long total = repository.count();\n");
+        src.append("            long total = repository.count(filters);\n");
         src.append("            return ResponseEntity.ok(Map.of(\"rows\", rows, \"total\", total));\n");
         src.append("        }\n");
         src.append("        return ResponseEntity.ok(rows);\n");
