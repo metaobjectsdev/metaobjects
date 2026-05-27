@@ -1,5 +1,7 @@
 {
   "language": "csharp",
-  "_comment": "Source-v2 (ADR-0007) registered @column on every field subtype, so the YAML D2 coercion guard now catches `column: TRUE`. All YAML conformance fixtures pass.",
-  "fixtures": []
+  "_comment": "FR5a envelope-shape gate: error-yaml-reserved-as-attr is a known cross-port drift — TS labels the cascading post-desugar error as format=\"json\" (the user only sees YAML; the JSON format leaks through TS's desugar pipeline), whereas C# threads format=\"yaml\" all the way through. C# is arguably MORE correct here per ADR-0009 §Decision, but TS is the FR5a reference port and the fixture matches what TS emits. Track until TS narrows its YAML→JSON envelope handoff (or the cross-port contract relaxes to allow either label).",
+  "fixtures": [
+    "error-yaml-reserved-as-attr"
+  ]
 }

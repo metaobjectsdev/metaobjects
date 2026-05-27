@@ -10,8 +10,20 @@ using MetaObjects;
 using MetaObjects.Core.Documentation;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
+using MetaObjects.Source;
 
 namespace MetaObjects.Conformance.Tests;
+
+/// <summary>
+/// Cross-port envelope record surfaced by <see cref="LoadOutcome.Errors"/>.
+/// Mirrors the TS <c>ErrorEnvelopeRecord</c> shape so the C# runner can do
+/// the same per-error envelope assertion the TS runner does.
+/// </summary>
+public sealed record ErrorEnvelopeRecord(
+    string Code,
+    string Format,
+    IReadOnlyList<string> Files,
+    string? JsonPath);
 
 /// <summary>
 /// Result of loading a fixture's input directory.
@@ -19,10 +31,12 @@ namespace MetaObjects.Conformance.Tests;
 /// <param name="Tree">The loaded metadata tree.</param>
 /// <param name="ErrorCodes">Error code strings collected during loading.</param>
 /// <param name="Warnings">Warning strings collected during loading.</param>
+/// <param name="Errors">Full envelope records (FR5a / ADR-0009). Populated alongside <see cref="ErrorCodes"/>.</param>
 public sealed record LoadOutcome(
     MetaRoot Tree,
     IReadOnlyList<string> ErrorCodes,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<ErrorEnvelopeRecord> Errors);
 
 /// <summary>
 /// Adapter that bridges the conformance test infrastructure to the C# MetaObjects library.
@@ -54,10 +68,53 @@ public static class ConformanceAdapter
         var registry = Provider.ComposeRegistry(resolved);
         var result = MetaDataLoader.FromDirectory(inputDir, registry);
 
+        // FR5a — surface the full envelope per error. Normalize files[] to
+        // be relative to inputDir (the harness's portable file token).
+        var envelopes = result.Errors.Select(e => BuildEnvelope(e, inputDir)).ToList();
+
         return new LoadOutcome(
             result.Root,
             result.Errors.Select(e => e.Code.ToString()).ToList(),
-            result.Warnings.ToList());
+            result.Warnings.ToList(),
+            envelopes);
+    }
+
+    private static ErrorEnvelopeRecord BuildEnvelope(MetaError err, string inputDir)
+    {
+        var code = err.Code.ToString();
+        var src = err.Envelope;
+        if (src is JsonSource js)
+        {
+            return new ErrorEnvelopeRecord(code, "json", js.Files.Select(f => RelativizeFile(f, inputDir)).ToList(), js.JsonPath);
+        }
+        if (src is YamlSource ys)
+        {
+            return new ErrorEnvelopeRecord(code, "yaml", ys.Files.Select(f => RelativizeFile(f, inputDir)).ToList(), ys.JsonPath);
+        }
+        if (src is MergedSource ms)
+        {
+            return new ErrorEnvelopeRecord(code, "merged", ms.Files.Select(f => RelativizeFile(f, inputDir)).ToList(), ms.JsonPath);
+        }
+        if (src is ResolvedSource rs)
+        {
+            return new ErrorEnvelopeRecord(code, "resolved", rs.Files.Select(f => RelativizeFile(f, inputDir)).ToList(), rs.JsonPath);
+        }
+        if (src is CodeSource)
+        {
+            return new ErrorEnvelopeRecord(code, "code", new List<string>(), null);
+        }
+        // Pre-FR5a fallback: no envelope. Synthesize a minimal $-rooted JSON shape.
+        return new ErrorEnvelopeRecord(code, "json", new List<string>(), "$");
+    }
+
+    private static string RelativizeFile(string filePath, string inputDir)
+    {
+        if (filePath.StartsWith(inputDir, StringComparison.Ordinal))
+        {
+            var rel = System.IO.Path.GetRelativePath(inputDir, filePath);
+            return rel.Replace('\\', '/');
+        }
+        return filePath.Replace('\\', '/');
     }
 
     /// <summary>

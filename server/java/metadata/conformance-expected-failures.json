@@ -1,4 +1,10 @@
 {
   "language": "java",
-  "fixtures": []
+  "_comment": "FR5a envelope-shape gates: TS is the reference port for source.format / source.files / source.jsonPath. Java drifts on four fixtures where the underlying MetaDataException is raised on a path that does not yet carry the FR5a envelope through (error-attr-wrong-type, error-extends-nonexistent, error-unknown-relationship-subtype) or has only a partial envelope (error-parse-malformed-json — code carries jsonPath '$' but empty files[]). Track until the Java loader's exception-construction sites are reconciled to TS's source-emission sites.",
+  "fixtures": [
+    "error-attr-wrong-type",
+    "error-extends-nonexistent",
+    "error-parse-malformed-json",
+    "error-unknown-relationship-subtype"
+  ]
 }

@@ -9,6 +9,22 @@ export type NodeHandle = unknown;
 /** A port's opaque resolved-tree handle. */
 export type TreeHandle = unknown;
 
+/**
+ * Cross-port envelope shape produced by the loader for each error / warning
+ * (ADR-0009). The neutral runner asserts the minimum cross-port fields
+ * (`code` + `source.format` + `source.files` + `source.jsonPath`).
+ * Ports may carry additional T2 fields (`suggestions`, `fixture`, `node`,
+ * `yamlPosition`); those are not asserted by the cross-port harness.
+ */
+export interface ErrorEnvelopeRecord {
+  readonly code: string;
+  readonly source: {
+    readonly format: string;
+    readonly files: readonly string[];
+    readonly jsonPath?: string;
+  };
+}
+
 export interface LoadOutcome {
   /** The resolved tree, or undefined when the load failed outright. */
   readonly tree?: TreeHandle;
@@ -16,6 +32,13 @@ export interface LoadOutcome {
   readonly errorCodes: string[];
   /** Warning messages the load produced (empty on success). */
   readonly warnings: string[];
+  /**
+   * Full error envelopes (FR5a / ADR-0009). Optional for backward compat
+   * with adapters that have not yet been extended; when present, the runner
+   * asserts envelope fields against the post-migration expected-errors.json
+   * shape. When absent, the runner falls back to code-set comparison only.
+   */
+  readonly errors?: readonly ErrorEnvelopeRecord[];
 }
 
 export interface ConformanceAdapter {

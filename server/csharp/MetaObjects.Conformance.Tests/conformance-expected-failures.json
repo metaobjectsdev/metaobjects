@@ -1,5 +1,8 @@
 {
   "language": "csharp",
-  "_comment": "Source-v2 (ADR-0007) un-gated the v1 source fixtures + the multi-primary + reserved-attr fixtures + the field-object-storage cluster + origin cluster + doc-common-attrs-on-all-types. All conformance fixtures pass.",
-  "fixtures": []
+  "_comment": "FR5a envelope-shape gates: TS is the reference port for source.format / source.files / source.jsonPath. C# drifts on two fixtures (parser source-threading differences): error-parse-malformed-json (the C# malformed-JSON path returns an empty files[]; TS captures the filename), and error-reserved-word-as-attr (C# threads source one level deeper, to the offending @attr; TS stops at the parent field.object). Track until the C# parser is reconciled to TS's source-emission sites.",
+  "fixtures": [
+    "error-parse-malformed-json",
+    "error-reserved-word-as-attr"
+  ]
 }

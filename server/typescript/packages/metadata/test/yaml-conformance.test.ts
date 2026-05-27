@@ -19,17 +19,22 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { canonicalSerialize } from "../src/serializer-json.js";
-import type { ParseError } from "../src/errors.js";
+import { ParseError } from "../src/errors.js";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 
 const CORPUS = join(import.meta.dir, "../../../../../fixtures/yaml-conformance");
+
+interface ExpectedYamlError {
+  code: string;
+  source?: { format: string; files: readonly string[]; jsonPath?: string };
+}
 
 interface YamlFixture {
   name: string;
   input: string;
   expected:
     | { kind: "canonical"; json: string }
-    | { kind: "errors"; codes: string[] };
+    | { kind: "errors"; envelopes: ExpectedYamlError[]; warningsCount: number };
 }
 
 async function discoverYamlFixtures(corpus: string): Promise<YamlFixture[]> {
@@ -61,8 +66,19 @@ async function discoverYamlFixtures(corpus: string): Promise<YamlFixture[]> {
       );
     }
     if (expectedErrorsRaw !== undefined) {
-      const codes = (JSON.parse(expectedErrorsRaw) as { code: string }[]).map((e) => e.code);
-      fixtures.push({ name: entry, input, expected: { kind: "errors", codes } });
+      const raw: unknown = JSON.parse(expectedErrorsRaw);
+      // FR5a envelope: { errors: [{code, source}], warnings: [] }.
+      // Legacy: [{code}, ...].
+      let envelopes: ExpectedYamlError[];
+      let warningsCount = 0;
+      if (Array.isArray(raw)) {
+        envelopes = (raw as { code: string }[]).map((e) => ({ code: e.code }));
+      } else {
+        const obj = raw as { errors: ExpectedYamlError[]; warnings?: unknown[] };
+        envelopes = obj.errors;
+        warningsCount = Array.isArray(obj.warnings) ? obj.warnings.length : 0;
+      }
+      fixtures.push({ name: entry, input, expected: { kind: "errors", envelopes, warningsCount } });
     } else if (expectedJsonRaw !== undefined) {
       fixtures.push({
         name: entry,
@@ -107,17 +123,33 @@ for (const fix of fixtures) {
       const got = canonicalSerialize(root);
       expect(got).toBe(fix.expected.json);
     } else {
-      // Error-path: the set of emitted ERR_ codes (deduplicated, sorted) must
-      // exactly equal the expected set. This is a *set* match, not multiset —
-      // multiple identical codes is normal (one per offending node).
-      // Widen both sides to `string[]` so toEqual's NoInfer narrowing does not
-      // pick the ErrorCode union on one side and reject the file-loaded
-      // string[] on the other.
-      const gotCodes: string[] = Array.from(
-        new Set(errors.map((e) => (e as ParseError).code ?? "(no code)")),
-      ).sort();
-      const wantCodes: string[] = Array.from(new Set(fix.expected.codes)).sort();
-      expect(gotCodes).toEqual(wantCodes);
+      // Error-path (FR5a / ADR-0009) — assert the full envelope. The fixture's
+      // post-migration shape is `{ errors: [{code, source}], warnings: [] }`.
+      // We assert in-order (errors[i] ↔ expected[i]) so the JSONPath / files
+      // string match per error, not just the code-set.
+      const expected = fix.expected.envelopes;
+      expect(errors.length).toBe(expected.length);
+      for (let i = 0; i < expected.length; i++) {
+        const w = expected[i]!;
+        const g = errors[i];
+        expect(g).toBeInstanceOf(ParseError);
+        const pe = g as ParseError;
+        expect(pe.code).toBe(w.code);
+        if (w.source !== undefined) {
+          // Force the format that the fixture expects (yaml) — TS emits this
+          // when loading a yaml InMemoryStringSource.
+          expect(pe.source.format).toBe(w.source.format);
+          // Files: the YAML fixture's source id is "input.yaml", so we
+          // compare directly. ParseError envelopes carry the source id as the
+          // sole entry of files[].
+          const gFiles = "files" in pe.source ? pe.source.files : [];
+          expect([...gFiles]).toEqual([...w.source.files]);
+          if (w.source.jsonPath !== undefined) {
+            const gPath = "jsonPath" in pe.source ? pe.source.jsonPath : undefined;
+            expect(gPath).toBe(w.source.jsonPath);
+          }
+        }
+      }
     }
   });
 }
