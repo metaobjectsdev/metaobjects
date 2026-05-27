@@ -3,12 +3,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 from metaobjects import LoadResult, MetaDataLoader
 from metaobjects.core_types import core_provider
 from metaobjects.documentation import doc_provider
 from metaobjects.meta.meta_data import MetaData
+from metaobjects.provider import Provider
 from metaobjects.serializer_json import canonical_serialize
 from metaobjects.source.error_source import (
     CodeSource,
@@ -18,7 +19,32 @@ from metaobjects.source.error_source import (
     YamlSource,
 )
 
-_PROVIDERS = [core_provider, doc_provider]
+# Provider-id -> provider. The fixture corpus names providers by their stable
+# id (e.g. "metaobjects-core-types"). load_fixture_* resolve those ids to the
+# actual provider objects to compose a registry. Parity with the TS and C#
+# adapter PROVIDERS maps.
+_PROVIDER_MAP: dict[str, Provider] = {
+    core_provider.id: core_provider,                # "metaobjects-core-types"
+    doc_provider.id: doc_provider,                  # "metaobjects-documentation"
+}
+
+
+def _resolve_providers(provider_ids: Optional[Iterable[str]]) -> list[Provider]:
+    """Map fixture-declared provider ids to provider objects.
+
+    When ``provider_ids`` is None, falls back to the legacy default
+    (``[core_provider, doc_provider]``) — pre-rc.3 behavior. An unknown id
+    raises (parity with the TS / C# adapters).
+    """
+    if provider_ids is None:
+        return [core_provider, doc_provider]
+    resolved: list[Provider] = []
+    for pid in provider_ids:
+        p = _PROVIDER_MAP.get(pid)
+        if p is None:
+            raise ValueError(f'Unknown provider id "{pid}"')
+        resolved.append(p)
+    return resolved
 
 
 @dataclass(frozen=True)
@@ -91,9 +117,17 @@ def _build_warning_envelope(warn, input_dir: Path) -> ErrorEnvelopeRecord:
     return _build_envelope_from_source(warn.code, warn.source, input_dir)
 
 
-def load_fixture(input_dir: Path) -> tuple[list[str], list[str], str]:
-    """Return (error_codes, warnings, canonical_serialization)."""
-    result = MetaDataLoader.from_directory(input_dir, providers=_PROVIDERS)
+def load_fixture(
+    input_dir: Path,
+    provider_ids: Optional[Iterable[str]] = None,
+) -> tuple[list[str], list[str], str]:
+    """Return (error_codes, warnings, canonical_serialization).
+
+    ``provider_ids`` — declared by the fixture's providers.json. ``None``
+    preserves pre-rc.3 behavior (``[core_provider, doc_provider]``).
+    """
+    providers = _resolve_providers(provider_ids)
+    result = MetaDataLoader.from_directory(input_dir, providers=providers)
     codes = [e.code.name for e in result.errors]
     canonical = canonical_serialize(result.root)
     return codes, list(result.warnings), canonical
@@ -101,6 +135,7 @@ def load_fixture(input_dir: Path) -> tuple[list[str], list[str], str]:
 
 def load_fixture_with_envelopes(
     input_dir: Path,
+    provider_ids: Optional[Iterable[str]] = None,
 ) -> tuple[
     list[str],
     list[ErrorEnvelopeRecord],
@@ -116,8 +151,12 @@ def load_fixture_with_envelopes(
     FR5c-finalize — additionally provides per-warning envelopes (same
     normalization as the error side) so the runner can assert warning
     envelope shape when ``expected-errors.json#warnings[]`` declares it.
+
+    ``provider_ids`` — declared by the fixture's providers.json. ``None``
+    preserves pre-rc.3 behavior (``[core_provider, doc_provider]``).
     """
-    result = MetaDataLoader.from_directory(input_dir, providers=_PROVIDERS)
+    providers = _resolve_providers(provider_ids)
+    result = MetaDataLoader.from_directory(input_dir, providers=providers)
     codes = [e.code.name for e in result.errors]
     envelopes = [_build_envelope(e, input_dir) for e in result.errors]
     warning_envelopes = [
@@ -127,6 +166,14 @@ def load_fixture_with_envelopes(
     return codes, envelopes, list(result.warnings), warning_envelopes, canonical
 
 
-def load_fixture_result(input_dir: Path) -> LoadResult:
-    """Return the full LoadResult (including the root node) for script.json checks."""
-    return MetaDataLoader.from_directory(input_dir, providers=_PROVIDERS)
+def load_fixture_result(
+    input_dir: Path,
+    provider_ids: Optional[Iterable[str]] = None,
+) -> LoadResult:
+    """Return the full LoadResult (including the root node) for script.json checks.
+
+    ``provider_ids`` — declared by the fixture's providers.json. ``None``
+    preserves pre-rc.3 behavior (``[core_provider, doc_provider]``).
+    """
+    providers = _resolve_providers(provider_ids)
+    return MetaDataLoader.from_directory(input_dir, providers=providers)

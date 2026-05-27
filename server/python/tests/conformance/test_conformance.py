@@ -71,7 +71,8 @@ def _parse_expected_errors(raw: object) -> tuple[list[dict], list[dict], bool]:
 
 def _run_checks(fix: Fixture) -> tuple[bool, str]:
     codes, envelopes, warnings, warning_envelopes, canonical = load_fixture_with_envelopes(
-        fix.input_dir
+        fix.input_dir,
+        provider_ids=fix.providers,
     )
     failures: list[str] = []
 
@@ -184,7 +185,7 @@ def _run_checks(fix: Fixture) -> tuple[bool, str]:
 
     if fix.has_script:
         script = json.loads((fix.dir / "script.json").read_text())
-        result = load_fixture_result(fix.input_dir)
+        result = load_fixture_result(fix.input_dir, provider_ids=fix.providers)
         root = result.root
         for i, op in enumerate(script.get("operations", [])):
             path: list[str] = op["navigate"]
