@@ -57,6 +57,36 @@ codegen-ts overwrites files with the header but refuses to touch files
 without it. Hand-customizations live in sibling `<Entity>.extra.ts` files
 (for custom queries, derived-column indexes, etc. that metadata can't express).
 
+### Allowlists opt-in
+
+By default, every generated `<Entity>.ts` file emits a `<Entity>FilterAllowlist`
+and `<Entity>SortAllowlist` block, which type-only-imports `FilterAllowlist` /
+`SortAllowlist` from `@metaobjectsdev/runtime-ts/drizzle-fastify`. These power
+the Fastify-flavored CRUD routes emitted by `routesFile()`.
+
+Worker / Lambda / edge consumers that don't mount Fastify-style server routes
+can opt out — the entity file then has no `runtime-ts/drizzle-fastify` imports
+at all, and `@metaobjectsdev/runtime-ts` can be dropped from the consumer's
+dependency tree entirely:
+
+```ts
+// metaobjects.config.ts
+import { defineConfig } from "@metaobjectsdev/cli";
+import { entityFile, queriesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+
+export default defineConfig({
+  generators: [entityFile({ allowlists: false }), queriesFile(), barrel()],
+});
+```
+
+The client-side `<Entity>Filter` type is still emitted regardless — it has zero
+runtime-ts dependency and consumers want it for typed client calls. Default is
+`true` for back-compat with existing projects.
+
+If you keep `routesFile()` wired in, leave `allowlists` at its default — the
+generated routes reference the allowlists by name and won't compile without
+them.
+
 ### Consumer wiring
 
 Generated query helpers accept a Drizzle `db` instance as their first

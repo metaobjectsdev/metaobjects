@@ -8,6 +8,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Added
+- **`entityFile({ allowlists: false })` opt-in flag** (`@metaobjectsdev/codegen-ts`) —
+  Worker/Lambda consumers can disable the Fastify-flavored
+  `<Entity>FilterAllowlist` + `<Entity>SortAllowlist` emission. Generated
+  entity files then carry no `@metaobjectsdev/runtime-ts/drizzle-fastify`
+  imports at all and `runtime-ts` can be omitted from the consumer's deps
+  entirely. The client-side `<Entity>Filter` type is still emitted (zero
+  runtime-ts dependency). Default remains `true` for back-compat; consumers
+  using `routesFile()` should leave the default. Closes the long-term
+  recommendation from the 0.7.0-rc.1 Worker-consumer friction batch
+  (commit bd0bcb8).
 - **Loader error envelope + source-on-node** (`@metaobjectsdev/metadata`) —
   per [ADR-0009](spec/decisions/ADR-0009-loader-error-envelope-and-source-on-node.md),
   every `MetaData` node now carries a `source: ErrorSource` provenance field
