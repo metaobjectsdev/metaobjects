@@ -7,9 +7,25 @@ import { entityOutputPath } from "../import-path.js";
 export interface EntityFileOpts {
   filter?: (entity: MetaObject) => boolean;
   target?: string;
+  /**
+   * Whether generated entity files include the Fastify-flavored
+   * `<Entity>FilterAllowlist` + `<Entity>SortAllowlist` blocks (and the
+   * `@metaobjectsdev/runtime-ts/drizzle-fastify` type-only imports they
+   * require). Default `true` for back-compat.
+   *
+   * Set to `false` for Worker/Lambda-style consumers that don't mount
+   * Fastify-style server routes — the generated entity file then has no
+   * `runtime-ts/drizzle-fastify` imports at all and `@metaobjectsdev/runtime-ts`
+   * can be omitted from the consumer's dependency tree.
+   *
+   * The client-side `<Entity>Filter` type is always emitted — it's a pure
+   * client-side type with no runtime-ts dependency.
+   */
+  allowlists?: boolean;
 }
 
 export const entityFile = function entityFile(opts?: EntityFileOpts): Generator {
+  const allowlists = opts?.allowlists ?? true;
   const generator: Generator = {
     name: "entity-file",
     emitsEntityModule: true,
@@ -19,7 +35,7 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
       }
       return {
         path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.ts`),
-        content: await formatTs(renderEntityFile(entity, ctx.renderContext)),
+        content: await formatTs(renderEntityFile(entity, ctx.renderContext, { allowlists })),
       };
     }),
   };

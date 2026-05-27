@@ -260,6 +260,79 @@ describe("renderEntityFile", () => {
     expect(out).not.toContain("INTERNAL_SECRET");
   });
 
+  test("allowlists: false omits Filter/Sort allowlist blocks AND their runtime-ts imports", () => {
+    // Long-term opt-out for serverless / edge consumers that don't mount
+    // Fastify-style server routes — drops every reference to
+    // `@metaobjectsdev/runtime-ts/drizzle-fastify` from the generated file so
+    // those consumers can omit `runtime-ts` from their deps entirely.
+    const root = metaRoot();
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    post.addChild(id);
+    const title = metaField(FIELD_SUBTYPE_STRING, "title");
+    title.setAttr("required", true);
+    title.setAttr("filterable", true);
+    post.addChild(title);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    post.addChild(primary);
+    root.addChild(post);
+
+    const ctx = makeRenderContext({
+      dialect: "sqlite",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+
+    const out = renderEntityFile(post, ctx, { allowlists: false });
+
+    // Default-on behaviour, asserted on a sibling render, is what we're
+    // opting out of: the allowlist consts + the runtime-ts import path.
+    expect(out).not.toContain("PostFilterAllowlist");
+    expect(out).not.toContain("PostSortAllowlist");
+    expect(out).not.toContain("@metaobjectsdev/runtime-ts/drizzle-fastify");
+
+    // Sanity: the rest of the entity file is intact, and the client-side
+    // <Entity>Filter type still ships (consumers want it for typed client calls).
+    expect(out).toContain(GENERATED_HEADER);
+    expect(out).toContain("sqliteTable");
+    expect(out).toContain("PostInsertSchema");
+    expect(out).toContain("PostFilter");
+  });
+
+  test("allowlists default (omitted) preserves back-compat — allowlists ARE emitted", () => {
+    const root = metaRoot();
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    post.addChild(id);
+    const title = metaField(FIELD_SUBTYPE_STRING, "title");
+    title.setAttr("filterable", true);
+    post.addChild(title);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    post.addChild(primary);
+    root.addChild(post);
+
+    const ctx = makeRenderContext({
+      dialect: "sqlite",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+
+    const out = renderEntityFile(post, ctx);
+    expect(out).toContain("PostFilterAllowlist");
+    expect(out).toContain("PostSortAllowlist");
+    expect(out).toContain("@metaobjectsdev/runtime-ts/drizzle-fastify");
+  });
+
   test("emits @generated header + table + types + validators", () => {
     const root = metaRoot();
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
