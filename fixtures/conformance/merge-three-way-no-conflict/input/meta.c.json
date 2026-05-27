@@ -1,0 +1,13 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Subscriber",
+          "@title": "Subscriber"
+        }
+      }
+    ]
+  }
+}

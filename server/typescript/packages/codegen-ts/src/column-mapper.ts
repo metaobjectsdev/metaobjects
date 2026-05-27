@@ -23,6 +23,7 @@ import {
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
+  FIELD_ATTR_OBJECT_REF,
   VALIDATOR_ATTR_MAX,
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
@@ -123,6 +124,17 @@ export interface ColumnSpec {
   leadingComment?: string;
   /** Optional CHECK constraint expression for the column (e.g., `status IN ('A', 'B')`). */
   checkConstraint?: string;
+  /**
+   * Optional `.$type<...>()` chain target. Renderer (drizzle-schema.ts) emits
+   * `.$type<TS[]>()` ahead of the modifiers chain, using ts-poet `imp()` for
+   * objectRef variants so the cross-module type import auto-hoists.
+   * `kind: "scalar"` covers string[]/number[]/boolean[] — no import needed.
+   * `kind: "objectRef"` covers SourceLens[]/Dissent[]/etc. — `module` is the
+   * relative import path to that entity's emitted module.
+   */
+  dollarTypeRef?:
+    | { kind: "scalar"; tsType: "string" | "number" | "boolean" }
+    | { kind: "objectRef"; name: string; module: string };
 }
 
 /** Resolve max length from validator.length child or @maxLength attr.
@@ -250,6 +262,19 @@ export function mapColumnType(
     }
   }
 
+  // Enum literal types: pass the values as `{ enum: [...] as const }` to
+  // Drizzle's text(...) so the inferred column type is a literal union
+  // ("a" | "b" | ...) instead of bare `string`. Skip when isArray — JSON
+  // arrays use { mode: "json" }, and the enum members go through Zod
+  // validation at the Insert/Update layer instead. Mirrors the Zod
+  // emission, which already uses z.enum([...]).
+  if (subType === FIELD_SUBTYPE_ENUM && !isArray && fnName === "text") {
+    const values = enumValues(field);
+    if (values !== undefined && values.length > 0) {
+      fnOptions = { ...(fnOptions ?? {}), enum: values };
+    }
+  }
+
   const modifiers: string[] = [];
 
   if (dialect === "postgres" && isArray) {
@@ -257,16 +282,15 @@ export function mapColumnType(
   }
 
   // SQLite stores arrays as JSON in a text column; Drizzle's text(...,{mode:"json"})
-  // infers the column as `unknown` without a $type<T>() annotation, so consumers
-  // who pull the inferred type can't see the element type. Emit $type<E[]>()
-  // so the inferred TS type is element-precise. Postgres uses .array() above
-  // which is already element-typed by Drizzle.
-  if (dialect === "sqlite" && isArray) {
-    const elementType = sqliteJsonArrayElementTsType(subType);
-    if (elementType !== undefined) {
-      modifiers.push(`.$type<${elementType}[]>()`);
-    }
-  }
+  // infers the column as `unknown` without a $type<T>() annotation. Emit the
+  // chain via spec.dollarTypeRef so the renderer can hoist a type-only import
+  // for object refs (SourceLens[], Dissent[], etc.). Scalars (string/number/
+  // boolean) need no import. Postgres uses .array() above which is already
+  // element-typed by Drizzle.
+  // Determined ABOVE the modifiers chain so the renderer can position
+  // `.$type<>()` ahead of `.notNull()` etc.
+  // Note: dollarTypeRef is read alongside (and rendered ahead of) `modifiers`
+  // by `renderColumn` — see drizzle-schema.ts.
 
   if (isRequired(field)) {
     modifiers.push(".notNull()");
@@ -300,6 +324,23 @@ export function mapColumnType(
     }
   }
 
+  // SQLite isArray columns route through {mode:"json"} above; compute the
+  // $type<E[]>() target so the renderer can hoist any cross-module imports.
+  let dollarTypeRef: ColumnSpec["dollarTypeRef"];
+  if (dialect === "sqlite" && isArray) {
+    if (subType === FIELD_SUBTYPE_OBJECT) {
+      const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+      if (typeof ref === "string" && ref.length > 0) {
+        dollarTypeRef = { kind: "objectRef", name: ref, module: `./${ref}.js` };
+      }
+    } else {
+      const scalar = sqliteJsonArrayElementTsType(subType);
+      if (scalar !== undefined) {
+        dollarTypeRef = { kind: "scalar", tsType: scalar as "string" | "number" | "boolean" };
+      }
+    }
+  }
+
   const result: ColumnSpec = {
     fnName,
     dbName,
@@ -309,6 +350,7 @@ export function mapColumnType(
   };
   if (fnOptions !== undefined) result.fnOptions = fnOptions;
   if (defaultExpr !== undefined) result.defaultExpr = defaultExpr;
+  if (dollarTypeRef !== undefined) result.dollarTypeRef = dollarTypeRef;
   if (leadingComment !== undefined) result.leadingComment = leadingComment;
 
   // Enum fields: emit a CHECK constraint listing the valid member values.

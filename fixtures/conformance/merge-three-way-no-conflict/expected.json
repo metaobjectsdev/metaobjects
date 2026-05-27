@@ -1,0 +1,22 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Subscriber",
+          "abstract": true,
+          "@description": "A newsletter subscriber.",
+          "@title": "Subscriber",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

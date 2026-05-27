@@ -187,9 +187,17 @@ function buildCompositeKeyCallback(
   return code`${primaryKeySym}({ columns: [${columnRefs}] })`;
 }
 
-/** Build a JS-style object literal string (not JSON.stringify which uses quoted keys). */
+/** Build a JS-style object literal string (not JSON.stringify which uses quoted keys).
+ *  Array values get `as const` appended so Drizzle's text(...,{ enum: [...] })
+ *  narrows the inferred column type to a literal union instead of bare `string`. */
 function inlineObjectLiteral(obj: Record<string, unknown>): string {
-  const entries = Object.entries(obj).map(([k, v]) => `${k}: ${JSON.stringify(v)}`);
+  const entries = Object.entries(obj).map(([k, v]) => {
+    const lit = JSON.stringify(v);
+    if (Array.isArray(v)) {
+      return `${k}: ${lit} as const`;
+    }
+    return `${k}: ${lit}`;
+  });
   return `{ ${entries.join(", ")} }`;
 }
 
@@ -300,7 +308,23 @@ function renderColumn(
     ? `.$defaultFn(() => new Date().toISOString())`
     : "";
 
-  const columnLine = code`  ${field.name}: ${baseCall}${modifiersStr}${autoSetSuffix}${sqlDefaultSegment ?? ""}${fkRefSegment ?? ""}`;
+  // $type<E[]>() chain — emitted as Code (not a string modifier) so ts-poet can
+  // hoist the cross-module type import for objectRef variants. Positioned
+  // immediately after the baseCall so the chain reads `.text(...).$type<...>().notNull()...`
+  // which Drizzle accepts in any order but is conventional for "type narrowing
+  // first."
+  let dollarTypeSegment: Code | string = "";
+  if (spec.dollarTypeRef !== undefined) {
+    const ref = spec.dollarTypeRef;
+    if (ref.kind === "scalar") {
+      dollarTypeSegment = `.$type<${ref.tsType}[]>()`;
+    } else {
+      const refSym = imp(`${ref.name}@${ref.module}`);
+      dollarTypeSegment = code`.$type<${refSym}[]>()`;
+    }
+  }
+
+  const columnLine = code`  ${field.name}: ${baseCall}${dollarTypeSegment}${modifiersStr}${autoSetSuffix}${sqlDefaultSegment ?? ""}${fkRefSegment ?? ""}`;
   return spec.leadingComment !== undefined
     ? code`  // ${spec.leadingComment}\n${columnLine}`
     : columnLine;

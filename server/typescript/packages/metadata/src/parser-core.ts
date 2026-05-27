@@ -27,9 +27,10 @@ import { TypeId, TypeRegistry } from "./registry.js";
 import type { MetaData } from "./shared/meta-data.js";
 import { MetaRoot } from "./shared/meta-root.js";
 import { MetaAttr } from "./core/attr/meta-attr.js";
-import { inferAttrSubType } from "./serializer-json.js";
+import { canonicalSerialize, inferAttrSubType } from "./serializer-json.js";
 import { ParseError, type ErrorCode } from "./errors.js";
-import { resolvedSource, type ErrorSource } from "./source.js";
+import { resolvedSource, type ErrorSource, type LoaderWarning, type Contributor } from "./source.js";
+import { semanticDiff } from "./semantic-diff.js";
 import { resolveSuperRef } from "./super-resolve.js";
 import { JsonPathBuilder } from "./json-path.js";
 import { getYamlPosition, type YamlPosition } from "./core/yaml-positions.js";
@@ -96,6 +97,14 @@ export interface ParseResult {
   root: MetaRoot;
   warnings: string[];
   errors: ParseError[];
+  /**
+   * FR5c — envelope-shaped warnings (e.g. WARN_DUPLICATE_DECLARATION) produced
+   * during the parse/merge pipeline. Distinct from the legacy `warnings:
+   * string[]` channel: those messages get wrapped in a `WARN_LEGACY` envelope
+   * at the loader boundary, while envelope warnings already carry their own
+   * `code` + `source` and are surfaced unchanged. Defaults to `[]`.
+   */
+  envelopeWarnings: LoaderWarning[];
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +231,12 @@ let _deferSuperResolution = false;
 // _deferSuperResolution.
 let _currentErrors: ParseError[] | undefined;
 
+// FR5c — envelope-warnings sink for the merge phase. Set at buildTree entry
+// so deeply-nested merge sites can emit WARN_DUPLICATE_DECLARATION without
+// threading another parameter through every helper signature. Safe under
+// the same synchronous-buildTree reentrancy argument as the others.
+let _currentEnvelopeWarnings: LoaderWarning[] | undefined;
+
 // FR5a / ADR-0009 — Module-level JSONPath builder + source id, set at
 // buildTree entry and updated by recursive descent (push on the way down,
 // pop on the way back up). Used by populateNodeSource() to stamp every
@@ -280,10 +295,15 @@ function populateNodeSource(node: MetaData): void {
 export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
   const warnings: string[] = [];
   const errors: ParseError[] = [];
+  const envelopeWarnings: LoaderWarning[] = [];
   const strict = opts.strict ?? false;
   const source = opts.sourceName;
   _deferSuperResolution = opts.deferSuperResolution === true;
   _currentErrors = errors;
+  // FR5c — module-level handle so the deeply-nested merge code paths can
+  // emit envelope warnings without threading another parameter through the
+  // entire walk. Safe because buildTree is fully synchronous.
+  _currentEnvelopeWarnings = envelopeWarnings;
   // FR5a — start a fresh JSONPath stack rooted at "$"; sourceId is the
   // source's id (from FileSource / InMemoryStringSource via opts.sourceName).
   // Falls back to "<unknown>" when no name was supplied (e.g. ad-hoc parseJson
@@ -379,7 +399,7 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
         rootKey,
       );
       _currentPath!.pop();
-      return { root: opts.intoRoot, warnings, errors };
+      return { root: opts.intoRoot, warnings, errors, envelopeWarnings };
     }
 
     // --- Fresh root mode: create a new root from the JSON ---
@@ -404,10 +424,11 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
       rootKey,
     ) as MetaRoot;
     _currentPath!.pop();
-    return { root, warnings, errors };
+    return { root, warnings, errors, envelopeWarnings };
   } finally {
     _deferSuperResolution = false;
     _currentErrors = undefined;
+    _currentEnvelopeWarnings = undefined;
     _currentPath = undefined;
     _currentSourceId = undefined;
     _currentFormat = "json";
@@ -555,6 +576,46 @@ function parseNodeInto(
   source: string | undefined,
   path: string,
 ): void {
+  // FR5c — capture pre-merge state so we can decide whether this contribution
+  // produced any semantic change. The "new contributor" is the file currently
+  // being parsed (_currentSourceId). The "base contributor" is whichever
+  // file(s) the existing target already records on its source envelope.
+  const newContributorFile = _currentSourceId ?? "<unknown>";
+  const targetIsRoot = target instanceof MetaRoot;
+  // The root is a synthetic accumulator: it is not a metadata-author node —
+  // every file declares { "metadata.root": ... } and the loader merges into
+  // a single root. We don't run FR5c diagnostics on the root itself; the
+  // merge attribution applies to author-meaningful nodes (object/field/etc).
+  const fr5cActive = !targetIsRoot && target.name !== "";
+
+  let preMergeShape: string | undefined;
+  let preMergeAttrSnapshot: Map<string, AttrValue> | undefined;
+  if (fr5cActive) {
+    preMergeShape = canonicalSerialize(target);
+    // Snapshot of own attrs (name → value) — used to detect ERR_MERGE_CONFLICT
+    // when a new contribution sets an attr the target already declared to a
+    // different non-empty value.
+    preMergeAttrSnapshot = new Map(target.ownAttrs());
+  }
+
+  // FR5c — detect attribute-level merge conflicts: for each @-prefixed inline
+  // attr in nodeData, if the target already has an own attr of that name
+  // with a non-empty value, AND the new value differs from the existing
+  // value (both sides non-empty), emit ERR_MERGE_CONFLICT with a `format:
+  // "merged"` envelope. Last-writer-wins is preserved for non-conflicting
+  // cases (one side unset, same value, etc.) — those carry through to the
+  // existing applyInlineAttrsAndUnknownKeys logic below.
+  if (fr5cActive && preMergeAttrSnapshot !== undefined) {
+    detectAttrMergeConflicts(
+      target,
+      nodeData,
+      preMergeAttrSnapshot,
+      newContributorFile,
+      errors,
+      path,
+    );
+  }
+
   // Apply inline attrs (not reserved keys — those stay on the existing model)
   applyInlineAttrsAndUnknownKeys(target, nodeData, strict, source, path, warnings, registry);
 
@@ -564,6 +625,168 @@ function parseNodeInto(
   const effectivePkg = inheritedContextPkg;
 
   processChildren(target, nodeData, accumRoot, effectivePkg, registry, warnings, errors, strict, source, path);
+
+  // FR5c — after merge: compare pre/post shape. If no semantic change → emit
+  // WARN_DUPLICATE_DECLARATION (the new contribution declared the same thing
+  // the target already had). If there was a change → upgrade the target's
+  // source envelope to `format: "merged"` with both contributors listed
+  // (ADR-0009 §Source-on-node: overlay merge with semantic change updates
+  // source; duplicate-with-no-change leaves source unchanged + emits warning).
+  if (fr5cActive && preMergeShape !== undefined) {
+    const postMergeShape = canonicalSerialize(target);
+    const preParsed = JSON.parse(preMergeShape) as Record<string, unknown>;
+    const postParsed = JSON.parse(postMergeShape) as Record<string, unknown>;
+    const changed = semanticDiff(preParsed, postParsed);
+
+    // Pull the existing contributor file(s) off the target's current source
+    // envelope (set at parse-fresh time or by a previous merge).
+    const existing = target.source;
+    const existingFiles = "files" in existing ? [...existing.files] : [];
+
+    if (changed) {
+      // Real overlay — upgrade source to merged with contributors.
+      const allFiles = [...new Set([...existingFiles, newContributorFile])];
+      // Alphabetical sort — matches DirectorySource ordering and gives a
+      // deterministic cross-port file list (ADR-0009 §"Cross-port adoption").
+      allFiles.sort();
+      const contributors: Contributor[] = allFiles.map((f, i) => ({
+        file: f,
+        role: i === 0 ? "overlay-base" : "overlay-extension",
+      }));
+      const mergedSource: ErrorSource = {
+        format: "merged",
+        files: allFiles,
+        jsonPath:
+          "jsonPath" in existing && existing.jsonPath !== undefined
+            ? existing.jsonPath
+            : (_currentPath?.toString() ?? "$"),
+        contributors,
+      };
+      target.setSource(mergedSource);
+    } else if (
+      existingFiles.length > 0 &&
+      !existingFiles.includes(newContributorFile)
+    ) {
+      // Identical re-declaration from a different file → warn.
+      const allFiles = [...new Set([...existingFiles, newContributorFile])];
+      allFiles.sort();
+      const contributors: Contributor[] = allFiles.map((f, i) => ({
+        file: f,
+        role: i === 0 ? "overlay-base" : "overlay-extension",
+      }));
+      const warnSource: ErrorSource = {
+        format: "merged",
+        files: allFiles,
+        jsonPath:
+          "jsonPath" in existing && existing.jsonPath !== undefined
+            ? existing.jsonPath
+            : (_currentPath?.toString() ?? "$"),
+        contributors,
+      };
+      _currentEnvelopeWarnings?.push({
+        code: "WARN_DUPLICATE_DECLARATION",
+        message: `duplicate declaration of ${target.fqn()} with no semantic change`,
+        source: warnSource,
+      });
+    }
+  }
+}
+
+/** FR5c — for every @-prefixed inline attr in `nodeData`, check whether the
+ *  target already declares the same attr (in `preAttrs`) with a different
+ *  non-empty value. If so, emit ERR_MERGE_CONFLICT with a `format: "merged"`
+ *  envelope naming both contributors. The merge itself proceeds (existing
+ *  last-writer-wins) so the loader sees one canonical tree; the error
+ *  surfaces the conflict so a consumer can fix the metadata. */
+function detectAttrMergeConflicts(
+  target: MetaData,
+  nodeData: Record<string, unknown>,
+  preAttrs: Map<string, AttrValue>,
+  newContributorFile: string,
+  errors: ParseError[],
+  path: string,
+): void {
+  const existingFiles =
+    "files" in target.source ? [...target.source.files] : [];
+
+  function isEmptyValue(v: unknown): boolean {
+    if (v === undefined || v === null) return true;
+    if (typeof v === "string" && v === "") return true;
+    if (Array.isArray(v) && v.length === 0) return true;
+    return false;
+  }
+
+  function attrValuesEqual(a: AttrValue, b: AttrValue): boolean {
+    // String/number/boolean — direct compare.
+    if (a === b) return true;
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+      }
+      return true;
+    }
+    if (
+      typeof a === "object" && a !== null && !Array.isArray(a) &&
+      typeof b === "object" && b !== null && !Array.isArray(b)
+    ) {
+      // Object attrs — structural compare via JSON (key order independent
+      // through Object.keys().sort()).
+      try {
+        const ak = Object.keys(a).sort();
+        const bk = Object.keys(b).sort();
+        if (ak.length !== bk.length) return false;
+        for (let i = 0; i < ak.length; i++) {
+          if (ak[i] !== bk[i]) return false;
+          if (JSON.stringify((a as Record<string, unknown>)[ak[i]!]) !==
+              JSON.stringify((b as Record<string, unknown>)[bk[i]!])) {
+            return false;
+          }
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  for (const key of Object.keys(nodeData)) {
+    if (!key.startsWith(ATTR_PREFIX)) continue;
+    if (RESERVED_KEYS.has(key)) continue;
+    const attrName = key.slice(ATTR_PREFIX.length);
+    if (RESERVED_KEYS.has(attrName)) continue;
+
+    const newValRaw = nodeData[key];
+    const existingVal = preAttrs.get(attrName);
+
+    if (existingVal === undefined) continue;
+    if (isEmptyValue(newValRaw) || isEmptyValue(existingVal)) continue;
+    // Both sides set a non-empty value — compare. If equal, last-writer-wins
+    // is a no-op; if different, that's a conflict.
+    if (attrValuesEqual(existingVal, newValRaw as AttrValue)) continue;
+
+    const allFiles = [...new Set([...existingFiles, newContributorFile])];
+    allFiles.sort();
+    const contributors: Contributor[] = allFiles.map((f, i) => ({
+      file: f,
+      role: i === 0 ? "overlay-base" : "overlay-extension",
+    }));
+    const conflictSource: ErrorSource = {
+      format: "merged",
+      files: allFiles,
+      jsonPath: `${_currentPath?.toString() ?? path}.${ATTR_PREFIX}${attrName}`,
+      contributors,
+    };
+    errors.push(
+      new ParseError(
+        `attr '${ATTR_PREFIX}${attrName}' conflicts: existing value ` +
+          `${JSON.stringify(existingVal)} differs from new value ` +
+          `${JSON.stringify(newValRaw)} on ${target.fqn()}`,
+        { code: "ERR_MERGE_CONFLICT", source: conflictSource },
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

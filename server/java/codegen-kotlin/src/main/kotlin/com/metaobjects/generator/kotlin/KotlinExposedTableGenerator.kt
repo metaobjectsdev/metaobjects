@@ -167,6 +167,26 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             }
         }
 
+        // Cross-package FK-target imports: when a `.references(...)` call (from
+        // either an `identity.reference` decoration or a `relationship.composition`
+        // FK column) points at a table that lives in a different Kotlin package,
+        // the generated file must import the target's <TableName> symbol or the
+        // bare reference fails to resolve. Same-package targets need no import
+        // (the Kotlin compiler resolves them via the file's package). Soft
+        // identity.reference decorations (targetFqn == null) emit no
+        // `.references(...)` call and so contribute no import.
+        val crossPackageTableImports = sortedSetOf<String>().apply {
+            fun consider(targetFqn: String?, targetTable: String?) {
+                if (targetFqn == null || targetTable == null) return
+                val targetPkg = PackageMapping.splitFqn(targetFqn).first
+                if (targetPkg.isNotEmpty() && targetPkg != pkg) {
+                    add("$targetPkg.$targetTable")
+                }
+            }
+            for (fk in fkColumns) consider(fk.targetFqn, fk.targetTable)
+            for (decor in refDecorations.values) consider(decor.targetFqn, decor.targetTable)
+        }
+
         val source = buildString {
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")
@@ -176,6 +196,9 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 append("import org.jetbrains.exposed.sql.ReferenceOption\n")
             }
             for (imp in columnFunctionImports) {
+                append("import $imp\n")
+            }
+            for (imp in crossPackageTableImports) {
                 append("import $imp\n")
             }
             if (needsJsonbImport) {
@@ -350,6 +373,12 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
          * must not double-emit a second FK to the same parent.
          */
         val targetTable: String,
+        /**
+         * Metadata FQN of the target entity (e.g. {@code "acme::blog::Author"}).
+         * Used by the emit pass to add a cross-package Kotlin import when the
+         * target table lives in a different package than the entity owning the FK.
+         */
+        val targetFqn: String,
     ) {
         /** True when {@link #refSuffix} mentions a ReferenceOption (drives the import). */
         val hasReferenceOption: Boolean get() = refSuffix.isNotEmpty()
@@ -456,6 +485,7 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             refSuffix = refSuffix,
             declared = true,
             targetTable = targetTable,
+            targetFqn = target.name,
         )
     }
 
@@ -483,6 +513,7 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             refSuffix = refSuffix,
             declared = false,
             targetTable = ownerTable,
+            targetFqn = owner.name,
         )
     }
 
@@ -520,6 +551,12 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val targetTable: String?,
         /** Suffix portion after the target column — either "" or {@code ", onDelete = ..., onUpdate = ..."}. */
         val refSuffix: String,
+        /**
+         * Metadata FQN of the target entity (e.g. {@code "acme::edu::Program"}); null for soft refs.
+         * Used by the emit pass to add a cross-package Kotlin import when the target table lives
+         * in a different package than the entity owning the decorated field.
+         */
+        val targetFqn: String?,
     ) {
         /** True when {@link #refSuffix} mentions a ReferenceOption (drives the import). */
         val hasReferenceOption: Boolean get() = refSuffix.isNotEmpty()
@@ -567,10 +604,11 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 // but column emission will skip the `.references(...)` decoration.
                 val targetTable = if (child.isEnforced)
                     PackageMapping.splitFqn(target.name).second + "Table" else null
+                val targetFqn = if (child.isEnforced) target.name else null
                 val refSuffix = if (child.isEnforced)
                     referentialActionSuffix(child.onDeleteRaw, child.onUpdateRaw) else ""
                 acc.getOrPut(entity.name) { linkedMapOf() }[fieldName] =
-                    RefDecoration(targetTable, refSuffix)
+                    RefDecoration(targetTable, refSuffix, targetFqn)
             }
         }
         return acc

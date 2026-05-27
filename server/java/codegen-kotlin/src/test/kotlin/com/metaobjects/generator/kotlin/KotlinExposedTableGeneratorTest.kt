@@ -998,6 +998,74 @@ class KotlinExposedTableGeneratorTest {
         }
     }
 
+    /**
+     * When an `identity.reference` decoration points at a target entity in a
+     * DIFFERENT Kotlin package, the generated Table file must import the target
+     * Table symbol — otherwise the bare `TargetTable.id` inside `.references(...)`
+     * fails to resolve at compile time. Same-package targets need no import.
+     *
+     * Uses two {@link InMemoryStringSource} so each package is loaded as its own
+     * metadata.root (the loader only honors one root `package` attr per source).
+     */
+    @Test fun identityReferenceAcrossPackagesAddsImport() {
+        val tenantSrc = """{
+          "metadata.root": { "package": "acme::tenancy", "children": [
+            { "object.entity": { "name": "Tenant", "children": [
+                { "field.long": { "name": "id" } },
+                { "source.rdb": { "@table": "tenants" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val userSrc = """{
+          "metadata.root": { "package": "acme::identity", "children": [
+            { "object.entity": { "name": "User", "children": [
+                { "field.long": { "name": "id" } },
+                { "field.long": { "name": "tenantId" } },
+                { "source.rdb": { "@table": "users" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+                { "identity.reference": { "name": "fkTenant",
+                    "@fields": "tenantId", "@references": "Tenant" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-xpkg-")
+        try {
+            val loader = com.metaobjects.loader.MetaDataLoader.createManual(false, "xpkg-idref")
+            loader.init()
+            loader.load(listOf(
+                com.metaobjects.loader.InMemoryStringSource(tenantSrc, "tenant"),
+                com.metaobjects.loader.InMemoryStringSource(userSrc, "user"),
+            ))
+            loader.register()
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loader)
+
+            val userTable = outDir.resolve("acme/identity/UserTable.kt")
+            assertTrue(Files.exists(userTable),
+                "expected $userTable; files=${Files.walk(outDir).toList()}")
+            val src = Files.readString(userTable)
+            // Cross-package import for the referenced table is required for the
+            // bare `TenantTable.id` reference to compile.
+            assertTrue("import acme.tenancy.TenantTable" in src,
+                "expected cross-package import for TenantTable; saw:\n$src")
+            assertTrue(
+                "val tenantId = long(\"tenant_id\").references(TenantTable.id)" in src,
+                "expected tenantId column decorated with .references(); saw:\n$src",
+            )
+
+            // Same-package: TenantTable.kt should NOT import itself.
+            val tenantTable = outDir.resolve("acme/tenancy/TenantTable.kt")
+            assertTrue(Files.exists(tenantTable))
+            val tenantTblSrc = Files.readString(tenantTable)
+            assertTrue("import acme.tenancy.TenantTable" !in tenantTblSrc,
+                "Tenant's own table file should not self-import; saw:\n$tenantTblSrc")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun `inherited identity primary is emitted on child Table`() {
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
