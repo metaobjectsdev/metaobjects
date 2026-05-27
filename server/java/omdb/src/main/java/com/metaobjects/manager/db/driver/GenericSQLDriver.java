@@ -1666,101 +1666,21 @@ public class GenericSQLDriver implements DatabaseDriver {
     /**
      * Sets a specific value on a prepared statement
      */
+    /**
+     * Binds a value to a prepared-statement parameter via the
+     * {@link com.metaobjects.manager.db.codec.JdbcCodecs} registry
+     * (FR-003 Plan 4, Debt 1 — ADR-0002). The jsonb pre-check stays here
+     * because jsonb serialization depends on driver-local state
+     * ({@link #isJsonbField} and {@link #serializeJsonb}), not on field
+     * subtype alone.
+     */
     protected void setStatementValue(PreparedStatement s, MetaField f, int index, Object value) throws SQLException {
-        int j = index;
-
-        if (f instanceof com.metaobjects.field.BooleanField) {
-            if (value == null) {
-                s.setNull(j, Types.BIT);
-            } else if (value instanceof Boolean) {
-                s.setBoolean(j, ((Boolean) value).booleanValue());
-            } else {
-                s.setBoolean(j, Boolean.valueOf(value.toString()).booleanValue());
-            }
-        } else if (f instanceof com.metaobjects.field.DecimalField) {
-            if (value == null) {
-                s.setNull(j, Types.DECIMAL);
-            } else if (value instanceof java.math.BigDecimal) {
-                s.setBigDecimal(j, (java.math.BigDecimal) value);
-            } else {
-                s.setBigDecimal(j, new java.math.BigDecimal(value.toString()));
-            }
-        } else if (f instanceof com.metaobjects.field.IntegerField) {
-            if (value == null) {
-                s.setNull(j, Types.INTEGER);
-            } else if (value instanceof Integer) {
-                s.setInt(j, ((Integer) value).intValue());
-            } else {
-                s.setInt(j, Integer.valueOf(value.toString()).intValue());
-            }
-        } else if (f instanceof com.metaobjects.field.DateField) { // NOTE DATE IS TREATED AS LONG!
-            if (value == null) {
-                s.setNull(j, Types.TIMESTAMP);
-            } else if (value instanceof java.util.Date) {
-                s.setTimestamp(j, new Timestamp(((java.util.Date) value).getTime()));
-            } else {
-                s.setTimestamp(j, new Timestamp(Long.valueOf(value.toString()).longValue()));
-            }
-        } else if (f instanceof com.metaobjects.field.TimeField) {
-            if (value == null) {
-                s.setNull(j, Types.TIME);
-            } else if (value instanceof java.time.LocalTime) {
-                s.setTime(j, java.sql.Time.valueOf((java.time.LocalTime) value));
-            } else {
-                // Parse string value as LocalTime and convert to SQL Time
-                try {
-                    java.time.LocalTime localTime = java.time.LocalTime.parse(value.toString());
-                    s.setTime(j, java.sql.Time.valueOf(localTime));
-                } catch (java.time.format.DateTimeParseException e) {
-                    throw new SQLException("Invalid time format: " + value.toString(), e);
-                }
-            }
-        } else if (f instanceof com.metaobjects.field.LongField) {
-            if (value == null) {
-                s.setNull(j, Types.BIGINT);
-            } else if (value instanceof Long) {
-                s.setLong(j, ((Long) value).longValue());
-            } else {
-                s.setLong(j, Long.valueOf(value.toString()).longValue());
-            }
-        } else if (f instanceof com.metaobjects.field.FloatField) { // WARNING:  This should not be a valid key
-            if (value == null) {
-                s.setNull(j, Types.FLOAT);
-            } else if (value instanceof Float) {
-                s.setFloat(j, ((Float) value).floatValue());
-            } else {
-                s.setFloat(j, Float.valueOf(value.toString()).floatValue());
-            }
-        } else if (f instanceof com.metaobjects.field.DoubleField) { // WARNING:  This should not be a valid key
-            if (value == null) {
-                s.setNull(j, Types.DOUBLE);
-            } else if (value instanceof Double) {
-                s.setDouble(j, ((Double) value).doubleValue());
-            } else {
-                s.setDouble(j, Double.valueOf(value.toString()).doubleValue());
-            }
-        } else if (f instanceof com.metaobjects.field.StringField) {
-            if (value == null) {
-                s.setNull(j, Types.VARCHAR);
-            } else {
-                s.setString(j, value.toString());
-            }
-        } else if (isJsonbField(f)) {
-            // jsonb: serialize value to JSON text via metadata-driven serializer; Derby stores as VARCHAR/CLOB
-            if (value == null) {
-                s.setNull(j, Types.VARCHAR);
-            } else {
-                s.setString(j, serializeJsonb(f, value));
-            }
-        } else if (f instanceof com.metaobjects.field.ObjectField) {
-            //if ( value == null )
-            //  s.setNull( j, Types.BLOB );
-            //else
-            s.setObject(j, value);
-        } else {
-            // Default fallback for unknown field types
-            s.setObject(j, value);
+        if (isJsonbField(f)) {
+            if (value == null) s.setNull(index, Types.VARCHAR);
+            else s.setString(index, serializeJsonb(f, value));
+            return;
         }
+        com.metaobjects.manager.db.codec.JdbcCodecs.forField(f).write(s, f, index, value);
     }
 
     /**

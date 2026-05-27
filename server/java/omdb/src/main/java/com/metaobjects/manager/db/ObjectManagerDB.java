@@ -369,38 +369,12 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
     }
 
     /**
-     * Enhanced field parsing with better type handling and null safety
+     * Reads a column into a field on the target object via the
+     * {@link com.metaobjects.manager.db.codec.JdbcCodecs} registry
+     * (FR-003 Plan 4, Debt 1 — ADR-0002).
      */
     protected void parseField(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
-        if (f instanceof com.metaobjects.field.BooleanField) {
-            boolean bv = rs.getBoolean(j);
-            f.setBoolean(o, rs.wasNull() ? null : bv);
-        } else if (f instanceof com.metaobjects.field.DecimalField) {
-            java.math.BigDecimal dv = rs.getBigDecimal(j);
-            f.setObject(o, rs.wasNull() ? null : dv);
-        } else if (f instanceof com.metaobjects.field.IntegerField) {
-            int iv = rs.getInt(j);
-            f.setInt(o, rs.wasNull() ? null : iv);
-        } else if (f instanceof com.metaobjects.field.DateField) {
-            Timestamp tv = rs.getTimestamp(j);
-            f.setDate(o, rs.wasNull() ? null : new java.util.Date(tv.getTime()));
-        } else if (f instanceof com.metaobjects.field.LongField) {
-            long lv = rs.getLong(j);
-            f.setLong(o, rs.wasNull() ? null : lv);
-        } else if (f instanceof com.metaobjects.field.FloatField) {
-            float fv = rs.getFloat(j);
-            f.setFloat(o, rs.wasNull() ? null : fv);
-        } else if (f instanceof com.metaobjects.field.DoubleField) {
-            double dv = rs.getDouble(j);
-            f.setDouble(o, rs.wasNull() ? null : dv);
-        } else if (f instanceof com.metaobjects.field.StringField) {
-            f.setString(o, rs.getString(j));
-        } else if (f instanceof com.metaobjects.field.ObjectField) {
-            f.setObject(o, rs.getObject(j));
-        } else {
-            log.warn("Unknown field type {} for field {}", f.getClass().getSimpleName(), f.getName());
-            f.setObject(o, rs.getObject(j));
-        }
+        com.metaobjects.manager.db.codec.JdbcCodecs.forField(f).readInto(o, f, rs, j);
     }
 
     /**
