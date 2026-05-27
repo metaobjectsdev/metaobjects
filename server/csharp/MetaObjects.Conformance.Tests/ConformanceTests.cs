@@ -151,10 +151,55 @@ public class ConformanceTests
                                     $"envelope[{i}].source.target: expected '{w.Source.Target}', got '{g.Target}'");
                         }
                     }
-                    if (envelope.WarningsCount != outcome.Warnings.Count)
+                }
+                // FR5c-finalize — warnings: when the fixture's envelope declares
+                // warning entries with `source`, assert per-warning envelope shape
+                // (same algorithm as errors above). When the fixture declares only
+                // counts (warnings: [{code}] without source) or empty `[]`, the
+                // length check still runs; the per-element source assertion is
+                // skipped element-by-element when expected.source is null.
+                if (!envelope.Legacy)
+                {
+                    var expectedW = envelope.Warnings;
+                    var gotW = outcome.WarningEnvelopes;
+                    if (expectedW.Count != outcome.Warnings.Count)
+                    {
                         failures.Add(
-                            $"warnings count: expected {envelope.WarningsCount}, " +
+                            $"warnings count: expected {expectedW.Count}, " +
                             $"got {outcome.Warnings.Count}");
+                    }
+                    else if (expectedW.Count == gotW.Count)
+                    {
+                        for (int i = 0; i < expectedW.Count; i++)
+                        {
+                            var w = expectedW[i];
+                            var g = gotW[i];
+                            if (w.Code != g.Code)
+                            {
+                                failures.Add(
+                                    $"warning[{i}].code: expected '{w.Code}', got '{g.Code}'");
+                                continue;
+                            }
+                            if (w.Source is null) continue;
+                            if (w.Source.Format != g.Format)
+                                failures.Add(
+                                    $"warning[{i}].source.format: expected '{w.Source.Format}', got '{g.Format}'");
+                            if (!w.Source.Files.SequenceEqual(g.Files, StringComparer.Ordinal))
+                                failures.Add(
+                                    $"warning[{i}].source.files: expected [{string.Join(",", w.Source.Files)}], " +
+                                    $"got [{string.Join(",", g.Files)}]");
+                            if (w.Source.JsonPath != null && w.Source.JsonPath != g.JsonPath)
+                                failures.Add(
+                                    $"warning[{i}].source.jsonPath: expected '{w.Source.JsonPath}', got '{g.JsonPath}'");
+                            // FR5d — assert referrer / target for format=resolved envelopes.
+                            if (w.Source.Referrer != null && w.Source.Referrer != g.Referrer)
+                                failures.Add(
+                                    $"warning[{i}].source.referrer: expected '{w.Source.Referrer}', got '{g.Referrer}'");
+                            if (w.Source.Target != null && w.Source.Target != g.Target)
+                                failures.Add(
+                                    $"warning[{i}].source.target: expected '{w.Source.Target}', got '{g.Target}'");
+                        }
+                    }
                 }
             }
         }

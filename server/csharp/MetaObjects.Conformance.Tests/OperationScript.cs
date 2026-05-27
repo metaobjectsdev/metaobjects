@@ -59,10 +59,16 @@ public static class OperationScriptParser
     /// Result of parsing expected-errors.json.
     /// <see cref="Legacy"/> is true when the file used the pre-FR5a
     /// <c>[{code}]</c> array shape (no envelope assertions possible).
+    /// <para>
+    /// FR5c-finalize — <see cref="Warnings"/> holds per-entry expected warnings
+    /// (same shape as <see cref="Errors"/>). When each entry has a non-null
+    /// <c>Source</c>, the runner asserts per-warning envelope alignment;
+    /// otherwise only the count is asserted.
+    /// </para>
     /// </summary>
     public sealed record ExpectedErrorsEnvelope(
         IReadOnlyList<ExpectedError> Errors,
-        int WarningsCount,
+        IReadOnlyList<ExpectedError> Warnings,
         bool Legacy);
 
     /// <summary>
@@ -92,7 +98,7 @@ public static class OperationScriptParser
                 legacyErrors.Add(new ExpectedError(codeProp.GetString()!, null));
                 i++;
             }
-            return new ExpectedErrorsEnvelope(legacyErrors, 0, Legacy: true);
+            return new ExpectedErrorsEnvelope(legacyErrors, Array.Empty<ExpectedError>(), Legacy: true);
         }
 
         // FR5a envelope shape.
@@ -104,17 +110,42 @@ public static class OperationScriptParser
             throw new InvalidOperationException(
                 "expected-errors.json: 'errors' must be an array");
 
-        var errors = new List<ExpectedError>();
+        var errors = ParseEnvelopeEntryArray(errorsEl, "errors");
+
+        // FR5c-finalize — warnings entries are parsed with the same envelope
+        // shape as errors. When a fixture omits `source` on a warning entry,
+        // the runner asserts only the count for that entry.
+        IReadOnlyList<ExpectedError> warnings = Array.Empty<ExpectedError>();
+        if (root.TryGetProperty("warnings", out var warnEl))
+        {
+            if (warnEl.ValueKind != JsonValueKind.Array)
+                throw new InvalidOperationException(
+                    "expected-errors.json: 'warnings' must be an array");
+            warnings = ParseEnvelopeEntryArray(warnEl, "warnings");
+        }
+        return new ExpectedErrorsEnvelope(errors, warnings, Legacy: false);
+    }
+
+    /// <summary>
+    /// Parse an array of envelope entries (<c>[{code, source?}, ...]</c>).
+    /// Used by both <c>errors[]</c> and <c>warnings[]</c> in expected-errors.json.
+    /// <paramref name="fieldName"/> is the parent property name, used purely for
+    /// error messages.
+    /// </summary>
+    private static IReadOnlyList<ExpectedError> ParseEnvelopeEntryArray(
+        JsonElement arrEl, string fieldName)
+    {
+        var entries = new List<ExpectedError>();
         int idx = 0;
-        foreach (var item in errorsEl.EnumerateArray())
+        foreach (var item in arrEl.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.Object)
                 throw new InvalidOperationException(
-                    $"expected-errors.json entry {idx} is not an object");
+                    $"expected-errors.json {fieldName}[{idx}] is not an object");
             if (!item.TryGetProperty("code", out var codeProp) ||
                 codeProp.ValueKind != JsonValueKind.String)
                 throw new InvalidOperationException(
-                    $"expected-errors.json entry {idx} missing string 'code' field");
+                    $"expected-errors.json {fieldName}[{idx}] missing string 'code' field");
             ExpectedErrorSource? source = null;
             if (item.TryGetProperty("source", out var srcEl) &&
                 srcEl.ValueKind == JsonValueKind.Object)
@@ -122,16 +153,16 @@ public static class OperationScriptParser
                 if (!srcEl.TryGetProperty("format", out var fmtEl) ||
                     fmtEl.ValueKind != JsonValueKind.String)
                     throw new InvalidOperationException(
-                        $"expected-errors.json entry {idx}: 'source.format' must be a string");
+                        $"expected-errors.json {fieldName}[{idx}]: 'source.format' must be a string");
                 if (!srcEl.TryGetProperty("files", out var filesEl) ||
                     filesEl.ValueKind != JsonValueKind.Array)
                     throw new InvalidOperationException(
-                        $"expected-errors.json entry {idx}: 'source.files' must be a string[]");
+                        $"expected-errors.json {fieldName}[{idx}]: 'source.files' must be a string[]");
                 var files = filesEl.EnumerateArray()
                     .Select(f => f.ValueKind == JsonValueKind.String
                         ? f.GetString()!
                         : throw new InvalidOperationException(
-                            $"expected-errors.json entry {idx}: 'source.files' contains non-string"))
+                            $"expected-errors.json {fieldName}[{idx}]: 'source.files' contains non-string"))
                     .ToList();
                 string? jsonPath = null;
                 if (srcEl.TryGetProperty("jsonPath", out var jpEl) &&
@@ -157,24 +188,17 @@ public static class OperationScriptParser
                 {
                     if (referrer is null)
                         throw new InvalidOperationException(
-                            $"expected-errors.json entry {idx}: 'source.referrer' is required when format='resolved'");
+                            $"expected-errors.json {fieldName}[{idx}]: 'source.referrer' is required when format='resolved'");
                     if (target is null)
                         throw new InvalidOperationException(
-                            $"expected-errors.json entry {idx}: 'source.target' is required when format='resolved'");
+                            $"expected-errors.json {fieldName}[{idx}]: 'source.target' is required when format='resolved'");
                 }
                 source = new ExpectedErrorSource(fmt, files, jsonPath, referrer, target);
             }
-            errors.Add(new ExpectedError(codeProp.GetString()!, source));
+            entries.Add(new ExpectedError(codeProp.GetString()!, source));
             idx++;
         }
-
-        int warningsCount = 0;
-        if (root.TryGetProperty("warnings", out var warnEl) &&
-            warnEl.ValueKind == JsonValueKind.Array)
-        {
-            warningsCount = warnEl.GetArrayLength();
-        }
-        return new ExpectedErrorsEnvelope(errors, warningsCount, Legacy: false);
+        return entries;
     }
 
     /// <summary>

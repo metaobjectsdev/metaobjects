@@ -36,11 +36,19 @@ public sealed record ErrorEnvelopeRecord(
 /// <param name="ErrorCodes">Error code strings collected during loading.</param>
 /// <param name="Warnings">Warning strings collected during loading.</param>
 /// <param name="Errors">Full envelope records (FR5a / ADR-0009). Populated alongside <see cref="ErrorCodes"/>.</param>
+/// <param name="WarningEnvelopes">
+/// FR5c-finalize — full warning envelopes (same shape as <see cref="Errors"/>).
+/// When present AND the fixture's expected-errors.json declares envelope-shape
+/// warnings, the runner asserts per-warning envelope alignment (mirrors the
+/// error-side assertion). When absent, the runner falls back to comparing
+/// <see cref="Warnings"/> as a flat string list against expected-warnings.json.
+/// </param>
 public sealed record LoadOutcome(
     MetaRoot Tree,
     IReadOnlyList<string> ErrorCodes,
     IReadOnlyList<string> Warnings,
-    IReadOnlyList<ErrorEnvelopeRecord> Errors);
+    IReadOnlyList<ErrorEnvelopeRecord> Errors,
+    IReadOnlyList<ErrorEnvelopeRecord> WarningEnvelopes);
 
 /// <summary>
 /// Adapter that bridges the conformance test infrastructure to the C# MetaObjects library.
@@ -76,19 +84,34 @@ public static class ConformanceAdapter
         // be relative to inputDir (the harness's portable file token).
         var envelopes = result.Errors.Select(e => BuildEnvelope(e, inputDir)).ToList();
 
+        // FR5c-finalize — surface warning envelopes (same envelope shape as
+        // errors). The loader's EnvelopeWarnings list carries envelope-shaped
+        // warnings (e.g. WARN_DUPLICATE_DECLARATION) with full LoaderWarning
+        // provenance. Mirror the error-side normalization so the cross-port
+        // runner can assert per-warning envelope alignment.
+        var warningEnvelopes = (result.EnvelopeWarnings ?? Array.Empty<LoaderWarning>())
+            .Select(w => BuildWarningEnvelope(w, inputDir))
+            .ToList();
+
         return new LoadOutcome(
             result.Root,
             result.Errors.Select(e => e.Code.ToString()).ToList(),
             result.Warnings.ToList(),
-            envelopes);
+            envelopes,
+            warningEnvelopes);
     }
 
-    private static ErrorEnvelopeRecord BuildEnvelope(MetaError err, string inputDir)
+    private static ErrorEnvelopeRecord BuildEnvelope(MetaError err, string inputDir) =>
+        BuildEnvelopeFromSource(err.Code.ToString(), err.Envelope, inputDir);
+
+    private static ErrorEnvelopeRecord BuildWarningEnvelope(LoaderWarning w, string inputDir) =>
+        BuildEnvelopeFromSource(w.Code, w.Source, inputDir);
+
+    private static ErrorEnvelopeRecord BuildEnvelopeFromSource(string code, ErrorSource? envelope, string inputDir)
     {
-        var code = err.Code.ToString();
         IReadOnlyList<string> Rel(IEnumerable<string> files) =>
             files.Select(f => RelativizeFile(f, inputDir)).ToList();
-        return err.Envelope switch
+        return envelope switch
         {
             JsonSource js     => new ErrorEnvelopeRecord(code, "json",     Rel(js.Files), js.JsonPath),
             YamlSource ys     => new ErrorEnvelopeRecord(code, "yaml",     Rel(ys.Files), ys.JsonPath),
