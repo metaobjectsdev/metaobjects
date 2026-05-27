@@ -224,19 +224,21 @@ public static class ValidationPasses
                         var from = origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
                         if (from is not string fromStr || fromStr == "")
                         {
+                            // Missing-attr (not a reference resolution failure) —
+                            // keep the node's own source envelope (json/yaml/merged).
                             errors.Add(new MetaError(
                                 $"origin.passthrough on {obj.Name}.{field.Name}: missing @from.",
                                 ErrorCode.ERR_INVALID_ORIGIN,
                                 Envelope: origin.Source));
                             continue;
                         }
-                        ValidateFromPath(fromStr, root, obj.Name, field.Name, errors,
+                        ValidateFromPath(fromStr, root, obj, field.Name, errors,
                             "origin.passthrough.@from", origin.Source);
 
                         var via = origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
                         if (via is string viaStr && viaStr != "")
                         {
-                            ValidateViaPath(viaStr, root, obj.Name, field.Name, errors, origin.Source);
+                            ValidateViaPath(viaStr, root, obj, field.Name, errors, origin.Source);
                         }
                     }
                     else if (origin.SubType == ORIGIN_SUBTYPE_AGGREGATE)
@@ -244,18 +246,20 @@ public static class ValidationPasses
                         var of = origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_OF);
                         if (of is not string ofStr || ofStr == "")
                         {
+                            // Missing-attr — keep origin's own source envelope.
                             errors.Add(new MetaError(
                                 $"origin.aggregate on {obj.Name}.{field.Name}: missing @of.",
                                 ErrorCode.ERR_INVALID_ORIGIN,
                                 Envelope: origin.Source));
                             continue;
                         }
-                        ValidateFromPath(ofStr, root, obj.Name, field.Name, errors,
+                        ValidateFromPath(ofStr, root, obj, field.Name, errors,
                             "origin.aggregate.@of", origin.Source);
 
                         var via = origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_VIA);
                         if (via is not string viaStr || viaStr == "")
                         {
+                            // Missing-attr — keep origin's own source envelope.
                             errors.Add(new MetaError(
                                 $"origin.aggregate on {obj.Name}.{field.Name}: missing @via " +
                                 "(aggregates require a relationship path).",
@@ -263,7 +267,7 @@ public static class ValidationPasses
                                 Envelope: origin.Source));
                             continue;
                         }
-                        ValidateViaPath(viaStr, root, obj.Name, field.Name, errors, origin.Source);
+                        ValidateViaPath(viaStr, root, obj, field.Name, errors, origin.Source);
                     }
                 }
             }
@@ -311,20 +315,28 @@ public static class ValidationPasses
     private static void ValidateFromPath(
         string fromAttr,
         MetaData root,
-        string projectionName,
+        MetaData projection,
         string fieldName,
         List<MetaError> errors,
         string label,
         ErrorSource originSource)
     {
+        string projectionName = projection.Name;
+        // FR5d — referrer is `<projection-FQN>::<fieldName>` (the canonical
+        // "where the broken reference lives" identifier).
+        string referrer = $"{projection.Fqn()}::{fieldName}";
+
         int dotIdx = fromAttr.IndexOf('.', StringComparison.Ordinal);
         if (dotIdx < 1 || dotIdx == fromAttr.Length - 1)
         {
+            // Malformed shape (not "Entity.field") — not a reference resolution
+            // failure per se, but emit format=resolved with target=the bad string
+            // so consumers see the same envelope shape across all FR5d sites.
             errors.Add(new MetaError(
                 $"{label} \"{fromAttr}\" on {projectionName}.{fieldName}: " +
                 "must be of form \"Entity.field\".",
                 ErrorCode.ERR_INVALID_ORIGIN,
-                Envelope: originSource));
+                Envelope: ResolvedSource.From(originSource, referrer, fromAttr)));
             return;
         }
 
@@ -334,22 +346,24 @@ public static class ValidationPasses
         var sourceObj = FindObject(root, entityName);
         if (sourceObj is null)
         {
+            // FR5d — entity half of the ref didn't resolve. target = full ref.
             errors.Add(new MetaError(
                 $"{label} \"{fromAttr}\" on {projectionName}.{fieldName}: " +
                 $"no such entity \"{entityName}\".",
                 ErrorCode.ERR_INVALID_ORIGIN,
-                Envelope: originSource));
+                Envelope: ResolvedSource.From(originSource, referrer, fromAttr)));
             return;
         }
 
         var sourceField = FindField(sourceObj, targetFieldName);
         if (sourceField is null)
         {
+            // FR5d — entity resolved, field on it did not. target = full ref.
             errors.Add(new MetaError(
                 $"{label} \"{fromAttr}\" on {projectionName}.{fieldName}: " +
                 $"no such field \"{targetFieldName}\" on {entityName}.",
                 ErrorCode.ERR_INVALID_ORIGIN,
-                Envelope: originSource));
+                Envelope: ResolvedSource.From(originSource, referrer, fromAttr)));
         }
     }
 
@@ -360,11 +374,15 @@ public static class ValidationPasses
     private static void ValidateViaPath(
         string viaAttr,
         MetaData root,
-        string projectionName,
+        MetaData projection,
         string fieldName,
         List<MetaError> errors,
         ErrorSource originSource)
     {
+        string projectionName = projection.Name;
+        // FR5d — referrer is `<projection-FQN>::<fieldName>`.
+        string referrer = $"{projection.Fqn()}::{fieldName}";
+
         var segments = viaAttr.Split('.');
         if (segments.Length < 2)
         {
@@ -372,7 +390,7 @@ public static class ValidationPasses
                 $"origin.@via \"{viaAttr}\" on {projectionName}.{fieldName}: " +
                 "must be of form \"Entity.relationship[.relationship...]\".",
                 ErrorCode.ERR_INVALID_ORIGIN,
-                Envelope: originSource));
+                Envelope: ResolvedSource.From(originSource, referrer, viaAttr)));
             return;
         }
 
@@ -386,20 +404,29 @@ public static class ValidationPasses
                 $"origin.@via \"{viaAttr}\" on {projectionName}.{fieldName}: " +
                 $"no such entity \"{entityName}\".",
                 ErrorCode.ERR_INVALID_ORIGIN,
-                Envelope: originSource));
+                Envelope: ResolvedSource.From(originSource, referrer, viaAttr)));
             return;
         }
+
+        // FR5d — track the deepest-valid-prefix as we walk. The prefix grows
+        // segment-by-segment; on a hop failure the error message names the
+        // prefix that DID resolve, so authors can fix multi-hop typos quickly.
+        // After the entity lookup above, the deepest valid prefix is just the
+        // entity name; each successful relationship hop appends a segment.
+        var validSegments = new List<string> { entityName };
 
         foreach (var relName in relSegments)
         {
             var rel = FindRelationship(currentObj, relName);
             if (rel is null)
             {
+                string prefix = string.Join('.', validSegments);
                 errors.Add(new MetaError(
                     $"origin.@via \"{viaAttr}\" on {projectionName}.{fieldName}: " +
-                    $"no such relationship \"{relName}\" on {currentObj.Name}.",
+                    $"no such relationship \"{relName}\" on {currentObj.Name}. " +
+                    $"Deepest valid prefix was \"{prefix}\".",
                     ErrorCode.ERR_INVALID_ORIGIN,
-                    Envelope: originSource));
+                    Envelope: ResolvedSource.From(originSource, referrer, viaAttr)));
                 return;
             }
 
@@ -410,21 +437,24 @@ public static class ValidationPasses
                     $"origin.@via \"{viaAttr}\" on {projectionName}.{fieldName}: " +
                     $"relationship \"{relName}\" on {currentObj.Name} is missing @objectRef.",
                     ErrorCode.ERR_INVALID_ORIGIN,
-                    Envelope: originSource));
+                    Envelope: ResolvedSource.From(originSource, referrer, viaAttr)));
                 return;
             }
 
             var nextObj = FindObject(root, refStr);
             if (nextObj is null)
             {
+                // FR5d — relationship's @objectRef points at a missing entity.
+                // target = the bad @objectRef value (NOT the full via path).
                 errors.Add(new MetaError(
                     $"origin.@via \"{viaAttr}\" on {projectionName}.{fieldName}: " +
                     $"relationship \"{relName}\" points to non-existent entity \"{refStr}\".",
                     ErrorCode.ERR_INVALID_ORIGIN,
-                    Envelope: originSource));
+                    Envelope: ResolvedSource.From(originSource, referrer, refStr)));
                 return;
             }
 
+            validSegments.Add(relName);
             currentObj = nextObj;
         }
     }
@@ -919,10 +949,12 @@ public static class ValidationPasses
                 .FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
             if (payload is null || payload.SubType != OBJECT_SUBTYPE_VALUE)
             {
+                // FR5d — @payloadRef is a reference; emit format=resolved with
+                // referrer = template FQN, target = the unresolved payloadRef.
                 errors.Add(new MetaError(
                     $"template \"{tmpl.Name}\" @payloadRef \"{payloadRef}\" does not resolve to an object.value at root",
                     ErrorCode.ERR_INVALID_TEMPLATE,
-                    Envelope: tmpl.Source));
+                    Envelope: ResolvedSource.From(tmpl.Source, tmpl.Fqn(), payloadRef)));
                 continue;
             }
 
@@ -941,11 +973,15 @@ public static class ValidationPasses
             foreach (var slot in slotList)
             {
                 if (!fieldNames.Contains(slot))
+                    // FR5d — @requiredSlots is a field-on-payload reference;
+                    // emit format=resolved with referrer = template FQN,
+                    // target = `payloadRef.slot` (the dotted ref that did not
+                    // resolve to a payload field).
                     errors.Add(new MetaError(
                         $"template \"{tmpl.Name}\" @requiredSlots \"{slot}\" is not a field on payload " +
                         $"\"{payloadRef}\". Available fields: {string.Join(", ", fieldNames)}",
                         ErrorCode.ERR_INVALID_TEMPLATE,
-                        Envelope: tmpl.Source));
+                        Envelope: ResolvedSource.From(tmpl.Source, tmpl.Fqn(), $"{payloadRef}.{slot}")));
             }
         }
 

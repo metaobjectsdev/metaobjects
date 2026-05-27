@@ -467,10 +467,13 @@ public static class Parser
             }
             else
             {
+                // FR5d — emit format=resolved with referrer + target.
+                // referrer = the declaring node's FQN (already built above);
+                // target = the unresolved supertype ref string.
                 throw new ParseException(
                     $"the SuperClass '{model.SuperRef}' does not exist in file '{st.Source ?? "<unknown>"}'",
                     ErrorCode.ERR_UNRESOLVED_SUPER, st.Source, st.Builder.ToString(),
-                    st.CurrentSource());
+                    ResolvedSource.From(st.CurrentSource(), model.Fqn(), model.SuperRef));
             }
         }
         else if (model.SuperRef is not null && accumRoot is null)
