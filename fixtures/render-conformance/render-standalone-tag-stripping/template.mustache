@@ -1,0 +1,23 @@
+section-standalone:
+{{#show}}
+inside
+{{/show}}
+end-section
+
+section-inline: pre{{#show}}MID{{/show}}post
+
+list-standalone:
+{{#items}}
+- {{.}}
+{{/items}}
+end-list
+
+list-inline: [{{#items}}{{.}},{{/items}}]
+
+comment-standalone:
+{{! this is a comment }}
+after-comment
+
+partial-standalone:
+{{> partials/note }}
+after-partial

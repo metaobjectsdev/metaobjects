@@ -1,0 +1,1 @@
+{ "format": "text", "note": "inverted-section ^x truthiness across empty array, empty string, false, null, and missing key" }
