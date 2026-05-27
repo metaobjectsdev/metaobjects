@@ -96,11 +96,19 @@ public static class Parser
         }
         catch (JsonException err)
         {
+            // FR5a / ADR-0009: pre-BuildTree errors can't reach the parser's
+            // per-run JsonPathBuilder (BuildTree hasn't started yet); build a
+            // minimal $-rooted JsonSource envelope so cross-port callers see a
+            // consistent shape. Mirrors TS parser-json.ts:25-29.
+            var envelope = new JsonSource(
+                new[] { opts.SourceName ?? "<unknown>" },
+                "$");
             throw new ParseException(
                 $"Invalid JSON: {err.Message}",
                 ErrorCode.ERR_MALFORMED_JSON,
                 opts.SourceName,
-                null);
+                "$",
+                envelope);
         }
 
         // The JsonDocument must stay alive while buildTree walks it.
@@ -712,6 +720,15 @@ public static class Parser
         JsonElement nodeData,
         ParseState st)
     {
+        // PARENT-PATH SCOPE: errors raised from this loop use the parent node's
+        // canonical path (the path of the node that owns these inline attrs), NOT
+        // a key-deeper path. Mirrors TS parser-core.ts:626-690, which never pushes
+        // the attr key onto _currentPath inside this loop — `path` is the parent's.
+        // This is the FR5a contract: ERR_RESERVED_ATTR / ERR_UNKNOWN_ATTR /
+        // ERR_BAD_ATTR_VALUE all surface at the parent (the node body that
+        // contains the bad key). The previous C# code threaded one level deeper,
+        // which produced cross-port envelope drift on error-reserved-word-as-attr.
+        string path = st.Builder.ToString();
         foreach (JsonProperty prop in nodeData.EnumerateObject())
         {
             string key = prop.Name;
@@ -719,95 +736,83 @@ public static class Parser
             // Skip all reserved structural keys.
             if (RESERVED_KEYS.Contains(key)) continue;
 
-            // Push the attr key onto the builder so its canonical path is visible
-            // to any error / source envelope built within this iteration.
-            st.Builder.PushKey(key);
+            if (!key.StartsWith(ATTR_PREFIX, StringComparison.Ordinal))
+            {
+                string displayName = model.Name != ""
+                    ? $"{model.Type}.{model.SubType} '{model.Name}'"
+                    : $"{model.Type}.{model.SubType}";
+                ReportProblem(
+                    $"Unknown key '{key}' on {displayName} at {path} (must be reserved or {ATTR_PREFIX}-prefixed)",
+                    st, ErrorCode.ERR_UNKNOWN_ATTR);
+                continue;
+            }
+
+            // Inline attribute (@-prefixed).
+            string attrName = key[ATTR_PREFIX.Length..];
+            JsonElement rawVal = prop.Value;
+
+            // ERR_RESERVED_ATTR: any @-prefixed reserved structural key (e.g. "@isArray",
+            // "@name") is always a metadata-author error and is reported as a hard
+            // error regardless of strict mode — downstream code must never see a
+            // bogus MetaAttr named after a reserved word. Mirrors the TS
+            // parser-core.ts (errors-sink-direct in lax mode, throw in strict) and
+            // Java CanonicalJsonParser. The YAML desugar layer has its own pre-check
+            // that fires first when authoring in YAML; the canonical parser is the
+            // last-line cross-language gate.
+            if (RESERVED_KEYS.Contains(attrName))
+            {
+                string displayName = model.Name != ""
+                    ? $"{model.Type}.{model.SubType} '{model.Name}'"
+                    : $"{model.Type}.{model.SubType}";
+                string msg = $"Reserved structural key '{attrName}' must not be " +
+                             $"{ATTR_PREFIX}-prefixed on {displayName} at {path} (write it bare)";
+                if (st.Strict)
+                {
+                    throw new ParseException(msg, ErrorCode.ERR_RESERVED_ATTR, st.Source, path,
+                        st.CurrentSource());
+                }
+                st.Errors.Add(new MetaError(msg, ErrorCode.ERR_RESERVED_ATTR, st.Source, path,
+                    st.CurrentSource()));
+                continue;
+            }
+
+            AttrSchema? attrSpec = st.Registry
+                .AttrsOf(model.Type, model.SubType)
+                .FirstOrDefault(a => a.Name == attrName);
+
+            object? value;
             try
             {
-                string path = st.Builder.ToString();
-
-                if (!key.StartsWith(ATTR_PREFIX, StringComparison.Ordinal))
+                if (attrSpec is not null && attrSpec.ValueType is not null)
                 {
-                    string displayName = model.Name != ""
-                        ? $"{model.Type}.{model.SubType} '{model.Name}'"
-                        : $"{model.Type}.{model.SubType}";
-                    ReportProblem(
-                        $"Unknown key '{key}' on {displayName} at {path} (must be reserved or {ATTR_PREFIX}-prefixed)",
-                        st, ErrorCode.ERR_UNKNOWN_ATTR);
-                    continue;
+                    // Declared attr with a concrete value-type — convert toward
+                    // that DataType.
+                    DataType dataType = st.Registry.Find(TYPE_ATTR, attrSpec.ValueType)?.DataType
+                        ?? DataType.String;
+                    value = DataConverter.ConvertToDataType(dataType, rawVal);
                 }
-
-                // Inline attribute (@-prefixed).
-                string attrName = key[ATTR_PREFIX.Length..];
-                JsonElement rawVal = prop.Value;
-
-                // ERR_RESERVED_ATTR: any @-prefixed reserved structural key (e.g. "@isArray",
-                // "@name") is always a metadata-author error and is reported as a hard
-                // error regardless of strict mode — downstream code must never see a
-                // bogus MetaAttr named after a reserved word. Mirrors the TS
-                // parser-core.ts (errors-sink-direct in lax mode, throw in strict) and
-                // Java CanonicalJsonParser. The YAML desugar layer has its own pre-check
-                // that fires first when authoring in YAML; the canonical parser is the
-                // last-line cross-language gate.
-                if (RESERVED_KEYS.Contains(attrName))
+                else
                 {
-                    string displayName = model.Name != ""
-                        ? $"{model.Type}.{model.SubType} '{model.Name}'"
-                        : $"{model.Type}.{model.SubType}";
-                    string msg = $"Reserved structural key '{attrName}' must not be " +
-                                 $"{ATTR_PREFIX}-prefixed on {displayName} at {path} (write it bare)";
-                    if (st.Strict)
-                    {
-                        throw new ParseException(msg, ErrorCode.ERR_RESERVED_ATTR, st.Source, path,
-                            st.CurrentSource());
-                    }
-                    st.Errors.Add(new MetaError(msg, ErrorCode.ERR_RESERVED_ATTR, st.Source, path,
-                        st.CurrentSource()));
-                    continue;
+                    // Undeclared @-attr OR declared-but-untyped — store the value
+                    // type-preserved, exactly as the JSON author wrote it.
+                    value = DataConverter.ToAttrValue(rawVal);
                 }
-
-                AttrSchema? attrSpec = st.Registry
-                    .AttrsOf(model.Type, model.SubType)
-                    .FirstOrDefault(a => a.Name == attrName);
-
-                object? value;
-                try
-                {
-                    if (attrSpec is not null && attrSpec.ValueType is not null)
-                    {
-                        // Declared attr with a concrete value-type — convert toward
-                        // that DataType.
-                        DataType dataType = st.Registry.Find(TYPE_ATTR, attrSpec.ValueType)?.DataType
-                            ?? DataType.String;
-                        value = DataConverter.ConvertToDataType(dataType, rawVal);
-                    }
-                    else
-                    {
-                        // Undeclared @-attr OR declared-but-untyped — store the value
-                        // type-preserved, exactly as the JSON author wrote it.
-                        value = DataConverter.ToAttrValue(rawVal);
-                    }
-                }
-                catch (FormatException err)
-                {
-                    ReportProblem(
-                        $"Failed to convert attribute \"{ATTR_PREFIX}{attrName}\" at {path}: {err.Message}",
-                        st, ErrorCode.ERR_BAD_ATTR_VALUE);
-                    continue;
-                }
-
-                // A bare string for a declared stringArray attr → one-element array.
-                object? normalized = NormalizeStringArrayAttr(
-                    model.Type, model.SubType, attrName, value, st.Registry);
-                // An object-valued filter attr → canonical { field: { op: value } } form.
-                normalized = NormalizeFilterAttr(
-                    model.Type, model.SubType, attrName, normalized, st.Registry);
-                model.SetAttr(attrName, normalized);
             }
-            finally
+            catch (FormatException err)
             {
-                st.Builder.Pop();
+                ReportProblem(
+                    $"Failed to convert attribute \"{ATTR_PREFIX}{attrName}\" at {path}: {err.Message}",
+                    st, ErrorCode.ERR_BAD_ATTR_VALUE);
+                continue;
             }
+
+            // A bare string for a declared stringArray attr → one-element array.
+            object? normalized = NormalizeStringArrayAttr(
+                model.Type, model.SubType, attrName, value, st.Registry);
+            // An object-valued filter attr → canonical { field: { op: value } } form.
+            normalized = NormalizeFilterAttr(
+                model.Type, model.SubType, attrName, normalized, st.Registry);
+            model.SetAttr(attrName, normalized);
         }
     }
 

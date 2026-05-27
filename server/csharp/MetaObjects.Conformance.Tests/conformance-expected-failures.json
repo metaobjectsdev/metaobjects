@@ -1,8 +1,5 @@
 {
   "language": "csharp",
-  "_comment": "FR5a envelope-shape gates: TS is the reference port for source.format / source.files / source.jsonPath. C# drifts on two fixtures (parser source-threading differences): error-parse-malformed-json (the C# malformed-JSON path returns an empty files[]; TS captures the filename), and error-reserved-word-as-attr (C# threads source one level deeper, to the offending @attr; TS stops at the parent field.object). Track until the C# parser is reconciled to TS's source-emission sites.",
-  "fixtures": [
-    "error-parse-malformed-json",
-    "error-reserved-word-as-attr"
-  ]
+  "_comment": "FR5a envelope-shape gates: TS is the reference port for source.format / source.files / source.jsonPath. C# is now reconciled with TS on the JSON-side FR5a envelopes (parser malformed-JSON catch builds a $-rooted JsonSource with the source-file name; inline-attr loop reports ERR_RESERVED_ATTR / ERR_UNKNOWN_ATTR / ERR_BAD_ATTR_VALUE at the parent's path — not key-deeper). Keep this file as the documented ledger surface (empty = full FR5a envelope parity with TS for the JSON corpus).",
+  "fixtures": []
 }
