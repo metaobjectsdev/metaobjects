@@ -1,0 +1,12 @@
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      { "object.value": { "name": "Greeting", "children": [
+          { "field.string": { "name": "text" } }
+      ] } },
+      { "template.output": { "name": "Reply",
+          "@payloadRef": "Greeting", "@textRef": "ai/reply" } }
+    ]
+  }
+}
