@@ -74,8 +74,15 @@ function emitInterface(root: MetaData, voName: string, emitted: Set<string>, out
   const refs: string[] = [];
   for (const f of vo.children().filter((c) => c.type === TYPE_FIELD)) {
     const { type, refVo } = fieldTsType(f);
-    const optional = isFieldRequired(f) ? "" : "?";
-    lines.push(`  ${f.name}${optional}: ${type};`);
+    // Required fields: `name: T;`
+    // Optional fields: `name?: T | null;` — the `| null` lets values from
+    // Drizzle entity rows (which return `null` for nullable columns) flow
+    // straight in. Without it, TS treats undefined-vs-null as a hard error
+    // at the entity → payload boundary.
+    const isRequired = isFieldRequired(f);
+    const tsType = isRequired ? type : `${type} | null`;
+    const optional = isRequired ? "" : "?";
+    lines.push(`  ${f.name}${optional}: ${tsType};`);
     if (refVo) refs.push(refVo);
   }
   lines.push("}");

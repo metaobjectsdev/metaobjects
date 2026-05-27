@@ -75,7 +75,7 @@ describe("payload-codegen — typed payload interface (types only, no class/VO)"
     expect(out).toContain("solo: string;");
   });
 
-  test("fields without required:true emit as optional (TS `?:`)", async () => {
+  test("fields without required:true emit as optional + nullable (TS `?: T | null`)", async () => {
     const root = await loadRoot([
       {
         "object.value": {
@@ -90,8 +90,8 @@ describe("payload-codegen — typed payload interface (types only, no class/VO)"
     ]);
     const out = generatePayloadInterfaces(root, "MixedOptional");
     expect(out).toContain("mandatory: string;");
-    expect(out).toContain("discretionary?: string;");
-    expect(out).toContain("explicitlyOptional?: string;");
+    expect(out).toContain("discretionary?: string | null;");
+    expect(out).toContain("explicitlyOptional?: string | null;");
   });
 });
 
