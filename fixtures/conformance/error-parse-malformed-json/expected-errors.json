@@ -1,5 +1,15 @@
-[
-  {
-    "code": "ERR_MALFORMED_JSON"
-  }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_MALFORMED_JSON",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.broken.json"
+        ],
+        "jsonPath": "$"
+      }
+    }
+  ],
+  "warnings": []
+}

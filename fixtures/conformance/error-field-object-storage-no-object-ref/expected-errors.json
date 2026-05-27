@@ -1,3 +1,15 @@
-[
-  { "code": "ERR_STORAGE_WITHOUT_OBJECT_REF" }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_STORAGE_WITHOUT_OBJECT_REF",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.storage.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[1]['field.object']"
+      }
+    }
+  ],
+  "warnings": []
+}

@@ -1,5 +1,15 @@
-[
-  {
-    "code": "ERR_BAD_DEFAULT_SORT_FIELD"
-  }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_BAD_DEFAULT_SORT_FIELD",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.users.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[3]['layout.dataGrid']"
+      }
+    }
+  ],
+  "warnings": []
+}

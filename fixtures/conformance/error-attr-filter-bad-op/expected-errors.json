@@ -1,5 +1,15 @@
-[
-  {
-    "code": "ERR_BAD_ATTR_FILTER"
-  }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_BAD_ATTR_FILTER",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.users.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[4]['layout.dataGrid']"
+      }
+    }
+  ],
+  "warnings": []
+}

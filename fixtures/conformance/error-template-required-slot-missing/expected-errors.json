@@ -1,3 +1,15 @@
-[
-  { "code": "ERR_INVALID_TEMPLATE" }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_INVALID_TEMPLATE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.ai.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['template.prompt']"
+      }
+    }
+  ],
+  "warnings": []
+}

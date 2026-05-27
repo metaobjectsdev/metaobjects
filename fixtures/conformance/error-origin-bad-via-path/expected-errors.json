@@ -1,5 +1,15 @@
-[
-  {
-    "code": "ERR_INVALID_ORIGIN"
-  }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_INVALID_ORIGIN",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.commerce.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[1]['field.int'].children[0]['origin.aggregate']"
+      }
+    }
+  ],
+  "warnings": []
+}
