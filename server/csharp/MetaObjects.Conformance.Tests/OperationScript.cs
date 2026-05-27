@@ -37,33 +37,126 @@ public static class OperationScriptParser
         new(@"^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$", RegexOptions.Compiled);
 
     /// <summary>
-    /// Parse and validate a parsed expected-errors.json value.
-    /// Throws a clear exception if the element is not an array of objects each
-    /// with a string <c>code</c> field.
+    /// One expected source token for an envelope-shaped expected-errors.json.
+    /// The cross-port harness asserts <c>Format</c>, <c>Files</c>, <c>JsonPath</c>.
     /// </summary>
-    /// <returns>The list of error codes.</returns>
-    public static IReadOnlyList<string> ParseExpectedErrors(JsonElement root)
-    {
-        if (root.ValueKind != JsonValueKind.Array)
-            throw new InvalidOperationException("expected-errors.json must be a JSON array");
+    public sealed record ExpectedErrorSource(
+        string Format,
+        IReadOnlyList<string> Files,
+        string? JsonPath);
 
-        var codes = new List<string>();
-        int i = 0;
-        foreach (var item in root.EnumerateArray())
+    /// <summary>
+    /// One expected error in the parsed expected-errors.json. <c>Source</c>
+    /// is non-null iff the file used the FR5a envelope shape.
+    /// </summary>
+    public sealed record ExpectedError(string Code, ExpectedErrorSource? Source);
+
+    /// <summary>
+    /// Result of parsing expected-errors.json.
+    /// <see cref="Legacy"/> is true when the file used the pre-FR5a
+    /// <c>[{code}]</c> array shape (no envelope assertions possible).
+    /// </summary>
+    public sealed record ExpectedErrorsEnvelope(
+        IReadOnlyList<ExpectedError> Errors,
+        int WarningsCount,
+        bool Legacy);
+
+    /// <summary>
+    /// Parse and validate a parsed expected-errors.json value.
+    /// Accepts both shapes:
+    /// <list type="bullet">
+    /// <item><description><b>Legacy</b> <c>[{code}]</c> — pre-FR5a.</description></item>
+    /// <item><description><b>FR5a envelope</b> <c>{ errors: [{code, source}], warnings: [] }</c>.</description></item>
+    /// </list>
+    /// </summary>
+    public static ExpectedErrorsEnvelope ParseExpectedErrorsEnvelope(JsonElement root)
+    {
+        // Legacy shape — plain array of {code}.
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            var legacyErrors = new List<ExpectedError>();
+            int i = 0;
+            foreach (var item in root.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object)
+                    throw new InvalidOperationException(
+                        $"expected-errors.json entry {i} is not an object");
+                if (!item.TryGetProperty("code", out var codeProp) ||
+                    codeProp.ValueKind != JsonValueKind.String)
+                    throw new InvalidOperationException(
+                        $"expected-errors.json entry {i} missing string 'code' field");
+                legacyErrors.Add(new ExpectedError(codeProp.GetString()!, null));
+                i++;
+            }
+            return new ExpectedErrorsEnvelope(legacyErrors, 0, Legacy: true);
+        }
+
+        // FR5a envelope shape.
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException(
+                "expected-errors.json must be either an array (legacy) or an object with 'errors'");
+        if (!root.TryGetProperty("errors", out var errorsEl) ||
+            errorsEl.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException(
+                "expected-errors.json: 'errors' must be an array");
+
+        var errors = new List<ExpectedError>();
+        int idx = 0;
+        foreach (var item in errorsEl.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.Object)
                 throw new InvalidOperationException(
-                    $"expected-errors.json entry {i} is not an object");
-
+                    $"expected-errors.json entry {idx} is not an object");
             if (!item.TryGetProperty("code", out var codeProp) ||
                 codeProp.ValueKind != JsonValueKind.String)
                 throw new InvalidOperationException(
-                    $"expected-errors.json entry {i} missing string 'code' field");
-
-            codes.Add(codeProp.GetString()!);
-            i++;
+                    $"expected-errors.json entry {idx} missing string 'code' field");
+            ExpectedErrorSource? source = null;
+            if (item.TryGetProperty("source", out var srcEl) &&
+                srcEl.ValueKind == JsonValueKind.Object)
+            {
+                if (!srcEl.TryGetProperty("format", out var fmtEl) ||
+                    fmtEl.ValueKind != JsonValueKind.String)
+                    throw new InvalidOperationException(
+                        $"expected-errors.json entry {idx}: 'source.format' must be a string");
+                if (!srcEl.TryGetProperty("files", out var filesEl) ||
+                    filesEl.ValueKind != JsonValueKind.Array)
+                    throw new InvalidOperationException(
+                        $"expected-errors.json entry {idx}: 'source.files' must be a string[]");
+                var files = filesEl.EnumerateArray()
+                    .Select(f => f.ValueKind == JsonValueKind.String
+                        ? f.GetString()!
+                        : throw new InvalidOperationException(
+                            $"expected-errors.json entry {idx}: 'source.files' contains non-string"))
+                    .ToList();
+                string? jsonPath = null;
+                if (srcEl.TryGetProperty("jsonPath", out var jpEl) &&
+                    jpEl.ValueKind == JsonValueKind.String)
+                {
+                    jsonPath = jpEl.GetString();
+                }
+                source = new ExpectedErrorSource(fmtEl.GetString()!, files, jsonPath);
+            }
+            errors.Add(new ExpectedError(codeProp.GetString()!, source));
+            idx++;
         }
-        return codes;
+
+        int warningsCount = 0;
+        if (root.TryGetProperty("warnings", out var warnEl) &&
+            warnEl.ValueKind == JsonValueKind.Array)
+        {
+            warningsCount = warnEl.GetArrayLength();
+        }
+        return new ExpectedErrorsEnvelope(errors, warningsCount, Legacy: false);
+    }
+
+    /// <summary>
+    /// Backward-compat helper: returns just the error codes from either shape.
+    /// Used by call sites that only care about the code-set.
+    /// </summary>
+    public static IReadOnlyList<string> ParseExpectedErrors(JsonElement root)
+    {
+        return ParseExpectedErrorsEnvelope(root).Errors.Select(e => e.Code).ToList();
     }
 
     /// <summary>

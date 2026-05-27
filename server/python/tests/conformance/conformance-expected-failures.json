@@ -1,3 +1,7 @@
 {
-  "fixtures": []
+  "_comment": "FR5a envelope-shape gates: TS is the reference port for source.format / source.files / source.jsonPath. Python drifts on two fixtures (parser source-threading differences): error-extends-nonexistent (the Python super-resolve error path returns empty files[] + jsonPath '$'; TS captures the referrer node's full envelope), and error-reserved-word-as-attr (Python threads source one level deeper, to the offending @attr; TS stops at the parent field.object). Track until the Python loader's error-construction sites are reconciled to TS's source-emission sites.",
+  "fixtures": [
+    "error-extends-nonexistent",
+    "error-reserved-word-as-attr"
+  ]
 }

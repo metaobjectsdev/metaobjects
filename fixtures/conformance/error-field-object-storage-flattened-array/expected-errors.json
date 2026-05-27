@@ -1,3 +1,15 @@
-[
-  { "code": "ERR_STORAGE_FLATTENED_ARRAY" }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_STORAGE_FLATTENED_ARRAY",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.storage.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[1]['field.object']"
+      }
+    }
+  ],
+  "warnings": []
+}

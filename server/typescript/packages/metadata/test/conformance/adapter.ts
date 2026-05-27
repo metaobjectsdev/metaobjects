@@ -5,12 +5,14 @@
 
 import type {
   ConformanceAdapter,
+  ErrorEnvelopeRecord,
   LoadOutcome,
   NodeHandle,
   NormalizedResult,
   TreeHandle,
 } from "@metaobjectsdev/conformance";
 import { UnknownCapabilityError } from "@metaobjectsdev/conformance";
+import { relative } from "node:path";
 import type { MetaDataTypeProvider } from "../../src/provider.js";
 import { composeRegistry } from "../../src/provider.js";
 import { coreTypesProvider } from "../../src/core-types.js";
@@ -19,6 +21,7 @@ import { docProvider } from "../../src/core/documentation/doc-provider.js";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
 import type { MetaData } from "../../src/shared/meta-data.js";
 import { canonicalSerialize, canonicalSerializeEffective } from "../../src/serializer-json.js";
+import { ParseError } from "../../src/errors.js";
 import { navigate } from "./navigator.js";
 import { binding } from "./binding.js";
 
@@ -55,6 +58,36 @@ export const tsAdapter: ConformanceAdapter = {
     });
     const registry = composeRegistry(resolved);
     const result = await MetaDataLoader.fromDirectory(inputDir, { registry });
+    // FR5a — surface the full ParseError envelopes; normalize files[] to be
+    // relative to the fixture's inputDir so the cross-port assertion has a
+    // portable file token. Errors without an envelope (rare; only non-ParseError)
+    // synthesize a minimal $-rooted shape.
+    function relativize(f: string): string {
+      const fwd = f.replace(/\\/g, "/");
+      return f.startsWith(inputDir) ? relative(inputDir, f).replace(/\\/g, "/") : fwd;
+    }
+    const envelopes: ErrorEnvelopeRecord[] = result.errors.map((err) => {
+      if (err instanceof ParseError) {
+        const src = err.source;
+        if (src.format === "json" || src.format === "yaml"
+          || src.format === "merged" || src.format === "resolved") {
+          const files = src.files.map(relativize);
+          const jp = (src as { jsonPath?: string }).jsonPath;
+          return {
+            code: err.code,
+            source: jp !== undefined
+              ? { format: src.format, files, jsonPath: jp }
+              : { format: src.format, files },
+          };
+        }
+        return { code: err.code, source: { format: src.format, files: [] } };
+      }
+      const code = (err as { code?: unknown }).code;
+      return {
+        code: typeof code === "string" ? code : "ERR_UNKNOWN",
+        source: { format: "json", files: [], jsonPath: "$" },
+      };
+    });
     return {
       tree: result.root,
       errorCodes: result.errors.map(errorCode),
@@ -62,6 +95,7 @@ export const tsAdapter: ConformanceAdapter = {
       // returns LoaderWarning envelopes (FR5a). Extract the human-readable
       // message for cross-port string-equality comparison.
       warnings: result.warnings.map((w) => w.message),
+      errors: envelopes,
     };
   },
 

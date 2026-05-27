@@ -18,6 +18,12 @@ import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.ValidationPhase;
 import com.metaobjects.loader.parser.yaml.ParserYaml;
 import com.metaobjects.loader.parser.yaml.YamlDesugar;
+import com.metaobjects.source.CodeSource;
+import com.metaobjects.source.ErrorSource;
+import com.metaobjects.source.JsonSource;
+import com.metaobjects.source.MergedSource;
+import com.metaobjects.source.ResolvedSource;
+import com.metaobjects.source.YamlSource;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -131,20 +137,28 @@ public class YamlConformanceTest {
 
         // 1. Desugar — collect every desugar diagnostic (the multi-error path).
         Set<String> codesSeen = new LinkedHashSet<>();
+        List<YamlEnvelopeRecord> envelopesSeen = new ArrayList<>();
         ParserYaml parser = new ParserYaml(loader, "input.yaml");
         ParserYaml.YamlResult yamlResult;
         try {
             InputStream is = new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8));
             yamlResult = parser.parseYamlCollecting(is);
         } catch (MetaDataException ex) {
-            codesSeen.add(extractErrorCode(ex));
+            String code = extractErrorCode(ex);
+            if (codesSeen.add(code)) envelopesSeen.add(buildYamlEnvelopeFromException(ex, code));
             yamlResult = null;
         }
 
         // 2. Add desugar collected codes.
         if (yamlResult != null) {
             for (YamlDesugar.CollectedError err : yamlResult.errors) {
-                codesSeen.add(err.code != null ? err.code.name() : ErrorCode.ERR_MALFORMED_YAML.name());
+                String code = err.code != null ? err.code.name() : ErrorCode.ERR_MALFORMED_YAML.name();
+                if (codesSeen.add(code)) {
+                    // YAML desugar errors don't carry an envelope yet — synthesize
+                    // a root-level yaml shape.
+                    envelopesSeen.add(new YamlEnvelopeRecord(code, "yaml",
+                        Collections.singletonList("input.yaml"), "$"));
+                }
             }
             // 3. Hand the canonical to buildTree — capture any subsequent build-time
             //    error (e.g. ERR_RESERVED_ATTR raised inline by the canonical parser).
@@ -152,7 +166,8 @@ public class YamlConformanceTest {
             try {
                 parser.buildTree(yamlResult.canonical);
             } catch (MetaDataException ex) {
-                codesSeen.add(extractErrorCode(ex));
+                String code = extractErrorCode(ex);
+                if (codesSeen.add(code)) envelopesSeen.add(buildYamlEnvelopeFromException(ex, code));
                 buildTreeOk = false;
             } catch (RuntimeException ex) {
                 failures.add("unexpected runtime exception during buildTree: "
@@ -170,7 +185,8 @@ public class YamlConformanceTest {
                     try {
                         ValidationPhase.run(root);
                     } catch (MetaDataException ex) {
-                        codesSeen.add(extractErrorCode(ex));
+                        String code = extractErrorCode(ex);
+                        if (codesSeen.add(code)) envelopesSeen.add(buildYamlEnvelopeFromException(ex, code));
                     } catch (RuntimeException ex) {
                         failures.add("unexpected runtime exception during ValidationPhase: "
                             + ex.getClass().getSimpleName() + ": " + ex.getMessage());
@@ -182,11 +198,44 @@ public class YamlConformanceTest {
 
         // -- expected-errors check ------------------------------------------
         if (fix.hasExpectedErrors) {
-            List<String> want = parseExpectedErrors(fix.dir.resolve("expected-errors.json"));
-            TreeSet<String> wantSet = new TreeSet<>(want);
+            FixtureLint.ExpectedErrorsEnvelope envelope = parseExpectedErrorsEnvelope(
+                fix.dir.resolve("expected-errors.json"));
+            // Code-set check.
+            TreeSet<String> wantSet = new TreeSet<>();
+            for (FixtureLint.ExpectedError e : envelope.errors) wantSet.add(e.code);
             TreeSet<String> gotSet = new TreeSet<>(codesSeen);
             if (!wantSet.equals(gotSet)) {
                 failures.add("expected errors " + wantSet + ", got " + gotSet);
+            }
+            // FR5a per-error envelope assertion (in declaration order).
+            if (!envelope.legacy) {
+                if (envelope.errors.size() != envelopesSeen.size()) {
+                    failures.add("envelope length mismatch: expected " + envelope.errors.size()
+                        + ", got " + envelopesSeen.size());
+                } else {
+                    for (int i = 0; i < envelope.errors.size(); i++) {
+                        FixtureLint.ExpectedError w = envelope.errors.get(i);
+                        YamlEnvelopeRecord g = envelopesSeen.get(i);
+                        if (!w.code.equals(g.code)) {
+                            failures.add("envelope[" + i + "].code: expected '" + w.code
+                                + "', got '" + g.code + "'");
+                            continue;
+                        }
+                        if (w.source == null) continue;
+                        if (!w.source.format.equals(g.format)) {
+                            failures.add("envelope[" + i + "].source.format: expected '"
+                                + w.source.format + "', got '" + g.format + "'");
+                        }
+                        if (!w.source.files.equals(g.files)) {
+                            failures.add("envelope[" + i + "].source.files: expected "
+                                + w.source.files + ", got " + g.files);
+                        }
+                        if (w.source.jsonPath != null && !w.source.jsonPath.equals(g.jsonPath)) {
+                            failures.add("envelope[" + i + "].source.jsonPath: expected '"
+                                + w.source.jsonPath + "', got '" + g.jsonPath + "'");
+                        }
+                    }
+                }
             }
             return;
         }
@@ -331,14 +380,56 @@ public class YamlConformanceTest {
         return ErrorCode.ERR_UNKNOWN.name();
     }
 
-    private static List<String> parseExpectedErrors(Path file) {
+    /** Parse the YAML fixture's expected-errors.json into the FR5a envelope shape. */
+    private static FixtureLint.ExpectedErrorsEnvelope parseExpectedErrorsEnvelope(Path file) {
         try {
             JsonElement el = JsonParser.parseString(new String(
                 Files.readAllBytes(file), StandardCharsets.UTF_8));
-            return FixtureLint.parseExpectedErrors(el);
+            return FixtureLint.parseExpectedErrorsEnvelope(el);
         } catch (IOException ex) {
             throw new AssertionError("expected-errors.json read error: " + ex.getMessage(), ex);
         }
+    }
+
+    /** Per-error cross-port envelope record used inside the YAML runner. */
+    private static final class YamlEnvelopeRecord {
+        final String code;
+        final String format;
+        final List<String> files;
+        final String jsonPath;
+        YamlEnvelopeRecord(String code, String format, List<String> files, String jsonPath) {
+            this.code = code;
+            this.format = format;
+            this.files = files;
+            this.jsonPath = jsonPath;
+        }
+    }
+
+    /**
+     * Build a cross-port envelope record from a YAML-runner MetaDataException.
+     * YAML fixtures' file token is always {@code "input.yaml"} (the authoring
+     * file the consumer sees), not the per-port internal source id.
+     */
+    private static YamlEnvelopeRecord buildYamlEnvelopeFromException(MetaDataException ex, String code) {
+        ErrorSource env = ex.getEnvelope().orElse(null);
+        if (env instanceof JsonSource js) {
+            return new YamlEnvelopeRecord(code, "json",
+                Collections.singletonList("input.yaml"), js.jsonPath());
+        }
+        if (env instanceof YamlSource ys) {
+            return new YamlEnvelopeRecord(code, "yaml",
+                Collections.singletonList("input.yaml"), ys.jsonPath());
+        }
+        if (env instanceof MergedSource ms) {
+            return new YamlEnvelopeRecord(code, "merged", ms.files(), ms.jsonPath());
+        }
+        if (env instanceof ResolvedSource rs) {
+            return new YamlEnvelopeRecord(code, "resolved", rs.files(), rs.jsonPath());
+        }
+        if (env instanceof CodeSource) {
+            return new YamlEnvelopeRecord(code, "code", Collections.emptyList(), null);
+        }
+        return new YamlEnvelopeRecord(code, "yaml", Collections.singletonList("input.yaml"), "$");
     }
 
     /**

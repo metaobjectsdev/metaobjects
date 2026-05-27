@@ -1,5 +1,15 @@
-[
-  {
-    "code": "ERR_RESERVED_ATTR"
-  }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_RESERVED_ATTR",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.bad.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[1]['field.object']"
+      }
+    }
+  ],
+  "warnings": []
+}

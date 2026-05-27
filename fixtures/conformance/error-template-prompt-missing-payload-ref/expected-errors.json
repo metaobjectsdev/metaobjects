@@ -1,5 +1,15 @@
-[
-  {
-    "code": "ERR_MISSING_REQUIRED_ATTR"
-  }
-]
+{
+  "errors": [
+    {
+      "code": "ERR_MISSING_REQUIRED_ATTR",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.ai.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['template.prompt']"
+      }
+    }
+  ],
+  "warnings": []
+}
