@@ -21,11 +21,20 @@ namespace MetaObjects.Loader;
 // ---------------------------------------------------------------------------
 
 /// <summary>The result of a load run.</summary>
+/// <param name="EnvelopeWarnings">
+/// FR5c — envelope-shaped warnings (e.g. <c>WARN_DUPLICATE_DECLARATION</c>)
+/// produced during the parse/merge pipeline. Distinct from the legacy
+/// <see cref="Warnings"/> string channel: those messages get wrapped in a
+/// <c>WARN_LEGACY</c> envelope at the loader boundary, while envelope warnings
+/// already carry their own code + source and are surfaced unchanged. Default
+/// is an empty list when no envelope warnings were emitted.
+/// </param>
 public sealed record LoadResult(
     MetaRoot Root,
     IReadOnlyList<string> Warnings,
     IReadOnlyList<MetaError> Errors,
-    string State = "loaded");
+    string State = "loaded",
+    IReadOnlyList<LoaderWarning>? EnvelopeWarnings = null);
 
 /// <summary>
 /// Core metadata loader pipeline. Consumes a list of
@@ -223,6 +232,11 @@ public class MetaDataLoader
         _state = "loading";
         var warnings = new List<string>();
         var errors = new List<MetaError>();
+        // FR5c — envelope-shaped warnings (WARN_DUPLICATE_DECLARATION et al.)
+        // surface here untouched. Distinct from the legacy `warnings: string[]`
+        // channel: those are wrapped in a WARN_LEGACY envelope at the boundary,
+        // while these already carry their own code + source.
+        var envelopeWarnings = new List<LoaderWarning>();
 
         MetaRoot? root = null;
 
@@ -262,6 +276,18 @@ public class MetaDataLoader
                 ParseResult parseResult = ParseSource(content, source, parseOpts);
                 warnings.AddRange(parseResult.Warnings);
                 errors.AddRange(parseResult.Errors);
+                // FR5c — collect envelope-shaped warnings (already carry code +
+                // source). Also surface their messages on the legacy string
+                // channel so existing consumers (e.g. the conformance runner's
+                // expected-warnings.json check) see the same messages.
+                if (parseResult.EnvelopeWarnings is { Count: > 0 } parseEnvelopeWarnings)
+                {
+                    envelopeWarnings.AddRange(parseEnvelopeWarnings);
+                    foreach (LoaderWarning w in parseEnvelopeWarnings)
+                    {
+                        warnings.Add(w.Message);
+                    }
+                }
                 root = parseResult.Root;
             }
             catch (ParseException ex)
@@ -348,7 +374,12 @@ public class MetaDataLoader
         }
 
         _root = root;
-        return new LoadResult(root, warnings.AsReadOnly(), errors.AsReadOnly(), _state);
+        return new LoadResult(
+            root,
+            warnings.AsReadOnly(),
+            errors.AsReadOnly(),
+            _state,
+            envelopeWarnings.AsReadOnly());
     }
 
     /// <summary>

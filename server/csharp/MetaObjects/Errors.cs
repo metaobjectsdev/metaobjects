@@ -33,7 +33,30 @@ public enum ErrorCode
     ERR_INVALID_TEMPLATE,
     ERR_SOURCE_NO_PRIMARY,
     ERR_SOURCE_MULTIPLE_PRIMARY,
+    // FR5c — multi-file overlay merge produced a conflicting attribute value:
+    // two contributors set the same @attr to different non-empty values.
+    ERR_MERGE_CONFLICT,
     ERR_UNKNOWN,
+}
+
+/// <summary>
+/// Stable warning codes — mirrors the TS <c>WARNING_CODES</c> taxonomy.
+/// Today stored as a string until the cross-port WARN_* taxonomy lands.
+/// </summary>
+public static class WarningCodes
+{
+    /// <summary>
+    /// FR5c — two contributors declared the same node identically (no semantic
+    /// change). Emitted at the overlay-merge boundary.
+    /// </summary>
+    public const string WARN_DUPLICATE_DECLARATION = "WARN_DUPLICATE_DECLARATION";
+
+    /// <summary>
+    /// Pre-FR5c legacy: parser/validator messages still surface as plain
+    /// strings; wrapped at the loader boundary into the envelope shape with
+    /// this code. Retired as those sites are migrated to envelopes.
+    /// </summary>
+    public const string WARN_LEGACY = "WARN_LEGACY";
 }
 
 /// <summary>
