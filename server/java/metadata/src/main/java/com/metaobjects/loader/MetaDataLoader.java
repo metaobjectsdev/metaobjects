@@ -146,6 +146,23 @@ public class MetaDataLoader implements LoaderConfigurable {
     // merges the two into a single per-fixture error set.
     private final List<MetaDataException> errors = new ArrayList<>();
 
+    // FR5c — envelope-shaped warnings accumulator (cross-port parallel channel).
+    //
+    // Distinct from the {@link #warnings} legacy-string channel: envelope
+    // warnings already carry their own {@code WARN_*} code + {@link
+    // com.metaobjects.source.ErrorSource} provenance and are produced by
+    // FR5c-onward sites (the canonical first emitter is the duplicate-
+    // declaration site in {@code CanonicalJsonParser}). The conformance harness
+    // today reads warnings as a flat string list via {@link #getWarnings()};
+    // FR5c parser sites also push the {@link com.metaobjects.source.LoaderWarning#message()}
+    // string into the legacy channel so the harness sees both forms without
+    // needing a new contract.
+    //
+    // Cleared at the start of every {@link #load(List)} so a subsequent load on
+    // the same loader does not see stale warnings. Mirrors the TS
+    // {@code envelopeWarnings: LoaderWarning[]} channel on {@code ParseResult}.
+    private final List<com.metaobjects.source.LoaderWarning> envelopeWarnings = new ArrayList<>();
+
     /**
      * Deferred-extends queue. The parser cannot always resolve a node's
      * {@code extends} ref at parse time (e.g. cross-file forward references).
@@ -548,12 +565,16 @@ public class MetaDataLoader implements LoaderConfigurable {
     }
 
     /**
-     * Append a validation error. Package-private — only the loader-package
-     * validation passes should be calling this.
+     * Append a validation error. Loader-internal API — callers are the
+     * loader's validation passes and the FR5c merge-attribution site in
+     * {@link com.metaobjects.loader.parser.json.CanonicalJsonParser} (which
+     * lives in a sub-package, so this method must be {@code public} for
+     * cross-package access — mirroring the precedent set by
+     * {@link #addPendingExtends(PendingExtends)}).
      *
      * @param error the error to record; ignored when {@code null}
      */
-    void addError(MetaDataException error) {
+    public void addError(MetaDataException error) {
         if (error == null) return;
         errors.add(error);
     }
@@ -565,6 +586,55 @@ public class MetaDataLoader implements LoaderConfigurable {
      */
     void clearErrors() {
         errors.clear();
+    }
+
+    /**
+     * Returns the FR5c envelope-shaped warnings accumulated during the most
+     * recent {@link #load(List)}. Each entry carries a {@code WARN_*} code
+     * plus a {@link com.metaobjects.source.ErrorSource} envelope (canonical
+     * first emitter: {@code WARN_DUPLICATE_DECLARATION} with
+     * {@link com.metaobjects.source.MergedSource}).
+     *
+     * <p>Cross-port aligned with the TS {@code ParseResult.envelopeWarnings}
+     * channel and the C# / Python {@code LoaderWarning[]} return surfaces.</p>
+     *
+     * @return an unmodifiable snapshot of envelope warnings (never {@code null})
+     */
+    public List<com.metaobjects.source.LoaderWarning> getEnvelopeWarnings() {
+        return Collections.unmodifiableList(new ArrayList<>(envelopeWarnings));
+    }
+
+    /**
+     * Append a FR5c envelope-shaped warning. Loader-internal API — callers
+     * are the loader pipeline plus the FR5c merge-attribution site in
+     * {@link com.metaobjects.loader.parser.json.CanonicalJsonParser} (which
+     * lives in a sub-package, so this method must be {@code public} for
+     * cross-package access — mirroring the precedent set by
+     * {@link #addPendingExtends(PendingExtends)}).
+     *
+     * <p>This method ALSO pushes the warning's {@link
+     * com.metaobjects.source.LoaderWarning#message()} into the legacy
+     * {@link #warnings} channel so the existing conformance harness — which
+     * reads a flat string list via {@link #getWarnings()} — picks up FR5c
+     * warnings without needing a new contract. The envelope is available
+     * separately via {@link #getEnvelopeWarnings()} for callers that want
+     * the full provenance.</p>
+     *
+     * @param warning the envelope warning; ignored when {@code null}
+     */
+    public void addEnvelopeWarning(com.metaobjects.source.LoaderWarning warning) {
+        if (warning == null) return;
+        envelopeWarnings.add(warning);
+        // Mirror into the legacy channel for the conformance harness.
+        warnings.add(warning.message());
+    }
+
+    /**
+     * Clear accumulated envelope warnings. Called at the start of
+     * {@link #load(List)} so a fresh batch does not see stale entries.
+     */
+    void clearEnvelopeWarnings() {
+        envelopeWarnings.clear();
     }
 
     ///////////////////////////////////////////////////////////////////////
@@ -1131,6 +1201,7 @@ public class MetaDataLoader implements LoaderConfigurable {
         // diagnostics produced by THIS batch.
         clearWarnings();
         clearErrors();
+        clearEnvelopeWarnings();
         pendingExtends.clear();
 
         for (MetaDataSource source : sources) {

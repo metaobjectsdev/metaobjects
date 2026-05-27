@@ -133,6 +133,13 @@ public enum ErrorCode {
     /** An object declares more than one source node with role=primary. */
     ERR_SOURCE_MULTIPLE_PRIMARY,
 
+    /**
+     * Two contributing files set the same {@code @attr} on the same node to
+     * different non-empty values during overlay merge (FR5c). Envelope is
+     * {@code format: "merged"} with both contributors listed.
+     */
+    ERR_MERGE_CONFLICT,
+
     /** An internal loader error with no stable error code. */
     ERR_UNKNOWN,
 }
