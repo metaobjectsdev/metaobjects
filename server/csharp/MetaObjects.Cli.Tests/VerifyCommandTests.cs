@@ -85,4 +85,57 @@ public sealed class VerifyCommandTests : IDisposable
         Assert.False(o.Ok);
         Assert.Contains(o.Errors, d => d.Code == Render.Verify.ERR_OUTPUT_TAG_MISSING && d.Path == "answer");
     }
+
+    [Fact]
+    public void Prompt_findings_are_tagged_with_prompt_kind()
+    {
+        WriteTemplate("Hi {{notAField}}.");
+        var o = VerifyCommand.Run(MetaDir, TplDir);
+        Assert.False(o.Ok);
+        Assert.All(o.Errors, d => Assert.Equal(VerifyCommand.KIND_PROMPT, d.Kind));
+    }
+
+    // -------------------- template.output (FR6, ADR-0010) --------------------
+
+    [Fact]
+    public void Output_with_resolved_payload_ref_passes_without_a_template_file()
+    {
+        // template.output's parser is schema-derived from the payload VO; it does
+        // not require a @textRef-resolved template body. A clean payload-VO should
+        // pass even when no template file is on disk.
+        const string outputModel = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "NpcResponsePayload", "children": [
+            { "field.string": { "name": "name" } },
+            { "field.int":    { "name": "age" } }
+          ]}},
+          { "template.output": { "name": "NpcResponseOutput", "@format": "json",
+            "@payloadRef": "NpcResponsePayload", "@textRef": "npc/output" } }
+        ]}}
+        """;
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), outputModel);
+        var o = VerifyCommand.Run(MetaDir, TplDir);
+        Assert.True(o.Ok, string.Join("; ",
+            o.LoadErrors.Concat(o.UnresolvedText).Concat(o.Errors.Select(e => $"{e.Kind}/{e.Code}({e.Path})"))));
+    }
+
+    [Fact]
+    public void Output_with_unresolved_payload_ref_is_flagged_as_output_drift()
+    {
+        // The @payloadRef names an object.value that doesn't exist.
+        const string outputModel = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "RealPayload", "children": [ { "field.string": { "name": "x" } } ] } },
+          { "template.output": { "name": "OutputOne", "@format": "json",
+            "@payloadRef": "NoSuchPayload", "@textRef": "x/y" } }
+        ]}}
+        """;
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), outputModel);
+        var o = VerifyCommand.Run(MetaDir, TplDir);
+        Assert.False(o.Ok);
+        Assert.Contains(o.Errors, d =>
+            d.Kind == VerifyCommand.KIND_OUTPUT &&
+            d.Code == VerifyCommand.ERR_PAYLOAD_REF_UNRESOLVED &&
+            d.Path == "NoSuchPayload");
+    }
 }
