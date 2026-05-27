@@ -187,9 +187,17 @@ function buildCompositeKeyCallback(
   return code`${primaryKeySym}({ columns: [${columnRefs}] })`;
 }
 
-/** Build a JS-style object literal string (not JSON.stringify which uses quoted keys). */
+/** Build a JS-style object literal string (not JSON.stringify which uses quoted keys).
+ *  Array values get `as const` appended so Drizzle's text(...,{ enum: [...] })
+ *  narrows the inferred column type to a literal union instead of bare `string`. */
 function inlineObjectLiteral(obj: Record<string, unknown>): string {
-  const entries = Object.entries(obj).map(([k, v]) => `${k}: ${JSON.stringify(v)}`);
+  const entries = Object.entries(obj).map(([k, v]) => {
+    const lit = JSON.stringify(v);
+    if (Array.isArray(v)) {
+      return `${k}: ${lit} as const`;
+    }
+    return `${k}: ${lit}`;
+  });
   return `{ ${entries.join(", ")} }`;
 }
 

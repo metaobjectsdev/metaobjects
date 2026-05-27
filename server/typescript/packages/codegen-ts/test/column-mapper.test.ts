@@ -117,20 +117,32 @@ describe("mapColumnType — Postgres", () => {
 });
 
 describe("mapColumnType — field.enum", () => {
-  test("SQLite: enum → text column with CHECK constraint", () => {
+  test("SQLite: enum → text column with CHECK constraint + enum option", () => {
     const f = metaField(FIELD_SUBTYPE_ENUM, "status");
     f.setAttr("values", ["DRAFT", "PUBLISHED"]);
     const spec = mapColumnType(f, "sqlite");
     expect(spec.fnName).toBe("text");
     expect(spec.checkConstraint).toBe("status IN ('DRAFT', 'PUBLISHED')");
+    // The enum option narrows Drizzle's inferred column type to a literal union.
+    expect(spec.fnOptions).toEqual({ enum: ["DRAFT", "PUBLISHED"] });
   });
 
-  test("Postgres: enum → text column with CHECK constraint", () => {
+  test("Postgres: enum → text column with CHECK constraint + enum option", () => {
     const f = metaField(FIELD_SUBTYPE_ENUM, "status");
     f.setAttr("values", ["DRAFT", "PUBLISHED"]);
     const spec = mapColumnType(f, "postgres");
     expect(spec.fnName).toBe("text");
     expect(spec.checkConstraint).toBe("status IN ('DRAFT', 'PUBLISHED')");
+    expect(spec.fnOptions).toEqual({ enum: ["DRAFT", "PUBLISHED"] });
+  });
+
+  test("enum isArray skips the enum option (JSON storage; Zod handles validation)", () => {
+    const f = metaField(FIELD_SUBTYPE_ENUM, "tags");
+    f.setAttr("values", ["A", "B"]);
+    f.setIsArray(true);
+    const spec = mapColumnType(f, "sqlite");
+    expect(spec.fnName).toBe("text");
+    expect(spec.fnOptions).toEqual({ mode: "json" });
   });
 
   test("single quotes in enum values are escaped in CHECK constraint", () => {

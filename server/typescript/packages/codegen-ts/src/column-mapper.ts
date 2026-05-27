@@ -250,6 +250,19 @@ export function mapColumnType(
     }
   }
 
+  // Enum literal types: pass the values as `{ enum: [...] as const }` to
+  // Drizzle's text(...) so the inferred column type is a literal union
+  // ("a" | "b" | ...) instead of bare `string`. Skip when isArray — JSON
+  // arrays use { mode: "json" }, and the enum members go through Zod
+  // validation at the Insert/Update layer instead. Mirrors the Zod
+  // emission, which already uses z.enum([...]).
+  if (subType === FIELD_SUBTYPE_ENUM && !isArray && fnName === "text") {
+    const values = enumValues(field);
+    if (values !== undefined && values.length > 0) {
+      fnOptions = { ...(fnOptions ?? {}), enum: values };
+    }
+  }
+
   const modifiers: string[] = [];
 
   if (dialect === "postgres" && isArray) {
