@@ -142,6 +142,13 @@ public class ConformanceTests
                             if (w.Source.JsonPath != null && w.Source.JsonPath != g.JsonPath)
                                 failures.Add(
                                     $"envelope[{i}].source.jsonPath: expected '{w.Source.JsonPath}', got '{g.JsonPath}'");
+                            // FR5d — assert referrer / target for format=resolved envelopes.
+                            if (w.Source.Referrer != null && w.Source.Referrer != g.Referrer)
+                                failures.Add(
+                                    $"envelope[{i}].source.referrer: expected '{w.Source.Referrer}', got '{g.Referrer}'");
+                            if (w.Source.Target != null && w.Source.Target != g.Target)
+                                failures.Add(
+                                    $"envelope[{i}].source.target: expected '{w.Source.Target}', got '{g.Target}'");
                         }
                     }
                     if (envelope.WarningsCount != outcome.Warnings.Count)

@@ -15,6 +15,13 @@ export type TreeHandle = unknown;
  * (`code` + `source.format` + `source.files` + `source.jsonPath`).
  * Ports may carry additional T2 fields (`suggestions`, `fixture`, `node`,
  * `yamlPosition`); those are not asserted by the cross-port harness.
+ *
+ * FR5d — for `source.format === "resolved"` envelopes, two additional fields
+ * are part of the cross-port contract and asserted by the runner:
+ *   - `referrer` — bare (short) name of the declaring node carrying the
+ *     broken reference (e.g. `Premium`, `npcTurn`, `ProgramSummary::weekCount`).
+ *   - `target`   — the unresolved reference string itself (e.g. `DoesNotExist`,
+ *     `Program.notARealRelationship`).
  */
 export interface ErrorEnvelopeRecord {
   readonly code: string;
@@ -22,6 +29,8 @@ export interface ErrorEnvelopeRecord {
     readonly format: string;
     readonly files: readonly string[];
     readonly jsonPath?: string;
+    readonly referrer?: string;
+    readonly target?: string;
   };
 }
 

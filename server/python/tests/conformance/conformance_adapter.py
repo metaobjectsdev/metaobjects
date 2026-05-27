@@ -27,11 +27,15 @@ class ErrorEnvelopeRecord:
 
     Mirrors the TS ``ErrorEnvelopeRecord`` shape so the Python conformance
     runner can do the same per-error envelope assertion the TS runner does.
+    FR5d — ``referrer`` and ``target`` are populated for ``format=resolved``
+    envelopes (reference-resolution errors).
     """
     code: str
     format: str
     files: tuple[str, ...]
     json_path: Optional[str]
+    referrer: Optional[str] = None
+    target: Optional[str] = None
 
 
 def _relativize(file_path: str, input_dir: Path) -> str:
@@ -60,7 +64,11 @@ def _build_envelope(err, input_dir: Path) -> ErrorEnvelopeRecord:
     if isinstance(env, MergedSource):
         return ErrorEnvelopeRecord(code, "merged", rel_files(), env.json_path)
     if isinstance(env, ResolvedSource):
-        return ErrorEnvelopeRecord(code, "resolved", rel_files(), env.json_path)
+        # FR5d — surface referrer + target so the cross-port runner can assert them.
+        return ErrorEnvelopeRecord(
+            code, "resolved", rel_files(), env.json_path,
+            referrer=env.referrer, target=env.target,
+        )
     if isinstance(env, CodeSource):
         return ErrorEnvelopeRecord(code, "code", (), None)
     # No envelope — synthesize a minimal root-level shape.

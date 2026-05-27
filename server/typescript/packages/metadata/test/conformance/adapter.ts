@@ -73,12 +73,19 @@ export const tsAdapter: ConformanceAdapter = {
           || src.format === "merged" || src.format === "resolved") {
           const files = src.files.map(relativize);
           const jp = (src as { jsonPath?: string }).jsonPath;
-          return {
-            code: err.code,
-            source: jp !== undefined
-              ? { format: src.format, files, jsonPath: jp }
-              : { format: src.format, files },
+          // FR5d — surface referrer + target on resolved envelopes so the
+          // cross-port runner can assert byte-identical envelopes across all
+          // four ports.
+          const referrer = (src as { referrer?: string }).referrer;
+          const target = (src as { target?: string }).target;
+          const source: ErrorEnvelopeRecord["source"] = {
+            format: src.format,
+            files,
+            ...(jp !== undefined ? { jsonPath: jp } : {}),
+            ...(referrer !== undefined ? { referrer } : {}),
+            ...(target !== undefined ? { target } : {}),
           };
+          return { code: err.code, source };
         }
         return { code: err.code, source: { format: src.format, files: [] } };
       }

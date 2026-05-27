@@ -17,13 +17,17 @@ namespace MetaObjects.Conformance.Tests;
 /// <summary>
 /// Cross-port envelope record surfaced by <see cref="LoadOutcome.Errors"/>.
 /// Mirrors the TS <c>ErrorEnvelopeRecord</c> shape so the C# runner can do
-/// the same per-error envelope assertion the TS runner does.
+/// the same per-error envelope assertion the TS runner does. FR5d —
+/// <c>Referrer</c> and <c>Target</c> are populated for <c>format=resolved</c>
+/// envelopes (reference-resolution errors).
 /// </summary>
 public sealed record ErrorEnvelopeRecord(
     string Code,
     string Format,
     IReadOnlyList<string> Files,
-    string? JsonPath);
+    string? JsonPath,
+    string? Referrer = null,
+    string? Target = null);
 
 /// <summary>
 /// Result of loading a fixture's input directory.
@@ -89,7 +93,8 @@ public static class ConformanceAdapter
             JsonSource js     => new ErrorEnvelopeRecord(code, "json",     Rel(js.Files), js.JsonPath),
             YamlSource ys     => new ErrorEnvelopeRecord(code, "yaml",     Rel(ys.Files), ys.JsonPath),
             MergedSource ms   => new ErrorEnvelopeRecord(code, "merged",   Rel(ms.Files), ms.JsonPath),
-            ResolvedSource rs => new ErrorEnvelopeRecord(code, "resolved", Rel(rs.Files), rs.JsonPath),
+            // FR5d — surface Referrer + Target so the cross-port runner can assert them.
+            ResolvedSource rs => new ErrorEnvelopeRecord(code, "resolved", Rel(rs.Files), rs.JsonPath, rs.Referrer, rs.Target),
             CodeSource        => new ErrorEnvelopeRecord(code, "code",     new List<string>(), null),
             // Pre-FR5a fallback: no envelope. Synthesize a minimal $-rooted JSON shape.
             _                 => new ErrorEnvelopeRecord(code, "json",     new List<string>(), "$"),

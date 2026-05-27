@@ -104,10 +104,16 @@ public final class FixtureLint {
         public final String format;
         public final List<String> files;
         public final String jsonPath;  // nullable
-        public ExpectedErrorSource(String format, List<String> files, String jsonPath) {
+        // FR5d — referrer + target are required for format=resolved, optional otherwise.
+        public final String referrer;  // nullable
+        public final String target;    // nullable
+        public ExpectedErrorSource(String format, List<String> files, String jsonPath,
+                                   String referrer, String target) {
             this.format = format;
             this.files = files;
             this.jsonPath = jsonPath;
+            this.referrer = referrer;
+            this.target = target;
         }
     }
 
@@ -214,7 +220,29 @@ public final class FixtureLint {
                 if (jpEl != null && jpEl.isJsonPrimitive() && jpEl.getAsJsonPrimitive().isString()) {
                     jsonPath = jpEl.getAsString();
                 }
-                source = new ExpectedErrorSource(fmtEl.getAsString(), files, jsonPath);
+                String referrer = null;
+                JsonElement refEl = srcObj.get("referrer");
+                if (refEl != null && refEl.isJsonPrimitive() && refEl.getAsJsonPrimitive().isString()) {
+                    referrer = refEl.getAsString();
+                }
+                String target = null;
+                JsonElement tgtEl = srcObj.get("target");
+                if (tgtEl != null && tgtEl.isJsonPrimitive() && tgtEl.getAsJsonPrimitive().isString()) {
+                    target = tgtEl.getAsString();
+                }
+                // FR5d — format=resolved requires both referrer and target.
+                String fmt = fmtEl.getAsString();
+                if ("resolved".equals(fmt)) {
+                    if (referrer == null) {
+                        throw new IllegalArgumentException(
+                            "expected-errors.json entry " + idx + " source.referrer is required when format='resolved'");
+                    }
+                    if (target == null) {
+                        throw new IllegalArgumentException(
+                            "expected-errors.json entry " + idx + " source.target is required when format='resolved'");
+                    }
+                }
+                source = new ExpectedErrorSource(fmt, files, jsonPath, referrer, target);
             }
             errors.add(new ExpectedError(code.getAsString(), source));
             idx++;

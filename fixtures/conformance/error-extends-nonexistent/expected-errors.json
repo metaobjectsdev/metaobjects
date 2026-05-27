@@ -3,11 +3,13 @@
     {
       "code": "ERR_UNRESOLVED_SUPER",
       "source": {
-        "format": "json",
+        "format": "resolved",
         "files": [
           "meta.bad.json"
         ],
-        "jsonPath": "$['metadata.root'].children[0]['object.entity']"
+        "jsonPath": "$['metadata.root'].children[0]['object.entity']",
+        "referrer": "Premium",
+        "target": "DoesNotExist"
       }
     }
   ],

@@ -1,11 +1,5 @@
 {
   "language": "typescript",
-  "fixtures": [
-    "error-extends-nonexistent",
-    "error-origin-bad-via-path",
-    "error-template-payload-ref-not-value",
-    "error-template-payload-ref-unresolved",
-    "error-template-required-slot-missing"
-  ],
-  "notes": "FR5d (2026-05-27): TS reference port emits format=resolved for reference-resolution errors (extends:, @via, @of, @payloadRef, @requiredSlots). Fixtures still encode the FR5a-era format=json envelope per the cross-port-safety stance — these will migrate once C#/Java/Python ship FR5d, at which point the ledger entries can be removed."
+  "fixtures": [],
+  "notes": "FR5d (finalized 2026-05-27, all four ports): reference-resolution errors emit format=resolved with referrer + target; the cross-port fixtures now encode the resolved envelope and all four ports load byte-identically. No interim known-gaps."
 }

@@ -24,8 +24,19 @@ def _parse_expected_errors(raw: object) -> tuple[list[dict], int, bool]:
         return ([{"code": e["code"], "source": None} for e in raw], 0, True)
     if isinstance(raw, dict) and "errors" in raw and isinstance(raw["errors"], list):
         errors = []
-        for e in raw["errors"]:
+        for idx, e in enumerate(raw["errors"]):
             src = e.get("source")
+            if isinstance(src, dict):
+                # FR5d — format=resolved requires both referrer and target.
+                if src.get("format") == "resolved":
+                    if "referrer" not in src:
+                        raise ValueError(
+                            f"expected-errors.json entry {idx}: "
+                            "'source.referrer' is required when format='resolved'")
+                    if "target" not in src:
+                        raise ValueError(
+                            f"expected-errors.json entry {idx}: "
+                            "'source.target' is required when format='resolved'")
             errors.append({
                 "code": e["code"],
                 "source": src if isinstance(src, dict) else None,
@@ -80,6 +91,17 @@ def _run_checks(fix: Fixture) -> tuple[bool, str]:
                         failures.append(
                             f"envelope[{i}].source.jsonPath: expected '{want_path}', "
                             f"got '{g.json_path}'")
+                    # FR5d — assert referrer / target for format=resolved envelopes.
+                    want_ref = src.get("referrer")
+                    if want_ref is not None and want_ref != g.referrer:
+                        failures.append(
+                            f"envelope[{i}].source.referrer: expected '{want_ref}', "
+                            f"got '{g.referrer}'")
+                    want_tgt = src.get("target")
+                    if want_tgt is not None and want_tgt != g.target:
+                        failures.append(
+                            f"envelope[{i}].source.target: expected '{want_tgt}', "
+                            f"got '{g.target}'")
             # warnings count check (FR5a fixtures all have []).
             if expected_warnings_count != len(warnings):
                 failures.append(
