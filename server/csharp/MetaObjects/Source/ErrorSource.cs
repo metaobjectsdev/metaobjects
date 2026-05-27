@@ -23,10 +23,28 @@ public abstract record ErrorSource
 
 /// <summary>
 /// Authoring-time: single JSON file (FR5a).
+///
+/// <para>
+/// FR5b (2026-05-26 — C# reference port): <see cref="YamlPosition"/> is also
+/// allowed as an OPTIONAL field on this <c>format: "json"</c> variant so that
+/// errors emitted from a YAML input (lowered through the desugar to canonical
+/// JSON, then through the same buildTree pipeline as JSON) can still carry the
+/// source position without re-flagging the format discriminator. Until ALL four
+/// ports ship FR5b — at which point buildTree-emitted errors from YAML inputs
+/// flip to <see cref="YamlSource"/> and the cross-port yaml-conformance
+/// fixtures are mass-updated — keeping the discriminator at <c>"json"</c>
+/// preserves cross-port fixture parity (the yaml-conformance fixtures whose
+/// buildTree-side errors are format-keyed <c>"json"</c> would otherwise diverge
+/// until C#/Java/Python catch up). See the FR5b implementation report.
+/// </para>
 /// </summary>
 /// <param name="Files">Length-1 file list (FR5a invariant: exactly one file for JSON-source errors).</param>
 /// <param name="JsonPath">Canonical JSONPath string for the node within <paramref name="Files"/>[0].</param>
-public sealed record JsonSource(IReadOnlyList<string> Files, string JsonPath) : ErrorSource
+/// <param name="YamlPosition">FR5b — optional YAML position when the canonical JSON was lowered from a YAML input.</param>
+public sealed record JsonSource(
+    IReadOnlyList<string> Files,
+    string JsonPath,
+    YamlPosition? YamlPosition = null) : ErrorSource
 {
     /// <summary>
     /// FR5a invariant: exactly one file. Multi-file provenance lives on
