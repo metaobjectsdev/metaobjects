@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:  # avoid runtime import cycles
+    from .source import ErrorSource
 
 
 class ErrorCode(str, Enum):
@@ -47,7 +51,14 @@ class ErrorCode(str, Enum):
 
 
 class MetaError:
-    """A loader error. `code` is the conformance-compared value; `message` is human text."""
+    """A loader error. ``code`` is the conformance-compared value; ``message`` is human text.
+
+    FR5a / ADR-0009: ``envelope`` is the structured provenance envelope every
+    cross-language port emits — populated by the parser (JSON tree-walk) and by
+    validation passes that have access to a node's ``source``. Legacy ``source``
+    (the file path) / ``path`` remain for backward-compat (the conformance
+    adapter only inspects ``code``); new sites should pass ``envelope``.
+    """
 
     def __init__(
         self,
@@ -55,11 +66,13 @@ class MetaError:
         code: ErrorCode = ErrorCode.ERR_UNKNOWN,
         source: str | None = None,
         path: str | None = None,
+        envelope: Optional[ErrorSource] = None,
     ) -> None:
         self.message = message
         self.code = code
         self.source = source
         self.path = path
+        self.envelope = envelope
 
     def __repr__(self) -> str:
         return f"MetaError({self.code.name}: {self.message!r})"

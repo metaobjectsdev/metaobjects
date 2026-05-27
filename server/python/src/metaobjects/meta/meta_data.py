@@ -6,6 +6,7 @@ from typing import Callable, Optional, TypeVar, cast
 from ..attr_class_map import attr_class_for
 from ..shared.base_types import SUBTYPE_BASE, TYPE_ATTR
 from ..shared.separators import PACKAGE_SEP
+from ..source import CodeSource, ErrorSource
 
 T = TypeVar("T")
 
@@ -26,10 +27,28 @@ class MetaData:
         self._children: list[MetaData] = []
         self._cache: dict[str, object] = {}
         self._frozen = False
+        # FR5a / ADR-0009 — provenance envelope. Always populated; defaults
+        # to CodeSource for programmatic / test construction. Loader phases
+        # (parser, merge) overwrite via set_source during the tree walk.
+        self._source: ErrorSource = CodeSource.DEFAULT
 
     @property
     def frozen(self) -> bool:
         return self._frozen
+
+    @property
+    def source(self) -> ErrorSource:
+        """FR5a / ADR-0009 — provenance envelope for this node. Always populated."""
+        return self._source
+
+    def set_source(self, src: ErrorSource) -> None:
+        """Loader-internal: assign provenance. Honors the frozen-guard.
+
+        Called by parser / merge phases as they build the tree. Programmatic
+        callers (tests, plugins) may pass any envelope explicitly.
+        """
+        self._require_mutable()
+        self._source = src
 
     def fqn(self) -> str:
         """Own FQN: ``package::name`` if own package is set, else just ``name``."""

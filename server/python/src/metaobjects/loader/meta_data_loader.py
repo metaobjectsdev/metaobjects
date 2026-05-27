@@ -27,6 +27,7 @@ from ..parser_yaml import parse_yaml
 from ..provider import Provider, compose_registry
 from ..registry import TypeRegistry
 from ..shared.base_types import SUBTYPE_ROOT, TYPE_METADATA
+from ..source import CodeSource, ErrorSource, JsonSource
 from ..super_resolve import resolve_supers
 from .merge import merge_roots
 from .sources import (
@@ -139,10 +140,23 @@ class MetaDataLoader:
         malformed; the caller appends an error and skips this source from
         the merge set.
         """
+        # FR5a / ADR-0009 — top-level envelope for the source. Until the parser
+        # walk descends, the offending location is the root (`$`). Matches C#
+        # Parser.cs:140 — only fall back to CodeSource when there is no source
+        # id at all; "<inline>" is a valid source identifier and must yield a
+        # JsonSource so envelope formats remain consistent across error sites.
+        envelope: ErrorSource = (
+            JsonSource(files=(src.id,), json_path="$")
+            if src.id
+            else CodeSource.DEFAULT
+        )
+
         try:
             text = src.read()
         except OSError as exc:
-            errors.append(MetaError(str(exc), ErrorCode.ERR_UNKNOWN, src.id))
+            errors.append(MetaError(
+                str(exc), ErrorCode.ERR_UNKNOWN, src.id, envelope=envelope,
+            ))
             return None
 
         match src.format:
@@ -150,12 +164,17 @@ class MetaDataLoader:
                 try:
                     return parse_yaml(text, self._registry, source=src.id)
                 except ParseError as exc:
-                    errors.append(MetaError(str(exc), exc.code, src.id))
+                    errors.append(MetaError(
+                        str(exc), exc.code, src.id, envelope=envelope,
+                    ))
                     return None
             case MetaDataFormat.JSON:
                 try:
                     doc = json.loads(text)
                 except json.JSONDecodeError as exc:
-                    errors.append(MetaError(str(exc), ErrorCode.ERR_MALFORMED_JSON, src.id))
+                    errors.append(MetaError(
+                        str(exc), ErrorCode.ERR_MALFORMED_JSON, src.id,
+                        envelope=envelope,
+                    ))
                     return None
                 return parse_document(doc, self._registry, source=src.id)
