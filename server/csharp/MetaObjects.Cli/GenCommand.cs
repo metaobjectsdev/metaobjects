@@ -20,7 +20,7 @@ public static class GenCommand
 
     /// <summary>The default generator set. Extended as more generators land.</summary>
     public static IReadOnlyList<IGenerator> DefaultGenerators() =>
-        [new EntityGenerator(), new DbContextGenerator(), new RoutesGenerator()];
+        [new EntityGenerator(), new DbContextGenerator(), new RoutesGenerator(), new OutputParserGenerator()];
 
     public static Outcome Run(string metadataDir, string outDir, string ns)
     {
