@@ -1,4 +1,11 @@
 {
-  "_comment": "FR5a envelope-shape gates: TS is the reference port for source.format / source.files / source.jsonPath. Ledger empty — Python's parser ERR_RESERVED_ATTR site and super-resolve ERR_UNRESOLVED_SUPER site now emit the same canonical jsonPath TS does (reconciled 2026-05-26).",
-  "fixtures": []
+  "language": "python",
+  "fixtures": [
+    "error-extends-nonexistent",
+    "error-origin-bad-via-path",
+    "error-template-payload-ref-not-value",
+    "error-template-payload-ref-unresolved",
+    "error-template-required-slot-missing"
+  ],
+  "notes": "FR5d (2026-05-27): Python port now emits format=resolved for reference-resolution errors (extends:, @via, @of, @payloadRef, @requiredSlots). Fixtures still encode the FR5a-era format=json envelope per the cross-port-safety stance — these will migrate once all four ports ship FR5d, at which point the ledger entries can be removed."
 }

@@ -124,6 +124,43 @@ class ResolvedSource(ErrorSource):
     format: ClassVar[str] = "resolved"
 
 
+def resolved_source(
+    referrer_source: ErrorSource,
+    referrer: str,
+    target: str,
+) -> ResolvedSource:
+    """FR5d — build a ``ResolvedSource`` envelope from a referrer node's source
+    envelope (typically a parse-time JsonSource / YamlSource) plus the referrer
+    FQN and the unresolved target string.
+
+    Mirrors TS ``resolvedSource()`` (server/typescript/packages/metadata/src/
+    source.ts). The resolved envelope carries:
+
+      * ``files``: the referrer's source files (best-effort — for json/yaml/
+        merged variants this is the referrer's files tuple; for code/database
+        variants, an empty tuple).
+      * ``json_path``: the referrer's json_path when known (the location of the
+        broken reference on disk).
+      * ``referrer``: the FQN of the metadata node that declared the broken
+        reference (e.g. ``"myapp::content::Video"``).
+      * ``target``: the unresolved reference string itself (e.g. ``"BaseEntity"``,
+        ``"Program.weeks.invalid"``).
+    """
+    if isinstance(referrer_source, (JsonSource, YamlSource, MergedSource, ResolvedSource)):
+        files = tuple(referrer_source.files)
+        json_path = referrer_source.json_path
+    else:
+        # CodeSource / DatabaseSource / abstract base — no files/json_path to plumb.
+        files = ()
+        json_path = None
+    return ResolvedSource(
+        files=files,
+        json_path=json_path,
+        referrer=referrer,
+        target=target,
+    )
+
+
 @dataclass(frozen=True)
 class DbLocation:
     """Database location for a node sourced from a row."""

@@ -29,6 +29,7 @@ from .error_source import (
     ResolvedSource,
     YamlPosition,
     YamlSource,
+    resolved_source,
 )
 from .json_path import JsonPath, JsonPathBuilder
 from .semantic_diff import semantic_diff
@@ -47,6 +48,7 @@ __all__ = [
     "YamlSource",
     "MergedSource",
     "ResolvedSource",
+    "resolved_source",
     "DatabaseSource",
     "CodeSource",
     # Supporting types
