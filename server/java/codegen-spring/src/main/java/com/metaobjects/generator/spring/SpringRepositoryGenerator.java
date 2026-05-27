@@ -1,0 +1,141 @@
+package com.metaobjects.generator.spring;
+
+import com.metaobjects.generator.GeneratorException;
+import com.metaobjects.generator.GeneratorIOWriter;
+import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
+import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.object.MetaObject;
+import com.metaobjects.source.MetaSource;
+import com.metaobjects.source.RdbSource;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Collection;
+
+/**
+ * Generator: one hand-stubbed Java {@code interface} per writable
+ * {@code object.entity} ({@code source.rdb @kind="table"}) that the consumer
+ * implements with their preferred persistence layer (Spring Data JPA / jOOQ /
+ * plain JDBC — all out of MetaObjects' concern).
+ *
+ * <p>Emitting the interface from codegen gives the
+ * {@link SpringControllerGenerator} a stable, typed seam to call without
+ * baking a persistence choice into the controller. The {@code SortClause}
+ * record lives on this interface (rather than on the controller) so the
+ * controller's call site reads {@code AuthorRepository.SortClause}, avoiding
+ * a duplicate nested record at the controller level.</p>
+ *
+ * <p>The same source-kind filter rule as
+ * {@link SpringControllerGenerator} applies here: view / materializedView /
+ * storedProc / tableFunction are skipped — those entities are read-only and
+ * would need a different repository surface (list + get only). Vanilla
+ * entities (no {@code source.rdb} child at all) are also skipped — without a
+ * source declaration there's no SQL surface to bind to.</p>
+ *
+ * <p>Args:</p>
+ * <ul>
+ *   <li>{@code outputDir} (required): output directory root.</li>
+ * </ul>
+ */
+public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<MetaObject> {
+
+    @Override
+    protected Class<MetaObject> getFilterClass() {
+        return MetaObject.class;
+    }
+
+    @Override
+    public void execute(MetaDataLoader loader) {
+        parseArgs();
+        Path outRoot = Paths.get(outDir.getAbsolutePath());
+        for (MetaObject entity : loader.getMetaObjects()) {
+            if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
+            RdbSource sourceRdb = firstRdbSource(entity);
+            if (sourceRdb == null) continue;
+            if (!MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind())) continue;
+            emit(entity, outRoot);
+        }
+    }
+
+    private void emit(MetaObject entity, Path outRoot) {
+        String[] split = SpringNaming.splitFqn(entity.getName());
+        String pkg = split[0];
+        String shortName = split[1];
+        String dtoName = shortName + "Dto";
+        String repoName = shortName + "Repository";
+
+        StringBuilder src = new StringBuilder();
+        if (!pkg.isEmpty()) {
+            src.append("package ").append(pkg).append(";\n\n");
+        }
+        src.append("import java.util.List;\n");
+        src.append("import java.util.Optional;\n\n");
+        src.append("/**\n");
+        src.append(" * GENERATED interface — consumer implements with their preferred persistence layer\n");
+        src.append(" * (Spring Data JPA / jOOQ / plain JDBC). The matching ")
+           .append(shortName).append("Controller delegates to this interface.\n");
+        src.append(" */\n");
+        src.append("public interface ").append(repoName).append(" {\n\n");
+        src.append("    /** Sort directive parsed from the cross-port ?sort=<field>:asc|desc grammar. */\n");
+        src.append("    record SortClause(String field, String direction) {}\n\n");
+        src.append("    List<").append(dtoName).append("> list(int limit, int offset, SortClause sort);\n");
+        src.append("    long count();\n");
+        src.append("    Optional<").append(dtoName).append("> findById(Long id);\n");
+        src.append("    ").append(dtoName).append(" create(").append(dtoName).append(" dto);\n");
+        src.append("    Optional<").append(dtoName).append("> update(Long id, ").append(dtoName).append(" dto);\n");
+        src.append("    boolean delete(Long id);\n");
+        src.append("}\n");
+
+        try {
+            Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(repoName + ".java");
+            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
+            Files.writeString(outFile, src.toString());
+        } catch (IOException e) {
+            throw new GeneratorException(
+                "failed writing " + repoName + ".java for entity " + entity.getName() + ": " + e, e);
+        }
+    }
+
+    /** First {@link RdbSource} child of {@code entity}, or {@code null} when absent. */
+    private static RdbSource firstRdbSource(MetaObject entity) {
+        for (com.metaobjects.MetaData child : entity.getChildren()) {
+            if (child instanceof RdbSource) return (RdbSource) child;
+        }
+        return null;
+    }
+
+    // === MultiFileDirectGeneratorBase abstract-method stubs ====================
+    @Override
+    protected void writeSingleFile(MetaObject md, GeneratorIOWriter<?> writer) { /* unused */ }
+
+    @Override
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    protected <T extends GeneratorIOWriter> T getSingleWriter(
+            MetaDataLoader loader, MetaObject md, PrintWriter pw) {
+        return null;
+    }
+
+    @Override
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    protected <T extends GeneratorIOWriter> T getFinalWriter(
+            MetaDataLoader loader, OutputStream out) {
+        return null;
+    }
+
+    @Override
+    protected void writeFinalFile(Collection<MetaObject> metadata, GeneratorIOWriter<?> writer) { /* none */ }
+
+    @Override
+    protected String getSingleOutputFilePath(MetaObject md) {
+        return SpringNaming.splitFqn(md.getName())[0].replace('.', '/');
+    }
+
+    @Override
+    protected String getSingleOutputFilename(MetaObject md) {
+        return SpringNaming.splitFqn(md.getName())[1] + "Repository.java";
+    }
+}

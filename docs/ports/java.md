@@ -162,6 +162,37 @@ String out = Renderer.render(RenderRequest.builder()
 `Verify.verify(loader, provider, options)` drift-checks every `template.*` node
 against its `@payloadRef`. Wire it into a Maven test or the `verify` goal.
 
+## Generators
+
+| Generator | Module | Output |
+|---|---|---|
+| `SpringControllerGenerator` | `metaobjects-codegen-spring` | One `<Entity>Controller.java` per writable entity (`source.rdb @kind="table"`). Spring Boot 3.x / Spring Web MVC. Five CRUD endpoints (GET list / GET by id / POST / PATCH + PUT / DELETE) matching the cross-port [REST API contract](../features/api-contract.md). `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Filter operators deferred — see the module's [`KNOWN_GAPS.md`](../../server/java/codegen-spring/src/main/java/com/metaobjects/generator/spring/KNOWN_GAPS.md). |
+| `SpringDtoGenerator` | `metaobjects-codegen-spring` | One `<Entity>Dto.java` per entity as a Java 21 `record`. Wrapped-primitive components (`Long`, `Integer`, `Boolean`) so missing JSON properties deserialise to `null`. Currency = `Long` (integer minor units cross-port invariant). Used as both request and response body. |
+| `SpringRepositoryGenerator` | `metaobjects-codegen-spring` | One `<Entity>Repository.java` per writable entity as a hand-stubbed Java `interface` the consumer implements with their preferred persistence layer (Spring Data JPA / jOOQ / plain JDBC — all out of MetaObjects' concern). Nests the `SortClause` record the controller calls into. |
+
+Wire any of them via the Maven plugin's `<generator>` entry pointing at
+`com.metaobjects.generator.spring.SpringControllerGenerator` /
+`SpringDtoGenerator` / `SpringRepositoryGenerator`. The three are
+independently configurable; typical use is all three together (controller +
+DTO + repository).
+
+## Universal Angular 18 client
+
+The browser-side Angular 18 client (`@metaobjectsdev/angular` +
+`@metaobjectsdev/codegen-ts-angular`, both shipped on the TypeScript side per
+the [universal client recipe](typescript-client.md)) interoperates with the
+generated Spring controllers out of the box — the cross-port URL grammar and
+JSON wire shape are identical. Consumers wire `EntityFetcherToken` to a
+`fetch` wrapper that targets their Spring backend's `apiPrefix` (default
+`/api`); no Java-specific Angular code is needed.
+
+CORS is the only typical hookup item: a Spring dev-server on port 8080 + an
+Angular dev-server on port 4200 will need `@CrossOrigin` on the generated
+controllers (or a global `WebMvcConfigurer` `addCorsMappings(...)` registration
+in the consumer's `@Configuration`). The generated controllers do not emit
+`@CrossOrigin` — adding it cross-port would require a CORS-policy
+configuration model that has not yet been specced.
+
 ## Capability snapshot
 
 | Feature | Status |
@@ -175,6 +206,7 @@ against its `@payloadRef`. Wire it into a Maven test or the `verify` goal.
 | Migrations | `mvn meta:migrate` / `mvn meta:migrate -Dflyway=true` |
 | Drift verify | `mvn meta:verify` (DB) + `Renderer.verify` (prompts) |
 | Runtime metadata | Full — OMDB ObjectManager |
+| REST controller codegen | Spring Web MVC — `metaobjects-codegen-spring` (FR-008 §2.1) |
 
 ## Conformance status (as of 2026-05-25)
 
