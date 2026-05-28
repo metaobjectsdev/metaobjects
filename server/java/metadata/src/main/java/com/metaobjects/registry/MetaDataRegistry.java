@@ -1066,7 +1066,8 @@ public class MetaDataRegistry {
                     "Duplicate provider id '" + id + "': "
                         + providerMap.get(id).getClass().getName() + " vs "
                         + provider.getClass().getName(),
-                    com.metaobjects.ErrorCode.ERR_PROVIDER_DUPLICATE_ID);
+                    com.metaobjects.ErrorCode.ERR_PROVIDER_DUPLICATE_ID,
+                    com.metaobjects.source.CodeSource.DEFAULT);
             }
             providerMap.put(id, provider);
         }
@@ -1082,7 +1083,8 @@ public class MetaDataRegistry {
         if (!missing.isEmpty()) {
             throw new com.metaobjects.MetaDataException(
                 "Missing provider dependencies: " + String.join(", ", missing),
-                com.metaobjects.ErrorCode.ERR_PROVIDER_MISSING_DEPENDENCY);
+                com.metaobjects.ErrorCode.ERR_PROVIDER_MISSING_DEPENDENCY,
+                com.metaobjects.source.CodeSource.DEFAULT);
         }
 
         List<MetaDataTypeProvider> result = new ArrayList<>();
@@ -1105,7 +1107,8 @@ public class MetaDataRegistry {
         if (visiting.contains(providerId)) {
             throw new com.metaobjects.MetaDataException(
                 "Circular dependency detected involving provider: " + providerId,
-                com.metaobjects.ErrorCode.ERR_PROVIDER_DEPENDENCY_CYCLE);
+                com.metaobjects.ErrorCode.ERR_PROVIDER_DEPENDENCY_CYCLE,
+                com.metaobjects.source.CodeSource.DEFAULT);
         }
         if (visited.contains(providerId)) {
             return;

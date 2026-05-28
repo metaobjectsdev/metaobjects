@@ -291,6 +291,16 @@ public class MetaData implements Cloneable, Serializable {
     private ErrorSource source = CodeSource.DEFAULT;
     private boolean sourceFrozen = false;
 
+    // Tracks whether this node's package was explicitly authored in the source
+    // file (i.e. the parser saw a `package` key in the node's body). Used by the
+    // canonical serializer to round-trip a redundantly re-authored package
+    // declaration that equals the parent's package — e.g. an `object.entity`
+    // that re-declares `"package": "acme::blog"` even though the root already
+    // declares it. Without this flag the "differs from parent" heuristic in
+    // CanonicalJsonSerializer would suppress that re-declaration and break
+    // byte-parity with the TS / Python oracles.
+    private boolean packageAuthored = false;
+
     /**
      * Constructs a MetaData object with enhanced type system integration.
      * 
@@ -842,6 +852,22 @@ public class MetaData implements Cloneable, Serializable {
      */
     public String getPackage() {
         return pkg;
+    }
+
+    /**
+     * Returns {@code true} when this node's package was explicitly authored in
+     * the source file. See the {@code packageAuthored} field doc for context.
+     */
+    public boolean isPackageAuthored() {
+        return packageAuthored;
+    }
+
+    /**
+     * Marks this node's package as explicitly authored. Called by the canonical
+     * JSON / YAML parser when the body declares a {@code "package"} key.
+     */
+    public void setPackageAuthored(boolean packageAuthored) {
+        this.packageAuthored = packageAuthored;
     }
 
     /**

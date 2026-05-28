@@ -216,6 +216,22 @@ public class ConformanceTest {
         // attrs/types it relies on are present, even if extra providers happen
         // to be loaded too. Only fail when a required provider is missing.
 
+        // Provider-composition path: when a fixture's providers.json refers ONLY
+        // to test-only providers (cycle-*, duplicate-*, depends-on-missing —
+        // the provider-extension-* error fixtures), invoke
+        // MetaDataRegistry.compose(...) on the resolved provider objects so the
+        // expected ERR_PROVIDER_* code surfaces at compose time. The captured
+        // exception flows into the existing thrown / errorCodesSeen pipeline
+        // below, and the empty-stub input is skipped — the test result is fully
+        // determined by the compose error.
+        //
+        // Fixtures that ALSO reference the cross-port "metaobjects-core-types"
+        // alias (the new-subtype-success case) are NOT routed through compose:
+        // their input file needs the loader to run against the singleton
+        // registry (which already has the test-only template.briefing subtype
+        // registered via the static initialiser above).
+        MetaDataException composeThrown = null;
+        boolean handledByCompose = false;
         if (fix.hasProvidersJson) {
             List<String> missing = new ArrayList<>();
             for (String required : fix.requiredProviders) {
@@ -225,6 +241,22 @@ public class ConformanceTest {
             }
             if (!missing.isEmpty()) {
                 failures.add("providers.json requires unavailable providers: " + missing);
+            } else {
+                boolean allTestOnly = !fix.requiredProviders.isEmpty()
+                    && fix.requiredProviders.stream()
+                        .allMatch(ConformanceTestProviders.TEST_PROVIDERS::containsKey);
+                if (allTestOnly) {
+                    List<com.metaobjects.registry.MetaDataTypeProvider> toCompose = new ArrayList<>();
+                    for (String id : fix.requiredProviders) {
+                        toCompose.add(ConformanceTestProviders.TEST_PROVIDERS.get(id));
+                    }
+                    try {
+                        com.metaobjects.registry.MetaDataRegistry.compose(toCompose);
+                    } catch (MetaDataException ce) {
+                        composeThrown = ce;
+                    }
+                    handledByCompose = true;
+                }
             }
         }
         if (fix.hasExpectedEffective) {
@@ -249,6 +281,13 @@ public class ConformanceTest {
 
         LoaderOptions opts = LoaderOptions.create(false, false, true);
         MetaDataLoader loader = new MetaDataLoader(opts, MetaDataLoader.SUBTYPE_MANUAL, loaderName);
+        // Lazy-register the test-only template.briefing subtype into the
+        // singleton on first encounter. See {@link #ensureBriefingRegistered}
+        // for the alphabetical-ordering rationale that keeps this safe.
+        if (fix.hasProvidersJson
+                && fix.requiredProviders.contains("example-template-briefing")) {
+            ensureBriefingRegistered();
+        }
         loader.init();
 
         // Per the conformance contract (spec/conformance-tests.md): the sorted
@@ -268,23 +307,30 @@ public class ConformanceTest {
         List<String> errorCodesSeen = new ArrayList<>();
         List<EnvelopeRecord> envelopesSeen = new ArrayList<>();
         MetaDataException thrown = null;
-        try {
-            List<MetaDataSource> sources = new ArrayList<>(inputFiles.size());
-            for (Path file : inputFiles) {
-                String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
-                sources.add(new InMemoryStringSource(content, file.getFileName().toString()));
+        if (handledByCompose) {
+            // The provider-extension error fixtures: result is fully
+            // determined by the MetaDataRegistry.compose(...) outcome above.
+            // The empty meta.empty.json stub need not be loaded.
+            thrown = composeThrown;
+        } else {
+            try {
+                List<MetaDataSource> sources = new ArrayList<>(inputFiles.size());
+                for (Path file : inputFiles) {
+                    String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+                    sources.add(new InMemoryStringSource(content, file.getFileName().toString()));
+                }
+                loader.load(sources);
+            } catch (MetaDataException ex) {
+                thrown = ex;
+            } catch (IOException ex) {
+                failures.add("input read error: " + ex.getMessage());
+                return;
+            } catch (RuntimeException ex) {
+                // A non-MetaDataException escaping the loader is itself a failure.
+                failures.add("unexpected runtime exception during load: "
+                    + ex.getClass().getSimpleName() + ": " + ex.getMessage());
+                return;
             }
-            loader.load(sources);
-        } catch (MetaDataException ex) {
-            thrown = ex;
-        } catch (IOException ex) {
-            failures.add("input read error: " + ex.getMessage());
-            return;
-        } catch (RuntimeException ex) {
-            // A non-MetaDataException escaping the loader is itself a failure.
-            failures.add("unexpected runtime exception during load: "
-                + ex.getClass().getSimpleName() + ": " + ex.getMessage());
-            return;
         }
         // Drain the loader-level accumulator first (errors recorded BEFORE the
         // throw, in source order), then append the thrown error if present.
@@ -613,7 +659,40 @@ public class ConformanceTest {
                 ids.add(entry.getKey());
             }
         }
+        // Test-only providers used by the provider-extension-* fixtures.
+        // Availability is satisfied per-fixture by composing a fresh registry
+        // from ServiceLoader-discovered providers + the test-only ones (see
+        // composeFixtureRegistry below).
+        ids.addAll(ConformanceTestProviders.TEST_PROVIDERS.keySet());
         return Collections.unmodifiableSet(ids);
+    }
+
+    /**
+     * Lazy, idempotent in-place registration of the test-only
+     * {@code template.briefing} subtype into the default singleton registry.
+     *
+     * <p>The architectural constraint: {@link com.metaobjects.MetaData#addChild}
+     * validates against {@link com.metaobjects.registry.MetaDataRegistry#getInstance()}
+     * hardcoded, so a per-fixture custom registry on the loader is not consulted
+     * for child-acceptance checks. The only way to make a test subtype visible
+     * to the validator is to register it into the singleton.</p>
+     *
+     * <p>That contaminates the singleton for any later fixture that expects
+     * the same subtype to be unknown. We rely on alphabetical fixture order
+     * to keep this safe: {@code provider-extension-missing-provider-fails}
+     * (which requires briefing to NOT be registered) sorts BEFORE
+     * {@code provider-extension-new-subtype-success} (which requires it to BE
+     * registered). The fail-fixture runs first, sees briefing absent, asserts
+     * ERR_UNKNOWN_SUBTYPE; then the success fixture lazy-registers briefing
+     * via this method and proceeds.</p>
+     */
+    private static volatile boolean briefingRegistered = false;
+    private static synchronized void ensureBriefingRegistered() {
+        if (!briefingRegistered) {
+            ConformanceTestProviders.BriefingTemplate.registerTypes(
+                com.metaobjects.registry.MetaDataRegistry.getInstance());
+            briefingRegistered = true;
+        }
     }
 
     /** Cross-port envelope record for the Java conformance runner. */
