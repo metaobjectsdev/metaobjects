@@ -67,8 +67,22 @@ import java.util.Set;
  *   <li>{@code origin.collection} ({@code @via "Parent.rel"}) —
  *       {@code List<TargetPayload>}, and the nested payload class is recursively
  *       emitted alongside (deduped per {@link #execute(MetaDataLoader)} run).</li>
- *   <li>No origin child — fall back to {@link SpringTypeMapper#javaTypeName(MetaField)}.</li>
+ *   <li>{@code field.object} with {@code @objectRef} (no {@code origin.*} child) —
+ *       recursively emit {@code <TargetShortName>Payload} (per-run deduped) and
+ *       return that type, or {@code java.util.List<TargetPayload>} when the field
+ *       is {@code isArray: true}. Mirrors Kotlin's plain {@code ObjectField}
+ *       arm.</li>
+ *   <li>No origin child and not a {@code field.object} — fall back to
+ *       {@link SpringTypeMapper#javaTypeName(MetaField)}.</li>
  * </ul>
+ *
+ * <p>Class-naming convention: the emitted record name is
+ * {@code <PascalCaseTemplateShortName>Payload}. Templates declared in
+ * {@code camelCase} (e.g. {@code adjudicationUser}) are capitalised before
+ * appending {@code Payload}, matching Kotlin/C#/TS/Python and Java's own
+ * PascalCase class-naming convention. Nested payload class names from
+ * {@code origin.collection} / {@code field.object} arms are capitalised the
+ * same way.
  *
  * <p>Skips and defensive cases:
  * <ul>
@@ -77,7 +91,6 @@ import java.util.Set;
  *   <li>{@code @payloadRef} resolves to a non-VO target — skipped (payloads
  *       must be {@code object.value}; matches the cross-port contract).</li>
  *   <li>Templates are processed in stable name order for deterministic emission.</li>
- *   <li>{@link ObjectField} children are skipped (mirrors {@link SpringDtoGenerator}).</li>
  * </ul>
  *
  * <p>Args:
@@ -133,7 +146,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         String templatePkg = split[0];
         String templateShort = split[1];
         String outPkg = templatePkg.isEmpty() ? "prompts" : templatePkg + ".prompts";
-        String recordName = templateShort + "Payload";
+        String recordName = capitalizeFirst(templateShort) + "Payload";
 
         emitPayloadRecord(
             outPkg,
@@ -165,8 +178,12 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         src.append("/** ").append(banner).append(" */\n");
         src.append("public record ").append(recordName).append("(\n");
 
-        List<MetaField> fields = scalarFields(voObject);
-        Iterator<MetaField> it = fields.iterator();
+        // Route every field through resolveFieldType — including ObjectField,
+        // which needs the field.object arm (single ref or isArray list). The
+        // previous scalarFields() filter dropped ObjectField entirely; mirror
+        // KotlinPayloadGenerator's no-filter iteration. getMetaFields()
+        // returns Collection, so go through the iterator directly.
+        Iterator<MetaField> it = voObject.getMetaFields().iterator();
         while (it.hasNext()) {
             MetaField field = it.next();
             String type = resolveFieldType(field, loader, outPkg, outRoot, emittedNestedFqns);
@@ -187,9 +204,10 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
     }
 
     /**
-     * Resolve the Java type expression of a single payload-VO field, honoring
-     * any {@code origin.*} child. Falls back to
-     * {@link SpringTypeMapper#javaTypeName} when no origin is present.
+     * Resolve the Java type expression of a single payload-VO field. Precedence:
+     * (1) {@code origin.*} child wins if present; (2) otherwise a
+     * {@code field.object} routes through the nested-payload emission arm; (3)
+     * otherwise the scalar fallback via {@link SpringTypeMapper#javaTypeName}.
      */
     private String resolveFieldType(MetaField<?> field,
                                     MetaDataLoader loader,
@@ -197,9 +215,6 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                                     Path outRoot,
                                     Set<String> emittedNestedFqns) {
         MetaOrigin origin = firstOriginChild(field);
-        if (origin == null) {
-            return SpringTypeMapper.javaTypeName(field);
-        }
         if (origin instanceof PassthroughOrigin pt) {
             return resolvePassthroughType(pt, loader, field);
         }
@@ -209,7 +224,33 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         if (origin instanceof CollectionOrigin co) {
             return resolveCollectionType(co, loader, nestedPkg, outRoot, emittedNestedFqns, field);
         }
+        if (field instanceof ObjectField of) {
+            return resolveObjectFieldType(of, loader, nestedPkg, outRoot, emittedNestedFqns);
+        }
         return SpringTypeMapper.javaTypeName(field);
+    }
+
+    /**
+     * Naked {@code field.object @objectRef}: recursively emit
+     * {@code <CapitalizedTargetShortName>Payload} for the referenced VO, and
+     * return that type — or {@code java.util.List<TargetPayload>} when
+     * {@code isArray: true}. Mirrors Kotlin's plain-{@code ObjectField} arm in
+     * {@code KotlinPayloadGenerator.resolveFieldType}.
+     */
+    private String resolveObjectFieldType(ObjectField field,
+                                          MetaDataLoader loader,
+                                          String nestedPkg,
+                                          Path outRoot,
+                                          Set<String> emittedNestedFqns) {
+        MetaObject target = field.getObjectRef();
+        if (target == null) return SpringTypeMapper.javaTypeName(field);
+        if (!MetaObject.SUBTYPE_VALUE.equals(target.getSubType())) {
+            // Same payload-VO contract as @payloadRef — nested payloads must
+            // themselves be object.value. Loader validation normally catches
+            // this; defensive fallback to scalar type.
+            return SpringTypeMapper.javaTypeName(field);
+        }
+        return emitNestedAndReturnType(target, loader, nestedPkg, outRoot, emittedNestedFqns, field.isArray());
     }
 
     /**
@@ -293,22 +334,39 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
 
         MetaObject target = resolveObjectByShortOrFqn(loader, targetRef);
         if (target == null) return SpringTypeMapper.javaTypeName(fallbackField);
+        return emitNestedAndReturnType(target, loader, nestedPkg, outRoot, emittedNestedFqns, true);
+    }
 
-        String nestedShort = SpringNaming.splitFqn(target.getName())[1];
+    /**
+     * Shared nested-payload emit path used by {@link #resolveCollectionType}
+     * (always a list) and {@link #resolveObjectFieldType} (single or list,
+     * depending on {@code asList}). Emits the record at most once per run via
+     * the {@code emittedNestedFqns} dedupe set, and returns the type expression
+     * to use as the parent field's component type. Returns
+     * {@code java.util.List<TargetPayload>} (fully-qualified to sidestep any
+     * potential {@code List} import collision in generated code) when
+     * {@code asList} is true, else just {@code TargetPayload}.
+     */
+    private String emitNestedAndReturnType(MetaObject target,
+                                           MetaDataLoader loader,
+                                           String nestedPkg,
+                                           Path outRoot,
+                                           Set<String> emittedNestedFqns,
+                                           boolean asList) {
+        String nestedShort = capitalizeFirst(SpringNaming.splitFqn(target.getName())[1]);
         String nestedRecord = nestedShort + "Payload";
-
         if (emittedNestedFqns.add(target.getName())) {
             emitPayloadRecord(
                 nestedPkg,
                 nestedRecord,
-                "GENERATED — nested payload for collection target `" + target.getName() + "`. "
+                "GENERATED — nested payload for `" + target.getName() + "`. "
                     + "Do not hand-edit; regenerated from metadata.",
                 target,
                 loader,
                 outRoot,
                 emittedNestedFqns);
         }
-        return "java.util.List<" + nestedRecord + ">";
+        return asList ? "java.util.List<" + nestedRecord + ">" : nestedRecord;
     }
 
     // -------------------------------------------------------------------------
@@ -380,14 +438,18 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         return idx < 0 ? fqn : fqn.substring(idx + 2);
     }
 
-    /** Scalar payload fields — same filter SpringDtoGenerator uses (skips ObjectField). */
-    private static List<MetaField> scalarFields(MetaObject vo) {
-        List<MetaField> out = new ArrayList<>();
-        for (MetaField field : vo.getMetaFields()) {
-            if (field instanceof ObjectField) continue;
-            out.add(field);
-        }
-        return out;
+    /**
+     * Uppercase the first character of {@code s}; pass {@code s} through
+     * unchanged when empty or already capitalised. Used to PascalCase the
+     * payload record name regardless of whether the template short name was
+     * authored as {@code camelCase} or {@code PascalCase}, matching Kotlin /
+     * C# / TS / Python convention + Java's PascalCase class-naming rule.
+     */
+    private static String capitalizeFirst(String s) {
+        if (s == null || s.isEmpty()) return s;
+        char c0 = s.charAt(0);
+        if (Character.isUpperCase(c0)) return s;
+        return Character.toUpperCase(c0) + s.substring(1);
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
@@ -418,6 +480,6 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
 
     @Override
     protected String getSingleOutputFilename(MetaObject md) {
-        return SpringNaming.splitFqn(md.getName())[1] + "Payload.java";
+        return capitalizeFirst(SpringNaming.splitFqn(md.getName())[1]) + "Payload.java";
     }
 }
