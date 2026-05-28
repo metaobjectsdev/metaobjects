@@ -30,7 +30,7 @@ from metaobjects.source.error_source import (
 # ---------------------------------------------------------------------------
 
 
-def _wizards_template_briefing_provider() -> Provider:
+def _example_template_briefing_provider() -> Provider:
     """Adds a hypothetical `template.briefing` subtype. Fictional — used only
     by the provider-extension-* fixtures to exercise registry.register without
     colliding with real core subtypes. (Pre-ADR-0011 this was a "toolcall"
@@ -38,7 +38,7 @@ def _wizards_template_briefing_provider() -> Provider:
     fictional name.)
     """
     p = Provider(
-        "wizards-template-briefing",
+        "example-template-briefing",
         dependencies=("metaobjects-core-types",),
     )
     p.add(
@@ -70,7 +70,7 @@ _PROVIDER_MAP: dict[str, Provider] = {
     core_provider.id: core_provider,                # "metaobjects-core-types"
     doc_provider.id: doc_provider,                  # "metaobjects-documentation"
     # Test-only — provider-extension-* fixtures.
-    "wizards-template-briefing": _wizards_template_briefing_provider(),
+    "example-template-briefing": _example_template_briefing_provider(),
     "cycle-a": _noop_provider("cycle-a", "cycle-b"),
     "cycle-b": _noop_provider("cycle-b", "cycle-a"),
     "depends-on-missing": _noop_provider("depends-on-missing", "does-not-exist"),

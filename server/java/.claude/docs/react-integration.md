@@ -368,7 +368,7 @@ mvn spring-boot:run
 - **MetaTableView** - Sortable, filterable tables
 - **MetaSearchView** - Advanced search forms
 - **MetaChartView** - Metadata-driven charts
-- **MetaWizardView** - Multi-step wizards
+- **MetaStepperView** - Multi-step forms
 
 ### TypeScript Improvements
 

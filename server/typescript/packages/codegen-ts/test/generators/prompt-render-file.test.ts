@@ -169,8 +169,8 @@ describe("promptRender() factory", () => {
         "object.value": {
           name: "Lens",
           children: [
-            { "field.string": { name: "wizardId" } },
-            { "field.string": { name: "wizardName" } },
+            { "field.string": { name: "participantId" } },
+            { "field.string": { name: "participantName" } },
           ],
         },
       },

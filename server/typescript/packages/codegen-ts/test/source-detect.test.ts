@@ -15,7 +15,7 @@ import { hasWritableRdbSource } from "../src/source-detect.js";
 
 describe("hasWritableRdbSource", () => {
   test("returns false for an object.value with no source children", () => {
-    const vo = metaObject(OBJECT_SUBTYPE_VALUE, "WizardOutput");
+    const vo = metaObject(OBJECT_SUBTYPE_VALUE, "SampleOutput");
     expect(hasWritableRdbSource(vo)).toBe(false);
   });
 

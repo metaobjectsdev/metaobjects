@@ -49,8 +49,8 @@ import { binding } from "./binding.js";
  * a different name so the fixture still meaningfully tests "registering a
  * NEW subtype works".)
  */
-const wizardsTemplateBriefingProvider: MetaDataTypeProvider = {
-  id: "wizards-template-briefing",
+const exampleTemplateBriefingProvider: MetaDataTypeProvider = {
+  id: "example-template-briefing",
   dependencies: ["metaobjects-core-types"],
   description: "Test-only — registers a fictional template.briefing subtype.",
   registerTypes(registry) {
@@ -117,7 +117,7 @@ const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
   [dbProvider.id]: dbProvider,               // "metaobjects-db"
   [docProvider.id]: docProvider,             // "metaobjects-documentation"
   // Test-only — provider-extension-* fixtures.
-  "wizards-template-briefing": wizardsTemplateBriefingProvider,
+  "example-template-briefing": exampleTemplateBriefingProvider,
   "cycle-a": cycleAProvider,
   "cycle-b": cycleBProvider,
   "depends-on-missing": dependsOnMissingProvider,
