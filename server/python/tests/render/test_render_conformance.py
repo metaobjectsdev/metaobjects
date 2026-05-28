@@ -43,7 +43,13 @@ _CORPUS = _find_corpus()
 
 
 def _fixtures() -> list[Path]:
-    return sorted(p for p in _CORPUS.iterdir() if p.is_dir())
+    # Skip sub-corpora that live alongside the flat render-conformance
+    # fixtures (e.g. fixtures/render-conformance/template-generator/) —
+    # those have their own harness and schema.
+    return sorted(
+        p for p in _CORPUS.iterdir()
+        if p.is_dir() and (p / "template.mustache").exists()
+    )
 
 
 @pytest.mark.parametrize("fixture_dir", _fixtures(), ids=lambda p: p.name)
