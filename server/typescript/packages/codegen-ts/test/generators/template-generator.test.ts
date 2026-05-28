@@ -9,19 +9,13 @@ import { InMemoryProvider } from "@metaobjectsdev/render";
 import { templateGenerator } from "../../src/generators/template-generator.js";
 import { buildEntityDocData } from "../../src/generators/docs-data-builder.js";
 import {
-  TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY,
-} from "@metaobjectsdev/metadata";
-import { metaRoot, metaObject, metaField } from "../_meta-build.js";
-import {
+  OBJECT_SUBTYPE_ENTITY,
   FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
   TypeId, TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY, IDENTITY_ATTR_FIELDS,
   IDENTITY_ATTR_GENERATION, GENERATION_INCREMENT,
 } from "@metaobjectsdev/metadata";
-import { meta } from "../_meta-build.js";
+import { metaRoot, metaObject, metaField, meta } from "../_meta-build.js";
 import type { GenContext } from "../../src/generator.js";
-
-void TYPE_OBJECT;
-void OBJECT_SUBTYPE_ENTITY;
 
 function buildRoot() {
   const root = metaRoot("root", "demo");

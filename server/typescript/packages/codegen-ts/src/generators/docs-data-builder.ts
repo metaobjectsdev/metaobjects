@@ -188,36 +188,37 @@ function constraintsCell(
     }
   }
 
+  // Walk validators once, bucket by subtype. We re-emit in the original
+  // emission order to preserve byte-identity with the docs-file-basic
+  // conformance fixture: regex pattern → maxLength-from-@maxLength →
+  // length-validator (min/max) → numeric-validator (min/max).
+  const maxLenAttr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
+  const regexParts: string[] = [];
+  const lengthParts: string[] = [];
+  const numericParts: string[] = [];
   for (const v of field.validators()) {
     if (v.subType === VALIDATOR_SUBTYPE_REGEX) {
       const pattern = v.ownAttr(VALIDATOR_ATTR_PATTERN);
       if (typeof pattern === "string" && pattern.length > 0) {
-        parts.push(`pattern \`${pattern}\``);
+        regexParts.push(`pattern \`${pattern}\``);
       }
+    } else if (v.subType === VALIDATOR_SUBTYPE_LENGTH) {
+      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
+      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
+      if (typeof min === "number") lengthParts.push(`minLength: ${min}`);
+      if (typeof max === "number" && typeof maxLenAttr !== "number") lengthParts.push(`maxLength: ${max}`);
+    } else if (v.subType === VALIDATOR_SUBTYPE_NUMERIC) {
+      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
+      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
+      if (typeof min === "number") numericParts.push(`min: ${min}`);
+      if (typeof max === "number") numericParts.push(`max: ${max}`);
     }
   }
-
-  const maxLenAttr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
+  parts.push(...regexParts);
   if (typeof maxLenAttr === "number") {
     parts.push(`maxLength: ${maxLenAttr}`);
   }
-  for (const v of field.validators()) {
-    if (v.subType === VALIDATOR_SUBTYPE_LENGTH) {
-      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
-      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
-      if (typeof min === "number") parts.push(`minLength: ${min}`);
-      if (typeof max === "number" && typeof maxLenAttr !== "number") parts.push(`maxLength: ${max}`);
-    }
-  }
-
-  for (const v of field.validators()) {
-    if (v.subType === VALIDATOR_SUBTYPE_NUMERIC) {
-      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
-      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
-      if (typeof min === "number") parts.push(`min: ${min}`);
-      if (typeof max === "number") parts.push(`max: ${max}`);
-    }
-  }
+  parts.push(...lengthParts, ...numericParts);
 
   const fk = fkMap.get(field.name);
   if (fk !== undefined) {

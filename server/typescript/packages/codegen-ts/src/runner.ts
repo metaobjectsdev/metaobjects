@@ -174,6 +174,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         outputLayout: selfTarget.outputLayout,
       },
       renderContext,
+      ...(projectRoot !== undefined && { projectRoot }),
       warn: (msg) => warnings.push(`[${generator.name}] ${msg}`),
     };
 

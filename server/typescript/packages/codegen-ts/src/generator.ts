@@ -24,6 +24,15 @@ export interface GenContext {
    *  present at run time when invoked via runGen(); optional in the type
    *  so tests and custom callers don't need a placeholder. */
   renderContext?: RenderContext;
+  /** Resolved absolute project root — what the runner derives from
+   *  `opts.projectRoot` (the directory holding `.metaobjects/config.json`).
+   *  Generators that resolve project-scoped resources (e.g.
+   *  `templateGenerator` looking up the project's `templates/` directory)
+   *  should read this rather than `process.cwd()`, which is whatever
+   *  directory the CLI was invoked from and breaks when `meta gen` runs
+   *  in a sub-directory. Undefined only when the runner was driven
+   *  programmatically without an explicit projectRoot. */
+  projectRoot?: string;
   warn: (msg: string) => void;
 }
 
