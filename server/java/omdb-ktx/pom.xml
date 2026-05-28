@@ -102,6 +102,18 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <version>${surefire.plugin.version}</version>
       </plugin>
+      <plugin>
+        <groupId>org.jetbrains.dokka</groupId>
+        <artifactId>dokka-maven-plugin</artifactId>
+        <version>1.9.20</version>
+        <executions>
+          <execution>
+            <id>attach-javadoc</id>
+            <phase>package</phase>
+            <goals><goal>javadocJar</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
 </project>
