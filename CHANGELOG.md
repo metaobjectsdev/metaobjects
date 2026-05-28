@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.7.0-rc.10] — 2026-05-28
+
+### Added
+- **`docsFile()` stock generator** — emits per-entity Markdown documentation
+  (`<Entity>.md`) next to each generated entity file. Documents the storage
+  schema, identity/relationships, validation, template cross-references,
+  and generated-code surface for both `object.entity` and `object.value`.
+  Adopters can aggregate the per-entity files into docs sites, OpenAPI
+  descriptions, or contributor guides; AI agents have a canonical
+  entity-shape reference. Markdown output is port-agnostic; C# / Python /
+  Java mirrors are tracked as follow-up cross-port work.
+
 ## [0.7.0-rc.9] — 2026-05-27
 
 ### Added

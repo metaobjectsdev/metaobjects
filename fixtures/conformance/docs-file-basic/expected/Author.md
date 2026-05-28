@@ -1,0 +1,34 @@
+# Author
+
+> A person who writes posts.
+
+**Type:** `object.entity`
+**Source:** `meta.blog.json`
+**Package:** `acme::blog`
+
+## Storage
+
+| Field | TypeScript type | SQL column | Constraints |
+|---|---|---|---|
+| `id` | `number` | `integer("id")` | primary key, generation: `increment` |
+| `name` | `string` | `text("name")` | required, maxLength: 200 |
+| `status` | `"active" \| "suspended" \| "archived"` | `text("status", { enum: ["active","suspended","archived"] as const })` | required, CHECK `status IN ('active', 'suspended', 'archived')` |
+| `tags` | `string[] \| null` | `text("tags", { mode: "json" })` | optional, JSON column |
+
+## Identity
+
+- **Primary key:** `id` — generation: `increment`
+- **Secondary index:** `name` — unique
+
+## Validation
+
+- `AuthorInsertSchema` (Zod) — for creating new authors.
+- `AuthorUpdateSchema` (Zod) — for partial updates.
+- See `Author.ts` for the exported schemas.
+
+## Generated code
+
+- `Author.ts` — Drizzle table, Zod schemas, type aliases, enum literal unions.
+- `Author.queries.ts` — typed CRUD helpers (find / list / create / update / delete; takes `db` as first param per ADR-0008).
+- `Author.routes.ts` — Fastify CRUD-5 route registration (`registerAuthorRoutes`).
+- `Author.routes.hono.ts` — Hono CRUD-5 route registration (`registerAuthorRoutes`).

@@ -1,0 +1,67 @@
+{
+  "metadata.root": {
+    "package": "acme::blog",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Author",
+          "package": "acme::blog",
+          "@description": "A person who writes posts.",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "authors"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@maxLength": 200,
+                "@required": true
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@required": true,
+                "@values": [
+                  "active",
+                  "suspended",
+                  "archived"
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "tags",
+                "isArray": true
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "id"
+                ],
+                "@generation": "increment"
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "byName",
+                "@fields": [
+                  "name"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

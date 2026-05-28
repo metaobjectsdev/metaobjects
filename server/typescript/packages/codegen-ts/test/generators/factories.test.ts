@@ -7,6 +7,7 @@ import { routesFile } from "../../src/generators/routes-file.js";
 import { routesFileHono } from "../../src/generators/routes-file-hono.js";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { barrel } from "../../src/generators/barrel.js";
+import { docsFile } from "../../src/generators/docs-file.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import { makeRenderContext } from "../../src/render-context.js";
@@ -133,6 +134,36 @@ describe("barrel()", () => {
     expect(idx.content).toContain(`export * from "./Post"`);
     expect(idx.content).not.toContain("queries");
     expect(idx.content).not.toContain("routes");
+  });
+});
+
+describe("docsFile()", () => {
+  test("emits <Entity>.md with H1 + Storage section", async () => {
+    const ctx = await buildCtx();
+    const gen = docsFile();
+    const files = await gen.generate(ctx);
+    const f = files.find(f => f.path === "Post.md");
+    expect(f).toBeDefined();
+    expect(f!.content).toStartWith("# Post\n");
+    expect(f!.content).toContain("**Type:** `object.entity`");
+    expect(f!.content).toContain("## Storage");
+    expect(f!.content).toContain("## Validation");
+    expect(f!.content).toContain("## Generated code");
+  });
+
+  test("respects user-provided filter", async () => {
+    const gen = docsFile({ filter: () => false });
+    const ctx = await buildCtx((e) => gen.filter?.(e) ?? true);
+    const files = await gen.generate(ctx);
+    expect(files).toEqual([]);
+  });
+
+  test("accepts target", () => {
+    expect(docsFile({ target: "docs" }).target).toBe("docs");
+  });
+
+  test("target is undefined when unset", () => {
+    expect(docsFile().target).toBeUndefined();
   });
 });
 

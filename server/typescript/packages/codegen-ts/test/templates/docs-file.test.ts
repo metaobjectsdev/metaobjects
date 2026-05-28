@@ -1,0 +1,325 @@
+// Unit tests for the per-entity markdown emitter.
+//
+// These exercise the template directly with hand-built MetaData trees so each
+// section's shape is asserted in isolation. Conformance fixture coverage lives
+// in test/golden/docs-file-conformance.test.ts and asserts byte-equal output
+// against an `expected/<Entity>.md` file.
+
+import { describe, test, expect } from "bun:test";
+import {
+  TypeId,
+  TYPE_IDENTITY,
+  TYPE_VALIDATOR,
+  FIELD_SUBTYPE_LONG,
+  FIELD_SUBTYPE_STRING,
+  FIELD_SUBTYPE_ENUM,
+  FIELD_SUBTYPE_OBJECT,
+  IDENTITY_SUBTYPE_PRIMARY,
+  IDENTITY_SUBTYPE_SECONDARY,
+  IDENTITY_SUBTYPE_REFERENCE,
+  OBJECT_SUBTYPE_ENTITY,
+  OBJECT_SUBTYPE_VALUE,
+  VALIDATOR_SUBTYPE_REGEX,
+} from "@metaobjectsdev/metadata";
+import {
+  meta,
+  metaRoot,
+  metaObject,
+  metaField,
+  attachRdbSource,
+} from "../_meta-build.js";
+import { renderDocsFile } from "../../src/templates/docs-file.js";
+
+describe("renderDocsFile — preamble", () => {
+  test("emits H1 + Type for a basic entity", () => {
+    const root = metaRoot();
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    attachRdbSource(post, "posts");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    post.addChild(id);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    post.addChild(primary);
+    root.addChild(post);
+
+    const out = renderDocsFile(post, {
+      dialect: "sqlite",
+      loadedRoot: root,
+    });
+    expect(out).toStartWith("# Post\n");
+    expect(out).toContain("**Type:** `object.entity`");
+  });
+
+  test("includes description as a quote block", () => {
+    const root = metaRoot();
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    post.setAttr("description", "A blog post");
+    attachRdbSource(post, "posts");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    post.addChild(id);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    post.addChild(primary);
+    root.addChild(post);
+
+    const out = renderDocsFile(post, {
+      dialect: "sqlite",
+      loadedRoot: root,
+    });
+    expect(out).toContain("> A blog post");
+  });
+
+  test("includes Package when set", () => {
+    const root = metaRoot();
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    post.package = "demo::blog";
+    attachRdbSource(post, "posts");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    post.addChild(id);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    post.addChild(primary);
+    root.addChild(post);
+
+    const out = renderDocsFile(post, {
+      dialect: "sqlite",
+      loadedRoot: root,
+    });
+    expect(out).toContain("**Package:** `demo::blog`");
+  });
+});
+
+describe("renderDocsFile — Storage table", () => {
+  test("emits one row per field with PK + required + optional shapes", () => {
+    const root = metaRoot();
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    attachRdbSource(post, "posts");
+
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    post.addChild(id);
+
+    const title = metaField(FIELD_SUBTYPE_STRING, "title");
+    title.setAttr("required", true);
+    title.setAttr("maxLength", 200);
+    post.addChild(title);
+
+    const body = metaField(FIELD_SUBTYPE_STRING, "body");
+    post.addChild(body);
+
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    post.addChild(primary);
+    root.addChild(post);
+
+    const out = renderDocsFile(post, {
+      dialect: "sqlite",
+      loadedRoot: root,
+    });
+
+    expect(out).toContain("## Storage");
+    expect(out).toContain("| Field | TypeScript type | SQL column | Constraints |");
+    expect(out).toContain("`id`");
+    expect(out).toContain("primary key");
+    expect(out).toContain("generation: `increment`");
+    expect(out).toContain("`title`");
+    expect(out).toContain("required");
+    expect(out).toContain("maxLength: 200");
+    expect(out).toContain("`body`");
+    // optional appears for body but not for id (primary key)
+    expect(out).toMatch(/`body` \| `string \\\| null` \|.*optional/);
+  });
+
+  test("enum field surfaces literal union + CHECK predicate", () => {
+    const root = metaRoot();
+    const ticket = metaObject(OBJECT_SUBTYPE_ENTITY, "Ticket");
+    attachRdbSource(ticket, "tickets");
+
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    ticket.addChild(id);
+
+    const status = metaField(FIELD_SUBTYPE_ENUM, "status");
+    status.setAttr("required", true);
+    status.setAttr("values", ["open", "closed", "archived"]);
+    ticket.addChild(status);
+
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    ticket.addChild(primary);
+    root.addChild(ticket);
+
+    const out = renderDocsFile(ticket, {
+      dialect: "sqlite",
+      loadedRoot: root,
+    });
+
+    expect(out).toContain('"open" \\| "closed" \\| "archived"');
+    expect(out).toContain("CHECK `status IN ('open', 'closed', 'archived')`");
+  });
+
+  test("isArray field marks JSON column constraint", () => {
+    const root = metaRoot();
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    attachRdbSource(post, "posts");
+
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    post.addChild(id);
+
+    const tags = metaField(FIELD_SUBTYPE_STRING, "tags");
+    tags.isArray = true;
+    post.addChild(tags);
+
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    post.addChild(primary);
+    root.addChild(post);
+
+    const out = renderDocsFile(post, {
+      dialect: "sqlite",
+      loadedRoot: root,
+    });
+    expect(out).toContain("`tags`");
+    expect(out).toContain("JSON column");
+  });
+
+  test("regex validator surfaces pattern in constraints", () => {
+    const root = metaRoot();
+    const user = metaObject(OBJECT_SUBTYPE_ENTITY, "User");
+    attachRdbSource(user, "users");
+
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    user.addChild(id);
+
+    const slug = metaField(FIELD_SUBTYPE_STRING, "slug");
+    slug.setAttr("required", true);
+    const regex = meta(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REGEX), "regex");
+    regex.setAttr("pattern", "^[a-z0-9-]+$");
+    slug.addChild(regex);
+    user.addChild(slug);
+
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    user.addChild(primary);
+    root.addChild(user);
+
+    const out = renderDocsFile(user, {
+      dialect: "sqlite",
+      loadedRoot: root,
+    });
+    expect(out).toContain("pattern `^[a-z0-9-]+$`");
+  });
+});
+
+describe("renderDocsFile — Identity section", () => {
+  test("primary + secondary + reference identities render", () => {
+    const root = metaRoot();
+    const author = metaObject(OBJECT_SUBTYPE_ENTITY, "Author");
+    attachRdbSource(author, "authors");
+    const aid = metaField(FIELD_SUBTYPE_LONG, "id");
+    author.addChild(aid);
+    const aPrimary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    aPrimary.setAttr("fields", ["id"]);
+    aPrimary.setAttr("generation", "increment");
+    author.addChild(aPrimary);
+    root.addChild(author);
+
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    attachRdbSource(post, "posts");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    post.addChild(id);
+    const authorId = metaField(FIELD_SUBTYPE_LONG, "authorId");
+    authorId.setAttr("required", true);
+    post.addChild(authorId);
+    const visitorId = metaField(FIELD_SUBTYPE_STRING, "visitorId");
+    visitorId.setAttr("required", true);
+    post.addChild(visitorId);
+
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    post.addChild(primary);
+
+    const secondary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_SECONDARY), "byVisitor");
+    secondary.setAttr("fields", ["visitorId"]);
+    post.addChild(secondary);
+
+    const reference = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_REFERENCE), "author");
+    reference.setAttr("fields", ["authorId"]);
+    reference.setAttr("references", "Author");
+    post.addChild(reference);
+
+    root.addChild(post);
+
+    const out = renderDocsFile(post, {
+      dialect: "sqlite",
+      loadedRoot: root,
+    });
+
+    expect(out).toContain("## Identity");
+    expect(out).toContain("**Primary key:** `id`");
+    expect(out).toContain("**Secondary index:** `visitorId`");
+    expect(out).toContain("**Reference:** `authorId` → `Author`");
+  });
+});
+
+describe("renderDocsFile — Validation + Generated code", () => {
+  test("always emits Validation pointers and Generated code list", () => {
+    const root = metaRoot();
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    attachRdbSource(post, "posts");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    post.addChild(id);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    post.addChild(primary);
+    root.addChild(post);
+
+    const out = renderDocsFile(post, {
+      dialect: "sqlite",
+      loadedRoot: root,
+    });
+
+    expect(out).toContain("## Validation");
+    expect(out).toContain("`PostInsertSchema` (Zod)");
+    expect(out).toContain("`PostUpdateSchema` (Zod)");
+    expect(out).toContain("## Generated code");
+    expect(out).toContain("`Post.ts`");
+  });
+});
+
+describe("renderDocsFile — object.value", () => {
+  test("omits Storage / Identity / Relationships", () => {
+    const root = metaRoot();
+    const lens = metaObject(OBJECT_SUBTYPE_VALUE, "Lens");
+    const name = metaField(FIELD_SUBTYPE_STRING, "name");
+    name.setAttr("required", true);
+    lens.addChild(name);
+    root.addChild(lens);
+
+    const out = renderDocsFile(lens, {
+      dialect: "sqlite",
+      loadedRoot: root,
+    });
+
+    expect(out).toContain("# Lens");
+    expect(out).toContain("**Type:** `object.value`");
+    expect(out).not.toContain("## Storage");
+    expect(out).not.toContain("## Identity");
+    expect(out).not.toContain("## Relationships");
+    expect(out).toContain("## Validation");
+    expect(out).toContain("## Generated code");
+    // The Generated code section should NOT mention queries / routes for value
+    // objects — they're never produced for object.value.
+    const generatedCode = out.split("## Generated code")[1] ?? "";
+    expect(generatedCode).not.toContain(".queries.ts");
+    expect(generatedCode).not.toContain(".routes.ts");
+    expect(generatedCode).toContain("`Lens.ts`");
+  });
+});
