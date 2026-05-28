@@ -647,6 +647,15 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             throw rethrowWithEnvelope(ex);
         }
 
+        // Remember whether the author explicitly wrote a `"package"` key on
+        // this node's body — used by CanonicalJsonSerializer to round-trip a
+        // redundantly re-authored package (matches the TS / Python oracles).
+        // (isRoot here just means "direct child of metadata.root"; the doc
+        // root's own package is tracked separately via setDefaultPackageName.)
+        if (pkg != null) {
+            md.setPackageAuthored(true);
+        }
+
         if (md == null) {
             log.warn("createOrOverlayMetaData returned null for [{}:{}:{}] in file [{}]",
                 type, subType, name, getFilename());

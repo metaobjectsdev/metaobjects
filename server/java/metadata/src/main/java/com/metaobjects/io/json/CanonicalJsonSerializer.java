@@ -222,7 +222,12 @@ public final class CanonicalJsonSerializer {
             boolean rootAbstractFieldType = (node.getParent() instanceof MetaRoot)
                 && (node instanceof com.metaobjects.field.MetaField)
                 && getIsAbstractValue(node);
-            if (differsFromParent || rootAbstractFieldType) {
+            // Cross-port byte-parity: when the author explicitly wrote a
+            // `package` key on this node's body (even one that happens to
+            // equal the parent's package), round-trip it on the way out.
+            // CanonicalJsonParser tracks this via MetaData.isPackageAuthored().
+            boolean explicitlyAuthored = node.isPackageAuthored();
+            if (differsFromParent || rootAbstractFieldType || explicitlyAuthored) {
                 body.addProperty(KEY_PACKAGE, nodePackage);
             }
         }
