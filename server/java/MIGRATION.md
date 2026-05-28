@@ -43,6 +43,22 @@ Consumers running inside an OSGi container can still wrap MetaObjects' JARs with
 
 The `WeakReference` patterns in `MetaData`, `HybridCache`, and `StandardServiceRegistry` stay — they are general ClassLoader-leak prevention, not OSGi-specific.
 
+### Programmatic provider registration (new in 7.0.1)
+
+`MetaDataRegistry` now ships a `compose(...)` / `registerProviders(...)` API that mirrors the cross-port pattern already in TypeScript (`composeRegistry(providers)`) and Python (`compose_registry(providers)`):
+
+```java
+MetaDataRegistry registry = MetaDataRegistry.compose(List.of(
+    new CoreTypesProvider(),
+    new MyDomainProvider(),
+    new MyTenantProvider()
+));
+```
+
+Use this when ServiceLoader is awkward — embedded scenarios, fat-jar consolidation, GraalVM native-image, conditional / tenant-driven composition, and tests that want to inject a fixture provider without touching `META-INF/services`. Strict error contract matches the cross-port spec: duplicate provider id, missing dependency, or dependency cycle throws `MetaDataException` with the matching `ErrorCode`.
+
+The default `MetaDataRegistry.getInstance()` still uses ServiceLoader auto-discovery with warn-and-continue semantics — no change for the typical app.
+
 The `metaobjects-codegen-mustache` and `metaobjects-codegen-plantuml` modules from 6.x continue unchanged.
 
 ### Step 3 — source paradigm v2 ([ADR-0007](../../spec/decisions/ADR-0007-source-paradigm-v2.md))

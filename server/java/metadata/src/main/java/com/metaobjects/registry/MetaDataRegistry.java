@@ -129,10 +129,75 @@ public class MetaDataRegistry {
     public MetaDataRegistry() {
         this(ServiceRegistryFactory.getDefault());
     }
-    
+
+    // =========================================================================
+    // Programmatic provider composition (mirrors composeRegistry in TS /
+    // compose_registry in Python). Use this when you want explicit, in-process
+    // control over which providers register types — tests, embedded scenarios
+    // where ServiceLoader is awkward, and conditional / framework-driven
+    // composition. ServiceLoader auto-discovery via {@link #getInstance()} is
+    // the default for typical applications and stays unchanged.
+    // =========================================================================
+
+    /**
+     * Compose a fresh {@link MetaDataRegistry} from the given providers and
+     * return it. Mirrors {@code composeRegistry(providers)} in the TypeScript
+     * port and {@code compose_registry(providers)} in the Python port.
+     *
+     * <p>Providers are topologically sorted by their declared dependencies
+     * (stable sort — providers with no ordering constraint between them keep
+     * input order), then each provider's {@link MetaDataTypeProvider#registerTypes}
+     * runs against the new registry.</p>
+     *
+     * @param providers the providers to compose; must not contain duplicate
+     *                  ids, missing dependencies, or dependency cycles
+     * @return a new registry with all provider types registered
+     * @throws MetaDataException with {@link com.metaobjects.ErrorCode#ERR_PROVIDER_DUPLICATE_ID},
+     *                           {@link com.metaobjects.ErrorCode#ERR_PROVIDER_MISSING_DEPENDENCY},
+     *                           or {@link com.metaobjects.ErrorCode#ERR_PROVIDER_DEPENDENCY_CYCLE}
+     *                           if the provider set is malformed.
+     */
+    public static MetaDataRegistry compose(Collection<MetaDataTypeProvider> providers) {
+        Objects.requireNonNull(providers, "providers must not be null");
+        MetaDataRegistry registry = new MetaDataRegistry();
+        registry.registerProviders(providers);
+        return registry;
+    }
+
+    /**
+     * Register a collection of providers into THIS registry. Strict
+     * counterpart to ServiceLoader auto-discovery — duplicate ids, missing
+     * dependencies, and dependency cycles throw {@link MetaDataException}
+     * with the matching {@link com.metaobjects.ErrorCode} rather than logging
+     * warnings and continuing.
+     *
+     * @param providers the providers to register
+     * @throws MetaDataException on duplicate id, missing dependency, or cycle
+     */
+    public synchronized void registerProviders(Collection<MetaDataTypeProvider> providers) {
+        Objects.requireNonNull(providers, "providers must not be null");
+        List<MetaDataTypeProvider> ordered = resolveDependenciesStrict(providers);
+        for (MetaDataTypeProvider provider : ordered) {
+            try {
+                provider.registerTypes(this);
+                if (!deferredInheritanceTypes.isEmpty()) {
+                    resolveDeferredInheritance();
+                }
+            } catch (com.metaobjects.MetaDataException e) {
+                throw e;
+            } catch (Exception e) {
+                com.metaobjects.MetaDataException wrap = new com.metaobjects.MetaDataException(
+                    "Provider '" + provider.getProviderId() + "' failed during registerTypes: " + e.getMessage(),
+                    com.metaobjects.ErrorCode.ERR_UNKNOWN);
+                wrap.initCause(e);
+                throw wrap;
+            }
+        }
+    }
+
     /**
      * Register a MetaData type with fluent configuration
-     * 
+     *
      * @param clazz Implementation class
      * @param configurator Configuration function for the type definition
      */
@@ -982,6 +1047,78 @@ public class MetaDataRegistry {
         visited.add(providerId);
 
         // Add to result
+        result.add(provider);
+    }
+
+    /**
+     * Strict counterpart to {@link #resolveDependencies(Collection)}. Used by
+     * the programmatic {@link #compose(Collection)} / {@link #registerProviders(Collection)}
+     * entry points to match the cross-port error contract: duplicate ids,
+     * missing dependencies, and dependency cycles throw {@link com.metaobjects.MetaDataException}
+     * with the matching {@link com.metaobjects.ErrorCode} rather than logging and continuing.
+     */
+    private List<MetaDataTypeProvider> resolveDependenciesStrict(Collection<MetaDataTypeProvider> providers) {
+        Map<String, MetaDataTypeProvider> providerMap = new HashMap<>();
+        for (MetaDataTypeProvider provider : providers) {
+            String id = provider.getProviderId();
+            if (providerMap.containsKey(id)) {
+                throw new com.metaobjects.MetaDataException(
+                    "Duplicate provider id '" + id + "': "
+                        + providerMap.get(id).getClass().getName() + " vs "
+                        + provider.getClass().getName(),
+                    com.metaobjects.ErrorCode.ERR_PROVIDER_DUPLICATE_ID);
+            }
+            providerMap.put(id, provider);
+        }
+
+        List<String> missing = new ArrayList<>();
+        for (MetaDataTypeProvider provider : providers) {
+            for (String dep : provider.getDependencies()) {
+                if (!providerMap.containsKey(dep)) {
+                    missing.add(dep + " (required by " + provider.getProviderId() + ")");
+                }
+            }
+        }
+        if (!missing.isEmpty()) {
+            throw new com.metaobjects.MetaDataException(
+                "Missing provider dependencies: " + String.join(", ", missing),
+                com.metaobjects.ErrorCode.ERR_PROVIDER_MISSING_DEPENDENCY);
+        }
+
+        List<MetaDataTypeProvider> result = new ArrayList<>();
+        Set<String> visited = new HashSet<>();
+        Set<String> visiting = new HashSet<>();
+        for (MetaDataTypeProvider provider : providers) {
+            if (!visited.contains(provider.getProviderId())) {
+                topologicalSortStrict(provider, providerMap, visited, visiting, result);
+            }
+        }
+        return result;
+    }
+
+    private void topologicalSortStrict(MetaDataTypeProvider provider,
+                                       Map<String, MetaDataTypeProvider> providerMap,
+                                       Set<String> visited,
+                                       Set<String> visiting,
+                                       List<MetaDataTypeProvider> result) {
+        String providerId = provider.getProviderId();
+        if (visiting.contains(providerId)) {
+            throw new com.metaobjects.MetaDataException(
+                "Circular dependency detected involving provider: " + providerId,
+                com.metaobjects.ErrorCode.ERR_PROVIDER_DEPENDENCY_CYCLE);
+        }
+        if (visited.contains(providerId)) {
+            return;
+        }
+        visiting.add(providerId);
+        for (String depId : provider.getDependencies()) {
+            MetaDataTypeProvider dependency = providerMap.get(depId);
+            if (dependency != null) {
+                topologicalSortStrict(dependency, providerMap, visited, visiting, result);
+            }
+        }
+        visiting.remove(providerId);
+        visited.add(providerId);
         result.add(provider);
     }
 
