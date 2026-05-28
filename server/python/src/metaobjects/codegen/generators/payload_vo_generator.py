@@ -231,7 +231,10 @@ def _resolve_collection_type(
     its ``@objectRef`` target, schedule a nested ``<TargetShortName>Payload``
     for in-file emission, return ``list[<TargetShortName>Payload]``.
 
-    Dedupe across the whole run via *emitted_nested_fqns* (Kotlin parity)."""
+    Dedupe is per-file via *emitted_nested_fqns* — if the same target is
+    referenced by two fields in the same payload module, only one nested
+    class is emitted. Cross-file dedupe would leave forward-references
+    dangling (see the module docstring)."""
     via = origin.attr(ORIGIN_ATTR_VIA)
     if not isinstance(via, str) or not via:
         return _fallback_type(fallback)
@@ -406,10 +409,11 @@ def render_payload_vo(
     lines.append("from pydantic import BaseModel")
     lines.append("")
     lines.append("")
-    # Emit nested classes FIRST so the primary class's ``list[NestedPayload]``
-    # references are forward-defined-free at import time (pydantic v2 supports
-    # postponed eval via ``from __future__ import annotations`` but emitting
-    # nested-first matches Kotlin's emission order and reads cleaner).
+    # Emit nested classes FIRST. Pydantic v2 with `from __future__ import
+    # annotations` evaluates field annotations lazily, but it needs every
+    # referenced class to be defined in the module namespace at model-build
+    # time — otherwise it raises PydanticUserError("not fully defined") and
+    # callers would have to run model_rebuild(). Nested-first avoids that.
     for block in nested_blocks:
         lines.extend(block)
         lines.append("")
