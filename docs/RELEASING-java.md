@@ -137,9 +137,9 @@ cd server/java
 # Reactor poms — versions:set only touches modules in <modules>.
 mvn versions:set -DnewVersion=7.X.Y -DgenerateBackupPoms=false
 
-# Non-reactor poms (integration-tests*, docs, archetype, examples/*) declare
+# Non-reactor poms (integration-tests*, archetype, examples/*) declare
 # <parent> refs and need a sed pass:
-for f in integration-tests/pom.xml integration-tests-kotlin/pom.xml docs/pom.xml \
+for f in integration-tests/pom.xml integration-tests-kotlin/pom.xml \
          archetype/pom.xml examples/pom.xml examples/basic-example/pom.xml \
          examples/osgi-example/pom.xml examples/shared-resources/pom.xml \
          examples/spring-example/pom.xml; do
@@ -223,7 +223,7 @@ curl -sI https://repo.maven.apache.org/maven2/com/metaobjects/metaobjects-metada
 cd server/java
 mvn versions:set -DnewVersion=7.X.Z-SNAPSHOT -DgenerateBackupPoms=false
 # Same sed pass for non-reactor poms (step 2):
-for f in integration-tests/pom.xml integration-tests-kotlin/pom.xml docs/pom.xml \
+for f in integration-tests/pom.xml integration-tests-kotlin/pom.xml \
          archetype/pom.xml examples/pom.xml examples/basic-example/pom.xml \
          examples/osgi-example/pom.xml examples/shared-resources/pom.xml \
          examples/spring-example/pom.xml; do
