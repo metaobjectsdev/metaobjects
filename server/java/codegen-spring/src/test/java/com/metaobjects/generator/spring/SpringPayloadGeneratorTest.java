@@ -104,11 +104,13 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
         gen.setArgs(args);
         gen.execute(loader);
 
-        Path payload = outDir.resolve("acme/ai/prompts/npcTurnPayload.java");
-        assertTrue("expected npcTurnPayload.java at " + payload, Files.exists(payload));
+        // PascalCase the record name regardless of camelCase template name —
+        // matches Java's class-naming convention and parity with Kotlin/C#/TS/Python.
+        Path payload = outDir.resolve("acme/ai/prompts/NpcTurnPayload.java");
+        assertTrue("expected NpcTurnPayload.java at " + payload, Files.exists(payload));
         String src = Files.readString(payload);
-        assertTrue("expected `public record npcTurnPayload(`; saw:\n" + src,
-            src.contains("public record npcTurnPayload("));
+        assertTrue("expected `public record NpcTurnPayload(`; saw:\n" + src,
+            src.contains("public record NpcTurnPayload("));
         assertTrue("expected `String mood` component; saw:\n" + src,
             src.contains("String mood"));
     }
@@ -141,11 +143,11 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
         gen.setArgs(args);
         gen.execute(loader);
 
-        Path payload = outDir.resolve("acme/ai/prompts/lookupWeatherPayload.java");
-        assertTrue("expected lookupWeatherPayload.java at " + payload, Files.exists(payload));
+        Path payload = outDir.resolve("acme/ai/prompts/LookupWeatherPayload.java");
+        assertTrue("expected LookupWeatherPayload.java at " + payload, Files.exists(payload));
         String src = Files.readString(payload);
-        assertTrue("expected `public record lookupWeatherPayload(`; saw:\n" + src,
-            src.contains("public record lookupWeatherPayload("));
+        assertTrue("expected `public record LookupWeatherPayload(`; saw:\n" + src,
+            src.contains("public record LookupWeatherPayload("));
         assertTrue("expected `String city` component; saw:\n" + src,
             src.contains("String city"));
     }
@@ -480,5 +482,222 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
             assertEquals("prompts dir should hold exactly 3 files (2 parents + 1 nested)",
                 3L, stream.count());
         }
+    }
+
+    // ── field.object support (no origin) ──────────────────────────────────
+
+    @Test
+    public void fieldObjectSingleRefEmitsNestedPayloadAndRecordReferenceType() throws Exception {
+        // A payload-VO with a naked field.object @objectRef (no isArray) should
+        // emit BOTH the parent payload (with the nested type as the component)
+        // and a sibling <Target>Payload record. Closes the ObjectField filter gap.
+        String fixture = """
+            {
+              "metadata.root": { "package": "acme::ai", "children": [
+                { "object.value": { "name": "ClosureSummaryView", "children": [
+                    { "field.string": { "name": "verdict" } }
+                ] } },
+                { "object.value": { "name": "AdjudicationPayload", "children": [
+                    { "field.int":    { "name": "turnNumber" } },
+                    { "field.object": { "name": "closureSummary",
+                                        "@objectRef": "acme::ai::ClosureSummaryView",
+                                        "@storage": "flattened" } }
+                ] } },
+                { "template.output": {
+                    "name": "AdjudicationOutput",
+                    "@payloadRef": "AdjudicationPayload",
+                    "@textRef": "adj/output",
+                    "@format": "json"
+                } }
+              ] }
+            }
+            """;
+        Path outDir = tempFolder.newFolder("obj-single").toPath();
+        Path workspace = tempFolder.newFolder("obj-single-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "obj-single", fixture);
+
+        SpringPayloadGenerator gen = new SpringPayloadGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        Path parent = outDir.resolve("acme/ai/prompts/AdjudicationOutputPayload.java");
+        Path nested = outDir.resolve("acme/ai/prompts/ClosureSummaryViewPayload.java");
+        assertTrue("expected AdjudicationOutputPayload.java; saw absent", Files.exists(parent));
+        assertTrue("expected nested ClosureSummaryViewPayload.java; saw absent", Files.exists(nested));
+
+        String parentSrc = Files.readString(parent);
+        assertTrue("parent must declare `Integer turnNumber`; saw:\n" + parentSrc,
+            parentSrc.contains("Integer turnNumber"));
+        assertTrue("parent must declare `ClosureSummaryViewPayload closureSummary` (single ref, NOT List); saw:\n" + parentSrc,
+            parentSrc.contains("ClosureSummaryViewPayload closureSummary"));
+        assertFalse("single-ref must NOT be wrapped in List; saw:\n" + parentSrc,
+            parentSrc.contains("List<ClosureSummaryViewPayload>"));
+
+        String nestedSrc = Files.readString(nested);
+        assertTrue("nested payload must declare `String verdict`; saw:\n" + nestedSrc,
+            nestedSrc.contains("String verdict"));
+    }
+
+    @Test
+    public void fieldObjectIsArrayEmitsListType() throws Exception {
+        // A field.object with isArray:true must emit `java.util.List<<Target>Payload>`,
+        // mirroring origin.collection. Nested payload is emitted once.
+        String fixture = """
+            {
+              "metadata.root": { "package": "acme::ai", "children": [
+                { "object.value": { "name": "PlayerActionEntry", "children": [
+                    { "field.string": { "name": "name" } }
+                ] } },
+                { "object.value": { "name": "AdjudicationPayload", "children": [
+                    { "field.int":    { "name": "turnNumber" } },
+                    { "field.object": { "name": "playerActions", "isArray": true,
+                                        "@objectRef": "acme::ai::PlayerActionEntry",
+                                        "@storage": "jsonb" } }
+                ] } },
+                { "template.output": {
+                    "name": "AdjudicationOutput",
+                    "@payloadRef": "AdjudicationPayload",
+                    "@textRef": "adj/output",
+                    "@format": "json"
+                } }
+              ] }
+            }
+            """;
+        Path outDir = tempFolder.newFolder("obj-array").toPath();
+        Path workspace = tempFolder.newFolder("obj-array-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "obj-array", fixture);
+
+        SpringPayloadGenerator gen = new SpringPayloadGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        Path parent = outDir.resolve("acme/ai/prompts/AdjudicationOutputPayload.java");
+        Path nested = outDir.resolve("acme/ai/prompts/PlayerActionEntryPayload.java");
+        assertTrue(Files.exists(parent));
+        assertTrue(Files.exists(nested));
+
+        String parentSrc = Files.readString(parent);
+        assertTrue("isArray must emit `java.util.List<PlayerActionEntryPayload> playerActions`; saw:\n" + parentSrc,
+            parentSrc.contains("java.util.List<PlayerActionEntryPayload> playerActions"));
+    }
+
+    @Test
+    public void fieldObjectMixedFieldsAllSurviveIntoParent() throws Exception {
+        // Cover the multi-shape case: scalar + single field.object + isArray
+        // field.object + a passthrough origin. All four must reach the parent
+        // record; previous scalarFields() filter dropped the two object refs.
+        String fixture = """
+            {
+              "metadata.root": { "package": "acme::ai", "children": [
+                { "object.entity": { "name": "Source", "children": [
+                    { "field.string": { "name": "label" } }
+                ] } },
+                { "object.value": { "name": "Closure", "children": [
+                    { "field.string": { "name": "summary" } }
+                ] } },
+                { "object.value": { "name": "Action", "children": [
+                    { "field.string": { "name": "actor" } }
+                ] } },
+                { "object.value": { "name": "MixedPayload", "children": [
+                    { "field.int":    { "name": "turn" } },
+                    { "field.object": { "name": "closure",
+                                        "@objectRef": "acme::ai::Closure",
+                                        "@storage": "flattened" } },
+                    { "field.object": { "name": "actions", "isArray": true,
+                                        "@objectRef": "acme::ai::Action",
+                                        "@storage": "jsonb" } },
+                    { "field.string": { "name": "label", "children": [
+                        { "origin.passthrough": { "@from": "Source.label" } }
+                    ] } }
+                ] } },
+                { "template.output": {
+                    "name": "MixedOutput",
+                    "@payloadRef": "MixedPayload",
+                    "@textRef": "mix/output",
+                    "@format": "json"
+                } }
+              ] }
+            }
+            """;
+        Path outDir = tempFolder.newFolder("obj-mixed").toPath();
+        Path workspace = tempFolder.newFolder("obj-mixed-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "obj-mixed", fixture);
+
+        SpringPayloadGenerator gen = new SpringPayloadGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        String parentSrc = Files.readString(outDir.resolve("acme/ai/prompts/MixedOutputPayload.java"));
+        assertTrue("scalar `Integer turn`; saw:\n" + parentSrc, parentSrc.contains("Integer turn"));
+        assertTrue("single ref `ClosurePayload closure`; saw:\n" + parentSrc,
+            parentSrc.contains("ClosurePayload closure"));
+        assertTrue("list ref `java.util.List<ActionPayload> actions`; saw:\n" + parentSrc,
+            parentSrc.contains("java.util.List<ActionPayload> actions"));
+        assertTrue("passthrough `String label`; saw:\n" + parentSrc,
+            parentSrc.contains("String label"));
+        // Both nested payloads must exist.
+        assertTrue(Files.exists(outDir.resolve("acme/ai/prompts/ClosurePayload.java")));
+        assertTrue(Files.exists(outDir.resolve("acme/ai/prompts/ActionPayload.java")));
+    }
+
+    @Test
+    public void camelCaseTemplateNameYieldsPascalCaseRecord() throws Exception {
+        // Pin Gap 2: a camelCase template short name (e.g. `adjudicationUser`)
+        // must produce a PascalCase record + file name. Nested payload class
+        // names are independently capitalised the same way.
+        String fixture = """
+            {
+              "metadata.root": { "package": "acme::ai", "children": [
+                { "object.value": { "name": "userContext", "children": [
+                    { "field.string": { "name": "displayName" } }
+                ] } },
+                { "object.value": { "name": "AdjudicationUserPayloadView", "children": [
+                    { "field.int":    { "name": "turn" } },
+                    { "field.object": { "name": "context",
+                                        "@objectRef": "acme::ai::userContext",
+                                        "@storage": "flattened" } }
+                ] } },
+                { "template.prompt": {
+                    "name": "adjudicationUser",
+                    "@payloadRef": "AdjudicationUserPayloadView",
+                    "@textRef": "adj/user",
+                    "@format": "xml"
+                } }
+              ] }
+            }
+            """;
+        Path outDir = tempFolder.newFolder("camel-case").toPath();
+        Path workspace = tempFolder.newFolder("camel-case-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "camel-case", fixture);
+
+        SpringPayloadGenerator gen = new SpringPayloadGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        // File name PascalCased even though the template short name is camelCase.
+        Path parent = outDir.resolve("acme/ai/prompts/AdjudicationUserPayload.java");
+        assertTrue("expected AdjudicationUserPayload.java (NOT adjudicationUserPayload); saw absent",
+            Files.exists(parent));
+        assertFalse("camelCase file must NOT exist",
+            Files.exists(outDir.resolve("acme/ai/prompts/adjudicationUserPayload.java")));
+        String parentSrc = Files.readString(parent);
+        assertTrue("record name must be PascalCase; saw:\n" + parentSrc,
+            parentSrc.contains("public record AdjudicationUserPayload("));
+
+        // Nested payload class name PascalCased too — `userContext` (camelCase
+        // VO short name) becomes `UserContextPayload`.
+        Path nested = outDir.resolve("acme/ai/prompts/UserContextPayload.java");
+        assertTrue("nested UserContextPayload.java (NOT userContextPayload) must exist",
+            Files.exists(nested));
+        assertTrue("parent must reference the PascalCased nested record; saw:\n" + parentSrc,
+            parentSrc.contains("UserContextPayload context"));
     }
 }
