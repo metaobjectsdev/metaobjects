@@ -10,45 +10,31 @@ as needed. No dual API — TS uses ``parseX``/``safeParseX`` because Zod's
 Python's ecosystem (Pydantic, Instructor, FastAPI, LangChain structured-output)
 is throw-only and a dual surface would feel un-Pythonic.
 
-Self-contained emit: the generated module declares an inline Pydantic v2 model
-derived from the payload-VO's field declarations (no separate ``payload_vo``
-generator required — TS embeds its Zod schema the same way). This deviates
-from the spec sketch's import-style example (``from .npc_response import
-NpcResponse``) because Python has no payload-VO generator yet; embedding the
-class makes the parser module usable today without a hand-written companion.
-If a future ``payload_vo_generator`` ships, this generator can be migrated to
-import from it (one-line file-name swap on the import).
+Import-style emit: the parser module is a thin ``parse_<name>(text) -> Payload``
+wrapper that imports the Pydantic ``<TemplateName>Payload`` model from the
+sibling ``<template_name_snake>_payload.py`` (emitted by ``payload_vo_generator``).
+This matches the cross-port story where a single payload-VO class is reused by
+both prompt rendering and output parsing — TS / C# / Kotlin all do the same.
 
-Field subtype → Pydantic type mapping mirrors the TS Zod mapping and matches
-ADR-0010 §4 (Cross-language type mapping):
-
-* ``field.string``     → ``str``
-* ``field.int / .long / .short / .byte`` → ``int``
-* ``field.double / .float`` → ``float``
-* ``field.boolean``    → ``bool``
-* ``field.currency``   → ``int`` (minor units; wire contract)
-* ``field.date / .time / .timestamp`` → ``datetime.{date,time,datetime}``
-* ``field.enum`` (with ``@values``) → ``Literal[...]`` of those members
-* Anything else        → ``str`` (defensive fallback — surfaces as a warning)
-
-Future per-field constraints (``@maxLength``, ``@required``-vs-optional
-nullability, ``@objectRef`` nesting) follow when their TS/C# counterparts
-ship them — kept minimal for FR6 v1 parity.
-"""
+The generator emits an empty file list when ``payload_vo_generator`` would have
+emitted nothing for the same template (defensive parity with the loader's
+``@payloadRef`` validation pass)."""
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
-from metaobjects.meta.core.field import field_constants as fc
-from metaobjects.meta.core.field.meta_field import MetaField
+from metaobjects.codegen.generators.payload_vo_generator import (
+    payload_class_name,
+    payload_module_name,
+    resolve_payload_vo,
+)
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template import template_constants as tc
-from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_TEMPLATE
+from metaobjects.shared.base_types import TYPE_TEMPLATE
 
 
 _GENERATOR_NAME = "output-parser-generator"
@@ -66,116 +52,51 @@ def _snake_case(name: str) -> str:
     return "".join(out)
 
 
-# Field-subtype → (Pydantic-annotation, required-import) tuple.
-# Empty string in the second slot means "no extra import beyond Pydantic".
-_FIELD_TYPE_MAP: dict[str, tuple[str, str]] = {
-    fc.FIELD_SUBTYPE_STRING: ("str", ""),
-    fc.FIELD_SUBTYPE_INT: ("int", ""),
-    fc.FIELD_SUBTYPE_LONG: ("int", ""),
-    fc.FIELD_SUBTYPE_DOUBLE: ("float", ""),
-    fc.FIELD_SUBTYPE_FLOAT: ("float", ""),
-    fc.FIELD_SUBTYPE_BOOLEAN: ("bool", ""),
-    fc.FIELD_SUBTYPE_CURRENCY: ("int", ""),
-    fc.FIELD_SUBTYPE_DATE: ("date", "from datetime import date"),
-    fc.FIELD_SUBTYPE_TIME: ("time", "from datetime import time"),
-    fc.FIELD_SUBTYPE_TIMESTAMP: ("datetime", "from datetime import datetime"),
-}
-
-
-def _python_type_for(field: MetaField) -> tuple[str, set[str]]:
-    """Return (annotation, set-of-import-lines) for a payload field."""
-    sub = field.sub_type
-    if sub in _FIELD_TYPE_MAP:
-        annotation, import_line = _FIELD_TYPE_MAP[sub]
-        return annotation, ({import_line} if import_line else set())
-    if sub == fc.FIELD_SUBTYPE_ENUM:
-        values: Any = field.attr(fc.FIELD_ATTR_VALUES)
-        if isinstance(values, (list, tuple)) and values:
-            members = ", ".join(repr(str(v)) for v in values)
-            return f"Literal[{members}]", {"from typing import Literal"}
-        return "str", set()
-    return "str", set()
-
-
-def _find_payload_vo(root: MetaData, payload_ref: str) -> MetaObject | None:
-    """Locate the ``object.value`` matching ``payload_ref`` at root level.
-
-    FR-004's R2 invariant (the loader's ``_validate_templates`` pass) already
-    asserts the resolved object is ``object.value``; we just locate it by
-    short-name and return it. Loader errors short-circuit before codegen, so
-    a missing ref here is defensive only."""
-    for child in root.own_children():
-        if child.type == TYPE_OBJECT and child.name == payload_ref:
-            return child if isinstance(child, MetaObject) else None
-    return None
-
-
 def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     """Render one parser module for a ``template.output`` node.
+
+    The emitted module imports ``<TemplateName>Payload`` from the sibling
+    payload module (emitted by ``payload_vo_generator``) and exposes a
+    throw-only ``parse_<name>(text)`` entry point.
 
     Returns ``None`` when the ``@payloadRef`` can't be resolved (defensive;
     the loader's template-validation pass would normally catch this first)."""
     payload_ref = template.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)
     if not isinstance(payload_ref, str) or not payload_ref:
         return None
-    payload = _find_payload_vo(root, payload_ref)
+    payload = resolve_payload_vo(root, payload_ref)
     if payload is None:
         return None
 
     template_name = template.name
-    data_class = f"{template_name}Data"
+    payload_class = payload_class_name(template_name)  # <Name>Payload
+    payload_module = payload_module_name(template_name)  # <name>_payload
     parse_fn = f"parse_{_snake_case(template_name)}"
-
-    field_lines: list[str] = []
-    extra_imports: set[str] = set()
-    for field in payload.fields():
-        if not isinstance(field, MetaField):
-            continue
-        annotation, imports = _python_type_for(field)
-        extra_imports.update(imports)
-        field_lines.append(f"    {field.name}: {annotation}")
 
     fqn = (
         f"{payload.package}::{template_name}"
         if payload.package
         else template_name
     )
-    lines: list[str] = []
-    lines.append(generated_header(template_name, fqn))
-    lines.append("from __future__ import annotations\n")
-    for imp in sorted(extra_imports):
-        lines.append(imp)
-    if extra_imports:
-        lines.append("")
-    lines.append("from pydantic import BaseModel")
-    lines.append("")
-    lines.append("")
-    lines.append(f"class {data_class}(BaseModel):")
-    lines.append(
-        f'    """Payload schema for the ``{template_name}`` template.output.'
-    )
-    lines.append("")
-    lines.append(f"    Field shape derived from the ``{payload.name}`` object.value.")
-    lines.append('    """')
-    if field_lines:
-        lines.extend(field_lines)
-    else:
-        lines.append("    pass")
-    lines.append("")
-    lines.append("")
-    lines.append(f"def {parse_fn}(text: str) -> {data_class}:")
-    lines.append(f'    """Parse an LLM response into a typed ``{data_class}``.')
-    lines.append("")
-    lines.append("    Raises:")
-    lines.append(
-        "        pydantic.ValidationError: when the input does not match the schema."
-    )
-    lines.append('    """')
-    lines.append(f"    return {data_class}.model_validate_json(text)")
-    lines.append("")
-    lines.append("")
-    lines.append(f'__all__ = ["{data_class}", "{parse_fn}"]')
-    lines.append("")
+
+    lines: list[str] = [
+        generated_header(template_name, fqn),
+        "from __future__ import annotations\n",
+        f"from .{payload_module} import {payload_class}",
+        "",
+        "",
+        f"def {parse_fn}(text: str) -> {payload_class}:",
+        f'    """Parse an LLM response into a typed ``{payload_class}``.',
+        "",
+        "    Raises:",
+        "        pydantic.ValidationError: when the input does not match the schema.",
+        '    """',
+        f"    return {payload_class}.model_validate_json(text)",
+        "",
+        "",
+        f'__all__ = ["{parse_fn}"]',
+        "",
+    ]
 
     return "\n".join(lines)
 
