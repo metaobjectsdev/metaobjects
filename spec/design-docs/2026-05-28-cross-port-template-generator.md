@@ -101,26 +101,20 @@ TS defaults to `projectProvider(process.cwd())`. Each port mirrors using its own
 
 ## Conformance
 
-This work is byte-equivalence territory; the conformance fixture is the load-bearing piece, not the per-port code. Add to `fixtures/render-conformance/` a new sub-corpus:
+This work is byte-equivalence territory; the conformance fixture is the load-bearing piece, not the per-port code. Plan 0 shipped the corpus + TS reference harness:
 
-```
-fixtures/render-conformance/template-generator/
-  fixture-001-flat-entity-walk/
-    metadata/             # shared YAML — defines a small entity set
-    template.mustache     # shared template
-    walk.json             # declarative "what walk should return" — a list of
-                          # (entity-name → data dict, output filename) tuples
-                          # the per-port adapter materializes
-    expected/             # byte-exact expected output files
-  fixture-002-aggregate-walk/
-    ...
-  fixture-003-filter-driven-walk/
-    ...
-```
+- **Corpus + format spec:** [`fixtures/render-conformance/template-generator/README.md`](../../fixtures/render-conformance/template-generator/README.md)
+- **TS reference harness:** [`server/typescript/packages/codegen-ts/test/conformance/template-generator-conformance.test.ts`](../../server/typescript/packages/codegen-ts/test/conformance/template-generator-conformance.test.ts)
 
-`walk.json` is the trick: declarative instead of imperative. Each port's conformance harness reads the metadata, runs its `templateGenerator` against the fixture's template, and uses a tiny per-port adapter to translate `walk.json` into the port's walk-function signature. The adapter is the only per-port code in the conformance suite; the assertion is "rendered output equals `expected/` files byte-for-byte."
+Three reference fixtures ship with Plan 0:
 
-That keeps the cross-port test surface small. Three to five fixtures cover the common walk patterns (per-entity, single aggregate, filtered subset, multi-output-per-entity).
+| Fixture | Pattern |
+|---|---|
+| `fixture-001-flat-entity-walk` | One template, one output file per entity (per-entity pattern). |
+| `fixture-002-aggregate-walk` | One template, single aggregated output file. |
+| `fixture-003-filter-driven-walk` | One template, output files only for an entity subset (filter pattern). |
+
+Each fixture is a directory containing `meta.json` (declarative entity set), `template.mustache`, `walk.json` (declarative `{entity?, data, outputPath}[]`), and `expected/<outputPath>` byte-exact expected output. The per-port adapter is the only port-specific code in the conformance suite — it parses the fixture, builds a `MetaRoot` via the port's `_meta-build`-equivalent helpers, and asserts emitted files equal `expected/` byte-for-byte. See the corpus README for the full schema.
 
 ### Existing test coverage already in TS
 
