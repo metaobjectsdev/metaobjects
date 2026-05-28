@@ -78,6 +78,22 @@ object KotlinTypeMapper {
     /** `@dbColumnType` value on [StringField] that selects Exposed `uuid("col")`. */
     private const val DB_COLUMN_TYPE_UUID = "uuid"
 
+    /**
+     * `@dbColumnType` value on [StringField] that emits a `text("col")` column
+     * intended for a Postgres `JSONB`-typed column on the DB side. The Kotlin
+     * property stays `String` (raw JSON text); the application is responsible
+     * for ensuring well-formed JSON and Postgres validates at write time.
+     * Using `text` (rather than `varchar(255)` default) removes the
+     * accidental length cap on serialised payloads — JSON blobs routinely
+     * exceed 255 chars (e.g. rubric weights, feature flags, configuration).
+     *
+     * Note: this is the **raw-string** JSONB path for `field.string`. The
+     * typed-object JSONB path on `field.object` (`@storage=jsonb`) lives in
+     * [KotlinExposedTableGenerator]'s object-column emission and uses
+     * `jsonb("col", encoder, decoder)` with kotlinx.serialization.
+     */
+    private const val DB_COLUMN_TYPE_JSONB = "jsonb"
+
     /** `@dbColumnType` value on [TimestampField] that opts in to Exposed `timestampWithTimeZone("col")`. */
     private const val DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ = "timestamp_with_tz"
 
@@ -186,17 +202,25 @@ object KotlinTypeMapper {
             // data class property stays `String` for now (Exposed coerces String ↔ uuid at
             // the SQL boundary), so adopters can convert a string-shaped FK column to the
             // native Postgres uuid type without changing their data class shape.
-            if (dbColumnType(field) == DB_COLUMN_TYPE_UUID) {
-                "uuid(\"$colName\")"
-            } else {
-                // Dispatch to Exposed `text(name)` when the field is declared as unbounded text:
-                //   (1) explicit `@kind: "text"` opt-in, OR
-                //   (2) `@maxLength` exceeds the VARCHAR/TEXT cutoff (Postgres TOAST boundary).
-                // Otherwise emit `varchar(name, N)` with N defaulting to 255.
-                val kind = stringAttr(field, ATTR_KIND)
-                val maxLen = stringMaxLength(field)
-                if (kind == KIND_TEXT || maxLen > VARCHAR_TEXT_THRESHOLD) "text(\"$colName\")"
-                else "varchar(\"$colName\", $maxLen)"
+            //
+            // `@dbColumnType=jsonb` opt-in: emit `text("col")` instead of varchar. The DB
+            // column is `JSONB` (Postgres accepts text I/O against JSONB), and the Exposed
+            // `text` column has no length cap so JSON payloads larger than 255 chars
+            // (rubric weights, feature flags, configuration blobs) don't trip the
+            // varchar-default limit. The Kotlin property stays `String` (raw JSON text).
+            when (dbColumnType(field)) {
+                DB_COLUMN_TYPE_UUID  -> "uuid(\"$colName\")"
+                DB_COLUMN_TYPE_JSONB -> "text(\"$colName\")"
+                else -> {
+                    // Dispatch to Exposed `text(name)` when the field is declared as unbounded text:
+                    //   (1) explicit `@kind: "text"` opt-in, OR
+                    //   (2) `@maxLength` exceeds the VARCHAR/TEXT cutoff (Postgres TOAST boundary).
+                    // Otherwise emit `varchar(name, N)` with N defaulting to 255.
+                    val kind = stringAttr(field, ATTR_KIND)
+                    val maxLen = stringMaxLength(field)
+                    if (kind == KIND_TEXT || maxLen > VARCHAR_TEXT_THRESHOLD) "text(\"$colName\")"
+                    else "varchar(\"$colName\", $maxLen)"
+                }
             }
         }
         is IntegerField   -> "integer(\"$colName\")"

@@ -144,6 +144,35 @@ class KotlinTypeMapperTest {
         assertEquals(STRING, KotlinTypeMapper.kotlinTypeName(f))
     }
 
+    @Test fun `string field with dbColumnType=jsonb emits text column not capped varchar`() {
+        // `@dbColumnType=jsonb` on a `field.string` opts the column to Postgres JSONB on
+        // the DB side. The Exposed column is `text(...)` (unbounded) rather than the
+        // default `varchar(name, 255)` — JSON payloads routinely exceed 255 chars and
+        // Postgres accepts text I/O against a JSONB column. Kotlin property stays String
+        // (raw JSON text); the application is responsible for validity.
+        val f = StringField("rubricWeights")
+        f.addMetaAttr(StringAttribute.create("dbColumnType", "jsonb"))
+        assertEquals("text(\"rubric_weights\")", KotlinTypeMapper.exposedColumnSpec(f))
+        assertEquals(STRING, KotlinTypeMapper.kotlinTypeName(f))
+    }
+
+    @Test fun `string field with dbColumnType=jsonb is case-insensitive`() {
+        // `@dbColumnType` lookup case-folds (see `KotlinTypeMapper.dbColumnType`); both
+        // `"JSONB"` and `"jsonb"` route to the JSONB branch.
+        val f = StringField("featureFlags")
+        f.addMetaAttr(StringAttribute.create("dbColumnType", "JSONB"))
+        assertEquals("text(\"feature_flags\")", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
+    @Test fun `string field with dbColumnType=jsonb ignores maxLength`() {
+        // A short `@maxLength` would normally select varchar; the JSONB override wins
+        // regardless so a YAML with both attributes still gets the unbounded text column.
+        val f = StringField("blob")
+        f.addMetaAttr(StringAttribute.create("dbColumnType", "jsonb"))
+        f.addMetaAttr(IntAttribute.create("maxLength", 64))
+        assertEquals("text(\"blob\")", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
     // === Currency / Enum / UUID coverage ===
 
     @Test fun `currency field maps to Long and long exposed column with snake_case name`() {
