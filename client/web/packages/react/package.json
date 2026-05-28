@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/react",
-  "version": "0.7.0-rc.7",
+  "version": "0.7.0-rc.8",
   "description": "React runtime for metaobjects: useEntityForm hook and CurrencyInput component.",
   "type": "module",
   "main": "./dist/index.js",
