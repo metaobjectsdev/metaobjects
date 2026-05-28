@@ -24,8 +24,14 @@ export { buildRelationMap } from "./relation-resolver.js";
 export type { RenderContext } from "./render-context.js";
 export { makeRenderContext } from "./render-context.js";
 
-export type { WriteStatus, WriteResult, MergeStrategy } from "./overwrite-policy.js";
-export { decideAndWrite } from "./overwrite-policy.js";
+export type {
+  WriteStatus,
+  WriteResult,
+  MergeStrategy,
+  BaselineMode,
+  DecideAndWriteOpts,
+} from "./overwrite-policy.js";
+export { decideAndWrite, GitMissingError } from "./overwrite-policy.js";
 
 export { CodegenError } from "./errors.js";
 export { GENERATED_HEADER, EXTRA_SUFFIX, DEFAULT_OUT_DIR } from "./constants.js";
