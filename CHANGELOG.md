@@ -7,6 +7,48 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.7.0-rc.8] — 2026-05-27
+
+### Fixed
+- **Java: generic required-attr enforcement.** Pre-rc.8, Java required-attr
+  validation was per-subtype (an explicit block per subtype that wanted it).
+  rc.8 adds a generic pass mirroring TS / C# / Python: any node whose schema
+  declares `required: true` attrs that are absent on the loaded node fires
+  `ERR_MISSING_REQUIRED_ATTR`. The previously-explicit R1 (prompt) and R1b
+  (toolcall) blocks in ValidationPhase collapse into the generic pass.
+  Closes a latent contract gap surfaced during the rc.7 cross-port
+  `template.toolcall` rollout.
+
+### Changed
+- **Hardcoded type-count guards in TS / C# tests** are now derived from
+  the schema constants. Previously `expect(allTypes).toHaveLength(70)` (TS)
+  / `Core_provider_registers_exactly_70_types` (C#) bumped manually on every
+  new subtype; now they assert each base type's subtype list directly,
+  catching drift only where it matters (in the relevant subtype family
+  rather than a global integer).
+
+## [0.7.0-rc.7] — 2026-05-27
+
+### Added
+- **`template.toolcall` reaches Java + C# + Python cores** — the TS port
+  shipped the subtype in rc.5/rc.6; this release brings the other three
+  ports to parity per ADR-0011. Same vendor-agnostic attrs (`@toolName`
+  required, `@payloadRef` required, plus governance `@owner`/`@since`).
+  Same "no `@textRef` requirement" — toolcalls have no renderable body.
+  Kotlin inherits the Java port. The provider-extension conformance
+  fixtures (which moved to `template.briefing` in rc.5) continue to gate
+  the provider-extension contract cross-port; the new core subtype gets
+  its own coverage in each port's unit tests.
+- **`registry.extend()` on Python `TypeRegistry`** (`@metaobjectsdev/metadata`
+  Python equivalent) — closes the cross-port parity gap surfaced during
+  rc.3 implementation. Same signature semantics as the TS and C# versions:
+  raises `ERR_PROVIDER_ATTR_CONFLICT` on duplicate attr; `ERR_UNKNOWN_SUBTYPE`
+  if the target (type, subType) isn't registered.
+
+### Fixed
+- No TS source changes vs rc.6; the version bump keeps the rc.N marker
+  aligned across the four-port release surface.
+
 ## [0.7.0-rc.6] — 2026-05-27
 
 ### Fixed

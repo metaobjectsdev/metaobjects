@@ -33,6 +33,10 @@ import com.metaobjects.origin.CollectionOrigin;
 import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.origin.PassthroughOrigin;
 import com.metaobjects.relationship.MetaRelationship;
+import com.metaobjects.attr.MetaAttribute;
+import com.metaobjects.registry.ChildRequirement;
+import com.metaobjects.registry.MetaDataRegistry;
+import com.metaobjects.registry.TypeDefinition;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.source.ResolvedSource;
 import com.metaobjects.template.MetaTemplate;
@@ -43,6 +47,7 @@ import com.metaobjects.util.ErrorMessageConstants;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -98,6 +103,13 @@ public final class ValidationPhase {
      */
     public static void run(MetaRoot root, MetaDataLoader loader) {
         if (root == null) return;
+        // Generic required-attr pass runs first: any node whose registered schema
+        // declares required:true attrs that are absent on the node fires
+        // ERR_MISSING_REQUIRED_ATTR. Mirrors TS attr-schema-validate / C#
+        // ValidateAttrSchemaNode / Python validate_attr_schema. This collapses
+        // per-subtype "missing @X" blocks (previously R1 for template.prompt,
+        // R1b for template.toolcall) into a single cross-port-aligned pass.
+        validateRequiredAttrs(root, loader);
         validateEnumValues(root);
         validateSourceAttrs(root);
         validateOnePrimarySource(root);
@@ -122,6 +134,95 @@ public final class ValidationPhase {
      */
     public static void run(MetaRoot root) {
         run(root, null);
+    }
+
+    // =========================================================================
+    // Generic required-attr validation pass (cross-port parity)
+    //
+    // Walks every loaded node and, for each one registered in the type registry,
+    // emits ERR_MISSING_REQUIRED_ATTR for every required:true attr declared on
+    // its (type, subType) schema that the node does not carry.
+    //
+    // "Has the attr" is checked against effective attrs (own + inherited via
+    // extends:) — a node that legitimately inherits a required attr from its
+    // super is NOT flagged. Mirrors TS attr-schema-validate.ts Check 1 (uses
+    // node.attrs()) and C# ValidationPasses.ValidateAttrSchemaNode (uses
+    // node.Attrs()).
+    //
+    // Both DIRECT and INHERITED childRequirements are considered. Per
+    // TypeDefinition.populateInheritedRequirements, a direct requirement
+    // shadows the inherited one of the same key, so a subtype can promote an
+    // inherited optional attr to required without conflict.
+    //
+    // Only requirements whose expectedType is "attr" are enforced here. Other
+    // required-child kinds (fields / identities) have their own bespoke checks
+    // already (validateEnumValues, validateIdentityFieldsAndGeneration) that
+    // carry semantic context this pass does not.
+    //
+    // Loader nullness: when the loader handle is unavailable (legacy two-arg
+    // entry point that passes null), this pass is a no-op — the registry
+    // is reached via the loader, and absent that handle there is nowhere
+    // safe to look up TypeDefinitions. The downstream subtype passes
+    // (validateEnumValues, validateIdentityFieldsAndGeneration) continue to
+    // run regardless and catch the previously-enforced cases.
+    // =========================================================================
+
+    static void validateRequiredAttrs(MetaRoot root, MetaDataLoader loader) {
+        if (loader == null) return;
+        MetaDataRegistry registry = loader.getTypeRegistry();
+        if (registry == null) return;
+        walkRequiredAttrs(root, registry);
+    }
+
+    private static void walkRequiredAttrs(MetaData node, MetaDataRegistry registry) {
+        validateRequiredAttrsNode(node, registry);
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkRequiredAttrs(child, registry);
+        }
+    }
+
+    private static void validateRequiredAttrsNode(MetaData node, MetaDataRegistry registry) {
+        String type = node.getType();
+        String subType = node.getSubType();
+        // The MetaRoot node has type/subType = "metadata"/"root" and is registered;
+        // looking it up still works and just yields no required attrs.
+        if (type == null || subType == null) return;
+        TypeDefinition def = registry.getTypeDefinition(type, subType);
+        if (def == null) return; // unregistered (test scaffold etc.) — skip silently
+
+        // Collect required ATTR requirements: direct first (wins on name
+        // collision), then inherited for names not directly declared.
+        Map<String, ChildRequirement> requiredAttrs = new java.util.LinkedHashMap<>();
+        for (ChildRequirement req : def.getDirectChildRequirements()) {
+            if (!req.isRequired()) continue;
+            if (!MetaAttribute.TYPE_ATTR.equals(req.getExpectedType())) continue;
+            if (req.isWildcard()) continue; // wildcards have no specific name to check
+            requiredAttrs.put(req.getName(), req);
+        }
+        for (Map.Entry<String, ChildRequirement> e
+                : def.getInheritedChildRequirements().entrySet()) {
+            ChildRequirement req = e.getValue();
+            if (!req.isRequired()) continue;
+            if (!MetaAttribute.TYPE_ATTR.equals(req.getExpectedType())) continue;
+            if (req.isWildcard()) continue;
+            requiredAttrs.putIfAbsent(req.getName(), req);
+        }
+
+        if (requiredAttrs.isEmpty()) return;
+
+        for (ChildRequirement req : requiredAttrs.values()) {
+            // Effective lookup (includeParentData=true) — a node that inherits
+            // the attr via extends: counts as having it. Matches TS/C#/Python.
+            if (!node.hasMetaAttr(req.getName(), true)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
+                        + ": " + type + "." + subType
+                        + (node.getName() != null && !node.getName().isEmpty()
+                            ? " '" + node.getName() + "'" : "")
+                        + " is missing required attribute '@" + req.getName() + "'",
+                    ErrorCode.ERR_MISSING_REQUIRED_ATTR, node.getSource());
+            }
+        }
     }
 
     // =========================================================================
@@ -1010,9 +1111,11 @@ public final class ValidationPhase {
     // =========================================================================
     // Template validation (FR-004 — cross-language prompt construction)
     //
-    // Four rules, own-only, eager-throw — mirrors TS validateTemplates and
-    // C# TemplateValidator:
-    //   R1: template.prompt requires @payloadRef → ERR_MISSING_REQUIRED_ATTR
+    // Two rules, own-only, eager-throw — mirrors TS validateTemplates and
+    // C# TemplateValidator. Required-attr enforcement (formerly R1 for
+    // template.prompt's @payloadRef and R1b for template.toolcall's @toolName +
+    // @payloadRef) now lives in the generic validateRequiredAttrs pass above.
+    //
     //   R2: @payloadRef (if present on any template) must resolve to an
     //       object.value at root → ERR_INVALID_TEMPLATE
     //   R3: template.prompt @requiredSlots members must each be a field on the
@@ -1055,16 +1158,13 @@ public final class ValidationPhase {
             }
         }
 
-        // R1 — template.prompt requires @payloadRef
-        if (TemplateConstants.SUBTYPE_PROMPT.equals(subType)
-                && (payloadRef == null || payloadRef.isEmpty())) {
-            throw new MetaDataException(
-                ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
-                    + ": template.prompt '" + template.getName() + "' is missing required @payloadRef",
-                ErrorCode.ERR_MISSING_REQUIRED_ATTR, template.getSource());
-        }
-
-        // R2 + R3 only apply if @payloadRef is set
+        // R2 + R3 only apply if @payloadRef is set. Missing @payloadRef on
+        // subtypes that require it (template.prompt, template.toolcall) has
+        // already been caught by validateRequiredAttrs above; if we get here
+        // with payloadRef==null, the node's schema treats it as optional
+        // (e.g. template.output may carry no payloadRef — TS marks it required
+        // on output too but Java's base declares it optional and no override
+        // has been added on the output subtype). Skip R2/R3 silently.
         if (payloadRef == null || payloadRef.isEmpty()) return;
 
         MetaObject payloadVo = findRootObject(root, payloadRef);

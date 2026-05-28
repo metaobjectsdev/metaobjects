@@ -208,9 +208,10 @@ const out: string = await render({
 ### Java
 
 `metaobjects-render` ships `Renderer` + `Provider` (Classpath, Filesystem,
-InMemory) + `Verify`. Payload-VO codegen is **not** shipped on the Java side — host
-code consumes the payload as a Java `Map<String,Object>` or a hand-coded value
-object.
+InMemory) + `Verify`. `SpringPayloadGenerator` (in `metaobjects-codegen-spring`)
+emits a Java 21 `record` payload per template, resolving all three origin
+subtypes (matches the Kotlin reference). Host code may also pass a
+`Map<String,Object>` to the renderer if it doesn't want the generated type.
 
 ```java
 import com.metaobjects.render.*;
@@ -218,13 +219,21 @@ import com.metaobjects.render.*;
 Provider provider = new FilesystemProvider(Path.of("./prompts"));
 String out = Renderer.render(RenderRequest.builder()
     .ref("lobby/welcome")
-    .payload(Map.of(
-        "displayName", "Ada",
-        "postCount", 12L,
-        "posts", List.of(Map.of("title", "Hello"))))
+    .payload(new WelcomePayload("Ada", 12L, List.of(new PostSummary("Hello"))))
     .provider(provider)
     .format("xml")
     .build());
+```
+
+```java
+// generated/acme/blog/prompts/WelcomePromptPayload.java
+public record WelcomePromptPayload(
+    String displayName,
+    Long postCount,
+    java.util.List<PostSummary> posts
+) {}
+
+public record PostSummary(String title) {}
 ```
 
 ### Kotlin

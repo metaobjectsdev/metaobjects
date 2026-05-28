@@ -1,10 +1,12 @@
-// template.* subtype vocabulary + reserved attribute names (FR-004, R1).
+// template.* subtype vocabulary + reserved attribute names (FR-004, R1; ADR-0011).
 //
-// `template` is the fourth-pillar base type: a renderable text artifact bound to
-// a typed payload. Two subtypes (by audience/structure, NOT by format):
+// `template` is the fourth-pillar base type: a typed payload bound to either a
+// rendered text artifact (prompt/output) or to a tool-call envelope. Three subtypes:
 //   - prompt: LLM-targeted; carries the prompt-overlay attrs and is the home for
 //     future structured-prompt (role/turn/tool) divergence.
 //   - output: every other rendered artifact (email, export, docs, config).
+//   - toolcall: LLM tool-call envelope (no renderable body — the body IS the
+//               structured output schema resolved via @payloadRef). Per ADR-0011.
 //
 // Format is the @format ATTRIBUTE (closed set below), never a subtype — the
 // render engine keys its escaper off @format, so a new format costs one escaper
@@ -17,23 +19,30 @@ using MetaObjects.Shared;
 namespace MetaObjects.Template;
 
 /// <summary>
-/// Template concern constants — the template subtypes (prompt, output) plus the
-/// universal base, the reserved attr keys (generic + prompt-overlay), and the
-/// closed @format value set.
+/// Template concern constants — the template subtypes (prompt, output, toolcall)
+/// plus the universal base, the reserved attr keys (generic + prompt-overlay +
+/// toolcall-specific), and the closed @format value set.
 /// </summary>
 public static class TemplateConstants
 {
     public const string TEMPLATE_SUBTYPE_PROMPT = "prompt";
     public const string TEMPLATE_SUBTYPE_OUTPUT = "output";
+    /// <summary>
+    /// LLM tool-call envelope subtype (ADR-0011). Does NOT inherit the
+    /// generic prompt/output attrs — declares its own minimal set.
+    /// </summary>
+    public const string TEMPLATE_SUBTYPE_TOOLCALL = "toolcall";
 
     public static readonly string[] TEMPLATE_SUBTYPES =
     [
         BaseTypes.SUBTYPE_BASE,
         TEMPLATE_SUBTYPE_PROMPT,
         TEMPLATE_SUBTYPE_OUTPUT,
+        TEMPLATE_SUBTYPE_TOOLCALL,
     ];
 
-    // Generic reserved attrs (both subtypes). The "@" is applied at wire time.
+    // Generic reserved attrs (prompt + output; NOT inherited by toolcall).
+    // The "@" is applied at wire time.
     public const string TEMPLATE_ATTR_PAYLOAD_REF = "payloadRef";
     public const string TEMPLATE_ATTR_TEXT_REF    = "textRef";
     public const string TEMPLATE_ATTR_FORMAT      = "format";
@@ -49,6 +58,17 @@ public static class TemplateConstants
     public const string TEMPLATE_ATTR_MAX_TOKENS     = "maxTokens";
     public const string TEMPLATE_ATTR_REQUIRED_SLOTS = "requiredSlots";
     public const string TEMPLATE_ATTR_MODEL          = "model";
+
+    // Toolcall-specific attrs (template.toolcall only — ADR-0011). Vendor-agnostic
+    // in core; vendor wire details (retry semantics, fallback shapes, parallel
+    // invocation, cache hints) added by consumer providers via
+    // TypeRegistry.Extend("template", "toolcall", attributes: [...]).
+    //
+    // @description is intentionally NOT a toolcall-specific constant — every type
+    // gets @description via the documentation common-attrs provider. Tool
+    // descriptions surfaced to the LLM use the same @description common attr
+    // doc-gen uses.
+    public const string TEMPLATE_ATTR_TOOL_NAME = "toolName";
 
     /// <summary>Default @format when omitted.</summary>
     public const string TEMPLATE_FORMAT_DEFAULT = "text";

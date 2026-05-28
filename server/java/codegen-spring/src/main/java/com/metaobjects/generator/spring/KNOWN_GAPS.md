@@ -38,37 +38,6 @@ needs either `Optional<T>` arms (verbose) or a builder + nullable
 representation, neither of which is a one-liner. A follow-up can add
 these once the partial-update story is settled cross-port.
 
-## Payload `origin.*` resolution not honoured (FR-006, Day-1)
-
-**Status:** intentional Day-1 simplification.
-
-`SpringPayloadGenerator` emits a `<TemplateShortName>Payload` Java record
-with components mirroring the `@payloadRef` value-object's scalar fields,
-using `SpringTypeMapper.javaTypeName` for type resolution. `origin.*`
-children on payload fields (passthrough / aggregate / collection) are
-NOT yet honoured — each field's type comes from its own subtype, not
-from the dotted source it references.
-
-The cross-port reference (Kotlin's `KotlinPayloadGenerator`) resolves
-these:
-- `origin.passthrough @from "Entity.field"` → source field's type
-- `origin.aggregate @agg count` → `Long`; `@agg avg` → `Double`;
-  `sum/min/max` → source `@of` field's type
-- `origin.collection @via "Parent.rel"` → `List<TargetPayload>` (recurses
-  into a nested payload class)
-
-**Why deferred:** the cross-port `template-output-simple` and
-`template-output-and-prompt` corpus fixtures both use plain VO field
-projection (no origins), so payload codegen is honest at the
-straightforward fixture level. Origin support is tracked here as a
-follow-up so a future entity-projection consumer who needs it has a
-clear known-gap rather than a silent type mismatch.
-
-**Workaround:** consumers needing typed origin-driven payloads today can
-hand-edit the generated record's field types. The `GENERATED` banner is
-advisory — regeneration overwrites, so the hand-edit needs to be
-preserved out-of-band until origin resolution lands.
-
 ## Output parser is throw-only (no try-style variant)
 
 **Status:** by design, per ADR-0010 §3.

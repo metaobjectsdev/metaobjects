@@ -4,6 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
+from .errors import ErrorCode, ParseError
+from .shared.base_types import SUBTYPE_BASE
+
 
 @dataclass(frozen=True)
 class AttrSchema:
@@ -103,3 +106,55 @@ class TypeRegistry:
             if attr.name == attr_name:
                 return attr
         return None
+
+    def extend(
+        self,
+        type_: str,
+        sub_type: str,
+        *,
+        attributes: list[AttrSchema] | None = None,
+        child_rules: list[ChildRule] | None = None,
+    ) -> None:
+        """Additively enrich an already-registered ``(type_, sub_type)``.
+
+        Append attributes and/or child rules to the existing TypeDefinition.
+        Does NOT touch the factory — a type's identity belongs to whoever
+        registered it. Used by providers to extend types another provider
+        defined (mirrors the TS ``TypeRegistry.extend`` and C#
+        ``TypeRegistry.Extend``).
+
+        :raises ParseError: ``ERR_UNKNOWN_SUBTYPE`` if ``(type_, sub_type)``
+            is not registered.
+        :raises ParseError: ``ERR_PROVIDER_ATTR_CONFLICT`` if an attribute
+            name already exists on the type (own-only check — common-attr
+            collisions are still surfaced separately at validation time).
+
+        Note: providers calling ``extend`` MUST declare a dependency on the
+        provider that originally registered the ``(type_, sub_type)`` so
+        ``compose_registry``'s topological ordering puts the registering
+        provider before the extending one.
+        """
+        definition = self.find(type_, sub_type)
+        if definition is None:
+            raise ParseError(
+                f'TypeRegistry.extend: no registered type "{type_}.{sub_type}" to extend',
+                ErrorCode.ERR_UNKNOWN_SUBTYPE,
+            )
+
+        for attr in attributes or []:
+            if attr.value_type == SUBTYPE_BASE:
+                raise ValueError(
+                    f'TypeRegistry.extend: attr "{attr.name}" being added to '
+                    f'"{type_}.{sub_type}" declares value_type "{SUBTYPE_BASE}", '
+                    f"which is not valid for attrs. Use None for a polymorphic/untyped attr."
+                )
+            if any(existing.name == attr.name for existing in definition.attrs):
+                raise ParseError(
+                    f'TypeRegistry.extend: attribute "{attr.name}" is already declared '
+                    f'on "{type_}.{sub_type}"',
+                    ErrorCode.ERR_PROVIDER_ATTR_CONFLICT,
+                )
+            definition.attrs.append(attr)
+
+        for rule in child_rules or []:
+            definition.child_rules.append(rule)

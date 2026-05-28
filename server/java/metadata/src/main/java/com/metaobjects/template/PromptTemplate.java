@@ -27,6 +27,13 @@ public final class PromptTemplate extends MetaTemplate {
                .description("Template (LLM prompt) — FR-004")
                .inheritsFrom(TYPE_TEMPLATE, SUBTYPE_BASE);
 
+            // @payloadRef is REQUIRED on template.prompt (matches TS / C# / Python:
+            // attrSchema marks payloadRef required:true on the prompt subtype). The
+            // inherited optional declaration on template.base is shadowed by this
+            // direct requirement — see TypeDefinition.populateInheritedRequirements.
+            def.requiredAttributeWithConstraints(ATTR_PAYLOAD_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
             // Prompt-overlay attributes (template.prompt only)
             def.optionalAttributeWithConstraints(ATTR_MAX_TOKENS)
                .ofType(IntAttribute.SUBTYPE_INT).asSingle();
