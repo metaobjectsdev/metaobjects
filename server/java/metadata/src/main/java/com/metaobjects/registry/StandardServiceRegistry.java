@@ -8,14 +8,16 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * ServiceLoader-based service registry for non-OSGI environments.
- * 
- * <p>This implementation uses Java's {@link ServiceLoader} to automatically discover
- * service providers listed in {@code META-INF/services/} files. It also supports
- * manual registration for testing and runtime service addition.</p>
- * 
- * <p>Thread-safe implementation using concurrent collections.</p>
- * 
+ * ServiceLoader-backed {@link ServiceRegistry} implementation.
+ *
+ * <p>Uses Java's {@link ServiceLoader} to discover service providers listed in
+ * {@code META-INF/services/} files, with the current thread's context
+ * ClassLoader as the discovery root and an inner fallback when the original
+ * loader is GC'd. Also supports {@link #registerService(Class, Object)} for
+ * tests and runtime service addition.</p>
+ *
+ * <p>Thread-safe via concurrent collections.</p>
+ *
  * @since 6.0.0
  */
 public class StandardServiceRegistry implements ServiceRegistry {
@@ -137,11 +139,6 @@ public class StandardServiceRegistry implements ServiceRegistry {
             return removed;
         }
         
-        return false;
-    }
-    
-    @Override
-    public boolean isOSGIEnvironment() {
         return false;
     }
     

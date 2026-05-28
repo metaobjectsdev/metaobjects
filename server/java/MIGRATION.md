@@ -30,6 +30,19 @@ Five module additions in 7.0.0 (none required; opt in per stack):
 
 The `metaobjects-dynamic-core` module from 6.x is gone — its `CoreObjectsMetaDataProvider` (which contributed `dataBuilderClass`, `valueObjectType`, etc., attribute extensions onto `object.base`) now ships inside `metaobjects-metadata`. Consumers of those attribute names need no change; consumers of the `metaobjects-dynamic-core` artifact coordinate should drop the dependency.
 
+### OSGi support removed
+
+The OSGi runtime variant (`OSGIServiceRegistry`, `BundleLifecycleManager`, the `maven-bundle-plugin` packaging on every reactor module) was dropped in 7.0.1. The artifacts are now plain JARs.
+
+Consumers running inside an OSGi container can still wrap MetaObjects' JARs with `bnd` / `pax-url` to produce bundles with the appropriate manifest headers — the code itself works in any classloader environment. What changes:
+
+- `<packaging>bundle</packaging>` is now `<packaging>jar</packaging>` on every module; no `Bundle-SymbolicName` / `Export-Package` manifest entries are emitted.
+- `ServiceRegistry.isOSGIEnvironment()`, `onBundleEvent(Object)`, `cleanupForBundle(Object)`, `isBundleLifecycleActive()`, `getBundleLifecycleStatus()` are gone from the interface (they had no callers outside the OSGi implementation itself).
+- `StandardServiceRegistry` is the only `ServiceRegistry` implementation.
+- `ServiceRegistryFactory.create()` and `.getDefault()` return a `StandardServiceRegistry`. The OSGi auto-detection / `createOSGI(BundleContext)` factories are gone.
+
+The `WeakReference` patterns in `MetaData`, `HybridCache`, and `StandardServiceRegistry` stay — they are general ClassLoader-leak prevention, not OSGi-specific.
+
 The `metaobjects-codegen-mustache` and `metaobjects-codegen-plantuml` modules from 6.x continue unchanged.
 
 ### Step 3 — source paradigm v2 ([ADR-0007](../../spec/decisions/ADR-0007-source-paradigm-v2.md))

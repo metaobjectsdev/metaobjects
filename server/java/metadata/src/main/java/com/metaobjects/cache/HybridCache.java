@@ -18,15 +18,15 @@ import java.util.function.Supplier;
  * <ul>
  *   <li>Object identity-based keys for MetaData objects</li>
  *   <li>String interning for frequently used string keys</li>
- *   <li>Dual cache strategy for OSGI compatibility</li>
+ *   <li>Dual cache strategy: a weak-key map for transient keys + concurrent maps for permanent references — prevents ClassLoader leaks under dynamic class loading</li>
  *   <li>Enhanced performance for read-heavy workloads</li>
  * </ul>
  */
 public class HybridCache implements CacheStrategy {
-    
+
     private static final Logger log = LoggerFactory.getLogger(HybridCache.class);
-    
-    // Legacy cache for backward compatibility (WeakHashMap for OSGI)
+
+    // Weak-keyed cache: prevents ClassLoader leaks if keys are class objects
     private final Map<Object, Object> legacyCache = Collections.synchronizedMap(new WeakHashMap<>());
     
     // Modern cache for enhanced performance (permanent references)

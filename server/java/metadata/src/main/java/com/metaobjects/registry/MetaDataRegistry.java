@@ -28,7 +28,6 @@ import java.util.Comparator;
  *   <li><strong>Unified Registration:</strong> Single API for type + child requirement registration</li>
  *   <li><strong>Child Validation:</strong> Built-in validation of parent-child relationships</li>
  *   <li><strong>Service Extensions:</strong> Global child requirements from service providers</li>
- *   <li><strong>OSGI Compatible:</strong> Works in both OSGI and non-OSGI environments</li>
  *   <li><strong>Thread-Safe:</strong> Optimized for read-heavy workloads with concurrent access</li>
  * </ul>
  * 

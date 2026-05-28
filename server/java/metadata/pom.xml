@@ -8,7 +8,7 @@
     </parent>
   
     <artifactId>metaobjects-metadata</artifactId>
-    <packaging>bundle</packaging>
+    <packaging>jar</packaging>
 
     <name>MetaObjects :: MetaData</name>
     <url>https://github.com/metaobjectsdev/metaobjects</url>

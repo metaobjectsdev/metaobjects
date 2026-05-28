@@ -47,7 +47,7 @@ import java.util.stream.Stream;
  * <li><strong>Load Once</strong>: Like ClassLoader, expensive startup for permanent benefit</li>
  * <li><strong>Read Many</strong>: Optimized for thousands of concurrent read operations</li>
  * <li><strong>Thread Safe</strong>: Immutable after loading, no synchronization needed for reads</li>
- * <li><strong>OSGI Ready</strong>: WeakHashMap and service patterns handle dynamic class loading</li>
+ * <li><strong>Cleanup-Friendly</strong>: WeakHashMap and weak references keep the registry safe under dynamic class loading and prevent ClassLoader leaks</li>
  * <li><strong>Memory Efficient</strong>: Smart caching balances performance with memory cleanup</li>
  * </ul>
  * 

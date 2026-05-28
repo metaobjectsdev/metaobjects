@@ -8,7 +8,7 @@
     </parent>
 
     <artifactId>metaobjects-omdb</artifactId>
-    <packaging>bundle</packaging>
+    <packaging>jar</packaging>
 
     <name>MetaObjects :: ObjectManager :: RDB</name>
     <url>https://github.com/metaobjectsdev/metaobjects</url>
@@ -55,15 +55,5 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.felix</groupId>
-                <artifactId>maven-bundle-plugin</artifactId>
-                <extensions>true</extensions>
-            </plugin>
-        </plugins>
-    </build>
 
 </project>

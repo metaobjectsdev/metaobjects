@@ -13,7 +13,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Registry for runtime MetaDataLoader management in OSGI and non-OSGI environments.
+ * Registry for runtime MetaDataLoader management.
  *
  * <p>This registry provides dynamic create/destroy capabilities for MetaDataLoader instances,
  * supporting legitimate runtime use cases such as:</p>

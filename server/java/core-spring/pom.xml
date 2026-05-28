@@ -10,7 +10,7 @@
     </parent>
   
     <artifactId>metaobjects-core-spring</artifactId>
-    <packaging>bundle</packaging>
+    <packaging>jar</packaging>
 
     <name>MetaObjects :: Core :: Spring Integration</name>
     <description>Spring Framework integration for MetaObjects Core</description>
@@ -87,28 +87,6 @@
 
     <build>
         <plugins>
-            <!-- Maven Bundle Plugin for OSGi -->
-            <plugin>
-                <groupId>org.apache.felix</groupId>
-                <artifactId>maven-bundle-plugin</artifactId>
-                <extensions>true</extensions>
-                <configuration>
-                    <instructions>
-                        <Bundle-SymbolicName>${project.artifactId}</Bundle-SymbolicName>
-                        <Bundle-Version>${project.version}</Bundle-Version>
-                        <Export-Package>
-                            com.metaobjects.spring
-                        </Export-Package>
-                        <Import-Package>
-                            com.metaobjects.*,
-                            org.springframework.*,
-                            org.slf4j.*,
-                            javax.sql.*,
-                            *
-                        </Import-Package>
-                    </instructions>
-                </configuration>
-            </plugin>
         </plugins>
     </build>
 </project>

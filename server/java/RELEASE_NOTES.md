@@ -10,7 +10,11 @@ Apache 2.0. See [LICENSE](LICENSE).
 
 ## Version 7.0.1-SNAPSHOT (Current Development)
 
-Post-7.0.0 cleanup line. No content commitments yet. Tracking work lives in [spec/roadmap.md](../../spec/roadmap.md).
+Post-7.0.0 cleanup line:
+
+- **OSGi runtime variant removed.** `OSGIServiceRegistry`, `BundleLifecycleManager`, and the `maven-bundle-plugin` packaging on every reactor module are gone. All artifacts now ship as plain JARs. The `ServiceRegistry` interface drops the OSGi-specific methods; `StandardServiceRegistry` is the only implementation. See [MIGRATION.md](MIGRATION.md#osgi-support-removed) for the migration path (OSGi consumers can wrap our JARs with `bnd` / `pax-url`).
+- **`metaobjects-dynamic-core` folded into `metaobjects-metadata`.** Its 89-LoC `CoreObjectsMetaDataProvider` now ships inside the metadata jar; the module is removed from the reactor. Reactor module count: 14 → 13.
+- **`archetype` and `examples` directories deleted.** They had been out of the reactor since 7.0.0; carrying them as scaffold source risked bit-rot.
 
 ---
 

@@ -10,7 +10,7 @@
     </parent>
 
     <artifactId>metaobjects-render</artifactId>
-    <packaging>bundle</packaging>
+    <packaging>jar</packaging>
 
     <name>MetaObjects :: Render</name>
     <description>Mustache-driven render engine + verify for the template.* metatype (FR-004).</description>
@@ -37,25 +37,6 @@
 
     <build>
         <plugins>
-            <!-- Maven Bundle Plugin for OSGi -->
-            <plugin>
-                <groupId>org.apache.felix</groupId>
-                <artifactId>maven-bundle-plugin</artifactId>
-                <extensions>true</extensions>
-                <configuration>
-                    <instructions>
-                        <Bundle-SymbolicName>${project.artifactId}</Bundle-SymbolicName>
-                        <Bundle-Version>${project.version}</Bundle-Version>
-                        <Export-Package>
-                            com.metaobjects.render.*
-                        </Export-Package>
-                        <Import-Package>
-                            com.github.mustachejava.*,
-                            *
-                        </Import-Package>
-                    </instructions>
-                </configuration>
-            </plugin>
         </plugins>
     </build>
 </project>
