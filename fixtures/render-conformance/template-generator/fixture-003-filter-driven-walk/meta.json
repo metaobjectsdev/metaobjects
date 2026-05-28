@@ -1,0 +1,9 @@
+{
+  "format": "text",
+  "entities": [
+    { "name": "Post",    "fields": [{ "name": "id", "type": "long" }] },
+    { "name": "Comment", "fields": [{ "name": "id", "type": "long" }] },
+    { "name": "User",    "fields": [{ "name": "id", "type": "long" }, { "name": "email", "type": "string" }] },
+    { "name": "Account", "fields": [{ "name": "id", "type": "long" }, { "name": "balance", "type": "double" }] }
+  ]
+}
