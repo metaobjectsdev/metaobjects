@@ -8,7 +8,7 @@
     <parent>
         <artifactId>metaobjects</artifactId>
         <groupId>com.metaobjects</groupId>
-        <version>7.0.0</version>
+        <version>7.0.1-SNAPSHOT</version>
     </parent>
 
     <artifactId>metaobjects-docs</artifactId>
