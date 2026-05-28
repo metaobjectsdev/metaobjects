@@ -99,8 +99,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 - Conformance fixtures `provider-extension-new-subtype-success` and
   `provider-extension-missing-provider-fails` swap their test-only provider
-  from `wizards-template-toolcall` (now meaningless — toolcall is core) to
-  `wizards-template-briefing` (a hypothetical briefing template, clearly
+  from `example-template-toolcall` (now meaningless — toolcall is core) to
+  `example-template-briefing` (a hypothetical briefing template, clearly
   fictional). The fixtures still demonstrate `registry.register` of a new
   subtype, just using a name that doesn't collide with the new core
   subtype. TS / C# / Python adapter providers and fixture inputs/expected
@@ -176,7 +176,7 @@ documented behavior.
 - **5 conformance fixtures** under `fixtures/conformance/` exercising
   the contract cross-port:
   `provider-extension-new-subtype-success` (positive: a test-only
-  `wizards-template-toolcall` provider registers `template.toolcall`),
+  `example-template-toolcall` provider registers `template.toolcall`),
   `provider-extension-missing-provider-fails` (`ERR_UNKNOWN_SUBTYPE`),
   `provider-extension-dependency-cycle` (`ERR_PROVIDER_DEPENDENCY_CYCLE`),
   `provider-extension-missing-dependency`

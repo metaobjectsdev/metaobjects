@@ -1,7 +1,7 @@
 # Extending MetaObjects with a custom provider
 
 This recipe walks through adding a new metamodel subtype to a downstream
-project — using the same `wizards-template-toolcall` example the conformance
+project — using the same `example-template-toolcall` example the conformance
 fixtures use, so the example here matches a real test that runs in TS, C#,
 and Python.
 
@@ -24,7 +24,7 @@ envelope your app needs to drive Anthropic's `tool_use` mode. You want:
    functions.
 
 The recipe shows steps 1 + 2. Step 3 (the custom generator) follows the
-existing `wizardRegistry` pattern in this repo — see
+existing `exampleRegistry` pattern in this repo — see
 [`features/templates-and-payloads.md`](../features/templates-and-payloads.md)
 for how custom generators walk MO-typed metadata.
 
@@ -33,7 +33,7 @@ for how custom generators walk MO-typed metadata.
 A provider is ~25 lines. Drop it next to your codegen config:
 
 ```ts
-// src/codegen/wizards-provider.ts
+// src/codegen/example-provider.ts
 import {
   type MetaDataTypeProvider,
   TYPE_TEMPLATE,
@@ -44,8 +44,8 @@ import {
   ATTR_SUBTYPE_STRING,
 } from "@metaobjectsdev/metadata";
 
-export const wizardsProvider: MetaDataTypeProvider = {
-  id: "wizards-template-toolcall",
+export const exampleProvider: MetaDataTypeProvider = {
+  id: "example-template-toolcall",
   dependencies: ["metaobjects-core-types"],
   description: "Adds template.toolcall for LLM tool-use templates.",
   registerTypes(registry) {
@@ -89,12 +89,12 @@ Notable bits:
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
 import { entityFile, queriesFile, barrel, promptRender } from "@metaobjectsdev/codegen-ts/generators";
-import { wizardsProvider } from "./src/codegen/wizards-provider";
+import { exampleProvider } from "./src/codegen/example-provider";
 
 export default defineConfig({
   outDir: "src/db/generated",
   dialect: "sqlite",
-  providers: [wizardsProvider],                            // ← the new field
+  providers: [exampleProvider],                            // ← the new field
   generators: [entityFile(), queriesFile(), barrel(), promptRender()],
 });
 ```
@@ -108,20 +108,20 @@ tooling sees the same metamodel.
 ```jsonc
 // metaobjects/meta.toolcalls.json
 { "metadata.root": {
-    "package": "wizards",
+    "package": "examples",
     "children": [
       { "object.value": {
-        "name": "WizardCall",
+        "name": "ToolCall",
         "children": [
           { "field.string": { "name": "spell" } },
           { "field.string": { "name": "target" } }
         ]
       }},
       { "template.toolcall": {
-        "name": "InvokeWizard",
-        "@payloadRef": "WizardCall",
-        "@textRef": "wizards/invoke",
-        "@toolName": "invoke_wizard"
+        "name": "InvokeTool",
+        "@payloadRef": "ToolCall",
+        "@textRef": "tools/invoke",
+        "@toolName": "invoke_tool"
       }}
     ]
 }}
@@ -132,23 +132,23 @@ YAML works just as well:
 ```yaml
 # metaobjects/meta.toolcalls.yaml
 metadata:
-  package: wizards
+  package: examples
   children:
     - object.value:
-        name: WizardCall
+        name: ToolCall
         children:
           - field.string: { name: spell }
           - field.string: { name: target }
     - template.toolcall:
-        name: InvokeWizard
-        "@payloadRef": WizardCall
-        "@textRef": wizards/invoke
-        "@toolName": invoke_wizard
+        name: InvokeTool
+        "@payloadRef": ToolCall
+        "@textRef": tools/invoke
+        "@toolName": invoke_tool
 ```
 
 Run `meta gen` and the loader recognizes `template.toolcall`, validates the
 three required attrs, and resolves `@payloadRef` against the package's
-`WizardCall` value-object.
+`ToolCall` value-object.
 
 ## 4. What you get from this
 
@@ -160,8 +160,8 @@ Once the provider is wired, three things happen automatically:
 - **A traversable AST.** Custom code generators can walk
   `root.ownChildren().filter((c) => c.type === "template" && c.subType === "toolcall")`
   to find every toolcall declaration. The
-  [`wizards-template-toolcall` example in
-  the canonical pattern is the existing `wizardRegistry` generator: it walks
+  [`example-template-toolcall` example in
+  the canonical pattern is the existing `exampleRegistry` generator: it walks
   `root.ownChildren()` filtered by `(type, subType)` and emits one TS file per
   matched node. Custom toolcall generators do the same — emit
   `callEmit<Name>(params)` wrapper functions, one per toolcall declaration.
@@ -178,12 +178,12 @@ $ meta gen
 
 $ meta verify
 ✓ No metadata drift. 4 providers composed:
-    metaobjects-core-types, metaobjects-forge, metaobjects-documentation, wizards-template-toolcall
+    metaobjects-core-types, metaobjects-forge, metaobjects-documentation, example-template-toolcall
 ```
 
 ## What happens when the provider is missing
 
-Forget to add `providers: [wizardsProvider]` to `defineConfig` (or to delete
+Forget to add `providers: [exampleProvider]` to `defineConfig` (or to delete
 the provider entirely), and the same metadata fails to load:
 
 ```
@@ -208,7 +208,7 @@ is the API surface for loader composition. See the per-port quickstarts:
 
 The provider object itself is structurally identical across languages
 (id + dependencies + description + a body that calls `registry.register` or
-`registry.extend`). A C# port of `wizardsProvider` reads exactly like the TS
+`registry.extend`). A C# port of `exampleProvider` reads exactly like the TS
 version with C# spelling.
 
 ## When NOT to write a provider

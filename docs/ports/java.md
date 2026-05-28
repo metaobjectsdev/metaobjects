@@ -99,14 +99,14 @@ class on the classpath, list its FQCN in
 alongside the core providers:
 
 ```java
-// src/main/java/com/example/wizards/WizardsToolcallProvider.java
-package com.example.wizards;
+// src/main/java/com/example/providers/ExampleToolcallProvider.java
+package com.example.providers;
 
 import com.metaobjects.registry.MetaDataTypeProvider;
 import com.metaobjects.registry.MetaDataRegistry;
 
-public class WizardsToolcallProvider implements MetaDataTypeProvider {
-    @Override public String getProviderId()   { return "wizards-template-toolcall"; }
+public class ExampleToolcallProvider implements MetaDataTypeProvider {
+    @Override public String getProviderId()   { return "example-template-toolcall"; }
     @Override public String[] getDependencies() { return new String[] { "core-types" }; }
     @Override public void registerTypes(MetaDataRegistry registry) {
         // registry.register(...) — see the cross-port contract
@@ -116,7 +116,7 @@ public class WizardsToolcallProvider implements MetaDataTypeProvider {
 
 ```
 # src/main/resources/META-INF/services/com.metaobjects.registry.MetaDataTypeProvider
-com.example.wizards.WizardsToolcallProvider
+com.example.providers.ExampleToolcallProvider
 ```
 
 The provider contract is structurally identical to TS / C# / Python (id +

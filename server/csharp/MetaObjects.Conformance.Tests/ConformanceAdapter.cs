@@ -28,9 +28,9 @@ namespace MetaObjects.Conformance.Tests;
 // to exercise registry.Register without colliding with real core subtypes.
 // (Pre-ADR-0011 this was a "toolcall" subtype; toolcall is now core, so the
 // test-only one moved to a clearly-fictional name.)
-internal sealed class WizardsTemplateBriefingProvider : IMetaDataTypeProvider
+internal sealed class ExampleTemplateBriefingProvider : IMetaDataTypeProvider
 {
-    public string Id => "wizards-template-briefing";
+    public string Id => "example-template-briefing";
     public IReadOnlyList<string> Dependencies => new[] { "metaobjects-core-types" };
 
     public void RegisterTypes(TypeRegistry registry)
@@ -116,7 +116,7 @@ public static class ConformanceAdapter
             ["metaobjects-core-types"]    = CoreTypes.CoreTypesProvider,
             ["metaobjects-documentation"] = DocumentationTypes.DocTypesProvider,
             // Test-only — provider-extension-* fixtures.
-            ["wizards-template-briefing"] = new WizardsTemplateBriefingProvider(),
+            ["example-template-briefing"] = new ExampleTemplateBriefingProvider(),
             ["cycle-a"]                   = new NoopTestProvider("cycle-a", "cycle-b"),
             ["cycle-b"]                   = new NoopTestProvider("cycle-b", "cycle-a"),
             ["depends-on-missing"]        = new NoopTestProvider("depends-on-missing", "does-not-exist"),

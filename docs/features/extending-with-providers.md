@@ -57,8 +57,8 @@ import {
   ATTR_SUBTYPE_STRING,
 } from "@metaobjectsdev/metadata";
 
-export const wizardsToolcallProvider: MetaDataTypeProvider = {
-  id: "wizards-template-toolcall",
+export const exampleToolcallProvider: MetaDataTypeProvider = {
+  id: "example-template-toolcall",
   dependencies: ["metaobjects-core-types"],
   description: "Adds template.toolcall for LLM tool-use templates.",
   registerTypes(registry) {
@@ -105,10 +105,10 @@ dependency order, skipping any ambient discovery.**
 ```ts
 // TypeScript
 import { loadMemory } from "@metaobjectsdev/sdk";
-import { wizardsToolcallProvider } from "./codegen/providers";
+import { exampleToolcallProvider } from "./codegen/providers";
 
 const root = await loadMemory("./", {
-  providers: [wizardsToolcallProvider],   // composed AFTER core providers
+  providers: [exampleToolcallProvider],   // composed AFTER core providers
 });
 ```
 
@@ -120,7 +120,7 @@ var loader = MetaDataLoader.FromDirectory("./metadata", registry);
 
 ```python
 # Python
-loader = MetaDataLoader.from_directory("./metadata", providers=[wizards_toolcall_provider])
+loader = MetaDataLoader.from_directory("./metadata", providers=[example_toolcall_provider])
 ```
 
 ```java

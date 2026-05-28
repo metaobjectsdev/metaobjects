@@ -11,7 +11,7 @@ import { renderValueObjectFile } from "../../src/templates/value-object-file.js"
 
 describe("renderValueObjectFile", () => {
   test("emits interface + InsertSchema and NOTHING drizzle/filter-related", () => {
-    const wo = metaObject(OBJECT_SUBTYPE_VALUE, "WizardOutput");
+    const wo = metaObject(OBJECT_SUBTYPE_VALUE, "SampleOutput");
 
     const stance = metaField(FIELD_SUBTYPE_ENUM, "stance");
     stance.setAttr("values", ["supports", "opposes", "abstains"]);
@@ -40,12 +40,12 @@ describe("renderValueObjectFile", () => {
     const out = renderValueObjectFile(wo);
 
     // What IS emitted
-    expect(out).toContain("export interface WizardOutput");
-    expect(out).toContain("export const WizardOutputInsertSchema");
-    expect(out).toContain('export type WizardOutputStance = "supports" | "opposes" | "abstains";');
+    expect(out).toContain("export interface SampleOutput");
+    expect(out).toContain("export const SampleOutputInsertSchema");
+    expect(out).toContain('export type SampleOutputStance = "supports" | "opposes" | "abstains";');
 
     // Required field: `name: T` (no ?)
-    expect(out).toMatch(/stance:\s*WizardOutputStance;/);
+    expect(out).toMatch(/stance:\s*SampleOutputStance;/);
     expect(out).toMatch(/takeMarkdown:\s*string;/);
     expect(out).toMatch(/confidence:\s*number;/);
     expect(out).toMatch(/keyClaims:\s*string\[\];/);
