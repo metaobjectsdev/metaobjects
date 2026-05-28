@@ -178,6 +178,13 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         src.append("/** ").append(banner).append(" */\n");
         src.append("public record ").append(recordName).append("(\n");
 
+        // Capture (type, name) pairs as we emit constructor params so we can
+        // emit hasFoo() helpers in the record body afterwards. Records can
+        // declare arbitrary instance methods alongside the canonical
+        // components; Jackson serialization remains positional + by-name on
+        // the canonical components only, so the helpers don't leak into JSON.
+        List<String[]> components = new ArrayList<>();
+
         // Route every field through resolveFieldType — including ObjectField,
         // which needs the field.object arm (single ref or isArray list). The
         // previous scalarFields() filter dropped ObjectField entirely; mirror
@@ -190,8 +197,39 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
             src.append("    ").append(type).append(' ').append(field.getName());
             if (it.hasNext()) src.append(',');
             src.append('\n');
+            components.add(new String[] { type, field.getName() });
         }
-        src.append(") {}\n");
+
+        // Emit hasFoo() instance methods for nullable, possibly-empty fields
+        // so Mustache section gates ({{#hasFoo}}...{{/hasFoo}}) work natively
+        // without hand-written wrappers. Rules:
+        //   - String       → return foo != null && !foo.isBlank();
+        //   - List<...>    → return foo != null && !foo.isEmpty();
+        //   - reference T  → return foo != null;   (any non-primitive,
+        //                                           non-boxed-primitive,
+        //                                           non-String, non-List)
+        //   - primitive / boxed primitive → skip (no hasFoo emitted; these
+        //     are typically always-present scalars in our templates).
+        List<String[]> helpers = new ArrayList<>();
+        for (String[] c : components) {
+            String type = c[0];
+            String name = c[1];
+            String helperBody = hasHelperBody(type, name);
+            if (helperBody != null) {
+                helpers.add(new String[] { name, helperBody });
+            }
+        }
+        if (helpers.isEmpty()) {
+            src.append(") {}\n");
+        } else {
+            src.append(") {\n");
+            for (String[] h : helpers) {
+                String methodName = "has" + capitalizeFirst(h[0]);
+                src.append("    public boolean ").append(methodName).append("() { ")
+                   .append(h[1]).append(" }\n");
+            }
+            src.append("}\n");
+        }
 
         try {
             Path outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve(recordName + ".java");
@@ -450,6 +488,57 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         char c0 = s.charAt(0);
         if (Character.isUpperCase(c0)) return s;
         return Character.toUpperCase(c0) + s.substring(1);
+    }
+
+    /**
+     * Decide whether a record component gets a {@code hasFoo()} instance-method
+     * helper, and return the method body if so. The rules mirror what
+     * templating consumers actually need to gate Mustache sections:
+     *
+     * <ul>
+     *   <li>{@code String} → {@code return foo != null && !foo.isBlank();}</li>
+     *   <li>{@code java.util.List<...>} → {@code return foo != null && !foo.isEmpty();}</li>
+     *   <li>Other reference types (any non-primitive, non-boxed-primitive,
+     *       non-{@code String}, non-{@code List}) → {@code return foo != null;}</li>
+     *   <li>Primitive / boxed-primitive numerics + booleans → skip (always
+     *       present in payloads; templates use the value directly).</li>
+     * </ul>
+     *
+     * <p>Returns {@code null} when no helper should be emitted.
+     */
+    private static String hasHelperBody(String type, String name) {
+        if ("String".equals(type)) {
+            return "return " + name + " != null && !" + name + ".isBlank();";
+        }
+        if (type.startsWith("java.util.List<")) {
+            return "return " + name + " != null && !" + name + ".isEmpty();";
+        }
+        // Primitive + boxed primitive scalars: skip — these are always present
+        // in our payload shape, and gating Mustache sections on them isn't a
+        // pattern we need today. Adding helpers here would just be noise.
+        switch (type) {
+            case "int":
+            case "Integer":
+            case "long":
+            case "Long":
+            case "double":
+            case "Double":
+            case "float":
+            case "Float":
+            case "short":
+            case "Short":
+            case "byte":
+            case "Byte":
+            case "boolean":
+            case "Boolean":
+            case "char":
+            case "Character":
+                return null;
+            default:
+                // Any other type — nested payload record reference, etc. — is
+                // a nullable reference whose presence callers may want to gate.
+                return "return " + name + " != null;";
+        }
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

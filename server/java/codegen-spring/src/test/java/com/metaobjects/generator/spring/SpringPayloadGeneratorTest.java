@@ -65,14 +65,19 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
             src.contains("package acme.ai.prompts;"));
         assertTrue("expected record declaration; saw:\n" + src,
             src.contains("public record NpcResponseOutputPayload("));
-        assertTrue("expected `) {}` empty body; saw:\n" + src,
-            src.contains(") {}"));
         assertTrue("expected `String name` component; saw:\n" + src,
             src.contains("String name"));
         assertTrue("expected `Integer age` component (wrapped); saw:\n" + src,
             src.contains("Integer age"));
         assertFalse("expected wrapped `Integer`, not primitive `int`; saw:\n" + src,
             src.contains(" int "));
+        // String component → hasFoo() helper emitted (Mustache-section-gate use).
+        assertTrue("expected `hasName()` helper for String component; saw:\n" + src,
+            src.contains("public boolean hasName()")
+                && src.contains("return name != null && !name.isBlank();"));
+        // Boxed-primitive numeric → NO helper (always-present scalar convention).
+        assertFalse("expected NO `hasAge()` helper for Integer component; saw:\n" + src,
+            src.contains("public boolean hasAge()"));
     }
 
     @Test
@@ -699,5 +704,89 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
             Files.exists(nested));
         assertTrue("parent must reference the PascalCased nested record; saw:\n" + parentSrc,
             parentSrc.contains("UserContextPayload context"));
+    }
+
+    // ── hasFoo() helper emission (Mustache section-gate ergonomics) ──────
+
+    @Test
+    public void emitsHasFooHelpersForNullableFields() throws Exception {
+        // Pins the four hasFoo() emission rules in a single fixture:
+        //   - String                  → hasFoo() with isBlank check
+        //   - java.util.List<...>     → hasFoo() with isEmpty check
+        //   - nested object ref       → hasFoo() with null check
+        //   - boxed primitive numeric → NO helper
+        // These methods make Mustache `{{#hasFoo}}...{{/hasFoo}}` section
+        // gates work natively on the generated record — no hand-written
+        // wrapper class needed for downstream templating consumers.
+        String fixture = """
+            {
+              "metadata.root": { "package": "acme::ai", "children": [
+                { "object.value": { "name": "ItemView", "children": [
+                    { "field.string": { "name": "label" } }
+                ] } },
+                { "object.value": { "name": "Payload", "children": [
+                    { "field.string": { "name": "name" } },
+                    { "field.int":    { "name": "count" } },
+                    { "field.boolean":{ "name": "enabled" } },
+                    { "field.object": { "name": "items",   "isArray": true,
+                                        "@objectRef": "acme::ai::ItemView",
+                                        "@storage":   "jsonb" } },
+                    { "field.object": { "name": "primary",
+                                        "@objectRef": "acme::ai::ItemView",
+                                        "@storage":   "flattened" } }
+                ] } },
+                { "template.output": {
+                    "name": "HelpersOutput",
+                    "@payloadRef": "Payload",
+                    "@textRef": "demo/helpers",
+                    "@format": "json"
+                } }
+              ] }
+            }
+            """;
+        Path outDir = tempFolder.newFolder("payload-helpers").toPath();
+        Path workspace = tempFolder.newFolder("payload-helpers-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "payload-helpers", fixture);
+
+        SpringPayloadGenerator gen = new SpringPayloadGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        Path payload = outDir.resolve("acme/ai/prompts/HelpersOutputPayload.java");
+        assertTrue("expected HelpersOutputPayload.java at " + payload, Files.exists(payload));
+        String src = Files.readString(payload);
+
+        // String → hasName() with isBlank check
+        assertTrue("String field should get hasName() with isBlank check; saw:\n" + src,
+            src.contains("public boolean hasName()")
+                && src.contains("return name != null && !name.isBlank();"));
+
+        // List → hasItems() with isEmpty check
+        assertTrue("List field should get hasItems() with isEmpty check; saw:\n" + src,
+            src.contains("public boolean hasItems()")
+                && src.contains("return items != null && !items.isEmpty();"));
+
+        // Nested object ref → hasPrimary() with null check
+        assertTrue("Nested object ref should get hasPrimary() with null check; saw:\n" + src,
+            src.contains("public boolean hasPrimary()")
+                && src.contains("return primary != null;"));
+
+        // Boxed-primitive numeric → NO helper
+        assertFalse("Integer field should NOT get hasCount(); saw:\n" + src,
+            src.contains("public boolean hasCount()"));
+
+        // Boxed-primitive boolean → NO helper
+        assertFalse("Boolean field should NOT get hasEnabled(); saw:\n" + src,
+            src.contains("public boolean hasEnabled()"));
+
+        // Nested record gets its own helpers — recursion check
+        Path nested = outDir.resolve("acme/ai/prompts/ItemViewPayload.java");
+        assertTrue("nested ItemViewPayload.java must exist", Files.exists(nested));
+        String nestedSrc = Files.readString(nested);
+        assertTrue("nested record String field gets hasLabel(); saw:\n" + nestedSrc,
+            nestedSrc.contains("public boolean hasLabel()")
+                && nestedSrc.contains("return label != null && !label.isBlank();"));
     }
 }
