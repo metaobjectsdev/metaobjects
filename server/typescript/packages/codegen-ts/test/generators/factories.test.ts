@@ -4,6 +4,7 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { routesFile } from "../../src/generators/routes-file.js";
+import { routesFileHono } from "../../src/generators/routes-file-hono.js";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { barrel } from "../../src/generators/barrel.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
@@ -74,6 +75,30 @@ describe("routesFile()", () => {
     expect(files).toEqual([]);
   });
 
+});
+
+describe("routesFileHono()", () => {
+  test("emits <Entity>.routes.hono.ts wiring mountCrudRoutes from runtime-ts/hono", async () => {
+    const ctx = await buildCtx();
+    const gen = routesFileHono();
+    const files = await gen.generate(ctx);
+    const f = files.find(f => f.path === "Post.routes.hono.ts");
+    expect(f).toBeDefined();
+    expect(f!.content).toContain("mountCrudRoutes");
+    expect(f!.content).toContain("@metaobjectsdev/runtime-ts/hono");
+    expect(f!.content).toContain("registerPostRoutes");
+  });
+
+  test("respects user-provided filter", async () => {
+    const gen = routesFileHono({ filter: () => false });
+    const ctx = await buildCtx((e) => gen.filter?.(e) ?? true);
+    const files = await gen.generate(ctx);
+    expect(files).toEqual([]);
+  });
+
+  test("accepts target", () => {
+    expect(routesFileHono({ target: "api-hono" }).target).toBe("api-hono");
+  });
 });
 
 describe("formFile()", () => {

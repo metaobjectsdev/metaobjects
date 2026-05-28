@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.7.0-rc.9] — 2026-05-27
+
+### Added
+- **`routesFileHono()` stock generator** — emits Hono route registration
+  (`register<Entity>Routes(app, { db })`) for every writable entity,
+  cross-port-API-contract-conformant with the existing Fastify
+  `routesFile()`. Lets Cloudflare-Workers / Hono-server consumers
+  codegen the CRUD-5 endpoints they previously hand-wrote. New helper
+  `parseHonoFilterParams` ships in `@metaobjectsdev/runtime-ts/hono`
+  (parallel to the existing drizzle-fastify export).
+
 ## [0.7.0-rc.8] — 2026-05-27
 
 ### Fixed
