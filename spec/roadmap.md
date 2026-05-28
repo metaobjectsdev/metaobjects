@@ -59,7 +59,7 @@ _Last refreshed 2026-05-27._
 - **H9 — Second consumer migration** (2-3 wk). TS frontend adopts `@metaobjectsdev/runtime-web` + `@metaobjectsdev/react` + `@metaobjectsdev/tanstack`.
 - **H10 — Polyglot consumer migration** (3-4 wk). Java + TS consumer onto metaobjects (both layers).
 - **Database-source metadata loader** (separate future FR). FR5e reserves the envelope; building the loader (a metaobjects-table schema + a Java loader that reads it) is its own multi-week feature. Will produce `format: "database"` errors / warnings using the pre-validated envelope shape.
-- **Cross-port `templateGenerator()`** (~10 days, _activation-gated_). TS rc.12 shipped the `templateGenerator()` factory + `docsFile()`. Bring the same factory contract to C# / Java / Python so adopters in any port can ship custom template-driven codegen with the same surface as TS. Conformance via shared declarative fixtures in `fixtures/render-conformance/template-generator/`. Activation gated on second-port adopter pull — see [design doc](design-docs/2026-05-28-cross-port-template-generator.md).
+- **Cross-port `templateGenerator()`** — _shipped 2026-05-28_. Python, C#, and Java factories all green; 3/3 conformance fixtures pass byte-equivalently against the TS reference in every port. Java's existing legacy `Generator` interface was incompatible with the cross-port shape, so the Java port ships new lightweight types under `com.metaobjects.render.templategen` instead. Maven plugin integration for the Java factory deferred to a follow-up. See [design doc](design-docs/2026-05-28-cross-port-template-generator.md).
 
 ## Future (sketched)
 

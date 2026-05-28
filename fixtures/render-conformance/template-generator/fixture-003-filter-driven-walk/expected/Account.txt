@@ -1,0 +1,3 @@
+Account
+  - id: long
+  - balance: double

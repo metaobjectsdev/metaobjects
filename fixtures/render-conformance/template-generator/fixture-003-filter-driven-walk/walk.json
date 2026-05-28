@@ -1,0 +1,24 @@
+[
+  {
+    "entity": "User",
+    "data": {
+      "name": "User",
+      "fields": [
+        { "name": "id", "type": "long" },
+        { "name": "email", "type": "string" }
+      ]
+    },
+    "outputPath": "User.txt"
+  },
+  {
+    "entity": "Account",
+    "data": {
+      "name": "Account",
+      "fields": [
+        { "name": "id", "type": "long" },
+        { "name": "balance", "type": "double" }
+      ]
+    },
+    "outputPath": "Account.txt"
+  }
+]

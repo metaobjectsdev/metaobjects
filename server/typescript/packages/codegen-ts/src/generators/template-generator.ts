@@ -47,10 +47,11 @@ export interface TemplateGeneratorOpts {
    *  default `walk` — adopters apply filters inside their walk function. */
   filter?: (entity: MetaObject) => boolean;
   /** Override the Provider used for template resolution. When omitted the
-   *  generator resolves via `projectProvider(<projectRoot>)`, which layers
+   *  generator resolves via `projectProvider(ctx.projectRoot)`, which layers
    *  the project's `templates/` over the framework defaults. (The project
-   *  root is taken from `process.cwd()` at run time — adopters needing a
-   *  different lookup chain can pass an explicit provider.) */
+   *  root is the directory holding `.metaobjects/config.json`, threaded
+   *  through `GenContext` by the runner. Adopters needing a different
+   *  lookup chain can pass an explicit provider.) */
   provider?: Provider;
   /** Optional named target — same as the other generators. */
   target?: string;
@@ -63,16 +64,37 @@ export const templateGenerator = function templateGenerator(
   const generator: Generator = {
     name: opts.name,
     async generate(ctx: GenContext): Promise<EmittedFile[]> {
-      const provider = opts.provider ?? projectProvider(process.cwd());
+      let provider: Provider;
+      if (opts.provider !== undefined) {
+        provider = opts.provider;
+      } else if (ctx.projectRoot !== undefined) {
+        provider = projectProvider(ctx.projectRoot);
+      } else {
+        ctx.warn(
+          "templateGenerator: ctx.projectRoot is undefined; falling back to process.cwd() for project-template resolution. " +
+          "Project-scoped template overrides will resolve relative to the current working directory, which is fragile under " +
+          "`meta gen` invoked from a sub-directory. Drive via runGen(opts.projectRoot) to remove this warning.",
+        );
+        provider = projectProvider(process.cwd());
+      }
       const walkRes = await opts.walk(ctx.loadedRoot);
       const files: EmittedFile[] = [];
       for (const { data, outputPath } of walkRes) {
-        const content = render({
-          ref: opts.template,
-          payload: data,
-          provider,
-          format: fmt,
-        });
+        let content: string;
+        try {
+          content = render({
+            ref: opts.template,
+            payload: data,
+            provider,
+            format: fmt,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(
+            `templateGenerator(${opts.name}) failed rendering '${opts.template}' for '${outputPath}': ${msg}`,
+            { cause: err instanceof Error ? err : undefined },
+          );
+        }
         files.push({ path: outputPath, content });
       }
       return files;

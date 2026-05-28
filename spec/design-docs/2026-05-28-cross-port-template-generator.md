@@ -1,7 +1,7 @@
 # Cross-Port `templateGenerator()` — Design
 
 **Date:** 2026-05-28
-**Status:** Planned (activation gated on second-port adopter pull — see "Activation criteria")
+**Status:** Shipped (2026-05-28) — all three planned ports (Python, C#, Java) + shared conformance corpus implemented and byte-equivalent against the TS reference
 **Scope:** Bring the TS `templateGenerator()` factory contract to the C#, Java, and Python ports so adopters in any port can ship custom template-driven codegen with the same surface as TS.
 
 **Builds on:**
@@ -101,49 +101,45 @@ TS defaults to `projectProvider(process.cwd())`. Each port mirrors using its own
 
 ## Conformance
 
-This work is byte-equivalence territory; the conformance fixture is the load-bearing piece, not the per-port code. Add to `fixtures/render-conformance/` a new sub-corpus:
+This work is byte-equivalence territory; the conformance fixture is the load-bearing piece, not the per-port code. Plan 0 shipped the corpus + TS reference harness:
 
-```
-fixtures/render-conformance/template-generator/
-  fixture-001-flat-entity-walk/
-    metadata/             # shared YAML — defines a small entity set
-    template.mustache     # shared template
-    walk.json             # declarative "what walk should return" — a list of
-                          # (entity-name → data dict, output filename) tuples
-                          # the per-port adapter materializes
-    expected/             # byte-exact expected output files
-  fixture-002-aggregate-walk/
-    ...
-  fixture-003-filter-driven-walk/
-    ...
-```
+- **Corpus + format spec:** [`fixtures/render-conformance/template-generator/README.md`](../../fixtures/render-conformance/template-generator/README.md)
+- **TS reference harness:** [`server/typescript/packages/codegen-ts/test/conformance/template-generator-conformance.test.ts`](../../server/typescript/packages/codegen-ts/test/conformance/template-generator-conformance.test.ts)
 
-`walk.json` is the trick: declarative instead of imperative. Each port's conformance harness reads the metadata, runs its `templateGenerator` against the fixture's template, and uses a tiny per-port adapter to translate `walk.json` into the port's walk-function signature. The adapter is the only per-port code in the conformance suite; the assertion is "rendered output equals `expected/` files byte-for-byte."
+Three reference fixtures ship with Plan 0:
 
-That keeps the cross-port test surface small. Three to five fixtures cover the common walk patterns (per-entity, single aggregate, filtered subset, multi-output-per-entity).
+| Fixture | Pattern |
+|---|---|
+| `fixture-001-flat-entity-walk` | One template, one output file per entity (per-entity pattern). |
+| `fixture-002-aggregate-walk` | One template, single aggregated output file. |
+| `fixture-003-filter-driven-walk` | One template, output files only for an entity subset (filter pattern). |
+
+Each fixture is a directory containing `meta.json` (declarative entity set), `template.mustache`, `walk.json` (declarative `{entity?, data, outputPath}[]`), and `expected/<outputPath>` byte-exact expected output. The per-port adapter is the only port-specific code in the conformance suite — it parses the fixture, builds a `MetaRoot` via the port's `_meta-build`-equivalent helpers, and asserts emitted files equal `expected/` byte-for-byte. See the corpus README for the full schema.
 
 ### Existing test coverage already in TS
 
 The TS port's existing `template-generator.test.ts` exercises the factory directly. That stays; the cross-port conformance fixture lives alongside it.
 
-## Activation criteria
+## Shipped (2026-05-28)
 
-This work is queued, not active. Activation triggers:
+All three planned ports landed on branch `phase-cross-port-template-generator`:
 
-1. **Adopter pull** — a documented user of one of the non-TS ports has a custom-codegen need their port currently makes harder than the TS equivalent. The factory's value proposition is concrete only at that moment.
-2. **Or: pre-positioning before a marketed Documents capability** — if MO ships a "write a template, get codegen anywhere" marketing claim that targets non-TS adopters, this work has to ship first. (See `forge/` marketing pitch notes.)
+| Port | Factory | Unit tests | Conformance | Notes |
+|---|---|---|---|---|
+| **TypeScript** (reference) | `server/typescript/packages/codegen-ts/src/generators/template-generator.ts` | (existing) | 8/8 green | rc.12, reference impl |
+| **Python** | `server/python/src/metaobjects/codegen/generators/template_generator.py` | 4/4 green | 3/3 fixtures pass byte-equivalently | Satisfies existing `Generator` Protocol |
+| **C#** | `server/csharp/MetaObjects.Codegen/Generators/TemplateGenerator.cs` | 4/4 green | 3/3 fixtures pass byte-equivalently | Satisfies existing `IGenerator` interface |
+| **Java** | `server/java/render/src/main/java/com/metaobjects/render/templategen/TemplateGenerator.java` | 4/4 green | 3/3 fixtures pass byte-equivalently | New types (does NOT satisfy legacy `Generator` interface — see Java notes below) |
 
-Until one of those fires, the work is documented (this doc), the contract is locked (the TS reference + the conformance fixture design above), and the implementation effort sits on the shelf. Doing it speculatively risks port-specific drift if the integration surface changes before adoption.
+**Plans:** `docs/superpowers/plans/2026-05-28-cross-port-template-generator-plan{0,1,2,3}-*.md` document the per-port TDD work.
 
-### Effort estimate (per port, when activated)
+### Java cross-port API divergence
 
-| Port | Estimate | Notes |
-|---|---|---|
-| C# | 2-3 days | Render layer + Generator interface both exist; integration is wiring. |
-| Java | 3-4 days | Same as C#, plus Maven plugin surfacing (`<templateGenerator>` element). |
-| Python | 2-3 days | Smallest render surface; least integration plumbing. |
-| Conformance fixtures | 1-2 days | Up-front, shared across ports. |
-| **Total** | **~10 days** | Assuming sequential. Parallelizable across ports if needed. |
+Java's existing `com.metaobjects.generator.Generator` interface has `void execute(MetaDataLoader)` — side-effect only, no return value — which doesn't fit the cross-port "factory returns `List<EmittedFile>`" shape. The Java port introduces three new lightweight types (`EmittedFile`, `TemplateWalkResult`, `TemplateGenerator`) under `com.metaobjects.render.templategen` rather than retrofitting the legacy interface.
+
+The Java factory's root parameter is generic (`<R>`) instead of typed as `MetaRoot` — this keeps the render module's dependency graph free of the metadata package. The walk callback knows the actual root type at the call site.
+
+**Deferred for Java:** Maven plugin surface (`mvn meta:generate` integration). Adopters who want it can wrap the factory in their own legacy-`Generator`-conformant glue. Track via a follow-up if/when a Java adopter has the need.
 
 ## Open questions
 

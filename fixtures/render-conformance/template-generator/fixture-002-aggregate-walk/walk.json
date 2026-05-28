@@ -1,0 +1,13 @@
+[
+  {
+    "data": {
+      "count": 3,
+      "entities": [
+        { "name": "Post" },
+        { "name": "Comment" },
+        { "name": "User" }
+      ]
+    },
+    "outputPath": "index.txt"
+  }
+]

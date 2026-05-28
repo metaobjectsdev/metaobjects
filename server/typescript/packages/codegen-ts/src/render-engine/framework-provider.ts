@@ -17,34 +17,43 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Walk up from `start` until we find a `package.json` (i.e., the codegen-ts
- *  package root), then return `<pkg-root>/templates`. Works the same way
- *  from `src/render-engine/framework-provider.ts` (during dev) and
- *  `dist/render-engine/framework-provider.js` (after `npm install`) because
- *  in both cases we shipped at the package root. */
+/** Canonical shipped template — used to verify a candidate framework
+ *  templates directory actually contains our defaults. Without this check a
+ *  hoisted-install layout (pnpm/bun workspaces) can walk up to a CONSUMER
+ *  package.json and silently return a templates dir that doesn't exist. */
+const CANONICAL_TEMPLATE_REL = "docs/entity-page.md.mustache";
+
+/** Walk up from `start` until we find a `package.json` whose neighbour
+ *  `templates/` directory contains our canonical shipped template (i.e., the
+ *  codegen-ts package root). Works the same way from
+ *  `src/render-engine/framework-provider.ts` (during dev) and
+ *  `dist/render-engine/framework-provider.js` (after `npm install`). */
 function findFrameworkTemplatesDir(start: string): string {
   let dir = start;
-  for (let i = 0; i < 12; i++) {
+  while (true) {
     const pkgJson = join(dir, "package.json");
     if (existsSync(pkgJson)) {
-      return join(dir, "templates");
+      const templatesDir = join(dir, "templates");
+      // Assert we landed at the codegen-ts package root, not a consumer's.
+      if (existsSync(join(templatesDir, CANONICAL_TEMPLATE_REL))) {
+        return templatesDir;
+      }
     }
     const parent = dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
-  // Last resort — caller will get an unresolved-ref error when it tries to
-  // use a framework template that isn't on disk.
-  return join(start, "templates");
+  throw new Error(
+    `framework templates dir unresolved: walked up from ${start} without finding a package.json ` +
+    `whose templates/${CANONICAL_TEMPLATE_REL} exists. This usually means codegen-ts was installed ` +
+    `via a hoisted layout (pnpm/bun workspaces) into an unexpected location, or the published ` +
+    `tarball is missing the templates/ directory.`,
+  );
 }
 
-const SELF_DIR = (() => {
-  try {
-    return dirname(fileURLToPath(import.meta.url));
-  } catch {
-    return process.cwd();
-  }
-})();
+// In ESM (CLAUDE.md: "ESM only. No CommonJS."), `import.meta.url` is
+// guaranteed to be a file: URL; no defensive try/catch needed.
+const SELF_DIR = dirname(fileURLToPath(import.meta.url));
 
 const FRAMEWORK_TEMPLATES_DIR = findFrameworkTemplatesDir(SELF_DIR);
 

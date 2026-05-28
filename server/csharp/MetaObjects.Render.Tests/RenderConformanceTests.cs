@@ -32,8 +32,14 @@ public class RenderConformanceTests
     public static IEnumerable<object[]> Fixtures()
     {
         var corpus = CorpusRoot();
+        // Skip sub-corpora that live alongside the flat render-conformance
+        // fixtures (e.g. fixtures/render-conformance/template-generator/) —
+        // those have their own harness and schema.
         foreach (var dir in Directory.GetDirectories(corpus).OrderBy(d => d, StringComparer.Ordinal))
+        {
+            if (!File.Exists(Path.Combine(dir, "template.mustache"))) continue;
             yield return new object[] { Path.GetFileName(dir) };
+        }
     }
 
     private static InMemoryProvider ProviderFromPartials(string dir)

@@ -1,0 +1,24 @@
+[
+  {
+    "entity": "Post",
+    "data": {
+      "name": "Post",
+      "fields": [
+        { "name": "id", "type": "long" },
+        { "name": "title", "type": "string" }
+      ]
+    },
+    "outputPath": "Post.txt"
+  },
+  {
+    "entity": "Comment",
+    "data": {
+      "name": "Comment",
+      "fields": [
+        { "name": "id", "type": "long" },
+        { "name": "body", "type": "string" }
+      ]
+    },
+    "outputPath": "Comment.txt"
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "format": "text",
+  "entities": [
+    {
+      "name": "Post",
+      "fields": [
+        { "name": "id", "type": "long" },
+        { "name": "title", "type": "string" }
+      ]
+    },
+    {
+      "name": "Comment",
+      "fields": [
+        { "name": "id", "type": "long" },
+        { "name": "body", "type": "string" }
+      ]
+    }
+  ]
+}

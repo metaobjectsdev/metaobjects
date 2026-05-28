@@ -1,0 +1,5 @@
+# Comment
+
+Fields:
+- id (long)
+- body (string)

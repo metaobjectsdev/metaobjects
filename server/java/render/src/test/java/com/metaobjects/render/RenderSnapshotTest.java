@@ -51,7 +51,11 @@ public class RenderSnapshotTest {
     public static List<Object[]> fixtures() throws IOException {
         if (FIXTURES_DIR == null || !Files.isDirectory(FIXTURES_DIR)) return List.of();
         try (Stream<Path> s = Files.list(FIXTURES_DIR)) {
+            // Skip sub-corpora that live alongside the flat render-conformance
+            // fixtures (e.g. fixtures/render-conformance/template-generator/) —
+            // those have their own harness and schema.
             return s.filter(Files::isDirectory)
+                    .filter(p -> Files.exists(p.resolve("template.mustache")))
                     .sorted()
                     .map(p -> new Object[]{p.getFileName().toString(), p})
                     .collect(Collectors.toList());

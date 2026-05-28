@@ -26,8 +26,13 @@ function providerFromPartials(dir: string): InMemoryProvider {
 }
 
 describe("render-conformance corpus", () => {
+  // Skip sub-corpora that live alongside the flat render-conformance fixtures
+  // (e.g. fixtures/render-conformance/template-generator/) — those have their
+  // own harness and schema.
   const names = existsSync(CORPUS)
-    ? readdirSync(CORPUS).filter((n) => statSync(join(CORPUS, n)).isDirectory())
+    ? readdirSync(CORPUS)
+        .filter((n) => statSync(join(CORPUS, n)).isDirectory())
+        .filter((n) => existsSync(join(CORPUS, n, "template.mustache")))
     : [];
   expect(names.length).toBeGreaterThan(0);
 
