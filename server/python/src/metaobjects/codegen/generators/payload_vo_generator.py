@@ -19,8 +19,9 @@ declares how the value is derived, and the field's annotation is resolved as:
                         (``@agg sum``/``min``/``max``) — type of ``@of`` field.
 * ``origin.collection`` (``@via "Parent.relName"``)   — ``list[<TargetShortName>Payload]``,
   and the nested ``<TargetShortName>Payload`` is emitted into the SAME file
-  (so callers ``from .<template>_payload import …`` once). Nested payloads
-  are deduped across the whole run by the resolved target FQN.
+  (so callers ``from .<template>_payload import …`` once). Within one file,
+  the nested class is emitted exactly once even if multiple fields reference
+  the same target (per-file dedupe — see the Dedupe note below).
 * No origin child — fall back to ``type_map.py_type_for(field)``.
 
 Generated file naming mirrors the output-parser convention:
