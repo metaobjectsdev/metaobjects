@@ -7,6 +7,7 @@ import {
   type MetaObject,
   type MetaField,
   type MetaIdentity,
+  type MetaReferenceIdentity,
   type MetaRoot,
   TYPE_TEMPLATE,
   TEMPLATE_ATTR_PAYLOAD_REF,
@@ -286,8 +287,9 @@ function describeIdentity(id: MetaIdentity): string {
     return `**Secondary index:** ${fieldList} — ${uniqueText}`;
   }
   if (id.subType === IDENTITY_SUBTYPE_REFERENCE) {
-    const refIdent = id as unknown as { referencesRaw?: string };
-    const raw = refIdent.referencesRaw;
+    // The subType discriminator guarantees the instance is a MetaReferenceIdentity;
+    // narrow to it so we can use its typed `referencesRaw` getter directly.
+    const raw = (id as MetaReferenceIdentity).referencesRaw;
     if (typeof raw === "string" && raw.length > 0) {
       return `**Reference:** ${fieldList} → \`${raw}\``;
     }

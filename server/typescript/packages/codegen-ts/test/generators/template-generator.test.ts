@@ -103,6 +103,39 @@ describe("templateGenerator() — empty walk", () => {
   });
 });
 
+describe("templateGenerator() — error context", () => {
+  test("an unresolvable template ref throws with generator name + output path in the message", async () => {
+    // Empty provider — `does-not-exist` is unresolvable.
+    const provider = new InMemoryProvider({});
+    const root = buildRoot();
+    const gen = templateGenerator({
+      name: "missing",
+      template: "does-not-exist",
+      provider,
+      walk: (r) => r.objects().map((e) => ({
+        data: { name: e.name },
+        outputPath: `${e.name}.txt`,
+      })),
+    });
+    let caught: unknown;
+    try {
+      await gen.generate(makeCtx(root));
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    const msg = (caught as Error).message;
+    // Wrap MUST identify the generator, the unresolved template ref, and the
+    // output path so consumers can locate the failure without reading the
+    // stack trace.
+    expect(msg).toContain("templateGenerator(missing)");
+    expect(msg).toContain("does-not-exist");
+    expect(msg).toContain("Post.txt");
+    // The underlying error is preserved via `cause`.
+    expect((caught as Error).cause).toBeInstanceOf(Error);
+  });
+});
+
 describe("buildEntityDocData() — public contract", () => {
   test("exposes the EntityDocData fields a custom template would consume", () => {
     const root = buildRoot();
