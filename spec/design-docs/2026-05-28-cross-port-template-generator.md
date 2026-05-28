@@ -1,7 +1,7 @@
 # Cross-Port `templateGenerator()` — Design
 
 **Date:** 2026-05-28
-**Status:** Planned (activation gated on second-port adopter pull — see "Activation criteria")
+**Status:** Shipped (2026-05-28) — all three planned ports (Python, C#, Java) + shared conformance corpus implemented and byte-equivalent against the TS reference
 **Scope:** Bring the TS `templateGenerator()` factory contract to the C#, Java, and Python ports so adopters in any port can ship custom template-driven codegen with the same surface as TS.
 
 **Builds on:**
@@ -120,24 +120,26 @@ Each fixture is a directory containing `meta.json` (declarative entity set), `te
 
 The TS port's existing `template-generator.test.ts` exercises the factory directly. That stays; the cross-port conformance fixture lives alongside it.
 
-## Activation criteria
+## Shipped (2026-05-28)
 
-This work is queued, not active. Activation triggers:
+All three planned ports landed on branch `phase-cross-port-template-generator`:
 
-1. **Adopter pull** — a documented user of one of the non-TS ports has a custom-codegen need their port currently makes harder than the TS equivalent. The factory's value proposition is concrete only at that moment.
-2. **Or: pre-positioning before a marketed Documents capability** — if MO ships a "write a template, get codegen anywhere" marketing claim that targets non-TS adopters, this work has to ship first. (See `forge/` marketing pitch notes.)
+| Port | Factory | Unit tests | Conformance | Notes |
+|---|---|---|---|---|
+| **TypeScript** (reference) | `server/typescript/packages/codegen-ts/src/generators/template-generator.ts` | (existing) | 8/8 green | rc.12, reference impl |
+| **Python** | `server/python/src/metaobjects/codegen/generators/template_generator.py` | 4/4 green | 3/3 fixtures pass byte-equivalently | Satisfies existing `Generator` Protocol |
+| **C#** | `server/csharp/MetaObjects.Codegen/Generators/TemplateGenerator.cs` | 4/4 green | 3/3 fixtures pass byte-equivalently | Satisfies existing `IGenerator` interface |
+| **Java** | `server/java/render/src/main/java/com/metaobjects/render/templategen/TemplateGenerator.java` | 4/4 green | 3/3 fixtures pass byte-equivalently | New types (does NOT satisfy legacy `Generator` interface — see Java notes below) |
 
-Until one of those fires, the work is documented (this doc), the contract is locked (the TS reference + the conformance fixture design above), and the implementation effort sits on the shelf. Doing it speculatively risks port-specific drift if the integration surface changes before adoption.
+**Plans:** `docs/superpowers/plans/2026-05-28-cross-port-template-generator-plan{0,1,2,3}-*.md` document the per-port TDD work.
 
-### Effort estimate (per port, when activated)
+### Java cross-port API divergence
 
-| Port | Estimate | Notes |
-|---|---|---|
-| C# | 2-3 days | Render layer + Generator interface both exist; integration is wiring. |
-| Java | 3-4 days | Same as C#, plus Maven plugin surfacing (`<templateGenerator>` element). |
-| Python | 2-3 days | Smallest render surface; least integration plumbing. |
-| Conformance fixtures | 1-2 days | Up-front, shared across ports. |
-| **Total** | **~10 days** | Assuming sequential. Parallelizable across ports if needed. |
+Java's existing `com.metaobjects.generator.Generator` interface has `void execute(MetaDataLoader)` — side-effect only, no return value — which doesn't fit the cross-port "factory returns `List<EmittedFile>`" shape. The Java port introduces three new lightweight types (`EmittedFile`, `TemplateWalkResult`, `TemplateGenerator`) under `com.metaobjects.render.templategen` rather than retrofitting the legacy interface.
+
+The Java factory's root parameter is generic (`<R>`) instead of typed as `MetaRoot` — this keeps the render module's dependency graph free of the metadata package. The walk callback knows the actual root type at the call site.
+
+**Deferred for Java:** Maven plugin surface (`mvn meta:generate` integration). Adopters who want it can wrap the factory in their own legacy-`Generator`-conformant glue. Track via a follow-up if/when a Java adopter has the need.
 
 ## Open questions
 
