@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.7.0-rc.11] — 2026-05-28
+
+### Fixed
+- **`docsFile()` emits the `@generated` marker** in an HTML comment ahead
+  of the H1 so the overwrite-policy treats subsequent `meta gen` runs as
+  refreshes rather than refusing to clobber. rc.10 emitted markdown
+  without the marker, which meant a second `gen` pass refused to
+  overwrite the `<Entity>.md` files. Comment-based markers stay invisible
+  in rendered Markdown (GitHub / VS Code / mdBook all strip HTML comments
+  on render) but are present in the raw source the policy inspects.
+
 ## [0.7.0-rc.10] — 2026-05-28
 
 ### Added

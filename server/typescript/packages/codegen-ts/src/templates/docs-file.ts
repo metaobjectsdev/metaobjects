@@ -70,6 +70,7 @@ import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { toPascalCase } from "../naming.js";
 import { enumValues } from "../enum-meta.js";
 import { hasWritableRdbSource } from "../source-detect.js";
+import { GENERATED_HEADER } from "../constants.js";
 
 /**
  * Options for the markdown emitter. Mirrors the bits of `RenderContext` it
@@ -501,6 +502,12 @@ function renderGeneratedCodeSection(entity: MetaObject, opts: DocsRenderOpts): s
  */
 export function renderDocsFile(entity: MetaObject, opts: DocsRenderOpts): string {
   const parts: string[] = [];
+
+  // HTML comment header carrying the @generated marker — drives the
+  // overwrite-policy so subsequent `meta gen` runs can refresh the file
+  // without confirmation. Hidden in rendered markdown (HTML comments don't
+  // surface in GitHub / VS Code / mdBook output) but visible in raw source.
+  parts.push(`<!-- ${GENERATED_HEADER} — DO NOT EDIT. -->`);
 
   parts.push(`# ${entity.name}`);
 
