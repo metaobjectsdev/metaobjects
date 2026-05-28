@@ -1,0 +1,54 @@
+{{{generatedMarker}}}
+
+# {{entity.name}}
+{{#descriptionQuote}}
+
+{{{.}}}
+{{/descriptionQuote}}
+
+{{{preambleHeader}}}
+{{#hasStorage}}
+
+## Storage
+
+{{{storage.tableHeader}}}
+{{#storage.rows}}
+{{{rowLine}}}
+{{/storage.rows}}
+{{/hasStorage}}
+{{#hasIdentities}}
+
+## Identity
+
+{{#identities}}
+- {{{bullet}}}
+{{/identities}}
+{{/hasIdentities}}
+{{#hasRelationships}}
+
+## Relationships
+
+{{#relationships}}
+- {{{bullet}}}
+{{/relationships}}
+{{/hasRelationships}}
+
+## Validation
+
+- `{{validation.insertSchema}}` (Zod) — for creating new {{validation.lower}}s.
+- `{{validation.updateSchema}}` (Zod) — for partial updates.
+- See `{{validation.entityFile}}` for the exported schemas.
+{{#hasUsedBy}}
+
+## Used by
+
+{{#usedBy}}
+- {{{bullet}}}
+{{/usedBy}}
+{{/hasUsedBy}}
+
+## Generated code
+
+{{#generated}}
+- `{{filename}}` — {{{description}}}
+{{/generated}}

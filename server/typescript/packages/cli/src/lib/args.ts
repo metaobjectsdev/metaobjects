@@ -41,6 +41,10 @@ export function parseInitArgs(argv: string[]): InitFlags {
 export interface GenFlags {
   dryRun: boolean;
   entities: string[];
+  /** First-time-on-existing-file behavior. Default: write-if-different
+   *  (existing content becomes the canonical baseline). "fresh" → overwrite
+   *  and re-baseline. */
+  baseline: "default" | "fresh";
 }
 
 export function parseGenArgs(argv: string[]): GenFlags {
@@ -48,13 +52,21 @@ export function parseGenArgs(argv: string[]): GenFlags {
     args: argv,
     options: {
       "dry-run": { type: "boolean", default: false },
+      "baseline": { type: "string" },
     },
     strict: true,
     allowPositionals: true,
   });
+  const baselineRaw = values.baseline as string | undefined;
+  if (baselineRaw !== undefined && baselineRaw !== "default" && baselineRaw !== "fresh") {
+    throw new Error(
+      `invalid --baseline '${baselineRaw}'; expected 'default' or 'fresh'`,
+    );
+  }
   return {
     dryRun: !!values["dry-run"],
     entities: positionals,
+    baseline: (baselineRaw as "default" | "fresh" | undefined) ?? "default",
   };
 }
 

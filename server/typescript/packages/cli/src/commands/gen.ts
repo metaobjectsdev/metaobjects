@@ -12,6 +12,9 @@ function mapStatus(s: WriteStatus): GenFileStatus {
   switch (s) {
     case "new":
     case "overwrite": return "new";
+    case "merged":    return "merged";
+    case "conflict":  return "conflict";
+    case "unchanged":
     case "skipped":   return "unchanged";
     case "refused":   return "refused";
   }
@@ -53,6 +56,8 @@ export async function genCommand(args: string[], cwd: string): Promise<number> {
     result = await runGen({
       config: forgeConfig,
       metadata,
+      projectRoot,
+      baseline: flags.baseline,
       ...(cliConfig.entities.length > 0 ? { entityFilter: cliConfig.entities } : {}),
     });
   } catch (err) {
@@ -84,6 +89,18 @@ export async function genCommand(args: string[], cwd: string): Promise<number> {
   }, { isTTY: !!process.stdout.isTTY });
 
   log.info(output);
+
+  // End-of-run conflict summary — surfaces in CI logs alongside the file
+  // listing. The non-zero exit code below carries the failure signal.
+  if (result.conflicts.length > 0) {
+    const list = result.conflicts
+      .map((c) => `  - ${relative(projectRoot, c.path)}`)
+      .join("\n");
+    log.warn(
+      `meta gen completed with ${result.conflicts.length} conflict(s). ` +
+        `Resolve and re-run to advance the canonical state.\n${list}`,
+    );
+  }
 
   const hasFailure = files.some((f) => f.status === "conflict" || f.status === "refused");
   return hasFailure ? 1 : 0;

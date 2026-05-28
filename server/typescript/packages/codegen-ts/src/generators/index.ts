@@ -7,3 +7,18 @@ export { mermaidErDiagram, type MermaidErOptions } from "./mermaid-er.js";
 export { promptRender, type PromptRenderOpts } from "./prompt-render-file.js";
 export { outputParser, type OutputParserOpts } from "./output-parser-file.js";
 export { docsFile, type DocsFileOpts } from "./docs-file.js";
+export {
+  templateGenerator,
+  type TemplateGeneratorOpts,
+  type TemplateWalkResult,
+  type TemplateFormat,
+} from "./template-generator.js";
+export type {
+  EntityDocData,
+  StorageFieldDoc,
+  IdentityDoc,
+  RelationshipDoc,
+  UsedByDoc,
+  GeneratedFileDoc,
+} from "./docs-data.js";
+export { buildEntityDocData } from "./docs-data-builder.js";

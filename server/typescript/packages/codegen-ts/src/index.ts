@@ -24,8 +24,14 @@ export { buildRelationMap } from "./relation-resolver.js";
 export type { RenderContext } from "./render-context.js";
 export { makeRenderContext } from "./render-context.js";
 
-export type { WriteStatus, WriteResult, MergeStrategy } from "./overwrite-policy.js";
-export { decideAndWrite } from "./overwrite-policy.js";
+export type {
+  WriteStatus,
+  WriteResult,
+  MergeStrategy,
+  BaselineMode,
+  DecideAndWriteOpts,
+} from "./overwrite-policy.js";
+export { decideAndWrite, GitMissingError } from "./overwrite-policy.js";
 
 export { CodegenError } from "./errors.js";
 export { GENERATED_HEADER, EXTRA_SUFFIX, DEFAULT_OUT_DIR } from "./constants.js";
@@ -45,3 +51,28 @@ export type { EmitOptions as ViewDdlEmitOptions } from "./projection/view-ddl-em
 export type { JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec } from "./projection/view-spec.js";
 // Prompt construction (FR-004): typed payload + render-handle codegen.
 export { generatePayloadInterfaces, generatePayloadInterfacesBatch, generateRenderHandle } from "./payload-codegen.js";
+
+// Template-driven codegen (rc.12). Factory + framework Provider for adopters
+// who want to wire their own templateGenerator instances. The default
+// docsFile() uses this internally.
+export {
+  templateGenerator,
+  type TemplateGeneratorOpts,
+  type TemplateWalkResult,
+  type TemplateFormat,
+} from "./generators/template-generator.js";
+export {
+  FileSystemProvider,
+  ProviderChain,
+  frameworkTemplatesProvider,
+  projectProvider,
+} from "./render-engine/framework-provider.js";
+export type {
+  EntityDocData,
+  StorageFieldDoc,
+  IdentityDoc,
+  RelationshipDoc,
+  UsedByDoc,
+  GeneratedFileDoc,
+} from "./generators/docs-data.js";
+export { buildEntityDocData } from "./generators/docs-data-builder.js";

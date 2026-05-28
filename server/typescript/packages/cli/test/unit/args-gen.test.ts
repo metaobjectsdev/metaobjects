@@ -6,7 +6,20 @@ describe("parseGenArgs", () => {
     expect(parseGenArgs([])).toEqual({
       dryRun: false,
       entities: [],
+      baseline: "default",
     });
+  });
+
+  test("--baseline=fresh", () => {
+    expect(parseGenArgs(["--baseline=fresh"]).baseline).toBe("fresh");
+  });
+
+  test("--baseline=default (explicit)", () => {
+    expect(parseGenArgs(["--baseline=default"]).baseline).toBe("default");
+  });
+
+  test("--baseline=invalid throws", () => {
+    expect(() => parseGenArgs(["--baseline=nonsense"])).toThrow();
   });
 
   test("--dry-run", () => {

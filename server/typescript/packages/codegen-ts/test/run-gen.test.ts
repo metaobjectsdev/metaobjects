@@ -106,8 +106,14 @@ describe("runGen — two entities with FK, Postgres", () => {
   });
 });
 
-describe("runGen — refuses to clobber hand-written files", () => {
-  test("file without @generated header is left alone, status 'refused'", async () => {
+describe("runGen — first-time regen on a pre-existing file", () => {
+  // Per the three-way merge policy (replacing rc.11's marker-based refusal):
+  // a file at the codegen output path with no .gen-state snapshot is treated
+  // as the canonical baseline (caveat 3). Identical fresh content → unchanged
+  // and seed the snapshot. Different fresh content → overwrite + seed.
+  // Adopters who want hand-written code adjacent to a generated module use
+  // the `<Entity>.extra.ts` sibling-file convention (never touched by gen).
+  test("pre-existing file with different content → overwrite + .gen-state seeded", async () => {
     const loader = new MetaDataLoader();
     const result = await loader.load([new FileSource(join(FIXTURE_DIR, "single-entity.json"))]);
 
@@ -124,14 +130,15 @@ describe("runGen — refuses to clobber hand-written files", () => {
         generators: [entityFile(), queriesFile(), routesFile(), barrel()],
       }),
       metadata: result.root,
+      projectRoot: tmp,
     });
 
     const postFile = out.files.find((f) => f.path.endsWith("Post.ts"));
-    expect(postFile?.status).toBe("refused");
-    expect(readFileSync(handPath, "utf-8")).toContain("sacred = true");
-    expect(out.warnings.length).toBeGreaterThan(0);
+    expect(postFile?.status).toBe("overwrite");
+    // Fresh codegen content lands; "sacred" sentinel is gone.
+    expect(readFileSync(handPath, "utf-8")).not.toContain("sacred = true");
 
-    // Post.queries.ts should still be generated (its refusal is independent)
+    // Post.queries.ts likewise generated normally.
     expect(existsSync(join(tmp, "Post.queries.ts"))).toBe(true);
   });
 });

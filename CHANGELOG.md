@@ -7,6 +7,56 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.7.0-rc.12] — 2026-05-28
+
+### Changed
+- **Three-way merge overwrite policy.** `decideAndWrite()` switched from
+  marker-based (clobber if `@generated` is present, refuse otherwise — the
+  rc.11-era strategy that silently lost hand-edits) to three-way merge
+  against a canonical snapshot stored under `.metaobjects/.gen-state/`.
+  Hand-edits in generated files now survive regen automatically (the spike
+  002 "HARD" case); same-line edits surface as standard git-conflict
+  markers (the "CONFLICT" case). The `@generated` marker becomes
+  informational, no longer load-bearing.
+
+  Restated in adopter terms:
+  - **Easy case** (you add a comment): clean merge integrates it
+  - **Hard case** (you tweak a generated value): your edit survives
+  - **Conflict case** (both sides edit the same line): standard
+    `<<<<<<<` / `|||||||` / `=======` / `>>>>>>>` markers — resolve like
+    any git conflict; rerun `meta gen` to advance the snapshot
+  - **First-time-on-existing-file**: write-if-different baseline (no merge,
+    no clobber). `meta gen --baseline=fresh` opts into "overwrite from
+    fresh and re-baseline"
+
+  Add `.metaobjects/.gen-state/` to your `.gitignore`. `meta init`
+  scaffolding handles this automatically. Integrity is sha-256 hashed at
+  `.gen-state/.hashes.json`; tampered snapshots fall back to first-time
+  semantics with a warning.
+
+### Added
+- **`templateGenerator()` stock generator** — a factory that walks
+  `MetaRoot` → renders shared Mustache templates via the existing
+  `@metaobjectsdev/render` engine → emits files in any format (Markdown /
+  HTML / JSON / YAML / text). Establishes the framework line: **code →
+  hand-coded generators (ts-poet, idiomatic per-port); documents →
+  templateGenerator (shared Mustache templates, port-agnostic)**.
+- **`docsFile()` refactored to use `templateGenerator()`.** Markdown
+  structure now lives in
+  `codegen-ts/templates/docs/entity-page.md.mustache`; adopters can
+  override by placing same-named templates in their project's
+  `templates/` directory. Net: ~85 LOC + a template file replaces ~250
+  LOC of hand-coded string emit. Conformance fixture
+  `docs-file-basic/expected/Author.md` stays byte-identical.
+- **`EntityDocData` exported as a public-API contract.** Template authors
+  consuming the data dict get TypeScript type-checking. Versioning policy
+  spelled out in the new `docs/features/codegen-data-shapes.md`.
+
+### Removed
+- The marker-based `decideAndWrite()` path. The `<!-- @generated -->`
+  HTML-comment marker that rc.11 added to docsFile output is retained as
+  human-readable annotation, but the policy no longer checks for it.
+
 ## [0.7.0-rc.11] — 2026-05-28
 
 ### Fixed
