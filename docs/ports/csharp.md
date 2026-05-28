@@ -208,6 +208,10 @@ Cross-port design is at [ADR-0010](../../spec/decisions/ADR-0010-template-output
 the feature reference is at
 [`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
 
+**Consumer dependency.** `System.Text.Json` ships in the .NET 8 BCL — no
+NuGet package to add. The generated parser uses the strict (case-sensitive)
+default options.
+
 ## Angular 18 frontend
 
 C# 12 / .NET 8 backends pair cleanly with an Angular 18 client built from

@@ -204,6 +204,10 @@ time. Cross-port design is at
 the feature reference is at
 [`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
 
+**Consumer dependency.** The emitted parser imports `zod`. It's likely already in
+your `dependencies` (Drizzle / `@metaobjectsdev/runtime-ts` both lean on it);
+if not, `npm i zod`.
+
 ## Capability snapshot
 
 | Feature | Status |

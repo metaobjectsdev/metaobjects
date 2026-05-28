@@ -243,12 +243,22 @@ configuration model that has not yet been specced.
 | Source kinds (table / view / storedProc) | Yes |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes |
 | Templates + render (FR-004) | Yes (`metaobjects-render`) |
-| Payload-VO codegen | Not on Java itself — consumers use `Map<String,Object>` or hand-coded VOs. See [Kotlin port](kotlin.md) for `@Serializable` payload codegen. |
-| Output parser codegen (FR-006) | Not yet — gated on Java codegen layer (per the [FR-006 cross-port spec](../superpowers/specs/2026-05-25-fr6-template-output-parser-codegen.md)). Java consumers needing typed `template.output` parsing today should drive their codegen through the [Kotlin port](kotlin.md) (`KotlinOutputParserGenerator`) or hand-write a Jackson `readValue` call. |
+| Payload-VO codegen | Not on Java itself — see note below |
+| Output parser codegen (FR-006) | Not yet — gated on Java codegen layer; see note below |
 | Migrations | `mvn meta:migrate` / `mvn meta:migrate -Dflyway=true` |
 | Drift verify | `mvn meta:verify` (DB) + `Renderer.verify` (prompts) |
 | Runtime metadata | Full — OMDB ObjectManager |
 | REST controller codegen | Spring Web MVC — `metaobjects-codegen-spring` (FR-008 §2.1) |
+
+**On payload-VO + output-parser codegen.** Java consumers today use
+`Map<String,Object>` or hand-coded VOs for template payloads, and hand-write
+a Jackson `readValue(text, MyClass.class)` call for `template.output` parsing.
+Both gaps are gated on the planned Java codegen layer (per the
+[FR-006 cross-port spec](../superpowers/specs/2026-05-25-fr6-template-output-parser-codegen.md)).
+JVM consumers needing typed payload + parser codegen today can drive
+through the [Kotlin port](kotlin.md) (`KotlinPayloadGenerator` +
+`KotlinOutputParserGenerator`) — kotlinx.serialization output is
+JVM-callable from Java consumers via the underlying bytecode.
 
 ## Conformance status (as of 2026-05-27)
 

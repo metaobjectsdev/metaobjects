@@ -243,6 +243,14 @@ Cross-port design is at [ADR-0010](../../spec/decisions/ADR-0010-template-output
 the feature reference is at
 [`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
 
+**Consumer dependency.** The emitted parser imports `pydantic` (v2). Add it via
+`pip install pydantic>=2` or `uv add pydantic` if you don't already have it.
+
+**Note on emitted output.** The generator runs `ruff_format(content)` on the
+file before writing, so the literal emitted layout may reflow whitespace
+slightly vs the snippet above. Function signatures, class definitions, and
+import lines are stable.
+
 ## Capability snapshot
 
 | Feature | Status |
