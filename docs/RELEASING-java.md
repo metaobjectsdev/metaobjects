@@ -12,7 +12,7 @@ is on a separate `0.x` track).
 
 ## What gets published
 
-The reactor (`server/java/pom.xml`) lists 14 publishable modules. As of
+The reactor (`server/java/pom.xml`) lists 13 publishable modules. As of
 7.0.0 the reactor explicitly **excludes** `archetype` and `examples` — they
 were aggregator entries but not consumer-facing dependencies, and keeping
 them in the reactor required `-pl` exclusions that didn't transitively
@@ -33,7 +33,6 @@ the reactor and not deployed.
 | `om/` | `metaobjects-om` |
 | `omdb/` | `metaobjects-omdb` |
 | `omdb-ktx/` | `metaobjects-omdb-ktx` |
-| `dynamic/` | `metaobjects-dynamic-core` |
 | `core-spring/` | `metaobjects-core-spring` |
 | `maven-plugin/` | `metaobjects-maven-plugin` |
 
@@ -164,7 +163,7 @@ git push origin main
 cd server/java && mvn install -DskipTests
 ```
 
-All 14 publishable modules should reach SUCCESS. The build also installs
+All 13 publishable modules should reach SUCCESS. The build also installs
 locally into `~/.m2/repository/com/metaobjects/*/7.X.Y/`.
 
 ### 4. Tag the release

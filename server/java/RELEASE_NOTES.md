@@ -18,7 +18,7 @@ Post-7.0.0 cleanup line. No content commitments yet. Tracking work lives in [spe
 
 ## Version 7.0.0 (2026-05-27)
 
-First publish from the consolidated `server/java/` reactor on Maven Central. 14 publishable modules under `com.metaobjects:*`. The Java port is now feature-complete across all four MetaObjects pillars and fully green across all five cross-port conformance corpora.
+First publish from the consolidated `server/java/` reactor on Maven Central. 14 publishable modules under `com.metaobjects:*` (13 after the post-7.0.0 `metaobjects-dynamic-core` fold-in). The Java port is now feature-complete across all four MetaObjects pillars and fully green across all five cross-port conformance corpora.
 
 ### What ships
 

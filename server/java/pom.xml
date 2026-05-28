@@ -43,7 +43,6 @@
     <module>codegen-plantuml</module>
     <module>maven-plugin</module>
     <module>core-spring</module>
-    <module>dynamic</module>
     <module>om</module>
     <module>omdb</module>
     <module>omdb-ktx</module>

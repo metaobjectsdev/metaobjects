@@ -20,17 +20,6 @@
             <groupId>com.metaobjects</groupId>
             <artifactId>metaobjects-metadata</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.metaobjects</groupId>
-            <artifactId>metaobjects-dynamic-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.metaobjects</groupId>
-            <artifactId>metaobjects-dynamic-core</artifactId>
-            <type>test-jar</type>
-            <scope>test</scope>
-        </dependency>
-
         <!-- Test dependency for compliance test base classes -->
         <dependency>
             <groupId>com.metaobjects</groupId>

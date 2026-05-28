@@ -28,6 +28,8 @@ Five module additions in 7.0.0 (none required; opt in per stack):
 | `metaobjects-metadata-ktx` | Kotlin facade over the Java metadata core |
 | `metaobjects-omdb-ktx` | Kotlin facade over OMDB |
 
+The `metaobjects-dynamic-core` module from 6.x is gone — its `CoreObjectsMetaDataProvider` (which contributed `dataBuilderClass`, `valueObjectType`, etc., attribute extensions onto `object.base`) now ships inside `metaobjects-metadata`. Consumers of those attribute names need no change; consumers of the `metaobjects-dynamic-core` artifact coordinate should drop the dependency.
+
 The `metaobjects-codegen-mustache` and `metaobjects-codegen-plantuml` modules from 6.x continue unchanged.
 
 ### Step 3 — source paradigm v2 ([ADR-0007](../../spec/decisions/ADR-0007-source-paradigm-v2.md))

@@ -17,8 +17,10 @@ import java.util.Map;
 import java.util.Arrays;
 
 /**
- * Tests for ValueObject template generation that were moved from metaobjects-core.
- * These tests require ValueObject classes that are only available in the dynamic module.
+ * Tests for ValueObject template generation. Moved from the retired
+ * metaobjects-dynamic-core module — its CoreObjectsMetaDataProvider
+ * (registering DataObject/ValueObject attribute extensions) now lives
+ * in metaobjects-metadata, and its mustache-aware tests live here.
  */
 public class ValueObjectTemplateGeneratorTest extends SharedRegistryTestBase {
 
@@ -36,7 +38,7 @@ public class ValueObjectTemplateGeneratorTest extends SharedRegistryTestBase {
         // Create and initialize loader
         loader = new MetaDataLoader("test-loader");
         loader.setSourceURIs(Arrays.asList(
-            URIHelper.toURI("model:resource:mustache-test-metadata.json")
+            URIHelper.toURI("model:resource:mustache-test-metadata-valueobject.json")
         ));
         loader.init();
 

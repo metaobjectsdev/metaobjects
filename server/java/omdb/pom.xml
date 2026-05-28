@@ -24,10 +24,6 @@
             <artifactId>metaobjects-metadata</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.metaobjects</groupId>
-            <artifactId>metaobjects-dynamic-core</artifactId>
-        </dependency>
-        <dependency>
             <groupId>javax</groupId>
             <artifactId>javaee-api</artifactId>
             <version>${javaee.api.version}</version>

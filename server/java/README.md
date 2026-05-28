@@ -1,6 +1,6 @@
 # MetaObjects — Java
 
-The Java port of the cross-language MetaObjects metadata standard. Published to Maven Central at `7.0.0` under `com.metaobjects:*` across 14 modules. Apache 2.0.
+The Java port of the cross-language MetaObjects metadata standard. Published to Maven Central at `7.0.0` under `com.metaobjects:*` across 13 modules. Apache 2.0.
 
 For the standard itself (metamodel, conformance corpora, ADRs) see the [repository-level docs](../../spec/) and the parent [README](../../README.md). This document is scoped to the Java implementation.
 
@@ -32,7 +32,6 @@ All published to Maven Central under `com.metaobjects:*` at `7.0.0`:
 | `metaobjects-om` | ObjectManager — runtime metadata-driven CRUD |
 | `metaobjects-omdb` | Relational implementation of ObjectManager over JDBC + Spring-tx |
 | `metaobjects-omdb-ktx` | Kotlin facade over OMDB |
-| `metaobjects-dynamic-core` | Runtime-dynamic metadata loading |
 | `metaobjects-core-spring` | Spring auto-configuration + `MetaDataService` |
 | `metaobjects-maven-plugin` | `mvn meta:gen` / `meta:migrate` / `meta:verify` |
 
