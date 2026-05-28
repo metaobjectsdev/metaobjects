@@ -32,7 +32,7 @@ The `metaobjects-dynamic-core` module from 6.x is gone — its `CoreObjectsMetaD
 
 ### OSGi support removed
 
-The OSGi runtime variant (`OSGIServiceRegistry`, `BundleLifecycleManager`, the `maven-bundle-plugin` packaging on every reactor module) was dropped in 7.0.1. The artifacts are now plain JARs.
+The OSGi runtime variant (`OSGIServiceRegistry`, `BundleLifecycleManager`, the `maven-bundle-plugin` packaging on every reactor module) was dropped in 7.0.1. The artifacts are now plain JARs. Decision rationale: [ADR-0012](../../spec/decisions/ADR-0012-remove-osgi-runtime-variant-java.md).
 
 Consumers running inside an OSGi container can still wrap MetaObjects' JARs with `bnd` / `pax-url` to produce bundles with the appropriate manifest headers — the code itself works in any classloader environment. What changes:
 

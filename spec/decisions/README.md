@@ -25,3 +25,8 @@ Write one when a decision is **cross-cutting** (affects more than one language p
 - [ADR-0005 — Object representation: entity/value semantics + binding-resolved representation (OO ports)](ADR-0005-object-representation-binding.md) — *Accepted*
 - [ADR-0006 — AI-first YAML authoring (sigil-free YAML; JSON stays canonical)](ADR-0006-ai-first-yaml-authoring.md) — *Proposed*
 - [ADR-0007 — Source metatype v2: storage-paradigm subtypes, logical names, multi-source, per-subtype physical addresses](ADR-0007-source-v2-paradigm-subtypes-multisource.md) — *Proposed*
+- [ADR-0008 — Parameter-passing for generated repo helpers](ADR-0008-parameter-passing-generated-repo-helpers.md) — *Accepted*
+- [ADR-0009 — Loader error envelope + source-on-node](ADR-0009-loader-error-envelope-and-source-on-node.md) — *Accepted*
+- [ADR-0010 — Per-port parser-on-receipt codegen for `template.output`](ADR-0010-template-output-parser-codegen.md) — *Accepted*
+- [ADR-0011 — `template.toolcall` as a core MO subtype](ADR-0011-template-toolcall-as-core-subtype.md) — *Accepted*
+- [ADR-0012 — Remove the OSGi runtime variant from the Java port](ADR-0012-remove-osgi-runtime-variant-java.md) — *Accepted*
