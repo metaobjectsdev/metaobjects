@@ -243,22 +243,21 @@ configuration model that has not yet been specced.
 | Source kinds (table / view / storedProc) | Yes |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes |
 | Templates + render (FR-004) | Yes (`metaobjects-render`) |
-| Payload-VO codegen | Not on Java itself — see note below |
-| Output parser codegen (FR-006) | Not yet — gated on Java codegen layer; see note below |
+| Payload-VO codegen | Yes — `SpringPayloadGenerator` (in `metaobjects-codegen-spring`) emits a Java 21 `record` per template, mirrors the Kotlin shape |
+| Output parser codegen (FR-006) | Not yet — see note below |
 | Migrations | `mvn meta:migrate` / `mvn meta:migrate -Dflyway=true` |
 | Drift verify | `mvn meta:verify` (DB) + `Renderer.verify` (prompts) |
 | Runtime metadata | Full — OMDB ObjectManager |
 | REST controller codegen | Spring Web MVC — `metaobjects-codegen-spring` (FR-008 §2.1) |
 
-**On payload-VO + output-parser codegen.** Java consumers today use
-`Map<String,Object>` or hand-coded VOs for template payloads, and hand-write
-a Jackson `readValue(text, MyClass.class)` call for `template.output` parsing.
-Both gaps are gated on the planned Java codegen layer (per the
-[FR-006 cross-port spec](../superpowers/specs/2026-05-25-fr6-template-output-parser-codegen.md)).
-JVM consumers needing typed payload + parser codegen today can drive
-through the [Kotlin port](kotlin.md) (`KotlinPayloadGenerator` +
-`KotlinOutputParserGenerator`) — kotlinx.serialization output is
-JVM-callable from Java consumers via the underlying bytecode.
+**On output-parser codegen.** Java consumers today hand-write the Jackson
+`ObjectMapper.readValue(text, MyPayload.class)` call against the generated
+record from `SpringPayloadGenerator`. Auto-emission of a `<Name>Parser` class
+(the FR-006 equivalent of TS / C# / Python / Kotlin) is on the roadmap; the
+[FR-006 cross-port spec](../superpowers/specs/2026-05-25-fr6-template-output-parser-codegen.md)
++ the [FR6-java sketch](../superpowers/specs/2026-05-25-fr6-java-template-output-parser.md)
+both describe the eventual `JsonProcessingException`-throwing shape. Until
+that ships, the Jackson one-liner pairs naturally with the generated record.
 
 ## Conformance status (as of 2026-05-27)
 

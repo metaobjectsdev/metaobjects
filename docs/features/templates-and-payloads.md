@@ -334,7 +334,7 @@ Result-style "safe" variant where the language has an idiomatic precedent:
 | C# | `XxxParser.Parse(string): T` | `XxxParser.TryParse(text, out T, out string)` → `bool` | `System.Text.Json` |
 | Python | `parse_xxx(text: str) -> T` | — (Pythonic norm is throw-only; consumers `try/except`) | Pydantic v2 |
 | Kotlin | `XxxParser.parseXxx(text): TPayload` | `XxxParser.safeParseXxx(text): Result<TPayload>` | `kotlinx.serialization.json` |
-| Java | — (gated on Java codegen layer) | — | (planned: Jackson) |
+| Java | — (Jackson `ObjectMapper.readValue` paired with the `SpringPayloadGenerator`-emitted record; auto-emit on the roadmap) | — | (planned: Jackson) |
 
 The throwing API matches the substrate's native deserialization exception
 (Zod `ZodError`, `JsonException`, `ValidationError`, `SerializationException`).

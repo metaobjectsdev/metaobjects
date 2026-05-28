@@ -189,36 +189,48 @@ output against the shared `fixtures/render-conformance/` corpus.
 
 ## FR-006 — output parsing
 
-`output_parser_generator` (in `metaobjects.codegen.generators`) emits one
-`<template_name>_output_parser.py` module per `template.output` declaration.
+Two generators ship together for the full prompt+parse story:
+
+- `payload_vo_generator` emits one `<template_name>_payload.py` per declared
+  `template.*` (prompt / output / toolcall) — a Pydantic v2 `<TemplateName>Payload`
+  `BaseModel` resolving all three origin subtypes (`passthrough` / `aggregate` /
+  `collection`). Mirrors the Kotlin reference shape.
+- `output_parser_generator` emits one `<template_name>_output_parser.py` per
+  `template.output`, importing the payload class from the sibling payload module.
+
 Pythonic single-API throw-only convention — Pydantic raises `ValidationError`
 on bad input; callers wrap in `try/except` per their own error policy (matches
 the pydantic / Instructor / FastAPI / LangChain norm; a Result-style wrapper
 would be un-Pythonic).
 
 ```python
-# generated/npc_response_output_parser.py
+# generated/npc_response_payload.py
 from typing import Literal
 
 from pydantic import BaseModel
 
 
-class NpcResponseData(BaseModel):
+class NpcResponsePayload(BaseModel):
     name: str
     level: int
     role: Literal["merchant", "guard", "elder"]
+```
+
+```python
+# generated/npc_response_output_parser.py
+from .npc_response_payload import NpcResponsePayload
 
 
-def parse_npc_response(text: str) -> NpcResponseData:
-    """Parse an LLM response into a typed NpcResponseData.
+def parse_npc_response(text: str) -> NpcResponsePayload:
+    """Parse an LLM response into a typed ``NpcResponsePayload``.
 
     Raises:
         pydantic.ValidationError: when the input does not match the schema.
     """
-    return NpcResponseData.model_validate_json(text)
+    return NpcResponsePayload.model_validate_json(text)
 
 
-__all__ = ["NpcResponseData", "parse_npc_response"]
+__all__ = ["parse_npc_response"]
 ```
 
 Consumer wiring:
@@ -236,19 +248,29 @@ except ValidationError as e:
     return None
 ```
 
-The parser module is self-contained (the `BaseModel` class lives in the same
-file — Python doesn't have a payload-VO generator yet). `metaobjects.render.verify`
-extends to walk `template.output` nodes the same way it walks `template.prompt`.
-Cross-port design is at [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
+The same `<TemplateName>Payload` class is reused for both prompt rendering
+(consumer constructs it, passes to `render(...)`) and output parsing (parser
+returns it from `parse_<template_name>(...)`) — matches the Java payload-VO ↔
+output-parser handoff. `metaobjects.render.verify` extends to walk
+`template.output` nodes the same way it walks `template.prompt`. Cross-port
+design is at [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
 the feature reference is at
 [`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
 
-**Consumer dependency.** The emitted parser imports `pydantic` (v2). Add it via
-`pip install pydantic>=2` or `uv add pydantic` if you don't already have it.
+**Per-file dedupe note.** When `origin.collection` references the same nested
+target across two templates, each template's payload file contains its own
+copy of the nested class (per-file, not per-run dedupe). This differs from
+Kotlin's cross-run dedupe (KotlinPoet → one class per `.kt` file). The Python
+choice keeps each generated payload module self-contained — see the
+docstring on `payload_vo_generator.py` for the full rationale.
 
-**Note on emitted output.** The generator runs `ruff_format(content)` on the
+**Consumer dependency.** Both generators emit code that imports `pydantic` (v2).
+Add it via `pip install pydantic>=2` or `uv add pydantic` if you don't
+already have it.
+
+**Note on emitted output.** Both generators run `ruff_format(content)` on the
 file before writing, so the literal emitted layout may reflow whitespace
-slightly vs the snippet above. Function signatures, class definitions, and
+slightly vs the snippets above. Function signatures, class definitions, and
 import lines are stable.
 
 ## Capability snapshot
@@ -260,8 +282,8 @@ import lines are stable.
 | Source kinds (table / view / storedProc) | Loader-level yes; codegen for non-`table` kinds is in progress |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Loader-level yes; codegen for `field.object` `flattened` storage is in progress |
 | Templates + render (FR-004) | Yes (`metaobjects.render`) |
-| Output parser codegen (FR-006) | Yes (`output_parser_generator` — Pydantic throw-only) |
-| Payload-VO codegen | Not yet — consumers pass a `dict` to the renderer |
+| Payload-VO codegen | Yes (`payload_vo_generator` — Pydantic v2 `BaseModel` per template, origin-aware) |
+| Output parser codegen (FR-006) | Yes (`output_parser_generator` — Pydantic throw-only; imports the payload class from the sibling payload module) |
 | Migrations | In progress (`python -m metaobjects.migrate` planned) |
 | Drift verify | Yes — template / payload drift (`metaobjects.render.verify`) |
 | Runtime metadata | Loader API + render engine; SQLAlchemy ObjectManager-equivalent on the roadmap |
