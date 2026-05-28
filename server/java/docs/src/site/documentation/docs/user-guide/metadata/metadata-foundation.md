@@ -136,10 +136,8 @@ List<MetaField> fields = userMeta.getChildren(MetaField.class);
 List<MetaValidator> validators = userMeta.getChildren(MetaValidator.class);
 List<MetaKey> keys = userMeta.getChildren(MetaKey.class);
 
-// Database mapping
-if (userMeta.hasMetaAttr("dbTable")) {
-    String tableName = userMeta.getMetaAttr("dbTable").getValueAsString();
-}
+// Database mapping (source-v2, ADR-0007)
+String tableName = userMeta.getPrimaryRdbTableName();   // null if no writable source.rdb
 ```
 
 **Object Inheritance:**

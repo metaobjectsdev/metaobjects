@@ -32,35 +32,22 @@ The architectural split provides better separation of concerns:
 
 ## Migration Path
 
-If you're currently using ObjectManager with MetaObjects Core:
+If you're adopting ObjectManager on 7.0.0, depend on `metaobjects-om` (for the runtime metadata-driven CRUD API) plus the relational implementation `metaobjects-omdb`. The metadata core is pulled in transitively.
 
-### 1. Update Dependencies
-
-**Replace:**
 ```xml
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-om</artifactId>
-    <version>6.2.6</version>
+    <version>7.0.0</version>
+</dependency>
+<dependency>
+    <groupId>com.metaobjects</groupId>
+    <artifactId>metaobjects-omdb</artifactId>
+    <version>7.0.0</version>
 </dependency>
 ```
 
-**With:**
-```xml
-<!-- Keep core for metadata framework -->
-<dependency>
-    <groupId>com.metaobjects</groupId>
-    <artifactId>metaobjects-core</artifactId>
-    <version>6.2.6</version>
-</dependency>
-
-<!-- Add dynamic for ObjectManager and dynamic objects -->
-<dependency>
-    <groupId>com.metaobjects</groupId>
-    <artifactId>metaobjects-dynamic-core</artifactId>
-    <version>6.2.6</version>
-</dependency>
-```
+Optional: `metaobjects-omdb-ktx` adds a Kotlin facade (`QueryDsl`) over OMDB. `metaobjects-dynamic-core` adds runtime-dynamic metadata loading.
 
 ### 2. Update Imports
 

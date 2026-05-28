@@ -1,255 +1,126 @@
 # MetaObjects — Java
 
-MetaObjects is a comprehensive suite of tools for **metadata-driven development**, providing sophisticated control over applications beyond traditional model-driven development techniques. The Java implementation (v6.3.1, ~1,247 tests) pioneered the `MetaDataTypeProvider` model that the TypeScript implementation later adopted; it features a **completely modular architecture** with a **fluent constraint system** and **native `isArray` property** designed for modern software development practices.
+The Java port of the cross-language MetaObjects metadata standard. Published to Maven Central at `7.0.0` under `com.metaobjects:*` across 14 modules. Apache 2.0.
 
-**H3 convergence status (2026-05-21).** H3a (loader restructure) shipped 2026-05-19. H3b (cross-language conformance harness wired into Java + the canonical fused-key wire format) is **in progress**. The Java implementation is being folded from `metaobjects-core` into `metaobjects/java/` as the standard's Java port; it is **converged**, not rebuilt.
+For the standard itself (metamodel, conformance corpora, ADRs) see the [repository-level docs](../../spec/) and the parent [README](../../README.md). This document is scoped to the Java implementation.
 
-## 🚀 **Modern Modular Architecture (v6.3.1)**
+## What ships in 7.0.0
 
-MetaObjects Core has been refactored into **9 focused modules** that provide the foundation for metadata-driven development:
+All four MetaObjects pillars ship across all five language ports — TypeScript, Java, Kotlin, C#, Python. Java's contributions:
 
-### **Core Modules**
-- **`metaobjects-metadata`** - Core metadata definitions and revolutionary fluent constraint system
-- **`metaobjects-core`** - File-based metadata loading and core functionality
+- **Codegen** — Spring REST + DTO + JPA repository emit (`codegen-spring`), Mustache template engine (`codegen-mustache`), PlantUML diagrams (`codegen-plantuml`), and a Kotlin emit pipeline on KotlinPoet (`codegen-kotlin`). Output is hand-edit-preserving via three-way merge.
+- **Runtime metadata** — OMDB persistence layer over modernized JDBC with Spring-`@Transactional` integration. FR-003 fully shipped: diff-and-converge migration, binding registry, typed jsonb codec, source/origin metamodel, atomic mapping cache + JDBC codec registry + `inTransaction` template (Plan 4).
+- **Drift detection** — `mvn meta:verify` covers entity codegen, prompt templates, output parsers, and database schema.
+- **Prompt construction** — `metaobjects-render` (Mustache + payload-VO + verify), FR-006 `template.output` parser-on-receipt codegen, render output byte-identical with the other four ports against the shared render-conformance corpus.
 
-### **Code Generation**
-- **`metaobjects-codegen-base`** - Base code generation framework
-- **`metaobjects-codegen-mustache`** - Mustache template-based code generation
-- **`metaobjects-codegen-plantuml`** - PlantUML diagram generation
-- **`metaobjects-maven-plugin`** - Maven integration for build-time code generation
+Fully green across all five cross-port conformance corpora: metamodel (85), yaml (6), persistence (12 against Testcontainers Postgres), render (4), verify (31).
 
-### **Framework Integration**
-- **`metaobjects-core-spring`** - Spring Framework integration and auto-configuration
+## Modules
 
-### **Project Tools**
-- **`archetype`** - Maven archetype for creating MetaObjects-based projects
-- **`examples`** - Complete working examples demonstrating all usage patterns
+All published to Maven Central under `com.metaobjects:*` at `7.0.0`:
 
-### **Available Separately**
-The following modules have been moved to separate projects for focused development:
-- Object Management (OM, OMDB, OMNOSQL) - Database and NoSQL persistence
-- Web Components - React TypeScript components and web utilities
-- Demo Applications - Full-featured demo applications
+| Module | Purpose |
+|---|---|
+| `metaobjects-metadata` | Loader, types, registry, constraints, parsers (JSON + YAML) |
+| `metaobjects-metadata-ktx` | Kotlin facade over the Java metadata core |
+| `metaobjects-codegen-base` | Codegen engine — generator API, source paths, file emit |
+| `metaobjects-codegen-mustache` | Mustache template emit |
+| `metaobjects-codegen-spring` | Spring REST + DTO + JPA repositories + filter allowlists + payload records + output parsers |
+| `metaobjects-codegen-kotlin` | KotlinPoet entity / Exposed table / Spring controller / payload / validator / stored-proc emit |
+| `metaobjects-codegen-plantuml` | PlantUML diagram emit |
+| `metaobjects-render` | Mustache render + payload-VO + `verify` (FR-004 / FR-006) |
+| `metaobjects-om` | ObjectManager — runtime metadata-driven CRUD |
+| `metaobjects-omdb` | Relational implementation of ObjectManager over JDBC + Spring-tx |
+| `metaobjects-omdb-ktx` | Kotlin facade over OMDB |
+| `metaobjects-dynamic-core` | Runtime-dynamic metadata loading |
+| `metaobjects-core-spring` | Spring auto-configuration + `MetaDataService` |
+| `metaobjects-maven-plugin` | `mvn meta:gen` / `meta:migrate` / `meta:verify` |
 
-## 📦 **Quick Start**
+The `archetype` and `examples` directories still exist as scaffolding under source but are no longer part of the reactor or deployed to Central as of 7.0.0.
 
-### **Basic Usage (Framework-Independent)**
-```xml
-<dependency>
-    <groupId>com.metaobjects</groupId>
-    <artifactId>metaobjects-core</artifactId>
-    <version>6.3.1-SNAPSHOT</version>
-</dependency>
-```
+## Quick start
 
-### **Spring Integration**
-```xml
-<dependency>
-    <groupId>com.metaobjects</groupId>
-    <artifactId>metaobjects-core-spring</artifactId>
-    <version>6.3.1-SNAPSHOT</version>
-</dependency>
-```
-
-### **Fluent Constraint System**
 ```xml
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-metadata</artifactId>
-    <version>6.3.1-SNAPSHOT</version>
+    <version>7.0.0</version>
 </dependency>
 ```
 
-### **Code Generation**
+Spring REST + JPA stack:
+
+```xml
+<dependency>
+    <groupId>com.metaobjects</groupId>
+    <artifactId>metaobjects-codegen-spring</artifactId>
+    <version>7.0.0</version>
+</dependency>
+<dependency>
+    <groupId>com.metaobjects</groupId>
+    <artifactId>metaobjects-core-spring</artifactId>
+    <version>7.0.0</version>
+</dependency>
+```
+
+Maven plugin for `meta:gen` / `meta:migrate` / `meta:verify`:
+
 ```xml
 <plugin>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-maven-plugin</artifactId>
-    <version>6.3.1-SNAPSHOT</version>
+    <version>7.0.0</version>
     <executions>
         <execution>
-            <goals><goal>generate</goal></goals>
+            <goals><goal>gen</goal></goals>
         </execution>
     </executions>
 </plugin>
 ```
 
-## 🎯 **Key Features**
+Kotlin entry point — adds the Kotlin facade and the KotlinPoet codegen pipeline:
 
-### **🚀 Revolutionary Fluent Constraint System**
-- **Fluent API** - AttributeConstraintBuilder with chainable method calls for elegant constraint definitions
-- **115+ Constraints** - Comprehensive validation coverage (57 placement + 28 validation + 30 array-specific)
-- **Attribute-Specific Validation** - Enhanced ConstraintEnforcer with precise attribute-level constraint checking
-- **Type Safety** - Compile-time checking of constraint definitions with enhanced error reporting
-
-### **🎲 Universal Array Support**
-- **`isArray` modifier** - Single universal modifier replaces array subtypes, eliminating type explosion
-- **Cross-Platform Ready** - Array types map cleanly to Java, C#, TypeScript
-- **Reduced Complexity** - 6 core field types instead of 12+ with unlimited array combinations
-
-### **🏗️ Modern Architecture**
-- **Metadata-Driven Development** - Define object structures, validation, and relationships through metadata
-- **Cross-Language Code Generation** - Generate Java, C#, TypeScript from metadata definitions
-- **Framework Integration** - Native support for Spring, OSGi frameworks
-- **Canonical fused-key wire format** - `{ "field.long": { "name": "id" } }` (type and subtype fused into the wrapper key) is the canonical on-disk shape. The Java parser still uses `MetaField.getMetaSubType()` and `SUBTYPE_*` constants internally; the wire format is the canonical contract enforced by the cross-language conformance harness. See `metaobjects/spec/wire-format.md`.
-- **OSGi Compatible** - Full bundle lifecycle support with WeakReference cleanup patterns
-- **Provider-Based Registration** - Java's `MetaDataTypeProvider` (`ServiceLoader`-discovered) is the pioneering implementation of the type-provider model adopted across all language ports. New types, subtypes, and attributes are contributed by a provider — never by editing central registry files.
-
-## 📝 **Authoring formats**
-
-The Java loader accepts both authoring formats:
-
-- **Canonical JSON** (`*.json`) — the cross-language interchange shape.
-- **Sigil-free YAML** (`*.yaml` / `*.yml`) — the AI-first authoring front-end
-  (ADR-0006). YAML is desugared to canonical JSON at load time; the shared
-  conformance corpus at `../../fixtures/yaml-conformance/` exercises every
-  desugar rule cross-language. The YAML front-end ships in `metadata` via
-  `com.metaobjects.loader.parser.yaml.ParserYaml` and is wired automatically
-  for any source whose filename ends in `.yaml` / `.yml`.
-
-A single directory may freely mix `.json` and `.yaml` files — the loader
-discovers each source's format from its filename extension and routes it to
-the matching parser. Overlay semantics and load order are unchanged.
-
-YAML front-end design: ADR-0006.
-
-## 📚 **Documentation & Examples**
-
-### **Examples Structure**
-The `examples/` module provides complete working examples:
-
-- **`basic-example`** - Core functionality without framework dependencies
-- **`spring-example`** - Spring Framework integration patterns  
-- **`osgi-example`** - OSGi bundle lifecycle and service discovery
-- **`shared-resources`** - Common metadata used across examples
-
-### **Running Examples**
-```bash
-# Basic MetaObjects functionality - now with simplified execution!
-cd examples/basic-example && mvn exec:java
-
-# Spring integration - multiple options available
-cd examples/spring-example && mvn spring-boot:run
-# OR: cd examples/spring-example && mvn exec:java
-
-# OSGi patterns
-cd examples/osgi-example && mvn compile exec:java
+```xml
+<dependency>
+    <groupId>com.metaobjects</groupId>
+    <artifactId>metaobjects-metadata-ktx</artifactId>
+    <version>7.0.0</version>
+</dependency>
+<dependency>
+    <groupId>com.metaobjects</groupId>
+    <artifactId>metaobjects-codegen-kotlin</artifactId>
+    <version>7.0.0</version>
+</dependency>
 ```
 
-## 🏗️ **Architecture Benefits**
+## Authoring formats
 
-### **Maven Publishing Ready**
-Each module can be published independently to Maven Central, allowing users to include only needed functionality without framework bloat.
+The Java loader accepts both authoring formats per the cross-language standard:
 
-### **Framework Choice**
-- **Core modules**: Work in any Java environment
-- **Integration modules**: Provide native framework support when desired
-- **No forced dependencies**: Choose your stack
+- **Canonical JSON** (`*.json`) — the on-disk interchange shape.
+- **Sigil-free YAML** (`*.yaml` / `*.yml`) — the AI-first authoring front-end ([ADR-0006](../../spec/decisions/ADR-0006-ai-first-yaml-authoring.md)). YAML is desugared to canonical JSON at load time; the shared `fixtures/yaml-conformance/` corpus exercises every desugar rule across the five ports.
 
-### **Modular Development**
-- **Single Responsibility**: Each module has a focused purpose
-- **Clean Dependencies**: No circular dependencies
-- **OSGi Compatible**: Full bundle support with proper lifecycle management
+A single directory may freely mix `.json` and `.yaml` files — the loader discovers each source's format from its filename extension and routes it to the matching parser. Overlay semantics and load order are unchanged. The YAML front-end lives in `metadata` (`com.metaobjects.loader.parser.yaml.ParserYaml`) and is wired automatically for any source whose filename ends in `.yaml` / `.yml`.
 
-## 🔧 **Building & Testing**
+## Provider-based registration
 
-### **Build Requirements**
-- Java 21 LTS (Production Ready)
+Java's `MetaDataTypeProvider` (`ServiceLoader`-discovered) is the implementation of the type-provider model adopted across every language port. New types, subtypes, and attributes are contributed by a provider — never by editing central registry files. Type-binding to native classes is resolved through `ObjectClassRegistry` at load time, not via reflection, so the registration stays AOT/native-image friendly (see [ADR-0001](../../spec/decisions/ADR-0001-cross-language-type-binding.md)).
+
+## Build + test
+
+- Java 21 LTS
 - Maven 3.9+
 
-### **Full Build**
 ```bash
-mvn clean compile    # Compile all modules
-mvn test            # Run full test suite
-mvn package         # Package all modules
+cd server/java
+mvn clean install              # build all reactor modules
+mvn test                       # run unit tests
+mvn -pl integration-tests verify
+mvn -pl integration-tests-kotlin verify  # persistence-conformance against Testcontainers Postgres
 ```
 
-### **Module Dependencies**
-Build order: `metadata → codegen-* → maven-plugin → core → core-spring → archetype → examples`
-
-## 🛡️ **2024-2025 Comprehensive Modernization**
-
-**MetaObjects has undergone complete modernization across security, architecture, and infrastructure:**
-
-### **🔒 Security Hardening**
-- **100% Critical Vulnerabilities Eliminated**: All high and critical severity issues resolved
-- **CVE-2015-7501 & CVE-2015-6420 FIXED**: Apache Commons Collections RCE vulnerabilities eliminated
-- **Dependency Management**: Centralized security overrides (SnakeYAML 1.30 → 2.2, Gson → 2.13.2)
-- **Modern Dependencies**: Spring 5.3.39, Jackson 2.18.1, Logback 1.5.19, secure versions throughout
-
-### **🚀 Java 21 LTS Migration**
-- **Modern Platform**: Fully migrated to Java 21 LTS for enhanced performance and security
-- **Jakarta EE**: Updated servlet imports (javax.servlet → jakarta.servlet) for Spring 6 compatibility
-- **Build Optimization**: Maven caching providing 60%+ build time improvement
-- **Cross-Platform**: Temurin JDK for consistent cross-platform builds
-
-### **🧹 Code Quality Modernization**
-- **400+ Lines Eliminated**: Deprecated/vulnerable code and legacy log4j configurations removed
-- **Modern APIs**: Zero @Deprecated annotations, Optional-based patterns throughout
-- **20+ Obsolete Files Removed**: Duplicate/legacy code cleanup across modules
-- **Enhanced Build System**: Updated Maven plugins (Surefire 3.5.2, Clean 3.4.0, Deploy 3.1.3)
-- **Consolidated Logging**: Standardized Logback configuration eliminating conflicts
-- **Developer Experience**: Added exec-maven-plugin for simplified example execution
-- **Professional Build Output**: Comprehensive logging cleanup with meaningful coverage thresholds
-
-### **⚙️ CI/CD Infrastructure**
-- **GitHub Actions**: Latest secure actions (checkout@v4, setup-java@v4, cache@v4)
-- **Build Reliability**: 100% test success rate across 1,247+ tests
-- **OSGi Compatibility**: Full bundle lifecycle management preserved
-- **Architecture Compliance**: Read-optimized performance patterns maintained
-
-### **📊 Quality Metrics**
-- ✅ **All 9 core modules**: Clean compilation and packaging
-- ✅ **Security posture**: Zero critical vulnerabilities (CVE-2015-7501 & CVE-2015-6420 eliminated)
-- ✅ **Updated dependencies**: Jackson 2.18.1, Logback 1.5.19, Commons Validator 1.10.0
-- ✅ **Test coverage**: Comprehensive test suite passing across all modules
-- ✅ **Build performance**: Optimized Maven build configuration
-- ✅ **Working examples**: 3 complete example projects (basic, spring, osgi)
-- ✅ **Fluent constraint system**: Advanced constraint definitions with AttributeConstraintBuilder
-- ✅ **Universal `isArray`**: Eliminates array subtype explosion while supporting all combinations
-- ✅ **OSGi compatibility**: Full bundle lifecycle support with WeakReference cleanup patterns
-
-**This represents a comprehensive modernization suitable for enterprise production environments while maintaining the sophisticated architectural patterns that make MetaObjects unique.**
-
-## 📋 **Migration from v5.1.x**
-
-The v5.2.0+ modular architecture maintains full backward compatibility while providing cleaner dependency management:
-
-1. **Replace single dependency** with appropriate modular dependencies
-2. **Update imports** if using internal APIs (rare)
-3. **Spring users**: Switch to `metaobjects-core-spring` for optimal integration
-4. **Code generation**: Use modular codegen artifacts for specific template engines
-
-See [Migration Guide](MIGRATION.md) for detailed instructions.
-
-## 🚀 **Release Notes**
-Current Development: **6.3.1-SNAPSHOT** (Fluent Constraint System + Universal `isArray` + H3 convergence in progress)
-Latest Stable Release: **6.2.5** (Maven Central Publishing Ready)
-
-**Major v6.3.1 Features:**
-- 🚀 **Revolutionary Fluent Constraint System** with AttributeConstraintBuilder API
-- 🎲 **Universal `isArray` modifier** eliminating array subtype explosion
-- 🔧 **Enhanced ConstraintEnforcer** with attribute-specific validation
-- 📊 **Comprehensive Constraints** with advanced validation patterns
-- 🏢 **Provider-Based Registration** with clean service discovery (`MetaDataTypeProvider` via `ServiceLoader`)
-- 🔒 **Security Updates** - All critical vulnerabilities resolved
-- 🏢 **Modular Architecture** - 9 focused, independent modules
-- 📚 **Working Examples** - Complete demonstration projects
-- 🔄 **H3 convergence (in progress)** - Cross-language conformance harness + canonical fused-key wire format alignment with the TypeScript port
-
-Click here for complete [Release Notes](RELEASE_NOTES.md).
+Releases to Maven Central: see [docs/RELEASING-java.md](../../docs/RELEASING-java.md).
 
 ## License
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
 
-<http://www.apache.org/licenses/LICENSE-2.0>
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-[Apache License 2.0](LICENSE)
+[Apache License 2.0](LICENSE).

@@ -18,8 +18,8 @@ Choose the appropriate dependency based on your project type:
     <dependencies>
         <dependency>
             <groupId>com.metaobjects</groupId>
-            <artifactId>metaobjects-core</artifactId>
-            <version>6.2.6-SNAPSHOT</version>
+            <artifactId>metaobjects-metadata</artifactId>
+            <version>7.0.0</version>
         </dependency>
     </dependencies>
     ```
@@ -30,8 +30,8 @@ Choose the appropriate dependency based on your project type:
     <dependencies>
         <dependency>
             <groupId>com.metaobjects</groupId>
-            <artifactId>metaobjects-spring</artifactId>
-            <version>6.2.6-SNAPSHOT</version>
+            <artifactId>metaobjects-core-spring</artifactId>
+            <version>7.0.0</version>
         </dependency>
     </dependencies>
     ```
@@ -43,7 +43,7 @@ Choose the appropriate dependency based on your project type:
         <dependency>
             <groupId>com.metaobjects</groupId>
             <artifactId>metaobjects-codegen-mustache</artifactId>
-            <version>6.2.6-SNAPSHOT</version>
+            <version>7.0.0</version>
         </dependency>
     </dependencies>
 
@@ -51,7 +51,7 @@ Choose the appropriate dependency based on your project type:
         <plugin>
             <groupId>com.metaobjects</groupId>
             <artifactId>metaobjects-maven-plugin</artifactId>
-            <version>6.2.5-SNAPSHOT</version>
+            <version>7.0.0</version>
             <executions>
                 <execution>
                     <goals><goal>generate</goal></goals>
@@ -208,9 +208,10 @@ Create a simple Java application that loads and uses the metadata:
             MetaObject userMeta = loader.getMetaObjectByName("User");
             System.out.println("Loaded metadata for: " + userMeta.getName());
 
-            // 3. Explore the metadata structure
+            // 3. Explore the metadata structure (source-v2, ADR-0007)
+            String tableName = userMeta.getPrimaryRdbTableName();   // walks @extends
             System.out.println("Database table: " +
-                userMeta.getMetaAttr("dbTable").getValueAsString());
+                (tableName != null ? tableName : userMeta.getName()));
 
             // 4. Examine fields
             System.out.println("\nFields:");
@@ -282,9 +283,10 @@ Create a simple Java application that loads and uses the metadata:
 
             System.out.println("Loaded metadata for: " + userMeta.getName());
 
-            // Use the metadata same as plain Java example above
+            // Use the metadata same as plain Java example above (source-v2, ADR-0007)
+            String tableName = userMeta.getPrimaryRdbTableName();
             System.out.println("Database table: " +
-                userMeta.getMetaAttr("dbTable").getValueAsString());
+                (tableName != null ? tableName : userMeta.getName()));
 
             // ... rest of exploration code
         }

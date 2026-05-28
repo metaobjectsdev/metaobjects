@@ -1,81 +1,53 @@
-# MetaObjects Release Notes
-Latest update: October 4th 2025
+# MetaObjects Java — Release Notes
 
-## Introduction
-This contains the list of past releases as well as an update on the planned features for a coming release.  Nothing
-planned is guaranteed as is subject to change.
+Latest update: 2026-05-28.
 
-## License
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+Java release line independent from the TypeScript line. TS is on a separate `0.x` track. Java tags are `vX.Y.Z`. Maven coordinates are `com.metaobjects:*` on Maven Central. Release procedure: [docs/RELEASING-java.md](../../docs/RELEASING-java.md).
 
-<http://www.apache.org/licenses/LICENSE-2.0>
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-[Apache License 2.0](LICENSE)
-
-# Known Issues
-
-# Upcoming Releases
-
-## Version 5.x.0 
-
-### Planned Features
-* <b>Native support for Abstract and Interface MetaData</b>
-  - Enforcement of rules around how abstract metadata and interfaces can be used
-  - Interfaces implemented on metadata will pull over the associated metadata from the interface
-  - Code generation support for abstracts and interfaces
-  
-* <b>TypedMetaDataLoader</b>
-  - Support for more advanced control over the metadata models using the TypesConfig models.
-  
-* <b>MetaData IO Enhancements</b>
-  - Potential Support for YAML, HOCON, or TOML for configuration files
-  - Support for Plugins in the IO Readers and Writers
-  - Support for Namespaces within the XML Serialization
-  
-* <b>MetaObjects Editor Support</b>
-  - Integrated into the MetaObjects Plugin, will be launched off command-line via "mvn metaobjects:editor"
-  - Support for viewing included metadata, editing project metadata, and supporting overlays
-  - Support for running generators after edit and viewing the output within the editor
+Apache 2.0. See [LICENSE](LICENSE).
 
 # Current Development
 
-## Version 6.3.1-SNAPSHOT (Current Development)
+## Version 7.0.1-SNAPSHOT (Current Development)
 
-### 🏗️ **Infrastructure Modernization & Security Hardening**
-
-This release completes a comprehensive modernization of the MetaObjects infrastructure with security hardening, build system improvements, and enhanced developer experience.
-
-**Completed Infrastructure Improvements:**
-- **🔒 Complete Security Resolution**: All critical vulnerabilities eliminated (Gson 2.13.2, Jackson 2.18.1)
-- **🏗️ Build System Modernization**: Updated Maven plugins (Surefire 3.5.2, Clean 3.4.0, Deploy 3.1.3)
-- **🧹 Logging Cleanup**: Consolidated Logback configuration, removed conflicting log4j.properties files
-- **🚀 Enhanced Developer Experience**: Added exec-maven-plugin for simplified example execution (`mvn exec:java`)
-- **📋 Quality Assurance**: Meaningful test coverage thresholds (65% instruction, 50% branch, 70% class)
-- **🏠 Platform Modernization**: Full Java 21 LTS compatibility with enhanced performance
-
-**Key Benefits:**
-- Zero critical security vulnerabilities remaining
-- Cleaner build output with professional logging configuration
-- Simplified example execution with multiple run options
-- Enhanced quality metrics driving continuous improvement
-- Modern Maven toolchain for reliable builds
-
-**Next Phase Focus:**
-- Release preparation for v6.3.1 final
-- CI/CD pipeline verification
-- Performance optimization initiatives
+Post-7.0.0 cleanup line. No content commitments yet. Tracking work lives in [spec/roadmap.md](../../spec/roadmap.md).
 
 ---
 
 # Released Versions
+
+## Version 7.0.0 (2026-05-27)
+
+First publish from the consolidated `server/java/` reactor on Maven Central. 14 publishable modules under `com.metaobjects:*`. The Java port is now feature-complete across all four MetaObjects pillars and fully green across all five cross-port conformance corpora.
+
+### What ships
+
+- **Codegen pillar.** Spring REST + DTO + JPA repository emit via `metaobjects-codegen-spring` (filter allowlists, payload records, output parsers). Kotlin codegen via `metaobjects-codegen-kotlin` on KotlinPoet (entity / Exposed table / Spring controller / payload / validator / stored-proc / FK / view generators). PlantUML via `metaobjects-codegen-plantuml`. Mustache template engine via `metaobjects-codegen-mustache`.
+- **Runtime pillar.** OMDB persistence layer over modernized JDBC with Spring-`@Transactional`. FR-003 fully shipped — diff-and-converge migration engine, binding registry, typed jsonb codec, source/origin metamodel, plus FR-003 Plan 4 engine-debt remediation (atomic mapping cache off shared `MetaObject`, JDBC codec registry per [ADR-0002](../../spec/decisions/ADR-0002-jdbc-codec-registry.md), `inTransaction` template method).
+- **Drift detection pillar.** `mvn meta:verify` against entity codegen, prompt templates, output parsers, and database schema.
+- **Prompt construction pillar.** `metaobjects-render` (Mustache + payload-VO + verify) shipped. FR-006 `template.output` parser-on-receipt codegen for all four DTO sub-paradigms (entity / payload / Spring controller / Kotlin Spring controller). Render output byte-identical with TS / C# / Kotlin / Python against the shared `fixtures/render-conformance/` corpus.
+- **Cross-port features.** FR5 family (a / b / c / d / e + WARN envelope shape — actionable loader errors per [ADR-0009](../../spec/decisions/ADR-0009-actionable-loader-errors.md)). FR-008 / FR-009 (cross-port REST API contract + 10 filter operators). Source v2 paradigm (`source.rdb` + `@table`/`@column` + `@kind` per [ADR-0007](../../spec/decisions/ADR-0007-source-paradigm-v2.md)).
+- **Kotlin facade.** `metaobjects-metadata-ktx` ships a Kotlin facade over the Java metadata core (extension functions, friction-reduction helpers). `metaobjects-omdb-ktx` does the same over OMDB.
+- **Conformance.** All five corpora green: metamodel 85/85, yaml 6/6, persistence 12/12 (against Testcontainers Postgres), render 4/4, verify 31/31.
+- **Reactor housekeeping.** The `archetype` and `examples` modules are no longer in `<modules>` — they remain as scaffold source but are not built or deployed.
+
+### Coordinates
+
+```xml
+<dependency>
+    <groupId>com.metaobjects</groupId>
+    <artifactId>metaobjects-metadata</artifactId>
+    <version>7.0.0</version>
+</dependency>
+```
+
+See [README.md](README.md) for the complete module table + per-stack entry points (Spring, Kotlin, Maven plugin).
+
+### Upgrading from 6.x
+
+See [MIGRATION.md](MIGRATION.md).
+
+---
 
 ## Version 6.3.0 (Released)
 

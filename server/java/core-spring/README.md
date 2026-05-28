@@ -9,10 +9,10 @@ This module provides comprehensive Spring Framework integration for MetaObjects,
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-core-spring</artifactId>
-    <version>6.3.1-SNAPSHOT</version>
+    <version>7.0.0</version>
 </dependency>
 ```
-*Note: Automatically includes `metaobjects-core`*
+*Note: pulls in `metaobjects-metadata` transitively.*
 
 ### **Spring Boot Auto-Configuration**
 Add to your `application.properties`:

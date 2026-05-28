@@ -235,7 +235,7 @@ registry.registerLoader(loader);
 MetaObject found = registry.findMetaObjectByName("com_example_model::User");
 ```
 
-### **Fluent Constraint System (v6.2.6+)**
+### **Fluent Constraint System**
 ```java
 // Enhanced type registration with AttributeConstraintBuilder
 public static void registerTypes(MetaDataRegistry registry) {
@@ -257,7 +257,7 @@ public static void registerTypes(MetaDataRegistry registry) {
 }
 ```
 
-### **Universal @isArray Support (v6.2.6+)**
+### **Universal @isArray Support**
 ```java
 // Checking for array type fields with universal @isArray modifier
 public boolean isArrayType() {
@@ -275,7 +275,7 @@ public boolean isArrayType() {
 }
 ```
 
-**v6.2.6 Features Demonstrated:**
+**Constraint System Features Demonstrated:**
 - **115+ Comprehensive Constraints** - Placement, validation, and array-specific rules
 - **AttributeConstraintBuilder** - Type-safe fluent constraint definition
 - **Enhanced ConstraintEnforcer** - Precise attribute-specific validation

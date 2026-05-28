@@ -66,10 +66,12 @@ MetaField idField = metadata.getChild(MetaField.class, "id");
 
 **Attribute Access**:
 ```java
-// Check for attributes
-if (metadata.hasMetaAttr("dbTable")) {
-    MetaAttribute dbTable = metadata.getMetaAttr("dbTable");
-    String tableName = dbTable.getValueAsString();
+// Read a string attribute (returns Optional)
+metadata.findString("maxLength").ifPresent(System.out::println);
+
+// Check for an attribute by name
+if (metadata.hasMetaAttr("required")) {
+    boolean required = metadata.getMetaAttr("required").getValueAsBoolean();
 }
 
 // Get all attributes
@@ -77,6 +79,14 @@ List<MetaAttribute> allAttrs = metadata.getMetaAttrs();
 for (MetaAttribute attr : allAttrs) {
     System.out.println(attr.getName() + " = " + attr.getValueAsString());
 }
+```
+
+**Source-aware access (source-v2, ADR-0007)**: when you need an entity's physical table or view name, use the `MetaObject` accessors rather than reading an attribute. They walk `extends` and resolve the `@table` value on the primary `source.rdb` child:
+
+```java
+MetaObject entity = loader.getMetaObjectByName("User");
+String tableName = entity.getPrimaryRdbTableName();   // null if no writable source
+String viewName  = entity.getPrimaryRdbViewName();    // null if no read-only source
 ```
 
 **Type Checking**:

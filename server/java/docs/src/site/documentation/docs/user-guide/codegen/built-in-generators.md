@@ -84,7 +84,7 @@ The XSD generator creates comprehensive XML Schema files that validate metadata 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `targetNamespace` | string | `http://metaobjects.com/schema` | XML target namespace |
-| `schemaVersion` | string | `6.0.0` | Schema version |
+| `schemaVersion` | string | `7.0.0` | Schema version |
 | `includeInlineAttributes` | boolean | `true` | Support inline attribute syntax |
 
 **Maven Plugin Configuration**:
@@ -122,7 +122,7 @@ This generator produces detailed documentation designed for AI systems, includin
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `version` | string | `6.1.0` | Documentation version |
+| `version` | string | `7.0.0` | Documentation version |
 | `includeInheritance` | boolean | `true` | Include inheritance hierarchy analysis |
 | `includeImplementationDetails` | boolean | `true` | Include class mapping details |
 | `includeExtensionGuidance` | boolean | `true` | Include plugin development guidance |
@@ -146,7 +146,7 @@ This generator produces detailed documentation designed for AI systems, includin
 ```json
 {
   "metaObjectsDocumentation": {
-    "version": "6.1.0",
+    "version": "7.0.0",
     "generatedTimestamp": "2024-01-15T10:30:00Z",
     "typeSystem": {
       "inheritanceHierarchy": {
@@ -185,7 +185,7 @@ This generator produces comprehensive, searchable HTML documentation with modern
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `version` | string | `6.2.0` | Documentation version |
+| `version` | string | `7.0.0` | Documentation version |
 | `title` | string | `MetaObjects Framework Documentation` | Document title |
 | `includeInheritance` | boolean | `true` | Include inheritance visualization |
 | `includeExamples` | boolean | `true` | Include usage examples |
@@ -391,7 +391,7 @@ The built-in generators integrate seamlessly with the MetaObjects Maven plugin:
 <plugin>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-maven-plugin</artifactId>
-    <version>6.2.0</version>
+    <version>7.0.0</version>
     <executions>
         <execution>
             <id>generate-schemas</id>

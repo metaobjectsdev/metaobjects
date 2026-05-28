@@ -151,7 +151,7 @@ Represents object structures like classes or entities:
 ```java
 MetaObject userMeta = loader.getMetaObjectByName("User");
 List<MetaField> fields = userMeta.getChildren(MetaField.class);
-String dbTable = userMeta.getMetaAttr("dbTable").getValueAsString();
+String dbTable = userMeta.getPrimaryRdbTableName();   // source-v2, ADR-0007
 ```
 
 ### :material-textbox: **MetaField** (Field Definitions)
@@ -296,13 +296,12 @@ MetaObjects enforces rules through a comprehensive constraint system with **115+
 Define **what can be placed where**:
 
 ```java
-// "Objects CAN optionally have dbTable attributes"
-PlacementConstraint dbTableConstraint = new PlacementConstraint(
-    "object.database.table",
-    "Objects can optionally have dbTable attribute",
+// "Objects CAN optionally have a source.rdb child"
+PlacementConstraint sourceConstraint = new PlacementConstraint(
+    "object.source.rdb",
+    "Objects can optionally have a source.rdb child",
     metadata -> metadata instanceof MetaObject,
-    child -> child instanceof StringAttribute &&
-             "dbTable".equals(child.getName())
+    child -> child instanceof RdbSource
 );
 ```
 

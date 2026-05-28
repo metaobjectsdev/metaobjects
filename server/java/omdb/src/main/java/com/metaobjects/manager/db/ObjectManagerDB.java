@@ -1114,23 +1114,6 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
             MetaObject resultClass = null;
 
             query = query.trim();
-            /*if (query.startsWith("[{")) {
-                int i = query.indexOf("}]");
-                if (i <= 0) {
-                    throw new MetaDataException("OQL does not contain a closing '}]': [" + query + "]");
-                }
-
-                String classTemplate = query.substring(2, i).trim();
-                query = query.substring(i + 2).trim();
-                String templateClassname = "draagon::meta::manager::db::OQL" + classTemplate.hashCode();
-
-                // Get the result class, try it from the cache first
-                resultClass = templateCache.get(templateClassname);
-                if (resultClass == null) {
-                    resultClass = com.metaobjects.object.ValueMetaObject.createFromTemplate(templateClassname, classTemplate);
-                    templateCache.put(templateClassname, resultClass);
-                }
-            } else*/
             if (query.startsWith("[")) {
                 int i = query.indexOf("]");
                 if (i <= 0) {

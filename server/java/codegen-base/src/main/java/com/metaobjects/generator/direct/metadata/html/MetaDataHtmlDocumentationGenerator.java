@@ -29,7 +29,7 @@ import java.io.OutputStream;
  *     <outputDir>${project.build.directory}/generated-docs</outputDir>
  *     <outputFilename>metaobjects-documentation.html</outputFilename>
  *     <title>MetaObjects Framework Documentation</title>
- *     <version>6.2.0</version>
+ *     <version>7.0.0</version>
  *     <includeInheritance>true</includeInheritance>
  *     <includeExamples>true</includeExamples>
  *     <includeExtensionGuide>true</includeExtensionGuide>

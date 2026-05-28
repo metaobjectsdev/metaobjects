@@ -321,16 +321,21 @@ new RegexConstraint(
 
 ## Common Attribute Patterns
 
-### Database Mapping Attributes
+### Database Mapping Attributes (source-v2, ADR-0007)
+
+Object-level table mapping is declared on a `source.rdb` child of the object, not as a direct attribute on the object. The legacy `dbTable` / `dbView` MetaAttribute pattern is retired.
 
 ```java
-// Database table mapping for objects
-StringAttribute dbTable = new StringAttribute("dbTable");
-dbTable.setValue("users");
+// Object-level: declare a source.rdb child with @kind and @table
+RdbSource source = new RdbSource("rdb");
+source.addMetaAttr(StringAttribute.create("kind",  "table"));
+source.addMetaAttr(StringAttribute.create("table", "users"));
+source.addMetaAttr(StringAttribute.create("schema", "public"));
+userObject.addChild(source);
 
-// Database column mapping for fields
-StringAttribute dbColumn = new StringAttribute("column");
-dbColumn.setValue("email_address");
+// Field-level: column physical name lives on @column (renamed from @dbColumn)
+StringAttribute column = new StringAttribute("column");
+column.setValue("email_address");
 
 // Nullable column specification
 BooleanAttribute dbNullable = new BooleanAttribute("dbNullable");
@@ -646,13 +651,14 @@ public String get{{capitalize name}}() {
 
 ### Database Mapping
 
-Attributes provide database mapping information:
+Attributes provide database mapping information. Object-level table/view names live on a `source.rdb` child of the object; field-level column names live on a `@column` attribute of the field.
 
 ```java
-// ORM integration reads database attributes
-String tableName = metaObject.findString("dbTable").orElse(metaObject.getName());
+// ORM integration reads source-v2 metadata
+String tableName  = Optional.ofNullable(metaObject.getPrimaryRdbTableName())
+                            .orElse(metaObject.getName());
 String columnName = metaField.findString("column").orElse(metaField.getName());
-boolean nullable = metaField.findBoolean("dbNullable").orElse(true);
+boolean nullable  = metaField.findBoolean("dbNullable").orElse(true);
 ```
 
 ## Next Steps
