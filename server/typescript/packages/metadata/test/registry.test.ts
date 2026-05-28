@@ -31,6 +31,9 @@ import {
   IDENTITY_SUBTYPES,
   RELATIONSHIP_SUBTYPES,
   LAYOUT_SUBTYPES,
+  SOURCE_SUBTYPES,
+  ORIGIN_SUBTYPES,
+  TEMPLATE_SUBTYPES,
 } from "../src/index.js";
 
 // Stub factory used throughout tests — Task 3 will provide the real MetaData.
@@ -307,16 +310,13 @@ describe("registerCoreTypes", () => {
     registerCoreTypes(registry);
   });
 
-  // 1. All 70 types registered (object subtypes: base/entity/value; field adds base + 16 subtypes (int/string/long/currency/enum/...);
-  //    view adds base + 13 subtypes (text/textarea/currency/...); layout adds base + dataGrid; source adds base + rdb;
-  //    origin adds base + passthrough + aggregate + collection; identity adds primary + secondary + reference;
-  //    attr adds base + string/int/long/double/boolean/class/properties/stringarray/filter;
-  //    template adds base + prompt + output + toolcall (FR-004 + ADR-0011) — net type count 70)
-  it("registers exactly 70 type definitions", () => {
-    expect(registry.allTypes()).toHaveLength(70);
-  });
-
-  // 2. Per-base-type subtype lists exact match
+  // 1. Per-base-type subtype lists exact match.
+  //
+  // We deliberately do NOT assert a global "exactly N type definitions" count:
+  // that integer bumps on every new subtype and the failure points at the
+  // wrong file. Per-base-type assertions catch drift in the relevant subtype
+  // family — when a subtype is added, only the matching test fails, and the
+  // diff name shows exactly which family changed.
   it("registers the correct subtypes for 'metadata'", () => {
     expect(registry.allSubTypesOf(TYPE_METADATA).sort()).toEqual([SUBTYPE_ROOT]);
   });
@@ -364,6 +364,24 @@ describe("registerCoreTypes", () => {
   it("registers the correct subtypes for 'relationship'", () => {
     expect(registry.allSubTypesOf(TYPE_RELATIONSHIP).sort()).toEqual(
       [...RELATIONSHIP_SUBTYPES].sort(),
+    );
+  });
+
+  it("registers the correct subtypes for 'source'", () => {
+    expect(registry.allSubTypesOf(TYPE_SOURCE).sort()).toEqual(
+      [...SOURCE_SUBTYPES].sort(),
+    );
+  });
+
+  it("registers the correct subtypes for 'origin'", () => {
+    expect(registry.allSubTypesOf(TYPE_ORIGIN).sort()).toEqual(
+      [...ORIGIN_SUBTYPES].sort(),
+    );
+  });
+
+  it("registers the correct subtypes for 'template'", () => {
+    expect(registry.allSubTypesOf(TYPE_TEMPLATE).sort()).toEqual(
+      [...TEMPLATE_SUBTYPES].sort(),
     );
   });
 
