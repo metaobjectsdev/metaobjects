@@ -1,0 +1,11 @@
+[test]
+# Preload JSDOM setup so component tests have a real `document` available the
+# moment `@testing-library/dom`'s `screen` module is first evaluated. The
+# per-package bunfig.toml files cover running `bun test` from inside an
+# individual package; this root-level config covers running it from
+# client/web/.
+#
+# We reuse the react package's setup file because it already pulls JSDOM from
+# its own node_modules (Bun's isolated install does not hoist jsdom up to
+# client/web/, so a root-level setup.ts could not import it directly).
+preload = ["./packages/react/test/setup.ts"]
