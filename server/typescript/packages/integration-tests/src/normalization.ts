@@ -64,14 +64,22 @@ function canonicalDecimal(s: string): string {
   return out;
 }
 
-function canonicalFloat(n: number): string {
+export function canonicalFloat(n: number): string {
   // In-band dyadic values (per normalization.md) render plain + shortest via String().
-  let out = String(n);
-  if (out.includes(".")) {
-    out = out.replace(/0+$/, "");
-    if (out.endsWith(".")) out = out.slice(0, -1);
+  // Out-of-band values (exponential notation) are forbidden by the wire contract;
+  // throw immediately so an authoring error surfaces loudly rather than silently
+  // corrupting the exponent digits during the trailing-zero strip.
+  const out = String(n);
+  if (/[eE]/.test(out)) {
+    throw new Error(
+      `canonicalFloat: ${n} is outside the plain-decimal band (exponential notation); ` +
+        `REAL/DOUBLE fixture values must be in-band dyadic rationals — ` +
+        `see fixtures/persistence-conformance/normalization.md`,
+    );
   }
-  return out;
+  if (!out.includes(".")) return out;
+  const stripped = out.replace(/0+$/, "");
+  return stripped.endsWith(".") ? stripped.slice(0, -1) : stripped;
 }
 
 // Format a Date as YYYY-MM-DDTHH:MM:SS[.fff] using UTC getters so the output
