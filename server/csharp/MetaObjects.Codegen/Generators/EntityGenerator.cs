@@ -171,7 +171,7 @@ public sealed class EntityGenerator : IGenerator
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
                 member = ScalarProperty(entity, field, [], withAttributes: false);
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
-                member = EnumShapeProperty(entity, field);
+                member = EnumProperty(entity, field, ColumnNamingStrategy.Literal, withAttributes: false);
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(entity, field, ctx) is { } nav)
                 member = nav;
             if (member is null) continue;
@@ -187,19 +187,6 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine();
         sb.AppendLine("}");
         return new EmittedFile($"{className}.g.cs", sb.ToString());
-    }
-
-    // An enum-subtype property for a shape class — same shape as EnumProperty but
-    // with NO [Column] attribute (shapes carry no EF mapping).
-    private static string EnumShapeProperty(MetaObject entity, MetaField field)
-    {
-        var typeName = CSharpNaming.EnumTypeName(entity, field);
-        var propName = CSharpNaming.Pascal(field.Name);
-        if (field.IsArray)
-            return $"    public List<{typeName}> {propName} {{ get; set; }} = new();";
-        var required = CSharpNaming.IsRequired(entity, field);
-        var type = required ? typeName : typeName + "?";
-        return $"    public {type} {propName} {{ get; set; }}";
     }
 
     // Plain POCO for a value object nested by an owned-type navigation. No [Table] /
@@ -271,16 +258,19 @@ public sealed class EntityGenerator : IGenerator
     // A property for an enum-subtype field. The property type is the nested enum name.
     // When the field is an array, emit List<EnumType> with an empty-list initializer;
     // the List is never nullable (the column stores a jsonb array, always present).
-    private static string EnumProperty(MetaObject entity, MetaField field, ColumnNamingStrategy strategy)
+    // withAttributes adds the EF [Column] mapping; abstract shape classes pass false
+    // (shapes carry no EF mapping).
+    private static string EnumProperty(
+        MetaObject entity, MetaField field, ColumnNamingStrategy strategy, bool withAttributes = true)
     {
         var typeName = CSharpNaming.EnumTypeName(entity, field);
         var propName = CSharpNaming.Pascal(field.Name);
-        var colAttr = $"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]";
+        var colAttr = withAttributes ? $"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]\n" : "";
         if (field.IsArray)
-            return $"{colAttr}\n    public List<{typeName}> {propName} {{ get; set; }} = new();";
+            return $"{colAttr}    public List<{typeName}> {propName} {{ get; set; }} = new();";
         var required = CSharpNaming.IsRequired(entity, field);
         var type = required ? typeName : typeName + "?";
-        return $"{colAttr}\n    public {type} {propName} {{ get; set; }}";
+        return $"{colAttr}    public {type} {propName} {{ get; set; }}";
     }
 
     // A scalar property. withAttributes adds the EF mapping annotations ([Key] for a

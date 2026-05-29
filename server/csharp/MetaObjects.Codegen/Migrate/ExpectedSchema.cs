@@ -17,6 +17,7 @@
 
 using MetaObjects.Codegen.Schema;
 using MetaObjects.Meta;
+using static MetaObjects.Codegen.InstanceArtifacts;
 using static MetaObjects.Core.Field.FieldConstants;
 using static MetaObjects.Core.Identity.IdentityConstants;
 
@@ -36,7 +37,7 @@ public static class ExpectedSchema
     public static SchemaSnapshot Build(MetaRoot root, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
     {
         var writableEntities = root.Objects()
-            .Where(o => o.IsEntity() && !o.IsAbstract && o.FindPrimaryWritableSource() is not null)
+            .Where(o => o.IsEntity() && EmitsInstanceArtifacts(o) && o.FindPrimaryWritableSource() is not null)
             .OrderBy(o => o.Name, StringComparer.Ordinal)
             .ToList();
         // FKs can only reference an entity that actually has a row in the snapshot —
