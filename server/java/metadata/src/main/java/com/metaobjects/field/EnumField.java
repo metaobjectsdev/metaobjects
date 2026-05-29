@@ -7,6 +7,7 @@
 package com.metaobjects.field;
 
 import com.metaobjects.DataTypes;
+import com.metaobjects.attr.PropertiesAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 import org.slf4j.Logger;
@@ -42,12 +43,19 @@ public class EnumField extends PrimitiveField<String> {
     /** Enum field subtype constant — cross-language vocabulary. */
     public static final String SUBTYPE_ENUM = "enum";
 
-    // === ATTRIBUTE CONSTANT ===
+    // === ATTRIBUTE CONSTANTS ===
     /**
      * Name of the required string-array attribute that lists member symbols.
      * Cross-language vocabulary: {@code @values} in canonical JSON.
      */
     public static final String ATTR_VALUES = "values";
+
+    /**
+     * Name of the optional off-vocabulary → canonical-member alias map (properties).
+     * Consumed by FR-010 recover: maps raw input tokens to their canonical enum member.
+     * Cross-language vocabulary: {@code @enumAlias} in canonical JSON.
+     */
+    public static final String ATTR_ENUM_ALIAS = "enumAlias";
 
     /**
      * Per-member identifier pattern — enforced at load time.
@@ -101,6 +109,12 @@ public class EnumField extends PrimitiveField<String> {
                 def.requiredAttributeWithConstraints(ATTR_VALUES)
                    .ofType(StringAttribute.SUBTYPE_STRING)
                    .asArray();
+
+                // Optional @enumAlias properties attribute — off-vocabulary → canonical-member map.
+                // Consumed by FR-010 recover; not validated at load time.
+                def.optionalAttributeWithConstraints(ATTR_ENUM_ALIAS)
+                   .ofType(PropertiesAttribute.SUBTYPE_PROPERTIES)
+                   .asSingle();
             });
 
             log.debug("Registered EnumField type with required @values attribute and member validation");

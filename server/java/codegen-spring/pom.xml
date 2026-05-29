@@ -44,6 +44,21 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- compile-and-run test: generated parser uses metaobjects-render recover engine -->
+        <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-render</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- compile-and-run test: generated parser imports Jackson ObjectMapper -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Inherited from parent POM: SLF4J, JUnit 4, Logback -->
     </dependencies>
 

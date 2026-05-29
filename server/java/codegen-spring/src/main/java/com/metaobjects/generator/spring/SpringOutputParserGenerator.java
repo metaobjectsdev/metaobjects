@@ -128,7 +128,19 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
            .append(template.getName()).append("`\n");
         src.append("package ").append(outPkg).append(";\n\n");
         src.append("import com.fasterxml.jackson.core.JsonProcessingException;\n");
-        src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n\n");
+        src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
+        String format = template.getFormat();
+        boolean emitRecover = TemplateConstants.FORMAT_JSON.equalsIgnoreCase(format)
+            || TemplateConstants.FORMAT_XML.equalsIgnoreCase(format);
+        if (emitRecover) {
+            src.append("import com.metaobjects.render.recover.FieldKind;\n");
+            src.append("import com.metaobjects.render.recover.FieldSpec;\n");
+            src.append("import com.metaobjects.render.recover.Format;\n");
+            src.append("import com.metaobjects.render.recover.Recover;\n");
+            src.append("import com.metaobjects.render.recover.RecoverMap;\n");
+            src.append("import com.metaobjects.render.recover.RecoverSchema;\n");
+        }
+        src.append("\n");
         src.append("/** Parser for LLM responses matching the `")
            .append(templateShort).append("` template.output. */\n");
         src.append("public final class ").append(parserClass).append(" {\n\n");
@@ -143,6 +155,26 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         src.append("    public static ").append(payloadClass).append(" parse(String text) throws JsonProcessingException {\n");
         src.append("        return MAPPER.readValue(text, ").append(payloadClass).append(".class);\n");
         src.append("    }\n");
+        if (emitRecover) {
+            String schemaLit = RecoverSchemaEmitter.schemaLiteral(payloadVo, format, payloadClass);
+            String ctorArgs = RecoverSchemaEmitter.constructorArgs(payloadVo);
+            src.append("\n");
+            src.append("    private static final RecoverSchema RECOVER_SCHEMA =\n");
+            src.append("        ").append(schemaLit).append(";\n");
+            src.append("\n");
+            src.append("    /** Tolerant best-effort recovery; never throws. Components are null where lost/malformed. */\n");
+            src.append("    public static com.metaobjects.render.recover.RecoveryResult<").append(payloadClass).append("> recover(String text) {\n");
+            src.append("        return recover(text, com.metaobjects.render.recover.RecoverOptions.defaults());\n");
+            src.append("    }\n");
+            src.append("\n");
+            src.append("    public static com.metaobjects.render.recover.RecoveryResult<").append(payloadClass).append("> recover(String text, com.metaobjects.render.recover.RecoverOptions opts) {\n");
+            src.append("        com.metaobjects.render.recover.RecoverOutcome o = Recover.recover(text, RECOVER_SCHEMA, opts);\n");
+            src.append("        java.util.Map<String, Object> d = o.data();\n");
+            src.append("        ").append(payloadClass).append(" data = new ").append(payloadClass).append("(\n");
+            src.append("                ").append(ctorArgs).append(");\n");
+            src.append("        return new com.metaobjects.render.recover.RecoveryResult<>(data, o.report());\n");
+            src.append("    }\n");
+        }
         src.append("}\n");
 
         try {

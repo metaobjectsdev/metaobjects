@@ -3,6 +3,7 @@ package com.metaobjects.generator.spring;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
+import com.metaobjects.object.MetaObject;
 
 import java.io.IOException;
 import java.net.URI;
@@ -27,6 +28,85 @@ final class SpringTestFixtures {
 
     private SpringTestFixtures() { /* no instances */ }
 
+    // -------------------------------------------------------------------------
+    // Fixtures
+    // -------------------------------------------------------------------------
+
+    /**
+     * Inline metadata declaring one {@code object.value} for
+     * {@link RecoverSchemaEmitter} unit tests. Package: {@code acme::ai}.
+     * Fields: {@code text} (string, required), {@code confidence} (enum, required,
+     * values HIGH/OK/LOW, alias medium→OK), {@code note} (string, optional).
+     */
+    static final String RECOVER_VO_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ai", "children": [
+            { "object.value": { "name": "AnswerOutputPayload", "children": [
+                { "field.string":  { "name": "text",       "@required": true } },
+                { "field.enum":    { "name": "confidence", "@required": true,
+                                    "@values": ["HIGH","OK","LOW"],
+                                    "@enumAlias": { "medium": "OK" } } },
+                { "field.string":  { "name": "note" } }
+            ] } }
+          ] }
+        }
+        """;
+
+    /**
+     * Inline metadata declaring an {@code object.value} whose single enum field has
+     * 12 {@code @enumAlias} entries — more than the 10-pair limit of
+     * {@code java.util.Map.of}. Used by {@link RecoverSchemaEmitterTest} to verify that
+     * {@link RecoverSchemaEmitter} emits {@code Map.ofEntries} instead of {@code Map.of}.
+     * Package: {@code acme::ai}. VO: {@code BigAliasPayload}.
+     * Field: {@code label} (enum, required, values HIGH/LOW, aliases a1..a12 → HIGH).
+     */
+    static final String RECOVER_BIG_ALIAS_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ai", "children": [
+            { "object.value": { "name": "BigAliasPayload", "children": [
+                { "field.enum": { "name": "label", "@required": true,
+                                  "@values": ["HIGH","LOW"],
+                                  "@enumAlias": {
+                                    "a1": "HIGH", "a2": "HIGH", "a3": "HIGH",
+                                    "a4": "HIGH", "a5": "HIGH", "a6": "HIGH",
+                                    "a7": "HIGH", "a8": "HIGH", "a9": "HIGH",
+                                    "a10": "HIGH", "a11": "HIGH", "a12": "HIGH"
+                                  } } }
+            ] } }
+          ] }
+        }
+        """;
+
+    /**
+     * Inline metadata combining {@link #RECOVER_VO_FIXTURE}'s {@code AnswerOutputPayload}
+     * VO with a {@code template.output} named {@code AnswerOutput} ({@code @format: json})
+     * for end-to-end {@link SpringOutputParserGenerator} recover-codegen tests.
+     * Package: {@code acme::ai}.
+     */
+    static final String RECOVER_OUTPUT_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ai", "children": [
+            { "object.value": { "name": "AnswerOutputPayload", "children": [
+                { "field.string":  { "name": "text",       "@required": true } },
+                { "field.enum":    { "name": "confidence", "@required": true,
+                                    "@values": ["HIGH","OK","LOW"],
+                                    "@enumAlias": { "medium": "OK" } } },
+                { "field.string":  { "name": "note" } }
+            ] } },
+            { "template.output": {
+                "name": "AnswerOutput",
+                "@payloadRef": "AnswerOutputPayload",
+                "@textRef": "ai/answer",
+                "@format": "json"
+            } }
+          ] }
+        }
+        """;
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
     /**
      * Write {@code fixtureJson} to a temp file under {@code parent} and return
      * a fresh {@link MetaDataLoader} initialised against it.
@@ -46,5 +126,28 @@ final class SpringTestFixtures {
         loader.setSourceURIs(List.of(uri));
         loader.init();
         return loader;
+    }
+
+    /**
+     * Load the inline {@code fixtureJson} string into a fresh loader (writing to
+     * a system temp file) and return the named value-object, resolved by short
+     * name or FQN. Throws {@link IllegalStateException} when the VO cannot be
+     * found, so test failures are explicit rather than silent NPE.
+     *
+     * @param fixtureJson canonical-JSON fixture text
+     * @param voName      short name or FQN of the target {@code object.value}
+     */
+    static MetaObject loadVo(String fixtureJson, String voName) throws IOException {
+        Path tmp = Files.createTempDirectory("spring-test-vo");
+        MetaDataLoader loader = loadFixture(tmp, "vo-fixture", fixtureJson);
+        for (MetaObject mo : loader.getMetaObjects()) {
+            String fqn = mo.getName();
+            String shortName = fqn.contains("::") ? fqn.substring(fqn.lastIndexOf("::") + 2) : fqn;
+            if (fqn.equals(voName) || shortName.equals(voName)) {
+                return mo;
+            }
+        }
+        throw new IllegalStateException(
+            "MetaObject '" + voName + "' not found in fixture. Available: " + loader.getMetaObjects());
     }
 }

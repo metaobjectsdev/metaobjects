@@ -84,7 +84,9 @@ public class SpringOutputParserGeneratorTest extends SharedRegistryTestBase {
     @Test
     public void parserIsThrowOnlyNoSafeParseVariant() throws Exception {
         // ADR-0010 §3 — Java is throw-only (matches Jackson convention). A
-        // TryParse-style variant would diverge from idiomatic Java/Spring.
+        // TryParse-style variant on parse() would diverge from idiomatic Java/Spring.
+        // Note: recover() is intentionally present for json/xml and returns RecoveryResult<T>
+        // — that is not a safe-parse variant; it is a separate best-effort recovery path (FR-010).
         Path outDir = tempFolder.newFolder("parser-throw-only").toPath();
         Path workspace = tempFolder.newFolder("parser-throw-only-fx").toPath();
         MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "parser-throw-only", SIMPLE_FIXTURE);
@@ -98,10 +100,13 @@ public class SpringOutputParserGeneratorTest extends SharedRegistryTestBase {
         String src = Files.readString(outDir.resolve("acme/ai/prompts/NpcResponseOutputParser.java"));
         assertFalse("Java is throw-only — no TryParse / safeParse variant expected; saw:\n" + src,
             src.contains("tryParse"));
-        assertFalse("no Optional<T> return wrapping expected; saw:\n" + src,
+        assertFalse("no Optional<T> return on parse() expected; saw:\n" + src,
             src.contains("Optional<"));
-        assertFalse("no Result<T> return wrapping expected; saw:\n" + src,
-            src.contains("Result<"));
+        // parse() must not return a Result-style wrapper — check signature directly.
+        // recover() returns RecoveryResult<T> (intentional FR-010); that is distinct from
+        // wrapping parse() in a Result return type, so we assert the parse signature is bare.
+        assertTrue("parse() must be a direct (throw-only) return, not Result-wrapped; saw:\n" + src,
+            src.contains("public static NpcResponseOutputPayload parse(String text) throws JsonProcessingException"));
     }
 
     @Test
