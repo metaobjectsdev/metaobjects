@@ -70,3 +70,34 @@ dependency, so the typical Spring consumer needs no explicit setup.
 Non-Spring-Boot consumers (or those who exclude Jackson from
 `spring-boot-starter-web` via `<exclusions>`) must add
 `com.fasterxml.jackson.core:jackson-databind` explicitly.
+
+## FR-010 tolerant `recover()` — bounded mapping scope (Plan 2)
+
+**Status:** intentional Day-1 bound.
+
+For `template.output` nodes whose `@format` is `json` or `xml`,
+`SpringOutputParserGenerator` also emits a typed, never-throwing
+`recover(String[, RecoverOptions])` returning
+`RecoveryResult<<Payload>>`, driven by a codegen-baked `RecoverSchema`
+(`RecoverSchemaEmitter`). It maps **scalar, enum (incl. `@enumAlias`
+folding), and scalar-array** payload fields.
+
+**Deferred (Plan 2.1):** nested-object and object-array recover mapping.
+Such a field is emitted as a `FieldSpec.scalar(..., FieldKind.STRING, ...)`
+placeholder and mapped to `null` in the recovered record (a
+`/* FR-010: nested recover deferred */` marker appears in the generated
+source). The `RecoveryReport` still classifies the field, so no data is
+silently wrong — the nested value is just not reconstructed yet.
+
+**Runtime classpath:** the generated `recover()` depends on
+`com.metaobjects:metaobjects-render` (the shared recover engine) in
+addition to Jackson. Consumers using `recover` must have it on the
+classpath — the same precedent as render handles depending on the render
+engine.
+
+**Hardening TODO (minor):** `RecoverSchemaEmitter` emits string literals
+(field names, enum values, alias keys/values) without Java-string
+escaping. Field names and enum members are identifier-safe and alias
+*values* are canonical members, so the only at-risk input is an
+`@enumAlias` *key* containing a `"` or `\`. Add a `javaStringLiteral(...)`
+escape if adopters hit it.
