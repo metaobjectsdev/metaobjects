@@ -59,3 +59,6 @@ reports/
 
 # Local per-port Claude tooling docs (not part of the public artifact)
 server/java/.claude/
+
+# Transient Claude runtime artifacts (the porting skill under .claude/ stays tracked)
+.claude/scheduled_tasks.lock

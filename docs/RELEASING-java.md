@@ -121,12 +121,11 @@ The reactor's `release` profile uses:
 
 ### 1. Land all in-scope work on `main`
 
-Confirm `main` is at the tip you want to release from. Run the per-port
-test suites you care about. The Java metadata module has 4 known
-pre-existing conformance failures in `provider-extension-*` fixtures
-(they need provider IDs that aren't registered in the standard test
-classpath); these are unrelated to release content and tracked separately.
-The actual release deploy uses `-DskipTests` because of them — see step 5.
+Confirm `main` is at the tip you want to release from, and run the full
+reactor test suite — it should be green. (The `provider-extension-*`
+conformance failures that the 7.0.0 release worked around with
+`-DskipTests` were fixed during 7.1.0 prep; the deploy now runs the full
+test gate — see step 5.)
 
 ### 2. Bump versions across the tree
 
@@ -160,10 +159,10 @@ git push origin main
 ### 3. Local smoke build
 
 ```bash
-cd server/java && mvn install -DskipTests
+cd server/java && mvn clean install
 ```
 
-All 13 publishable modules should reach SUCCESS. The build also installs
+All 13 publishable modules should reach SUCCESS with the full test suite green. The build also installs
 locally into `~/.m2/repository/com/metaobjects/*/7.X.Y/`.
 
 ### 4. Tag the release
@@ -177,13 +176,13 @@ git push origin v7.X.Y
 
 ```bash
 cd server/java
-mvn deploy -P release -DperformRelease=true -DskipTests
+mvn clean deploy -P release -DperformRelease=true
 ```
 
-`-DskipTests` is intentional — the 4 pre-existing provider-extension
-conformance failures (see step 1) would otherwise block the release. The
-test gate ran per-module during development for the actual content of
-this release.
+The deploy runs the full reactor test suite — no `-DskipTests`. (The
+provider-extension failures the 7.0.0 release skipped tests to avoid were
+fixed in 7.1.0 prep.) A test failure aborts the build before any artifact
+is published, which is the safe failure mode.
 
 What the command does:
 
@@ -253,11 +252,11 @@ deploy from the consolidated reactor:
   `javadocJar` goal) fills the gap. Each of the three Kotlin modules has
   this plugin in their pom.
 
-- **`-DskipTests` is needed today.** The Java metadata module has 4
-  `provider-extension-*` conformance test failures that pre-date the
-  7.0.0 release (failing on `main` independent of release content). Until
-  those test fixtures are reconciled, releases skip tests at deploy time.
-  Per-module test gates still run during development.
+- **`-DskipTests` is no longer needed (fixed in 7.1.0).** The
+  `provider-extension-*` conformance failures the 7.0.0 release skipped
+  tests to avoid were greened during 7.1.0 prep, and the 7.1.0 deploy ran
+  the full reactor test suite clean. Releases now run the full test gate
+  at deploy time.
 
 - **`autoPublish: true` means no staging review.** Once `mvn deploy`
   returns `BUILD SUCCESS`, the artifacts are LIVE on Central and cannot
