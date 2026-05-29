@@ -58,6 +58,15 @@ public class EnumField extends PrimitiveField<String> {
     public static final String ATTR_ENUM_ALIAS = "enumAlias";
 
     /**
+     * Name of the optional per-member description map (properties).
+     * Each key is an enum member symbol from {@code @values}; the value is a
+     * human-readable (or LLM-facing) description of that member.
+     * Consumed by FR-010 output-format prompt fragment generation.
+     * Cross-language vocabulary: {@code @enumDoc} in canonical JSON.
+     */
+    public static final String ATTR_ENUM_DOC = "enumDoc";
+
+    /**
      * Per-member identifier pattern — enforced at load time.
      * Every element of {@code @values} must be a legal identifier in every
      * target language (Java, TypeScript, C#, Python) AND a stable stored string,
@@ -113,6 +122,12 @@ public class EnumField extends PrimitiveField<String> {
                 // Optional @enumAlias properties attribute — off-vocabulary → canonical-member map.
                 // Consumed by FR-010 recover; not validated at load time.
                 def.optionalAttributeWithConstraints(ATTR_ENUM_ALIAS)
+                   .ofType(PropertiesAttribute.SUBTYPE_PROPERTIES)
+                   .asSingle();
+
+                // Optional @enumDoc properties attribute — per-member description map.
+                // Consumed by FR-010 output-format prompt fragment; not validated at load time.
+                def.optionalAttributeWithConstraints(ATTR_ENUM_DOC)
                    .ofType(PropertiesAttribute.SUBTYPE_PROPERTIES)
                    .asSingle();
             });

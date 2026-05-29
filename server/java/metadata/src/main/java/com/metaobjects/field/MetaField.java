@@ -105,6 +105,18 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
     /** Universal array modifier - any field can be an array */
     public static final String ATTR_IS_ARRAY = "isArray";
 
+    /**
+     * Optional free-text example for this field — FR-010 output-format prompt fragment.
+     * Surfaces as a concrete usage sample in the generated prompt fragment.
+     */
+    public static final String ATTR_EXAMPLE = "example";
+
+    /**
+     * Optional free-text instruction for this field — FR-010 output-format prompt fragment.
+     * Provides LLM-facing guidance on how to populate the field.
+     */
+    public static final String ATTR_INSTRUCTION = "instruction";
+
     // === KEY-RELATED ATTRIBUTES DEPRECATED ===
     // These attributes have been moved to MetaIdentity (v6.2.7+)
     // Use MetaIdentity instead of field-level key attributes
@@ -142,6 +154,12 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
                 def.optionalAttributeWithConstraints(ATTR_IS_ARRAY)
                    .ofType(BooleanAttribute.SUBTYPE_BOOLEAN)
                    .asSingle();
+
+                // FR-010 teaching attrs — optional on any field subtype (inherited via field.base)
+                def.optionalAttributeWithConstraints(ATTR_EXAMPLE)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_INSTRUCTION)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             });
 
             log.debug("Registered base MetaField type with unified registry");
