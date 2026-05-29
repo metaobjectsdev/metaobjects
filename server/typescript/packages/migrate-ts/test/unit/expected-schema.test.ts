@@ -134,6 +134,77 @@ describe("buildExpectedSchema — indexes + FKs", () => {
   });
 });
 
+describe("buildExpectedSchema — SQLite float normalization (R6)", () => {
+  async function loadInline(children: unknown[]) {
+    const json = JSON.stringify({ "metadata.root": { package: "test", children } });
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
+    if (result.errors.length > 0) {
+      throw new Error(`Loader errors:\n${result.errors.map((e) => e.message).join("\n")}`);
+    }
+    return result.root;
+  }
+
+  test("field.float → sqlType {kind:'real'} under sqlite (real4 collapsed, no phantom diff)", async () => {
+    const root = await loadInline([
+      {
+        "object.entity": {
+          name: "Measurement",
+          children: [
+            { "source.rdb": { "@table": "measurements" } },
+            { "field.long":  { name: "id" } },
+            { "field.float": { name: "score" } },
+            { "identity.primary": { "@fields": "id" } },
+          ],
+        },
+      },
+    ]);
+    const snapshot = buildExpectedSchema(root, { dialect: "sqlite" });
+    const scoreCol = snapshot.tables[0]?.columns.find((c) => c.name === "score");
+    // SQLite has one float storage class; real4 must be collapsed to real so the
+    // expected schema matches what the SQLite introspector produces ({kind:"real"}).
+    expect(scoreCol?.sqlType).toEqual({ kind: "real" });
+  });
+
+  test("field.double → sqlType {kind:'real'} under sqlite (already real, unaffected)", async () => {
+    const root = await loadInline([
+      {
+        "object.entity": {
+          name: "Measurement",
+          children: [
+            { "source.rdb": { "@table": "measurements" } },
+            { "field.long":   { name: "id" } },
+            { "field.double": { name: "value" } },
+            { "identity.primary": { "@fields": "id" } },
+          ],
+        },
+      },
+    ]);
+    const snapshot = buildExpectedSchema(root, { dialect: "sqlite" });
+    const valueCol = snapshot.tables[0]?.columns.find((c) => c.name === "value");
+    expect(valueCol?.sqlType).toEqual({ kind: "real" });
+  });
+
+  test("field.float → sqlType {kind:'real4'} under postgres (Postgres fidelity preserved)", async () => {
+    const root = await loadInline([
+      {
+        "object.entity": {
+          name: "Measurement",
+          children: [
+            { "source.rdb": { "@table": "measurements" } },
+            { "field.long":  { name: "id" } },
+            { "field.float": { name: "score" } },
+            { "identity.primary": { "@fields": "id" } },
+          ],
+        },
+      },
+    ]);
+    const snapshot = buildExpectedSchema(root, { dialect: "postgres" });
+    const scoreCol = snapshot.tables[0]?.columns.find((c) => c.name === "score");
+    // Postgres can distinguish REAL (single) from DOUBLE PRECISION; real4 must not be collapsed.
+    expect(scoreCol?.sqlType).toEqual({ kind: "real4" });
+  });
+});
+
 describe("buildExpectedSchema — identity.reference @enforce", () => {
   async function loadInline(children: unknown[]) {
     const json = JSON.stringify({ "metadata.root": { package: "test", children } });

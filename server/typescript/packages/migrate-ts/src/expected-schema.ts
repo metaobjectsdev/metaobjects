@@ -148,6 +148,13 @@ function normalizeForSqlite(sqlType: SqlType): SqlType {
       // plain "INTEGER" regardless of source bit-width. Collapse 32 → 64 so the
       // expected snapshot matches what introspection sees.
       return { kind: "integer", bits: 64 };
+    case "real4":
+      // SQLite has a single float storage class ("REAL"); it cannot distinguish
+      // single-precision (real4 / field.float) from double-precision (real /
+      // field.double). Collapse real4 → real so the expected snapshot matches
+      // what the SQLite introspector produces, preventing a phantom
+      // change-column-type diff on every field.float column.
+      return { kind: "real" };
     default:
       return sqlType;
   }
