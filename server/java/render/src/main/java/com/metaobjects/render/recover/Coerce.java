@@ -13,6 +13,16 @@ public final class Coerce {
             Object hooked = opts.onField().coerce(fieldPath, raw, spec);
             if (hooked != null) { report.addCoercion(new Coercion(fieldPath, raw, String.valueOf(hooked), "onField")); return hooked; }
         }
+        // Per-field runtime normalizer (bounded 20% surface). Keyed by field path, then simple name.
+        java.util.function.Function<String, Object> norm = opts.normalizers().get(fieldPath);
+        if (norm == null) norm = opts.normalizers().get(spec.name());
+        if (norm != null) {
+            Object normalized = norm.apply(raw);
+            if (normalized != null) {
+                report.addCoercion(new Coercion(fieldPath, raw, String.valueOf(normalized), "normalizer"));
+                return normalized;
+            }
+        }
         boolean ci = opts.tolerance() != Tolerance.STRICT;
         return switch (spec.kind()) {
             case ENUM -> coerceEnum(raw, spec, opts, fieldPath, report, ci);
@@ -60,11 +70,15 @@ public final class Coerce {
     }
 
     private static Object coerceDouble(String raw, FieldSpec spec, String path, RecoveryReport report) {
+        // NOTE (cross-port): Java's Double.parseDouble accepts type suffixes ("42f"/"42d") and
+        // "Infinity"/"NaN"; non-finite results are rejected by clamp(). Port authors: match the
+        // finite-only + numeric classification, not Java's exact suffix tolerance.
         try { return clamp(Double.parseDouble(raw.trim()), spec, path, report, false); }
         catch (NumberFormatException e) { return MALFORMED; }
     }
 
     private static Object clamp(double n, FieldSpec spec, String path, RecoveryReport report, boolean asLong) {
+        if (!Double.isFinite(n)) return MALFORMED;   // NaN, ±Infinity → MALFORMED (cross-port classification parity)
         double c = n;
         if (spec.min() != null && c < spec.min()) c = spec.min();
         if (spec.max() != null && c > spec.max()) c = spec.max();

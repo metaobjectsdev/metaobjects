@@ -78,4 +78,27 @@ public class CoerceTest {
                 (path, raw, spec) -> "HOOKED");
         assertEquals("HOOKED", Coerce.value("anything", f, opts, "x", rep));
     }
+
+    @Test
+    public void nanIsMalformedForDouble() {
+        FieldSpec f = FieldSpec.scalar("n", FieldKind.DOUBLE, true);
+        assertEquals(Coerce.MALFORMED, Coerce.value("NaN", f, normal(), "n", rep));
+    }
+
+    @Test
+    public void infinityIsMalformedForInt() {
+        FieldSpec f = FieldSpec.scalar("k", FieldKind.INT, true);
+        assertEquals(Coerce.MALFORMED, Coerce.value("Infinity", f, normal(), "k", rep));
+        assertEquals(Coerce.MALFORMED, Coerce.value("-Infinity", f, normal(), "k", rep));
+    }
+
+    @Test
+    public void normalizerByFieldNameApplied() {
+        FieldSpec f = FieldSpec.scalar("x", FieldKind.STRING, true);
+        java.util.Map<String, java.util.function.Function<String, Object>> norms =
+                java.util.Map.of("x", raw -> raw.toUpperCase());
+        RecoverOptions opts = new RecoverOptions(Tolerance.NORMAL, Map.of(), norms, null);
+        assertEquals("HELLO", Coerce.value("hello", f, opts, "x", rep));
+        assertTrue(rep.coercions().stream().anyMatch(c -> c.kind().equals("normalizer")));
+    }
 }
