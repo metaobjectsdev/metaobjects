@@ -60,10 +60,14 @@ public class PerLoaderRegistryTest {
             fail("expected load to fail: template.briefing is unknown in this registry");
         } catch (MetaDataException expected) {
             String m = String.valueOf(expected.getMessage());
-            assertTrue("expected an unknown-subtype/not-accepted failure, got: " + m,
+            // Tight: the failure must be specifically that template.briefing is an
+            // unknown/unaccepted SUBTYPE — not merely any message mentioning the
+            // node name (which would let unrelated failures pass this guard).
+            assertTrue("expected a template.briefing unknown-subtype/not-accepted failure, got: " + m,
                 m.contains("UNKNOWN_SUBTYPE")
                 || m.contains("does not accept child")
-                || m.contains("briefing"));
+                || m.contains("template.briefing")
+                || m.contains("template:briefing"));
         }
     }
 

@@ -227,9 +227,10 @@ public class ConformanceTest {
         //
         // Fixtures that ALSO reference the cross-port "metaobjects-core-types"
         // alias (the new-subtype-success case) are NOT routed through compose:
-        // their input file needs the loader to run against the singleton
-        // registry (which already has the test-only template.briefing subtype
-        // registered via the static initialiser above).
+        // their input is loaded by a loader given its OWN registry (core +
+        // example-template-briefing) via setTypeRegistry below — no global
+        // singleton mutation, so the success/fail pair is order-independent
+        // (per ADR-0014).
         MetaDataException composeThrown = null;
         boolean handledByCompose = false;
         if (fix.hasProvidersJson) {
@@ -665,9 +666,10 @@ public class ConformanceTest {
             }
         }
         // Test-only providers used by the provider-extension-* fixtures.
-        // Availability is satisfied per-fixture by composing a fresh registry
-        // from ServiceLoader-discovered providers + the test-only ones (see
-        // composeFixtureRegistry below).
+        // Availability is satisfied per-fixture either by MetaDataRegistry.compose(...)
+        // (the provider-error fixtures) or by a per-loader registry built with
+        // createWithCoreProviders() + setTypeRegistry (the new-subtype-success
+        // fixture) — see runConformanceChecks. No global-singleton mutation.
         ids.addAll(ConformanceTestProviders.TEST_PROVIDERS.keySet());
         return Collections.unmodifiableSet(ids);
     }

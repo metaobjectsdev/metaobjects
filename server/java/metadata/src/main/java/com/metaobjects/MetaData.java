@@ -277,7 +277,7 @@ public class MetaData implements Cloneable, Serializable {
 
     // WeakReference prevents circular references and memory leaks in parent-child relationships
     private WeakReference<MetaData> parentRef = null;
-    private MetaDataLoader loader = null;
+    private volatile MetaDataLoader loader = null;
     private ClassLoader metaDataClassLoader=null;
 
     // FR5a / ADR-0009 — Loader error envelope + source-on-node.
@@ -884,6 +884,11 @@ public class MetaData implements Cloneable, Serializable {
      */
     protected void attachParent(MetaData parent) {
         parentRef = new WeakReference<>(parent);
+        // Re-parenting changes the owning loader; drop the cached loader so the
+        // next getLoader() recomputes it from the new parent chain. Load-bearing
+        // for per-loader type registries (a node moved/cloned across loaders must
+        // validate against the NEW owner's registry, not a stale one). See ADR-0014.
+        loader = null;
     }
 
     /**
@@ -1627,7 +1632,11 @@ public class MetaData implements Cloneable, Serializable {
 
         v.superData = superData;
         v.parentRef = parentRef;
-        v.loader = loader;
+        // Do NOT inherit the source's cached loader — the clone resolves its own
+        // from its (new) parent chain on next getLoader(). The overlay / super-
+        // resolution path re-parents clones; a copied stale loader would validate
+        // against the wrong per-loader type registry (ADR-0014).
+        v.loader = null;
         // Used to provide support for OSGi and Maven Mojos
         v.metaDataClassLoader = metaDataClassLoader;
 
