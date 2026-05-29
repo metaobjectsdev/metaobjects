@@ -1,5 +1,5 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, entityOutputPath } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, emitsWriteArtifacts } from "@metaobjectsdev/codegen-ts";
 import { renderFormFile } from "./templates/form-file.js";
 
 export interface FormFileOpts {
@@ -16,8 +16,11 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
   const userFilter = opts?.filter ?? (() => true);
   const generator: Generator = {
     name: "form-file",
-    // Always set: AND-composes metadata opt-out with optional user filter.
-    filter: (e: MetaObject) => e.ownAttr("emitForm") !== false && userFilter(e),
+    // Always set: AND-composes the framework write-artifact guard
+    // (skips abstract types — no instance — and read-only projections —
+    // instantiable for read, never for write), the metadata opt-out, and
+    // the optional user filter.
+    filter: (e: MetaObject) => emitsWriteArtifacts(e) && e.ownAttr("emitForm") !== false && userFilter(e),
     generate: perEntity((entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("form-file: renderContext is required (provided by runGen)");

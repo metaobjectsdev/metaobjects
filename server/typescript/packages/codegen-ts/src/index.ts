@@ -44,6 +44,7 @@ export { packageToPath, entityOutputPath, crossEntitySpecifier, barrelEntrySpeci
 export type { OutputLayout, ResolvedTarget } from "./import-path.js";
 
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
+export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
 export { extractViewSpec } from "./projection/extract-view-spec.js";
 export type { ExtractContext } from "./projection/extract-view-spec.js";
 export { emitViewDdl } from "./projection/view-ddl-emit.js";

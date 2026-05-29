@@ -1,10 +1,11 @@
-import { relative } from "node:path";
+import { relative, join } from "node:path";
+import { existsSync } from "node:fs";
 import { parseGenArgs } from "../lib/args.js";
 import { resolveGenConfig } from "../lib/config.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { formatGenResult, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
 import { log } from "../lib/log.js";
-import { loadMemory } from "@metaobjectsdev/sdk";
+import { loadMemory, DEFAULT_METADATA_DIR } from "@metaobjectsdev/sdk";
 import { runGen } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 
@@ -43,7 +44,13 @@ export async function genCommand(args: string[], cwd: string): Promise<number> {
     });
   } catch (err) {
     const msg = (err as Error).message;
-    if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {
+    // Only emit the scaffold hint for the ACTUAL missing-metadata-dir
+    // condition — checked explicitly here. A broad substring match on
+    // "no such" / "cannot read" wrongly swallowed genuine ParseErrors (e.g.
+    // `origin.@via "X.y" ...: no such relationship "y" on X`) as "no
+    // metaobjects/ found", masking the real failure. Real parse/validation
+    // errors propagate with their actual message.
+    if (!existsSync(join(projectRoot, DEFAULT_METADATA_DIR))) {
       log.error(`no metaobjects/ found in ${projectRoot}; run 'meta init' to scaffold`);
     } else {
       log.error(`failed to load metadata: ${msg}`);

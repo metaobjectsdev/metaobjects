@@ -1,5 +1,5 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, emitsInstanceArtifacts } from "@metaobjectsdev/codegen-ts";
 import { renderHooksFile } from "./templates/hooks-file.js";
 
 export interface TanstackQueryOpts {
@@ -18,8 +18,11 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
   const userFilter = opts?.filter ?? (() => true);
   const generator: Generator = {
     name: "tanstack-query",
-    // AND-composes metadata opt-out with optional user filter.
-    filter: (e: MetaObject) => e.ownAttr("emitTanstack") !== false && userFilter(e),
+    // AND-composes the framework instance-artifact guard (skips abstract types —
+    // they contribute shape via inheritance only and have no instance to query),
+    // the metadata opt-out, and the optional user filter. Projections still pass
+    // here and get read-only hooks via renderHooksFile's isProjection branch.
+    filter: (e: MetaObject) => emitsInstanceArtifacts(e) && e.ownAttr("emitTanstack") !== false && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error(
