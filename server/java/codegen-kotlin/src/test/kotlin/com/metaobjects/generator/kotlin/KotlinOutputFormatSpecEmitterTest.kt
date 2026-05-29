@@ -294,8 +294,39 @@ class KotlinOutputFormatSpecEmitterTest {
     }
 
     // -------------------------------------------------------------------------
-    // Kotlin string escaping: @instruction containing a double-quote
+    // Kotlin string escaping: @example / @instruction containing $ or double-quote
     // -------------------------------------------------------------------------
+
+    @Test fun dollarSignInExampleIsEscaped() {
+        // Bug 1 (via specLiteral path): a $ in @example must be emitted as \$ so the
+        // generated Kotlin source does not trigger string-template injection.
+        val fx = """
+            {
+              "metadata.root": { "package": "acme::dollar", "children": [
+                { "object.value": { "name": "DollarPayload", "children": [
+                    { "field.string": { "name": "cost", "@example": "cost is ${'$'}amount" } }
+                ] } },
+                { "template.output": {
+                    "name": "DollarTemplate",
+                    "@payloadRef": "DollarPayload",
+                    "@textRef": "test/dollar",
+                    "@format": "json"
+                } }
+              ] }
+            }
+        """.trimIndent()
+        val loader = loadString("kofs-dollar", fx)
+        val vo = checkNotNull(loader.metaObjectOrNull("acme::dollar::DollarPayload"))
+        val tmpl = checkNotNull(loader.outputTemplateOrNull("acme::dollar::DollarTemplate"))
+
+        val s = KotlinOutputFormatSpecEmitter.specLiteral(vo, tmpl, "DollarPayload")
+
+        // The emitted Kotlin literal must contain \$ (backslash-dollar), not a bare $identifier.
+        assertTrue(
+            "cost is \\\$amount" in s,
+            "dollar in @example must be escaped to \\$ in emitted source; saw:\n$s"
+        )
+    }
 
     @Test fun instructionWithQuoteIsEscaped() {
         val fx = """

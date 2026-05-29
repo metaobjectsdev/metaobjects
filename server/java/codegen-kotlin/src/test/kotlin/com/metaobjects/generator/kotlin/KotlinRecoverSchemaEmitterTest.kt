@@ -269,4 +269,59 @@ class KotlinRecoverSchemaEmitterTest {
         assertTrue("\\t"    in escaped, "tab should be escaped; saw: $escaped")
         assertTrue("\\r"    in escaped, "CR should be escaped; saw: $escaped")
     }
+
+    @Test fun kotlinStringLiteralEscapesDollarSign() {
+        // Bug 1: a bare $ in a string value must be emitted as \$ in the generated Kotlin
+        // source to prevent string-template injection (e.g. "$amount" would cause
+        // an unresolved-reference compile error in the consumer's generated code).
+        val escaped = KotlinRecoverSchemaEmitter.kotlinStringLiteral("cost is \$amount")
+        assertTrue(
+            "cost is \\\$amount" in escaped,
+            "dollar sign must be escaped to \\$ in output; saw: $escaped"
+        )
+        // Also ensure the backslash before $ was NOT double-escaped (no \\\\$).
+        assertTrue(
+            "\\\\$" !in escaped,
+            "dollar's backslash must not be double-escaped; saw: $escaped"
+        )
+    }
+
+    // -------------------------------------------------------------------------
+    // isArray + EnumField: recoveredClassDecl / recoveredCtorArgs consistency
+    // -------------------------------------------------------------------------
+
+    @Test fun isArrayEnumFieldUsesListStringTypeAndAsStringList() {
+        // Bug 2: for a field that is BOTH EnumField AND isArray=true,
+        // nullableTypeName must return List<String>? and
+        // constructorArgForField must return RecoverMap.asStringList(...).
+        // Previously constructorArgForField checked EnumField first → asString() mismatch.
+        val fx = """
+            {
+              "metadata.root": { "package": "acme::arrenum", "children": [
+                { "object.value": { "name": "TagPayload", "children": [
+                    { "field.enum": { "name": "tags", "@values": ["A","B"], "isArray": true } }
+                ] } }
+              ] }
+            }
+        """.trimIndent()
+
+        val tagVo = checkNotNull(loadString("kr-arrenum", fx)
+            .metaObjectOrNull("acme::arrenum::TagPayload"))
+
+        val decl = KotlinRecoverSchemaEmitter.recoveredClassDecl(tagVo, "TagPayloadRecovered")
+        assertTrue(
+            "val tags: List<String>? = null" in decl,
+            "isArray enum field must use List<String>? type; saw:\n$decl"
+        )
+
+        val args = KotlinRecoverSchemaEmitter.recoveredCtorArgs(tagVo)
+        assertTrue(
+            "RecoverMap.asStringList(d, \"tags\")" in args,
+            "isArray enum field must use asStringList, not asString; saw:\n$args"
+        )
+        assertTrue(
+            "RecoverMap.asString(d, \"tags\")" !in args,
+            "isArray enum field must NOT use asString; saw:\n$args"
+        )
+    }
 }

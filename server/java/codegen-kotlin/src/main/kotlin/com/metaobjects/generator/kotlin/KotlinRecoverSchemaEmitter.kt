@@ -197,18 +197,20 @@ internal object KotlinRecoverSchemaEmitter {
 
     /**
      * Build the `RecoverMap.*` call for a single field's constructor argument.
+     * `isArray` is checked BEFORE `EnumField` so that an array-of-enum field uses
+     * `asStringList`, consistent with [nullableTypeName] which also checks `isArray` first.
      */
     private fun constructorArgForField(field: MetaField<*>): String {
         val name = field.name
 
-        // Enum fields: string-backed on the wire.
-        if (field is EnumField) {
-            return "RecoverMap.asString(d, \"${kotlinStringLiteral(name)}\")"
-        }
-
-        // Array fields: List<String>.
+        // Array fields: List<String> — checked first so isArray+EnumField → asStringList.
         if (field.isArray) {
             return "RecoverMap.asStringList(d, \"${kotlinStringLiteral(name)}\")"
+        }
+
+        // Enum fields (non-array): string-backed on the wire.
+        if (field is EnumField) {
+            return "RecoverMap.asString(d, \"${kotlinStringLiteral(name)}\")"
         }
 
         // Nested object: deferred.
@@ -242,11 +244,16 @@ internal object KotlinRecoverSchemaEmitter {
 
     /**
      * Escape a string for safe embedding in a Kotlin double-quoted string literal.
-     * Handles the four sequences that require escaping: `\`, `"`, newline, tab, carriage return.
+     * Handles the six sequences that require escaping: `\`, `"`, `$`, newline, tab,
+     * carriage return. `$` must be escaped to `\$` because Kotlin uses `$` and `${}`
+     * for string-template interpolation — a bare `$identifier` in generated source
+     * would cause an unresolved-reference compile error in the consumer's code.
+     * Order: `\` must be first so its own replacement backslash is not re-escaped.
      */
     internal fun kotlinStringLiteral(s: String): String =
         s.replace("\\", "\\\\")
          .replace("\"", "\\\"")
+         .replace("$", "\\$")
          .replace("\n", "\\n")
          .replace("\t", "\\t")
          .replace("\r", "\\r")
