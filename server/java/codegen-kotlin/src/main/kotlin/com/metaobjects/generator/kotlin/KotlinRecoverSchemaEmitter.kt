@@ -147,8 +147,9 @@ internal object KotlinRecoverSchemaEmitter {
     /**
      * Emit a `mapOf(k to v, ...)` literal from a [Properties]. Entries are sorted by key
      * for deterministic output. Kotlin's `mapOf` has no arity cap (unlike `java.util.Map.of`).
+     * Shared with [KotlinOutputFormatSpecEmitter].
      */
-    private fun buildMapOfLiteral(props: Properties): String {
+    internal fun buildMapOfLiteral(props: Properties): String {
         val keys = props.keys.map { it.toString() }.sorted()
         val entries = keys.joinToString(", ") { k ->
             val v = props.getProperty(k)
@@ -160,9 +161,9 @@ internal object KotlinRecoverSchemaEmitter {
     /**
      * Return the [FieldKind] enum member name for a scalar field, or `null` when the
      * field type is not a known scalar. Matches the same instanceof order as
-     * [KotlinTypeMapper.kotlinTypeName].
+     * [KotlinTypeMapper.kotlinTypeName]. Shared with [KotlinOutputFormatSpecEmitter].
      */
-    private fun scalarKind(field: MetaField<*>): String? = when (field) {
+    internal fun scalarKind(field: MetaField<*>): String? = when (field) {
         is StringField  -> "STRING"
         is IntegerField -> "INT"
         is LongField    -> "LONG"
@@ -234,11 +235,12 @@ internal object KotlinRecoverSchemaEmitter {
     // -------------------------------------------------------------------------
 
     /**
-     * Returns `true` when the field carries `@required: true`. Uses `getValueAsString()`
+     * Returns `true` when the field carries `@required: true`. Uses `valueAsString`
      * to handle both the Boolean-attribute and String-attribute storage paths
      * (mirrors [KotlinGenUtil.isRequiredField] and the Java `RecoverSchemaEmitter`).
+     * Shared with [KotlinOutputFormatSpecEmitter].
      */
-    private fun isRequired(field: MetaField<*>): Boolean =
+    internal fun isRequired(field: MetaField<*>): Boolean =
         field.hasMetaAttr(MetaField.ATTR_REQUIRED)
             && "true".equals(field.getMetaAttr(MetaField.ATTR_REQUIRED).valueAsString, ignoreCase = true)
 

@@ -1,13 +1,8 @@
 package com.metaobjects.generator.kotlin
 
-import com.metaobjects.field.BooleanField
-import com.metaobjects.field.DoubleField
 import com.metaobjects.field.EnumField
-import com.metaobjects.field.IntegerField
-import com.metaobjects.field.LongField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.ObjectField
-import com.metaobjects.field.StringField
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.template.MetaTemplate
 import com.metaobjects.template.OutputTemplate
@@ -32,8 +27,8 @@ import java.util.Properties
  * - [BooleanField] → `FieldKind.BOOLEAN`
  * - [ObjectField]  → `FieldKind.OBJECT`, nested arg `null` (FR-010: nested prompt deferred)
  *
- * String escaping delegates to [KotlinRecoverSchemaEmitter.kotlinStringLiteral], which
- * is also used by [KotlinRecoverSchemaEmitter] for the recover-schema paths.
+ * String escaping, scalar-kind mapping, required-field resolution, and map-literal
+ * building all delegate to [KotlinRecoverSchemaEmitter] (shared helpers, same package).
  *
  * This object is internal; generators delegate here.
  */
@@ -105,7 +100,7 @@ internal object KotlinOutputFormatSpecEmitter {
      */
     private fun promptFieldLiteral(field: MetaField<*>): String {
         val name = field.name
-        val required = isRequired(field)
+        val required = KotlinRecoverSchemaEmitter.isRequired(field)
         val array = field.isArray
 
         // Nested object — bounded deferral (mirrors Java plan 3.1).
@@ -119,7 +114,7 @@ internal object KotlinOutputFormatSpecEmitter {
         }
 
         // Scalar — resolve @example and @instruction.
-        val kindName = scalarKind(field) ?: "STRING" // Unknown type: fall back to STRING.
+        val kindName = KotlinRecoverSchemaEmitter.scalarKind(field) ?: "STRING" // Unknown type: fall back to STRING.
         val exampleLit = optStringAttr(field, MetaField.ATTR_EXAMPLE)
         val instructionLit = optStringAttr(field, MetaField.ATTR_INSTRUCTION)
 
@@ -144,7 +139,7 @@ internal object KotlinOutputFormatSpecEmitter {
         val enumDocLit: String = run {
             if (!field.hasMetaAttr(EnumField.ATTR_ENUM_DOC, false)) return@run "null"
             val v = field.getMetaAttr(EnumField.ATTR_ENUM_DOC, false).value
-            if (v is Properties && v.isNotEmpty()) buildMapOfLiteral(v) else "null"
+            if (v is Properties && v.isNotEmpty()) KotlinRecoverSchemaEmitter.buildMapOfLiteral(v) else "null"
         }
 
         val exampleLit = optStringAttr(field, MetaField.ATTR_EXAMPLE)
@@ -168,44 +163,4 @@ internal object KotlinOutputFormatSpecEmitter {
         return "\"${KotlinRecoverSchemaEmitter.kotlinStringLiteral(v)}\""
     }
 
-    /**
-     * Returns `true` when the field carries `@required: true`.
-     * Mirrors [KotlinRecoverSchemaEmitter]'s `isRequired` helper.
-     */
-    private fun isRequired(field: MetaField<*>): Boolean =
-        field.hasMetaAttr(MetaField.ATTR_REQUIRED)
-            && "true".equals(field.getMetaAttr(MetaField.ATTR_REQUIRED).valueAsString, ignoreCase = true)
-
-    /**
-     * Return the `FieldKind` enum member name for a scalar field, or `null` when the
-     * field type is not a known scalar. Matches the same instanceof order as
-     * [KotlinRecoverSchemaEmitter.scalarKind].
-     */
-    private fun scalarKind(field: MetaField<*>): String? = when (field) {
-        is StringField  -> "STRING"
-        is IntegerField -> "INT"
-        is LongField    -> "LONG"
-        is DoubleField  -> "DOUBLE"
-        is BooleanField -> "BOOLEAN"
-        else            -> null
-    }
-
-    // -------------------------------------------------------------------------
-    // Private helpers — source literal builders
-    // -------------------------------------------------------------------------
-
-    /**
-     * Emit a `mapOf(k to v, ...)` literal from a [Properties]. Entries are sorted by key
-     * for deterministic output. Keys and values are escaped via
-     * [KotlinRecoverSchemaEmitter.kotlinStringLiteral]. Kotlin's `mapOf` has no arity cap
-     * (unlike `java.util.Map.of` which is limited to 10 pairs).
-     */
-    private fun buildMapOfLiteral(props: Properties): String {
-        val keys = props.keys.map { it.toString() }.sorted()
-        val entries = keys.joinToString(", ") { k ->
-            val v = props.getProperty(k)
-            "\"${KotlinRecoverSchemaEmitter.kotlinStringLiteral(k)}\" to \"${KotlinRecoverSchemaEmitter.kotlinStringLiteral(v)}\""
-        }
-        return "mapOf($entries)"
-    }
 }
