@@ -5,6 +5,7 @@ import com.metaobjects.render.recover.FieldKind;
 import com.metaobjects.render.recover.Format;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public final class OutputFormatRenderer {
@@ -18,9 +19,44 @@ public final class OutputFormatRenderer {
         PromptStyle effectiveStyle = overrides.style() != null ? overrides.style() : spec.style();
         return switch (effectiveStyle) {
             case EXAMPLE_ONLY -> renderExampleOnly(spec, overrides);
-            case GUIDE, INLINE -> throw new UnsupportedOperationException(
+            case GUIDE        -> renderGuide(spec, overrides);
+            case INLINE       -> throw new UnsupportedOperationException(
                     "Style not yet implemented: " + effectiveStyle);
         };
+    }
+
+    private static String renderGuide(OutputFormatSpec spec, PromptOverrides overrides) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Fill in each field as described below:\n");
+        for (PromptField field : spec.fields()) {
+            String req = field.required() ? "required" : "optional";
+            sb.append("- ").append(field.name()).append(" (").append(req).append(")");
+            String instruction = overrides.instructions().get(field.name());
+            if (instruction == null) instruction = field.instruction();
+            if (instruction != null) {
+                sb.append(": ").append(instruction);
+            }
+            sb.append("\n");
+            if (field.kind() == FieldKind.ENUM && field.enumValues() != null && !field.enumValues().isEmpty()) {
+                sb.append("    one of ").append(String.join(", ", field.enumValues())).append("\n");
+                Map<String, String> enumDoc = field.enumDoc();
+                if (enumDoc != null) {
+                    for (String val : field.enumValues()) {
+                        String doc = enumDoc.get(val);
+                        if (doc != null) {
+                            sb.append("      ").append(val).append(" = ").append(doc).append("\n");
+                        }
+                    }
+                }
+            }
+            String eg = exampleValueIfDeclared(field, overrides);
+            if (eg != null) {
+                sb.append("    e.g. ").append(eg).append("\n");
+            }
+        }
+        sb.append("\nRespond exactly like this:\n");
+        sb.append(renderExampleOnly(spec, overrides));
+        return sb.toString();
     }
 
     static String renderExampleOnly(OutputFormatSpec spec, PromptOverrides overrides) {
@@ -63,6 +99,13 @@ public final class OutputFormatRenderer {
         }
         sb.append("}");
         return sb.toString();
+    }
+
+    private static String exampleValueIfDeclared(PromptField field, PromptOverrides overrides) {
+        String fromOverride = overrides.examples().get(field.name());
+        if (fromOverride != null) return fromOverride;
+        if (field.example() != null) return field.example();
+        return null;
     }
 
     static String exampleValue(PromptField field, PromptOverrides overrides) {
