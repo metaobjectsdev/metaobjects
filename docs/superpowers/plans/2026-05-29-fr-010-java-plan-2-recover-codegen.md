@@ -1,5 +1,14 @@
 # FR-010 Java Plan 2 — `recover` codegen (typed parser surface) + `@enumAlias` metamodel attr
 
+> **STATUS: IMPLEMENTED & MERGED (2026-05-29).** The merged code is the reference. Minor API
+> adaptations made during execution (the listings below are close but not verbatim): the format
+> attr is read via `MetaTemplate.getFormat()` (not a constant lookup); the generated parser emits
+> imports for `RecoverSchema`/`FieldSpec`/`FieldKind`/`Format`/`RecoverMap`/`Recover` (caught by the
+> compile-and-run test); `RecoverSchemaEmitter.buildMapOfLiteral` emits `Map.ofEntries(...)` (not
+> `Map.of`, which caps at 10 pairs). Bounded scope (scalar/enum/scalar-array; nested + array-of-enum
+> deferred) and the string-literal-escaping hardening TODO are tracked in
+> `server/java/codegen-spring/.../generator/spring/KNOWN_GAPS.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** Make the shipped `recover()` engine reachable from generated code: extend the Java output-parser generator so each `template.output` (format `json`|`xml`) also emits a typed, never-throwing `recover(...)` returning `RecoveryResult<Payload>` (best-effort populated record + `RecoveryReport`), driven by a codegen-baked `RecoverSchema` built from the `@payloadRef` value-object. Register the one metamodel attr `recover` consumes (`@enumAlias`).
