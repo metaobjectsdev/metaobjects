@@ -1,13 +1,47 @@
 [project]
 name = "metaobjects"
-version = "0.0.1"
-description = "Python implementation of the MetaObjects metadata standard (loader + conformance)."
+version = "0.7.0"
+description = "Cross-language metadata standard: declare typed entities once, generate idiomatic drift-checked code across languages — Python port."
+readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Doug Mealing", email = "doug@metaobjects.com" }]
+keywords = [
+    "metadata",
+    "code-generation",
+    "codegen",
+    "schema",
+    "orm",
+    "drift-detection",
+    "cross-language",
+    "sqlalchemy",
+    "pydantic",
+    "fastapi",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
 dependencies = [
     # YAML authoring front-end (ADR-0006). The desugar lowers sugared YAML to
     # canonical JSON before the shared tree-builder runs.
     "PyYAML>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://metaobjects.dev"
+Repository = "https://github.com/metaobjectsdev/metaobjects"
+Documentation = "https://github.com/metaobjectsdev/metaobjects/tree/main/docs"
+Issues = "https://github.com/metaobjectsdev/metaobjects/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6", "pydantic>=2"]
@@ -25,6 +59,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/metaobjects"]
+exclude = ["**/KNOWN_GAPS.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
