@@ -52,6 +52,32 @@ final class SpringTestFixtures {
         }
         """;
 
+    /**
+     * Inline metadata combining {@link #RECOVER_VO_FIXTURE}'s {@code AnswerOutputPayload}
+     * VO with a {@code template.output} named {@code AnswerOutput} ({@code @format: json})
+     * for end-to-end {@link SpringOutputParserGenerator} recover-codegen tests.
+     * Package: {@code acme::ai}.
+     */
+    static final String RECOVER_OUTPUT_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ai", "children": [
+            { "object.value": { "name": "AnswerOutputPayload", "children": [
+                { "field.string":  { "name": "text",       "@required": true } },
+                { "field.enum":    { "name": "confidence", "@required": true,
+                                    "@values": ["HIGH","OK","LOW"],
+                                    "@enumAlias": { "medium": "OK" } } },
+                { "field.string":  { "name": "note" } }
+            ] } },
+            { "template.output": {
+                "name": "AnswerOutput",
+                "@payloadRef": "AnswerOutputPayload",
+                "@textRef": "ai/answer",
+                "@format": "json"
+            } }
+          ] }
+        }
+        """;
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
