@@ -75,6 +75,14 @@
       <version>1.7.3</version>
       <scope>test</scope>
     </dependency>
+    <!-- Required at test scope so the FR-010 compile harness can resolve kotlinx.serialization.json.Json
+         (the JSON codec artifact; separate from the core annotations jar) -->
+    <dependency>
+      <groupId>org.jetbrains.kotlinx</groupId>
+      <artifactId>kotlinx-serialization-json-jvm</artifactId>
+      <version>1.7.3</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>

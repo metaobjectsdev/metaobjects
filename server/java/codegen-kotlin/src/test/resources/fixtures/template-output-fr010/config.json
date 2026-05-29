@@ -1,0 +1,3 @@
+{
+  "generators": ["payload", "output-parser", "output-prompt"]
+}
