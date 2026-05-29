@@ -69,15 +69,8 @@ final class RecoverSchemaEmitter {
             fieldSpecs.add(fieldSpecLiteral(field));
         }
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("new RecoverSchema(").append(formatEnum)
-          .append(", \"").append(rootName).append("\", java.util.List.of(");
-        for (int i = 0; i < fieldSpecs.size(); i++) {
-            if (i > 0) sb.append(", ");
-            sb.append(fieldSpecs.get(i));
-        }
-        sb.append("))");
-        return sb.toString();
+        return "new RecoverSchema(" + formatEnum + ", \"" + rootName + "\", java.util.List.of("
+            + String.join(", ", fieldSpecs) + "))";
     }
 
     /**
@@ -137,26 +130,19 @@ final class RecoverSchemaEmitter {
         @SuppressWarnings("unchecked")
         List<String> values = (List<String>) field.getMetaAttr(EnumField.ATTR_VALUES).getValue();
 
-        // @enumAlias — optional; produce Map.of() when absent.
-        String aliasMapLiteral;
-        if (field.hasMetaAttr(EnumField.ATTR_ENUM_ALIAS, false)) {
-            Properties aliases = (Properties) field.getMetaAttr(EnumField.ATTR_ENUM_ALIAS).getValue();
-            if (aliases == null || aliases.isEmpty()) {
-                aliasMapLiteral = "java.util.Map.of()";
-            } else {
-                aliasMapLiteral = buildMapOfLiteral(aliases);
-            }
-        } else {
-            aliasMapLiteral = "java.util.Map.of()";
-        }
+        // @enumAlias — optional; produce Map.of() when absent or empty.
+        var aliasAttr = field.hasMetaAttr(EnumField.ATTR_ENUM_ALIAS, false)
+            ? field.getMetaAttr(EnumField.ATTR_ENUM_ALIAS)
+            : null;
+        Properties aliases = aliasAttr != null ? (Properties) aliasAttr.getValue() : null;
+        String aliasMapLiteral = (aliases != null && !aliases.isEmpty())
+            ? buildMapOfLiteral(aliases)
+            : "java.util.Map.of()";
 
         // Build the List.of(...) for enum values.
-        StringBuilder valuesList = new StringBuilder("java.util.List.of(");
-        for (int i = 0; i < values.size(); i++) {
-            if (i > 0) valuesList.append(", ");
-            valuesList.append('"').append(values.get(i)).append('"');
-        }
-        valuesList.append(')');
+        List<String> quoted = new ArrayList<>(values.size());
+        for (String v : values) quoted.add("\"" + v + "\"");
+        String valuesList = "java.util.List.of(" + String.join(", ", quoted) + ")";
 
         return "FieldSpec.enumField(\"" + name + "\", " + required + ", "
             + valuesList + ", " + aliasMapLiteral + ")";
