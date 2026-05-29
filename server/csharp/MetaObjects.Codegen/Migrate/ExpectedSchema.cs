@@ -140,7 +140,8 @@ public static class ExpectedSchema
         FIELD_SUBTYPE_STRING or FIELD_SUBTYPE_CLASS => new SqlType.Text(f.MaxLength),
         FIELD_SUBTYPE_INT or FIELD_SUBTYPE_SHORT or FIELD_SUBTYPE_BYTE => new SqlType.Integer(32),
         FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_CURRENCY => new SqlType.Integer(64),
-        FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT => new SqlType.Real(),
+        FIELD_SUBTYPE_DOUBLE => new SqlType.Real(),
+        FIELD_SUBTYPE_FLOAT => new SqlType.Real4(),
         FIELD_SUBTYPE_DECIMAL => new SqlType.Numeric(f.Precision, f.Scale),
         // enum is string-backed → SqlType.Text (PostgresEmit renders as TEXT).
         // The DB-side CHECK constraint enforcing membership is tail-appended by

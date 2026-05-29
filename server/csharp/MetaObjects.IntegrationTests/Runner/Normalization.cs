@@ -36,9 +36,9 @@ public static class Normalization
         long l => l.ToString(CultureInfo.InvariantCulture),
         int i => i,
         short s => (int)s,
-        // Floating
-        float f => (double)f,
-        double d => d,
+        // REAL/DOUBLE → canonical plain-decimal string (format from the native type).
+        float f => CanonicalFloat((double)f),
+        double d => CanonicalFloat(d),
         // NUMERIC / DECIMAL — canonical decimal string, no trailing zeros.
         decimal dec => CanonicalDecimal(dec),
         // Strings already canonical.
@@ -65,6 +65,20 @@ public static class Normalization
     {
         // Trim trailing zeros from the fractional part; drop the decimal point if integral.
         var s = d.ToString(CultureInfo.InvariantCulture);
+        if (!s.Contains('.')) return s;
+        s = s.TrimEnd('0');
+        if (s.EndsWith('.')) s = s[..^1];
+        return s;
+    }
+
+    private static string CanonicalFloat(double d)
+    {
+        var s = d.ToString(CultureInfo.InvariantCulture);
+        if (s.Contains('E') || s.Contains('e'))
+            throw new FormatException(
+                $"CanonicalFloat: {d} is outside the plain-decimal band (exponential notation); " +
+                "REAL/DOUBLE fixture values must be in-band dyadic rationals — " +
+                "see fixtures/persistence-conformance/normalization.md");
         if (!s.Contains('.')) return s;
         s = s.TrimEnd('0');
         if (s.EndsWith('.')) s = s[..^1];

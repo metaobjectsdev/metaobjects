@@ -115,6 +115,7 @@ public static class PostgresEmit
         SqlType.Text x => x.MaxLength is { } n ? $"VARCHAR({n})" : "TEXT",
         SqlType.Integer x => x.Bits == 64 ? "BIGINT" : "INTEGER",
         SqlType.Real => "DOUBLE PRECISION",
+        SqlType.Real4 => "REAL",
         SqlType.Numeric x => x switch
         {
             { Precision: { } p, Scale: { } s } => $"NUMERIC({p},{s})",
