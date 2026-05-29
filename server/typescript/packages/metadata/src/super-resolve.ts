@@ -19,11 +19,28 @@ import { PACKAGE_SEPARATOR, PACKAGE_PARENT } from "./shared/structural.js";
 // ---------------------------------------------------------------------------
 
 /**
- * Recursively searches the tree for a node whose fqn() matches.
- * Returns the first match, or undefined.
+ * Recursively searches the tree for a node whose qualified name matches `fqn`.
+ *
+ * A node is matched by its own `fqn()` (covers the explicit-package and
+ * no-package-at-all cases) OR by its EFFECTIVE qualified key
+ * `<fileDefaultPackage>::<name>` (`MetaData.resolutionKey()`) — the
+ * file-default package captured at PARSE time. This mirrors Java, where
+ * `BaseMetaDataParser` folds the file-default package into the registered name
+ * at parse time (so an object `BaseEntity` declared under `package: acme` is
+ * registered as `acme::BaseEntity` and a fully-qualified `extends:
+ * acme::BaseEntity` resolves) — even though TS keeps object `fqn()` bare for
+ * the FR5d referrer-envelope cross-port contract.
+ *
+ * Because the resolution key is captured at parse time (not derived from the
+ * post-merge tree), this is independent of load order AND of whether the base
+ * node's file-default package differs from the referrer's — the cross-PACKAGE
+ * cross-file case. No package is threaded down the walk anymore.
  */
 function findInTree(root: MetaData, fqn: string): MetaData | undefined {
   if (root.fqn() === fqn) return root;
+  if (root.package === undefined && root.name !== "" && root.resolutionKey() === fqn) {
+    return root;
+  }
   for (const child of root.ownChildren()) {
     const found = findInTree(child, fqn);
     if (found !== undefined) return found;
@@ -110,18 +127,19 @@ export interface DeferredSuperFailure {
  * have been parsed with deferSuperResolution: true. Unresolved refs are
  * collected and returned — caller decides whether to throw or warn.
  *
- * Tracks an inherited context package while walking so children whose own
- * `package` is unset (e.g., fields inside an object) still resolve against
- * the parent's package — matching the parser's eager-resolution semantics.
+ * The referrer's context package (for bare/same-package shorthand refs) comes
+ * from the node's own `package`, else the file-default package captured at
+ * PARSE time (`fileDefaultPackage`). Both are order- and merge-independent, so
+ * resolution does not depend on the post-merge tree shape.
  *
  * Idempotent: nodes that already have superResolved set are skipped.
  */
 export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
   const failures: DeferredSuperFailure[] = [];
-  walk(root, "", (node, ctxPkg) => {
+  walk(root, (node) => {
     if (node.superRef === undefined) return;
     if (node.superResolved !== undefined) return;
-    const effectivePkg = node.package ?? ctxPkg;
+    const effectivePkg = node.package ?? node.fileDefaultPackage ?? "";
     const target = resolveSuperRef(node.superRef, effectivePkg, root);
     if (target !== undefined) {
       try {
@@ -136,14 +154,9 @@ export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
   return failures;
 }
 
-function walk(
-  node: MetaData,
-  ctxPkg: string,
-  visit: (n: MetaData, ctx: string) => void,
-): void {
-  visit(node, ctxPkg);
-  const nextCtx = node.package ?? ctxPkg;
+function walk(node: MetaData, visit: (n: MetaData) => void): void {
+  visit(node);
   for (const child of node.ownChildren()) {
-    walk(child, nextCtx, visit);
+    walk(child, visit);
   }
 }

@@ -24,6 +24,16 @@ export abstract class MetaData {
 
   // Identity / packaging
   package?: string;
+  // Resolution-only: the file-default package (the top-level `metadata.package`)
+  // of the FILE in which this node was declared, captured at PARSE time. This is
+  // NOT folded into fqn() (object fqn() stays BARE for the FR5d cross-port
+  // referrer-envelope contract) — it exists solely so super-resolution can match
+  // a node by its EFFECTIVE qualified key `<fileDefaultPackage>::<name>` even
+  // when the node carries no own `package`. Capturing it at parse time (when the
+  // declaring file's package is known) makes resolution independent of load
+  // order and post-merge tree shape. Mirrors Java's BaseMetaDataParser, which
+  // folds getDefaultPackageName() into the registered name at parse time.
+  fileDefaultPackage?: string;
   superRef?: string;         // raw super reference string, pre-resolution
   private _superData?: MetaData; // post-resolution pointer; set by setSuperResolved() after parsing
   isAbstract: boolean = false;
@@ -130,6 +140,31 @@ export abstract class MetaData {
   setPackage(pkg: string): void {
     this._assertNotFrozen();
     this.package = pkg;
+  }
+
+  /**
+   * Loader-internal: record the file-default package captured at parse time.
+   * See the `fileDefaultPackage` field doc. Honors the frozen-guard.
+   * @internal
+   */
+  setFileDefaultPackage(pkg: string): void {
+    this._assertNotFrozen();
+    this.fileDefaultPackage = pkg;
+  }
+
+  /**
+   * The node's EFFECTIVE qualified key for super-resolution matching:
+   * `<pkg>::<name>` where pkg is the node's own package if set, else the
+   * file-default package captured at parse time. Returns the bare name when
+   * neither is available. Used by super-resolution ONLY — distinct from fqn(),
+   * which stays bare for objects per the FR5d cross-port contract.
+   */
+  resolutionKey(): string {
+    const pkg = this.package ?? this.fileDefaultPackage;
+    if (pkg !== undefined && pkg !== "") {
+      return `${pkg}${PACKAGE_SEPARATOR}${this.name}`;
+    }
+    return this.name;
   }
 
   // ---------------------------------------------------------------------------

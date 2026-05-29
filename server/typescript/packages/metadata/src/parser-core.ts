@@ -489,6 +489,17 @@ function parseNodeFresh(
   // is the only caller during loading; freeze runs in the loader after).
   populateNodeSource(model);
 
+  // --- Capture the file-default package at PARSE time (resolution-only) ---
+  // `inheritedContextPkg` is the package threaded down from the file's root
+  // `metadata.package` (the nearest packaged ancestor). Recording it here —
+  // when the declaring file's package is known — lets super-resolution match
+  // this node by its effective qualified key regardless of post-merge tree
+  // shape or load order. This does NOT touch the node's `package` or `fqn()`
+  // (objects stay bare per FR5d). Mirrors Java's parse-time getDefaultPackageName().
+  if (inheritedContextPkg !== "") {
+    model.setFileDefaultPackage(inheritedContextPkg);
+  }
+
   // --- Apply reserved keys (package, extends, abstract, isArray) ---
   applyReservedKeys(model, nodeData, strict, source, path, warnings, inheritedContextPkg);
 
