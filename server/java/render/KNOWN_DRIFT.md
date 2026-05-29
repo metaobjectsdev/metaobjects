@@ -3,9 +3,12 @@
 This file documents intentional or known whitespace/escaping drift between
 Java's render output and the TS-baseline `fixtures/render-conformance/` corpus.
 
-**Within-Java stability** is the build gate (see `RenderSnapshotTest`); this
-file tracks where Java *intentionally* diverges from TS so we don't get
-surprised when reading `RenderCrossPortReportTest` output.
+**Within-Java stability** is one build gate (`RenderSnapshotTest`). **Cross-port
+byte-equality is now a hard gate too** (`RenderCrossPortReportTest`): every
+fixture *not* listed below must be byte-identical to the shared baseline, and
+every fixture listed below is asserted to *still* drift — so resolving a drift
+here fails the test until its row (and the `KNOWN_DRIFT` set in the test) is
+removed. This table is the source of truth for that ledger.
 
 | Fixture | Drift type | Notes |
 |---|---|---|

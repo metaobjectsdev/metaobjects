@@ -12,16 +12,26 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+
 /**
- * Cross-port render-conformance REPORT — compares Java's actual render output
- * against the TS-baseline expected text. <strong>Not a gate</strong> — diffs
- * are printed to stdout but tests do not fail. Track documented drifts in
- * {@code server/java/render/KNOWN_DRIFT.md}.
+ * Cross-port render-conformance GATE — asserts Java's render output is
+ * byte-identical to the shared TS-baseline expected text in
+ * {@code fixtures/render-conformance/}.
  *
- * <p>Within-Java stability is the real build gate; see {@link RenderSnapshotTest}.
+ * <p>The one intentional Java divergence (a Mustache.java standalone-comment
+ * whitespace quirk) is ledgered in {@link #KNOWN_DRIFT} and documented in
+ * {@code server/java/render/KNOWN_DRIFT.md}. Ledgered fixtures are asserted to
+ * <em>still</em> drift, so the moment the divergence is resolved this test fails
+ * and prompts removing the stale entry. Every non-ledgered fixture is a hard
+ * byte-equality gate — new cross-port drift fails the build.
+ *
+ * <p>{@link RenderSnapshotTest} additionally guards within-Java stability.
  */
 @RunWith(Parameterized.class)
 public class RenderCrossPortReportTest {
@@ -29,6 +39,18 @@ public class RenderCrossPortReportTest {
     private static final Path REPO_ROOT;
     private static final Path FIXTURES_DIR;
     private static final ObjectMapper JSON = new ObjectMapper();
+
+    /**
+     * Fixtures where Java intentionally diverges from the shared TS baseline.
+     * See {@code server/java/render/KNOWN_DRIFT.md}. These are asserted to STILL
+     * differ; if Java comes into agreement, remove the entry (the test will fail
+     * to remind you).
+     */
+    private static final Set<String> KNOWN_DRIFT = Set.of(
+        // Mustache.java leaves the trailing newline after a standalone {{! comment }};
+        // TS / C# / Python all strip it.
+        "render-standalone-tag-stripping"
+    );
 
     static {
         Path p = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
@@ -86,14 +108,20 @@ public class RenderCrossPortReportTest {
             template, null, payload, provider, format, null, null));
         String expected = Files.readString(expectedPath, StandardCharsets.UTF_8);
 
-        if (!expected.equals(actual)) {
-            System.out.println("=== CROSS-PORT DRIFT: " + name + " ===");
-            System.out.println("--- expected (TS baseline) ---");
-            System.out.println(expected);
-            System.out.println("--- actual (Java) ---");
-            System.out.println(actual);
-            System.out.println("===");
+        if (KNOWN_DRIFT.contains(name)) {
+            // Documented intentional divergence: assert it STILL drifts, so a
+            // future fix that brings Java into agreement fails here and prompts
+            // removing the stale KNOWN_DRIFT entry (and this guard).
+            assertNotEquals(
+                "Fixture '" + name + "' is in KNOWN_DRIFT but now matches the shared "
+                + "baseline — remove it from KNOWN_DRIFT and server/java/render/KNOWN_DRIFT.md.",
+                expected, actual);
+            return;
         }
-        // No assertion — this is a report, not a gate.
+        assertEquals(
+            "Cross-port render drift on fixture '" + name + "' vs the shared "
+            + "fixtures/render-conformance baseline. Fix the Renderer/Escapers, or "
+            + "(if intentional) document it in KNOWN_DRIFT.md and add to KNOWN_DRIFT.",
+            expected, actual);
     }
 }
