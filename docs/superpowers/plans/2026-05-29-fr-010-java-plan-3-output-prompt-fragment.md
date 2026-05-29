@@ -1,5 +1,15 @@
 # FR-010 Java Plan 3 — output-format prompt-fragment generator (`@promptStyle`) + verify + clean fixtures
 
+> **STATUS: IMPLEMENTED & MERGED (2026-05-29).** The merged code is the reference. Notable
+> adaptations during execution: `@promptStyle`'s closed-enum enforcement lives in
+> `ValidationPhase.validateTemplateNode` (R5), mirroring how `@format` is enforced (abstract-base
+> `.withEnum()` doesn't fire for concrete subtypes), not in the registration constraint;
+> `OutputFormatSpecEmitter` applies `javaStringLiteral` escaping to free-text `@example`/`@instruction`/`@enumDoc`
+> (the hardening Plan 2 deferred) and uses `Map.ofEntries`. The compile-and-run proof caught two real
+> missing-import codegen bugs; the renderer review caught a NaN→invalid-JSON bug — all fixed. The
+> verify-conformance corpus wiring for `output-prompt` was skipped (the harness has a different input
+> shape) — unit tests cover it; cross-port corpus is a follow-up. Nested-object rendering deferred (Plan 3.1).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** From one `template.output` declaration, emit artifact 1 — a `renderXxxFormat([overrides])` that produces the "produce your answer like this" prompt fragment: a **comment-free**, pedagogy-first format-instruction block (skeleton in the declared `@format` + per-field guidance), laid out per a `@promptStyle` metadata attribute (`guide|inline|exampleOnly`, default `guide`), with a render-time override. Plus the `verify` output-prompt coverage + round-trip checks, and the cross-port clean fixtures.
