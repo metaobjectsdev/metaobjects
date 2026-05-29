@@ -102,6 +102,15 @@ Because the *right* example often varies by runtime context (a different target 
 
 **Static structure, dynamic gating.** The fragment's *shape* is codegen-time; runtime conditionals (a feature toggle that omits a block, per-request injected fields) stay render-time, expressed as template sections gated on input-payload booleans — identical to the FR-004 input side. The generator emits the skeleton; conditionals are not codegen's concern.
 
+**Guidance carrier — never comments (resolved 2026-05-29).** The per-field guidance must NOT live in comments. Many models (e.g. Nemotron) ignore XML `<!-- -->`, and JSON has no comment syntax at all — a `//`-annotated "JSON" skeleton is not even valid JSON. Guidance hidden in comments is guidance the model is free to ignore, defeating the pedagogy goal. The robust carriers are a **prose field-guide** preceding a **clean, valid, example-filled skeleton**, and/or allowed values shown as element/field **content** (not comments).
+
+**Presentation is a metadata attribute — `@promptStyle` (resolved 2026-05-29).** How the fragment is laid out is a closed-enum attribute on `template.output`, sibling to `@format`, with `allowedValues` `guide | inline | exampleOnly` (default `guide`):
+- `guide` — prose field-guide (allowed values + `@enumDoc` meanings, required/optional, `@instruction`, `@example`) above a clean valid example-filled skeleton. The robust default.
+- `inline` — allowed values as element/field content (`HIGH | MEDIUM | LOW`), placeholders as content, minimal prose. Terser; content (unlike comments) is attended to.
+- `exampleOnly` — just the example-filled skeleton (for few-shot contexts where guidance lives elsewhere).
+
+Putting the directive on the durable spine (not just a render-time flag) means project-wide consistency comes for free via the existing **abstract + `extends`** mechanism: declare an `abstract: true` `template.output` base carrying `@format` + `@promptStyle`, and every concrete output `extends` it — flip the whole project's presentation in one edit. (`extends` resolution merges attrs, child wins, so any single output can override.) A **render-time override** still rides on top for per-call/per-model tuning: `renderXxxFormat({ style?, examples?, instructions? })` — the two-channel model (schema default + one opts bag) from Extensibility. (Open: whether the loader enforces `@payloadRef`/`@textRef` *required* on an `abstract` base that carries only directives; abstracts that omit them rely on required-validation applying to concrete nodes post-`extends`.)
+
 ### Artifact 2 — tolerant ("recover") parsing tier
 
 FR-006 defines two tiers per port: `parse` (throws) and `safeParse`/`TryParse` (Result/bool). FR-010 adds a third, **`recover`**, whose contract is *best-effort, never throws, always returns a report*:
@@ -153,7 +162,7 @@ Downstream apps *will* need looser parsing and specialized examples the framewor
 
 **The 20% — three bounded escape hatches, and only three:**
 
-1. **Render-time example/instruction override** — `renderXxxFormat({ examples?, instructions? })`. Per-field override of the canonical `@example`/`@instruction` when the worked example must vary by runtime context (target model, domain variant). The single-source default still lives in the schema; this overrides per call.
+1. **Render-time style / example / instruction override** — `renderXxxFormat({ style?, examples?, instructions? })`. Per-call override of the canonical `@promptStyle` / `@example` / `@instruction` when presentation or the worked example must vary by runtime context (target model, domain variant). The single-source defaults still live in the schema (and project-wide via an abstract `extends` base); this overrides per call. `style` ∈ `guide | inline | exampleOnly`.
 2. **Per-field normalizer / alias extension** — `recoverXxx(text, { aliases?, normalizers? })`. Adopter-supplied alias entries and per-field normalize functions are **merged with** (never replace) the schema-declared ones — app-specific off-vocabulary folding the framework can't know about.
 3. **Tolerance level + one coercion hook** — `recoverXxx(text, { tolerance?: 'strict' | 'normal' | 'loose', onField? })`. Three presets span the spectrum (`strict` ≈ FR-006 `parse`; `normal` = default; `loose` = maximally forgiving locate/repair). `onField(name, rawValue, ctx)` is a single optional callback for the rare bespoke coercion. That is the **entire** runtime surface — one knob and one hook, deliberately not a registry of pluggable stages.
 
