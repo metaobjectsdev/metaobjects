@@ -125,4 +125,14 @@ public class RecoverTest {
         assertEquals(FieldRecovery.MALFORMED, o.report().states().get("confidence"));
         assertFalse(o.report().isEmpty());
     }
+
+    @Test
+    public void partialEnumArrayIsMalformedButKeepsValidElements() {
+        RecoverSchema s = new RecoverSchema(Format.JSON, "answer", List.of(
+                new FieldSpec("tones", FieldKind.ENUM, false, true,
+                        List.of("HIGH", "LOW"), Map.of(), null, null, null)));
+        RecoverOutcome o = Recover.recover("{\"tones\":[\"HIGH\",\"grape\"]}", s, RecoverOptions.defaults());
+        assertEquals(FieldRecovery.MALFORMED, o.report().states().get("tones"));
+        assertEquals(List.of("HIGH"), o.data().get("tones"));   // valid element retained
+    }
 }

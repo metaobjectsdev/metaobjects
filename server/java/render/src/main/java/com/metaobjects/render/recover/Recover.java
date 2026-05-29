@@ -61,6 +61,9 @@ public final class Recover {
                     if (v == Coerce.MALFORMED) anyMalformed = true;
                     else out.add(v);
                 }
+                // NOTE (cross-port contract): a MALFORMED array still places its successfully-coerced
+                // elements into data (partial recovery), UNLIKE a MALFORMED scalar which is absent from
+                // data. Consumers branching on state must account for partial array data.
                 data.put(f.name(), out);
                 report.set(path, anyMalformed ? FieldRecovery.MALFORMED : FieldRecovery.RECOVERED);
                 continue;

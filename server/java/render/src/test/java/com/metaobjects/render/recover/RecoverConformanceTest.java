@@ -11,8 +11,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -60,6 +62,15 @@ public class RecoverConformanceTest {
         JsonNode data = expected.get("data");
         data.fieldNames().forEachRemaining(field ->
             assertCanonical(dir + " data[" + field + "]", data.get(field), out.data().get(field)));
+
+        // Exhaustive key-set checks: no missing, no extra entries in either map.
+        Set<String> expectedStateKeys = new LinkedHashSet<>();
+        states.fieldNames().forEachRemaining(expectedStateKeys::add);
+        assertEquals(dir + " state key set", expectedStateKeys, out.report().states().keySet());
+
+        Set<String> expectedDataKeys = new LinkedHashSet<>();
+        data.fieldNames().forEachRemaining(expectedDataKeys::add);
+        assertEquals(dir + " data key set", expectedDataKeys, out.data().keySet());
     }
 
     private static void assertCanonical(String msg, JsonNode expected, Object actual) {
