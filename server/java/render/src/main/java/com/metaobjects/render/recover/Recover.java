@@ -1,5 +1,6 @@
 package com.metaobjects.render.recover;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,17 +17,19 @@ public final class Recover {
         String stripped = Strip.strip(text);
         boolean ci = o.tolerance() != Tolerance.STRICT;
 
+        String span = schema.format() == Format.JSON
+                ? Locate.json(stripped)
+                : Locate.xml(stripped, schema.rootName(), ci);
         Map<String, Object> raw;
-        if (schema.format() == Format.JSON) {
-            String span = Locate.json(stripped);
-            raw = span == null ? Map.of() : new JsonForgivingReader().read(span);
+        if (span == null) {
+            raw = Map.of();
+        } else if (schema.format() == Format.JSON) {
+            raw = new JsonForgivingReader().read(span);
         } else {
-            String span = Locate.xml(stripped, schema.rootName(), ci);
-            raw = span == null ? Map.of() : new XmlForgivingReader().read(span, ci);
+            raw = new XmlForgivingReader().read(span, ci);
         }
 
-        if (raw.isEmpty() && (stripped.isEmpty() || (schema.format() == Format.JSON ? Locate.json(stripped) == null
-                : Locate.xml(stripped, schema.rootName(), ci) == null))) {
+        if (raw.isEmpty() && (stripped.isEmpty() || span == null)) {
             report.markEmpty();
         }
 
@@ -43,25 +46,52 @@ public final class Recover {
                 report.set(path, f.required() ? FieldRecovery.LOST_REQUIRED : FieldRecovery.LOST_OPTIONAL);
                 continue;
             }
-            if (f.kind() == FieldKind.OBJECT && present instanceof Map<?, ?> nestedRaw && f.nested() != null) {
-                Map<String, Object> nestedData = new LinkedHashMap<>();
-                @SuppressWarnings("unchecked")
-                Map<String, Object> nr = (Map<String, Object>) nestedRaw;
-                extract(f.nested().fields(), nr, path, nestedData, report, o, ci);
-                data.put(f.name(), nestedData);
-                report.set(path, FieldRecovery.RECOVERED);
+            if (f.array()) {
+                // An array field: a single non-list value is treated as a one-element array
+                // (e.g. a single repeated-XML tag). Each element is coerced/recursed independently.
+                List<?> elements = (present instanceof List<?> l) ? l : List.of(present);
+                List<Object> out = new ArrayList<>();
+                boolean anyMalformed = false;
+                for (int idx = 0; idx < elements.size(); idx++) {
+                    Object v = extractValue(f, elements.get(idx), path + "[" + idx + "]", report, o, ci);
+                    if (v == Coerce.MALFORMED) anyMalformed = true;
+                    else out.add(v);
+                }
+                data.put(f.name(), out);
+                report.set(path, anyMalformed ? FieldRecovery.MALFORMED : FieldRecovery.RECOVERED);
                 continue;
             }
-            String rawStr = present instanceof String s ? s : String.valueOf(present);
-            Object coerced = Coerce.value(rawStr, f, o, path, report);
-            if (coerced == Coerce.MALFORMED) {
+            if (present instanceof List<?>) {           // a list where a singular value was expected
+                report.set(path, FieldRecovery.MALFORMED);
+                continue;
+            }
+            Object v = extractValue(f, present, path, report, o, ci);
+            if (v == Coerce.MALFORMED) {
                 report.set(path, FieldRecovery.MALFORMED);
             } else {
-                data.put(f.name(), coerced);
+                data.put(f.name(), v);
                 report.set(path, FieldRecovery.RECOVERED);
             }
         }
     }
+
+    /** Coerce one (non-array) element: nested-object recursion or scalar coercion. Returns Coerce.MALFORMED on failure. */
+    private static Object extractValue(FieldSpec f, Object present, String path,
+                                       RecoveryReport report, RecoverOptions o, boolean ci) {
+        if (f.kind() == FieldKind.OBJECT) {
+            if (f.nested() != null && present instanceof Map<?, ?> m) {
+                Map<String, Object> nestedData = new LinkedHashMap<>();
+                extract(f.nested().fields(), castMap(m), path, nestedData, report, o, ci);
+                return nestedData;
+            }
+            return Coerce.MALFORMED;   // object expected but scalar/non-map present
+        }
+        String rawStr = present instanceof String s ? s : String.valueOf(present);
+        return Coerce.value(rawStr, f, o, path, report);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Map<?, ?> m) { return (Map<String, Object>) m; }
 
     /** Case-folding lookup honoring tolerance. */
     private static Object lookup(Map<String, Object> raw, String name, boolean ci) {

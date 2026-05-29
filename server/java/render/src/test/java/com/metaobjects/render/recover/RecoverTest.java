@@ -78,4 +78,42 @@ public class RecoverTest {
         RecoverOutcome o = Recover.recover("@@@ totally broken @@@", jsonAnswer(), RecoverOptions.defaults());
         assertTrue(o.report().isEmpty());
     }
+
+    @Test
+    public void jsonStringArrayRecoversAsList() {
+        RecoverSchema s = new RecoverSchema(Format.JSON, "answer", List.of(
+                new FieldSpec("tags", FieldKind.STRING, false, true, null, null, null, null, null)));
+        RecoverOutcome o = Recover.recover("{\"tags\":[\"a\",\"b\"]}", s, RecoverOptions.defaults());
+        assertEquals(List.of("a", "b"), o.data().get("tags"));
+        assertEquals(FieldRecovery.RECOVERED, o.report().states().get("tags"));
+    }
+
+    @Test
+    public void jsonEnumArrayCoercesPerElement() {
+        RecoverSchema s = new RecoverSchema(Format.JSON, "answer", List.of(
+                new FieldSpec("tones", FieldKind.ENUM, false, true,
+                        List.of("HIGH", "LOW"), Map.of("warm", "HIGH"), null, null, null)));
+        RecoverOutcome o = Recover.recover("{\"tones\":[\"warm\",\"LOW\"]}", s, RecoverOptions.defaults());
+        assertEquals(List.of("HIGH", "LOW"), o.data().get("tones"));
+        assertEquals(FieldRecovery.RECOVERED, o.report().states().get("tones"));
+    }
+
+    @Test
+    public void listForScalarFieldIsMalformed() {
+        RecoverSchema s = new RecoverSchema(Format.JSON, "answer", List.of(
+                FieldSpec.scalar("text", FieldKind.STRING, true)));
+        RecoverOutcome o = Recover.recover("{\"text\":[\"a\",\"b\"]}", s, RecoverOptions.defaults());
+        assertEquals(FieldRecovery.MALFORMED, o.report().states().get("text"));
+        assertFalse(o.data().containsKey("text"));
+    }
+
+    @Test
+    public void objectFieldWithScalarValueIsMalformed() {
+        RecoverSchema nested = new RecoverSchema(Format.JSON, "meta",
+                List.of(FieldSpec.scalar("n", FieldKind.STRING, true)));
+        RecoverSchema s = new RecoverSchema(Format.JSON, "answer", List.of(
+                FieldSpec.object("meta", true, false, nested)));
+        RecoverOutcome o = Recover.recover("{\"meta\":\"oops\"}", s, RecoverOptions.defaults());
+        assertEquals(FieldRecovery.MALFORMED, o.report().states().get("meta"));
+    }
 }
