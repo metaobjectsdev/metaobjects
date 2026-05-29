@@ -1,0 +1,5 @@
+Sure! Here's the result:
+```json
+{"text":"hello","confidence":"HIGH"}
+```
+Hope that helps!
