@@ -22,14 +22,14 @@ public static class GenCommand
     public static IReadOnlyList<IGenerator> DefaultGenerators() =>
         [new EntityGenerator(), new DbContextGenerator(), new RoutesGenerator(), new OutputParserGenerator()];
 
-    public static Outcome Run(string metadataDir, string outDir, string ns)
+    public static Outcome Run(string metadataDir, string outDir, string ns, bool emitAbstractShapes = false)
     {
         var load = MetaDataLoader.FromDirectory(metadataDir);
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0)
             return new Outcome(loadErrors, null);
 
-        var config = new GenConfig { OutDir = outDir, Namespace = ns };
+        var config = new GenConfig { OutDir = outDir, Namespace = ns, EmitAbstractShapes = emitAbstractShapes };
         var result = CodegenRunner.Run(config, load.Root, DefaultGenerators());
         return new Outcome(loadErrors, result);
     }

@@ -35,7 +35,8 @@ public sealed class RoutesGenerator : PerEntityGenerator
 {
     public override string Name => "routes-generator";
 
-    protected override bool Filter(MetaObject entity) => entity.IsEntity() || entity.DbView is not null;
+    protected override bool Filter(MetaObject entity) =>
+        (entity.IsEntity() || entity.DbView is not null) && InstanceArtifacts.EmitsInstanceArtifacts(entity);
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx)
     {

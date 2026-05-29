@@ -8,7 +8,8 @@ if (args.Length == 0)
     Console.Error.WriteLine(
         "usage: meta <command> [options]\n" +
         "  commands:\n" +
-        "    gen <metadataDir> --out <dir> --namespace <ns>   generate EF Core code from metadata\n" +
+        "    gen <metadataDir> --out <dir> --namespace <ns> [--emit-abstract-shapes]\n" +
+        "                                                     generate EF Core code from metadata\n" +
         "    migrate <metadataDir> --out <file.sql> [--from-db <conn> --down <file.sql>]\n" +
         "                                                     emit Postgres DDL — full CREATE by default, or\n" +
         "                                                     an incremental migration when --from-db is given\n" +
@@ -90,19 +91,21 @@ static int RunGen(string[] rest)
     string? metadataDir = null;
     string? outDir = null;
     string ns = "Generated";
+    bool emitAbstractShapes = false;
     for (int i = 0; i < rest.Length; i++)
     {
         if (rest[i] == "--out" && i + 1 < rest.Length) outDir = rest[++i];
         else if (rest[i] == "--namespace" && i + 1 < rest.Length) ns = rest[++i];
+        else if (rest[i] == "--emit-abstract-shapes") emitAbstractShapes = true;
         else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
     }
     if (metadataDir is null || outDir is null)
     {
-        Console.Error.WriteLine("usage: meta gen <metadataDir> --out <dir> [--namespace <ns>]");
+        Console.Error.WriteLine("usage: meta gen <metadataDir> --out <dir> [--namespace <ns>] [--emit-abstract-shapes]");
         return 2;
     }
 
-    var outcome = GenCommand.Run(metadataDir, outDir, ns);
+    var outcome = GenCommand.Run(metadataDir, outDir, ns, emitAbstractShapes);
     if (!outcome.Ok)
     {
         foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");

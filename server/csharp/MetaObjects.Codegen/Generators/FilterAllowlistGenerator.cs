@@ -41,7 +41,7 @@ public sealed class FilterAllowlistGenerator : PerEntityGenerator
     // Read-only projections (views/etc.) are not filterable in the routes
     // generator today — skip them here to match.
     protected override bool Filter(MetaObject entity) =>
-        entity.IsEntity() && !entity.IsReadOnlyProjection();
+        entity.IsEntity() && !entity.IsReadOnlyProjection() && InstanceArtifacts.EmitsInstanceArtifacts(entity);
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx)
     {

@@ -36,7 +36,7 @@ public static class ExpectedSchema
     public static SchemaSnapshot Build(MetaRoot root, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
     {
         var writableEntities = root.Objects()
-            .Where(o => o.IsEntity() && o.FindPrimaryWritableSource() is not null)
+            .Where(o => o.IsEntity() && !o.IsAbstract && o.FindPrimaryWritableSource() is not null)
             .OrderBy(o => o.Name, StringComparer.Ordinal)
             .ToList();
         // FKs can only reference an entity that actually has a row in the snapshot —
