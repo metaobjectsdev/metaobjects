@@ -8,7 +8,8 @@
 export type SqlType =
   | { kind: "text"; maxLength?: number }
   | { kind: "integer"; bits: 32 | 64 }
-  | { kind: "real" }
+  | { kind: "real" }        // DOUBLE PRECISION (float8) — field.double
+  | { kind: "real4" }       // REAL (float4, single precision) — field.float
   | { kind: "numeric"; precision?: number; scale?: number }
   | { kind: "boolean" }
   | { kind: "timestamp"; withTimezone: boolean }
@@ -32,6 +33,7 @@ export function sqlTypeEquals(a: SqlType, b: SqlType): boolean {
     case "timestamp":
       return a.withTimezone === (b as Extract<SqlType, { kind: "timestamp" }>).withTimezone;
     case "real":
+    case "real4":
     case "boolean":
     case "date":
     case "json":
@@ -76,10 +78,11 @@ export function isWidening(from: SqlType, to: SqlType): boolean {
       // widening iff p2 ≥ p1 AND s2 = s1 AND (p2 - s2) ≥ (p1 - s1)
       return tp >= fp && ts === fs && (tp - ts) >= (fp - fs);
     }
-    // real/boolean/date/json/blob/uuid: same kind already handled by sqlTypeEquals;
+    // real/real4/boolean/date/json/blob/uuid: same kind already handled by sqlTypeEquals;
     // any difference here means the discriminant matched but structural equality failed
     // (impossible given SqlType has no other variants for these kinds). Defensive false.
     case "real":
+    case "real4":
     case "boolean":
     case "date":
     case "json":

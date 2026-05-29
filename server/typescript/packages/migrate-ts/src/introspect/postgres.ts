@@ -103,8 +103,8 @@ export function pgTypeToSqlType(dataType: string, maxLength?: number | null): Sq
     return { kind: "integer", bits: 32 };
   }
 
-  // Floating-point
-  if (dt === "float4" || dt === "real") return { kind: "real" };
+  // Floating-point: float4/real is single precision; float8/double precision is double.
+  if (dt === "float4" || dt === "real") return { kind: "real4" };
   if (dt === "float8" || dt === "double precision") return { kind: "real" };
 
   // Arbitrary-precision numeric — "numeric(p,s)" or bare "numeric"/"decimal"

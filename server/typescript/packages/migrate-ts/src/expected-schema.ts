@@ -380,8 +380,8 @@ function subtypeToSqlType(field: MetaData): SqlType {
     case FIELD_SUBTYPE_BYTE:      return { kind: "integer", bits: 32 };
     case FIELD_SUBTYPE_LONG:
     case FIELD_SUBTYPE_CURRENCY:  return { kind: "integer", bits: 64 };
-    case FIELD_SUBTYPE_DOUBLE:
-    case FIELD_SUBTYPE_FLOAT:     return { kind: "real" };
+    case FIELD_SUBTYPE_DOUBLE:    return { kind: "real" };
+    case FIELD_SUBTYPE_FLOAT:     return { kind: "real4" };
     case FIELD_SUBTYPE_DECIMAL:   return { kind: "numeric" };
     case FIELD_SUBTYPE_BOOLEAN:   return { kind: "boolean" };
     case FIELD_SUBTYPE_DATE:      return { kind: "date" };

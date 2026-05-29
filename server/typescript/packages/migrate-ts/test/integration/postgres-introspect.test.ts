@@ -419,12 +419,20 @@ describe("pgTypeToSqlType normalization", () => {
     expect(pgTypeToSqlType("numeric")).toEqual({ kind: "numeric" });
   });
 
-  test("float4 → real", () => {
-    expect(pgTypeToSqlType("float4")).toEqual({ kind: "real" });
+  test("float4 → real4 (single-precision)", () => {
+    expect(pgTypeToSqlType("float4")).toEqual({ kind: "real4" });
   });
 
-  test("double precision → real", () => {
+  test("real (pg alias for float4) → real4 (single-precision)", () => {
+    expect(pgTypeToSqlType("real")).toEqual({ kind: "real4" });
+  });
+
+  test("double precision → real (double-precision)", () => {
     expect(pgTypeToSqlType("double precision")).toEqual({ kind: "real" });
+  });
+
+  test("float8 (pg alias for double precision) → real (double-precision)", () => {
+    expect(pgTypeToSqlType("float8")).toEqual({ kind: "real" });
   });
 
   test("unknown type falls back to text", () => {
