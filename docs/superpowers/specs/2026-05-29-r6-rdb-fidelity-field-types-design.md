@@ -87,17 +87,27 @@ double precision, then run through a strip-trailing-zeros pass:
 - **Serialization:** `REAL`/`DOUBLE` → decimal **string**, **plain (never exponential)
   notation**, trailing zeros and bare decimal point stripped (e.g. `1.5`, `100`, `-3.25`).
 - **Fixture-authoring constraint:** `REAL`/`DOUBLE` test values MUST be **exact dyadic
-  rationals** (terminating binary fraction) within the plain-decimal band
-  `|x| ∈ {0} ∪ [0.001, 1 000 000)`; `REAL` values additionally ≤ 6 significant decimal
-  digits (single-precision exactness). With this constraint the widened double **is** the
-  short decimal, so all five ports agree under plain shortest formatting.
-  - **Safe:** `1.5`, `0.125`, `1234.5`, `-3.25`, `100`, `0.5`, `0.0625`.
+  rationals** (terminating binary fraction) that are **non-integer** (carry a fractional
+  part), within the plain-decimal band `|x| ∈ [0.001, 1 000 000)`; `REAL` values additionally
+  ≤ 6 significant decimal digits (single-precision exactness). With this constraint the
+  widened double **is** the short decimal, so all five ports agree under plain shortest
+  formatting.
+  - **Safe:** `1.5`, `0.125`, `1234.5`, `-3.25`, `0.5`, `0.0625`, `12.75`.
   - **Forbidden (with the reason):** `0.1`/`3.14`/π (non-dyadic → JS/Python tail on `REAL`);
-    `0.0009765625` (dyadic but `< 1e-3` → Java `E`-notation); `12345678` (`≥ 1e7`).
-- **Runner guard (recommended):** each port formats from the value *as returned by the
-  driver for the column's SQL type* (a `REAL` formats from the native single where the
-  language has one), forces plain decimal, then strips zeros — so an accidentally out-of-band
-  value **fails loudly** on diff rather than silently diverging.
+    `0.0009765625` (dyadic but `< 1e-3` → Java `E`-notation); `12345678` (`≥ 1e7`);
+    **integer-valued floats** like `100` or `-42` (the TS runner cannot see column type — see
+    below — and keeps an integer-valued `number` as a JSON number, diverging from the typed
+    ports that stringify it; require a fractional part to avoid this).
+- **Why non-integer matters (the TS asymmetry):** four ports type-discriminate at the driver
+  layer (C#/Python/Java/Kotlin return a distinct float/double object vs an int), so their
+  normalizer stringifies *every* float. The TS runner receives an already-mapped
+  `Record<string, unknown>` row with no column-type metadata, so it routes by value:
+  `Number.isInteger(v) ? v : canonicalFloat(v)`. A non-integer fixture constraint makes the
+  TS value-route agree with the typed ports' unconditional stringify.
+- **Runner guard (recommended):** the typed ports format from the value *as returned by the
+  driver for the column's SQL type* — a `REAL` formats from the native single (e.g.
+  `Float.toString(f)`, not widen-to-double-then-`Double.toString`, which would add a tail for
+  a non-dyadic value) — force plain decimal, then strip zeros.
 
 This activates the dead `UUID` and `TIMESTAMPTZ` rows as a side effect (Sections 3–4).
 
