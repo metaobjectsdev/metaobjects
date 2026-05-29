@@ -20,9 +20,63 @@ public final class OutputFormatRenderer {
         return switch (effectiveStyle) {
             case EXAMPLE_ONLY -> renderExampleOnly(spec, overrides);
             case GUIDE        -> renderGuide(spec, overrides);
-            case INLINE       -> throw new UnsupportedOperationException(
-                    "Style not yet implemented: " + effectiveStyle);
+            case INLINE       -> renderInline(spec, overrides);
         };
+    }
+
+    private static String renderInline(OutputFormatSpec spec, PromptOverrides overrides) {
+        return switch (spec.format()) {
+            case XML  -> renderXmlInline(spec, overrides);
+            case JSON -> renderJsonInline(spec, overrides);
+        };
+    }
+
+    private static String renderXmlInline(OutputFormatSpec spec, PromptOverrides overrides) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<").append(spec.rootName()).append(">\n");
+        for (PromptField field : spec.fields()) {
+            String content = inlineContent(field, overrides);
+            String escaped = Escapers.escape(Escapers.FORMAT_XML, content);
+            sb.append("  <").append(field.name()).append(">")
+              .append(escaped)
+              .append("</").append(field.name()).append(">\n");
+        }
+        sb.append("</").append(spec.rootName()).append(">");
+        return sb.toString();
+    }
+
+    private static String renderJsonInline(OutputFormatSpec spec, PromptOverrides overrides) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\n");
+        List<PromptField> fields = spec.fields();
+        for (int i = 0; i < fields.size(); i++) {
+            PromptField field = fields.get(i);
+            String content = inlineContent(field, overrides);
+            boolean isLast = i == fields.size() - 1;
+            sb.append("  \"").append(field.name()).append("\": ");
+            sb.append("\"").append(Escapers.escape(Escapers.FORMAT_JSON, content)).append("\"");
+            if (!isLast) sb.append(",");
+            sb.append("\n");
+        }
+        sb.append("}");
+        return sb.toString();
+    }
+
+    private static String inlineContent(PromptField field, PromptOverrides overrides) {
+        if (field.kind() == FieldKind.ENUM
+                && field.enumValues() != null
+                && !field.enumValues().isEmpty()) {
+            return String.join(" | ", field.enumValues());
+        }
+        if (field.kind() == FieldKind.BOOLEAN) {
+            return "true | false";
+        }
+        String instruction = overrides.instructions().get(field.name());
+        if (instruction == null) instruction = field.instruction();
+        if (instruction != null) {
+            return "{" + instruction + "}";
+        }
+        return "{" + field.name() + "}";
     }
 
     private static String renderGuide(OutputFormatSpec spec, PromptOverrides overrides) {
