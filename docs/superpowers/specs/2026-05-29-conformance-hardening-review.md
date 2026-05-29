@@ -67,14 +67,14 @@ Siblings of the CLI gap — a port can silently lack or diverge on these and sta
 | R1 | **CLI smoke gate** — each port exposes `meta` answering `--help`/`gen --dry-run`/`verify`/`migrate --dry-run` against a shared mini-fixture; matching command set + exit codes | 2 | new `fixtures/cli-conformance/` manifest + per-port `scripts/cli-smoke.sh` shelling out | low — **do first; ties to the in-flight CLI work** |
 | R2 | **Make Java render a real gate** — `assertEquals` against shared `expected.txt` | 1 | edit `RenderCrossPortReportTest` (or fold into a real assertion) | low |
 | R3 | **Refresh `spec/conformance-tests.md`** — 5 ports, 7 corpora, fix Java-verify + Drizzle/jOOQ staleness, reclassify codegen as "semantic parity, byte-equivalence excluded" | 4 | doc edit | low — do early; it's the governing contract |
-| R4 | **CI-enforce persistence + api-contract** for Java/Kotlin/C# (or explicitly document they're not in default `test`) | 1 | CI wiring / reactor+sln inclusion | low-med |
+| R4 | ✅ **DONE (2026-05-29, `cc69ced0`).** `integration-tests.yml` now runs the persistence + api-contract matrix (all 5 ports) on every `pull_request` to `main`, not just release tags / opt-in label — so drift can't merge to main green. | 1 | CI wiring | done |
 | R5 | ✅ **DONE (2026-05-29, ADR-0014).** Fixed at the core: Java `addChild` now validates against the owning loader's registry (not the global singleton); runner composes a per-fixture registry. Multi-tenant correctness fix, not just a test cleanup. | 1 | core change + runner refactor | done |
 | R6 | **Define the float/double normalization rule**, then add float + uuid persistence + loader fixtures | 3 | `normalization.md` rule + fixtures + a uuid in the canonical entity | med — R6a (rule) blocks R6b (fixtures) |
 | R7 | **Kotlin render runner** (or drop Kotlin from the byte-identical claim in CLAUDE.md) | 1/2 | new Kotlin render-conformance test, or doc edit | low-med |
 | R8 | **Register `WARN_*` codes** in `ERROR-CODES.json`; migrate the 3 legacy string-list warnings to FR5c envelope shape | 3 | fixtures + ERROR-CODES.json | low |
 | R9 | **Add missing negative fixtures** for the live ERR codes (finding #14), starting with `ERR_SUBTYPE_RULE_VIOLATION` | 3 | fixtures | med |
 | R10 | **Fill vocabulary holes** — fixtures for the untested subtypes/attrs (finding #13); a jsonb-without-objectRef negative; a TIMESTAMPTZ row; a JSONB-row persistence scenario | 3 | fixtures | med |
-| R11 | **Replace Kotlin `INCLUDED_SCENARIOS` allowlist** with corpus globbing + an explicit deferral ledger | 1 | refactor Kotlin persistence runner | low |
+| R11 | ✅ **DONE (2026-05-29, `42f2e0ae`).** Kotlin query runner globs the corpus minus a deferral ledger (allowlist removed) — new fixtures auto-run. Verified 9/9 via Testcontainers. | 1 | refactor Kotlin persistence runner | done |
 | R12 | **FR-007 codegen-conformance** (semantic parity: file inventory + type-mapping + payload-VO shape, not bytes) — pulls Kotlin into a codegen gate | 2 | new corpus + per-port manifest emitters | high |
 | R13 | **Prompt output-parser corpus** + **install/run smoke per port** | 2 | sibling corpora / CI smoke | med |
 
