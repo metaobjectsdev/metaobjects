@@ -1,5 +1,12 @@
 # FR-010 Kotlin port — recover + output-format prompt codegen (engine reused)
 
+> **STATUS: IMPLEMENTED & MERGED (2026-05-29, merge `8bf30954`).** 175 codegen-kotlin tests incl. a
+> compile-AND-run proof (kotlin-compile-testing) that the generated `recover()` folds the `medium→OK`
+> alias and `renderFormat()` is comment-free. Review caught two Kotlin-specific compile bugs (the `$`
+> string-interpolation hazard in emitted literals; an `isArray`-enum `List<String>?`/`asString`
+> mismatch) — both fixed. Recovery classification + rendered output are byte-identical to Java by
+> construction (shared engine). Nested mapping deferred (KNOWN_GAPS).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`). This is a PORT — Java (`server/java/codegen-spring/.../generator/spring/`) is the reference; mirror it, change only Tier-2 idiom.
 
 **Goal:** Port FR-010 artifacts to the Kotlin codegen (`codegen-kotlin`): each `template.output` (format json|xml) also gets a tolerant `recover(text[,opts])` and a comment-free `renderFormat([overrides])`, generated as idiomatic Kotlin that **calls the shared JVM `render` engine** (no engine reimplementation).
