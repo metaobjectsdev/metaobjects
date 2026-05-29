@@ -110,9 +110,11 @@ For an all-five-ports splash this must be coherent. Direction:
 - **Add a one-paragraph "Why different numbers?" note** to the README and the public
   site so a newcomer is not confused.
 
-**Open sub-decision for Phase 0:** the first version C# and Python publish at — mirror
-TS's pre-1.0 track (honest for newly-published ports) or align to the standard version.
-A crisp recommendation will accompany the start of Phase 0; it does not block this plan.
+**Phase 0 sub-decision (resolved 2026-05-28):** C# and Python publish at **`0.7.0`**,
+matching the TypeScript reference track. This yields a clean two-bucket story — the newer
+ports (TS, C#, Python) share `0.7.x`; the JVM ports (Java, Kotlin) share `7.x`,
+continuing their established lineage — with the "Why different numbers?" note explaining
+it and reinforcing the conformance pitch.
 
 ## Launch playbook (WS7 detail)
 
