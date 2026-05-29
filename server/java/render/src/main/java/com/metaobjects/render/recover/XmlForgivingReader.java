@@ -15,14 +15,10 @@ public final class XmlForgivingReader {
         if (span == null || span.isBlank()) return out;
         int gt = span.indexOf('>');
         if (gt < 0) return out;
-        int rootEnd = lastIndexOfCloseTag(span);
+        int rootEnd = span.lastIndexOf("</");
         String inner = span.substring(gt + 1, (rootEnd < 0 || rootEnd <= gt) ? span.length() : rootEnd);
         parseChildren(inner, caseInsensitive, out);
         return out;
-    }
-
-    private static int lastIndexOfCloseTag(String span) {
-        return span.lastIndexOf("</");
     }
 
     private void parseChildren(String inner, boolean ci, Map<String, Object> out) {

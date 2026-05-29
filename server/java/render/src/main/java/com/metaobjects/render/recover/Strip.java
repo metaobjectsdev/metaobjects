@@ -16,11 +16,7 @@ public final class Strip {
         if (raw == null) return "";
         Matcher m = FENCE.matcher(raw);
         if (m.find()) {
-            StringBuilder sb = new StringBuilder();
-            sb.append(raw, 0, m.start());
-            sb.append(m.group(1));
-            sb.append(raw.substring(m.end()));
-            return sb.toString().trim();
+            return (raw.substring(0, m.start()) + m.group(1) + raw.substring(m.end())).trim();
         }
         return raw.trim();
     }

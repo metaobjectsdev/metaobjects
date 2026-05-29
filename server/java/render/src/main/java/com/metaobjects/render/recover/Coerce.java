@@ -1,5 +1,7 @@
 package com.metaobjects.render.recover;
 
+import java.util.function.Function;
+
 /** Stage 7: canonicalize a raw scalar string per its FieldSpec. Returns MALFORMED sentinel when present-but-uncoercible. */
 public final class Coerce {
     private Coerce() {}
@@ -11,10 +13,13 @@ public final class Coerce {
         if (raw == null) return MALFORMED;
         if (opts.onField() != null) {
             Object hooked = opts.onField().coerce(fieldPath, raw, spec);
-            if (hooked != null) { report.addCoercion(new Coercion(fieldPath, raw, String.valueOf(hooked), "onField")); return hooked; }
+            if (hooked != null) {
+                report.addCoercion(new Coercion(fieldPath, raw, String.valueOf(hooked), "onField"));
+                return hooked;
+            }
         }
         // Per-field runtime normalizer (bounded 20% surface). Keyed by field path, then simple name.
-        java.util.function.Function<String, Object> norm = opts.normalizers().get(fieldPath);
+        Function<String, Object> norm = opts.normalizers().get(fieldPath);
         if (norm == null) norm = opts.normalizers().get(spec.name());
         if (norm != null) {
             Object normalized = norm.apply(raw);
