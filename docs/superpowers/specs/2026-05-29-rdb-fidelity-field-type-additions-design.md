@@ -1,6 +1,28 @@
 # RDB-Fidelity Field-Type Additions — Design
 
-_Date: 2026-05-29. Status: Approved (design); ready for implementation planning._
+_Date: 2026-05-29. Status: **DEFERRED — needs re-layering before implementation.**_
+
+> **Do not implement as written.** A subsequent architecture review found this spec
+> mis-layered and premature:
+> - `field.uuid` is correctly a logical type — **keep it**.
+> - **Timezone and opaque-jsonb are physical-storage concerns**, not logical field attrs.
+>   They belong on a cross-port physical column-type attr (promote the Kotlin
+>   `@dbColumnType` escape hatch, registered by `dbProvider`), NOT on `field.timestamp` /
+>   `field.object`. Putting `@timezone` on the logical field violates the existing
+>   logical/physical split (`db-schema.ts` header) and relaxing `@objectRef` deletes an
+>   invariant.
+> - `@timezone: false` is broken-by-construction (Java binds `field.timestamp` →
+>   `java.time.Instant`, the instant/`timestamptz` semantic) — model instant-vs-local as a
+>   type/kind, or ship instant-only.
+> - The float work would cement a fidelity loss (`field.float` → `DOUBLE PRECISION`, not
+>   `REAL`) and lacks cross-port float normalization (cf. BIGINT-as-string).
+> - The uuid binding table is wrong: Kotlin ships `String`, not `UUID`.
+> - The `@default:"uuid"` token duplicates the existing `@generation:uuid` path — unify.
+>
+> **None of these additions are hard blockers** for a first adopter entity slice, which can
+> use existing primitives (string PK + `@generation:uuid`, tz-naive/UTC timestamps,
+> typed-VO jsonb). Revisit a scoped, re-layered version only after a real adopter slice
+> proves what fidelity is actually missing. The original design follows for reference.
 
 ## Context
 
