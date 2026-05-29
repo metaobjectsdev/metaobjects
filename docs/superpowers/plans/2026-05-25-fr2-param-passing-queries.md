@@ -537,7 +537,7 @@ Expected: green; test count is `<baseline> + 6` (1 from A1's "hoisted constants"
 - [ ] **Step 2: Run the workspace build**
 
 ```bash
-cd /home/doug/Development/metaobjects && bun run --filter '*' build
+cd <repo-root> && bun run --filter '*' build
 ```
 
 Expected: all 14 packages exit 0.
@@ -1038,7 +1038,7 @@ Expected: green. Test count is `<baseline> + ~7` net (1 from A1 hoist + 1 from A
 - [ ] **Step 2: Workspace build**
 
 ```bash
-cd /home/doug/Development/metaobjects && bun run --filter '*' build
+cd <repo-root> && bun run --filter '*' build
 ```
 
 Expected: all 14 packages exit 0.

@@ -1,10 +1,10 @@
 # MetaObjects — Java
 
-The Java port of the cross-language MetaObjects metadata standard. Published to Maven Central at `7.0.0` under `com.metaobjects:*` across 13 modules. Apache 2.0.
+The Java port of the cross-language MetaObjects metadata standard. Published to Maven Central at `7.1.0` under `com.metaobjects:*` across 13 modules. Apache 2.0.
 
 For the standard itself (metamodel, conformance corpora, ADRs) see the [repository-level docs](../../spec/) and the parent [README](../../README.md). This document is scoped to the Java implementation.
 
-## What ships in 7.0.0
+## What ships in 7.1.0
 
 All four MetaObjects pillars ship across all five language ports — TypeScript, Java, Kotlin, C#, Python. Java's contributions:
 
@@ -17,7 +17,7 @@ Fully green across all five cross-port conformance corpora: metamodel (85), yaml
 
 ## Modules
 
-All published to Maven Central under `com.metaobjects:*` at `7.0.0`:
+All published to Maven Central under `com.metaobjects:*` at `7.1.0`:
 
 | Module | Purpose |
 |---|---|
@@ -35,7 +35,7 @@ All published to Maven Central under `com.metaobjects:*` at `7.0.0`:
 | `metaobjects-core-spring` | Spring auto-configuration + `MetaDataService` |
 | `metaobjects-maven-plugin` | `mvn meta:gen` / `meta:migrate` / `meta:verify` |
 
-The `archetype` and `examples` directories still exist as scaffolding under source but are no longer part of the reactor or deployed to Central as of 7.0.0.
+The `archetype` and `examples` directories were removed in 7.1.0 (they had been out of the reactor since 7.0.0 and were not deployed to Central).
 
 ## Quick start
 
@@ -43,7 +43,7 @@ The `archetype` and `examples` directories still exist as scaffolding under sour
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-metadata</artifactId>
-    <version>7.0.0</version>
+    <version>7.1.0</version>
 </dependency>
 ```
 
@@ -53,12 +53,12 @@ Spring REST + JPA stack:
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-codegen-spring</artifactId>
-    <version>7.0.0</version>
+    <version>7.1.0</version>
 </dependency>
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-core-spring</artifactId>
-    <version>7.0.0</version>
+    <version>7.1.0</version>
 </dependency>
 ```
 
@@ -68,7 +68,7 @@ Maven plugin for `meta:gen` / `meta:migrate` / `meta:verify`:
 <plugin>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-maven-plugin</artifactId>
-    <version>7.0.0</version>
+    <version>7.1.0</version>
     <executions>
         <execution>
             <goals><goal>gen</goal></goals>
@@ -83,12 +83,12 @@ Kotlin entry point — adds the Kotlin facade and the KotlinPoet codegen pipelin
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-metadata-ktx</artifactId>
-    <version>7.0.0</version>
+    <version>7.1.0</version>
 </dependency>
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-codegen-kotlin</artifactId>
-    <version>7.0.0</version>
+    <version>7.1.0</version>
 </dependency>
 ```
 

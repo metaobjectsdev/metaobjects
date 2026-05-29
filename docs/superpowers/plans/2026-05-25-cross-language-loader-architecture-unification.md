@@ -121,7 +121,7 @@ Note the default `id` is now `"<inline>"` (matches the cross-language convention
 - [ ] **Step 2: Find and rewrite call sites**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 grep -rn 'InMemorySource' server/csharp --include='*.cs'
 ```
 
@@ -643,7 +643,7 @@ Expected: PASS.
 
 ```bash
 # from the worktree
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 # advance the worktree branch first
 CURRENT_BRANCH=$(git branch --show-current)
 # fetch latest main
@@ -651,11 +651,11 @@ git fetch origin main
 # merge into the worktree branch (not the other way) so we resolve conflicts in the worktree
 git merge --no-ff origin/main || true   # only if there is divergence
 # now advance main in the ORIGINAL checkout
-git -C /home/doug/Development/metaobjects fetch
-git -C /home/doug/Development/metaobjects checkout main
-git -C /home/doug/Development/metaobjects pull --ff-only origin main
-git -C /home/doug/Development/metaobjects merge --no-ff $CURRENT_BRANCH -m "Merge C# loader unification"
-git -C /home/doug/Development/metaobjects push origin main
+git -C <repo-root> fetch
+git -C <repo-root> checkout main
+git -C <repo-root> pull --ff-only origin main
+git -C <repo-root> merge --no-ff $CURRENT_BRANCH -m "Merge C# loader unification"
+git -C <repo-root> push origin main
 ```
 
 (See `superpowers:finishing-a-development-branch` for the canonical version of this dance; the key rule from memory `main-is-forward-only-never-rewrite` — never rebase/reset/force main; always FF/merge onto its current tip.)
@@ -692,7 +692,7 @@ public InMemoryStringSource(String content) {
 - [ ] **Step 2: Update call sites**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 grep -rln 'InMemoryMetaDataSource' server/java --include='*.java' | \
   xargs sed -i 's/InMemoryMetaDataSource/InMemoryStringSource/g'
 ```
@@ -1209,7 +1209,7 @@ git commit -m "feat(java): add MetaDataLoader.fromDirectory/fromUris/fromString 
 - [ ] **Step 1: Find all callsites**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 grep -rln 'FileMetaDataLoader\|LocalFileMetaDataSources\|URIFileMetaDataSources\|FileMetaDataSources\|FileLoaderOptions' server/java --include='*.java'
 ```
 
@@ -1296,7 +1296,7 @@ git commit -m "refactor(java): retire FileMetaDataLoader + loader/file/; migrate
 - [ ] **Step 1: Move FileSource**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 mkdir -p server/typescript/packages/metadata/src/loader/sources
 git mv server/typescript/packages/metadata/src/core/file-source.ts \
        server/typescript/packages/metadata/src/loader/sources/file-source.ts
@@ -1731,7 +1731,7 @@ Per inventory — ~60 sites across:
 - [ ] **Step 1: Find all callsites**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 grep -rln 'FileMetaDataLoader' server/typescript client/web --include='*.ts' --include='*.tsx'
 ```
 
@@ -1793,7 +1793,7 @@ For any remaining hits, rewrite to `InMemoryStringSource`.
 - [ ] **Step 5: Typecheck + build + test**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 bun run --filter '*' typecheck
 bun run --filter '*' build
 cd server/typescript && bun test

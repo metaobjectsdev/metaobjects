@@ -1257,7 +1257,7 @@ Expected: green. Test count is `<baseline> + ~30` (23 from Phase 1 + 3 from Phas
 - [ ] **Step 2: Workspace build**
 
 ```bash
-cd /home/doug/Development/metaobjects && bun run --filter '*' build
+cd <repo-root> && bun run --filter '*' build
 ```
 
 Expected: all 14 packages exit 0.

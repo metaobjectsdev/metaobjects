@@ -80,7 +80,7 @@ server/java/pom.xml                                       # APPEND <module>codeg
 - [ ] **Step 1: Read the reference pom**
 
 ```bash
-cat /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java/metadata-ktx/pom.xml
+cat <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java/metadata-ktx/pom.xml
 ```
 
 This is the literal template — copy + swap deps.
@@ -178,7 +178,7 @@ Copy the entire `<build><plugins>` block verbatim from `metadata-ktx/pom.xml`. D
 - [ ] **Step 3: Make directories**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 mkdir -p server/java/codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin
 mkdir -p server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin
 ```
@@ -200,7 +200,7 @@ Edit `server/java/pom.xml`. In `<modules>`, append `<module>codegen-kotlin</modu
 - [ ] **Step 6: Verify module is recognized**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java
 mvn -pl codegen-kotlin validate -q
 ```
 
@@ -209,7 +209,7 @@ Expected: success (empty module validates).
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git add server/java/codegen-kotlin/pom.xml server/java/codegen-kotlin/README.md server/java/pom.xml
 git commit -m "build(java): scaffold metaobjects-codegen-kotlin module"
 ```
@@ -263,7 +263,7 @@ class PackageMappingTest {
 - [ ] **Step 2: Verify failure**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java
 mvn -pl codegen-kotlin test -q -Dtest=PackageMappingTest
 ```
 
@@ -302,7 +302,7 @@ mvn -pl codegen-kotlin test -q -Dtest=PackageMappingTest
 ```
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git add server/java/codegen-kotlin
 git commit -m "feat(codegen-kotlin): PackageMapping — metadata :: to Kotlin ."
 ```
@@ -1545,7 +1545,7 @@ Expected: 2 tests FAIL with "snapshots created for ... — review + commit". Ins
 - [ ] **Step 4: Commit snapshots + re-run to confirm gate**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git add server/java/codegen-kotlin/src/test/resources/snapshots
 git commit -m "test(codegen-kotlin): initial snapshots for fixtures"
 mvn -pl codegen-kotlin test -q -Dtest=KotlinCodegenSnapshotTest 2>&1 | tail -10
@@ -1920,13 +1920,13 @@ public class MetaDataMigrateMojoFlywayTest {
 - [ ] **Step 4: Run tests + commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl maven-plugin test -q -Dtest=MetaDataMigrateMojoFlywayTest 2>&1 | tail -5
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl maven-plugin test -q -Dtest=MetaDataMigrateMojoFlywayTest 2>&1 | tail -5
 ```
 
 Expected: 3 tests PASS.
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git add server/java/maven-plugin
 git commit -m "feat(maven-plugin): meta:migrate Flyway-naming option for codegen-kotlin consumers"
 ```
@@ -1983,13 +1983,13 @@ public class MetaDataVerifyMojo extends MetaDataMigrateMojo {
 - [ ] **Step 2: Compile + commit**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl maven-plugin compile -q 2>&1 | tail -5
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -pl maven-plugin compile -q 2>&1 | tail -5
 ```
 
 Expected: success.
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git add server/java/maven-plugin
 git commit -m "feat(maven-plugin): meta:verify goal — CI drift gate (wraps existing verb)"
 ```
@@ -2001,7 +2001,7 @@ git commit -m "feat(maven-plugin): meta:verify goal — CI drift gate (wraps exi
 - [ ] **Step 1: Run the full reactor**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn test 2>&1 | grep -E 'BUILD SUCCESS|BUILD FAILURE|Tests run:' | tail -3
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java && mvn test 2>&1 | grep -E 'BUILD SUCCESS|BUILD FAILURE|Tests run:' | tail -3
 ```
 
 Expected: BUILD SUCCESS. Reactor includes new codegen-kotlin module.
@@ -2032,23 +2032,23 @@ Code-simplifier scope: same.
 - [ ] **Step 3: Re-run full reactor**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn test 2>&1 | grep -E 'BUILD SUCCESS|BUILD FAILURE|Tests run:' | tail -3
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java && mvn test 2>&1 | grep -E 'BUILD SUCCESS|BUILD FAILURE|Tests run:' | tail -3
 ```
 
 - [ ] **Step 4: Merge to main**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git fetch origin main
 git merge --no-ff origin/main -m "Merge origin/main into worktree-codegen-kotlin (pre-merge sync)"
 cd server/java && mvn test -q
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git push -u origin worktree-codegen-kotlin
 
-git -C /home/doug/Development/metaobjects pull --ff-only origin main
-git -C /home/doug/Development/metaobjects merge --no-ff worktree-codegen-kotlin \
+git -C <repo-root> pull --ff-only origin main
+git -C <repo-root> merge --no-ff worktree-codegen-kotlin \
   -m "Merge codegen-kotlin — Kotlin codegen target + Flyway migration integration"
-git -C /home/doug/Development/metaobjects push origin main
+git -C <repo-root> push origin main
 ```
 
 ---

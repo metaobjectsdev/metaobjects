@@ -6,20 +6,44 @@ Java release line independent from the TypeScript line. TS is on a separate `0.x
 
 Apache 2.0. See [LICENSE](LICENSE).
 
-# Current Development
+# Released Versions
 
-## Version 7.0.1-SNAPSHOT (Current Development)
+## Version 7.1.0 (2026-05-28)
 
-Post-7.0.0 cleanup line:
+First release after the consolidated 7.0.0 publish. Combines a packaging cleanup (three **breaking** removals) with additive features. All 13 publishable modules build green with the full test suite (no `-DskipTests` needed — see below).
 
-- **OSGi runtime variant removed.** `OSGIServiceRegistry`, `BundleLifecycleManager`, and the `maven-bundle-plugin` packaging on every reactor module are gone. All artifacts now ship as plain JARs. The `ServiceRegistry` interface drops the OSGi-specific methods; `StandardServiceRegistry` is the only implementation. Decision rationale: [ADR-0012](../../spec/decisions/ADR-0012-remove-osgi-runtime-variant-java.md). Migration path: [MIGRATION.md](MIGRATION.md#osgi-support-removed) (OSGi consumers can wrap our JARs with `bnd` / `pax-url`).
-- **`metaobjects-dynamic-core` folded into `metaobjects-metadata`.** Its 89-LoC `CoreObjectsMetaDataProvider` now ships inside the metadata jar; the module is removed from the reactor. Reactor module count: 14 → 13.
+### Removed / breaking
+
+- **OSGi runtime variant removed.** `OSGIServiceRegistry`, `BundleLifecycleManager`, and the `maven-bundle-plugin` packaging on every reactor module are gone. All artifacts now ship as plain JARs. The `ServiceRegistry` interface drops the OSGi-specific methods; `StandardServiceRegistry` is the only implementation. Decision rationale: [ADR-0012](../../spec/decisions/ADR-0012-remove-osgi-runtime-variant-java.md). Migration path: [MIGRATION.md](MIGRATION.md#migrating-from-700-to-710) (OSGi consumers can wrap our JARs with `bnd` / `pax-url`).
+- **`metaobjects-dynamic-core` folded into `metaobjects-metadata`.** Its `CoreObjectsMetaDataProvider` now ships inside the metadata jar; the module is removed from the reactor. Reactor module count: 14 → 13. Consumers that depended on `com.metaobjects:metaobjects-dynamic-core` should drop that dependency — the classes are now on `metaobjects-metadata`.
 - **`archetype` and `examples` directories deleted.** They had been out of the reactor since 7.0.0; carrying them as scaffold source risked bit-rot.
+
+### Added
+
 - **Programmatic provider registration.** `MetaDataRegistry.compose(Collection<MetaDataTypeProvider>)` and `MetaDataRegistry.registerProviders(Collection<...>)` mirror the cross-port pattern already shipped in TypeScript (`composeRegistry(providers)`) and Python (`compose_registry(providers)`). Strict cross-port error contract: duplicate provider id throws `MetaDataException` with `ERR_PROVIDER_DUPLICATE_ID`; missing dependency throws `ERR_PROVIDER_MISSING_DEPENDENCY`; dependency cycle throws `ERR_PROVIDER_DEPENDENCY_CYCLE`. The ServiceLoader auto-discovery path on `MetaDataRegistry.getInstance()` continues to work unchanged (warn-and-continue semantics, for runtime robustness).
+- **`TemplateGenerator` factory in `metaobjects-render`.** New public render API — `TemplateGenerator` factory plus `EmittedFile` and the template-walk result record — cross-ported for byte-equivalence with the TS template generator and exercised by the render-conformance harness.
+- **`codegen-spring` emits `hasFoo()` presence helpers** for nullable record fields, so generated DTOs expose a null-safe accessor alongside the raw getter.
+- **`codegen-kotlin` emits `text()` for `field.string` with `@dbColumnType=jsonb`**, aligning the Kotlin/Exposed column mapping with jsonb-backed string fields.
+
+### Fixed
+
+- **Five pre-existing `ConformanceTest` failures greened.** A real cross-port byte-parity fix (a `packageAuthored` round-trip flag so a redundantly-authored `package` serializes identically to the TS/Python oracles) plus a test adapter mirroring the TS/Python conformance adapters. No tests were weakened or disabled. As a result the release deploy now runs the **full** test gate — the historical `-DskipTests` workaround for the provider-extension fixtures is no longer required.
+
+### Coordinates
+
+```xml
+<dependency>
+    <groupId>com.metaobjects</groupId>
+    <artifactId>metaobjects-metadata</artifactId>
+    <version>7.1.0</version>
+</dependency>
+```
+
+### Upgrading
+
+From 7.0.0: see [MIGRATION.md](MIGRATION.md#migrating-from-700-to-710). From 6.x: see [MIGRATION.md](MIGRATION.md).
 
 ---
-
-# Released Versions
 
 ## Version 7.0.0 (2026-05-27)
 

@@ -51,7 +51,7 @@ End state: `EntityMetaObject`/`ValueMetaObject` are the registered impls for `ob
 
 - [ ] **Step 2: Move the files** with `git mv` (package paths are unchanged, so the `package` declarations and all `@object="com.metaobjects.object.value.ValueObject"` fixtures stay valid):
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 mkdir -p server/java/metadata/src/main/java/com/metaobjects/object/data server/java/metadata/src/main/java/com/metaobjects/object/value
 git mv server/java/dynamic/src/main/java/com/metaobjects/object/data/DataObjectBase.java server/java/metadata/src/main/java/com/metaobjects/object/data/
 git mv server/java/dynamic/src/main/java/com/metaobjects/object/data/DataObject.java server/java/metadata/src/main/java/com/metaobjects/object/data/

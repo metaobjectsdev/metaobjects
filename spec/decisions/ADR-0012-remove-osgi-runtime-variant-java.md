@@ -36,7 +36,7 @@ In parallel, the MetaObjects project itself moved on from "Java with an optional
 
 **Remove the OSGi runtime variant from the Java port.** Ship plain JAR artifacts only. `StandardServiceRegistry` (Java `ServiceLoader`-backed) becomes the sole `ServiceRegistry` implementation. The `ServiceRegistry` interface drops its OSGi-specific methods.
 
-Concretely, in the 7.0.1-SNAPSHOT cleanup line:
+Concretely, in the 7.1.0 cleanup line:
 
 - Delete `metadata/src/main/java/com/metaobjects/registry/osgi/` (`OSGIServiceRegistry`, `BundleLifecycleManager`).
 - Delete the OSGi test infrastructure (`MockBundle`, `MockBundleContext`, `ServiceReferenceLeakTest`).

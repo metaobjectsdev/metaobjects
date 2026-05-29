@@ -70,7 +70,7 @@ End state: 5 file-IO classes physically in `metadata`; consumers (omdb/om/dynami
 - [ ] **Step 1: Enumerate all imports the 5 file-IO classes need:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java
 grep -h "^import com.metaobjects" \
   core/src/main/java/com/metaobjects/loader/file/FileMetaDataLoader.java \
   core/src/main/java/com/metaobjects/loader/file/FileLoaderOptions.java \
@@ -87,7 +87,7 @@ Expected: all imports starting with `com.metaobjects.` should resolve from `meta
 For each `com.metaobjects.X.Y` import listed above, run:
 
 ```bash
-find /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java/metadata/src/main -name 'Y.java' | head -1
+find <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java/metadata/src/main -name 'Y.java' | head -1
 ```
 
 Each must return a path. If any returns empty → that class is in `core` (not `metadata`) and would block the move. Report the list of blockers. (Expected: 0 blockers. If non-zero, decide per dep: move it too, or refactor the file-IO class to not depend on it.)
@@ -95,7 +95,7 @@ Each must return a path. If any returns empty → that class is in `core` (not `
 - [ ] **Step 3: Commit the inventory** (no code change yet):
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 # Nothing to commit — Task 1 is read-only. Proceed to Task 2.
 ```
 
@@ -107,7 +107,7 @@ cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-represe
 - [ ] **Step 1: Create the destination directory + move via git:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 mkdir -p server/java/metadata/src/main/java/com/metaobjects/loader/file
 for f in FileMetaDataLoader FileLoaderOptions FileMetaDataSources LocalFileMetaDataSources URIFileMetaDataSources; do
   git mv server/java/core/src/main/java/com/metaobjects/loader/file/${f}.java \
@@ -137,7 +137,7 @@ Expected: `BUILD SUCCESS`. (Consumers import by FQN `com.metaobjects.loader.file
 
 ```bash
 cd server/java && mvn -o -pl metadata test 2>&1 | grep -E "Tests run: [0-9]+, Fail|BUILD" | grep -vE "Time elapsed" | tail -3
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -o -pl omdb test 2>&1 | grep -E "Tests run: [0-9]+, Fail|BUILD" | grep -vE "Time elapsed" | tail -3
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -o -pl omdb test 2>&1 | grep -E "Tests run: [0-9]+, Fail|BUILD" | grep -vE "Time elapsed" | tail -3
 ```
 
 Expected: metadata 614+/0/0 (more passing now — the file-IO classes can themselves be unit-tested from metadata test scope); omdb 30/0/0.
@@ -145,7 +145,7 @@ Expected: metadata 614+/0/0 (more passing now — the file-IO classes can themse
 - [ ] **Step 5: Commit:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git add -A
 git commit -m "$(cat <<'EOF'
 refactor(metadata): move file-IO loader from core to metadata (FQNs preserved)
@@ -176,7 +176,7 @@ End state: `CoreTypeInitializer` lives in `metadata`; `IOMetaDataProvider` eithe
 - [ ] **Step 1: Inspect `CoreTypeInitializer` to confirm it only depends on `metadata` classes:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 grep -h "^import com.metaobjects" server/java/core/src/main/java/com/metaobjects/registry/CoreTypeInitializer.java | sort -u
 ```
 
@@ -204,7 +204,7 @@ Do not edit the `package` declaration.
 
 ```bash
 cd server/java && mvn -o install -pl metadata,core,dynamic,om,omdb,codegen-base,codegen-mustache,codegen-plantuml,maven-plugin,core-spring,omdb-ktx -DskipTests 2>&1 | grep -E "BUILD|ERROR" | tail -5
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -o -pl metadata test 2>&1 | grep -E "Tests run: [0-9]+, Fail|BUILD" | grep -vE "Time elapsed" | tail -3
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -o -pl metadata test 2>&1 | grep -E "Tests run: [0-9]+, Fail|BUILD" | grep -vE "Time elapsed" | tail -3
 ```
 
 Expected: BUILD SUCCESS + metadata 614+/0/0.
@@ -212,7 +212,7 @@ Expected: BUILD SUCCESS + metadata 614+/0/0.
 - [ ] **Step 5: Commit:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git add -A
 git commit -m "$(cat <<'EOF'
 refactor(metadata): absorb CoreTypeInitializer into metadata (FQN preserved)
@@ -233,7 +233,7 @@ EOF
 - [ ] **Step 1: Inspect the class + find its references:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 cat server/java/core/src/main/java/com/metaobjects/io/IOMetaDataProvider.java
 grep -rn "IOMetaDataProvider" server/java --include=*.java --include=*.xml --include=*.properties 2>/dev/null | grep -v /target/
 grep -rn "IOMetaDataProvider" server/java/*/src/main/resources/META-INF 2>/dev/null
@@ -269,7 +269,7 @@ git add -A
 
 ```bash
 cd server/java && mvn -o install -pl metadata,core,dynamic,om,omdb,codegen-base,codegen-mustache,codegen-plantuml,maven-plugin,core-spring,omdb-ktx -DskipTests 2>&1 | grep -E "BUILD|ERROR" | tail -5
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -o -pl metadata,omdb test 2>&1 | grep -E "Tests run: [0-9]+, Fail|BUILD" | grep -vE "Time elapsed" | tail -4
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java && mvn -o -pl metadata,omdb test 2>&1 | grep -E "Tests run: [0-9]+, Fail|BUILD" | grep -vE "Time elapsed" | tail -4
 ```
 
 Expected: BUILD SUCCESS + tests unchanged.
@@ -277,7 +277,7 @@ Expected: BUILD SUCCESS + tests unchanged.
 - [ ] **Step 5: Commit:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git add -A
 git commit -m "$(cat <<'EOF'
 refactor(metadata): <move|drop> IOMetaDataProvider (<one-line rationale>)
@@ -304,7 +304,7 @@ End state: 4 metadata XML fixtures replaced by canonical JSON, tests updated to 
 - [ ] **Step 1: Print each fixture and find its consuming test(s):**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 for f in \
   server/java/codegen-base/src/test/resources/schema-validation/invalid-subtypes.xml \
   server/java/codegen-base/src/test/resources/schema-validation/invalid-missing-required.xml \
@@ -354,7 +354,7 @@ For each consuming test class identified in Task 5, change the resource path fro
 - [ ] **Step 4: Run the affected modules' tests:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java
 mvn -o -pl codegen-base test 2>&1 | grep -E "Tests run: [0-9]+, Fail|BUILD" | grep -vE "Time elapsed" | tail -3
 mvn -o -pl om test 2>&1 | grep -E "Tests run: [0-9]+, Fail|BUILD" | grep -vE "Time elapsed" | tail -3
 ```
@@ -373,7 +373,7 @@ git rm server/java/om/src/test/resources/testdata/produce/v1/Apple.xml
 - [ ] **Step 6: Commit:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git add -A
 git commit -m "$(cat <<'EOF'
 test(java): convert remaining 4 metadata XML fixtures to canonical JSON
@@ -408,7 +408,7 @@ EOF
 - [ ] **Step 1: Final scan for production callers** (must be zero before deletion):
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 grep -rn "XMLMetaDataReader\|XMLMetaDataWriter\|XMLObjectReader\|XMLObjectWriter\|XMLIOUtil\|XMLIOConstants\|XMLSerializationHandler" \
   server/java --include=*.java 2>/dev/null \
   | grep -v /target/
@@ -456,7 +456,7 @@ git rm server/java/core/src/main/java/com/metaobjects/io/object/xml/XMLObjectWri
 
 ```bash
 cd server/java && mvn -o install -pl metadata,core,dynamic,om,omdb,codegen-base,codegen-mustache,codegen-plantuml,maven-plugin,core-spring,omdb-ktx -DskipTests 2>&1 | grep -E "BUILD|ERROR" | tail -5
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java
 for m in metadata core dynamic om omdb codegen-base codegen-mustache codegen-plantuml maven-plugin core-spring; do
   echo "== $m =="
   mvn -o -pl $m test 2>&1 | grep -E "Tests run: [0-9]+, Fail|BUILD (SUCCESS|FAILURE)" | grep -vE "Time elapsed" | tail -2
@@ -468,7 +468,7 @@ Expected: all green (test counts may shift down for any module whose XML tests w
 - [ ] **Step 6: Commit:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git add -A
 git commit -m "$(cat <<'EOF'
 refactor(java): drop legacy XML I/O (XMLMetaData/Object Reader/Writer, helpers)
@@ -522,7 +522,7 @@ Replace with:
 - [ ] **Step 2: Apply to all 6 poms:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 for p in omdb dynamic omdb-ktx maven-plugin core-spring om; do
   echo "===== $p/pom.xml current core dep ====="
   grep -A3 -B1 "metaobjects-core" server/java/$p/pom.xml | head -10
@@ -547,7 +547,7 @@ Expected: BUILD SUCCESS (consumers no longer depend on core; core builds standal
 - [ ] **Step 4: Test all dependents to confirm they still work without the core dep:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java
 for m in omdb dynamic omdb-ktx maven-plugin core-spring om; do
   echo "== $m =="
   mvn -o -pl $m test 2>&1 | grep -E "Tests run: [0-9]+, Fail|BUILD (SUCCESS|FAILURE)" | grep -vE "Time elapsed" | tail -2
@@ -559,7 +559,7 @@ Expected: all green.
 - [ ] **Step 5: Commit:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git add -A
 git commit -m "$(cat <<'EOF'
 refactor(java): re-point omdb/om/dynamic/omdb-ktx/maven-plugin/core-spring poms from metaobjects-core to metaobjects-metadata
@@ -582,7 +582,7 @@ EOF
 - [ ] **Step 1: Confirm `core` is genuinely empty of non-trivial Java** (only what's been touched in P1-P3 should remain):
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 find server/java/core -name '*.java' -not -path '*/target/*'
 ```
 
@@ -614,7 +614,7 @@ Expected: BUILD SUCCESS; reactor lists modules WITHOUT `core`; all test counts m
 - [ ] **Step 5: Commit:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git add -A
 git commit -m "$(cat <<'EOF'
 refactor(java): delete the core module — collapse into metadata
@@ -642,7 +642,7 @@ End state: explicit assertion that the aligned vocabulary (`entity`/`value` + `s
 - [ ] **Step 1: Re-run `ConformanceTest` after WA4 + capture the ledger state:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java
 mvn -o -pl metadata test -Dtest=ConformanceTest 2>&1 | grep -E "Tests run:|<<< FAILURE|BUILD" | tail -5
 wc -l ../metadata/conformance-expected-failures.json
 ```
@@ -752,7 +752,7 @@ public class AlignedVocabularyTest extends SharedRegistryTestBase {
 - [ ] **Step 4: Run the new test + the full metadata suite:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java
 mvn -o -pl metadata test -Dtest=AlignedVocabularyTest 2>&1 | grep -E "Tests run:|BUILD" | tail -3
 mvn -o -pl metadata test 2>&1 | grep -E "Tests run: [0-9]+, Fail|BUILD" | grep -vE "Time elapsed" | tail -3
 ```
@@ -762,7 +762,7 @@ Expected: AlignedVocabularyTest `Tests run: 1, Failures: 0`; metadata 615+/0/0.
 - [ ] **Step 5: Commit:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 git add -A
 git commit -m "$(cat <<'EOF'
 test(metadata): WA5 conformance gate — aligned-vocabulary smoke test
@@ -783,7 +783,7 @@ EOF
 - [ ] **Step 1: Full reactor:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation/server/java
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation/server/java
 mvn -o install -DskipTests 2>&1 | grep -E "BUILD|ERROR" | tail -3
 mvn -o test 2>&1 | grep -E "^\[INFO\] Building|Tests run: [0-9]+, Fail|BUILD (SUCCESS|FAILURE)" | grep -vE "Time elapsed" | tail -30
 ```
@@ -793,7 +793,7 @@ Expected: every module BUILD SUCCESS, all test counts ≥ pre-WA4 baselines (san
 - [ ] **Step 2: Audit the ledger one more time:**
 
 ```bash
-cd /home/doug/Development/metaobjects/.claude/worktrees/wa2-entity-value-representation
+cd <repo-root>/.claude/worktrees/wa2-entity-value-representation
 cat server/java/metadata/conformance-expected-failures.json
 ```
 

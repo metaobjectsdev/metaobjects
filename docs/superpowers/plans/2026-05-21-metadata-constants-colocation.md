@@ -17,7 +17,7 @@
 This refactor changes **where code lives**, never **what it does**. The gate after every phase:
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript && bun test 2>&1 | tail -4
+cd <repo-root>/server/typescript && bun test 2>&1 | tail -4
 ```
 Must stay **2034 pass / 0 fail** (server-side; the conformance fixtures live here and are the frozen canonical-output check). Plus the codegen golden snapshots must show **zero diff** (no `git diff` under `test/golden/`). If either breaks, the move was not behavior-neutral — stop and fix before continuing.
 
@@ -74,8 +74,8 @@ Each phase is independently green (tests + golden + typecheck). Phase 4 may be d
 - [ ] **Baseline + branch:**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript && bun install && bun test 2>&1 | tail -4
-cd /home/doug/Development/metaobjects && git checkout -b refactor/metadata-constants-colocation
+cd <repo-root>/server/typescript && bun install && bun test 2>&1 | tail -4
+cd <repo-root> && git checkout -b refactor/metadata-constants-colocation
 git status --short   # must be clean
 ```
 Expected: 2034 pass / 0 fail. Record the exact count.
@@ -83,7 +83,7 @@ Expected: 2034 pass / 0 fail. Record the exact count.
 - [ ] **Capture golden baseline (for the zero-diff gate):**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git rev-parse HEAD > /tmp/colocation-base-sha.txt
 ```
 After each phase, `git diff <base-sha> -- server/typescript/packages/codegen-ts/test/golden server/typescript/packages/codegen-ts-tanstack/test/golden` must be **empty** (constants moving must not change emitted output).
@@ -101,7 +101,7 @@ After each phase, `git diff <base-sha> -- server/typescript/packages/codegen-ts/
 - [ ] **Step 1: Find every reference.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 grep -rn "OBJECT_JAVA_RUNTIME\|javaRuntime\|JAVA_RUNTIME" server/typescript/packages/metadata/src server/typescript/packages/metadata/test --include="*.ts" 2>/dev/null
 ```
 Record the full list. Expected hits: `constants.ts` (the constants + type), `core-attr-schemas.ts` (the schema entry referencing `OBJECT_JAVA_RUNTIME_VALUES`), `meta/meta-object.ts` (the `javaRuntime` getter), `test/meta/meta-object.test.ts` (assertions). Confirm there are no others (e.g., serializer, codegen) — if any appear outside this list, STOP and report.
@@ -117,7 +117,7 @@ Record the full list. Expected hits: `constants.ts` (the constants + type), `cor
 - [ ] **Step 6: Verify no references remain + tests pass.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 grep -rn "javaRuntime\|JAVA_RUNTIME" server/typescript/packages/metadata --include="*.ts" | grep -v "/dist/"   # expect empty
 cd server/typescript && bun test 2>&1 | tail -4
 ```
@@ -126,7 +126,7 @@ Expected: empty grep; tests pass (count drops by the number of removed `.javaRun
 - [ ] **Step 7: Golden gate + commit.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git diff $(cat /tmp/colocation-base-sha.txt) -- server/typescript/packages/codegen-ts/test/golden server/typescript/packages/codegen-ts-tanstack/test/golden   # expect empty
 git add -A && git commit -m "refactor(metadata): delete Java-only @javaRuntime from TS (leak removal)"
 ```
@@ -143,7 +143,7 @@ git add -A && git commit -m "refactor(metadata): delete Java-only @javaRuntime f
 - [ ] **Step 1: Read the current constants.ts sections to extract exact members.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 sed -n '1,60p' server/typescript/packages/metadata/src/constants.ts          # base types + universal/metadata subtypes
 grep -nE "STRUCTURAL|RESERVED|JSON_|ATTR_PREFIX|SEP|WILDCARD|PACKAGE" server/typescript/packages/metadata/src/constants.ts
 ```
@@ -164,8 +164,8 @@ export * from "./shared/structural.js";
 - [ ] **Step 5: Verify + commit.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript && bun test 2>&1 | tail -4
-cd /home/doug/Development/metaobjects
+cd <repo-root>/server/typescript && bun test 2>&1 | tail -4
+cd <repo-root>
 git diff $(cat /tmp/colocation-base-sha.txt) -- server/typescript/packages/codegen-ts/test/golden server/typescript/packages/codegen-ts-tanstack/test/golden  # empty
 git add -A && git commit -m "refactor(metadata): extract shared/ base-types + structural constants"
 ```
@@ -219,14 +219,14 @@ export * from "./presentation/layout/layout-constants.js";
 - [ ] **Step 3: Verify the barrel preserves everything + tests pass.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript && bun run --filter '@metaobjectsdev/metadata' typecheck && bun test 2>&1 | tail -4
+cd <repo-root>/server/typescript && bun run --filter '@metaobjectsdev/metadata' typecheck && bun test 2>&1 | tail -4
 ```
 Expected: typecheck clean, 2034-ish pass / 0 fail. (Any "X is not exported" error means a constant was missed in the split — find it in git history of constants.ts and place it.)
 
 - [ ] **Step 4: Repoint internal importers off `./constants.js` onto the concern modules.** Find them:
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 grep -rln 'from "\.\./constants\.js"\|from "\./constants\.js"\|from "\.\./\.\./constants\.js"' server/typescript/packages/metadata/src --include="*.ts"
 ```
 For each file, change its import to the specific concern module(s) it actually uses (e.g., `db-attr-schemas.ts` imports `FIELD_ATTR_DB_COLUMN` → from `./db-constants.js` once db moves, or `../persistence/db/db-constants.js`). This is the bulk of the work; do it file by file, re-running typecheck after each batch.
@@ -242,8 +242,8 @@ grep -n "constants" server/typescript/packages/metadata/src/index.ts   # confirm
 - [ ] **Step 7: Full verify + golden gate + commit.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript && bun test 2>&1 | tail -4 && bun run --filter '*' typecheck 2>&1 | grep -c "Exited with code 0"
-cd /home/doug/Development/metaobjects
+cd <repo-root>/server/typescript && bun test 2>&1 | tail -4 && bun run --filter '*' typecheck 2>&1 | grep -c "Exited with code 0"
+cd <repo-root>
 test -f server/typescript/packages/metadata/src/constants.ts && echo "STILL EXISTS — should be deleted" || echo "constants.ts deleted OK"
 git diff $(cat /tmp/colocation-base-sha.txt) -- server/typescript/packages/codegen-ts/test/golden server/typescript/packages/codegen-ts-tanstack/test/golden  # empty
 git add -A && git commit -m "refactor(metadata): shatter constants.ts into per-concern co-located modules"
@@ -262,7 +262,7 @@ Expected: tests pass, all packages typecheck (13), constants.ts gone, golden emp
 - [ ] **Step 1: Inventory the exported schema arrays.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 grep -nE "^export const .*Attrs|^export const .*Schema" server/typescript/packages/metadata/src/core-attr-schemas.ts
 ```
 Record each array (e.g., `objectAttrs`, `fieldAttrs`, `validatorAttrs`, `idAttrs`, `relationshipAttrs`, `viewAttrs`, `dataGridLayoutAttrs`, `originAttrs`, source attrs).
@@ -285,8 +285,8 @@ git rm server/typescript/packages/metadata/src/core-attr-schemas.ts
 - [ ] **Step 5: Full verify + golden gate + commit.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript && bun test 2>&1 | tail -4 && bun run --filter '@metaobjectsdev/metadata' typecheck
-cd /home/doug/Development/metaobjects
+cd <repo-root>/server/typescript && bun test 2>&1 | tail -4 && bun run --filter '@metaobjectsdev/metadata' typecheck
+cd <repo-root>
 git diff $(cat /tmp/colocation-base-sha.txt) -- server/typescript/packages/codegen-ts/test/golden server/typescript/packages/codegen-ts-tanstack/test/golden  # empty
 git add -A && git commit -m "refactor(metadata): split core-attr-schemas into per-concern schema modules"
 ```
@@ -320,7 +320,7 @@ Do ONE accessor at a time: `git mv`, update that file's relative imports, update
 - [ ] **Step 3: Delete the now-empty `meta/` dir** (if fully drained) and verify.
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 ls server/typescript/packages/metadata/src/meta/ 2>/dev/null || echo "meta/ gone"
 cd server/typescript && bun test 2>&1 | tail -4 && bun run --filter '*' typecheck 2>&1 | grep -c "Exited with code 0"
 ```
@@ -328,7 +328,7 @@ cd server/typescript && bun test 2>&1 | tail -4 && bun run --filter '*' typechec
 - [ ] **Step 4: Golden gate + commit.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git diff $(cat /tmp/colocation-base-sha.txt) -- server/typescript/packages/codegen-ts/test/golden server/typescript/packages/codegen-ts-tanstack/test/golden  # empty
 git add -A && git commit -m "refactor(metadata): relocate node accessors + db provider into concern folders"
 ```
@@ -340,7 +340,7 @@ git add -A && git commit -m "refactor(metadata): relocate node accessors + db pr
 - [ ] **Step 1: Structure assertions.**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 test -f server/typescript/packages/metadata/src/constants.ts && echo "FAIL: constants.ts exists" || echo "ok: constants.ts gone"
 test -f server/typescript/packages/metadata/src/core-attr-schemas.ts && echo "FAIL: core-attr-schemas.ts exists" || echo "ok: core-attr-schemas.ts gone"
 grep -rn "javaRuntime\|JAVA_RUNTIME" server/typescript/packages/metadata/src --include="*.ts" | grep -v "/dist/" || echo "ok: no javaRuntime"
@@ -351,7 +351,7 @@ Expected: both monoliths gone, no javaRuntime, the four layer dirs present.
 - [ ] **Step 2: Clean install + full test + typecheck + build.**
 
 ```
-cd /home/doug/Development/metaobjects/server/typescript
+cd <repo-root>/server/typescript
 rm -rf node_modules && bun install
 bun test 2>&1 | tail -4              # 2034 pass / 0 fail
 bun run --filter '*' typecheck 2>&1 | grep -c "Exited with code 0"   # 13
@@ -361,14 +361,14 @@ bun run --filter '*' build 2>&1 | grep -c "Exited with code 0"      # 13
 - [ ] **Step 3: Client/web tests (consumers of metadata).**
 
 ```
-for p in /home/doug/Development/metaobjects/client/web/packages/{runtime-web,react,tanstack}; do echo "=== $p ==="; (cd "$p" && bun test 2>&1 | tail -3); done
+for p in <repo-root>/client/web/packages/{runtime-web,react,tanstack}; do echo "=== $p ==="; (cd "$p" && bun test 2>&1 | tail -3); done
 ```
 Expected: 30 / 12 / 29, all 0 fail.
 
 - [ ] **Step 4: Conformance / canonical-output gate (the load-bearing check).**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git diff $(cat /tmp/colocation-base-sha.txt) -- server/typescript/packages/codegen-ts/test/golden server/typescript/packages/codegen-ts-tanstack/test/golden
 ```
 Expected: **completely empty** across the whole refactor. The conformance fixtures (run inside `bun test`) plus zero golden diff together prove byte-identical canonical output.
@@ -376,7 +376,7 @@ Expected: **completely empty** across the whole refactor. The conformance fixtur
 - [ ] **Step 5: Consumer-import sanity — the 7 packages compiled with zero import changes?**
 
 ```
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 git diff $(cat /tmp/colocation-base-sha.txt) --stat -- server/typescript/packages/codegen-ts/src server/typescript/packages/codegen-ts-tanstack/src server/typescript/packages/runtime-ts/src server/typescript/packages/cli/src server/typescript/packages/migrate-ts/src server/typescript/packages/sdk/src | tail -5
 ```
 Expected: empty or near-empty (only the deleted `@javaRuntime` symbol if any consumer referenced it — verified none do). Consumer source should be untouched because the barrel preserves the bare-name surface.

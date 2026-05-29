@@ -1,5 +1,23 @@
 # Migration Guide
 
+## Migrating from 7.0.0 to 7.1.0
+
+7.1.0 is a cleanup release with three **breaking** packaging changes for consumers already on 7.0.0, plus additive features (full list in [RELEASE_NOTES.md](RELEASE_NOTES.md#version-710-2026-05-28)).
+
+1. **OSGi runtime variant removed.** If you consumed the OSGi bundles or called the OSGi-specific `ServiceRegistry` methods, see [OSGi support removed](#osgi-support-removed) below for the exact API delta and the `bnd` / `pax-url` wrap path.
+2. **`metaobjects-dynamic-core` folded into `metaobjects-metadata`.** Drop any `com.metaobjects:metaobjects-dynamic-core` dependency — its `CoreObjectsMetaDataProvider` (and the `dataBuilderClass` / `valueObjectType` attribute extensions on `object.base`) now ship inside `metaobjects-metadata`. No change for consumers of those attribute names.
+3. **`archetype` / `examples` directories deleted.** No action unless you referenced them as source.
+
+Additive (opt-in) in 7.1.0: [programmatic provider registration](#programmatic-provider-registration-new-in-710), the `TemplateGenerator` render API in `metaobjects-render`, `codegen-spring` `hasFoo()` presence helpers for nullable record fields, and `codegen-kotlin` `text()` mapping for jsonb-backed string fields.
+
+Otherwise it is a version bump:
+
+```xml
+<version>7.1.0</version>
+```
+
+---
+
 ## Migrating from 6.x to 7.0.0
 
 7.0.0 is the first publish from the consolidated `server/java/` reactor under the cross-language MetaObjects monorepo. Most consumers' migration is a version bump — the bulk of the work moved underneath the API. The full release notes are in [RELEASE_NOTES.md](RELEASE_NOTES.md).
@@ -32,7 +50,7 @@ The `metaobjects-dynamic-core` module from 6.x is gone — its `CoreObjectsMetaD
 
 ### OSGi support removed
 
-The OSGi runtime variant (`OSGIServiceRegistry`, `BundleLifecycleManager`, the `maven-bundle-plugin` packaging on every reactor module) was dropped in 7.0.1. The artifacts are now plain JARs. Decision rationale: [ADR-0012](../../spec/decisions/ADR-0012-remove-osgi-runtime-variant-java.md).
+The OSGi runtime variant (`OSGIServiceRegistry`, `BundleLifecycleManager`, the `maven-bundle-plugin` packaging on every reactor module) was dropped in 7.1.0. The artifacts are now plain JARs. Decision rationale: [ADR-0012](../../spec/decisions/ADR-0012-remove-osgi-runtime-variant-java.md).
 
 Consumers running inside an OSGi container can still wrap MetaObjects' JARs with `bnd` / `pax-url` to produce bundles with the appropriate manifest headers — the code itself works in any classloader environment. What changes:
 
@@ -43,7 +61,7 @@ Consumers running inside an OSGi container can still wrap MetaObjects' JARs with
 
 The `WeakReference` patterns in `MetaData`, `HybridCache`, and `StandardServiceRegistry` stay — they are general ClassLoader-leak prevention, not OSGi-specific.
 
-### Programmatic provider registration (new in 7.0.1)
+### Programmatic provider registration (new in 7.1.0)
 
 `MetaDataRegistry` now ships a `compose(...)` / `registerProviders(...)` API that mirrors the cross-port pattern already in TypeScript (`composeRegistry(providers)`) and Python (`compose_registry(providers)`):
 

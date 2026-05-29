@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.metaobjects</groupId>
   <artifactId>metaobjects</artifactId>
-  <version>7.0.1-SNAPSHOT</version>
+  <version>7.1.0</version>
   <packaging>pom</packaging>
   <name>MetaObjects Core</name>
   <description>Universal metadata-driven development platform</description>
@@ -170,25 +170,8 @@
       </dependency>
       <dependency>
         <groupId>com.metaobjects</groupId>
-        <artifactId>metaobjects-core</artifactId>
-        <version>${project.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>com.metaobjects</groupId>
         <artifactId>metaobjects-core-spring</artifactId>
         <version>${project.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>com.metaobjects</groupId>
-        <artifactId>metaobjects-dynamic-core</artifactId>
-        <version>${project.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>com.metaobjects</groupId>
-        <artifactId>metaobjects-dynamic-core</artifactId>
-        <version>${project.version}</version>
-        <type>test-jar</type>
-        <scope>test</scope>
       </dependency>
       <dependency>
         <groupId>com.metaobjects</groupId>
@@ -203,13 +186,6 @@
       <dependency>
         <groupId>com.metaobjects</groupId>
         <artifactId>metaobjects-maven-plugin</artifactId>
-        <version>${project.version}</version>
-      </dependency>
-
-      <!-- Additional archetype dependencies -->
-      <dependency>
-        <groupId>com.metaobjects</groupId>
-        <artifactId>archetype</artifactId>
         <version>${project.version}</version>
       </dependency>
 

@@ -703,7 +703,7 @@ Expected: green; test count is `<previous-baseline> + 10` (6 renderer + 4 factor
 - [ ] **Step 3: Verify build clean**
 
 ```bash
-cd /home/doug/Development/metaobjects && bun run --filter '*' build
+cd <repo-root> && bun run --filter '*' build
 ```
 
 Expected: all 14 packages exit 0.
@@ -768,7 +768,7 @@ if (res.errors.length > 0) { console.error(res.errors); process.exit(1); }
 const out = canonicalSerialize(res.root);
 writeFileSync(`${FIXTURE}/expected.json`, JSON.stringify(out, null, 2) + "\n", "utf8");
 console.log("Wrote expected.json");
-' FIXTURE=/home/doug/Development/metaobjects/fixtures/conformance/template-output-simple
+' FIXTURE=<repo-root>/fixtures/conformance/template-output-simple
 ```
 
 (Replace the absolute path with whatever your current repo root is — the implementer will compute it from `git rev-parse --show-toplevel`.)
@@ -799,7 +799,7 @@ const out = await gen.generate({
 });
 writeFileSync(`${FIXTURE}/expected/NpcResponseOutput.output.ts`, out[0].content, "utf8");
 console.log("Wrote", out[0].content.length, "chars");
-' FIXTURE=/home/doug/Development/metaobjects/fixtures/conformance/template-output-simple
+' FIXTURE=<repo-root>/fixtures/conformance/template-output-simple
 ```
 
 If the `@metaobjectsdev/codegen-ts/generators` import doesn't resolve, use the deep file path (`../codegen-ts/src/generators/index.ts` or the resolved package export).
@@ -1453,7 +1453,7 @@ Expected: green; test count is baseline + 13 (6 renderer + 4 factory + 1 conform
 - [ ] **Step 2: Workspace build**
 
 ```bash
-cd /home/doug/Development/metaobjects && bun run --filter '*' build
+cd <repo-root> && bun run --filter '*' build
 ```
 
 Expected: all 14 packages exit 0.

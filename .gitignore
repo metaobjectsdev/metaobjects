@@ -56,3 +56,6 @@ reports/
 
 # Local-only pre-commit denylist (must never be committed — would leak private names)
 .githooks/deny-list.local
+
+# Local per-port Claude tooling docs (not part of the public artifact)
+server/java/.claude/
