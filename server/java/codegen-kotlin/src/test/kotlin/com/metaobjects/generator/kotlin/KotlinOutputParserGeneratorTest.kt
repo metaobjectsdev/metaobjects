@@ -232,4 +232,225 @@ class KotlinOutputParserGeneratorTest {
             outDir.toFile().deleteRecursively()
         }
     }
+
+    // ---------------------------------------------------------------------------
+    // 7. FR-010: json format emits recover() + RECOVER_SCHEMA + Recovered class.
+    // ---------------------------------------------------------------------------
+    @Test fun jsonFormatEmitsRecoverBlock() {
+        val fx = """{
+          "metadata.root": { "package": "acme::ai", "children": [
+            { "object.value": { "name": "AnswerOutputPayload", "children": [
+                { "field.string":  { "name": "text",       "@required": true } },
+                { "field.enum":    { "name": "confidence", "@required": true,
+                                    "@values": ["HIGH","OK","LOW"],
+                                    "@enumAlias": { "medium": "OK" } } },
+                { "field.string":  { "name": "note" } }
+            ] } },
+            { "template.output": { "name": "Answer",
+                "@payloadRef": "AnswerOutputPayload",
+                "@textRef": "ai/answer",
+                "@format": "json" } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("kparser-json-recover-")
+        try {
+            val gen = KotlinOutputParserGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("test-json-recover", fx))
+
+            val src = Files.readString(outDir.resolve("acme/ai/prompts/AnswerParser.kt"))
+
+            // Recovered data class emitted at top level.
+            assertTrue("data class AnswerRecovered(" in src, "missing Recovered class decl; src:\n$src")
+
+            // RECOVER_SCHEMA constant inside the object.
+            assertTrue("RECOVER_SCHEMA" in src, "missing RECOVER_SCHEMA; src:\n$src")
+
+            // Two recover() overloads.
+            assertTrue("fun recover(text: String): RecoveryResult<" in src,
+                "missing recover(String) overload; src:\n$src")
+            assertTrue("fun recover(text: String, opts: RecoverOptions)" in src,
+                "missing recover(String, RecoverOptions) overload; src:\n$src")
+
+            // Engine call site.
+            assertTrue("Recover.recover(text, RECOVER_SCHEMA" in src,
+                "missing Recover.recover(...) call site; src:\n$src")
+
+            // Kotlin property access on RecoverOutcome (not method call).
+            assertTrue("val d = o.data" in src, "expected o.data property access; src:\n$src")
+            assertTrue("o.report" in src, "expected o.report property access; src:\n$src")
+
+            // Recover imports.
+            assertTrue("import com.metaobjects.render.recover.Recover" in src,
+                "missing Recover import; src:\n$src")
+            assertTrue("import com.metaobjects.render.recover.RecoveryResult" in src,
+                "missing RecoveryResult import; src:\n$src")
+            assertTrue("import com.metaobjects.render.recover.RecoverOptions" in src,
+                "missing RecoverOptions import; src:\n$src")
+            assertTrue("import com.metaobjects.render.recover.RecoverSchema" in src,
+                "missing RecoverSchema import; src:\n$src")
+            assertTrue("import com.metaobjects.render.recover.RecoverMap" in src,
+                "missing RecoverMap import; src:\n$src")
+            assertTrue("import com.metaobjects.render.recover.FieldSpec" in src,
+                "missing FieldSpec import; src:\n$src")
+            assertTrue("import com.metaobjects.render.recover.FieldKind" in src,
+                "missing FieldKind import; src:\n$src")
+            assertTrue("import com.metaobjects.render.recover.Format" in src,
+                "missing Format import; src:\n$src")
+
+            // Existing parse/safeParse API must still be present.
+            assertTrue("fun parseAnswer" in src, "missing fun parseAnswer; src:\n$src")
+            assertTrue("fun safeParseAnswer" in src, "missing fun safeParseAnswer; src:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // 8. FR-010: Recovered class name follows <TemplateShort>Recovered convention.
+    // ---------------------------------------------------------------------------
+    @Test fun recoveredClassNameFollowsTemplateShortConvention() {
+        val fx = """{
+          "metadata.root": { "package": "acme::ai", "children": [
+            { "object.value": { "name": "AnswerOutputPayload", "children": [
+                { "field.string": { "name": "text" } }
+            ] } },
+            { "template.output": { "name": "Answer",
+                "@payloadRef": "AnswerOutputPayload",
+                "@textRef": "ai/answer",
+                "@format": "json" } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("kparser-recovered-name-")
+        try {
+            val gen = KotlinOutputParserGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("test-recovered-name", fx))
+
+            val src = Files.readString(outDir.resolve("acme/ai/prompts/AnswerParser.kt"))
+
+            // Recovered class name = templateShort + "Recovered" = "AnswerRecovered".
+            assertTrue("data class AnswerRecovered(" in src,
+                "Recovered class name must be <TemplateShort>Recovered = AnswerRecovered; src:\n$src")
+            assertTrue("RecoveryResult<AnswerRecovered>" in src,
+                "recover() return type must be RecoveryResult<AnswerRecovered>; src:\n$src")
+
+            // Must NOT redeclare the payload data class.
+            assertFalse("data class AnswerPayload" in src,
+                "parser must not redeclare the payload data class; src:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // 9. FR-010: text format (default) does NOT emit recover / RECOVER_SCHEMA.
+    // ---------------------------------------------------------------------------
+    @Test fun textFormatDoesNotEmitRecoverBlock() {
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.value": { "name": "Greeting", "children": [
+                { "field.string": { "name": "text" } }
+            ] } },
+            { "template.output": { "name": "Reply",
+                "@payloadRef": "Greeting",
+                "@textRef": "demo/reply",
+                "@format": "text" } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("kparser-text-norecover-")
+        try {
+            val gen = KotlinOutputParserGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("test-text-norecover", fx))
+
+            val src = Files.readString(outDir.resolve("acme/demo/prompts/ReplyParser.kt"))
+
+            assertFalse("recover" in src,
+                "text format must NOT emit recover; src:\n$src")
+            assertFalse("RECOVER_SCHEMA" in src,
+                "text format must NOT emit RECOVER_SCHEMA; src:\n$src")
+            assertFalse("RecoveryResult" in src,
+                "text format must NOT emit RecoveryResult; src:\n$src")
+
+            // parse/safeParse still present.
+            assertTrue("fun parseReply" in src, "fun parseReply must still be present; src:\n$src")
+            assertTrue("fun safeParseReply" in src, "fun safeParseReply must still be present; src:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // 10. FR-010: xml format also emits recover block (same gate as json).
+    // ---------------------------------------------------------------------------
+    @Test fun xmlFormatEmitsRecoverBlock() {
+        val fx = """{
+          "metadata.root": { "package": "acme::reports", "children": [
+            { "object.value": { "name": "SummaryOutputPayload", "children": [
+                { "field.string": { "name": "body" } }
+            ] } },
+            { "template.output": { "name": "Summary",
+                "@payloadRef": "SummaryOutputPayload",
+                "@textRef": "reports/summary",
+                "@format": "xml" } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("kparser-xml-recover-")
+        try {
+            val gen = KotlinOutputParserGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("test-xml-recover", fx))
+
+            val src = Files.readString(outDir.resolve("acme/reports/prompts/SummaryParser.kt"))
+
+            assertTrue("data class SummaryRecovered(" in src,
+                "xml format must emit Recovered class; src:\n$src")
+            assertTrue("RECOVER_SCHEMA" in src,
+                "xml format must emit RECOVER_SCHEMA; src:\n$src")
+            assertTrue("Format.XML" in src,
+                "xml format must use Format.XML in schema literal; src:\n$src")
+            assertTrue("fun recover(text: String): RecoveryResult<" in src,
+                "xml format must emit recover() overload; src:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // 11. FR-010: no @format (default=text) behaves the same as @format=text.
+    // ---------------------------------------------------------------------------
+    @Test fun noFormatAttrDefaultsToTextAndNoRecover() {
+        // The existing fixtures (tests 1-6) omit @format, which defaults to "text".
+        // This test makes the no-recover contract explicit for the default case.
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.value": { "name": "Greeting", "children": [
+                { "field.string": { "name": "text" } }
+            ] } },
+            { "template.output": { "name": "Reply",
+                "@payloadRef": "Greeting", "@textRef": "demo/reply" } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("kparser-noformat-norecover-")
+        try {
+            val gen = KotlinOutputParserGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("test-noformat-norecover", fx))
+
+            val src = Files.readString(outDir.resolve("acme/demo/prompts/ReplyParser.kt"))
+
+            assertFalse("RECOVER_SCHEMA" in src,
+                "absent @format (defaults to text) must not emit RECOVER_SCHEMA; src:\n$src")
+            assertFalse("RecoveryResult" in src,
+                "absent @format must not emit RecoveryResult; src:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
 }

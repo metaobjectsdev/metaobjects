@@ -1,0 +1,23 @@
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      { "object.value": { "name": "OpinionOutputPayload", "children": [
+          { "field.string": { "name": "text",
+              "@required": true,
+              "@example": "A well-reasoned response." } },
+          { "field.enum": { "name": "confidence",
+              "@required": true,
+              "@values": ["HIGH", "OK", "LOW"],
+              "@enumAlias": { "medium": "OK" },
+              "@enumDoc": { "HIGH": "Very confident", "OK": "Reasonably confident", "LOW": "Best guess" } } },
+          { "field.string": { "name": "note" } }
+      ] } },
+      { "template.output": { "name": "Opinion",
+          "@payloadRef": "OpinionOutputPayload",
+          "@textRef": "ai/opinion",
+          "@format": "json",
+          "@promptStyle": "guide" } }
+    ]
+  }
+}
