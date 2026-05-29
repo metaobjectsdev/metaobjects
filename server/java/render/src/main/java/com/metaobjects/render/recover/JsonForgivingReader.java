@@ -7,6 +7,9 @@ import java.util.Map;
 
 /** Stage-4 tolerant JSON reader for the bounded corpus malformation set. Never throws. */
 public final class JsonForgivingReader {
+    /** Sentinel: a key appeared in the text but its value was empty/cut-off (present-but-garbled). */
+    static final Object TRUNCATED = new Object();
+
     private String s;
     private int i;
 
@@ -45,9 +48,10 @@ public final class JsonForgivingReader {
             if (i >= s.length() || s.charAt(i) != ':') return m; // truncation before value
             i++; // consume ':'
             ws();
-            if (i >= s.length()) return m;             // value cut off → key omitted
+            if (i >= s.length()) { m.put(key, TRUNCATED); return m; }  // value cut off at EOF → present-but-garbled
             Object v = readValue();
-            if (v == null) {                           // empty/zero-width value → omit key
+            if (v == null) {                           // present key, empty/zero-width value → present-but-garbled
+                m.put(key, TRUNCATED);
                 ws();
                 if (i < s.length() && s.charAt(i) == ',') { i++; continue; }
                 if (i < s.length() && s.charAt(i) == '}') { i++; }

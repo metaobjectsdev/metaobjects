@@ -116,4 +116,13 @@ public class RecoverTest {
         RecoverOutcome o = Recover.recover("{\"meta\":\"oops\"}", s, RecoverOptions.defaults());
         assertEquals(FieldRecovery.MALFORMED, o.report().states().get("meta"));
     }
+
+    @Test
+    public void truncatedValueIsMalformedNotLost() {
+        // confidence key present but value cut off → MALFORMED (present-but-garbled), distinct from absent
+        RecoverOutcome o = Recover.recover("{\"text\":\"hi\",\"confidence\":", jsonAnswer(), RecoverOptions.defaults());
+        assertEquals("hi", o.data().get("text"));
+        assertEquals(FieldRecovery.MALFORMED, o.report().states().get("confidence"));
+        assertFalse(o.report().isEmpty());
+    }
 }

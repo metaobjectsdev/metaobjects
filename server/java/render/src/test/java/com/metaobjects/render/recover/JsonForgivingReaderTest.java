@@ -53,7 +53,7 @@ public class JsonForgivingReaderTest {
         Map<String, Object> m = read("{\"a\":\"1\",\"b\":\"2\",\"c\":");
         assertEquals("1", m.get("a"));
         assertEquals("2", m.get("b"));
-        assertFalse(m.containsKey("c"));
+        assertSame("cut-off value is present-but-garbled", JsonForgivingReader.TRUNCATED, m.get("c"));
     }
 
     @Test
@@ -75,22 +75,22 @@ public class JsonForgivingReaderTest {
     }
 
     @Test
-    public void emptyValueOmitsKey() {
+    public void emptyValueMarksTruncated() {
         Map<String, Object> m = read("{\"a\":\"1\",\"c\":}");
         assertEquals("1", m.get("a"));
-        assertFalse("empty value must omit the key, not store \"\"", m.containsKey("c"));
+        assertSame(JsonForgivingReader.TRUNCATED, m.get("c"));
     }
 
     @Test
-    public void emptyValueWhitespaceOmitsKey() {
+    public void emptyValueWhitespaceMarksTruncated() {
         Map<String, Object> m = read("{\"a\": }");
-        assertFalse(m.containsKey("a"));
+        assertSame(JsonForgivingReader.TRUNCATED, m.get("a"));
     }
 
     @Test
     public void emptyValueThenMoreKeysContinues() {
         Map<String, Object> m = read("{\"a\":,\"b\":\"2\"}");
-        assertFalse(m.containsKey("a"));
+        assertSame(JsonForgivingReader.TRUNCATED, m.get("a"));
         assertEquals("2", m.get("b"));
     }
 }

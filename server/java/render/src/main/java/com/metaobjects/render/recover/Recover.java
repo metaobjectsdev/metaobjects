@@ -46,6 +46,10 @@ public final class Recover {
                 report.set(path, f.required() ? FieldRecovery.LOST_REQUIRED : FieldRecovery.LOST_OPTIONAL);
                 continue;
             }
+            if (present == JsonForgivingReader.TRUNCATED) {   // present-but-garbled (empty/cut-off value)
+                report.set(path, FieldRecovery.MALFORMED);
+                continue;
+            }
             if (f.array()) {
                 // An array field: a single non-list value is treated as a one-element array
                 // (e.g. a single repeated-XML tag). Each element is coerced/recursed independently.
