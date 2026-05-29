@@ -6,6 +6,7 @@ import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.template.MetaTemplate
 import com.metaobjects.template.OutputTemplate
+import com.metaobjects.template.TemplateConstants
 import java.io.OutputStream
 import java.io.PrintWriter
 import java.nio.file.Files
@@ -114,8 +115,13 @@ class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val outPkg = if (templatePkg.isEmpty()) "prompts" else "$templatePkg.prompts"
         val parserClass = templateShort + "Parser"
         val payloadClass = templateShort + "Payload"
+        val recoveredClass = templateShort + "Recovered"
         val parseFn = "parse$templateShort"
         val safeParseFn = "safeParse$templateShort"
+
+        val format = template.format
+        val emitRecover = TemplateConstants.FORMAT_JSON.equals(format, ignoreCase = true)
+            || TemplateConstants.FORMAT_XML.equals(format, ignoreCase = true)
 
         val src = buildString {
             append("// GENERATED — DO NOT EDIT — parser for template.output `")
@@ -125,7 +131,21 @@ class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             append(outPkg)
             append("\n\n")
             append("import kotlinx.serialization.json.Json\n")
+            if (emitRecover) {
+                append("import com.metaobjects.render.recover.FieldKind\n")
+                append("import com.metaobjects.render.recover.FieldSpec\n")
+                append("import com.metaobjects.render.recover.Format\n")
+                append("import com.metaobjects.render.recover.Recover\n")
+                append("import com.metaobjects.render.recover.RecoverMap\n")
+                append("import com.metaobjects.render.recover.RecoverOptions\n")
+                append("import com.metaobjects.render.recover.RecoverSchema\n")
+                append("import com.metaobjects.render.recover.RecoveryResult\n")
+            }
             append("\n")
+            if (emitRecover) {
+                append(KotlinRecoverSchemaEmitter.recoveredClassDecl(payloadVo, recoveredClass))
+                append("\n\n")
+            }
             append("/** Parser for LLM responses matching the `")
             append(templateShort)
             append("` template.output. */\n")
@@ -134,6 +154,13 @@ class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             append(" {\n")
             append("\n")
             append("    private val json: Json = Json { ignoreUnknownKeys = false }\n")
+            if (emitRecover) {
+                append("\n")
+                append("    private val RECOVER_SCHEMA: RecoverSchema =\n")
+                append("        ")
+                append(KotlinRecoverSchemaEmitter.schemaLiteral(payloadVo, format, payloadClass))
+                append("\n")
+            }
             append("\n")
             append("    /**\n")
             append("     * Parse an LLM response into a typed [")
@@ -162,6 +189,27 @@ class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             append("        runCatching { ")
             append(parseFn)
             append("(text) }\n")
+            if (emitRecover) {
+                val ctorArgs = KotlinRecoverSchemaEmitter.recoveredCtorArgs(payloadVo)
+                append("\n")
+                append("    /** Tolerant best-effort recovery; never throws. Components are null where lost/malformed. */\n")
+                append("    fun recover(text: String): RecoveryResult<")
+                append(recoveredClass)
+                append("> =\n")
+                append("        recover(text, RecoverOptions.defaults())\n")
+                append("\n")
+                append("    fun recover(text: String, opts: RecoverOptions): RecoveryResult<")
+                append(recoveredClass)
+                append("> {\n")
+                append("        val o = Recover.recover(text, RECOVER_SCHEMA, opts)\n")
+                append("        val d = o.data\n")
+                append("        return RecoveryResult(")
+                append(recoveredClass)
+                append("(")
+                append(ctorArgs)
+                append("), o.report)\n")
+                append("    }\n")
+            }
             append("}\n")
         }
 
