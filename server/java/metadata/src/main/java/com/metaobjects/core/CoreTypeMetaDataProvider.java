@@ -1,6 +1,7 @@
 package com.metaobjects.core;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.MetaRoot;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataTypeProvider;
 import org.slf4j.Logger;
@@ -32,6 +33,10 @@ public class CoreTypeMetaDataProvider implements MetaDataTypeProvider {
     public void registerTypes(MetaDataRegistry registry) {
         // Register the fundamental metadata.base type that all others inherit from
         MetaData.registerTypes(registry);
+        // Register the concrete tree-root type (metadata.root) onto the SAME
+        // registry — so isolated registries (createWithCoreProviders) get it too,
+        // not just the singleton via MetaRoot's static block. Idempotent.
+        MetaRoot.registerTypes(registry);
 
         log.debug("Core base types registered via provider");
     }

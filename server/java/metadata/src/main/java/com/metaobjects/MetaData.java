@@ -1203,9 +1203,17 @@ public class MetaData implements Cloneable, Serializable {
             }
         }
         
-        // v6.0.0: Unified registry validation before adding child
-        MetaDataRegistry registry = MetaDataRegistry.getInstance();
-        if (!registry.acceptsChild(this.getType(), this.getSubType(), 
+        // Resolve the registry from the owning loader so a loader running against
+        // its own typeRegistry (multi-tenant, plugin isolation, tests) validates in
+        // isolation. Falls back to the global singleton for loader-detached nodes —
+        // identical to prior behavior for every consumer that never sets a custom
+        // registry (getTypeRegistry() defaults to getInstance()). See
+        // docs/superpowers/specs/2026-05-29-java-per-loader-registry-design.md.
+        MetaDataLoader owningLoader = getLoader();
+        MetaDataRegistry registry = (owningLoader != null)
+            ? owningLoader.getTypeRegistry()
+            : MetaDataRegistry.getInstance();
+        if (!registry.acceptsChild(this.getType(), this.getSubType(),
                                  data.getType(), data.getSubType(), data.getName())) {
             String supportedChildren = registry.getSupportedChildrenDescription(this.getType(), this.getSubType());
             throw new InvalidMetaDataException(data, String.format(
@@ -1213,10 +1221,10 @@ public class MetaData implements Cloneable, Serializable {
                 this.getType(), this.getSubType(), data.getName(),
                 data.getType(), data.getSubType(), supportedChildren));
         }
-        
-        // v6.0.0: Constraint enforcement during construction
+
+        // Constraint enforcement during construction, against the resolved registry.
         ConstraintEnforcer constraintEnforcer = ConstraintEnforcer.getInstance();
-        constraintEnforcer.enforceConstraintsOnAddChild(this, data);
+        constraintEnforcer.enforceConstraintsOnAddChild(this, data, registry);
         
         data.attachParent(this);
         

@@ -281,12 +281,17 @@ public class ConformanceTest {
 
         LoaderOptions opts = LoaderOptions.create(false, false, true);
         MetaDataLoader loader = new MetaDataLoader(opts, MetaDataLoader.SUBTYPE_MANUAL, loaderName);
-        // Lazy-register the test-only template.briefing subtype into the
-        // singleton on first encounter. See {@link #ensureBriefingRegistered}
-        // for the alphabetical-ordering rationale that keeps this safe.
+        // A fixture that requires the test-only example-template-briefing provider
+        // gets its OWN registry (core + briefing) via setTypeRegistry — no global
+        // singleton mutation, so the success/fail provider-extension pair is
+        // order-independent and isolated. See PerLoaderRegistryTest and
+        // docs/superpowers/specs/2026-05-29-java-per-loader-registry-design.md.
         if (fix.hasProvidersJson
                 && fix.requiredProviders.contains("example-template-briefing")) {
-            ensureBriefingRegistered();
+            com.metaobjects.registry.MetaDataRegistry fixtureRegistry =
+                com.metaobjects.registry.MetaDataRegistry.createWithCoreProviders();
+            ConformanceTestProviders.BriefingTemplate.registerTypes(fixtureRegistry);
+            loader.setTypeRegistry(fixtureRegistry);
         }
         loader.init();
 
@@ -665,34 +670,6 @@ public class ConformanceTest {
         // composeFixtureRegistry below).
         ids.addAll(ConformanceTestProviders.TEST_PROVIDERS.keySet());
         return Collections.unmodifiableSet(ids);
-    }
-
-    /**
-     * Lazy, idempotent in-place registration of the test-only
-     * {@code template.briefing} subtype into the default singleton registry.
-     *
-     * <p>The architectural constraint: {@link com.metaobjects.MetaData#addChild}
-     * validates against {@link com.metaobjects.registry.MetaDataRegistry#getInstance()}
-     * hardcoded, so a per-fixture custom registry on the loader is not consulted
-     * for child-acceptance checks. The only way to make a test subtype visible
-     * to the validator is to register it into the singleton.</p>
-     *
-     * <p>That contaminates the singleton for any later fixture that expects
-     * the same subtype to be unknown. We rely on alphabetical fixture order
-     * to keep this safe: {@code provider-extension-missing-provider-fails}
-     * (which requires briefing to NOT be registered) sorts BEFORE
-     * {@code provider-extension-new-subtype-success} (which requires it to BE
-     * registered). The fail-fixture runs first, sees briefing absent, asserts
-     * ERR_UNKNOWN_SUBTYPE; then the success fixture lazy-registers briefing
-     * via this method and proceeds.</p>
-     */
-    private static volatile boolean briefingRegistered = false;
-    private static synchronized void ensureBriefingRegistered() {
-        if (!briefingRegistered) {
-            ConformanceTestProviders.BriefingTemplate.registerTypes(
-                com.metaobjects.registry.MetaDataRegistry.getInstance());
-            briefingRegistered = true;
-        }
     }
 
     /** Cross-port envelope record for the Java conformance runner. */

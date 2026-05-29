@@ -62,29 +62,13 @@ public class MetaRoot extends MetaData {
     // Self-registration of the metadata.root type with the unified registry.
     // metadata.root accepts the same top-level children as metadata.base; it is
     // the concrete tree-root produced by MetaDataLoader.
+    // metadata.root self-registers against the singleton on class-load. The same
+    // registration is also wired into the ServiceLoader bootstrap
+    // (CoreTypeMetaDataProvider) so isolated registries created via
+    // MetaDataRegistry.createWithCoreProviders() get it too; the idempotency guard
+    // in registerTypes() makes the two paths safe.
     static {
-        try {
-            MetaDataRegistry.getInstance().registerType(MetaRoot.class, def -> def
-                .type(TYPE_METADATA).subType(SUBTYPE_ROOT)
-                .description("Root metadata node — tree root produced by MetaDataLoader")
-
-                // ROOT LEVEL accepts all top-level metadata types
-                .optionalChild(MetaObject.TYPE_OBJECT, "*", "*")            // Any object type
-                .optionalChild(MetaField.TYPE_FIELD, "*", "*")              // Any field type
-                .optionalChild(MetaAttribute.TYPE_ATTR, "*", "*")           // Any attribute type
-                .optionalChild(MetaValidator.TYPE_VALIDATOR, "*", "*")      // Any validator type
-                .optionalChild(MetaView.TYPE_VIEW, "*", "*")                // Any view type
-                .optionalChild(com.metaobjects.identity.MetaIdentity.TYPE_IDENTITY, "*", "*")        // Any identity type
-                .optionalChild(com.metaobjects.relationship.MetaRelationship.TYPE_RELATIONSHIP, "*", "*") // Any relationship type
-                .optionalChild(com.metaobjects.layout.MetaLayout.TYPE_LAYOUT, "*", "*")  // Any layout type (root-level shared layouts)
-                .optionalChild(com.metaobjects.template.TemplateConstants.TYPE_TEMPLATE, "*", "*") // Any template type (FR-004)
-            );
-            // ADR-0006 Rule 1 — bare `metadata:` YAML key fuses to `metadata.root`.
-            MetaDataRegistry.getInstance().setDefaultSubType(TYPE_METADATA, SUBTYPE_ROOT);
-            log.debug("Registered MetaRoot type (metadata.root) with unified registry");
-        } catch (Exception e) {
-            log.error("Failed to register MetaRoot type with unified registry", e);
-        }
+        registerTypes(MetaDataRegistry.getInstance());
     }
 
     /**
@@ -96,6 +80,12 @@ public class MetaRoot extends MetaData {
      */
     public static void registerTypes(MetaDataRegistry registry) {
         try {
+            // Idempotent: the static block (singleton) and the ServiceLoader
+            // bootstrap (CoreTypeMetaDataProvider, for isolated registries) both
+            // call this; skip if metadata.root is already registered.
+            if (registry.isRegistered(TYPE_METADATA, SUBTYPE_ROOT)) {
+                return;
+            }
             registry.registerType(MetaRoot.class, def -> def
                 .type(TYPE_METADATA).subType(SUBTYPE_ROOT)
                 .description("Root metadata node — tree root produced by MetaDataLoader")
@@ -109,6 +99,9 @@ public class MetaRoot extends MetaData {
                 .optionalChild(com.metaobjects.layout.MetaLayout.TYPE_LAYOUT, "*", "*")
                 .optionalChild(com.metaobjects.template.TemplateConstants.TYPE_TEMPLATE, "*", "*")
             );
+            // ADR-0006 Rule 1 — bare `metadata:` YAML key fuses to `metadata.root`.
+            registry.setDefaultSubType(TYPE_METADATA, SUBTYPE_ROOT);
+            log.debug("Registered MetaRoot type (metadata.root) with unified registry");
         } catch (Exception e) {
             log.error("Failed to register MetaRoot type with unified registry", e);
         }

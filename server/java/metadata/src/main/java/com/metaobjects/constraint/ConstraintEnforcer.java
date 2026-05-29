@@ -66,12 +66,28 @@ public class ConstraintEnforcer {
      * @throws ConstraintViolationException If constraints are violated
      */
     public void enforceConstraintsOnAddChild(MetaData parent, MetaData child) throws ConstraintViolationException {
+        // Default registry-bound path (preserves all existing callers).
+        enforceConstraintsOnAddChild(parent, child, this.metaDataRegistry);
+    }
+
+    /**
+     * Registry-parameterized enforcement: reads constraints from the supplied
+     * registry instead of the enforcer's singleton-bound one. Used when a loader
+     * runs against its own {@code typeRegistry} (multi-loader isolation).
+     *
+     * @param parent   the parent metadata object
+     * @param child    the child being added
+     * @param registry the registry whose validation constraints to enforce
+     * @throws ConstraintViolationException If constraints are violated
+     */
+    public void enforceConstraintsOnAddChild(MetaData parent, MetaData child,
+                                             MetaDataRegistry registry) throws ConstraintViolationException {
         if (!isConstraintCheckingEnabled(parent)) {
             return;
         }
-        
+
         // UNIFIED: Single enforcement path for all constraints
-        List<Constraint> allConstraints = metaDataRegistry.getAllValidationConstraints();
+        List<Constraint> allConstraints = registry.getAllValidationConstraints();
         
         if (allConstraints.isEmpty()) {
             log.trace("No constraints registered - allowing operation");
