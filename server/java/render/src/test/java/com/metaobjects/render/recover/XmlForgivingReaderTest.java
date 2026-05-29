@@ -48,4 +48,22 @@ public class XmlForgivingReaderTest {
         Map<String, Object> m = read("<Answer><T>hi</T></Answer>", true);
         assertEquals("hi", m.get("t"));
     }
+
+    @Test
+    public void spanStartingWithCloseTagDoesNotThrow() {
+        Map<String, Object> m = read("</x>", false);
+        assertTrue(m.isEmpty());
+    }
+
+    @Test
+    public void degenerateCloseTagOnlyDoesNotThrow() {
+        Map<String, Object> m = read("</>", false);
+        assertTrue(m.isEmpty());
+    }
+
+    @Test
+    public void strayCloseTagThenTextDoesNotThrow() {
+        Map<String, Object> m = read("</foo>stuff", false);
+        assertNotNull(m);   // no throw; content shape is best-effort
+    }
 }

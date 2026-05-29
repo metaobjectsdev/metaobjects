@@ -16,7 +16,7 @@ public final class XmlForgivingReader {
         int gt = span.indexOf('>');
         if (gt < 0) return out;
         int rootEnd = lastIndexOfCloseTag(span);
-        String inner = span.substring(gt + 1, rootEnd < 0 ? span.length() : rootEnd);
+        String inner = span.substring(gt + 1, (rootEnd < 0 || rootEnd <= gt) ? span.length() : rootEnd);
         parseChildren(inner, caseInsensitive, out);
         return out;
     }
