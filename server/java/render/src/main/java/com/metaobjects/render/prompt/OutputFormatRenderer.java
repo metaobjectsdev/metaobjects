@@ -140,6 +140,8 @@ public final class OutputFormatRenderer {
         List<PromptField> fields = spec.fields();
         for (int i = 0; i < fields.size(); i++) {
             PromptField field = fields.get(i);
+            // NOTE: FieldKind.OBJECT / nested fields are not expanded here — they render as a
+            // "{fieldName}" placeholder. Nested-object expansion is a Plan 3.1 deferral.
             String value = exampleValue(field, overrides);
             boolean isLast = i == fields.size() - 1;
             sb.append("  \"").append(field.name()).append("\": ");
@@ -178,10 +180,11 @@ public final class OutputFormatRenderer {
         if (!NUMERIC_KINDS.contains(kind)) return false;
         if (value.equals("true") || value.equals("false")) return true;
         try {
-            Double.parseDouble(value);
-            return true;
+            double d = Double.parseDouble(value);
+            return !Double.isNaN(d) && !Double.isInfinite(d);
         } catch (NumberFormatException e) {
-            return false;
+            // not a number; fall through to quoted string
         }
+        return false;
     }
 }

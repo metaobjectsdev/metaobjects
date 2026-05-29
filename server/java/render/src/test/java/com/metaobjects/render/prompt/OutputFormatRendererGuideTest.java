@@ -36,4 +36,18 @@ public class OutputFormatRendererGuideTest {
         PromptOverrides ov = new PromptOverrides(null, Map.of(), Map.of("text", "NEW INSTRUCTION"));
         assertTrue(OutputFormatRenderer.render(spec(), ov).contains("NEW INSTRUCTION"));
     }
+
+    @Test public void guideJsonSkeletonIsValidJson() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper m = new com.fasterxml.jackson.databind.ObjectMapper();
+        OutputFormatSpec s = new OutputFormatSpec(Format.JSON, "Answer", PromptStyle.GUIDE, List.of(
+            new PromptField("text", FieldKind.STRING, true, false, null, null, "hi {now}", "say {x}", null),
+            new PromptField("confidence", FieldKind.ENUM, true, false, List.of("HIGH","LOW"),
+                Map.of("HIGH","Directly supported."), "HIGH", null, null)));
+        String out = OutputFormatRenderer.render(s, PromptOverrides.none());
+        String afterMarker = out.substring(out.indexOf("Respond exactly like this:"));
+        String json = afterMarker.substring(afterMarker.indexOf('{'), afterMarker.lastIndexOf('}') + 1);
+        var node = m.readTree(json);   // must parse even though prose above contains { } braces
+        assertEquals("hi {now}", node.get("text").asText());
+        assertEquals("HIGH", node.get("confidence").asText());
+    }
 }

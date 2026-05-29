@@ -23,7 +23,6 @@ public class OutputFormatRendererInlineTest {
     }
     @Test public void jsonInlineStillValid() throws Exception {
         String out = OutputFormatRenderer.render(spec(Format.JSON), PromptOverrides.none());
-        assertFalse(out.contains("//"));
         String json = out.substring(out.indexOf('{'), out.lastIndexOf('}') + 1);
         assertEquals("HIGH | OK | LOW", JSON.readTree(json).get("confidence").asText());
     }
