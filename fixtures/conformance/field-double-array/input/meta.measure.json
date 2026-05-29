@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Reading",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.double": { "name": "amounts", "isArray": true } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}
