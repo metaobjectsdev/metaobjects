@@ -33,10 +33,37 @@ public final class Verify {
     public static final String ERR_REQUIRED_SLOT_UNUSED = "ERR_REQUIRED_SLOT_UNUSED";
     /** A declared {@code @requiredTags} output tag is absent from the template text. */
     public static final String ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING";
+    /** A required field name is absent from the rendered output-format fragment. */
+    public static final String ERR_OUTPUT_PROMPT_FIELD_MISSING = "ERR_OUTPUT_PROMPT_FIELD_MISSING";
 
     static final int MAX_DEPTH = 32;
 
     private Verify() {}
+
+    // ---------------- Public API (output-prompt coverage) ----------------
+
+    /**
+     * Check that every required field name appears (as a substring) in the rendered
+     * output-format fragment. The check is a simple substring scan — field names are
+     * plain identifiers, so occurrence anywhere in the fragment is sufficient evidence
+     * that the renderer included the field.
+     *
+     * @param fragment        the rendered output-format fragment (XML or JSON skeleton)
+     * @param requiredFieldNames the field names that must appear in the fragment
+     * @return a list of {@link VerifyError} with code {@link #ERR_OUTPUT_PROMPT_FIELD_MISSING}
+     *         for every field name absent from the fragment; empty when all are present
+     */
+    public static List<VerifyError> checkOutputPrompt(String fragment, List<String> requiredFieldNames) {
+        List<VerifyError> errors = new ArrayList<>();
+        if (requiredFieldNames == null) return errors;
+        String haystack = fragment == null ? "" : fragment;
+        for (String name : requiredFieldNames) {
+            if (!haystack.contains(name)) {
+                errors.add(new VerifyError(ERR_OUTPUT_PROMPT_FIELD_MISSING, name));
+            }
+        }
+        return errors;
+    }
 
     // ---------------- Mustache tag token model (rendering-agnostic) ----------------
 

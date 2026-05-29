@@ -1,0 +1,26 @@
+{
+  "metadata.root": {
+    "package": "acme::support",
+    "children": [
+      {
+        "object.value": {
+          "name": "SupportAnswer",
+          "children": [
+            { "field.string": { "name": "text", "@required": true, "@example": "Your refund will appear in 3-5 days.", "@instruction": "One or two sentences to the customer." } },
+            { "field.enum": { "name": "confidence", "@required": true, "@values": ["HIGH","OK","LOW"], "@enumAlias": { "medium": "OK" }, "@enumDoc": { "HIGH": "Directly supported.", "OK": "Inference.", "LOW": "A guess." } } },
+            { "field.string": { "name": "note" } }
+          ]
+        }
+      },
+      {
+        "template.output": {
+          "name": "SupportAnswerOutput",
+          "@payloadRef": "SupportAnswer",
+          "@textRef": "support/answer",
+          "@format": "json",
+          "@promptStyle": "inline"
+        }
+      }
+    ]
+  }
+}

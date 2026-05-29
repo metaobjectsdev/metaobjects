@@ -1158,6 +1158,22 @@ public final class ValidationPhase {
             }
         }
 
+        // R5 — @promptStyle (template.output only, FR-010) must be in the closed
+        // set (guide|inline|exampleOnly). Own-only — absent is fine; default is "guide".
+        if (template.hasMetaAttr(TemplateConstants.ATTR_PROMPT_STYLE, false)) {
+            String style = template.getMetaAttr(TemplateConstants.ATTR_PROMPT_STYLE, false)
+                                   .getValueAsString();
+            if (style != null && !TemplateConstants.ALLOWED_PROMPT_STYLES.contains(style)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": template '" + template.getName()
+                        + "' @promptStyle '" + style
+                        + "' is not a valid value; allowed: "
+                        + TemplateConstants.ALLOWED_PROMPT_STYLES,
+                    ErrorCode.ERR_BAD_ATTR_VALUE, template.getSource());
+            }
+        }
+
         // R2 + R3 only apply if @payloadRef is set. Missing @payloadRef on
         // subtypes that require it (template.prompt, template.toolcall) has
         // already been caught by validateRequiredAttrs above; if we get here

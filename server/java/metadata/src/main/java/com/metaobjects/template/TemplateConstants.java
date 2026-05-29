@@ -72,4 +72,27 @@ public final class TemplateConstants {
     public static final Set<String> ALLOWED_FORMATS = Set.of(
         FORMAT_TEXT, FORMAT_HTML, FORMAT_XML, FORMAT_CSV,
         FORMAT_JSON, FORMAT_MARKDOWN, FORMAT_SPREADSHEET);
+
+    // --- @promptStyle (template.output only — FR-010) ---
+
+    /**
+     * Attribute name for the output-format prompt fragment layout style.
+     * Only valid on {@code template.output}. Closed enum: see {@link #ALLOWED_PROMPT_STYLES}.
+     */
+    public static final String ATTR_PROMPT_STYLE = "promptStyle";
+
+    public static final String PROMPT_STYLE_GUIDE = "guide";
+    public static final String PROMPT_STYLE_INLINE = "inline";
+    public static final String PROMPT_STYLE_EXAMPLE_ONLY = "exampleOnly";
+
+    /** Default value for {@code @promptStyle} when absent. */
+    public static final String PROMPT_STYLE_DEFAULT = PROMPT_STYLE_GUIDE;
+
+    /**
+     * Closed set of valid {@code @promptStyle} values (FR-010).
+     * Enforced by {@code ValidationPhase#validateTemplates} in the same post-load
+     * pass that enforces {@code @format}.
+     */
+    public static final Set<String> ALLOWED_PROMPT_STYLES = Set.of(
+        PROMPT_STYLE_GUIDE, PROMPT_STYLE_INLINE, PROMPT_STYLE_EXAMPLE_ONLY);
 }
