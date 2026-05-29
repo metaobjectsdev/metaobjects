@@ -52,36 +52,94 @@ subtype's import/compile. The four flatten ports have the opposite property: con
 output is fully self-contained, so the abstract base's shape artifact is dead weight
 nothing points at.
 
-## Decision: per-port emit behavior
+## Decision: an invariant plus a configurable shape policy
 
-| Port | Abstract entity emits | Generators to guard (skip abstract) |
+Two separable concerns — do **not** conflate them (the earlier draft did):
+
+### 1. Instance/write suppression — unconditional invariant (the bug fix)
+
+An abstract metaobject must **never** emit instance or write artifacts, in any port,
+under any configuration: no CRUD routes/controllers, repositories, write DTOs,
+EF/Exposed tables, filter allowlists, validator-registry entries, stored-proc wrappers,
+or `CREATE TABLE` DDL. These reference a table or export the abstract type never gets —
+the output does not compile, or the migration materializes a phantom table. This is not
+a preference and is not configurable.
+
+| Port | Instance/write generators to guard (always skip abstract) |
+|---|---|
+| **TS** | — already done in `39f2df9f` |
+| **C#** | `DbContextGenerator` (`DbSet<>`), `RoutesGenerator`, `FilterAllowlistGenerator`, `ExpectedSchema` (DDL); `EntityGenerator`'s `[Table]`/EF mapping |
+| **Java/Spring** | `SpringControllerGenerator`, `SpringRepositoryGenerator`, `SpringFilterAllowlistGenerator`; the write portion of `SpringDtoGenerator` |
+| **Kotlin** | `ExposedTableGenerator`, `RelationsGenerator`, `SpringControllerGenerator`, `StoredProcGenerator`, `ValidatorGenerator` |
+| **Python** | `router_generator`, `filter_allowlist_generator`, `expected_schema` (DDL) |
+
+### 2. Abstract-shape emission — a codegen-config knob
+
+Whether an abstract metaobject emits a **shape** artifact (an abstract class, an
+interface, a base model, a type-only interface) is a legitimate, situational choice —
+sometimes you want an abstract base class so other generated or hand-written code can
+reference the shared shape, sometimes you don't. It is therefore a **codegen
+configuration option**, not a hardcoded rule and not a per-entity metadata attribute
+(the metadata only declares *that* a type is abstract; how to render its shape for a
+given target is a codegen concern).
+
+Working name: `emitAbstractShapes` (final name per port). It maps onto each port's
+**existing** codegen-config mechanism — verified against the actual config surfaces:
+
+| Port | Config surface for the knob | How a generator reads it |
 |---|---|---|
-| **TS** | type-only interface (already) | — already correct, no change |
-| **C#** | **nothing** | `EntityGenerator`, `DbContextGenerator`, `RoutesGenerator`, `FilterAllowlistGenerator`, `ExpectedSchema` |
-| **Java/Spring** | **nothing** | `SpringControllerGenerator`, `SpringDtoGenerator`, `SpringRepositoryGenerator`, `SpringFilterAllowlistGenerator` |
-| **Kotlin** | **nothing** | `ExposedTableGenerator`, `RelationsGenerator`, `SpringControllerGenerator`, `StoredProcGenerator`, `ValidatorGenerator` (`KotlinEntityGenerator` already correct) |
-| **Python** | **the Pydantic base model only** | `router_generator`, `filter_allowlist_generator`, `expected_schema` — **`entity_model` keeps emitting** the abstract base (concretes `extends` it) |
+| **TS** | field on `MetaobjectsGenConfig` (`metaobjects.config.ts`), default-normalized in `normalizeConfig()`, threaded via `renderContext` | `ctx.renderContext.emitAbstractShapes` |
+| **C#** | field on the `GenConfig` record (`MetaObjects.Codegen/Generator.cs`), set by a `meta` CLI flag (`--emit-abstract-shapes`) | `ctx.Config.EmitAbstractShapes` |
+| **Java/Spring & Kotlin** | a **generator arg** in the Maven plugin — settable run-wide in `<globals>` or per-generator in `<generator><args>` (per-generator overrides global), the same `Map<String,String>` model as the existing template/filter/package/output args | `getArg("emitAbstractShapes", "false")` in the generator's `parseArgs()` (`GeneratorBase`) |
+| **Python** | field on the `GenConfig` dataclass (`codegen/config.py`), set by the CLI | `ctx.config.emit_abstract_shapes` |
 
-Adding a *new* type-only convenience artifact to the flatten ports (to mimic TS's
-interface) is **out of scope**: it is net-new emission rather than a bugfix, and nothing
-in the generated output would reference it.
+The Java/Kotlin model matters: the Maven plugin (`AbstractMetaDataMojo`) already wires
+generators by classname and passes `<globals>` + per-`<generator><args>` (merged in
+`mergeAndOverwriteArgs`) plus `<filters>`. The knob is one more arg in that map — no new
+Mojo `@Parameter`, no `LoaderParam` change (it is a generation-policy concern, not a
+loader concern). A consumer can set it once in `<globals>` to apply to every generator,
+or per-generator to vary it.
+
+**When the knob is ON, the shape is a *standalone* abstract class/interface** — concrete
+subtypes still flatten all inherited fields inline and do **not** reference it yet.
+Rewiring concretes to language inheritance (emit own fields only, `extends` the base) is
+a **deferred follow-up** (see "Deferred"), because it rewrites every concrete entity
+generator's field-walking and type declaration per port. This matches the
+"configurable per port, decide later" decision.
+
+### Per-port defaults (preserve sane behavior; confirm in review)
+
+| Port | Default | Rationale |
+|---|---|---|
+| **TS** | **on** | already emits a type-only interface unconditionally; the knob just makes that explicit and toggleable |
+| **C#** | **off** | concretes flatten; a standalone abstract class would be unreferenced dead code until the inheritance follow-up lands. Opt in to emit `public abstract class <Name>` |
+| **Java/Spring** | **off** | same; opt in emits an abstract base (an `interface`, since records cannot serve as a base) |
+| **Kotlin** | **off** | same; opt in emits an `abstract class` / interface |
+| **Python** | **on (effectively pinned)** | Python concretes **already** subclass the base (`class Premium(Product):`) and import it — suppressing the abstract base model breaks every concrete's compile. So `entity_model` must keep emitting the abstract base whenever a concrete extends it. Python is thus already in the deferred "inheritance-on" state; this fix preserves it. |
+
+This is the one place the per-port flatten-vs-inherit finding still bites: Python's
+default differs because its generated concretes already depend on the base. The flatten
+ports default off and are opt-in.
 
 ### The shared guard, per port
 
 Mirror TS's `instance-artifacts` module idiomatically rather than re-deriving the rule
-ad hoc in each generator:
+ad hoc per generator. The guard distinguishes the **invariant** (instance/write — always
+skip abstract) from the **shape policy** (consult the config knob):
 
 - **C#** — new `InstanceArtifacts` static helper in `MetaObjects.Codegen`
   (`IsAbstract` / `EmitsInstanceArtifacts` / `EmitsWriteArtifacts`), composed into each
-  generator's `Filter` / iteration `Where`.
+  instance/write generator's `Filter` / iteration `Where`; the entity-shape path consults
+  the config knob.
 - **Java/Spring** — a single correct accessor reading `MetaData.ATTR_IS_ABSTRACT`
-  (see "Java attribute-name unification" below). Each generator's `execute()` loop adds
-  an `if (isAbstract(entity)) continue;` guard.
+  (see "Java attribute-name unification"). Instance/write generators add
+  `if (isAbstract(entity)) continue;`; the DTO/shape path branches on the config knob.
 - **Kotlin** — lift `KotlinEntityGenerator`'s existing (working) check to a shared
-  `KotlinGenUtil` helper; the other five generators call it.
+  `KotlinGenUtil` helper; the five instance/write generators call it; the entity-shape
+  generator consults the config knob.
 - **Python** — new `instance_artifacts.py` (`is_abstract` / `emits_instance_artifacts`)
-  mirroring TS; the instance/write generators short-circuit on it. `entity_model` does
-  **not** use the guard — it must keep emitting the abstract base.
+  mirroring TS; the instance/write generators short-circuit on it. `entity_model`
+  consults the config knob (default on) and keeps emitting the abstract base.
 
 ## Java attribute-name unification (`_isAbstract` → `isAbstract`)
 
