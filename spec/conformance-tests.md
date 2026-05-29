@@ -1,8 +1,10 @@
 # Cross-Language Conformance Tests
 
-The MetaObjects standard ships with a conformance test suite that every language implementation (TS, Java, Python, C#) runs. The suite lives at `metaobjects/fixtures/conformance/` and is the **shared source of truth** for Loader behavior.
+The MetaObjects standard ships with a conformance test suite that the language implementations run. There are now **seven corpora** spanning loader, YAML desugar, render, verify, codegen-walk, persistence, and API contract; this document specifies the **metamodel (loader) corpus** (`metaobjects/fixtures/conformance/`) — the **shared source of truth** for Loader behavior — and the canonical serializer contract. The other corpora are summarized under [Sibling corpora](#sibling-corpora-render-and-verify).
 
-This document specifies the fixture format and the canonical serializer contract so that the same fixture produces byte-identical expected output in every language.
+The loader corpus is run by the four ports that have their own Loader (TS, Java, Python, C#). **Kotlin** is the fifth port; it consumes the Java metadata via the `metadata-ktx` facade rather than re-implementing a Loader, so it participates in the persistence and API-contract corpora but not the loader/YAML/render/verify corpora.
+
+> The full corpus × port run-matrix, known coverage gaps, and a remediation backlog live in [`docs/superpowers/specs/2026-05-29-conformance-hardening-review.md`](../docs/superpowers/specs/2026-05-29-conformance-hardening-review.md). Consult it before treating "all green" as full coverage.
 
 ## Why conformance fixtures?
 
@@ -14,7 +16,7 @@ Inspirations: Apache Arrow integration tests, IEEE 754 test vectors, the JSON Sc
 
 | In scope | Out of scope |
 |---|---|
-| Loader behavior — parsing, merge, extends resolution, validation | Codegen output (each language emits idiomatic per-language code; byte equivalence isn't the goal) |
+| Loader behavior — parsing, merge, extends resolution, validation | Codegen **byte**-equivalence (each language emits idiomatic code). *Semantic* codegen parity is a separate, planned corpus (FR-007), not a non-goal — see the hardening review. |
 | Error messages emitted on bad metadata | Runtime behavior (filter parsing, ObjectManager, etc. — these get per-language unit tests) |
 | Warning messages on drift cases | UI / hooks / fastify integration |
 | Canonical serialized metamodel output | Wire format of generated CRUD endpoints (covered separately in spec/wire-format.md) |
@@ -196,8 +198,15 @@ only once it implements that engine, exactly as it runs the loader corpus once i
 has a Loader. They are **not** gated by `conformance-expected-failures.json` —
 that ledger is loader-corpus only.
 
-- **`fixtures/render-conformance/`** — byte-exact render output. Run by TS and C#.
-- **`fixtures/verify-conformance/`** — template drift-check output. Run by TS, C#, and Python (below).
+- **`fixtures/render-conformance/`** — byte-exact render output. Run by TS, C#, Java, and Python. Java asserts byte-equality against the shared baseline with an explicit `KNOWN_DRIFT` ledger (`server/java/render/KNOWN_DRIFT.md`). **Kotlin does not run this corpus** (no standalone render engine).
+- **`fixtures/verify-conformance/`** — template drift-check output. Run by TS, C#, Java, and Python (below).
+
+Two further corpora cover the **runtime** tier and are exercised by **all five ports, including Kotlin**, on demand against Testcontainers Postgres via `scripts/integration-test.sh` (these are **not** in the default `test` path for the JVM/.NET ports — see the hardening review):
+
+- **`fixtures/persistence-conformance/`** — live DDL + CRUD / filter / projection round-trips.
+- **`fixtures/api-contract-conformance/`** — emitted CRUD routes answered over real HTTP (URL grammar + wire format).
+
+A `fixtures/render-conformance/template-generator/` sub-corpus additionally exercises the codegen *walk* (file-per-entity inventory + render) in TS, C#, Java, and Python.
 
 ### Verify-conformance corpus
 
@@ -300,19 +309,20 @@ compares drift as a sorted multiset):
 |---|---|---|
 | TypeScript | `server/typescript/packages/render/src/verify.ts` | `server/typescript/packages/render/test/verify-conformance.test.ts` |
 | C# | `server/csharp/MetaObjects.Render/Verify.cs` | `server/csharp/MetaObjects.Render.Tests/VerifyConformanceTests.cs` |
+| Java | `metaobjects-render` (`server/java/render`) | `server/java/render/src/test/java/com/metaobjects/render/VerifyConformanceTest.java` |
 | Python | `server/python/src/metaobjects/render/verify.py` | `server/python/tests/render/test_verify_conformance.py` |
 
-**Java** does not run this corpus yet: it has no cross-language conformance harness
-on `main` and no render/`verify` tier (it is mid loader-restructure). It will adopt
-the corpus once its conformance harness lands — exactly as it does not yet run the
-loader or `render-conformance` corpora. There is no per-port ledger for the verify
-corpus (it follows the `render-conformance` precedent): a port runs it when it has a
-`verify`, and is simply absent until then.
+All four Loader-bearing ports (TS, C#, Java, Python) now run this corpus; Java
+adopted it once its render tier and conformance harness landed. **Kotlin** does
+not (no standalone `verify` engine). There is no per-port ledger for the verify
+corpus (it follows the `render-conformance` precedent): a port runs it when it has
+a `verify`, and is simply absent until then.
 
 ## What this suite does not test
 
-- Codegen output (Drizzle for TS, jOOQ for Java) — covered by per-language unit tests.
-- Runtime behavior (`parseFilterParams`, `ObjectManager`, etc.) — per-language unit tests.
+- Codegen **byte** output (Drizzle/Zod for TS, Spring/JPA for Java, EF Core for C#, Pydantic/SQLAlchemy for Python, Exposed for Kotlin) — port-local snapshot tests. *Semantic* codegen parity (file inventory, type mapping, payload-VO shape) is planned as a separate corpus (FR-007).
+- Runtime behavior beyond the persistence + api-contract corpora (`parseFilterParams`, `ObjectManager` internals, etc.) — per-language unit tests.
+- CLI / tooling entry points (`meta gen` / `verify` / `migrate`), packaging/publish, and doc-gen output — currently **un-gated cross-port** (see the hardening review backlog, R1/R12/R13).
 - Filesystem / OS edge cases (path normalization, file-system case sensitivity) — out of scope.
 
 For everything else: **if a behavior should be identical across languages, write a conformance fixture.**
