@@ -1,0 +1,2 @@
+Let me reason about this. The user asked for X, so I will answer.
+{"text":"hi","confidence":"LOW"}

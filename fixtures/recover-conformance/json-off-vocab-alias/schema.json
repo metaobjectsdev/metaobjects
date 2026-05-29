@@ -1,0 +1,4 @@
+{ "format": "JSON", "rootName": "answer", "fields": [
+  { "name": "text", "kind": "STRING", "required": true },
+  { "name": "confidence", "kind": "ENUM", "required": true, "enumValues": ["HIGH","OK","LOW"], "enumAlias": { "medium": "OK" } },
+  { "name": "note", "kind": "STRING", "required": false } ] }

@@ -1,0 +1,1 @@
+<answer><text>hi<confidence>HIGH</confidence></answer>
