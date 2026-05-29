@@ -55,8 +55,8 @@ public final class Verify {
      */
     public static List<VerifyError> checkOutputPrompt(String fragment, List<String> requiredFieldNames) {
         List<VerifyError> errors = new ArrayList<>();
-        String haystack = fragment == null ? "" : fragment;
         if (requiredFieldNames == null) return errors;
+        String haystack = fragment == null ? "" : fragment;
         for (String name : requiredFieldNames) {
             if (!haystack.contains(name)) {
                 errors.add(new VerifyError(ERR_OUTPUT_PROMPT_FIELD_MISSING, name));

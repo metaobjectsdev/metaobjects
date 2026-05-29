@@ -10,6 +10,7 @@ import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.template.MetaTemplate;
+import com.metaobjects.template.OutputTemplate;
 import com.metaobjects.template.TemplateConstants;
 
 import java.util.ArrayList;
@@ -97,12 +98,8 @@ final class OutputFormatSpecEmitter {
      * Default (absent or unrecognized) → {@code PromptStyle.GUIDE}.
      */
     private static String resolvePromptStyleEnum(MetaTemplate template) {
-        String raw = null;
-        if (template.hasMetaAttr(TemplateConstants.ATTR_PROMPT_STYLE, false)) {
-            raw = template.getMetaAttr(TemplateConstants.ATTR_PROMPT_STYLE, false).getValueAsString();
-        }
-        if (raw == null) return "PromptStyle.GUIDE";
-        return switch (raw) {
+        String raw = (template instanceof OutputTemplate ot) ? ot.getPromptStyle() : null;
+        return switch (raw != null ? raw : TemplateConstants.PROMPT_STYLE_DEFAULT) {
             case TemplateConstants.PROMPT_STYLE_INLINE       -> "PromptStyle.INLINE";
             case TemplateConstants.PROMPT_STYLE_EXAMPLE_ONLY -> "PromptStyle.EXAMPLE_ONLY";
             default                                          -> "PromptStyle.GUIDE";

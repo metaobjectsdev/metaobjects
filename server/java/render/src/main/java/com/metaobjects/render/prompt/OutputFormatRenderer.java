@@ -71,12 +71,17 @@ public final class OutputFormatRenderer {
         if (field.kind() == FieldKind.BOOLEAN) {
             return "true | false";
         }
-        String instruction = overrides.instructions().get(field.name());
-        if (instruction == null) instruction = field.instruction();
+        String instruction = resolveInstruction(field, overrides);
         if (instruction != null) {
             return "{" + instruction + "}";
         }
         return "{" + field.name() + "}";
+    }
+
+    /** Returns the effective instruction: override first, then field default, or {@code null}. */
+    private static String resolveInstruction(PromptField field, PromptOverrides overrides) {
+        String instruction = overrides.instructions().get(field.name());
+        return instruction != null ? instruction : field.instruction();
     }
 
     private static String renderGuide(OutputFormatSpec spec, PromptOverrides overrides) {
@@ -85,8 +90,7 @@ public final class OutputFormatRenderer {
         for (PromptField field : spec.fields()) {
             String req = field.required() ? "required" : "optional";
             sb.append("- ").append(field.name()).append(" (").append(req).append(")");
-            String instruction = overrides.instructions().get(field.name());
-            if (instruction == null) instruction = field.instruction();
+            String instruction = resolveInstruction(field, overrides);
             if (instruction != null) {
                 sb.append(": ").append(instruction);
             }
