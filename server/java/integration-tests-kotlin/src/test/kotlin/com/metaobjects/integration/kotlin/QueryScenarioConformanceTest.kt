@@ -12,11 +12,11 @@ import java.util.stream.Stream
  * under `fixtures/persistence-conformance/queries/`. Each invocation spins
  * up a fresh Postgres docker container (~3s).
  *
- * Subset by design — only scenarios whose operators/types Exposed-substrate
- * runner already handles are included (eq, sort, simple get/count/list).
- * Filter operators beyond `eq`, projections, and is-null variants are
- * deferred to follow-up work and listed in [DEFERRED_SCENARIOS] so the count
- * of green-vs-deferred stays visible in CI output.
+ * Runs EVERY scenario under that directory except those explicitly listed in
+ * [DEFERRED_SCENARIOS] (each with a reason). A newly-added scenario auto-runs
+ * (or auto-fails, forcing a deliberate deferral entry) rather than silently
+ * dropping out of the Kotlin suite — matching the glob+ledger discovery the
+ * other ports use.
  *
  * NOT registered in the parent reactor — run via:
  *   mvn -f server/java/integration-tests-kotlin/pom.xml test
@@ -35,42 +35,29 @@ internal class QueryScenarioConformanceTest {
 
     companion object {
         /**
-         * Included scenarios — these run end-to-end against the Exposed substrate.
-         * Listed explicitly (not derived) so a new scenario file lands as 'skipped'
-         * rather than silently expanding the suite.
+         * Scenarios deliberately deferred, each with a concrete reason describing
+         * what would unblock it. EVERY OTHER scenario under
+         * fixtures/persistence-conformance/queries/ runs automatically: a newly
+         * added fixture auto-runs (or auto-fails, forcing a deliberate entry here)
+         * rather than silently dropping out of the Kotlin suite. Empty = the Kotlin
+         * Exposed substrate handles the entire current query corpus.
          */
-        private val INCLUDED_SCENARIOS = setOf(
-            "count",
-            "get-by-id",
-            "list-empty-table",
-            "list-programs-sorted",
-            "filter-by-enum",
-            "filter-is-null",
-            "filter-like-and-ne",
-            "filter-range-and",
-            "projection-aggregate",
-        )
-
-        /**
-         * Scenarios deliberately left out, with a concrete reason describing
-         * what would unblock each. Kept visible so the deferral surface is
-         * obvious in code review.
-         */
-        @Suppress("unused")
         private val DEFERRED_SCENARIOS = emptyMap<String, String>()
 
         @JvmStatic
         fun scenarios(): Stream<Arguments> {
             val corpus = ScenarioLoader.findCorpusRoot()
             val all = ScenarioLoader.loadQueries(corpus.resolve("queries"))
-            val included = all.filter { it.name in INCLUDED_SCENARIOS }
-            // Defensive: if the corpus has drifted out from under the included list,
-            // fail loudly rather than silently running zero scenarios.
+            // Guard: a missing/empty corpus dir is an environment problem, not a
+            // conformance result — skip rather than report zero green scenarios.
             Assumptions.assumeTrue(
-                included.isNotEmpty(),
-                "No included query scenarios resolved — corpus drift? INCLUDED_SCENARIOS may need refresh."
+                all.isNotEmpty(),
+                "No query scenarios found under fixtures/persistence-conformance/queries — corpus missing?"
             )
-            return included.stream().map { Arguments.of(it.name, it) }
+            return all
+                .filter { it.name !in DEFERRED_SCENARIOS.keys }
+                .stream()
+                .map { Arguments.of(it.name, it) }
         }
     }
 }
