@@ -30,3 +30,4 @@ Write one when a decision is **cross-cutting** (affects more than one language p
 - [ADR-0010 — Per-port parser-on-receipt codegen for `template.output`](ADR-0010-template-output-parser-codegen.md) — *Accepted*
 - [ADR-0011 — `template.toolcall` as a core MO subtype](ADR-0011-template-toolcall-as-core-subtype.md) — *Accepted*
 - [ADR-0012 — Remove the OSGi runtime variant from the Java port](ADR-0012-remove-osgi-runtime-variant-java.md) — *Accepted*
+- [ADR-0013 — Logical field types vs. physical column-type attributes](ADR-0013-logical-field-types-vs-physical-column-attributes.md) — *Accepted*

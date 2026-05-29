@@ -22,7 +22,11 @@ _Date: 2026-05-29. Status: **DEFERRED — needs re-layering before implementatio
 > **None of these additions are hard blockers** for a first adopter entity slice, which can
 > use existing primitives (string PK + `@generation:uuid`, tz-naive/UTC timestamps,
 > typed-VO jsonb). Revisit a scoped, re-layered version only after a real adopter slice
-> proves what fidelity is actually missing. The original design follows for reference.
+> proves what fidelity is actually missing.
+>
+> The corrected logical-vs-physical boundary is ratified in
+> [ADR-0013](../../../spec/decisions/ADR-0013-logical-field-types-vs-physical-column-attributes.md);
+> re-layer this spec against it before implementing. The original design follows for reference.
 
 ## Context
 
