@@ -25,6 +25,7 @@ from .sql_type import (
     Json,
     Numeric,
     Real,
+    Real4,
     SqlType,
     Text,
     Timestamp,
@@ -116,8 +117,10 @@ def _subtype_to_sql_type(field: MetaField) -> SqlType:
         return Integer(bits=32)
     if st in (fc.FIELD_SUBTYPE_LONG, fc.FIELD_SUBTYPE_CURRENCY):
         return Integer(bits=64)
-    if st in (fc.FIELD_SUBTYPE_DOUBLE, fc.FIELD_SUBTYPE_FLOAT):
+    if st == fc.FIELD_SUBTYPE_DOUBLE:
         return Real()
+    if st == fc.FIELD_SUBTYPE_FLOAT:
+        return Real4()
     if st == fc.FIELD_SUBTYPE_DECIMAL:
         return Numeric()
     if st == fc.FIELD_SUBTYPE_BOOLEAN:

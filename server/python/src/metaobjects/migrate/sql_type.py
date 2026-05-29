@@ -25,6 +25,11 @@ class Real:
 
 
 @dataclass(frozen=True)
+class Real4:
+    kind: Literal["real4"] = field(default="real4", init=False)
+
+
+@dataclass(frozen=True)
 class Numeric:
     precision: int | None = None
     scale: int | None = None
@@ -62,4 +67,4 @@ class Uuid:
     kind: Literal["uuid"] = field(default="uuid", init=False)
 
 
-SqlType = Union[Text, Integer, Real, Numeric, Boolean, Timestamp, Date, Json, Blob, Uuid]
+SqlType = Union[Text, Integer, Real, Real4, Numeric, Boolean, Timestamp, Date, Json, Blob, Uuid]

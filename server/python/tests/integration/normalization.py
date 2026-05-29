@@ -31,7 +31,7 @@ def normalize_value(v: Any) -> Any:
         # PKs as strings, so this gives stable cross-port output without overreach.
         return str(v) if v > 2**31 - 1 or v < -(2**31) else v
     if isinstance(v, float):
-        return v
+        return _canonical_float(v)
     if isinstance(v, decimal.Decimal):
         return _canonical_decimal(v)
     if isinstance(v, uuid.UUID):
@@ -78,6 +78,20 @@ _UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F
 def _canonical_decimal(d: decimal.Decimal) -> str:
     # Trim trailing zeros from the fractional part, drop the point if integer-valued.
     s = format(d.normalize(), "f")
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return s
+
+
+def _canonical_float(x: float) -> str:
+    # In-band dyadic values (per normalization.md) render plain + shortest via repr().
+    s = repr(x)
+    if "e" in s or "E" in s:
+        raise ValueError(
+            f"_canonical_float: {x} is outside the plain-decimal band (exponential "
+            "notation); REAL/DOUBLE fixture values must be in-band dyadic rationals — "
+            "see fixtures/persistence-conformance/normalization.md"
+        )
     if "." in s:
         s = s.rstrip("0").rstrip(".")
     return s
