@@ -1,6 +1,6 @@
 # Java Per-Loader Type Registry — Design
 
-_Date: 2026-05-29. Status: Approved (design); ready for implementation planning._
+_Date: 2026-05-29. Status: **Shipped** (commit `abc44b2d`). Ratified as [ADR-0014](../../../spec/decisions/ADR-0014-loader-scoped-type-registry-resolution.md). Verified: full Java metadata suite 730/730 + 7 dependent modules green; `PerLoaderRegistryTest` proves two-loader isolation; conformance passes order-independently without the singleton hack._
 
 ## Problem
 
