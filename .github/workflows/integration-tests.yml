@@ -1,27 +1,28 @@
 name: integration-tests
 
-# Enforces the release-gate documented in docs/RELEASING.md — every release
-# tag run the on-demand persistence-conformance suite against a real Postgres
-# (via Testcontainers). Per-language jobs run in parallel; any port red
-# blocks the gate.
+# Enforces the persistence + api-contract conformance corpora — the Docker /
+# Testcontainers suites that are NOT in the default `mvn test` / `dotnet test` /
+# `bun test` path — against a real Postgres for all five ports. Per-language jobs
+# run in parallel; any port red blocks the gate.
 #
 # Triggers:
-#   - tag push matching v* (release path)
-#   - labeled PR with `run-integration` (opt-in for big PRs)
-#   - manual dispatch (workflow_dispatch)
+#   - pull_request to `main` — gates the default branch so persistence/api-contract
+#     drift can't merge green (these corpora are not covered by conformance.yml).
+#   - tag push matching v* (release gate, per docs/RELEASING.md).
+#   - manual dispatch (workflow_dispatch).
+# NOTE: this runs a 5-port Testcontainers matrix; if main-PR CI cost is too high,
+# narrow `pull_request.branches` or re-introduce an opt-in label.
 
 on:
   push:
     tags:
       - 'v*'
   pull_request:
-    types: [labeled]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   release-gate:
-    # Run on tag pushes always; on PRs only if the run-integration label was applied.
-    if: github.event_name != 'pull_request' || github.event.label.name == 'run-integration'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
