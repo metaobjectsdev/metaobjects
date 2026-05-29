@@ -1,5 +1,43 @@
 # FR-010 Java Plan 1 — Tolerant `recover()` Engine + Dirty-Input Conformance Corpus
 
+> **STATUS: IMPLEMENTED & MERGED (2026-05-29).** The landed code in
+> `server/java/render/src/main/java/com/metaobjects/render/recover/` and the
+> `fixtures/recover-conformance/` corpus are the **cross-port reference**, not the
+> code listings below. Implementation review surfaced bugs in this plan's original
+> listings — **port authors (Kotlin/C#/Python/TS) and Plan 2 must follow the merged
+> code, and the corrections in the next section, over the inline listings.**
+>
+> ## Post-implementation corrections (authoritative)
+>
+> The original Task listings below were corrected during TDD review. Each correction
+> is pinned by a regression test in the merged code:
+> 1. **JSON reader (Task 4) — no-hang.** A malformed array closed by `}` (e.g. `{"xs":[}`,
+>    `{"xs":[1,}`) infinite-looped/OOM'd. Fix: `readBareScalar` returns `null` on a
+>    zero-width read; `readObject`/`readArray` treat `null` as "no value" and stop/skip
+>    without spinning. The never-hang guarantee is load-bearing.
+> 2. **JSON reader (Task 4) + Recover (Task 7) — malformed-vs-absent.** A present key with
+>    an empty/cut-off value (`{"a":}`, `{"a":` at EOF) must NOT be silently omitted. The
+>    reader records a package-private `TRUNCATED` sentinel; `Recover` maps it to
+>    **MALFORMED** (present-but-garbled), distinct from a never-present field
+>    (**LOST_REQUIRED**). This is spec stage-4 and is the engine's core signal.
+> 3. **XML reader (Task 5) — no-throw.** A span starting with a close tag (`"</x>"`) threw
+>    `StringIndexOutOfBoundsException`. Fix: guard `rootEnd <= gt` in `read(...)`.
+> 4. **Coerce (Task 6) — non-finite numerics.** `"NaN"`/`"Infinity"` for INT/DOUBLE must
+>    classify **MALFORMED** (not `0L`/`Long.MAX_VALUE`) for cross-port classification
+>    parity. Fix: `if (!Double.isFinite(n)) return MALFORMED;` in `clamp`. Also: the
+>    `RecoverOptions.normalizers` hook is now actually consumed by `Coerce` (it was a
+>    no-op in the listing).
+> 5. **Recover (Task 7) — array fields.** `FieldSpec.array()` is honored: array values are
+>    coerced/recursed per element. A `List` for a non-array field → MALFORMED; an OBJECT
+>    field given a scalar → MALFORMED. A **MALFORMED array still carries its
+>    successfully-coerced elements in `data`** (partial recovery) — intentionally unlike a
+>    MALFORMED scalar (absent from `data`); documented in `Recover.java` and pinned by test.
+> 6. **Conformance runner (Task 8) — exhaustive.** The runner asserts the actual state-key
+>    set and data-key set EQUAL the expected sets (no missing, no extra); every fixture's
+>    `expected.json` lists every schema field.
+> 7. **`Tolerance.LOOSE`** currently behaves identically to `NORMAL`; `FieldRecovery.DEFAULTED`
+>    is reserved and not emitted by this engine version. Both are noted in code.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a descriptor-driven, never-throwing tolerant recovery parser for dirty LLM output (XML + JSON) in the JVM `render` module, plus a shared dirty-input conformance corpus that pins recovery *classification* across ports.
