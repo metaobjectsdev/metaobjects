@@ -173,37 +173,71 @@ the serializer and is not addressed here.
 
 ## Testing
 
-**Per-port unit tests now** — mirror TS's `abstract-skip` / `instance-artifacts` tests.
-For each port, a fixture with an abstract base + a concrete subtype, asserting:
+### Shared cross-port codegen-conformance fixture (lands with this fix)
 
-- the abstract entity produces **no** instance/write artifact (no route/controller, no
-  repository, no table/Exposed object/EF class, no filter allowlist, no validator-registry
-  entry, no stored-proc, no `CREATE TABLE` DDL);
-- the concrete subtype still produces its full set of artifacts with all inherited fields;
-- **Python additionally**: `entity_model` still emits the abstract base model, and the
-  concrete model `extends` it (`class Concrete(Base):` + import).
-- **Java additionally**: a test loading `abstract: true` canonical JSON asserts the
-  stored MetaAttribute is named `isAbstract`, and `GeneratorUtil.isAbstract()` /
-  `IOUtil.isAbstract()` return `true` for it.
+Add **`fixtures/codegen-conformance/abstract/`** — the single shared input that every
+port exercises, giving real cross-port conformance without a heavyweight unified runner:
 
-**Cross-port codegen-output conformance corpus — follow-up (separate work).** A shared
-`fixtures/codegen-conformance/` corpus that every port's codegen runs against would catch
-the whole class of codegen-divergence bugs (not just abstract), but it is a substantial
-new harness in five ports. Filed as follow-up, not part of this fix. (The existing
-`fixtures/conformance/` corpus tests only the loader + canonical serializer + error
-envelopes — it cannot cover generated-code output.)
+```
+fixtures/codegen-conformance/abstract/
+├── input/
+│   └── meta.abstract.json     # an abstract base entity + a concrete subtype extending it
+└── README.md                  # documents the invariant + knob the fixture verifies
+```
+
+The input declares an abstract base (with a `source.rdb` table source, fields, identity)
+and a concrete entity that `extends` it. Each port's **own** test suite loads this shared
+fixture and asserts:
+
+- **Invariant (knob irrelevant):** the abstract entity produces **no** instance/write
+  artifact — no route/controller, repository, write DTO, EF/Exposed table, filter
+  allowlist, validator-registry entry, stored-proc, or `CREATE TABLE` DDL.
+- **Concrete completeness:** the concrete subtype produces its full set of artifacts with
+  all inherited fields present.
+- **Knob OFF (flatten ports default):** the abstract entity produces no shape artifact.
+- **Knob ON:** the abstract entity produces exactly one standalone shape artifact
+  (abstract class / interface), still no instance/write artifact; concretes unchanged.
+- **Python:** `entity_model` emits the abstract base model regardless of the knob (its
+  default is on), and the concrete model `extends` it (`class Concrete(Base):` + import).
+
+Because each port consumes the *same* `input/`, drift between ports surfaces as a
+divergent assertion against shared metadata — the conformance guarantee — while the
+assertions stay idiomatic to each port's output (no byte-identical cross-language
+expectation, which would be meaningless across Drizzle vs. EF vs. Spring vs. Exposed vs.
+Pydantic).
+
+### Port-local unit tests
+
+Alongside the shared fixture, each port keeps focused unit tests mirroring TS's
+`abstract-skip` / `instance-artifacts` tests for edge cases (e.g. abstract value objects,
+abstract with no source). **Java additionally:** a test loading `abstract: true` canonical
+JSON asserts the stored MetaAttribute is named `isAbstract`, and `GeneratorUtil.isAbstract()`
+/ `IOUtil.isAbstract()` return `true` for it (locks the `_isAbstract` → `isAbstract` fix).
+
+### Deferred
+
+A *general* `fixtures/codegen-conformance/` corpus with a dedicated diff-asserting runner
+per port (covering the whole class of codegen divergence, not just abstract) remains a
+larger follow-up. This fix establishes the directory and the abstract fixture; broader
+fixtures can accrete later.
 
 ## Sequencing
 
-Four independent ports, plus the Java accessor unification. One port per unit, TDD
-red→green, then the **review + simplify gate before merging each unit forward** (the
-established pre-merge rule). Order:
+The shared fixture plus four ports, plus the Java accessor unification. One unit at a
+time, TDD red→green, then the **review + simplify gate before merging each unit forward**
+(the established pre-merge rule). Order:
 
-1. **C#** — 5 generators incl. DDL; establishes the `InstanceArtifacts` helper pattern.
+0. **Shared fixture** — add `fixtures/codegen-conformance/abstract/input/meta.abstract.json`
+   + README. Tiny, no code; merged first so every subsequent port unit consumes it.
+1. **C#** — 5 generators incl. DDL; establishes the `InstanceArtifacts` helper pattern;
+   adds the `EmitAbstractShapes` config field + CLI flag; consumes the shared fixture.
 2. **Java/Spring** — 4 generators **+ the `_isAbstract` → `isAbstract` unification**
-   (fixes `GeneratorUtil`/`IOUtil`, removes the legacy constant, corrects comments).
-3. **Kotlin** — 5 generators; reuses the now-correct shared check.
-4. **Python** — the special case: guard router/allowlist/DDL, keep `entity_model`.
+   (fixes `GeneratorUtil`/`IOUtil`, removes the legacy constant, corrects comments) +
+   the `emitAbstractShapes` generator arg; consumes the shared fixture.
+3. **Kotlin** — 5 generators; reuses the now-correct shared check + generator arg;
+   consumes the shared fixture.
+4. **Python** — the special case: guard router/allowlist/DDL, keep `entity_model` (knob
+   default on); consumes the shared fixture.
 
 Each unit merges forward to `main` only after its review + simplify gate passes and the
 relevant suite is green. Work happens in the `abstract-codegen-ports` worktree.
@@ -212,6 +246,8 @@ relevant suite is green. Work happens in the `abstract-codegen-ports` worktree.
 
 - Loader-level placement validation (whether concrete field/view is allowed at the root
   package level). That is a separate, deeper design question and is **not** this bug.
-- A new type-only shape artifact in the flatten ports.
 - Unifying Java's MetaAttribute-based abstract storage with the other ports' boolean field.
-- The cross-port codegen-output conformance corpus (filed as follow-up).
+- A *general* codegen-output conformance corpus + per-port diff-asserting runner (this fix
+  ships only the `abstract/` fixture; broader fixtures are a follow-up).
+- Rewiring concrete entities to language inheritance in the flatten ports (the
+  "knob ON emits a *standalone* shape" follow-up).
