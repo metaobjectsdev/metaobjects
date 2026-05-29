@@ -1,9 +1,12 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.MetaData;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.template.MetaTemplate;
+import com.metaobjects.template.TemplateConstants;
 
 import java.io.IOException;
 import java.net.URI;
@@ -73,6 +76,45 @@ final class SpringTestFixtures {
                                     "a10": "HIGH", "a11": "HIGH", "a12": "HIGH"
                                   } } }
             ] } }
+          ] }
+        }
+        """;
+
+    /**
+     * Inline metadata for {@link OutputFormatSpecEmitter} unit tests.
+     * Package: {@code acme::ai}.
+     *
+     * <p>VO: {@code AnswerOutputPayload} with fields:
+     * <ul>
+     *   <li>{@code text}: string, {@code @required: true}, {@code @example: "hello"},
+     *       {@code @instruction: "one sentence"}</li>
+     *   <li>{@code confidence}: enum, {@code @required: true},
+     *       values HIGH/OK/LOW, {@code @enumDoc: {HIGH:"Directly supported.",OK:"Inference."}}</li>
+     *   <li>{@code note}: string, optional</li>
+     * </ul>
+     *
+     * <p>Template: {@code template.output} named {@code AnswerOutput},
+     * {@code @payloadRef: AnswerOutputPayload}, {@code @textRef: "ai/answer"},
+     * {@code @format: "xml"}, {@code @promptStyle: "guide"}.
+     */
+    static final String PROMPT_VO_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ai", "children": [
+            { "object.value": { "name": "AnswerOutputPayload", "children": [
+                { "field.string": { "name": "text",       "@required": true,
+                                   "@example": "hello", "@instruction": "one sentence" } },
+                { "field.enum":   { "name": "confidence", "@required": true,
+                                   "@values": ["HIGH","OK","LOW"],
+                                   "@enumDoc": { "HIGH": "Directly supported.", "OK": "Inference." } } },
+                { "field.string": { "name": "note" } }
+            ] } },
+            { "template.output": {
+                "name": "AnswerOutput",
+                "@payloadRef": "AnswerOutputPayload",
+                "@textRef": "ai/answer",
+                "@format": "xml",
+                "@promptStyle": "guide"
+            } }
           ] }
         }
         """;
@@ -149,5 +191,78 @@ final class SpringTestFixtures {
         }
         throw new IllegalStateException(
             "MetaObject '" + voName + "' not found in fixture. Available: " + loader.getMetaObjects());
+    }
+
+    /**
+     * Load the inline {@code fixtureJson} string into a fresh loader and return the
+     * named {@code template.output} (or {@code template.prompt}), resolved by short
+     * name or FQN. Iterates {@link MetaDataLoader#getRoot()}'s children looking for
+     * a {@link MetaTemplate} with a matching name.
+     *
+     * <p>Throws {@link IllegalStateException} when the template cannot be found.</p>
+     *
+     * @param fixtureJson   canonical-JSON fixture text
+     * @param templateName  short name or FQN of the target {@code template.*}
+     */
+    static MetaTemplate loadTemplate(String fixtureJson, String templateName) throws IOException {
+        Path tmp = Files.createTempDirectory("spring-test-tmpl");
+        MetaDataLoader loader = loadFixture(tmp, "tmpl-fixture", fixtureJson);
+        for (MetaData child : loader.getRoot().getChildren()) {
+            if (!(child instanceof MetaTemplate t)) continue;
+            String fqn = t.getName();
+            String shortName = fqn.contains("::") ? fqn.substring(fqn.lastIndexOf("::") + 2) : fqn;
+            if (fqn.equals(templateName) || shortName.equals(templateName)) {
+                return t;
+            }
+        }
+        throw new IllegalStateException(
+            "MetaTemplate '" + templateName + "' not found in fixture.");
+    }
+
+    /**
+     * Convenience overload that loads both the VO and its associated template
+     * from the same fixture JSON in a single loader pass. Returns a two-element
+     * array: {@code [0]} = the {@link MetaObject} VO, {@code [1]} = the
+     * {@link MetaTemplate}.
+     *
+     * @param fixtureJson  canonical-JSON fixture text
+     * @param voName       short name or FQN of the target {@code object.value}
+     * @param templateName short name or FQN of the target {@code template.*}
+     */
+    static Object[] loadVoAndTemplate(String fixtureJson, String voName, String templateName)
+            throws IOException {
+        Path tmp = Files.createTempDirectory("spring-test-vt");
+        MetaDataLoader loader = loadFixture(tmp, "vt-fixture", fixtureJson);
+
+        MetaObject foundVo = null;
+        for (MetaObject mo : loader.getMetaObjects()) {
+            String fqn = mo.getName();
+            String shortName = fqn.contains("::") ? fqn.substring(fqn.lastIndexOf("::") + 2) : fqn;
+            if (fqn.equals(voName) || shortName.equals(voName)) {
+                foundVo = mo;
+                break;
+            }
+        }
+        if (foundVo == null) {
+            throw new IllegalStateException(
+                "MetaObject '" + voName + "' not found in fixture.");
+        }
+
+        MetaTemplate foundTmpl = null;
+        for (MetaData child : loader.getRoot().getChildren()) {
+            if (!(child instanceof MetaTemplate t)) continue;
+            String fqn = t.getName();
+            String shortName = fqn.contains("::") ? fqn.substring(fqn.lastIndexOf("::") + 2) : fqn;
+            if (fqn.equals(templateName) || shortName.equals(templateName)) {
+                foundTmpl = t;
+                break;
+            }
+        }
+        if (foundTmpl == null) {
+            throw new IllegalStateException(
+                "MetaTemplate '" + templateName + "' not found in fixture.");
+        }
+
+        return new Object[]{ foundVo, foundTmpl };
     }
 }
