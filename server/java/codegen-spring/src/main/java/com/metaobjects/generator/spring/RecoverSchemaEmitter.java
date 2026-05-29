@@ -163,20 +163,23 @@ final class RecoverSchemaEmitter {
     }
 
     /**
-     * Emit a {@code java.util.Map.of(k, v, ...)} literal from a {@link Properties}.
-     * Entries are sorted by key for deterministic output.
+     * Emit a {@code java.util.Map.ofEntries(java.util.Map.entry(k, v), ...)} literal
+     * from a {@link Properties}. Entries are sorted by key for deterministic output.
+     *
+     * <p>{@code java.util.Map.of} only has overloads up to 10 key-value pairs; using
+     * {@code Map.ofEntries} removes that arity cap and allows any number of entries.</p>
      */
     private static String buildMapOfLiteral(Properties props) {
         List<String> keys = new ArrayList<>();
         for (Object k : props.keySet()) keys.add(k.toString());
         keys.sort(String::compareTo);
 
-        StringBuilder sb = new StringBuilder("java.util.Map.of(");
+        StringBuilder sb = new StringBuilder("java.util.Map.ofEntries(");
         for (int i = 0; i < keys.size(); i++) {
             if (i > 0) sb.append(", ");
             String k = keys.get(i);
             String v = props.getProperty(k);
-            sb.append('"').append(k).append("\", \"").append(v).append('"');
+            sb.append("java.util.Map.entry(\"").append(k).append("\", \"").append(v).append("\")");
         }
         sb.append(')');
         return sb.toString();

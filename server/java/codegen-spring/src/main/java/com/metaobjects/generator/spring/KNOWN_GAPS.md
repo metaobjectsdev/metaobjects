@@ -89,6 +89,10 @@ placeholder and mapped to `null` in the recovered record (a
 source). The `RecoveryReport` still classifies the field, so no data is
 silently wrong — the nested value is just not reconstructed yet.
 
+- **Array-of-enum fields** (`field.enum` with `@isArray: true`) recover as `null`:
+  the schema treats them as a scalar enum while the record component is a
+  `List<String>` — within the nested/array deferral boundary, safe (no crash).
+
 **Runtime classpath:** the generated `recover()` depends on
 `com.metaobjects:metaobjects-render` (the shared recover engine) in
 addition to Jackson. Consumers using `recover` must have it on the
