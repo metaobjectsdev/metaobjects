@@ -112,10 +112,29 @@ public class MetaDataRegistry {
         }
         return instance;
     }
-    
+
+    /**
+     * Create a fresh, isolated registry pre-populated with the standard core
+     * types via the same ServiceLoader bootstrap {@link #getInstance()} uses.
+     *
+     * <p>Unlike {@link #getInstance()} (a process-global singleton), each call
+     * returns an independent registry. Hand it to a loader via
+     * {@link com.metaobjects.loader.MetaDataLoader#setTypeRegistry} to run that
+     * loader against an isolated type system (multi-tenant, plugin isolation,
+     * tests). Register additional/extension types onto the returned instance
+     * before use.</p>
+     *
+     * @return a new registry populated with the core type vocabulary
+     */
+    public static MetaDataRegistry createWithCoreProviders() {
+        MetaDataRegistry registry = new MetaDataRegistry();
+        registry.ensureInitialized();
+        return registry;
+    }
+
     /**
      * Create registry with custom service registry
-     * 
+     *
      * @param serviceRegistry Service registry for extensions
      */
     public MetaDataRegistry(ServiceRegistry serviceRegistry) {
