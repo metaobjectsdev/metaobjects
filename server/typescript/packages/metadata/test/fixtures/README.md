@@ -27,12 +27,12 @@ If Java's fixtures change before the polyglot restructure lands:
 
 ```bash
 # from this directory
-cp ~/Development/metaobjects-core/metadata/src/test/resources/com/metaobjects/loader/simple/fruitbasket-metadata.json .
-cp ~/Development/metaobjects-core/metadata/src/test/resources/com/metaobjects/loader/simple/fruitbasket-proxy-metadata.json .
-cp ~/Development/metaobjects-core/metadata/src/test/resources/com/metaobjects/loader/simple/acme-vehicle-metadata.json .
-cp ~/Development/metaobjects-core/metadata/src/test/resources/com/metaobjects/loader/simple/acme-vehicle-overlay-metadata.json .
-cp ~/Development/metaobjects-core/metadata/src/test/resources/com/metaobjects/loader/simple/acme-common-metadata.json .
-cp ~/Development/metaobjects-core/codegen-base/src/test/resources/schema-validation/valid-complete-metadata.json .
+cp <repo-root>/server/java/metadata/src/test/resources/com/metaobjects/loader/simple/fruitbasket-metadata.json .
+cp <repo-root>/server/java/metadata/src/test/resources/com/metaobjects/loader/simple/fruitbasket-proxy-metadata.json .
+cp <repo-root>/server/java/metadata/src/test/resources/com/metaobjects/loader/simple/acme-vehicle-metadata.json .
+cp <repo-root>/server/java/metadata/src/test/resources/com/metaobjects/loader/simple/acme-vehicle-overlay-metadata.json .
+cp <repo-root>/server/java/metadata/src/test/resources/com/metaobjects/loader/simple/acme-common-metadata.json .
+cp <repo-root>/server/java/codegen-base/src/test/resources/schema-validation/valid-complete-metadata.json .
 ```
 
 Then re-run the round-trip tests: `bun test test/round-trip.test.ts`. Any failures point to either a TS port bug or an intentional Java change that the TS port must accommodate.

@@ -6,13 +6,13 @@
 
 **Architecture:** Edit four separate git repos in sequence (docs → public site → commercial site → essay) so the essay rests on settled messaging. Through-line: "the prompt is code." Honesty constraint: the fourth pillar is co-equal in vision but marked "landing in 7.0.0," never present-tense shipped.
 
-**Tech Stack:** Markdown (specs + essay), static HTML + plaintext (`metaobjects.dev`), Eleventy/Nunjucks (`metaobjects.com`, `dougmealing.com`).
+**Tech Stack:** Markdown (specs + essay), static HTML + plaintext (`metaobjects.dev`), Eleventy/Nunjucks (`<commercial-site>`, `<personal-site>`).
 
 **Repo paths (local sibling checkouts; genericized — adjust to your machine):**
 - This repo: `metaobjects/` (PUBLIC)
 - `metaobjects.dev/` (PUBLIC)
-- `metaobjects.com/` (PRIVATE)
-- `dougmealing.com/` (PRIVATE)
+- `<commercial-site>/` (PRIVATE)
+- `<personal-site>/` (PRIVATE)
 
 ---
 
@@ -64,13 +64,13 @@ git commit -m "docs: position prompt construction as the fourth pillar (7.0.0)"
 ```markdown
 - **Prompt construction** (landing in 7.0.0) -- treat LLM prompts as governed metadata: a typed payload (a projection), external provider-resolved prompt text, byte-identical cross-language render, and build-time prompt-to-payload drift detection.
 ```
-In "## Author and context," add a link to the new essay: `[The prompt is code — and yours is drifting too](https://dougmealing.com/writing/the-prompt-is-code/)`.
+In "## Author and context," add a link to the new essay: `[The prompt is code — and yours is drifting too](https://<personal-site>/writing/the-prompt-is-code/)`.
 
 - [ ] **Step 3: Update `llms-full.txt`.** Read lines 1-60 first. Change line 11 "drives three capabilities" → "four capabilities (the fourth landing in 7.0.0)"; rename "## The three pillars" (line 21) → "## The four pillars"; update line 23 "All three pillars" → "Three pillars ship today; a fourth — prompt construction — is committed for 7.0.0." Add a `### Prompt construction (7.0.0)` subsection after the Drift detection subsection mirroring the llms.txt bullet, one paragraph.
 
 - [ ] **Step 4: Build + verify.** Run: `cd metaobjects.dev && (npm run build 2>/dev/null || true)` then `grep -rn "Four pillars\|four capabilities\|Prompt construction" www/`. Expected: present in index.html + both llms files. Confirm no `npm`-build is required (it's a static `www/` dir) — if no build script, just verify files.
 
-- [ ] **Step 5: Hygiene check** (PUBLIC repo). Run: `git -C ../metaobjects.dev diff | grep -niE "party ?lore|caremetx|/home/"`. Expected: no matches.
+- [ ] **Step 5: Hygiene check** (PUBLIC repo). Run: `git -C ../metaobjects.dev diff | grep -niE "<private-client-name>|/home/"`. Expected: no matches.
 
 - [ ] **Step 6: Commit (on request).**
 
@@ -81,31 +81,31 @@ git -C ../metaobjects.dev commit -m "feat: add prompt construction as the fourth
 
 ---
 
-## Task 3: Commercial site — `metaobjects.com` (PRIVATE)
+## Task 3: Commercial site — `<commercial-site>` (PRIVATE)
 
 **Files:**
-- Read first: `metaobjects.com/src/index.njk`, `metaobjects.com/src/_data/site.json`
+- Read first: `<commercial-site>/src/index.njk`, `<commercial-site>/src/_data/site.json`
 - Modify: whichever node carries the capability/pillar messaging (determined from the read)
 
 - [ ] **Step 1: Read structure.** Run: `sed -n '1,200p' src/index.njk` and `cat src/_data/site.json`. Identify the section listing capabilities/pillars (likely a features/pillars block in `index.njk` or a `pillars` array in `site.json`).
 
 - [ ] **Step 2: Add the fourth pillar / capability.** Mirror the four-pillar messaging with an enterprise framing: "Prompt construction (7.0.0) — govern your LLM prompts like code: typed payloads, externalized provider-resolved text, byte-identical render, and build-time prompt drift detection so payload bloat and token cost stay visible." Match the site's existing copy voice and data shape (array entry vs. HTML block).
 
-- [ ] **Step 3: Build + verify.** Run: `cd metaobjects.com && npm run build`. Expected: Eleventy build succeeds. Then `grep -rn "Prompt construction" dist/`. Expected: rendered.
+- [ ] **Step 3: Build + verify.** Run: `cd <commercial-site> && npm run build`. Expected: Eleventy build succeeds. Then `grep -rn "Prompt construction" dist/`. Expected: rendered.
 
 - [ ] **Step 4: Commit (on request).**
 
 ```bash
-git -C ../metaobjects.com add -A
-git -C ../metaobjects.com commit -m "feat: add prompt construction pillar (7.0.0) to homepage"
+git -C ../<commercial-site> add -A
+git -C ../<commercial-site> commit -m "feat: add prompt construction pillar (7.0.0) to homepage"
 ```
 
 ---
 
-## Task 4: Essay — `dougmealing.com` (PRIVATE; published publicly)
+## Task 4: Essay — `<personal-site>` (PRIVATE; published publicly)
 
 **Files:**
-- Create: `dougmealing.com/src/writing/2026-05-22-the-prompt-is-code.md`
+- Create: `<personal-site>/src/writing/2026-05-22-the-prompt-is-code.md`
 
 - [ ] **Step 1: Write the essay.** Frontmatter:
 
@@ -124,16 +124,16 @@ excerpt: "<one-sentence hook: the AI-drift thesis extends from generated code to
 
 Body — first-person voice matching the prior two essays, Roman-numeral sections:
   - **I.** Series recap (link essays 1 & 2) → turn the drift lens on the prompts themselves.
-  - **II.** The hidden drift in prompts — imperative `StringBuilder` assembly, repos read *inside* the builder (untestable without a live DB), the same rules triplicated, invisible payload bloat, a renamed field silently breaking a prompt. Ground in the author's own game-NPC prompt work (name the game per this site's norms); enterprise framing stays generic (no employer named).
+  - **II.** The hidden drift in prompts — imperative `StringBuilder` assembly, repos read *inside* the builder (untestable without a live DB), the same rules triplicated, invisible payload bloat, a renamed field silently breaking a prompt. Ground in the author's own game-NPC prompt work (generic framing; do not name the game or employer); enterprise framing stays generic (no employer named).
   - **III.** A prompt is just **(data + text + render)** — each part already governed by metadata.
   - **IV.** The fourth pillar — Prompt construction: typed payload = a projection (the spine proving itself); externalized provider-resolved text; byte-identical cross-language render (Mustache + conformance); build-time prompt↔payload drift (`verify`). Map each to codegen/runtime/drift.
   - **V.** Why it had to be metadata: cross-language byte-identical, no lock-in, the provider seam (static → A/B → evolutionary) without touching metadata or engine.
   - **VI.** What it means for your stack (enterprise-scale framing, generic).
-  - **VII.** What's next — 7.0.0 (FR-003 substrate first, then FR-004); link to metaobjects.dev. Series-continuation hook to `dougmealing.com/writing`.
+  - **VII.** What's next — 7.0.0 (FR-003 substrate first, then FR-004); link to metaobjects.dev. Series-continuation hook to `<personal-site>/writing`.
 
-  Do NOT add a `caremetx` tag (no disclosure aside; per the grounding decision).
+  Do NOT add an employer/client disclosure tag (per the grounding decision).
 
-- [ ] **Step 2: Build + preview.** Run: `cd dougmealing.com && npm run build`. Expected: build succeeds; `dist/writing/the-prompt-is-code/index.html` exists (Eleventy strips the date prefix from the slug).
+- [ ] **Step 2: Build + preview.** Run: `cd <personal-site> && npm run build`. Expected: build succeeds; `dist/writing/the-prompt-is-code/index.html` exists (Eleventy strips the date prefix from the slug).
 
 - [ ] **Step 3: Verify URL + cross-links.** Run: `ls dist/writing/the-prompt-is-code/` and `grep -rn "the-prompt-is-code\|metaobjects-ai-drift\|ai-stack-missing-architecture" dist/writing/the-prompt-is-code/index.html`. Expected: page renders; back-links to prior essays resolve.
 
@@ -142,8 +142,8 @@ Body — first-person voice matching the prior two essays, Roman-numeral section
 - [ ] **Step 5: Commit (on request).**
 
 ```bash
-git -C ../dougmealing.com add src/writing/2026-05-22-the-prompt-is-code.md
-git -C ../dougmealing.com commit -m "writing: add 'The prompt is code' (essay 3)"
+git -C ../<personal-site> add src/writing/2026-05-22-the-prompt-is-code.md
+git -C ../<personal-site> commit -m "writing: add 'The prompt is code' (essay 3)"
 ```
 
 ---

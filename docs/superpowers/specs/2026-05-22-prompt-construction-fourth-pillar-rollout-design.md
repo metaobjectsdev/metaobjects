@@ -37,11 +37,11 @@ This rollout spans four separate git repositories. Public surfaces stay generic 
 - **`www/llms.txt`** — "ships three capabilities" → four; add the prompt-construction bullet marked design-stage/`7.0.0`; refresh the roadmap line; link the new essay once published.
 - **`www/llms-full.txt`** — parallel update (full corpus dump; structure inspected during implementation).
 
-### Surface 3 — commercial site (`metaobjects.com`, PRIVATE, separate repo)
+### Surface 3 — commercial site (`<commercial-site>`, PRIVATE, separate repo)
 
 - Mirror the four-pillar messaging on the homepage capabilities section, with an enterprise value framing for prompt construction (governed prompts, build-time prompt drift, visible payload/token bloat). Exact Eleventy node edits (`index.njk` / `_data`) determined against the site's structure during implementation.
 
-### Surface 4 — essay (`dougmealing.com`, PRIVATE repo; published publicly)
+### Surface 4 — essay (`<personal-site>`, PRIVATE repo; published publicly)
 
 Third in the existing writing series (after the AI-drift origin essay and the "AI stack's missing architecture" positioning essay). Eleventy markdown under `src/writing/`, dated `2026-05-22`, frontmatter per the site's convention (layout / title / date / tags / excerpt). The site's date-stripping slug/permalink mechanism is matched (verified against its Eleventy config during implementation).
 
@@ -59,7 +59,7 @@ Third in the existing writing series (after the AI-drift origin essay and the "A
 ## Cross-cutting
 
 - **Public-repo hygiene:** public surfaces (this repo + `metaobjects.dev`) stay generic — no consumer-project names, no absolute home paths. The personal and commercial sites name projects per their norms. This design doc is itself genericized so it passes the public-repo commit guard.
-- **Sequencing:** docs → `metaobjects.dev` → `metaobjects.com` → essay last (so the essay rests on settled messaging).
+- **Sequencing:** docs → `metaobjects.dev` → `<commercial-site>` → essay last (so the essay rests on settled messaging).
 - **Commits:** four repositories, separate commits each; committed only on explicit request, never auto-pushed; a non-default branch is used where the host repo is on its default branch.
 
 ## Out of scope
@@ -77,7 +77,7 @@ Third in the existing writing series (after the AI-drift origin essay and the "A
 ## Testing / verification
 
 - Public surfaces build clean (each site's `eleventy` / static build) and contain no consumer-project names or home paths (public-repo guard passes on commit).
-- Internal consistency: "four pillars (fourth landing in 7.0.0)" reads identically across `metaobjects.dev`, `metaobjects.com`, this repo's docs, and the essay's framing.
+- Internal consistency: "four pillars (fourth landing in 7.0.0)" reads identically across `metaobjects.dev`, `<commercial-site>`, this repo's docs, and the essay's framing.
 - Essay renders in the site's dev server with correct frontmatter, tags, and series cross-links.
 
 ## Cross-references
