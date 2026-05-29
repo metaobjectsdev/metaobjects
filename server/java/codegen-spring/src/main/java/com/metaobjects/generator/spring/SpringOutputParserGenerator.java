@@ -133,7 +133,12 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         boolean emitRecover = TemplateConstants.FORMAT_JSON.equalsIgnoreCase(format)
             || TemplateConstants.FORMAT_XML.equalsIgnoreCase(format);
         if (emitRecover) {
+            src.append("import com.metaobjects.render.recover.FieldKind;\n");
+            src.append("import com.metaobjects.render.recover.FieldSpec;\n");
+            src.append("import com.metaobjects.render.recover.Format;\n");
             src.append("import com.metaobjects.render.recover.Recover;\n");
+            src.append("import com.metaobjects.render.recover.RecoverMap;\n");
+            src.append("import com.metaobjects.render.recover.RecoverSchema;\n");
         }
         src.append("\n");
         src.append("/** Parser for LLM responses matching the `")
@@ -154,7 +159,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
             String schemaLit = RecoverSchemaEmitter.schemaLiteral(payloadVo, format, payloadClass);
             String ctorArgs = RecoverSchemaEmitter.constructorArgs(payloadVo);
             src.append("\n");
-            src.append("    private static final com.metaobjects.render.recover.RecoverSchema RECOVER_SCHEMA =\n");
+            src.append("    private static final RecoverSchema RECOVER_SCHEMA =\n");
             src.append("        ").append(schemaLit).append(";\n");
             src.append("\n");
             src.append("    /** Tolerant best-effort recovery; never throws. Components are null where lost/malformed. */\n");
@@ -163,7 +168,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
             src.append("    }\n");
             src.append("\n");
             src.append("    public static com.metaobjects.render.recover.RecoveryResult<").append(payloadClass).append("> recover(String text, com.metaobjects.render.recover.RecoverOptions opts) {\n");
-            src.append("        com.metaobjects.render.recover.RecoverOutcome o = com.metaobjects.render.recover.Recover.recover(text, RECOVER_SCHEMA, opts);\n");
+            src.append("        com.metaobjects.render.recover.RecoverOutcome o = Recover.recover(text, RECOVER_SCHEMA, opts);\n");
             src.append("        java.util.Map<String, Object> d = o.data();\n");
             src.append("        ").append(payloadClass).append(" data = new ").append(payloadClass).append("(\n");
             src.append("                ").append(ctorArgs).append(");\n");
