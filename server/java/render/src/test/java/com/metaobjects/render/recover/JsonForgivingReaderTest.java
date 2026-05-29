@@ -60,4 +60,37 @@ public class JsonForgivingReaderTest {
     public void unrecoverableReturnsEmpty() {
         assertTrue(read("@@@@").isEmpty());
     }
+
+    @Test(timeout = 5000)
+    public void malformedArrayBraceCloseDoesNotHang() {
+        Map<String, Object> m = read("{\"xs\":[}");
+        assertTrue(m.containsKey("xs"));   // xs present (empty/partial list), no hang
+    }
+
+    @Test(timeout = 5000)
+    public void malformedArrayBraceCloseAfterCommaDoesNotHang() {
+        Map<String, Object> m = read("{\"xs\":[1,}");
+        // does not hang; xs recovered as a list with the prefix element
+        assertTrue(m.get("xs") instanceof java.util.List);
+    }
+
+    @Test
+    public void emptyValueOmitsKey() {
+        Map<String, Object> m = read("{\"a\":\"1\",\"c\":}");
+        assertEquals("1", m.get("a"));
+        assertFalse("empty value must omit the key, not store \"\"", m.containsKey("c"));
+    }
+
+    @Test
+    public void emptyValueWhitespaceOmitsKey() {
+        Map<String, Object> m = read("{\"a\": }");
+        assertFalse(m.containsKey("a"));
+    }
+
+    @Test
+    public void emptyValueThenMoreKeysContinues() {
+        Map<String, Object> m = read("{\"a\":,\"b\":\"2\"}");
+        assertFalse(m.containsKey("a"));
+        assertEquals("2", m.get("b"));
+    }
 }

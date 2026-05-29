@@ -44,11 +44,15 @@ public final class JsonForgivingReader {
             ws();
             if (i >= s.length() || s.charAt(i) != ':') return m; // truncation before value
             i++; // consume ':'
-            int before = i;
             ws();
             if (i >= s.length()) return m;             // value cut off → key omitted
             Object v = readValue();
-            if (v == null && i <= before) return m;    // nothing readable → stop
+            if (v == null) {                           // empty/zero-width value → omit key
+                ws();
+                if (i < s.length() && s.charAt(i) == ',') { i++; continue; }
+                if (i < s.length() && s.charAt(i) == '}') { i++; }
+                return m;
+            }
             m.put(key, v);
             ws();
             if (i < s.length() && s.charAt(i) == ',') i++; // optional/trailing comma
@@ -62,12 +66,19 @@ public final class JsonForgivingReader {
             ws();
             if (i >= s.length()) return xs;
             if (s.charAt(i) == ']') { i++; return xs; }
+            if (s.charAt(i) == '}') { i++; return xs; }   // malformed brace-close terminates array
             Object v = readValue();
-            if (v != null) xs.add(v);
+            if (v == null) {                              // zero-width / no value → stop (no spin)
+                ws();
+                if (i < s.length() && (s.charAt(i) == ']' || s.charAt(i) == '}')) i++;
+                return xs;
+            }
+            xs.add(v);
             ws();
             if (i < s.length() && s.charAt(i) == ',') i++;
             else if (i < s.length() && s.charAt(i) == ']') { i++; return xs; }
             else if (i >= s.length()) return xs;
+            else return xs;                               // any other non-separator char → stop
         }
     }
 
@@ -102,7 +113,8 @@ public final class JsonForgivingReader {
     private Object readBareScalar() {
         int start = i;
         while (i < s.length() && ",}]".indexOf(s.charAt(i)) < 0) i++;
-        return s.substring(start, i).trim();
+        String result = s.substring(start, i).trim();
+        return result.isEmpty() ? null : result;   // null = no token read (zero-width)
     }
 
     private void ws() { while (i < s.length() && Character.isWhitespace(s.charAt(i))) i++; }
