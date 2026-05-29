@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/metadata",
-  "version": "0.7.0-rc.12",
+  "version": "0.7.0-rc.13",
   "description": "Metamodel loader, types, and constants for the MetaObjects standard.",
   "type": "module",
   "main": "./dist/index.js",

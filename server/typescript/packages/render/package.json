@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/render",
-  "version": "0.7.0-rc.12",
+  "version": "0.7.0-rc.13",
   "description": "Logic-less, deterministic text render engine (Mustache) for MetaObjects templates — provider-resolved partials, format-driven escaping, zero core dependency.",
   "type": "module",
   "main": "./dist/index.js",
