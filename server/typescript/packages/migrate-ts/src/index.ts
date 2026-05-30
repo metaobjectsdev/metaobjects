@@ -92,6 +92,3 @@ export {
   type D1Binding,
   type WranglerConfig,
 } from "./wrangler-config.js";
-
-// Migration apply+tracking runner (ADR-0016).
-export * from "./runner/index.js";
