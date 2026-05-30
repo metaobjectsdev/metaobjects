@@ -42,3 +42,10 @@ def test_filter_allowlist_suppressed_for_abstract_emitted_for_concrete() -> None
     objs = _by_name()
     assert render_filter_allowlist(objs["AbstractRecord"]) is None
     assert render_filter_allowlist(objs["Widget"]) is not None
+
+
+def test_no_create_table_for_abstract_entity() -> None:
+    snap = build_expected_schema(_root())
+    names = {t.name for t in snap.tables}
+    assert "abstract_records" not in names
+    assert "widgets" in names
