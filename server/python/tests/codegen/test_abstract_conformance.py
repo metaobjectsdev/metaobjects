@@ -49,3 +49,17 @@ def test_no_create_table_for_abstract_entity() -> None:
     names = {t.name for t in snap.tables}
     assert "abstract_records" not in names
     assert "widgets" in names
+
+
+def test_abstract_base_model_is_still_emitted() -> None:
+    """Regression guard: the Pydantic base *model* must still be emitted, and
+    concretes must subclass + import it. Suppression applies to instance/write
+    artifacts only (router / allowlist / DDL), never the base model."""
+    objs = _by_name()
+    base_src = render_entity_model(objs["BaseShape"])
+    assert "class BaseShape(BaseModel):" in base_src
+
+    widget_src = render_entity_model(objs["Widget"])
+    assert "from .BaseShape import BaseShape" in widget_src
+    assert "class Widget(BaseShape):" in widget_src
+    assert "sku" in widget_src
