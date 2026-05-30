@@ -1,6 +1,6 @@
 # MetaObjects Roadmap
 
-_Last refreshed 2026-05-27._
+_Last refreshed 2026-05-30._
 
 ## Shipped
 
@@ -29,6 +29,7 @@ _Last refreshed 2026-05-27._
 - **Render conformance** — `fixtures/render-conformance/`. TS / C# / Java / Kotlin / Python byte-identical.
 - **Persistence conformance** — `fixtures/persistence-conformance/`. TS / C# / Java / Kotlin / Python all 12/12 against Testcontainers Postgres / Derby (per port).
 - **API-contract conformance** — `fixtures/api-contract-conformance/`. TS / C# / Java / Kotlin / Python all 20/20.
+- **Recover conformance** — `fixtures/recover-conformance/` (10 dirty-input cases). TS / C# / Java / Python all 10/10; Kotlin reuses the shared JVM engine.
 - **YAML / verify** corpora — green across the ports that ship those layers.
 
 ### Key cross-language features
@@ -42,7 +43,11 @@ _Last refreshed 2026-05-27._
   - FR5d: reference-resolution errors (`format: "resolved"` + `referrer` + `target`)
   - FR5e: database-source envelope schema reserved + per-port shape tests + design questions resolved. Real DB-source loader is a future FR.
   - WARN envelope-shape assertion finalized across all 4 ports.
-- **FR-006 — `template.output` parser-on-receipt codegen.** ADR-0010. Shipped in TS / C# / Python / Kotlin; `meta verify` extended to cover output drift. Java pending (a small follow-up: `SpringOutputParserGenerator` in `codegen-spring`).
+- **FR-006 — `template.output` parser-on-receipt codegen.** ADR-0010. Shipped in all 5 ports (TS / C# / Java / Python / Kotlin); `meta verify` extended to cover output drift.
+- **FR-010 — output-format prompt fragment + tolerant `recover` parser.** Shipped in all 5 ports. One `template.output` drives three artifacts: a comment-free output-format prompt fragment (3 styles × json/xml via `@promptStyle`), a tolerant `recover()` (8-stage, never-throws, returns an all-nullable mirror of the payload) that complements FR-006's strict parser, and the `@example`/`@instruction`/`@enumAlias`/`@enumDoc` field-teaching attrs. Pinned by the shared `fixtures/recover-conformance/` corpus; tolerance is at classification + canonical value (not byte-identity). Designed in `docs/superpowers/specs/2026-05-29-fr-010-output-format-prompt-and-tolerant-parsing-design.md`.
+- **Prompt-construction pillar — per-port building blocks complete.** Render (Mustache) + payload-VO codegen + `verify` (FR-004), the output parser (FR-006), and the output-format prompt + recover (FR-010) all ship in all 5 ports. The library-side primitives of the fourth pillar are delivered; what remains is MCP exposure (see Planned).
+- **Cross-port `templateGenerator()`** (shipped 2026-05-28). TS reference + Python / C# / Java factories; 3/3 conformance fixtures byte-equivalent. Java ships lightweight types under `com.metaobjects.render.templategen` (its legacy `Generator` interface was incompatible). Maven-plugin integration for the Java factory is a follow-up. See `design-docs/2026-05-28-cross-port-template-generator.md`.
+- **OMDB Spring Boot 3 starter** (shipped 2026-05-30). Autoconfiguration wires a `DataSource` → `ObjectManagerDB` with Spring-tx; closes the OMDB-modernization open question (jOOQ migration ruled out as a non-goal).
 - **FR-008/FR-009 — Cross-port REST API contract + 10 filter operators.** Shipped in all 5 ports.
 - **Per-target output directories (TS codegen).** Each generator routes to a named output target (`{ outDir, importBase?, outputLayout?, dbImport? }`).
 - **0.6.x → 0.7.0 consumer-friction batch.** Stock `promptRender()` generator; `db`-parameter generated repo helpers (ADR-0008); Cloudflare Workers deploy recipe; CHANGELOG.md backfill + camelCase ↔ snake_case docs. (Currently published as `0.7.0-rc.2`; GA promotion is the next release move.)
@@ -53,13 +58,15 @@ _Last refreshed 2026-05-27._
 
 ## Planned
 
-- **Java FR-006 — `SpringOutputParserGenerator`** (~1-2 days). Add a per-`template.output` parser generator to `codegen-spring`, mirroring `KotlinOutputParserGenerator`. Java is the only port without FR-006 today. Lives alongside the existing Spring controller / DTO / repo / filter-allowlist generators.
-- **H5 — First Java consumer migration** (3-4 wk). Real-world consumer adopts metaobjects-emitted Java (controllers + DTOs + repos via `codegen-spring`, optionally OMDB via `omdb`/`omdb-ktx`). Validates the Java path end-to-end. NOT gated on any other work — `codegen-spring` already ships FR-006-minus + FR-008 + FR-009.
-- **H6 — Prompt construction: the fourth pillar (full cross-port)** (7.0.0). The render + payload + verify tiers ship per port; the FR-003 projection substrate now lands the typed-projection prerequisite. Closing out the full pillar means consolidating the cross-port story end-to-end (MCP exposure, eval harness, drift-checked at build time). Designed in `docs/superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md`.
-- **H9 — Second consumer migration** (2-3 wk). TS frontend adopts `@metaobjectsdev/runtime-web` + `@metaobjectsdev/react` + `@metaobjectsdev/tanstack`.
-- **H10 — Polyglot consumer migration** (3-4 wk). Java + TS consumer onto metaobjects (both layers).
+- **MCP exposure of declared prompts/tools** — the remaining library-side piece of the prompt-construction pillar. Surface a `template.output` / tool declaration over the Model Context Protocol (model-agnostic) so an LLM host can discover + register it, built on the shipped render / payload / verify / FR-006 / FR-010 primitives. Designed in `docs/superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md`.
 - **Database-source metadata loader** (separate future FR). FR5e reserves the envelope; building the loader (a metaobjects-table schema + a Java loader that reads it) is its own multi-week feature. Will produce `format: "database"` errors / warnings using the pre-validated envelope shape.
-- **Cross-port `templateGenerator()`** — _shipped 2026-05-28_. Python, C#, and Java factories all green; 3/3 conformance fixtures pass byte-equivalently against the TS reference in every port. Java's existing legacy `Generator` interface was incompatible with the cross-port shape, so the Java port ships new lightweight types under `com.metaobjects.render.templategen` instead. Maven plugin integration for the Java factory deferred to a follow-up. See [design doc](design-docs/2026-05-28-cross-port-template-generator.md).
+
+### Tracked outside this library repo (not roadmap work here)
+
+These are exercised in adopter projects on top of the shipped per-port primitives, and are deliberately **not** tracked as open items in this repo:
+
+- **Consumer-adoption validation** — downstream consumers migrating onto metaobjects-emitted code across the language paths (the former H5 / H9 / H10). The library surface they exercise (`codegen-spring`, `MetaObjects.Codegen`, the web-client packages, etc.) already ships.
+- **Application-level prompt-pillar consolidation** — the end-to-end declared-prompt orchestration and prompt eval harness that sit on top of the per-port primitives (the former H6, **minus** MCP exposure, which remains a library item above).
 
 ## Future (sketched)
 
@@ -83,4 +90,4 @@ The pattern that has actually shipped across all four language ports is: **each 
 | Kotlin  | `codegen-kotlin`        | KotlinPoet output: Exposed tables, Spring controllers, payload VOs, output parsers, stored procs |
 | Python  | `metaobjects.codegen`   | Pydantic models, FastAPI routes, output parsers       |
 
-A polyglot codegen engine in TS would have meant forcing every Java consumer to install Node/bun just to generate Java — and the C# / Kotlin / Python ports already proved this isn't necessary. Java's `codegen-spring` is real, shipped, and already emits the FR-008 / FR-009 surface; the only remaining cross-port gap is FR-006's `SpringOutputParserGenerator` (~1-2 days, listed under Planned above).
+A polyglot codegen engine in TS would have meant forcing every Java consumer to install Node/bun just to generate Java — and the C# / Kotlin / Python ports already proved this isn't necessary. Java's `codegen-spring` is real, shipped, and emits the full cross-port surface (FR-006 / FR-008 / FR-009 / FR-010) alongside the other ports; there is no remaining per-port codegen gap.
