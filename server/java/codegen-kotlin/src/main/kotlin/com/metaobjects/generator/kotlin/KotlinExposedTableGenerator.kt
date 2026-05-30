@@ -58,6 +58,8 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // inbound FKs accumulated in Pass 1.
         for (entity in loader.metaObjects) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
+            // Abstract entities are inheritance scaffolding — never emit a persistence table.
+            if (KotlinGenUtil.isAbstractEntity(entity)) continue
             val sourceRdb = entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue
             val kind = sourceRdb.effectiveKind
             // table + view + materializedView → emit; view-like kinds are emitted read-only.
