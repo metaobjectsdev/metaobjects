@@ -26,7 +26,7 @@ import com.metaobjects.manager.exp.Expression;
  * A Database Driver has specific methods to handle database specific SQL
  * calls.
  */
-public interface DatabaseDriver extends MigrationSqlRenderer
+public interface DatabaseDriver
 {
   //public final static int AUTO_NONE    = ObjectManager.AUTO_NONE;
   //public final static int AUTO_PRIOR   = ObjectManager.AUTO_PRIOR;
