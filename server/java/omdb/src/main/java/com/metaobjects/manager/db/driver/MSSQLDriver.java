@@ -356,26 +356,39 @@ public class MSSQLDriver extends GenericSQLDriver {
     }
 
     /**
-     * SQL Server supports TOP and OFFSET/FETCH for range queries
+     * SQL Server supports standard ANSI OFFSET/FETCH for range queries
+     * (requires SQL Server 2012+).
      */
     @Override
     protected boolean supportsRangeInQuery() {
         return true;
     }
-    
+
     /**
-     * SQL Server OFFSET/FETCH syntax (SQL Server 2012+)
+     * SQL Server OFFSET/FETCH syntax (SQL Server 2012+). Used uniformly for
+     * every page, including the first -- the legacy TOP path (which never
+     * paged the first page at all) has been removed. Requires a preceding
+     * ORDER BY; see {@link #rangeRequiresOrderBy()}.
      */
     @Override
     public String getRangeString(Range range) {
-        if (range.getStart() <= 1) {
-            // Use TOP for simple cases
-            return ""; // Will be handled by modifying SELECT clause
-        } else {
-            // Use OFFSET/FETCH for complex ranges
-            return "OFFSET " + (range.getStart() - 1) + " ROWS FETCH NEXT " + 
-                   (range.getEnd() - range.getStart() + 1) + " ROWS ONLY";
-        }
+        return "OFFSET " + (range.getStart() - 1) + " ROWS FETCH NEXT " +
+               (range.getEnd() - range.getStart() + 1) + " ROWS ONLY";
+    }
+
+    /** SQL Server OFFSET/FETCH requires an ORDER BY to be well-formed. */
+    @Override
+    protected boolean rangeRequiresOrderBy() {
+        return true;
+    }
+
+    /**
+     * SQL Server accepts a constant ORDER BY for paging when the caller
+     * supplies no explicit sort order.
+     */
+    @Override
+    protected String getDefaultRangeOrderBy() {
+        return "ORDER BY (SELECT NULL)";
     }
 
     /**

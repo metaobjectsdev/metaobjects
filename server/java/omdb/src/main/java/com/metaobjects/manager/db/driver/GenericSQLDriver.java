@@ -880,6 +880,28 @@ public class GenericSQLDriver implements DatabaseDriver {
                 "The GenericDriver cannot perform a range during select");
     }
 
+    /**
+     * Whether this driver's range/paging clause requires an ORDER BY to be
+     * well-formed. ANSI {@code OFFSET ? ROWS FETCH NEXT ? ROWS ONLY} (SQL Server
+     * 2012+, Oracle 12c+) is only valid when preceded by an ORDER BY; LIMIT/OFFSET
+     * (Postgres) and Derby's FETCH FIRST do not have this requirement. When true
+     * and a paged query supplies no explicit sort, {@link #getDefaultRangeOrderBy()}
+     * is appended before the range clause.
+     */
+    protected boolean rangeRequiresOrderBy() {
+        return false;
+    }
+
+    /**
+     * The fallback ORDER BY clause to append when a paged query supplies no
+     * explicit sort order and {@link #rangeRequiresOrderBy()} is true. Drivers
+     * that require ORDER BY for paging override this.
+     */
+    protected String getDefaultRangeOrderBy() {
+        throw new UnsupportedOperationException(
+                "Driver does not define a default range ORDER BY clause");
+    }
+
     /*private void setAutoFields(Connection c, MetaClass mc,
      ObjectMappingDB omdb, Collection<MetaField> fields, Object o,
      int mode ) throws SQLException {
@@ -1504,15 +1526,6 @@ public class GenericSQLDriver implements DatabaseDriver {
         if (options.isDistinct()) {
             query.append("DISTINCT ");
         }
-        if (options.getRange() != null) {
-            // TODO: Make this a little smarter for christ's sake!
-            // Recommendation: Have the driver form the final SELECT call, then
-            // it can insert the limit where needed
-            //if (getDatabaseDriver() instanceof MSSQLDriver) {
-            //	query.append("TOP ").append(options.getRange().getEnd())
-            //			.append(' ');
-            //}
-        }
 
         String fieldStr = getFieldString(omdb, fields, "A");
 
@@ -1555,24 +1568,30 @@ public class GenericSQLDriver implements DatabaseDriver {
             query.append(" WHERE ").append(getExpressionString(mc, omdb, where, args, "A"));
         }
 
+        Range range = options.getRange();
+        boolean applyRange = supportsRangeInQuery() && range != null
+                && range.getStart() > 0 && range.getEnd() > 0;
+
+        if (applyRange && range.getStart() > range.getEnd()) {
+            throw new IllegalArgumentException("The range end (" + range.getEnd() + ") cannot be greater than the start value (" + range.getStart() + ")");
+        }
+
         if (order != null) {
             query.append(" ORDER BY ").append(getOrderString(mc, omdb, order));
+        } else if (applyRange && rangeRequiresOrderBy()) {
+            // ANSI OFFSET/FETCH (SQL Server 2012+, Oracle 12c+) is only valid
+            // when preceded by an ORDER BY. Supply a deterministic fallback when
+            // the caller did not specify a sort order.
+            query.append(" ").append(getDefaultRangeOrderBy());
+        }
+
+        // Add on the range (must follow ORDER BY for OFFSET/FETCH dialects)
+        if (applyRange) {
+            query.append(" ").append(getRangeString(range));
         }
 
         if (options.withLock()) {
             query.append(" ").append(getLockString());
-        }
-
-        // Add on the range
-        Range range = options.getRange();
-        if (supportsRangeInQuery() && options.getRange() != null
-                && range.getStart() > 0 && range.getEnd() > 0) {
-
-            if (range.getStart() > range.getEnd()) {
-                throw new IllegalArgumentException("The range end (" + range.getEnd() + ") cannot be greater than the start value (" + range.getStart() + ")");
-            }
-
-            query.append(" ").append(getRangeString(range));
         }
 
         PreparedStatement s = c.prepareStatement(query.toString());
