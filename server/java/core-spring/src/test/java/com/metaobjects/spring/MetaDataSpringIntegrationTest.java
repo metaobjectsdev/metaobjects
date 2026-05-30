@@ -98,7 +98,7 @@ public class MetaDataSpringIntegrationTest {
     
     @Test
     public void testMetaDataLoaderRegistryConfiguration() {
-        // Verify registry is configured with OSGi-compatible service registry
+        // Verify registry is configured with the service registry
         assertNotNull("MetaDataLoaderRegistry should be configured", metaDataLoaderRegistry);
         
         // Verify test loader was auto-discovered and registered
@@ -200,13 +200,11 @@ public class MetaDataSpringIntegrationTest {
     @Test 
     public void testServiceRegistryFactoryIntegration() {
         // Verify that the auto-configuration uses ServiceRegistryFactory
-        // This ensures OSGi compatibility
-        assertNotNull("Registry should be configured with ServiceRegistryFactory", 
+        assertNotNull("Registry should be configured with ServiceRegistryFactory",
             ServiceRegistryFactory.getDefault());
-        
+
         // The MetaDataLoaderRegistry should be using the default service registry
-        // which auto-detects OSGi vs non-OSGi environments
         Collection<MetaDataLoader> loaders = metaDataLoaderRegistry.getDataLoaders();
-        assertNotNull("Loaders should be accessible via OSGi-compatible registry", loaders);
+        assertNotNull("Loaders should be accessible via the loader registry", loaders);
     }
 }
