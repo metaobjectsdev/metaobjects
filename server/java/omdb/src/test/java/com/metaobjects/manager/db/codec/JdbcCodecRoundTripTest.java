@@ -14,6 +14,7 @@ import com.metaobjects.manager.QueryOptions;
 import com.metaobjects.manager.db.ObjectManagerDB;
 import com.metaobjects.manager.db.driver.DerbyDriver;
 import com.metaobjects.manager.db.validator.MetaClassDBValidatorService;
+import com.metaobjects.field.TimeField;
 import com.metaobjects.manager.exp.Expression;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.value.ValueObject;
@@ -26,6 +27,7 @@ import org.junit.Test;
 import javax.sql.DataSource;
 import java.io.PrintWriter;
 import java.sql.*;
+import java.time.LocalTime;
 import java.util.Collection;
 import java.util.Date;
 import java.util.logging.Logger;
@@ -102,6 +104,8 @@ public class JdbcCodecRoundTripTest {
             vo.setLong("bignum", 9_000_000_000L);   // > Integer.MAX_VALUE, proves LongCodec
             vo.setBoolean("active", true);
             vo.setDouble("ratio", 3.5d);
+            vo.setFloat("rate", 2.5f);                 // FloatCodec
+            vo.setObject("amount", new java.math.BigDecimal("123.45"));  // DecimalCodec
             vo.setString("label", "hello-codec");
             Date created = new Date(1_700_000_000_000L);
             vo.setDate("createdAt", created);
@@ -117,12 +121,76 @@ public class JdbcCodecRoundTripTest {
             assertEquals("LongCodec round-trip", Long.valueOf(9_000_000_000L), read.getLong("bignum"));
             assertEquals("BooleanCodec round-trip", Boolean.TRUE, read.getBoolean("active"));
             assertEquals("DoubleCodec round-trip", Double.valueOf(3.5d), read.getDouble("ratio"));
+            assertEquals("FloatCodec round-trip", Float.valueOf(2.5f), read.getFloat("rate"));
+            // DecimalField is backed by DataTypes.DOUBLE, so the field surfaces the
+            // value as a Double; the DecimalCodec write/read still goes through
+            // PreparedStatement.setBigDecimal / ResultSet.getBigDecimal.
+            assertEquals("DecimalCodec round-trip", Double.valueOf(123.45d), read.getDouble("amount"));
             assertEquals("StringCodec round-trip", "hello-codec", read.getString("label"));
             // DateCodec stores as a timestamp; compare epoch millis.
             assertNotNull("DateCodec round-trip non-null", read.getDate("createdAt"));
             assertEquals("DateCodec round-trip", created.getTime(), read.getDate("createdAt").getTime());
         } finally {
             omdb.releaseConnection(oc);
+        }
+    }
+
+    /**
+     * Task 1.5 (remediation) — TimeCodec symmetry at the codec/JDBC boundary.
+     *
+     * <p>A full OMDB round-trip for {@code field.time} is blocked by a
+     * {@code MetaField}/{@code DataConverter} limitation: {@link TimeField}'s
+     * data type is {@code DataTypes.CUSTOM}, and {@code DataConverter.toType(CUSTOM, …)}
+     * throws {@code IllegalStateException}. So {@code MetaField.setObject} (which
+     * {@code TimeCodec.readInto} calls) cannot accept a {@code LocalTime} on a real
+     * TimeField. That is unrelated to the codec's correctness.
+     *
+     * <p>This test therefore drives the codec's real JDBC IO directly against an
+     * embedded-Derby {@code TIME} column: write a {@link LocalTime} via
+     * {@link JdbcCodecs.TimeCodec#write} and read it back via
+     * {@link JdbcCodecs.TimeCodec#readInto}, using a thin {@link TimeField} subclass
+     * whose {@code setObject}/{@code getObject} store the value verbatim (bypassing
+     * the unrelated CUSTOM-type {@code DataConverter} hop). This proves the codec's
+     * {@code LocalTime → java.sql.Time → LocalTime} conversion is symmetric.
+     */
+    @Test
+    public void timeCodecIsSymmetricAtTheJdbcBoundary() throws Exception {
+        // Verbatim-storing TimeField: bypasses DataConverter's CUSTOM-type hop so we
+        // exercise ONLY the codec's JDBC conversion, not the documented MetaField gap.
+        final java.util.Map<String, Object> store = new java.util.HashMap<>();
+        TimeField timeField = new TimeField("startTime") {
+            @Override public void setObject(Object obj, Object value) { store.put("v", value); }
+            @Override public Object getObject(Object obj) { return store.get("v"); }
+        };
+
+        JdbcCodecs.TimeCodec codec = new JdbcCodecs.TimeCodec();
+        LocalTime original = LocalTime.of(13, 45, 30);
+
+        try (Connection conn = getConnection()) {
+            try (Statement st = conn.createStatement()) {
+                st.execute("CREATE TABLE codec_time_probe (t TIME)");
+            }
+
+            // WRITE side: bind the LocalTime through TimeCodec.write.
+            try (PreparedStatement ps = conn.prepareStatement("INSERT INTO codec_time_probe (t) VALUES (?)")) {
+                codec.write(ps, timeField, 1, original);
+                ps.executeUpdate();
+            }
+
+            // READ side: pull it back through TimeCodec.readInto.
+            try (Statement st = conn.createStatement();
+                 ResultSet rs = st.executeQuery("SELECT t FROM codec_time_probe")) {
+                assertTrue("one row written", rs.next());
+                Object target = new Object();
+                codec.readInto(target, timeField, rs, 1);
+            }
+
+            assertEquals("TimeCodec must round-trip a LocalTime symmetrically through JDBC",
+                    original, store.get("v"));
+
+            try (Statement st = conn.createStatement()) {
+                st.execute("DROP TABLE codec_time_probe");
+            }
         }
     }
 }

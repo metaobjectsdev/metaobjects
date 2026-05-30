@@ -116,4 +116,40 @@ public class UuidPrimaryKeyTest {
             omdb.releaseConnection(oc);
         }
     }
+
+    /**
+     * Task 1.7 (remediation) — the mint guard ({@code if (f.getString(o) == null)})
+     * must NOT clobber a caller-supplied UUID. When the PK is pre-set before
+     * create, the persisted + reloaded id must equal that exact value.
+     */
+    @Test
+    public void callerSuppliedUuidIsNotClobbered() throws Exception {
+        MetaObject mo = registry.findMetaObjectByName("uuidtest::Widget");
+        assertNotNull(mo);
+
+        String presetId = UUID.randomUUID().toString();
+
+        ObjectConnection oc = omdb.getConnection();
+        try {
+            ValueObject vo = (ValueObject) mo.newInstance();
+            vo.setString("id", presetId);            // caller supplies the UUID
+            vo.setString("name", "preset");
+
+            omdb.createObject(oc, vo);
+
+            // The mint guard must have left the caller's value intact.
+            assertEquals("OMDB must not overwrite a caller-supplied UUID PK",
+                    presetId, vo.getString("id"));
+
+            // Reload by the preset id and confirm it persisted under that exact value.
+            Collection<?> rows = omdb.getObjects(oc, mo,
+                    new QueryOptions(new Expression("id", presetId, Expression.EQUAL)));
+            assertEquals("exactly one row persisted under the caller-supplied UUID", 1, rows.size());
+            ValueObject read = (ValueObject) rows.iterator().next();
+            assertEquals("reloaded id equals the caller-supplied UUID", presetId, read.getString("id"));
+            assertEquals("preset", read.getString("name"));
+        } finally {
+            omdb.releaseConnection(oc);
+        }
+    }
 }
