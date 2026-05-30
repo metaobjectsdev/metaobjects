@@ -45,14 +45,36 @@ MetaObjects owns the **declarative schema diff** (metadata → expected, introsp
 DDL). **Apply, history, and data migrations are a separate, pluggable layer.**
 
 ### 2. Two apply modes
-- **Direct-apply** (today's behavior) — retained for dev / fast iteration.
-- **Generate** — emit reviewable, **versioned SQL migration files**. This is the production path.
+- **Built-in homegrown apply** (today's `up.sql` / `down.sql` + direct apply) — retained as the
+  **zero-dependency default**. It needs no external runner and, notably, gives **free rollback**
+  via `down.sql` — which **Flyway Community does not** (Flyway's undo/`U__` is a paid Teams/Enterprise
+  feature). The engine has both schemas, so it generates up **and** down by diffing both directions.
+- **Generate** — emit reviewable, **versioned SQL migration files** for an external runner. The
+  production path for shops standardized on a runner.
 
-### 3. Runner-agnostic SQL; Flyway is the reference
-Emitted migration files are plain, runner-agnostic SQL (Flyway / Liquibase / manual). **Flyway** is
-the documented reference because it is **language-agnostic** (CLI / Docker) — giving **one apply
-story across all five ports**. MetaObjects does **not** reimplement history / checksums / ordering /
-rollback.
+### 3. Runner output is a thin adapter layer; Flyway is the reference
+The engine generates the up+down SQL **once**; pluggable **output-format adapters** name/lay it out
+per target (we already have this notion — the D1/Wrangler layout sits beside the homegrown one). The
+dominant ecosystem tools split into SQL-file runners (easy: just the same SQL in a different
+envelope) and code-based ORM-coupled tools (out of scope — they require per-language *coded*
+migrations, not SQL):
+
+- **Three core adapters cover ~80% of ecosystems** (JVM / .NET / Python / Go / Node):
+  1. **Flyway-prefix** (`V__` / `U__`) — covers **Flyway (JVM)** *and* **Evolve (.NET, a Flyway clone)**.
+  2. **Two-file** `.up.sql` / `.down.sql` — **golang-migrate**, **yoyo** (Python); ≈ the homegrown shape.
+  3. **Single-file-with-divider** — **dbmate** (`-- migrate:up/down`) / **goose** (`-- +goose Up/Down`),
+     one parametric adapter, swap the marker tokens.
+  - Optional 4th: **Liquibase formatted-SQL** (`--changeset` / `--rollback` annotation envelope).
+- **Flyway** is the documented reference (language-agnostic CLI / Docker → one apply story across all
+  ports), but **not required** — the homegrown path and the other adapters stand alone.
+- **Explicitly out of scope:** EF Core Migrations, FluentMigrator (C#-coded), Alembic, Django
+  (Python-coded) — emitting those means generating per-language migration *code* and they are
+  ORM-coupled (EF↔EF Core, Alembic↔SQLAlchemy), which MetaObjects users need not adopt.
+- MetaObjects does **not** reimplement an external runner's history / checksums / ordering — that is
+  the runner's job (or the homegrown apply's journal for the zero-dep path).
+
+Consolidating also **fixes the current cross-port up/down divergence** (TS ships `down.sql`; Java
+migrate is up-only + `@previousName`) — one engine yields one up/down behavior.
 
 ### 4. Data migrations via the generate path
 Declarative diffing is schema-only (no tool can infer a data transform from a schema diff). The
