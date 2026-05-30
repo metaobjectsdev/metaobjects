@@ -1,0 +1,71 @@
+{
+  "metadata.root": {
+    "package": "codectest",
+    "children": [
+      {
+        "object.value": {
+          "name": "Sample",
+          "package": "codectest",
+          "@object": "com.metaobjects.object.value.ValueObject",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "CODEC_SAMPLE"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "@column": "id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "count",
+                "@column": "count"
+              }
+            },
+            {
+              "field.long": {
+                "name": "bignum",
+                "@column": "bignum"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "active",
+                "@column": "active"
+              }
+            },
+            {
+              "field.double": {
+                "name": "ratio",
+                "@column": "ratio"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label",
+                "@column": "label",
+                "@maxLength": 100
+              }
+            },
+            {
+              "field.date": {
+                "name": "createdAt",
+                "@column": "createdAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "primary",
+                "@fields": ["id"],
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -11,7 +11,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Timestamp;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -1969,37 +1968,23 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
-     * Enhanced field parsing with modern Java patterns and proper null handling
+     * Reads a single column from the ResultSet into the target object via the
+     * {@link com.metaobjects.manager.db.codec.JdbcCodecs} registry — the same
+     * single source of truth used by {@link #setStatementValue} on the write
+     * side (FR-003 Plan 4, Debt 1 — ADR-0002). This replaces the former
+     * {@code instanceof} ladder, which had drifted from the write-side codec
+     * (e.g. TimeField).
+     *
+     * <p>The jsonb pre-check mirrors {@code setStatementValue}: jsonb
+     * serialization depends on driver-local state ({@link #isJsonbField} /
+     * {@link #deserializeJsonb}), not on field subtype alone, and is gated on
+     * {@code codec == defaultCodec()} so explicit per-subtype codecs always win.
      */
     protected void parseField(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
-        if (f instanceof com.metaobjects.field.BooleanField) {
-            boolean bv = rs.getBoolean(j);
-            f.setBoolean(o, rs.wasNull() ? null : bv);
-        } else if (f instanceof com.metaobjects.field.DecimalField) {
-            java.math.BigDecimal dv = rs.getBigDecimal(j);
-            f.setObject(o, rs.wasNull() ? null : dv);
-        } else if (f instanceof com.metaobjects.field.IntegerField) {
-            int iv = rs.getInt(j);
-            f.setInt(o, rs.wasNull() ? null : iv);
-        } else if (f instanceof com.metaobjects.field.DateField) {
-            Timestamp tv = rs.getTimestamp(j);
-            f.setDate(o, rs.wasNull() ? null : new Date(tv.getTime()));
-        } else if (f instanceof com.metaobjects.field.TimeField) {
-            java.sql.Time tv = rs.getTime(j);
-            f.setObject(o, rs.wasNull() ? null : tv.toLocalTime());
-        } else if (f instanceof com.metaobjects.field.LongField) {
-            long lv = rs.getLong(j);
-            f.setLong(o, rs.wasNull() ? null : lv);
-        } else if (f instanceof com.metaobjects.field.FloatField) {
-            float fv = rs.getFloat(j);
-            f.setFloat(o, rs.wasNull() ? null : fv);
-        } else if (f instanceof com.metaobjects.field.DoubleField) {
-            double dv = rs.getDouble(j);
-            f.setDouble(o, rs.wasNull() ? null : dv);
-        } else if (f instanceof com.metaobjects.field.StringField) {
-            f.setString(o, rs.getString(j));
-        } else if (isJsonbField(f)) {
-            // jsonb: read JSON text from column, deserialize via deserializeJsonb().
+        com.metaobjects.manager.db.codec.JdbcFieldCodec codec =
+                com.metaobjects.manager.db.codec.JdbcCodecs.forField(f);
+        if (codec == com.metaobjects.manager.db.codec.JdbcCodecs.defaultCodec() && isJsonbField(f)) {
+            // jsonb: read JSON text from the column, deserialize via deserializeJsonb().
             // Step 1 consults ObjectClassRegistry for a bound class (registry wins for
             // explicit POJO bindings); step 2 falls back to MetaObjectDeserializer which
             // returns the MetaObject's declared class (e.g. ValueObject) when no binding
@@ -2010,12 +1995,9 @@ public class GenericSQLDriver implements DatabaseDriver {
             } else {
                 f.setObject(o, deserializeJsonb(f, json));
             }
-        } else if (f instanceof com.metaobjects.field.ObjectField) {
-            f.setObject(o, rs.getObject(j));
-        } else {
-            log.warn("Unknown field type {} for field {}, defaulting to Object", f.getClass().getSimpleName(), f.getName());
-            f.setObject(o, rs.getObject(j));
+            return;
         }
+        codec.readInto(o, f, rs, j);
     }
 
     // /////////////////////////////////////////////////////

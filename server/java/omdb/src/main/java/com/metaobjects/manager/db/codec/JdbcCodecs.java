@@ -123,13 +123,16 @@ public final class JdbcCodecs {
     }
 
     /**
-     * TimeField has a write-side path (LocalTime → java.sql.Time) but no read
-     * branch in the original ladder; reads fall through to the default
-     * setObject behavior (matches prior runtime behavior for TimeField rows).
+     * TimeField read mirrors the write side (LocalTime ⇄ java.sql.Time): read
+     * the column as a {@link java.sql.Time} and convert to {@link LocalTime},
+     * the canonical Java representation for {@code field.time}. The previous
+     * stub fell through to {@code getObject} (driver-dependent type) which had
+     * drifted from the write codec.
      */
     static final class TimeCodec implements JdbcFieldCodec {
         @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
-            f.setObject(o, rs.getObject(j));
+            java.sql.Time tv = rs.getTime(j);
+            f.setObject(o, rs.wasNull() ? null : tv.toLocalTime());
         }
         @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
             if (v == null) s.setNull(j, Types.TIME);
