@@ -30,6 +30,11 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_VALUES,
+  FIELD_ATTR_COERCE_DEFAULT,
+  FIELD_ATTR_DEFAULT,
+  FIELD_ATTR_NORMALIZE,
+  NORMALIZE_DEFAULT,
+  type NormalizeMode,
 } from "@metaobjectsdev/metadata";
 
 /** The render-engine FieldKind member name for a scalar field subtype, or null if non-scalar. */
@@ -81,6 +86,43 @@ export function enumValues(field: MetaData): string[] {
   const v = field.ownAttr(FIELD_ATTR_VALUES);
   if (Array.isArray(v)) return v.map((e) => String(e));
   return [];
+}
+
+/**
+ * FR-011: the field's `@coerceDefault` member symbol (present-but-uncoercible enum fallback),
+ * or null when absent. Read own-attr only — `@coerceDefault` is concrete, never inherited.
+ */
+export function coerceDefault(field: MetaData): string | null {
+  const v = field.ownAttr(FIELD_ATTR_COERCE_DEFAULT);
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+/**
+ * FR-011: the field's `@default` member symbol (absent-fill enum value), or null when absent.
+ */
+export function defaultValue(field: MetaData): string | null {
+  const v = field.ownAttr(FIELD_ATTR_DEFAULT);
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+/**
+ * FR-011: resolve the enum normalization mode for a field — field-level `@normalize`,
+ * else the owning `object.value`'s `@normalize` (the per-object default), else the global
+ * `NORMALIZE_DEFAULT` ("strip"). `ownerObject` may be null (resolution then skips the
+ * object tier). Mirrors the cross-port field → object → global resolution.
+ */
+export function resolveNormalize(field: MetaData, ownerObject: MetaData | null): NormalizeMode {
+  const fieldMode = normalizeAttrOf(field);
+  if (fieldMode != null) return fieldMode;
+  const objMode = ownerObject == null ? null : normalizeAttrOf(ownerObject);
+  if (objMode != null) return objMode;
+  return NORMALIZE_DEFAULT;
+}
+
+/** The `@normalize` attr of a node as a NormalizeMode, or null when absent. */
+function normalizeAttrOf(node: MetaData): NormalizeMode | null {
+  const v = node.ownAttr(FIELD_ATTR_NORMALIZE);
+  return typeof v === "string" && v.length > 0 ? (v as NormalizeMode) : null;
 }
 
 /** The nullable TS type for a field in the recover mirror interface. */
