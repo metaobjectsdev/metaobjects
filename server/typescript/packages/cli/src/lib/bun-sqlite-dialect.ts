@@ -38,7 +38,6 @@ interface BunSqliteDatabase {
 }
 interface BunSqliteStatement {
   all(...params: readonly unknown[]): unknown[];
-  values(...params: readonly unknown[]): unknown[][];
   run(...params: readonly unknown[]): { changes: number; lastInsertRowid: number | bigint };
 }
 
@@ -63,7 +62,6 @@ async function openBunSqlite(url: string): Promise<BunSqliteDatabase> {
 class BunSqliteConnection implements DatabaseConnection {
   constructor(private readonly db: BunSqliteDatabase) {}
 
-  // biome-ignore lint/suspicious/noExplicitAny: Kysely's row generic
   async executeQuery<R>(compiledQuery: CompiledQuery): Promise<QueryResult<R>> {
     const { sql, parameters } = compiledQuery;
     const stmt = this.db.query(sql);
@@ -82,7 +80,7 @@ class BunSqliteConnection implements DatabaseConnection {
     };
   }
 
-  // eslint-disable-next-line require-yield
+  // Async generator that never yields by design — streaming is unsupported.
   async *streamQuery<R>(): AsyncIterableIterator<QueryResult<R>> {
     throw new Error("bun:sqlite dialect does not support streaming");
   }
