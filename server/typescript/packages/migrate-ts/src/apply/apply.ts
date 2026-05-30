@@ -5,6 +5,7 @@ import { type Kysely, sql } from "kysely";
 import {
   appliedRecords,
   DEFAULT_LEDGER_SCHEMA,
+  deleteApplied,
   ensureLedger,
   type LedgerDialect,
   type LedgerOptions,
@@ -14,6 +15,8 @@ import {
 
 /** The per-migration up-SQL filename, shared with writeMigration's layout. */
 const UP_SQL = "up.sql";
+/** The per-migration down-SQL filename, shared with writeMigration's layout. */
+const DOWN_SQL = "down.sql";
 
 export interface ApplyPendingOptions {
   /** When true, compute + return the plan but apply nothing. */
@@ -40,6 +43,8 @@ interface DiscoveredMigration {
   name: string;
   /** Absolute path to the up.sql file. */
   upPath: string;
+  /** Absolute path to the down.sql file (may not exist on disk). */
+  downPath: string;
 }
 
 /**
@@ -112,6 +117,92 @@ export async function applyPending(
   });
 }
 
+export interface RollbackToOptions {
+  /** Target dialect. Decides ledger schema-qualification + advisory lock. Defaults to `sqlite`. */
+  dialect?: LedgerDialect;
+  /** Multi-tenant ledger location + advisory-lock name. Defaults preserve current behavior. */
+  ledger?: LedgerOptions;
+}
+
+export interface RollbackToResult {
+  /** Migration names rolled back, in execution (reverse-chronological) order. */
+  rolledBack: string[];
+}
+
+/**
+ * Roll back applied migrations newer than `target` (or all, when `target` is
+ * `null`), in REVERSE lexical order — running each migration's `down.sql` then
+ * deleting its ledger row, in ONE transaction per migration. `target` is itself
+ * retained (only ledger names strictly-greater than it are rolled back; lexical
+ * = chronological given the zero-padded timestamp prefix).
+ *
+ * An empty / whitespace-only `down.sql` THROWS before that migration is
+ * unrecorded — data-migration downs are hand-authored and must never be
+ * silently skipped. `down.sql` is split with the same {@link splitSqlStatements}
+ * the up-path uses. Wrapped in the same Postgres session advisory lock as
+ * {@link applyPending} (no-op on SQLite).
+ *
+ * Ported from src/runner/apply.ts rollbackTo.
+ */
+export async function rollbackTo(
+  db: Kysely<Record<string, unknown>>,
+  dir: string,
+  target: string | null,
+  opts: RollbackToOptions = {},
+): Promise<RollbackToResult> {
+  const dialect = opts.dialect ?? "sqlite";
+  const ledger = opts.ledger;
+
+  return withAdvisoryLock(db, dialect, ledger, async () => {
+    await ensureLedger(db, dialect, ledger);
+    const recorded = await appliedRecords(db, dialect, ledger);
+
+    const discovered = await discoverMigrations(dir);
+    const byName = new Map(discovered.map((m) => [m.name, m]));
+
+    // Applied names strictly-greater than target (or all when target is null),
+    // newest-first.
+    const toRollback = [...recorded.keys()]
+      .filter((name) => target === null || compareLexical(name, target) > 0)
+      .sort((a, b) => compareLexical(b, a));
+
+    const rolledBack: string[] = [];
+    for (const name of toRollback) {
+      const m = byName.get(name);
+      if (m === undefined) {
+        throw new Error(
+          `rollback '${name}': migration directory is missing (cannot read its down.sql)`,
+        );
+      }
+      const downText = await readDownSql(m.downPath);
+      if (downText.trim().length === 0) {
+        throw new Error(
+          `rollback '${name}': down.sql is empty — data-migration downs must be ` +
+            `hand-authored, never silently skipped.`,
+        );
+      }
+      // Run the down SQL + the ledger delete in ONE transaction.
+      await db.transaction().execute(async (trx) => {
+        for (const stmt of splitSqlStatements(downText)) {
+          await sql.raw(stmt).execute(trx);
+        }
+        await deleteApplied(trx, name, dialect, ledger);
+      });
+      rolledBack.push(name);
+    }
+
+    return { rolledBack };
+  });
+}
+
+async function readDownSql(path: string): Promise<string> {
+  try {
+    return await readFile(path, "utf8");
+  } catch {
+    return "";
+  }
+}
+
 /**
  * Run `body` while holding a Postgres SESSION-level advisory lock for mutual
  * exclusion across concurrent applies/rollbacks against the same ledger.
@@ -173,7 +264,11 @@ async function discoverMigrations(dir: string): Promise<DiscoveredMigration[]> {
   const migrations: DiscoveredMigration[] = [];
   for (const e of entries) {
     if (!e.isDirectory()) continue;
-    migrations.push({ name: e.name, upPath: join(dir, e.name, UP_SQL) });
+    migrations.push({
+      name: e.name,
+      upPath: join(dir, e.name, UP_SQL),
+      downPath: join(dir, e.name, DOWN_SQL),
+    });
   }
   // Directory names are timestamp-prefixed (`<YYYYMMDDHHMMSS>-<slug>`), so a
   // plain lexical (code-unit) sort is the apply order.

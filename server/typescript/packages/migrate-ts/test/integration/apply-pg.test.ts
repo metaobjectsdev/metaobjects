@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { Kysely, PostgresDialect, sql } from "kysely";
-import { applyPending } from "../../src/apply/apply.js";
+import { applyPending, rollbackTo } from "../../src/apply/apply.js";
 import { appliedNames, ensureLedger } from "../../src/apply/ledger.js";
 
 const PG_URL = process.env["MIGRATE_TS_PG_URL"];
@@ -127,4 +127,32 @@ realDescribe("applyPending — Postgres advisory lock + multi-tenant + rollback"
     }
   });
 
+  test("rollbackTo reverts schema + ledger under the advisory lock", async () => {
+    const widgets = `widgets_${suffix}`;
+    const ledger = { table: `mo_rb_${suffix}` };
+    writeMig(migDir, "20260101000000-create", `CREATE TABLE "${widgets}" (id int primary key);`, `DROP TABLE "${widgets}";`);
+    writeMig(migDir, "20260102000000-add", `ALTER TABLE "${widgets}" ADD COLUMN label text;`, `ALTER TABLE "${widgets}" DROP COLUMN label;`);
+
+    const k = makeKysely();
+    try {
+      await applyPending(k.db, migDir, { dryRun: false, dialect: "postgres", ledger });
+      expect((await appliedNames(k.db, "postgres", ledger)).size).toBe(2);
+
+      const rb = await rollbackTo(k.db, migDir, "20260101000000-create", { dialect: "postgres", ledger });
+      expect(rb.rolledBack).toEqual(["20260102000000-add"]);
+
+      // The column is gone; the ledger retains only the target.
+      const cols = await sql<{ column_name: string }>`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = ${widgets} ORDER BY column_name
+      `.execute(k.db);
+      expect(cols.rows.map((r) => r.column_name)).toEqual(["id"]);
+      const names = await appliedNames(k.db, "postgres", ledger);
+      expect([...names]).toEqual(["20260101000000-create"]);
+    } finally {
+      await sql.raw(`DROP TABLE IF EXISTS "${widgets}"`).execute(k.db).catch(() => {});
+      await sql.raw(`DROP TABLE IF EXISTS "${ledger.table}"`).execute(k.db).catch(() => {});
+      await k.db.destroy();
+    }
+  });
 });

@@ -21,6 +21,7 @@ import {
   writeMigrationD1,
   introspectD1,
   applyPending,
+  rollbackTo,
   findWranglerConfig,
   parseWranglerConfig,
   resolveD1Binding,
@@ -113,12 +114,23 @@ export async function migrateCommand(
       log.error(`migrate: --db / DATABASE_URL is not used for dialect 'd1' — wrangler.toml owns connection`);
       return 2;
     }
+    if (config.rollback !== undefined) {
+      log.error(`migrate: --rollback is not supported for dialect 'd1' (use 'wrangler d1 migrations' tooling)`);
+      return 2;
+    }
     return await runD1Migrate(config, metaRoot, wranglerRunner ?? defaultWranglerRunner);
   }
 
   if (config.databaseUrl === undefined) {
     log.error(`migrate: --db <url> required (or set DATABASE_URL, or add migrate.databaseUrl to .metaobjects/config.json)`);
     return 2;
+  }
+
+  // --rollback short-circuits the diff/emit pipeline: it runs the down.sql of
+  // every applied migration NEWER than <target> (target retained), in reverse
+  // order, ledger-tracked + advisory-locked. postgres/sqlite only.
+  if (config.rollback !== undefined) {
+    return await runRollback(config, metaRoot);
   }
 
   // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
@@ -342,8 +354,12 @@ export async function migrateCommand(
       const outDir = resolvePath(metaRoot, config.outDir);
       try {
         // applyPending calls ensureLedger internally (idempotent), so no need
-        // to ensure it here.
-        const result = await applyPending(kysely.db, outDir, { dryRun: false });
+        // to ensure it here. Pass the dialect so postgres gets schema-qualified
+        // ledger DDL + the session advisory lock (sqlite is a no-op there).
+        const result = await applyPending(kysely.db, outDir, {
+          dryRun: false,
+          dialect: kysely.dialect as "sqlite" | "postgres",
+        });
         appliedNames = [...result.applied];
       } catch (err) {
         log.error(`migrate: apply failed: ${(err as Error).message}`);
@@ -377,6 +393,61 @@ export async function migrateCommand(
     }
   }
   return exitCode;
+}
+
+/**
+ * `meta migrate --rollback <target>` — run the down.sql of every applied
+ * migration newer than <target> (target retained) in reverse order, against the
+ * live DB, ledger-tracked + advisory-locked. postgres/sqlite only.
+ *
+ * Pass `--rollback ""` (empty target) is treated as null → roll back everything.
+ */
+async function runRollback(
+  config: ResolvedMigrateConfig,
+  metaRoot: string,
+): Promise<number> {
+  // databaseUrl is guaranteed defined by the caller's guard above.
+  const databaseUrl = config.databaseUrl as string;
+
+  // Rollback is destructive and runs hand-authored down.sql; there is no
+  // meaningful dry-run plan (no diff to preview), so reject the combination
+  // rather than silently executing.
+  if (config.dryRun) {
+    log.error(`migrate: --dry-run is not supported with --rollback`);
+    return 2;
+  }
+
+  let kysely;
+  try {
+    kysely = await buildKyselyFromUrl(databaseUrl, config.dialect);
+  } catch (err) {
+    log.error(`migrate: ${(err as Error).message}`);
+    return 2;
+  }
+  // kysely.dialect is "sqlite" | "postgres" here — d1 is rejected upstream.
+  const dialect = kysely.dialect as "sqlite" | "postgres";
+  const outDir = resolvePath(metaRoot, config.outDir);
+  // An empty --rollback string means "roll back everything".
+  const target = config.rollback === "" ? null : (config.rollback ?? null);
+
+  try {
+    const result = await rollbackTo(kysely.db, outDir, target, { dialect });
+    if (result.rolledBack.length > 0) {
+      log.info(`migrate: rolled back ${result.rolledBack.length} migration(s): ${result.rolledBack.join(", ")}`);
+    } else {
+      log.info(`migrate: nothing to roll back${target ? ` newer than '${target}'` : ""}`);
+    }
+    return 0;
+  } catch (err) {
+    log.error(`migrate: rollback failed: ${(err as Error).message}`);
+    return 1;
+  } finally {
+    try {
+      await kysely.close();
+    } catch (err) {
+      log.warn(`migrate: failed to close DB cleanly: ${(err as Error).message}`);
+    }
+  }
 }
 
 async function runD1Migrate(

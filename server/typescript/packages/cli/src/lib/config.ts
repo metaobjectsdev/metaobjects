@@ -44,6 +44,11 @@ export interface ResolvedMigrateConfig {
   dryRun: boolean;
   /** Run pending migration files against the DB (postgres/sqlite, ledger-backed). */
   apply: boolean;
+  /**
+   * Roll back all applied migrations newer than this target (target retained),
+   * postgres/sqlite only. Mutually exclusive with apply.
+   */
+  rollback: string | undefined;
   yes: boolean;
   d1: ResolvedD1Config;
 }
@@ -90,6 +95,7 @@ export async function resolveMigrateConfig(
     slug: flags.slug,
     dryRun: flags.dryRun,
     apply: flags.apply,
+    rollback: flags.rollback,
     yes: flags.yes,
     d1: {
       binding: flags.d1Binding ?? d1Block.binding,

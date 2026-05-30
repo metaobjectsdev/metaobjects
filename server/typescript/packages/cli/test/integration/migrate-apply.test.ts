@@ -82,4 +82,44 @@ describe("meta migrate --apply — sqlite, ledger-backed", () => {
       rmSync(repo, { recursive: true, force: true });
     }
   });
+
+  test("--rollback (empty target → everything) reverts schema + clears ledger", async () => {
+    const { repo, dbUrl } = setupRepo();
+    try {
+      const applied = await run([
+        "migrate", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite", "--slug", "initial", "--apply",
+      ]);
+      expect(applied).toBe(0);
+      expect((await tableNames(dbUrl)).has("users")).toBe(true);
+
+      // Roll everything back (empty --rollback target === null).
+      const rolled = await run([
+        "migrate", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite", "--rollback", "",
+      ]);
+      expect(rolled).toBe(0);
+
+      const tables = await tableNames(dbUrl);
+      expect(tables.has("users")).toBe(false);
+      expect(tables.has("posts")).toBe(false);
+      // Ledger table still exists but is now empty.
+      const client = createClient({ url: dbUrl });
+      const led = await client.execute("SELECT count(*) AS c FROM _metaobjects_migrations");
+      client.close();
+      expect(Number(led.rows[0]!.c)).toBe(0);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("--rollback and --apply together → exit 2 (mutually exclusive)", async () => {
+    const { repo, dbUrl } = setupRepo();
+    try {
+      const exit = await run([
+        "migrate", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite", "--rollback", "x", "--apply",
+      ]);
+      expect(exit).toBe(2);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
 });

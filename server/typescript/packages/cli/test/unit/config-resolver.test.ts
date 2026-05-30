@@ -49,6 +49,7 @@ describe("resolveMigrateConfig", () => {
     d1Binding: undefined,
     remote: false,
     apply: false,
+    rollback: undefined,
     yes: false,
   } as const;
 
@@ -156,6 +157,7 @@ describe("resolveMigrateConfig", () => {
       d1Binding: "MYDB",
       remote: false,
       apply: false,
+      rollback: undefined,
       yes: false,
     }, root);
     expect(resolved.d1?.binding).toBe("MYDB");
@@ -177,6 +179,7 @@ describe("resolveMigrateConfig", () => {
       d1Binding: undefined,
       remote: true,
       apply: false,
+      rollback: undefined,
       yes: false,
     }, root);
     expect(resolved.d1?.remote).toBe(true);

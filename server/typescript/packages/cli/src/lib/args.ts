@@ -212,6 +212,12 @@ export interface MigrateFlags {
   d1Binding: string | undefined;
   remote: boolean;
   apply: boolean;
+  /**
+   * Roll back all applied migrations NEWER than this target (the target itself
+   * is retained), running each migration's down.sql in reverse order. Mutually
+   * exclusive with --apply. postgres/sqlite only (not d1).
+   */
+  rollback: string | undefined;
   yes: boolean;
 }
 
@@ -229,11 +235,16 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
       "d1": { type: "string" },
       "remote": { type: "boolean", default: false },
       "apply": { type: "boolean", default: false },
+      "rollback": { type: "string" },
       "yes": { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
   });
+
+  if (values.rollback !== undefined && values.apply === true) {
+    throw new Error(`--rollback and --apply are mutually exclusive`);
+  }
 
   const dialect = values.dialect as string | undefined;
   if (dialect !== undefined && !DIALECTS.includes(dialect as Dialect)) {
@@ -268,6 +279,7 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
     d1Binding: values.d1 as string | undefined,
     remote: !!values.remote,
     apply: !!values.apply,
+    rollback: values.rollback as string | undefined,
     yes: !!values.yes,
   };
 }

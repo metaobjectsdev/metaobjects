@@ -77,8 +77,11 @@ export {
 } from "./apply/ledger.js";
 export {
   applyPending,
+  rollbackTo,
   type ApplyPendingOptions,
   type ApplyPendingResult,
+  type RollbackToOptions,
+  type RollbackToResult,
 } from "./apply/apply.js";
 
 // Wrangler config helpers
