@@ -62,6 +62,16 @@ export {
 // D1 introspection
 export { introspectD1, type D1Runner, type IntrospectD1Options } from "./introspect/d1.js";
 
+// Migration-history ledger + ordered transactional apply (postgres/sqlite)
+export {
+  ensureLedger,
+  recordApplied,
+  appliedNames,
+  appliedRecords,
+  MIGRATIONS_TABLE,
+  type LedgerRow,
+} from "./apply/ledger.js";
+
 // Wrangler config helpers
 export {
   findWranglerConfig,
