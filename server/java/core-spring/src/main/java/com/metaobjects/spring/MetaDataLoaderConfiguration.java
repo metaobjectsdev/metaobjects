@@ -3,6 +3,7 @@ package com.metaobjects.spring;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -63,6 +64,7 @@ public class MetaDataLoaderConfiguration {
      * {@link MetaDataAutoConfiguration}.</p>
      */
     @Bean
+    @ConditionalOnMissingBean(MetaDataLoader.class)
     public MetaDataLoader applicationMetaDataLoader() throws Exception {
         if (metadataSources.isEmpty()) {
             // Default: look for metadata files in classpath

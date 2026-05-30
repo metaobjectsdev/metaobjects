@@ -6,6 +6,7 @@ import com.metaobjects.registry.ServiceRegistryFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 
 import java.util.List;
@@ -41,6 +42,7 @@ import java.util.List;
  * @since 6.0.0
  */
 @AutoConfiguration
+@Import(MetaDataLoaderConfiguration.class)
 public class MetaDataAutoConfiguration {
     
     /**
