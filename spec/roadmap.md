@@ -29,7 +29,7 @@ _Last refreshed 2026-05-30._
 - **Render conformance** — `fixtures/render-conformance/`. TS / C# / Java / Kotlin / Python byte-identical.
 - **Persistence conformance** — `fixtures/persistence-conformance/`. TS / C# / Kotlin / Python all 12/12 against Testcontainers Postgres / Derby (per port). Java runs the **query** scenarios only (it no longer owns schema migrations); its runtime auto-create path bootstraps the schema, and the aggregate-projection view scenario is deferred (the view-body builder was part of the removed migration engine).
 - **API-contract conformance** — `fixtures/api-contract-conformance/`. TS / C# / Java / Kotlin / Python all 20/20.
-- **Recover conformance** — `fixtures/recover-conformance/` (10 dirty-input cases). TS / C# / Java / Python all 10/10; Kotlin reuses the shared JVM engine.
+- **Recover conformance** — `fixtures/recover-conformance/` (20 dirty-input cases). TS / C# / Java / Python all 20/20; Kotlin reuses the shared JVM engine.
 - **YAML / verify** corpora — green across the ports that ship those layers.
 
 ### Key cross-language features
@@ -45,6 +45,7 @@ _Last refreshed 2026-05-30._
   - WARN envelope-shape assertion finalized across all 4 ports.
 - **FR-006 — `template.output` parser-on-receipt codegen.** ADR-0010. Shipped in all 5 ports (TS / C# / Java / Python / Kotlin); `meta verify` extended to cover output drift.
 - **FR-010 — output-format prompt fragment + tolerant `recover` parser.** Shipped in all 5 ports. One `template.output` drives three artifacts: a comment-free output-format prompt fragment (3 styles × json/xml via `@promptStyle`), a tolerant `recover()` (8-stage, never-throws, returns an all-nullable mirror of the payload) that complements FR-006's strict parser, and the `@example`/`@instruction`/`@enumAlias`/`@enumDoc` field-teaching attrs. Pinned by the shared `fixtures/recover-conformance/` corpus; tolerance is at classification + canonical value (not byte-identity). Designed in `docs/superpowers/specs/2026-05-29-fr-010-output-format-prompt-and-tolerant-parsing-design.md`.
+- **FR-011 — recover hardening (enum coercion + nested-object recovery).** Shipped in all 5 ports (TS pilot → C# / Java / Kotlin / Python). Hardens FR-010's `recover()` in place: an enum coercion pipeline (exact → `@normalize` `none|collapse|strip` → `@enumAlias` → `@coerceDefault` → MALFORMED), `@default` fills an absent enum (emitting the now-live `DEFAULTED` state, which satisfies `@required`), and uniform nested/embedded-object recovery via dotted child paths (`meta.score`, `items[i].label`) across JSON + XML. Normalization is ASCII-only (manual case-fold, byte-identical cross-port); `@normalize`/`@coerceDefault`/`@default` are member-validated on `field.enum` at load time, with an object-level `@normalize` default. Fuzzy matching deferred (reserved pipeline slot). Corpus expanded 10 → 20 cases. Designed in `docs/superpowers/specs/2026-05-30-fr-011-recover-hardening-design.md`.
 - **Prompt-construction pillar — per-port building blocks complete.** Render (Mustache) + payload-VO codegen + `verify` (FR-004), the output parser (FR-006), and the output-format prompt + recover (FR-010) all ship in all 5 ports. The library-side primitives of the fourth pillar are delivered; what remains is MCP exposure (see Planned).
 - **Cross-port `templateGenerator()`** (shipped 2026-05-28). TS reference + Python / C# / Java factories; 3/3 conformance fixtures byte-equivalent. Java ships lightweight types under `com.metaobjects.render.templategen` (its legacy `Generator` interface was incompatible). Maven-plugin integration for the Java factory is a follow-up. See `design-docs/2026-05-28-cross-port-template-generator.md`.
 - **OMDB Spring Boot 3 starter** (shipped 2026-05-30). Autoconfiguration wires a `DataSource` → `ObjectManagerDB` with Spring-tx; closes the OMDB-modernization open question (jOOQ migration ruled out as a non-goal).
@@ -58,14 +59,6 @@ _Last refreshed 2026-05-30._
 
 ## Planned
 
-- **FR-011 — recover hardening (enum coercion + nested-object recovery)** — improve FR-010's `recover()`
-  for LLM output in place (no decouple): an enum coercion pipeline (exact → `@normalize` `none|collapse|strip`
-  → `@enumAlias` → `@coerceDefault` → MALFORMED; `@default` fills absent; emit the reserved `DEFAULTED`
-  state), uniform nested/embedded-object recovery, and conformance-corpus expansion. ASCII-only normalization
-  (byte-identical cross-port); fuzzy matching deferred (reserved slot). TS pilot, then port against the shared
-  corpus. Designed in `docs/superpowers/specs/2026-05-30-fr-011-recover-hardening-design.md`. *(A broader
-  "general tolerant-ingestion engine + declarative payload mapping" framing was considered and deliberately
-  cut — unjustified by current demand; any general inbound-mapping need is consumer-custom, not OSS core.)*
 - **MCP exposure of declared prompts/tools** — the remaining library-side piece of the prompt-construction pillar. Surface a `template.output` / tool declaration over the Model Context Protocol (model-agnostic) so an LLM host can discover + register it, built on the shipped render / payload / verify / FR-006 / FR-010 primitives. Designed in `docs/superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md`.
 
 ### Tracked outside this library repo (not roadmap work here)
