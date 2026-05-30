@@ -180,7 +180,7 @@ public class MetaClassDBValidatorService
 	      }
 	  }
 	  catch( Exception e ) {
-		  //throw new MetaDataException( "Error validating mapping [" + mapping + "] for MetaClass [" + mc + "]: " + e.getMessage(), e );
+		  throw new MetaDataException( "Error validating mapping [" + mapping + "] for MetaClass [" + mc + "]: " + e.getMessage(), e );
 	  }
   }
 
