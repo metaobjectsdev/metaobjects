@@ -6,9 +6,7 @@ import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.db.ObjectManagerDB;
 import com.metaobjects.manager.db.driver.PostgresDriver;
-import com.metaobjects.manager.db.migrate.AllowOptions;
-import com.metaobjects.manager.db.migrate.EmitResult;
-import com.metaobjects.manager.db.migrate.SchemaMigrationEngine;
+import com.metaobjects.manager.db.validator.MetaClassDBValidatorService;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.MetaDataLoaderRegistry;
 import com.metaobjects.registry.ServiceRegistryFactory;
@@ -28,9 +26,12 @@ import java.util.logging.Logger;
 /**
  * Mirrors C# QueryScenarioRunner / TS query-scenario.ts. End-to-end:
  *
- *   1. Apply the canonical schema (engine full-CREATE via
- *      {@link SchemaMigrationEngine#emit(Connection, AllowOptions)} against
- *      an empty actual snapshot).
+ *   1. Apply the canonical schema via the runtime auto-create path
+ *      ({@link MetaClassDBValidatorService} with {@code autoCreate=true},
+ *      which issues the drivers' legacy {@code createTable}/{@code createIndex}/
+ *      {@code createForeignKey}/{@code createSequence} DDL). Schema migrations
+ *      (diff-and-converge) are owned by the TS toolchain; the Java port only
+ *      retains runtime auto-create for test/dev schema bootstrap.
  *   2. Execute the scenario's seed-data SQL.
  *   3. For each {@link QuerySpec}: translate via {@link ObjectManagerDbAdapter}
  *      → {@link ObjectManagerDB#getObjects} / {@code getObjectsCount},
@@ -48,13 +49,14 @@ public final class QueryScenarioRunner {
         registry.registerLoader(loader);
 
         ObjectManagerDB omdb = newOmdb(pg);
-        SchemaMigrationEngine engine = new SchemaMigrationEngine(omdb, registry);
 
-        // 1. Apply canonical schema.
-        try (Connection c = openConnection(pg)) {
-            EmitResult emit = engine.emit(c, new AllowOptions());
-            executeSql(c, emit.up());
-        }
+        // 1. Apply canonical schema via the runtime auto-create path (the
+        //    drivers' legacy createTable/createIndex/createForeignKey DDL).
+        MetaClassDBValidatorService validator = new MetaClassDBValidatorService();
+        validator.setObjectManager(omdb);
+        validator.setAutoCreate(true);
+        validator.setMetaDataLoaderRegistry(registry);
+        validator.init();
 
         // 2. Seed data.
         if (scenario.seedData() != null && !scenario.seedData().isBlank()) {

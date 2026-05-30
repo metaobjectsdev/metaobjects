@@ -80,8 +80,8 @@ public class PostgresDriver extends GenericSQLDriver {
                 if (name == null) continue;
                 
                 if (i > 0) query.append(",\n");
-                
-                query.append("  ").append(name).append(" ");
+
+                query.append("  ").append(quoteIdent(name)).append(" ");
                 
                 // PostgreSQL-specific type mapping with modern features
                 switch (col.getSQLType()) {
@@ -117,11 +117,12 @@ public class PostgresDriver extends GenericSQLDriver {
             
             // Add primary key constraint
             if (primaryKey != null) {
-                query.append(",\n  PRIMARY KEY (").append(primaryKey).append(")");
+                query.append(",\n  PRIMARY KEY (").append(quoteIdent(primaryKey)).append(")");
             } else if (keys > 1) {
                 query.append(",\n  PRIMARY KEY (");
                 table.getPrimaryKeys().stream()
                     .map(ColumnDef::getName)
+                    .map(this::quoteIdent)
                     .reduce((a, b) -> a + ", " + b)
                     .ifPresent(query::append);
                 query.append(")");
@@ -225,7 +226,7 @@ public class PostgresDriver extends GenericSQLDriver {
 			for ( String colName : index.getColumnNames() ) {
 				if ( first ) first = false;
 				else query.append( "," );
-				query.append( colName );
+				query.append( quoteIdent( colName ) );
 			}
 			
 			query.append( ")" );
@@ -255,11 +256,11 @@ public class PostgresDriver extends GenericSQLDriver {
              .append(" ADD CONSTRAINT ")
              .append(keyDef.getName())
              .append(" FOREIGN KEY (")
-             .append(keyDef.getColumnName())
+             .append(quoteIdent(keyDef.getColumnName()))
              .append(") REFERENCES ")
              .append(getProperName(keyDef.getRefTable().getNameDef()))
              .append(" (")
-             .append(keyDef.getRefColumn().getName())
+             .append(quoteIdent(keyDef.getRefColumn().getName()))
              .append(") ON DELETE RESTRICT ON UPDATE CASCADE");
         
         if (log.isDebugEnabled()) {
