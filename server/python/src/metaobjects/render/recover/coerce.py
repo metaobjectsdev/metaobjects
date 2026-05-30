@@ -17,6 +17,8 @@ import math
 import re
 from typing import Final
 
+from metaobjects.render.recover.normalize import NONE as _NORMALIZE_NONE
+from metaobjects.render.recover.normalize import normalize_enum
 from metaobjects.render.recover.types import (
     Coercion,
     FieldKind,
@@ -87,16 +89,34 @@ def _coerce_enum(
     report: RecoveryReport,
     ci: bool,
 ) -> object:
+    """FR-011 enum coercion pipeline: exact → normalize → ``@enumAlias`` →
+    (reserved fuzzy) → ``@coerceDefault`` → MALFORMED.
+
+    Resolution mode is ``spec.normalize`` (default ``"strip"``); under STRICT
+    tolerance (``ci`` is False) normalization is forced to ``"none"`` (exact-only),
+    preserving the case-sensitive STRICT contract. The FR-010 case-insensitive
+    default is now mode ``"strip"``. Mirrors the TS/C#/Java ``coerceEnum``.
+    """
+    mode = spec.normalize if ci else _NORMALIZE_NONE
+
+    # 1. exact match.
     if spec.enum_values is not None:
         for v in spec.enum_values:
             if v == raw:
                 return v
-            if ci and v.lower() == raw.lower():
-                report.add_coercion(Coercion(path, raw, v, "case"))
+
+    # 2. normalized match (skipped when mode == none).
+    if mode != _NORMALIZE_NONE and spec.enum_values is not None:
+        norm_raw = normalize_enum(raw, mode)
+        for v in spec.enum_values:
+            if normalize_enum(v, mode) == norm_raw:
+                report.add_coercion(Coercion(path, raw, v, "normalize"))
                 return v
-    schema_target = None if spec.enum_alias is None else spec.enum_alias.get(raw)
-    runtime_target = opts.aliases.get(raw)
+
+    # 3. @enumAlias — runtime aliases win over schema; alias keys matched under the mode.
+    runtime_target = _lookup_alias_in(raw, opts.aliases, mode)
     if runtime_target is not None:
+        schema_target = _lookup_alias_in(raw, spec.enum_alias, mode)
         kind = (
             "runtime-alias-override"
             if schema_target is not None and schema_target != runtime_target
@@ -104,10 +124,41 @@ def _coerce_enum(
         )
         report.add_coercion(Coercion(path, raw, runtime_target, kind))
         return runtime_target
+    schema_target = _lookup_alias_in(raw, spec.enum_alias, mode)
     if schema_target is not None:
         report.add_coercion(Coercion(path, raw, schema_target, "alias"))
         return schema_target
+
+    # 4. reserved fuzzy slot — NOT implemented (FR-011 spec "Out of scope").
+
+    # 5. @coerceDefault — present-but-uncoercible fallback to a valid member → DEFAULTED.
+    if (
+        spec.coerce_default is not None
+        and spec.enum_values is not None
+        and spec.coerce_default in spec.enum_values
+    ):
+        report.add_coercion(Coercion(path, raw, spec.coerce_default, "coerceDefault"))
+        return spec.coerce_default
+
+    # 6. MALFORMED.
     return MALFORMED
+
+
+def _lookup_alias_in(raw: str, aliases: dict[str, str] | None, mode: str) -> str | None:
+    """Find ``raw`` in an alias map, matching keys exactly first then under ``mode``
+    normalization. Returns the target member, or ``None`` when no key matches."""
+    if not aliases:
+        return None
+    exact = aliases.get(raw)
+    if exact is not None:
+        return exact
+    if mode == _NORMALIZE_NONE:
+        return None
+    norm_raw = normalize_enum(raw, mode)
+    for key, target in aliases.items():
+        if normalize_enum(key, mode) == norm_raw:
+            return target
+    return None
 
 
 def _coerce_int(raw: str, spec: FieldSpec, path: str, report: RecoveryReport) -> object:

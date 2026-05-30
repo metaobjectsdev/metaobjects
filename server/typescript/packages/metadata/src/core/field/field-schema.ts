@@ -32,6 +32,10 @@ import {
   FIELD_ATTR_ENUM_DOC,
   FIELD_ATTR_EXAMPLE,
   FIELD_ATTR_INSTRUCTION,
+  FIELD_ATTR_COERCE_DEFAULT,
+  FIELD_ATTR_NORMALIZE,
+  NORMALIZE_MODES,
+  NORMALIZE_DEFAULT,
 } from "./field-constants.js";
 
 /** Attrs common to every field subtype (codegen-ts column mapper + Project D filter/sort). */
@@ -184,4 +188,29 @@ export const enumDocAttr: AttrSchema = {
   required: false,
   description:
     "Map of enum member to a human-readable description; shown per-member in the FR-010 'guide'-style prompt fragment.",
+};
+
+/** FR-011: the @coerceDefault attr — only on field.enum. String member symbol used as
+ *  the recover fallback when an LLM sends a present-but-uncoercible value. Loader-validated
+ *  to be one of the field's @values (ERR_BAD_ATTR_VALUE otherwise). */
+export const coerceDefaultAttr: AttrSchema = {
+  name: FIELD_ATTR_COERCE_DEFAULT,
+  valueType: ATTR_SUBTYPE_STRING,
+  required: false,
+  description:
+    "Fallback enum member used by tolerant recover when a present value cannot be coerced; must be one of the field's @values.",
+};
+
+/** FR-011: the @normalize attr — on field.enum (per-field) and object.value (object default).
+ *  Closed enum (none|collapse|strip); controls the ASCII normalization applied during tolerant
+ *  enum recover. Resolved field → owning object.value → global default (strip). */
+export const normalizeAttr: AttrSchema = {
+  name: FIELD_ATTR_NORMALIZE,
+  valueType: ATTR_SUBTYPE_STRING,
+  required: false,
+  default: NORMALIZE_DEFAULT,
+  allowedValues: [...NORMALIZE_MODES],
+  description:
+    "ASCII normalization mode for tolerant enum recover (none|collapse|strip, default strip). " +
+    "On field.enum it is per-field; on object.value it is the default for the object's enum fields.",
 };

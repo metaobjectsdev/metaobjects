@@ -10,6 +10,7 @@ from metaobjects.render.recover.json_forgiving_reader import (
     JsonForgivingReader,
 )
 from metaobjects.render.recover.types import (
+    Coercion,
     FieldKind,
     FieldRecovery,
     FieldSpec,
@@ -69,6 +70,13 @@ def _extract(
         path = f.name if prefix == "" else prefix + "." + f.name
         present = _lookup(raw, f.name, ci)
         if present is None:
+            # FR-011: an absent enum with a declared @default fills the value →
+            # DEFAULTED (which satisfies a @required field).
+            if f.kind == FieldKind.ENUM and f.default_value is not None:
+                data[f.name] = f.default_value
+                report.add_coercion(Coercion(path, "", f.default_value, "default"))
+                report.set(path, FieldRecovery.DEFAULTED)
+                continue
             report.set(
                 path,
                 FieldRecovery.LOST_REQUIRED if f.required else FieldRecovery.LOST_OPTIONAL,
@@ -105,7 +113,25 @@ def _extract(
             report.set(path, FieldRecovery.MALFORMED)
         else:
             data[f.name] = v
-            report.set(path, FieldRecovery.RECOVERED)
+            # FR-011: a value reached via @coerceDefault (or @default) is DEFAULTED,
+            # not RECOVERED.
+            report.set(path, _classify_coerced(path, report))
+
+
+def _classify_coerced(path: str, report: RecoveryReport) -> FieldRecovery:
+    """FR-011: classify a successfully-coerced field. DEFAULTED when its terminal
+    (last-logged) coercion for this path is a default-class fallback
+    (``coerceDefault`` / ``default``); RECOVERED otherwise. Nested objects (which log
+    no coercion of their own) classify as RECOVERED. Mirrors the TS/C#/Java classify."""
+    terminal_kind: str | None = None
+    for c in report.coercions():
+        if c.field_path == path:
+            terminal_kind = c.kind
+    return (
+        FieldRecovery.DEFAULTED
+        if terminal_kind in ("coerceDefault", "default")
+        else FieldRecovery.RECOVERED
+    )
 
 
 def _extract_value(

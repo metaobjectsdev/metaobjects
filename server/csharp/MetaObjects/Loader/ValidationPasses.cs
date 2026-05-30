@@ -876,6 +876,34 @@ public static class ValidationPasses
                     }
                 }
             }
+
+            // Rule 4 (FR-011): the enum fallback attrs must be one of the field's @values.
+            //
+            // Both @coerceDefault (recover-time coercion fallback) and @default (absent-fill
+            // member) name an enum member, so each must be a member of @values. This block is
+            // already inside the field.enum gate, so @default here is the enum-member default —
+            // NOT the polymorphic column default on string/int/bool/etc. fields, which is never
+            // member-checked.
+            //
+            // Only validate when THIS node owns the attr (own-attrs-only policy, matching the
+            // @values rules above). The membership set is the EFFECTIVE @values — own or
+            // inherited via extends: — so a concrete enum that owns the fallback attr and
+            // inherits @values from an abstract super still validates correctly.
+            foreach (var attrName in new[] { FIELD_ATTR_COERCE_DEFAULT, FIELD_ATTR_DEFAULT })
+            {
+                if (field.OwnAttr(attrName) is string ownValue)
+                {
+                    var effective = field.EffectiveEnumValues ?? new List<string>();
+                    if (!effective.Contains(ownValue, StringComparer.Ordinal))
+                    {
+                        errors.Add(new MetaError(
+                            $"field.enum '{field.Name}' attribute '@{attrName}' value " +
+                            $"'{ownValue}' is not one of '@{FIELD_ATTR_VALUES}': {string.Join(", ", effective)}.",
+                            ErrorCode.ERR_BAD_ATTR_VALUE,
+                            Envelope: field.Source));
+                    }
+                }
+            }
         }
 
         foreach (var child in node.OwnChildren())

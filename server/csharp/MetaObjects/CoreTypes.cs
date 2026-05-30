@@ -211,6 +211,12 @@ public static class CoreTypes
         ];
         foreach (string subType in OBJECT_SUBTYPES)
         {
+            // FR-011: object.value additionally carries @normalize — the object-level
+            // default normalization mode for its enum fields' tolerant recover.
+            List<AttrSchema> objectAttrs = subType == OBJECT_SUBTYPE_VALUE
+                ? [.. ObjectSchema.ObjectAttrs, FieldSchema.NormalizeAttr]
+                : ObjectSchema.ObjectAttrs.ToList();
+
             registry.Register(
                 Def(
                     TYPE_OBJECT,
@@ -218,7 +224,7 @@ public static class CoreTypes
                     $"Object/entity ({subType})",
                     new List<ChildRule>(objectRules),
                     (tid, n) => new MetaObject(tid, n),
-                    ObjectSchema.ObjectAttrs.ToList()));
+                    objectAttrs));
         }
 
         // field — 17 subtypes (base + 16)
@@ -234,7 +240,7 @@ public static class CoreTypes
             List<AttrSchema> fieldAttrs = subType switch
             {
                 FIELD_SUBTYPE_CURRENCY => [.. FieldSchema.CommonFieldAttrs, FieldSchema.CurrencyFieldAttr],
-                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.EnumAliasAttr, FieldSchema.EnumDocAttr],
+                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.EnumAliasAttr, FieldSchema.EnumDocAttr, FieldSchema.CoerceDefaultAttr, FieldSchema.NormalizeAttr],
                 _                      => FieldSchema.CommonFieldAttrs.ToList(),
             };
 

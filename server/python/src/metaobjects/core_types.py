@@ -17,6 +17,7 @@ from .meta.core.field import field_constants as fc
 from .meta.core.field.field_constants import (
     AUTO_SET_VALUES,
     FIELD_ATTR_AUTO_SET,
+    FIELD_ATTR_COERCE_DEFAULT,
     FIELD_ATTR_COLUMN,
     FIELD_ATTR_DEFAULT,
     FIELD_ATTR_ENUM_ALIAS,
@@ -25,6 +26,7 @@ from .meta.core.field.field_constants import (
     FIELD_ATTR_FILTERABLE,
     FIELD_ATTR_INSTRUCTION,
     FIELD_ATTR_MAX_LENGTH,
+    FIELD_ATTR_NORMALIZE,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_PRECISION,
     FIELD_ATTR_REQUIRED,
@@ -35,6 +37,8 @@ from .meta.core.field.field_constants import (
     FIELD_ATTR_UNIQUE,
     FIELD_ATTR_VALUES,
     FIELD_SUBTYPE_ENUM,
+    NORMALIZE_DEFAULT,
+    NORMALIZE_MODES,
     SORT_ORDER_VALUES,
     STORAGE_VALUES,
 )
@@ -51,7 +55,11 @@ from .meta.core.identity.identity_constants import (
 )
 from .meta.core.identity.meta_identity import MetaIdentity
 from .meta.core.object.meta_object import MetaObject
-from .meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPES
+from .meta.core.object.object_constants import (
+    OBJECT_SUBTYPE_ENTITY,
+    OBJECT_SUBTYPE_VALUE,
+    OBJECT_SUBTYPES,
+)
 from .meta.core.relationship.meta_relationship import MetaRelationship
 from .meta.core.relationship.relationship_constants import (
     REFERENTIAL_ACTIONS,
@@ -169,20 +177,41 @@ core_provider.add(
 )
 
 # object.* (entity, value)
-_register_subtypes(
-    core_provider,
-    TYPE_OBJECT,
-    OBJECT_SUBTYPES,
-    factory=MetaObject,
-    child_rules=[
-        ChildRule(TYPE_FIELD, "*"),
-        ChildRule(TYPE_IDENTITY, "*"),
-        ChildRule(TYPE_ATTR, "*"),
-        ChildRule(TYPE_SOURCE, "*"),
-        ChildRule(TYPE_RELATIONSHIP, "*"),
-        ChildRule(TYPE_LAYOUT, "*"),
-    ],
-)
+_OBJECT_CHILD_RULES = [
+    ChildRule(TYPE_FIELD, "*"),
+    ChildRule(TYPE_IDENTITY, "*"),
+    ChildRule(TYPE_ATTR, "*"),
+    ChildRule(TYPE_SOURCE, "*"),
+    ChildRule(TYPE_RELATIONSHIP, "*"),
+    ChildRule(TYPE_LAYOUT, "*"),
+]
+# FR-011: @normalize is an object-level default for the enum fields of a payload
+# value-object — registered on object.value ONLY (not entity/base). Closed enum
+# (none|collapse|strip, default strip); resolved at codegen time when a field
+# omits its own @normalize.
+_OBJECT_VALUE_ATTRS = [
+    AttrSchema(
+        name=FIELD_ATTR_NORMALIZE,
+        value_type=ATTR_SUBTYPE_STRING,
+        required=False,
+        allowed_values=NORMALIZE_MODES,
+        default=NORMALIZE_DEFAULT,
+    ),
+]
+for _obj_sub in OBJECT_SUBTYPES:
+    core_provider.add(
+        TypeDefinition(
+            type=TYPE_OBJECT,
+            sub_type=_obj_sub,
+            factory=MetaObject,
+            child_rules=list(_OBJECT_CHILD_RULES),
+            attrs=(
+                list(_OBJECT_VALUE_ATTRS)
+                if _obj_sub == OBJECT_SUBTYPE_VALUE
+                else []
+            ),
+        )
+    )
 
 # field.* (one factory, data_type by subtype)
 # Note: FIELD_SUBTYPE_ENUM is excluded from FIELD_SUBTYPES; it is registered
@@ -282,6 +311,25 @@ core_provider.add(
                 name=FIELD_ATTR_ENUM_DOC,
                 value_type=ATTR_SUBTYPE_PROPERTIES,
                 required=False,
+            ),
+            # FR-011: present-but-uncoercible recover fallback member. Membership
+            # against the effective @values is validated post-load in
+            # validation_passes (ERR_BAD_ATTR_VALUE), mirroring the @values pass.
+            AttrSchema(
+                name=FIELD_ATTR_COERCE_DEFAULT,
+                value_type=ATTR_SUBTYPE_STRING,
+                required=False,
+            ),
+            # FR-011: per-field ASCII normalization mode for tolerant enum recover.
+            # Closed enum (none|collapse|strip); allowed_values gates it →
+            # ERR_BAD_ATTR_VALUE. The default ("strip") is resolved at codegen time
+            # (field → owning object.value → "strip").
+            AttrSchema(
+                name=FIELD_ATTR_NORMALIZE,
+                value_type=ATTR_SUBTYPE_STRING,
+                required=False,
+                allowed_values=NORMALIZE_MODES,
+                default=NORMALIZE_DEFAULT,
             ),
         ],
         child_rules=_FIELD_CHILD_RULES,

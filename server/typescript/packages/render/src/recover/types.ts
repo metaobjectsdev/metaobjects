@@ -1,3 +1,5 @@
+import type { NormalizeMode } from "./normalize.js";
+
 // FR-010 recover engine — types & model (Tier-2 idiomatic TS port).
 //
 // Cross-port REFERENCE is the Java engine
@@ -50,7 +52,7 @@ export const Tolerance = {
 } as const;
 export type Tolerance = (typeof Tolerance)[keyof typeof Tolerance];
 
-/** A recorded normalization/coercion. kind e.g. "alias", "clamp", "case", "runtime-alias-override". */
+/** A recorded normalization/coercion. kind e.g. "normalize", "alias", "runtime-alias-override", "clamp", "coerceDefault", "default". */
 export interface Coercion {
   readonly fieldPath: string;
   readonly from: string;
@@ -72,10 +74,29 @@ export interface FieldSpec {
   readonly min: number | null;
   readonly max: number | null;
   readonly nested: RecoverSchema | null;
+  /** FR-011: present-but-uncoercible fallback member (from `@coerceDefault`). ENUM-only; null = none. */
+  readonly coerceDefault: string | null;
+  /** FR-011: absent-fill member (from `@default`). ENUM-only; null = none. */
+  readonly defaultValue: string | null;
+  /** FR-011: resolved enum normalization mode (from `@normalize`; default `"strip"`). */
+  readonly normalize: NormalizeMode;
 }
 
 export function scalar(name: string, kind: FieldKind, required: boolean): FieldSpec {
-  return { name, kind, required, array: false, enumValues: null, enumAlias: null, min: null, max: null, nested: null };
+  return {
+    name,
+    kind,
+    required,
+    array: false,
+    enumValues: null,
+    enumAlias: null,
+    min: null,
+    max: null,
+    nested: null,
+    coerceDefault: null,
+    defaultValue: null,
+    normalize: "strip",
+  };
 }
 
 export function enumField(
@@ -83,6 +104,9 @@ export function enumField(
   required: boolean,
   values: readonly string[] | null,
   aliases: Readonly<Record<string, string>> | null,
+  coerceDefault?: string | null,
+  normalize: NormalizeMode = "strip",
+  defaultValue?: string | null,
 ): FieldSpec {
   return {
     name,
@@ -94,6 +118,9 @@ export function enumField(
     min: null,
     max: null,
     nested: null,
+    coerceDefault: coerceDefault ?? null,
+    defaultValue: defaultValue ?? null,
+    normalize,
   };
 }
 
@@ -104,11 +131,37 @@ export function range(
   min: number | null,
   max: number | null,
 ): FieldSpec {
-  return { name, kind, required, array: false, enumValues: null, enumAlias: null, min, max, nested: null };
+  return {
+    name,
+    kind,
+    required,
+    array: false,
+    enumValues: null,
+    enumAlias: null,
+    min,
+    max,
+    nested: null,
+    coerceDefault: null,
+    defaultValue: null,
+    normalize: "strip",
+  };
 }
 
 export function object(name: string, required: boolean, array: boolean, nested: RecoverSchema | null): FieldSpec {
-  return { name, kind: FieldKind.OBJECT, required, array, enumValues: null, enumAlias: null, min: null, max: null, nested };
+  return {
+    name,
+    kind: FieldKind.OBJECT,
+    required,
+    array,
+    enumValues: null,
+    enumAlias: null,
+    min: null,
+    max: null,
+    nested,
+    coerceDefault: null,
+    defaultValue: null,
+    normalize: "strip",
+  };
 }
 
 /** Top-level recover descriptor. rootName = the XML root tag / logical JSON root name. */

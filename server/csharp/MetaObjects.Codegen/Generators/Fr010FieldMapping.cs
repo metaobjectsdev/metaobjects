@@ -52,6 +52,44 @@ internal static class Fr010FieldMapping
     public static string StringArrayLiteral(IEnumerable<string> values) =>
         "new[] { " + string.Join(", ", values.Select(v => $"\"{v}\"")) + " }";
 
+    /// <summary>
+    /// FR-011: the field's <c>@coerceDefault</c> member symbol (present-but-uncoercible enum fallback),
+    /// or null when absent. Own-attr only — <c>@coerceDefault</c> is concrete, never inherited.
+    /// </summary>
+    public static string? CoerceDefault(MetaData field) =>
+        field.OwnAttr(FIELD_ATTR_COERCE_DEFAULT) is string s && s.Length > 0 ? s : null;
+
+    /// <summary>FR-011: the field's <c>@default</c> member symbol (absent-fill enum value), or null when absent.</summary>
+    public static string? DefaultValue(MetaData field) =>
+        field.OwnAttr(FIELD_ATTR_DEFAULT) is string s && s.Length > 0 ? s : null;
+
+    /// <summary>
+    /// FR-011: resolve the enum normalization mode for a field — field-level <c>@normalize</c>, else
+    /// the owning <c>object.value</c>'s <c>@normalize</c> (the per-object default), else the global
+    /// <see cref="FieldConstants.NORMALIZE_DEFAULT"/> ("strip"). <paramref name="ownerObject"/> may be
+    /// null (resolution then skips the object tier). Mirrors the TS resolveNormalize.
+    /// </summary>
+    public static string ResolveNormalize(MetaData field, MetaData? ownerObject)
+    {
+        string? fieldMode = NormalizeAttrOf(field);
+        if (fieldMode != null) return fieldMode;
+        string? objMode = ownerObject == null ? null : NormalizeAttrOf(ownerObject);
+        if (objMode != null) return objMode;
+        return NORMALIZE_DEFAULT;
+    }
+
+    /// <summary>The <c>@normalize</c> attr of a node as a mode string, or null when absent.</summary>
+    private static string? NormalizeAttrOf(MetaData node) =>
+        node.OwnAttr(FIELD_ATTR_NORMALIZE) is string s && s.Length > 0 ? s : null;
+
+    /// <summary>Map a <c>@normalize</c> mode string onto the render-engine <c>NormalizeMode</c> member name.</summary>
+    public static string NormalizeModeMember(string mode) => mode switch
+    {
+        "none"     => "NormalizeMode.None",
+        "collapse" => "NormalizeMode.Collapse",
+        _          => "NormalizeMode.Strip",
+    };
+
     /// <summary>The render-engine <c>FieldKind</c> member name for a scalar field subtype, or null if non-scalar.</summary>
     public static string? ScalarKind(string subType) => subType switch
     {

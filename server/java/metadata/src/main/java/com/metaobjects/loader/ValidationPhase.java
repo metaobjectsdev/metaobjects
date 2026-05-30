@@ -296,6 +296,7 @@ public final class ValidationPhase {
                     ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
             }
             // Own @values present and valid — required check not needed.
+            validateEnumFr011Attrs(node);
             return;
         }
 
@@ -309,6 +310,90 @@ public final class ValidationPhase {
                 ErrorCode.ERR_MISSING_REQUIRED_ATTR, node.getSource());
         }
         // Has a super — inherits @values from the super, which is validated on its own node.
+        // FR-011 own-attr checks still apply (a concrete enum can own @coerceDefault while
+        // inheriting @values).
+        validateEnumFr011Attrs(node);
+    }
+
+    /**
+     * FR-011 own-attr validation for a {@code field.enum} node:
+     * <ul>
+     *   <li>{@code @coerceDefault} (own) must be a member of the EFFECTIVE {@code @values}
+     *       (own or inherited via {@code extends:}) → {@code ERR_BAD_ATTR_VALUE}.</li>
+     *   <li>{@code @normalize} (own) must be one of {@code none|collapse|strip}
+     *       → {@code ERR_BAD_ATTR_VALUE} (belt-and-braces with the registered withEnum).</li>
+     * </ul>
+     *
+     * <p>Own-only policy: only checks attrs declared on THIS node, matching the {@code @values}
+     * pass above. The {@code @values} membership set is read effectively so an enum that owns
+     * {@code @coerceDefault} and inherits {@code @values} validates correctly.</p>
+     */
+    private static void validateEnumFr011Attrs(MetaData node) {
+        // @coerceDefault membership against effective @values.
+        if (node.hasMetaAttr(EnumField.ATTR_COERCE_DEFAULT, false)) {
+            String coerceDefault = node.getMetaAttr(EnumField.ATTR_COERCE_DEFAULT, false)
+                                       .getValueAsString();
+            List<String> effective = effectiveEnumValues(node);
+            if (coerceDefault != null && !effective.contains(coerceDefault)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": field.enum '" + node.getName()
+                        + "' @" + EnumField.ATTR_COERCE_DEFAULT + " '" + coerceDefault
+                        + "' is not one of @" + EnumField.ATTR_VALUES + ": " + effective,
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+            }
+        }
+
+        // @default (absent-fill member) membership against effective @values.
+        if (node.hasMetaAttr(EnumField.ATTR_DEFAULT, false)) {
+            String def = node.getMetaAttr(EnumField.ATTR_DEFAULT, false).getValueAsString();
+            List<String> effective = effectiveEnumValues(node);
+            if (def != null && !effective.contains(def)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": field.enum '" + node.getName()
+                        + "' @" + EnumField.ATTR_DEFAULT + " '" + def
+                        + "' is not one of @" + EnumField.ATTR_VALUES + ": " + effective,
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+            }
+        }
+
+        // @normalize closed-enum membership.
+        if (node.hasMetaAttr(EnumField.ATTR_NORMALIZE, false)) {
+            String mode = node.getMetaAttr(EnumField.ATTR_NORMALIZE, false).getValueAsString();
+            if (mode != null && !EnumField.NORMALIZE_MODES.contains(mode)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": field.enum '" + node.getName()
+                        + "' @" + EnumField.ATTR_NORMALIZE + " '" + mode
+                        + "' is not a valid value; allowed: none, collapse, strip",
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+            }
+        }
+    }
+
+    /**
+     * The effective {@code @values} members of an enum node (own or inherited via
+     * {@code extends:}). Returns an empty list when absent. The attribute is a string-array
+     * ({@code StringAttribute.asArray}), so its value is a {@code List}.
+     */
+    private static List<String> effectiveEnumValues(MetaData node) {
+        if (!node.hasMetaAttr(EnumField.ATTR_VALUES, true)) return List.of();
+        Object v = node.getMetaAttr(EnumField.ATTR_VALUES, true).getValue();
+        if (v instanceof List) {
+            List<String> out = new java.util.ArrayList<>();
+            for (Object o : (List<?>) v) if (o != null) out.add(o.toString());
+            return out;
+        }
+        if (v instanceof String) {
+            List<String> out = new java.util.ArrayList<>();
+            for (String s : ((String) v).split(",")) {
+                String t = s.trim();
+                if (!t.isEmpty()) out.add(t);
+            }
+            return out;
+        }
+        return List.of();
     }
 
     // =========================================================================

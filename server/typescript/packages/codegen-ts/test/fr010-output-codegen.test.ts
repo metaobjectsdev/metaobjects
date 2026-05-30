@@ -121,6 +121,142 @@ describe("FR-010 codegen — recover-schema + output-format-spec emitters (sourc
   });
 });
 
+// FR-011: a value-object with @normalize at the object level, carrying an enum that
+// declares @coerceDefault. The off-vocab dirty input must fold to the coerceDefault member
+// and classify DEFAULTED; the emitted enumField(...) literal must carry the new positional
+// args (coerceDefault + resolved normalize).
+const MODEL_FR011 = [
+  {
+    "object.value": {
+      name: "Task",
+      "@normalize": "strip",
+      children: [
+        { "field.string": { name: "title", "@required": true } },
+        {
+          "field.enum": {
+            name: "priority",
+            "@required": true,
+            "@values": ["LOW", "HIGH"],
+            "@coerceDefault": "LOW",
+          },
+        },
+      ],
+    },
+  },
+  {
+    "template.output": {
+      name: "TaskOut",
+      "@payloadRef": "Task",
+      "@textRef": "out/task",
+      "@format": "json",
+    },
+  },
+];
+
+describe("FR-011 codegen — @coerceDefault/@normalize emission + import-and-RUN proof", () => {
+  test("emitted enumField(...) carries the @coerceDefault + resolved @normalize args", async () => {
+    const root = await loadRoot(MODEL_FR011);
+    const src = renderOutputParser(root, "TaskOut");
+    // 7-arg positional form: name, required, values, aliases, coerceDefault, normalize, default
+    expect(src).toContain(
+      'enumField("priority", true, ["LOW", "HIGH"], null, "LOW", "strip")',
+    );
+  });
+
+  test("a field-level @normalize overrides the object-level mode in the emitted literal", async () => {
+    const root = await loadRoot([
+      {
+        "object.value": {
+          name: "Task2",
+          "@normalize": "strip",
+          children: [
+            {
+              "field.enum": {
+                name: "priority",
+                "@required": false,
+                "@values": ["LOW", "HIGH"],
+                "@coerceDefault": "LOW",
+                "@normalize": "collapse",
+              },
+            },
+          ],
+        },
+      },
+      { "template.output": { name: "Task2Out", "@payloadRef": "Task2", "@textRef": "out/t2", "@format": "json" } },
+    ]);
+    const src = renderOutputParser(root, "Task2Out");
+    expect(src).toContain(
+      'enumField("priority", false, ["LOW", "HIGH"], null, "LOW", "collapse")',
+    );
+  });
+
+  test("an enum with @default emits the trailing defaultValue arg", async () => {
+    const root = await loadRoot([
+      {
+        "object.value": {
+          name: "Task3",
+          children: [
+            {
+              "field.enum": {
+                name: "priority",
+                "@required": true,
+                "@values": ["LOW", "HIGH"],
+                "@default": "HIGH",
+              },
+            },
+          ],
+        },
+      },
+      { "template.output": { name: "Task3Out", "@payloadRef": "Task3", "@textRef": "out/t3", "@format": "json" } },
+    ]);
+    const src = renderOutputParser(root, "Task3Out");
+    // coerceDefault absent → null; normalize default → "strip"; defaultValue → "HIGH"
+    expect(src).toContain(
+      'enumField("priority", true, ["LOW", "HIGH"], null, null, "strip", "HIGH")',
+    );
+  });
+
+  test("an enum with no FR-011 attrs keeps the back-compat 4-arg form", async () => {
+    const root = await loadRoot([
+      {
+        "object.value": {
+          name: "Task4",
+          children: [
+            { "field.enum": { name: "priority", "@required": true, "@values": ["LOW", "HIGH"] } },
+          ],
+        },
+      },
+      { "template.output": { name: "Task4Out", "@payloadRef": "Task4", "@textRef": "out/t4", "@format": "json" } },
+    ]);
+    const src = renderOutputParser(root, "Task4Out");
+    expect(src).toContain('enumField("priority", true, ["LOW", "HIGH"], null)');
+    expect(src).not.toContain('enumField("priority", true, ["LOW", "HIGH"], null,');
+  });
+
+  test("emitted recoverTaskOut() folds an off-vocab value to @coerceDefault and classifies DEFAULTED", async () => {
+    const root = await loadRoot(MODEL_FR011);
+    const parserSrc = renderOutputParser(root, "TaskOut");
+    const payloadSrc = generatePayloadInterfaces(root, "Task");
+
+    const dir = mkdtempSync(join(import.meta.dir, "fr011-emit-"));
+    TEMP_DIRS.push(dir);
+    writeFileSync(join(dir, "payloads.ts"), payloadSrc);
+    writeFileSync(join(dir, "TaskOut.output.ts"), parserSrc);
+
+    const parser = await import(join(dir, "TaskOut.output.ts"));
+
+    // off-vocab, non-aliasable enum value → @coerceDefault fallback to "LOW"
+    const dirty = '{ "title": "Ship it", "priority": "kinda high!!" }';
+    const { data, report } = parser.recoverTaskOut(dirty);
+    expect(data).not.toBeNull();
+    expect(data.priority).toBe("LOW");
+    expect(data.title).toBe("Ship it");
+    // coerceDefault fold → DEFAULTED state
+    expect(report.states().get("priority")).toBe("DEFAULTED");
+    expect(report.hasLostRequired()).toBe(false);
+  });
+});
+
 describe("FR-010 codegen — import-and-RUN proof (bun dynamic import)", () => {
   test("emitted recoverTicketOut() folds the @enumAlias + classifies a dirty input; renderTicketOutFormat() emits the guide fragment", async () => {
     const root = await loadRoot(MODEL);

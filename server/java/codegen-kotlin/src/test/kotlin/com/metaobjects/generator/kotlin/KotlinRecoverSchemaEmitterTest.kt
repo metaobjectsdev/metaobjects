@@ -257,6 +257,49 @@ class KotlinRecoverSchemaEmitterTest {
     }
 
     // -------------------------------------------------------------------------
+    // FR-011 — @coerceDefault + resolved @normalize emission
+    // -------------------------------------------------------------------------
+
+    @Test fun schemaLiteralEmitsFr011CoerceDefaultAndResolvedNormalize() {
+        val fx = """
+            {
+              "metadata.root": { "package": "acme::ai", "children": [
+                { "object.value": { "name": "Fr011Payload", "@normalize": "collapse", "children": [
+                    { "field.enum": { "name": "status", "@required": true,
+                                      "@values": ["HIGH","OK","LOW"],
+                                      "@coerceDefault": "LOW" } },
+                    { "field.enum": { "name": "phase", "@required": true,
+                                      "@values": ["HIGH","OK","LOW"],
+                                      "@normalize": "none" } },
+                    { "field.enum": { "name": "plain", "@required": false,
+                                      "@values": ["HIGH","OK","LOW"] } }
+                ] } }
+              ] }
+            }
+        """.trimIndent()
+
+        val voFr = checkNotNull(loadString("kr-fr011", fx)
+            .metaObjectOrNull("acme::ai::Fr011Payload"))
+        val s = KotlinRecoverSchemaEmitter.schemaLiteral(voFr, "json", "Fr011Payload")
+
+        // status: coerceDefault="LOW", normalize resolves to the object default "collapse".
+        assertTrue(
+            "FieldSpec.enumField(\"status\", true, listOf(\"HIGH\", \"OK\", \"LOW\"), mapOf(), \"LOW\", \"collapse\", null)" in s,
+            "expected status 7-arg form with coerceDefault LOW + normalize collapse; saw:\n$s"
+        )
+        // phase: own @normalize="none" overrides the object default.
+        assertTrue(
+            "FieldSpec.enumField(\"phase\", true, listOf(\"HIGH\", \"OK\", \"LOW\"), mapOf(), null, \"none\", null)" in s,
+            "expected phase 7-arg form with normalize none; saw:\n$s"
+        )
+        // plain: inherits object "collapse" → still 7-arg (mode != strip).
+        assertTrue(
+            "FieldSpec.enumField(\"plain\", false, listOf(\"HIGH\", \"OK\", \"LOW\"), mapOf(), null, \"collapse\", null)" in s,
+            "expected plain 7-arg form with inherited normalize collapse; saw:\n$s"
+        )
+    }
+
+    // -------------------------------------------------------------------------
     // kotlinStringLiteral helper
     // -------------------------------------------------------------------------
 

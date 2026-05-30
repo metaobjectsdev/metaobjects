@@ -74,6 +74,13 @@ public static class Coerce
 
     // ---- private helpers ----
 
+    /// <summary>
+    /// FR-011 enum coercion pipeline: exact → normalize → @enumAlias → (reserved fuzzy) →
+    /// @coerceDefault → MALFORMED. Resolution mode is <see cref="FieldSpec.Normalize"/> (default
+    /// <see cref="NormalizeMode.Strip"/>); under STRICT tolerance (<paramref name="ci"/> == false)
+    /// normalization is forced to <see cref="NormalizeMode.None"/> (exact-only), preserving the
+    /// case-sensitive STRICT contract. Mirrors the TS coerceEnum.
+    /// </summary>
     private static object CoerceEnum(
         string raw,
         FieldSpec spec,
@@ -82,38 +89,80 @@ public static class Coerce
         RecoveryReport report,
         bool ci)
     {
+        NormalizeMode mode = ci ? spec.Normalize : NormalizeMode.None;
+
+        // 1. exact match.
         if (spec.EnumValues != null)
         {
             foreach (string v in spec.EnumValues)
-            {
                 if (v == raw) return v;
-                if (ci && string.Equals(v, raw, StringComparison.OrdinalIgnoreCase))
+        }
+
+        // 2. normalized match (skipped when mode == None).
+        if (mode != NormalizeMode.None && spec.EnumValues != null)
+        {
+            string normRaw = Normalize.Enum(raw, mode);
+            foreach (string v in spec.EnumValues)
+            {
+                if (Normalize.Enum(v, mode) == normRaw)
                 {
-                    report.AddCoercion(new Coercion(path, raw, v, "case"));
+                    report.AddCoercion(new Coercion(path, raw, v, "normalize"));
                     return v;
                 }
             }
         }
 
-        string? schemaTarget = spec.EnumAlias != null && spec.EnumAlias.TryGetValue(raw, out var sa) ? sa : null;
-        opts.Aliases.TryGetValue(raw, out string? runtimeTarget);
-
-        if (runtimeTarget != null)
+        // 3. @enumAlias — runtime aliases win over schema; alias keys normalized by the mode.
+        var aliasTarget = LookupAlias(raw, spec, opts, mode);
+        if (aliasTarget != null)
         {
-            string kind = (schemaTarget != null && schemaTarget != runtimeTarget)
-                ? "runtime-alias-override"
-                : "alias";
-            report.AddCoercion(new Coercion(path, raw, runtimeTarget, kind));
-            return runtimeTarget;
+            string? schemaTarget = LookupAliasIn(raw, spec.EnumAlias, mode);
+            string kind =
+                aliasTarget.Value.FromRuntime && schemaTarget != null && schemaTarget != aliasTarget.Value.Target
+                    ? "runtime-alias-override"
+                    : "alias";
+            report.AddCoercion(new Coercion(path, raw, aliasTarget.Value.Target, kind));
+            return aliasTarget.Value.Target;
         }
 
-        if (schemaTarget != null)
+        // 4. reserved fuzzy slot — NOT implemented (see FR-011 spec "Out of scope").
+
+        // 5. @coerceDefault — present-but-uncoercible fallback to a valid member → DEFAULTED.
+        if (spec.CoerceDefault != null && spec.EnumValues != null && spec.EnumValues.Contains(spec.CoerceDefault))
         {
-            report.AddCoercion(new Coercion(path, raw, schemaTarget, "alias"));
-            return schemaTarget;
+            report.AddCoercion(new Coercion(path, raw, spec.CoerceDefault, "coerceDefault"));
+            return spec.CoerceDefault;
         }
 
+        // 6. MALFORMED.
         return Malformed;
+    }
+
+    /// <summary>
+    /// Resolve <paramref name="raw"/> against the merged alias maps (runtime wins), comparing keys
+    /// under <paramref name="mode"/>. Returns the target member + whether the winning hit came from
+    /// the runtime map. Mirrors TS lookupAlias.
+    /// </summary>
+    private static (string Target, bool FromRuntime)? LookupAlias(
+        string raw, FieldSpec spec, RecoverOptions opts, NormalizeMode mode)
+    {
+        string? runtime = LookupAliasIn(raw, opts.Aliases, mode);
+        if (runtime != null) return (runtime, true);
+        string? schema = LookupAliasIn(raw, spec.EnumAlias, mode);
+        if (schema != null) return (schema, false);
+        return null;
+    }
+
+    /// <summary>Find <paramref name="raw"/> in an alias map, matching keys exactly first then under <paramref name="mode"/> normalization.</summary>
+    private static string? LookupAliasIn(string raw, IReadOnlyDictionary<string, string>? aliases, NormalizeMode mode)
+    {
+        if (aliases == null) return null;
+        if (aliases.TryGetValue(raw, out string? exact)) return exact;
+        if (mode == NormalizeMode.None) return null;
+        string normRaw = Normalize.Enum(raw, mode);
+        foreach (var kv in aliases)
+            if (Normalize.Enum(kv.Key, mode) == normRaw) return kv.Value;
+        return null;
     }
 
     private static object CoerceInt(string raw, FieldSpec spec, string path, RecoveryReport report)

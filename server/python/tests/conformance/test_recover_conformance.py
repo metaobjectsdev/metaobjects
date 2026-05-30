@@ -6,7 +6,7 @@ Each fixture dir under ``fixtures/recover-conformance/`` holds:
 - ``input.txt``     the raw (possibly dirty) LLM output
 - ``expected.json`` ``{ "empty": bool, "states": {field: FieldRecovery}, "data": {field: value} }``
 
-All 10 cases must pass. The corpus is the oracle — do not weaken assertions.
+All 20 cases must pass. The corpus is the oracle — do not weaken assertions.
 1:1 port of ``RecoverConformanceTest.java`` / ``RecoverConformanceTests.cs``.
 """
 from __future__ import annotations
@@ -56,6 +56,24 @@ def _cases() -> list[str]:
     )
 
 
+def test_discovers_all_recover_conformance_cases() -> None:
+    """FR-011: lock the corpus size so a deleted fixture fails CI rather than
+    silently reducing coverage. Mirrors the TS / Java / C# count guards."""
+    assert len(_cases()) == 20
+
+
+_NORMALIZE_MODES = {"none", "collapse", "strip"}
+
+
+def _parse_normalize(s: object) -> str:
+    """FR-011: parse the @normalize mode string; absent → the global default "strip"."""
+    if s is None:
+        return "strip"
+    mode = str(s)
+    assert mode in _NORMALIZE_MODES, f"unknown normalize mode: {mode!r}"
+    return mode
+
+
 def _parse_field(f: dict[str, object]) -> FieldSpec:
     name = str(f["name"])
     kind = _KINDS[str(f["kind"])]
@@ -70,7 +88,22 @@ def _parse_field(f: dict[str, object]) -> FieldSpec:
             if isinstance(aliases_raw, dict)
             else {}
         )
-        return FieldSpec.enum_field(name, required, values, aliases)
+        # FR-011: optional coerceDefault / normalize / default keys.
+        coerce_default = str(f["coerceDefault"]) if "coerceDefault" in f else None
+        normalize = _parse_normalize(f.get("normalize"))
+        default_value = str(f["default"]) if "default" in f else None
+        return FieldSpec.enum_field(
+            name, required, values, aliases, coerce_default, normalize, default_value
+        )
+
+    if kind == FieldKind.OBJECT:
+        array = bool(f.get("array", False))
+        nested: RecoverSchema | None = None
+        nested_raw = f.get("fields")
+        if isinstance(nested_raw, list):
+            child_specs = [_parse_field(nf) for nf in nested_raw]  # type: ignore[arg-type]
+            nested = RecoverSchema(Format.JSON, name, child_specs)
+        return FieldSpec.object_(name, required, array, nested)
 
     if "min" in f or "max" in f:
         min_v = float(f["min"]) if "min" in f else None  # type: ignore[arg-type]
@@ -124,6 +157,19 @@ def test_classification_and_canonical_value_match(case_name: str) -> None:
             )
             assert math.isclose(float(exp), float(act), abs_tol=1e-9), (
                 f"{case_name} data[{field}]: expected {exp} got {act}"
+            )
+        elif isinstance(exp, dict):
+            # FR-011: object expected values in the corpus are deliberate PLACEHOLDERS
+            # ({}) — the real assertion lives in the per-field states (e.g. meta.score).
+            # Assert only structural correspondence (map ↔ object).
+            assert isinstance(act, dict), (
+                f"{case_name} data[{field}]: expected an object got {act!r}"
+            )
+        elif isinstance(exp, list):
+            # FR-011: array-of-objects expected values are placeholders ([{},…]); assert
+            # only structural correspondence (list ↔ array), states carry the real check.
+            assert isinstance(act, list), (
+                f"{case_name} data[{field}]: expected an array got {act!r}"
             )
         else:
             assert str(act) == str(exp), (

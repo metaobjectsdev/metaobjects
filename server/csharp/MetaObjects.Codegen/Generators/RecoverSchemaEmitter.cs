@@ -26,17 +26,17 @@ internal static class RecoverSchemaEmitter
     {
         string formatEnum = format.Equals("xml", System.StringComparison.OrdinalIgnoreCase)
             ? "Format.Xml" : "Format.Json";
-        var specs = Fr010FieldMapping.Fields(vo).Select(FieldSpecLiteral);
+        var specs = Fr010FieldMapping.Fields(vo).Select(f => FieldSpecLiteral(f, vo));
         return $"new RecoverSchema({formatEnum}, \"{rootName}\", new FieldSpec[] {{ {string.Join(", ", specs)} }})";
     }
 
-    private static string FieldSpecLiteral(MetaData field)
+    private static string FieldSpecLiteral(MetaData field, MetaData owner)
     {
         string name = field.Name;
         bool required = Fr010FieldMapping.IsRequired(field);
 
         if (field.SubType == FIELD_SUBTYPE_ENUM)
-            return EnumFieldSpec(name, required, field);
+            return EnumFieldSpec(name, required, field, owner);
 
         if (field.SubType == FIELD_SUBTYPE_OBJECT)
             return $"FieldSpec.Scalar(\"{name}\", FieldKind.String, {Bool(required)}) /* FR-010: nested recover deferred */";
@@ -45,11 +45,30 @@ internal static class RecoverSchemaEmitter
         return $"FieldSpec.Scalar(\"{name}\", FieldKind.{kind}, {Bool(required)})";
     }
 
-    private static string EnumFieldSpec(string name, bool required, MetaData field)
+    private static string EnumFieldSpec(string name, bool required, MetaData field, MetaData owner)
     {
         string valuesLit = Fr010FieldMapping.StringArrayLiteral(Fr010FieldMapping.EnumValues(field));
         string aliasLit = Fr010FieldMapping.PropertiesMapLiteral(field.OwnAttr(FIELD_ATTR_ENUM_ALIAS));
-        return $"FieldSpec.EnumField(\"{name}\", {Bool(required)}, {valuesLit}, {aliasLit})";
+
+        // FR-011: resolve the three new enum args (field → object.value → "strip" for normalize).
+        // Keep the back-compat 4-arg form when nothing is set; otherwise emit the positional tail
+        // up to the last meaningful argument. EnumField signature is
+        //   (name, required, values, aliases, coerceDefault?, normalize=Strip, defaultValue?).
+        string? cd = Fr010FieldMapping.CoerceDefault(field);
+        string? dv = Fr010FieldMapping.DefaultValue(field);
+        string normalize = Fr010FieldMapping.ResolveNormalize(field, owner);
+
+        if (cd == null && dv == null && normalize == NORMALIZE_DEFAULT)
+            return $"FieldSpec.EnumField(\"{name}\", {Bool(required)}, {valuesLit}, {aliasLit})";
+
+        string cdLit = cd == null ? "null" : $"\"{Fr010FieldMapping.CSharpStringLiteral(cd)}\"";
+        string normLit = Fr010FieldMapping.NormalizeModeMember(normalize);
+
+        if (dv == null)
+            return $"FieldSpec.EnumField(\"{name}\", {Bool(required)}, {valuesLit}, {aliasLit}, {cdLit}, {normLit})";
+
+        string dvLit = $"\"{Fr010FieldMapping.CSharpStringLiteral(dv)}\"";
+        return $"FieldSpec.EnumField(\"{name}\", {Bool(required)}, {valuesLit}, {aliasLit}, {cdLit}, {normLit}, {dvLit})";
     }
 
     /// <summary>Emit the all-nullable mirror record declaration.</summary>

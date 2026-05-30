@@ -155,10 +155,20 @@ public abstract class MetaObject extends MetaData {
             .description("Entity object (persistent identity) — value access via the reflection/map hybrid")
             .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE));
 
-        registry.registerType(ValueMetaObject.class, def -> def
-            .type(TYPE_OBJECT).subType(SUBTYPE_VALUE)
-            .description("Value object (no identity) — value access via the reflection/map hybrid")
-            .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE));
+        registry.registerType(ValueMetaObject.class, def -> {
+            def.type(TYPE_OBJECT).subType(SUBTYPE_VALUE)
+               .description("Value object (no identity) — value access via the reflection/map hybrid")
+               .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE);
+
+            // FR-011: object.value carries an object-level @normalize default — the
+            // normalization mode inherited by its enum fields' tolerant recover when the
+            // field does not declare its own @normalize. Closed enum (none|collapse|strip).
+            def.optionalAttributeWithConstraints(com.metaobjects.field.EnumField.ATTR_NORMALIZE)
+               .ofType(com.metaobjects.attr.StringAttribute.SUBTYPE_STRING)
+               .withEnum(com.metaobjects.field.EnumField.NORMALIZE_NONE,
+                         com.metaobjects.field.EnumField.NORMALIZE_COLLAPSE,
+                         com.metaobjects.field.EnumField.NORMALIZE_STRIP);
+        });
 
         // ADR-0006 Rule 1 — bare `object:` YAML key fuses to `object.entity`.
         registry.setDefaultSubType(TYPE_OBJECT, SUBTYPE_ENTITY);

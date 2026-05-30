@@ -43,6 +43,14 @@ public final class Recover {
             String path = prefix.isEmpty() ? f.name() : prefix + "." + f.name();
             Object present = lookup(raw, f.name(), ci);
             if (present == null) {
+                // FR-011: an absent enum with a declared @default fills the value → DEFAULTED
+                // (which satisfies a @required field).
+                if (f.kind() == FieldKind.ENUM && f.defaultValue() != null) {
+                    data.put(f.name(), f.defaultValue());
+                    report.addCoercion(new Coercion(path, "", f.defaultValue(), "default"));
+                    report.set(path, FieldRecovery.DEFAULTED);
+                    continue;
+                }
                 report.set(path, f.required() ? FieldRecovery.LOST_REQUIRED : FieldRecovery.LOST_OPTIONAL);
                 continue;
             }
@@ -77,9 +85,26 @@ public final class Recover {
                 report.set(path, FieldRecovery.MALFORMED);
             } else {
                 data.put(f.name(), v);
-                report.set(path, FieldRecovery.RECOVERED);
+                // FR-011: a value reached via @coerceDefault (or @default) is DEFAULTED, not RECOVERED.
+                report.set(path, classifyCoerced(path, report));
             }
         }
+    }
+
+    /**
+     * FR-011: classify a successfully-coerced field. DEFAULTED when its terminal (last-logged)
+     * coercion for this path is a default-class fallback ({@code coerceDefault} / {@code default});
+     * RECOVERED otherwise. Nested objects (which log no coercion of their own) classify as
+     * RECOVERED. Mirrors the TS/C# classifyCoerced.
+     */
+    private static FieldRecovery classifyCoerced(String path, RecoveryReport report) {
+        String terminalKind = null;
+        for (Coercion c : report.coercions()) {
+            if (path.equals(c.fieldPath())) terminalKind = c.kind();
+        }
+        return ("coerceDefault".equals(terminalKind) || "default".equals(terminalKind))
+                ? FieldRecovery.DEFAULTED
+                : FieldRecovery.RECOVERED;
     }
 
     /** Coerce one (non-array) element: nested-object recursion or scalar coercion. Returns Coerce.MALFORMED on failure. */

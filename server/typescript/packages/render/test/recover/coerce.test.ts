@@ -50,6 +50,52 @@ describe("coerce", () => {
     expect(coerceValue("banana", f, defaults(), "tone", new RecoveryReport())).toBe(MALFORMED);
   });
 
+  // ---- FR-011 enum coercion pipeline (exact → normalize → alias → coerceDefault → MALFORMED) ----
+  test("enum exact match returns raw with no coercion logged", () => {
+    const f = enumField("status", true, ["IN_PROGRESS", "DONE"], {});
+    const rep = new RecoveryReport();
+    expect(coerceValue("IN_PROGRESS", f, defaults(), "status", rep)).toBe("IN_PROGRESS");
+    expect(rep.coercions().length).toBe(0);
+  });
+
+  test("enum normalized match (strip mode) logs normalize kind", () => {
+    // strip: "In-Progress" → "INPROGRESS" === normalize("IN_PROGRESS"|strip)? No — strip removes _ too.
+    const f = enumField("status", true, ["IN_PROGRESS", "DONE"], {}, null, "strip");
+    const rep = new RecoveryReport();
+    expect(coerceValue("in progress", f, defaults(), "status", rep)).toBe("IN_PROGRESS");
+    expect(rep.coercions().some((c) => c.kind === "normalize")).toBe(true);
+  });
+
+  test("enum normalize mode none does not fold separators", () => {
+    const f = enumField("status", true, ["IN_PROGRESS"], {}, null, "none");
+    expect(coerceValue("in progress", f, defaults(), "status", new RecoveryReport())).toBe(MALFORMED);
+  });
+
+  test("enum alias key matched after normalization", () => {
+    // alias key "Warm Tone" normalizes (strip) to "WARMTONE"; input "warm  tone" → same.
+    const f = enumField("tone", true, ["FRIENDLY"], { "Warm Tone": "FRIENDLY" }, null, "strip");
+    const rep = new RecoveryReport();
+    expect(coerceValue("warm  tone", f, defaults(), "tone", rep)).toBe("FRIENDLY");
+    expect(rep.coercions().some((c) => c.kind === "alias")).toBe(true);
+  });
+
+  test("enum coerceDefault fallback logs coerceDefault kind", () => {
+    const f = enumField("tone", true, ["FRIENDLY", "HOSTILE"], {}, "FRIENDLY");
+    const rep = new RecoveryReport();
+    expect(coerceValue("banana", f, defaults(), "tone", rep)).toBe("FRIENDLY");
+    expect(rep.coercions().some((c) => c.kind === "coerceDefault")).toBe(true);
+  });
+
+  test("enum no coerceDefault → MALFORMED", () => {
+    const f = enumField("tone", true, ["FRIENDLY", "HOSTILE"], {}, null);
+    expect(coerceValue("banana", f, defaults(), "tone", new RecoveryReport())).toBe(MALFORMED);
+  });
+
+  test("enum coerceDefault ignored if not a valid member", () => {
+    const f = enumField("tone", true, ["FRIENDLY"], {}, "NOT_A_MEMBER");
+    expect(coerceValue("banana", f, defaults(), "tone", new RecoveryReport())).toBe(MALFORMED);
+  });
+
   // ---- int / range ----
   test("int clamp to range", () => {
     const f = range("score", FieldKind.INT, true, 0, 10);

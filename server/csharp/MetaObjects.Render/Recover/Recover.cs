@@ -57,6 +57,15 @@ public static class Recover
 
             if (present == null)
             {
+                // FR-011: an absent enum with a declared @default fills the value → DEFAULTED
+                // (which satisfies a @required field).
+                if (f.Kind == FieldKind.Enum && f.DefaultValue != null)
+                {
+                    data[f.Name] = f.DefaultValue;
+                    report.AddCoercion(new Coercion(path, "", f.DefaultValue, "default"));
+                    report.Set(path, FieldRecovery.DEFAULTED);
+                    continue;
+                }
                 report.Set(path, f.Required ? FieldRecovery.LOST_REQUIRED : FieldRecovery.LOST_OPTIONAL);
                 continue;
             }
@@ -108,9 +117,25 @@ public static class Recover
             else
             {
                 data[f.Name] = val;
-                report.Set(path, FieldRecovery.RECOVERED);
+                // FR-011: a value reached via @coerceDefault (or @default) is DEFAULTED, not RECOVERED.
+                report.Set(path, ClassifyCoerced(path, report));
             }
         }
+    }
+
+    /// <summary>
+    /// FR-011: classify a successfully-coerced field. DEFAULTED when its terminal (last-logged)
+    /// coercion for this path is a default-class fallback; RECOVERED otherwise. Nested objects
+    /// (which log no coercion of their own) classify as RECOVERED. Mirrors the TS classifyCoerced.
+    /// </summary>
+    private static FieldRecovery ClassifyCoerced(string path, RecoveryReport report)
+    {
+        string? terminalKind = null;
+        foreach (Coercion c in report.Coercions())
+            if (c.FieldPath == path) terminalKind = c.Kind;
+        return terminalKind is "coerceDefault" or "default"
+            ? FieldRecovery.DEFAULTED
+            : FieldRecovery.RECOVERED;
     }
 
     /// <summary>

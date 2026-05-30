@@ -35,7 +35,7 @@ def _format_enum(fmt: str) -> str:
     return "Format.XML" if fmt.lower() == "xml" else "Format.JSON"
 
 
-def _field_spec_literal(field: MetaData) -> str:
+def _field_spec_literal(field: MetaData, owner: MetaData) -> str:
     name = field.name
     required = fm.is_required(field)
     req = "True" if required else "False"
@@ -43,7 +43,25 @@ def _field_spec_literal(field: MetaData) -> str:
     if field.sub_type == fc.FIELD_SUBTYPE_ENUM:
         values_lit = fm.string_list_literal(fm.enum_values(field))
         alias_lit = fm.properties_map_literal(field.attr(fc.FIELD_ATTR_ENUM_ALIAS))
-        return f'FieldSpec.enum_field("{name}", {req}, {values_lit}, {alias_lit})'
+        # FR-011: resolve the three new enum args (field → object.value → "strip" for
+        # normalize). Keep the back-compat 4-arg form when nothing is set; otherwise
+        # emit the 7-arg form (..., coerce_default, normalize, default_value).
+        coerce_default = fm.coerce_default(field)
+        default_value = fm.default_value(field)
+        normalize = fm.resolve_normalize(field, owner)
+        if (
+            coerce_default is None
+            and default_value is None
+            and normalize == fc.NORMALIZE_DEFAULT
+        ):
+            return f'FieldSpec.enum_field("{name}", {req}, {values_lit}, {alias_lit})'
+        cd_lit = "None" if coerce_default is None else fm.py_string_literal(coerce_default)
+        norm_lit = fm.py_string_literal(normalize)
+        dv_lit = "None" if default_value is None else fm.py_string_literal(default_value)
+        return (
+            f'FieldSpec.enum_field("{name}", {req}, {values_lit}, {alias_lit}, '
+            f"{cd_lit}, {norm_lit}, {dv_lit})"
+        )
 
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
         # nested recover deferred — model it as a plain (string) scalar slot.
@@ -56,7 +74,7 @@ def _field_spec_literal(field: MetaData) -> str:
 def schema_literal(vo: MetaData, fmt: str, root_name: str) -> str:
     """Emit ``RecoverSchema(Format.X, "rootName", [FieldSpec(...), …])``."""
     format_enum = _format_enum(fmt)
-    specs = [_field_spec_literal(f) for f in fm.fields(vo)]
+    specs = [_field_spec_literal(f, vo) for f in fm.fields(vo)]
     if not specs:
         return f'RecoverSchema({format_enum}, "{root_name}", [])'
     body = ", ".join(specs)

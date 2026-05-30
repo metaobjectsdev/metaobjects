@@ -51,3 +51,28 @@ identical native parsing.
 
 - Array-of-enum is not specialized (a scalar array recovers via `as_string_list`).
 - `as_int`/`as_long` are identical (`Optional[int]`; Python has one int type), truncating toward zero.
+
+## FR-011 recover hardening — current state
+
+- **Enum coercion pipeline.** Enum recovery runs a fixed ladder: exact → normalize (`@normalize`
+  mode `none | collapse | strip`, default `strip`, per-field with an `object.value`-level default)
+  → `@enumAlias` → `@coerceDefault` → MALFORMED. `@default` fills an absent enum (→ `DEFAULTED`,
+  which satisfies `@required`); the `DEFAULTED` classification is now emitted.
+- **Nested/embedded-object recovery is now supported** uniformly at the engine level (dotted child
+  paths via `meta.n`, element-wise arrays) — this is the general FR-011 form of the additive
+  capability noted above, now matched across all engine ports. NOTE: the codegen schema-emitters
+  still emit a scalar-STRING placeholder for nested object fields (a deliberate, cross-port-consistent
+  codegen deferral), so nested recovery is reachable through a hand-built / engine-level schema but
+  is not yet auto-emitted by codegen.
+- **Fuzzy matching is deliberately DEFERRED.** A reserved no-op slot exists in the pipeline
+  (between `@enumAlias` and `@coerceDefault`). If added later it must be guarded integer
+  Levenshtein — never float / Jaro-Winkler — to preserve cross-port determinism.
+- **`@normalize` `unicode` mode is intentionally NOT offered.** Normalization is ASCII-only (enum
+  members are ASCII identifiers), so it is byte-identical cross-port. A full Unicode / NFKC_Casefold
+  mode was rejected: cross-port byte-identity can't be guaranteed.
+- **Known cross-port caveat (out of corpus).** The pre-normalization `trim` / `strip` step uses
+  each language's native trim, which differs on *non-ASCII* leading/trailing whitespace under
+  `collapse` mode — Python (`str.strip()`) strips Unicode whitespace, Java trims only ≤U+0020.
+  Unreachable via the ASCII-only conformance corpus and irrelevant under `strip` / `none` modes;
+  enum members and typical LLM whitespace are ASCII. Documented for completeness (consistent with
+  the NBSP-trailing note above).

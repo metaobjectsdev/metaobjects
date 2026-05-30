@@ -129,8 +129,10 @@ public class GeneratedRecoverCompileRunTest extends SharedRegistryTestBase {
 
             // Dirty input: LLM preamble + fenced code block + trailing chatter.
             // confidence="medium" must be aliased to "OK" by the schema.
+            // priority="banana" is off-vocab → FR-011 @coerceDefault folds it to "LOW" (DEFAULTED).
             // "note" is absent (optional) → should recover as null.
-            String dirty = "Sure!\n```json\n{\"text\":\"hi\",\"confidence\":\"medium\"}\n```\nDone.";
+            String dirty = "Sure!\n```json\n{\"text\":\"hi\",\"confidence\":\"medium\","
+                    + "\"priority\":\"banana\"}\n```\nDone.";
             Object result = recoverMethod.invoke(null, dirty);
 
             // result is RecoveryResult<AnswerOutputPayload>
@@ -140,15 +142,26 @@ public class GeneratedRecoverCompileRunTest extends SharedRegistryTestBase {
             // Assert recovered field values
             Object text       = payload.getClass().getMethod("text").invoke(payload);
             Object confidence = payload.getClass().getMethod("confidence").invoke(payload);
+            Object priority   = payload.getClass().getMethod("priority").invoke(payload);
             Object note       = payload.getClass().getMethod("note").invoke(payload);
 
             assertEquals("text component", "hi", text);
             assertEquals("confidence component — medium should be aliased to OK", "OK", confidence);
+            assertEquals("priority component — off-vocab 'banana' should fold to @coerceDefault 'LOW'",
+                    "LOW", priority);
             assertNull("note component — absent optional field should be null", note);
 
-            // Assert report: no required fields were lost
+            // Assert report: no required fields were lost (priority is DEFAULTED, which satisfies required)
             boolean hasLostRequired = (boolean) report.getClass().getMethod("hasLostRequired").invoke(report);
-            assertFalse("hasLostRequired must be false — text and confidence were both recovered", hasLostRequired);
+            assertFalse("hasLostRequired must be false — text/confidence recovered, priority defaulted",
+                    hasLostRequired);
+
+            // FR-011: priority must classify as DEFAULTED (reached via @coerceDefault), not RECOVERED.
+            @SuppressWarnings("unchecked")
+            Map<String, Object> states =
+                    (Map<String, Object>) report.getClass().getMethod("states").invoke(report);
+            assertEquals("priority must classify DEFAULTED", "DEFAULTED",
+                    String.valueOf(states.get("priority")));
         }
     }
 }

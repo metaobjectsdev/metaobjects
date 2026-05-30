@@ -61,6 +61,13 @@ function extract(
     const path = prefix.length === 0 ? f.name : `${prefix}.${f.name}`;
     const present = lookup(raw, f.name, ci);
     if (present === undefined) {
+      // FR-011: an absent enum with a declared @default fills the value → DEFAULTED (satisfies @required).
+      if (f.kind === FieldKind.ENUM && f.defaultValue != null) {
+        data[f.name] = f.defaultValue;
+        report.addCoercion({ fieldPath: path, from: "", to: f.defaultValue, kind: "default" });
+        report.set(path, FieldRecovery.DEFAULTED);
+        continue;
+      }
       report.set(path, f.required ? FieldRecovery.LOST_REQUIRED : FieldRecovery.LOST_OPTIONAL);
       continue;
     }
@@ -96,9 +103,23 @@ function extract(
       report.set(path, FieldRecovery.MALFORMED);
     } else {
       data[f.name] = v;
-      report.set(path, FieldRecovery.RECOVERED);
+      // FR-011: a value reached via @coerceDefault (or @default) is DEFAULTED, not RECOVERED.
+      report.set(path, classifyCoerced(path, report));
     }
   }
+}
+
+/**
+ * FR-011: classify a successfully-coerced field. DEFAULTED when its terminal (last-logged)
+ * coercion for this path is a default-class fallback; RECOVERED otherwise. Nested objects
+ * (which log no coercion of their own) classify as RECOVERED.
+ */
+function classifyCoerced(path: string, report: RecoveryReport): FieldRecovery {
+  let terminalKind: string | null = null;
+  for (const c of report.coercions()) if (c.fieldPath === path) terminalKind = c.kind;
+  return terminalKind === "coerceDefault" || terminalKind === "default"
+    ? FieldRecovery.DEFAULTED
+    : FieldRecovery.RECOVERED;
 }
 
 /** Coerce one (non-array) element: nested-object recursion or scalar coercion. Returns MALFORMED on failure. */

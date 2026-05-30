@@ -1,5 +1,6 @@
 package com.metaobjects.render.recover;
 
+import java.util.Map;
 import java.util.function.Function;
 
 /** Stage 7: canonicalize a raw scalar string per its FieldSpec. Returns MALFORMED sentinel when present-but-uncoercible. */
@@ -38,30 +39,77 @@ public final class Coerce {
         };
     }
 
+    /**
+     * FR-011 enum coercion pipeline: exact &rarr; normalize &rarr; {@code @enumAlias} &rarr;
+     * (reserved fuzzy) &rarr; {@code @coerceDefault} &rarr; MALFORMED. Resolution mode is
+     * {@link FieldSpec#normalize()} (default {@code strip}); under STRICT tolerance
+     * ({@code ci == false}) normalization is forced to {@code none} (exact-only), preserving the
+     * case-sensitive STRICT contract. Mirrors the TS/C# coerceEnum.
+     */
     private static Object coerceEnum(String raw, FieldSpec spec, RecoverOptions opts,
                                      String path, RecoveryReport report, boolean ci) {
+        String mode = ci ? spec.normalize() : Normalize.NONE;
+
+        // 1. exact match.
         if (spec.enumValues() != null) {
             for (String v : spec.enumValues()) {
                 if (v.equals(raw)) return v;
-                if (ci && v.equalsIgnoreCase(raw)) {
-                    report.addCoercion(new Coercion(path, raw, v, "case"));
+            }
+        }
+
+        // 2. normalized match (skipped when mode == none).
+        if (!Normalize.NONE.equals(mode) && spec.enumValues() != null) {
+            String normRaw = Normalize.enumValue(raw, mode);
+            for (String v : spec.enumValues()) {
+                if (Normalize.enumValue(v, mode).equals(normRaw)) {
+                    report.addCoercion(new Coercion(path, raw, v, "normalize"));
                     return v;
                 }
             }
         }
-        String schemaTarget = spec.enumAlias() == null ? null : spec.enumAlias().get(raw);
-        String runtimeTarget = opts.aliases().get(raw);
+
+        // 3. @enumAlias — runtime aliases win over schema; alias keys matched under the mode.
+        String runtimeTarget = lookupAliasIn(raw, opts.aliases(), mode);
         if (runtimeTarget != null) {
+            String schemaTarget = lookupAliasIn(raw, spec.enumAlias(), mode);
             String kind = (schemaTarget != null && !schemaTarget.equals(runtimeTarget))
                     ? "runtime-alias-override" : "alias";
             report.addCoercion(new Coercion(path, raw, runtimeTarget, kind));
             return runtimeTarget;
         }
+        String schemaTarget = lookupAliasIn(raw, spec.enumAlias(), mode);
         if (schemaTarget != null) {
             report.addCoercion(new Coercion(path, raw, schemaTarget, "alias"));
             return schemaTarget;
         }
+
+        // 4. reserved fuzzy slot — NOT implemented (FR-011 spec "Out of scope").
+
+        // 5. @coerceDefault — present-but-uncoercible fallback to a valid member → DEFAULTED.
+        if (spec.coerceDefault() != null && spec.enumValues() != null
+                && spec.enumValues().contains(spec.coerceDefault())) {
+            report.addCoercion(new Coercion(path, raw, spec.coerceDefault(), "coerceDefault"));
+            return spec.coerceDefault();
+        }
+
+        // 6. MALFORMED.
         return MALFORMED;
+    }
+
+    /**
+     * Find {@code raw} in an alias map, matching keys exactly first then under {@code mode}
+     * normalization. Returns the target member, or {@code null} when no key matches.
+     */
+    private static String lookupAliasIn(String raw, Map<String, String> aliases, String mode) {
+        if (aliases == null || aliases.isEmpty()) return null;
+        String exact = aliases.get(raw);
+        if (exact != null) return exact;
+        if (Normalize.NONE.equals(mode)) return null;
+        String normRaw = Normalize.enumValue(raw, mode);
+        for (Map.Entry<String, String> e : aliases.entrySet()) {
+            if (Normalize.enumValue(e.getKey(), mode).equals(normRaw)) return e.getValue();
+        }
+        return null;
     }
 
     private static Object coerceInt(String raw, FieldSpec spec, String path, RecoveryReport report) {

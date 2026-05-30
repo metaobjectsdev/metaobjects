@@ -4,6 +4,7 @@
 // Colocated per ADR-0003. Mirrors typescript/packages/metadata/src/core/field/field-constants.ts.
 // (DB-physical attrs @column / @db.indexed live in Persistence/Db/DbConstants.cs.)
 
+using System.Collections.Generic;
 using MetaObjects.Shared;
 
 namespace MetaObjects.Core.Field;
@@ -143,6 +144,40 @@ public static class FieldConstants
     /// the 'guide'-style output-format prompt fragment. <c>properties</c>-shaped; only on field.enum.
     /// </summary>
     public const string FIELD_ATTR_ENUM_DOC = "enumDoc";
+
+    // -----------------------------------------------------------------------
+    // FR-011 recover-hardening attrs (tolerant enum recover)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// FR-011: fallback enum member used when an LLM sends a present-but-uncoercible
+    /// value. Must be one of the field's <c>@values</c> (loader-validated → ERR_BAD_ATTR_VALUE).
+    /// On field.enum only.
+    /// </summary>
+    public const string FIELD_ATTR_COERCE_DEFAULT = "coerceDefault";
+
+    /// <summary>
+    /// FR-011: ASCII normalization mode for tolerant enum recover. Closed enum
+    /// (none|collapse|strip). On field.enum (per-field) and object.value (default for its
+    /// enum fields). Resolved field → object → global <see cref="NORMALIZE_DEFAULT"/>.
+    /// </summary>
+    public const string FIELD_ATTR_NORMALIZE = "normalize";
+
+    /// <summary>
+    /// FR-011: the three ASCII normalization modes (closed set).
+    /// <list type="bullet">
+    /// <item><c>none</c> — exact match only.</item>
+    /// <item><c>collapse</c> — ASCII case-fold + trim + collapse runs of [\s_-]+ to one _.</item>
+    /// <item><c>strip</c> — ASCII case-fold + strip everything except [A-Z0-9] (most forgiving).</item>
+    /// </list>
+    /// </summary>
+    public static readonly IReadOnlyList<string> NORMALIZE_MODES = new[] { "none", "collapse", "strip" };
+
+    /// <summary>
+    /// FR-011: global normalization default when neither the field nor its owning
+    /// object.value declares <c>@normalize</c>.
+    /// </summary>
+    public const string NORMALIZE_DEFAULT = "strip";
 
     // -----------------------------------------------------------------------
     // FR-010 field-teaching attrs (on any field; drive the output-format prompt)

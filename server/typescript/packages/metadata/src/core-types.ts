@@ -35,7 +35,7 @@ import { MetaRelationship } from "./core/relationship/meta-relationship.js";
 import { MetaLayout } from "./presentation/layout/meta-layout.js";
 import { MetaSource } from "./persistence/source/meta-source.js";
 import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin, MetaCollectionOrigin } from "./persistence/origin/meta-origin.js";
-import { commonFieldAttrs, currencyFieldAttr, enumFieldAttr, enumAliasAttr, enumDocAttr } from "./core/field/field-schema.js";
+import { commonFieldAttrs, currencyFieldAttr, enumFieldAttr, enumAliasAttr, enumDocAttr, coerceDefaultAttr, normalizeAttr } from "./core/field/field-schema.js";
 import { objectAttrs } from "./core/object/object-schema.js";
 import { relationshipAttrs } from "./core/relationship/relationship-schema.js";
 import { identityFieldsAttr, IDENTITY_ATTRS_MAP } from "./core/identity/identity-schema.js";
@@ -62,7 +62,7 @@ import {
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
-import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY } from "./core/object/object-constants.js";
+import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE } from "./core/object/object-constants.js";
 import { FIELD_SUBTYPES, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_ENUM } from "./core/field/field-constants.js";
 import { ATTR_SUBTYPES } from "./core/attr/attr-constants.js";
 import {
@@ -183,8 +183,14 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     wildcard(TYPE_ATTR),
   ];
   for (const subType of OBJECT_SUBTYPES) {
+    // FR-011: object.value additionally carries @normalize — the object-level
+    // default normalization mode for its enum fields' tolerant recover.
+    const subTypeObjectAttrs =
+      subType === OBJECT_SUBTYPE_VALUE
+        ? [...objectAttrs, { ...normalizeAttr }]
+        : [...objectAttrs];
     registry.register(
-      def(TYPE_OBJECT, subType, `Object/entity (${subType})`, objectRules, MetaObject, [...objectAttrs]),
+      def(TYPE_OBJECT, subType, `Object/entity (${subType})`, objectRules, MetaObject, subTypeObjectAttrs),
     );
   }
 
@@ -202,7 +208,14 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
       subType === FIELD_SUBTYPE_CURRENCY
         ? [...commonFieldAttrs, { ...currencyFieldAttr }]
         : subType === FIELD_SUBTYPE_ENUM
-          ? [...commonFieldAttrs, { ...enumFieldAttr }, { ...enumAliasAttr }, { ...enumDocAttr }]
+          ? [
+              ...commonFieldAttrs,
+              { ...enumFieldAttr },
+              { ...enumAliasAttr },
+              { ...enumDocAttr },
+              { ...coerceDefaultAttr },
+              { ...normalizeAttr },
+            ]
           : [...commonFieldAttrs];
     registry.register(
       def(TYPE_FIELD, subType, `Field of type ${subType}`, fieldRules, MetaField, fieldAttrs,

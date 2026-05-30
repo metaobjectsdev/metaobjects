@@ -165,3 +165,68 @@ def test_normalizer_by_field_name_applied() -> None:
     opts = RecoverOptions(normalizers={"x": lambda raw: raw.upper()})
     assert _coerce.value("hello", f, opts, "x", rep) == "HELLO"
     assert "normalizer" in _kinds(rep)
+
+
+# ---- FR-011 enum normalize / coerceDefault ----
+
+
+def test_enum_normalize_strip_recovers_punctuated_variant() -> None:
+    rep = RecoveryReport()
+    f = FieldSpec.enum_field("s", True, ["IN_PROGRESS", "DONE"], {}, normalize="strip")
+    assert _coerce.value("In-Progress!", f, _normal(), "s", rep) == "IN_PROGRESS"
+    assert _kinds(rep) == ["normalize"]
+
+
+def test_enum_normalize_collapse_recovers_spaced_variant() -> None:
+    rep = RecoveryReport()
+    f = FieldSpec.enum_field("s", True, ["IN_PROGRESS"], {}, normalize="collapse")
+    assert _coerce.value("in progress", f, _normal(), "s", rep) == "IN_PROGRESS"
+    assert _kinds(rep) == ["normalize"]
+
+
+def test_enum_normalize_collapse_does_not_match_runtogether() -> None:
+    rep = RecoveryReport()
+    f = FieldSpec.enum_field("s", True, ["IN_PROGRESS"], {}, normalize="collapse")
+    assert _coerce.value("inprogress", f, _normal(), "s", rep) is MALFORMED
+
+
+def test_enum_normalize_none_requires_exact() -> None:
+    rep = RecoveryReport()
+    f = FieldSpec.enum_field("s", True, ["IN_PROGRESS"], {}, normalize="none")
+    assert _coerce.value("in progress", f, _normal(), "s", rep) is MALFORMED
+    assert _coerce.value("IN_PROGRESS", f, _normal(), "s", rep) == "IN_PROGRESS"
+
+
+def test_enum_strict_forces_normalize_none() -> None:
+    rep = RecoveryReport()
+    # Even with normalize=strip, STRICT tolerance forces exact-only.
+    f = FieldSpec.enum_field("s", True, ["IN_PROGRESS"], {}, normalize="strip")
+    opts = _normal().with_tolerance(Tolerance.STRICT)
+    assert _coerce.value("in progress", f, opts, "s", rep) is MALFORMED
+
+
+def test_enum_alias_key_matched_under_normalize() -> None:
+    rep = RecoveryReport()
+    # alias key "in prog" matches "in-prog" raw under collapse normalization.
+    f = FieldSpec.enum_field(
+        "s", True, ["IN_PROGRESS"], {"in prog": "IN_PROGRESS"}, normalize="collapse"
+    )
+    assert _coerce.value("in-prog", f, _normal(), "s", rep) == "IN_PROGRESS"
+    assert "alias" in _kinds(rep)
+
+
+def test_enum_coerce_default_fallback_logs_kind() -> None:
+    rep = RecoveryReport()
+    f = FieldSpec.enum_field(
+        "s", True, ["IN_PROGRESS", "DONE"], {}, coerce_default="DONE", normalize="none"
+    )
+    assert _coerce.value("banana", f, _normal(), "s", rep) == "DONE"
+    assert _kinds(rep) == ["coerceDefault"]
+
+
+def test_enum_coerce_default_ignored_when_not_a_member() -> None:
+    rep = RecoveryReport()
+    f = FieldSpec.enum_field(
+        "s", True, ["IN_PROGRESS", "DONE"], {}, coerce_default="BOGUS", normalize="none"
+    )
+    assert _coerce.value("banana", f, _normal(), "s", rep) is MALFORMED

@@ -52,6 +52,36 @@ def enum_values(field: MetaData) -> list[str]:
     return []
 
 
+def _own_attr_string(node: MetaData, name: str) -> str | None:
+    """The own (locally declared) string value of attr *name*, or ``None``."""
+    v = node.attr(name)
+    return v if isinstance(v, str) else None
+
+
+def coerce_default(field: MetaData) -> str | None:
+    """FR-011: the enum field's own ``@coerceDefault`` member, or ``None``."""
+    return _own_attr_string(field, fc.FIELD_ATTR_COERCE_DEFAULT)
+
+
+def default_value(field: MetaData) -> str | None:
+    """FR-011: the enum field's own ``@default`` absent-fill member, or ``None``."""
+    return _own_attr_string(field, fc.FIELD_ATTR_DEFAULT)
+
+
+def resolve_normalize(field: MetaData, owner: MetaData | None) -> str:
+    """FR-011: resolve the enum normalization mode — field-level ``@normalize``, else the
+    owning ``object.value``'s ``@normalize`` (the per-object default), else the global
+    default (``"strip"``). Mirrors the Java/Kotlin/C#/TS ``resolveNormalize``."""
+    field_mode = _own_attr_string(field, fc.FIELD_ATTR_NORMALIZE)
+    if field_mode is not None:
+        return field_mode
+    if owner is not None:
+        owner_mode = _own_attr_string(owner, fc.FIELD_ATTR_NORMALIZE)
+        if owner_mode is not None:
+            return owner_mode
+    return fc.NORMALIZE_DEFAULT
+
+
 def scalar_kind(sub_type: str) -> str | None:
     """The render-engine ``FieldKind`` member name for a scalar field subtype, or
     ``None`` if the subtype is non-scalar (enum / object)."""
