@@ -1,0 +1,8 @@
+metadata:
+  package: smoke
+  children:
+    - object:
+        name: Widget
+        children:
+          - field.string:
+              name: name
