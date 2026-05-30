@@ -15,7 +15,6 @@ import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
-import java.util.Iterator;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -224,13 +223,6 @@ public class GenericSQLDriver implements DatabaseDriver {
         return mManager;
     }
 
-    // /**
-    // * Returns whether the auto id is retrieved prior to creation
-    // */
-    // @Override
-    // public int getAutoType() {
-    // return AUTO_PRIOR;
-    // }
     @Override
     public boolean checkTable(Connection c, TableDef table) throws SQLException {
         return checkBaseTable(c, table);
@@ -803,14 +795,6 @@ public class GenericSQLDriver implements DatabaseDriver {
             Map<MetaField, Object> values, Expression exp) throws SQLException {
 
         throw new UnsupportedOperationException("UpdateMany not supported by this Driver");
-
-        /*PreparedStatement s = getUpdateStatement( c, mapping, fields, mc, o, exp);
-
-         try {
-         return s.executeUpdate();
-         } finally {
-         s.close();
-         }*/
     }
 
     @Override
@@ -826,32 +810,6 @@ public class GenericSQLDriver implements DatabaseDriver {
         }
     }
 
-    /**
-     * Gets the string to append to the INSERT call to request the generated ids
-     */
-    // public String getInsertAppendString( MetaClass mc )
-    // {
-    // throw new UnsupportedOperationException( "The GenericDriver cannot
-    // retrieve field ids" );
-    // }
-    /**
-     * Used if AUTO_DURING to retrieve the ids for the specified class
-     */
-    // @Override
-    // public void getAutoIdentifiers( PreparedStatement s, MetaClass mc, Object
-    // o ) throws SQLException {
-    // throw new UnsupportedOperationException( "The GenericDriver cannot
-    // retrieve field ids" );
-    // }
-    /**
-     * Gets the next sequence for a given MetaClass
-     */
-    // @Override
-    // public String getLastAutoId( Connection c, ColumnDef col ) throws
-    // SQLException {
-    // throw new UnsupportedOperationException( "The GenericDriver cannot
-    // retrieve field ids" );
-    // }
     /**
      * The SQL query to append to a SQL SELECT to lock the returned rows
      */
@@ -901,34 +859,6 @@ public class GenericSQLDriver implements DatabaseDriver {
                 "Driver does not define a default range ORDER BY clause");
     }
 
-    /*private void setAutoFields(Connection c, MetaClass mc,
-     ObjectMappingDB omdb, Collection<MetaField> fields, Object o,
-     int mode ) throws SQLException {
-		
-     // Iterate the fields looking for auto creation fields
-     for ( MetaField f : fields ) {
-			
-     // Switch off the column's auto type field
-     ColumnDef colDef = (ColumnDef) omdb.getArgDef( f );
-     switch( colDef.getAutoType() ) {
-			
-     // If an id, get the next sequence 
-     case ColumnDef.AUTO_ID:
-     if ( ObjectManager.CREATE == mode ) f.setString( o, getNextAutoId( c , colDef ));
-     break;
-				
-     // If the create date, then set it on creates
-     case ColumnDef.AUTO_DATE_CREATE:
-     if ( ObjectManager.CREATE == mode ) f.setDate( o, new Date() );
-     break;
-				
-     // If it's the update date, then set that on create and update
-     case ColumnDef.AUTO_DATE_UPDATE:
-     f.setDate( o, new Date() );
-     break;
-     }
-     }
-     }*/
     /**
      * Concatonates the list of field names together
      */
@@ -946,14 +876,8 @@ public class GenericSQLDriver implements DatabaseDriver {
         int j = 0;
         for (MetaField mf : fields) {
 
-            //BaseTableDef base = (BaseTableDef) omdb.getDBDef();
-            
             ColumnDef colDef = (ColumnDef) omdb.getArgDef(mf);
-            //while ( colDef == null ) {
-            //	if ( base instanceof TableDef ) {					
-            //	}
-            //}
-            
+
             // Do not use the field if it's an auto-incrementor (both AUTO_ID and AUTO_LAST_ID)
             // This prevents attempts to insert values into identity/auto-increment columns
             if ( !selectOnly && colDef.isAutoIncrementor() ) continue;
@@ -1305,125 +1229,6 @@ public class GenericSQLDriver implements DatabaseDriver {
         return where.toString();
     }
 
-    /**
-     * Gets the id clause for a unique transaction
-     */
-    /*protected PreparedStatement getSelectStatementForRef(Connection c,
-     MetaClass mc, Collection<MetaField> fields, ObjectRef ref)
-     throws SQLException, MetaDataException {
-     // TODO: The query construction should be cached for each MetaClass &
-     // field combo
-
-     if (!isReadableClass(mc))
-     throw new MetaDataException("MetaClass [" + mc + "] is not readable");
-
-     // validateMetaClass( c, mc );
-
-     Collection<MetaField> keys = getPrimaryKeys(mc);
-
-     // Get the components of the SELECT query
-     String tableStr = getViewName(mc);
-     if (tableStr == null)
-     throw new MetaDataException("MetaClass [" + mc
-     + "] has no table or view defined");
-
-     String whereStr = getWhereStringForKeys(keys);
-     String fieldStr = getFieldString(fields);
-
-     // Construct the SELECT query
-     String query = "SELECT " + fieldStr + " FROM " + tableStr + " WHERE "
-     + whereStr;
-
-     PreparedStatement s = c.prepareStatement(query);
-
-     // ystem.out.println( ">>> QUERY: " + query );
-
-     StringBuilder valStr = new StringBuilder(" ");
-     try {
-     // Set the statement values form the id
-     // setStatementValuesForRef( s, keys, 1, ref );
-     String[] ids = ref.getIds();
-
-     int k = 0;
-     int j = 1;
-     // Iterator v = values.iterator();
-     for (MetaField f : keys) {
-     String value = ids[k++];
-
-     setStatementValue(s, f, j++, value);
-
-     valStr.append("(" + value + ")");
-     }
-
-     if (log.isDebugEnabled())
-     log.debug("SQL (" + c.hashCode()
-     + ") - getSelectStatementForRef: [" + query
-     + valStr.toString() + "]");
-
-     // Return the prepared statement
-     return s;
-     } catch (SQLException e) {
-     s.close();
-     throw e;
-     }
-     }*/
-    /**
-     * Gets the id clause for a unique transaction
-     */
-    /* protected PreparedStatement getSelectStatementForObject(Connection c,
-     MetaClass mc, Collection<MetaField> fields, Object obj)
-     throws SQLException, MetaDataException {
-     // TODO: The query construction should be cached for each MetaClass &
-     // field combo
-
-     if (!isReadableClass(mc))
-     throw new MetaDataException("MetaClass [" + mc + "] is not persistable");
-     // PersistableMetaClass pmc = (PersistableMetaClass) mc;
-
-     // validateMetaClass( c, mc );
-
-     Collection<MetaField> keys = getPrimaryKeys(mc);
-
-     // Get the components of the SELECT query
-     String tableStr = getViewName(mc);
-     if (tableStr == null)
-     throw new MetaDataException("MetaClass [" + mc
-     + "] has no table or view defined");
-
-     String whereStr = getWhereStringForKeys(keys);
-     String fieldStr = getFieldString(fields);
-
-     // Construct the SELECT query
-     String query = "SELECT " + fieldStr + " FROM " + tableStr + " WHERE "
-     + whereStr;
-
-     PreparedStatement s = c.prepareStatement(query);
-
-     // ystem.out.println( ">>> QUERY: " + query );
-
-     StringBuilder valStr = new StringBuilder(" ");
-
-     try {
-     int j = 1;
-     // Set the statement values form the id
-     for (MetaField f : keys) {
-     setStatementValue(s, f, j, f.getObject(obj));
-     valStr.append("(" + f.getString(obj) + ")");
-     j++;
-     }
-
-     if (log.isDebugEnabled())
-     log.debug("SQL (" + c.hashCode()
-     + ") - getSelectStatementforObject: [" + query
-     + valStr.toString() + "]");
-
-     // Return the prepared statement
-     return s;
-     } catch (SQLException e) {
-     s.close();
-     throw e;
-     }
-     } */
     /**
      * Gets the id clause for a unique transaction
      */
@@ -1899,49 +1704,6 @@ public class GenericSQLDriver implements DatabaseDriver {
 
             if (log.isDebugEnabled()) {
                 log.debug("SQL (" + c.hashCode() + ") - getUpdateStatement: ["
-                        + query + valStr + "]");
-            }
-
-            // Return the prepared statement
-            return s;
-        } catch (SQLException e) {
-            s.close();
-            throw e;
-        }
-    }
-
-    /**
-     * Gets the delete statement for a specific id
-     */
-    protected PreparedStatement getDeleteStatement(Connection c, MetaObject mc,
-            ObjectMappingDB omdb, Collection<MetaField> keys, Object obj) throws SQLException, MetaDataException {
-
-        // Get the components of the SELECT query
-        String tableStr = getProperName(omdb.getDBDef().getNameDef());
-
-        String whereStr = null;//getWhereStringForKeys(keys);
-
-        // Construct the SELECT query
-        String query = "DELETE FROM " + tableStr + " WHERE " + whereStr;
-
-        PreparedStatement s = c.prepareStatement(query);
-
-        // ystem.out.println( ">>> QUERY: " + query );
-
-        StringBuilder valStr = new StringBuilder(" ");
-
-        try {
-            // Set the key values
-            int j = 1;
-            for (Iterator<MetaField> i = keys.iterator(); i.hasNext(); j++) {
-                MetaField f = i.next();
-                setStatementValue(s, f, j, f.getObject(obj));
-
-                valStr.append("(" + f.getString(obj) + ")");
-            }
-
-            if (log.isDebugEnabled()) {
-                log.debug("SQL (" + c.hashCode() + ") - getDeleteStatement: ["
                         + query + valStr + "]");
             }
 
