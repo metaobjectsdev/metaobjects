@@ -10,6 +10,7 @@ import {
 } from "@metaobjectsdev/codegen-ts";
 import {
   computeViewMigrations,
+  viewSqlEquals,
   type ViewMigrationInput,
   type ViewMigrationsResult,
 } from "@metaobjectsdev/migrate-ts";
@@ -31,11 +32,6 @@ export interface ProjectionMigrationsOpts {
    * — no DROP+CREATE noise for unchanged views.
    */
   readonly existingViewSql?: ReadonlyMap<string, string>;
-}
-
-/** Collapse whitespace + strip trailing ";" for textual view-SQL comparison. */
-function normalizeViewSql(sql: string): string {
-  return sql.replace(/\s+/g, " ").replace(/;\s*$/, "").trim();
 }
 
 /**
@@ -96,7 +92,7 @@ export function computeProjectionMigrations(
     // Avoids the "every migration re-creates every view" noise when nothing
     // about the view's body actually changed.
     const existing = opts.existingViewSql?.get(spec.viewName);
-    if (existing !== undefined && normalizeViewSql(existing) === normalizeViewSql(createSql)) {
+    if (existing !== undefined && viewSqlEquals(existing, createSql)) {
       continue;
     }
 

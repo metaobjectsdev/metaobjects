@@ -37,6 +37,7 @@ export type { WriteMigrationOptions, WriteMigrationResult } from "./write-migrat
 export type { WriteMigrationD1Options, WriteMigrationD1Result } from "./write-migration-d1.js";
 
 // View diff + dialect emitters
+export { normalizeViewSql, viewSqlEquals } from "./view-sql-compare.js";
 export { classifyViewDiff } from "./view-diff.js";
 export type { ViewShape, ViewDiffClass, ViewMigrationOpts } from "./view-diff.js";
 export { emitPostgresViewMigration } from "./view-ddl-postgres.js";
