@@ -24,6 +24,13 @@ _NUMERIC_KINDS: frozenset[FieldKind] = frozenset(
     {FieldKind.INT, FieldKind.LONG, FieldKind.DOUBLE, FieldKind.BOOLEAN}
 )
 
+_INDENT = "  "
+_MAX_NEST_DEPTH = 8
+
+# Render mode shared by the example/inline skeleton recursion.
+_MODE_EXAMPLE = "example"
+_MODE_INLINE = "inline"
+
 # The render engine OWNS format-keyed escaping; the Format enum's UPPER values
 # ("JSON"/"XML") map to the lowercase escaper-registry keys.
 def _escape_xml(s: str) -> str:
@@ -52,27 +59,8 @@ def render_output_format(spec: OutputFormatSpec, overrides: PromptOverrides) -> 
 
 def _render_inline(spec: OutputFormatSpec, overrides: PromptOverrides) -> str:
     if spec.format is Format.XML:
-        return _render_xml_inline(spec, overrides)
-    return _render_json_inline(spec, overrides)
-
-
-def _render_xml_inline(spec: OutputFormatSpec, overrides: PromptOverrides) -> str:
-    lines = [
-        f"  <{f.name}>{_escape_xml(_inline_content(f, overrides))}</{f.name}>\n"
-        for f in spec.fields
-    ]
-    return f"<{spec.root_name}>\n{''.join(lines)}</{spec.root_name}>"
-
-
-def _render_json_inline(spec: OutputFormatSpec, overrides: PromptOverrides) -> str:
-    lines = [
-        f'  "{f.name}": "{_escape_json(_inline_content(f, overrides))}"'
-        for f in spec.fields
-    ]
-    # Empty object is `{\n}` (cross-port parity), not `{\n\n}`.
-    if not lines:
-        return "{\n}"
-    return "{\n" + ",\n".join(lines) + "\n}"
+        return _render_xml_skeleton(spec, overrides, _MODE_INLINE)
+    return _render_json_skeleton(spec, overrides, _MODE_INLINE)
 
 
 def _inline_content(field: PromptField, overrides: PromptOverrides) -> str:
@@ -99,26 +87,55 @@ def _resolve_instruction(field: PromptField, overrides: PromptOverrides) -> str 
 
 def _render_guide(spec: OutputFormatSpec, overrides: PromptOverrides) -> str:
     sb = "Fill in each field as described below:\n"
-    for field in spec.fields:
-        req = "required" if field.required else "optional"
-        sb += f"- {field.name} ({req})"
-        instruction = _resolve_instruction(field, overrides)
-        if instruction is not None:
-            sb += f": {instruction}"
-        sb += "\n"
-        if field.kind is FieldKind.ENUM and field.enum_values:
-            sb += f"    one of {', '.join(field.enum_values)}\n"
-            enum_doc = field.enum_doc
-            if enum_doc is not None:
-                for val in field.enum_values:
-                    doc = enum_doc.get(val)
-                    if doc is not None:
-                        sb += f"      {val} = {doc}\n"
-        eg = _example_value_if_declared(field, overrides)
-        if eg is not None:
-            sb += f"    e.g. {eg}\n"
+    sb += _guide_fields(spec, overrides, "", {id(spec)}, 0)
     sb += "\nRespond exactly like this:\n"
     sb += _render_example_only(spec, overrides)
+    return sb
+
+
+def _guide_fields(
+    spec: OutputFormatSpec,
+    overrides: PromptOverrides,
+    prefix: str,
+    path: set[int],
+    depth: int,
+) -> str:
+    sb = ""
+    for field in spec.fields:
+        display_name = prefix + field.name
+        sb += _guide_entry(field, overrides, display_name)
+        if _can_expand(field, path, depth):
+            nested = field.nested
+            assert nested is not None
+            child_prefix = (
+                f"{display_name}[]." if field.array else f"{display_name}."
+            )
+            path.add(id(nested))
+            sb += _guide_fields(nested, overrides, child_prefix, path, depth + 1)
+            path.discard(id(nested))
+    return sb
+
+
+def _guide_entry(
+    field: PromptField, overrides: PromptOverrides, display_name: str
+) -> str:
+    req = "required" if field.required else "optional"
+    sb = f"- {display_name} ({req})"
+    instruction = _resolve_instruction(field, overrides)
+    if instruction is not None:
+        sb += f": {instruction}"
+    sb += "\n"
+    if field.kind is FieldKind.ENUM and field.enum_values:
+        sb += f"    one of {', '.join(field.enum_values)}\n"
+        enum_doc = field.enum_doc
+        if enum_doc is not None:
+            for val in field.enum_values:
+                doc = enum_doc.get(val)
+                if doc is not None:
+                    sb += f"      {val} = {doc}\n"
+    eg = _example_value_if_declared(field, overrides)
+    if eg is not None:
+        sb += f"    e.g. {eg}\n"
     return sb
 
 
@@ -127,37 +144,165 @@ def _render_guide(spec: OutputFormatSpec, overrides: PromptOverrides) -> str:
 
 def _render_example_only(spec: OutputFormatSpec, overrides: PromptOverrides) -> str:
     if spec.format is Format.XML:
-        return _render_xml_skeleton(spec, overrides)
-    return _render_json_skeleton(spec, overrides)
+        return _render_xml_skeleton(spec, overrides, _MODE_EXAMPLE)
+    return _render_json_skeleton(spec, overrides, _MODE_EXAMPLE)
 
 
-def _render_xml_skeleton(spec: OutputFormatSpec, overrides: PromptOverrides) -> str:
+# ---- JSON skeleton (recursive) ---------------------------------------------
+
+
+def _render_json_skeleton(
+    spec: OutputFormatSpec, overrides: PromptOverrides, mode: str
+) -> str:
+    return _json_object(spec, overrides, "", mode, {id(spec)}, 0)
+
+
+def _json_object(
+    spec: OutputFormatSpec,
+    overrides: PromptOverrides,
+    brace_indent: str,
+    mode: str,
+    path: set[int],
+    depth: int,
+) -> str:
+    # Empty object is `{\n<brace_indent>}` (cross-port parity), not `{\n\n}`.
+    if not spec.fields:
+        return f"{{\n{brace_indent}}}"
+    field_indent = brace_indent + _INDENT
     lines = [
-        f"  <{f.name}>{_escape_xml(_example_value(f, overrides))}</{f.name}>\n"
-        for f in spec.fields
+        f'{field_indent}"{field.name}": '
+        f"{_json_value(field, overrides, field_indent, mode, path, depth)}"
+        for field in spec.fields
     ]
-    return f"<{spec.root_name}>\n{''.join(lines)}</{spec.root_name}>"
+    return "{\n" + ",\n".join(lines) + f"\n{brace_indent}}}"
 
 
-def _render_json_skeleton(spec: OutputFormatSpec, overrides: PromptOverrides) -> str:
-    # NOTE: FieldKind.OBJECT / nested fields are not expanded here — they render as a
-    # "{fieldName}" placeholder. Nested-object expansion is a bounded deferral
-    # (mirrors Java/C#/TS).
-    lines = [
-        f'  "{f.name}": {_json_skeleton_value(f, overrides)}' for f in spec.fields
-    ]
-    # Empty object is `{\n}` (cross-port parity), not `{\n\n}`.
-    if not lines:
-        return "{\n}"
-    return "{\n" + ",\n".join(lines) + "\n}"
+def _json_value(
+    field: PromptField,
+    overrides: PromptOverrides,
+    indent: str,
+    mode: str,
+    path: set[int],
+    depth: int,
+) -> str:
+    if field.array:
+        return _json_array(field, overrides, indent, mode, path, depth)
+    if field.kind is FieldKind.OBJECT:
+        return _json_object_field(field, overrides, indent, mode, path, depth)
+    return _json_leaf(field, overrides, mode)
 
 
-def _json_skeleton_value(field: PromptField, overrides: PromptOverrides) -> str:
-    """The example value as a JSON literal: bare for numeric/boolean, else quoted."""
+def _json_leaf(field: PromptField, overrides: PromptOverrides, mode: str) -> str:
+    if mode == _MODE_INLINE:
+        return '"' + _escape_json(_inline_content(field, overrides)) + '"'
     value = _example_value(field, overrides)
     if _is_numeric_or_boolean(field.kind, value):
         return value
     return '"' + _escape_json(value) + '"'
+
+
+def _json_object_field(
+    field: PromptField,
+    overrides: PromptOverrides,
+    indent: str,
+    mode: str,
+    path: set[int],
+    depth: int,
+) -> str:
+    if not _can_expand(field, path, depth):
+        return _json_leaf(field, overrides, mode)
+    nested = field.nested
+    assert nested is not None
+    path.add(id(nested))
+    out = _json_object(nested, overrides, indent, mode, path, depth + 1)
+    path.discard(id(nested))
+    return out
+
+
+def _json_array(
+    field: PromptField,
+    overrides: PromptOverrides,
+    indent: str,
+    mode: str,
+    path: set[int],
+    depth: int,
+) -> str:
+    elem_indent = indent + _INDENT
+    if _can_expand(field, path, depth):
+        nested = field.nested
+        assert nested is not None
+        path.add(id(nested))
+        elem = _json_object(nested, overrides, elem_indent, mode, path, depth + 1)
+        path.discard(id(nested))
+    else:
+        elem = _json_leaf(field, overrides, mode)
+    return f"[\n{elem_indent}{elem}\n{indent}]"
+
+
+# ---- XML skeleton (recursive) ----------------------------------------------
+
+
+def _render_xml_skeleton(
+    spec: OutputFormatSpec, overrides: PromptOverrides, mode: str
+) -> str:
+    body = _xml_body(spec, overrides, _INDENT, mode, {id(spec)}, 0)
+    return f"<{spec.root_name}>\n{body}</{spec.root_name}>"
+
+
+def _xml_body(
+    spec: OutputFormatSpec,
+    overrides: PromptOverrides,
+    indent: str,
+    mode: str,
+    path: set[int],
+    depth: int,
+) -> str:
+    return "".join(
+        _xml_field(field, overrides, indent, mode, path, depth)
+        for field in spec.fields
+    )
+
+
+def _xml_field(
+    field: PromptField,
+    overrides: PromptOverrides,
+    indent: str,
+    mode: str,
+    path: set[int],
+    depth: int,
+) -> str:
+    if _can_expand(field, path, depth):
+        nested = field.nested
+        assert nested is not None
+        path.add(id(nested))
+        body = _xml_body(nested, overrides, indent + _INDENT, mode, path, depth + 1)
+        path.discard(id(nested))
+        return f"{indent}<{field.name}>\n{body}{indent}</{field.name}>\n"
+    content = (
+        _inline_content(field, overrides)
+        if mode == _MODE_INLINE
+        else _example_value(field, overrides)
+    )
+    return f"{indent}<{field.name}>{_escape_xml(content)}</{field.name}>\n"
+
+
+# ---- nested-expansion guard ------------------------------------------------
+
+
+def _can_expand(field: PromptField, path: set[int], depth: int) -> bool:
+    """Expand an OBJECT field only when it has a nested spec, the depth bound is not
+    exceeded, and it would not re-enter a spec already on the current path.
+
+    The cycle guard is REFERENCE IDENTITY via ``id()``: frozen dataclasses compare by
+    value (``eq=True``), so two value-equal sibling specs must both still expand. ``id``
+    keys distinguish them.
+    """
+    return (
+        field.kind is FieldKind.OBJECT
+        and field.nested is not None
+        and depth < _MAX_NEST_DEPTH
+        and id(field.nested) not in path
+    )
 
 
 def _example_value_if_declared(field: PromptField, overrides: PromptOverrides) -> str | None:
