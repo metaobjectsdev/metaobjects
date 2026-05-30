@@ -49,7 +49,7 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // emitAbstractShapes (default OFF): when ON, an abstract entity is emitted as a Kotlin
         // `interface` shape (read-only properties) instead of being suppressed. It is NEVER
         // emitted as an instantiable @Serializable data class — abstracts are scaffolding.
-        val emitAbstractShapes = getArg("emitAbstractShapes", "false").toBoolean()
+        val emitAbstractShapes = (getArg("emitAbstractShapes", "false") ?: "false").toBoolean()
         // Emit a data class for entities AND value objects. Value objects (object.value) are
         // referenced by field.object on entities; the value class must exist for the entity's
         // typed property to resolve.

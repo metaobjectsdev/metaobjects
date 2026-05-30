@@ -108,6 +108,11 @@ class KotlinAbstractConformanceTest {
             val src = Files.readString(abstractKt)
             assertTrue("interface AbstractRecord" in src,
                 "expected an `interface AbstractRecord` shape; saw:\n$src")
+            // A source-less abstract (BaseShape) is also a scaffolding shape: it should still get
+            // an interface in ON mode, mirroring the OFF-mode test that asserts it is absent.
+            assertTrue(Files.exists(outDir.resolve("acme/shop/BaseShape.kt")),
+                "BaseShape.kt SHOULD be emitted as an interface shape with emitAbstractShapes=true " +
+                    "(abstract, no source); files=${Files.walk(outDir).toList()}")
             assertTrue(Files.exists(outDir.resolve("acme/shop/Widget.kt")),
                 "Widget.kt SHOULD still be emitted (concrete); files=${Files.walk(outDir).toList()}")
         } finally {
