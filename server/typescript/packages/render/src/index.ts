@@ -42,3 +42,14 @@ export {
   asBool,
   asStringList,
 } from "./recover/recover-map.js";
+
+// FR-010 artifact 1 — output-format prompt renderer ("produce your answer like this").
+export { renderOutputFormat } from "./prompt/output-format-renderer.js";
+export { PromptStyle, promptStyleFrom } from "./prompt/prompt-style.js";
+export {
+  PROMPT_OVERRIDES_NONE,
+  noOverrides,
+  type PromptOverrides,
+} from "./prompt/prompt-overrides.js";
+export type { OutputFormatSpec } from "./prompt/output-format-spec.js";
+export type { PromptField } from "./prompt/prompt-field.js";
