@@ -211,8 +211,12 @@ Delete the large commented-out blocks: `ObjectManagerDB` (~40%: OQL/key-parsing,
 - **Tier 2 is optional polish** — do 2.1 (quoting) and 2.2 (validator) if security/robustness matters; 2.3/2.4 are quality-of-life.
 - **Out of scope:** the god-class decomposition of `ObjectManagerDB`/`GenericSQLDriver` (architectural; not a bug). The `getPreparedStatement` "NPE" (review false positive — do not touch beyond the toString nit in 2.4).
 
-## Open design decisions to confirm before Tier 1
-1. **Introspection scope (1.3):** minimum-viable (indexes+FKs+views read for idempotency) vs full drop-detection.
-2. **MSSQL/Oracle min versions (1.4):** OK to require SQL Server 2012+ / Oracle 12c+ for `OFFSET/FETCH`?
-3. **UUID minting (1.7):** app-side vs DB-default (`gen_random_uuid()`).
-4. **Generic id-gen (0.3):** document-as-test-only (recommended) vs hard-fail-in-production gate.
+## Design decisions — RESOLVED 2026-05-30
+
+1. **Schema-migration subsystem (supersedes 1.1/1.2/1.3):** **migrations move to a TS-only approach; the OMDB Java migration subsystem is to be REMOVED entirely** (decided in another session). Therefore tasks **1.1 (apply-tx), 1.2 (FK actions in renderers), and 1.3 (introspection completeness) are DROPPED** — do not polish code slated for deletion. The removal of the `migrate/` subsystem (and the validator's auto-create/migrate behavior, if it goes too) is a **separate effort** with its own plan, not part of this remediation. (FK-action correctness, identifier-quoting in DDL, and the validator's exception-swallowing only matter to the extent OMDB still emits DDL after that removal — re-scope Tier 2 #13/#14 against the removal outcome.)
+2. **MSSQL/Oracle paging (1.4):** **Yes — require SQL Server 2012+ / Oracle 12c+**, use ANSI `OFFSET … FETCH NEXT … ROWS ONLY`; delete the legacy `TOP`/`ROWNUM` code. (This is CRUD/query — survives the migration removal.)
+3. **UUID minting (1.7):** **App-side** — OMDB assigns `java.util.UUID` before insert (DB-portable; no dialect-specific defaults).
+4. **Generic id-gen (0.3):** documented as single-writer/test-only (already shipped in Tier 0).
+
+## Revised Tier 1 scope (post-pivot)
+Keep only the **runtime-persistence** fixes (independent of the doomed migration engine): **1.4** (OFFSET/FETCH paging), **1.5** (`parseField` → `JdbcCodecs`), **1.6** (bulk-create atomicity + live connection to hooks), **1.7** (app-side UUID). Tasks 1.1/1.2/1.3 are superseded by the migration-subsystem removal (separate effort).
