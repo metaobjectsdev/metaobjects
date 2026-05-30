@@ -38,6 +38,11 @@ class KotlinOutputCompilesTest {
                 "@values": ["HIGH", "OK", "LOW"],
                 "@enumAlias": { "medium": "OK" },
                 "@enumDoc": { "HIGH": "Very confident", "OK": "Reasonably confident", "LOW": "Best guess" } } },
+            { "field.enum": { "name": "priority",
+                "@required": true,
+                "@values": ["HIGH", "OK", "LOW"],
+                "@normalize": "none",
+                "@coerceDefault": "LOW" } },
             { "field.string": { "name": "note" } }
         ] } },
         { "template.output": { "name": "Opinion",
@@ -136,7 +141,7 @@ class KotlinOutputCompilesTest {
             val recoverMethod = parserClass.getDeclaredMethod("recover", String::class.java)
             @Suppress("UNCHECKED_CAST")
             val recoveryResult = recoverMethod.invoke(parserInstance,
-                "Sure!\n```json\n{\"text\":\"hi\",\"confidence\":\"medium\"}\n```"
+                "Sure!\n```json\n{\"text\":\"hi\",\"confidence\":\"medium\",\"priority\":\"banana\"}\n```"
             ) as RecoveryResult<*>
 
             // data: OpinionRecovered — access fields via Kotlin data class properties (getters).
@@ -146,18 +151,26 @@ class KotlinOutputCompilesTest {
             val recoveredClass = cl.loadClass("acme.ai.prompts.OpinionRecovered")
             val confidenceGetter = recoveredClass.getDeclaredMethod("getConfidence")
             val textGetter = recoveredClass.getDeclaredMethod("getText")
+            val priorityGetter = recoveredClass.getDeclaredMethod("getPriority")
 
             val confidenceVal = confidenceGetter.invoke(recovered)
             val textVal = textGetter.invoke(recovered)
+            val priorityVal = priorityGetter.invoke(recovered)
 
             assertEquals("OK", confidenceVal,
                 "alias medium→OK must fire: expected confidence=OK, got $confidenceVal")
             assertEquals("hi", textVal,
                 "text field must be recovered as 'hi', got $textVal")
+            // FR-011: off-vocab priority="banana" folds to @coerceDefault "LOW".
+            assertEquals("LOW", priorityVal,
+                "FR-011 @coerceDefault must fold off-vocab 'banana' to LOW, got $priorityVal")
 
             val report = recoveryResult.report
             assertFalse(report.hasLostRequired(),
                 "no required fields were absent so hasLostRequired() must be false; lost=${report.lostRequired()}")
+            // FR-011: priority classifies DEFAULTED (reached via @coerceDefault).
+            assertEquals("DEFAULTED", report.states()["priority"]?.toString(),
+                "priority must classify DEFAULTED; states=${report.states()}")
 
             // --- renderFormat() ---
             val promptClass = cl.loadClass("acme.ai.prompts.OpinionPrompt")

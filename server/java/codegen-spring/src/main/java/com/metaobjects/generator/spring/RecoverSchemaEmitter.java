@@ -66,7 +66,7 @@ final class RecoverSchemaEmitter {
 
         List<String> fieldSpecs = new ArrayList<>();
         for (MetaField<?> field : vo.getMetaFields()) {
-            fieldSpecs.add(fieldSpecLiteral(field));
+            fieldSpecs.add(fieldSpecLiteral(field, vo));
         }
 
         return "new RecoverSchema(" + formatEnum + ", \"" + rootName + "\", java.util.List.of("
@@ -97,12 +97,12 @@ final class RecoverSchemaEmitter {
      * Build a {@code FieldSpec.*(...)} call for a single field.
      */
     @SuppressWarnings("rawtypes")
-    private static String fieldSpecLiteral(MetaField<?> field) {
+    private static String fieldSpecLiteral(MetaField<?> field, MetaObject owner) {
         String name = field.getName();
         boolean required = isRequired(field);
 
         if (field instanceof EnumField ef) {
-            return enumFieldSpec(name, required, ef);
+            return enumFieldSpec(name, required, ef, owner);
         }
 
         // Nested object or array-of-objects: bounded deferral.
@@ -125,7 +125,7 @@ final class RecoverSchemaEmitter {
      * Build a {@code FieldSpec.enumField(...)} call, including enum values and the
      * alias map (empty map when no {@code @enumAlias} is present).
      */
-    private static String enumFieldSpec(String name, boolean required, EnumField field) {
+    private static String enumFieldSpec(String name, boolean required, EnumField field, MetaObject owner) {
         // @values — guaranteed non-null by the loader's ValidationPhase.
         @SuppressWarnings("unchecked")
         List<String> values = (List<String>) field.getMetaAttr(EnumField.ATTR_VALUES).getValue();
@@ -144,8 +144,65 @@ final class RecoverSchemaEmitter {
         for (String v : values) quoted.add("\"" + v + "\"");
         String valuesList = "java.util.List.of(" + String.join(", ", quoted) + ")";
 
+        // FR-011: resolve the three new enum args (field → object.value → "strip" for normalize).
+        // Keep the back-compat 4-arg form when nothing is set; otherwise emit the 7-arg form
+        // (name, required, values, aliases, coerceDefault, normalize, defaultValue).
+        String coerceDefault = ownAttrString(field, EnumField.ATTR_COERCE_DEFAULT);
+        String defaultValue = ownAttrString(field, EnumField.ATTR_DEFAULT);
+        String normalize = resolveNormalize(field, owner);
+
+        if (coerceDefault == null && defaultValue == null && NORMALIZE_DEFAULT.equals(normalize)) {
+            return "FieldSpec.enumField(\"" + name + "\", " + required + ", "
+                + valuesList + ", " + aliasMapLiteral + ")";
+        }
+
+        String cdLit = coerceDefault == null ? "null" : "\"" + escapeJava(coerceDefault) + "\"";
+        String normLit = "\"" + normalize + "\"";
+        String dvLit = defaultValue == null ? "null" : "\"" + escapeJava(defaultValue) + "\"";
+
         return "FieldSpec.enumField(\"" + name + "\", " + required + ", "
-            + valuesList + ", " + aliasMapLiteral + ")";
+            + valuesList + ", " + aliasMapLiteral + ", " + cdLit + ", " + normLit + ", " + dvLit + ")";
+    }
+
+    /** FR-011 default {@code @normalize} mode ("strip") — mirrors {@link EnumField#NORMALIZE_DEFAULT}. */
+    private static final String NORMALIZE_DEFAULT = EnumField.NORMALIZE_DEFAULT;
+
+    /**
+     * FR-011: resolve the enum normalization mode for a field — field-level {@code @normalize},
+     * else the owning {@code object.value}'s {@code @normalize} (the per-object default), else the
+     * global default ("strip"). {@code owner} may be {@code null} (resolution then skips the object
+     * tier). Mirrors the TS resolveNormalize and the C# Fr010FieldMapping.ResolveNormalize.
+     */
+    static String resolveNormalize(MetaField<?> field, MetaObject owner) {
+        String fieldMode = ownAttrString(field, EnumField.ATTR_NORMALIZE);
+        if (fieldMode != null) return fieldMode;
+        String objMode = owner == null ? null : ownAttrString(owner, EnumField.ATTR_NORMALIZE);
+        if (objMode != null) return objMode;
+        return NORMALIZE_DEFAULT;
+    }
+
+    /** The own (non-inherited) string value of an attr on a node, or {@code null} when absent/empty. */
+    private static String ownAttrString(com.metaobjects.MetaData node, String attr) {
+        if (!node.hasMetaAttr(attr, false)) return null;
+        String s = node.getMetaAttr(attr, false).getValueAsString();
+        return (s == null || s.isEmpty()) ? null : s;
+    }
+
+    /** Escape a value for embedding inside a Java double-quoted string literal. */
+    private static String escapeJava(String value) {
+        StringBuilder sb = new StringBuilder(value.length() + 4);
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '\\': sb.append("\\\\"); break;
+                case '"':  sb.append("\\\""); break;
+                case '\t': sb.append("\\t"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                default:   sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     /**

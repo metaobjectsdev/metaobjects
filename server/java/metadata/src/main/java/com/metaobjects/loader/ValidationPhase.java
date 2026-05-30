@@ -344,6 +344,20 @@ public final class ValidationPhase {
             }
         }
 
+        // @default (absent-fill member) membership against effective @values.
+        if (node.hasMetaAttr(EnumField.ATTR_DEFAULT, false)) {
+            String def = node.getMetaAttr(EnumField.ATTR_DEFAULT, false).getValueAsString();
+            List<String> effective = effectiveEnumValues(node);
+            if (def != null && !effective.contains(def)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": field.enum '" + node.getName()
+                        + "' @" + EnumField.ATTR_DEFAULT + " '" + def
+                        + "' is not one of @" + EnumField.ATTR_VALUES + ": " + effective,
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+            }
+        }
+
         // @normalize closed-enum membership.
         if (node.hasMetaAttr(EnumField.ATTR_NORMALIZE, false)) {
             String mode = node.getMetaAttr(EnumField.ATTR_NORMALIZE, false).getValueAsString();

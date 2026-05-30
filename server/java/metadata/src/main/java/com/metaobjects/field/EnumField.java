@@ -76,6 +76,16 @@ public class EnumField extends PrimitiveField<String> {
     public static final String ATTR_COERCE_DEFAULT = "coerceDefault";
 
     /**
+     * Name of the optional FR-011 {@code @default} attribute (string) — the absent-fill
+     * enum member. When the field is ABSENT from the model response, tolerant recover fills
+     * this value and classifies the field {@code DEFAULTED} (which satisfies {@code required}).
+     * Distinct from the framework's {@code defaultValue} (column default). Loader-validated to
+     * be one of the field's effective {@code @values}.
+     * Cross-language vocabulary: {@code @default} in canonical JSON.
+     */
+    public static final String ATTR_DEFAULT = "default";
+
+    /**
      * Name of the optional FR-011 {@code @normalize} attribute (closed enum
      * {@code none|collapse|strip}, default {@code strip}). Controls the ASCII normalization
      * applied during tolerant enum recover. On {@code field.enum} it is per-field; on
@@ -169,6 +179,12 @@ public class EnumField extends PrimitiveField<String> {
                 // fallback member. Membership against @values is validated post-load in
                 // ValidationPhase (ERR_BAD_ATTR_VALUE), mirroring the @values content pass.
                 def.optionalAttributeWithConstraints(ATTR_COERCE_DEFAULT)
+                   .ofType(StringAttribute.SUBTYPE_STRING)
+                   .asSingle();
+
+                // FR-011: optional @default string — absent-fill recover member (DEFAULTED).
+                // Membership against @values is validated post-load in ValidationPhase.
+                def.optionalAttributeWithConstraints(ATTR_DEFAULT)
                    .ofType(StringAttribute.SUBTYPE_STRING)
                    .asSingle();
 

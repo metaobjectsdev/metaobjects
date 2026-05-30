@@ -103,6 +103,39 @@ public class RecoverSchemaEmitterTest extends SharedRegistryTestBase {
             s.contains("java.util.Map.of(\"a"));
     }
 
+    // -------------------------------------------------------------------------
+    // FR-011 — @coerceDefault + resolved @normalize emission
+    // -------------------------------------------------------------------------
+
+    /**
+     * FR-011: an enum field owning {@code @coerceDefault} (and inheriting the object-level
+     * {@code @normalize: "collapse"}) emits the 7-arg enumField form with the resolved
+     * normalize mode and the coerceDefault member. A field with its own {@code @normalize: "none"}
+     * overrides the object default. A plain enum with no FR-011 attrs but a non-default inherited
+     * normalize still emits the 7-arg form (because the resolved mode != "strip").
+     */
+    @Test
+    public void emitsFr011CoerceDefaultAndResolvedNormalize() throws Exception {
+        MetaObject vo = SpringTestFixtures.loadVo(
+            SpringTestFixtures.RECOVER_FR011_FIXTURE, "Fr011Payload");
+        String s = RecoverSchemaEmitter.schemaLiteral(vo, "json", "Fr011Payload");
+
+        // status: coerceDefault="LOW", normalize resolves to the object default "collapse".
+        assertTrue("status should emit 7-arg form with coerceDefault LOW + normalize collapse; saw:\n" + s,
+            s.contains("FieldSpec.enumField(\"status\", true, java.util.List.of(\"HIGH\", \"OK\", \"LOW\")"
+                + ", java.util.Map.of(), \"LOW\", \"collapse\", null)"));
+
+        // phase: own @normalize="none" overrides the object default; no coerceDefault/default.
+        assertTrue("phase should emit 7-arg form with normalize none; saw:\n" + s,
+            s.contains("FieldSpec.enumField(\"phase\", true, java.util.List.of(\"HIGH\", \"OK\", \"LOW\")"
+                + ", java.util.Map.of(), null, \"none\", null)"));
+
+        // plain: no FR-011 attrs but inherits object "collapse" → still 7-arg (mode != strip).
+        assertTrue("plain should emit 7-arg form with inherited normalize collapse; saw:\n" + s,
+            s.contains("FieldSpec.enumField(\"plain\", false, java.util.List.of(\"HIGH\", \"OK\", \"LOW\")"
+                + ", java.util.Map.of(), null, \"collapse\", null)"));
+    }
+
     @Test
     public void emitsConstructorArgsUsingRecoverMap() throws Exception {
         String a = RecoverSchemaEmitter.constructorArgs(vo());

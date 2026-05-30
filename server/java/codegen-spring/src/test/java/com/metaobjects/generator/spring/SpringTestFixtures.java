@@ -81,6 +81,34 @@ final class SpringTestFixtures {
         """;
 
     /**
+     * FR-011 fixture: an {@code object.value} carrying an object-level {@code @normalize}
+     * default, plus enum fields exercising {@code @coerceDefault} and normalize resolution.
+     * Package: {@code acme::ai}. VO: {@code Fr011Payload}.
+     * <ul>
+     *   <li>{@code status}: enum HIGH/OK/LOW, owns {@code @coerceDefault: "LOW"}, no own
+     *       {@code @normalize} → inherits the object default {@code "collapse"}.</li>
+     *   <li>{@code phase}: enum HIGH/OK/LOW, owns {@code @normalize: "none"} (overrides object).</li>
+     *   <li>{@code plain}: enum HIGH/OK/LOW, no FR-011 attrs but inherits object {@code "collapse"}.</li>
+     * </ul>
+     */
+    static final String RECOVER_FR011_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ai", "children": [
+            { "object.value": { "name": "Fr011Payload", "@normalize": "collapse", "children": [
+                { "field.enum": { "name": "status", "@required": true,
+                                  "@values": ["HIGH","OK","LOW"],
+                                  "@coerceDefault": "LOW" } },
+                { "field.enum": { "name": "phase", "@required": true,
+                                  "@values": ["HIGH","OK","LOW"],
+                                  "@normalize": "none" } },
+                { "field.enum": { "name": "plain", "@required": false,
+                                  "@values": ["HIGH","OK","LOW"] } }
+            ] } }
+          ] }
+        }
+        """;
+
+    /**
      * Inline metadata for {@link OutputFormatSpecEmitter} unit tests.
      * Package: {@code acme::ai}.
      *
@@ -133,6 +161,10 @@ final class SpringTestFixtures {
                 { "field.enum":    { "name": "confidence", "@required": true,
                                     "@values": ["HIGH","OK","LOW"],
                                     "@enumAlias": { "medium": "OK" } } },
+                { "field.enum":    { "name": "priority",   "@required": true,
+                                    "@values": ["HIGH","OK","LOW"],
+                                    "@normalize": "none",
+                                    "@coerceDefault": "LOW" } },
                 { "field.string":  { "name": "note" } }
             ] } },
             { "template.output": {
