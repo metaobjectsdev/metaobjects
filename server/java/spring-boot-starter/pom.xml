@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.metaobjects</groupId>
+        <artifactId>metaobjects</artifactId>
+        <version>7.1.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>metaobjects-spring-boot-starter</artifactId>
+    <packaging>jar</packaging>
+
+    <name>MetaObjects :: Spring Boot Starter</name>
+    <description>One-dependency Spring Boot starter: metadata-loader + OMDB persistence autoconfiguration.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-metadata</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-omdb</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-core-spring</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+</project>
