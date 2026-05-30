@@ -1,6 +1,16 @@
-"""Render-tier engine: the build-time template drift-check ``verify`` (FR-004) and
-the FR-010 tolerant ``recover`` parser."""
+"""Render-tier engine: the build-time template drift-check ``verify`` (FR-004), the
+FR-010 tolerant ``recover`` parser, and the FR-010 output-format prompt renderer."""
 
+from metaobjects.render.prompt import (
+    PROMPT_OVERRIDES_NONE,
+    OutputFormatSpec,
+    PromptField,
+    PromptOverrides,
+    PromptStyle,
+    no_overrides,
+    prompt_style_from,
+    render_output_format,
+)
 from metaobjects.render.recover import (
     FieldKind,
     FieldRecovery,
@@ -32,12 +42,17 @@ __all__ = [
     "ERR_PARTIAL_UNRESOLVED",
     "ERR_REQUIRED_SLOT_UNUSED",
     "ERR_VAR_NOT_ON_PAYLOAD",
+    "PROMPT_OVERRIDES_NONE",
     "FieldKind",
     "FieldRecovery",
     "FieldSpec",
     "Format",
     "InMemoryProvider",
+    "OutputFormatSpec",
     "PayloadField",
+    "PromptField",
+    "PromptOverrides",
+    "PromptStyle",
     "Provider",
     "RecoverOptions",
     "RecoverOutcome",
@@ -46,7 +61,10 @@ __all__ = [
     "RecoveryResult",
     "Tolerance",
     "VerifyError",
+    "no_overrides",
+    "prompt_style_from",
     "recover",
     "recover_map",
+    "render_output_format",
     "verify",
 ]
