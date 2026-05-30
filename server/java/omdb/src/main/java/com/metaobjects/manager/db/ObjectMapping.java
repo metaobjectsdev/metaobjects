@@ -61,7 +61,6 @@ public class ObjectMapping {
 	}
 	
 	public boolean isInThisMap( MetaField mf ) {
-		if ( nameMapping.get( mf.getName() ) != null ) return true;
-		return false;
+		return nameMapping.get( mf.getName() ) != null;
 	}
 }
