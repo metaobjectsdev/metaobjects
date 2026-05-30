@@ -157,6 +157,83 @@ describe("FR-011 @coerceDefault / @normalize — loading + round-trip", () => {
     expect(codes(errors)).toContain("ERR_BAD_ATTR_VALUE");
   });
 
+  it("validates @coerceDefault against @values INHERITED via extends: (member → no error)", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "acme::ai",
+        children: [
+          {
+            "field.enum": {
+              name: "Confidence",
+              abstract: true,
+              "@values": ["A", "B", "C"],
+            },
+          },
+          {
+            "object.value": {
+              name: "AnswerPayload",
+              children: [
+                {
+                  "field.enum": {
+                    name: "confidence",
+                    extends: "Confidence",
+                    "@coerceDefault": "B",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    // @coerceDefault=B is a member of the INHERITED @values [A,B,C] → no membership error.
+    const badAttr = errors.find(
+      (e) =>
+        (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE" &&
+        (e as { message?: string }).message?.includes("coerceDefault"),
+    );
+    expect(badAttr).toBeUndefined();
+  });
+
+  it("emits ERR_BAD_ATTR_VALUE when @coerceDefault is not in @values INHERITED via extends:", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "acme::ai",
+        children: [
+          {
+            "field.enum": {
+              name: "Confidence",
+              abstract: true,
+              "@values": ["A", "B", "C"],
+            },
+          },
+          {
+            "object.value": {
+              name: "AnswerPayload",
+              children: [
+                {
+                  "field.enum": {
+                    name: "confidence",
+                    extends: "Confidence",
+                    "@coerceDefault": "ZZZ",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    // @coerceDefault=ZZZ is NOT a member of the INHERITED @values [A,B,C] → membership error.
+    const err = errors.find(
+      (e) =>
+        (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE" &&
+        (e as { message?: string }).message?.includes("coerceDefault"),
+    );
+    expect(err).toBeDefined();
+    expect(codes(errors)).toContain("ERR_BAD_ATTR_VALUE");
+  });
+
   it("emits ERR_BAD_ATTR_VALUE for a bad @normalize value on field.enum", async () => {
     const { errors } = await load({
       "metadata.root": {

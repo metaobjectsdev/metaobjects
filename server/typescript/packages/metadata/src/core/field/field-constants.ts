@@ -158,4 +158,4 @@ export type NormalizeMode = (typeof NORMALIZE_MODES)[number];
 
 /** FR-011: global normalization default when neither the field nor its owning
  *  object.value declares @normalize. */
-export const NORMALIZE_DEFAULT = "strip";
+export const NORMALIZE_DEFAULT: NormalizeMode = "strip";
