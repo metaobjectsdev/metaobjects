@@ -5,6 +5,8 @@ import { type Kysely, sql } from "kysely";
 import {
   appliedRecords,
   ensureLedger,
+  type LedgerDialect,
+  type LedgerOptions,
   recordApplied,
 } from "./ledger.js";
 
@@ -14,6 +16,14 @@ const UP_SQL = "up.sql";
 export interface ApplyPendingOptions {
   /** When true, compute + return the plan but apply nothing. */
   dryRun: boolean;
+  /**
+   * Target dialect. Decides ledger schema-qualification (pg) and whether the
+   * Postgres advisory lock is taken. Defaults to `sqlite` (no schema, no lock)
+   * to preserve the original single-DB behavior for callers that omit it.
+   */
+  dialect?: LedgerDialect;
+  /** Multi-tenant ledger location + advisory-lock name. Defaults preserve current behavior. */
+  ledger?: LedgerOptions;
 }
 
 export interface ApplyPendingResult {
@@ -48,8 +58,11 @@ export async function applyPending(
   dir: string,
   opts: ApplyPendingOptions,
 ): Promise<ApplyPendingResult> {
-  await ensureLedger(db);
-  const recorded = await appliedRecords(db);
+  const dialect = opts.dialect ?? "sqlite";
+  const ledger = opts.ledger;
+
+  await ensureLedger(db, dialect, ledger);
+  const recorded = await appliedRecords(db, dialect, ledger);
 
   const discovered = await discoverMigrations(dir);
 
@@ -85,7 +98,7 @@ export async function applyPending(
       for (const stmt of splitSqlStatements(text)) {
         await sql.raw(stmt).execute(trx);
       }
-      await recordApplied(trx, m.name, checksum);
+      await recordApplied(trx, m.name, checksum, dialect, ledger);
     });
     applied.push(m.name);
   }

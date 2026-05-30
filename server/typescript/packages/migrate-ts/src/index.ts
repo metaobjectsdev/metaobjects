@@ -66,10 +66,14 @@ export { introspectD1, type D1Runner, type IntrospectD1Options } from "./introsp
 export {
   ensureLedger,
   recordApplied,
+  deleteApplied,
   appliedNames,
   appliedRecords,
   MIGRATIONS_TABLE,
+  DEFAULT_LEDGER_SCHEMA,
   type LedgerRow,
+  type LedgerOptions,
+  type LedgerDialect,
 } from "./apply/ledger.js";
 export {
   applyPending,
