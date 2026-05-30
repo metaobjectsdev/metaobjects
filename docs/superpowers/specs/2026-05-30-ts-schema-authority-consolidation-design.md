@@ -45,6 +45,27 @@ We will make **TypeScript the single authority for database schema**: DDL genera
 - Migration scenarios → TS-only; update the corpus README protocol (schema provisioned from committed DDL, not per-port `meta migrate --from-db`).
 - Update `spec/`, per-port docs, CLAUDE.md (pillar wording: drift detection schema-coverage is now `meta verify --db`; ports are data-access), and the conformance memories.
 
+## CLI architecture (cross-language)
+
+Commands split into two categories, and that split resolves the "is `meta` now Node-specific?" question:
+
+- **Per-language commands** (`gen`, `init`, codegen/runtime `verify`) are inherently language-specific (`codegen-spring` is Java, `codegen-ts` is TS, …) and run in **each language's own build toolchain** — `mvn …:gen` (Java/Kotlin Maven plugin), a `dotnet`/MSBuild task (C#), a console-script/build hook (Python), the Node `meta` CLI (TS). A single CLI cannot do another language's codegen, so there is no unified codegen binary by design.
+- **Schema commands** (`migrate`, `verify --db` drift) operate on the **shared canonical metadata + a DB connection** — language-agnostic. They live in **one canonical Node `meta` CLI**, used by **any** project regardless of backend language. Schema is thus a **standalone tool, like Flyway / Liquibase / Atlas / sqitch** — not re-implemented per language.
+
+Decisions (locked 2026-05-30):
+- **One canonical `meta` = the Node CLI**, owning schema (`migrate`, `verify --db`) for all backends, plus TS codegen + `init`.
+- **Ship the Node `meta` CLI as a standalone single-file binary** (Node SEA / `bun build --compile` / Atlas-style per-OS binaries) so non-TS adopters need **no Node toolchain** — just the binary, for dev/CI schema ops. The app runtime never depends on Node.
+- **Per-language codegen is invoked via that language's build tool**, NOT a competing global `meta` binary. **Reconcile the C# `meta` dotnet-tool** (which would collide on PATH with the Node `meta`) to `dotnet meta` / an MSBuild task so the bare `meta` is unambiguously the schema+TS CLI.
+- **No proxying** (a per-language CLI shelling to a bundled Node) and **no per-language binary names** (`meta-ts`/`meta-java`) — both rejected (proxying re-couples the boundary + bundles Node everywhere; renaming is churn that doesn't answer who-owns-schema).
+
+| Concern | Tool | Who runs it |
+|---|---|---|
+| TS codegen, `init` | Node `meta` CLI | TS projects |
+| Java/Kotlin codegen | `mvn …:gen` (Maven plugin) | JVM projects |
+| C# codegen | `dotnet meta` / MSBuild task | .NET projects |
+| Python codegen | console-script / build hook | Python projects |
+| **Schema migrate + drift (`verify --db`)** | **Node `meta` CLI (standalone binary)** | **any project, any backend** |
+
 ## Cross-language contract impact
 - **Persistence-conformance protocol changes:** "build schema via the port's migration engine" → "execute the committed TS-produced `schema.<dialect>.sql`." Update `spec/conformance-tests.md` / the corpus README.
 - **Metamodel vocabulary unchanged** — `source.rdb`/`origin.*`/`@kind` etc. are authoring concepts; only *who turns them into DDL* changes (TS, once).
@@ -63,7 +84,9 @@ Each phase ends with the standard gate (suite green → code-reviewer + code-sim
 1. **Conformance dialect standardization:** make ALL ports' *query* scenarios run on **Testcontainers Postgres** (so one TS-produced `schema.postgres.sql` serves everyone, and Java drops Derby for conformance) — vs. carry per-dialect DDL where TS supports it (postgres + sqlite) and keep Derby some other way (TS can't emit Derby). **Recommend: standardize query conformance on Postgres.**
 2. **Java runtime auto-create:** in "fully pure data-access," remove `MetaClassDBValidatorService` + legacy `createTable` DDL once the harness uses committed DDL (recommended) — vs. keep it as an optional dev-only convenience. Same question for C#/Python "create-if-missing" conveniences.
 3. **TS apply:** `meta migrate` currently only *writes* `up.sql` for postgres/sqlite (apply is d1-only). Does the consolidation need a real `--apply` for postgres/sqlite (so production provisioning is one command), or is "emit SQL + run it yourself" acceptable for v1? (The corpus artifact is generated SQL either way.)
-4. **C#/Python `meta` CLI migrate surfaces** — confirm full removal (not deprecate-and-no-op), mirroring the Java `meta:migrate` decision.
+4. **C#/Python `meta` CLI migrate surfaces** — RESOLVED by the CLI architecture above: schema (`migrate`/`verify --db`) is owned by the Node `meta` CLI, so C#/Python CLIs **drop their migrate/`--from-db` surfaces entirely** (keep codegen). The C# `meta` dotnet-tool is reconciled to `dotnet meta`/MSBuild to free the bare `meta` name.
+
+**CLI model — RESOLVED 2026-05-30** (see "CLI architecture"): one canonical Node `meta` CLI owns schema for all backends, shipped as a standalone binary; per-language codegen stays in build tools.
 
 ## Non-goals
 - Changing the metamodel vocabulary or wire format.
