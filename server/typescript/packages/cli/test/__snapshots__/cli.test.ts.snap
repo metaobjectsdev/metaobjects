@@ -30,6 +30,12 @@ EXPORT FLAGS:
 
 VERIFY FLAGS:
   --prompts <dir>       Directory of provider-resolved template text (default: prompts)
+  --db <url>            Live DB URL — enables the schema-drift gate (exit 1 on drift).
+                        Supports: file:, libsql:, postgres:, postgresql:. Omit to skip.
+  --dialect sqlite|postgres   Optional override (auto-detected from --db URL scheme)
+  --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the
+                        verify drift gate (the gate fails on ANY detected change)
+  --skip-schema         Skip the schema-drift gate even when --db is present
 
 PROMPT-SNAPSHOT FLAGS:
   --check               Compare against committed snapshots; exit 1 on drift (CI gate)

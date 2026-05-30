@@ -93,12 +93,37 @@ export function parseExportArgs(argv: string[]): ExportFlags {
 }
 
 // ---------------------------------------------------------------------------
+// shared DB-connection vocab (used by both verify --db and migrate)
+// ---------------------------------------------------------------------------
+
+const DIALECTS = ["sqlite", "postgres", "d1"] as const;
+type Dialect = (typeof DIALECTS)[number];
+
+const ALLOW_TOKENS = [
+  "drop-column",
+  "drop-table",
+  "type-change",
+  "drop-index",
+  "drop-fk",
+  "nullable-to-not-null",
+] as const;
+type AllowToken = (typeof ALLOW_TOKENS)[number];
+
+// ---------------------------------------------------------------------------
 // verify flags
 // ---------------------------------------------------------------------------
 
 export interface VerifyFlags {
   /** Directory (relative to cwd) holding provider-resolved template text. */
   prompts: string | undefined;
+  /** Live DB connection URL; when present, enables the schema-drift gate. */
+  db: string | undefined;
+  /** Optional dialect override (auto-detected from --db URL scheme otherwise). */
+  dialect: Dialect | undefined;
+  /** Destructive-change permissions; only affects how drift is described. */
+  allow: AllowToken[];
+  /** Skip the schema-drift gate even when --db is present. */
+  skipSchema: boolean;
 }
 
 export function parseVerifyArgs(argv: string[]): VerifyFlags {
@@ -106,12 +131,38 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     args: argv,
     options: {
       prompts: { type: "string" },
+      db: { type: "string" },
+      dialect: { type: "string" },
+      allow: { type: "string" },
+      "skip-schema": { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
   });
+
+  const dialect = values.dialect as string | undefined;
+  if (dialect !== undefined && !DIALECTS.includes(dialect as Dialect)) {
+    throw new Error(`invalid --dialect '${dialect}'; expected: ${DIALECTS.join(", ")}`);
+  }
+
+  const allowRaw = (values.allow as string | undefined) ?? "";
+  const allowTokens = allowRaw.length === 0
+    ? []
+    : allowRaw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+  for (const tok of allowTokens) {
+    if (!ALLOW_TOKENS.includes(tok as AllowToken)) {
+      throw new Error(
+        `invalid --allow token '${tok}'; expected one of: ${ALLOW_TOKENS.join(", ")}`,
+      );
+    }
+  }
+
   return {
     prompts: values.prompts,
+    db: values.db as string | undefined,
+    dialect: dialect as Dialect | undefined,
+    allow: allowTokens as AllowToken[],
+    skipSchema: !!values["skip-schema"],
   };
 }
 
@@ -146,19 +197,6 @@ export function parsePromptSnapshotArgs(argv: string[]): PromptSnapshotFlags {
 // migrate flags
 // ---------------------------------------------------------------------------
 
-const DIALECTS = ["sqlite", "postgres", "d1"] as const;
-type Dialect = (typeof DIALECTS)[number];
-
-const ALLOW_TOKENS = [
-  "drop-column",
-  "drop-table",
-  "type-change",
-  "drop-index",
-  "drop-fk",
-  "nullable-to-not-null",
-] as const;
-type AllowToken = (typeof ALLOW_TOKENS)[number];
-
 const ON_AMBIGUOUS = ["abort", "rename", "drop-add"] as const;
 type OnAmbiguous = (typeof ON_AMBIGUOUS)[number];
 
@@ -174,6 +212,12 @@ export interface MigrateFlags {
   d1Binding: string | undefined;
   remote: boolean;
   apply: boolean;
+  /**
+   * Roll back all applied migrations NEWER than this target (the target itself
+   * is retained), running each migration's down.sql in reverse order. Mutually
+   * exclusive with --apply. postgres/sqlite only (not d1).
+   */
+  rollback: string | undefined;
   yes: boolean;
 }
 
@@ -191,11 +235,16 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
       "d1": { type: "string" },
       "remote": { type: "boolean", default: false },
       "apply": { type: "boolean", default: false },
+      "rollback": { type: "string" },
       "yes": { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
   });
+
+  if (values.rollback !== undefined && values.apply === true) {
+    throw new Error(`--rollback and --apply are mutually exclusive`);
+  }
 
   const dialect = values.dialect as string | undefined;
   if (dialect !== undefined && !DIALECTS.includes(dialect as Dialect)) {
@@ -230,6 +279,7 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
     d1Binding: values.d1 as string | undefined,
     remote: !!values.remote,
     apply: !!values.apply,
+    rollback: values.rollback as string | undefined,
     yes: !!values.yes,
   };
 }

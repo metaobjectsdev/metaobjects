@@ -83,11 +83,17 @@ export interface ViewDescriptor {
   /** Same semantics as TableDescriptor.schema. */
   schema?: string;
   /**
-   * View body: everything between `CREATE VIEW <name> AS` and the trailing `;`
-   * (the SELECT clause through the FROM/WHERE/GROUP-BY tail). Populated by
-   * `buildExpectedSchema` from projection metadata; omitted by introspect
-   * (body-level comparison isn't implemented yet — diff matches by name only,
-   * so a body change does NOT trigger replace-view today).
+   * View definition SQL.
+   *
+   * On the EXPECTED side (`buildExpectedSchema` / `buildExpectedViews`) this is
+   * the view body — the SELECT clause through the FROM/WHERE/GROUP-BY tail.
+   *
+   * On the ACTUAL side (`introspect`) this is whatever the DB catalog stores:
+   * sqlite's `sqlite_master.sql` is the full `CREATE VIEW <name> AS <body>`
+   * statement, while Postgres' `information_schema.views.view_definition` is the
+   * body only. `diff`'s view-body comparator normalizes both sides (strips any
+   * leading `CREATE VIEW ... AS`, collapses whitespace) before comparing, so a
+   * body change triggers a `replace-view`.
    */
   sql?: string;
 }

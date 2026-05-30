@@ -20,10 +20,11 @@ import {
   applyD1SafetyPass,
   writeMigrationD1,
   introspectD1,
+  applyPending,
+  rollbackTo,
   findWranglerConfig,
   parseWranglerConfig,
   resolveD1Binding,
-  type AllowOptions,
   type AmbiguousChange,
   type AmbiguousResolution,
   type Change,
@@ -40,30 +41,10 @@ import {
   computeProjectionMigrations,
   computeProjectionViewDependencies,
 } from "../lib/projection-migrations.js";
-
-// Map CLI allow tokens → migrate-ts AllowOptions field names
-const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
-  "drop-column": "dropColumn",
-  "drop-table": "dropTable",
-  "type-change": "typeChange",
-  "drop-index": "dropIndex",
-  "drop-fk": "dropFk",
-  "nullable-to-not-null": "nullableToNotNull",
-};
+import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
 
 function mapOnAmbiguous(v: "abort" | "rename" | "drop-add"): AmbiguousResolution {
   return v === "drop-add" ? "drop+add" : v;
-}
-
-function tokensToAllowOptions(tokens: string[]): AllowOptions {
-  const opts: AllowOptions = {};
-  for (const tok of tokens) {
-    const field = ALLOW_TOKEN_MAP[tok];
-    if (field !== undefined) {
-      opts[field] = true;
-    }
-  }
-  return opts;
 }
 
 function summarizeChanges(changes: Change[]): Record<string, number> {
@@ -72,25 +53,6 @@ function summarizeChanges(changes: Change[]): Record<string, number> {
     counts[c.kind] = (counts[c.kind] ?? 0) + 1;
   }
   return counts;
-}
-
-function describeChangeForOutput(c: Change): string {
-  switch (c.kind) {
-    case "create-table": return c.table.name;
-    case "drop-table": return c.table;
-    case "rename-table": return `${c.from} → ${c.to}`;
-    case "add-column": return `${c.table}.${c.column.name}`;
-    case "drop-column": return `${c.table}.${c.column}`;
-    case "rename-column": return `${c.table}.${c.from} → ${c.table}.${c.to}`;
-    case "change-column-type": return `${c.table}.${c.column} (${c.from.kind} → ${c.to.kind})`;
-    case "change-column-nullable": return `${c.table}.${c.column} (${c.from ? "NULL" : "NOT NULL"} → ${c.to ? "NULL" : "NOT NULL"})`;
-    case "change-column-default": return `${c.table}.${c.column}`;
-    case "add-index": return `${c.table} idx ${c.index.name}`;
-    case "drop-index": return `${c.table} idx ${c.index}`;
-    case "add-fk": return `${c.table} fk ${c.fk.name}`;
-    case "drop-fk": return `${c.table} fk ${c.fk}`;
-    default: return JSON.stringify(c);
-  }
 }
 
 function allowFlagFor(kind: string): string {
@@ -108,7 +70,7 @@ function allowFlagFor(kind: string): string {
 function blockedToEntries(err: BlockedChangesError): BlockedEntry[] {
   return err.blocked.map((c) => ({
     kind: c.kind,
-    description: describeChangeForOutput(c),
+    description: describeChange(c),
     allowFlag: allowFlagFor(c.kind),
   }));
 }
@@ -152,12 +114,23 @@ export async function migrateCommand(
       log.error(`migrate: --db / DATABASE_URL is not used for dialect 'd1' — wrangler.toml owns connection`);
       return 2;
     }
+    if (config.rollback !== undefined) {
+      log.error(`migrate: --rollback is not supported for dialect 'd1' (use 'wrangler d1 migrations' tooling)`);
+      return 2;
+    }
     return await runD1Migrate(config, metaRoot, wranglerRunner ?? defaultWranglerRunner);
   }
 
   if (config.databaseUrl === undefined) {
     log.error(`migrate: --db <url> required (or set DATABASE_URL, or add migrate.databaseUrl to .metaobjects/config.json)`);
     return 2;
+  }
+
+  // --rollback short-circuits the diff/emit pipeline: it runs the down.sql of
+  // every applied migration NEWER than <target> (target retained), in reverse
+  // order, ledger-tracked + advisory-locked. postgres/sqlite only.
+  if (config.rollback !== undefined) {
+    return await runRollback(config, metaRoot);
   }
 
   // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
@@ -196,6 +169,7 @@ export async function migrateCommand(
 
   let exitCode = 0;
   let writtenPaths: string[] = [];
+  let appliedNames: string[] = [];
   let blocked: BlockedEntry[] = [];
   let ambiguous: AmbiguousEntry[] = [];
   let changeCounts: Record<string, number> = {};
@@ -370,6 +344,28 @@ export async function migrateCommand(
         }
       }
     }
+
+    // --apply: run pending committed migration files against the DB, tracked by
+    // the migration-history ledger, transactionally. Idempotency comes from the
+    // ledger (skip already-applied), NOT from re-diffing — so this also applies
+    // any previously-written-but-unapplied files in this run. Skipped on dry-run
+    // and when a prior step set a non-zero exit (e.g. blocked changes).
+    if (config.apply && exitCode === 0 && !config.dryRun) {
+      const outDir = resolvePath(metaRoot, config.outDir);
+      try {
+        // applyPending calls ensureLedger internally (idempotent), so no need
+        // to ensure it here. Pass the dialect so postgres gets schema-qualified
+        // ledger DDL + the session advisory lock (sqlite is a no-op there).
+        const result = await applyPending(kysely.db, outDir, {
+          dryRun: false,
+          dialect: kysely.dialect as "sqlite" | "postgres",
+        });
+        appliedNames = [...result.applied];
+      } catch (err) {
+        log.error(`migrate: apply failed: ${(err as Error).message}`);
+        exitCode = 1;
+      }
+    }
   } finally {
     try {
       await kysely.close();
@@ -389,7 +385,69 @@ export async function migrateCommand(
   }, { isTTY: !!process.stdout.isTTY });
 
   log.info(output);
+  if (config.apply && exitCode === 0) {
+    if (appliedNames.length > 0) {
+      log.info(`migrate: applied ${appliedNames.length} migration(s): ${appliedNames.join(", ")}`);
+    } else {
+      log.info(`migrate: no pending migrations to apply`);
+    }
+  }
   return exitCode;
+}
+
+/**
+ * `meta migrate --rollback <target>` — run the down.sql of every applied
+ * migration newer than <target> (target retained) in reverse order, against the
+ * live DB, ledger-tracked + advisory-locked. postgres/sqlite only.
+ *
+ * Pass `--rollback ""` (empty target) is treated as null → roll back everything.
+ */
+async function runRollback(
+  config: ResolvedMigrateConfig,
+  metaRoot: string,
+): Promise<number> {
+  // databaseUrl is guaranteed defined by the caller's guard above.
+  const databaseUrl = config.databaseUrl as string;
+
+  // Rollback is destructive and runs hand-authored down.sql; there is no
+  // meaningful dry-run plan (no diff to preview), so reject the combination
+  // rather than silently executing.
+  if (config.dryRun) {
+    log.error(`migrate: --dry-run is not supported with --rollback`);
+    return 2;
+  }
+
+  let kysely;
+  try {
+    kysely = await buildKyselyFromUrl(databaseUrl, config.dialect);
+  } catch (err) {
+    log.error(`migrate: ${(err as Error).message}`);
+    return 2;
+  }
+  // kysely.dialect is "sqlite" | "postgres" here — d1 is rejected upstream.
+  const dialect = kysely.dialect as "sqlite" | "postgres";
+  const outDir = resolvePath(metaRoot, config.outDir);
+  // An empty --rollback string means "roll back everything".
+  const target = config.rollback === "" ? null : (config.rollback ?? null);
+
+  try {
+    const result = await rollbackTo(kysely.db, outDir, target, { dialect });
+    if (result.rolledBack.length > 0) {
+      log.info(`migrate: rolled back ${result.rolledBack.length} migration(s): ${result.rolledBack.join(", ")}`);
+    } else {
+      log.info(`migrate: nothing to roll back${target ? ` newer than '${target}'` : ""}`);
+    }
+    return 0;
+  } catch (err) {
+    log.error(`migrate: rollback failed: ${(err as Error).message}`);
+    return 1;
+  } finally {
+    try {
+      await kysely.close();
+    } catch (err) {
+      log.warn(`migrate: failed to close DB cleanly: ${(err as Error).message}`);
+    }
+  }
 }
 
 async function runD1Migrate(

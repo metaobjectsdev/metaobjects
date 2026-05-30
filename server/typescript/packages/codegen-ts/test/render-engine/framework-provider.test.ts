@@ -13,7 +13,7 @@ import {
   FileSystemProvider,
   ProviderChain,
   projectProvider,
-  __frameworkTemplatesDirForTests,
+  frameworkTemplatesDirForTests,
 } from "../../src/render-engine/framework-provider.js";
 
 const tmpDirs: string[] = [];
@@ -89,7 +89,7 @@ describe("projectProvider() — D1 hybrid precedence", () => {
 
 describe("ProviderChain", () => {
   test("first match wins; later providers don't shadow", () => {
-    const a = new FileSystemProvider(__frameworkTemplatesDirForTests);
+    const a = new FileSystemProvider(frameworkTemplatesDirForTests());
     const projectRoot = makeTempProject();
     const templatesDir = join(projectRoot, "templates");
     mkdirSync(templatesDir, { recursive: true });

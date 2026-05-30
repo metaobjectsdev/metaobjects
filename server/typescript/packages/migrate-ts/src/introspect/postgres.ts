@@ -30,6 +30,7 @@ import type { Kysely } from "kysely";
 import { sql } from "kysely";
 import type { SchemaSnapshot, TableDescriptor, ColumnDescriptor, ColumnDefault, IndexDescriptor, FkDescriptor, FkAction, ViewDescriptor } from "../types.js";
 import type { SqlType } from "../sql-type.js";
+import { MIGRATIONS_TABLE } from "../apply/ledger.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -207,6 +208,7 @@ async function readTableNames(k: Kysely<any>): Promise<SchemaTableRef[]> {
     WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
       AND table_schema NOT LIKE 'pg_%'
       AND table_type = 'BASE TABLE'
+      AND table_name <> ${MIGRATIONS_TABLE}
     ORDER BY table_schema, table_name
   `.execute(k);
   return rows.rows.map((r) => ({ schema: r.table_schema, name: r.table_name }));
@@ -217,13 +219,20 @@ async function readPgViews(k: RawKysely): Promise<ViewDescriptor[]> {
   // "relation views does not exist". We catch and return [] so other tests
   // still pass on pg-mem. Real PG (Postgres 16) handles this correctly.
   try {
-    const rows = await sql<{ table_name: string; table_schema: string }>`
-      SELECT table_name, table_schema FROM information_schema.views
+    // information_schema.views.view_definition is the SELECT body (not the
+    // full CREATE VIEW statement). We carry it through on the descriptor so the
+    // diff can detect view-body drift (not just name presence).
+    const rows = await sql<{ table_name: string; table_schema: string; view_definition: string | null }>`
+      SELECT table_name, table_schema, view_definition FROM information_schema.views
       WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
         AND table_schema NOT LIKE 'pg_%'
       ORDER BY table_schema, table_name
     `.execute(k);
-    return rows.rows.map((r) => ({ name: r.table_name, schema: r.table_schema }));
+    return rows.rows.map((r) => {
+      const view: ViewDescriptor = { name: r.table_name, schema: r.table_schema };
+      if (r.view_definition) view.sql = r.view_definition;
+      return view;
+    });
   } catch {
     // pg-mem: information_schema.views not supported — return empty view list.
     return [];

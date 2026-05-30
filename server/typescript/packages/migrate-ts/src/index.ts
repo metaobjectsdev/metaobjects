@@ -11,6 +11,7 @@
 export { buildExpectedSchema } from "./expected-schema.js";
 export { introspect, introspectPostgres, introspectSqlite } from "./introspect/index.js";
 export { diff } from "./diff/index.js";
+export { computeDrift, type ComputeDriftOptions } from "./drift/drift.js";
 export { emit } from "./emit/index.js";
 export { writeMigration } from "./write-migration.js";
 export { writeMigrationD1 } from "./write-migration-d1.js";
@@ -37,6 +38,7 @@ export type { WriteMigrationOptions, WriteMigrationResult } from "./write-migrat
 export type { WriteMigrationD1Options, WriteMigrationD1Result } from "./write-migration-d1.js";
 
 // View diff + dialect emitters
+export { normalizeViewSql, viewSqlEquals } from "./view-sql-compare.js";
 export { classifyViewDiff } from "./view-diff.js";
 export type { ViewShape, ViewDiffClass, ViewMigrationOpts } from "./view-diff.js";
 export { emitPostgresViewMigration } from "./view-ddl-postgres.js";
@@ -60,6 +62,28 @@ export {
 // D1 introspection
 export { introspectD1, type D1Runner, type IntrospectD1Options } from "./introspect/d1.js";
 
+// Migration-history ledger + ordered transactional apply (postgres/sqlite)
+export {
+  ensureLedger,
+  recordApplied,
+  deleteApplied,
+  appliedNames,
+  appliedRecords,
+  MIGRATIONS_TABLE,
+  DEFAULT_LEDGER_SCHEMA,
+  type LedgerRow,
+  type LedgerOptions,
+  type LedgerDialect,
+} from "./apply/ledger.js";
+export {
+  applyPending,
+  rollbackTo,
+  type ApplyPendingOptions,
+  type ApplyPendingResult,
+  type RollbackToOptions,
+  type RollbackToResult,
+} from "./apply/apply.js";
+
 // Wrangler config helpers
 export {
   findWranglerConfig,
@@ -68,6 +92,3 @@ export {
   type D1Binding,
   type WranglerConfig,
 } from "./wrangler-config.js";
-
-// Migration apply+tracking runner (ADR-0016).
-export * from "./runner/index.js";

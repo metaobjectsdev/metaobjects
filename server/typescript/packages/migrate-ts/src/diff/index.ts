@@ -7,6 +7,7 @@ import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
 import { applyStatus } from "./status.js";
 import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
+import { viewSqlEquals } from "../view-sql-compare.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 
 export interface DiffArgs {
@@ -151,11 +152,9 @@ export async function diff(
     diffTableForeignKeys(expectedTable, actualTable, changes);
   }
 
-  // Pass 2b: views. Identity is (schema, name). Body comparison isn't
-  // implemented — introspect doesn't read view bodies today, so a name match
-  // is no-change regardless of how the user's projection metadata has evolved.
-  // Users who change a view body without renaming need to manually drop+recreate
-  // or do a full bootstrap until replace-view-from-body-diff lands.
+  // Pass 2b: views. Identity is (schema, name). A name present on both sides
+  // with a divergent body (whitespace-/wrapper-normalized) emits replace-view;
+  // introspect now reads the actual body so view-body drift is visible.
   diffViews(args.expected.views, args.actual.views, changes);
 
   // Pass 3: detect table renames BEFORE column renames — so a renamed table's
@@ -291,8 +290,17 @@ function diffViews(
   const exp = new Map(expected.map((v) => [viewIdentity(v), v] as const));
   const act = new Map(actual.map((v) => [viewIdentity(v), v] as const));
   for (const [id, v] of exp) {
-    if (!act.has(id)) {
+    const a = act.get(id);
+    if (a === undefined) {
       changes.push({ kind: "create-view", view: v, ...schemaSpread(v.schema), status: ALLOWED });
+    } else if (
+      // Both bodies known and divergent → replace-view. When either body is
+      // absent (e.g. expected projection unresolvable, or an introspector that
+      // couldn't read the body) we cannot prove a change, so we leave it alone
+      // rather than emit a spurious replace.
+      v.sql !== undefined && a.sql !== undefined && !viewSqlEquals(v.sql, a.sql)
+    ) {
+      changes.push({ kind: "replace-view", view: v, ...schemaSpread(v.schema), status: ALLOWED });
     }
   }
   for (const [id, v] of act) {

@@ -494,7 +494,7 @@ describe("parsePgDefault", () => {
 
 describe("introspectPostgres — views", () => {
   // pg-mem may not support CREATE VIEW — gate this test on MIGRATE_TS_PG_URL.
-  test("captures view names", async () => {
+  test("captures view names and definitions", async () => {
     if (!PG_URL) {
       // pg-mem may not support CREATE VIEW — skip
       return;
@@ -507,6 +507,10 @@ describe("introspectPostgres — views", () => {
       await sql`CREATE VIEW order_summary AS SELECT id FROM orders`.execute(kysely as never);
       const snapshot = await introspectPostgres(kysely);
       expect(snapshot.views.map((v) => v.name)).toContain("order_summary");
+      // 1.1: the view BODY is read (information_schema.view_definition), not just the name.
+      const view = snapshot.views.find((v) => v.name === "order_summary");
+      expect(view?.sql).toBeTruthy();
+      expect(view!.sql!.toLowerCase()).toContain("orders");
     } finally {
       await sql`DROP VIEW IF EXISTS order_summary`.execute(kysely);
       await sql`DROP TABLE IF EXISTS orders`.execute(kysely);

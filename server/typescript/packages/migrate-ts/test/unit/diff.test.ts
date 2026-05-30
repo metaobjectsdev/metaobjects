@@ -93,3 +93,39 @@ describe("diff — per-table index/FK", () => {
     expect(r.changes.find((x) => x.kind === "drop-fk")).toBeDefined();
   });
 });
+
+describe("diff — view-body drift", () => {
+  function withViews(views: SchemaSnapshot["views"]): SchemaSnapshot {
+    return { tables: [], views };
+  }
+
+  test("same-named view, identical body (whitespace-normalized) → no change", async () => {
+    // Expected side carries body-only SQL (as buildExpectedViews produces).
+    const expected = withViews([{ name: "order_summary", sql: "SELECT id, total FROM orders" }]);
+    // Actual side carries the full CREATE VIEW statement (as sqlite_master.sql).
+    const actual = withViews([
+      { name: "order_summary", sql: "CREATE VIEW order_summary AS SELECT id,   total\nFROM orders" },
+    ]);
+    const r = await diff(expected, actual);
+    expect(r.changes.filter((c) => c.kind.endsWith("-view"))).toEqual([]);
+  });
+
+  test("same-named view, DIFFERENT body → replace-view", async () => {
+    const expected = withViews([{ name: "order_summary", sql: "SELECT id, total, tax FROM orders" }]);
+    const actual = withViews([
+      { name: "order_summary", sql: "CREATE VIEW order_summary AS SELECT id, total FROM orders" },
+    ]);
+    const r = await diff(expected, actual);
+    const viewChange = r.changes.find((c) => c.kind === "replace-view");
+    expect(viewChange).toBeDefined();
+    // No spurious create/drop pair when the view exists on both sides.
+    expect(r.changes.find((c) => c.kind === "create-view")).toBeUndefined();
+    expect(r.changes.find((c) => c.kind === "drop-view")).toBeUndefined();
+  });
+
+  test("expected view absent from actual → create-view (unchanged)", async () => {
+    const expected = withViews([{ name: "order_summary", sql: "SELECT id FROM orders" }]);
+    const r = await diff(expected, { tables: [], views: [] });
+    expect(r.changes.find((c) => c.kind === "create-view")).toBeDefined();
+  });
+});

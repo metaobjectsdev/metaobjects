@@ -14,8 +14,17 @@ describe("parseMigrateArgs", () => {
       d1Binding: undefined,
       remote: false,
       apply: false,
+      rollback: undefined,
       yes: false,
     });
+  });
+
+  test("--rollback captures the target", () => {
+    expect(parseMigrateArgs(["--rollback", "20260101000000-init"]).rollback).toBe("20260101000000-init");
+  });
+
+  test("--rollback and --apply are mutually exclusive", () => {
+    expect(() => parseMigrateArgs(["--rollback", "x", "--apply"])).toThrow(/mutually exclusive/i);
   });
 
   test("--db URL", () => {
