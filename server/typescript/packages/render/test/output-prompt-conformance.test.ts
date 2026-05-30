@@ -6,9 +6,17 @@ import {
   Format,
   FieldKind,
   PromptStyle,
+  recover,
+  recoverSchema,
+  scalar,
+  enumField,
+  object,
+  FieldRecovery,
   type OutputFormatSpec,
   type PromptField,
   type PromptOverrides,
+  type RecoverSchema,
+  type FieldSpec,
 } from "../src/index.js";
 
 // The shared corpus lives at the repo root. This file is at
@@ -60,6 +68,15 @@ function buildOutputSpec(c: CaseSpec): OutputFormatSpec {
   return { format: toFormat(c.format), rootName: c.rootName, style: PromptStyle.GUIDE, fields };
 }
 
+function buildRecoverSchema(c: CaseSpec): RecoverSchema {
+  const fields: FieldSpec[] = c.fields.map((f) => {
+    if (f.kind === "ENUM") return enumField(f.name, f.required, f.enumValues ?? null, {});
+    if (f.kind === "OBJECT") return object(f.name, f.required, f.array ?? false, f.nested ? buildRecoverSchema(f.nested) : null);
+    return scalar(f.name, FieldKind[f.kind], f.required);
+  });
+  return recoverSchema(toFormat(c.format), c.rootName, fields);
+}
+
 describe("output-prompt-conformance corpus", () => {
   const names = existsSync(CORPUS)
     ? readdirSync(CORPUS)
@@ -88,6 +105,19 @@ describe("output-prompt-conformance corpus", () => {
         expect(actual).toBe(expected); // zero-drift, byte-exact
         // determinism: identical across runs
         expect(renderOutputFormat(ofs, overrides)).toBe(actual);
+      }
+
+      if (spec.roundTrip) {
+        const exampleFragment = readFileSync(join(dir, "expected.exampleOnly.txt"), "utf8");
+        const outcome = recover(exampleFragment, buildRecoverSchema(spec));
+        // Skew guard: a field the renderer emitted must read back cleanly. We assert
+        // NO state is MALFORMED or LOST_* (robust to DEFAULTED and to how a nested
+        // OBJECT-container path classifies); any such state means the renderer emitted
+        // an example the recover parser cannot read.
+        const bad = [FieldRecovery.MALFORMED, FieldRecovery.LOST_REQUIRED, FieldRecovery.LOST_OPTIONAL] as const;
+        for (const [field, state] of outcome.report.states()) {
+          expect([field, bad.includes(state as (typeof bad)[number])]).toEqual([field, false]);
+        }
       }
     });
   }
