@@ -26,17 +26,11 @@ public static class Recover
 
         Dictionary<string, object?> raw;
         if (span == null)
-        {
             raw = new Dictionary<string, object?>();
-        }
         else if (schema.Format == Format.Json)
-        {
             raw = new JsonForgivingReader().Read(span);
-        }
         else
-        {
             raw = new XmlForgivingReader().Read(span, ci);
-        }
 
         if (raw.Count == 0 && (stripped.Length == 0 || span == null))
         {

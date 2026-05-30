@@ -38,7 +38,7 @@ public sealed class JsonForgivingReader
         char c = _s[_i];
         if (c == '{') return ReadObject();
         if (c == '[') return ReadArray();
-        if (c == '"' || c == '\'') return ReadString(c);
+        if (c is '"' or '\'') return ReadString(c);
         return ReadBareScalar();
     }
 
@@ -96,8 +96,7 @@ public sealed class JsonForgivingReader
             Ws();
             if (_i < _s.Length && _s[_i] == ',') _i++;
             else if (_i < _s.Length && _s[_i] == ']') { _i++; return xs; }
-            else if (_i >= _s.Length) return xs;
-            else return xs; // any other non-separator char → stop
+            else return xs; // EOF or any other non-separator char → stop
         }
     }
 
@@ -106,7 +105,7 @@ public sealed class JsonForgivingReader
         Ws();
         if (_i >= _s.Length) return null;
         char c = _s[_i];
-        if (c == '"' || c == '\'') return ReadString(c);
+        if (c is '"' or '\'') return ReadString(c);
         int start = _i;
         while (_i < _s.Length && (char.IsLetterOrDigit(_s[_i]) || _s[_i] == '_')) _i++;
         return _i > start ? _s[start.._i] : null;

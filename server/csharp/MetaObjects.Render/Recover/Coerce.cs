@@ -47,9 +47,8 @@ public static class Coerce
         }
 
         // Per-field runtime normalizer: keyed by field path, then by simple name.
-        Func<string, object?>? norm = null;
-        opts.Normalizers.TryGetValue(fieldPath, out norm);
-        if (norm == null) opts.Normalizers.TryGetValue(spec.Name, out norm);
+        if (!opts.Normalizers.TryGetValue(fieldPath, out var norm))
+            opts.Normalizers.TryGetValue(spec.Name, out norm);
         if (norm != null)
         {
             object? normalized = norm(raw);

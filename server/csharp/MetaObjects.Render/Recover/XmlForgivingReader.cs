@@ -99,15 +99,9 @@ public sealed class XmlForgivingReader
             out_[key] = value;
             return;
         }
-        object? existing = out_[key];
-        if (existing is List<object?> list)
-        {
+        if (out_[key] is List<object?> list)
             list.Add(value);
-        }
         else
-        {
-            var newList = new List<object?> { existing, value };
-            out_[key] = newList;
-        }
+            out_[key] = new List<object?> { out_[key], value };
     }
 }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using MetaObjects.Render.Recover;
 using Xunit;
 
@@ -69,5 +70,66 @@ public class RecoverMapTests
         };
         var result = RecoverMap.AsStringList(m, "xs");
         Assert.Equal(new[] { "1", "2" }, result);
+    }
+
+    // --- Java-`instanceof Number` parity: numeric helpers gate on numbers, never throw (FR-010 review #1) ---
+
+    [Fact]
+    public void NumericHelpersReturnNullForNonNumberValuesAndNeverThrow()
+    {
+        // A non-numeric string must yield null (Java `instanceof Number` is false), NOT a thrown
+        // FormatException — recover() and its helpers must never throw.
+        var m = new Dictionary<string, object?> { ["s"] = "abc", ["b"] = true };
+
+        Assert.Null(RecoverMap.AsInt(m, "s"));
+        Assert.Null(RecoverMap.AsLong(m, "s"));
+        Assert.Null(RecoverMap.AsDouble(m, "s"));
+
+        // A boolean is not a Number → null (Java parity), not coerced to 1.
+        Assert.Null(RecoverMap.AsInt(m, "b"));
+        Assert.Null(RecoverMap.AsLong(m, "b"));
+        Assert.Null(RecoverMap.AsDouble(m, "b"));
+    }
+
+    [Fact]
+    public void AsIntTruncatesFloatingTowardZeroLikeJavaIntValue()
+    {
+        var m = new Dictionary<string, object?> { ["d"] = 42.9 };
+        Assert.Equal(42, RecoverMap.AsInt(m, "d"));   // truncate, not round-to-44
+        Assert.Equal(42L, RecoverMap.AsLong(m, "d"));
+    }
+
+    // --- Locale-independence: numeric→string is invariant, matching Java `String.valueOf` (FR-010 review #2) ---
+
+    [Fact]
+    public void AsStringFormatsNumbersInvariantOfCulture()
+    {
+        var prior = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE"); // comma decimal separator
+            var m = new Dictionary<string, object?> { ["d"] = 1234.5 };
+            Assert.Equal("1234.5", RecoverMap.AsString(m, "d"));    // dot, not "1234,5"
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = prior;
+        }
+    }
+
+    [Fact]
+    public void AsStringListFormatsNumbersInvariantOfCulture()
+    {
+        var prior = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            var m = new Dictionary<string, object?> { ["xs"] = new List<object?> { 1234.5, 6.25 } };
+            Assert.Equal(new[] { "1234.5", "6.25" }, RecoverMap.AsStringList(m, "xs"));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = prior;
+        }
     }
 }
