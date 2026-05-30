@@ -43,6 +43,22 @@
     </dependency>
 
     <!-- test -->
+    <!-- Shared JVM render engine (OutputFormatRenderer + Recover): the FR-010 output-prompt
+         conformance runner drives these Java classes directly, proving the corpus loads/runs
+         in the Kotlin module. Brings jackson-databind transitively for spec.json parsing. -->
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-render</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- spec.json parsing for the output-prompt-conformance runner (jackson is test-scoped in
+         render, so it is not transitive — declare it directly). -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.jetbrains.kotlin</groupId>
       <artifactId>kotlin-test-junit5</artifactId>

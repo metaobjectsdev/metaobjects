@@ -1,0 +1,5 @@
+{
+  "text": "{One or two sentences to the customer.}",
+  "confidence": "{Integer 1-5.}",
+  "resolved": "true | false"
+}

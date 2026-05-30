@@ -30,6 +30,7 @@ _Last refreshed 2026-05-30._
 - **Persistence conformance** — `fixtures/persistence-conformance/`. TS / C# / Kotlin / Python all 12/12 against Testcontainers Postgres / Derby (per port). Java runs the **query** scenarios only (it no longer owns schema migrations); its runtime auto-create path bootstraps the schema, and the aggregate-projection view scenario is deferred (the view-body builder was part of the removed migration engine).
 - **API-contract conformance** — `fixtures/api-contract-conformance/`. TS / C# / Java / Kotlin / Python all 20/20.
 - **Recover conformance** — `fixtures/recover-conformance/` (20 dirty-input cases). TS / C# / Java / Python all 20/20; Kotlin reuses the shared JVM engine.
+- **Output-prompt conformance** — `fixtures/output-prompt-conformance/` (10 cases × 3 `@promptStyle` styles). Pins the FR-010 output-format prompt fragment byte-identically across all 5 ports (zero-drift, no ledger) + a render→recover round-trip skew guard. TS pilot; C# / Java / Python reproduce the bytes natively; Kotlin drives the shared JVM engine. Backlog item R13. (Also added three `fixtures/conformance/error-enum-*` negative fixtures pinning FR-011 enum-coercion attr-validation — `@coerceDefault`/`@default` membership + `@normalize` mode — across the 4 loader ports.)
 - **YAML / verify** corpora — green across the ports that ship those layers.
 
 ### Key cross-language features

@@ -1,0 +1,4 @@
+{ "format": "json", "rootName": "Partial", "roundTrip": false,
+  "fields": [
+    { "name": "title", "kind": "STRING", "required": true, "example": "Hello", "instruction": "Required." },
+    { "name": "subtitle", "kind": "STRING", "required": false } ] }
