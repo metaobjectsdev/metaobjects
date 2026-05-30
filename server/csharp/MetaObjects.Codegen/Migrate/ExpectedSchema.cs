@@ -17,6 +17,7 @@
 
 using MetaObjects.Codegen.Schema;
 using MetaObjects.Meta;
+using MetaObjects.Persistence.Db;
 using static MetaObjects.Codegen.InstanceArtifacts;
 using static MetaObjects.Core.Field.FieldConstants;
 using static MetaObjects.Core.Identity.IdentityConstants;
@@ -123,8 +124,11 @@ public static class ExpectedSchema
     {
         // isArray collapses any scalar/enum to a single json column (PostgresEmit
         // renders SqlType.Json as JSONB). Sizing/precision/scale on the underlying
-        // type don't apply once the value is JSON.
-        var sqlType = field.IsArray ? new SqlType.Json() : SubtypeToSqlType(field);
+        // type don't apply once the value is JSON. A @dbColumnType physical override
+        // (R6 Plan 2b) wins over the subtype default for non-array scalars.
+        var sqlType = field.IsArray
+            ? new SqlType.Json()
+            : DbColumnTypeOverride(field) ?? SubtypeToSqlType(field);
         var required = CSharpNaming.IsRequired(owner, field);
         // PK columns are NOT NULL by definition (and their own @required is implicit).
         var nullable = !isPk && !required;
@@ -154,7 +158,23 @@ public static class ExpectedSchema
         FIELD_SUBTYPE_TIME => new SqlType.Text(),
         FIELD_SUBTYPE_TIMESTAMP => new SqlType.Timestamp(WithTimezone: false),
         FIELD_SUBTYPE_OBJECT => new SqlType.Json(),
+        // R6 Plan 2a — field.uuid → native Postgres uuid (PostgresEmit renders UUID).
+        FIELD_SUBTYPE_UUID => new SqlType.Uuid(),
         _ => new SqlType.Text(),
+    };
+
+    // R6 Plan 2b — the @dbColumnType physical attribute, when present (own-only),
+    // overrides the subtype's default SQL type with one of the closed mapped types.
+    // The entity-codegen native binding (CSharpNaming) is unchanged: a
+    // @dbColumnType:uuid field.string stays a C# string, only the DB column shifts.
+    // Pairing legality is enforced at load time (ValidationPasses.ValidateDbColumnType);
+    // by the time we get here the value is known-legal.
+    private static SqlType? DbColumnTypeOverride(MetaField f) => f.DbColumnType switch
+    {
+        DbConstants.DB_COLUMN_TYPE_UUID             => new SqlType.Uuid(),
+        DbConstants.DB_COLUMN_TYPE_JSONB            => new SqlType.Json(),
+        DbConstants.DB_COLUMN_TYPE_TIMESTAMP_TZ     => new SqlType.Timestamp(WithTimezone: true),
+        _                                            => null,
     };
 
     private static IdentityKind? ToIdentityKind(string? generation) => generation switch

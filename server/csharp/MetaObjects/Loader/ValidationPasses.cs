@@ -911,6 +911,72 @@ public static class ValidationPasses
     }
 
     // =========================================================================
+    // Pass 12: ValidateDbColumnType (R6 Plan 2b, ADR-0013)
+    //   Own-only validation of the @dbColumnType physical column-type attribute,
+    //   mirroring the field.enum @values precedent. Two rules:
+    //
+    //     1. The value must be one of the closed set uuid|jsonb|timestamp_with_tz
+    //        → ERR_BAD_ATTR_VALUE otherwise.
+    //     2. The (logical subtype × value) pairing must be legal:
+    //          uuid              → field.string
+    //          jsonb             → field.string
+    //          timestamp_with_tz → field.timestamp
+    //        → ERR_BAD_ATTR_VALUE on an illegal pairing.
+    //
+    //   The error message names the field, the value, and the legal set — matching
+    //   the field.enum ERR_BAD_ATTR_VALUE precedent. Own-only: only @dbColumnType
+    //   declared on THIS node is validated (a physical attr is never inherited via
+    //   extends:). Cross-port: TS/Java/Python run the identical own-only check.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateDbColumnType(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        WalkDbColumnType(root, errors);
+        return errors.AsReadOnly();
+    }
+
+    private static void WalkDbColumnType(MetaData node, List<MetaError> errors)
+    {
+        if (node is MetaField field && field.DbColumnType is { } value)
+        {
+            // Rule 1: recognized value.
+            if (!VALID_DB_COLUMN_TYPES.Contains(value))
+            {
+                errors.Add(new MetaError(
+                    $"field '{field.Name}' @{FIELD_ATTR_DB_COLUMN_TYPE} '{value}' is not a valid value; " +
+                    $"allowed: {string.Join(", ", VALID_DB_COLUMN_TYPES)}",
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    Envelope: field.Source));
+            }
+            else
+            {
+                // Rule 2: legal (subtype × value) pairing.
+                var requiredSubType = value switch
+                {
+                    DB_COLUMN_TYPE_UUID or DB_COLUMN_TYPE_JSONB => FIELD_SUBTYPE_STRING,
+                    DB_COLUMN_TYPE_TIMESTAMP_TZ                 => FIELD_SUBTYPE_TIMESTAMP,
+                    _                                            => null, // unreachable (Rule 1)
+                };
+                if (requiredSubType is not null && field.SubType != requiredSubType)
+                {
+                    errors.Add(new MetaError(
+                        $"field '{field.Name}' @{FIELD_ATTR_DB_COLUMN_TYPE} '{value}' is not valid on " +
+                        $"field.{field.SubType} (requires field.{requiredSubType}); allowed pairings: " +
+                        $"{DB_COLUMN_TYPE_UUID}→field.{FIELD_SUBTYPE_STRING}, " +
+                        $"{DB_COLUMN_TYPE_JSONB}→field.{FIELD_SUBTYPE_STRING}, " +
+                        $"{DB_COLUMN_TYPE_TIMESTAMP_TZ}→field.{FIELD_SUBTYPE_TIMESTAMP}",
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                        Envelope: field.Source));
+                }
+            }
+        }
+
+        foreach (var child in node.OwnChildren())
+            WalkDbColumnType(child, errors);
+    }
+
+    // =========================================================================
     // Pass 8: ValidateFieldObjectStorage
     //   Cross-attribute validation for @storage on field.object:
     //     - @storage requires @objectRef on the same field → ERR_STORAGE_WITHOUT_OBJECT_REF

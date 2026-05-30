@@ -48,11 +48,15 @@ public static class CSharpNaming
             [FIELD_SUBTYPE_DATE]      = "DateOnly",
             [FIELD_SUBTYPE_TIME]      = "TimeOnly",
             [FIELD_SUBTYPE_TIMESTAMP] = "DateTime",
+            // R6 Plan 2a — field.uuid binds to the native System.Guid value type
+            // (ADR-0001), independent of its string wire form. The native uuid DB
+            // column is a separate migrate-engine concern (SubtypeToSqlType).
+            [FIELD_SUBTYPE_UUID]      = "Guid",
         };
 
     /// <summary>Value types that take a <c>?</c> suffix when nullable (vs. reference types).</summary>
     private static readonly HashSet<string> ValueTypes = new(StringComparer.Ordinal)
-        { "int", "short", "byte", "long", "double", "float", "decimal", "bool", "DateOnly", "TimeOnly", "DateTime" };
+        { "int", "short", "byte", "long", "double", "float", "decimal", "bool", "DateOnly", "TimeOnly", "DateTime", "Guid" };
 
     /// <summary>The base C# scalar type for a field subtype (no nullability), or null for object fields.</summary>
     public static string? ScalarFor(string fieldSubType) =>

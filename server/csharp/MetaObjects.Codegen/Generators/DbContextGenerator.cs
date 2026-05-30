@@ -8,6 +8,7 @@
 using System.Text;
 using MetaObjects.Codegen.Docs;
 using MetaObjects.Meta;
+using MetaObjects.Persistence.Db;
 using static MetaObjects.Core.Field.FieldConstants;
 
 namespace MetaObjects.Codegen.Generators;
@@ -61,6 +62,12 @@ public sealed class DbContextGenerator : IGenerator
                 var prop = CSharpNaming.Pascal(f.Name);
                 modelLines.Add($"        modelBuilder.Entity<{owner}>().PrimitiveCollection(x => x.{prop});");
             }
+            // R6 Plan 2b — @dbColumnType physical overrides. The logical field stays its
+            // native CLR type (a @dbColumnType:uuid string is still C# string); EF must be
+            // told the provider column type (and, for uuid, a string↔Guid value converter)
+            // so the native uuid / jsonb / timestamptz column round-trips into that property.
+            foreach (var f in e.Fields().Where(f => !f.IsArray && f.DbColumnType is not null))
+                if (DbColumnTypeConfig(owner, f) is { } cfg) modelLines.Add(cfg);
         }
 
         var sb = new StringBuilder();
@@ -93,6 +100,35 @@ public sealed class DbContextGenerator : IGenerator
 
         sb.AppendLine("}");
         yield return new EmittedFile("AppDbContext.g.cs", sb.ToString());
+    }
+
+    // R6 Plan 2b — EF mapping for a @dbColumnType physical-override field. The CLR
+    // property type is unchanged (the logical field's native binding); only the DB
+    // column type — and, for uuid, a string↔Guid value converter — is configured so
+    // the native column round-trips. Pairing legality is already loader-validated.
+    //
+    //   uuid              (on field.string)    → native `uuid` column + string↔Guid
+    //                                            converter. The read side renders the
+    //                                            Guid lowercase-canonical (Guid.ToString("D"))
+    //                                            so the wire form is enforced by the port,
+    //                                            not assumed from the DB.
+    //   jsonb             (on field.string)    → native `jsonb` column; Npgsql maps the
+    //                                            raw JSON text ↔ string directly.
+    //   timestamp_with_tz (on field.timestamp) → `timestamp with time zone` column.
+    private static string? DbColumnTypeConfig(string owner, MetaField f)
+    {
+        var prop = CSharpNaming.Pascal(f.Name);
+        var lhs = $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop})";
+        return f.DbColumnType switch
+        {
+            DbConstants.DB_COLUMN_TYPE_UUID =>
+                lhs + ".HasColumnType(\"uuid\").HasConversion(v => Guid.Parse(v!), g => g.ToString(\"D\"));",
+            DbConstants.DB_COLUMN_TYPE_JSONB =>
+                lhs + ".HasColumnType(\"jsonb\");",
+            DbConstants.DB_COLUMN_TYPE_TIMESTAMP_TZ =>
+                lhs + ".HasColumnType(\"timestamp with time zone\");",
+            _ => null,
+        };
     }
 
     // Owned-type config for an object-typed entity field. @storage flattened maps each
