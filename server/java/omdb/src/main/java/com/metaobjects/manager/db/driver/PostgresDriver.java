@@ -113,6 +113,11 @@ public class PostgresDriver extends GenericSQLDriver {
                 // so an INSERT that omits the PK still succeeds (and the value is
                 // a native uuid). Routed through the existing AUTO_UUID generation
                 // signal — not a parallel emitter.
+                //
+                // NOTE: the OMDB runtime insert path mints the UUID app-side (see
+                // GenericSQLDriver.getInsertStatement / AUTO_UUID), so for OMDB writes this
+                // DEFAULT is never consulted and looks redundant. It is intentional: it
+                // serves external/raw-SQL inserts that omit the PK column. Don't remove it.
                 if (ColumnDef.COLTYPE_UUID.equals(hint)
                         && col.getAutoType() == ColumnDef.AUTO_UUID) {
                     query.append(" DEFAULT gen_random_uuid()");

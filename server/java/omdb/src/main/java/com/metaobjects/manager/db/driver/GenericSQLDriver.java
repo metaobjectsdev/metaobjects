@@ -226,8 +226,16 @@ public class GenericSQLDriver implements DatabaseDriver {
      */
     protected String serializeOpenJsonb(Object value) {
         if (value instanceof String s) return s;
-        return new Gson().toJson(value);
+        return OPEN_JSONB_GSON.toJson(value);
     }
+
+    /**
+     * Reused {@link Gson} for open-JSON ({@code @dbColumnType: jsonb}) serialization. Gson is
+     * thread-safe, so a single shared instance avoids per-call allocation — matching the
+     * static-mapper pattern used elsewhere. (This is the schema-less default reflection Gson;
+     * the metadata-driven adapters live in {@link #buildGson(MetaDataLoader)}.)
+     */
+    private static final Gson OPEN_JSONB_GSON = new Gson();
 
     /**
      * This is to handle arguments for the constructed SQL query to ensure
@@ -1845,9 +1853,19 @@ public class GenericSQLDriver implements DatabaseDriver {
             }
             return;
         }
-        // uuid columns (field.uuid OR @dbColumnType: uuid) read back as the canonical
-        // lowercase string via getString — the StringCodec / default codec both do this,
-        // so no dedicated read branch is needed here.
+        // uuid columns (field.uuid OR @dbColumnType: uuid): enforce the cross-port wire
+        // contract ("uuid round-trips lowercase-canonical") in the PORT, dialect-independently
+        // — do NOT rely on Postgres returning canonical lowercase. Derby stores a CHAR(36)
+        // verbatim, so a non-canonical (uppercase) value would otherwise round-trip uppercase.
+        if (isUuidColumn(f)) {
+            String v = rs.getString(j);
+            if (v == null || rs.wasNull()) {
+                f.setObject(o, null);
+            } else {
+                f.setObject(o, v.toLowerCase(java.util.Locale.ROOT));
+            }
+            return;
+        }
         codec.readInto(o, f, rs, j);
     }
 

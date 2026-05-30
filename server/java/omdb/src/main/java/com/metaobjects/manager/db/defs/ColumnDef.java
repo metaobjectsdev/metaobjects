@@ -18,6 +18,11 @@ public class ColumnDef extends BaseArgDef {
 	// get/set). Null means "use the SQLType default". Each driver maps a hint
 	// to its own SQL spelling (Postgres native UUID/JSONB/TIMESTAMPTZ; Derby a
 	// portable fallback).
+	//
+	// CANONICAL SOURCE: the metamodel-layer CoreDBMetaDataProvider.DB_COLUMN_TYPE_*
+	// constants are the canonical source of these string values. The omdb layer cannot
+	// depend on the metadata-layer provider, hence these parallel constants + the
+	// SimpleMappingHandlerDB.resolveDbColumnType() mapping from @dbColumnType → COLTYPE_*.
 	/** Hint: native UUID column ({@code field.uuid} or {@code @dbColumnType: uuid}). */
 	public final static String COLTYPE_UUID = "uuid";
 	/** Hint: native JSONB column ({@code @dbColumnType: jsonb}, genuinely-open JSON). */

@@ -144,10 +144,13 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
             .optionalAttribute(PREVIOUS_NAME, StringAttribute.SUBTYPE_STRING);
 
         // String field specific
+        // NOTE: DB_COLUMN_TYPE is intentionally NOT registered here — the field.base
+        // registration above already propagates it to every field subtype (intended
+        // "every subtype" parity with TS), so a @dbColumnType on a string field is
+        // accepted via inheritance. Re-registering it here would be redundant.
         registry.findType(MetaField.TYPE_FIELD, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(DB_LENGTH, IntAttribute.SUBTYPE_INT)
-            .optionalAttribute(DB_COLUMN_TYPE, StringAttribute.SUBTYPE_STRING);
+            .optionalAttribute(DB_LENGTH, IntAttribute.SUBTYPE_INT);
 
         // UUID field specific (R6 Plan 2a): @column override, like the other scalars.
         registry.findType(MetaField.TYPE_FIELD, com.metaobjects.field.UuidField.SUBTYPE_UUID)

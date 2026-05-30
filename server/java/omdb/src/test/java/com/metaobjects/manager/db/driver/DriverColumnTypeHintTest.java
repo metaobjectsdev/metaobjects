@@ -1,5 +1,6 @@
 package com.metaobjects.manager.db.driver;
 
+import com.metaobjects.field.UuidField;
 import com.metaobjects.manager.db.defs.ColumnDef;
 import com.metaobjects.manager.db.defs.NameDef;
 import com.metaobjects.manager.db.defs.TableDef;
@@ -9,9 +10,11 @@ import org.junit.Test;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLNonTransientConnectionException;
+import java.sql.Statement;
 import java.sql.Types;
 import java.util.HashMap;
 import java.util.Map;
@@ -165,5 +168,67 @@ public class DriverColumnTypeHintTest {
             assertEquals("CLOB", types.get("PAYLOAD"));
             assertEquals("TIMESTAMP", types.get("RECORDEDAT"));
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Fix 1 — the PORT (not Postgres) enforces uuid lowercase-canonical on READ
+    // -----------------------------------------------------------------------
+
+    /**
+     * The cross-port wire contract is "uuid round-trips lowercase-canonical". This must hold
+     * dialect-independently — NOT by relying on Postgres returning canonical lowercase.
+     *
+     * <p>This drives the real {@code parseField} read path against a Derby {@code CHAR(36)}
+     * column (Derby stores the value verbatim — no canonicalization), seeded with a
+     * non-canonical (UPPERCASE) uuid string. If the port did not lowercase on read, the value
+     * would round-trip uppercase. Asserting it comes back lowercase proves the lowercasing is
+     * done by the PORT ({@link GenericSQLDriver#parseField}), not by the database.</p>
+     */
+    @Test
+    public void parseFieldLowercasesUuidOnReadDialectIndependently() throws Exception {
+        // Verbatim-storing UuidField subclass: isolate parseField's read lowercasing from
+        // any DataConverter/MetaField behavior (mirrors the codec-test verbatim-field style).
+        final java.util.Map<String, Object> store = new java.util.HashMap<>();
+        UuidField uuidField = new UuidField("id") {
+            @Override public void setObject(Object obj, Object value) { store.put("v", value); }
+            @Override public Object getObject(Object obj) { return store.get("v"); }
+        };
+        // Sanity: this field IS recognized as a uuid column by the driver predicate
+        // (protected method, callable from this same-package test).
+        assertTrue("UuidField must be detected as a uuid column",
+            new GenericSQLDriver().isUuidColumn(uuidField));
+
+        final String upper = "550E8400-E29B-41D4-A716-446655440000";
+        final String lower = upper.toLowerCase(java.util.Locale.ROOT);
+
+        try (Connection c = derbyConn()) {
+            try (Statement st = c.createStatement()) {
+                st.execute("CREATE TABLE uuid_read_probe (id CHAR(36))");
+            }
+            // Seed an UPPERCASE value VERBATIM (Derby does not canonicalize CHAR).
+            try (PreparedStatement ps = c.prepareStatement("INSERT INTO uuid_read_probe (id) VALUES (?)")) {
+                ps.setString(1, upper);
+                ps.executeUpdate();
+            }
+            // Confirm the DB really holds the uppercase value (no DB-side canonicalization).
+            try (Statement st = c.createStatement();
+                 ResultSet rs = st.executeQuery("SELECT id FROM uuid_read_probe")) {
+                assertTrue(rs.next());
+                assertEquals("Derby must store the uuid verbatim (uppercase)", upper, rs.getString(1));
+            }
+            // READ through the actual port path.
+            GenericSQLDriver driver = new GenericSQLDriver();
+            try (Statement st = c.createStatement();
+                 ResultSet rs = st.executeQuery("SELECT id FROM uuid_read_probe")) {
+                assertTrue(rs.next());
+                driver.parseField(new Object(), uuidField, rs, 1);
+            }
+            try (Statement st = c.createStatement()) {
+                st.execute("DROP TABLE uuid_read_probe");
+            }
+        }
+
+        assertEquals("parseField must lowercase a non-canonical uuid on read (port-side, not DB-side)",
+            lower, store.get("v"));
     }
 }
