@@ -55,10 +55,11 @@ Out of scope / Non-Goals:
 
 ### Module structure
 
-- **`core-spring`** remains the **autoconfigure** module. It gains `omdb` as an
-  **optional** Maven dependency. OMDB beans are gated by conditions so they only
-  activate when the consumer actually has OMDB + a `DataSource` present — the standard
-  Spring Boot `-autoconfigure` pattern (optional deps + `@ConditionalOnClass`).
+- **`core-spring`** remains the **autoconfigure** module. It **already** compile-depends
+  on `omdb` (for `SpringObjectConnections`/`ObjectConnectionDB`), so no dependency change
+  is needed; the OMDB beans are gated at runtime by `@ConditionalOnBean(DataSource)` (plus
+  a defensive `@ConditionalOnClass(ObjectManagerDB)`), so they only activate when the
+  consumer actually has a `DataSource`.
 - **New `metaobjects-spring-boot-starter`** — a thin module (no Java code) whose pom
   depends on `metadata` + `omdb` + `core-spring`. Adding this single dependency gives a
   consumer the full metadata-loader + OMDB-persistence wiring.
@@ -138,9 +139,14 @@ pinning-safe when a consumer enables it, and documents the option.
   - The loader autoconfig still produces its beans through real discovery.
 - **Driver selection** — unit-test the product-name→driver mapping and the
   `metaobjects.omdb.dialect` override; unknown product name → clear error.
-- **Round-trip slice** — one Testcontainers Postgres test (reusing the existing
-  integration harness) proving an *autoconfigured* `ObjectManagerDB` persists and reads
-  an object back under a Spring-managed transaction.
+- **Transaction-binding slice** — an embedded-Derby test (Derby is a real OMDB driver,
+  auto-detected from product name; core-spring has no Testcontainers, and full persist/read
+  is already covered by the `integration-tests` module against Postgres/Derby). With a
+  Derby `DataSource` + `DataSourceTransactionManager`, assert the *autoconfigured*
+  `ObjectManagerDB`'s `getConnection()` returns the SAME physical connection Spring bound
+  to the active transaction, and that `close()` on it is a no-op (mirrors the existing
+  `SpringObjectConnectionTest`). This proves the new Spring-tx wiring without duplicating
+  OMDB persistence coverage.
 - Existing `core-spring` tests stay green.
 
 ## Sequencing
