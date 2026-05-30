@@ -106,13 +106,20 @@ async function discoverMigrations(dir: string): Promise<DiscoveredMigration[]> {
     migrations.push({ name: e.name, upPath: join(dir, e.name, UP_SQL) });
   }
   // Directory names are timestamp-prefixed (`<YYYYMMDDHHMMSS>-<slug>`), so a
-  // plain lexical sort is the apply order.
-  migrations.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  // plain lexical (code-unit) sort is the apply order.
+  migrations.sort((a, b) => compareLexical(a.name, b.name));
   return migrations;
 }
 
 function checksumOf(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/** Stable lexical (code-unit) comparison; the same ordering as `a < b`/`a > b`. */
+function compareLexical(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
 }
 
 /**
