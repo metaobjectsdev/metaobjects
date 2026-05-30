@@ -15,8 +15,8 @@ import {
   generateCanonicalSchemaSql,
   readCanonicalSchemaSql,
 } from "../src/canonical-schema.ts";
-import { CANONICAL_DIR } from "../src/paths.ts";
 import { loadMetadataDir } from "../src/load-metadata.ts";
+import { CANONICAL_DIR } from "../src/paths.ts";
 
 describe("canonical schema artifact (schema.postgres.sql)", () => {
   test("committed DDL matches what TS generates from metadata (no drift)", async () => {
