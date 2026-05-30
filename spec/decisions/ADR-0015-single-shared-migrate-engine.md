@@ -127,8 +127,41 @@ in the one engine (ADR-0013's logical/physical split, expressed as the per-port/
 ### 6. Staged consolidation, not big-bang
 Keep the existing engines running. Build the consolidated engine + binary + the generate/Flyway path,
 migrate ports onto it one at a time behind the persistence-conformance corpus, and retire each old
-engine (`MetaObjects.Codegen/Migrate`, `omdb/.../migrate`, Python `migrate/`, Kotlin's Exposed
-delegation) only once the shared engine passes that port's scenarios.
+engine only once the shared engine passes that port's scenarios.
+
+### 7. Removal is first-class work — per-port retirement inventory
+
+Retiring the legacy migrate code is **explicit deliverable work**, not a side effect, and is the
+final step of each port's cutover. Inventory (as of 2026-05-30):
+
+- **TypeScript** — `migrate-ts` is the **consolidation target** (kept/evolved into the shared engine,
+  likely repackaged + the `bun --compile` bin). Its `integration-tests/src/migration-scenario.ts`
+  becomes the single shared **migrate-conformance** runner. Nothing deleted; role changes.
+- **C#** — delete `MetaObjects.Codegen/Migrate/*` (`SqlType`, `ExpectedSchema`, `PostgresEmit`,
+  `PostgresIntrospect`, `SchemaDiff`, `SchemaSnapshot`, `Change`), `MetaObjects.Cli/{MigrateCommand,
+  NpgsqlIntrospector}.cs` + `MetaObjects.Cli.Tests/MigrateCommandTests.cs`, the migrate parts of
+  `MetaObjects.Codegen.Tests/Migrate/*`, and the per-port migration runner
+  `MetaObjects.IntegrationTests/{MigrationScenarioTests, Runner/MigrationScenarioRunner}.cs`.
+- **Java** — delete the `omdb/.../db/migrate/*` package (16 files: `SqlType`, `ExpectedSchemaBuilder`,
+  `SchemaIntrospector`, `SchemaDiffer`, `SchemaMigrationEngine`, `MigrationEmitter`, `JdbcSqlTypes`,
+  `ViewBodyBuilder`, …) and the **migrate-only `SqlType→DDL` rendering** in the drivers
+  (`PostgresDriver.pgType` / `DerbyDriver.derbyType`) — **carefully**, since the driver classes
+  themselves stay for omdb *runtime* persistence (only their DDL-emit methods are migrate). Remove the
+  `maven-plugin` `MetaDataMigrateMojo` (+ `MetaDataMigrateMojoTest`, `MetaDataMigrateMojoFlywayTest` —
+  note: prior Flyway-emit groundwork exists here and should inform the shared adapter) and the
+  `integration-tests/.../{MigrationScenarioRunner, MigrationScenarioTests}.java`. *(The R6 Plan 1
+  `Real4` work just landed in this code; its behavior lives on in the shared engine, which already has
+  `real4`.)*
+- **Python** — delete the `migrate/*` module (`sql_type`, `expected_schema`, `expected_views`, `diff`,
+  `postgres_emit`, `types`), the CLI `migrate` command, and `tests/integration/{test_migration_scenarios,
+  migration_runner}.py`. (The just-considered Plan 2c Python introspection is never built.)
+- **Kotlin** — delete the Exposed-delegation test harness
+  `integration-tests-kotlin/.../{ExposedMigrationEngine, MigrationScenarioConformanceTest}.kt`; Kotlin's
+  migrate-conformance is covered by the single shared suite.
+- **Shared** — collapse the five per-port migration-scenario runners into **one** migrate-conformance
+  suite against the shared engine; the per-port **runtime** (query/CRUD) scenarios stay per-port.
+  Update status/claims (`CLAUDE.md` "all five ports ship … migrate", `spec/roadmap.md`) to "one shared
+  migrate engine; codegen/runtime per-port."
 
 ## Consequences
 
