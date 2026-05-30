@@ -19,7 +19,7 @@ _Last refreshed 2026-05-30._
 
 - **TypeScript** — `@metaobjectsdev/metadata` + `codegen-ts` (Vite-style plugins) + `runtime-ts` + `migrate-ts` + the universal web client packages (`runtime-web`, `react`, `tanstack`). The reference port for everything cross-language.
 - **C# full-stack target** — `MetaObjects` (loader + canonical serializer + conformance) + `MetaObjects.Render` (Mustache + payload-VO codegen + `verify`) + `MetaObjects.Codegen` (EF Core entities + `AppDbContext`/owned-types via `OwnsOne` + CRUD minimal-API routes + Postgres DDL with full-CREATE + incremental introspect/diff/migrate via `meta migrate --from-db`).
-- **Java port** — `metadata` + `omdb` + `om` + `dynamic` + `core-spring` + `metadata-ktx` (Kotlin facade) + `codegen-spring` (Spring REST controllers + DTOs + repos + filter allowlists) + `codegen-mustache` + `codegen-plantuml` + `codegen-base` + `render` + `maven-plugin` (with `meta:gen` / `meta:migrate` / `meta:verify`).
+- **Java port** — `metadata` + `omdb` + `om` + `dynamic` + `core-spring` + `metadata-ktx` (Kotlin facade) + `codegen-spring` (Spring REST controllers + DTOs + repos + filter allowlists) + `codegen-mustache` + `codegen-plantuml` + `codegen-base` + `render` + `maven-plugin` (with `meta:gen` / `meta:editor`; schema migrations are owned by the TS toolchain — the Java diff-and-converge engine and its `meta:migrate` / live-DB-drift `meta:verify` goals were removed).
 - **Kotlin** — `codegen-kotlin` (KotlinPoet on JVM): entity + Exposed table + Spring controller + Spring config + payload + relations + filter allowlist + validator + stored-proc + output-parser generators; `integration-tests-kotlin` runs the persistence-conformance corpus through Exposed against Testcontainers Postgres.
 - **Python port** — `metaobjects` (metadata loader + canonical serializer + conformance) + `migrate` + `ObjectManager` runtime + render (Mustache) + output-parser codegen.
 
@@ -27,7 +27,7 @@ _Last refreshed 2026-05-30._
 
 - **Metamodel conformance** — `fixtures/conformance/` (~90 fixtures + CAPABILITIES manifest). TS / C# / Java / Python all green.
 - **Render conformance** — `fixtures/render-conformance/`. TS / C# / Java / Kotlin / Python byte-identical.
-- **Persistence conformance** — `fixtures/persistence-conformance/`. TS / C# / Java / Kotlin / Python all 12/12 against Testcontainers Postgres / Derby (per port).
+- **Persistence conformance** — `fixtures/persistence-conformance/`. TS / C# / Kotlin / Python all 12/12 against Testcontainers Postgres / Derby (per port). Java runs the **query** scenarios only (it no longer owns schema migrations); its runtime auto-create path bootstraps the schema, and the aggregate-projection view scenario is deferred (the view-body builder was part of the removed migration engine).
 - **API-contract conformance** — `fixtures/api-contract-conformance/`. TS / C# / Java / Kotlin / Python all 20/20.
 - **Recover conformance** — `fixtures/recover-conformance/` (10 dirty-input cases). TS / C# / Java / Python all 10/10; Kotlin reuses the shared JVM engine.
 - **YAML / verify** corpora — green across the ports that ship those layers.
@@ -35,7 +35,7 @@ _Last refreshed 2026-05-30._
 ### Key cross-language features
 
 - **Source v2 paradigm** — `source.rdb` + `@kind: table|view|materializedView|storedProc|tableFunction`; multi-source via `@role`. ADR-0007.
-- **FR-003 — Java RDB persistence, schema migration & projections** (Plans 1/2/3/4a + Plan 4): port of `dynamic`/`om`/`omdb` onto current core; build-time FQN-keyed binding registry + typed jsonb value-objects + Spring-tx connection; decoupled `meta migrate` engine (diff-and-converge) with `SchemaMigrationEngine` + introspector + emitter; `source.*`+`origin.*` metamodel registered in Java; OMDB engine-debt remediation (atomic mapping cache, JDBC codec registry per ADR-0002, `inTransaction` template).
+- **FR-003 — Java RDB persistence & projections** (Plans 1/2/3/4a + Plan 4): port of `dynamic`/`om`/`omdb` onto current core; build-time FQN-keyed binding registry + typed jsonb value-objects + Spring-tx connection; `source.*`+`origin.*` metamodel registered in Java; OMDB engine-debt remediation (atomic mapping cache, JDBC codec registry per ADR-0002, `inTransaction` template). The diff-and-converge schema-migration engine that originally shipped under FR-003 (`SchemaMigrationEngine` + introspector + emitter + the `meta:migrate` goal) was **removed** when schema migrations consolidated onto the TS toolchain (`@metaobjectsdev/cli migrate`); the Java port retains runtime persistence + a dev/test runtime auto-create path only.
 - **FR5 family — actionable loader errors** (a/b/c/d/e + WARN envelope-shape). ADR-0009.
   - FR5a: source-on-node + envelope-shaped errors (`format` ∈ `json|yaml|merged|resolved|database|code`)
   - FR5b: YAML source positions on yaml-input envelopes

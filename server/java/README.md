@@ -33,7 +33,7 @@ All published to Maven Central under `com.metaobjects:*` at `7.1.0`:
 | `metaobjects-omdb` | Relational implementation of ObjectManager over JDBC + Spring-tx |
 | `metaobjects-omdb-ktx` | Kotlin facade over OMDB |
 | `metaobjects-core-spring` | Spring auto-configuration + `MetaDataService` |
-| `metaobjects-maven-plugin` | `mvn meta:gen` / `meta:migrate` / `meta:verify` |
+| `metaobjects-maven-plugin` | `mvn meta:gen` / `meta:editor` |
 
 The `archetype` and `examples` directories were removed in 7.1.0 (they had been out of the reactor since 7.0.0 and were not deployed to Central).
 
@@ -62,7 +62,7 @@ Spring REST + JPA stack:
 </dependency>
 ```
 
-Maven plugin for `meta:gen` / `meta:migrate` / `meta:verify`:
+Maven plugin for `meta:gen` / `meta:editor` (schema migrations and live-DB schema-drift verification are managed by the TypeScript toolchain — `@metaobjectsdev/cli migrate`; prompt/template drift is checked via the `metaobjects-render` `Verify` API):
 
 ```xml
 <plugin>

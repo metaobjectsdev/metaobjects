@@ -148,16 +148,17 @@ No hand-written Exposed wiring needed.
 |---|---|---|
 | Code-vs-DB | Codegen (`KotlinEntityGenerator` + `KotlinExposedTableGenerator`) | Build time |
 | Code-vs-API-doc | Cross-port codegen from same metadata | Build time |
-| DB-vs-metadata | `meta:verify` Maven goal | CI on every PR |
-| Migration-vs-metadata | `meta:migrate --flyway` emits migrations FROM metadata diffs | Build time |
+| DB-vs-metadata, Migration-vs-metadata | TypeScript toolchain (`@metaobjectsdev/cli migrate`) — schema migrations and live-DB schema-drift verification are TS-only | Build time / CI |
 | Generated-edited | `@generated` headers in KotlinPoet output | Code review |
 | Prompt-vs-payload | `KotlinPayloadGenerator` + Java `Renderer.verify` | Build time + runtime |
 | Generated-vs-runtime | `MetadataStartupValidator.validate(loader)` from Spring `ApplicationReadyEvent` | App startup |
 
-## Maven plugin extensions
+## Schema migrations
 
-- **`meta:migrate --flyway`** — emits `V<N>__<slug>.sql` into `src/main/resources/db/migration/` (configurable via `<flywayDir>` / `<flywayPrefix>`). Auto-versions by scanning existing migrations.
-- **`meta:verify`** — CI drift gate: introspects the live DB and fails the build if it has drifted from metadata-declared schema.
+Schema migrations (and live-DB schema-drift verification) are owned by the
+TypeScript toolchain (`@metaobjectsdev/cli migrate`). The JVM-side Maven plugin's
+`meta:migrate` / `meta:verify` goals were removed along with the Java
+diff-and-converge engine; the Maven plugin ships `meta:gen` / `meta:editor` only.
 
 ## Cross-port codegen conformance (deferred)
 

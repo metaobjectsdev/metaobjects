@@ -10,28 +10,6 @@ import java.util.Map;
 public final class Scenarios {
     private Scenarios() {}
 
-    public record BlockedChange(String kind, String reasonContains) {}
-
-    public record ApplyUpThenQuery(String sql, List<Map<String, Object>> rows) {}
-
-    public record MigrationExpect(
-        List<BlockedChange> blocked,
-        List<String> upContains,
-        Boolean upEmpty,
-        ApplyUpThenQuery applyUpThenQuery
-    ) {}
-
-    public record MigrationScenario(
-        String name,
-        String description,
-        String sourcePath,
-        String seedMetadataDir,
-        String seedData,
-        String targetMetadataDir,
-        String targetMetadataInline,
-        MigrationExpect expect
-    ) {}
-
     public record SortSpec(String field, String dir) {}
 
     public record QuerySpec(

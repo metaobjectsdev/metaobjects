@@ -1,9 +1,5 @@
 package com.metaobjects.integration;
 
-import com.metaobjects.integration.Scenarios.ApplyUpThenQuery;
-import com.metaobjects.integration.Scenarios.BlockedChange;
-import com.metaobjects.integration.Scenarios.MigrationExpect;
-import com.metaobjects.integration.Scenarios.MigrationScenario;
 import com.metaobjects.integration.Scenarios.QueryScenario;
 import com.metaobjects.integration.Scenarios.QuerySpec;
 import com.metaobjects.integration.Scenarios.SortSpec;
@@ -31,10 +27,6 @@ public final class ScenarioLoader {
     private ScenarioLoader() {}
 
     private static final Yaml YAML = new Yaml();
-
-    public static List<MigrationScenario> loadMigrations(Path dir) {
-        return loadAll(dir, ScenarioLoader::parseMigration);
-    }
 
     public static List<QueryScenario> loadQueries(Path dir) {
         return loadAll(dir, ScenarioLoader::parseQuery);
@@ -65,41 +57,6 @@ public final class ScenarioLoader {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-    }
-
-    // -----------------------------------------------------------------------
-    // Migration parsing
-    // -----------------------------------------------------------------------
-
-    @SuppressWarnings("unchecked")
-    private static MigrationScenario parseMigration(Path file, Map<String, Object> root) {
-        Path dir = file.getParent();
-        return new MigrationScenario(
-            requireString(file, root, "name"),
-            stringOrDefault(root, "description", ""),
-            file.toString(),
-            resolveRelative(dir, (String) root.get("seed-metadata")),
-            (String) root.get("seed-data"),
-            resolveRelative(dir, (String) root.get("target-metadata")),
-            (String) root.get("target-metadata-inline"),
-            parseMigrationExpect((Map<String, Object>) root.getOrDefault("expect", Map.of())));
-    }
-
-    @SuppressWarnings("unchecked")
-    private static MigrationExpect parseMigrationExpect(Map<String, Object> e) {
-        List<Map<String, Object>> blockedRaw = (List<Map<String, Object>>) e.getOrDefault("blocked", List.of());
-        List<BlockedChange> blocked = blockedRaw.stream()
-            .map(b -> new BlockedChange(
-                (String) b.get("kind"),
-                (String) b.getOrDefault("reason-contains", "")))
-            .toList();
-        List<String> upContains = (List<String>) e.getOrDefault("up-contains", List.of());
-        Boolean upEmpty = (Boolean) e.get("up-empty");
-        Map<String, Object> auq = (Map<String, Object>) e.get("apply-up-then-query");
-        ApplyUpThenQuery applyUpThenQuery = auq == null ? null : new ApplyUpThenQuery(
-            (String) auq.getOrDefault("sql", ""),
-            (List<Map<String, Object>>) auq.getOrDefault("rows", List.of()));
-        return new MigrationExpect(blocked, upContains, upEmpty, applyUpThenQuery);
     }
 
     // -----------------------------------------------------------------------
@@ -147,11 +104,6 @@ public final class ScenarioLoader {
     // -----------------------------------------------------------------------
     // Path / string helpers
     // -----------------------------------------------------------------------
-
-    private static String resolveRelative(Path scenarioDir, String relative) {
-        if (relative == null || relative.isEmpty()) return null;
-        return scenarioDir.resolve(relative).normalize().toString();
-    }
 
     private static String requireString(Path file, Map<String, Object> map, String key) {
         Object v = map.get(key);

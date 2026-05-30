@@ -34,6 +34,11 @@ fixtures/persistence-conformance/
 Test the schema-evolution pipeline. Each scenario carries its own metadata
 states; the runner applies the migration and asserts SQL and / or post-DDL state.
 
+> The **Java** port does not run the migration scenarios: schema migrations are
+> owned by the TypeScript toolchain and the Java diff-and-converge engine was
+> removed. The Java runner exercises the **query** scenarios only, bootstrapping
+> the schema via OMDB's runtime auto-create path.
+
 ```yaml
 name: add-nullable-column-to-existing-table
 description: A new nullable column on an existing table → ADD COLUMN, no allow flags.

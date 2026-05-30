@@ -42,10 +42,23 @@ final class QueryScenarioTests {
         ScenarioLoader.loadQueries(CORPUS.resolve("queries"));
 
     /**
-     * Scenarios deferred until the underlying Java port gap is closed. Empty
-     * today — kept as scaffolding matching the migration-tests pattern.
+     * Scenarios deferred until the underlying Java port gap is closed.
+     *
+     * <p>{@code projection-aggregate}: the aggregate-projection view body
+     * (the SQL behind {@code v_program_stat}, derived from {@code origin.aggregate}
+     * declarations) was synthesized by the diff-and-converge migration engine's
+     * {@code ViewBodyBuilder}, which was removed when schema migrations moved to
+     * the TypeScript toolchain. The retained runtime auto-create path
+     * ({@link com.metaobjects.manager.db.validator.MetaClassDBValidatorService})
+     * only materializes a view when the projection carries an explicit
+     * {@code dbViewSQL} attribute, so it cannot build the aggregate view from
+     * origins alone. Re-homing view-body synthesis into the runtime mapping
+     * layer is a separate piece of work tracked outside this removal.</p>
      */
-    private static final Map<String, String> EXPECTED_FAILURES = Map.of();
+    private static final Map<String, String> EXPECTED_FAILURES = Map.of(
+        "projection-aggregate",
+        "aggregate-projection view body builder was part of the removed migration engine; "
+            + "runtime auto-create only materializes views from an explicit dbViewSQL attr");
 
     @BeforeAll
     static void beforeAll() {
