@@ -9,6 +9,8 @@ public class ColumnDef extends BaseArgDef {
 	public final static int AUTO_LAST_ID   		= 2;
 	public final static int AUTO_DATE_CREATE 	= 3;
 	public final static int AUTO_DATE_UPDATE 	= 4;
+	/** App-side UUID PK: OMDB mints a java.util.UUID string before INSERT (DB-portable). */
+	public final static int AUTO_UUID   		= 5;
 
 	private int length = DEFAULT_LENGTH;
 	private boolean isPrimaryKey = false;

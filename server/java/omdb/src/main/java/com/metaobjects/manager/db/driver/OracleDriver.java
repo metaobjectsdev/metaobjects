@@ -292,26 +292,39 @@ public class OracleDriver extends GenericSQLDriver {
     }
 
     /**
-     * Oracle supports ROWNUM for limiting results
+     * Oracle supports standard ANSI OFFSET/FETCH for range queries
+     * (requires Oracle 12c+).
      */
     @Override
     protected boolean supportsRangeInQuery() {
         return true;
     }
-    
+
     /**
-     * Oracle uses ROWNUM for range queries (requires subquery for OFFSET)
+     * Oracle OFFSET/FETCH syntax (Oracle 12c+). Replaces the legacy ROWNUM
+     * form, which produced a dangling {@code AND ROWNUM <= N} appended after
+     * ORDER BY (malformed SQL) and silently failed to apply any offset.
+     * Requires a preceding ORDER BY; see {@link #rangeRequiresOrderBy()}.
      */
     @Override
     public String getRangeString(Range range) {
-        if (range.getStart() <= 1) {
-            // Simple case: just limit
-            return "AND ROWNUM <= " + range.getEnd();
-        } else {
-            // Complex case: need to wrap in subquery for offset
-            // This will be handled by overriding the query construction
-            return ""; // Will be handled in readMany
-        }
+        return "OFFSET " + (range.getStart() - 1) + " ROWS FETCH NEXT " +
+               (range.getEnd() - range.getStart() + 1) + " ROWS ONLY";
+    }
+
+    /** Oracle 12c+ OFFSET/FETCH requires an ORDER BY to be well-formed. */
+    @Override
+    protected boolean rangeRequiresOrderBy() {
+        return true;
+    }
+
+    /**
+     * Oracle accepts a constant ORDER BY for paging when the caller supplies
+     * no explicit sort order.
+     */
+    @Override
+    protected String getDefaultRangeOrderBy() {
+        return "ORDER BY NULL";
     }
 
     /**

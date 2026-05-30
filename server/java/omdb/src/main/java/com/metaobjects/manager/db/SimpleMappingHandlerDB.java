@@ -36,6 +36,7 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 
 	public final static String AUTO_ID  = "id";
 	public final static String AUTO_LAST_ID  = "last";
+	public final static String AUTO_UUID  = "uuid";
 
 	public final static String IS_INDEX     = "isIndex";
 	public final static String IS_UNIQUE 	  = "isUnique";
@@ -208,8 +209,11 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 					if ( AUTO_ID.equals( auto )) {
 						colDef.setAutoType( ColumnDef.AUTO_ID );
 					}
-					if ( AUTO_LAST_ID.equals( auto )) {
+					else if ( AUTO_LAST_ID.equals( auto )) {
 						colDef.setAutoType( ColumnDef.AUTO_LAST_ID );
+					}
+					else if ( AUTO_UUID.equals( auto )) {
+						colDef.setAutoType( ColumnDef.AUTO_UUID );
 					}
 					else if ( ObjectManager.AUTO_CREATE.equals( auto )) {
 						colDef.setAutoType( ColumnDef.AUTO_DATE_CREATE );
@@ -357,7 +361,7 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 						case MetaIdentity.GENERATION_INCREMENT:
 							return AUTO_LAST_ID; // "last" -> database auto-increment (Derby IDENTITY, etc.)
 						case MetaIdentity.GENERATION_UUID:
-							return AUTO_LAST_ID; // "last" -> UUID generation
+							return AUTO_UUID; // app-side UUID minted before INSERT (DB-portable)
 						case MetaIdentity.GENERATION_ASSIGNED:
 						default:
 							return null; // No auto-increment

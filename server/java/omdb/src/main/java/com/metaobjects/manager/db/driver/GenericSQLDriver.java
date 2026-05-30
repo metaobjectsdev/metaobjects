@@ -11,7 +11,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Timestamp;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -880,6 +879,28 @@ public class GenericSQLDriver implements DatabaseDriver {
                 "The GenericDriver cannot perform a range during select");
     }
 
+    /**
+     * Whether this driver's range/paging clause requires an ORDER BY to be
+     * well-formed. ANSI {@code OFFSET ? ROWS FETCH NEXT ? ROWS ONLY} (SQL Server
+     * 2012+, Oracle 12c+) is only valid when preceded by an ORDER BY; LIMIT/OFFSET
+     * (Postgres) and Derby's FETCH FIRST do not have this requirement. When true
+     * and a paged query supplies no explicit sort, {@link #getDefaultRangeOrderBy()}
+     * is appended before the range clause.
+     */
+    protected boolean rangeRequiresOrderBy() {
+        return false;
+    }
+
+    /**
+     * The fallback ORDER BY clause to append when a paged query supplies no
+     * explicit sort order and {@link #rangeRequiresOrderBy()} is true. Drivers
+     * that require ORDER BY for paging override this.
+     */
+    protected String getDefaultRangeOrderBy() {
+        throw new UnsupportedOperationException(
+                "Driver does not define a default range ORDER BY clause");
+    }
+
     /*private void setAutoFields(Connection c, MetaClass mc,
      ObjectMappingDB omdb, Collection<MetaField> fields, Object o,
      int mode ) throws SQLException {
@@ -1504,15 +1525,6 @@ public class GenericSQLDriver implements DatabaseDriver {
         if (options.isDistinct()) {
             query.append("DISTINCT ");
         }
-        if (options.getRange() != null) {
-            // TODO: Make this a little smarter for christ's sake!
-            // Recommendation: Have the driver form the final SELECT call, then
-            // it can insert the limit where needed
-            //if (getDatabaseDriver() instanceof MSSQLDriver) {
-            //	query.append("TOP ").append(options.getRange().getEnd())
-            //			.append(' ');
-            //}
-        }
 
         String fieldStr = getFieldString(omdb, fields, "A");
 
@@ -1555,24 +1567,30 @@ public class GenericSQLDriver implements DatabaseDriver {
             query.append(" WHERE ").append(getExpressionString(mc, omdb, where, args, "A"));
         }
 
+        Range range = options.getRange();
+        boolean applyRange = supportsRangeInQuery() && range != null
+                && range.getStart() > 0 && range.getEnd() > 0;
+
+        if (applyRange && range.getStart() > range.getEnd()) {
+            throw new IllegalArgumentException("The range end (" + range.getEnd() + ") cannot be greater than the start value (" + range.getStart() + ")");
+        }
+
         if (order != null) {
             query.append(" ORDER BY ").append(getOrderString(mc, omdb, order));
+        } else if (applyRange && rangeRequiresOrderBy()) {
+            // ANSI OFFSET/FETCH (SQL Server 2012+, Oracle 12c+) is only valid
+            // when preceded by an ORDER BY. Supply a deterministic fallback when
+            // the caller did not specify a sort order.
+            query.append(" ").append(getDefaultRangeOrderBy());
+        }
+
+        // Add on the range (must follow ORDER BY for OFFSET/FETCH dialects)
+        if (applyRange) {
+            query.append(" ").append(getRangeString(range));
         }
 
         if (options.withLock()) {
             query.append(" ").append(getLockString());
-        }
-
-        // Add on the range
-        Range range = options.getRange();
-        if (supportsRangeInQuery() && options.getRange() != null
-                && range.getStart() > 0 && range.getEnd() > 0) {
-
-            if (range.getStart() > range.getEnd()) {
-                throw new IllegalArgumentException("The range end (" + range.getEnd() + ") cannot be greater than the start value (" + range.getStart() + ")");
-            }
-
-            query.append(" ").append(getRangeString(range));
         }
 
         PreparedStatement s = c.prepareStatement(query.toString());
@@ -1745,6 +1763,13 @@ public class GenericSQLDriver implements DatabaseDriver {
                 // Set the statement id value
                 if (colDef.getAutoType() == ColumnDef.AUTO_ID) {
                     f.setString(o, getNextAutoId(c, colDef));
+                }
+                else if (colDef.getAutoType() == ColumnDef.AUTO_UUID) {
+                    // App-side UUID PK: OMDB mints the value before INSERT (no DB
+                    // identity / default). DB-portable as a string column.
+                    if (f.getString(o) == null) {
+                        f.setString(o, java.util.UUID.randomUUID().toString());
+                    }
                 }
                 else if (colDef.isAutoIncrementor()) {
                     continue;
@@ -1950,37 +1975,23 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
-     * Enhanced field parsing with modern Java patterns and proper null handling
+     * Reads a single column from the ResultSet into the target object via the
+     * {@link com.metaobjects.manager.db.codec.JdbcCodecs} registry — the same
+     * single source of truth used by {@link #setStatementValue} on the write
+     * side (FR-003 Plan 4, Debt 1 — ADR-0002). This replaces the former
+     * {@code instanceof} ladder, which had drifted from the write-side codec
+     * (e.g. TimeField).
+     *
+     * <p>The jsonb pre-check mirrors {@code setStatementValue}: jsonb
+     * serialization depends on driver-local state ({@link #isJsonbField} /
+     * {@link #deserializeJsonb}), not on field subtype alone, and is gated on
+     * {@code codec == defaultCodec()} so explicit per-subtype codecs always win.
      */
     protected void parseField(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
-        if (f instanceof com.metaobjects.field.BooleanField) {
-            boolean bv = rs.getBoolean(j);
-            f.setBoolean(o, rs.wasNull() ? null : bv);
-        } else if (f instanceof com.metaobjects.field.DecimalField) {
-            java.math.BigDecimal dv = rs.getBigDecimal(j);
-            f.setObject(o, rs.wasNull() ? null : dv);
-        } else if (f instanceof com.metaobjects.field.IntegerField) {
-            int iv = rs.getInt(j);
-            f.setInt(o, rs.wasNull() ? null : iv);
-        } else if (f instanceof com.metaobjects.field.DateField) {
-            Timestamp tv = rs.getTimestamp(j);
-            f.setDate(o, rs.wasNull() ? null : new Date(tv.getTime()));
-        } else if (f instanceof com.metaobjects.field.TimeField) {
-            java.sql.Time tv = rs.getTime(j);
-            f.setObject(o, rs.wasNull() ? null : tv.toLocalTime());
-        } else if (f instanceof com.metaobjects.field.LongField) {
-            long lv = rs.getLong(j);
-            f.setLong(o, rs.wasNull() ? null : lv);
-        } else if (f instanceof com.metaobjects.field.FloatField) {
-            float fv = rs.getFloat(j);
-            f.setFloat(o, rs.wasNull() ? null : fv);
-        } else if (f instanceof com.metaobjects.field.DoubleField) {
-            double dv = rs.getDouble(j);
-            f.setDouble(o, rs.wasNull() ? null : dv);
-        } else if (f instanceof com.metaobjects.field.StringField) {
-            f.setString(o, rs.getString(j));
-        } else if (isJsonbField(f)) {
-            // jsonb: read JSON text from column, deserialize via deserializeJsonb().
+        com.metaobjects.manager.db.codec.JdbcFieldCodec codec =
+                com.metaobjects.manager.db.codec.JdbcCodecs.forField(f);
+        if (codec == com.metaobjects.manager.db.codec.JdbcCodecs.defaultCodec() && isJsonbField(f)) {
+            // jsonb: read JSON text from the column, deserialize via deserializeJsonb().
             // Step 1 consults ObjectClassRegistry for a bound class (registry wins for
             // explicit POJO bindings); step 2 falls back to MetaObjectDeserializer which
             // returns the MetaObject's declared class (e.g. ValueObject) when no binding
@@ -1991,12 +2002,9 @@ public class GenericSQLDriver implements DatabaseDriver {
             } else {
                 f.setObject(o, deserializeJsonb(f, json));
             }
-        } else if (f instanceof com.metaobjects.field.ObjectField) {
-            f.setObject(o, rs.getObject(j));
-        } else {
-            log.warn("Unknown field type {} for field {}, defaulting to Object", f.getClass().getSimpleName(), f.getName());
-            f.setObject(o, rs.getObject(j));
+            return;
         }
+        codec.readInto(o, f, rs, j);
     }
 
     // /////////////////////////////////////////////////////
