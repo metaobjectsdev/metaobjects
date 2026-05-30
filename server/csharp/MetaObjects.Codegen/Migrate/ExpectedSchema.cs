@@ -171,10 +171,10 @@ public static class ExpectedSchema
     // by the time we get here the value is known-legal.
     private static SqlType? DbColumnTypeOverride(MetaField f) => f.DbColumnType switch
     {
-        DbConstants.DB_COLUMN_TYPE_UUID             => new SqlType.Uuid(),
-        DbConstants.DB_COLUMN_TYPE_JSONB            => new SqlType.Json(),
-        DbConstants.DB_COLUMN_TYPE_TIMESTAMP_TZ     => new SqlType.Timestamp(WithTimezone: true),
-        _                                            => null,
+        DbConstants.DB_COLUMN_TYPE_UUID => new SqlType.Uuid(),
+        DbConstants.DB_COLUMN_TYPE_JSONB => new SqlType.Json(),
+        DbConstants.DB_COLUMN_TYPE_TIMESTAMP_TZ => new SqlType.Timestamp(WithTimezone: true),
+        _ => null,
     };
 
     private static IdentityKind? ToIdentityKind(string? generation) => generation switch

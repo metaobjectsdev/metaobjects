@@ -955,8 +955,8 @@ public static class ValidationPasses
                 var requiredSubType = value switch
                 {
                     DB_COLUMN_TYPE_UUID or DB_COLUMN_TYPE_JSONB => FIELD_SUBTYPE_STRING,
-                    DB_COLUMN_TYPE_TIMESTAMP_TZ                 => FIELD_SUBTYPE_TIMESTAMP,
-                    _                                            => null, // unreachable (Rule 1)
+                    DB_COLUMN_TYPE_TIMESTAMP_TZ => FIELD_SUBTYPE_TIMESTAMP,
+                    _ => null, // unreachable (Rule 1)
                 };
                 if (requiredSubType is not null && field.SubType != requiredSubType)
                 {
