@@ -78,6 +78,20 @@ describe("rollbackTo — down.sql, reverse order, ledger unrecord (sqlite)", () 
     expect((await appliedNames(db)).has("20260102000000-b")).toBe(true);
   });
 
+  test("MISSING down.sql throws a 'not found' error — distinct from empty content", async () => {
+    // Create the migration dir + up.sql but DELIBERATELY no down.sql file.
+    const dir = join(migDir, "20260101000000-nodown");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "up.sql"), "CREATE TABLE a (id INTEGER PRIMARY KEY);", "utf8");
+    await applyPending(db, migDir, { dryRun: false });
+
+    // Missing file → the 'not found' message, NOT the 'is empty' message.
+    await expect(rollbackTo(db, migDir, null, {})).rejects.toThrow(/down\.sql not found/i);
+    await expect(rollbackTo(db, migDir, null, {})).rejects.not.toThrow(/down\.sql is empty/i);
+    // Threw before unrecording — it stays applied.
+    expect((await appliedNames(db)).has("20260101000000-nodown")).toBe(true);
+  });
+
   test("multi-statement down.sql is split and run (splitter reuse)", async () => {
     writeMig(
       migDir,

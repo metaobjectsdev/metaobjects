@@ -141,8 +141,6 @@ export interface RollbackToResult {
  * silently skipped. `down.sql` is split with the same {@link splitSqlStatements}
  * the up-path uses. Wrapped in the same Postgres session advisory lock as
  * {@link applyPending} (no-op on SQLite).
- *
- * Ported from src/runner/apply.ts rollbackTo.
  */
 export async function rollbackTo(
   db: Kysely<Record<string, unknown>>,
@@ -174,7 +172,7 @@ export async function rollbackTo(
           `rollback '${name}': migration directory is missing (cannot read its down.sql)`,
         );
       }
-      const downText = await readDownSql(m.downPath);
+      const downText = await readDownSql(m.downPath, name);
       if (downText.trim().length === 0) {
         throw new Error(
           `rollback '${name}': down.sql is empty — data-migration downs must be ` +
@@ -195,12 +193,33 @@ export async function rollbackTo(
   });
 }
 
-async function readDownSql(path: string): Promise<string> {
+/**
+ * Read a migration's `down.sql`. Distinguishes a MISSING file (never authored —
+ * ENOENT) from a present-but-empty one: a missing down throws a "not found"
+ * error (a never-written down has a different cause than a deliberately-blank
+ * one), while genuinely-empty content falls through to the caller's empty-down
+ * check. Both remain hard errors; this only reports the right cause.
+ */
+async function readDownSql(path: string, name: string): Promise<string> {
   try {
     return await readFile(path, "utf8");
-  } catch {
-    return "";
+  } catch (err) {
+    if (isErrnoException(err) && err.code === "ENOENT") {
+      throw new Error(
+        `rollback '${name}': down.sql not found for migration '${name}' ` +
+          `(expected at ${path}) — data-migration downs must be hand-authored.`,
+      );
+    }
+    throw err;
   }
+}
+
+/** Narrow an unknown caught value to a Node errno exception (has a string `code`). */
+function isErrnoException(err: unknown): err is NodeJS.ErrnoException {
+  return (
+    err instanceof Error &&
+    typeof (err as NodeJS.ErrnoException).code === "string"
+  );
 }
 
 /**
@@ -214,8 +233,6 @@ async function readDownSql(path: string): Promise<string> {
  * transaction) level so a `CREATE INDEX CONCURRENTLY` in a migration cannot
  * deadlock against it. On SQLite (single-writer; no advisory locks) it is a
  * pass-through.
- *
- * Ported from src/runner/pg-history-store.ts acquireLock/releaseLock/advisoryKey.
  */
 async function withAdvisoryLock<T>(
   db: Kysely<Record<string, unknown>>,
@@ -235,7 +252,18 @@ async function withAdvisoryLock<T>(
     try {
       return await body();
     } finally {
-      await sql`SELECT pg_advisory_unlock(${key}::bigint)`.execute(lockConn);
+      // Releasing the lock must NOT mask an in-flight body error: a throw out of
+      // `finally` would replace any pending body rejection. Log-and-swallow the
+      // unlock failure so the body's error (if any) propagates intact. The lock
+      // is session-scoped, so it is released anyway when the connection closes.
+      try {
+        await sql`SELECT pg_advisory_unlock(${key}::bigint)`.execute(lockConn);
+      } catch (unlockErr) {
+        console.warn(
+          `migrate-ts: failed to release advisory lock (it will be freed when the ` +
+            `session ends): ${String(unlockErr)}`,
+        );
+      }
     }
   });
 }

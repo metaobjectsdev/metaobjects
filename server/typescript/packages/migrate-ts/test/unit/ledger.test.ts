@@ -5,6 +5,15 @@ import { join } from "node:path";
 import { Kysely, sql } from "kysely";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
 import {
+  DummyDriver,
+  PostgresAdapter,
+  PostgresIntrospector,
+  PostgresQueryCompiler,
+  type CompiledQuery,
+  type DatabaseConnection,
+  type QueryResult,
+} from "kysely";
+import {
   ensureLedger,
   recordApplied,
   deleteApplied,
@@ -95,5 +104,66 @@ describe("migration-history ledger", () => {
     const names = await appliedNames(db);
     expect(names.has("20260101000000-a")).toBe(true);
     expect(names.has("20260102000000-b")).toBe(false);
+  });
+
+  test("rejects a dotted/unsafe table name with a clear, option-naming error", async () => {
+    await expect(
+      ensureLedger(db, "sqlite", { table: "v1.2_migrations" }),
+    ).rejects.toThrow(/LedgerOptions\.table.*v1\.2_migrations/);
+  });
+
+  test("rejects a dotted/unsafe schema name (pg) with a clear, option-naming error", async () => {
+    await expect(
+      ensureLedger(db, "postgres", { schema: "tenant.eu" }),
+    ).rejects.toThrow(/LedgerOptions\.schema.*tenant\.eu/);
+  });
+});
+
+describe("ledger identifier qualification (pg, compiled SQL — no live DB)", () => {
+  /**
+   * Capture compiled SQL without a live Postgres: a Postgres dialect driven by a
+   * DummyDriver (no I/O) whose connection records every compiled query before
+   * returning an empty rowset. This proves a simple `table`/`schema` is emitted
+   * as SEPARATE quoted identifiers (the one `.` between them is the part
+   * separator, NOT a separator inside either part).
+   */
+  function makeCapturingDb(): { db: Kysely<Record<string, unknown>>; sqls: string[] } {
+    const sqls: string[] = [];
+    class CapturingConnection implements DatabaseConnection {
+      async executeQuery<R>(cq: CompiledQuery): Promise<QueryResult<R>> {
+        sqls.push(cq.sql);
+        return { rows: [] };
+      }
+      async *streamQuery<R>(): AsyncIterableIterator<QueryResult<R>> {
+        // Unused by the ledger fns; satisfies the interface.
+      }
+    }
+    class CapturingDriver extends DummyDriver {
+      override async acquireConnection(): Promise<DatabaseConnection> {
+        return new CapturingConnection();
+      }
+    }
+    const db = new Kysely<Record<string, unknown>>({
+      dialect: {
+        createAdapter: () => new PostgresAdapter(),
+        createDriver: () => new CapturingDriver(),
+        createIntrospector: (d) => new PostgresIntrospector(d),
+        createQueryCompiler: () => new PostgresQueryCompiler(),
+      },
+    });
+    return { db, sqls };
+  }
+
+  test('a simple table+schema qualifies as "schema"."table" (two single identifiers)', async () => {
+    const { db, sqls } = makeCapturingDb();
+    await recordApplied(db, "20260101000000-a", "csum-a", "postgres", {
+      schema: "tenant_eu",
+      table: "mo_migrations",
+    });
+    const insert = sqls.find((s) => s.toLowerCase().includes("insert into"));
+    expect(insert).toBeDefined();
+    // Each part quoted separately — NOT a single "tenant_eu.mo_migrations" blob.
+    expect(insert).toContain('"tenant_eu"."mo_migrations"');
+    await db.destroy();
   });
 });

@@ -10,6 +10,31 @@ export const MIGRATIONS_TABLE = "_metaobjects_migrations";
 /** Default Postgres schema holding the ledger (and, by default, the lock scope). */
 export const DEFAULT_LEDGER_SCHEMA = "public";
 
+/**
+ * Safe SQL identifier pattern for caller-supplied `schema` / `table` names. These
+ * are interpolated as SQL identifiers (one `sql.ref` per part), so they MUST be a
+ * single, unquoted-style identifier — no dots, spaces, or quotes — otherwise
+ * Kysely's `sql.ref` would split a value like `"v1.2_migrations"` on every `.`
+ * into a wrong multi-part name. Validated at resolve time; a violation throws.
+ */
+const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * Throw a clear, actionable error if a caller-supplied SQL-identifier option
+ * (`schema` / `table`) is not a single safe identifier. Names the offending
+ * option + value so the caller can fix the misconfiguration directly.
+ */
+function assertSafeIdentifier(option: string, value: string): void {
+  if (!SAFE_IDENTIFIER.test(value)) {
+    throw new Error(
+      `LedgerOptions.${option} must be a single SQL identifier matching ` +
+        `${SAFE_IDENTIFIER.source} (letters, digits, underscore; not starting with a digit). ` +
+        `Got ${JSON.stringify(value)} — a dotted/quoted/spaced value would be mis-parsed as a ` +
+        `multi-part identifier. Use a plain name (e.g. a per-tenant prefix) instead.`,
+    );
+  }
+}
+
 /** The dialect signal threaded through the ledger fns (schema-qualification only applies to pg). */
 export type LedgerDialect = "postgres" | "sqlite";
 
@@ -45,16 +70,25 @@ interface ResolvedLedger {
   dialect: LedgerDialect;
   schema: string;
   table: string;
-  /** A `sql.ref`-style qualified identifier (`"schema"."table"` on pg, `"table"` on sqlite). */
-  ref: ReturnType<typeof sql.ref>;
+  /**
+   * A qualified-identifier SQL fragment built from SEPARATE `sql.ref` parts —
+   * `"<schema>"."<table>"` on pg, the bare `"<table>"` on sqlite. Built part-wise
+   * (not from a single dotted string) so a `.` inside a name can never be
+   * misread as an identifier separator, independent of the resolve-time
+   * validation.
+   */
+  ref: ReturnType<typeof sql>;
 }
 
 /**
  * Resolve a {@link LedgerOptions} (+ dialect) to a concrete ledger location.
  * On Postgres the table is schema-qualified (`"<schema>"."<table>"`); on SQLite
  * (no schema concept) the schema is ignored and the bare `"<table>"` is used.
- * Built with `sql.ref` so identifier quoting stays dialect-portable rather than
- * hand-rolling pg-only DDL.
+ *
+ * Caller-supplied `schema` / `table` are validated against {@link SAFE_IDENTIFIER}
+ * (a violation throws here, naming the option + value), then assembled from two
+ * separate `sql.ref` parts so identifier quoting stays dialect-portable AND no
+ * `.` can be mis-parsed as a multi-part separator.
  */
 function resolveLedger(
   dialect: LedgerDialect,
@@ -62,8 +96,14 @@ function resolveLedger(
 ): ResolvedLedger {
   const schema = opts?.schema ?? DEFAULT_LEDGER_SCHEMA;
   const table = opts?.table ?? MIGRATIONS_TABLE;
+  assertSafeIdentifier("table", table);
+  if (dialect === "postgres") {
+    assertSafeIdentifier("schema", schema);
+  }
   const ref =
-    dialect === "postgres" ? sql.ref(`${schema}.${table}`) : sql.ref(table);
+    dialect === "postgres"
+      ? sql`${sql.ref(schema)}.${sql.ref(table)}`
+      : sql`${sql.ref(table)}`;
   return { dialect, schema, table, ref };
 }
 
