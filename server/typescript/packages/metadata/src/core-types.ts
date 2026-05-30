@@ -35,7 +35,7 @@ import { MetaRelationship } from "./core/relationship/meta-relationship.js";
 import { MetaLayout } from "./presentation/layout/meta-layout.js";
 import { MetaSource } from "./persistence/source/meta-source.js";
 import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin, MetaCollectionOrigin } from "./persistence/origin/meta-origin.js";
-import { commonFieldAttrs, currencyFieldAttr, enumFieldAttr } from "./core/field/field-schema.js";
+import { commonFieldAttrs, currencyFieldAttr, enumFieldAttr, enumAliasAttr, enumDocAttr } from "./core/field/field-schema.js";
 import { objectAttrs } from "./core/object/object-schema.js";
 import { relationshipAttrs } from "./core/relationship/relationship-schema.js";
 import { identityFieldsAttr, IDENTITY_ATTRS_MAP } from "./core/identity/identity-schema.js";
@@ -202,7 +202,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
       subType === FIELD_SUBTYPE_CURRENCY
         ? [...commonFieldAttrs, { ...currencyFieldAttr }]
         : subType === FIELD_SUBTYPE_ENUM
-          ? [...commonFieldAttrs, { ...enumFieldAttr }]
+          ? [...commonFieldAttrs, { ...enumFieldAttr }, { ...enumAliasAttr }, { ...enumDocAttr }]
           : [...commonFieldAttrs];
     registry.register(
       def(TYPE_FIELD, subType, `Field of type ${subType}`, fieldRules, MetaField, fieldAttrs,

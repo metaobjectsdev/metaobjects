@@ -6,6 +6,7 @@ export { barrel, type BarrelOpts } from "./barrel.js";
 export { mermaidErDiagram, type MermaidErOptions } from "./mermaid-er.js";
 export { promptRender, type PromptRenderOpts } from "./prompt-render-file.js";
 export { outputParser, type OutputParserOpts } from "./output-parser-file.js";
+export { outputPrompt, type OutputPromptOpts } from "./output-prompt-file.js";
 export { docsFile, type DocsFileOpts } from "./docs-file.js";
 export {
   templateGenerator,

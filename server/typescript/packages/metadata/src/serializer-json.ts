@@ -198,11 +198,47 @@ function sortAttrKeys(value: unknown): unknown {
       if (k === RESERVED_KEY_CHILDREN) continue;
       result[k] = sortAttrKeys(obj[k]);
     }
+    // @-attr values: an object-typed attr value (e.g. @enumDoc / @filter) gets
+    // the value-shape canonical-order treatment; everything else recurses normally.
     for (const k of attrKeys) {
-      result[k] = sortAttrKeys(obj[k]);
+      result[k] = sortAttrValue(obj[k]);
     }
     if (hasChildren) {
       result[RESERVED_KEY_CHILDREN] = sortAttrKeys(obj[RESERVED_KEY_CHILDREN]);
+    }
+    return result;
+  }
+  return value;
+}
+
+/**
+ * Canonicalize an inline @-attr's value. The two object-typed attr subtypes need
+ * different key order in canonical form, and the serializer is schema-free — so
+ * distinguish by value shape, which exactly tracks the subtype:
+ *   • `properties` (e.g. @enumDoc / @enumAlias) is a flat scalar→scalar map → keys
+ *     sort ordinally (cross-port canonical form; matches the Java reference, whose
+ *     Properties is unordered and serializes sorted).
+ *   • `filter` maps a field to an operator object ({eq:…}/{in:[…]}) or carries
+ *     or/and arrays — at least one value is itself an object/array → declaration
+ *     order is preserved (significant). The filter desugar runs before serialization,
+ *     so a filter clause is never a bare scalar.
+ * Mirrors the C# AttrObjectToJsonNode value-shape heuristic.
+ */
+function sortAttrValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortAttrValue);
+  }
+  if (value !== null && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const keys = Object.keys(obj);
+    const allScalar = keys.every((k) => {
+      const v = obj[k];
+      return v === null || typeof v !== "object";
+    });
+    const orderedKeys = allScalar ? [...keys].sort() : keys;
+    const result: Record<string, unknown> = {};
+    for (const k of orderedKeys) {
+      result[k] = sortAttrValue(obj[k]);
     }
     return result;
   }

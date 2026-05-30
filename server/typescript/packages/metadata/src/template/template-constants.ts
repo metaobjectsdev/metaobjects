@@ -68,3 +68,19 @@ export const TEMPLATE_FORMATS = [
   "spreadsheet",
 ] as const;
 export type TemplateFormat = (typeof TEMPLATE_FORMATS)[number];
+
+// FR-010 artifact-1 prompt presentation style (template.output only). Closed enum;
+// guidance is NEVER carried in comments. Default "guide". Set project-wide via an
+// abstract template base + extends, with a render-time override on top.
+export const TEMPLATE_ATTR_PROMPT_STYLE = "promptStyle";
+export const PROMPT_STYLE_GUIDE = "guide";
+export const PROMPT_STYLE_INLINE = "inline";
+export const PROMPT_STYLE_EXAMPLE_ONLY = "exampleOnly";
+export const PROMPT_STYLE_DEFAULT = PROMPT_STYLE_GUIDE;
+
+export const PROMPT_STYLES = [
+  PROMPT_STYLE_GUIDE,
+  PROMPT_STYLE_INLINE,
+  PROMPT_STYLE_EXAMPLE_ONLY,
+] as const;
+export type PromptStyle = (typeof PROMPT_STYLES)[number];

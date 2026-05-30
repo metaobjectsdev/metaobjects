@@ -29,6 +29,9 @@ import {
   TEMPLATE_ATTR_MODEL,
   TEMPLATE_ATTR_TOOL_NAME,
   TEMPLATE_FORMATS,
+  TEMPLATE_ATTR_PROMPT_STYLE,
+  PROMPT_STYLE_DEFAULT,
+  PROMPT_STYLES,
 } from "./template-constants.js";
 
 // Generic attrs shared by template.prompt and template.output.
@@ -78,6 +81,18 @@ const genericAttrs: AttrSchema[] = [
     description: "Output tags the rendered text must contain (drives the verify output-tag check).",
   },
 ];
+
+// FR-010 artifact-1: output-format prompt presentation style (template.output only).
+// Closed enum, enforced via allowedValues exactly like @format. Default "guide".
+const promptStyleAttr: AttrSchema = {
+  name: TEMPLATE_ATTR_PROMPT_STYLE,
+  valueType: ATTR_SUBTYPE_STRING,
+  required: false,
+  default: PROMPT_STYLE_DEFAULT,
+  allowedValues: [...PROMPT_STYLES],
+  description:
+    "FR-010 output-format prompt presentation: 'guide' (prose list + example), 'inline' (inline placeholders / enum choices), or 'exampleOnly' (filled skeleton). Guidance is never emitted as comments.",
+};
 
 // LLM-overlay attrs (template.prompt only).
 const promptOverlayAttrs: AttrSchema[] = [
@@ -144,6 +159,6 @@ const toolcallAttrs: AttrSchema[] = [
 export const TEMPLATE_ATTRS_MAP = new Map<string, AttrSchema[]>([
   [SUBTYPE_BASE, []],
   [TEMPLATE_SUBTYPE_PROMPT, [...genericAttrs, ...promptOverlayAttrs]],
-  [TEMPLATE_SUBTYPE_OUTPUT, [...genericAttrs]],
+  [TEMPLATE_SUBTYPE_OUTPUT, [...genericAttrs, promptStyleAttr]],
   [TEMPLATE_SUBTYPE_TOOLCALL, [...toolcallAttrs]],
 ]);
