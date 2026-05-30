@@ -20,7 +20,6 @@ import {
   applyD1SafetyPass,
   writeMigrationD1,
   introspectD1,
-  ensureLedger,
   applyPending,
   findWranglerConfig,
   parseWranglerConfig,
@@ -342,7 +341,8 @@ export async function migrateCommand(
     if (config.apply && exitCode === 0 && !config.dryRun) {
       const outDir = resolvePath(metaRoot, config.outDir);
       try {
-        await ensureLedger(kysely.db);
+        // applyPending calls ensureLedger internally (idempotent), so no need
+        // to ensure it here.
         const result = await applyPending(kysely.db, outDir, { dryRun: false });
         appliedNames = [...result.applied];
       } catch (err) {

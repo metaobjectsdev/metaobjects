@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Kysely, sql } from "kysely";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
 import { applyPending } from "../../src/apply/apply.js";
-import { ensureLedger, recordApplied, appliedNames } from "../../src/apply/ledger.js";
+import { ensureLedger, appliedNames } from "../../src/apply/ledger.js";
 
 function writeMig(root: string, name: string, up: string): void {
   const dir = join(root, name);
@@ -41,12 +41,11 @@ describe("applyPending — ordered, transactional, ledger-tracked", () => {
   test("runs only pending files, in order, and records them", async () => {
     writeMig(migDir, "20260101000000-a", "CREATE TABLE a (id INTEGER PRIMARY KEY);");
     writeMig(migDir, "20260102000000-b", "CREATE TABLE b (id INTEGER PRIMARY KEY);");
-    // Mark the first as already applied (with its real checksum so no tamper error).
     await ensureLedger(db);
 
     const result = await applyPending(db, migDir, { dryRun: false });
 
-    // Both should now be applied; only b was newly run.
+    // Neither is in the ledger yet, so both are pending and both get applied in order.
     expect(result.applied).toEqual(["20260101000000-a", "20260102000000-b"]);
     expect(await tableExists(db, "a")).toBe(true);
     expect(await tableExists(db, "b")).toBe(true);
