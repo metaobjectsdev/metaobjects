@@ -162,4 +162,29 @@ public static class FieldSchema
         ValueType: AttrConstants.ATTR_SUBTYPE_PROPERTIES,
         Required: false,
         Description: "Map of enum member to a human-readable description; shown per-member in the FR-010 'guide'-style prompt fragment.");
+
+    /// <summary>
+    /// FR-011: the @coerceDefault attr — only on field.enum. String member symbol used as the
+    /// recover fallback when an LLM sends a present-but-uncoercible value. Loader-validated to be
+    /// one of the field's @values (ERR_BAD_ATTR_VALUE otherwise).
+    /// </summary>
+    public static readonly AttrSchema CoerceDefaultAttr = new AttrSchema(
+        Name: FieldConstants.FIELD_ATTR_COERCE_DEFAULT,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        Description: "Fallback enum member used by tolerant recover when a present value cannot be coerced; must be one of the field's @values.");
+
+    /// <summary>
+    /// FR-011: the @normalize attr — on field.enum (per-field) and object.value (object default).
+    /// Closed enum (none|collapse|strip); controls the ASCII normalization applied during tolerant
+    /// enum recover. Resolved field → owning object.value → global default (strip).
+    /// </summary>
+    public static readonly AttrSchema NormalizeAttr = new AttrSchema(
+        Name: FieldConstants.FIELD_ATTR_NORMALIZE,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        Default: FieldConstants.NORMALIZE_DEFAULT,
+        AllowedValues: new object[] { "none", "collapse", "strip" },
+        Description: "ASCII normalization mode for tolerant enum recover (none|collapse|strip, default strip). " +
+                     "On field.enum it is per-field; on object.value it is the default for the object's enum fields.");
 }

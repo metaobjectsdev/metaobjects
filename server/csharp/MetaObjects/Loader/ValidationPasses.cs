@@ -876,6 +876,25 @@ public static class ValidationPasses
                     }
                 }
             }
+
+            // Rule 4 (FR-011): @coerceDefault must be one of the field's @values.
+            //
+            // Only validate when THIS node owns a @coerceDefault (own-attrs-only policy,
+            // matching the @values rules above). The membership set is the EFFECTIVE @values
+            // — own or inherited via extends: — so a concrete enum that owns @coerceDefault and
+            // inherits @values from an abstract super still validates correctly.
+            if (field.OwnAttr(FIELD_ATTR_COERCE_DEFAULT) is string ownCoerceDefault)
+            {
+                var effective = field.EffectiveEnumValues ?? new List<string>();
+                if (!effective.Contains(ownCoerceDefault, StringComparer.Ordinal))
+                {
+                    errors.Add(new MetaError(
+                        $"field.enum '{field.Name}' attribute '@{FIELD_ATTR_COERCE_DEFAULT}' value " +
+                        $"'{ownCoerceDefault}' is not one of '@{FIELD_ATTR_VALUES}': {string.Join(", ", effective)}.",
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                        Envelope: field.Source));
+                }
+            }
         }
 
         foreach (var child in node.OwnChildren())
