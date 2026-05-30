@@ -1,0 +1,17 @@
+// C# PascalCase enum members (String, Int, …).
+// The conformance corpus schema.json uses "STRING"/"INT" etc. — the conformance
+// runner maps those UPPER strings to these members.
+
+namespace MetaObjects.Render.Recover;
+
+/// <summary>The coercion target kinds the engine understands. Object = nested RecoverSchema.</summary>
+public enum FieldKind
+{
+    String,
+    Int,
+    Long,
+    Double,
+    Boolean,
+    Enum,
+    Object,
+}
