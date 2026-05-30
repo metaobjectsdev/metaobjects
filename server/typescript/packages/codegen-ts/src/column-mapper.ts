@@ -26,6 +26,10 @@ import {
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_OBJECT_REF,
   VALIDATOR_ATTR_MAX,
+  FIELD_ATTR_DB_COLUMN_TYPE,
+  DB_COLUMN_TYPE_UUID,
+  DB_COLUMN_TYPE_JSONB,
+  DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ,
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
 import { enumValues } from "./enum-meta.js";
@@ -139,6 +143,40 @@ export interface ColumnSpec {
     | { kind: "objectRef"; name: string; module: string };
 }
 
+/**
+ * R6 Plan 2b: a physical @dbColumnType override selects the Drizzle COLUMN type
+ * instead of the subtype default — mirroring the override-precedence shape in
+ * migrate-ts/src/expected-schema.ts (override checked first, wins over the
+ * subtype default), so codegen and DDL agree.
+ *
+ * Postgres-only: uuid/jsonb/timestamptz are Postgres physical column types with
+ * no native SQLite analogue, so on SQLite the attribute is ignored (the caller
+ * falls through to the subtype default). The native TS binding is keyed on
+ * field.subType elsewhere and is unaffected — a `field.string @dbColumnType:uuid`
+ * field stays a TS `string`; only the Drizzle column function changes.
+ *
+ * The loader has already validated the (subtype × value) pairing, so an
+ * unrecognized value never reaches here; an unknown value returns undefined
+ * (fall through to subtype default).
+ */
+function pgColumnTypeOverride(
+  field: MetaField,
+): { fnName: string; fnOptions?: Record<string, unknown> } | undefined {
+  const dbColumnType = field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE);
+  if (typeof dbColumnType !== "string") return undefined;
+  switch (dbColumnType) {
+    case DB_COLUMN_TYPE_UUID:
+      return { fnName: "uuid" };
+    case DB_COLUMN_TYPE_JSONB:
+      return { fnName: "jsonb" };
+    case DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ:
+      // Drizzle pg-core: timestamp(col, { withTimezone: true }) → timestamptz.
+      return { fnName: "timestamp", fnOptions: { withTimezone: true } };
+    default:
+      return undefined;
+  }
+}
+
 /** Resolve max length from validator.length child or @maxLength attr.
  *  Uses field.validators() (effective) so inherited validators are seen. */
 function getMaxLength(field: MetaField): number | undefined {
@@ -218,6 +256,15 @@ export function mapColumnType(
       }
     }
   } else {
+    // A physical @dbColumnType override wins over the subtype default (Postgres
+    // only; SQLite has no native analogue and falls through above). Resolved
+    // first so the override-precedence matches migrate-ts's expected-schema.
+    const override = pgColumnTypeOverride(field);
+    if (override !== undefined) {
+      fnName = override.fnName;
+      fnOptions = override.fnOptions;
+      // Skip the subtype switch — the physical type is fully determined.
+    } else {
     switch (subType) {
       case FIELD_SUBTYPE_BOOLEAN:
         fnName = "boolean";
@@ -269,6 +316,7 @@ export function mapColumnType(
       default:
         fnName = "text";
         break;
+    }
     }
   }
 

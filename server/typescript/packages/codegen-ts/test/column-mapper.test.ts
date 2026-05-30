@@ -147,6 +147,45 @@ describe("mapColumnType — field.uuid (R6 Plan 2a)", () => {
   });
 });
 
+describe("mapColumnType — @dbColumnType physical override (R6 Plan 2b)", () => {
+  test("Postgres: @dbColumnType uuid → uuid() column, native binding stays string", () => {
+    const f = metaField(FIELD_SUBTYPE_STRING, "id");
+    f.setAttr("dbColumnType", "uuid");
+    const spec = mapColumnType(f, "postgres");
+    expect(spec.fnName).toBe("uuid");
+    // The Drizzle column type changed, but the logical field is still field.string,
+    // so the native TS binding (keyed on subType — see inferred-types/zod) stays
+    // `string`. The override is a physical-column concern only.
+    expect(f.subType).toBe(FIELD_SUBTYPE_STRING);
+  });
+
+  test("Postgres: @dbColumnType jsonb → jsonb() column, native binding stays string", () => {
+    const f = metaField(FIELD_SUBTYPE_STRING, "metadata");
+    f.setAttr("dbColumnType", "jsonb");
+    const spec = mapColumnType(f, "postgres");
+    expect(spec.fnName).toBe("jsonb");
+    expect(f.subType).toBe(FIELD_SUBTYPE_STRING);
+  });
+
+  test("Postgres: @dbColumnType timestamp_with_tz → timestamp({ withTimezone: true })", () => {
+    const f = metaField(FIELD_SUBTYPE_TIMESTAMP, "createdAt");
+    f.setAttr("dbColumnType", "timestamp_with_tz");
+    const spec = mapColumnType(f, "postgres");
+    expect(spec.fnName).toBe("timestamp");
+    expect(spec.fnOptions).toEqual({ withTimezone: true });
+    // field.timestamp binds to `string` natively — the override is physical-only.
+    expect(f.subType).toBe(FIELD_SUBTYPE_TIMESTAMP);
+  });
+
+  test("SQLite: @dbColumnType uuid falls through to subtype default (no native analogue)", () => {
+    const f = metaField(FIELD_SUBTYPE_STRING, "id");
+    f.setAttr("dbColumnType", "uuid");
+    const spec = mapColumnType(f, "sqlite");
+    // SQLite: the physical attribute is ignored; string → text, unchanged.
+    expect(spec.fnName).toBe("text");
+  });
+});
+
 describe("mapColumnType — field.enum", () => {
   test("SQLite: enum → text column with CHECK constraint + enum option", () => {
     const f = metaField(FIELD_SUBTYPE_ENUM, "status");

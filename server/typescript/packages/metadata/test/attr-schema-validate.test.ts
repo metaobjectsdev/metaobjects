@@ -442,4 +442,40 @@ describe("attr-schema validation — @dbColumnType (subtype × value) pairing (R
     expect(bad).toHaveLength(1);
     expect(bad[0]!.message).toContain("tsvector");
   });
+
+  it("does NOT re-flag a concrete field that inherits @dbColumnType from an abstract super (own-only check)", async () => {
+    // The (subtype × value) pairing check is own-only (reads node.ownAttrs()):
+    // the attr is validated on the declaring (abstract) node, so a concrete field
+    // that merely inherits it via `extends` must not be re-flagged. Mirrors the
+    // enum @values / @coerceDefault own-only inheritance behavior.
+    const { errors } = await load({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            // Abstract super DECLARES the legal pairing (uuid on field.string).
+            "field.string": {
+              name: "ExternalRef",
+              abstract: true,
+              "@dbColumnType": "uuid",
+            },
+          },
+          {
+            "object.entity": {
+              name: "Asset",
+              children: [
+                { "field.long": { name: "id" } },
+                // Concrete field INHERITS @dbColumnType — does not declare it itself.
+                { "field.string": { name: "externalId", extends: "ExternalRef" } },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const bad = errors.filter((e) => (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE");
+    expect(bad).toHaveLength(0);
+    expect(errors).toHaveLength(0);
+  });
 });
