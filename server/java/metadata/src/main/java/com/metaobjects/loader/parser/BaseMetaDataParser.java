@@ -84,7 +84,6 @@ public abstract class BaseMetaDataParser {
     public final static String ATTR_DEFSUBTYPE      = "defaultSubType";
     public final static String ATTR_SUPER           = "super";
     public final static String ATTR_VALUE           = "value";
-    public final static String ATTR_ISABSTRACT      = "_isAbstract";
     public final static String ATTR_ISINTERFACE     = "isInterface";
     public final static String ATTR_IMPLEMENTS      = "implements";
     public final static String ATTR_OVERLAY         = "overlay";
@@ -101,7 +100,6 @@ public abstract class BaseMetaDataParser {
         reservedAttributes.add( ATTR_SUBTYPES );
         reservedAttributes.add( ATTR_SUPER );
         reservedAttributes.add( ATTR_VALUE );
-        reservedAttributes.add( ATTR_ISABSTRACT );
         reservedAttributes.add( ATTR_ISINTERFACE );
         reservedAttributes.add( ATTR_IMPLEMENTS );
     }

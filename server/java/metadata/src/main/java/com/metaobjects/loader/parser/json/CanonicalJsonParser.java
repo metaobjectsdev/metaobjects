@@ -60,7 +60,7 @@ import java.util.TreeSet;
  *         <li>Reserved body keys: {@code name}, {@code package}, {@code extends},
  *             {@code abstract}, {@code overlay}, {@code isArray}, {@code children},
  *             {@code value}. The canonical {@code extends} maps to the {@code super}
- *             slot; {@code abstract} maps to the {@code _isAbstract} representation.</li>
+ *             slot; {@code abstract} maps to the {@code isAbstract} representation.</li>
  *       </ol>
  *   </li>
  *   <li>Reuses {@link BaseMetaDataParser}'s {@link #parseInlineAttribute},
@@ -93,7 +93,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
 
     /**
      * Canonical body key: abstract flag. In canonical JSON the key is
-     * {@code abstract}; the base parser stores it as {@code _isAbstract} (ATTR_ISABSTRACT).
+     * {@code abstract}; the base parser stores it as {@code isAbstract} (MetaData.ATTR_IS_ABSTRACT).
      */
     private static final String KEY_ABSTRACT = "abstract";
 
@@ -687,7 +687,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         // FR5a / ADR-0009 — tag the node with its JsonSource provenance.
         tagNodeWithJsonSource(md);
 
-        // Apply abstract flag: canonical "abstract": true → create _isAbstract=true MetaAttribute.
+        // Apply abstract flag: canonical "abstract": true → create isAbstract=true MetaAttribute.
         // This mirrors how CanonicalJsonSerializer reads it back (via getIsAbstractValue which
         // looks for an "isAbstract" MetaAttribute with value Boolean.TRUE).
         if (Boolean.TRUE.equals(isAbstract)) {
