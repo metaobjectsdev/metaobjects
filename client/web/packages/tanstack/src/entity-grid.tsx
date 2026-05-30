@@ -54,7 +54,12 @@ export interface EntityGridProps<T> {
  * Cell rendering routes through the CellRendererProvider registry, keyed by
  * `column.meta.view`. Per-column `cell` always wins if set.
  */
-export function EntityGrid<T extends { id?: number | string }>(
+// Row type is any object: the grid keys rows by index (no getRowId), so it
+// never reads `id`. A stricter `{ id?: number | string }` bound wrongly rejected
+// id-less projection rows (view models with composite identity, e.g. a
+// my-courses view keyed by user+course), which the codegen explicitly generates
+// grids for.
+export function EntityGrid<T extends object>(
   props: EntityGridProps<T>,
 ): ReactNode {
   const renderers = useCellRenderers();
