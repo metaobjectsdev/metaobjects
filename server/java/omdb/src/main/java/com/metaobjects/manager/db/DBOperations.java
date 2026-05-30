@@ -41,7 +41,7 @@ public interface DBOperations {
     /**
      * Sets the database driver by class name
      */
-    void setDriverClass(String className) throws ClassNotFoundException, InstantiationException, IllegalAccessException;
+    void setDriverClass(String className) throws ReflectiveOperationException;
     
     /**
      * Sets the database driver instance

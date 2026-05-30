@@ -177,9 +177,9 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
     // DATABASE DRIVER METHODS
     //
     @Override
-    public void setDriverClass(String className) throws ClassNotFoundException, InstantiationException, IllegalAccessException {
+    public void setDriverClass(String className) throws ReflectiveOperationException {
         Class<?> c = Class.forName(className);
-        setDatabaseDriver((DatabaseDriver) c.newInstance());
+        setDatabaseDriver((DatabaseDriver) c.getDeclaredConstructor().newInstance());
     }
 
     @Override
