@@ -261,62 +261,62 @@ export function mapColumnType(
     // first so the override-precedence matches migrate-ts's expected-schema.
     const override = pgColumnTypeOverride(field);
     if (override !== undefined) {
+      // Override fully determines the physical type; skip the subtype switch.
       fnName = override.fnName;
       fnOptions = override.fnOptions;
-      // Skip the subtype switch — the physical type is fully determined.
     } else {
-    switch (subType) {
-      case FIELD_SUBTYPE_BOOLEAN:
-        fnName = "boolean";
-        break;
-      case FIELD_SUBTYPE_INT:
-        fnName = "integer";
-        break;
-      case FIELD_SUBTYPE_CURRENCY:
-      case FIELD_SUBTYPE_LONG:
-        fnName = "bigint";
-        fnOptions = { mode: "number" };
-        break;
-      case FIELD_SUBTYPE_DOUBLE:
-        fnName = "doublePrecision";
-        break;
-      case FIELD_SUBTYPE_FLOAT:
-        fnName = "real";
-        break;
-      case FIELD_SUBTYPE_DATE:
-        fnName = "date";
-        break;
-      case FIELD_SUBTYPE_TIME:
-        fnName = "time";
-        break;
-      case FIELD_SUBTYPE_TIMESTAMP:
-        fnName = "timestamp";
-        break;
-      case FIELD_SUBTYPE_UUID:
-        // Postgres native uuid column; native TS binding stays `string`.
-        fnName = "uuid";
-        break;
-      case FIELD_SUBTYPE_DECIMAL:
-        fnName = "numeric";
-        fnOptions = { precision: 19, scale: 4 }; // sane default; @precision/@scale attrs override
-        break;
-      case FIELD_SUBTYPE_STRING: {
-        const maxLen = getMaxLength(field);
-        if (maxLen !== undefined) {
-          fnName = "varchar";
-          fnOptions = { length: maxLen };
-        } else {
-          fnName = "text";
+      switch (subType) {
+        case FIELD_SUBTYPE_BOOLEAN:
+          fnName = "boolean";
+          break;
+        case FIELD_SUBTYPE_INT:
+          fnName = "integer";
+          break;
+        case FIELD_SUBTYPE_CURRENCY:
+        case FIELD_SUBTYPE_LONG:
+          fnName = "bigint";
+          fnOptions = { mode: "number" };
+          break;
+        case FIELD_SUBTYPE_DOUBLE:
+          fnName = "doublePrecision";
+          break;
+        case FIELD_SUBTYPE_FLOAT:
+          fnName = "real";
+          break;
+        case FIELD_SUBTYPE_DATE:
+          fnName = "date";
+          break;
+        case FIELD_SUBTYPE_TIME:
+          fnName = "time";
+          break;
+        case FIELD_SUBTYPE_TIMESTAMP:
+          fnName = "timestamp";
+          break;
+        case FIELD_SUBTYPE_UUID:
+          // Postgres native uuid column; native TS binding stays `string`.
+          fnName = "uuid";
+          break;
+        case FIELD_SUBTYPE_DECIMAL:
+          fnName = "numeric";
+          fnOptions = { precision: 19, scale: 4 }; // sane default; @precision/@scale attrs override
+          break;
+        case FIELD_SUBTYPE_STRING: {
+          const maxLen = getMaxLength(field);
+          if (maxLen !== undefined) {
+            fnName = "varchar";
+            fnOptions = { length: maxLen };
+          } else {
+            fnName = "text";
+          }
+          break;
         }
-        break;
+        case FIELD_SUBTYPE_ENUM:
+        case FIELD_SUBTYPE_CLASS:
+        case FIELD_SUBTYPE_OBJECT:
+        default:
+          fnName = "text";
+          break;
       }
-      case FIELD_SUBTYPE_ENUM:
-      case FIELD_SUBTYPE_CLASS:
-      case FIELD_SUBTYPE_OBJECT:
-      default:
-        fnName = "text";
-        break;
-    }
     }
   }
 
