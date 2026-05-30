@@ -155,6 +155,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       extStyle: config.extStyle,
       columnNamingStrategy: config.columnNamingStrategy,
       apiPrefix: config.apiPrefix,
+      emitAbstractShapes: config.emitAbstractShapes,
       outputLayout: selfTarget.outputLayout,
       pkMap,
       relationMap,

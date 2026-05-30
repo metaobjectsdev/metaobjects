@@ -59,30 +59,24 @@ public class MetaRoot extends MetaData {
      */
     private transient boolean synthesizedName = false;
 
-    // Self-registration of the metadata.root type with the unified registry.
     // metadata.root accepts the same top-level children as metadata.base; it is
-    // the concrete tree-root produced by MetaDataLoader.
-    // metadata.root self-registers against the singleton on class-load. The same
-    // registration is also wired into the ServiceLoader bootstrap
-    // (CoreTypeMetaDataProvider) so isolated registries created via
-    // MetaDataRegistry.createWithCoreProviders() get it too; the idempotency guard
-    // in registerTypes() makes the two paths safe.
-    static {
-        registerTypes(MetaDataRegistry.getInstance());
-    }
+    // the concrete tree-root produced by MetaDataLoader. Its registration is wired
+    // into the ServiceLoader bootstrap (CoreTypeMetaDataProvider), invoked on first
+    // MetaDataRegistry.getInstance() — including isolated registries created via
+    // MetaDataRegistry.createWithCoreProviders(). A self-registering static{} block
+    // here is intentionally absent: bootstrapping the registry from this class's
+    // <clinit> created a class-init cycle (see the matching note in MetaData).
 
     /**
      * Registers the metadata.root type with the supplied registry.
-     * Provided for parity with {@link MetaData#registerTypes(MetaDataRegistry)};
-     * the static initializer already self-registers against the singleton.
+     * Invoked via CoreTypeMetaDataProvider on the ServiceLoader bootstrap.
      *
      * @param registry the registry to register with
      */
     public static void registerTypes(MetaDataRegistry registry) {
         try {
-            // Idempotent: the static block (singleton) and the ServiceLoader
-            // bootstrap (CoreTypeMetaDataProvider, for isolated registries) both
-            // call this; skip if metadata.root is already registered.
+            // Idempotent: skip if metadata.root is already registered (the
+            // provider may run against a registry that already has it).
             if (registry.isRegistered(TYPE_METADATA, SUBTYPE_ROOT)) {
                 return;
             }
