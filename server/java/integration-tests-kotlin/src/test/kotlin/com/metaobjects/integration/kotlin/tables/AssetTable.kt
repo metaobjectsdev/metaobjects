@@ -14,7 +14,7 @@ import org.jetbrains.exposed.sql.json.jsonb
  *
  *   - `field.uuid` PK + `@generation:uuid`           → `uuid("id")` + gen_random_uuid() DEFAULT
  *   - `field.uuid` (non-key, @required)              → `uuid("ownerId")` (Postgres native uuid)
- *   - `field.string` + `@dbColumnType:uuid`          → `uuid("externalId")` (property stays String-ish)
+ *   - `field.string` + `@dbColumnType:uuid`          → `uuid("externalId")` (native uuid column; generated DATA-CLASS property stays String)
  *   - `field.string` + `@dbColumnType:jsonb`         → `jsonb("payload", …)` (real Postgres JSONB)
  *   - `field.timestamp` + `@dbColumnType:timestamp_with_tz` → `timestampWithTimeZone("recordedAt")`
  *
