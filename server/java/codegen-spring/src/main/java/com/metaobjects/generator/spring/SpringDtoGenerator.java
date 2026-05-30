@@ -56,6 +56,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject entity : loader.getMetaObjects()) {
             if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
+            if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) continue;
             emit(entity, outRoot);
         }
     }
