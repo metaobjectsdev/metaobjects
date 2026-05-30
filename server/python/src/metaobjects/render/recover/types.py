@@ -1,0 +1,242 @@
+"""FR-010 recover model + report.
+
+Frozen cross-port vocabularies (``FieldRecovery``, ``FieldKind``, ``Tolerance``,
+``Format``) plus the immutable schema/option/outcome dataclasses and the mutable
+``RecoveryReport`` accumulator.
+
+The corpus serializes ``FieldRecovery`` with SCREAMING_SNAKE values
+(``RECOVERED`` / ``DEFAULTED`` / ``LOST_OPTIONAL`` / ``LOST_REQUIRED`` /
+``MALFORMED``) and ``Format`` / ``FieldKind`` as UPPER tokens; the conformance
+runner maps the schema-json tokens onto these enums.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Callable, Generic, TypeVar
+
+T = TypeVar("T")
+
+# A bespoke per-field coercion hook: (field_path, raw_value, spec) -> coerced | None.
+# Returning ``None`` falls through to the default coercion. Forward-referenced as a
+# string in RecoverOptions to avoid a forward-declaration cycle with FieldSpec.
+OnField = Callable[[str, str, "FieldSpec"], object | None]
+Normalizer = Callable[[str], object | None]
+
+
+class Format(Enum):
+    """Document format the recover pipeline targets."""
+
+    JSON = "JSON"
+    XML = "XML"
+
+
+class FieldKind(Enum):
+    """The coercion target kinds the engine understands. ``OBJECT`` = nested schema."""
+
+    STRING = "STRING"
+    INT = "INT"
+    LONG = "LONG"
+    DOUBLE = "DOUBLE"
+    BOOLEAN = "BOOLEAN"
+    ENUM = "ENUM"
+    OBJECT = "OBJECT"
+
+
+class FieldRecovery(Enum):
+    """FROZEN cross-port per-field recovery classification.
+
+    Do not reorder or add without an ADR. Values match the corpus serialization.
+    """
+
+    RECOVERED = "RECOVERED"
+    # DEFAULTED is reserved (a future @default-backed value); the engine does not emit it.
+    DEFAULTED = "DEFAULTED"
+    LOST_OPTIONAL = "LOST_OPTIONAL"
+    LOST_REQUIRED = "LOST_REQUIRED"
+    MALFORMED = "MALFORMED"
+
+
+class Tolerance(Enum):
+    """STRICT: case-sensitive, minimal repair. NORMAL: case-insensitive (default). LOOSE: maximal repair.
+
+    NOTE: LOOSE currently behaves identically to NORMAL (case-insensitive). Reserved
+    for future maximal-repair behavior.
+    """
+
+    STRICT = "STRICT"
+    NORMAL = "NORMAL"
+    LOOSE = "LOOSE"
+
+
+@dataclass(frozen=True, slots=True)
+class Coercion:
+    """A recorded normalization/coercion.
+
+    ``kind`` e.g. ``"alias"``, ``"clamp"``, ``"case"``, ``"runtime-alias-override"``.
+    """
+
+    field_path: str
+    from_: str
+    to: str
+    kind: str
+
+
+@dataclass(frozen=True, slots=True)
+class FieldSpec:
+    """One field's recover descriptor.
+
+    ``enum_values``/``enum_alias`` non-None only for ENUM; ``min``/``max`` non-None
+    only for numeric range constraints; ``nested`` non-None only for OBJECT.
+    """
+
+    name: str
+    kind: FieldKind
+    required: bool = False
+    array: bool = False
+    enum_values: list[str] | None = None
+    enum_alias: dict[str, str] | None = None
+    min: float | None = None
+    max: float | None = None
+    nested: "RecoverSchema | None" = None
+
+    @staticmethod
+    def scalar(name: str, kind: FieldKind, required: bool) -> "FieldSpec":
+        return FieldSpec(name=name, kind=kind, required=required)
+
+    @staticmethod
+    def enum_field(
+        name: str,
+        required: bool,
+        values: list[str] | None,
+        aliases: dict[str, str] | None,
+    ) -> "FieldSpec":
+        return FieldSpec(
+            name=name,
+            kind=FieldKind.ENUM,
+            required=required,
+            enum_values=None if values is None else list(values),
+            enum_alias={} if aliases is None else dict(aliases),
+        )
+
+    @staticmethod
+    def range_(
+        name: str,
+        kind: FieldKind,
+        required: bool,
+        min: float | None,
+        max: float | None,
+    ) -> "FieldSpec":
+        return FieldSpec(name=name, kind=kind, required=required, min=min, max=max)
+
+    @staticmethod
+    def object_(
+        name: str,
+        required: bool,
+        array: bool,
+        nested: "RecoverSchema | None",
+    ) -> "FieldSpec":
+        return FieldSpec(
+            name=name,
+            kind=FieldKind.OBJECT,
+            required=required,
+            array=array,
+            nested=nested,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class RecoverSchema:
+    """Top-level recover descriptor.
+
+    ``root_name`` = the XML root tag / logical JSON root name.
+    """
+
+    format: Format
+    root_name: str
+    fields: list[FieldSpec] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class RecoverOptions:
+    """Bounded runtime override surface (the "20%").
+
+    ``aliases``/``normalizers`` are MERGED with the schema's, runtime winning on key
+    conflict. ``on_field`` is the single bespoke-coercion hook.
+    """
+
+    tolerance: Tolerance = Tolerance.NORMAL
+    aliases: dict[str, str] = field(default_factory=dict)
+    normalizers: dict[str, Normalizer] = field(default_factory=dict)
+    on_field: OnField | None = None
+
+    @staticmethod
+    def defaults() -> "RecoverOptions":
+        return RecoverOptions()
+
+    def with_tolerance(self, t: Tolerance) -> "RecoverOptions":
+        return RecoverOptions(
+            tolerance=t,
+            aliases=dict(self.aliases),
+            normalizers=dict(self.normalizers),
+            on_field=self.on_field,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class RecoverOutcome:
+    """Engine return.
+
+    ``data`` is a forgiving ``dict[str, object]``; Plan 2 wraps it into a typed
+    ``RecoveryResult``.
+    """
+
+    data: dict[str, object]
+    report: "RecoveryReport"
+
+
+@dataclass(frozen=True, slots=True)
+class RecoveryResult(Generic[T]):
+    """Typed result of a generated ``recover(...)``: best-effort value + report."""
+
+    data: T | None
+    report: "RecoveryReport"
+
+
+class RecoveryReport:
+    """Mutable accumulator of per-field classification, the empty flag, and coercion notes."""
+
+    def __init__(self) -> None:
+        self._states: dict[str, FieldRecovery] = {}
+        self._coercions: list[Coercion] = []
+        self._empty: bool = False
+
+    def set(self, field_path: str, state: FieldRecovery) -> None:
+        self._states[field_path] = state
+
+    def add_coercion(self, c: Coercion) -> None:
+        self._coercions.append(c)
+
+    def mark_empty(self) -> None:
+        self._empty = True
+
+    def is_empty(self) -> bool:
+        return self._empty
+
+    def states(self) -> dict[str, FieldRecovery]:
+        return dict(self._states)
+
+    def coercions(self) -> list[Coercion]:
+        return list(self._coercions)
+
+    def lost_required(self) -> list[str]:
+        return self._by_state(FieldRecovery.LOST_REQUIRED)
+
+    def malformed(self) -> list[str]:
+        return self._by_state(FieldRecovery.MALFORMED)
+
+    def has_lost_required(self) -> bool:
+        return len(self.lost_required()) > 0
+
+    def _by_state(self, s: FieldRecovery) -> list[str]:
+        return [k for k, v in self._states.items() if v == s]
