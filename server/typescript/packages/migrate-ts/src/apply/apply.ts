@@ -82,7 +82,7 @@ export async function applyPending(
     // Run the file's SQL + the ledger insert in ONE transaction. A failure
     // rolls the whole file back (unrecorded) and propagates — stopping the run.
     await db.transaction().execute(async (trx) => {
-      for (const stmt of splitStatements(text)) {
+      for (const stmt of splitSqlStatements(text)) {
         await sql.raw(stmt).execute(trx);
       }
       await recordApplied(trx, m.name, checksum);
@@ -118,13 +118,126 @@ function checksumOf(text: string): string {
 /**
  * Split a multi-statement SQL string into individual statements. The Kysely
  * raw-SQL executor runs one statement per call, so files with multiple
- * statements (or hand-added data steps) must be split. Naive `;` split is
- * adequate for migration DDL/DML; statement-internal semicolons would require a
- * real parser, which migrations don't need here.
+ * statements (or hand-added data steps) must be split on the statement-separating
+ * `;`.
+ *
+ * A naive `;` split breaks on statement-internal semicolons — which the
+ * versioned-apply model explicitly invites via hand-authored DATA migrations
+ * (string literals containing `;`, PG function bodies, etc.). This is a single
+ * left-to-right scan that tracks lexical context and treats a `;` as a separator
+ * ONLY when it is in none of the following states:
+ *   - inside a single-quoted literal (`'…'`, with `''` as an embedded quote)
+ *   - inside a double-quoted identifier (`"…"`, with `""` as an embedded quote)
+ *   - inside a `--`…end-of-line comment
+ *   - inside a block comment (`/* … *​/`)
+ *   - inside a dollar-quoted body (`$tag$ … $tag$`, tag = `[A-Za-z0-9_]*`)
+ *
+ * Each statement is trimmed; empty/whitespace-only fragments are dropped. This
+ * is not a full SQL parser — it only knows enough lexical structure to find the
+ * real statement boundaries.
  */
-function splitStatements(text: string): string[] {
-  return text
-    .split(";")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+export function splitSqlStatements(text: string): string[] {
+  const statements: string[] = [];
+  let start = 0;
+  let i = 0;
+  const n = text.length;
+
+  while (i < n) {
+    const ch = text[i];
+    const next = text[i + 1];
+
+    // -- line comment: skip to end of line (or input).
+    if (ch === "-" && next === "-") {
+      i += 2;
+      while (i < n && text[i] !== "\n") i++;
+      continue;
+    }
+
+    // /* block comment */: skip to closing delimiter (or input).
+    if (ch === "/" && next === "*") {
+      i += 2;
+      while (i < n && !(text[i] === "*" && text[i + 1] === "/")) i++;
+      i += 2; // consume the closing */ (clamped by the while below)
+      continue;
+    }
+
+    // Single-quoted literal: consume to the closing quote, treating '' as escape.
+    if (ch === "'") {
+      i++;
+      while (i < n) {
+        if (text[i] === "'" && text[i + 1] === "'") {
+          i += 2; // embedded ''
+          continue;
+        }
+        if (text[i] === "'") {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+
+    // Double-quoted identifier: consume to the closing quote, treating "" as escape.
+    if (ch === '"') {
+      i++;
+      while (i < n) {
+        if (text[i] === '"' && text[i + 1] === '"') {
+          i += 2; // embedded ""
+          continue;
+        }
+        if (text[i] === '"') {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+
+    // Dollar-quoted string: $tag$ … $tag$ with tag = [A-Za-z0-9_]*.
+    if (ch === "$") {
+      const open = matchDollarTag(text, i);
+      if (open !== null) {
+        const tag = text.slice(i, open); // includes both $ delimiters
+        i = open;
+        // Scan for the matching closing tag.
+        while (i < n) {
+          if (text[i] === "$" && text.startsWith(tag, i)) {
+            i += tag.length;
+            break;
+          }
+          i++;
+        }
+        continue;
+      }
+    }
+
+    // Statement separator (only reached when in no special state).
+    if (ch === ";") {
+      const stmt = text.slice(start, i).trim();
+      if (stmt.length > 0) statements.push(stmt);
+      i++;
+      start = i;
+      continue;
+    }
+
+    i++;
+  }
+
+  const tail = text.slice(start).trim();
+  if (tail.length > 0) statements.push(tail);
+  return statements;
+}
+
+/**
+ * If a dollar-quote tag opens at `pos` (text[pos] === "$"), return the index
+ * just past the opening `$tag$` delimiter; otherwise null. The tag body is
+ * `[A-Za-z0-9_]*` and must be terminated by a second `$`.
+ */
+function matchDollarTag(text: string, pos: number): number | null {
+  let j = pos + 1;
+  while (j < text.length && /[A-Za-z0-9_]/.test(text[j] as string)) j++;
+  if (text[j] === "$") return j + 1;
+  return null;
 }
