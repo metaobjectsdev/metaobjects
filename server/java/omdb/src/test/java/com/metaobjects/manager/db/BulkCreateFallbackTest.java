@@ -105,6 +105,8 @@ public class BulkCreateFallbackTest {
         vo.setLong("bignum", 1L);
         vo.setBoolean("active", true);
         vo.setDouble("ratio", 1.0d);
+        vo.setFloat("rate", 1.0f);
+        vo.setObject("amount", new java.math.BigDecimal("1.00"));
         vo.setString("label", label);
         vo.setDate("createdAt", new java.util.Date(1_700_000_000_000L));
         return vo;
@@ -144,6 +146,91 @@ public class BulkCreateFallbackTest {
         assertEquals("postPersistence fired once per object", 5, omdb.postConns.size());
         omdb.preConns.forEach(c -> assertNotNull("prePersistence received a live (non-null) ObjectConnection", c));
         omdb.postConns.forEach(c -> assertNotNull("postPersistence received a live (non-null) ObjectConnection", c));
+    }
+
+    /**
+     * Task 1.6 (remediation) — when the bulk fallback runs inside a
+     * caller-managed transaction (an {@code inTransaction} lambda), it must NOT
+     * commit the outer unit of work. A later failure in the same lambda must
+     * roll back EVERYTHING, including the bulk-inserted rows. If the fallback
+     * prematurely committed, those rows would survive the rollback.
+     */
+    @Test
+    public void bulkInsideInTransactionDefersToCallerOnLaterFailure() throws Exception {
+        MetaObject mo = registry.findMetaObjectByName("codectest::Sample");
+
+        ObjectConnection before = omdb.getConnection();
+        long start;
+        try {
+            start = omdb.getObjects(before, mo,
+                    new com.metaobjects.manager.QueryOptions(
+                            new com.metaobjects.manager.exp.Expression("label", "txn-bulk-", com.metaobjects.manager.exp.Expression.START_WITH))).size();
+        } finally {
+            omdb.releaseConnection(before);
+        }
+
+        try {
+            omdb.inTransaction(c -> {
+                Collection<Object> batch = new ArrayList<>();
+                for (int i = 0; i < 4; i++) batch.add(sample(mo, "txn-bulk-" + i));
+                omdb.createObjectsBulk(c, mo, batch);   // hits the fallback (Derby has no native bulk)
+                // Now fail LATER in the same lambda. If the bulk path committed,
+                // these rows survive; if it correctly deferred, the inTransaction
+                // rollback removes them.
+                throw new IllegalStateException("later work fails");
+            });
+            fail("expected the lambda's later failure to propagate");
+        } catch (IllegalStateException expected) {
+            // good — inTransaction rolled the whole unit back
+        }
+
+        ObjectConnection verify = omdb.getConnection();
+        try {
+            long after = omdb.getObjects(verify, mo,
+                    new com.metaobjects.manager.QueryOptions(
+                            new com.metaobjects.manager.exp.Expression("label", "txn-bulk-", com.metaobjects.manager.exp.Expression.START_WITH))).size();
+            assertEquals("bulk insert inside inTransaction must NOT survive the outer rollback "
+                    + "(the fallback must not prematurely commit a caller-managed transaction)",
+                    start, after);
+        } finally {
+            omdb.releaseConnection(verify);
+        }
+    }
+
+    /**
+     * Task 1.6 (remediation), connection-level corroboration — when the
+     * connection arrives already non-autocommit (caller owns the transaction),
+     * a SUCCESSFUL fallback must NOT commit on its own. We prove "no premature
+     * commit" from the OWNER connection: roll back after a successful fallback;
+     * if the fallback had committed, the rows would survive the rollback. They
+     * must not. (We deliberately avoid a second connection here: embedded Derby
+     * takes a write lock on the uncommitted rows, so a concurrent read on the
+     * same in-memory DB would block on lock timeout rather than see "0 rows".)
+     */
+    @Test
+    public void successfulFallbackDoesNotCommitUnderCallerManagedTransaction() throws Exception {
+        MetaObject mo = registry.findMetaObjectByName("codectest::Sample");
+
+        ObjectConnection oc = omdb.getConnection();
+        try {
+            oc.setAutoCommit(false);   // caller takes ownership of the transaction
+            Collection<Object> batch = new ArrayList<>();
+            for (int i = 0; i < 3; i++) batch.add(sample(mo, "nocommit-" + i));
+            omdb.createObjectsBulk(oc, mo, batch);   // fallback runs successfully but must NOT commit
+
+            // Owner rolls back. If the fallback prematurely committed, these rows
+            // would persist through the rollback; with the fix they vanish.
+            oc.rollback();
+
+            long visible = omdb.getObjects(oc, mo,
+                    new com.metaobjects.manager.QueryOptions(
+                            new com.metaobjects.manager.exp.Expression("label", "nocommit-", com.metaobjects.manager.exp.Expression.START_WITH))).size();
+            assertEquals("a successful fallback must NOT commit when the caller owns the transaction; "
+                    + "the owner's rollback must remove every fallback-inserted row",
+                    0, visible);
+        } finally {
+            omdb.releaseConnection(oc);
+        }
     }
 
     @Test

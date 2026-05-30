@@ -51,6 +51,18 @@
               }
             },
             {
+              "field.float": {
+                "name": "rate",
+                "@column": "rate"
+              }
+            },
+            {
+              "field.decimal": {
+                "name": "amount",
+                "@column": "amount"
+              }
+            },
+            {
               "field.date": {
                 "name": "createdAt",
                 "@column": "createdAt"

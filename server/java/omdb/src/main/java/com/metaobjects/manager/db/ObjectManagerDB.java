@@ -1251,8 +1251,16 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
      *
      * <p>The per-1000-row mid-commit of the prior implementation was removed:
      * intermediate commits made earlier chunks unrecoverable on a later
-     * failure, defeating atomicity. Auto-commit is disabled for the batch and
-     * restored in {@code finally}.
+     * failure, defeating atomicity.
+     *
+     * <p><strong>Transaction ownership.</strong> Commit / rollback / auto-commit
+     * restore are performed ONLY when this method opened the transaction (the
+     * connection arrived with auto-commit on). When the caller already owns the
+     * transaction — e.g. inside an {@code ObjectManager.inTransaction(...)} lambda
+     * which sets auto-commit off — this method commits nothing, rolls back nothing,
+     * and lets exceptions propagate so the caller's transaction boundary stays
+     * authoritative (no premature commit, no double rollback). This mirrors single
+     * {@link #createObject}, which never manages a commit of its own.
      */
     private void createObjectsBatchFallback(ObjectConnection c, MetaObject mc, ObjectMappingDB mapping, Collection<Object> objects) throws SQLException {
         Connection conn = (Connection) c.getDatastoreConnection();
@@ -1273,13 +1281,24 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
                 postPersistence(c, mc, obj, CREATE);
             }
 
-            conn.commit();
+            // Only commit when THIS method opened the transaction. If the caller
+            // arrived already non-autocommit (e.g. inside an inTransaction lambda),
+            // the boundary is theirs to manage — committing here would prematurely
+            // commit the outer unit of work.
+            if (originalAutoCommit) {
+                conn.commit();
+            }
         } catch (SQLException | RuntimeException e) {
-            // All-or-nothing: undo every row inserted in this batch.
-            try {
-                conn.rollback();
-            } catch (SQLException rollbackEx) {
-                e.addSuppressed(rollbackEx);
+            // All-or-nothing: undo every row inserted in this batch — but only when
+            // we own the transaction. When the caller owns it, let the exception
+            // propagate untouched (the caller rolls back); rolling back here would
+            // double-rollback the outer transaction.
+            if (originalAutoCommit) {
+                try {
+                    conn.rollback();
+                } catch (SQLException rollbackEx) {
+                    e.addSuppressed(rollbackEx);
+                }
             }
             throw e;
         } finally {
