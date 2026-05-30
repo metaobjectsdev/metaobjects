@@ -163,4 +163,45 @@ describe("entityFile() — emitAbstractShapes knob", () => {
     expect(paths).not.toContain("Base.ts");
     expect(paths).toContain("Widget.ts");
   });
+
+  // Cross-port invariant: an abstract entity must never produce a DB table /
+  // migration footprint, even when it carries a source.rdb child (matches
+  // C#/Java/Kotlin/Python, which suppress CREATE TABLE for abstract).
+  test("source-bearing abstract emits shape only — no Drizzle table", async () => {
+    const MODEL = JSON.stringify({
+      "metadata.root": { package: "acme", children: [
+        { "object.entity": { name: "AbstractRecord", abstract: true, children: [
+          { "field.long": { name: "id" } },
+          { "field.string": { name: "code" } },
+          { "source.rdb": { "@table": "abstract_records" } },
+          { "identity.primary": { "@fields": "id" } },
+        ] } },
+        { "object.entity": { name: "Concrete", children: [
+          { "field.long": { name: "id" } },
+          { "source.rdb": { "@table": "concretes" } },
+          { "identity.primary": { "@fields": "id" } },
+        ] } },
+      ] },
+    });
+    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(MODEL)]);
+    expect(errors).toEqual([]);
+    const entities = root.objects();
+    const renderContext = makeRenderContext({
+      dialect: "sqlite", loadedRoot: root, outDir: "/tmp", dbImport: "../db", extStyle: "none",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    const ctx: GenContext = {
+      entities, loadedRoot: root, matches: () => true,
+      config: { outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
+      renderContext, warn: () => {},
+    };
+    const files = await entityFile().generate(ctx);
+    const abstractFile = files.find((f) => f.path === "AbstractRecord.ts");
+    const concreteFile = files.find((f) => f.path === "Concrete.ts");
+    // Abstract: shape emitted, but no table / migration footprint.
+    expect(abstractFile).toBeDefined();
+    expect(abstractFile!.content).not.toContain("sqliteTable");
+    // Concrete: full table as usual (proves we only suppressed the abstract).
+    expect(concreteFile!.content).toContain("sqliteTable");
+  });
 });
