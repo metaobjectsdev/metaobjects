@@ -353,6 +353,10 @@ public class MetaDataLoader
             // Pass 11: source-v2 one-primary rule — an object with ≥1 source must
             // have exactly one with role "primary" (own-only).
             errors.AddRange(ValidationPasses.ValidateOnePrimarySource(root));
+
+            // Pass 12: @dbColumnType physical column-type validation (R6 Plan 2b) —
+            // own-only closed-value + (subtype × value) pairing check.
+            errors.AddRange(ValidationPasses.ValidateDbColumnType(root));
         }
 
         // If nothing parsed successfully, synthesize an empty root so callers

@@ -124,7 +124,7 @@ public static class QueryScenarioRunner
     {
         var obj = new JsonObject();
         foreach (var (k, v) in Normalization.NormalizeRow(row))
-            obj[k] = v is null ? null : JsonValue.Create(v);
+            obj[k] = Normalization.ToJsonValue(v);
         return obj;
     }
 

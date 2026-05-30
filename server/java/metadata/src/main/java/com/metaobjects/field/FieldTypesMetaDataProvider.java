@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
  * <li><strong>field.object:</strong> Object fields with object reference support</li>
  * <li><strong>field.class:</strong> Class fields for class type references</li>
  * <li><strong>field.enum:</strong> Enum fields with a required {@code @values} member set</li>
+ * <li><strong>field.uuid:</strong> UUID identity-scalar fields (native java.util.UUID binding)</li>
  * </ul>
  *
  * <strong>Universal Array Support:</strong>:
@@ -64,6 +65,7 @@ public class FieldTypesMetaDataProvider implements MetaDataTypeProvider {
         ClassField.registerTypes(registry);
         EnumField.registerTypes(registry);
         CurrencyField.registerTypes(registry);
+        UuidField.registerTypes(registry);
 
         log.debug("Field types registered via provider");
     }

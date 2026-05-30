@@ -57,6 +57,33 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
     /** {@code @dbType} value that marks a field as a JSON document column. */
     public static final String DB_TYPE_JSONB = "jsonb";
 
+    /**
+     * Physical column-type attribute (R6 Plan 2b, ADR-0013). Selects the DB column type
+     * while leaving the logical field type and its idiomatic native binding untouched —
+     * the canonical <em>physical</em> escape hatch for DB-specific column types.
+     *
+     * <p>Closed value set ({@link #VALID_DB_COLUMN_TYPES}); each value is legal only on a
+     * specific logical field subtype (validated own-only by the loader, emitting
+     * {@code ERR_BAD_ATTR_VALUE} for an illegal pairing or unrecognized value):</p>
+     * <ul>
+     *   <li>{@code uuid} → {@code field.string} → Postgres {@code UUID} column.</li>
+     *   <li>{@code jsonb} → {@code field.string} → Postgres {@code JSONB} (genuinely-open JSON).</li>
+     *   <li>{@code timestamp_with_tz} → {@code field.timestamp} → {@code TIMESTAMP WITH TIME ZONE}.</li>
+     * </ul>
+     */
+    public static final String DB_COLUMN_TYPE = "dbColumnType";
+
+    /** {@code @dbColumnType} value → Postgres native {@code uuid} column (on {@code field.string}). */
+    public static final String DB_COLUMN_TYPE_UUID = "uuid";
+    /** {@code @dbColumnType} value → Postgres native {@code jsonb} column (on {@code field.string}). */
+    public static final String DB_COLUMN_TYPE_JSONB = "jsonb";
+    /** {@code @dbColumnType} value → {@code timestamp with time zone} column (on {@code field.timestamp}). */
+    public static final String DB_COLUMN_TYPE_TIMESTAMP_TZ = "timestamp_with_tz";
+
+    /** The closed set of legal {@code @dbColumnType} values. */
+    public static final java.util.List<String> VALID_DB_COLUMN_TYPES = java.util.List.of(
+        DB_COLUMN_TYPE_UUID, DB_COLUMN_TYPE_JSONB, DB_COLUMN_TYPE_TIMESTAMP_TZ);
+
     // Identity-specific database attributes
     public static final String DB_SEQUENCE_NAME = "dbSequenceName";
     public static final String DB_INDEX_NAME = "dbIndexName";
@@ -112,12 +139,22 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
             .optionalAttribute(DB_PRECISION, IntAttribute.SUBTYPE_INT)
             .optionalAttribute(DB_SCALE, IntAttribute.SUBTYPE_INT)
             .optionalAttribute(DB_TYPE, StringAttribute.SUBTYPE_STRING)
+            // R6 Plan 2b: physical column-type escape hatch (validated own-only by the loader).
+            .optionalAttribute(DB_COLUMN_TYPE, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(PREVIOUS_NAME, StringAttribute.SUBTYPE_STRING);
 
         // String field specific
+        // NOTE: DB_COLUMN_TYPE is intentionally NOT registered here — the field.base
+        // registration above already propagates it to every field subtype (intended
+        // "every subtype" parity with TS), so a @dbColumnType on a string field is
+        // accepted via inheritance. Re-registering it here would be redundant.
         registry.findType(MetaField.TYPE_FIELD, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING)
             .optionalAttribute(DB_LENGTH, IntAttribute.SUBTYPE_INT);
+
+        // UUID field specific (R6 Plan 2a): @column override, like the other scalars.
+        registry.findType(MetaField.TYPE_FIELD, com.metaobjects.field.UuidField.SUBTYPE_UUID)
+            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING);
 
         // Numeric field specific
         registry.findType(MetaField.TYPE_FIELD, LongField.SUBTYPE_LONG)

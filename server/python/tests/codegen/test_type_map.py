@@ -52,3 +52,20 @@ def test_is_array_via_attr_form() -> None:
     f = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_STRING, "x")
     f.set_attr("isArray", True)
     assert py_type_for(f).expr == "list[str]"
+
+
+def test_uuid_binds_native_uuid_with_import() -> None:
+    # R6 Plan 2a — field.uuid binds the idiomatic native uuid.UUID (ADR-0001).
+    t = py_type_for(_field(fc.FIELD_SUBTYPE_UUID))
+    assert t.expr == "uuid.UUID"
+    assert "import uuid" in t.imports
+
+
+def test_dbcolumntype_uuid_string_stays_str() -> None:
+    # R6 Plan 2b — @dbColumnType:uuid only changes the DB column type; the native
+    # binding of a field.string is unchanged (stays a Python str).
+    from metaobjects.meta.persistence.db import db_constants as dbc
+
+    f = _field(fc.FIELD_SUBTYPE_STRING)
+    f.set_attr(dbc.FIELD_ATTR_DB_COLUMN_TYPE, dbc.DB_COLUMN_TYPE_UUID)
+    assert py_type_for(f).expr == "str"

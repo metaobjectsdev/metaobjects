@@ -239,6 +239,11 @@ public static class DbContextAdapter
         if (underlying.IsEnum)
             return Enum.Parse(underlying, raw.ToString()!, ignoreCase: false);
         if (underlying == raw.GetType()) return raw;
+        // R6 Plan 2a — a field.uuid filter value arrives as a YAML string; coerce it
+        // to System.Guid (the entity property type) for the LINQ comparison. Guid is
+        // not IConvertible, so Convert.ChangeType cannot handle it.
+        if (underlying == typeof(Guid))
+            return Guid.Parse(raw.ToString()!);
         return Convert.ChangeType(raw, underlying, System.Globalization.CultureInfo.InvariantCulture);
     }
 

@@ -38,6 +38,18 @@
         ]
       }},
       { "object.entity": {
+        "name": "Asset",
+        "children": [
+          { "source.rdb": { "@table": "assets" } },
+          { "field.uuid":   { "name": "id" } },
+          { "field.uuid":   { "name": "ownerId", "@required": true } },
+          { "field.string": { "name": "externalId", "@dbColumnType": "uuid" } },
+          { "field.string": { "name": "payload",    "@dbColumnType": "jsonb" } },
+          { "field.timestamp": { "name": "recordedAt", "@required": true, "@dbColumnType": "timestamp_with_tz" } },
+          { "identity.primary": { "@fields": "id", "@generation": "uuid" } }
+        ]
+      }},
+      { "object.entity": {
         "name": "ProgramView",
         "children": [
           { "source.rdb": { "@kind": "view", "@table": "v_program" } },

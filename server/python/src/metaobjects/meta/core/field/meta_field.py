@@ -20,6 +20,9 @@ _FIELD_DATA_TYPE = {
     fc.FIELD_SUBTYPE_CLASS: DataType.STRING,
     fc.FIELD_SUBTYPE_CURRENCY: DataType.LONG,
     fc.FIELD_SUBTYPE_ENUM: DataType.STRING,
+    # R6 Plan 2a — field.uuid is string-backed on the wire; the native uuid.UUID
+    # binding is surfaced at codegen time (see codegen/type_map.py).
+    fc.FIELD_SUBTYPE_UUID: DataType.STRING,
 }
 
 

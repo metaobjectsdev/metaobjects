@@ -185,6 +185,59 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
+     * R6 Plan 2a/2b: returns true if the field maps to a native {@code uuid} column —
+     * either the logical {@code field.uuid} subtype or {@code @dbColumnType: uuid} on a
+     * string field. Native uuid columns need a {@link java.util.UUID} bind parameter
+     * (a string param would draw a Postgres "operator does not exist: uuid = varchar").
+     */
+    protected boolean isUuidColumn(MetaField f) {
+        try {
+            if (com.metaobjects.field.UuidField.SUBTYPE_UUID.equals(f.getSubType())) return true;
+            return f.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE)
+                && CoreDBMetaDataProvider.DB_COLUMN_TYPE_UUID.equals(
+                    f.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValueAsString());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * R6 Plan 2b: returns true if the field is a <em>genuinely-open</em> JSON column
+     * declared via {@code @dbColumnType: jsonb} (as opposed to the typed
+     * {@code @dbType=jsonb} + {@code @objectRef} owned-object path handled by
+     * {@link #isJsonbField}). Open JSON has no {@code @objectRef}: it round-trips as a
+     * generic {@code Map}/{@code List}/scalar (the raw JSON shape), not a typed object.
+     */
+    protected boolean isOpenJsonbField(MetaField f) {
+        try {
+            return f.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE)
+                && CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB.equals(
+                    f.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValueAsString());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Serialize an open-JSON ({@code @dbColumnType: jsonb}) value to a JSON string.
+     * A {@code String} value is assumed to already be JSON and passed through
+     * unchanged; any other value (Map/List/POJO) is rendered via Gson's default
+     * reflection. (Open JSON has no MetaObject schema to drive serialization.)
+     */
+    protected String serializeOpenJsonb(Object value) {
+        if (value instanceof String s) return s;
+        return OPEN_JSONB_GSON.toJson(value);
+    }
+
+    /**
+     * Reused {@link Gson} for open-JSON ({@code @dbColumnType: jsonb}) serialization. Gson is
+     * thread-safe, so a single shared instance avoids per-call allocation — matching the
+     * static-mapper pattern used elsewhere. (This is the schema-less default reflection Gson;
+     * the metadata-driven adapters live in {@link #buildGson(MetaDataLoader)}.)
+     */
+    private static final Gson OPEN_JSONB_GSON = new Gson();
+
+    /**
      * This is to handle arguments for the constructed SQL query to ensure
      * proper type conversion
      *
@@ -1510,6 +1563,31 @@ public class GenericSQLDriver implements DatabaseDriver {
      * win, matching prior behavior.
      */
     protected void setStatementValue(PreparedStatement s, MetaField f, int index, Object value) throws SQLException {
+        // R6 Plan 2a/2b: physical column-type overrides take precedence over the subtype
+        // codec — the underlying field is field.string/field.uuid whose codec would emit
+        // the wrong JDBC binding for a native jsonb/uuid column.
+        //
+        // Open JSON (@dbColumnType: jsonb): bind via Types.OTHER so the Postgres jsonb
+        // column accepts the JSON text (a bare setString is rejected by jsonb's strict
+        // input typing).
+        if (isOpenJsonbField(f)) {
+            if (value == null) s.setNull(index, Types.OTHER);
+            else s.setObject(index, serializeOpenJsonb(value), Types.OTHER);
+            return;
+        }
+        // Native uuid column (field.uuid OR @dbColumnType: uuid): bind a java.util.UUID
+        // (via Types.OTHER) so the value matches the column's uuid type instead of drawing
+        // a varchar↔uuid operator-mismatch. Accepts a String or a UUID (insert + WHERE param).
+        if (isUuidColumn(f)) {
+            if (value == null) {
+                s.setNull(index, Types.OTHER);
+            } else {
+                java.util.UUID uuid = (value instanceof java.util.UUID u)
+                    ? u : java.util.UUID.fromString(value.toString());
+                s.setObject(index, uuid, Types.OTHER);
+            }
+            return;
+        }
         com.metaobjects.manager.db.codec.JdbcFieldCodec codec = com.metaobjects.manager.db.codec.JdbcCodecs.forField(f);
         if (codec == com.metaobjects.manager.db.codec.JdbcCodecs.defaultCodec() && isJsonbField(f)) {
             if (value == null) s.setNull(index, Types.VARCHAR);
@@ -1750,6 +1828,15 @@ public class GenericSQLDriver implements DatabaseDriver {
      * {@code codec == defaultCodec()} so explicit per-subtype codecs always win.
      */
     protected void parseField(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+        // R6 Plan 2b: open JSON (@dbColumnType: jsonb) is a field.string — the column
+        // holds JSON text and the field's logical value is that raw JSON string. We read
+        // it with getString (the value round-trips as a string; a consumer that wants the
+        // parsed structure parses the JSON itself). Reading directly here (rather than via
+        // the StringCodec) keeps the path explicit alongside the write side.
+        if (isOpenJsonbField(f)) {
+            f.setObject(o, rs.getString(j));
+            return;
+        }
         com.metaobjects.manager.db.codec.JdbcFieldCodec codec =
                 com.metaobjects.manager.db.codec.JdbcCodecs.forField(f);
         if (codec == com.metaobjects.manager.db.codec.JdbcCodecs.defaultCodec() && isJsonbField(f)) {
@@ -1763,6 +1850,19 @@ public class GenericSQLDriver implements DatabaseDriver {
                 f.setObject(o, null);
             } else {
                 f.setObject(o, deserializeJsonb(f, json));
+            }
+            return;
+        }
+        // uuid columns (field.uuid OR @dbColumnType: uuid): enforce the cross-port wire
+        // contract ("uuid round-trips lowercase-canonical") in the PORT, dialect-independently
+        // — do NOT rely on Postgres returning canonical lowercase. Derby stores a CHAR(36)
+        // verbatim, so a non-canonical (uppercase) value would otherwise round-trip uppercase.
+        if (isUuidColumn(f)) {
+            String v = rs.getString(j);
+            if (v == null || rs.wasNull()) {
+                f.setObject(o, null);
+            } else {
+                f.setObject(o, v.toLowerCase(java.util.Locale.ROOT));
             }
             return;
         }

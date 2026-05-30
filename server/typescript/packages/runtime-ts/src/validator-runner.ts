@@ -7,7 +7,7 @@ import {
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_SHORT, FIELD_SUBTYPE_BYTE, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
-  FIELD_SUBTYPE_BOOLEAN,
+  FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_UUID,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
   VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_PATTERN,
 } from "@metaobjectsdev/metadata";
@@ -157,7 +157,7 @@ function resolveMinLength(field: MetaData): number | undefined {
 }
 
 function checkType(subType: string, value: unknown): string | null {
-  if (subType === FIELD_SUBTYPE_STRING) {
+  if (subType === FIELD_SUBTYPE_STRING || subType === FIELD_SUBTYPE_UUID) {
     if (typeof value !== "string") return `expected string`;
   } else if (NUMERIC_FIELD_SUBTYPES.has(subType)) {
     if (typeof value !== "number") return `expected number`;

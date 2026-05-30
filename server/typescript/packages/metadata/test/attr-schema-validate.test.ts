@@ -372,3 +372,110 @@ describe("attr-schema validation — open policy", () => {
     expect(warnings).toHaveLength(0);
   });
 });
+
+describe("attr-schema validation — @dbColumnType (subtype × value) pairing (R6 Plan 2b)", () => {
+  function entityWith(fieldNode: unknown) {
+    return {
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.entity": {
+              name: "Asset",
+              children: [
+                { "field.long": { name: "id" } },
+                fieldNode,
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    };
+  }
+
+  it("accepts @dbColumnType:uuid on field.string", async () => {
+    const { errors } = await load(
+      entityWith({ "field.string": { name: "externalId", "@dbColumnType": "uuid" } }),
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it("accepts @dbColumnType:jsonb on field.string", async () => {
+    const { errors } = await load(
+      entityWith({ "field.string": { name: "payload", "@dbColumnType": "jsonb" } }),
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it("accepts @dbColumnType:timestamp_with_tz on field.timestamp", async () => {
+    const { errors } = await load(
+      entityWith({ "field.timestamp": { name: "recordedAt", "@dbColumnType": "timestamp_with_tz" } }),
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it("rejects @dbColumnType:timestamp_with_tz on field.string (illegal pairing) → ERR_BAD_ATTR_VALUE", async () => {
+    const { errors } = await load(
+      entityWith({ "field.string": { name: "recordedAt", "@dbColumnType": "timestamp_with_tz" } }),
+    );
+    const bad = errors.filter((e) => (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE");
+    expect(bad).toHaveLength(1);
+    expect(bad[0]!.message).toContain("dbColumnType");
+    expect(bad[0]!.message).toContain("timestamp_with_tz");
+    expect(bad[0]!.message).toContain("field.string");
+  });
+
+  it("rejects @dbColumnType:uuid on field.timestamp (illegal pairing) → ERR_BAD_ATTR_VALUE", async () => {
+    const { errors } = await load(
+      entityWith({ "field.timestamp": { name: "ts", "@dbColumnType": "uuid" } }),
+    );
+    const bad = errors.filter((e) => (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE");
+    expect(bad).toHaveLength(1);
+  });
+
+  it("rejects an unrecognized @dbColumnType value → ERR_BAD_ATTR_VALUE", async () => {
+    const { errors } = await load(
+      entityWith({ "field.string": { name: "weird", "@dbColumnType": "tsvector" } }),
+    );
+    const bad = errors.filter((e) => (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE");
+    expect(bad).toHaveLength(1);
+    expect(bad[0]!.message).toContain("tsvector");
+  });
+
+  it("does NOT re-flag a concrete field that inherits @dbColumnType from an abstract super (own-only check)", async () => {
+    // The (subtype × value) pairing check is own-only (reads node.ownAttrs()):
+    // the attr is validated on the declaring (abstract) node, so a concrete field
+    // that merely inherits it via `extends` must not be re-flagged. Mirrors the
+    // enum @values / @coerceDefault own-only inheritance behavior.
+    const { errors } = await load({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            // Abstract super DECLARES the legal pairing (uuid on field.string).
+            "field.string": {
+              name: "ExternalRef",
+              abstract: true,
+              "@dbColumnType": "uuid",
+            },
+          },
+          {
+            "object.entity": {
+              name: "Asset",
+              children: [
+                { "field.long": { name: "id" } },
+                // Concrete field INHERITS @dbColumnType — does not declare it itself.
+                { "field.string": { name: "externalId", extends: "ExternalRef" } },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const bad = errors.filter((e) => (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE");
+    expect(bad).toHaveLength(0);
+    expect(errors).toHaveLength(0);
+  });
+});

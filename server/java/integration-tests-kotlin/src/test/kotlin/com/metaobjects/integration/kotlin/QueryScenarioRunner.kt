@@ -1,7 +1,9 @@
 package com.metaobjects.integration.kotlin
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.metaobjects.integration.kotlin.Scenarios.QueryScenario
 import com.metaobjects.integration.kotlin.Scenarios.QuerySpec
+import com.metaobjects.integration.kotlin.tables.AssetTable
 import com.metaobjects.integration.kotlin.tables.MeasurementTable
 import com.metaobjects.integration.kotlin.tables.ProgramStatView
 import com.metaobjects.integration.kotlin.tables.ProgramTable
@@ -24,7 +26,9 @@ import java.sql.DriverManager
 import java.sql.Timestamp
 import java.time.Instant
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.util.UUID
 
 /**
  * Mirrors the Java `QueryScenarioRunner` but the persistence substrate is
@@ -50,7 +54,7 @@ object QueryScenarioRunner {
         val db = Database.connect(pg.jdbcUrl, user = pg.username, password = pg.password)
 
         transaction(db) {
-            SchemaUtils.create(ProgramTable, WeekTable, MeasurementTable)
+            SchemaUtils.create(ProgramTable, WeekTable, MeasurementTable, AssetTable)
         }
 
         // 2. Seed via the YAML's raw SQL — runs outside Exposed transactions, on a
@@ -112,6 +116,7 @@ object QueryScenarioRunner {
         "Week" -> WeekTable
         "Measurement" -> MeasurementTable
         "ProgramStat" -> ProgramStatView
+        "Asset" -> AssetTable
         else -> error("No Exposed Table registered for entity '$entity' — extend QueryScenarioRunner.tableFor")
     }
 
@@ -250,6 +255,10 @@ object QueryScenarioRunner {
         if (raw == null) return null
         val type = col.columnType.sqlType().lowercase()
         return when {
+            // uuid columns compare against java.util.UUID — the YAML supplies a string
+            // literal (e.g. an `ownerId eq` filter), parse it. Lower-cased first so an
+            // upper-case literal still matches the lowercase-canonical stored value.
+            type == "uuid" -> if (raw is UUID) raw else UUID.fromString(raw.toString().lowercase())
             type.contains("bigint") || type.contains("int8") -> (raw as? Number)?.toLong() ?: raw.toString().toLong()
             type.contains("int") -> (raw as? Number)?.toInt() ?: raw.toString().toInt()
             else -> raw
@@ -269,10 +278,25 @@ object QueryScenarioRunner {
             // to LocalDateTime in UTC so Normalization formats it correctly.
             if (v is Instant) v = LocalDateTime.ofInstant(v, ZoneOffset.UTC)
             if (v is Timestamp) v = v.toLocalDateTime()
+            // `timestamp with time zone` surfaces as OffsetDateTime — re-anchor to UTC
+            // and drop the offset so the no-TZ normalization formatter applies (the
+            // corpus seeds exact-UTC instants so this is lossless; see the scenario's
+            // TIMESTAMPTZ normalization note).
+            if (v is OffsetDateTime) v = v.atZoneSameInstant(ZoneOffset.UTC).toLocalDateTime()
+            // `@dbColumnType:jsonb` open-JSON column round-trips as a raw JSON String
+            // (identity decode). Parse it to a Map so Normalization sorts the keys and
+            // the `expect` block (a YAML object) compares byte-equal. Detected by the
+            // column's SQL type (`jsonb`) so it stays generic across jsonb columns.
+            if (v is String && col.columnType.sqlType().lowercase().contains("jsonb")) {
+                v = JSON.readValue(v, Map::class.java)
+            }
             out[col.name] = v
         }
         return out
     }
+
+    /** Jackson mapper for parsing the `@dbColumnType:jsonb` open-JSON String back to a Map. */
+    private val JSON = ObjectMapper()
 
     @Suppress("UNCHECKED_CAST")
     private fun assertResult(scenarioPath: String, spec: QuerySpec, actual: Any?) {

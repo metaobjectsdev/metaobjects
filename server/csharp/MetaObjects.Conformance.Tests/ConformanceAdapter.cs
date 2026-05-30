@@ -115,6 +115,13 @@ public static class ConformanceAdapter
         {
             ["metaobjects-core-types"]    = CoreTypes.CoreTypesProvider,
             ["metaobjects-documentation"] = DocumentationTypes.DocTypesProvider,
+            // R6 Plan 2b — the shared db-attr fixtures (e.g. @dbColumnType pairing)
+            // declare a "metaobjects-db" provider. In C# the physical-attr handling +
+            // @dbColumnType pairing validation live in the always-on loader passes
+            // (ValidationPasses.ValidateDbColumnType), not a separate registered
+            // provider, so the id maps to a no-op composition entry whose only job is
+            // to resolve the fixture's providers.json. The validation fires regardless.
+            ["metaobjects-db"]            = new NoopTestProvider("metaobjects-db", "metaobjects-core-types"),
             // Test-only — provider-extension-* fixtures.
             ["example-template-briefing"] = new ExampleTemplateBriefingProvider(),
             ["cycle-a"]                   = new NoopTestProvider("cycle-a", "cycle-b"),

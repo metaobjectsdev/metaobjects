@@ -17,6 +17,7 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_ENUM,
+  FIELD_SUBTYPE_UUID,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   FIELD_ATTR_MAX_LENGTH,
@@ -25,6 +26,10 @@ import {
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_OBJECT_REF,
   VALIDATOR_ATTR_MAX,
+  FIELD_ATTR_DB_COLUMN_TYPE,
+  DB_COLUMN_TYPE_UUID,
+  DB_COLUMN_TYPE_JSONB,
+  DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ,
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
 import { enumValues } from "./enum-meta.js";
@@ -76,6 +81,7 @@ function sqliteJsonArrayElementTsType(subType: string): string | undefined {
     case FIELD_SUBTYPE_STRING:
     case FIELD_SUBTYPE_ENUM:
     case FIELD_SUBTYPE_CLASS:
+    case FIELD_SUBTYPE_UUID:
     case FIELD_SUBTYPE_DATE:
     case FIELD_SUBTYPE_TIME:
     case FIELD_SUBTYPE_TIMESTAMP:
@@ -135,6 +141,40 @@ export interface ColumnSpec {
   dollarTypeRef?:
     | { kind: "scalar"; tsType: "string" | "number" | "boolean" }
     | { kind: "objectRef"; name: string; module: string };
+}
+
+/**
+ * R6 Plan 2b: a physical @dbColumnType override selects the Drizzle COLUMN type
+ * instead of the subtype default — mirroring the override-precedence shape in
+ * migrate-ts/src/expected-schema.ts (override checked first, wins over the
+ * subtype default), so codegen and DDL agree.
+ *
+ * Postgres-only: uuid/jsonb/timestamptz are Postgres physical column types with
+ * no native SQLite analogue, so on SQLite the attribute is ignored (the caller
+ * falls through to the subtype default). The native TS binding is keyed on
+ * field.subType elsewhere and is unaffected — a `field.string @dbColumnType:uuid`
+ * field stays a TS `string`; only the Drizzle column function changes.
+ *
+ * The loader has already validated the (subtype × value) pairing, so an
+ * unrecognized value never reaches here; an unknown value returns undefined
+ * (fall through to subtype default).
+ */
+function pgColumnTypeOverride(
+  field: MetaField,
+): { fnName: string; fnOptions?: Record<string, unknown> } | undefined {
+  const dbColumnType = field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE);
+  if (typeof dbColumnType !== "string") return undefined;
+  switch (dbColumnType) {
+    case DB_COLUMN_TYPE_UUID:
+      return { fnName: "uuid" };
+    case DB_COLUMN_TYPE_JSONB:
+      return { fnName: "jsonb" };
+    case DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ:
+      // Drizzle pg-core: timestamp(col, { withTimezone: true }) → timestamptz.
+      return { fnName: "timestamp", fnOptions: { withTimezone: true } };
+    default:
+      return undefined;
+  }
 }
 
 /** Resolve max length from validator.length child or @maxLength attr.
@@ -206,59 +246,77 @@ export function mapColumnType(
         case FIELD_SUBTYPE_ENUM:
         case FIELD_SUBTYPE_CLASS:
         case FIELD_SUBTYPE_OBJECT:
+        case FIELD_SUBTYPE_UUID:
+          // SQLite has no native uuid type; store as TEXT (string native binding).
+          fnName = "text";
+          break;
         default:
           fnName = "text";
           break;
       }
     }
   } else {
-    switch (subType) {
-      case FIELD_SUBTYPE_BOOLEAN:
-        fnName = "boolean";
-        break;
-      case FIELD_SUBTYPE_INT:
-        fnName = "integer";
-        break;
-      case FIELD_SUBTYPE_CURRENCY:
-      case FIELD_SUBTYPE_LONG:
-        fnName = "bigint";
-        fnOptions = { mode: "number" };
-        break;
-      case FIELD_SUBTYPE_DOUBLE:
-        fnName = "doublePrecision";
-        break;
-      case FIELD_SUBTYPE_FLOAT:
-        fnName = "real";
-        break;
-      case FIELD_SUBTYPE_DATE:
-        fnName = "date";
-        break;
-      case FIELD_SUBTYPE_TIME:
-        fnName = "time";
-        break;
-      case FIELD_SUBTYPE_TIMESTAMP:
-        fnName = "timestamp";
-        break;
-      case FIELD_SUBTYPE_DECIMAL:
-        fnName = "numeric";
-        fnOptions = { precision: 19, scale: 4 }; // sane default; @precision/@scale attrs override
-        break;
-      case FIELD_SUBTYPE_STRING: {
-        const maxLen = getMaxLength(field);
-        if (maxLen !== undefined) {
-          fnName = "varchar";
-          fnOptions = { length: maxLen };
-        } else {
-          fnName = "text";
+    // A physical @dbColumnType override wins over the subtype default (Postgres
+    // only; SQLite has no native analogue and falls through above). Resolved
+    // first so the override-precedence matches migrate-ts's expected-schema.
+    const override = pgColumnTypeOverride(field);
+    if (override !== undefined) {
+      // Override fully determines the physical type; skip the subtype switch.
+      fnName = override.fnName;
+      fnOptions = override.fnOptions;
+    } else {
+      switch (subType) {
+        case FIELD_SUBTYPE_BOOLEAN:
+          fnName = "boolean";
+          break;
+        case FIELD_SUBTYPE_INT:
+          fnName = "integer";
+          break;
+        case FIELD_SUBTYPE_CURRENCY:
+        case FIELD_SUBTYPE_LONG:
+          fnName = "bigint";
+          fnOptions = { mode: "number" };
+          break;
+        case FIELD_SUBTYPE_DOUBLE:
+          fnName = "doublePrecision";
+          break;
+        case FIELD_SUBTYPE_FLOAT:
+          fnName = "real";
+          break;
+        case FIELD_SUBTYPE_DATE:
+          fnName = "date";
+          break;
+        case FIELD_SUBTYPE_TIME:
+          fnName = "time";
+          break;
+        case FIELD_SUBTYPE_TIMESTAMP:
+          fnName = "timestamp";
+          break;
+        case FIELD_SUBTYPE_UUID:
+          // Postgres native uuid column; native TS binding stays `string`.
+          fnName = "uuid";
+          break;
+        case FIELD_SUBTYPE_DECIMAL:
+          fnName = "numeric";
+          fnOptions = { precision: 19, scale: 4 }; // sane default; @precision/@scale attrs override
+          break;
+        case FIELD_SUBTYPE_STRING: {
+          const maxLen = getMaxLength(field);
+          if (maxLen !== undefined) {
+            fnName = "varchar";
+            fnOptions = { length: maxLen };
+          } else {
+            fnName = "text";
+          }
+          break;
         }
-        break;
+        case FIELD_SUBTYPE_ENUM:
+        case FIELD_SUBTYPE_CLASS:
+        case FIELD_SUBTYPE_OBJECT:
+        default:
+          fnName = "text";
+          break;
       }
-      case FIELD_SUBTYPE_ENUM:
-      case FIELD_SUBTYPE_CLASS:
-      case FIELD_SUBTYPE_OBJECT:
-      default:
-        fnName = "text";
-        break;
     }
   }
 

@@ -12,6 +12,7 @@ import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimestampField;
+import com.metaobjects.field.UuidField;
 
 /**
  * Centralised mapping from {@link MetaField} subtype to the Java type used in
@@ -36,9 +37,6 @@ import com.metaobjects.field.TimestampField;
 public final class SpringTypeMapper {
 
     private SpringTypeMapper() { /* no instances */ }
-
-    /** Metadata subtype string for {@code field.uuid} (no dedicated JVM class today). */
-    private static final String UUID_SUBTYPE = "uuid";
 
     /**
      * Map a {@link MetaField} to its Java DTO-record-component type as a
@@ -76,8 +74,8 @@ public final class SpringTypeMapper {
         if (field instanceof CurrencyField) return "Long";
         // Enum string-backed (v1) — same fallback as KotlinTypeMapper.
         if (field instanceof EnumField) return "String";
-        // UUID — matched on subtype name since there's no UuidField class yet.
-        if (UUID_SUBTYPE.equals(field.getSubType())) return "java.util.UUID";
+        // UUID — native java.util.UUID binding (R6 Plan 2a).
+        if (field instanceof UuidField) return "java.util.UUID";
         throw new IllegalArgumentException(
             "unsupported Spring DTO type mapping for "
                 + field.getClass().getSimpleName() + " '" + field.getName() + "'");

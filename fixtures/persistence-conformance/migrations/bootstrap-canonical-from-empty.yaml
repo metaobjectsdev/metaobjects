@@ -22,6 +22,17 @@ expect:
     # REAL→DOUBLE regression.
     - '"tempC" REAL'
     - '"massKg" DOUBLE PRECISION'
+    - 'CREATE TABLE "assets"'
+    # R6 Plan 2a/2b native physical column types:
+    #   field.uuid                       → UUID  (id PK + ownerId)
+    #   field.string @dbColumnType:uuid  → UUID  (externalId)
+    #   field.string @dbColumnType:jsonb → JSONB (payload)
+    # PK uuid gets the server-side gen_random_uuid() default.
+    - '"id" UUID'
+    - 'DEFAULT gen_random_uuid()'
+    - '"ownerId" UUID'
+    - '"externalId" UUID'
+    - '"payload" JSONB'
     - 'CREATE UNIQUE INDEX "byTitle" ON "programs" ("title");'
     - 'ALTER TABLE "weeks" ADD CONSTRAINT "weeks_programId_fk"'
     # Match both TS (`CREATE VIEW`) and C# (`CREATE OR REPLACE VIEW`, idempotent)
@@ -36,6 +47,7 @@ expect:
        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
        ORDER BY table_name
     rows:
+      - { table_name: "assets" }
       - { table_name: "measurements" }
       - { table_name: "programs" }
       - { table_name: "weeks" }

@@ -26,6 +26,9 @@ _SCALAR: dict[str, PyType] = {
     fc.FIELD_SUBTYPE_DATE: PyType("datetime.date", ("import datetime",)),
     fc.FIELD_SUBTYPE_TIME: PyType("datetime.time", ("import datetime",)),
     fc.FIELD_SUBTYPE_TIMESTAMP: PyType("datetime.datetime", ("import datetime",)),
+    # R6 Plan 2a — field.uuid binds the idiomatic native uuid.UUID (ADR-0001),
+    # surfaced at build time. Wire/storage form stays a lowercase-canonical string.
+    fc.FIELD_SUBTYPE_UUID: PyType("uuid.UUID", ("import uuid",)),
     fc.FIELD_SUBTYPE_CLASS: PyType("str"),  # fallback
 }
 

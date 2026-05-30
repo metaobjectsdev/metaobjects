@@ -9,6 +9,7 @@ public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
+    public DbSet<Asset> Assets { get; set; } = default!;
     public DbSet<Measurement> Measurements { get; set; } = default!;
     public DbSet<Program> Programs { get; set; } = default!;
     public DbSet<ProgramStat> ProgramStats { get; set; } = default!;
@@ -19,6 +20,9 @@ public class AppDbContext : DbContext
     {
         modelBuilder.Entity<ProgramStat>().ToView("v_program_stat");
         modelBuilder.Entity<ProgramView>().ToView("v_program");
+        modelBuilder.Entity<Asset>().Property(x => x.ExternalId).HasColumnType("uuid").HasConversion(v => Guid.Parse(v!), g => g.ToString("D"));
+        modelBuilder.Entity<Asset>().Property(x => x.Payload).HasColumnType("jsonb");
+        modelBuilder.Entity<Asset>().Property(x => x.RecordedAt).HasColumnType("timestamp with time zone");
         modelBuilder.Entity<Program>().Property(x => x.Status).HasConversion<string>();
     }
 }

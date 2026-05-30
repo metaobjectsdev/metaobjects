@@ -25,7 +25,7 @@ import {
   TYPE_FIELD, TYPE_ATTR,
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_BOOLEAN,
-  FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_DOUBLE,
+  FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_UUID,
   ATTR_SUBTYPE_STRING, ATTR_SUBTYPE_INT, ATTR_SUBTYPE_PROPERTIES,
 } from "../src/index.js";
 
@@ -46,6 +46,8 @@ describe("core dataType registration", () => {
     expect(r.find(TYPE_FIELD, FIELD_SUBTYPE_BOOLEAN)!.dataType).toBe("boolean");
     expect(r.find(TYPE_FIELD, FIELD_SUBTYPE_DATE)!.dataType).toBe("date");
     expect(r.find(TYPE_FIELD, FIELD_SUBTYPE_OBJECT)!.dataType).toBe("object");
+    // R6 Plan 2a: field.uuid binds to TS string (no native UUID type).
+    expect(r.find(TYPE_FIELD, FIELD_SUBTYPE_UUID)!.dataType).toBe("string");
   });
 
   it("attr subtypes carry the expected dataType", () => {
