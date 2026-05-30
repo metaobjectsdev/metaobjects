@@ -13,8 +13,8 @@ There are **7 drift sources**, and the toolchain has a guard for each.
 |---|---|---|
 | **Code-vs-DB** | Codegen — the generated SQL DDL is emitted from the same metadata as the entity / table code. | Build time |
 | **Code-vs-API-doc** | Cross-port codegen from the same metadata. | Build time |
-| **DB-vs-metadata** | `meta:verify` Maven goal / `meta verify` CLI — introspects the live DB and fails the build if it has drifted from metadata. | CI on every PR |
-| **Migration-vs-metadata** | `meta migrate` (TS / C#) / `meta:migrate --flyway` (Java / Kotlin) emits migrations FROM metadata diffs — they cannot drift from metadata by construction. | Build time |
+| **DB-vs-metadata** | `meta verify --db` (TS CLI) — introspects the live DB and fails if it has drifted from metadata. Java/Kotlin: runtime startup validator (`MetaClassDBValidatorService`) catches generated-table drift at app startup; the removed `meta:verify` Maven goal is not available. | CI on every PR (TS); app startup (Java/Kotlin) |
+| **Migration-vs-metadata** | `meta migrate` (TS / C# / Python) emits migrations FROM metadata diffs — they cannot drift from metadata by construction. Java/Kotlin schema migrations are also owned by the TS toolchain (`@metaobjectsdev/cli migrate`). | Build time |
 | **Generated-edited** | `@generated` headers in emitted code + three-way merge that preserves hand-edits inside non-generated regions. | Code review |
 | **Prompt-vs-payload** | FR-004 `Renderer.verify` parses `{{...}}` references in templates and checks each one exists on the payload VO. | Build time + runtime |
 | **Generated-vs-runtime** | Kotlin / Java `MetadataStartupValidator` (from Spring `ApplicationReadyEvent`) re-loads metadata at startup and asserts the generated table objects match. | App startup |
@@ -57,21 +57,28 @@ configured in `metaobjects.config.ts` (typically `./migrations/<timestamp>__<slu
 
 ### Java
 
-```bash
-mvn meta:migrate                      # writes a numbered SQL file
-mvn meta:migrate -Dflyway=true        # writes V<N>__<slug>.sql under src/main/resources/db/migration/
-```
+Schema migrations for Java projects are owned by the **TypeScript toolchain**
+(`@metaobjectsdev/cli migrate`). The Java Maven plugin's `meta:migrate` goal was
+removed. Java retains a dev/test runtime auto-create path via
+`MetaClassDBValidatorService` (the drivers' `createTable` DDL), not a migration
+engine.
 
-Flyway mode auto-versions by scanning existing migrations.
+Use the TS CLI against the same database the Java service connects to:
+
+```bash
+meta migrate --db postgresql://... --slug initial   # emit migration SQL
+meta migrate --db postgresql://... --apply          # apply pending migrations
+```
 
 ### Kotlin
 
-Uses the Java Maven plugin's `meta:migrate` mojo (Kotlin codegen tier rides on the
-same plugin). Flyway prefix + directory are configurable via the plugin's
-`<flywayDir>` / `<flywayPrefix>` parameters.
+Kotlin schema migrations follow the same story as Java: the Java Maven plugin's
+`meta:migrate` mojo was removed and there is no Kotlin-specific migrate command.
+Schema migrations are owned by the TS toolchain:
 
 ```bash
-mvn meta:migrate -Dflyway=true
+meta migrate --db postgresql://... --slug initial
+meta migrate --db postgresql://... --apply
 ```
 
 ### C#
@@ -100,9 +107,9 @@ for current status.)
 
 | Port | Command | What it does |
 |---|---|---|
-| TypeScript | `meta verify` | Re-runs codegen as a no-op; reports DB-vs-metadata drift. |
-| Java | `mvn meta:verify` | Introspects the live DB; fails the build if schema differs from metadata. |
-| Kotlin | `mvn meta:verify` | Same as Java (shared Maven plugin). |
+| TypeScript | `meta verify --db` | Introspects the live DB; reports DB-vs-metadata drift. |
+| Java | `Renderer.verify` (build-time) + `MetaClassDBValidatorService` (startup) | Template-drift: verifies `{{...}}` references resolve against the payload VO. Live-DB-schema drift: startup validator asserts generated table objects match metadata. The `meta:verify` Maven goal (live-DB introspection) was removed. |
+| Kotlin | `Renderer.verify` (build-time) + `MetadataStartupValidator` (startup) | Same as Java — template-drift and startup validation. No `meta:verify` Maven goal. |
 | C# | `meta verify ./metadata --templates ./prompts` | Drift-checks templates against their payload VOs (FR-004 prompt-drift). |
 | Python | `python -m metaobjects.render.verify` | Same as C# verify — template-vs-payload drift. |
 
