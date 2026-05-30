@@ -34,6 +34,7 @@ from __future__ import annotations
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
+from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -151,6 +152,8 @@ def render_filter_allowlist(entity: MetaObject) -> str | None:
     ``tableFunction``) — these match the router generator's "no router"
     gate, so emitting an allowlist would be pure noise.
     """
+    if not emits_instance_artifacts(entity):
+        return None
     src = _primary_source_rdb(entity)
     if src is None:
         return None
