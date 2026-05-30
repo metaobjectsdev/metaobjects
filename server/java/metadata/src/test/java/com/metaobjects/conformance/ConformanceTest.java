@@ -129,6 +129,12 @@ public class ConformanceTest {
                 "view-types",
                 "layout-types",
                 "template-types"
+            ),
+            // The corpus's "metaobjects-db" provider maps to Java's
+            // CoreDBMetaDataProvider (id "database-extensions"), which registers the
+            // physical RDB attributes (@column / @dbType / @dbColumnType / ...).
+            "metaobjects-db", List.of(
+                "database-extensions"
             )
         );
 
