@@ -180,10 +180,22 @@ public static class SerializerJson
 
     private static JsonObject AttrObjectToJsonNode(IReadOnlyDictionary<string, object?> obj)
     {
+        // The two object-typed attr subtypes need different key order in canonical form,
+        // and the serializer is schema-free — so distinguish by value shape, which exactly
+        // tracks the subtypes:
+        //   • `properties` (e.g. @enumDoc / @enumAlias) is a flat scalar→scalar map → keys
+        //     sort ordinally (cross-port canonical form; matches the Java reference, whose
+        //     Properties is unordered and serializes sorted).
+        //   • `filter` maps a field to an operator object ({eq:…}/{in:[…]}) — at least one
+        //     value is itself an object/array → declaration order is preserved (significant).
+        bool allScalar = obj.Values.All(v =>
+            v is null or string or bool or long or int or double or float);
+        var keys = allScalar ? obj.Keys.OrderBy(k => k, StringComparer.Ordinal) : obj.Keys;
+
         var jsonObj = new JsonObject();
-        foreach (var (key, val) in obj)
+        foreach (var key in keys)
         {
-            jsonObj.Add(key, AttrValueToJsonNode(val));
+            jsonObj.Add(key, AttrValueToJsonNode(obj[key]));
         }
         return jsonObj;
     }

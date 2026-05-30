@@ -85,4 +85,20 @@ public static class TemplateConstants
         "markdown",
         "spreadsheet",
     ];
+
+    // FR-010 artifact-1 prompt presentation style (template.output only). Closed enum;
+    // guidance is NEVER carried in comments. Default "guide". Set project-wide via an
+    // abstract template base + extends, with a render-time PromptOverrides.Style on top.
+    public const string TEMPLATE_ATTR_PROMPT_STYLE = "promptStyle";
+    public const string PROMPT_STYLE_GUIDE         = "guide";
+    public const string PROMPT_STYLE_INLINE        = "inline";
+    public const string PROMPT_STYLE_EXAMPLE_ONLY  = "exampleOnly";
+    public const string PROMPT_STYLE_DEFAULT       = PROMPT_STYLE_GUIDE;
+
+    public static readonly string[] TEMPLATE_PROMPT_STYLES =
+    [
+        PROMPT_STYLE_GUIDE,
+        PROMPT_STYLE_INLINE,
+        PROMPT_STYLE_EXAMPLE_ONLY,
+    ];
 }

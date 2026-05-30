@@ -64,6 +64,17 @@ public static class TemplateSchema
             Description: "Output tags the rendered text must contain (drives the verify output-tag check)."),
     ];
 
+    // FR-010 artifact-1: output-format prompt presentation style (template.output only).
+    // Closed enum, enforced via AllowedValues exactly like @format (the C# loader fires
+    // AllowedValues on concrete subtypes). Default "guide".
+    private static readonly AttrSchema PromptStyleAttr = new AttrSchema(
+        Name: TemplateConstants.TEMPLATE_ATTR_PROMPT_STYLE,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        Default: TemplateConstants.PROMPT_STYLE_DEFAULT,
+        AllowedValues: [.. TemplateConstants.TEMPLATE_PROMPT_STYLES],
+        Description: "FR-010 output-format prompt presentation: 'guide' (prose list + example), 'inline' (inline placeholders / enum choices), or 'exampleOnly' (filled skeleton). Guidance is never emitted as comments.");
+
     // LLM-overlay attrs (template.prompt only).
     private static readonly IReadOnlyList<AttrSchema> PromptOverlayAttrs =
     [
@@ -137,7 +148,7 @@ public static class TemplateSchema
         {
             [BaseTypes.SUBTYPE_BASE]                       = [],
             [TemplateConstants.TEMPLATE_SUBTYPE_PROMPT]    = [.. GenericAttrs, .. PromptOverlayAttrs],
-            [TemplateConstants.TEMPLATE_SUBTYPE_OUTPUT]    = [.. GenericAttrs],
+            [TemplateConstants.TEMPLATE_SUBTYPE_OUTPUT]    = [.. GenericAttrs, PromptStyleAttr],
             [TemplateConstants.TEMPLATE_SUBTYPE_TOOLCALL]  = [.. ToolcallAttrs],
         };
 }
