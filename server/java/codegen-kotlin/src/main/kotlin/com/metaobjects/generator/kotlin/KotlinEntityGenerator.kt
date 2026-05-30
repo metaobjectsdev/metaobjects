@@ -11,7 +11,9 @@ import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.LIST
 import com.squareup.kotlinpoet.ParameterSpec
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
@@ -181,6 +183,16 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * not the in-memory shape.
      */
     private fun resolvePropertyType(field: MetaField<*>, owner: MetaObject, loader: MetaDataLoader): TypeName {
+        val element = resolveElementType(field, owner, loader)
+        // @isArray fields are a List of the element type (List<T>). isArrayType()
+        // covers both the `isArray: true` shorthand and a child @isArray attr.
+        // Nullable handling is applied by the caller to the List itself (List<T>?),
+        // not the elements — an array of non-null items.
+        return if (field.isArrayType) LIST.parameterizedBy(element) else element
+    }
+
+    /** The Kotlin TypeName for a single (non-array) element of [field]. */
+    private fun resolveElementType(field: MetaField<*>, owner: MetaObject, loader: MetaDataLoader): TypeName {
         // field.enum → typed enum class generated alongside this entity.
         KotlinTypeMapper.enumTypeName(field, owner)?.let { return it }
         if (field is ObjectField) {

@@ -88,6 +88,44 @@ class KotlinEntityGeneratorTest {
         }
     }
 
+    @Test fun isArrayFieldsEmitAsList() {
+        // @isArray on field.object → List<T>; on a scalar field → List<String>.
+        // Nullable handling applies to the List itself (List<T>? when not required;
+        // List<T> when required) — not to the elements.
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.value": { "name": "Tag", "children": [
+                { "field.string": { "name": "label", "@required": true } }
+            ] } },
+            { "object.value": { "name": "Post", "children": [
+                { "field.object": { "name": "tags",
+                    "@objectRef": "Tag", "isArray": true } },
+                { "field.string": { "name": "aliases", "isArray": true, "@required": true } }
+            ] } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("kgen-arr-")
+        try {
+            val gen = KotlinEntityGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("arr", fx))
+
+            val postSrc = Files.readString(outDir.resolve("acme/demo/Post.kt"))
+            // object array, not required → List<Tag>? = null
+            assertTrue("val tags: List<Tag>? = null" in postSrc,
+                "expected `val tags: List<Tag>? = null` in:\n$postSrc")
+            // scalar array, required → List<String> (non-null)
+            assertTrue("val aliases: List<String>" in postSrc,
+                "expected `val aliases: List<String>` in:\n$postSrc")
+            // must NOT collapse an array to a single element
+            assertFalse("val tags: Tag" in postSrc,
+                "array field must not emit a single element type:\n$postSrc")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     // === field.enum coverage ===============================================
 
     private val enumFixture = """{
