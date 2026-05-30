@@ -139,6 +139,85 @@ public class Fr011LoaderAttrsTests
     }
 
     [Fact]
+    public void Default_on_enum_off_vocabulary_emits_err_bad_attr_value()
+    {
+        const string json = """
+        { "metadata.root": {
+            "package": "acme::ai",
+            "children": [
+              { "object.value": {
+                  "name": "Task",
+                  "children": [
+                    { "field.enum": {
+                        "name": "status",
+                        "@values": ["IN_PROGRESS", "DONE"],
+                        "@default": "BOGUS"
+                    } }
+                  ]
+              } }
+            ]
+          } }
+        """;
+        var res = LoadJson(json, "meta.ai.json");
+
+        var err = res.Errors.FirstOrDefault(e =>
+            e.Code == ErrorCode.ERR_BAD_ATTR_VALUE && e.Message.Contains("default"));
+        Assert.NotNull(err);
+    }
+
+    [Fact]
+    public void Default_on_enum_valid_member_loads_cleanly()
+    {
+        const string json = """
+        { "metadata.root": {
+            "package": "acme::ai",
+            "children": [
+              { "object.value": {
+                  "name": "Task",
+                  "children": [
+                    { "field.enum": {
+                        "name": "status",
+                        "@values": ["IN_PROGRESS", "DONE"],
+                        "@default": "DONE"
+                    } }
+                  ]
+              } }
+            ]
+          } }
+        """;
+        var res = LoadJson(json, "meta.ai.json");
+
+        Assert.Empty(res.Errors);
+    }
+
+    [Fact]
+    public void Default_on_non_enum_field_is_not_member_validated()
+    {
+        // @default is a polymorphic column default on non-enum fields — it must NOT
+        // be member-checked (no @values exist to check against).
+        const string json = """
+        { "metadata.root": {
+            "package": "acme::ai",
+            "children": [
+              { "object.value": {
+                  "name": "Task",
+                  "children": [
+                    { "field.string": {
+                        "name": "label",
+                        "@default": "anything-goes"
+                    } }
+                  ]
+              } }
+            ]
+          } }
+        """;
+        var res = LoadJson(json, "meta.ai.json");
+
+        Assert.DoesNotContain(res.Errors, e =>
+            e.Code == ErrorCode.ERR_BAD_ATTR_VALUE && e.Message.Contains("default"));
+    }
+
+    [Fact]
     public void Normalize_invalid_mode_emits_err_bad_attr_value()
     {
         const string json = """
