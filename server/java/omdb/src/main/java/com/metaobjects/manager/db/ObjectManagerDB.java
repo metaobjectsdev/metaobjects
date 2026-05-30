@@ -54,7 +54,9 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
     private final ConcurrentHashMap<MetaObject, Optional<ObjectMapping>> deleteMappings = new ConcurrentHashMap<>();
 
     private MappingHandler mMappingHandler = null;
-    private DatabaseDriver mDriver = null;
+    private volatile DatabaseDriver mDriver = null;
+    /** Guards lazy initialization of {@link #mDriver} in {@link #getDatabaseDriver()}. */
+    private final Object driverInitLock = new Object();
     private DataSource mSource = null;
     private boolean enforceTransaction = false;
     //private static Cache<String, MetaObject> templateCache = new Cache<String, MetaObject>(true, 3000, 1500);
@@ -191,13 +193,21 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
     }
 
     @Override
-    public synchronized Object getDatabaseDriver() {
-        if (mDriver == null) {
-            mDriver = new GenericSQLDriver();
-            mDriver.setManager(this);
+    public Object getDatabaseDriver() {
+        // Double-checked locking on a volatile field: the common (already-initialized)
+        // case is a lock-free volatile read, avoiding contention on this hot CRUD path.
+        DatabaseDriver d = mDriver;
+        if (d == null) {
+            synchronized (driverInitLock) {
+                d = mDriver;
+                if (d == null) {
+                    d = new GenericSQLDriver();
+                    d.setManager(this);
+                    mDriver = d;
+                }
+            }
         }
-
-        return mDriver;
+        return d;
     }
 
     /**

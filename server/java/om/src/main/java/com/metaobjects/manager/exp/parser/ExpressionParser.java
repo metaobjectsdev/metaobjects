@@ -45,7 +45,10 @@ public class ExpressionParser
 
   public Expression parse( MetaObject mc, String expressionString ) throws ExpressionParseError
   {
-    return parse( mc, expressionString.toLowerCase(), 0, 0 ).getExp();
+    // NOTE: the query string is NOT lower-cased — doing so corrupts quoted literals
+    // and the NULL sentinel. Only the and/or keywords are matched case-insensitively
+    // (see isAnd/isOr); field-name lookup stays case-sensitive (metadata names are).
+    return parse( mc, expressionString, 0, 0 ).getExp();
   }
 
   protected final static int ACTION_AND = 1;
@@ -83,13 +86,13 @@ public class ExpressionParser
       else if ( c == ' ' ) {
         x++;
       }
-      else if ( c == 'a' && isAnd( str, x )){
+      else if ( ( c == 'a' || c == 'A' ) && isAnd( str, x )){
         action = ACTION_AND;
         x += 3;
         if ( a == null ) throw new ExpressionParseError( "error.parse.unexpected", x, x+3 );
         n = x;
       }
-      else if ( c == 'o' && isOr( str, x )){
+      else if ( ( c == 'o' || c == 'O' ) && isOr( str, x )){
         action = ACTION_OR;
         x += 2;
         if ( a == null ) throw new ExpressionParseError( "error.parse.unexpected", x, x+2 );
@@ -111,7 +114,11 @@ public class ExpressionParser
         //if ( str.charAt( r.getEnd() ) != ')' )
         x = r.getEnd();
 
-        log.debug("END: [{}] {}", str.charAt(x), str.substring(x));
+        // Guard the debug log: a top-level expression can return x == str.length()
+        // (end-of-string), so charAt(x) would be out of bounds.
+        if ( log.isDebugEnabled() && x < str.length() ) {
+          log.debug("END: [{}] {}", str.charAt(x), str.substring(x));
+        }
 
         n = x;
       }
@@ -244,7 +251,7 @@ public class ExpressionParser
 
   protected boolean isAnd( String str, int x ) {
     if (( str.length() - x ) < 4 ) return false;
-    if ( str.substring( x, x+3 ).equals( "and" )
+    if ( str.substring( x, x+3 ).equalsIgnoreCase( "and" )
         && ( str.charAt( x+3 ) == ' ' ||
             str.charAt( x+3 ) == '(' )) return true;
     return false;
@@ -252,7 +259,7 @@ public class ExpressionParser
 
   protected boolean isOr( String str, int x ) {
     if (( str.length() - x ) < 3 ) return false;
-    if ( str.substring( x, x+2 ).equals( "or" )
+    if ( str.substring( x, x+2 ).equalsIgnoreCase( "or" )
         && ( str.charAt( x+2 ) == ' ' ||
             str.charAt( x+2 ) == '(' )) return true;
     return false;
