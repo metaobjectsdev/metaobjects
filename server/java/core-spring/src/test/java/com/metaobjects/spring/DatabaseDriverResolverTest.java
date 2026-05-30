@@ -22,6 +22,12 @@ public class DatabaseDriverResolverTest {
     }
 
     @Test
+    public void forDialect_mapsAliases() {
+        assertTrue(DatabaseDriverResolver.forDialect("postgresql") instanceof PostgresDriver);
+        assertTrue(DatabaseDriverResolver.forDialect("sqlserver") instanceof MSSQLDriver);
+    }
+
+    @Test
     public void forDialect_unknownThrows() {
         assertThrows(IllegalArgumentException.class, () -> DatabaseDriverResolver.forDialect("sqlite"));
     }
