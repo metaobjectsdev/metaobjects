@@ -1,0 +1,16 @@
+Fill in each field as described below:
+- lines (required)
+- lines[].sku (required): product code
+    e.g. A-100
+- lines[].qty (required): quantity
+    e.g. 2
+
+Respond exactly like this:
+{
+  "lines": [
+    {
+      "sku": "A-100",
+      "qty": 2
+    }
+  ]
+}
