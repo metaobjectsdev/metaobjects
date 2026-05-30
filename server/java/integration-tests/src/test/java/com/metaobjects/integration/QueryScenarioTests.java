@@ -62,6 +62,13 @@ final class QueryScenarioTests {
 
     @BeforeAll
     static void beforeAll() {
+        // The cross-port persistence corpus is UTC-canonical: TIMESTAMP / TIMESTAMPTZ
+        // instants are seeded and asserted in UTC wall-clock (normalization.md). Pin the
+        // JVM default zone to UTC so java.sql.Timestamp → LocalDateTime yields the UTC
+        // wall clock the fixtures expect, instead of the agent host's local zone. (Mirrors
+        // the TS/C# runners, which normalize TIMESTAMPTZ to UTC.)
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("UTC"));
+
         // Bind every canonical-package entity FQN to ValueObject so ObjectManagerDB
         // can instantiate rows without a project-specific POJO. Build the registry
         // once and publish it via setGlobal — subsequent test runs in the same JVM
@@ -72,6 +79,8 @@ final class QueryScenarioTests {
         reg.register(() -> Map.of(
             "fitness::Program",     ValueObject.class,
             "fitness::Week",        ValueObject.class,
+            "fitness::Measurement", ValueObject.class,
+            "fitness::Asset",       ValueObject.class,
             "fitness::ProgramView", ValueObject.class,
             "fitness::ProgramStat", ValueObject.class
         ));

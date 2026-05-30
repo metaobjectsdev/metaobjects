@@ -181,7 +181,12 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 			
 			// Create the column definition
 			ColumnDef colDef = new ColumnDef( col, getSQLType( mf ));
-			
+
+			// R6 Plan 2a/2b: physical column-type hint (native uuid/jsonb/timestamptz).
+			// Drives the driver's native-column emission; the SQLType above still
+			// drives JDBC get/set so the field round-trips as its logical value.
+			colDef.setDbColumnType( resolveDbColumnType( mf ));
+
 			// Set the length of the varchar field
 			// TODO:  Length should be an attribute
 			colDef.setLength( getSQLLength( mf ));
@@ -253,6 +258,31 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 		}		
 	}
 	
+	/**
+	 * Resolve a field's dialect-neutral physical column-type hint (R6 Plan 2a/2b),
+	 * or {@code null} when the field uses its SQLType default.
+	 *
+	 * <p>Two sources, in precedence order:</p>
+	 * <ol>
+	 *   <li>{@code field.uuid} (logical subtype) → native {@code uuid} column.</li>
+	 *   <li>{@code @dbColumnType} physical attr → the mapped hint
+	 *       ({@code uuid} / {@code jsonb} / {@code timestamp_with_tz}). The loader has
+	 *       already validated the (subtype × value) pairing, so no re-check here.</li>
+	 * </ol>
+	 */
+	protected String resolveDbColumnType(MetaField mf) {
+		if (com.metaobjects.field.UuidField.SUBTYPE_UUID.equals(mf.getSubType())) {
+			return ColumnDef.COLTYPE_UUID;
+		}
+		if (mf.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE)) {
+			String value = mf.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValueAsString();
+			if (CoreDBMetaDataProvider.DB_COLUMN_TYPE_UUID.equals(value)) return ColumnDef.COLTYPE_UUID;
+			if (CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB.equals(value)) return ColumnDef.COLTYPE_JSONB;
+			if (CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ.equals(value)) return ColumnDef.COLTYPE_TIMESTAMP_TZ;
+		}
+		return null;
+	}
+
 	/** Returns true if the field is declared as a jsonb column via {@code @dbType="jsonb"}. */
 	protected boolean isJsonbField(MetaField mf) {
 		try {

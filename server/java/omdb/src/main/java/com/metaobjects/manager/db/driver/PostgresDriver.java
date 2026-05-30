@@ -78,30 +78,48 @@ public class PostgresDriver extends GenericSQLDriver {
                 if (i > 0) query.append(",\n");
 
                 query.append("  ").append(quoteIdent(name)).append(" ");
-                
-                // PostgreSQL-specific type mapping with modern features
-                switch (col.getSQLType()) {
-                    case Types.BOOLEAN, Types.BIT -> query.append("BOOLEAN");
-                    case Types.TINYINT -> query.append("SMALLINT"); // PostgreSQL doesn't have TINYINT
-                    case Types.SMALLINT -> query.append("SMALLINT");
-                    case Types.INTEGER -> query.append("INTEGER");
-                    case Types.BIGINT -> query.append("BIGINT");
-                    case Types.FLOAT -> query.append("REAL");
-                    case Types.DOUBLE -> query.append("DOUBLE PRECISION");
-                    case Types.TIMESTAMP -> query.append("TIMESTAMP WITH TIME ZONE");
-                    case Types.VARCHAR -> {
-                        if (col.getLength() > 10485760) { // 10MB limit for VARCHAR
-                            query.append("TEXT");
-                        } else {
-                            query.append("VARCHAR(").append(col.getLength()).append(")");
+
+                // R6 Plan 2a/2b: a physical column-type hint (native uuid/jsonb/
+                // timestamptz) overrides the java.sql.Types default. The hint is
+                // dialect-neutral; map it to Postgres's native spelling here.
+                String hint = col.getDbColumnType();
+                if (hint != null) {
+                    query.append(pgNativeColumnType(hint));
+                } else {
+                    // PostgreSQL-specific type mapping with modern features
+                    switch (col.getSQLType()) {
+                        case Types.BOOLEAN, Types.BIT -> query.append("BOOLEAN");
+                        case Types.TINYINT -> query.append("SMALLINT"); // PostgreSQL doesn't have TINYINT
+                        case Types.SMALLINT -> query.append("SMALLINT");
+                        case Types.INTEGER -> query.append("INTEGER");
+                        case Types.BIGINT -> query.append("BIGINT");
+                        case Types.FLOAT -> query.append("REAL");
+                        case Types.DOUBLE -> query.append("DOUBLE PRECISION");
+                        case Types.TIMESTAMP -> query.append("TIMESTAMP WITH TIME ZONE");
+                        case Types.VARCHAR -> {
+                            if (col.getLength() > 10485760) { // 10MB limit for VARCHAR
+                                query.append("TEXT");
+                            } else {
+                                query.append("VARCHAR(").append(col.getLength()).append(")");
+                            }
                         }
+                        default -> throw new UnsupportedOperationException(
+                            "PostgreSQL driver does not support SQL type: " + col.getSQLType());
                     }
-                    default -> throw new UnsupportedOperationException(
-                        "PostgreSQL driver does not support SQL type: " + col.getSQLType());
                 }
-                
+
+                // R6 Plan 2a: a uuid primary key whose identity declares
+                // @generation: uuid gets a server-side gen_random_uuid() default,
+                // so an INSERT that omits the PK still succeeds (and the value is
+                // a native uuid). Routed through the existing AUTO_UUID generation
+                // signal — not a parallel emitter.
+                if (ColumnDef.COLTYPE_UUID.equals(hint)
+                        && col.getAutoType() == ColumnDef.AUTO_UUID) {
+                    query.append(" DEFAULT gen_random_uuid()");
+                }
+
                 // PostgreSQL constraints can be added here if needed
-                
+
                 if (col.isPrimaryKey() && keys == 1) {
                     primaryKey = name;
                 } else if (col.isUnique()) {
@@ -355,6 +373,23 @@ public class PostgresDriver extends GenericSQLDriver {
     protected String quoteIdent(String name) {
         if (name.indexOf('"') >= 0) throw new IllegalArgumentException("unsafe identifier: " + name);
         return "\"" + name + "\"";
+    }
+
+    /**
+     * Map a dialect-neutral physical column-type hint (R6 Plan 2a/2b) to its
+     * Postgres native spelling. Cross-port: the live {@code information_schema}
+     * type ({@code uuid} / {@code jsonb} / {@code timestamp with time zone}) is
+     * what the persistence-conformance corpus asserts, so whatever exact spelling
+     * we emit must converge to those catalog types.
+     */
+    private static String pgNativeColumnType(String hint) {
+        return switch (hint) {
+            case ColumnDef.COLTYPE_UUID         -> "UUID";
+            case ColumnDef.COLTYPE_JSONB        -> "JSONB";
+            case ColumnDef.COLTYPE_TIMESTAMP_TZ -> "TIMESTAMP WITH TIME ZONE";
+            default -> throw new UnsupportedOperationException(
+                "PostgreSQL driver does not support column-type hint: " + hint);
+        };
     }
 
     @Override
