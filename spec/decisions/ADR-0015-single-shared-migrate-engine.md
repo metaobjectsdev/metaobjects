@@ -44,13 +44,29 @@ which a **dev-time CLI** is not.
 MetaObjects owns the **declarative schema diff** (metadata → expected, introspect → actual, diff →
 DDL). **Apply, history, and data migrations are a separate, pluggable layer.**
 
-### 2. Two apply modes
-- **Built-in homegrown apply** (today's `up.sql` / `down.sql` + direct apply) — retained as the
-  **zero-dependency default**. It needs no external runner and, notably, gives **free rollback**
-  via `down.sql` — which **Flyway Community does not** (Flyway's undo/`U__` is a paid Teams/Enterprise
-  feature). The engine has both schemas, so it generates up **and** down by diffing both directions.
-- **Generate** — emit reviewable, **versioned SQL migration files** for an external runner. The
-  production path for shops standardized on a runner.
+### 2. Generation today; a homegrown apply runner is net-new work
+
+**Current reality (do not overstate):** `migrate-ts` **generates** timestamped, append-only
+`<ts>-<slug>/up.sql` + `down.sql` (the engine has both schemas, so it emits up **and** down by
+diffing both directions). It does **not** apply them for Postgres/SQLite and has **no history /
+`schema_migrations` journal** — the only apply paths that exist are **D1 → `wrangler` (external,
+with history)** and the **test harness** (`executeSql`). So "the engine picks up and applies your
+migration" is **not true today** for Postgres/SQLite.
+
+**Decision — two apply modes, one of them to be built:**
+- **Built-in homegrown apply** — a **zero-dependency** runner that applies pending append-only
+  migrations and tracks them in a journal table, giving **free rollback** via `down.sql` (which
+  **Flyway Community does not** — undo/`U__` is paid Teams/Enterprise). **This runner is net-new work
+  for Postgres/SQLite** (only D1/Wrangler + the harness apply today); the consolidation builds it.
+- **Generate** — emit reviewable, **versioned SQL migration files** for an external runner
+  (Flyway/dbmate/…); the production path for shops standardized on a runner.
+
+**Data migrations work at the file level today** (append-only dirs survive regen; the schema diff
+never fights hand-added DML), but: (a) "applied for you" depends on the homegrown runner above or an
+external runner; (b) the **`down` of a data migration is hand-authored** — the engine auto-reverses
+*schema*, not data DML (as with Django `RunPython` reverse / Alembic `downgrade`); (c) ordering a
+data migration after the schema it depends on is the author's responsibility (handled by the
+timestamp).
 
 ### 3. Runner output is a thin adapter layer; Flyway is the reference
 The engine generates the up+down SQL **once**; pluggable **output-format adapters** name/lay it out
@@ -162,10 +178,12 @@ delegation) only once the shared engine passes that port's scenarios.
 ## Realization status
 
 - **Decided:** the strategy above.
-- **Pending (staged consolidation plan):** the generate/versioned-file emit + Flyway-naming output;
-  the `bun --compile` binary; the migrate-conformance / runtime-conformance corpus split; per-port
-  cutover onto the shared engine; retiring the legacy engines. `field.uuid` / `@dbColumnType` (R6 Plan
-  2) implemented in the shared engine + the per-port logical/codegen parts.
+- **Pending (staged consolidation plan):** the **homegrown apply + journal/history runner** for
+  Postgres/SQLite (net-new — only D1/Wrangler + the harness apply today); the runner output-format
+  adapters (Flyway-prefix / two-file / single-file-divider); the `bun --compile` binary; the
+  migrate-conformance / runtime-conformance corpus split; per-port cutover onto the shared engine;
+  retiring the legacy engines. `field.uuid` / `@dbColumnType` (R6 Plan 2) implemented in the shared
+  engine + the per-port logical/codegen parts.
 
 ## Conformance note
 
