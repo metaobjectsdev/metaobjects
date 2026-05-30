@@ -51,9 +51,10 @@ public interface JdbcFieldCodec {
     default int sqlType() { return NO_SQL_TYPE; }
 
     /**
-     * The DDL column length for this codec's column type, or {@code -1} to
-     * defer to the {@code DataType}-based default in
-     * {@code SimpleMappingHandlerDB.getSQLLength}.
+     * The DDL column length for this codec's column type, or any negative value
+     * (typically {@code -1}) to defer to the {@code DataType}-based default in
+     * {@code SimpleMappingHandlerDB.getSQLLength} (which treats {@code length >= 0}
+     * as the codec's opinion — e.g. {@code 0} for a TIME column).
      */
     default int sqlLength() { return -1; }
 }
