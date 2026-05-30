@@ -107,17 +107,19 @@ partially support it, Java/Kotlin defer) with one corpus-pinned behavior.
 
 ### Enum coercion pipeline
 
-Resolution order for an enum value during ingest (Tier-1 invariant — identical across ports):
+Resolution order for an enum value during ingest, given the field's resolved **normalization mode
+`M`** (see below) and the runtime **tolerance `T`**:
 
 1. **exact** match against `@values` → `RECOVERED`.
-2. **normalize** then match: `normalize(s) = uppercase(trim(s))` with `[\s_\-]+` collapsed to a
-   single `_`. So `"in progress"`, `"In-Progress"`, `"in__progress"` all normalize to `IN_PROGRESS`.
-   A normalized hit → `RECOVERED` (a `normalize` coercion is logged).
-3. **`@enumAlias`** (explicit synonyms, properties map) — runtime aliases win over schema; a hit →
-   `RECOVERED` (alias coercion logged). Alias keys are themselves normalized before comparison.
-4. **fuzzy (opt-in)** — only at `tolerance = loose`: Levenshtein distance on the normalized forms,
-   accept the unique nearest member within a conservative threshold (distance ≤ 1 for members ≤ 4
-   chars, ≤ 2 otherwise; reject on ties). Deterministic → cross-port byte-identical. Off by default.
+2. **normalized** match using mode `M` (both input and members normalized by `M`; skipped when
+   `M = none`) → `RECOVERED` (a `normalize` coercion logged).
+3. **`@enumAlias`** (explicit synonyms, properties map) — runtime aliases win over schema; alias
+   keys are normalized by `M` before comparison; a hit → `RECOVERED` (alias coercion logged).
+4. **fuzzy** — enabled only when `T = loose`. **Guarded integer Levenshtein** on the `M`-normalized
+   forms: accept the **uniquely nearest** member with edit distance ≤ 1 **and** a clear margin (the
+   runner-up's distance ≥ best + 2), **and** only for members whose normalized length ≥ 5 (short
+   members never fuzzy-match). Integer distance → deterministic, byte-identical cross-port. A hit →
+   `RECOVERED` (fuzzy coercion logged). Off by default (`T ≠ loose`).
 5. **`@coerceDefault`** (new attr) — a present-but-uncoercible value falls back to this member →
    `DEFAULTED` (coercion logged). If absent, fall through.
 6. **MALFORMED**.
@@ -128,25 +130,57 @@ supplied"; `@coerceDefault` is "value when supplied-but-garbage" — distinct be
 a field vs hallucinating one may warrant different fallbacks. A present-uncoercible value does **not**
 borrow `@default` (only `@coerceDefault`), keeping the two semantics independent.
 
+### Normalization modes (configurable via `@normalize`)
+
+Normalization is selectable, not fixed, via a closed-enum **`@normalize`** attr. The three modes:
+
+- **`none`** — exact only; skip step 2 (strictest).
+- **`collapse`** — ASCII case-fold (`a–z`↔`A–Z` only) + trim + collapse runs of `[\s_\-]+` to a
+  single `_`. Preserves separator boundaries. `"in progress"`/`"In-Progress"` → `IN_PROGRESS`;
+  `"inprogress"` stays distinct.
+- **`strip`** *(default)* — ASCII case-fold + strip everything except `[A-Z0-9]`. Separator/
+  punctuation/whitespace-insensitive: `"in progress"`/`"In-Progress"`/`"inprogress"`/`"in progress!"`
+  → `INPROGRESS`. Most forgiving. (Load-time warning if two members collide under `strip`.)
+- **`unicode`** — Unicode caseless match (NFKC_Casefold-style) for non-ASCII input/diacritics.
+
+`collapse` and `strip` are **pure ASCII transforms → Tier-1 byte-identical** across all 5 ports.
+`unicode` is **best-effort** per each port's standard Unicode facilities; because implementations
+diverge (ICU-class differences), `unicode`-mode results are **NOT part of the byte-identical
+cross-port conformance assertion** — they're tested per-port for reasonableness only. Pick `unicode`
+only when a field genuinely has Unicode-domain input; ASCII enum members rarely need it.
+
+**Resolution of the mode for a field** (the codegen schema-emitter bakes the resolved `M` into the
+`FieldSpec`): field-level `@normalize` → owning `object.value`-level `@normalize` (the
+**object-level default** for its enum fields) → global default **`strip`**.
+
 ### Metamodel attrs
 
 - **`@coerceDefault`** (NEW) — on `field.enum` (extensible to other constrained kinds later). String
-  member symbol; must be one of `@values` (loader-validated). Drives step 5 above. Generic name
-  (not enum/LLM-specific) so it reads as an input-coercion concern.
+  member symbol; must be one of `@values` (loader-validated → `ERR_BAD_ATTR_VALUE`). Drives step 5.
+  Generic name (not enum/LLM-specific) so it reads as an input-coercion concern.
+- **`@normalize`** (NEW) — closed enum `none | collapse | strip | unicode` (loader-validated). On
+  **`field.enum`** (per-field) and on **`object.value`** (the default for the object's enum fields).
+  Resolution: field → owning object → global default `strip`. The codegen schema-emitter bakes the
+  resolved mode into the `FieldSpec`. Generic name; honored for enums in FR-011, extensible later.
 - **`@default`** (EXISTING) — its enum value now also serves as the *absent*-fill during ingest. No
   new attr; documented dual role (DB/codegen default + ingest absent-fill).
-- **`@enumAlias`** (EXISTING, FR-010) — unchanged; now normalized-key matched (step 3).
-- Registered identically across ports; `@coerceDefault` bad value (not a member) → `ERR_BAD_ATTR_VALUE`.
+- **`@enumAlias`** (EXISTING, FR-010) — unchanged; alias keys normalized by the field's mode `M` (step 3).
+- Fuzzy matching has no attr — it's gated by the runtime `tolerance = loose` (RecoverOptions), off by default.
+- All registered identically across ports.
 
 ## Tiers (cross-language-porting)
 
-- **Tier 1 (INVARIANT — corpus-pinned):** per-field classification + `empty`; canonical normalized
-  value (numeric ±1e-9); the **resolution order** and the **exact normalization rule**; the **fuzzy
-  algorithm + threshold** (deterministic); `@coerceDefault`/`@default`/`@enumAlias` vocabulary +
-  semantics; nested dotted-path classification; the strip/locate/read/coerce observable behavior;
-  MALFORMED/TRUNCATED sentinel effects.
-- **Tier 2 (idiomatic):** the `ingest` package internals + module layout; the `recover()`↔`ingest()`
-  naming; enums/dataclasses/records per language; opt-in-fuzzy plumbing.
+- **Tier 1 (INVARIANT — corpus-pinned):** per-field classification + `empty`; canonical value
+  (numeric ±1e-9); the **resolution order**; the **`none`/`collapse`/`strip` normalization rules**
+  (pure ASCII → byte-identical); the **guarded integer-Levenshtein fuzzy** (algorithm + ≤1 + clear-
+  margin + min-length-5 guard, deterministic); `@coerceDefault`/`@default`/`@enumAlias`/`@normalize`
+  vocabulary + the field→object→global mode resolution; nested dotted-path classification; the
+  strip/locate/read/coerce observable behavior; MALFORMED/TRUNCATED sentinel effects.
+- **Tier 2 (idiomatic / best-effort):** the `ingest` package internals + module layout; the
+  `recover()`↔`ingest()` naming; enums/dataclasses/records per language; opt-in-fuzzy plumbing.
+  **The `unicode` normalization mode is explicitly best-effort and NOT in the byte-identical
+  conformance assertion** (per-port Unicode facilities diverge); `collapse`/`strip` are the
+  cross-port-guaranteed modes.
 - **Tier 3:** conformance-runner plumbing; the executable-proof harness.
 
 ## Conformance corpus expansion
@@ -154,8 +188,11 @@ borrow `@default` (only `@coerceDefault`), keeping the two semantics independent
 Add to the shared `fixtures/recover-conformance/` (renamed/aliased to ingest-conformance if the API
 rename lands; the existing 10 cases stay green):
 
-- **Enum pipeline:** normalized-variant (`"in progress"`), `@enumAlias` synonym, fuzzy-typo
-  (loose-only), `@coerceDefault` fallback (→ DEFAULTED), `@default` absent-fill (→ DEFAULTED).
+- **Enum pipeline:** normalized-variant per mode (`strip`: `"in progress"`/`"inprogress"`; `collapse`:
+  `"in progress"` but NOT `"inprogress"`; `none`: exact only); field-level vs object-level `@normalize`
+  default resolution; `@enumAlias` synonym; fuzzy-typo (loose-only, incl. a short-member NON-match and
+  a close-members tie NON-match to pin the guards); `@coerceDefault` fallback (→ DEFAULTED); `@default`
+  absent-fill (→ DEFAULTED). (`unicode`-mode cases are per-port-only, not in the cross-port assertion.)
 - **XML breadth:** nested element, repeated→array, attribute-vs-element, mixed-content, more
   malformations (currently only 1 XML case of 10).
 - **Nested objects:** clean nested, partial-nested (some sub-fields MALFORMED), array-of-objects.
@@ -189,8 +226,15 @@ each merge; forward-only merges; push for durability. (Established FR-010 workfl
 
 ## Resolved design decisions (from brainstorming 2026-05-30)
 
-- Pipeline = exact → normalize → alias → fuzzy(opt-in, `loose`) → `@coerceDefault` → MALFORMED.
-- New attr named **`@coerceDefault`** (general, not `@enumDefault`); `@default` handles absent.
+- Pipeline = exact → normalize(mode `M`) → `@enumAlias` → fuzzy(guarded Levenshtein, `tolerance=loose`)
+  → `@coerceDefault` → MALFORMED; `@default` fills absent.
+- New attr **`@coerceDefault`** (general, not `@enumDefault`); `@default` handles absent.
+- Normalization is **configurable** via **`@normalize`** (`none|collapse|strip|unicode`), per-field
+  with an `object.value`-level default; global default `strip`. `collapse`/`strip` are ASCII →
+  Tier-1 byte-identical; `unicode` is best-effort (excluded from the cross-port byte assertion).
+- Fuzzy **included** as guarded integer Levenshtein (≤1, clear margin, normalized-length ≥5),
+  gated by `tolerance=loose`, off by default — chosen over Jaro-Winkler to avoid float cross-port
+  nondeterminism. Researched 2026-05-30.
 - **Full decouple** into the **`ingest`** package; render depends on ingest.
 - Nested-object recovery is in-scope and uniform.
 - TS pilot.
