@@ -15,6 +15,7 @@ from metaobjects.render.recover.json_forgiving_reader import (
     TRUNCATED,
     JsonForgivingReader,
 )
+from metaobjects.render.recover.normalize import normalize_enum
 from metaobjects.render.recover.recover import recover
 from metaobjects.render.recover.types import (
     Coercion,
@@ -51,6 +52,7 @@ __all__ = [
     "RecoveryResult",
     "Tolerance",
     "XmlForgivingReader",
+    "normalize_enum",
     "recover",
     "recover_map",
 ]

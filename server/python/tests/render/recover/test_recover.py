@@ -174,3 +174,59 @@ def test_nested_object_recurses() -> None:
     assert o.data["meta"] == {"n": "7"}
     assert o.report.states()["meta"] == FieldRecovery.RECOVERED
     assert o.report.states()["meta.n"] == FieldRecovery.RECOVERED
+
+
+# ---- FR-011 DEFAULTED classification + @default absent-fill ----
+
+
+def test_coerce_default_classifies_defaulted() -> None:
+    s = RecoverSchema(
+        Format.JSON,
+        "task",
+        [
+            FieldSpec.enum_field(
+                "status",
+                True,
+                ["IN_PROGRESS", "DONE"],
+                {},
+                coerce_default="DONE",
+                normalize="none",
+            )
+        ],
+    )
+    o = recover('{"status":"banana"}', s)
+    assert o.data["status"] == "DONE"
+    assert o.report.states()["status"] == FieldRecovery.DEFAULTED
+
+
+def test_default_absent_fill_satisfies_required() -> None:
+    s = RecoverSchema(
+        Format.JSON,
+        "task",
+        [
+            FieldSpec.scalar("title", FieldKind.STRING, True),
+            FieldSpec.enum_field(
+                "status", True, ["IN_PROGRESS", "DONE"], {}, default_value="IN_PROGRESS"
+            ),
+        ],
+    )
+    o = recover('{"title":"ship it"}', s)
+    assert o.data["status"] == "IN_PROGRESS"
+    assert o.report.states()["status"] == FieldRecovery.DEFAULTED
+    # @default fills the value, so the required field is NOT lost.
+    assert not o.report.has_lost_required()
+
+
+def test_normalized_match_classifies_recovered_not_defaulted() -> None:
+    s = RecoverSchema(
+        Format.JSON,
+        "task",
+        [
+            FieldSpec.enum_field(
+                "status", True, ["IN_PROGRESS"], {}, normalize="strip"
+            )
+        ],
+    )
+    o = recover('{"status":"In-Progress!"}', s)
+    assert o.data["status"] == "IN_PROGRESS"
+    assert o.report.states()["status"] == FieldRecovery.RECOVERED
