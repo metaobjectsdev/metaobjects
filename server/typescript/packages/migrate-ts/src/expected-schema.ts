@@ -25,6 +25,10 @@ import {
   FIELD_SUBTYPE_UUID,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STORAGE,
+  FIELD_ATTR_DB_COLUMN_TYPE,
+  DB_COLUMN_TYPE_UUID,
+  DB_COLUMN_TYPE_JSONB,
+  DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ,
   STORAGE_FLATTENED,
   DOC_ATTR_DESCRIPTION,
   applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY,
@@ -382,6 +386,18 @@ function buildColumn(
 }
 
 function subtypeToSqlType(field: MetaData): SqlType {
+  // R6 Plan 2b: a physical @dbColumnType override selects the DB column type
+  // instead of the subtype default (the loader has already validated the
+  // (subtype × value) pairing, so an unrecognized value never reaches here).
+  const dbColumnType = field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE);
+  if (typeof dbColumnType === "string") {
+    switch (dbColumnType) {
+      case DB_COLUMN_TYPE_UUID:              return { kind: "uuid" };
+      case DB_COLUMN_TYPE_JSONB:             return { kind: "json" };
+      case DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ: return { kind: "timestamp", withTimezone: true };
+    }
+  }
+
   const subType = field.subType;
   switch (subType) {
     case FIELD_SUBTYPE_STRING:    {
