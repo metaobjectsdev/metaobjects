@@ -1,3 +1,5 @@
+import { FIELD_SUBTYPE_UUID } from "../field/field-constants.js";
+
 // Query concern constants — filter operators, sort order values.
 //
 // NOTE: `query` is NOT a metamodel node type — it has no subtype, schema, or
@@ -48,6 +50,9 @@ export const OPS_BY_SUBTYPE: Readonly<Record<string, readonly FilterOp[]>> = {
   date:      [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
   time:      [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
   timestamp: [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
+  // uuid: identity-comparison ops only — no `like` (not free-text) and no
+  // ordering (`gt`/`lt` are meaningless on a UUID).
+  [FIELD_SUBTYPE_UUID]: [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_IN, FILTER_OP_IS_NULL],
 } as const;
 
 export function opsForSubType(subType: string): readonly FilterOp[] {

@@ -22,6 +22,7 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
+  FIELD_SUBTYPE_UUID,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STORAGE,
   STORAGE_FLATTENED,
@@ -155,6 +156,12 @@ function normalizeForSqlite(sqlType: SqlType): SqlType {
       // what the SQLite introspector produces, preventing a phantom
       // change-column-type diff on every field.float column.
       return { kind: "real" };
+    case "uuid":
+      // SQLite has no native uuid type; uuid values are stored as TEXT (the
+      // conformance corpus is Postgres-only, but TS supports a sqlite dialect).
+      // Collapse uuid → text so the expected snapshot matches what the SQLite
+      // introspector produces, preventing a phantom change-column-type diff.
+      return { kind: "text" };
     default:
       return sqlType;
   }
@@ -396,6 +403,7 @@ function subtypeToSqlType(field: MetaData): SqlType {
     case FIELD_SUBTYPE_TIMESTAMP: return { kind: "timestamp", withTimezone: false };
     case FIELD_SUBTYPE_OBJECT:
     case FIELD_SUBTYPE_CLASS:     return { kind: "json" };
+    case FIELD_SUBTYPE_UUID:      return { kind: "uuid" }; // R6 Plan 2a — Postgres native uuid
     default:                      return { kind: "text" }; // unknown → text fallback
   }
 }

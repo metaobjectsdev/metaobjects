@@ -205,6 +205,74 @@ describe("buildExpectedSchema — SQLite float normalization (R6)", () => {
   });
 });
 
+describe("buildExpectedSchema — field.uuid (R6 Plan 2a)", () => {
+  async function loadInline(children: unknown[]) {
+    const json = JSON.stringify({ "metadata.root": { package: "test", children } });
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
+    if (result.errors.length > 0) {
+      throw new Error(`Loader errors:\n${result.errors.map((e) => e.message).join("\n")}`);
+    }
+    return result.root;
+  }
+
+  test("field.uuid → sqlType {kind:'uuid'} under postgres", async () => {
+    const root = await loadInline([
+      {
+        "object.entity": {
+          name: "Doc",
+          children: [
+            { "source.rdb": { "@table": "docs" } },
+            { "field.uuid":   { name: "id" } },
+            { "field.uuid":   { name: "ownerId" } },
+            { "identity.primary": { "@fields": "id" } },
+          ],
+        },
+      },
+    ]);
+    const snapshot = buildExpectedSchema(root, { dialect: "postgres", columnNamingStrategy: "literal" });
+    const cols = snapshot.tables[0]?.columns ?? [];
+    expect(cols.find((c) => c.name === "id")?.sqlType).toEqual({ kind: "uuid" });
+    expect(cols.find((c) => c.name === "ownerId")?.sqlType).toEqual({ kind: "uuid" });
+  });
+
+  test("field.uuid → sqlType {kind:'text'} under sqlite (no native uuid; collapse → text)", async () => {
+    const root = await loadInline([
+      {
+        "object.entity": {
+          name: "Doc",
+          children: [
+            { "source.rdb": { "@table": "docs" } },
+            { "field.uuid":   { name: "id" } },
+            { "identity.primary": { "@fields": "id" } },
+          ],
+        },
+      },
+    ]);
+    const snapshot = buildExpectedSchema(root, { dialect: "sqlite" });
+    const idCol = snapshot.tables[0]?.columns.find((c) => c.name === "id");
+    expect(idCol?.sqlType).toEqual({ kind: "text" });
+  });
+
+  test("field.uuid PK with @generation:uuid → identity 'uuid' (server-default gen_random_uuid)", async () => {
+    const root = await loadInline([
+      {
+        "object.entity": {
+          name: "Doc",
+          children: [
+            { "source.rdb": { "@table": "docs" } },
+            { "field.uuid":   { name: "id" } },
+            { "identity.primary": { "@fields": "id", "@generation": "uuid" } },
+          ],
+        },
+      },
+    ]);
+    const snapshot = buildExpectedSchema(root, { dialect: "postgres", columnNamingStrategy: "literal" });
+    const idCol = snapshot.tables[0]?.columns.find((c) => c.name === "id");
+    expect(idCol?.sqlType).toEqual({ kind: "uuid" });
+    expect(idCol?.identity).toBe("uuid");
+  });
+});
+
 describe("buildExpectedSchema — identity.reference @enforce", () => {
   async function loadInline(children: unknown[]) {
     const json = JSON.stringify({ "metadata.root": { package: "test", children } });

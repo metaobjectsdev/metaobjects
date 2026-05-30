@@ -17,6 +17,7 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_ENUM,
+  FIELD_SUBTYPE_UUID,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   FIELD_ATTR_MAX_LENGTH,
@@ -76,6 +77,7 @@ function sqliteJsonArrayElementTsType(subType: string): string | undefined {
     case FIELD_SUBTYPE_STRING:
     case FIELD_SUBTYPE_ENUM:
     case FIELD_SUBTYPE_CLASS:
+    case FIELD_SUBTYPE_UUID:
     case FIELD_SUBTYPE_DATE:
     case FIELD_SUBTYPE_TIME:
     case FIELD_SUBTYPE_TIMESTAMP:
@@ -206,6 +208,10 @@ export function mapColumnType(
         case FIELD_SUBTYPE_ENUM:
         case FIELD_SUBTYPE_CLASS:
         case FIELD_SUBTYPE_OBJECT:
+        case FIELD_SUBTYPE_UUID:
+          // SQLite has no native uuid type; store as TEXT (string native binding).
+          fnName = "text";
+          break;
         default:
           fnName = "text";
           break;
@@ -238,6 +244,10 @@ export function mapColumnType(
         break;
       case FIELD_SUBTYPE_TIMESTAMP:
         fnName = "timestamp";
+        break;
+      case FIELD_SUBTYPE_UUID:
+        // Postgres native uuid column; native TS binding stays `string`.
+        fnName = "uuid";
         break;
       case FIELD_SUBTYPE_DECIMAL:
         fnName = "numeric";

@@ -25,6 +25,7 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_CLASS,
+  FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_SHORT,
   FIELD_SUBTYPE_BYTE,
@@ -78,6 +79,7 @@ export interface BuildDocDataOpts {
 const SCALAR_TS_BY_SUBTYPE: Record<string, string> = {
   [FIELD_SUBTYPE_STRING]: "string",
   [FIELD_SUBTYPE_CLASS]: "string",
+  [FIELD_SUBTYPE_UUID]: "string",
   [FIELD_SUBTYPE_INT]: "number",
   [FIELD_SUBTYPE_SHORT]: "number",
   [FIELD_SUBTYPE_BYTE]: "number",

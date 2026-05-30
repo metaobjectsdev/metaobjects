@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Reading",
+          "children": [
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "label" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -9,6 +9,7 @@ import {
   FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
+  FIELD_SUBTYPE_UUID,
 } from "@metaobjectsdev/metadata";
 import { meta, metaField } from "./_meta-build.js";
 import { mapColumnType, type ColumnSpec } from "../src/column-mapper.js";
@@ -131,6 +132,18 @@ describe("mapColumnType — Postgres", () => {
     f.setIsArray(true);
     const spec = mapColumnType(f, "postgres");
     expect(spec.modifiers).toContain(".array()");
+  });
+});
+
+describe("mapColumnType — field.uuid (R6 Plan 2a)", () => {
+  test("Postgres: uuid → native uuid() column", () => {
+    const spec = mapColumnType(metaField(FIELD_SUBTYPE_UUID, "id"), "postgres");
+    expect(spec.fnName).toBe("uuid");
+  });
+
+  test("SQLite: uuid → text (no native uuid type)", () => {
+    const spec = mapColumnType(metaField(FIELD_SUBTYPE_UUID, "id"), "sqlite");
+    expect(spec.fnName).toBe("text");
   });
 });
 
