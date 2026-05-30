@@ -1,0 +1,8 @@
+metadata:
+  package: acme
+  children:
+    - object:
+        name: Product
+        children:
+          - field.string:
+              name: sku

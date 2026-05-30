@@ -322,6 +322,16 @@ public class URIHelper implements URIConstants {
                     }
                 }
             }
+            // Resolution order matters in nested-jar runtimes (e.g. a Spring Boot
+            // fat jar): the thread-context classloader is the launcher's
+            // LaunchedClassLoader, which CAN open resources inside
+            // BOOT-INF/lib/*.jar; the system classloader cannot. Try the
+            // context CL, then this class's CL, then the system CL last.
+            if ( url == null ) {
+                ClassLoader ctxCl = Thread.currentThread().getContextClassLoader();
+                if ( ctxCl != null ) url = ctxCl.getResource(model.getUriSource());
+            }
+            if ( url == null ) url = URIHelper.class.getClassLoader().getResource(model.getUriSource());
             if ( url == null ) url = ClassLoader.getSystemClassLoader().getResource(model.getUriSource());
             if ( url == null )  throw new IOException( "Could not open resource: "+ model.toURI());
 

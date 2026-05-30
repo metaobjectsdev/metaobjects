@@ -58,37 +58,53 @@ public class StandardServiceRegistry implements ServiceRegistry {
         Objects.requireNonNull(serviceClass, "Service class cannot be null");
         
         Set<T> services = new LinkedHashSet<>();
-        
-        try {
-            // 1. Load services via ServiceLoader (with ClassLoader fallback handling)
-            ClassLoader currentLoader = getActiveClassLoader();
-            ServiceLoader<T> serviceLoader = ServiceLoader.load(serviceClass, currentLoader);
-            serviceLoader.forEach(service -> {
-                services.add(service);
-                log.debug("Discovered service via ServiceLoader: {} -> {}", 
-                         serviceClass.getSimpleName(), service.getClass().getName());
-            });
-            
-            // 2. Add manually registered services
-            Set<Object> manual = manualServices.get(serviceClass);
-            if (manual != null) {
-                synchronized (manual) {
-                    for (Object service : manual) {
-                        if (serviceClass.isInstance(service)) {
-                            services.add((T) service);
-                            log.debug("Added manual service: {} -> {}", 
-                                     serviceClass.getSimpleName(), service.getClass().getName());
-                        }
+        Set<Class<?>> seenImpls = new HashSet<>();
+
+        // 1. Manually registered services take precedence. A manual registration
+        //    is an explicit override, so it wins over an ambiently-discovered
+        //    provider of the same concrete class (claim the class first, so the
+        //    ServiceLoader pass below skips a same-class discovered instance).
+        Set<Object> manual = manualServices.get(serviceClass);
+        if (manual != null) {
+            synchronized (manual) {
+                for (Object service : manual) {
+                    if (serviceClass.isInstance(service) && seenImpls.add(service.getClass())) {
+                        services.add((T) service);
+                        log.debug("Added manual service: {} -> {}",
+                                 serviceClass.getSimpleName(), service.getClass().getName());
                     }
                 }
             }
-            
-            log.debug("Found {} services for {}", services.size(), serviceClass.getSimpleName());
-            
-        } catch (ServiceConfigurationError e) {
-            log.error("Error loading services for {}: {}", serviceClass.getName(), e.getMessage(), e);
         }
-        
+
+        // 2. Discover via ServiceLoader across every candidate classloader AT
+        //    DISCOVERY TIME — not just the one captured at construction. A registry
+        //    constructed on a thread/phase whose loader cannot enumerate the
+        //    provider manifests (e.g. a Spring Boot fat jar, where
+        //    META-INF/services entries live in nested BOOT-INF/lib/*.jar visible
+        //    only to the LaunchedClassLoader) still finds them via the current
+        //    thread-context loader or this class's own loader. Providers are
+        //    de-duplicated by concrete class so one visible through several loaders
+        //    registers exactly once.
+        for (ClassLoader loader : discoveryClassLoaders()) {
+            try {
+                ServiceLoader<T> serviceLoader = ServiceLoader.load(serviceClass, loader);
+                for (T service : serviceLoader) {
+                    if (seenImpls.add(service.getClass())) {
+                        services.add(service);
+                        log.debug("Discovered service via ServiceLoader [{}]: {} -> {}",
+                                 loader, serviceClass.getSimpleName(), service.getClass().getName());
+                    }
+                }
+            } catch (ServiceConfigurationError e) {
+                // One malformed/unreachable loader must not abort discovery on the others.
+                log.warn("Error loading {} services from classloader {}: {}",
+                         serviceClass.getName(), loader, e.getMessage(), e);
+            }
+        }
+
+        log.debug("Found {} services for {}", services.size(), serviceClass.getSimpleName());
+
         return services;
     }
     
@@ -143,8 +159,29 @@ public class StandardServiceRegistry implements ServiceRegistry {
     }
     
     /**
+     * The ordered, de-duplicated set of classloaders to consult for service
+     * discovery. Order reflects precedence: the loader captured at construction
+     * (preserving prior intent), then the current thread-context loader (the
+     * {@code LaunchedClassLoader} in a Spring Boot fat-jar runtime, which can see
+     * nested {@code BOOT-INF/lib} service manifests), then this class's own loader
+     * (a robust final fallback that, in a fat jar, also resolves to the launcher
+     * loader). A {@link LinkedHashSet} both preserves order and collapses loaders
+     * that are identical references.
+     *
+     * @return candidate classloaders for {@link ServiceLoader} discovery
+     */
+    private Collection<ClassLoader> discoveryClassLoaders() {
+        Set<ClassLoader> loaders = new LinkedHashSet<>();
+        loaders.add(getActiveClassLoader());
+        loaders.add(Thread.currentThread().getContextClassLoader());
+        loaders.add(getClass().getClassLoader());
+        loaders.remove(null);
+        return loaders;
+    }
+
+    /**
      * Get the active ClassLoader, with fallback if original was GC'd
-     * 
+     *
      * @return Active ClassLoader (original or fallback)
      */
     private ClassLoader getActiveClassLoader() {
