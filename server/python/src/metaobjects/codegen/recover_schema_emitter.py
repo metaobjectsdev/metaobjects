@@ -1,0 +1,102 @@
+"""Turns a payload value-object into Python source fragments for the FR-010 recover
+codegen:
+
+* :func:`schema_literal`       — a ``RecoverSchema(Format.X, "root", [FieldSpec(...), …])``
+                                 baked descriptor for the emitted parser module.
+* :func:`mirror_dataclass`     — an all-nullable mirror dataclass ``<Payload>Recovered``
+                                 (every field ``X | None = None``; the recover entry
+                                 returns this nullable twin rather than the strict
+                                 Pydantic payload — same reasoning as the Kotlin / C#
+                                 nullable mirror).
+* :func:`mirror_initializer`   — ``<Name>Recovered(field=as_string(d, "field"), …)``.
+
+Mirrors the C# / Java ``RecoverSchemaEmitter`` adapted to Python syntax + the
+nullable-mirror shape. Bounded scope: scalar / enum / scalar-array. Nested object +
+array-of-enum deferred.
+"""
+from __future__ import annotations
+
+from metaobjects.codegen import fr010_field_mapping as fm
+from metaobjects.meta.core.field import field_constants as fc
+from metaobjects.meta.meta_data import MetaData
+
+# The recover_map accessors a generated module may import (sorted, deduped subset).
+ALL_RECOVER_MAP_HELPERS: tuple[str, ...] = (
+    "as_bool",
+    "as_double",
+    "as_int",
+    "as_long",
+    "as_string",
+    "as_string_list",
+)
+
+
+def _format_enum(fmt: str) -> str:
+    return "Format.XML" if fmt.lower() == "xml" else "Format.JSON"
+
+
+def _field_spec_literal(field: MetaData) -> str:
+    name = field.name
+    required = fm.is_required(field)
+    req = "True" if required else "False"
+
+    if field.sub_type == fc.FIELD_SUBTYPE_ENUM:
+        values_lit = fm.string_list_literal(fm.enum_values(field))
+        alias_lit = fm.properties_map_literal(field.attr(fc.FIELD_ATTR_ENUM_ALIAS))
+        return f'FieldSpec.enum_field("{name}", {req}, {values_lit}, {alias_lit})'
+
+    if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
+        # nested recover deferred — model it as a plain (string) scalar slot.
+        return f'FieldSpec.scalar("{name}", FieldKind.STRING, {req})  # FR-010: nested recover deferred'
+
+    kind = fm.scalar_kind(field.sub_type) or "STRING"
+    return f'FieldSpec.scalar("{name}", FieldKind.{kind}, {req})'
+
+
+def schema_literal(vo: MetaData, fmt: str, root_name: str) -> str:
+    """Emit ``RecoverSchema(Format.X, "rootName", [FieldSpec(...), …])``."""
+    format_enum = _format_enum(fmt)
+    specs = [_field_spec_literal(f) for f in fm.fields(vo)]
+    if not specs:
+        return f'RecoverSchema({format_enum}, "{root_name}", [])'
+    body = ", ".join(specs)
+    return f'RecoverSchema({format_enum}, "{root_name}", [{body}])'
+
+
+def mirror_dataclass(vo: MetaData, record_name: str) -> list[str]:
+    """Emit the all-nullable mirror dataclass declaration (source lines)."""
+    base = (
+        record_name[: -len("Recovered")]
+        if record_name.endswith("Recovered")
+        else record_name
+    )
+    lines: list[str] = [
+        "@dataclass(frozen=True, slots=True)",
+        f"class {record_name}:",
+        f'    """Best-effort recovered twin of ``{base}`` — every field nullable',
+        '    (``None`` where the value was lost or malformed)."""',
+    ]
+    field_lines = [
+        f"    {f.name}: {fm.mirror_type(f)} = None" for f in fm.fields(vo)
+    ]
+    if field_lines:
+        lines.extend(field_lines)
+    else:
+        lines.append("    pass")
+    return lines
+
+
+def mirror_initializer(vo: MetaData, record_name: str) -> str:
+    """Emit ``<recordName>(field=as_string(d, "field"), …)``."""
+    assigns = [f"{f.name}={fm.recover_map_call(f)}" for f in fm.fields(vo)]
+    return f"{record_name}({', '.join(assigns)})"
+
+
+def recover_map_imports(vo: MetaData) -> list[str]:
+    """The sorted, deduped ``recover_map`` accessor names the mirror initializer needs."""
+    used: set[str] = set()
+    for f in fm.fields(vo):
+        h = fm.recover_map_helper(f)
+        if h is not None:
+            used.add(h)
+    return [h for h in ALL_RECOVER_MAP_HELPERS if h in used]

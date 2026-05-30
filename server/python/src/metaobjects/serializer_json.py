@@ -46,12 +46,29 @@ def _body(node: MetaData) -> dict[str, object]:
     return body
 
 
+_SCALAR_TYPES = (str, int, float, bool, type(None))
+
+
 def _normalize(value: object) -> object:
-    """Mirror JSON.stringify: a whole-number float serializes as an int."""
+    """Mirror JSON.stringify: a whole-number float serializes as an int.
+
+    Object-valued attrs need different key order in canonical form, and the
+    serializer is schema-free — so distinguish by value shape, which exactly
+    tracks the object-attr subtypes:
+      * `properties` (e.g. @enumDoc / @enumAlias) is a flat scalar->scalar map ->
+        keys sort ordinally (cross-port canonical form; matches the Java
+        reference, whose Properties is unordered and serializes sorted).
+      * `filter` maps a field to an operator object ({eq:...}/{in:[...]}) — at
+        least one value is itself a dict/list -> declaration order is preserved
+        (significant). The FilterAttr desugar runs at set_value time, so filter
+        values are always op-object dicts before serialization reaches here.
+    """
     if isinstance(value, float) and value.is_integer():
         return int(value)
     if isinstance(value, list):
         return [_normalize(v) for v in value]
     if isinstance(value, dict):
-        return {k: _normalize(v) for k, v in value.items()}
+        all_scalar = all(isinstance(v, _SCALAR_TYPES) for v in value.values())
+        items = sorted(value.items()) if all_scalar else value.items()
+        return {k: _normalize(v) for k, v in items}
     return value
