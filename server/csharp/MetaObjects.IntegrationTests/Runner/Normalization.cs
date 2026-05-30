@@ -167,8 +167,13 @@ public static class Normalization
                 foreach (var item in arr) a.Add(item is null ? null : StringifyLeaves(item.DeepClone()));
                 return a;
             default:
-                // JsonValue scalar → its canonical string form.
-                return JsonValue.Create(node.ToJsonString().Trim('"'));
+                // JsonValue scalar → its canonical string form. Parse (not Trim('"'))
+                // so a string leaf containing embedded quotes/escapes round-trips
+                // losslessly: take the raw string value for JSON strings, and the
+                // serialized form for non-string scalars (numbers/bools/null).
+                return JsonValue.Create(node.GetValueKind() == JsonValueKind.String
+                    ? node.GetValue<string>()
+                    : node.ToJsonString());
         }
     }
 

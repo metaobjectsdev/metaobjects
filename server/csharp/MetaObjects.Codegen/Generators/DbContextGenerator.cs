@@ -121,6 +121,9 @@ public sealed class DbContextGenerator : IGenerator
         var lhs = $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop})";
         return f.DbColumnType switch
         {
+            // `v!` is safe even for a nullable `string?` property: EF Core skips
+            // value-converter invocation for null (null↔NULL), so Guid.Parse(null)
+            // never runs.
             DbConstants.DB_COLUMN_TYPE_UUID =>
                 lhs + ".HasColumnType(\"uuid\").HasConversion(v => Guid.Parse(v!), g => g.ToString(\"D\"));",
             DbConstants.DB_COLUMN_TYPE_JSONB =>

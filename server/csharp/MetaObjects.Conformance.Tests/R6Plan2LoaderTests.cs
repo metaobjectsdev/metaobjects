@@ -142,6 +142,13 @@ public class R6Plan2LoaderTests
     [Fact]
     public void DbColumnType_is_validated_own_only_not_inherited()
     {
+        // The real own-only guarantee is that MetaField.DbColumnType reads OwnAttr
+        // (which consults _attrs directly, NOT the extends-walked Attrs()). Because
+        // extends requires the same subtype, a truly-distinguishing effective-vs-own
+        // fixture (where the inherited attr would be illegal on the child's subtype)
+        // isn't expressible — so this test pins own-only via the abstract/concrete
+        // split below rather than a subtype mismatch.
+        //
         // Abstract field.string carries a legal @dbColumnType:uuid. A concrete
         // field.string extends it — and inherits the attr. The own-only walk
         // sees the attr on the ABSTRACT (legal there) and NOT on the concrete,
