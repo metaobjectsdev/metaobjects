@@ -5,7 +5,6 @@
 // Mirrors the Java OutputFormatSpecEmitter (adapted to C# syntax). Field-kind mapping is shared
 // via Fr010FieldMapping. Bounded scope: scalar / enum. Nested object → FieldKind.Object placeholder.
 
-using System.Collections.Generic;
 using System.Linq;
 using MetaObjects.Meta;
 using static MetaObjects.Shared.BaseTypes;
@@ -17,9 +16,6 @@ namespace MetaObjects.Codegen.Generators;
 
 internal static class OutputFormatSpecEmitter
 {
-    private static IEnumerable<MetaData> Fields(MetaData vo) =>
-        vo.Children().Where(c => c.Type == TYPE_FIELD);
-
     /// <summary>
     /// Emit <c>new OutputFormatSpec(Format.X, "rootName", PromptStyle.X, new PromptField[] { … })</c>.
     /// </summary>
@@ -27,7 +23,7 @@ internal static class OutputFormatSpecEmitter
     {
         string formatEnum = ResolveFormat(template);
         string styleEnum = ResolvePromptStyle(template);
-        var fields = Fields(vo).Select(PromptFieldLiteral);
+        var fields = Fr010FieldMapping.Fields(vo).Select(PromptFieldLiteral);
         return $"new OutputFormatSpec({formatEnum}, \"{rootName}\", {styleEnum}, "
             + $"new PromptField[] {{ {string.Join(", ", fields)} }})";
     }
@@ -58,8 +54,8 @@ internal static class OutputFormatSpecEmitter
 
         if (field.SubType == FIELD_SUBTYPE_ENUM)
         {
-            string valuesLit = "new[] { " + string.Join(", ", EnumValues(field).Select(v => $"\"{v}\"")) + " }";
-            string enumDocLit = EnumDocLiteral(field);
+            string valuesLit = Fr010FieldMapping.StringArrayLiteral(Fr010FieldMapping.EnumValues(field));
+            string enumDocLit = Fr010FieldMapping.PropertiesMapLiteral(field.OwnAttr(FIELD_ATTR_ENUM_DOC));
             return $"new PromptField(\"{name}\", FieldKind.Enum, {req}, {array}, "
                 + $"{valuesLit}, {enumDocLit}, {example}, {instruction}, null)";
         }
@@ -75,23 +71,4 @@ internal static class OutputFormatSpecEmitter
         field.OwnAttr(attrName) is string v
             ? $"\"{Fr010FieldMapping.CSharpStringLiteral(v)}\""
             : "null";
-
-    private static IReadOnlyList<string> EnumValues(MetaData field) =>
-        field.OwnAttr(FIELD_ATTR_VALUES) switch
-        {
-            IReadOnlyList<string> ss => ss,
-            IReadOnlyList<object?> os => os.Select(o => o?.ToString() ?? "").ToList(),
-            _ => new List<string>(),
-        };
-
-    private static string EnumDocLiteral(MetaData field)
-    {
-        if (field.OwnAttr(FIELD_ATTR_ENUM_DOC) is not IReadOnlyDictionary<string, object?> d || d.Count == 0)
-            return "null";
-        var entries = d.Where(kv => kv.Value is not null)
-            .OrderBy(kv => kv.Key, System.StringComparer.Ordinal)
-            .Select(kv => $"[\"{Fr010FieldMapping.CSharpStringLiteral(kv.Key)}\"] = "
-                + $"\"{Fr010FieldMapping.CSharpStringLiteral(kv.Value!.ToString()!)}\"");
-        return "new Dictionary<string, string> { " + string.Join(", ", entries) + " }";
-    }
 }

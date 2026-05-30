@@ -28,7 +28,8 @@ public sealed class Fr010CodegenTests
             "@enumAlias": { "medium": "OK" },
             "@enumDoc": { "HIGH": "Directly supported.", "OK": "Inference.", "LOW": "A guess." } } },
         { "field.int": { "name": "score" } },
-        { "field.string": { "name": "note" } }
+        { "field.string": { "name": "note" } },
+        { "field.string": { "name": "tags", "isArray": true } }
       ]}},
       { "template.output": { "name": "AnswerOutput", "@payloadRef": "AnswerPayload",
           "@textRef": "ai/answer", "@format": "json", "@promptStyle": "guide" } }
@@ -68,6 +69,8 @@ public sealed class Fr010CodegenTests
         Assert.Contains("public string? text { get; init; }", src);
         Assert.Contains("public string? confidence { get; init; }", src);
         Assert.Contains("public int? score { get; init; }", src);
+        // Array field: nullable-element list matching RecoverMap.AsStringList's return type.
+        Assert.Contains("global::System.Collections.Generic.IReadOnlyList<string?>? tags { get; init; }", src);
         Assert.DoesNotContain("required", src.Split("AnswerPayloadRecovered")[1]); // mirror half has no required
     }
 
@@ -169,8 +172,15 @@ public sealed class Fr010CodegenTests
         refs.Add(MetadataReference.CreateFromFile(
             typeof(MetaObjects.Render.Recover.RecoverSchema).Assembly.Location));
 
-        var comp = CSharpCompilation.Create("fr010_" + Guid.NewGuid().ToString("N"),
-            trees, refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        // Elevate the nullable-covariance warning (CS8619) to an error so a mirror-type ↔
+        // RecoverMap-return mismatch (e.g. on an array field) fails this proof rather than
+        // silently emitting consumer-side warnings.
+        var options = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+            .WithSpecificDiagnosticOptions(new Dictionary<string, ReportDiagnostic>
+            {
+                ["CS8619"] = ReportDiagnostic.Error,
+            });
+        var comp = CSharpCompilation.Create("fr010_" + Guid.NewGuid().ToString("N"), trees, refs, options);
 
         using var ms = new MemoryStream();
         var emit = comp.Emit(ms);

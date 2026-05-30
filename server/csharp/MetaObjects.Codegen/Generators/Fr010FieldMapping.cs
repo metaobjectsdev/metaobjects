@@ -7,6 +7,8 @@
 // PayloadCodegen scalar map. Bounded scope (parity with Java/Kotlin): scalar / enum /
 // scalar-array. Nested object + array-of-enum are deferred (see KNOWN_GAPS).
 
+using System.Collections.Generic;
+using System.Linq;
 using MetaObjects.Meta;
 using static MetaObjects.Shared.BaseTypes;
 using static MetaObjects.Shared.Structural;
@@ -16,6 +18,40 @@ namespace MetaObjects.Codegen.Generators;
 
 internal static class Fr010FieldMapping
 {
+    /// <summary>The field children of a payload value-object, in declaration order.</summary>
+    public static IEnumerable<MetaData> Fields(MetaData vo) =>
+        vo.Children().Where(c => c.Type == TYPE_FIELD);
+
+    /// <summary>The string members of an enum field's <c>@values</c> attr (empty when absent).</summary>
+    public static IReadOnlyList<string> EnumValues(MetaData field) =>
+        field.OwnAttr(FIELD_ATTR_VALUES) switch
+        {
+            IReadOnlyList<string> ss => ss,
+            IReadOnlyList<object?> os => os.Select(o => o?.ToString() ?? "").ToList(),
+            _ => new List<string>(),
+        };
+
+    /// <summary>
+    /// Emit a C# <c>new Dictionary&lt;string, string&gt; { … }</c> literal for a properties-shaped
+    /// attr (e.g. <c>@enumDoc</c> / <c>@enumAlias</c>), or <c>"null"</c> when absent/empty.
+    /// Null values are dropped; keys are sorted ordinally for deterministic output (matches the
+    /// canonical-serializer properties sort).
+    /// </summary>
+    public static string PropertiesMapLiteral(object? attr)
+    {
+        if (attr is not IReadOnlyDictionary<string, object?> d) return "null";
+        var entries = d.Where(kv => kv.Value is not null)
+            .OrderBy(kv => kv.Key, System.StringComparer.Ordinal)
+            .Select(kv => $"[\"{CSharpStringLiteral(kv.Key)}\"] = \"{CSharpStringLiteral(kv.Value!.ToString()!)}\"")
+            .ToList();
+        if (entries.Count == 0) return "null";
+        return "new Dictionary<string, string> { " + string.Join(", ", entries) + " }";
+    }
+
+    /// <summary>Emit a C# <c>new[] { "a", "b" }</c> string-array literal for the given members.</summary>
+    public static string StringArrayLiteral(IEnumerable<string> values) =>
+        "new[] { " + string.Join(", ", values.Select(v => $"\"{v}\"")) + " }";
+
     /// <summary>The render-engine <c>FieldKind</c> member name for a scalar field subtype, or null if non-scalar.</summary>
     public static string? ScalarKind(string subType) => subType switch
     {
@@ -31,7 +67,9 @@ internal static class Fr010FieldMapping
     /// <summary>The nullable C# type for a field in the recover mirror record.</summary>
     public static string MirrorType(MetaData field)
     {
-        if (IsArray(field)) return "global::System.Collections.Generic.IReadOnlyList<string>?";
+        // Nullable element to match RecoverMap.AsStringList's IReadOnlyList<string?>? return —
+        // a recovered array can contain null elements where individual items were lost.
+        if (IsArray(field)) return "global::System.Collections.Generic.IReadOnlyList<string?>?";
         if (field.SubType == FIELD_SUBTYPE_OBJECT) return "object?"; // nested deferred
         if (field.SubType == FIELD_SUBTYPE_ENUM) return "string?";   // enum is string-backed
         return ScalarKind(field.SubType) switch
