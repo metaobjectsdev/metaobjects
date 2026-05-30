@@ -58,6 +58,14 @@ _Last refreshed 2026-05-30._
 
 ## Planned
 
+- **FR-011 — recover hardening (enum coercion + nested-object recovery)** — improve FR-010's `recover()`
+  for LLM output in place (no decouple): an enum coercion pipeline (exact → `@normalize` `none|collapse|strip`
+  → `@enumAlias` → `@coerceDefault` → MALFORMED; `@default` fills absent; emit the reserved `DEFAULTED`
+  state), uniform nested/embedded-object recovery, and conformance-corpus expansion. ASCII-only normalization
+  (byte-identical cross-port); fuzzy matching deferred (reserved slot). TS pilot, then port against the shared
+  corpus. Designed in `docs/superpowers/specs/2026-05-30-fr-011-recover-hardening-design.md`. *(A broader
+  "general tolerant-ingestion engine + declarative payload mapping" framing was considered and deliberately
+  cut — unjustified by current demand; any general inbound-mapping need is consumer-custom, not OSS core.)*
 - **MCP exposure of declared prompts/tools** — the remaining library-side piece of the prompt-construction pillar. Surface a `template.output` / tool declaration over the Model Context Protocol (model-agnostic) so an LLM host can discover + register it, built on the shipped render / payload / verify / FR-006 / FR-010 primitives. Designed in `docs/superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md`.
 
 ### Tracked outside this library repo (not roadmap work here)
