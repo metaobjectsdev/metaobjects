@@ -9,8 +9,12 @@ package com.metaobjects.manager.db.codec;
 import com.metaobjects.field.BooleanField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
+import com.metaobjects.field.TimeField;
 import org.junit.Test;
 
+import java.sql.Types;
+
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
@@ -49,5 +53,40 @@ public class JdbcCodecRegistryTest {
     public void registeredObjectFieldIsTheDefault() {
         assertSame("ObjectField resolves to the same instance as the default codec",
             JdbcCodecs.defaultCodec(), JdbcCodecs.forField(new ObjectField("o")));
+    }
+
+    // ── OCP: codec declares its own SQL type/length (no instanceof in SimpleMappingHandlerDB) ──
+
+    /**
+     * TimeCodec must declare {@code Types.TIME} via {@code sqlType()} so that
+     * {@link com.metaobjects.manager.db.SimpleMappingHandlerDB} can consult the codec
+     * instead of carrying an {@code instanceof TimeField} guard.
+     */
+    @Test
+    public void timeCodecDeclaresItsSqlType() {
+        JdbcFieldCodec codec = JdbcCodecs.forField(new TimeField("t"));
+        assertEquals("TimeCodec.sqlType() must return Types.TIME",
+                Types.TIME, codec.sqlType());
+    }
+
+    @Test
+    public void timeCodecDeclaresZeroSqlLength() {
+        JdbcFieldCodec codec = JdbcCodecs.forField(new TimeField("t"));
+        assertEquals("TimeCodec.sqlLength() must return 0 (TIME columns carry no length)",
+                0, codec.sqlLength());
+    }
+
+    /**
+     * Non-time codecs must return the NO_SQL_TYPE sentinel so they don't
+     * accidentally override the DataType-based switch in SimpleMappingHandlerDB.
+     */
+    @Test
+    public void nonTimeCodecsReturnNoOpSentinel() {
+        assertEquals("StringField codec must defer to DataType switch",
+                JdbcFieldCodec.NO_SQL_TYPE, JdbcCodecs.forField(new StringField("s")).sqlType());
+        assertEquals("BooleanField codec must defer to DataType switch",
+                JdbcFieldCodec.NO_SQL_TYPE, JdbcCodecs.forField(new BooleanField("b")).sqlType());
+        assertEquals("default ObjectCodec must defer to DataType switch",
+                JdbcFieldCodec.NO_SQL_TYPE, JdbcCodecs.defaultCodec().sqlType());
     }
 }
