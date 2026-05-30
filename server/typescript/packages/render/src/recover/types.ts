@@ -52,7 +52,7 @@ export const Tolerance = {
 } as const;
 export type Tolerance = (typeof Tolerance)[keyof typeof Tolerance];
 
-/** A recorded normalization/coercion. kind e.g. "alias", "clamp", "case", "runtime-alias-override". */
+/** A recorded normalization/coercion. kind e.g. "normalize", "alias", "runtime-alias-override", "clamp", "coerceDefault", "default". */
 export interface Coercion {
   readonly fieldPath: string;
   readonly from: string;
