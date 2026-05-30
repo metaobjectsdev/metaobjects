@@ -14,6 +14,11 @@ FIELD_SUBTYPE_OBJECT = "object"
 FIELD_SUBTYPE_CLASS = "class"
 FIELD_SUBTYPE_CURRENCY = "currency"
 FIELD_SUBTYPE_ENUM = "enum"
+# R6 Plan 2a — field.uuid is a logical identity scalar (ADR-0013). String-backed
+# on the wire (lowercase-canonical UUID string); the idiomatic native binding
+# (Python uuid.UUID) is a build-time codegen concern. A bare scalar like
+# field.long: no required attrs, no loader value-validation.
+FIELD_SUBTYPE_UUID = "uuid"
 
 FIELD_SUBTYPES = (
     FIELD_SUBTYPE_STRING,
@@ -29,6 +34,7 @@ FIELD_SUBTYPES = (
     FIELD_SUBTYPE_OBJECT,
     FIELD_SUBTYPE_CLASS,
     FIELD_SUBTYPE_CURRENCY,
+    FIELD_SUBTYPE_UUID,
     # Note: FIELD_SUBTYPE_ENUM is intentionally excluded here; it is registered
     # separately in core_types.py with its dedicated @values AttrSchema.
 )

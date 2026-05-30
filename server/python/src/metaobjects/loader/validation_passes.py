@@ -20,7 +20,16 @@ from ..meta.core.field.field_constants import (
     FIELD_ATTR_VALUES,
     FIELD_SUBTYPE_ENUM,
     FIELD_SUBTYPE_OBJECT,
+    FIELD_SUBTYPE_STRING,
+    FIELD_SUBTYPE_TIMESTAMP,
     NORMALIZE_MODES,
+)
+from ..meta.persistence.db.db_constants import (
+    DB_COLUMN_TYPE_JSONB,
+    DB_COLUMN_TYPE_TIMESTAMP_TZ,
+    DB_COLUMN_TYPE_UUID,
+    FIELD_ATTR_DB_COLUMN_TYPE,
+    VALID_DB_COLUMN_TYPES,
 )
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.meta_data import MetaData
@@ -72,6 +81,7 @@ def run_validations(
     """
     _validate_attr_schema(root, registry, errors)
     _validate_enum_values(root, errors)
+    _validate_db_column_type(root, errors)
     _validate_datagrid_sort_fields(root, errors)
     _validate_datagrid_filter_values(root, errors)
     _validate_origin_paths(root, errors)
@@ -379,6 +389,72 @@ def _validate_enum_fr011_attrs(node: MetaData, errors: list[MetaError]) -> None:
                 envelope=node.source,
             )
         )
+
+
+# ---------------------------------------------------------------------------
+# Pass: @dbColumnType physical column-type validation (R6 Plan 2b, ADR-0013)
+# ---------------------------------------------------------------------------
+# Own-only validation of the @dbColumnType physical column-type attribute,
+# mirroring the field.enum @values precedent. Two rules, both → ERR_BAD_ATTR_VALUE:
+#
+#   1. The value must be one of the closed set uuid|jsonb|timestamp_with_tz.
+#      (Also enforced by the attr-schema allowed_values check; kept here so the
+#      pairing message stays self-contained and cross-port-identical.)
+#   2. The (logical subtype × value) pairing must be legal:
+#        uuid              → field.string
+#        jsonb             → field.string
+#        timestamp_with_tz → field.timestamp
+#
+# Own-only: only @dbColumnType declared on THIS node is validated (a physical
+# attr is never inherited via extends:). Cross-port: TS/C#/Java run the identical
+# own-only check.
+
+# value → the field subtype it is legal on.
+_DB_COLUMN_TYPE_REQUIRED_SUBTYPE: dict[str, str] = {
+    DB_COLUMN_TYPE_UUID: FIELD_SUBTYPE_STRING,
+    DB_COLUMN_TYPE_JSONB: FIELD_SUBTYPE_STRING,
+    DB_COLUMN_TYPE_TIMESTAMP_TZ: FIELD_SUBTYPE_TIMESTAMP,
+}
+
+
+def _validate_db_column_type(root: MetaData, errors: list[MetaError]) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_FIELD:
+            continue
+        # Own-only: node.attr() reads only this node's own attrs (never the super
+        # chain), so an inherited @dbColumnType yields None here and is skipped.
+        value = node.attr(FIELD_ATTR_DB_COLUMN_TYPE)
+        if not isinstance(value, str):
+            continue
+
+        # Rule 1: recognized value.
+        if value not in VALID_DB_COLUMN_TYPES:
+            errors.append(
+                MetaError(
+                    f"field '{node.name}' attribute '@{FIELD_ATTR_DB_COLUMN_TYPE}' "
+                    f"value {value!r} is not a valid value; allowed: "
+                    f"{', '.join(VALID_DB_COLUMN_TYPES)}",
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=node.source,
+                )
+            )
+            continue
+
+        # Rule 2: legal (subtype × value) pairing.
+        required_subtype = _DB_COLUMN_TYPE_REQUIRED_SUBTYPE[value]
+        if node.sub_type != required_subtype:
+            errors.append(
+                MetaError(
+                    f"field '{node.name}' attribute '@{FIELD_ATTR_DB_COLUMN_TYPE}' "
+                    f"value {value!r} is not valid on field.{node.sub_type} "
+                    f"(requires field.{required_subtype}); allowed pairings: "
+                    f"{DB_COLUMN_TYPE_UUID}→field.{FIELD_SUBTYPE_STRING}, "
+                    f"{DB_COLUMN_TYPE_JSONB}→field.{FIELD_SUBTYPE_STRING}, "
+                    f"{DB_COLUMN_TYPE_TIMESTAMP_TZ}→field.{FIELD_SUBTYPE_TIMESTAMP}",
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=node.source,
+                )
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,36 @@
+"""DB-domain physical-column attribute keys on fields (cross-port `metaobjects-db`).
+
+Mirrors server/csharp/MetaObjects/Persistence/Db/DbConstants.cs and
+server/typescript/packages/metadata/src/persistence/db/db-constants.ts so the
+cross-language vocabulary stays byte-identical.
+"""
+from __future__ import annotations
+
+# ---------------------------------------------------------------------------
+# R6 Plan 2b — @dbColumnType physical column-type attribute (ADR-0013).
+#
+# The canonical *physical* escape hatch: selects the DB column type while
+# leaving the logical field subtype and its idiomatic native binding (ADR-0001)
+# untouched. A closed, validated, introspection-round-trippable value set — no
+# raw dialect passthrough (deferred). Own-only pairing validation lives in the
+# loader's validation_passes (ERR_BAD_ATTR_VALUE), mirroring the field.enum
+# @values precedent.
+# ---------------------------------------------------------------------------
+
+# Physical DB column-type override on a field (@dbColumnType). Closed value set:
+# DB_COLUMN_TYPE_UUID / DB_COLUMN_TYPE_JSONB / DB_COLUMN_TYPE_TIMESTAMP_TZ.
+FIELD_ATTR_DB_COLUMN_TYPE = "dbColumnType"
+
+# @dbColumnType: uuid — native Postgres uuid column (legal on field.string).
+DB_COLUMN_TYPE_UUID = "uuid"
+# @dbColumnType: jsonb — genuinely-open JSON column (legal on field.string).
+DB_COLUMN_TYPE_JSONB = "jsonb"
+# @dbColumnType: timestamp_with_tz — timestamp with time zone (legal on field.timestamp).
+DB_COLUMN_TYPE_TIMESTAMP_TZ = "timestamp_with_tz"
+
+# The closed set of legal @dbColumnType values.
+VALID_DB_COLUMN_TYPES = (
+    DB_COLUMN_TYPE_UUID,
+    DB_COLUMN_TYPE_JSONB,
+    DB_COLUMN_TYPE_TIMESTAMP_TZ,
+)
