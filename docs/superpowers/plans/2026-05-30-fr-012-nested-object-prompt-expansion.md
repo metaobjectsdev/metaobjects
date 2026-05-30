@@ -14,8 +14,7 @@
 
 Already created: `.claude/worktrees/fr-012-nested-prompt-expansion`, branch `worktree-fr-012-nested-prompt-expansion` (branched from `origin/main`, includes the R13 harness). **All tasks run inside this worktree using ABSOLUTE worktree paths** — a bare `cd server/...` resolves to the MAIN checkout, not the worktree. Subagents must NOT `git checkout` SHAs (detaches worktree HEAD) — inspect with `git show`/`git diff`, and confirm `git rev-parse --abbrev-ref HEAD` is `worktree-fr-012-nested-prompt-expansion` before committing. Single branch, single final merge (the shared corpus would red the other ports if the pilot merged alone).
 
-Worktree absolute root (referred to below as `$WT`):
-`/home/doug/Development/metaobjects/.claude/worktrees/fr-012-nested-prompt-expansion`
+Worktree absolute root (referred to below as `$WT`): `<repo-root>/.claude/worktrees/fr-012-nested-prompt-expansion` — the executor substitutes the real absolute worktree path (provided at dispatch).
 
 ---
 
