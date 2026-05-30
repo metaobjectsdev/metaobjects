@@ -34,6 +34,7 @@ import { TYPE_FIELD } from "./shared/base-types.js";
 import {
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_VALUES,
+  FIELD_ATTR_COERCE_DEFAULT,
   ENUM_MEMBER_PATTERN,
 } from "./core/field/field-constants.js";
 
@@ -208,6 +209,28 @@ function validateNode(
             seen.add(member);
           }
         }
+      }
+    }
+
+    // --- Check 5 (FR-011): @coerceDefault must be one of the field's @values ---
+    //
+    // Only validate when THIS node owns a @coerceDefault (own-attrs-only policy,
+    // matching Checks 2+3). The membership set is the EFFECTIVE @values — own or
+    // inherited via extends: — so a concrete enum that owns @coerceDefault and
+    // inherits @values from an abstract super still validates correctly.
+    const ownCoerceDefault = node.ownAttrs().get(FIELD_ATTR_COERCE_DEFAULT);
+    if (typeof ownCoerceDefault === "string") {
+      const effectiveValues = node.attrs().get(FIELD_ATTR_VALUES);
+      const members = Array.isArray(effectiveValues) ? effectiveValues : [];
+      if (!members.includes(ownCoerceDefault)) {
+        errors.push(
+          new ParseError(
+            `${nodeLabel(node)} attribute '@${FIELD_ATTR_COERCE_DEFAULT}' value ` +
+              `'${ownCoerceDefault}' is not one of '@${FIELD_ATTR_VALUES}': ` +
+              `${members.join(", ")}.`,
+            { code: "ERR_BAD_ATTR_VALUE", source: node.source },
+          ),
+        );
       }
     }
   }
