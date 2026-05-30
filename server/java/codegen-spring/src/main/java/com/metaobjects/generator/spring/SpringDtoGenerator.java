@@ -5,6 +5,7 @@ import com.metaobjects.field.ObjectField;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
+import com.metaobjects.generator.util.GeneratorUtil;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 
@@ -57,7 +58,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         boolean emitAbstractShapes = Boolean.parseBoolean(getArg("emitAbstractShapes", "false"));
         for (MetaObject entity : loader.getMetaObjects()) {
             if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
-            if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) {
+            if (GeneratorUtil.isAbstract(entity)) {
                 if (emitAbstractShapes) emitAbstractShape(entity, outRoot);
                 continue;
             }
@@ -91,14 +92,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         }
         src.append(") {}\n");
 
-        try {
-            Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(recordName + ".java");
-            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, src.toString());
-        } catch (IOException e) {
-            throw new GeneratorException(
-                "failed writing " + recordName + ".java for entity " + entity.getName() + ": " + e, e);
-        }
+        writeJavaFile(entity, outRoot, pkg, recordName, src.toString());
     }
 
     /**
@@ -127,13 +121,22 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         }
         src.append("}\n");
 
+        writeJavaFile(entity, outRoot, pkg, typeName, src.toString());
+    }
+
+    /**
+     * Resolve {@code <outRoot>/<pkg-as-dirs>/<typeName>.java}, create parent
+     * directories, and write {@code body}. Shared file-IO tail for both the
+     * concrete-record and abstract-interface emit paths.
+     */
+    private void writeJavaFile(MetaObject entity, Path outRoot, String pkg, String typeName, String body) {
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(typeName + ".java");
             if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, src.toString());
+            Files.writeString(outFile, body);
         } catch (IOException e) {
             throw new GeneratorException(
-                "failed writing " + typeName + ".java for abstract entity " + entity.getName() + ": " + e, e);
+                "failed writing " + typeName + ".java for entity " + entity.getName() + ": " + e, e);
         }
     }
 
