@@ -59,11 +59,7 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
     private final Object driverInitLock = new Object();
     private DataSource mSource = null;
     private boolean enforceTransaction = false;
-    //private static Cache<String, MetaObject> templateCache = new Cache<String, MetaObject>(true, 3000, 1500);
 
-    //private ArrayList mValidatedClasses = new ArrayList();
-    //private boolean autoCreateTables = false;
-    //private HashMap mDirtyFieldCache = new HashMap();
     public ObjectManagerDB() {
     }
 
@@ -299,63 +295,6 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
         return getDeleteMapping(mc) != null;
     }
 
-    /**
-     * Breaks apart the values from the id field represented by the keys
-     */
-    /*protected Collection getKeyValuesFromRef( MetaClass mc, Collection keys, String ref )
-     throws MetaDataException
-     {
-     ArrayList values = new ArrayList();
-
-     String tmp = ref;
-
-     // Split apart the id field
-     for ( Iterator i = keys.iterator(); i.hasNext(); )
-     {
-     MetaField f = (MetaField) i.next();
-
-     if ( tmp == null || tmp.length() == 0 )
-     throw new MetaDataException( "Invalid Reference [" + ref + "] for MetaClass [" + mc + "]" );
-
-     String val = null;
-     int j = tmp.indexOf( '-' );
-     if ( j >= 0 )
-     {
-     val = tmp.substring( 0, j );
-     tmp = tmp.substring( j + 1 );
-     }
-     else
-     {
-     val = tmp;
-     tmp = null;
-     }
-
-     values.add( val );
-     }
-
-     return values;
-     }*/
-    /**
-     * Sets the prepared statement values for the keys of a class and a specifed
-     * id.
-     */
-    /*    protected void setStatementValuesForRef( PreparedStatement s, Collection keys, int start, ObjectRef ref )
-     throws MetaDataException, SQLException
-     {
-     //Collection values = getKeyValuesFromRef( keys, ref );
-     String [] ids = ref.getIds();
-
-     int k = 0;
-     int j = start;
-     //Iterator v = values.iterator();
-     for ( Iterator i = keys.iterator(); i.hasNext(); j++, k++ )
-     {
-     MetaField f = (MetaField) i.next();
-     String value = ids[ k ];
-
-     setStatementValue( s, f, j, value );
-     }
-     }*/
     /**
      * Parses an Object returned from the database
      */
@@ -806,146 +745,6 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
         }
     }
 
-    /*public boolean isAutoCreateTables() {
-     return autoCreateTables;
-     }
-
-     public void setAutoCreateTables(boolean autoCreateTables) {
-     this.autoCreateTables = autoCreateTables;
-     }*/
-    ///////////////////////////////////////////////////////
-    // OBJECT QUERY LANGUAGE METHODS
-    //
-    //private final static String ROOT_CLASS_KEY = "*ROOT_CLASS_KEY*";
-
-    /*protected Map<String,MetaClass> getMetaClassMap( String query ) throws MetaDataException
-     {
-     Map<String,MetaClass> m = new HashMap<String,MetaClass>();
-
-     int i = -1;
-
-     while( ( i = query.indexOf( '[', i + 1 )) > 0 )
-     {
-     int j = query.indexOf( ']', i );
-     int k = query.indexOf( '=', i );
-     if ( j <= 0 )
-     throw new IllegalArgumentException( "Malformed OQL, missing closing '}': [" + query + "]" );
-
-     if ( k >= 0 && k < j )
-     {
-     String cn = query.substring( i + 1, k );
-     String var = query.substring( k + 1, j );
-     m.put( var, MetaClass.forName( cn ));
-     }
-     else
-     {
-     String cn = query.substring( i + 1, j );
-     m.put( ROOT_CLASS_KEY, MetaClass.forName( cn ));
-     }
-
-     i = j;
-     }
-
-     //ystem.out.println( "MAP: " + m );
-
-     return m;
-     }*/
-
-    /* private String convertToSQL( String query, Map<String,MetaClass> m ) throws MetaDataException
-     {
-     //StringBuffer b = new StringBuffer();
-     //ystem.out.println( "IN: " + query );
-
-     int i = -1;
-
-     // Replace tables
-     while( ( i = query.indexOf( '{', i + 1 )) > 0 )
-     {
-     int j = query.indexOf( '}', i );
-     if ( j <= 0 )
-     throw new IllegalArgumentException( "Malformed OQL, missing closing '}': [" + query + "]" );
-
-     String field = null;
-     String var = null;
-     MetaClass mc = null;
-
-     int k = query.indexOf( '.', i );
-     if ( k >= 0 && k < j )
-     {
-     var = query.substring( i + 1, k );
-     field = query.substring( k + 1, j );
-
-     mc = (MetaClass) m.get( var );
-
-     if ( mc == null )
-     throw new IllegalArgumentException( "Malformed OQL, unmapped metaclass variable '" + var + "': [" + query + "]" );
-
-     var += ".";
-     }
-     else
-     {
-     field = query.substring( i + 1, j );
-     mc = (MetaClass) m.get( ROOT_CLASS_KEY );
-     var = "";
-
-     if ( mc == null )
-     throw new IllegalArgumentException( "Malformed OQL, no default metaclass defined: [" + query + "]" );
-     }
-
-     String colName = null;
-     if ( field.equals( "*" ))
-     colName = "*";
-     else
-     colName = getColumnName( mc.getMetaField( field ));
-
-     query = query.substring( 0, i ) +
-     var + colName +
-     query.substring( j + 1 );
-     }
-
-     // Replace fields
-     i = -1;
-     while( ( i = query.indexOf( '[', i + 1 )) > 0 )
-     {
-     int j = query.indexOf( ']', i );
-     if ( j <= 0 )
-     throw new IllegalArgumentException( "Malformed OQL, missing closing '}': [" + query + "]" );
-
-     String var = null;
-     MetaClass mc = null;
-
-     int k = query.indexOf( '=', i );
-     if ( k >= 0 && k < j )
-     {
-     var = query.substring( k + 1, j );
-
-     mc = (MetaClass) m.get( var );
-
-     if ( mc == null )
-     throw new IllegalArgumentException( "Malformed OQL, unmapped metaclass variable '" + var + "': [" + query + "]" );
-
-     var = " " + var;
-     }
-     else
-     {
-     mc = (MetaClass) m.get( ROOT_CLASS_KEY );
-
-     if ( mc == null )
-     throw new IllegalArgumentException( "Malformed OQL, no default metaclass defined: [" + query + "]" );
-
-     var = "";
-     }
-
-     query = query.substring( 0, i ) +
-     getViewName( mc ) + var +
-     query.substring( j + 1 );
-     }
-
-     //ystem.out.println( "OUT: " + query );
-
-     //return b.toString();
-     return query;
-     }*/
     /**
      * Returns whether a MetaClass allows dirty writes
      */
@@ -1073,28 +872,20 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
     }
 
     protected MetaField getFieldForColumn(MetaObject resultClass, ObjectMapping mapping, String col) throws MetaDataException {
-        // Generate a cache key
-        //final String KEY = ( new StringBuilder( "getFieldForColumn(" ) ).append( col ).append( ")" ).toString();
 
-        MetaField rc = null; //(MetaField) resultClass.getCacheValue( KEY );
+        MetaField rc = null;
 
+        // First check against the read mapping
+        if (mapping != null) {
+            rc = mapping.getField(col);
+        }
+
+        // Next try to match by the metafield name
         if (rc == null) {
-            // First check against the read mapping
-            //ObjectMapping om = getReadMapping( resultClass );
-            if (mapping != null) {
-                rc = mapping.getField(col);
+            try {
+                rc = resultClass.getMetaField(col);
+            } catch (MetaDataNotFoundException e) {
             }
-
-            // Next try to match by the metafield name
-            if (rc == null) {
-                try {
-                    rc = resultClass.getMetaField(col);
-                } catch (MetaDataNotFoundException e) {
-                }
-            }
-
-            // Add it to the cache to speed things up
-            //if ( rc != null ) resultClass.setCacheValue( KEY, rc );
         }
 
         return rc;
