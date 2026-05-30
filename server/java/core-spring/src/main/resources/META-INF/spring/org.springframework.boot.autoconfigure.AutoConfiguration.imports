@@ -1,0 +1,2 @@
+com.metaobjects.spring.MetaDataAutoConfiguration
+com.metaobjects.spring.ObjectManagerAutoConfiguration

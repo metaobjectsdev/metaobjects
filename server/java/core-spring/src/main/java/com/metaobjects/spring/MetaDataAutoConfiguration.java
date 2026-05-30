@@ -4,21 +4,20 @@ import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.registry.MetaDataLoaderRegistry;
 import com.metaobjects.registry.ServiceRegistryFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 
 import java.util.List;
 
 /**
- * Spring Auto-Configuration for MetaObjects OSGi-compatible registry.
- * 
+ * Spring Boot auto-configuration for the MetaObjects metadata-loader registry.
+ *
  * <p>This configuration automatically:</p>
  * <ul>
- *   <li>Creates OSGi-compatible MetaDataLoaderRegistry using ServiceRegistryFactory</li>
  *   <li>Auto-discovers MetaDataLoader beans from Spring context</li>
  *   <li>Provides backward-compatible @Autowired injection</li>
- *   <li>Works in both OSGi and non-OSGi environments</li>
  * </ul>
  * 
  * <p><strong>Usage in Spring Controllers:</strong></p>
@@ -42,18 +41,19 @@ import java.util.List;
  * 
  * @since 6.0.0
  */
-@Configuration
+@AutoConfiguration
+@Import(MetaDataLoaderConfiguration.class)
 public class MetaDataAutoConfiguration {
     
     /**
-     * Creates OSGi-compatible MetaDataLoaderRegistry with auto-discovery
+     * Creates the MetaDataLoaderRegistry with auto-discovery
      * of MetaDataLoader beans from Spring context.
      */
     @Bean
     @Primary
     public MetaDataLoaderRegistry metaDataLoaderRegistry() {
         
-        // Create OSGi-compatible registry (auto-detects environment)
+        // Create the loader registry
         MetaDataLoaderRegistry registry = new MetaDataLoaderRegistry(
             ServiceRegistryFactory.getDefault()
         );

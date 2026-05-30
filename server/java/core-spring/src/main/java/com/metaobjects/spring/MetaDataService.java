@@ -14,7 +14,7 @@ import java.util.Optional;
  * Spring Service wrapper for MetaData operations.
  * 
  * <p>Provides a clean, convenient API for the most common MetaData operations
- * while hiding the complexity of the underlying OSGi-compatible registry system.</p>
+ * while hiding the complexity of the underlying loader registry system.</p>
  * 
  * <p><strong>Usage Examples:</strong></p>
  * <pre>{@code
