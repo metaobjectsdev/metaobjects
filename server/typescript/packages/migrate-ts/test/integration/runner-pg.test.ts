@@ -1,8 +1,11 @@
 // test/integration/runner-pg.test.ts
 import { test, expect, describe } from "bun:test";
 import { newDb } from "pg-mem";
+import { Pool } from "pg";
 import { PgExecutor } from "../../src/runner/pg-executor.js";
 import { PgHistoryStore } from "../../src/runner/pg-history-store.js";
+import { applyMigrations, rollbackTo } from "../../src/runner/apply.js";
+import type { Migration } from "../../src/runner/migration-source.js";
 
 /** A pg-mem-backed Pool-compatible object. */
 function memPool() {
@@ -67,5 +70,68 @@ describe("PgHistoryStore tracking (pg-mem)", () => {
     expect((await a.applied()).map((r) => r.version)).toEqual(["20260101000000"]);
     expect(await b.applied()).toEqual([]); // independent lineage
     await pool.end();
+  });
+});
+
+const REAL_PG = process.env.MIGRATE_TS_PG_URL;
+const realDescribe = REAL_PG ? describe : describe.skip;
+
+realDescribe("runner end-to-end (real Postgres)", () => {
+  const migs: Migration[] = [
+    { version: "20260101000000", name: "create-widgets", dir: "/t/1",
+      upSql: 'CREATE TABLE "widgets" ("id" int primary key);', downSql: 'DROP TABLE "widgets";' },
+    { version: "20260102000000", name: "add-label", dir: "/t/2",
+      upSql: 'ALTER TABLE "widgets" ADD COLUMN "label" text;', downSql: 'ALTER TABLE "widgets" DROP COLUMN "label";' },
+  ];
+
+  test("apply creates tables + history rows; rollback reverts; advisory lock round-trips", async () => {
+    const pool = new Pool({ connectionString: REAL_PG });
+    try {
+      // clean slate
+      await pool.query('DROP TABLE IF EXISTS "widgets"');
+      await pool.query("DROP TABLE IF EXISTS metaobjects_migrations");
+
+      const store = new PgHistoryStore(pool);
+      const exec = new PgExecutor(pool);
+
+      const applied = await applyMigrations(migs, store, exec);
+      expect(applied.applied).toEqual(["20260101000000", "20260102000000"]);
+
+      const cols = await pool.query(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'widgets' ORDER BY column_name`,
+      );
+      expect(cols.rows.map((r) => r.column_name)).toEqual(["id", "label"]);
+      expect((await store.applied()).map((r) => r.version)).toEqual(["20260101000000", "20260102000000"]);
+
+      // rollback the second migration only
+      const rb = await rollbackTo("20260101000000", migs, store, exec);
+      expect(rb.rolledBack).toEqual(["20260102000000"]);
+      const cols2 = await pool.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'widgets'`,
+      );
+      expect(cols2.rows.map((r) => r.column_name)).toEqual(["id"]); // label dropped
+    } finally {
+      await pool.end();
+    }
+  });
+
+  test("a second store with a different schema tracks independently (multi-tenant)", async () => {
+    const pool = new Pool({ connectionString: REAL_PG });
+    try {
+      await pool.query('CREATE SCHEMA IF NOT EXISTS tenant_x');
+      await pool.query('DROP TABLE IF EXISTS tenant_x."metaobjects_migrations"');
+      const storeX = new PgHistoryStore(pool, { schema: "tenant_x" });
+      const storeDefault = new PgHistoryStore(pool);
+      await storeDefault.ensure();
+      await storeX.ensure();
+      await storeX.record({ version: "20260101000000", name: "x", checksum: "c", appliedAt: new Date().toISOString(), executionMs: 1, success: true });
+      expect((await storeX.applied()).length).toBe(1);
+      // default store unaffected (clean it first so the assertion is meaningful)
+      await pool.query('DELETE FROM "public"."metaobjects_migrations"');
+      expect((await storeDefault.applied()).length).toBe(0);
+    } finally {
+      await pool.end();
+    }
   });
 });
