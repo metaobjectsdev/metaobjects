@@ -62,9 +62,23 @@ MetaObjects emits a paired data-migration stub — the Django `RunPython` / Alem
 
 ### 5. One shared migrate engine; codegen + loader stay per-port
 **Consolidate migration into a single engine** built on the most mature implementation,
-**`migrate-ts`**, shipped as a **standalone binary** (`bun build --compile`, no Node runtime
-required) so JVM / .NET / Python toolchains gain no Node dependency. The engine is language-agnostic:
-metadata in → introspect/diff → SQL migration files out, plus optional direct-apply.
+**`migrate-ts`** (it already ships per-dialect emit + introspect + **view** DDL/diff —
+`view-ddl-postgres.ts` / `view-ddl-sqlite.ts` / `view-diff.ts` / `expected-views.ts` — i.e. the
+exact view capability Exposed lacks). The engine is language-agnostic: metadata in →
+introspect/diff → SQL migration files out, plus optional direct-apply.
+
+**Distribution:** the **npm package is primary** (`npx` / a `meta` bin) — most shops have Node and
+`migrate-ts` is already published. **Optional pre-compiled binaries** (`bun build --compile`, one
+command per platform) serve pure-JVM / .NET / Python toolchains that don't want Node in CI — offered,
+not forced. Each port's build tool (maven-plugin / dotnet tool / uv) can **fetch-and-wrap** the engine
+(npx or binary) so the dev runs `mvn meta:migrate` etc. natively — the Atlas model.
+
+**Dialects:** `migrate-ts` is already dialect-pluggable (`emit/` + `introspect/` + `view-ddl-*` per
+dialect, selected by a `Dialect` type); a new database is a new emitter + introspector + view-DDL
+module on the `postgres.ts` pattern. **omdb's per-dialect `SqlType→column-type` mappings are the
+reference** for new adapters (Postgres/Derby cleanest; MySQL/Oracle/MSSQL use omdb's legacy
+`java.sql.Types` path, so rougher) — the omdb dialect investment is **reused as adapter reference**,
+not discarded.
 
 **Stays per-port** (produces port-idiomatic, self-contained output): **codegen** (entities, queries,
 routes, DTOs), the **metadata loader**, **runtime persistence** (Kysely / EF Core / OMDB / SQLAlchemy
@@ -93,12 +107,13 @@ delegation) only once the shared engine passes that port's scenarios.
   gets its own introspection; both use the shared engine.
 - **Data-migration gap closed** via generate + runner.
 - **Costs / risks:** a one-time multi-port consolidation (effort + risk, mitigated by staging behind
-  conformance); a binary toolchain dependency (~50–90 MB bun-compiled vs Atlas's ~30 MB Go — acceptable
-  for CI tooling); a deliberate, scoped **reversal of "every port complete" for the migrate layer**
+  conformance); a **Node-or-binary toolchain dependency** for non-JS shops (npm is primary; the optional
+  bun-compiled binary, ~50–90 MB, removes the Node requirement where wanted; per-port build tools can
+  fetch-and-wrap it); a deliberate, scoped **reversal of "every port complete" for the migrate layer**
   (defensible because migrate's output is universal SQL, not port-idiomatic runtime code); **dialect
-  breadth** — the shared engine covers Postgres (+ SQLite/D1 from `migrate-ts`); omdb's latent
-  Derby/MySQL/Oracle/MSSQL *migrate* ambition is unexercised by conformance and is added to the one
-  engine only as a real adopter need arises (those drivers remain for omdb *runtime* persistence).
+  breadth** — the shared engine covers Postgres (+ SQLite/D1 from `migrate-ts`); Derby/MySQL/Oracle/MSSQL
+  *migrate* support is added to the one engine only as a real adopter need arises, **using omdb's drivers
+  as the type-mapping reference** (those drivers remain for omdb *runtime* persistence regardless).
 - **CLI:** migration is one binary (`meta migrate`); `meta gen` / `verify` stay per-port. Exact CLI
   composition is an implementation detail for the consolidation plan.
 
