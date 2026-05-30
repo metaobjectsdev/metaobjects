@@ -112,6 +112,20 @@ public static class FieldSchema
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
             Description: "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."),
+
+        // FR-010 field-teaching attrs (any field): free-text shown in the generated
+        // output-format prompt fragment. Never carried in comments.
+        new AttrSchema(
+            Name: FieldConstants.FIELD_ATTR_EXAMPLE,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "FR-010: an example value for this field, shown in the generated output-format prompt fragment."),
+
+        new AttrSchema(
+            Name: FieldConstants.FIELD_ATTR_INSTRUCTION,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."),
     ];
 
     /// <summary>The @currency attr — only on field.currency.</summary>
@@ -128,4 +142,24 @@ public static class FieldSchema
         ValueType: AttrConstants.ATTR_SUBTYPE_STRINGARRAY,
         Required: true,
         Description: "Member symbols of an enum-subtype field; declaration order significant.");
+
+    /// <summary>
+    /// The @enumAlias attr — only on field.enum. Map of off-vocabulary token → canonical
+    /// member, feeding the FR-010 tolerant recover alias-fold (runtime aliases win on conflict).
+    /// </summary>
+    public static readonly AttrSchema EnumAliasAttr = new AttrSchema(
+        Name: FieldConstants.FIELD_ATTR_ENUM_ALIAS,
+        ValueType: AttrConstants.ATTR_SUBTYPE_PROPERTIES,
+        Required: false,
+        Description: "Map of alternate/off-vocabulary tokens to canonical enum members; feeds the FR-010 tolerant recover alias-fold.");
+
+    /// <summary>
+    /// The @enumDoc attr — only on field.enum. Map of member → human-readable description,
+    /// shown per-member in the FR-010 'guide'-style output-format prompt fragment.
+    /// </summary>
+    public static readonly AttrSchema EnumDocAttr = new AttrSchema(
+        Name: FieldConstants.FIELD_ATTR_ENUM_DOC,
+        ValueType: AttrConstants.ATTR_SUBTYPE_PROPERTIES,
+        Required: false,
+        Description: "Map of enum member to a human-readable description; shown per-member in the FR-010 'guide'-style prompt fragment.");
 }

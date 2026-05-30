@@ -132,6 +132,28 @@ public static class FieldConstants
     /// </summary>
     public const string ENUM_MEMBER_PATTERN = "^[A-Za-z_][A-Za-z0-9_]*$";
 
+    /// <summary>
+    /// FR-010: map of off-vocabulary token → canonical enum member, feeding the
+    /// tolerant recover alias-fold. <c>properties</c>-shaped; only on field.enum.
+    /// </summary>
+    public const string FIELD_ATTR_ENUM_ALIAS = "enumAlias";
+
+    /// <summary>
+    /// FR-010: map of enum member → human-readable description, shown per-member in
+    /// the 'guide'-style output-format prompt fragment. <c>properties</c>-shaped; only on field.enum.
+    /// </summary>
+    public const string FIELD_ATTR_ENUM_DOC = "enumDoc";
+
+    // -----------------------------------------------------------------------
+    // FR-010 field-teaching attrs (on any field; drive the output-format prompt)
+    // -----------------------------------------------------------------------
+
+    /// <summary>FR-010: an example value for this field, shown in the generated prompt fragment.</summary>
+    public const string FIELD_ATTR_EXAMPLE = "example";
+
+    /// <summary>FR-010: a short instruction for this field, shown in the generated prompt fragment.</summary>
+    public const string FIELD_ATTR_INSTRUCTION = "instruction";
+
     // -----------------------------------------------------------------------
     // Currency attrs (on currency-subtype fields)
     // -----------------------------------------------------------------------
