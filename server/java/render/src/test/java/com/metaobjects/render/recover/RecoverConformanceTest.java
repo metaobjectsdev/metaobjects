@@ -73,9 +73,26 @@ public class RecoverConformanceTest {
         assertEquals(dir + " data key set", expectedDataKeys, out.data().keySet());
     }
 
+    /**
+     * Canonical comparison: numbers within 1e-9 tolerance; scalars string-equal.
+     *
+     * <p>FR-011: object/array expected values in the corpus are deliberate PLACEHOLDERS
+     * ({@code {}} / {@code [{},{}]}) — the cross-port runner stringifies both sides loosely,
+     * so a nested-object / array-of-objects field's real assertion lives in the per-field
+     * states (e.g. {@code meta.score} / {@code items[i].label}), not its top-level data value.
+     * Mirror that here by asserting only structural correspondence (map ↔ object, list ↔ array).</p>
+     */
     private static void assertCanonical(String msg, JsonNode expected, Object actual) {
         if (expected.isNumber() && actual instanceof Number n) {
             assertEquals(msg, expected.asDouble(), n.doubleValue(), 1e-9);
+        } else if (expected.isObject()) {
+            assertTrue(msg + ": expected an object but got "
+                    + (actual == null ? "null" : actual.getClass().getSimpleName()),
+                    actual instanceof Map);
+        } else if (expected.isArray()) {
+            assertTrue(msg + ": expected an array but got "
+                    + (actual == null ? "null" : actual.getClass().getSimpleName()),
+                    actual instanceof List);
         } else {
             assertEquals(msg, expected.asText(), String.valueOf(actual));
         }
@@ -99,7 +116,21 @@ public class RecoverConformanceTest {
             Map<String, String> aliases = new java.util.LinkedHashMap<>();
             if (f.has("enumAlias"))
                 f.get("enumAlias").fields().forEachRemaining(e -> aliases.put(e.getKey(), e.getValue().asText()));
-            return FieldSpec.enumField(name, req, vals, aliases);
+            // FR-011: optional coerceDefault / normalize / default keys.
+            String coerceDefault = f.has("coerceDefault") ? f.get("coerceDefault").asText() : null;
+            String normalize = parseNormalize(f.has("normalize") ? f.get("normalize").asText() : null);
+            String defaultValue = f.has("default") ? f.get("default").asText() : null;
+            return FieldSpec.enumField(name, req, vals, aliases, coerceDefault, normalize, defaultValue);
+        }
+        if (kind == FieldKind.OBJECT) {
+            boolean array = f.has("array") && f.get("array").asBoolean();
+            RecoverSchema nested = null;
+            if (f.has("fields")) {
+                List<FieldSpec> childSpecs = new ArrayList<>();
+                for (JsonNode nf : f.get("fields")) childSpecs.add(parseField(nf));
+                nested = new RecoverSchema(Format.JSON, name, childSpecs);
+            }
+            return FieldSpec.object(name, req, array, nested);
         }
         if (f.has("min") || f.has("max")) {
             Double min = f.has("min") ? f.get("min").asDouble() : null;
@@ -107,5 +138,12 @@ public class RecoverConformanceTest {
             return FieldSpec.range(name, kind, req, min, max);
         }
         return FieldSpec.scalar(name, kind, req);
+    }
+
+    /** FR-011: parse the {@code @normalize} mode string; absent → the global default "strip". */
+    private static String parseNormalize(String s) {
+        if (s == null) return Normalize.DEFAULT;
+        if (Normalize.NONE.equals(s) || Normalize.COLLAPSE.equals(s) || Normalize.STRIP.equals(s)) return s;
+        throw new IllegalArgumentException("Unknown normalize mode: " + s);
     }
 }
