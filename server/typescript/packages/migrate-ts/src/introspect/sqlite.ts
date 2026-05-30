@@ -5,6 +5,7 @@ import type {
   IndexDescriptor, FkDescriptor, FkAction, ViewDescriptor,
 } from "../types.js";
 import { parseSqliteDefault, sqliteTypeToSqlType, sqliteRuleToAction } from "./sqlite-shared.js";
+import { MIGRATIONS_TABLE } from "../apply/ledger.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RawKysely = Kysely<any>;
@@ -18,6 +19,7 @@ export async function introspectSqlite(db: Kysely<Record<string, unknown>>): Pro
   const tableNamesRows = await sql<{ name: string; sql: string | null }>`
     SELECT name, sql FROM sqlite_master
     WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__new_%'
+      AND name <> ${MIGRATIONS_TABLE}
     ORDER BY name
   `.execute(k);
 

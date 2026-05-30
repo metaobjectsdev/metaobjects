@@ -30,6 +30,7 @@ import type { Kysely } from "kysely";
 import { sql } from "kysely";
 import type { SchemaSnapshot, TableDescriptor, ColumnDescriptor, ColumnDefault, IndexDescriptor, FkDescriptor, FkAction, ViewDescriptor } from "../types.js";
 import type { SqlType } from "../sql-type.js";
+import { MIGRATIONS_TABLE } from "../apply/ledger.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -207,6 +208,7 @@ async function readTableNames(k: Kysely<any>): Promise<SchemaTableRef[]> {
     WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
       AND table_schema NOT LIKE 'pg_%'
       AND table_type = 'BASE TABLE'
+      AND table_name <> ${MIGRATIONS_TABLE}
     ORDER BY table_schema, table_name
   `.execute(k);
   return rows.rows.map((r) => ({ schema: r.table_schema, name: r.table_name }));

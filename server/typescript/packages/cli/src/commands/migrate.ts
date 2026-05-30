@@ -20,6 +20,8 @@ import {
   applyD1SafetyPass,
   writeMigrationD1,
   introspectD1,
+  ensureLedger,
+  applyPending,
   findWranglerConfig,
   parseWranglerConfig,
   resolveD1Binding,
@@ -156,6 +158,7 @@ export async function migrateCommand(
 
   let exitCode = 0;
   let writtenPaths: string[] = [];
+  let appliedNames: string[] = [];
   let blocked: BlockedEntry[] = [];
   let ambiguous: AmbiguousEntry[] = [];
   let changeCounts: Record<string, number> = {};
@@ -330,6 +333,23 @@ export async function migrateCommand(
         }
       }
     }
+
+    // --apply: run pending committed migration files against the DB, tracked by
+    // the migration-history ledger, transactionally. Idempotency comes from the
+    // ledger (skip already-applied), NOT from re-diffing — so this also applies
+    // any previously-written-but-unapplied files in this run. Skipped on dry-run
+    // and when a prior step set a non-zero exit (e.g. blocked changes).
+    if (config.apply && exitCode === 0 && !config.dryRun) {
+      const outDir = resolvePath(metaRoot, config.outDir);
+      try {
+        await ensureLedger(kysely.db);
+        const result = await applyPending(kysely.db, outDir, { dryRun: false });
+        appliedNames = [...result.applied];
+      } catch (err) {
+        log.error(`migrate: apply failed: ${(err as Error).message}`);
+        exitCode = 1;
+      }
+    }
   } finally {
     try {
       await kysely.close();
@@ -349,6 +369,13 @@ export async function migrateCommand(
   }, { isTTY: !!process.stdout.isTTY });
 
   log.info(output);
+  if (config.apply && exitCode === 0) {
+    if (appliedNames.length > 0) {
+      log.info(`migrate: applied ${appliedNames.length} migration(s): ${appliedNames.join(", ")}`);
+    } else {
+      log.info(`migrate: no pending migrations to apply`);
+    }
+  }
   return exitCode;
 }
 

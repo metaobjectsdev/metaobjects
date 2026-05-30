@@ -42,6 +42,8 @@ export interface ResolvedMigrateConfig {
   allow: string[];
   slug: string | undefined;
   dryRun: boolean;
+  /** Run pending migration files against the DB (postgres/sqlite, ledger-backed). */
+  apply: boolean;
   yes: boolean;
   d1: ResolvedD1Config;
 }
@@ -87,6 +89,7 @@ export async function resolveMigrateConfig(
       : (cfgBlock.allow ?? MIGRATE_DEFAULTS.allow),
     slug: flags.slug,
     dryRun: flags.dryRun,
+    apply: flags.apply,
     yes: flags.yes,
     d1: {
       binding: flags.d1Binding ?? d1Block.binding,
