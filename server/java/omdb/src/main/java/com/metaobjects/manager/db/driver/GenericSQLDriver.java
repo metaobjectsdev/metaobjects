@@ -1764,6 +1764,13 @@ public class GenericSQLDriver implements DatabaseDriver {
                 if (colDef.getAutoType() == ColumnDef.AUTO_ID) {
                     f.setString(o, getNextAutoId(c, colDef));
                 }
+                else if (colDef.getAutoType() == ColumnDef.AUTO_UUID) {
+                    // App-side UUID PK: OMDB mints the value before INSERT (no DB
+                    // identity / default). DB-portable as a string column.
+                    if (f.getString(o) == null) {
+                        f.setString(o, java.util.UUID.randomUUID().toString());
+                    }
+                }
                 else if (colDef.isAutoIncrementor()) {
                     continue;
                 }

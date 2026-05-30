@@ -1,0 +1,42 @@
+{
+  "metadata.root": {
+    "package": "uuidtest",
+    "children": [
+      {
+        "object.value": {
+          "name": "Widget",
+          "package": "uuidtest",
+          "@object": "com.metaobjects.object.value.ValueObject",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "UUID_WIDGET"
+              }
+            },
+            {
+              "field.string": {
+                "name": "id",
+                "@column": "id",
+                "@maxLength": 36
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@column": "name",
+                "@maxLength": 100
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "primary",
+                "@fields": ["id"],
+                "@generation": "uuid"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
