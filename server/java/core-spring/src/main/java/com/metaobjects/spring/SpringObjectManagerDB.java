@@ -17,6 +17,12 @@ import java.sql.Connection;
  */
 public class SpringObjectManagerDB extends ObjectManagerDB {
 
+    /**
+     * Returns the Spring-transaction-bound connection (or a fresh pooled one when no
+     * transaction is active). The returned wrapper's own {@code close()} is a no-op —
+     * always hand it back through {@link #releaseConnection(ObjectConnection)}, never by
+     * calling {@code close()} directly, or a non-transactional pooled connection leaks.
+     */
     @Override
     public ObjectConnection getConnection() throws MetaDataException {
         return SpringObjectConnections.current(getDataSource());
