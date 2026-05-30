@@ -42,7 +42,7 @@ Stays where it is — `render/recover/` per port. No package move; `recover()` A
   this is consumer-specific transformation work, best done **custom in the adopter** (single language,
   full control; lean on a path-extraction lib like JMESPath for the primitive; target the metaobjects
   value-object as the canonical model). A general config-driven mapping/ingestion product, if it ever
-  earns its keep, belongs in the **commercial layer (metaforge)**, not the Apache-2.0 core.
+  earns its keep, belongs in a separate **commercial layer** (tracked privately), not the Apache-2.0 core.
 - **General scalar-coercion breadth** (locale numbers, date-format soup, currency/units) and a
   production observability/drift-metrics layer — those only mattered for the abandoned general-ingestion
   ambition.
@@ -156,7 +156,7 @@ merges; push for durability. (Established FR-010 workflow.)
 - **No decouple** — stays in `render/recover/`. **No `unicode` mode.** **Fuzzy deferred** (reserved slot).
 - Nested-object recovery in-scope and uniform.
 - TS pilot.
-- The declarative payload-mapping layer is **not** OSS-core (consumer-custom; commercial-metaforge if scaled).
+- The declarative payload-mapping layer is **not** OSS-core (consumer-custom; a private commercial offering if it scales).
 
 ## History
 
