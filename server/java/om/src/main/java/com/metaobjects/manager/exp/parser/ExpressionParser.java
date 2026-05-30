@@ -2,13 +2,8 @@ package com.metaobjects.manager.exp.parser;
 
 import java.text.DateFormat;
 
-import com.metaobjects.object.EntityMetaObject;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.field.MetaField;
-import com.metaobjects.field.DateField;
-import com.metaobjects.field.IntegerField;
-import com.metaobjects.field.LongField;
-import com.metaobjects.field.StringField;
 import com.metaobjects.manager.exp.Expression;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -263,21 +258,5 @@ public class ExpressionParser
         && ( str.charAt( x+2 ) == ' ' ||
             str.charAt( x+2 ) == '(' )) return true;
     return false;
-  }
-
-  public static void main( String [] args ) throws ExpressionParseError
-  {
-    MetaObject mc = new EntityMetaObject("test");
-    MetaField a = new LongField("id");
-    MetaField b = new StringField("name");
-    MetaField c = new IntegerField("value");
-    MetaField d = new DateField("time");
-    mc.addMetaField( a );
-    mc.addMetaField( b );
-    mc.addMetaField( c );
-    mc.addMetaField( d );
-
-    Expression exp = ExpressionParser.getInstance().parse( mc, "( time > = '10/12/2006 14:55' and ( ( id = 5 or name = 'test me!' ) and value <> 20))" );
-    log.debug("EXPRESSION: {}", exp);
   }
 }

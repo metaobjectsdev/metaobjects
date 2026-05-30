@@ -14,13 +14,10 @@ import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-//import com.metaobjects.manager.*;
-
 public class ManagedObject implements Map<String, Object>, Serializable, MetaObjectAware {
 
     private static final long serialVersionUID = 6888178049723946186L;
 
-    //private static Log log = LogFactory.getLog( MetaObject.class );
     public class Value implements Serializable {
 
         private static final long serialVersionUID = 746942287755477951L;
@@ -77,21 +74,18 @@ public class ManagedObject implements Map<String, Object>, Serializable, MetaObj
         }
     }
     
-    //private String mId = null;
     private final Map<String, Value> mAttributes = new ConcurrentHashMap<String, Value>();
-    
+
     private boolean mDeleted = false;
     private boolean mModified = false;
     private boolean mNew = true;
     // The MetaObject is transient, but the loader name, package name, and class name are needed
     private transient MetaObject mMetaObject = null;
     private String mLoaderName = null;
-    //private String mPackageName = null;
     private String mObjectName = null;
     private transient ObjectManager mManager = null;
 
     public ManagedObject() {
-        //mId = "";
         mNew = true;
     }
 
@@ -105,7 +99,6 @@ public class ManagedObject implements Map<String, Object>, Serializable, MetaObj
      
     public String getObjectRef()
     {
-        //return mId;
         try {
             return getObjectManager().getObjectRef( this ).toString();
         } catch( Exception e ) {
@@ -157,10 +150,6 @@ public class ManagedObject implements Map<String, Object>, Serializable, MetaObj
         return mLoaderName;
     }
 
-    //public String getMetaPackageName()
-    //{
-    //      return mPackageName;
-    //}
     public String getMetaObjectName() {
         return mObjectName;
     }
@@ -215,18 +204,6 @@ public class ManagedObject implements Map<String, Object>, Serializable, MetaObj
         }
     }
 
-    /*public Object getObjectValue( String name )
-     throws MetaException
-     {
-        return getMetaField( name ).getValue( this );
-     }
-
-     public void setObjectValue( String name, Object value )
-     throws MetaException
-     {
-        getMetaField( name ).setValue( this, value );
-     }*/
-    
     //////////////////////////////////////////////////////////////
     // PRIMITIVE SETTER VALUES
     public void setBoolean(String name, boolean value) //throws ValueException
@@ -470,15 +447,7 @@ public class ManagedObject implements Map<String, Object>, Serializable, MetaObj
             MetaObject mc = getMetaData();
 
             b.append("[");
-            //String ref = getObjectRef();
-            //if ( ref != null )
-            //	b.append( ref );
-            //else
-            //{
-            //b.append( "{NEW}" );
-            //b.append( '@' );
             b.append(mc.getName());
-            //}
             b.append("]");
 
             boolean first = true;

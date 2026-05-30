@@ -24,7 +24,6 @@ public class QueryOptions
   private Expression mExp        = null;
   private SortOrder mOrder       = null;
   private Range mRange           = null;
-  //private boolean mWriteableOnly = false;
   private Collection<MetaField> mFields      = null;
   private boolean mWithLock		 = false;
 
@@ -40,14 +39,7 @@ public class QueryOptions
   public QueryOptions( Expression exp, SortOrder order )
   {
     this( exp, order, null );
-    //mExp = exp;
-    //mOrder = order;
   }
-
-  //public QueryOptions( SortOrder order )
-  //{
-  //  mOrder = order;
-  //}
 
   public QueryOptions( Expression exp, SortOrder order, Range range )
   {
@@ -55,23 +47,6 @@ public class QueryOptions
     setSortOrder( order );
     setRange( range );
   }
-
-  //public QueryOptions( SortOrder order, Range range )
-  //{
-  //  mOrder = order;
-  //  mRange = range;
-  //}
-
-  //public QueryOptions( Range range )
-  //{
-  //  mRange = range;
-  //}
-
-  //public QueryOptions( Expression exp, Range range )
-  //{
-  //  mExp = exp;
-  //  mRange = range;
-  //}
 
   public void setExpression( Expression exp )
   {
@@ -127,14 +102,6 @@ public class QueryOptions
   {
     return mFields;
   }
-
-  //public void setWriteableOnly( boolean writeableOnly ) {
-  //  mWriteableOnly = writeableOnly;
-  //}
-
-  //public boolean getWriteableOnly() {
-  //  return mWriteableOnly;
-  //}
 
   public String toString()
   {
