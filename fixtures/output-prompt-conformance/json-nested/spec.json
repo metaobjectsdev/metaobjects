@@ -1,4 +1,4 @@
-{ "format": "json", "rootName": "Review", "roundTrip": false,
+{ "format": "json", "rootName": "Review", "roundTrip": true,
   "fields": [
     { "name": "summary", "kind": "STRING", "required": true,
       "example": "Solid work overall.", "instruction": "One sentence." },

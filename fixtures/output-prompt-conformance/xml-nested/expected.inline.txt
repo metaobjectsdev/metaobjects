@@ -1,4 +1,6 @@
 <Review>
   <summary>{One sentence.}</summary>
-  <meta>{meta}</meta>
+  <meta>
+    <score>{1-5.}</score>
+  </meta>
 </Review>

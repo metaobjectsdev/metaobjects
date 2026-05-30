@@ -1,4 +1,6 @@
 {
   "summary": "Solid work overall.",
-  "meta": "{meta}"
+  "meta": {
+    "score": 5
+  }
 }

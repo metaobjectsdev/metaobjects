@@ -1,4 +1,6 @@
 <Review>
   <summary>Solid work overall.</summary>
-  <meta>{meta}</meta>
+  <meta>
+    <score>5</score>
+  </meta>
 </Review>

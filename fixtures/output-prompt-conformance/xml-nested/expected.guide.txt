@@ -2,9 +2,13 @@ Fill in each field as described below:
 - summary (required): One sentence.
     e.g. Solid work overall.
 - meta (required)
+- meta.score (required): 1-5.
+    e.g. 5
 
 Respond exactly like this:
 <Review>
   <summary>Solid work overall.</summary>
-  <meta>{meta}</meta>
+  <meta>
+    <score>5</score>
+  </meta>
 </Review>
