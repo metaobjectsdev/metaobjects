@@ -134,9 +134,9 @@ export type AuthorView = z.infer<typeof AuthorViewSchema>;
 ### Java
 
 OMDB resolves the physical name via `@table`; `@kind: "view"` flips the entity to
-read-only at the ObjectManager layer (mutating ops throw). The `meta:migrate`
-goal emits the `CREATE VIEW` body from the `origin.*` aggregate / passthrough
-metadata.
+read-only at the ObjectManager layer (mutating ops throw). The `CREATE VIEW` body
+is emitted by the TS toolchain (`meta migrate`) from the `origin.*` aggregate /
+passthrough metadata; the `meta:migrate` Maven goal was removed.
 
 ```java
 // OMDB ObjectManager — exact API:
@@ -149,8 +149,8 @@ List<AuthorView>  views   = om.getObjectsBy(AuthorView.class, /* filter */);
 
 `KotlinExposedTableGenerator` generates an Exposed `Table` object for `@kind:
 "table"`. For `@kind: "view"` it generates a read-only `Table` wrapper with the
-same column mapping; the codegen-generated `meta:migrate --flyway` emits the
-`CREATE VIEW` body.
+same column mapping; the `CREATE VIEW` body is emitted by the TS toolchain
+(`meta migrate`) — the `meta:migrate` Maven goal was removed.
 
 ```kotlin
 // generated/acme/blog/AuthorViewTable.kt — read-only

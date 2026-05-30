@@ -6,7 +6,7 @@ The cross-language design documentation for the MetaObjects standard. This direc
 
 A typed metadata standard for declaring entity models, identities, relationships, validations, views, layouts, and storage sources -- once, in a canonical form, then consumed by:
 
-- **Code generators** that emit idiomatic per-language code (Drizzle/Zod + Fastify on TypeScript, JOOQ/Spring on Java, Pydantic/FastAPI on Python).
+- **Code generators** that emit idiomatic per-language code (Drizzle/Zod + Fastify on TypeScript, Spring controllers + DTOs + repos via `codegen-spring` on Java, Pydantic/FastAPI on Python).
 - **Runtime loaders** that read the metadata at runtime to drive CRUD, validation, relationships, dynamic admin UIs, and LLM tool registration.
 - **Drift checks** that flag divergence between code and metadata via compile-time breakage in the type checker and through `meta migrate` against live databases.
 - **Prompt construction** *(the fourth pillar — planned for 7.0.0)* that makes an LLM prompt a declared, deterministic, testable artifact instead of a scattered string: a typed payload declared as a projection (so payload bloat is visible), external provider-resolved prompt text, a deterministic render that is snapshot-testable and cache-stable, and build-time prompt↔payload drift detection — conformance-gated so the guarantee holds in every language port. See the FR-004 design doc under [`../docs/superpowers/specs/`](../docs/superpowers/specs/).
