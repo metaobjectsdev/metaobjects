@@ -128,7 +128,7 @@ public class MetaData implements Cloneable, Serializable {
     /** Root metadata subtype for the tree-root node (MetaRoot) */
     public static final String SUBTYPE_ROOT = "root";
 
-    // Unified registry self-registration for root metadata type
+    // Registered via CoreTypeMetaDataProvider on the ServiceLoader bootstrap.
     /**
      * Register MetaData as metadata.base with abstract requirements constraints.
      * This creates metadata.base which defines metadata file structure and enforces
@@ -372,7 +372,7 @@ public class MetaData implements Cloneable, Serializable {
 
     // ========== ENHANCED TYPE SYSTEM METHODS ==========
 
-    // Type definition methods removed - using unified registry with static self-registration
+    // Type definition methods removed - using unified registry via ServiceLoader providers
     
     /**
      * Validate MetaData name during construction

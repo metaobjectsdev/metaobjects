@@ -69,16 +69,14 @@ public class MetaRoot extends MetaData {
 
     /**
      * Registers the metadata.root type with the supplied registry.
-     * Provided for parity with {@link MetaData#registerTypes(MetaDataRegistry)};
-     * the static initializer already self-registers against the singleton.
+     * Invoked via CoreTypeMetaDataProvider on the ServiceLoader bootstrap.
      *
      * @param registry the registry to register with
      */
     public static void registerTypes(MetaDataRegistry registry) {
         try {
-            // Idempotent: the static block (singleton) and the ServiceLoader
-            // bootstrap (CoreTypeMetaDataProvider, for isolated registries) both
-            // call this; skip if metadata.root is already registered.
+            // Idempotent: skip if metadata.root is already registered (the
+            // provider may run against a registry that already has it).
             if (registry.isRegistered(TYPE_METADATA, SUBTYPE_ROOT)) {
                 return;
             }
