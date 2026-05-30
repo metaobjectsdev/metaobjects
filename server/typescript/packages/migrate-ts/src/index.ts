@@ -11,6 +11,7 @@
 export { buildExpectedSchema } from "./expected-schema.js";
 export { introspect, introspectPostgres, introspectSqlite } from "./introspect/index.js";
 export { diff } from "./diff/index.js";
+export { computeDrift, type ComputeDriftOptions } from "./drift/drift.js";
 export { emit } from "./emit/index.js";
 export { writeMigration } from "./write-migration.js";
 export { writeMigrationD1 } from "./write-migration-d1.js";
