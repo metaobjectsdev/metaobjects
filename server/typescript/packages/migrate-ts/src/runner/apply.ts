@@ -57,3 +57,42 @@ function successRow(m: Migration, start: number) {
 function failRow(m: Migration, start: number) {
   return { ...successRow(m, start), success: false };
 }
+
+export interface RollbackResult {
+  rolledBack: string[];   // versions rolled back, in the order applied (reverse-chronological)
+}
+
+/**
+ * Roll back every applied migration newer than `targetVersion` (or all, when
+ * `targetVersion` is null), in reverse order, running each `down.sql` then
+ * unrecording it. A migration's schema `down` is generated; a data migration's
+ * `down` must be hand-authored — an empty `down.sql` throws rather than silently
+ * skipping.
+ */
+export async function rollbackTo(
+  targetVersion: string | null,
+  migrations: Migration[],
+  store: HistoryStore,
+  executor: SqlExecutor,
+): Promise<RollbackResult> {
+  await store.acquireLock();
+  try {
+    const applied = (await store.applied()).filter((r) => r.success);
+    const toRollback = applied
+      .filter((r) => targetVersion === null || r.version > targetVersion)
+      .sort((a, b) => b.version.localeCompare(a.version));
+    const byVersion = new Map(migrations.map((m) => [m.version, m]));
+    const rolledBack: string[] = [];
+    for (const r of toRollback) {
+      const m = byVersion.get(r.version);
+      if (!m) throw new Error(`rollback ${r.version}: migration files missing`);
+      if (!m.downSql.trim()) throw new Error(`rollback ${r.version}: down.sql is empty (data migrations need a hand-authored down)`);
+      await executor.runInTransaction(m.downSql);
+      await store.unrecord(r.version);
+      rolledBack.push(r.version);
+    }
+    return { rolledBack };
+  } finally {
+    await store.releaseLock();
+  }
+}
