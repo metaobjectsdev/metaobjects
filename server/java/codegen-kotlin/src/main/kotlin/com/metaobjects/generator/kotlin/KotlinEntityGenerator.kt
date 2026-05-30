@@ -46,15 +46,21 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
+        // emitAbstractShapes (default OFF): when ON, an abstract entity is emitted as a Kotlin
+        // `interface` shape (read-only properties) instead of being suppressed. It is NEVER
+        // emitted as an instantiable @Serializable data class — abstracts are scaffolding.
+        val emitAbstractShapes = getArg("emitAbstractShapes", "false").toBoolean()
         // Emit a data class for entities AND value objects. Value objects (object.value) are
         // referenced by field.object on entities; the value class must exist for the entity's
         // typed property to resolve.
-        // Skip abstract objects per the class docstring — they're inheritance scaffolding,
-        // not instantiable types. Local-only attribute check (own attribute, not inherited)
-        // so concrete subtypes extending an abstract base still emit normally.
+        // Local-only abstract check (own attribute, not inherited) so concrete subtypes
+        // extending an abstract base still emit normally.
         for (obj in loader.metaObjects) {
             if (obj.subType !in EMITTED_SUBTYPES) continue
-            if (KotlinGenUtil.isAbstractEntity(obj)) continue
+            if (KotlinGenUtil.isAbstractEntity(obj)) {
+                if (emitAbstractShapes) emitAbstractShape(obj, outRoot, loader)
+                continue
+            }
             emit(obj, outRoot, loader)
         }
     }
@@ -94,6 +100,39 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .build()
 
         fileSpec.writeTo(outRoot)
+    }
+
+    /**
+     * Emit an abstract entity as a Kotlin `interface` shape: one read-only `val` property per
+     * field, reusing the same property-type resolution + required/nullable rules as [emit].
+     * No `@Serializable` and no constructor — an interface is not instantiable, mirroring the
+     * "abstract = scaffolding, never a write artifact" invariant while still giving concrete
+     * subtypes a shared shape to implement. Enum-field files are still emitted so property
+     * types resolve. Written to the same package path/file (`<Name>.kt`) as [emit] would use.
+     */
+    private fun emitAbstractShape(obj: MetaObject, outRoot: Path, loader: MetaDataLoader) {
+        for (field in obj.metaFields) {
+            if (field is EnumField) emitEnumFile(obj, field, outRoot)
+        }
+
+        val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
+
+        val typeBuilder = TypeSpec.interfaceBuilder(shortName)
+            .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
+
+        for (field in obj.metaFields) {
+            val baseType = resolvePropertyType(field, obj, loader)
+            val nullable = !KotlinGenUtil.isRequiredField(field)
+            val propType = if (nullable) baseType.copy(nullable = true) else baseType
+            typeBuilder.addProperty(
+                PropertySpec.builder(field.name, propType).build()
+            )
+        }
+
+        FileSpec.builder(pkg, shortName)
+            .addType(typeBuilder.build())
+            .build()
+            .writeTo(outRoot)
     }
 
     /**

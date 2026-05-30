@@ -71,6 +71,50 @@ class KotlinAbstractConformanceTest {
         }
     }
 
+    @Test fun `entity generator omits abstract shapes by default`() {
+        val loader = loadFixture()
+        val outDir = tempDir()
+        try {
+            val gen = KotlinEntityGenerator()
+            // emitAbstractShapes defaults to false; assert it explicitly too.
+            gen.setArgs(mapOf("outputDir" to outDir.toString(), "emitAbstractShapes" to "false"))
+            gen.execute(loader)
+
+            assertFalse(Files.exists(outDir.resolve("acme/shop/AbstractRecord.kt")),
+                "AbstractRecord.kt MUST NOT be emitted with emitAbstractShapes=false; " +
+                    "files=${Files.walk(outDir).toList()}")
+            assertFalse(Files.exists(outDir.resolve("acme/shop/BaseShape.kt")),
+                "BaseShape.kt MUST NOT be emitted with emitAbstractShapes=false; " +
+                    "files=${Files.walk(outDir).toList()}")
+            assertTrue(Files.exists(outDir.resolve("acme/shop/Widget.kt")),
+                "Widget.kt SHOULD be emitted (concrete); files=${Files.walk(outDir).toList()}")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun `entity generator emits abstract interface shape when enabled`() {
+        val loader = loadFixture()
+        val outDir = tempDir()
+        try {
+            val gen = KotlinEntityGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString(), "emitAbstractShapes" to "true"))
+            gen.execute(loader)
+
+            val abstractKt = outDir.resolve("acme/shop/AbstractRecord.kt")
+            assertTrue(Files.exists(abstractKt),
+                "AbstractRecord.kt SHOULD be emitted with emitAbstractShapes=true; " +
+                    "files=${Files.walk(outDir).toList()}")
+            val src = Files.readString(abstractKt)
+            assertTrue("interface AbstractRecord" in src,
+                "expected an `interface AbstractRecord` shape; saw:\n$src")
+            assertTrue(Files.exists(outDir.resolve("acme/shop/Widget.kt")),
+                "Widget.kt SHOULD still be emitted (concrete); files=${Files.walk(outDir).toList()}")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun `validator registry excludes abstract entities`() {
         val loader = loadFixture()
         val outDir = tempDir()
