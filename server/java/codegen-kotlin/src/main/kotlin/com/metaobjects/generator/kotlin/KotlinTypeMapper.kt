@@ -1,5 +1,6 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.database.CoreDBMetaDataProvider
 import com.metaobjects.field.BooleanField
 import com.metaobjects.field.CurrencyField
 import com.metaobjects.field.DateField
@@ -11,6 +12,7 @@ import com.metaobjects.field.LongField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.TimestampField
+import com.metaobjects.field.UuidField
 import com.metaobjects.`object`.MetaObject
 import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
@@ -29,20 +31,12 @@ import com.squareup.kotlinpoet.TypeName
  * type per field subtype is identical across all language ports. The exact Kotlin/Exposed
  * names are Tier-2 idiomatic per port.
  *
- * Coverage: 7 primitive types + currency + enum + uuid. UUID is matched on metadata subtype
- * name (`UUID_SUBTYPE`) because `field.uuid` has no dedicated Java class yet. Object / class
- * / decimal etc. still throw IllegalArgumentException with a clear message; add support per
- * real consumer ask.
+ * Coverage: 7 primitive types + currency + enum + uuid. R6 Plan 2a: `field.uuid` is a real
+ * [UuidField] JVM class, matched by instanceof (native `java.util.UUID` binding). Object /
+ * class / decimal etc. still throw IllegalArgumentException with a clear message; add support
+ * per real consumer ask.
  */
 object KotlinTypeMapper {
-
-    /**
-     * Metadata subtype name for `field.uuid`. There is no `UuidField` JVM class today
-     * (the type exists only as a planned subtype name across ports — neither Java nor
-     * TS has a typed field class). Match against the subtype string instead so we don't
-     * have to wait for the class to land before codegen can emit a sensible column.
-     */
-    private const val UUID_SUBTYPE = "uuid"
 
     /** Default VARCHAR width for string-backed `field.enum` storage (v1). */
     const val ENUM_VARCHAR_LEN = 64
@@ -62,42 +56,47 @@ object KotlinTypeMapper {
     private const val ATTR_KIND = "kind"
 
     /**
-     * Attribute name read off any field to override the default Exposed column type.
-     * Recognised values (case-insensitive):
+     * Attribute name read off any field to override the default Exposed column type
+     * (R6 Plan 2b — the registered physical `@dbColumnType` attr on the `dbProvider`,
+     * [CoreDBMetaDataProvider.DB_COLUMN_TYPE]). The loader has already validated the
+     * (logical subtype × value) pairing against the closed set; here we only ROUTE the
+     * already-legal value to the matching Exposed column. Recognised values
+     * (case-insensitive), all leaving the Kotlin data-class property type unchanged:
      * - `uuid` (on [StringField]) — emit Exposed `uuid("col")` instead of `varchar("col", N)`.
-     *   Postgres maps this to the native `uuid` column type. Kotlin data class property type
-     *   stays `String` for minimum-change today (Exposed coerces String ↔ uuid at the SQL
-     *   boundary). A future enhancement can promote to a typed `UUID` Kotlin property.
+     *   Postgres maps this to the native `uuid` column type; the property stays `String`
+     *   (Exposed coerces String ↔ uuid at the SQL boundary).
+     * - `jsonb` (on [StringField]) — emit Exposed `jsonb("col", { it }, { it })` (a real
+     *   Postgres `JSONB` column). The property stays a raw-JSON `String`; the identity
+     *   encode/decode functions pass the JSON text straight through.
      * - `timestamp_with_tz` (on [TimestampField]) — emit Exposed `timestampWithTimeZone("col")`
      *   (Postgres `timestamp with time zone`). Opt-in: the default for `field.timestamp` is
-     *   plain `timestamp("col")` (Postgres `timestamp without time zone`) because that is the
-     *   more common shape in real schemas; TZ-aware is the rarer specialisation.
+     *   plain `timestamp("col")` (Postgres `timestamp without time zone`).
      *
      * Unknown values fall through to the default mapping for the field type.
      */
-    private const val ATTR_DB_COLUMN_TYPE = "dbColumnType"
+    private val ATTR_DB_COLUMN_TYPE = CoreDBMetaDataProvider.DB_COLUMN_TYPE
 
     /** `@dbColumnType` value on [StringField] that selects Exposed `uuid("col")`. */
-    private const val DB_COLUMN_TYPE_UUID = "uuid"
+    private val DB_COLUMN_TYPE_UUID = CoreDBMetaDataProvider.DB_COLUMN_TYPE_UUID
 
     /**
-     * `@dbColumnType` value on [StringField] that emits a `text("col")` column
-     * intended for a Postgres `JSONB`-typed column on the DB side. The Kotlin
-     * property stays `String` (raw JSON text); the application is responsible
-     * for ensuring well-formed JSON and Postgres validates at write time.
-     * Using `text` (rather than `varchar(255)` default) removes the
-     * accidental length cap on serialised payloads — JSON blobs routinely
-     * exceed 255 chars (e.g. rubric weights, feature flags, configuration).
+     * `@dbColumnType` value on [StringField] that emits a real Postgres `JSONB` column
+     * (matching the other ports). The Kotlin property stays a raw-JSON `String`; the
+     * Exposed `jsonb(name, encoder, decoder)` extension is emitted with identity
+     * String encode/decode so the raw JSON text passes straight through.
      *
-     * Note: this is the **raw-string** JSONB path for `field.string`. The
+     * Note: this is the **raw-string** open-JSON path for `field.string`. The
      * typed-object JSONB path on `field.object` (`@storage=jsonb`) lives in
      * [KotlinExposedTableGenerator]'s object-column emission and uses
      * `jsonb("col", encoder, decoder)` with kotlinx.serialization.
      */
-    private const val DB_COLUMN_TYPE_JSONB = "jsonb"
+    private val DB_COLUMN_TYPE_JSONB = CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB
 
     /** `@dbColumnType` value on [TimestampField] that opts in to Exposed `timestampWithTimeZone("col")`. */
-    private const val DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ = "timestamp_with_tz"
+    private val DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ = CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ
+
+    /** FQN of the Exposed `jsonb` extension function (raw-string open-JSON path). */
+    private const val EXPOSED_JSONB_IMPORT = "org.jetbrains.exposed.sql.json.jsonb"
 
     /**
      * Compute the generated Kotlin enum-class name for an [EnumField] hung off [entity].
@@ -145,10 +144,11 @@ object KotlinTypeMapper {
         // requires materialising the `@values` set into a top-level declaration — deferred
         // until the enum-class generator lands (see field-constants enum design doc).
         is EnumField      -> STRING
-        // UUID is matched by subtype name (no UuidField class today); checked in the
-        // else arm so the typed-class arms above stay an exhaustive list.
-        else -> if (field.subType == UUID_SUBTYPE) ClassName("java.util", "UUID")
-        else throw IllegalArgumentException(
+        // field.uuid → native java.util.UUID property (R6 Plan 2a). `@dbColumnType=uuid`
+        // on a field.string is the separate physical escape hatch and keeps the String
+        // property — handled by the StringField arm, not here.
+        is UuidField      -> ClassName("java.util", "UUID")
+        else -> throw IllegalArgumentException(
             "unsupported Kotlin type mapping for ${field::class.simpleName} '${field.name}'"
         )
     }
@@ -190,8 +190,13 @@ object KotlinTypeMapper {
             else
                 "org.jetbrains.exposed.sql.javatime.timestamp"
         }
-        // StringField, IntegerField, LongField, DoubleField, BooleanField, CurrencyField,
-        // EnumField, and UUID-subtype fields all map to member functions on Table.
+        // `@dbColumnType=jsonb` on a field.string emits the `jsonb(...)` extension, which
+        // needs the exposed-json import. `@dbColumnType=uuid` maps to `uuid(...)`, a Table
+        // member — no import. All other StringField shapes (varchar/text) are Table members.
+        is StringField    ->
+            if (dbColumnType(field) == DB_COLUMN_TYPE_JSONB) EXPOSED_JSONB_IMPORT else null
+        // IntegerField, LongField, DoubleField, FloatField, BooleanField, CurrencyField,
+        // EnumField, and UuidField all map to member functions on Table.
         // No additional import required.
         else -> null
     }
@@ -208,14 +213,14 @@ object KotlinTypeMapper {
             // the SQL boundary), so adopters can convert a string-shaped FK column to the
             // native Postgres uuid type without changing their data class shape.
             //
-            // `@dbColumnType=jsonb` opt-in: emit `text("col")` instead of varchar. The DB
-            // column is `JSONB` (Postgres accepts text I/O against JSONB), and the Exposed
-            // `text` column has no length cap so JSON payloads larger than 255 chars
-            // (rubric weights, feature flags, configuration blobs) don't trip the
-            // varchar-default limit. The Kotlin property stays `String` (raw JSON text).
+            // `@dbColumnType=jsonb` opt-in: emit a real Postgres `JSONB` column via the
+            // Exposed `jsonb(name, encoder, decoder)` extension with identity String
+            // functions (the property stays raw-JSON `String`; the JSON text passes
+            // straight through). Matches the other ports' JSONB emission — a TEXT column
+            // would never round-trip to JSONB through the introspection corpus.
             when (dbColumnType(field)) {
                 DB_COLUMN_TYPE_UUID  -> "uuid(\"$colName\")"
-                DB_COLUMN_TYPE_JSONB -> "text(\"$colName\")"
+                DB_COLUMN_TYPE_JSONB -> "jsonb(\"$colName\", { it }, { it })"
                 else -> {
                     // Dispatch to Exposed `text(name)` when the field is declared as unbounded text:
                     //   (1) explicit `@kind: "text"` opt-in, OR
@@ -250,10 +255,10 @@ object KotlinTypeMapper {
         // enum class (Exposed's `customEnumeration` / `enumerationByName` takes a KClass<E>)
         // and is intentionally deferred.
         is EnumField      -> "varchar(\"$colName\", $ENUM_VARCHAR_LEN)"
-        // UUID column — Exposed has first-class `uuid(name)`; matched by subtype since
-        // there is no UuidField JVM class to instanceof against.
-        else -> if (field.subType == UUID_SUBTYPE) "uuid(\"$colName\")"
-        else throw IllegalArgumentException(
+        // field.uuid → Exposed's first-class `uuid(name)` (native Postgres uuid column).
+        // R6 Plan 2a: matched by instanceof now that UuidField is a real JVM class.
+        is UuidField      -> "uuid(\"$colName\")"
+        else -> throw IllegalArgumentException(
             "unsupported Exposed column mapping for ${field::class.simpleName} '${field.name}'"
         )
     }

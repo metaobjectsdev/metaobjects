@@ -142,6 +142,11 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // view column, even when @generation=increment is declared on the primary
         // identity (a relic of the parent entity's declaration).
         val incrementPk = primary?.isIncrement == true && !isView && singlePrimaryFieldName != null
+        // R6 Plan 2a: a single-field uuid PK with @generation:uuid gets a server-side
+        // gen_random_uuid() DEFAULT (the Postgres-side mint). Routed through the SAME
+        // generation signal as increment — distinct only in the emitted column suffix.
+        // Views never carry a generated default (they inherit the underlying PK).
+        val uuidGeneratedPk = primary?.isUuid == true && !isView && singlePrimaryFieldName != null
 
         val objectColumns = buildObjectColumns(entity, primaryFieldSet, loader)
         val needsJsonbImport = objectColumns.any { it.kind == ObjectColumnKind.JSONB }
@@ -215,6 +220,12 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 append("import org.jetbrains.exposed.sql.json.jsonb\n")
                 append("import kotlinx.serialization.json.Json\n")
             }
+            // R6 Plan 2a: the gen_random_uuid() server default uses CustomFunction +
+            // UUIDColumnType, which need explicit imports (neither is a Table member).
+            if (uuidGeneratedPk) {
+                append("import org.jetbrains.exposed.sql.CustomFunction\n")
+                append("import org.jetbrains.exposed.sql.UUIDColumnType\n")
+            }
             append("\n")
             if (isView) {
                 append("/** READ-ONLY VIEW — generated from view metadata; do not insert/update/delete directly. */\n")
@@ -240,7 +251,12 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 } else {
                     KotlinTypeMapper.exposedColumnSpec(field)
                 }
-                val withAuto = if (isPk && incrementPk) "$baseSpec.autoIncrement()" else baseSpec
+                val withAuto = when {
+                    isPk && incrementPk -> "$baseSpec.autoIncrement()"
+                    // uuid PK + @generation:uuid → server-side gen_random_uuid() default.
+                    isPk && uuidGeneratedPk -> "$baseSpec$GEN_RANDOM_UUID_DEFAULT_SUFFIX"
+                    else -> baseSpec
+                }
                 // Decorate with .references(TargetTable.id[, onDelete=..., onUpdate=...])
                 // when an enforced identity.reference on this entity names this field.
                 // Soft references (@enforce: false) carry a null targetTable — the dedup
@@ -369,6 +385,15 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         /** Cross-language @storage attr on field.object — values: flattened | jsonb (default). */
         const val ATTR_STORAGE = "storage"
         const val STORAGE_FLATTENED = "flattened"
+
+        /**
+         * Exposed column suffix that renders a Postgres `DEFAULT gen_random_uuid()`
+         * server-side mint on a native uuid column (R6 Plan 2a, `@generation: uuid`).
+         * `CustomFunction("gen_random_uuid", UUIDColumnType())` emits the bare SQL
+         * function call; `.defaultExpression(...)` makes it the column DEFAULT.
+         */
+        const val GEN_RANDOM_UUID_DEFAULT_SUFFIX =
+            ".defaultExpression(CustomFunction(\"gen_random_uuid\", UUIDColumnType()))"
 
         @JvmStatic
         val LOG = LoggerFactory.getLogger(KotlinExposedTableGenerator::class.java)

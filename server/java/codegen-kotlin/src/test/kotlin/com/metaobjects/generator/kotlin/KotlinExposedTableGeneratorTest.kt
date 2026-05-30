@@ -1262,4 +1262,52 @@ class KotlinExposedTableGeneratorTest {
             outDir.toFile().deleteRecursively()
         }
     }
+
+    // === R6 Plan 2a: field.uuid PK + @generation:uuid → gen_random_uuid() ====
+
+    /**
+     * A `field.uuid` primary key with `@generation: uuid` must emit a native
+     * `uuid("id")` Exposed column carrying a server-side `gen_random_uuid()`
+     * default — the Postgres-side mint, routed through the same generation
+     * signal that `@generation: increment` uses for `.autoIncrement()` (never a
+     * parallel emitter). A non-key `field.uuid` stays a plain `uuid(...)` column.
+     */
+    @Test fun `uuid pk with generation uuid emits gen_random_uuid server default`() {
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Asset", "children": [
+                { "field.uuid":   { "name": "id" } },
+                { "field.uuid":   { "name": "ownerId", "@required": true } },
+                { "source.rdb":   { "@table": "assets" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "uuid" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-uuid-pk-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("uuid-pk", fx))
+
+            val table = outDir.resolve("acme/demo/AssetTable.kt").toFile()
+            assertTrue(table.exists(), "AssetTable.kt should be generated at $table")
+            val src = table.readText()
+            // PK is a native uuid column with the gen_random_uuid() server default.
+            assertTrue(
+                "val id = uuid(\"id\").defaultExpression(CustomFunction(\"gen_random_uuid\", UUIDColumnType()))" in src,
+                "expected uuid PK with gen_random_uuid() default; saw:\n$src",
+            )
+            // The default-expression machinery is imported.
+            assertTrue("import org.jetbrains.exposed.sql.CustomFunction" in src, src)
+            assertTrue("import org.jetbrains.exposed.sql.UUIDColumnType" in src, src)
+            // Non-key uuid stays a plain uuid column (no default), and required → not nullable.
+            assertTrue("val ownerId = uuid(\"owner_id\")\n" in src,
+                "expected plain non-null uuid ownerId column; saw:\n$src")
+            assertTrue("override val primaryKey = PrimaryKey(id)" in src, src)
+            // gen_random_uuid() is NOT .autoIncrement() — they are distinct generation arms.
+            assertTrue(".autoIncrement()" !in src, "uuid PK must not autoIncrement; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
 }

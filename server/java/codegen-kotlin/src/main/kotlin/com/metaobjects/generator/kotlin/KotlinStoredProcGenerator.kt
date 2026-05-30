@@ -10,6 +10,7 @@ import com.metaobjects.field.LongField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.TimestampField
+import com.metaobjects.field.UuidField
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.loader.MetaDataLoader
@@ -253,8 +254,8 @@ class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         is TimestampField -> "java.time.Instant"
         is CurrencyField  -> "Long"
         is EnumField      -> "String"
-        else -> if (field.subType == SUBTYPE_UUID) "java.util.UUID"
-        else throw IllegalArgumentException(
+        is UuidField      -> "java.util.UUID"
+        else -> throw IllegalArgumentException(
             "unsupported Kotlin param type mapping for ${field::class.simpleName} '${field.name}'"
         )
     }
@@ -275,8 +276,8 @@ class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         is TimestampField -> "org.jetbrains.exposed.sql.javatime.JavaInstantColumnType()"
         is CurrencyField  -> "org.jetbrains.exposed.sql.LongColumnType()"
         is EnumField      -> "org.jetbrains.exposed.sql.VarCharColumnType(${KotlinTypeMapper.ENUM_VARCHAR_LEN})"
-        else -> if (field.subType == SUBTYPE_UUID) "org.jetbrains.exposed.sql.UUIDColumnType()"
-        else throw IllegalArgumentException(
+        is UuidField      -> "org.jetbrains.exposed.sql.UUIDColumnType()"
+        else -> throw IllegalArgumentException(
             "unsupported Exposed ColumnType for param ${field::class.simpleName} '${field.name}'"
         )
     }
@@ -299,9 +300,8 @@ class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             is TimestampField -> "rs.getTimestamp(\"$col\").toInstant()"
             is CurrencyField  -> "rs.getLong(\"$col\")"
             is EnumField      -> "rs.getString(\"$col\")"
-            else -> if (field.subType == SUBTYPE_UUID)
-                "rs.getObject(\"$col\", java.util.UUID::class.java)"
-            else throw IllegalArgumentException(
+            is UuidField      -> "rs.getObject(\"$col\", java.util.UUID::class.java)"
+            else -> throw IllegalArgumentException(
                 "unsupported ResultSet getter for ${field::class.simpleName} '${field.name}'"
             )
         }
@@ -313,9 +313,6 @@ class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         /** Attr on a `field.*` declaring it as a stored-proc call parameter. */
         const val ATTR_PARAM = "param"
-
-        /** Metadata subtype name for `field.uuid` (no UuidField JVM class yet). */
-        const val SUBTYPE_UUID = "uuid"
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
