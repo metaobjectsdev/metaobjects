@@ -1,12 +1,5 @@
 /*
  * Copyright (c) 2026 Doug Mealing LLC. All Rights Reserved.
- *
- * Fix B — verifies that MetaClassDBValidatorService.verifyMapping propagates
- * exceptions instead of swallowing them silently.
- *
- * Covers the bug where the empty catch block around validateDefinition() meant
- * that TableDoesNotExistException (thrown when autoCreate=false and the table is
- * absent) was discarded without any diagnostic or propagation.
  */
 package com.metaobjects.manager.db.validator;
 

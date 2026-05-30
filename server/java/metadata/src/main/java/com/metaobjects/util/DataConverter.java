@@ -53,7 +53,6 @@ public final class DataConverter
 
 			// Custom types are opaque to the generic converter; their JDBC binding is
 			// handled by the per-type codec (e.g. TimeCodec for TimeField/LocalTime).
-			// Pass the value through unchanged so the codec read path is not blocked.
 			case CUSTOM: return val;
 
 			default: throw new IllegalStateException( "Unknown type (" + dataType + "), cannot convert object [" + val + "]" );

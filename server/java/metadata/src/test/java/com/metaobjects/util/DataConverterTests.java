@@ -333,8 +333,8 @@ public class DataConverterTests {
     
     /**
      * CUSTOM type is opaque to the generic converter; values must pass through unchanged.
-     * This unblocks TimeField (which uses DataTypes.CUSTOM) from the OMDB read path:
-     * TimeCodec.readInto calls MetaField.setObject → DataConverter.toType(CUSTOM, localTime).
+     * This allows per-type codecs (e.g. TimeCodec for TimeField) to handle their own
+     * JDBC binding without being blocked by the generic converter.
      */
     @Test
     public void testCustomTypePassesThrough() {
