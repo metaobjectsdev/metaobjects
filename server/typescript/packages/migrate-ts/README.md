@@ -5,7 +5,7 @@ Schema migration tool for MetaObjects-driven projects.
 Compares loaded MetaObjects metadata against a live Postgres or SQLite (libsql/Turso) database
 and emits paired `up.sql` + `down.sql` migration files.
 
-**Status:** v0.3. TS reference implementation; emits migration SQL but does not yet apply against the DB.
+**Status:** v0.3. TS reference implementation. Emits migration SQL, applies pending migrations against the DB (`--apply`), and tracks migration history via a ledger table.
 
 ## Install
 
@@ -97,8 +97,6 @@ Targets Cloudflare D1 via the wrangler CLI. Connection is read from `wrangler.to
 
 ## Not yet shipped
 
-- `meta migrate --apply` (apply migrations against the DB).
-- Migration history table.
 - Triggers, generated columns, partial indexes, exclusion constraints, check constraints.
 - MySQL.
 - Data migrations (column-type changes that need data transformation: error with hint).
