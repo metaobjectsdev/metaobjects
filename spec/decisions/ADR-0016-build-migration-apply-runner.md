@@ -56,10 +56,15 @@ TS bookkeeping substrate for ordering/lifecycle and owning the Postgres safety m
    SQL-file execution.
 4. **Free via the declarative design:** **undo** (`down.sql`), **drift detection**
    (`diff(metadata, live)`), **dry-run** (generate-without-apply). The Flyway premium trio, free.
-5. **Substrate:** reuse **umzug** *or* **Kysely Migrator** for migration ordering/lifecycle + the
-   storage seam — chosen in the companion runner spec (umzug favored for the cleanest pluggable
-   `Storage`; Kysely favored as an already-present dependency with built-in locking). We do **not**
-   adopt Atlas for the core.
+5. **Substrate: build the thin runner directly on the Kysely connection we already have.** Kysely is
+   already a dependency of `migrate-ts` (its cross-dialect introspection/query layer) — so it adds no
+   new dependency; we use it for the connection + dialect abstraction (and raw `pg` for SQL
+   execution). We do **not** adopt **umzug** (a *redundant new* dependency whose only real gift, a
+   3-method pluggable `Storage`, is exactly the `HistoryStore` we define ourselves), and we do **not**
+   use **Kysely's built-in `Migrator`** (its fixed `kysely_migration` table + lock-*table* model
+   fights our pluggable `HistoryStore` + overridable *named advisory lock*). The ordering/apply loop
+   is small for Postgres-first; the value-add (`HistoryStore`, advisory lock, checksums, baseline) is
+   ours regardless. We do **not** adopt Atlas for the core.
 6. **Defer:** MySQL/Oracle/SQL Server (non-transactional-DDL dirty-state — the genuinely hard part);
    repeatable migrations, callbacks, placeholders, cherry-pick (nice-to-haves).
 
@@ -98,10 +103,11 @@ TS bookkeeping substrate for ordering/lifecycle and owning the Postgres safety m
 
 - **Decided:** build TS-native, Postgres-first, with a pluggable `HistoryStore`; reject Atlas for the
   core; free undo/drift/dry-run.
-- **Pending (companion spec + plan):** substrate selection (umzug vs Kysely); the `HistoryStore`
-  interface + default PG store; PG advisory-lock acquisition (overridable name, CONCURRENTLY handling,
-  crash-release); checksum/validate semantics; baseline; `info`/state model; multi-tenant fan-out;
-  SQL-file execution + transaction wrapping; the migrate-conformance scenarios for apply/track/rollback.
+- **Decided:** substrate — build on the existing Kysely connection; no umzug, no Kysely `Migrator`.
+- **Pending (companion spec + plan):** the `HistoryStore` interface + default PG store; PG
+  advisory-lock acquisition (overridable name, CONCURRENTLY handling, crash-release); checksum/validate
+  semantics; baseline; `info`/state model; multi-tenant fan-out; SQL-file execution + transaction
+  wrapping; the migrate-conformance scenarios for apply/track/rollback.
 
 ## Conformance note
 

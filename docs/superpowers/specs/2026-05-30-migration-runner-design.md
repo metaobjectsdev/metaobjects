@@ -132,19 +132,15 @@ states that matter for a timestamp-versioned, append-only model (no linear-versi
 store **without executing** them — so a pre-existing database adopts the runner without re-running
 history.
 
-### 10. Substrate
+### 10. Substrate — build on the existing Kysely connection (no migration framework)
 
-Reuse a TS bookkeeping substrate for ordering/lifecycle rather than hand-rolling:
-
-- **umzug** (favored) — MIT; migrations via a resolver that executes our `up.sql`/`down.sql`; the
-  3-method `Storage` interface maps directly onto `HistoryStore`; PG advisory locking slots into its
-  `beforeAll`/`afterAll` hooks. We build: the PG `HistoryStore`, locking, checksums, baseline,
-  SQL-file resolver.
-- **Kysely Migrator** (alternative) — MIT, already a `runtime-ts` dependency, built-in DB lock; but
-  per-tenant table/schema config is undocumented, so the `HistoryStore` seam is less clean.
-
-The substrate choice is finalized in the implementation plan; either way the `HistoryStore`,
-overridable lock, checksums, and baseline are **ours**.
+**Decided (ADR-0016 §5):** build the thin runner ourselves on the **Kysely** connection that
+`migrate-ts` *already depends on* (its cross-dialect introspection/query layer; raw `pg` for SQL
+execution). We do **not** add **umzug** — a redundant new dependency whose only real gift, a 3-method
+pluggable `Storage`, is exactly the `HistoryStore` above. We do **not** use **Kysely's built-in
+`Migrator`** — its fixed `kysely_migration` table + lock-*table* model fights the pluggable
+`HistoryStore` + overridable *named advisory lock* this design needs. The ordering/apply loop is small
+for Postgres-first; `HistoryStore`, advisory lock, checksums, and baseline are all **ours**.
 
 ### 11. SQL-file execution
 
