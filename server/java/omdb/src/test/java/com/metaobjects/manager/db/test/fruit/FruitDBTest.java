@@ -12,7 +12,11 @@ package com.metaobjects.manager.db.test.fruit;
 
 import com.metaobjects.manager.QueryOptions;
 import com.metaobjects.manager.db.test.AbstractOMDBTest;
+import com.metaobjects.manager.db.driver.DerbyDriver;
 import com.metaobjects.manager.exp.Expression;
+import com.metaobjects.manager.exp.Range;
+import com.metaobjects.manager.exp.SortOrder;
+import java.util.List;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.value.ValueObject;
 import com.metaobjects.registry.MetaDataLoaderRegistry;
@@ -124,5 +128,66 @@ public class FruitDBTest extends AbstractOMDBTest {
         // Now the view should be empty
         data = omdb.getObjects(oc, mo2);
         assertTrue( "isEmpty", data.isEmpty() );
+    }
+
+    /**
+     * Regression test for the {@code readMany} in-memory range window. When a dialect
+     * cannot page in SQL ({@code supportsRangeInQuery() == false}), the range must be
+     * applied in-memory. Previously the range was fetched but discarded, returning the
+     * full result set; the window must now be honored.
+     *
+     * <p>All concrete drivers (Derby/Postgres/MySQL/...) page in SQL, so the in-memory
+     * path is only reachable via the {@code GenericSQLDriver} base behavior. This test
+     * temporarily swaps in a Derby driver forced to report no in-query range support, so
+     * the in-memory window code in {@code readMany} is the path under test, while still
+     * using Derby's working insert/identity logic for setup.</p>
+     */
+    @Test
+    public void testInMemoryRangeWindow() throws Exception {
+        MetaObject mo = getLoaderRegistry().findMetaObjectByName( "container::Basket" );
+
+        // Tag these rows with a distinct "apples" marker so the test is independent of
+        // any rows other tests leave in the shared in-memory DB.
+        final int marker = 99;
+
+        // Insert 4 rows with distinct, ordered "oranges" values.
+        for ( int n = 1; n <= 4; n++ ) {
+            ValueObject vo = (ValueObject) mo.newInstance();
+            vo.setInt( "apples", marker );
+            vo.setInt( "oranges", n * 10 );   // 10, 20, 30, 40
+            omdb.createObject( oc, vo );
+        }
+
+        Object originalDriver = omdb.getDatabaseDriver();
+        // Derby driver that pretends it cannot page in SQL, forcing the in-memory window path.
+        DerbyDriver nonPaging = new DerbyDriver() {
+            @Override
+            protected boolean supportsRangeInQuery() {
+                return false;
+            }
+        };
+        nonPaging.setManager( omdb );
+        omdb.setDatabaseDriver( nonPaging );
+        try {
+            // Filter to just our 4 rows, sort ascending by "oranges" for a deterministic
+            // order, then window rows 2..3 (1-based, inclusive).
+            QueryOptions options = new QueryOptions(
+                    new Expression( "apples", marker, Expression.EQUAL ),
+                    new SortOrder( "oranges", SortOrder.ASC ),
+                    new Range( 2, 3 ) );
+            Collection<?> windowed = omdb.getObjects( oc, mo, options );
+
+            assertEquals( "range window returns exactly 2 rows", 2, windowed.size() );
+
+            List<Integer> oranges = windowed.stream()
+                    .map( o -> ((ValueObject) o).getInt( "oranges" ) )
+                    .sorted()
+                    .collect( java.util.stream.Collectors.toList() );
+            assertEquals( "window is the 2nd and 3rd rows", List.of( 20, 30 ), oranges );
+        } finally {
+            omdb.setDatabaseDriver( originalDriver );
+            // Clean up our marker rows so other tests sharing the in-memory DB are unaffected.
+            omdb.deleteObjects( oc, mo, new Expression( "apples", marker, Expression.EQUAL ) );
+        }
     }
 }

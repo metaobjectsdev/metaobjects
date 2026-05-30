@@ -768,10 +768,7 @@ public class GenericSQLDriver implements DatabaseDriver {
             ResultSet rs = s.executeQuery();
 
             // If the range is not supported in the query, then we need to do it manually
-            Range range = null;
-            if (!supportsRangeInQuery()) {
-                options.getRange();
-            }
+            Range range = (!supportsRangeInQuery()) ? options.getRange() : null;
 
             int index = 1;
 
