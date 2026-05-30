@@ -47,6 +47,15 @@ FIELD_ATTR_SORTABLE_DEFAULT_ORDER = "sortableDefaultOrder"
 FIELD_ATTR_AUTO_SET = "autoSet"
 FIELD_ATTR_OBJECT_REF = "objectRef"
 FIELD_ATTR_VALUES = "values"
+# FR-010 field-teaching attrs (any field; drive the output-format prompt fragment).
+# Never carried in comments.
+FIELD_ATTR_EXAMPLE = "example"
+FIELD_ATTR_INSTRUCTION = "instruction"
+# FR-010 enum attrs (field.enum only). `properties`-shaped maps:
+#   @enumAlias: off-vocabulary token -> canonical member (feeds the recover alias-fold).
+#   @enumDoc:   member -> human-readable description (shown per-member in the 'guide' prompt).
+FIELD_ATTR_ENUM_ALIAS = "enumAlias"
+FIELD_ATTR_ENUM_DOC = "enumDoc"
 # Persistence-side storage shape for owned field.object data. Cross-port values.
 FIELD_ATTR_STORAGE = "storage"
 STORAGE_VALUES = ("flattened", "jsonb", "subdocument")

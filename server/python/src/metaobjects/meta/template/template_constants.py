@@ -59,3 +59,18 @@ ALLOWED_FORMATS = (
     TEMPLATE_FORMAT_SPREADSHEET,
 )
 TEMPLATE_FORMAT_DEFAULT = TEMPLATE_FORMAT_TEXT
+
+# FR-010 artifact-1: output-format prompt presentation style (template.output only).
+# Closed enum, enforced via allowed_values exactly like @format. Default "guide".
+# Guidance is NEVER carried in comments. Set project-wide via an abstract template
+# base + extends, with a render-time PromptOverrides.style on top.
+TEMPLATE_ATTR_PROMPT_STYLE = "promptStyle"
+PROMPT_STYLE_GUIDE = "guide"
+PROMPT_STYLE_INLINE = "inline"
+PROMPT_STYLE_EXAMPLE_ONLY = "exampleOnly"
+PROMPT_STYLE_DEFAULT = PROMPT_STYLE_GUIDE
+PROMPT_STYLES = (
+    PROMPT_STYLE_GUIDE,
+    PROMPT_STYLE_INLINE,
+    PROMPT_STYLE_EXAMPLE_ONLY,
+)

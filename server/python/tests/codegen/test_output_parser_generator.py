@@ -104,8 +104,10 @@ def test_render_imports_payload_and_emits_parse_function() -> None:
     and exposes a throw-only ``parse_<name>(text)`` entry point."""
     out = render_output_parser(_npc_root().own_children()[1], _npc_root())
     assert out is not None
-    # Payload comes from the sibling payload module — no inline class.
-    assert "class " not in out
+    # The strict PAYLOAD comes from the sibling payload module — no inline Pydantic
+    # model. (FR-010 adds a separate nullable mirror dataclass for recover() — see
+    # the recover tests below — but the strict payload class is never inlined.)
+    assert "class NpcResponseOutputPayload(" not in out
     assert "from .npc_response_output_payload import NpcResponseOutputPayload" in out
     assert "def parse_npc_response_output(text: str) -> NpcResponseOutputPayload:" in out
     assert "return NpcResponseOutputPayload.model_validate_json(text)" in out
@@ -234,7 +236,7 @@ def test_emitted_module_parses_valid_payload(tmp_path, monkeypatch) -> None:
     payload_files = PayloadVoGenerator().generate(_ctx(root))
     assert len(parser_files) == 1
     pkg_dir, _ = _materialize_package(parser_files, payload_files, tmp_path)
-    pkg = _import_package(pkg_dir, monkeypatch)
+    _import_package(pkg_dir, monkeypatch)
     from importlib import import_module
     parser_mod = import_module("_gen_pkg.npc_response_output_output_parser")
     result = parser_mod.parse_npc_response_output(json.dumps({"name": "Igor", "age": 42}))

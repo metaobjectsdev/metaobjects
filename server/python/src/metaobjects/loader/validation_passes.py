@@ -120,12 +120,15 @@ def _type_ok(value: object, value_type: str) -> bool:
         return isinstance(value, str)
     if value_type == "stringArray":
         return isinstance(value, list)
-    if value_type == "filter":
-        # A legacy-string @filter (not desugared to a dict) is invalid.
+    if value_type in ("filter", "properties"):
+        # Object-typed attrs must be a dict (not a string, not an array).
+        # A legacy-string @filter (not desugared to a dict) is invalid:
         # FilterAttr.desugar only applies when the input IS a dict; if a string
-        # was passed with a non-filter subtype, the stored value remains a str.
+        # was passed it remains a str. Mirrors C# ValueMatchesType (properties
+        # + filter both require IReadOnlyDictionary) — feeds the FR-010
+        # @enumAlias/@enumDoc shape guard.
         return isinstance(value, dict)
-    # Unknown value types (e.g. "class", "properties") — allow anything.
+    # Unknown value types (e.g. "class") — allow anything.
     return True
 
 

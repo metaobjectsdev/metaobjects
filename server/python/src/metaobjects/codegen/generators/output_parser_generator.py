@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from metaobjects.codegen import recover_schema_emitter as rse
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
@@ -35,6 +36,9 @@ from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.shared.base_types import TYPE_TEMPLATE
+
+# FR-010: only structured formats get a tolerant recover() alongside the strict parser.
+_RECOVER_FORMATS = frozenset({tc.TEMPLATE_FORMAT_JSON, tc.TEMPLATE_FORMAT_XML})
 
 
 _GENERATOR_NAME = "output-parser-generator"
@@ -69,9 +73,10 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
         return None
 
     template_name = template.name
+    snake = _snake_case(template_name)
     payload_class = payload_class_name(template_name)  # <Name>Payload
     payload_module = payload_module_name(template_name)  # <name>_payload
-    parse_fn = f"parse_{_snake_case(template_name)}"
+    parse_fn = f"parse_{snake}"
 
     fqn = (
         f"{payload.package}::{template_name}"
@@ -79,25 +84,96 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
         else template_name
     )
 
+    # FR-010: emit the tolerant recover() API alongside the strict parser when the
+    # template targets json/xml. Otherwise only the FR-006 strict parser is emitted
+    # (text-format outputs get no recover). The mirror is a nullable twin of the
+    # payload, so the strict ``parse_*`` is left exactly as FR-006 shipped it.
+    fmt = template.attr(tc.TEMPLATE_ATTR_FORMAT)
+    fmt_str = fmt if isinstance(fmt, str) else tc.TEMPLATE_FORMAT_DEFAULT
+    emit_recover = fmt_str.lower() in _RECOVER_FORMATS
+    recovered_class = f"{payload_class}Recovered"
+    recover_fn = f"recover_{snake}"
+
     lines: list[str] = [
         generated_header(template_name, fqn),
         "from __future__ import annotations\n",
-        f"from .{payload_module} import {payload_class}",
-        "",
-        "",
-        f"def {parse_fn}(text: str) -> {payload_class}:",
-        f'    """Parse an LLM response into a typed ``{payload_class}``.',
-        "",
-        "    Raises:",
-        "        pydantic.ValidationError: when the input does not match the schema.",
-        '    """',
-        f"    return {payload_class}.model_validate_json(text)",
-        "",
-        "",
-        f'__all__ = ["{parse_fn}"]',
-        "",
     ]
 
+    if emit_recover:
+        helpers = rse.recover_map_imports(payload)
+        lines.append("from dataclasses import dataclass")
+        lines.append("")
+        lines.append("from metaobjects.render import (")
+        lines.append("    FieldKind,")
+        lines.append("    FieldSpec,")
+        lines.append("    Format,")
+        lines.append("    RecoverOptions,")
+        lines.append("    RecoverSchema,")
+        lines.append("    RecoveryResult,")
+        lines.append("    recover,")
+        lines.append(")")
+        if helpers:
+            lines.append("from metaobjects.render.recover.recover_map import (")
+            for h in helpers:
+                lines.append(f"    {h},")
+            lines.append(")")
+        lines.append("")
+
+    lines.extend(
+        [
+            f"from .{payload_module} import {payload_class}",
+            "",
+            "",
+            f"def {parse_fn}(text: str) -> {payload_class}:",
+            f'    """Parse an LLM response into a typed ``{payload_class}``.',
+            "",
+            "    Raises:",
+            "        pydantic.ValidationError: when the input does not match the schema.",
+            '    """',
+            f"    return {payload_class}.model_validate_json(text)",
+            "",
+            "",
+        ]
+    )
+
+    if emit_recover:
+        schema_literal = rse.schema_literal(payload, fmt_str, payload_class)
+        initializer = rse.mirror_initializer(payload, recovered_class)
+        lines.extend(rse.mirror_dataclass(payload, recovered_class))
+        lines.append("")
+        lines.append("")
+        lines.append("# FR-010 baked recover descriptor — the format/root/field shape")
+        lines.append("# the tolerant parser repairs dirty LLM output against.")
+        lines.append(f"_RECOVER_SCHEMA: RecoverSchema = {schema_literal}")
+        lines.append("")
+        lines.append("")
+        lines.append(
+            f"def {recover_fn}("
+            "text: str, opts: RecoverOptions | None = None"
+            f") -> RecoveryResult[{recovered_class}]:"
+        )
+        lines.append(
+            '    """Tolerant best-effort recovery of a dirty LLM response into a'
+        )
+        lines.append(f"    ``{recovered_class}`` mirror; never raises.")
+        lines.append("")
+        lines.append(f"    Unlike the strict ``{parse_fn}`` (Pydantic, throw-only), this folds")
+        lines.append("    fenced / preamble / prose-wrapped / truncated input and classifies")
+        lines.append("    each field via the returned report. Components are ``None`` where the")
+        lines.append('    value was lost or malformed."""')
+        lines.append("    outcome = recover(text, _RECOVER_SCHEMA, opts)")
+        lines.append("    d = outcome.data")
+        lines.append(f"    data = {initializer}")
+        lines.append("    return RecoveryResult(data=data, report=outcome.report)")
+        lines.append("")
+        lines.append("")
+        lines.append(
+            f'__all__ = ["{parse_fn}", "{recover_fn}", "{recovered_class}"]'
+        )
+    else:
+        lines.append(f'__all__ = ["{parse_fn}"]')
+
+    lines.append("")
     return "\n".join(lines)
 
 

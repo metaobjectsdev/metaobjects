@@ -8,6 +8,7 @@ from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_BOOLEAN,
     ATTR_SUBTYPE_FILTER,
     ATTR_SUBTYPE_INT,
+    ATTR_SUBTYPE_PROPERTIES,
     ATTR_SUBTYPE_STRING,
     ATTR_SUBTYPE_STRINGARRAY,
     ATTR_SUBTYPES,
@@ -18,7 +19,11 @@ from .meta.core.field.field_constants import (
     FIELD_ATTR_AUTO_SET,
     FIELD_ATTR_COLUMN,
     FIELD_ATTR_DEFAULT,
+    FIELD_ATTR_ENUM_ALIAS,
+    FIELD_ATTR_ENUM_DOC,
+    FIELD_ATTR_EXAMPLE,
     FIELD_ATTR_FILTERABLE,
+    FIELD_ATTR_INSTRUCTION,
     FIELD_ATTR_MAX_LENGTH,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_PRECISION,
@@ -236,6 +241,10 @@ _FIELD_COMMON_ATTRS = [
         allowed_values=AUTO_SET_VALUES,
     ),
     AttrSchema(name=FIELD_ATTR_COLUMN, value_type=ATTR_SUBTYPE_STRING, required=False),
+    # FR-010 field-teaching attrs (any field): free-text shown in the generated
+    # output-format prompt fragment. Never carried in comments.
+    AttrSchema(name=FIELD_ATTR_EXAMPLE, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=FIELD_ATTR_INSTRUCTION, value_type=ATTR_SUBTYPE_STRING, required=False),
 ]
 _register_subtypes(
     core_provider,
@@ -260,6 +269,19 @@ core_provider.add(
                 name=FIELD_ATTR_VALUES,
                 value_type=ATTR_SUBTYPE_STRINGARRAY,
                 required=True,
+            ),
+            # FR-010: properties-shaped maps, field.enum only.
+            # @enumAlias: off-vocabulary token -> canonical member (recover alias-fold).
+            # @enumDoc:   member -> human-readable description (guide prompt fragment).
+            AttrSchema(
+                name=FIELD_ATTR_ENUM_ALIAS,
+                value_type=ATTR_SUBTYPE_PROPERTIES,
+                required=False,
+            ),
+            AttrSchema(
+                name=FIELD_ATTR_ENUM_DOC,
+                value_type=ATTR_SUBTYPE_PROPERTIES,
+                required=False,
             ),
         ],
         child_rules=_FIELD_CHILD_RULES,
@@ -509,6 +531,16 @@ _TEMPLATE_SHARED_ATTRS = [
     AttrSchema(name=tc.TEMPLATE_ATTR_SINCE, value_type=ATTR_SUBTYPE_STRING),
     AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_TAGS, value_type=ATTR_SUBTYPE_STRINGARRAY),
 ]
+# template.output also carries the FR-010 @promptStyle presentation attr — a
+# closed enum (allowed_values), default "guide". NOT on prompt/toolcall.
+_TEMPLATE_OUTPUT_ATTRS = list(_TEMPLATE_SHARED_ATTRS) + [
+    AttrSchema(
+        name=tc.TEMPLATE_ATTR_PROMPT_STYLE,
+        value_type=ATTR_SUBTYPE_STRING,
+        allowed_values=tc.PROMPT_STYLES,
+        default=tc.PROMPT_STYLE_DEFAULT,
+    ),
+]
 _TEMPLATE_PROMPT_ATTRS = list(_TEMPLATE_SHARED_ATTRS) + [
     AttrSchema(name=tc.TEMPLATE_ATTR_MAX_TOKENS, value_type=ATTR_SUBTYPE_INT),
     AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_SLOTS, value_type=ATTR_SUBTYPE_STRINGARRAY),
@@ -534,7 +566,7 @@ core_provider.add(
         type=TYPE_TEMPLATE,
         sub_type=tc.TEMPLATE_SUBTYPE_OUTPUT,
         factory=MetaTemplate,
-        attrs=list(_TEMPLATE_SHARED_ATTRS),
+        attrs=list(_TEMPLATE_OUTPUT_ATTRS),
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
 )
