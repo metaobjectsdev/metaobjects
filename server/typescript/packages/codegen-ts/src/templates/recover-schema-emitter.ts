@@ -26,27 +26,47 @@ import {
   mirrorType,
   recoverMapCall,
   enumValues,
+  coerceDefault,
+  defaultValue,
+  resolveNormalize,
   jsonStringLiteral,
   stringArrayLiteral,
   propertiesMapLiteral,
 } from "./fr010-field-mapping.js";
+import { NORMALIZE_DEFAULT } from "@metaobjectsdev/metadata";
 
 /** Emit `recoverSchema(Format.X, "rootName", [ … ])`. */
 export function schemaLiteral(vo: MetaData, format: string, rootName: string): string {
   const formatEnum = format.toLowerCase() === "xml" ? "Format.XML" : "Format.JSON";
-  const specs = fields(vo).map(fieldSpecLiteral);
+  const specs = fields(vo).map((f) => fieldSpecLiteral(f, vo));
   return `recoverSchema(${formatEnum}, ${jsonStringLiteral(rootName)}, [${specs.join(", ")}])`;
 }
 
-function fieldSpecLiteral(field: MetaData): string {
+function fieldSpecLiteral(field: MetaData, owner: MetaData): string {
   const name = jsonStringLiteral(field.name);
   const required = isRequired(field);
 
   if (field.subType === FIELD_SUBTYPE_ENUM) {
     const valuesLit = stringArrayLiteral(enumValues(field));
     const aliasLit = propertiesMapLiteral(field.ownAttr(FIELD_ATTR_ENUM_ALIAS));
+    // FR-011: extended enumField signature is (name, required, values, aliases,
+    // coerceDefault?, normalize="strip", defaultValue?). Resolve the three new args
+    // (field → object → "strip" for normalize) and emit only what's needed: keep the
+    // back-compat 4-arg form when nothing is set, else emit the positional tail up to
+    // the last meaningful arg.
+    const cd = coerceDefault(field);
+    const dv = defaultValue(field);
+    const normalize = resolveNormalize(field, owner);
     // enumField() sets array:false; enum-array is a bounded deferral (parity with Java/C#).
-    return `enumField(${name}, ${required}, ${valuesLit}, ${aliasLit})`;
+    if (cd == null && dv == null && normalize === NORMALIZE_DEFAULT) {
+      return `enumField(${name}, ${required}, ${valuesLit}, ${aliasLit})`;
+    }
+    const cdLit = cd == null ? "null" : jsonStringLiteral(cd);
+    const normLit = jsonStringLiteral(normalize);
+    if (dv == null) {
+      return `enumField(${name}, ${required}, ${valuesLit}, ${aliasLit}, ${cdLit}, ${normLit})`;
+    }
+    return `enumField(${name}, ${required}, ${valuesLit}, ${aliasLit}, ${cdLit}, ${normLit}, ${jsonStringLiteral(dv)})`;
   }
 
   if (field.subType === FIELD_SUBTYPE_OBJECT) {

@@ -1,0 +1,2 @@
+{ "format": "JSON", "rootName": "task", "fields": [
+  { "name": "status", "kind": "ENUM", "required": true, "enumValues": ["IN_PROGRESS","DONE"], "normalize": "none", "enumAlias": { "wip": "IN_PROGRESS" } } ] }

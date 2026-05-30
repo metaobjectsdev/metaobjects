@@ -135,3 +135,27 @@ export const FIELD_ATTR_EXAMPLE = "example";
 
 /** FR-010: a short instruction for this field, shown in the generated prompt fragment. */
 export const FIELD_ATTR_INSTRUCTION = "instruction";
+
+// ---------------------------------------------------------------------------
+// FR-011 recover-hardening attrs (enum tolerant recover)
+// ---------------------------------------------------------------------------
+
+/** FR-011: fallback enum member used when an LLM sends a present-but-uncoercible
+ *  value. Must be one of the field's @values (loader-validated). On field.enum only. */
+export const FIELD_ATTR_COERCE_DEFAULT = "coerceDefault";
+
+/** FR-011: ASCII normalization mode for tolerant enum recover. Closed enum
+ *  (none|collapse|strip). On field.enum (per-field) and object.value (default
+ *  for its enum fields). Resolved field → object → global NORMALIZE_DEFAULT. */
+export const FIELD_ATTR_NORMALIZE = "normalize";
+
+/** FR-011: the three ASCII normalization modes (closed set).
+ *  - none     : exact match only.
+ *  - collapse : ASCII case-fold + trim + collapse runs of [\s_-]+ to one _.
+ *  - strip    : ASCII case-fold + strip everything except [A-Z0-9] (most forgiving). */
+export const NORMALIZE_MODES = ["none", "collapse", "strip"] as const;
+export type NormalizeMode = (typeof NORMALIZE_MODES)[number];
+
+/** FR-011: global normalization default when neither the field nor its owning
+ *  object.value declares @normalize. */
+export const NORMALIZE_DEFAULT: NormalizeMode = "strip";

@@ -1,0 +1,5 @@
+Sure! Here is the JSON you asked for:
+```json
+{"text":"hi","score":5,"confidence":"maybe",}
+```
+Let me know if you need anything else.

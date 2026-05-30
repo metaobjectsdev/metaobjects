@@ -12,11 +12,15 @@ import re
 from ..errors import ErrorCode, MetaError
 from ..meta.core.field.field_constants import (
     ENUM_MEMBER_PATTERN,
+    FIELD_ATTR_COERCE_DEFAULT,
+    FIELD_ATTR_DEFAULT,
+    FIELD_ATTR_NORMALIZE,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_STORAGE,
     FIELD_ATTR_VALUES,
     FIELD_SUBTYPE_ENUM,
     FIELD_SUBTYPE_OBJECT,
+    NORMALIZE_MODES,
 )
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.meta_data import MetaData
@@ -268,6 +272,10 @@ def _validate_enum_values(
         if node.type != TYPE_FIELD or node.sub_type != FIELD_SUBTYPE_ENUM:
             continue
 
+        # FR-011 own-attr checks apply to every enum node (a concrete enum can own
+        # @coerceDefault / @default / @normalize while inheriting @values).
+        _validate_enum_fr011_attrs(node, errors)
+
         # Own-only: node.attr() reads only this node's own attrs (never the super
         # chain), so an inherited @values yields None here and is skipped.
         own_values = node.attr(FIELD_ATTR_VALUES)
@@ -315,6 +323,62 @@ def _validate_enum_values(
                     envelope=node.source,
                 )
             )
+
+
+def _effective_enum_values(node: MetaData) -> list[str]:
+    """The effective ``@values`` members of an enum node (own or inherited via
+    ``extends:``). Empty list when absent. Mirrors Java ``effectiveEnumValues``."""
+    v = node.attrs().get(FIELD_ATTR_VALUES)
+    if isinstance(v, (list, tuple)):
+        return [str(x) for x in v if x is not None]
+    if isinstance(v, str):
+        return [t for t in (s.strip() for s in v.split(",")) if t]
+    return []
+
+
+def _validate_enum_fr011_attrs(node: MetaData, errors: list[MetaError]) -> None:
+    """FR-011 own-attr validation for a ``field.enum`` node.
+
+    * ``@coerceDefault`` (own) must be a member of the EFFECTIVE ``@values``
+      (own or inherited) → ``ERR_BAD_ATTR_VALUE``.
+    * ``@default`` (own, the absent-fill member) must likewise be a member of the
+      effective ``@values`` → ``ERR_BAD_ATTR_VALUE``.
+    * ``@normalize`` (own) must be one of ``none|collapse|strip``
+      → ``ERR_BAD_ATTR_VALUE`` (belt-and-braces with the registered allowed_values).
+
+    Own-only policy: only checks attrs declared on THIS node, matching the ``@values``
+    pass. The membership set is read effectively so an enum that owns ``@coerceDefault``
+    / ``@default`` while inheriting ``@values`` still validates correctly.
+    """
+    label = _node_label(node)
+    members: list[str] | None = None  # lazily computed (only when a member attr is owned)
+
+    for attr_name in (FIELD_ATTR_COERCE_DEFAULT, FIELD_ATTR_DEFAULT):
+        own = node.attr(attr_name)
+        if not isinstance(own, str):
+            continue
+        if members is None:
+            members = _effective_enum_values(node)
+        if own not in members:
+            errors.append(
+                MetaError(
+                    f"{label} attribute '@{attr_name}' value {own!r} "
+                    f"is not one of '@{FIELD_ATTR_VALUES}': {', '.join(members)}",
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=node.source,
+                )
+            )
+
+    own_normalize = node.attr(FIELD_ATTR_NORMALIZE)
+    if isinstance(own_normalize, str) and own_normalize not in NORMALIZE_MODES:
+        errors.append(
+            MetaError(
+                f"{label} attribute '@{FIELD_ATTR_NORMALIZE}' value {own_normalize!r} "
+                f"is not a valid mode; allowed: {', '.join(NORMALIZE_MODES)}",
+                ErrorCode.ERR_BAD_ATTR_VALUE,
+                envelope=node.source,
+            )
+        )
 
 
 # ---------------------------------------------------------------------------

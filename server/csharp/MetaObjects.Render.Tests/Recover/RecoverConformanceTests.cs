@@ -6,14 +6,14 @@ using RecoverEngine = MetaObjects.Render.Recover.Recover;
 namespace MetaObjects.Render.Tests.Recover;
 
 /// <summary>
-/// Cross-language recover-conformance corpus runner — FR-010 correctness gate.
+/// Cross-language recover-conformance corpus runner — FR-010 + FR-011 correctness gate.
 /// Each fixture dir under fixtures/recover-conformance/ holds:
 ///   schema.json   { "format": "JSON"|"XML", "rootName": "...", "fields": [...] }
 ///   input.txt     the raw (possibly dirty) LLM output
 ///   expected.json { "empty": bool, "states": { field: FieldRecovery }, "data": { field: value } }
 ///
-/// All 10 cases must pass. The corpus is the oracle — do not weaken assertions.
-/// Mirrors RecoverConformanceTest.java exactly.
+/// All corpus cases must pass. The corpus is the oracle — do not weaken assertions.
+/// Mirrors the cross-port recover-conformance runner exactly.
 /// </summary>
 public class RecoverConformanceTests
 {
@@ -39,6 +39,14 @@ public class RecoverConformanceTests
             if (!File.Exists(Path.Combine(dir, "schema.json"))) continue;
             yield return new object[] { Path.GetFileName(dir) };
         }
+    }
+
+    [Fact]
+    public void Discovers_all_recover_conformance_cases()
+    {
+        // FR-011: lock the corpus size so a deleted fixture fails CI rather than
+        // silently reducing coverage. Mirrors the TS / Java / Python count guards.
+        Assert.Equal(20, Cases().Count());
     }
 
     [Theory]
@@ -105,23 +113,40 @@ public class RecoverConformanceTests
     }
 
     /// <summary>
-    /// Canonical comparison: numbers within 1e-9 tolerance; everything else string-equal.
-    /// Mirrors RecoverConformanceTest.java assertCanonical.
+    /// Canonical comparison: numbers within 1e-9 tolerance; scalars string-equal.
+    ///
+    /// FR-011: object/array expected values in the corpus are deliberate PLACEHOLDERS
+    /// ({} / [{},{}]) — the cross-port runner stringifies both sides loosely (TS String()),
+    /// so a nested-object / array-of-objects field's real assertion lives in the per-field
+    /// states (e.g. meta.score / items[i].label), not its top-level data value. Mirror that
+    /// here by asserting only structural correspondence (map ↔ object, list ↔ array).
     /// </summary>
     private static void AssertCanonical(string caseName, string field, JsonElement expected, object? actual)
     {
-        if (expected.ValueKind == JsonValueKind.Number)
+        switch (expected.ValueKind)
         {
-            double expectedNum = expected.GetDouble();
-            double actualNum = Convert.ToDouble(actual);
-            Assert.True(
-                Math.Abs(expectedNum - actualNum) <= 1e-9,
-                $"{caseName} data[{field}]: expected {expectedNum} but got {actualNum}");
-        }
-        else
-        {
-            string expectedStr = expected.GetString() ?? expected.ToString();
-            Assert.Equal(expectedStr, Convert.ToString(actual));
+            case JsonValueKind.Number:
+                double expectedNum = expected.GetDouble();
+                double actualNum = Convert.ToDouble(actual);
+                Assert.True(
+                    Math.Abs(expectedNum - actualNum) <= 1e-9,
+                    $"{caseName} data[{field}]: expected {expectedNum} but got {actualNum}");
+                break;
+
+            case JsonValueKind.Object:
+                Assert.True(actual is IReadOnlyDictionary<string, object?> or IDictionary<string, object?>,
+                    $"{caseName} data[{field}]: expected an object but got {actual?.GetType().Name ?? "null"}");
+                break;
+
+            case JsonValueKind.Array:
+                Assert.True(actual is System.Collections.IEnumerable and not string,
+                    $"{caseName} data[{field}]: expected an array but got {actual?.GetType().Name ?? "null"}");
+                break;
+
+            default:
+                string expectedStr = expected.GetString() ?? expected.ToString();
+                Assert.Equal(expectedStr, Convert.ToString(actual));
+                break;
         }
     }
 
@@ -174,7 +199,27 @@ public class RecoverConformanceTests
                 foreach (JsonProperty e in ea.EnumerateObject())
                     aliases[e.Name] = e.Value.GetString()!;
 
-            return FieldSpec.EnumField(name, required, values, aliases);
+            // FR-011: optional coerceDefault / normalize / default keys.
+            string? coerceDefault = f.TryGetProperty("coerceDefault", out JsonElement cd) ? cd.GetString() : null;
+            NormalizeMode normalize = ParseNormalize(
+                f.TryGetProperty("normalize", out JsonElement nm) ? nm.GetString() : null);
+            string? defaultValue = f.TryGetProperty("default", out JsonElement dv) ? dv.GetString() : null;
+
+            return FieldSpec.EnumField(name, required, values, aliases, coerceDefault, normalize, defaultValue);
+        }
+
+        if (kind == FieldKind.Object)
+        {
+            bool array = f.TryGetProperty("array", out JsonElement arrEl) && arrEl.GetBoolean();
+            RecoverSchema? nested = null;
+            if (f.TryGetProperty("fields", out JsonElement nestedFields))
+            {
+                var childSpecs = new List<FieldSpec>();
+                foreach (JsonElement nf in nestedFields.EnumerateArray())
+                    childSpecs.Add(ParseField(nf));
+                nested = new RecoverSchema(Format.Json, name, childSpecs);
+            }
+            return FieldSpec.Object(name, required, array, nested!);
         }
 
         if (f.TryGetProperty("min", out JsonElement minEl) || f.TryGetProperty("max", out JsonElement maxEl))
@@ -186,4 +231,14 @@ public class RecoverConformanceTests
 
         return FieldSpec.Scalar(name, kind, required);
     }
+
+    /// <summary>FR-011: parse the @normalize mode string; absent → the global default "strip".</summary>
+    private static NormalizeMode ParseNormalize(string? s) => s switch
+    {
+        null       => NormalizeMode.Strip,
+        "none"     => NormalizeMode.None,
+        "collapse" => NormalizeMode.Collapse,
+        "strip"    => NormalizeMode.Strip,
+        _          => throw new ArgumentException($"Unknown normalize mode: {s}"),
+    };
 }

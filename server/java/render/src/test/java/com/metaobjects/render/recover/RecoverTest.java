@@ -82,7 +82,8 @@ public class RecoverTest {
     @Test
     public void jsonStringArrayRecoversAsList() {
         RecoverSchema s = new RecoverSchema(Format.JSON, "answer", List.of(
-                new FieldSpec("tags", FieldKind.STRING, false, true, null, null, null, null, null)));
+                new FieldSpec("tags", FieldKind.STRING, false, true, null, null, null, null, null,
+                        null, null, Normalize.DEFAULT)));
         RecoverOutcome o = Recover.recover("{\"tags\":[\"a\",\"b\"]}", s, RecoverOptions.defaults());
         assertEquals(List.of("a", "b"), o.data().get("tags"));
         assertEquals(FieldRecovery.RECOVERED, o.report().states().get("tags"));
@@ -92,7 +93,8 @@ public class RecoverTest {
     public void jsonEnumArrayCoercesPerElement() {
         RecoverSchema s = new RecoverSchema(Format.JSON, "answer", List.of(
                 new FieldSpec("tones", FieldKind.ENUM, false, true,
-                        List.of("HIGH", "LOW"), Map.of("warm", "HIGH"), null, null, null)));
+                        List.of("HIGH", "LOW"), Map.of("warm", "HIGH"), null, null, null,
+                        null, null, Normalize.DEFAULT)));
         RecoverOutcome o = Recover.recover("{\"tones\":[\"warm\",\"LOW\"]}", s, RecoverOptions.defaults());
         assertEquals(List.of("HIGH", "LOW"), o.data().get("tones"));
         assertEquals(FieldRecovery.RECOVERED, o.report().states().get("tones"));
@@ -130,7 +132,8 @@ public class RecoverTest {
     public void partialEnumArrayIsMalformedButKeepsValidElements() {
         RecoverSchema s = new RecoverSchema(Format.JSON, "answer", List.of(
                 new FieldSpec("tones", FieldKind.ENUM, false, true,
-                        List.of("HIGH", "LOW"), Map.of(), null, null, null)));
+                        List.of("HIGH", "LOW"), Map.of(), null, null, null,
+                        null, null, Normalize.DEFAULT)));
         RecoverOutcome o = Recover.recover("{\"tones\":[\"HIGH\",\"grape\"]}", s, RecoverOptions.defaults());
         assertEquals(FieldRecovery.MALFORMED, o.report().states().get("tones"));
         assertEquals(List.of("HIGH"), o.data().get("tones"));   // valid element retained

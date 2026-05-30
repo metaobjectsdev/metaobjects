@@ -1,0 +1,1 @@
+<doc><title>hello</title><meta><score>7</score><label>beta</label></meta></doc>

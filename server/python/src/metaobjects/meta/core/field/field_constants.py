@@ -56,6 +56,22 @@ FIELD_ATTR_INSTRUCTION = "instruction"
 #   @enumDoc:   member -> human-readable description (shown per-member in the 'guide' prompt).
 FIELD_ATTR_ENUM_ALIAS = "enumAlias"
 FIELD_ATTR_ENUM_DOC = "enumDoc"
+# FR-011 enum recover-hardening attrs (field.enum only).
+#   @coerceDefault: present-but-uncoercible recover fallback member → DEFAULTED.
+#       Member-validated against the effective @values (own or inherited).
+#   @normalize:     ASCII normalization mode applied during tolerant enum recover.
+#       Closed enum (none|collapse|strip, default strip). On field.enum (per-field)
+#       and object.value (object-level default for its enum fields). NOT on entity/base.
+# @default (FIELD_ATTR_DEFAULT, declared above) doubles as the enum absent-fill member.
+FIELD_ATTR_COERCE_DEFAULT = "coerceDefault"
+FIELD_ATTR_NORMALIZE = "normalize"
+# @normalize closed-enum modes (cross-port; ASCII-only normalization rule).
+NORMALIZE_NONE = "none"
+NORMALIZE_COLLAPSE = "collapse"
+NORMALIZE_STRIP = "strip"
+# Default @normalize mode when absent on both field and owning object.
+NORMALIZE_DEFAULT = NORMALIZE_STRIP
+NORMALIZE_MODES = (NORMALIZE_NONE, NORMALIZE_COLLAPSE, NORMALIZE_STRIP)
 # Persistence-side storage shape for owned field.object data. Cross-port values.
 FIELD_ATTR_STORAGE = "storage"
 STORAGE_VALUES = ("flattened", "jsonb", "subdocument")

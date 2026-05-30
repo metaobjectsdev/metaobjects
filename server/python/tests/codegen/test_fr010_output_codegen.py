@@ -247,3 +247,78 @@ def test_prompt_generator_emits_one_file_named_by_template(tmp_path) -> None:
     root = _rich_root()
     files = OutputPromptGenerator().generate(_ctx(root))
     assert [f.path for f in files] == ["task_output_output_prompt.py"]
+
+
+# ---------------------------------------------------------------------------
+# FR-011: codegen bakes @coerceDefault + resolved @normalize; the generated
+# recover folds an off-vocab enum to the coerceDefault member → DEFAULTED.
+# ---------------------------------------------------------------------------
+
+
+def _fr011_root() -> MetaRoot:
+    text = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_STRING, "text")
+    text.set_attr(fc.FIELD_ATTR_REQUIRED, True)
+
+    # Off-vocab value folds to @coerceDefault "LOW" → DEFAULTED. normalize=none
+    # so only exact / coerceDefault apply (mirrors the JVM/C# proof corpus).
+    confidence = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_ENUM, "confidence")
+    confidence.set_attr(fc.FIELD_ATTR_REQUIRED, True)
+    confidence.set_attr(fc.FIELD_ATTR_VALUES, ["HIGH", "OK", "LOW"])
+    confidence.set_attr(fc.FIELD_ATTR_NORMALIZE, fc.NORMALIZE_NONE)
+    confidence.set_attr(fc.FIELD_ATTR_COERCE_DEFAULT, "LOW")
+
+    vo = MetaObject(TYPE_OBJECT, "value", "OpinionPayload")
+    vo.package = "acme::ai"
+    for f in (text, confidence):
+        vo.add_child(f)
+
+    tmpl = MetaTemplate(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_OUTPUT, "OpinionOutput")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF, "OpinionPayload")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_TEXT_REF, "ai/opinion")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_FORMAT, "json")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_PROMPT_STYLE, "guide")
+
+    root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
+    root.package = "acme::ai"
+    root.add_child(vo)
+    root.add_child(tmpl)
+    return root
+
+
+def test_recover_schema_literal_bakes_coerce_default_and_normalize() -> None:
+    root = _fr011_root()
+    vo = root.own_children()[0]
+    lit = rse.schema_literal(vo, "json", "OpinionPayload")
+    # 7-arg form: (..., coerceDefault="LOW", normalize="none", defaultValue=None).
+    assert (
+        'FieldSpec.enum_field("confidence", True, ["HIGH", "OK", "LOW"], None, '
+        '"LOW", "none", None)' in lit
+    )
+
+
+def test_generated_recover_folds_coerce_default_and_classifies_defaulted(
+    tmp_path, monkeypatch
+) -> None:
+    root = _fr011_root()
+    parser_files = OutputParserGenerator().generate(_ctx(root))
+    payload_files = PayloadVoGenerator().generate(_ctx(root))
+    prompt_files = OutputPromptGenerator().generate(_ctx(root))
+
+    pkg_dir = str(tmp_path / "_fr010_pkg")
+    _materialize(pkg_dir, [*payload_files, *parser_files, *prompt_files])
+    _import_pkg(pkg_dir, monkeypatch)
+
+    parser_mod = importlib.import_module("_fr010_pkg.opinion_output_output_parser")
+
+    # Off-vocab confidence "banana" → folds to @coerceDefault "LOW", DEFAULTED.
+    dirty = '{"text":"hi","confidence":"banana"}'
+    result = parser_mod.recover_opinion_output(dirty)
+
+    assert result.data is not None
+    assert result.data.text == "hi"
+    assert result.data.confidence == "LOW"
+
+    report = result.report
+    assert not report.has_lost_required()
+    assert report.states()["confidence"].value == "DEFAULTED"
+    assert report.states()["text"].value == "RECOVERED"

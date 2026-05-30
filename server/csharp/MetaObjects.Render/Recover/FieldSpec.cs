@@ -5,6 +5,8 @@ namespace MetaObjects.Render.Recover;
 /// <see cref="EnumValues"/> and <see cref="EnumAlias"/> are non-null only for <see cref="FieldKind.Enum"/>.
 /// <see cref="Min"/> / <see cref="Max"/> are non-null only for numeric range constraints.
 /// <see cref="Nested"/> is non-null only for <see cref="FieldKind.Object"/>.
+/// <see cref="CoerceDefault"/> / <see cref="DefaultValue"/> / <see cref="Normalize"/> are FR-011 enum
+/// recover-hardening attrs (enum-only; <see cref="Normalize"/> defaults to <see cref="NormalizeMode.Strip"/>).
 /// </summary>
 public sealed record FieldSpec(
     string Name,
@@ -15,24 +17,38 @@ public sealed record FieldSpec(
     IReadOnlyDictionary<string, string>? EnumAlias,
     double? Min,
     double? Max,
-    RecoverSchema? Nested)
+    RecoverSchema? Nested,
+    string? CoerceDefault = null,
+    string? DefaultValue = null,
+    NormalizeMode Normalize = NormalizeMode.Strip)
 {
     /// <summary>Build a plain scalar field (string / int / long / double / boolean).</summary>
     public static FieldSpec Scalar(string name, FieldKind kind, bool required) =>
         new(name, kind, required, false, null, null, null, null, null);
 
-    /// <summary>Build an enum field with its allowed values and optional case/alias map.</summary>
+    /// <summary>
+    /// Build an enum field with its allowed values and optional case/alias map.
+    /// FR-011: optional <paramref name="coerceDefault"/> (present-but-uncoercible fallback member),
+    /// <paramref name="normalize"/> mode (default <see cref="NormalizeMode.Strip"/>), and
+    /// <paramref name="defaultValue"/> (absent-fill member).
+    /// </summary>
     public static FieldSpec EnumField(
         string name,
         bool required,
         IReadOnlyList<string>? values,
-        IReadOnlyDictionary<string, string>? aliases) =>
+        IReadOnlyDictionary<string, string>? aliases,
+        string? coerceDefault = null,
+        NormalizeMode normalize = NormalizeMode.Strip,
+        string? defaultValue = null) =>
         new(name, FieldKind.Enum, required, false,
             values == null ? null : new List<string>(values).AsReadOnly(),
             aliases == null
                 ? new Dictionary<string, string>()
                 : new Dictionary<string, string>(aliases),
-            null, null, null);
+            null, null, null,
+            CoerceDefault: coerceDefault,
+            DefaultValue: defaultValue,
+            Normalize: normalize);
 
     /// <summary>Build a numeric field with optional min/max range constraints.</summary>
     public static FieldSpec Range(string name, FieldKind kind, bool required, double? min, double? max) =>

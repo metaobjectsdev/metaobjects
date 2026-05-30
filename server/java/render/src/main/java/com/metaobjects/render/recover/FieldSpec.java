@@ -6,6 +6,16 @@ import java.util.Map;
 /**
  * One field's recover descriptor. enumValues/enumAlias non-null only for ENUM;
  * min/max non-null only for numeric range constraints; nested non-null only for OBJECT.
+ *
+ * <p>FR-011 enum recover-hardening fields (enum-only):</p>
+ * <ul>
+ *   <li>{@code coerceDefault} — fallback member for a present-but-uncoercible value
+ *       (terminal pipeline stage → DEFAULTED).</li>
+ *   <li>{@code defaultValue} — absent-fill member (the {@code @default} attr; an absent
+ *       enum with this set fills the value → DEFAULTED, which satisfies {@code required}).</li>
+ *   <li>{@code normalize} — the resolved {@code @normalize} mode string
+ *       ({@code none|collapse|strip}); defaults to {@link Normalize#DEFAULT} ("strip").</li>
+ * </ul>
  */
 public record FieldSpec(
         String name,
@@ -16,26 +26,53 @@ public record FieldSpec(
         Map<String, String> enumAlias,
         Double min,
         Double max,
-        RecoverSchema nested) {
+        RecoverSchema nested,
+        String coerceDefault,
+        String defaultValue,
+        String normalize) {
 
     public static FieldSpec scalar(String name, FieldKind kind, boolean required) {
-        return new FieldSpec(name, kind, required, false, null, null, null, null, null);
+        return new FieldSpec(name, kind, required, false, null, null, null, null, null,
+                null, null, Normalize.DEFAULT);
     }
 
+    /**
+     * Build an enum field with its allowed values and optional case/alias map.
+     * FR-010 back-compat overload: no coerceDefault/default, default normalize ("strip").
+     */
     public static FieldSpec enumField(String name, boolean required,
                                       List<String> values, Map<String, String> aliases) {
+        return enumField(name, required, values, aliases, null, Normalize.DEFAULT, null);
+    }
+
+    /**
+     * Build an enum field with the full FR-011 coercion-pipeline attrs.
+     *
+     * @param coerceDefault present-but-uncoercible fallback member (or {@code null})
+     * @param normalize     the resolved normalization mode ({@code none|collapse|strip});
+     *                      {@code null} is treated as {@link Normalize#DEFAULT}
+     * @param defaultValue  absent-fill member (or {@code null})
+     */
+    public static FieldSpec enumField(String name, boolean required,
+                                      List<String> values, Map<String, String> aliases,
+                                      String coerceDefault, String normalize, String defaultValue) {
         return new FieldSpec(name, FieldKind.ENUM, required, false,
                 values == null ? null : List.copyOf(values),
                 aliases == null ? Map.of() : Map.copyOf(aliases),
-                null, null, null);
+                null, null, null,
+                coerceDefault,
+                defaultValue,
+                normalize == null ? Normalize.DEFAULT : normalize);
     }
 
     public static FieldSpec range(String name, FieldKind kind, boolean required,
                                   Double min, Double max) {
-        return new FieldSpec(name, kind, required, false, null, null, min, max, null);
+        return new FieldSpec(name, kind, required, false, null, null, min, max, null,
+                null, null, Normalize.DEFAULT);
     }
 
     public static FieldSpec object(String name, boolean required, boolean array, RecoverSchema nested) {
-        return new FieldSpec(name, FieldKind.OBJECT, required, array, null, null, null, null, nested);
+        return new FieldSpec(name, FieldKind.OBJECT, required, array, null, null, null, null, nested,
+                null, null, Normalize.DEFAULT);
     }
 }

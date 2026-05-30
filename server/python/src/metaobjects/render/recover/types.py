@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Generic, TypeVar
 
+from metaobjects.render.recover.normalize import DEFAULT as _NORMALIZE_DEFAULT
+
 T = TypeVar("T")
 
 # A bespoke per-field coercion hook: (field_path, raw_value, spec) -> coerced | None.
@@ -50,7 +52,8 @@ class FieldRecovery(Enum):
     """
 
     RECOVERED = "RECOVERED"
-    # DEFAULTED is reserved (a future @default-backed value); the engine does not emit it.
+    # FR-011: a value reached via @coerceDefault (present-but-uncoercible fallback)
+    # or @default (absent-fill) — distinct from a cleanly RECOVERED value.
     DEFAULTED = "DEFAULTED"
     LOST_OPTIONAL = "LOST_OPTIONAL"
     LOST_REQUIRED = "LOST_REQUIRED"
@@ -73,7 +76,8 @@ class Tolerance(Enum):
 class Coercion:
     """A recorded normalization/coercion.
 
-    ``kind`` e.g. ``"alias"``, ``"clamp"``, ``"case"``, ``"runtime-alias-override"``.
+    ``kind`` e.g. ``"normalize"``, ``"alias"``, ``"runtime-alias-override"``,
+    ``"clamp"``, ``"coerceDefault"``, ``"default"``.
     """
 
     field_path: str
@@ -99,6 +103,13 @@ class FieldSpec:
     min: float | None = None
     max: float | None = None
     nested: "RecoverSchema | None" = None
+    # FR-011: present-but-uncoercible fallback member (from ``@coerceDefault``).
+    # ENUM-only; None = none.
+    coerce_default: str | None = None
+    # FR-011: absent-fill member (from ``@default``). ENUM-only; None = none.
+    default_value: str | None = None
+    # FR-011: resolved enum normalization mode (from ``@normalize``; default ``"strip"``).
+    normalize: str = _NORMALIZE_DEFAULT
 
     @staticmethod
     def scalar(name: str, kind: FieldKind, required: bool) -> "FieldSpec":
@@ -110,6 +121,9 @@ class FieldSpec:
         required: bool,
         values: list[str] | None,
         aliases: dict[str, str] | None,
+        coerce_default: str | None = None,
+        normalize: str = _NORMALIZE_DEFAULT,
+        default_value: str | None = None,
     ) -> "FieldSpec":
         return FieldSpec(
             name=name,
@@ -117,6 +131,9 @@ class FieldSpec:
             required=required,
             enum_values=None if values is None else list(values),
             enum_alias={} if aliases is None else dict(aliases),
+            coerce_default=coerce_default,
+            default_value=default_value,
+            normalize=normalize,
         )
 
     @staticmethod

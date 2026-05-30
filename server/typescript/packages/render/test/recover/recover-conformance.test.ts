@@ -8,16 +8,18 @@ import {
   scalar,
   enumField,
   range,
+  object,
   type FieldSpec,
   type RecoverSchema,
 } from "../../src/recover/types.js";
+import type { NormalizeMode } from "../../src/recover/normalize.js";
 
 // FR-010 cross-language recover-conformance corpus runner — the correctness gate.
 // Each fixture dir under fixtures/recover-conformance/ holds:
 //   schema.json   { "format": "JSON"|"XML", "rootName": "...", "fields": [...] }
 //   input.txt     the raw (possibly dirty) LLM output
 //   expected.json { "empty": bool, "states": { path: FieldRecovery }, "data": { field: value } }
-// All 10 cases must pass. The corpus is the oracle — do not weaken assertions.
+// All cases must pass. The corpus is the oracle — do not weaken assertions.
 // Mirrors RecoverConformanceTest.java / RecoverConformanceTests.cs exactly.
 
 /** Walk up from this test dir to the repo root that contains fixtures/recover-conformance. */
@@ -74,10 +76,30 @@ interface RawFieldJson {
   name: string;
   kind: string;
   required?: boolean;
+  array?: boolean;
   enumValues?: string[];
   enumAlias?: Record<string, string>;
+  // FR-011: enum coercion-pipeline schema keys.
+  coerceDefault?: string;
+  normalize?: string;
+  default?: string;
   min?: number;
   max?: number;
+  // FR-011: nested-object sub-fields (present only for kind === "OBJECT").
+  fields?: RawFieldJson[];
+}
+
+function parseNormalize(s: string | undefined): NormalizeMode {
+  switch (s) {
+    case undefined:
+      return "strip"; // FR-011 global default
+    case "none":
+    case "collapse":
+    case "strip":
+      return s;
+    default:
+      throw new Error(`Unknown normalize mode: ${s}`);
+  }
 }
 
 function parseField(f: RawFieldJson): FieldSpec {
@@ -86,7 +108,22 @@ function parseField(f: RawFieldJson): FieldSpec {
   const required = f.required === true;
 
   if (kind === FieldKind.ENUM) {
-    return enumField(name, required, f.enumValues ?? [], f.enumAlias ?? {});
+    return enumField(
+      name,
+      required,
+      f.enumValues ?? [],
+      f.enumAlias ?? {},
+      f.coerceDefault ?? null,
+      parseNormalize(f.normalize),
+      f.default ?? null,
+    );
+  }
+  if (kind === FieldKind.OBJECT) {
+    const nested =
+      f.fields === undefined
+        ? null
+        : { format: Format.JSON, rootName: name, fields: f.fields.map(parseField) };
+    return object(name, required, f.array === true, nested);
   }
   if (f.min !== undefined || f.max !== undefined) {
     return range(name, kind, required, f.min ?? null, f.max ?? null);
@@ -119,7 +156,7 @@ describe("recover-conformance corpus", () => {
     .filter((n) => existsSync(join(corpus, n, "schema.json")))
     .sort();
 
-  expect(cases.length).toBe(10);
+  expect(cases.length).toBe(20);
 
   for (const caseName of cases) {
     test(caseName, () => {

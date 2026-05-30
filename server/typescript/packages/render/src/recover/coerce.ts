@@ -10,6 +10,8 @@
 
 import { FieldKind, Tolerance } from "./types.js";
 import type { FieldSpec, RecoverOptions, RecoveryReport } from "./types.js";
+import { normalizeEnum } from "./normalize.js";
+import type { NormalizeMode } from "./normalize.js";
 
 /** Sentinel: the value was present but could not be coerced to the declared kind/vocabulary. */
 export const MALFORMED: unique symbol = Symbol("recover.coerce.MALFORMED");
@@ -57,6 +59,12 @@ export function coerceValue(
   }
 }
 
+/**
+ * FR-011 enum coercion pipeline: exact → normalize → @enumAlias → (reserved fuzzy) →
+ * @coerceDefault → MALFORMED. Resolution mode is `spec.normalize` (default "strip"); under
+ * STRICT tolerance (ci === false) normalization is forced to "none" (exact-only), preserving
+ * the case-sensitive STRICT contract. The FR-010 case-insensitive default is now mode "strip".
+ */
 function coerceEnum(
   raw: string,
   spec: FieldSpec,
@@ -65,27 +73,74 @@ function coerceEnum(
   report: RecoveryReport,
   ci: boolean,
 ): unknown | typeof MALFORMED {
+  const mode: NormalizeMode = ci ? spec.normalize : "none";
+
+  // 1. exact match.
   if (spec.enumValues != null) {
+    for (const v of spec.enumValues) if (v === raw) return v;
+  }
+
+  // 2. normalized match (skipped when mode === "none").
+  if (mode !== "none" && spec.enumValues != null) {
+    const normRaw = normalizeEnum(raw, mode);
     for (const v of spec.enumValues) {
-      if (v === raw) return v;
-      if (ci && v.toLowerCase() === raw.toLowerCase()) {
-        report.addCoercion({ fieldPath: path, from: raw, to: v, kind: "case" });
+      if (normalizeEnum(v, mode) === normRaw) {
+        report.addCoercion({ fieldPath: path, from: raw, to: v, kind: "normalize" });
         return v;
       }
     }
   }
-  const schemaTarget = spec.enumAlias == null ? undefined : spec.enumAlias[raw];
-  const runtimeTarget = opts.aliases[raw];
-  if (runtimeTarget != null) {
-    const kind = schemaTarget != null && schemaTarget !== runtimeTarget ? "runtime-alias-override" : "alias";
-    report.addCoercion({ fieldPath: path, from: raw, to: runtimeTarget, kind });
-    return runtimeTarget;
+
+  // 3. @enumAlias — runtime aliases win over schema; alias keys normalized by the mode.
+  const aliasTarget = lookupAlias(raw, spec, opts, mode);
+  if (aliasTarget != null) {
+    const schemaTarget = lookupAliasIn(raw, spec.enumAlias ?? {}, mode);
+    const kind =
+      aliasTarget.fromRuntime && schemaTarget != null && schemaTarget !== aliasTarget.target
+        ? "runtime-alias-override"
+        : "alias";
+    report.addCoercion({ fieldPath: path, from: raw, to: aliasTarget.target, kind });
+    return aliasTarget.target;
   }
-  if (schemaTarget != null) {
-    report.addCoercion({ fieldPath: path, from: raw, to: schemaTarget, kind: "alias" });
-    return schemaTarget;
+
+  // 4. reserved fuzzy slot — NOT implemented (see FR-011 spec "Out of scope").
+
+  // 5. @coerceDefault — present-but-uncoercible fallback to a valid member → DEFAULTED.
+  if (spec.coerceDefault != null && spec.enumValues != null && spec.enumValues.includes(spec.coerceDefault)) {
+    report.addCoercion({ fieldPath: path, from: raw, to: spec.coerceDefault, kind: "coerceDefault" });
+    return spec.coerceDefault;
   }
+
+  // 6. MALFORMED.
   return MALFORMED;
+}
+
+/**
+ * Resolve `raw` against the merged alias maps (runtime wins), comparing keys under `mode`.
+ * Returns the target member + whether the winning hit came from the runtime map.
+ */
+function lookupAlias(
+  raw: string,
+  spec: FieldSpec,
+  opts: RecoverOptions,
+  mode: NormalizeMode,
+): { target: string; fromRuntime: boolean } | null {
+  const runtime = lookupAliasIn(raw, opts.aliases, mode);
+  if (runtime != null) return { target: runtime, fromRuntime: true };
+  const schema = lookupAliasIn(raw, spec.enumAlias ?? {}, mode);
+  if (schema != null) return { target: schema, fromRuntime: false };
+  return null;
+}
+
+/** Find `raw` in an alias map, matching keys exactly first then under `mode` normalization. */
+function lookupAliasIn(raw: string, aliases: Readonly<Record<string, string>>, mode: NormalizeMode): string | null {
+  if (Object.prototype.hasOwnProperty.call(aliases, raw)) return aliases[raw]!;
+  if (mode === "none") return null;
+  const normRaw = normalizeEnum(raw, mode);
+  for (const key of Object.keys(aliases)) {
+    if (normalizeEnum(key, mode) === normRaw) return aliases[key]!;
+  }
+  return null;
 }
 
 function coerceInt(raw: string, spec: FieldSpec, path: string, report: RecoveryReport): unknown | typeof MALFORMED {

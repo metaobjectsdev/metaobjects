@@ -54,7 +54,7 @@ internal object KotlinRecoverSchemaEmitter {
     fun schemaLiteral(vo: MetaObject, format: String, rootName: String): String {
         val formatEnum = if ("xml".equals(format, ignoreCase = true)) "Format.XML" else "Format.JSON"
 
-        val fieldSpecs = vo.metaFields.map { fieldSpecLiteral(it) }
+        val fieldSpecs = vo.metaFields.map { fieldSpecLiteral(it, vo) }
 
         return "RecoverSchema($formatEnum, \"${kotlinStringLiteral(rootName)}\", listOf(${fieldSpecs.joinToString(", ")}))"
     }
@@ -100,12 +100,12 @@ internal object KotlinRecoverSchemaEmitter {
      * Build a `FieldSpec.*(...)}` call for a single field, using Kotlin collection
      * literals (`listOf`, `mapOf`) instead of the Java `List.of` / `Map.ofEntries` APIs.
      */
-    private fun fieldSpecLiteral(field: MetaField<*>): String {
+    private fun fieldSpecLiteral(field: MetaField<*>, owner: MetaObject): String {
         val name = field.name
         val required = isRequired(field)
 
         if (field is EnumField) {
-            return enumFieldSpec(name, required, field)
+            return enumFieldSpec(name, required, field, owner)
         }
 
         // Nested object or array-of-objects: bounded deferral.
@@ -124,7 +124,7 @@ internal object KotlinRecoverSchemaEmitter {
      * (empty `mapOf()` when no `@enumAlias` is present). Entries in the alias map are
      * sorted by key for deterministic output.
      */
-    private fun enumFieldSpec(name: String, required: Boolean, field: EnumField): String {
+    private fun enumFieldSpec(name: String, required: Boolean, field: EnumField, owner: MetaObject): String {
         @Suppress("UNCHECKED_CAST")
         val values = field.getMetaAttr(EnumField.ATTR_VALUES).value as List<String>
 
@@ -141,7 +141,41 @@ internal object KotlinRecoverSchemaEmitter {
 
         val valuesList = values.joinToString(", ") { "\"${kotlinStringLiteral(it)}\"" }
 
-        return "FieldSpec.enumField(\"${kotlinStringLiteral(name)}\", $required, listOf($valuesList), $aliasMapLiteral)"
+        // FR-011: resolve the three new enum args (field → object.value → "strip" for normalize).
+        // Keep the back-compat 4-arg form when nothing is set; otherwise emit the 7-arg form
+        // (name, required, values, aliases, coerceDefault, normalize, defaultValue).
+        val coerceDefault = ownAttrString(field, EnumField.ATTR_COERCE_DEFAULT)
+        val defaultValue = ownAttrString(field, EnumField.ATTR_DEFAULT)
+        val normalize = resolveNormalize(field, owner)
+
+        if (coerceDefault == null && defaultValue == null && normalize == EnumField.NORMALIZE_DEFAULT) {
+            return "FieldSpec.enumField(\"${kotlinStringLiteral(name)}\", $required, listOf($valuesList), $aliasMapLiteral)"
+        }
+
+        val cdLit = if (coerceDefault == null) "null" else "\"${kotlinStringLiteral(coerceDefault)}\""
+        val normLit = "\"$normalize\""
+        val dvLit = if (defaultValue == null) "null" else "\"${kotlinStringLiteral(defaultValue)}\""
+
+        return "FieldSpec.enumField(\"${kotlinStringLiteral(name)}\", $required, listOf($valuesList), " +
+            "$aliasMapLiteral, $cdLit, $normLit, $dvLit)"
+    }
+
+    /**
+     * FR-011: resolve the enum normalization mode for a field — field-level `@normalize`, else the
+     * owning `object.value`'s `@normalize` (the per-object default), else the global default
+     * ("strip"). Mirrors the Java RecoverSchemaEmitter.resolveNormalize and the TS resolveNormalize.
+     */
+    internal fun resolveNormalize(field: MetaField<*>, owner: MetaObject?): String {
+        ownAttrString(field, EnumField.ATTR_NORMALIZE)?.let { return it }
+        if (owner != null) ownAttrString(owner, EnumField.ATTR_NORMALIZE)?.let { return it }
+        return EnumField.NORMALIZE_DEFAULT
+    }
+
+    /** The own (non-inherited) string value of an attr on a node, or null when absent/empty. */
+    private fun ownAttrString(node: com.metaobjects.MetaData, attr: String): String? {
+        if (!node.hasMetaAttr(attr, false)) return null
+        val s = node.getMetaAttr(attr, false).valueAsString
+        return if (s.isNullOrEmpty()) null else s
     }
 
     /**

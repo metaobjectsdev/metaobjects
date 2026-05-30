@@ -22,7 +22,20 @@ function jsonAnswer(): RecoverSchema {
 }
 
 function arrayField(name: string, kind: FieldKind, values: string[] | null, aliases: Record<string, string> | null): FieldSpec {
-  return { name, kind, required: false, array: true, enumValues: values, enumAlias: aliases, min: null, max: null, nested: null };
+  return {
+    name,
+    kind,
+    required: false,
+    array: true,
+    enumValues: values,
+    enumAlias: aliases,
+    min: null,
+    max: null,
+    nested: null,
+    coerceDefault: null,
+    defaultValue: null,
+    normalize: "strip",
+  };
 }
 
 describe("recover pipeline", () => {
@@ -129,5 +142,63 @@ describe("recover pipeline", () => {
     const o = recover('{"tones":["HIGH","grape"]}', s);
     expect(o.report.states().get("tones")).toBe(FieldRecovery.MALFORMED);
     expect(o.data["tones"]).toEqual(["HIGH"]);
+  });
+
+  // ---- FR-011 DEFAULTED classification + @default absent-fill ----
+  test("present-garbage enum with coerceDefault is DEFAULTED and satisfies required", () => {
+    const s = recoverSchema(Format.JSON, "answer", [
+      enumField("confidence", true, ["HIGH", "LOW"], {}, "LOW"),
+    ]);
+    const o = recover('{"confidence":"banana"}', s);
+    expect(o.data["confidence"]).toBe("LOW");
+    expect(o.report.states().get("confidence")).toBe(FieldRecovery.DEFAULTED);
+    expect(o.report.lostRequired()).not.toContain("confidence");
+  });
+
+  test("present-valid enum stays RECOVERED (not DEFAULTED)", () => {
+    const s = recoverSchema(Format.JSON, "answer", [
+      enumField("confidence", true, ["HIGH", "LOW"], {}, "LOW"),
+    ]);
+    const o = recover('{"confidence":"HIGH"}', s);
+    expect(o.data["confidence"]).toBe("HIGH");
+    expect(o.report.states().get("confidence")).toBe(FieldRecovery.RECOVERED);
+  });
+
+  test("absent enum with @default is DEFAULTED and satisfies required", () => {
+    const s = recoverSchema(Format.JSON, "answer", [
+      enumField("confidence", true, ["HIGH", "LOW"], {}, null, "strip", "HIGH"),
+    ]);
+    const o = recover("{}", s);
+    expect(o.data["confidence"]).toBe("HIGH");
+    expect(o.report.states().get("confidence")).toBe(FieldRecovery.DEFAULTED);
+    expect(o.report.lostRequired()).not.toContain("confidence");
+    expect(o.report.coercions().some((c) => c.fieldPath === "confidence" && c.kind === "default")).toBe(true);
+  });
+
+  test("absent enum without @default is LOST_REQUIRED", () => {
+    const s = recoverSchema(Format.JSON, "answer", [
+      enumField("confidence", true, ["HIGH", "LOW"], {}, null),
+    ]);
+    const o = recover("{}", s);
+    expect(o.report.lostRequired()).toContain("confidence");
+    expect(Object.prototype.hasOwnProperty.call(o.data, "confidence")).toBe(false);
+  });
+
+  test("absent optional enum with @default fills DEFAULTED", () => {
+    const s = recoverSchema(Format.JSON, "answer", [
+      enumField("confidence", false, ["HIGH", "LOW"], {}, null, "strip", "LOW"),
+    ]);
+    const o = recover("{}", s);
+    expect(o.data["confidence"]).toBe("LOW");
+    expect(o.report.states().get("confidence")).toBe(FieldRecovery.DEFAULTED);
+  });
+
+  test("nested object recovers with dotted child path RECOVERED", () => {
+    const nested = recoverSchema(Format.JSON, "meta", [scalar("score", FieldKind.INT, true)]);
+    const s = recoverSchema(Format.JSON, "answer", [object("meta", true, false, nested)]);
+    const o = recover('{"meta":{"score":7}}', s);
+    expect(o.report.states().get("meta")).toBe(FieldRecovery.RECOVERED);
+    expect(o.report.states().get("meta.score")).toBe(FieldRecovery.RECOVERED);
+    expect((o.data["meta"] as Record<string, unknown>)["score"]).toBe(7);
   });
 });
