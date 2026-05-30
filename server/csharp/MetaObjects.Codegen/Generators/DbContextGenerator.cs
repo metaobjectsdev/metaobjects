@@ -20,7 +20,7 @@ public sealed class DbContextGenerator : IGenerator
     public IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         var objects = ctx.Entities
-            .Where(o => o.IsEntity() || o.DbView is not null)
+            .Where(o => (o.IsEntity() || o.DbView is not null) && InstanceArtifacts.EmitsInstanceArtifacts(o))
             .OrderBy(o => o.Name, StringComparer.Ordinal)
             .ToList();
         if (objects.Count == 0) yield break;

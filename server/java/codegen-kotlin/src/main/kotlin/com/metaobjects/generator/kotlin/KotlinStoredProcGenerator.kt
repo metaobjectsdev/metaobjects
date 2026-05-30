@@ -69,6 +69,8 @@ class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         for (entity in loader.metaObjects) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
+            // Abstract entities are inheritance scaffolding — never emit a stored-proc binding.
+            if (KotlinGenUtil.isAbstractEntity(entity)) continue
             val sourceRdb = entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue
             if (sourceRdb.effectiveKind != MetaSource.KIND_STORED_PROC) continue
             emit(entity, sourceRdb, outRoot)

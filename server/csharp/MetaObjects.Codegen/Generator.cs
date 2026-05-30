@@ -24,6 +24,16 @@ public sealed record GenConfig
     /// ExpectedSchema, PostgresSchema, and the entity + DbContext generators.
     /// </summary>
     public ColumnNamingStrategy ColumnNamingStrategy { get; init; } = ColumnNamingStrategy.Literal;
+
+    /// <summary>
+    /// When <c>false</c> (the default), abstract entities emit no shape artifact
+    /// at all. When <c>true</c>, an abstract entity emits exactly one standalone
+    /// <c>public abstract class &lt;Name&gt;</c> (properties only — no EF
+    /// <c>[Table]</c>/<c>[Key]</c>/<c>[Column]</c> mapping, since it is a shape,
+    /// not a table). Abstract entities NEVER produce instance/write artifacts
+    /// regardless of this knob.
+    /// </summary>
+    public bool EmitAbstractShapes { get; init; } = false;
 }
 
 /// <summary>Per-run state handed to every generator.</summary>

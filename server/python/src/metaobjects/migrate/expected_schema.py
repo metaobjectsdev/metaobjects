@@ -52,6 +52,8 @@ def build_expected_schema(root: MetaRoot) -> SchemaSnapshot:
     for child in root.own_children():
         if not isinstance(child, MetaObject):
             continue
+        if child.is_abstract:
+            continue  # abstract entities never get a CREATE TABLE
         primary = _primary_writable_source(child)
         if primary is None:
             continue  # value object or read-only projection — handled by view pass below

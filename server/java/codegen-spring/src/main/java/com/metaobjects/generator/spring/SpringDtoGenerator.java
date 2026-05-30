@@ -5,6 +5,7 @@ import com.metaobjects.field.ObjectField;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
+import com.metaobjects.generator.util.GeneratorUtil;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 
@@ -54,8 +55,13 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     public void execute(MetaDataLoader loader) {
         parseArgs();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
+        boolean emitAbstractShapes = Boolean.parseBoolean(getArg("emitAbstractShapes", "false"));
         for (MetaObject entity : loader.getMetaObjects()) {
             if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
+            if (GeneratorUtil.isAbstract(entity)) {
+                if (emitAbstractShapes) emitAbstractShape(entity, outRoot);
+                continue;
+            }
             emit(entity, outRoot);
         }
     }
@@ -86,13 +92,51 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         }
         src.append(") {}\n");
 
+        writeJavaFile(entity, outRoot, pkg, recordName, src.toString());
+    }
+
+    /**
+     * Emit the abstract <em>shape</em> for an {@code abstract: true} entity: a
+     * Java {@code interface} with one accessor per scalar field. A {@code record}
+     * cannot serve as a base type, so the shape is an interface concrete DTO
+     * records can later be wired to implement. Only emitted when the
+     * {@code emitAbstractShapes} arg is {@code true} (default OFF for Java).
+     */
+    private void emitAbstractShape(MetaObject entity, Path outRoot) {
+        String[] split = SpringNaming.splitFqn(entity.getName());
+        String pkg = split[0];
+        String shortName = split[1];
+        String typeName = shortName + "Dto";
+
+        StringBuilder src = new StringBuilder();
+        if (!pkg.isEmpty()) {
+            src.append("package ").append(pkg).append(";\n\n");
+        }
+        src.append("/** GENERATED — abstract wire-DTO shape for ").append(shortName)
+           .append(". Do not hand-edit; regenerated from metadata. */\n");
+        src.append("public interface ").append(typeName).append(" {\n");
+        for (MetaField field : scalarFields(entity)) {
+            String type = SpringTypeMapper.javaTypeName(field);
+            src.append("    ").append(type).append(' ').append(field.getName()).append("();\n");
+        }
+        src.append("}\n");
+
+        writeJavaFile(entity, outRoot, pkg, typeName, src.toString());
+    }
+
+    /**
+     * Resolve {@code <outRoot>/<pkg-as-dirs>/<typeName>.java}, create parent
+     * directories, and write {@code body}. Shared file-IO tail for both the
+     * concrete-record and abstract-interface emit paths.
+     */
+    private void writeJavaFile(MetaObject entity, Path outRoot, String pkg, String typeName, String body) {
         try {
-            Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(recordName + ".java");
+            Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(typeName + ".java");
             if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, src.toString());
+            Files.writeString(outFile, body);
         } catch (IOException e) {
             throw new GeneratorException(
-                "failed writing " + recordName + ".java for entity " + entity.getName() + ": " + e, e);
+                "failed writing " + typeName + ".java for entity " + entity.getName() + ": " + e, e);
         }
     }
 

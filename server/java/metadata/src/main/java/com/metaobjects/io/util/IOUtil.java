@@ -63,8 +63,10 @@ public class IOUtil {
     }
 
     public static boolean isAbstract( MetaData md ) {
-        if ( md.hasMetaAttr("_isAbstract")
-                && Boolean.TRUE.equals( md.getMetaAttr( "_isAbstract" ).getValue())) {
+        // Own-only read (do not walk the super-chain): matches the canonical
+        // abstract contract in ValidationPhase + CanonicalJsonSerializer.
+        if ( md.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT, false)
+                && Boolean.TRUE.equals( md.getMetaAttr( MetaData.ATTR_IS_ABSTRACT, false ).getValue())) {
             return true;
         }
         return false;

@@ -1,5 +1,6 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.MetaData
 import com.metaobjects.field.MetaField
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
@@ -30,6 +31,23 @@ internal object KotlinGenUtil {
         val dot = ref.indexOf('.')
         if (dot <= 0 || dot >= ref.length - 1) return null
         return ref.substring(0, dot) to ref.substring(dot + 1)
+    }
+
+    /**
+     * True if [obj] has an own `@isAbstract` attribute set to boolean-true. Reads only the
+     * own attribute (not inherited) — matches the ValidationPhase convention so concrete
+     * subtypes extending an abstract base still emit. Shared by every instance/write
+     * generator so the "never emit write artifacts for an abstract entity" invariant has a
+     * single definition.
+     */
+    fun isAbstractEntity(obj: MetaObject): Boolean {
+        if (!obj.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT, false)) return false
+        val v = runCatching { obj.getMetaAttr(MetaData.ATTR_IS_ABSTRACT, false).value }.getOrNull()
+        return when (v) {
+            is Boolean -> v
+            is String -> v.equals("true", ignoreCase = true)
+            else -> false
+        }
     }
 
     /**

@@ -64,6 +64,8 @@ class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         for (entity in loader.metaObjects) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
+            // Abstract entities are inheritance scaffolding — never emit relation helpers.
+            if (KotlinGenUtil.isAbstractEntity(entity)) continue
             // No source.rdb → no persistence layer → no FK column to query against.
             entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue
 

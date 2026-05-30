@@ -99,6 +99,7 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject entity : loader.getMetaObjects()) {
             if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
+            if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) continue;
             RdbSource sourceRdb = firstRdbSource(entity);
             if (sourceRdb == null) continue;
             if (!MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind())) continue;

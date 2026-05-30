@@ -85,6 +85,8 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
 
         for (entity in loader.metaObjects) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
+            // Abstract entities are inheritance scaffolding — never emit a CRUD controller.
+            if (KotlinGenUtil.isAbstractEntity(entity)) continue
             val sourceRdb = entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue
             val kind = sourceRdb.effectiveKind
             // Only writable tables get a CRUD controller. View / materializedView are

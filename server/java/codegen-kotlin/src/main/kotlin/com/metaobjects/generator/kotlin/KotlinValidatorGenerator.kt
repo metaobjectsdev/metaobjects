@@ -39,6 +39,8 @@ class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         val entries = loader.metaObjects
             .filter { it.subType == MetaObject.SUBTYPE_ENTITY }
+            // Abstract entities are inheritance scaffolding — never register a validator for them.
+            .filter { !KotlinGenUtil.isAbstractEntity(it) }
             .filter { it.children.any { c -> c is RdbSource } }
             .map { entity ->
                 val shortName = PackageMapping.splitFqn(entity.name).second
