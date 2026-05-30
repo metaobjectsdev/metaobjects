@@ -102,6 +102,8 @@ Flags:
 - `--allow <csv>` — destructive-change permissions: `drop-column,drop-table,type-change,drop-index,drop-fk,nullable-to-not-null`
 - `--on-ambiguous abort|rename|drop-add` (default `abort`) — non-interactive
 - `--dry-run` — print SQL pair to stdout, write nothing
+- `--apply` — after writing migration files, immediately apply all pending migrations against the DB (runs `up.sql` for each unapplied entry, tracked in the migration ledger). Mutually exclusive with `--rollback`. Postgres and SQLite only (D1 uses `--apply` to invoke `wrangler d1 migrations apply` instead).
+- `--rollback <version>` — roll back applied migrations newer than `<version>` by running their `down.sql` in reverse order, ledger-tracked. Pass an empty string (`--rollback ""`) to roll back everything. Mutually exclusive with `--apply`. Postgres and SQLite only.
 
 **D1-specific flags** (only relevant with `--dialect d1`):
 - `--d1 <binding>` — explicit D1 binding from `wrangler.toml` (auto-detected when there's exactly one)

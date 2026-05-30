@@ -40,8 +40,8 @@ working code.
 | `field.object` + `@storage=flattened` | Yes | Yes | Yes (per-sub-field columns) | Yes (EF Core `OwnsOne`) | Loader yes; codegen partial |
 | Templates + render (FR-004) | Yes | Yes | Yes (wraps Java) | Yes | Yes |
 | Payload-VO codegen | Yes (via projection) | – (consumers use `Map`) | Yes (`@Serializable`) | Yes | – (consumers use `dict`) |
-| Migration emission | `meta migrate` (Postgres / SQLite / D1) | `mvn meta:migrate --flyway` | `mvn meta:migrate --flyway` (via Java) | `meta migrate` | In progress |
-| DB-drift verify | `meta verify` | `mvn meta:verify` | `mvn meta:verify` (via Java) + startup validator | `meta verify` | In progress |
+| Migration emission | `meta migrate` (Postgres / SQLite / D1) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | `meta migrate` | In progress |
+| DB-drift verify | `meta verify --db` | Template-drift: `Renderer.verify`; startup: `MetaClassDBValidatorService` | Template-drift: `Renderer.verify`; startup: `MetadataStartupValidator` | `meta verify` | In progress |
 | Template-drift verify | Yes | Yes (`Renderer.verify`) | Yes (via Java) | Yes (`meta verify`) | Yes (`metaobjects.render.verify`) |
 | YAML authoring (sigil-free → JSON) | Yes | Yes | Yes (via Java) | Yes | Yes |
 | Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Roadmap |

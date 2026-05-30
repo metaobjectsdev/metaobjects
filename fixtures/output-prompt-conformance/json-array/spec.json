@@ -1,0 +1,4 @@
+{ "format": "json", "rootName": "Tagging", "roundTrip": false,
+  "fields": [
+    { "name": "tags", "kind": "STRING", "required": true, "array": true,
+      "instruction": "Zero or more short labels." } ] }

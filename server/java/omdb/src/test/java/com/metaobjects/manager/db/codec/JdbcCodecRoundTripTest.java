@@ -109,6 +109,7 @@ public class JdbcCodecRoundTripTest {
             vo.setString("label", "hello-codec");
             Date created = new Date(1_700_000_000_000L);
             vo.setDate("createdAt", created);
+            vo.setObject("startTime", LocalTime.of(8, 0, 0));  // TimeCodec
 
             omdb.createObject(oc, vo);
 
@@ -136,22 +137,54 @@ public class JdbcCodecRoundTripTest {
     }
 
     /**
-     * Task 1.5 (remediation) — TimeCodec symmetry at the codec/JDBC boundary.
+     * Full OMDB end-to-end round-trip for {@code field.time} — write a {@link LocalTime}
+     * through {@code omdb.createObject} and read it back through {@code omdb.getObjects}.
      *
-     * <p>A full OMDB round-trip for {@code field.time} is blocked by a
-     * {@code MetaField}/{@code DataConverter} limitation: {@link TimeField}'s
-     * data type is {@code DataTypes.CUSTOM}, and {@code DataConverter.toType(CUSTOM, …)}
-     * throws {@code IllegalStateException}. So {@code MetaField.setObject} (which
-     * {@code TimeCodec.readInto} calls) cannot accept a {@code LocalTime} on a real
-     * TimeField. That is unrelated to the codec's correctness.
-     *
-     * <p>This test therefore drives the codec's real JDBC IO directly against an
-     * embedded-Derby {@code TIME} column: write a {@link LocalTime} via
-     * {@link JdbcCodecs.TimeCodec#write} and read it back via
-     * {@link JdbcCodecs.TimeCodec#readInto}, using a thin {@link TimeField} subclass
-     * whose {@code setObject}/{@code getObject} store the value verbatim (bypassing
-     * the unrelated CUSTOM-type {@code DataConverter} hop). This proves the codec's
-     * {@code LocalTime → java.sql.Time → LocalTime} conversion is symmetric.
+     * <p>This exercises the complete path that was previously blocked:
+     * {@code TimeCodec.readInto} → {@code MetaField.setObject} →
+     * {@code DataConverter.toType(CUSTOM, localTime)}, which now passes through
+     * unchanged instead of throwing {@code IllegalStateException}.
+     */
+    @Test
+    public void timeFieldRoundTripThroughOMDB() throws Exception {
+        MetaObject mo = registry.findMetaObjectByName("codectest::Sample");
+        assertNotNull(mo);
+
+        LocalTime original = LocalTime.of(9, 30, 0);
+
+        ObjectConnection oc = omdb.getConnection();
+        try {
+            ValueObject vo = (ValueObject) mo.newInstance();
+            // Set all NOT-NULL columns required by the CODEC_SAMPLE schema.
+            String label = "time-roundtrip-" + System.currentTimeMillis();
+            vo.setString("label", label);
+            vo.setInt("count", 1);
+            vo.setLong("bignum", 1L);
+            vo.setBoolean("active", false);
+            vo.setDouble("ratio", 0d);
+            vo.setFloat("rate", 0f);
+            vo.setObject("amount", java.math.BigDecimal.ZERO);
+            vo.setDate("createdAt", new Date(0));
+            vo.setObject("startTime", original);
+
+            omdb.createObject(oc, vo);
+
+            Collection<?> rows = omdb.getObjects(oc, mo,
+                    new QueryOptions(new Expression("label", label, Expression.EQUAL)));
+            assertEquals("exactly one row written", 1, rows.size());
+
+            ValueObject read = (ValueObject) rows.iterator().next();
+            assertEquals("TimeField LocalTime must survive full OMDB write+read round-trip",
+                    original, read.getObject("startTime"));
+        } finally {
+            omdb.releaseConnection(oc);
+        }
+    }
+
+    /**
+     * TimeCodec symmetry at the raw codec/JDBC boundary (codec unit test, not OMDB
+     * end-to-end). Uses a verbatim-storing TimeField subclass to isolate ONLY the
+     * codec's {@code LocalTime → java.sql.Time → LocalTime} JDBC conversion.
      */
     @Test
     public void timeCodecIsSymmetricAtTheJdbcBoundary() throws Exception {

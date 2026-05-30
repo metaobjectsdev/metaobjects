@@ -1,8 +1,10 @@
 package com.metaobjects.util;
 
+import com.metaobjects.DataTypes;
 import com.metaobjects.loader.LoaderOptions;
 import org.junit.Test;
 
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -329,6 +331,24 @@ public class DataConverterTests {
         assertEquals("42", numberResult.get(0));
     }
     
+    /**
+     * CUSTOM type is opaque to the generic converter; values must pass through unchanged.
+     * This allows per-type codecs (e.g. TimeCodec for TimeField) to handle their own
+     * JDBC binding without being blocked by the generic converter.
+     */
+    @Test
+    public void testCustomTypePassesThrough() {
+        LocalTime localTime = LocalTime.of(13, 45, 30);
+        Object result = DataConverter.toType(DataTypes.CUSTOM, localTime);
+        assertSame("CUSTOM type must return the exact same LocalTime instance", localTime, result);
+
+        Object arbitrary = new Object();
+        Object result2 = DataConverter.toType(DataTypes.CUSTOM, arbitrary);
+        assertSame("CUSTOM type must return the exact same Object instance", arbitrary, result2);
+
+        assertNull("CUSTOM type with null input must return null", DataConverter.toType(DataTypes.CUSTOM, null));
+    }
+
     @Test
     public void testToObjectArray() {
         // Test null input

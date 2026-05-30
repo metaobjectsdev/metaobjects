@@ -127,9 +127,10 @@ reference covers the cross-port contract.
 
 ```bash
 mvn compile                            # runs the codegen as part of generate-sources
-mvn meta:migrate -Dflyway=true         # emit V<N>__<slug>.sql under src/main/resources/db/migration/
-mvn meta:verify                        # DB-vs-metadata drift gate
 ```
+
+Schema migrations are owned by the TypeScript toolchain — see the
+[Migrations section](../features/migrations-and-drift.md#kotlin) for the `meta migrate` commands.
 
 ## Use
 
@@ -283,8 +284,8 @@ the contract is universal.
 |---|---|---|
 | Code-vs-DB | `KotlinEntityGenerator` + `KotlinExposedTableGenerator` (one metadata, two emitters) | Build time |
 | Code-vs-API-doc | Cross-port codegen from same metadata | Build time |
-| DB-vs-metadata | `meta:verify` Maven goal | CI on every PR |
-| Migration-vs-metadata | `meta:migrate --flyway` emits from metadata diffs | Build time |
+| DB-vs-metadata | `MetadataStartupValidator.validate(loader)` at Spring `ApplicationReadyEvent`; live-DB schema drift: TS toolchain `meta verify --db` | App startup; CI on every PR (TS) |
+| Migration-vs-metadata | TS toolchain `meta migrate` emits from metadata diffs (`meta:migrate` Maven goal was removed) | Build time |
 | Generated-edited | `@generated` KotlinPoet headers | Code review |
 | Prompt-vs-payload | `KotlinPayloadGenerator` + Java `Renderer.verify` | Build time + runtime |
 | Generated-vs-runtime | `MetadataStartupValidator.validate(loader)` from Spring `ApplicationReadyEvent` | App startup |
@@ -301,8 +302,8 @@ the contract is universal.
 | Templates + render (FR-004) | Yes (wraps the Java engine) |
 | Output parser codegen (FR-006) | Yes (`KotlinOutputParserGenerator` — kotlinx.serialization + `Result<T>` dual API) |
 | Payload-VO codegen | Yes (`KotlinPayloadGenerator`) |
-| Migrations | Via Java `meta:migrate --flyway` |
-| Drift verify | Via Java `meta:verify` + startup validator |
+| Migrations | Via the TS toolchain (`@metaobjectsdev/cli migrate`) |
+| Drift verify | Template-drift: `Renderer.verify` (build-time); generated-table drift: `MetadataStartupValidator` (startup) |
 | Runtime metadata | Via Java OMDB (or hand-written Exposed transactions) |
 
 ## Test count

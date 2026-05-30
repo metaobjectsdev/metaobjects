@@ -1,0 +1,10 @@
+Fill in each field as described below:
+- summary (required): One sentence.
+    e.g. Solid work overall.
+- meta (required)
+
+Respond exactly like this:
+{
+  "summary": "Solid work overall.",
+  "meta": "{meta}"
+}

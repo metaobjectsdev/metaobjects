@@ -1,0 +1,4 @@
+<Review>
+  <summary>{One sentence.}</summary>
+  <meta>{meta}</meta>
+</Review>

@@ -49,6 +49,20 @@ public class CoreTypesTests
                      reg.AllSubTypesOf(TYPE_METADATA).OrderBy(s => s));
     }
 
+    // The default-subType designations that let a bare `metadata:` / `object:`
+    // YAML key desugar to `metadata.root` / `object.entity`. Regression guard for
+    // the bootstrap path that, when broken, leaves these unset and makes a bare
+    // `metadata:` root fail with "type 'metadata' has no default subType".
+    [Fact]
+    public void Core_provider_designates_default_subtypes_for_bare_keys()
+    {
+        var reg = ComposedRegistry();
+        Assert.Equal(SUBTYPE_ROOT, reg.DefaultSubTypeOf(TYPE_METADATA));
+        Assert.Equal(OBJECT_SUBTYPE_ENTITY, reg.DefaultSubTypeOf(TYPE_OBJECT));
+        // A type with no designated default returns null (not an arbitrary subType).
+        Assert.Null(reg.DefaultSubTypeOf(TYPE_FIELD));
+    }
+
     [Fact]
     public void Core_provider_registers_correct_subtypes_for_object()
     {

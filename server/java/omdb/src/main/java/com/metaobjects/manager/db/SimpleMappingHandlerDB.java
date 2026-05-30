@@ -14,6 +14,8 @@ import com.metaobjects.MetaDataException;
 
 import com.metaobjects.field.MetaField;
 import com.metaobjects.identity.MetaIdentity;
+import com.metaobjects.manager.db.codec.JdbcCodecs;
+import com.metaobjects.manager.db.codec.JdbcFieldCodec;
 import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.manager.ObjectManager;
 import com.metaobjects.manager.db.defs.BaseTableDef;
@@ -296,6 +298,10 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	protected int getSQLType( MetaField mf ) {
 		// jsonb fields are stored as text (VARCHAR/CLOB) — no native jsonb on Derby
 		if (isJsonbField(mf)) return Types.VARCHAR;
+		// Consult the codec first: CUSTOM-DataType fields (e.g. TimeField) declare
+		// their own SQL type so no instanceof guard is needed here (OCP).
+		int codecType = JdbcCodecs.forField(mf).sqlType();
+		if (codecType != JdbcFieldCodec.NO_SQL_TYPE) return codecType;
 		switch( mf.getDataType() )
 		{
 		case BOOLEAN: return Types.BIT;
@@ -315,6 +321,10 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	protected int getSQLLength( MetaField mf ) {
 		// jsonb: store as CLOB (length > Derby's VARCHAR max of 32672 triggers CLOB in DerbyDriver)
 		if (isJsonbField(mf)) return 65536;
+		// Consult the codec first: CUSTOM-DataType fields (e.g. TimeField) declare
+		// their own length so no instanceof guard is needed here (OCP).
+		int codecLength = JdbcCodecs.forField(mf).sqlLength();
+		if (codecLength >= 0) return codecLength;
 		switch( mf.getDataType() )
 		{
 			case BOOLEAN: return 1;

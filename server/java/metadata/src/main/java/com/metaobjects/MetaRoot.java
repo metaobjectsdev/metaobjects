@@ -75,6 +75,14 @@ public class MetaRoot extends MetaData {
      */
     public static void registerTypes(MetaDataRegistry registry) {
         try {
+            // ADR-0006 Rule 1 — a bare `metadata:` YAML key fuses to `metadata.root`.
+            // Register the default subType UNCONDITIONALLY, before the type-registration
+            // idempotency guard below. Otherwise, when the metadata.root TYPE is already
+            // registered (e.g. a fresh runtime MetaDataLoader bootstrap, or a registry
+            // pre-seeded on another path), this method returned early and never set the
+            // default — so a bare `metadata:` root failed to desugar with
+            // "type 'metadata' has no default subType".
+            registry.setDefaultSubType(TYPE_METADATA, SUBTYPE_ROOT);
             // Idempotent: skip if metadata.root is already registered (the
             // provider may run against a registry that already has it).
             if (registry.isRegistered(TYPE_METADATA, SUBTYPE_ROOT)) {
@@ -93,8 +101,6 @@ public class MetaRoot extends MetaData {
                 .optionalChild(com.metaobjects.layout.MetaLayout.TYPE_LAYOUT, "*", "*")
                 .optionalChild(com.metaobjects.template.TemplateConstants.TYPE_TEMPLATE, "*", "*")
             );
-            // ADR-0006 Rule 1 — bare `metadata:` YAML key fuses to `metadata.root`.
-            registry.setDefaultSubType(TYPE_METADATA, SUBTYPE_ROOT);
             log.debug("Registered MetaRoot type (metadata.root) with unified registry");
         } catch (Exception e) {
             log.error("Failed to register MetaRoot type with unified registry", e);

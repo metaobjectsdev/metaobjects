@@ -128,8 +128,15 @@ public final class JdbcCodecs {
      * the canonical Java representation for {@code field.time}. The previous
      * stub fell through to {@code getObject} (driver-dependent type) which had
      * drifted from the write codec.
+     *
+     * <p>Declares {@link #sqlType()} = {@code Types.TIME} and {@link #sqlLength()} = 0
+     * so that {@link com.metaobjects.manager.db.SimpleMappingHandlerDB} can
+     * consult the codec instead of carrying an {@code instanceof TimeField} guard.
      */
     static final class TimeCodec implements JdbcFieldCodec {
+        @Override public int sqlType() { return Types.TIME; }
+        @Override public int sqlLength() { return 0; }
+
         @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
             java.sql.Time tv = rs.getTime(j);
             f.setObject(o, rs.wasNull() ? null : tv.toLocalTime());

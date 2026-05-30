@@ -1,0 +1,4 @@
+{ "format": "json", "rootName": "I18n", "roundTrip": true,
+  "fields": [
+    { "name": "greeting", "kind": "STRING", "required": true,
+      "example": "こんにちは — café — 🚀", "instruction": "A localized greeting." } ] }

@@ -14,7 +14,6 @@ from ..meta.core.field.field_constants import (
     ENUM_MEMBER_PATTERN,
     FIELD_ATTR_COERCE_DEFAULT,
     FIELD_ATTR_DEFAULT,
-    FIELD_ATTR_NORMALIZE,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_STORAGE,
     FIELD_ATTR_VALUES,
@@ -22,7 +21,6 @@ from ..meta.core.field.field_constants import (
     FIELD_SUBTYPE_OBJECT,
     FIELD_SUBTYPE_STRING,
     FIELD_SUBTYPE_TIMESTAMP,
-    NORMALIZE_MODES,
 )
 from ..meta.persistence.db.db_constants import (
     DB_COLUMN_TYPE_JSONB,
@@ -353,8 +351,10 @@ def _validate_enum_fr011_attrs(node: MetaData, errors: list[MetaError]) -> None:
       (own or inherited) → ``ERR_BAD_ATTR_VALUE``.
     * ``@default`` (own, the absent-fill member) must likewise be a member of the
       effective ``@values`` → ``ERR_BAD_ATTR_VALUE``.
-    * ``@normalize`` (own) must be one of ``none|collapse|strip``
-      → ``ERR_BAD_ATTR_VALUE`` (belt-and-braces with the registered allowed_values).
+    ``@normalize`` mode validation is NOT done here: it is a closed enum gated by the
+    registered ``allowed_values=NORMALIZE_MODES`` on the ``field.enum`` attr schema, so the
+    generic attr-schema pass already emits the single ``ERR_BAD_ATTR_VALUE``. Re-checking it
+    here double-reported the same node (one envelope entry per port is the cross-port contract).
 
     Own-only policy: only checks attrs declared on THIS node, matching the ``@values``
     pass. The membership set is read effectively so an enum that owns ``@coerceDefault``
@@ -378,17 +378,6 @@ def _validate_enum_fr011_attrs(node: MetaData, errors: list[MetaError]) -> None:
                     envelope=node.source,
                 )
             )
-
-    own_normalize = node.attr(FIELD_ATTR_NORMALIZE)
-    if isinstance(own_normalize, str) and own_normalize not in NORMALIZE_MODES:
-        errors.append(
-            MetaError(
-                f"{label} attribute '@{FIELD_ATTR_NORMALIZE}' value {own_normalize!r} "
-                f"is not a valid mode; allowed: {', '.join(NORMALIZE_MODES)}",
-                ErrorCode.ERR_BAD_ATTR_VALUE,
-                envelope=node.source,
-            )
-        )
 
 
 # ---------------------------------------------------------------------------
