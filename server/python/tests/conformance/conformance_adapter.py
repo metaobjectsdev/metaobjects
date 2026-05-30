@@ -69,6 +69,13 @@ def _noop_provider(provider_id: str, *deps: str) -> Provider:
 _PROVIDER_MAP: dict[str, Provider] = {
     core_provider.id: core_provider,                # "metaobjects-core-types"
     doc_provider.id: doc_provider,                  # "metaobjects-documentation"
+    # The DB-domain provider id. Python keeps the DB-domain physical attrs
+    # (@column / @dbColumnType) on the core field defs (until a full Python
+    # db-codegen port lands), and the @dbColumnType pairing validation runs
+    # unconditionally as a loader pass — so this maps to a no-op provider whose
+    # only job is to satisfy a fixture's providers.json gate (mirrors the C#
+    # ConformanceAdapter, which also maps "metaobjects-db" to a no-op).
+    "metaobjects-db": _noop_provider("metaobjects-db", "metaobjects-core-types"),
     # Test-only — provider-extension-* fixtures.
     "example-template-briefing": _example_template_briefing_provider(),
     "cycle-a": _noop_provider("cycle-a", "cycle-b"),
