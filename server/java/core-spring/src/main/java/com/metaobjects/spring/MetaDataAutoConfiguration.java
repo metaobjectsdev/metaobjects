@@ -44,7 +44,7 @@ import java.util.List;
 public class MetaDataAutoConfiguration {
     
     /**
-     * Creates OSGi-compatible MetaDataLoaderRegistry with auto-discovery
+     * Creates the MetaDataLoaderRegistry with auto-discovery
      * of MetaDataLoader beans from Spring context.
      */
     @Bean
