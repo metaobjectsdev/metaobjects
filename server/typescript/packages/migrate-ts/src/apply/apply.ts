@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { type Kysely, sql } from "kysely";
+import { type Kysely, type Transaction, sql } from "kysely";
 import {
   appliedRecords,
   DEFAULT_LEDGER_SCHEMA,
@@ -104,12 +104,9 @@ export async function applyPending(
       const checksum = checksumOf(text);
       // Run the file's SQL + the ledger insert in ONE transaction. A failure
       // rolls the whole file back (unrecorded) and propagates — stopping the run.
-      await db.transaction().execute(async (trx) => {
-        for (const stmt of splitSqlStatements(text)) {
-          await sql.raw(stmt).execute(trx);
-        }
-        await recordApplied(trx, m.name, checksum, dialect, ledger);
-      });
+      await runSqlFileWithLedgerMutation(db, text, (trx) =>
+        recordApplied(trx, m.name, checksum, dialect, ledger),
+      );
       applied.push(m.name);
     }
 
@@ -180,12 +177,9 @@ export async function rollbackTo(
         );
       }
       // Run the down SQL + the ledger delete in ONE transaction.
-      await db.transaction().execute(async (trx) => {
-        for (const stmt of splitSqlStatements(downText)) {
-          await sql.raw(stmt).execute(trx);
-        }
-        await deleteApplied(trx, name, dialect, ledger);
-      });
+      await runSqlFileWithLedgerMutation(db, downText, (trx) =>
+        deleteApplied(trx, name, dialect, ledger),
+      );
       rolledBack.push(name);
     }
 
@@ -280,6 +274,30 @@ function lockNameFor(ledger: LedgerOptions | undefined): string {
 function advisoryKey(name: string): string {
   const hash = createHash("sha256").update(name).digest();
   return hash.readBigInt64BE(0).toString();
+}
+
+/**
+ * Run a migration SQL file's statements followed by a ledger mutation, all in
+ * ONE Kysely transaction on the pool. The file is split with
+ * {@link splitSqlStatements} and each statement executed in order, then
+ * `mutateLedger` records/unrecords the migration — so the data change and its
+ * ledger row commit or roll back together. Any failure rolls the whole
+ * transaction back (leaving the ledger untouched) and propagates to the caller.
+ *
+ * Shared by both the apply (up.sql + recordApplied) and rollback
+ * (down.sql + deleteApplied) paths.
+ */
+async function runSqlFileWithLedgerMutation(
+  db: Kysely<Record<string, unknown>>,
+  sqlText: string,
+  mutateLedger: (trx: Transaction<Record<string, unknown>>) => Promise<void>,
+): Promise<void> {
+  await db.transaction().execute(async (trx) => {
+    for (const stmt of splitSqlStatements(sqlText)) {
+      await sql.raw(stmt).execute(trx);
+    }
+    await mutateLedger(trx);
+  });
 }
 
 async function discoverMigrations(dir: string): Promise<DiscoveredMigration[]> {
