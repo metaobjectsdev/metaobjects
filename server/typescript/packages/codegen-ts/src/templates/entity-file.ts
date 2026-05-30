@@ -20,6 +20,7 @@ import { isProjection } from "../projection/projection-detector.js";
 import { renderProjectionDecl } from "./projection-decl.js";
 import { hasWritableRdbSource } from "../source-detect.js";
 import { renderValueObjectFile } from "./value-object-file.js";
+import { isAbstract } from "../instance-artifacts.js";
 
 /**
  * Render-time options for the entity-file composer.
@@ -42,6 +43,18 @@ export function renderEntityFile(
   opts?: RenderEntityFileOpts,
 ): string {
   const allowlists = opts?.allowlists ?? true;
+
+  // --- Abstract path (shape only) ---
+  // An abstract entity contributes shape via inheritance only — it must NEVER
+  // produce a Drizzle table / migration footprint / filter allowlist, even when
+  // it carries a source.rdb child. This is the cross-port invariant (abstract →
+  // no instance/write artifacts, including CREATE TABLE). It still emits its
+  // value-object shape (interface + Zod) so subclasses/consumers can reference
+  // it. The entity-file generator suppresses this entirely when
+  // emitAbstractShapes is off; here we only guarantee "shape, never table".
+  if (isAbstract(entity)) {
+    return renderValueObjectFile(entity);
+  }
 
   // --- Projection path (read-only: view-backed entity with no table source) ---
   // Projections intentionally get the z.enum() validator but NOT a named enum
