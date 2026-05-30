@@ -19,8 +19,9 @@ export async function loadMigrations(dir: string): Promise<Migration[]> {
   let entries: string[];
   try {
     entries = await readdir(dir);
-  } catch {
-    return [];
+  } catch (e: unknown) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw e;
   }
   const migs: Migration[] = [];
   for (const entry of entries) {

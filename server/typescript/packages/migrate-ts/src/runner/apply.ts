@@ -29,7 +29,10 @@ export async function applyMigrations(
     await store.ensure();
     const done = appliedVersionSet(await store.applied());
     const pending = migrations.filter((m) => !done.has(m.version));
-    const result: ApplyResult = { applied: [], skipped: [...done] };
+    const result: ApplyResult = {
+      applied: [],
+      skipped: migrations.filter((m) => done.has(m.version)).map((m) => m.version),
+    };
     for (const m of pending) {
       if (opts.dryRun) {
         result.applied.push(m.version);
@@ -52,7 +55,14 @@ export async function applyMigrations(
 }
 
 function successRow(m: Migration, start: number) {
-  return { version: m.version, name: m.name, checksum: contentChecksum(m.upSql), appliedAt: new Date().toISOString(), executionMs: Date.now() - start, success: true };
+  return {
+    version: m.version,
+    name: m.name,
+    checksum: contentChecksum(m.upSql),
+    appliedAt: new Date().toISOString(),
+    executionMs: Date.now() - start,
+    success: true as const,
+  };
 }
 function failRow(m: Migration, start: number) {
   return { ...successRow(m, start), success: false };
@@ -77,6 +87,7 @@ export async function rollbackTo(
 ): Promise<RollbackResult> {
   await store.acquireLock();
   try {
+    await store.ensure();
     const applied = (await store.applied()).filter((r) => r.success);
     const toRollback = applied
       .filter((r) => targetVersion === null || r.version > targetVersion)

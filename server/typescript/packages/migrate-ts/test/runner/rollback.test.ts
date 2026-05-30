@@ -46,4 +46,14 @@ describe("rollbackTo", () => {
     await applyMigrations(migs, store, exec);
     await expect(rollbackTo(null, migs, store, exec)).rejects.toThrow(/down\.sql is empty/);
   });
+
+  test("releases the lock even on rollback failure", async () => {
+    const store = new InMemoryHistoryStore();
+    const exec = new RecordingExecutor();
+    const migs = [mig("20260101000000", "CREATE A", "")];
+    await applyMigrations(migs, store, exec);
+    await expect(rollbackTo(null, migs, store, exec)).rejects.toThrow(/down\.sql is empty/);
+    await store.acquireLock(); // must not throw
+    await store.releaseLock();
+  });
 });
