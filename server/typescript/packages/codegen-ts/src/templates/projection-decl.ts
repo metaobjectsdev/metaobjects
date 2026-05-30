@@ -9,7 +9,7 @@
 
 import { code, imp, joinCode, type Code } from "ts-poet";
 import { MetaField, MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
-import { extractViewSpec } from "../projection/extract-view-spec.js";
+import { projectionViewName } from "../projection/extract-view-spec.js";
 import { columnNameFromField, toSnakeCase, pluralize } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
@@ -72,7 +72,12 @@ export function renderProjectionDecl(
   const viewSym = imp(`${viewFn}@${viewModule}`);
   const z = imp("z@zod");
 
-  const spec = extractViewSpec(projection, root, { columnNamingStrategy });
+  // Read-model generation needs only the view name — NOT the join/DDL
+  // resolution. Deriving it directly (instead of via extractViewSpec) lets a
+  // standalone read-only view-entity — explicit columns, no `extends` — generate
+  // its read model. The join-backed view DDL (extractViewSpec) still requires a
+  // base; standalone views hand-author (or separately generate) their SQL.
+  const viewName = projectionViewName(projection, columnNamingStrategy);
 
   // Collect fields: inherited from extends parent first, then projection-declared.
   const allFields: MetaField[] = [];
@@ -107,7 +112,6 @@ export function renderProjectionDecl(
   const projName = projection.name;
   const camelName = projName.charAt(0).toLowerCase() + projName.slice(1);
   const path = pathFromProjectionName(projName);
-  const viewName = spec.viewName;
 
   const sections: Code[] = [
     code`

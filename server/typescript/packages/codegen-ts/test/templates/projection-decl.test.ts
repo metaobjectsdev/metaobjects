@@ -242,3 +242,64 @@ describe("renderProjectionDecl emits Drizzle view + Zod read schema + constants"
     expect(code).toContain("ProgramSummaryFilter");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Standalone read-only view-entity (NO `extends`).
+// The read model only needs the view name + the entity's own fields — not the
+// join/DDL resolution. A view whose base is not a writable metaobjects entity
+// (e.g. one over legacy tables), or one that maps a deliberately narrowed set of
+// columns (excluding a sensitive field), is authored as a standalone projection:
+// explicit columns + source.rdb kind=view, no extends. Its SQL is hand-authored.
+// ---------------------------------------------------------------------------
+async function loadStandaloneProjection() {
+  const json = JSON.stringify({
+    "metadata.root": {
+      package: "test",
+      children: [
+        {
+          "object.entity": {
+            name: "LobbyRoster",
+            children: [
+              { "source.rdb": { "@kind": "view", "@table": "v_lobby_roster" } },
+              { "field.string": { name: "sessionId" } },
+              { "field.string": { name: "displayName" } },
+              { "field.string": { name: "status" } },
+              { "identity.primary": { "@fields": "sessionId" } },
+              { "layout.dataGrid": { name: "default", "@fields": "displayName,status" } },
+            ],
+          },
+        },
+      ],
+    },
+  });
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
+  if (result.errors.length > 0) throw new Error(result.errors.map((e) => e.message).join("\n"));
+  const root = result.root;
+  const projection = root.objects().find((o) => o.name === "LobbyRoster")!;
+  return { root, projection };
+}
+
+describe("renderProjectionDecl — standalone view-entity (no extends)", () => {
+  test("generates the read model from own fields without throwing", async () => {
+    const { root, projection } = await loadStandaloneProjection();
+    const code = renderProjectionDecl(projection, root, {
+      columnNamingStrategy: "snake_case",
+      dialect: "postgres",
+    });
+
+    // View name comes from the read-only source @table (no join resolution).
+    expect(code).toContain("pgView");
+    expect(code).toContain('"v_lobby_roster"');
+    expect(code).toContain(".existing()");
+    // Own fields populate the schema + constants.
+    expect(code).toContain("export const LobbyRosterSchema");
+    expect(code).toContain("sessionId:");
+    expect(code).toContain("displayName:");
+    expect(code).toContain("status:");
+    expect(code).toContain('$entity: "LobbyRoster"');
+    expect(code).toContain('"/lobby-rosters"');
+    // Still read-only — no write artifacts.
+    expect(code).not.toContain("LobbyRosterInsert");
+    expect(code).not.toContain("LobbyRosterUpdate");
+  });
+});

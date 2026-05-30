@@ -54,6 +54,23 @@ function viewName(projection: MetaObject, ctx: ExtractContext): string {
   return explicit ?? viewNameFromProjection(projection.name, ctx.columnNamingStrategy);
 }
 
+/**
+ * The physical view name for a projection — its read-only source `@table`, else
+ * derived from the projection name.
+ *
+ * Exposed for the read-model generator (`renderProjectionDecl`), which needs the
+ * view name but NOT the join/DDL resolution. Read-model generation works for a
+ * standalone read-only view-entity (explicit columns, no `extends`); only
+ * {@link extractViewSpec} — which generates the join-backed view DDL — requires a
+ * base entity to extend.
+ */
+export function projectionViewName(
+  projection: MetaObject,
+  columnNamingStrategy: ColumnNamingStrategy,
+): string {
+  return viewName(projection, { columnNamingStrategy });
+}
+
 function baseEntityFor(
   projection: MetaObject,
   root: MetaRoot,
