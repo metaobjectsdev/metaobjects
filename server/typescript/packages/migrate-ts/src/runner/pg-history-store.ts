@@ -55,7 +55,7 @@ export class PgHistoryStore implements HistoryStore {
       version: String(row["version"]),
       name: String(row["name"]),
       checksum: String(row["checksum"]),
-      appliedAt: new Date(row["applied_at"] as string).toISOString(),
+      appliedAt: new Date(row["applied_at"] as Date | string).toISOString(),
       executionMs: Number(row["execution_ms"]),
       success: Boolean(row["success"]),
     }));
@@ -78,10 +78,18 @@ export class PgHistoryStore implements HistoryStore {
   }
 
   async acquireLock(): Promise<void> {
-    this.lockClient = await this.pool.connect();
-    // Session-level advisory lock (not transaction-level) so CREATE INDEX
-    // CONCURRENTLY in a migration does not deadlock against the lock.
-    await this.lockClient.query("SELECT pg_advisory_lock($1::bigint)", [this.lockKey]);
+    const client = await this.pool.connect();
+    try {
+      // Session-level advisory lock (not transaction-level) so CREATE INDEX
+      // CONCURRENTLY in a migration does not deadlock against the lock.
+      await client.query("SELECT pg_advisory_lock($1::bigint)", [this.lockKey]);
+      // Only adopt the client once the lock is actually held — so lockClient
+      // is non-null iff the lock is acquired, and a failed acquire does not leak.
+      this.lockClient = client;
+    } catch (e) {
+      client.release();
+      throw e;
+    }
   }
 
   async releaseLock(): Promise<void> {
