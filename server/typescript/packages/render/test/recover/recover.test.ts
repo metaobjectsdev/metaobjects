@@ -22,7 +22,20 @@ function jsonAnswer(): RecoverSchema {
 }
 
 function arrayField(name: string, kind: FieldKind, values: string[] | null, aliases: Record<string, string> | null): FieldSpec {
-  return { name, kind, required: false, array: true, enumValues: values, enumAlias: aliases, min: null, max: null, nested: null };
+  return {
+    name,
+    kind,
+    required: false,
+    array: true,
+    enumValues: values,
+    enumAlias: aliases,
+    min: null,
+    max: null,
+    nested: null,
+    coerceDefault: null,
+    defaultValue: null,
+    normalize: "strip",
+  };
 }
 
 describe("recover pipeline", () => {
