@@ -39,6 +39,8 @@ export interface RenderContext {
   columnNamingStrategy: ColumnNamingStrategy;
   /** Path prefix applied to generated route registrations + hook fetch URLs. Defaults to "". */
   apiPrefix: string;
+  /** Whether abstract entities emit their shape artifact (type-only interface / value-object file). Defaults to true. Instance/write artifacts are never emitted for abstract entities regardless. */
+  emitAbstractShapes: boolean;
   /** Output layout mode: "flat" (default) — all files in outDir; "package" — sub-paths from entity metadata package. */
   outputLayout: OutputLayout;
   /** The target THIS generator emits to (drives path layout + same-target imports). */
@@ -53,11 +55,12 @@ export interface RenderContext {
 }
 
 /** Optional shape — `extStyle`, `omImport`, `columnNamingStrategy`, `apiPrefix`, `outputLayout`, and `packageOf` default if omitted. `packageOf` defaults to an empty Map (correct for flat layout; `runGen` always provides the real map). */
-export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "apiPrefix" | "outputLayout" | "packageOf" | "selfTarget" | "entityModuleTarget"> & {
+export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "apiPrefix" | "emitAbstractShapes" | "outputLayout" | "packageOf" | "selfTarget" | "entityModuleTarget"> & {
   extStyle?: ExtStyle;
   omImport?: string;
   columnNamingStrategy?: ColumnNamingStrategy;
   apiPrefix?: string;
+  emitAbstractShapes?: boolean;
   outputLayout?: OutputLayout;
   packageOf?: Map<string, string | undefined>;
   selfTarget?: ResolvedTarget;
@@ -85,6 +88,7 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     omImport: opts.omImport ?? "../index",
     columnNamingStrategy: opts.columnNamingStrategy ?? "snake_case",
     apiPrefix: opts.apiPrefix ?? "",
+    emitAbstractShapes: opts.emitAbstractShapes ?? true,
     outputLayout,
     packageOf: opts.packageOf ?? new Map(),
     selfTarget: defaultTarget,

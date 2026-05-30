@@ -37,6 +37,15 @@ export interface MetaobjectsGenConfig extends ResolvedGenConfig {
   columnNamingStrategy?: ColumnNamingStrategy;
   /** Path prefix applied to generated route registrations + hook fetch URLs. Defaults to "". */
   apiPrefix?: string;
+  /**
+   * Whether abstract entities (`@isAbstract: true`) emit their shape artifact
+   * (the type-only interface / value-object file from the entity-file
+   * generator). Defaults to `true`. Instance/write artifacts (forms, CRUD/read
+   * hooks, grids) are NEVER emitted for abstract entities regardless of this
+   * flag — that invariant lives in `instance-artifacts.ts`. This knob only
+   * governs the shape, mirroring the cross-port `emitAbstractShapes` option.
+   */
+  emitAbstractShapes?: boolean;
   /** Named output destinations. Generators reference one via `target`. */
   targets?: Record<string, TargetConfig>;
   /** importBase for the default target (top-level outDir). */
@@ -57,6 +66,7 @@ export interface MetaobjectsGenConfig extends ResolvedGenConfig {
 export interface NormalizedMetaobjectsGenConfig extends Omit<MetaobjectsGenConfig, "targets"> {
   columnNamingStrategy: ColumnNamingStrategy;
   apiPrefix: string;
+  emitAbstractShapes: boolean;
   outputLayout: OutputLayout;
   targets: Record<string, ResolvedTarget>;
 }
@@ -98,6 +108,7 @@ export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobj
     ...config,
     columnNamingStrategy: config.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
     apiPrefix: config.apiPrefix ?? "",
+    emitAbstractShapes: config.emitAbstractShapes ?? true,
     outputLayout: config.outputLayout ?? "flat",
     targets: resolveTargets(config),
   };

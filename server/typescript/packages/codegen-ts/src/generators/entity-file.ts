@@ -3,6 +3,7 @@ import { perEntity, type Generator, type GeneratorFactory } from "../generator.j
 import { renderEntityFile } from "../templates/entity-file.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
+import { isAbstract } from "../instance-artifacts.js";
 
 export interface EntityFileOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -32,6 +33,12 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("entity-file: renderContext is required (provided by runGen)");
+      }
+      // Abstract entities contribute shape only. When emitAbstractShapes is off
+      // (cross-port knob; default on) the entity-file generator emits nothing for
+      // them. Instance/write generators skip abstract unconditionally elsewhere.
+      if (isAbstract(entity) && !ctx.renderContext.emitAbstractShapes) {
+        return [];
       }
       return {
         path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.ts`),

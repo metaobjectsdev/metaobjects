@@ -6,7 +6,7 @@ import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import type { GenContext } from "../../src/generator.js";
-import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const FIXTURE = resolve(import.meta.dir, "..", "fixtures", "single-entity.json");
@@ -99,5 +99,68 @@ describe("entityFile() factory", () => {
     };
     const files = await gen.generate(ctx);
     expect(files).toEqual([]);
+  });
+});
+
+describe("entityFile() — emitAbstractShapes knob", () => {
+  // Abstract base (sourceless → shape is a value-object interface) + concrete subclass.
+  const MODEL = JSON.stringify({
+    "metadata.root": {
+      package: "acme",
+      children: [
+        {
+          "object.entity": {
+            name: "Base",
+            abstract: true,
+            children: [
+              { "field.int": { name: "id" } },
+              { "field.string": { name: "name" } },
+              { "identity.primary": { "@fields": "id" } },
+            ],
+          },
+        },
+        {
+          "object.entity": {
+            name: "Widget",
+            extends: "Base",
+            children: [
+              { "source.rdb": { "@table": "widgets" } },
+              { "field.string": { name: "sku" } },
+            ],
+          },
+        },
+      ],
+    },
+  });
+
+  async function runWith(emitAbstractShapes: boolean) {
+    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(MODEL)]);
+    if (errors.length > 0) throw new Error(errors.map((e: { message: string }) => e.message).join("\n"));
+    const entities = root.objects();
+    const renderContext = makeRenderContext({
+      dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
+      dbImport: "../db", extStyle: "none", emitAbstractShapes,
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    const ctx: GenContext = {
+      entities, loadedRoot: root,
+      matches: () => true,
+      config: { outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
+      renderContext,
+      warn: () => {},
+    };
+    return (await entityFile().generate(ctx)).map((f) => f.path);
+  }
+
+  test("default (on): abstract entity emits its shape file", async () => {
+    const paths = await runWith(true);
+    expect(paths).toContain("Base.ts");
+    expect(paths).toContain("Widget.ts");
+  });
+
+  test("off: abstract entity emits no file; concrete still emits", async () => {
+    const paths = await runWith(false);
+    expect(paths).not.toContain("Base.ts");
+    expect(paths).toContain("Widget.ts");
   });
 });
