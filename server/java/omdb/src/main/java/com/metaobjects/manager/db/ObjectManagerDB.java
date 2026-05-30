@@ -1203,8 +1203,8 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
             if (getDatabaseDriver() instanceof BulkOperationSupport bulkDriver) {
                 bulkDriver.createBulk(conn, mc, mapping, objects);
             } else {
-                // Fallback to individual creates with better batching
-                createObjectsBatchFallback(conn, mc, mapping, objects);
+                // Fallback to individual creates inside a single transaction
+                createObjectsBatchFallback(c, mc, mapping, objects);
             }
         } catch (SQLException e) {
             throw new PersistenceException("Unable to bulk create objects of class [" + mc + "]: " + e.getMessage(), e);
@@ -1241,36 +1241,47 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
     }
     
     /**
-     * Batch fallback for create operations when bulk support is not available
+     * Batch fallback for create operations when the driver provides no native
+     * bulk support. Runs the whole batch as a single all-or-nothing
+     * transaction: any failure rolls back every row, so the datastore is never
+     * left with a partially-applied batch. The live {@link ObjectConnection} is
+     * passed to the pre/post-persistence hooks (previously {@code null}), so
+     * auto-field handlers and event listeners see the same connection a single
+     * {@link #createObject} would give them.
+     *
+     * <p>The per-1000-row mid-commit of the prior implementation was removed:
+     * intermediate commits made earlier chunks unrecoverable on a later
+     * failure, defeating atomicity. Auto-commit is disabled for the batch and
+     * restored in {@code finally}.
      */
-    private void createObjectsBatchFallback(Connection conn, MetaObject mc, ObjectMappingDB mapping, Collection<Object> objects) throws SQLException {
-        // Disable auto-commit for better performance
+    private void createObjectsBatchFallback(ObjectConnection c, MetaObject mc, ObjectMappingDB mapping, Collection<Object> objects) throws SQLException {
+        Connection conn = (Connection) c.getDatastoreConnection();
+
         boolean originalAutoCommit = conn.getAutoCommit();
         if (originalAutoCommit) {
             conn.setAutoCommit(false);
         }
-        
+
         try {
-            int batchCount = 0;
             for (Object obj : objects) {
-                prePersistence(null, mc, obj, CREATE);
-                
+                prePersistence(c, mc, obj, CREATE);
+
                 if (!getTypedDatabaseDriver().create(conn, mc, mapping, obj)) {
                     throw new PersistenceException("No rows created for object [" + obj + "] of class [" + mc + "]");
                 }
-                
-                postPersistence(null, mc, obj, CREATE);
-                
-                // Commit in batches of 1000 for memory management
-                if (++batchCount % 1000 == 0) {
-                    conn.commit();
-                }
+
+                postPersistence(c, mc, obj, CREATE);
             }
-            
-            // Commit any remaining
-            if (batchCount % 1000 != 0) {
-                conn.commit();
+
+            conn.commit();
+        } catch (SQLException | RuntimeException e) {
+            // All-or-nothing: undo every row inserted in this batch.
+            try {
+                conn.rollback();
+            } catch (SQLException rollbackEx) {
+                e.addSuppressed(rollbackEx);
             }
+            throw e;
         } finally {
             // Restore original auto-commit
             if (originalAutoCommit) {
