@@ -11,3 +11,34 @@ export {
   type VerifyError,
   type VerifyOptions,
 } from "./verify.js";
+
+// FR-010 tolerant recover engine (Tier-2 forgiving parser).
+export { recover } from "./recover/recover.js";
+export {
+  Format,
+  FieldKind,
+  FieldRecovery,
+  Tolerance,
+  RecoveryReport,
+  scalar,
+  enumField,
+  range,
+  object,
+  recoverSchema,
+  defaults,
+  type FieldSpec,
+  type RecoverSchema,
+  type RecoverOptions,
+  type RecoverOutcome,
+  type RecoveryResult,
+  type Coercion,
+  type OnField,
+} from "./recover/types.js";
+export {
+  asString,
+  asInt,
+  asLong,
+  asDouble,
+  asBool,
+  asStringList,
+} from "./recover/recover-map.js";
