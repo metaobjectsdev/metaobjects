@@ -398,8 +398,9 @@ def _validate_enum_fr011_attrs(node: MetaData, errors: list[MetaError]) -> None:
 # mirroring the field.enum @values precedent. Two rules, both → ERR_BAD_ATTR_VALUE:
 #
 #   1. The value must be one of the closed set uuid|jsonb|timestamp_with_tz.
-#      (Also enforced by the attr-schema allowed_values check; kept here so the
-#      pairing message stays self-contained and cross-port-identical.)
+#      (@dbColumnType is registered as a bare string attr — no allowed_values — so
+#      this pass is the SOLE enforcer of the closed set: an unknown value fires
+#      exactly one ERR_BAD_ATTR_VALUE, matching TS/Java/C#.)
 #   2. The (logical subtype × value) pairing must be legal:
 #        uuid              → field.string
 #        jsonb             → field.string

@@ -128,14 +128,27 @@ def test_dbcolumntype_uuid_on_timestamp_illegal() -> None:
     assert codes == ["ERR_BAD_ATTR_VALUE"]
 
 
+def test_dbcolumntype_uuid_on_uuid_field_illegal() -> None:
+    # A physical override on the LOGICAL uuid type is an error: @dbColumnType:uuid
+    # requires field.string (the closed pairing table maps uuid -> field.string).
+    # Pins the cross-port intent that uuid is logical-only on field.uuid.
+    codes, _ = _load(_entity(
+        {"field.long": {"name": "id"}},
+        {"field.uuid": {"name": "ref", "@dbColumnType": "uuid"}},
+    ))
+    assert codes == ["ERR_BAD_ATTR_VALUE"]
+
+
 def test_dbcolumntype_unknown_value_rejected() -> None:
-    # An unrecognized value is rejected (closed set). The attr-schema allowed_values
-    # check fires too — at least one ERR_BAD_ATTR_VALUE is present.
+    # An unrecognized value is rejected (closed set). @dbColumnType is a bare string
+    # attr (NO allowed_values), so ONLY the _validate_db_column_type pass enforces the
+    # closed set — exactly ONE ERR_BAD_ATTR_VALUE fires, matching TS/Java/C# (no
+    # duplicate from a redundant attr-schema allowed_values check).
     codes, _ = _load(_entity(
         {"field.long": {"name": "id"}},
         {"field.string": {"name": "x", "@dbColumnType": "tsvector"}},
     ))
-    assert "ERR_BAD_ATTR_VALUE" in codes
+    assert codes == ["ERR_BAD_ATTR_VALUE"]
 
 
 # ---------------------------------------------------------------------------

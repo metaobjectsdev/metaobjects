@@ -45,7 +45,6 @@ from .meta.core.field.field_constants import (
 from .meta.core.field.meta_field import MetaField
 from .meta.persistence.db.db_constants import (
     FIELD_ATTR_DB_COLUMN_TYPE,
-    VALID_DB_COLUMN_TYPES,
 )
 from .meta.core.identity.identity_constants import (
     GENERATION_VALUES,
@@ -275,9 +274,11 @@ _FIELD_COMMON_ATTRS = [
     ),
     AttrSchema(name=FIELD_ATTR_COLUMN, value_type=ATTR_SUBTYPE_STRING, required=False),
     # R6 Plan 2b — @dbColumnType physical column-type override (DB-domain attr).
-    # allowed_values gives the unknown-value rejection (ERR_BAD_ATTR_VALUE) for
-    # free via the attr-schema pass; the (subtype × value) pairing legality is a
-    # separate own-only pass in validation_passes. The TS port registers this on a
+    # Registered as a bare string attr (NO allowed_values) — matching TS/Java/C#,
+    # which register it unconstrained and let ONLY the _validate_db_column_type pass
+    # enforce the closed set. That pass covers both the unknown-value rejection
+    # (Rule 1) and the (subtype × value) pairing legality (Rule 2), so an unknown
+    # value fires exactly ONE ERR_BAD_ATTR_VALUE. The TS port registers this on a
     # dedicated metaobjects-db provider; Python keeps physical attrs (@column,
     # @dbColumnType) on the core field defs until a full Python db-codegen port
     # lands (same rationale as @column above).
@@ -285,7 +286,6 @@ _FIELD_COMMON_ATTRS = [
         name=FIELD_ATTR_DB_COLUMN_TYPE,
         value_type=ATTR_SUBTYPE_STRING,
         required=False,
-        allowed_values=VALID_DB_COLUMN_TYPES,
     ),
     # FR-010 field-teaching attrs (any field): free-text shown in the generated
     # output-format prompt fragment. Never carried in comments.
