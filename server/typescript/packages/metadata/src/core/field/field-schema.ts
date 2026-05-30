@@ -7,6 +7,7 @@ import {
   ATTR_SUBTYPE_INT,
   ATTR_SUBTYPE_BOOLEAN,
   ATTR_SUBTYPE_STRINGARRAY,
+  ATTR_SUBTYPE_PROPERTIES,
 } from "../attr/attr-constants.js";
 import { SORT_ORDER_VALUES } from "../query/query-constants.js";
 import {
@@ -27,6 +28,10 @@ import {
   FIELD_ATTR_AUTO_SET,
   AUTO_SET_VALUES,
   FIELD_ATTR_VALUES,
+  FIELD_ATTR_ENUM_ALIAS,
+  FIELD_ATTR_ENUM_DOC,
+  FIELD_ATTR_EXAMPLE,
+  FIELD_ATTR_INSTRUCTION,
 } from "./field-constants.js";
 
 /** Attrs common to every field subtype (codegen-ts column mapper + Project D filter/sort). */
@@ -124,6 +129,22 @@ export const commonFieldAttrs: AttrSchema[] = [
     description:
       "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write.",
   },
+  // FR-010 field-teaching attrs (any field): free-text shown in the generated
+  // output-format prompt fragment. Never carried in comments.
+  {
+    name: FIELD_ATTR_EXAMPLE,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    description:
+      "FR-010: an example value for this field, shown in the generated output-format prompt fragment.",
+  },
+  {
+    name: FIELD_ATTR_INSTRUCTION,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    description:
+      "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.",
+  },
 ];
 
 /** The @currency attr — only on field.currency. */
@@ -143,4 +164,24 @@ export const enumFieldAttr: AttrSchema = {
   required: true,
   description:
     "Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string.",
+};
+
+/** The @enumAlias attr — only on field.enum. Map of off-vocabulary token → canonical
+ *  member, feeding the FR-010 tolerant recover alias-fold (runtime aliases win on conflict). */
+export const enumAliasAttr: AttrSchema = {
+  name: FIELD_ATTR_ENUM_ALIAS,
+  valueType: ATTR_SUBTYPE_PROPERTIES,
+  required: false,
+  description:
+    "Map of alternate/off-vocabulary tokens to canonical enum members; feeds the FR-010 tolerant recover alias-fold.",
+};
+
+/** The @enumDoc attr — only on field.enum. Map of member → human-readable description,
+ *  shown per-member in the FR-010 'guide'-style output-format prompt fragment. */
+export const enumDocAttr: AttrSchema = {
+  name: FIELD_ATTR_ENUM_DOC,
+  valueType: ATTR_SUBTYPE_PROPERTIES,
+  required: false,
+  description:
+    "Map of enum member to a human-readable description; shown per-member in the FR-010 'guide'-style prompt fragment.",
 };

@@ -117,3 +117,21 @@ export const FIELD_ATTR_VALUES = "values";
  * stored string with no name↔value divergence.
  */
 export const ENUM_MEMBER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** FR-010: map of off-vocabulary token → canonical enum member, feeding the
+ *  tolerant recover alias-fold. `properties`-shaped; only on field.enum. */
+export const FIELD_ATTR_ENUM_ALIAS = "enumAlias";
+
+/** FR-010: map of enum member → human-readable description, shown per-member in
+ *  the 'guide'-style output-format prompt fragment. `properties`-shaped; only on field.enum. */
+export const FIELD_ATTR_ENUM_DOC = "enumDoc";
+
+// ---------------------------------------------------------------------------
+// FR-010 field-teaching attrs (on any field; drive the output-format prompt)
+// ---------------------------------------------------------------------------
+
+/** FR-010: an example value for this field, shown in the generated prompt fragment. */
+export const FIELD_ATTR_EXAMPLE = "example";
+
+/** FR-010: a short instruction for this field, shown in the generated prompt fragment. */
+export const FIELD_ATTR_INSTRUCTION = "instruction";

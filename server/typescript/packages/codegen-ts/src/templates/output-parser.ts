@@ -17,7 +17,14 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
   TEMPLATE_ATTR_PAYLOAD_REF,
+  TEMPLATE_ATTR_FORMAT,
 } from "@metaobjectsdev/metadata";
+import {
+  schemaLiteral,
+  mirrorInterface,
+  mirrorInitializer,
+} from "./recover-schema-emitter.js";
+import { recoverMapHelpersUsed } from "./fr010-field-mapping.js";
 
 const SCALAR_ZOD: Record<string, string> = {
   string: "z.string()",
@@ -103,9 +110,14 @@ export function renderOutputParser(root: MetaData, templateName: string): string
   const parseName = `parse${templateName}`;
   const safeParseName = `safeParse${templateName}`;
 
-  return `import { z } from "zod";
+  // FR-010: emit the tolerant recover() API alongside the strict Zod parser when the
+  // template targets json/xml. The @payloadRef already resolved to a value-object above,
+  // so a RecoverSchema can always be baked. text-format outputs get no recover.
+  const format = (tmpl.ownAttr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text";
+  const lc = format.toLowerCase();
+  const emitRecover = lc === "json" || lc === "xml";
 
-const ${schemaName} = ${schema};
+  const strictBody = `const ${schemaName} = ${schema};
 
 export type ${dataName} = z.infer<typeof ${schemaName}>;
 export type ${errorName} = z.ZodError;
@@ -140,4 +152,67 @@ export function ${safeParseName}(
     : { success: false, error: result.error };
 }
 `;
+
+  if (!emitRecover) {
+    return `import { z } from "zod";\n\n${strictBody}`;
+  }
+
+  // ---- FR-010 tolerant recover block (json/xml only) ----
+  const recoveredName = `${templateName}Recovered`;
+  const recoverFnName = `recover${templateName}`;
+  const tryRecoverName = `tryRecover${templateName}`;
+  const schemaConstName = `${templateName}RecoverSchema`;
+  const schemaLit = schemaLiteral(vo, format, payloadRef);
+  const mirrorDecl = mirrorInterface(vo, recoveredName);
+  const initializer = mirrorInitializer(vo);
+  const mapHelpers = recoverMapHelpersUsed(vo);
+
+  // Render-package imports the recover block needs. Only pull in the names the emitted
+  // source actually references, so the file has no unused imports (tsc noUnusedLocals-safe).
+  const renderImports = ["recover", "recoverSchema", "Format"];
+  if (schemaLit.includes("scalar(")) renderImports.push("scalar");
+  if (schemaLit.includes("enumField(")) renderImports.push("enumField");
+  if (schemaLit.includes("FieldKind.")) renderImports.push("FieldKind");
+  renderImports.push("type RecoverSchema", "type RecoverOptions", "type RecoveryResult");
+  renderImports.push(...mapHelpers);
+
+  const recoverBody = `/** Baked recover descriptor for the ${templateName} output. */
+const ${schemaConstName}: RecoverSchema = ${schemaLit};
+
+${mirrorDecl}
+
+/**
+ * Tolerant best-effort recovery of a dirty LLM response; never throws. Returns a
+ * nullable mirror (\`${recoveredName}\`) with fields null where lost/malformed,
+ * plus the per-field recovery report.
+ */
+export function ${recoverFnName}(
+  text: string,
+  opts?: RecoverOptions,
+): RecoveryResult<${recoveredName}> {
+  const outcome = recover(text, ${schemaConstName}, opts);
+  const d = outcome.data;
+  const data: ${recoveredName} = ${initializer};
+  return { data, report: outcome.report };
+}
+
+/**
+ * Recovery as a bool gate: \`true\` when the response was non-empty and no required
+ * field was lost. On success, \`result\` carries the recovered mirror + report.
+ */
+export function ${tryRecoverName}(
+  text: string,
+): { ok: boolean; result: RecoveryResult<${recoveredName}> } {
+  const result = ${recoverFnName}(text);
+  const ok = !result.report.isEmpty() && !result.report.hasLostRequired();
+  return { ok, result };
+}
+`;
+
+  return (
+    `import { z } from "zod";\n` +
+    `import {\n  ${renderImports.join(",\n  ")},\n} from "@metaobjectsdev/render";\n\n` +
+    `${strictBody}\n` +
+    `${recoverBody}`
+  );
 }
