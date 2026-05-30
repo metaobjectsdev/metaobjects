@@ -25,4 +25,14 @@ public class SqlTypeTest {
         assertFalse(SqlType.isWidening(new Int(32), new Text(120))); // cross-kind: lossy
         assertFalse(SqlType.isWidening(new Text(120), new Text(120))); // identical
     }
+    // R6: REAL (float4, single precision) is a distinct kind from DOUBLE (float8).
+    @Test public void real4_equals_real4_and_differs_from_real() {
+        assertEquals(new Real4(), new Real4());
+        assertNotEquals(new Real(), new Real4()); // float4 != float8
+    }
+    @Test public void float_kinds_are_never_widening() {
+        assertFalse(SqlType.isWidening(new Real4(), new Real())); // single -> double: not auto-widened
+        assertFalse(SqlType.isWidening(new Real(), new Real4())); // double -> single: narrowing
+        assertFalse(SqlType.isWidening(new Real4(), new Real4())); // identical
+    }
 }

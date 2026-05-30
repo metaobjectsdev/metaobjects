@@ -48,8 +48,8 @@ public final class Normalization {
         if (v instanceof Integer i)return i;
         if (v instanceof Short s)  return (int) s;
         if (v instanceof Byte b)   return (int) b;
-        if (v instanceof Float f)  return (double) f;
-        if (v instanceof Double d) return d;
+        if (v instanceof Float f)  return canonicalFloat(f);
+        if (v instanceof Double d) return canonicalFloat(d);
         if (v instanceof BigDecimal bd) return canonicalDecimal(bd);
         if (v instanceof UUID u)   return u.toString().toLowerCase(java.util.Locale.ROOT);
         if (v instanceof byte[] bytes) return Base64.getEncoder().encodeToString(bytes);
@@ -72,6 +72,23 @@ public final class Normalization {
             return out;
         }
         return v.toString();
+    }
+
+    /** REAL → canonical plain-decimal string, formatted from the single (no widening tail). */
+    private static String canonicalFloat(float f)  { return canonicalFloatStr(Float.toString(f), f); }
+    /** DOUBLE → canonical plain-decimal string. */
+    private static String canonicalFloat(double d) { return canonicalFloatStr(Double.toString(d), d); }
+    private static String canonicalFloatStr(String s, Object v) {
+        if (s.indexOf('E') >= 0 || s.indexOf('e') >= 0) {
+            throw new IllegalArgumentException(
+                "canonicalFloat: " + v + " is outside the plain-decimal band (exponential notation); "
+                + "REAL/DOUBLE fixture values must be in-band dyadic rationals — "
+                + "see fixtures/persistence-conformance/normalization.md");
+        }
+        if (!s.contains(".")) return s;
+        s = s.replaceAll("0+$", "");
+        if (s.endsWith(".")) s = s.substring(0, s.length() - 1);
+        return s;
     }
 
     /** NUMERIC/DECIMAL → canonical string: strip trailing zeros + the decimal point if integral. */

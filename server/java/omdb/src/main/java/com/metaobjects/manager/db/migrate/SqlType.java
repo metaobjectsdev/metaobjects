@@ -9,7 +9,7 @@ package com.metaobjects.manager.db.migrate;
  * Per spec §5.2.
  */
 public sealed interface SqlType
-        permits SqlType.Text, SqlType.Int, SqlType.Real, SqlType.Numeric, SqlType.Bool,
+        permits SqlType.Text, SqlType.Int, SqlType.Real, SqlType.Real4, SqlType.Numeric, SqlType.Bool,
                 SqlType.Timestamp, SqlType.Date, SqlType.Json, SqlType.Blob, SqlType.Uuid {
 
     /** maxLength == null means unbounded (TEXT). */
@@ -18,7 +18,11 @@ public sealed interface SqlType
     /** bits: 32 (INTEGER) or 64 (BIGINT). Named Int to avoid shadowing java.lang.Integer. */
     record Int(int bits) implements SqlType {}
 
+    /** DOUBLE PRECISION (float8, double precision) — field.double. */
     record Real() implements SqlType {}
+
+    /** REAL (float4, single precision) — field.float. */
+    record Real4() implements SqlType {}
 
     record Numeric(Integer precision, Integer scale) implements SqlType {}
 
@@ -65,7 +69,7 @@ public sealed interface SqlType
             return tp >= fp && ts == fs && (tp - ts) >= (fp - fs);
         }
 
-        // Real/Bool/Date/Json/Blob/Uuid/Timestamp: any same-kind difference is not widening
+        // Real/Real4/Bool/Date/Json/Blob/Uuid/Timestamp: any same-kind difference is not widening
         return false;
     }
 }
