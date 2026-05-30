@@ -6,7 +6,7 @@ Each fixture dir under ``fixtures/recover-conformance/`` holds:
 - ``input.txt``     the raw (possibly dirty) LLM output
 - ``expected.json`` ``{ "empty": bool, "states": {field: FieldRecovery}, "data": {field: value} }``
 
-All 10 cases must pass. The corpus is the oracle — do not weaken assertions.
+All 20 cases must pass. The corpus is the oracle — do not weaken assertions.
 1:1 port of ``RecoverConformanceTest.java`` / ``RecoverConformanceTests.cs``.
 """
 from __future__ import annotations
@@ -54,6 +54,12 @@ def _cases() -> list[str]:
     return sorted(
         d.name for d in _CORPUS.iterdir() if (d / "schema.json").is_file()
     )
+
+
+def test_discovers_all_recover_conformance_cases() -> None:
+    """FR-011: lock the corpus size so a deleted fixture fails CI rather than
+    silently reducing coverage. Mirrors the TS / Java / C# count guards."""
+    assert len(_cases()) == 20
 
 
 _NORMALIZE_MODES = {"none", "collapse", "strip"}

@@ -41,6 +41,14 @@ public class RecoverConformanceTests
         }
     }
 
+    [Fact]
+    public void Discovers_all_recover_conformance_cases()
+    {
+        // FR-011: lock the corpus size so a deleted fixture fails CI rather than
+        // silently reducing coverage. Mirrors the TS / Java / Python count guards.
+        Assert.Equal(20, Cases().Count());
+    }
+
     [Theory]
     [MemberData(nameof(Cases))]
     public void ClassificationAndCanonicalValueMatch(string caseName)
