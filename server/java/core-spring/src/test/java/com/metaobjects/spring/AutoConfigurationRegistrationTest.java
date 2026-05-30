@@ -30,4 +30,10 @@ public class AutoConfigurationRegistrationTest {
         assertTrue("MetaDataAutoConfiguration must be listed in AutoConfiguration.imports; saw: " + candidates(),
             candidates().contains("com.metaobjects.spring.MetaDataAutoConfiguration"));
     }
+
+    @Test
+    public void objectManagerAutoConfiguration_isRegisteredForBoot3Discovery() {
+        assertTrue("ObjectManagerAutoConfiguration must be listed in AutoConfiguration.imports; saw: " + candidates(),
+            candidates().contains("com.metaobjects.spring.ObjectManagerAutoConfiguration"));
+    }
 }
