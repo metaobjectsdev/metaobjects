@@ -160,6 +160,60 @@ public sealed class Fr010CodegenTests
         Assert.Contains("Respond exactly like this:", fragment);
     }
 
+    // ---- FR-011: @coerceDefault compile-AND-run proof ----
+
+    private const string CoerceDefaultModel = """
+    { "metadata.root": { "package": "acme::ai", "children": [
+      { "object.value": { "name": "TaskPayload", "children": [
+        { "field.string": { "name": "title", "@required": true } },
+        { "field.enum": { "name": "status", "@required": true,
+            "@values": ["IN_PROGRESS","DONE"],
+            "@coerceDefault": "DONE", "@normalize": "none" } }
+      ]}},
+      { "template.output": { "name": "TaskOutput", "@payloadRef": "TaskPayload",
+          "@textRef": "ai/task", "@format": "json", "@promptStyle": "guide" } }
+    ]}}
+    """;
+
+    [Fact]
+    public void Parser_emits_coerce_default_and_normalize_args()
+    {
+        var src = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(CoerceDefaultModel)))).Content;
+        // status: coerceDefault "DONE", normalize None → extended EnumField tail.
+        Assert.Contains(
+            "FieldSpec.EnumField(\"status\", true, new[] { \"IN_PROGRESS\", \"DONE\" }, null, \"DONE\", NormalizeMode.None)",
+            src);
+    }
+
+    [Fact]
+    public void Generated_recover_folds_off_vocab_via_coerce_default_to_defaulted()
+    {
+        var root = Load(CoerceDefaultModel);
+        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(Ctx(root))).Content;
+        var promptSrc = Assert.Single(new OutputPromptGenerator().Generate(Ctx(root))).Content;
+        var payloadSrc = "namespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "TaskPayload");
+
+        var asm = CompileToAssembly(parserSrc, promptSrc, payloadSrc);
+
+        var parserType = asm.GetType("Acme.Generated.TaskOutputParser")!;
+        var recover = parserType.GetMethod("Recover", new[] { typeof(string) })!;
+        // Off-vocab enum value "banana" → @coerceDefault folds it to "DONE".
+        const string dirty = "{ \"title\": \"ship it\", \"status\": \"banana\" }";
+        var result = recover.Invoke(null, new object[] { dirty })!;
+
+        var data = result.GetType().GetProperty("Data")!.GetValue(result)!;
+        string? Get(string p) => data.GetType().GetProperty(p)!.GetValue(data) as string;
+
+        Assert.Equal("ship it", Get("title"));
+        Assert.Equal("DONE", Get("status")); // @coerceDefault fold
+
+        // The report classifies status as DEFAULTED (not RECOVERED).
+        var report = result.GetType().GetProperty("Report")!.GetValue(result)!;
+        var states = (System.Collections.IDictionary)report.GetType().GetMethod("States")!.Invoke(report, null)!;
+        Assert.Equal("DEFAULTED", states["status"]!.ToString());
+        Assert.Equal("RECOVERED", states["title"]!.ToString());
+    }
+
     private static Assembly CompileToAssembly(params string[] sources)
     {
         var trees = sources.Select(s =>
