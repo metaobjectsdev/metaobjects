@@ -89,6 +89,7 @@ public class PostgresDriver extends GenericSQLDriver {
                     case Types.FLOAT -> query.append("REAL");
                     case Types.DOUBLE -> query.append("DOUBLE PRECISION");
                     case Types.TIMESTAMP -> query.append("TIMESTAMP WITH TIME ZONE");
+                    case Types.TIME -> query.append("TIME");
                     case Types.VARCHAR -> {
                         if (col.getLength() > 10485760) { // 10MB limit for VARCHAR
                             query.append("TEXT");

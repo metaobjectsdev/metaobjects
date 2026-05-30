@@ -86,6 +86,7 @@ public class DerbyDriver extends GenericSQLDriver {
                     case Types.FLOAT -> query.append("REAL");
                     case Types.DOUBLE -> query.append("DOUBLE");
                     case Types.TIMESTAMP -> query.append("TIMESTAMP");
+                    case Types.TIME -> query.append("TIME");
                     case Types.VARCHAR -> {
                         if (col.getLength() > 32700) {
                             query.append("CLOB");

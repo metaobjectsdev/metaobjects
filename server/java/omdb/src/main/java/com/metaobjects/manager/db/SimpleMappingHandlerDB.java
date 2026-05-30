@@ -13,6 +13,7 @@ import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 
 import com.metaobjects.field.MetaField;
+import com.metaobjects.field.TimeField;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.manager.ObjectManager;
@@ -266,6 +267,8 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	protected int getSQLType( MetaField mf ) {
 		// jsonb fields are stored as text (VARCHAR/CLOB) — no native jsonb on Derby
 		if (isJsonbField(mf)) return Types.VARCHAR;
+		// TimeField uses DataTypes.CUSTOM; its SQL column type is TIME.
+		if (mf instanceof TimeField) return Types.TIME;
 		switch( mf.getDataType() )
 		{
 		case BOOLEAN: return Types.BIT;
@@ -285,6 +288,8 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	protected int getSQLLength( MetaField mf ) {
 		// jsonb: store as CLOB (length > Derby's VARCHAR max of 32672 triggers CLOB in DerbyDriver)
 		if (isJsonbField(mf)) return 65536;
+		// TimeField uses DataTypes.CUSTOM; TIME columns have no meaningful length parameter.
+		if (mf instanceof TimeField) return 0;
 		switch( mf.getDataType() )
 		{
 			case BOOLEAN: return 1;

@@ -21,6 +21,7 @@ import org.junit.Test;
 import javax.sql.DataSource;
 import java.io.PrintWriter;
 import java.sql.*;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -109,6 +110,7 @@ public class BulkCreateFallbackTest {
         vo.setObject("amount", new java.math.BigDecimal("1.00"));
         vo.setString("label", label);
         vo.setDate("createdAt", new java.util.Date(1_700_000_000_000L));
+        vo.setObject("startTime", LocalTime.of(8, 0, 0));
         return vo;
     }
 

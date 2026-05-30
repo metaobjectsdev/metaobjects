@@ -69,6 +69,12 @@
               }
             },
             {
+              "field.time": {
+                "name": "startTime",
+                "@column": "startTime"
+              }
+            },
+            {
               "identity.primary": {
                 "name": "primary",
                 "@fields": ["id"],

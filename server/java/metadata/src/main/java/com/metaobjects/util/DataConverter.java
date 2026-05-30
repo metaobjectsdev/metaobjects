@@ -51,7 +51,10 @@ public final class DataConverter
 			case STRING_ARRAY: return toStringArray( val );
 			case OBJECT_ARRAY: return toObjectArray( val );
 
-			case CUSTOM: throw new IllegalStateException( "Cannot convert to a custom type, value passed: [" + val + "]" );
+			// Custom types are opaque to the generic converter; their JDBC binding is
+			// handled by the per-type codec (e.g. TimeCodec for TimeField/LocalTime).
+			// Pass the value through unchanged so the codec read path is not blocked.
+			case CUSTOM: return val;
 
 			default: throw new IllegalStateException( "Unknown type (" + dataType + "), cannot convert object [" + val + "]" );
 		}
