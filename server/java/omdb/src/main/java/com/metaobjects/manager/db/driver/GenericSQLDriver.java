@@ -308,7 +308,16 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
-     * Gets the next sequence for a given MetaClass
+     * Generic {@code MAX(col) + 1} fallback for the next auto-id.
+     *
+     * <p><strong>Single-writer / test-only.</strong> This is the base-class fallback used
+     * when a dialect provides no native sequence or identity column. It is <em>not</em>
+     * concurrency-safe: two concurrent writers can read the same {@code MAX} and collide.
+     * Real dialects override id generation with database sequences or identity/auto-increment
+     * columns; this exists only for simple embedded/test scenarios with a single writer.</p>
+     *
+     * <p>The {@code MAX} result is parsed as a {@code long} so BIGINT / {@code LongField}
+     * ids above {@link Integer#MAX_VALUE} are not truncated.</p>
      */
     protected String getNextAutoId(Connection conn, ColumnDef col) throws SQLException {
         // String table = getManager().getTableName( mc );
@@ -343,9 +352,9 @@ public class GenericSQLDriver implements DatabaseDriver {
                         return "1";
                     }
 
-                    int i = Integer.parseInt(tmp) + 1;
+                    long i = Long.parseLong(tmp) + 1;
 
-                    return "" + i;
+                    return Long.toString(i);
                 } finally {
                     rs.close();
                 }
