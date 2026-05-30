@@ -27,9 +27,8 @@ export async function loadMigrations(dir: string): Promise<Migration[]> {
   for (const entry of entries) {
     const m = /^(\d{14})-(.+)$/.exec(entry);
     if (m === null) continue;
-    const version = m[1];
-    const name = m[2];
-    if (version === undefined || name === undefined) continue;
+    const [, version, name] = m;
+    if (!version || !name) continue; // satisfies noUncheckedIndexedAccess; cannot occur after a match
     const migDir = join(dir, entry);
     const upSql = await readFile(join(migDir, "up.sql"), "utf8");
     let downSql = "";

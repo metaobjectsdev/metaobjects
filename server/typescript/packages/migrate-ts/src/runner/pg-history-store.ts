@@ -18,24 +18,21 @@ export interface PgHistoryStoreOptions {
  */
 export class PgHistoryStore implements HistoryStore {
   private readonly schema: string;
-  private readonly table: string;
+  private readonly qualifiedTable: string;
   private readonly lockKey: string; // 64-bit signed, as a decimal string for $1::bigint
   private lockClient: PoolClient | null = null;
 
   constructor(private readonly pool: Pool, opts: PgHistoryStoreOptions = {}) {
     this.schema = opts.schema ?? "public";
-    this.table = opts.table ?? "metaobjects_migrations";
-    this.lockKey = advisoryKey(opts.lockName ?? `${this.schema}.${this.table}`);
-  }
-
-  private q(): string {
-    return `"${this.schema}"."${this.table}"`;
+    const table = opts.table ?? "metaobjects_migrations";
+    this.qualifiedTable = `"${this.schema}"."${table}"`;
+    this.lockKey = advisoryKey(opts.lockName ?? `${this.schema}.${table}`);
   }
 
   async ensure(): Promise<void> {
     await this.pool.query(`CREATE SCHEMA IF NOT EXISTS "${this.schema}"`);
     await this.pool.query(
-      `CREATE TABLE IF NOT EXISTS ${this.q()} (
+      `CREATE TABLE IF NOT EXISTS ${this.qualifiedTable} (
          version TEXT PRIMARY KEY,
          name TEXT NOT NULL,
          checksum TEXT NOT NULL,
@@ -49,7 +46,7 @@ export class PgHistoryStore implements HistoryStore {
   async applied(): Promise<AppliedRow[]> {
     const r = await this.pool.query(
       `SELECT version, name, checksum, applied_at, execution_ms, success
-         FROM ${this.q()} ORDER BY version ASC`,
+         FROM ${this.qualifiedTable} ORDER BY version ASC`,
     );
     return r.rows.map((row: Record<string, unknown>) => ({
       version: String(row["version"]),
@@ -63,7 +60,7 @@ export class PgHistoryStore implements HistoryStore {
 
   async record(row: AppliedRow): Promise<void> {
     await this.pool.query(
-      `INSERT INTO ${this.q()} (version, name, checksum, applied_at, execution_ms, success)
+      `INSERT INTO ${this.qualifiedTable} (version, name, checksum, applied_at, execution_ms, success)
          VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (version) DO UPDATE SET
          name = EXCLUDED.name, checksum = EXCLUDED.checksum,
@@ -74,7 +71,7 @@ export class PgHistoryStore implements HistoryStore {
   }
 
   async unrecord(version: string): Promise<void> {
-    await this.pool.query(`DELETE FROM ${this.q()} WHERE version = $1`, [version]);
+    await this.pool.query(`DELETE FROM ${this.qualifiedTable} WHERE version = $1`, [version]);
   }
 
   async acquireLock(): Promise<void> {
