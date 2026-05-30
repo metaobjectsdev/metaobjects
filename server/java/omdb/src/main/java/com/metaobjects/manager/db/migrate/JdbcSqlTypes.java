@@ -23,7 +23,12 @@ public final class JdbcSqlTypes {
                 return new SqlType.Int(64);
             case Types.FLOAT:
             case Types.REAL:
+                // float4 / single precision — field.float. Postgres reports a REAL column as
+                // Types.REAL and SimpleMappingHandlerDB maps FloatField -> Types.FLOAT, so both
+                // the expected-snapshot and introspection paths land on Real4 (stable round-trip).
+                return new SqlType.Real4();
             case Types.DOUBLE:
+                // float8 / double precision — field.double.
                 return new SqlType.Real();
             case Types.NUMERIC:
             case Types.DECIMAL:

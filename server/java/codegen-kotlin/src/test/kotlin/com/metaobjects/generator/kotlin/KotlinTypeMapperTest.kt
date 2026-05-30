@@ -8,6 +8,7 @@ import com.metaobjects.field.CurrencyField
 import com.metaobjects.field.DateField
 import com.metaobjects.field.DoubleField
 import com.metaobjects.field.EnumField
+import com.metaobjects.field.FloatField
 import com.metaobjects.field.IntegerField
 import com.metaobjects.field.LongField
 import com.metaobjects.field.PrimitiveField
@@ -17,6 +18,7 @@ import com.metaobjects.metadata.ktx.loadString
 import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.DOUBLE
+import com.squareup.kotlinpoet.FLOAT
 import com.squareup.kotlinpoet.INT
 import com.squareup.kotlinpoet.LONG
 import com.squareup.kotlinpoet.STRING
@@ -52,6 +54,11 @@ class KotlinTypeMapperTest {
     @Test fun `double field maps to Double`() {
         val f = DoubleField("ratio")
         assertEquals(DOUBLE, KotlinTypeMapper.kotlinTypeName(f))
+    }
+
+    @Test fun `float field maps to Float`() {
+        val f = FloatField("weight")
+        assertEquals(FLOAT, KotlinTypeMapper.kotlinTypeName(f))
     }
 
     @Test fun `boolean field maps to Boolean`() {
@@ -99,6 +106,11 @@ class KotlinTypeMapperTest {
     @Test fun `double field maps to double exposed column`() {
         val f = DoubleField("ratio")
         assertEquals("double(\"ratio\")", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
+    @Test fun `float field maps to float exposed column`() {
+        val f = FloatField("weight")
+        assertEquals("float(\"weight\")", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
     @Test fun `date field maps to date exposed column`() {

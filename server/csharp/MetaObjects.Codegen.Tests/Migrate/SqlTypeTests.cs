@@ -14,6 +14,8 @@ public class SqlTypeTests
         Assert.Equal(new SqlType.Integer(64), new SqlType.Integer(64));
         Assert.NotEqual<SqlType>(new SqlType.Integer(32), new SqlType.Integer(64));
         Assert.Equal<SqlType>(new SqlType.Real(), new SqlType.Real());
+        Assert.Equal<SqlType>(new SqlType.Real4(), new SqlType.Real4());
+        Assert.NotEqual<SqlType>(new SqlType.Real(), new SqlType.Real4());  // float8 ≠ float4
         Assert.NotEqual<SqlType>(new SqlType.Timestamp(true), new SqlType.Timestamp(false));
         Assert.NotEqual<SqlType>(new SqlType.Integer(32), new SqlType.Real());
     }

@@ -15,6 +15,7 @@ from .sql_type import (
     Json,
     Numeric,
     Real,
+    Real4,
     SqlType,
     Text,
     Timestamp,
@@ -125,6 +126,8 @@ def _pg_type(t: SqlType) -> str:
         return "BIGINT" if t.bits == 64 else "INTEGER"
     if isinstance(t, Real):
         return "DOUBLE PRECISION"
+    if isinstance(t, Real4):
+        return "REAL"
     if isinstance(t, Numeric):
         if t.precision is not None and t.scale is not None:
             return f"NUMERIC({t.precision},{t.scale})"

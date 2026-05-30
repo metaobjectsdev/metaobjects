@@ -20,7 +20,11 @@ const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0
 export function normalizeValue(v: unknown): unknown {
   if (v === null || v === undefined) return null;
   if (typeof v === "boolean") return v;
-  if (typeof v === "number") return v;
+  // INTEGER/SMALLINT come back as integer-valued JS numbers → keep as JSON number.
+  // REAL/DOUBLE come back as non-integer JS numbers → stringify (plain decimal, strip zeros).
+  // (The runner sees an already-mapped row with no column-type metadata; fixtures pin
+  // float/double values to be non-integer so this value-route is exact — see normalization.md.)
+  if (typeof v === "number") return Number.isInteger(v) ? v : canonicalFloat(v);
   // node-postgres returns BIGINT as string by default — leave as string (contract).
   if (typeof v === "bigint") return v.toString();
   if (typeof v === "string") {
@@ -58,6 +62,24 @@ function canonicalDecimal(s: string): string {
   let out = s.replace(/0+$/, "");
   if (out.endsWith(".")) out = out.slice(0, -1);
   return out;
+}
+
+export function canonicalFloat(n: number): string {
+  // In-band dyadic values (per normalization.md) render plain + shortest via String().
+  // Out-of-band values (exponential notation) are forbidden by the wire contract;
+  // throw immediately so an authoring error surfaces loudly rather than silently
+  // corrupting the exponent digits during the trailing-zero strip.
+  const out = String(n);
+  if (/[eE]/.test(out)) {
+    throw new Error(
+      `canonicalFloat: ${n} is outside the plain-decimal band (exponential notation); ` +
+        `REAL/DOUBLE fixture values must be in-band dyadic rationals — ` +
+        `see fixtures/persistence-conformance/normalization.md`,
+    );
+  }
+  if (!out.includes(".")) return out;
+  const stripped = out.replace(/0+$/, "");
+  return stripped.endsWith(".") ? stripped.slice(0, -1) : stripped;
 }
 
 // Format a Date as YYYY-MM-DDTHH:MM:SS[.fff] using UTC getters so the output

@@ -357,6 +357,7 @@ public class DerbyDriver extends GenericSQLDriver {
             case SqlType.Bool b      -> "BOOLEAN";
             case SqlType.Timestamp ts -> "TIMESTAMP";
             case SqlType.Real r      -> "DOUBLE";
+            case SqlType.Real4 r     -> "REAL";
             case SqlType.Numeric n   -> "NUMERIC";
             case SqlType.Json j      -> "VARCHAR(32700)";
             case SqlType.Date d      -> "DATE";

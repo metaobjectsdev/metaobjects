@@ -90,7 +90,8 @@ public static class PostgresIntrospect
               or "int2" or "smallint" or "smallserial")
             return new SqlType.Integer(32);
 
-        if (dt is "float4" or "real" or "float8" or "double precision") return new SqlType.Real();
+        if (dt is "float4" or "real") return new SqlType.Real4();
+        if (dt is "float8" or "double precision") return new SqlType.Real();
 
         var num = NumericInline.Match(dt);
         if (num.Success)

@@ -28,6 +28,16 @@
         ]
       }},
       { "object.entity": {
+        "name": "Measurement",
+        "children": [
+          { "source.rdb": { "@table": "measurements" } },
+          { "field.long":   { "name": "id" } },
+          { "field.float":  { "name": "tempC",  "@required": true } },
+          { "field.double": { "name": "massKg", "@required": true } },
+          { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.entity": {
         "name": "ProgramView",
         "children": [
           { "source.rdb": { "@kind": "view", "@table": "v_program" } },

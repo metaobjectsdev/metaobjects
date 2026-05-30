@@ -370,6 +370,7 @@ public class PostgresDriver extends GenericSQLDriver {
             // gratuitously promoted to TIMESTAMPTZ (matches TS/C# behavior).
             case SqlType.Timestamp ts -> ts.withTimezone() ? "TIMESTAMP WITH TIME ZONE" : "TIMESTAMP";
             case SqlType.Real r      -> "DOUBLE PRECISION";
+            case SqlType.Real4 r     -> "REAL";
             case SqlType.Numeric n   -> "NUMERIC";
             case SqlType.Json j      -> "JSONB";
             case SqlType.Date d      -> "DATE";

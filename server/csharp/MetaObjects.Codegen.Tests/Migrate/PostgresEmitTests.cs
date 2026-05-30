@@ -125,6 +125,7 @@ public class PostgresEmitTests
         Assert.Contains("VARCHAR(50)", T(new SqlType.Text(50)));
         Assert.Contains("INTEGER;", T(new SqlType.Integer(32)));
         Assert.Contains("DOUBLE PRECISION", T(new SqlType.Real()));
+        Assert.Contains("REAL;", T(new SqlType.Real4()));
         Assert.Contains("NUMERIC(10,2)", T(new SqlType.Numeric(10, 2)));
         Assert.Contains("NUMERIC(8)", T(new SqlType.Numeric(8)));
         Assert.Contains("NUMERIC;", T(new SqlType.Numeric()));

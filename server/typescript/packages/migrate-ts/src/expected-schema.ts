@@ -148,6 +148,13 @@ function normalizeForSqlite(sqlType: SqlType): SqlType {
       // plain "INTEGER" regardless of source bit-width. Collapse 32 → 64 so the
       // expected snapshot matches what introspection sees.
       return { kind: "integer", bits: 64 };
+    case "real4":
+      // SQLite has a single float storage class ("REAL"); it cannot distinguish
+      // single-precision (real4 / field.float) from double-precision (real /
+      // field.double). Collapse real4 → real so the expected snapshot matches
+      // what the SQLite introspector produces, preventing a phantom
+      // change-column-type diff on every field.float column.
+      return { kind: "real" };
     default:
       return sqlType;
   }
@@ -380,8 +387,8 @@ function subtypeToSqlType(field: MetaData): SqlType {
     case FIELD_SUBTYPE_BYTE:      return { kind: "integer", bits: 32 };
     case FIELD_SUBTYPE_LONG:
     case FIELD_SUBTYPE_CURRENCY:  return { kind: "integer", bits: 64 };
-    case FIELD_SUBTYPE_DOUBLE:
-    case FIELD_SUBTYPE_FLOAT:     return { kind: "real" };
+    case FIELD_SUBTYPE_DOUBLE:    return { kind: "real" };
+    case FIELD_SUBTYPE_FLOAT:     return { kind: "real4" };
     case FIELD_SUBTYPE_DECIMAL:   return { kind: "numeric" };
     case FIELD_SUBTYPE_BOOLEAN:   return { kind: "boolean" };
     case FIELD_SUBTYPE_DATE:      return { kind: "date" };

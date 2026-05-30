@@ -147,6 +147,7 @@ function pgType(t: SqlType): string {
     case "text":      return t.maxLength !== undefined ? `VARCHAR(${t.maxLength})` : "TEXT";
     case "integer":   return t.bits === 64 ? "BIGINT" : "INTEGER";
     case "real":      return "DOUBLE PRECISION";
+    case "real4":     return "REAL";
     case "numeric":   {
       if (t.precision !== undefined && t.scale !== undefined) return `NUMERIC(${t.precision},${t.scale})`;
       if (t.precision !== undefined) return `NUMERIC(${t.precision})`;

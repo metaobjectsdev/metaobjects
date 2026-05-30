@@ -65,9 +65,15 @@ public class PostgresIntrospectTests
     [Theory]
     [InlineData("real")]
     [InlineData("float4")]
+    public void PgTypeToSqlType_float4_maps_to_real4(string dataType)
+    {
+        Assert.Equal(new SqlType.Real4(), PostgresIntrospect.PgTypeToSqlType(dataType));
+    }
+
+    [Theory]
     [InlineData("double precision")]
     [InlineData("float8")]
-    public void PgTypeToSqlType_real(string dataType)
+    public void PgTypeToSqlType_float8_maps_to_real(string dataType)
     {
         Assert.Equal(new SqlType.Real(), PostgresIntrospect.PgTypeToSqlType(dataType));
     }

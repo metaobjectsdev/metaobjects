@@ -5,6 +5,7 @@ import com.metaobjects.field.CurrencyField
 import com.metaobjects.field.DateField
 import com.metaobjects.field.DoubleField
 import com.metaobjects.field.EnumField
+import com.metaobjects.field.FloatField
 import com.metaobjects.field.IntegerField
 import com.metaobjects.field.LongField
 import com.metaobjects.field.MetaField
@@ -14,6 +15,7 @@ import com.metaobjects.`object`.MetaObject
 import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.DOUBLE
+import com.squareup.kotlinpoet.FLOAT
 import com.squareup.kotlinpoet.INT
 import com.squareup.kotlinpoet.LONG
 import com.squareup.kotlinpoet.STRING
@@ -129,6 +131,9 @@ object KotlinTypeMapper {
         is IntegerField   -> INT
         is LongField      -> LONG
         is DoubleField    -> DOUBLE
+        // REAL (float4) — distinct single-precision arm so field.float round-trips as
+        // Kotlin Float / Exposed REAL, separate from field.double (float8). See R6.
+        is FloatField     -> FLOAT
         is BooleanField   -> BOOLEAN
         is DateField      -> ClassName("java.time", "LocalDate")
         is TimestampField -> ClassName("java.time", "Instant")
@@ -226,6 +231,9 @@ object KotlinTypeMapper {
         is IntegerField   -> "integer(\"$colName\")"
         is LongField      -> "long(\"$colName\")"
         is DoubleField    -> "double(\"$colName\")"
+        // Exposed `float(name)` maps to Postgres REAL (float4); `double` maps to
+        // DOUBLE PRECISION (float8). Keeps field.float distinct on the wire. See R6.
+        is FloatField     -> "float(\"$colName\")"
         is BooleanField   -> "bool(\"$colName\")"
         is DateField      -> "date(\"$colName\")"
         // Default for field.timestamp is plain `timestamp(...)` — Postgres `timestamp

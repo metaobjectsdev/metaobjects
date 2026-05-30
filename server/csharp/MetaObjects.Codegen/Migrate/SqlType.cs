@@ -19,7 +19,8 @@ public abstract record SqlType
 {
     public sealed record Text(long? MaxLength = null) : SqlType;
     public sealed record Integer(int Bits) : SqlType;          // 32 | 64
-    public sealed record Real : SqlType;
+    public sealed record Real : SqlType;     // DOUBLE PRECISION (float8) — field.double
+    public sealed record Real4 : SqlType;    // REAL (float4) — field.float
     public sealed record Numeric(long? Precision = null, long? Scale = null) : SqlType;
     public sealed record Boolean : SqlType;
     public sealed record Timestamp(bool WithTimezone) : SqlType;

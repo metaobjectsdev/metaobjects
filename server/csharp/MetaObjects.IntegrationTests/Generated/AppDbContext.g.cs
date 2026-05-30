@@ -9,6 +9,7 @@ public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
+    public DbSet<Measurement> Measurements { get; set; } = default!;
     public DbSet<Program> Programs { get; set; } = default!;
     public DbSet<ProgramStat> ProgramStats { get; set; } = default!;
     public DbSet<ProgramView> ProgramViews { get; set; } = default!;

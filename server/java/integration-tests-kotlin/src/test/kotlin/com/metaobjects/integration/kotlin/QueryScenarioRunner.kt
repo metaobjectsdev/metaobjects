@@ -2,6 +2,7 @@ package com.metaobjects.integration.kotlin
 
 import com.metaobjects.integration.kotlin.Scenarios.QueryScenario
 import com.metaobjects.integration.kotlin.Scenarios.QuerySpec
+import com.metaobjects.integration.kotlin.tables.MeasurementTable
 import com.metaobjects.integration.kotlin.tables.ProgramStatView
 import com.metaobjects.integration.kotlin.tables.ProgramTable
 import com.metaobjects.integration.kotlin.tables.WeekTable
@@ -49,7 +50,7 @@ object QueryScenarioRunner {
         val db = Database.connect(pg.jdbcUrl, user = pg.username, password = pg.password)
 
         transaction(db) {
-            SchemaUtils.create(ProgramTable, WeekTable)
+            SchemaUtils.create(ProgramTable, WeekTable, MeasurementTable)
         }
 
         // 2. Seed via the YAML's raw SQL — runs outside Exposed transactions, on a
@@ -109,6 +110,7 @@ object QueryScenarioRunner {
     private fun tableFor(entity: String): Table = when (entity) {
         "Program" -> ProgramTable
         "Week" -> WeekTable
+        "Measurement" -> MeasurementTable
         "ProgramStat" -> ProgramStatView
         else -> error("No Exposed Table registered for entity '$entity' — extend QueryScenarioRunner.tableFor")
     }

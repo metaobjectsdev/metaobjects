@@ -48,6 +48,16 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedFk(columnName = "programId", targetTable = "ProgramTable"),
             ),
         ),
+        // R6 float fidelity: field.float → Exposed `float(...)` (REAL),
+        // field.double → `double(...)` (DOUBLE PRECISION). Verifies the generator
+        // emits the distinct single/double-precision column families.
+        "Measurement" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("id", families = setOf("long")),
+                ExpectedColumn("tempC", families = setOf("float")),
+                ExpectedColumn("massKg", families = setOf("double")),
+            ),
+        ),
         "ProgramView" to EntityExpectation(
             columns = listOf(
                 ExpectedColumn("id", families = setOf("long")),

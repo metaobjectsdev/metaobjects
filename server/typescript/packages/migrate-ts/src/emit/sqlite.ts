@@ -278,6 +278,7 @@ function sqliteType(t: SqlType, identity: ColumnDescriptor["identity"]): string 
     // in pragma_table_info, enabling round-trip fidelity (see introspect/sqlite.ts).
     case "integer":   return t.bits === 64 ? "INTEGER" : "INT";
     case "real":      return "REAL";
+    case "real4":     return "REAL";
     case "numeric":   {
       if (t.precision !== undefined && t.scale !== undefined) return `NUMERIC(${t.precision},${t.scale})`;
       return "NUMERIC";
