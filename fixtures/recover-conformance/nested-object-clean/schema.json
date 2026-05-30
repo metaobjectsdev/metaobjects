@@ -1,0 +1,5 @@
+{ "format": "JSON", "rootName": "doc", "fields": [
+  { "name": "title", "kind": "STRING", "required": true },
+  { "name": "meta", "kind": "OBJECT", "required": true, "fields": [
+    { "name": "score", "kind": "INT", "required": true },
+    { "name": "label", "kind": "STRING", "required": true } ] } ] }
