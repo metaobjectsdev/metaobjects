@@ -67,6 +67,40 @@ public class EnumField extends PrimitiveField<String> {
     public static final String ATTR_ENUM_DOC = "enumDoc";
 
     /**
+     * Name of the optional FR-011 {@code @coerceDefault} attribute (string).
+     * Member symbol used by tolerant recover as the fallback when a present-but-uncoercible
+     * value is seen → the field classifies as {@code DEFAULTED}. Loader-validated to be one
+     * of the field's effective {@code @values} ({@code ERR_BAD_ATTR_VALUE} otherwise).
+     * Cross-language vocabulary: {@code @coerceDefault} in canonical JSON.
+     */
+    public static final String ATTR_COERCE_DEFAULT = "coerceDefault";
+
+    /**
+     * Name of the optional FR-011 {@code @normalize} attribute (closed enum
+     * {@code none|collapse|strip}, default {@code strip}). Controls the ASCII normalization
+     * applied during tolerant enum recover. On {@code field.enum} it is per-field; on
+     * {@code object.value} it is the object-level default for its enum fields.
+     * Cross-language vocabulary: {@code @normalize} in canonical JSON.
+     */
+    public static final String ATTR_NORMALIZE = "normalize";
+
+    /** FR-011: {@code @normalize} mode — exact match only (no normalization). */
+    public static final String NORMALIZE_NONE = "none";
+
+    /** FR-011: {@code @normalize} mode — ASCII-upper + trim + collapse runs of {@code [\s_-]+} to {@code _}. */
+    public static final String NORMALIZE_COLLAPSE = "collapse";
+
+    /** FR-011: {@code @normalize} mode — ASCII-upper + keep only {@code [A-Z0-9]}. The default. */
+    public static final String NORMALIZE_STRIP = "strip";
+
+    /** FR-011: the default {@code @normalize} mode when absent on both field and owning object. */
+    public static final String NORMALIZE_DEFAULT = NORMALIZE_STRIP;
+
+    /** FR-011: the closed set of valid {@code @normalize} modes. */
+    public static final java.util.List<String> NORMALIZE_MODES =
+        java.util.List.of(NORMALIZE_NONE, NORMALIZE_COLLAPSE, NORMALIZE_STRIP);
+
+    /**
      * Per-member identifier pattern — enforced at load time.
      * Every element of {@code @values} must be a legal identifier in every
      * target language (Java, TypeScript, C#, Python) AND a stable stored string,
@@ -130,6 +164,20 @@ public class EnumField extends PrimitiveField<String> {
                 def.optionalAttributeWithConstraints(ATTR_ENUM_DOC)
                    .ofType(PropertiesAttribute.SUBTYPE_PROPERTIES)
                    .asSingle();
+
+                // FR-011: optional @coerceDefault string — present-but-uncoercible recover
+                // fallback member. Membership against @values is validated post-load in
+                // ValidationPhase (ERR_BAD_ATTR_VALUE), mirroring the @values content pass.
+                def.optionalAttributeWithConstraints(ATTR_COERCE_DEFAULT)
+                   .ofType(StringAttribute.SUBTYPE_STRING)
+                   .asSingle();
+
+                // FR-011: optional @normalize closed-enum string (none|collapse|strip, default
+                // strip). The withEnum constraint records the vocabulary; ValidationPhase also
+                // re-checks it post-load (belt-and-braces, matching source @kind/@role).
+                def.optionalAttributeWithConstraints(ATTR_NORMALIZE)
+                   .ofType(StringAttribute.SUBTYPE_STRING)
+                   .withEnum(NORMALIZE_NONE, NORMALIZE_COLLAPSE, NORMALIZE_STRIP);
             });
 
             log.debug("Registered EnumField type with required @values attribute and member validation");
