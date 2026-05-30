@@ -1,6 +1,5 @@
 package com.metaobjects.generator.kotlin
 
-import com.metaobjects.MetaData
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.ObjectField
@@ -55,23 +54,8 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // so concrete subtypes extending an abstract base still emit normally.
         for (obj in loader.metaObjects) {
             if (obj.subType !in EMITTED_SUBTYPES) continue
-            if (isAbstract(obj)) continue
+            if (KotlinGenUtil.isAbstractEntity(obj)) continue
             emit(obj, outRoot, loader)
-        }
-    }
-
-    /**
-     * True if [obj] has an own {@code @isAbstract} attribute set to boolean-true.
-     * Reads only the own attribute (not inherited) — matches the ValidationPhase
-     * convention so concrete subtypes extending an abstract base still emit.
-     */
-    private fun isAbstract(obj: MetaObject): Boolean {
-        if (!obj.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT, false)) return false
-        val v = runCatching { obj.getMetaAttr(MetaData.ATTR_IS_ABSTRACT, false).value }.getOrNull()
-        return when (v) {
-            is Boolean -> v
-            is String -> v.equals("true", ignoreCase = true)
-            else -> false
         }
     }
 
