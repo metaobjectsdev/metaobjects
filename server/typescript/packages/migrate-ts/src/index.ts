@@ -71,6 +71,11 @@ export {
   MIGRATIONS_TABLE,
   type LedgerRow,
 } from "./apply/ledger.js";
+export {
+  applyPending,
+  type ApplyPendingOptions,
+  type ApplyPendingResult,
+} from "./apply/apply.js";
 
 // Wrangler config helpers
 export {

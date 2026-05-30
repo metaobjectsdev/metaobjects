@@ -1,4 +1,4 @@
-import type { Kysely } from "kysely";
+import { type Kysely, sql } from "kysely";
 
 /**
  * Migration-history ledger table name. A single source of truth tracked across
@@ -42,34 +42,31 @@ export async function recordApplied(
   name: string,
   checksum: string,
 ): Promise<void> {
-  await db
-    .insertInto(MIGRATIONS_TABLE)
-    .values({ name, checksum, applied_at: new Date().toISOString() })
-    .execute();
+  const appliedAt = new Date().toISOString();
+  await sql`
+    INSERT INTO ${sql.ref(MIGRATIONS_TABLE)} (name, applied_at, checksum)
+    VALUES (${name}, ${appliedAt}, ${checksum})
+  `.execute(db);
 }
 
 /** Return the set of applied migration names. */
 export async function appliedNames(
   db: Kysely<Record<string, unknown>>,
 ): Promise<Set<string>> {
-  const rows = await db
-    .selectFrom(MIGRATIONS_TABLE)
-    .select("name")
-    .execute();
-  return new Set(rows.map((r) => (r as { name: string }).name));
+  return new Set((await appliedRecords(db)).keys());
 }
 
 /** Return a name→checksum map for all applied migrations (tamper-guard input). */
 export async function appliedRecords(
   db: Kysely<Record<string, unknown>>,
 ): Promise<Map<string, string>> {
-  const rows = await db
-    .selectFrom(MIGRATIONS_TABLE)
-    .select(["name", "checksum"])
-    .execute();
+  // Raw select keeps this dialect-portable and sidesteps typing the dynamic
+  // table name against the untyped Kysely<Record<string, unknown>> schema.
+  const result = await sql<{ name: string; checksum: string }>`
+    SELECT name, checksum FROM ${sql.ref(MIGRATIONS_TABLE)}
+  `.execute(db);
   const map = new Map<string, string>();
-  for (const r of rows) {
-    const row = r as { name: string; checksum: string };
+  for (const row of result.rows) {
     map.set(row.name, row.checksum);
   }
   return map;
