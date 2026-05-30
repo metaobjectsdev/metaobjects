@@ -35,6 +35,7 @@ import {
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_VALUES,
   FIELD_ATTR_COERCE_DEFAULT,
+  FIELD_ATTR_DEFAULT,
   ENUM_MEMBER_PATTERN,
 } from "./core/field/field-constants.js";
 
@@ -212,25 +213,34 @@ function validateNode(
       }
     }
 
-    // --- Check 5 (FR-011): @coerceDefault must be one of the field's @values ---
+    // --- Check 5 (FR-011): enum fallback attrs must be a member of @values ---
     //
-    // Only validate when THIS node owns a @coerceDefault (own-attrs-only policy,
-    // matching Checks 2+3). The membership set is the EFFECTIVE @values — own or
-    // inherited via extends: — so a concrete enum that owns @coerceDefault and
-    // inherits @values from an abstract super still validates correctly.
-    const ownCoerceDefault = node.ownAttrs().get(FIELD_ATTR_COERCE_DEFAULT);
-    if (typeof ownCoerceDefault === "string") {
+    // Both @coerceDefault (recover-time coercion fallback) and @default (absent-fill
+    // member) name an enum member, so each must be one of the field's @values.
+    // Only validate when THIS node owns the attr (own-attrs-only policy, matching
+    // Checks 2+3). The membership set is the EFFECTIVE @values — own or inherited
+    // via extends: — so a concrete enum that owns the fallback attr and inherits
+    // @values from an abstract super still validates correctly.
+    //
+    // @coerceDefault is enum-only by registration, but @default is polymorphic
+    // (a column default on string/int/bool/etc. fields), so the @default membership
+    // check is gated to field.enum — @default on non-enum fields is NOT touched.
+    if (node.type === TYPE_FIELD && node.subType === FIELD_SUBTYPE_ENUM) {
       const effectiveValues = node.attrs().get(FIELD_ATTR_VALUES);
       const members = Array.isArray(effectiveValues) ? effectiveValues : [];
-      if (!members.includes(ownCoerceDefault)) {
-        errors.push(
-          new ParseError(
-            `${nodeLabel(node)} attribute '@${FIELD_ATTR_COERCE_DEFAULT}' value ` +
-              `'${ownCoerceDefault}' is not one of '@${FIELD_ATTR_VALUES}': ` +
-              `${members.join(", ")}.`,
-            { code: "ERR_BAD_ATTR_VALUE", source: node.source },
-          ),
-        );
+
+      for (const attrName of [FIELD_ATTR_COERCE_DEFAULT, FIELD_ATTR_DEFAULT]) {
+        const ownValue = node.ownAttrs().get(attrName);
+        if (typeof ownValue === "string" && !members.includes(ownValue)) {
+          errors.push(
+            new ParseError(
+              `${nodeLabel(node)} attribute '@${attrName}' value ` +
+                `'${ownValue}' is not one of '@${FIELD_ATTR_VALUES}': ` +
+                `${members.join(", ")}.`,
+              { code: "ERR_BAD_ATTR_VALUE", source: node.source },
+            ),
+          );
+        }
       }
     }
   }

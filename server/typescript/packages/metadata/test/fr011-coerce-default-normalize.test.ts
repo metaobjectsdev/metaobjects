@@ -157,6 +157,92 @@ describe("FR-011 @coerceDefault / @normalize — loading + round-trip", () => {
     expect(codes(errors)).toContain("ERR_BAD_ATTR_VALUE");
   });
 
+  it("emits ERR_BAD_ATTR_VALUE when @default on field.enum is not one of @values", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "acme::ai",
+        children: [
+          {
+            "object.value": {
+              name: "AnswerPayload",
+              children: [
+                {
+                  "field.enum": {
+                    name: "confidence",
+                    "@values": ["HIGH", "OK", "LOW"],
+                    "@default": "BOGUS",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const err = errors.find(
+      (e) =>
+        (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE" &&
+        (e as { message?: string }).message?.includes("default"),
+    );
+    expect(err).toBeDefined();
+    expect(codes(errors)).toContain("ERR_BAD_ATTR_VALUE");
+  });
+
+  it("accepts @default on field.enum when it IS one of @values (no error)", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "acme::ai",
+        children: [
+          {
+            "object.value": {
+              name: "AnswerPayload",
+              children: [
+                {
+                  "field.enum": {
+                    name: "confidence",
+                    "@values": ["HIGH", "OK", "LOW"],
+                    "@default": "OK",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  it("does NOT member-validate @default on a non-enum field (polymorphic column default)", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "acme::ai",
+        children: [
+          {
+            "object.value": {
+              name: "AnswerPayload",
+              children: [
+                {
+                  "field.string": {
+                    name: "text",
+                    "@default": "anything-goes",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    // @default on a non-enum field is an ordinary column default — no membership check.
+    const badAttr = errors.find(
+      (e) =>
+        (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE" &&
+        (e as { message?: string }).message?.includes("default"),
+    );
+    expect(badAttr).toBeUndefined();
+  });
+
   it("validates @coerceDefault against @values INHERITED via extends: (member → no error)", async () => {
     const { errors } = await load({
       "metadata.root": {
