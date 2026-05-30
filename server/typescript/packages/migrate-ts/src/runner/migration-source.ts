@@ -26,7 +26,10 @@ export async function loadMigrations(dir: string): Promise<Migration[]> {
   const migs: Migration[] = [];
   for (const entry of entries) {
     const m = /^(\d{14})-(.+)$/.exec(entry);
-    if (!m) continue;
+    if (m === null) continue;
+    const version = m[1];
+    const name = m[2];
+    if (version === undefined || name === undefined) continue;
     const migDir = join(dir, entry);
     const upSql = await readFile(join(migDir, "up.sql"), "utf8");
     let downSql = "";
@@ -35,7 +38,7 @@ export async function loadMigrations(dir: string): Promise<Migration[]> {
     } catch {
       /* down.sql optional */
     }
-    migs.push({ version: m[1], name: m[2], dir: migDir, upSql, downSql });
+    migs.push({ version, name, dir: migDir, upSql, downSql });
   }
   return migs.sort((a, b) => a.version.localeCompare(b.version));
 }
