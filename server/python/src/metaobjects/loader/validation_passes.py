@@ -444,14 +444,16 @@ def _validate_db_column_type(root: MetaData, errors: list[MetaError]) -> None:
         # Rule 2: legal (subtype × value) pairing.
         required_subtype = _DB_COLUMN_TYPE_REQUIRED_SUBTYPE[value]
         if node.sub_type != required_subtype:
+            # Derive the allowed-pairings list from the map so it stays the single
+            # source of truth for pairing legality.
+            pairings = ", ".join(
+                f"{v}→field.{st}" for v, st in _DB_COLUMN_TYPE_REQUIRED_SUBTYPE.items()
+            )
             errors.append(
                 MetaError(
                     f"field '{node.name}' attribute '@{FIELD_ATTR_DB_COLUMN_TYPE}' "
                     f"value {value!r} is not valid on field.{node.sub_type} "
-                    f"(requires field.{required_subtype}); allowed pairings: "
-                    f"{DB_COLUMN_TYPE_UUID}→field.{FIELD_SUBTYPE_STRING}, "
-                    f"{DB_COLUMN_TYPE_JSONB}→field.{FIELD_SUBTYPE_STRING}, "
-                    f"{DB_COLUMN_TYPE_TIMESTAMP_TZ}→field.{FIELD_SUBTYPE_TIMESTAMP}",
+                    f"(requires field.{required_subtype}); allowed pairings: {pairings}",
                     ErrorCode.ERR_BAD_ATTR_VALUE,
                     envelope=node.source,
                 )
