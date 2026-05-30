@@ -150,6 +150,31 @@ describe("introspectSqlite — views + dispatcher", () => {
     }
   });
 
+  test("captures view definition (body SQL), not just the name", async () => {
+    const tmpV = mkdtempSync(join(tmpdir(), "migrate-ts-sqlite-viewbody-"));
+    const url = `file:${join(tmpV, "test.db")}`;
+    const k = new Kysely<Record<string, unknown>>({ dialect: new LibsqlDialect({ url }) });
+    try {
+      await k.schema
+        .createTable("orders")
+        .addColumn("id", "integer", (c) => c.primaryKey())
+        .addColumn("total", "integer")
+        .execute();
+      await sql`CREATE VIEW order_summary AS SELECT id, total FROM orders`.execute(k as never);
+      const snapshot = await introspectSqlite(k);
+      const view = snapshot.views.find((v) => v.name === "order_summary");
+      expect(view).toBeDefined();
+      // The descriptor must carry the view's definition SQL so the diff can
+      // detect view-body drift (not just name presence). sqlite_master.sql holds
+      // the full CREATE VIEW statement.
+      expect(view?.sql).toBeDefined();
+      expect(view?.sql).toMatch(/SELECT\s+id,\s*total\s+FROM\s+orders/i);
+    } finally {
+      await k.destroy();
+      rmSync(tmpV, { recursive: true, force: true });
+    }
+  });
+
   test("dispatcher routes 'sqlite' to introspectSqlite", async () => {
     const tmpD = mkdtempSync(join(tmpdir(), "migrate-ts-sqlite-disp-"));
     const url = `file:${join(tmpD, "test.db")}`;

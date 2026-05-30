@@ -45,11 +45,18 @@ export async function introspectSqlite(db: Kysely<Record<string, unknown>>): Pro
 }
 
 async function readSqliteViews(k: RawKysely): Promise<ViewDescriptor[]> {
-  const rows = await sql<{ name: string }>`
-    SELECT name FROM sqlite_master WHERE type='view' AND name NOT LIKE 'sqlite_%'
+  // sqlite_master.sql holds the full `CREATE VIEW <name> AS <body>` statement.
+  // We carry it through on the descriptor so the diff can detect view-body
+  // drift (not just name presence).
+  const rows = await sql<{ name: string; sql: string | null }>`
+    SELECT name, sql FROM sqlite_master WHERE type='view' AND name NOT LIKE 'sqlite_%'
     ORDER BY name
   `.execute(k);
-  return rows.rows.map((r) => ({ name: r.name }));
+  return rows.rows.map((r) => {
+    const view: ViewDescriptor = { name: r.name };
+    if (r.sql) view.sql = r.sql;
+    return view;
+  });
 }
 
 async function readSqliteColumns(k: RawKysely, table: string): Promise<ColumnDescriptor[]> {
