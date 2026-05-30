@@ -420,6 +420,19 @@ Optional<MetaObject> user = metaDataService.findMetaObjectByNameOptional("User")
 - Automatic cleanup when Spring context shuts down
 - Minimal memory overhead for Spring integration
 
+## Virtual threads (Java 21)
+
+OMDB is a synchronous JDBC API and is safe to run on JVM virtual threads. An audit of
+the OMDB blocking paths found no `synchronized` monitor held across a JDBC call (the only
+synchronized methods guard in-memory state — the driver lazy-init, the event-listener
+list, and per-object attribute maps), so OMDB does not pin carrier threads.
+
+To run a Spring Boot 3.2+ application's request handling on virtual threads, set:
+
+    spring.threads.virtual.enabled=true
+
+The starter does not enable this for you — it is the application's choice.
+
 ---
 
 **This Spring integration provides seamless MetaObjects functionality within Spring applications while maintaining all the framework's powerful features.**
