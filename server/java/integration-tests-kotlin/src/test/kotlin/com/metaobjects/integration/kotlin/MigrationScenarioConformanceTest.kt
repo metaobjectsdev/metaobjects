@@ -1,5 +1,6 @@
 package com.metaobjects.integration.kotlin
 
+import com.metaobjects.integration.kotlin.tables.MeasurementTable
 import com.metaobjects.integration.kotlin.tables.ProgramTable
 import com.metaobjects.integration.kotlin.tables.ProgramV1Table
 import com.metaobjects.integration.kotlin.tables.ProgramV2Table
@@ -56,7 +57,7 @@ internal class MigrationScenarioConformanceTest {
             // 1. Apply the canonical schema via Exposed's full-CREATE path —
             //    Exposed's analogue of the sibling SchemaMigrationEngine.emit() flow.
             transaction(db) {
-                SchemaUtils.create(ProgramTable, WeekTable)
+                SchemaUtils.create(ProgramTable, WeekTable, MeasurementTable)
             }
 
             // 2. Run the scenario's apply-up-then-query post-condition: it queries

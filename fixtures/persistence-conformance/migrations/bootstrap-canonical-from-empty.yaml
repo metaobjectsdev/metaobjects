@@ -15,6 +15,13 @@ expect:
     - 'CONSTRAINT "programs_pkey" PRIMARY KEY ("id")'
     - 'CREATE TABLE "weeks"'
     - 'CONSTRAINT "weeks_pkey" PRIMARY KEY ("id")'
+    - 'CREATE TABLE "measurements"'
+    # R6 float fidelity: field.float → REAL (float4), field.double → DOUBLE PRECISION
+    # (float8). Asserting the column types here (not just the round-trip, which is
+    # value-identical for in-band dyadic rationals) is what makes this corpus catch a
+    # REAL→DOUBLE regression.
+    - '"tempC" REAL'
+    - '"massKg" DOUBLE PRECISION'
     - 'CREATE UNIQUE INDEX "byTitle" ON "programs" ("title");'
     - 'ALTER TABLE "weeks" ADD CONSTRAINT "weeks_programId_fk"'
     # Match both TS (`CREATE VIEW`) and C# (`CREATE OR REPLACE VIEW`, idempotent)
@@ -29,5 +36,6 @@ expect:
        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
        ORDER BY table_name
     rows:
+      - { table_name: "measurements" }
       - { table_name: "programs" }
       - { table_name: "weeks" }

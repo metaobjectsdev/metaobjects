@@ -1,0 +1,25 @@
+name: measurement-floats
+description: |
+  REAL (field.float, float4) and DOUBLE PRECISION (field.double, float8) round-trip
+  as canonical plain-decimal strings — no trailing zeros, no exponential notation.
+  Seed values are in-band dyadic rationals (exactly representable in float4/float8),
+  so every port must surface byte-identical normalized rows regardless of its driver's
+  native float type. This is the end-to-end proof of the R6 float-fidelity contract.
+seed-data: |
+  INSERT INTO "measurements" ("id", "tempC", "massKg") VALUES
+    (1,  1.5,  0.125),
+    (2, -3.25, 1234.5);
+queries:
+  - name: get-measurement-1
+    op: get
+    entity: Measurement
+    by: { id: 1 }
+    expect: { id: "1", tempC: "1.5", massKg: "0.125" }
+
+  - name: list-measurements-by-id-asc
+    op: list
+    entity: Measurement
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "1", tempC: "1.5",   massKg: "0.125" }
+      - { id: "2", tempC: "-3.25", massKg: "1234.5" }
