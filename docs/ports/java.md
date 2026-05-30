@@ -1,9 +1,14 @@
 # Java port
 
 The Java port targets Spring-Boot consumers on Maven. It ships the full metamodel
-+ loader + conformance + OMDB persistence engine + the FR-004 render engine, plus
-the `metaobjects-maven-plugin` for build-time codegen + drift verification +
-migration emission.
++ loader + conformance + OMDB runtime persistence engine + the FR-004 render engine,
+plus the `metaobjects-maven-plugin` for build-time codegen (`meta:gen` / `meta:editor`).
+
+Schema migrations are owned by the TypeScript toolchain (`@metaobjectsdev/cli migrate`);
+the Java diff-and-converge migration engine and its `meta:migrate` / live-DB-drift
+`meta:verify` Maven goals were removed. OMDB retains runtime persistence and a
+dev/test runtime auto-create path (`MetaClassDBValidatorService`) only. Prompt /
+template drift is still checked via the `metaobjects-render` `Verify` API.
 
 ## Install
 
@@ -57,11 +62,6 @@ For Spring integration: add `metaobjects-core-spring`.
               </generator>
             </generators>
           </configuration>
-        </execution>
-        <execution>
-          <id>verify</id>
-          <phase>verify</phase>
-          <goals><goal>verify</goal></goals>
         </execution>
       </executions>
     </plugin>
@@ -135,11 +135,12 @@ in tests or embedded scenarios. The conceptual reference lives in
 
 ```bash
 mvn compile                  # runs the generate goal (bound to generate-sources)
-mvn meta:migrate             # emit a migration SQL file
-mvn meta:migrate -Dflyway=true  # emit V<N>__<slug>.sql under src/main/resources/db/migration/
-mvn meta:verify              # introspect live DB; fail if drifted
-mvn verify                   # full verify phase (incl. meta:verify)
 ```
+
+Schema migrations are not a Java-port concern — author them with the TypeScript
+toolchain (`@metaobjectsdev/cli migrate`). OMDB's runtime auto-create path can
+bootstrap a dev/test schema at startup (`MetaClassDBValidatorService` with
+`autoCreate=true`), but it is not a migration tool.
 
 ## Use
 
@@ -201,7 +202,8 @@ String out = Renderer.render(RenderRequest.builder()
 ```
 
 `Verify.verify(loader, provider, options)` drift-checks every `template.*` node
-against its `@payloadRef`. Wire it into a Maven test or the `verify` goal.
+against its `@payloadRef`. Wire it into a Maven test (e.g. a JUnit assertion in
+the `test` phase).
 
 ## Generators
 
@@ -245,8 +247,8 @@ configuration model that has not yet been specced.
 | Templates + render (FR-004) | Yes (`metaobjects-render`) |
 | Payload-VO codegen | Yes — `SpringPayloadGenerator` (in `metaobjects-codegen-spring`) emits a Java 21 `record` per template, mirrors the Kotlin shape |
 | Output parser codegen (FR-006) | Not yet — see note below |
-| Migrations | `mvn meta:migrate` / `mvn meta:migrate -Dflyway=true` |
-| Drift verify | `mvn meta:verify` (DB) + `Renderer.verify` (prompts) |
+| Migrations | TS-only (`@metaobjectsdev/cli migrate`) — the Java engine was removed; OMDB offers runtime auto-create for dev/test only |
+| Drift verify | `Renderer.verify` / `Verify.verify` (prompts). Live-DB schema-drift verification is part of the TS migration toolchain |
 | Runtime metadata | Full — OMDB ObjectManager |
 | REST controller codegen | Spring Web MVC — `metaobjects-codegen-spring` (FR-008 §2.1) |
 
@@ -267,7 +269,7 @@ that ships, the Jackson one-liner pairs naturally with the generated record.
 | YAML authoring (`fixtures/yaml-conformance/`) | 12 / 13 (1 ledgered — `yaml-quoted-leading-zero`, Java pipeline strips quotes off `"007"`) |
 | Render (`fixtures/render-conformance/`) | 14 / 14 |
 | Verify (`fixtures/verify-conformance/`) | 31 / 31 |
-| Persistence (`fixtures/persistence-conformance/`) | 12 / 12 |
+| Persistence (`fixtures/persistence-conformance/`) | Query scenarios 9 / 10 (1 deferred: aggregate-projection view body was part of the removed migration engine). Java no longer runs the migration scenarios. |
 | API contract (`fixtures/api-contract-conformance/`) | 20 / 20 |
 
 ## See also

@@ -229,7 +229,7 @@ final class RecoverSchemaEmitter {
     /**
      * Returns {@code true} when the field carries {@code @required: true}.
      * Uses {@code getValueAsString()} to handle both the Boolean-attribute and
-     * String-attribute storage paths (mirrors {@code ExpectedSchemaBuilder.isRequired}).
+     * String-attribute storage paths.
      */
     private static boolean isRequired(MetaField<?> field) {
         return field.hasMetaAttr(MetaField.ATTR_REQUIRED)
