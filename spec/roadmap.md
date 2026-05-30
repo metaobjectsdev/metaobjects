@@ -59,7 +59,6 @@ _Last refreshed 2026-05-30._
 ## Planned
 
 - **MCP exposure of declared prompts/tools** — the remaining library-side piece of the prompt-construction pillar. Surface a `template.output` / tool declaration over the Model Context Protocol (model-agnostic) so an LLM host can discover + register it, built on the shipped render / payload / verify / FR-006 / FR-010 primitives. Designed in `docs/superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md`.
-- **Database-source metadata loader** (separate future FR). FR5e reserves the envelope; building the loader (a metaobjects-table schema + a Java loader that reads it) is its own multi-week feature. Will produce `format: "database"` errors / warnings using the pre-validated envelope shape.
 
 ### Tracked outside this library repo (not roadmap work here)
 
@@ -70,6 +69,9 @@ These are exercised in adopter projects on top of the shipped per-port primitive
 
 ## Future (sketched)
 
+Candidate directions, not actively tracked — pulled up into Planned only when scheduled.
+
+- **Database-source metadata loader** — load the metamodel itself from a database (a metaobjects-table schema + a loader that reads it) instead of JSON/YAML files, for a central / runtime-editable metadata registry. FR5e already reserves the `format: "database"` error envelope (table + id + optional jsonPath), so the error contract is in place; the loader itself is unbuilt.
 - Forms codegen revival (deferred from earlier).
 - Date / case transforms.
 - Materialized views, federated entities, search-index sources.
