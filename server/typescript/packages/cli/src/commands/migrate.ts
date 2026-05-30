@@ -23,7 +23,6 @@ import {
   findWranglerConfig,
   parseWranglerConfig,
   resolveD1Binding,
-  type AllowOptions,
   type AmbiguousChange,
   type AmbiguousResolution,
   type Change,
@@ -40,30 +39,10 @@ import {
   computeProjectionMigrations,
   computeProjectionViewDependencies,
 } from "../lib/projection-migrations.js";
-
-// Map CLI allow tokens → migrate-ts AllowOptions field names
-const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
-  "drop-column": "dropColumn",
-  "drop-table": "dropTable",
-  "type-change": "typeChange",
-  "drop-index": "dropIndex",
-  "drop-fk": "dropFk",
-  "nullable-to-not-null": "nullableToNotNull",
-};
+import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
 
 function mapOnAmbiguous(v: "abort" | "rename" | "drop-add"): AmbiguousResolution {
   return v === "drop-add" ? "drop+add" : v;
-}
-
-function tokensToAllowOptions(tokens: string[]): AllowOptions {
-  const opts: AllowOptions = {};
-  for (const tok of tokens) {
-    const field = ALLOW_TOKEN_MAP[tok];
-    if (field !== undefined) {
-      opts[field] = true;
-    }
-  }
-  return opts;
 }
 
 function summarizeChanges(changes: Change[]): Record<string, number> {
@@ -72,25 +51,6 @@ function summarizeChanges(changes: Change[]): Record<string, number> {
     counts[c.kind] = (counts[c.kind] ?? 0) + 1;
   }
   return counts;
-}
-
-function describeChangeForOutput(c: Change): string {
-  switch (c.kind) {
-    case "create-table": return c.table.name;
-    case "drop-table": return c.table;
-    case "rename-table": return `${c.from} → ${c.to}`;
-    case "add-column": return `${c.table}.${c.column.name}`;
-    case "drop-column": return `${c.table}.${c.column}`;
-    case "rename-column": return `${c.table}.${c.from} → ${c.table}.${c.to}`;
-    case "change-column-type": return `${c.table}.${c.column} (${c.from.kind} → ${c.to.kind})`;
-    case "change-column-nullable": return `${c.table}.${c.column} (${c.from ? "NULL" : "NOT NULL"} → ${c.to ? "NULL" : "NOT NULL"})`;
-    case "change-column-default": return `${c.table}.${c.column}`;
-    case "add-index": return `${c.table} idx ${c.index.name}`;
-    case "drop-index": return `${c.table} idx ${c.index}`;
-    case "add-fk": return `${c.table} fk ${c.fk.name}`;
-    case "drop-fk": return `${c.table} fk ${c.fk}`;
-    default: return JSON.stringify(c);
-  }
 }
 
 function allowFlagFor(kind: string): string {
@@ -108,7 +68,7 @@ function allowFlagFor(kind: string): string {
 function blockedToEntries(err: BlockedChangesError): BlockedEntry[] {
   return err.blocked.map((c) => ({
     kind: c.kind,
-    description: describeChangeForOutput(c),
+    description: describeChange(c),
     allowFlag: allowFlagFor(c.kind),
   }));
 }

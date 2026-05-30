@@ -14,7 +14,8 @@ import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { buildKyselyFromUrl, type Dialect } from "../lib/kysely.js";
-import { computeDrift, type AllowOptions, type Change } from "@metaobjectsdev/migrate-ts";
+import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
+import { computeDrift, type Change } from "@metaobjectsdev/migrate-ts";
 import { loadMemory } from "@metaobjectsdev/sdk";
 import {
   TYPE_TEMPLATE,
@@ -96,60 +97,60 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
     let warnCount = 0;
     let checked = 0;
 
-  for (const tmpl of templates) {
-    const textRef = tmpl.ownAttr(TEMPLATE_ATTR_TEXT_REF);
-    const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
-    // Absent/typeless required attrs are a loader-schema concern, not verify's.
-    if (typeof textRef !== "string" || typeof payloadRef !== "string") continue;
+    for (const tmpl of templates) {
+      const textRef = tmpl.ownAttr(TEMPLATE_ATTR_TEXT_REF);
+      const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+      // Absent/typeless required attrs are a loader-schema concern, not verify's.
+      if (typeof textRef !== "string" || typeof payloadRef !== "string") continue;
 
-    // Both subtypes verify that @payloadRef resolves to a loaded object.value.
-    // The render-engine `verify()` would also throw on missing refs, but the
-    // output branch doesn't call it — explicit check keeps the error symmetric.
-    const fieldTree = derivePayloadFieldTree(root, payloadRef);
-    if (fieldTree.length === 0) {
-      log.error(
-        `[${tmpl.name}] (${tmpl.subType}) ${ERR_PARTIAL_UNRESOLVED}: ` +
-          `@payloadRef "${payloadRef}" did not resolve to a loaded object.value`,
-      );
-      errorCount++;
-      continue;
-    }
-
-    if (tmpl.subType === TEMPLATE_SUBTYPE_PROMPT) {
-      // Render-engine drift check: template variables ↔ payload field names.
-      const text = provider.resolve(textRef);
-      if (text === undefined) {
+      // Both subtypes verify that @payloadRef resolves to a loaded object.value.
+      // The render-engine `verify()` would also throw on missing refs, but the
+      // output branch doesn't call it — explicit check keeps the error symmetric.
+      const fieldTree = derivePayloadFieldTree(root, payloadRef);
+      if (fieldTree.length === 0) {
         log.error(
-          `[${tmpl.name}] (prompt) ${ERR_PARTIAL_UNRESOLVED}: @textRef "${textRef}" did not resolve under ${promptsDir}`,
+          `[${tmpl.name}] (${tmpl.subType}) ${ERR_PARTIAL_UNRESOLVED}: ` +
+            `@payloadRef "${payloadRef}" did not resolve to a loaded object.value`,
         );
         errorCount++;
         continue;
       }
 
-      const requiredSlots = attrAsStringArray(tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_SLOTS));
-      const requiredTags = attrAsStringArray(tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_TAGS));
-
-      const drift = verify(text, fieldTree, { provider, requiredSlots, requiredTags });
-      checked++;
-      for (const e of drift) {
-        if (e.code === ERR_REQUIRED_SLOT_UNUSED) {
-          log.warn(`[${tmpl.name}] (prompt) ${e.code}: ${e.path}`);
-          warnCount++;
-        } else {
-          log.error(`[${tmpl.name}] (prompt) ${e.code}: ${e.path}`);
+      if (tmpl.subType === TEMPLATE_SUBTYPE_PROMPT) {
+        // Render-engine drift check: template variables ↔ payload field names.
+        const text = provider.resolve(textRef);
+        if (text === undefined) {
+          log.error(
+            `[${tmpl.name}] (prompt) ${ERR_PARTIAL_UNRESOLVED}: @textRef "${textRef}" did not resolve under ${promptsDir}`,
+          );
           errorCount++;
+          continue;
         }
+
+        const requiredSlots = attrAsStringArray(tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_SLOTS));
+        const requiredTags = attrAsStringArray(tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_TAGS));
+
+        const drift = verify(text, fieldTree, { provider, requiredSlots, requiredTags });
+        checked++;
+        for (const e of drift) {
+          if (e.code === ERR_REQUIRED_SLOT_UNUSED) {
+            log.warn(`[${tmpl.name}] (prompt) ${e.code}: ${e.path}`);
+            warnCount++;
+          } else {
+            log.error(`[${tmpl.name}] (prompt) ${e.code}: ${e.path}`);
+            errorCount++;
+          }
+        }
+      } else if (tmpl.subType === TEMPLATE_SUBTYPE_OUTPUT) {
+        // Output drift check: re-derive the payload field tree (already done above);
+        // if it resolved, the parser codegen can produce a schema. Field-type
+        // unsupported-by-Zod issues are caught by the codegen itself if/when
+        // `meta gen` runs; verify confines itself to ref-resolution checks.
+        checked++;
+      } else {
+        // Unknown subtype — ignore (loader-schema concern).
       }
-    } else if (tmpl.subType === TEMPLATE_SUBTYPE_OUTPUT) {
-      // Output drift check: re-derive the payload field tree (already done above);
-      // if it resolved, the parser codegen can produce a schema. Field-type
-      // unsupported-by-Zod issues are caught by the codegen itself if/when
-      // `meta gen` runs; verify confines itself to ref-resolution checks.
-      checked++;
-    } else {
-      // Unknown subtype — ignore (loader-schema concern).
     }
-  }
 
     if (errorCount > 0) {
       log.error(
@@ -169,6 +170,10 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
   async function runSchemaVerify(): Promise<number> {
     if (flags.db === undefined || flags.skipSchema) return 0;
 
+    // d1 has no Kysely-driver introspection path, so the schema-drift gate
+    // can't support it. `buildKyselyFromUrl` already throws for the d1 dialect
+    // ("does not use a URL connection") — the catch below surfaces that as a
+    // clear exit 1, so no separate d1 guard is needed here.
     let kysely;
     try {
       kysely = await buildKyselyFromUrl(flags.db, flags.dialect as Dialect | undefined);
@@ -178,13 +183,6 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
     }
 
     try {
-      if (kysely.dialect === "d1") {
-        // d1 has no Kysely-driver introspection path; schema-drift via verify is
-        // not supported for d1. Surface clearly rather than silently passing.
-        log.error(`verify: --db schema-drift gate does not support dialect 'd1'`);
-        return 1;
-      }
-
       const allow = tokensToAllowOptions(flags.allow);
       let driftResult;
       try {
@@ -220,25 +218,6 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
   }
 }
 
-// Map CLI allow tokens → migrate-ts AllowOptions field names.
-const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
-  "drop-column": "dropColumn",
-  "drop-table": "dropTable",
-  "type-change": "typeChange",
-  "drop-index": "dropIndex",
-  "drop-fk": "dropFk",
-  "nullable-to-not-null": "nullableToNotNull",
-};
-
-function tokensToAllowOptions(tokens: string[]): AllowOptions {
-  const opts: AllowOptions = {};
-  for (const tok of tokens) {
-    const field = ALLOW_TOKEN_MAP[tok];
-    if (field !== undefined) opts[field] = true;
-  }
-  return opts;
-}
-
 /**
  * Migration-history ledger reconciliation hook (Unit 3 — not yet built).
  *
@@ -251,27 +230,32 @@ async function reconcileLedger(): Promise<string[]> {
   return [];
 }
 
+// Per-kind glyph (+ add / - drop / ~ change) and noun for the drift summary.
+// The detail string itself comes from the shared `describeChange`.
+const DRIFT_PRESENTATION: Record<Change["kind"], { glyph: string; noun: string }> = {
+  "create-table": { glyph: "+", noun: "table" },
+  "drop-table": { glyph: "-", noun: "table" },
+  "rename-table": { glyph: "~", noun: "table" },
+  "add-column": { glyph: "+", noun: "column" },
+  "drop-column": { glyph: "-", noun: "column" },
+  "rename-column": { glyph: "~", noun: "column" },
+  "change-column-type": { glyph: "~", noun: "column" },
+  "change-column-nullable": { glyph: "~", noun: "column" },
+  "change-column-default": { glyph: "~", noun: "column" },
+  "add-index": { glyph: "+", noun: "index" },
+  "drop-index": { glyph: "-", noun: "index" },
+  "add-fk": { glyph: "+", noun: "fk" },
+  "drop-fk": { glyph: "-", noun: "fk" },
+  "create-view": { glyph: "+", noun: "view" },
+  "replace-view": { glyph: "~", noun: "view" },
+  "drop-view": { glyph: "-", noun: "view" },
+};
+
 /** Human-readable one-line-per-change drift summary (table/column/index/fk/view). */
 function summarizeDrift(changes: Change[]): string[] {
   return changes.map((c) => {
-    switch (c.kind) {
-      case "create-table": return `+ table ${c.table.name}`;
-      case "drop-table": return `- table ${c.table}`;
-      case "rename-table": return `~ table ${c.from} → ${c.to}`;
-      case "add-column": return `+ column ${c.table}.${c.column.name}`;
-      case "drop-column": return `- column ${c.table}.${c.column}`;
-      case "rename-column": return `~ column ${c.table}.${c.from} → ${c.to}`;
-      case "change-column-type": return `~ column ${c.table}.${c.column} type (${c.from.kind} → ${c.to.kind})`;
-      case "change-column-nullable": return `~ column ${c.table}.${c.column} nullable (${c.from ? "NULL" : "NOT NULL"} → ${c.to ? "NULL" : "NOT NULL"})`;
-      case "change-column-default": return `~ column ${c.table}.${c.column} default`;
-      case "add-index": return `+ index ${c.table}.${c.index.name}`;
-      case "drop-index": return `- index ${c.table}.${c.index}`;
-      case "add-fk": return `+ fk ${c.table}.${c.fk.name}`;
-      case "drop-fk": return `- fk ${c.table}.${c.fk}`;
-      case "create-view": return `+ view ${c.view.name}`;
-      case "replace-view": return `~ view ${c.view.name} (body changed)`;
-      case "drop-view": return `- view ${c.view}`;
-      default: return JSON.stringify(c);
-    }
+    const p = DRIFT_PRESENTATION[c.kind];
+    if (p === undefined) return JSON.stringify(c);
+    return `${p.glyph} ${p.noun} ${describeChange(c)}`;
   });
 }

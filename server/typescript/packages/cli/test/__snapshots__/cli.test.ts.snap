@@ -33,7 +33,8 @@ VERIFY FLAGS:
   --db <url>            Live DB URL — enables the schema-drift gate (exit 1 on drift).
                         Supports: file:, libsql:, postgres:, postgresql:. Omit to skip.
   --dialect sqlite|postgres   Optional override (auto-detected from --db URL scheme)
-  --allow <csv>         Destructive-change permissions (only affects drift description)
+  --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the
+                        verify drift gate (the gate fails on ANY detected change)
   --skip-schema         Skip the schema-drift gate even when --db is present
 
 PROMPT-SNAPSHOT FLAGS:
