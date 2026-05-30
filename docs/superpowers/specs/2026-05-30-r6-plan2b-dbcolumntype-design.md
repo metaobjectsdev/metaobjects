@@ -105,8 +105,8 @@ the same `@dbColumnType`:
 - `jsonb` and `uuid` → both are JDBC `Types.OTHER`; **Java introspection must disambiguate by
   type name** (`TYPE_NAME`/`udt_name` `uuid` vs `jsonb`) → `SqlType.Uuid` / `SqlType.Json`. (This
   extends the same Java `JdbcSqlTypes.fromJdbc` fix that Plan 2a starts for `uuid`.)
-- **Python has no introspection layer** — out of scope here (pre-existing gap; the persistence
-  fixtures are bootstrap-from-empty + round-trip, which don't require introspection).
+- **Python** — its introspection layer is built by the prerequisite **Plan 2c** (sequenced
+  first), so `uuid`/`jsonb`/`timestamptz` columns round-trip in Python like the other ports.
 
 ### 6. Conformance fixtures
 
@@ -125,7 +125,7 @@ the same `@dbColumnType`:
 | TS | add | add | add | n/a | exists ✓ |
 | C# | add | add | add | n/a | exists ✓ |
 | Java | add | add | add | n/a | **add `Types.OTHER` uuid/jsonb disambiguation** |
-| Python | add | add | add | n/a | n/a (no introspection) |
+| Python | add | add | add | n/a | via Plan 2c |
 | Kotlin | promote to registered | add | adjust | **text()→real JSONB** | n/a (Exposed) |
 
 ## Testing
@@ -139,7 +139,7 @@ the same `@dbColumnType`:
 ## Out of scope (explicit)
 
 - `<raw dialect type>` passthrough (deferred — needs a diff-engine opaque-column story).
-- Python introspection layer (pre-existing gap).
+- Python introspection layer — its own prerequisite **Plan 2c** (sequenced first).
 - Typed jsonb (`field.object` + `@storage: jsonb`) — already shipped; `@dbColumnType: jsonb` is the
   open-JSON complement, not a replacement.
 - The logical `field.uuid` subtype — that is **Plan 2a**; `@dbColumnType: uuid` is the

@@ -84,11 +84,10 @@ fixes the divergences it depends on.
    `JdbcSqlTypes.fromJdbc` → `SqlType.Uuid` so a uuid column round-trips and does not churn on
    every diff.
 
-**Out of scope (separate pre-existing gaps, flagged not fixed here):** Python has **no
-introspection layer at all** — building one is a distinct Python-migrate effort. The uuid
-persistence fixture is bootstrap-from-empty + value round-trip, which does **not** require
-introspection, so Python's gap does not block this work. SQLite uuid handling is TS-internal
-(text); the conformance corpus is Postgres-only.
+**Python introspection** — handled by the prerequisite **Plan 2c (Python introspection
+parity)**, sequenced before this work. Once 2c lands, Python's uuid column round-trips via
+introspection like the other ports. (SQLite uuid handling stays TS-internal — `text`; the
+conformance corpus is Postgres-only.)
 
 ### 4. Wire normalization + generation (reuse)
 
@@ -114,7 +113,7 @@ introspection, so Python's gap does not block this work. SQLite uuid handling is
 | TS | new | `string` | add | exists ✓ | exists ✓ |
 | C# | new (map entry) | `Guid` | add | exists ✓ | exists ✓ |
 | Java | new | `UUID` | add | **add** | **add** |
-| Python | new | `uuid.UUID` | add | exists ✓ | n/a (no introspection) |
+| Python | new | `uuid.UUID` | add | exists ✓ | via Plan 2c |
 | Kotlin | promote latent arm | `UUID` | add | **add** | n/a (Exposed) |
 
 ## Testing
@@ -131,6 +130,6 @@ introspection, so Python's gap does not block this work. SQLite uuid handling is
 - `@dbColumnType` promotion → **Plan 2b** (separate spec). The two compose later
   (`@dbColumnType:uuid` lets a `field.string` use a native uuid column without the logical
   `field.uuid` binding) but neither blocks the other.
-- Python introspection layer (pre-existing gap; flagged above).
+- Python introspection layer — its own prerequisite **Plan 2c** (sequenced first).
 - UUID-format value validation at the loader (runtime concern, not metamodel).
 - SQLite-native uuid semantics beyond `text` (TS-internal).
