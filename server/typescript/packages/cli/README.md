@@ -14,6 +14,44 @@ Optional driver peers (install the one matching your DB):
 - SQLite/Turso: `bun add -D @libsql/kysely-libsql`
 - Postgres: `bun add -D pg`
 
+## Standalone binary (no Node/Bun toolchain to run)
+
+The CLI can be compiled to a **single-file native executable** with [`bun build --compile`](https://bun.sh/docs/bundler/executables). The Bun runtime is embedded in the binary, so the schema operations (`meta migrate` and `meta verify --db`) run on any machine with **no Node or Bun installed** — the same "schema is a standalone tool" packaging as Flyway or Atlas. This lets a non-TS backend (Java, C#, Python, Go, …) adopt MetaObjects' migration + drift-detection layer without bringing in a JS toolchain.
+
+Build the host-target binary:
+
+```bash
+bun run build:binary        # → dist/meta (compiled for the build host's OS/arch)
+./dist/meta --help
+```
+
+The build externalizes two optional Biome WASM backends (`@biomejs/wasm-bundler`, `@biomejs/wasm-web`) that the CLI never loads — only the native Biome backend is used.
+
+### Cross-compiling for other platforms
+
+`bun build --compile` cross-compiles by passing `--target`. To build for a platform other than the host, append the target to the `build:binary` invocation:
+
+```bash
+bun build ./bin/meta.ts --compile --target=bun-linux-x64   --outfile dist/meta-linux-x64   --external @biomejs/wasm-bundler --external @biomejs/wasm-web
+bun build ./bin/meta.ts --compile --target=bun-linux-arm64 --outfile dist/meta-linux-arm64 --external @biomejs/wasm-bundler --external @biomejs/wasm-web
+bun build ./bin/meta.ts --compile --target=bun-darwin-arm64 --outfile dist/meta-darwin-arm64 --external @biomejs/wasm-bundler --external @biomejs/wasm-web
+bun build ./bin/meta.ts --compile --target=bun-darwin-x64  --outfile dist/meta-darwin-x64  --external @biomejs/wasm-bundler --external @biomejs/wasm-web
+bun build ./bin/meta.ts --compile --target=bun-windows-x64 --outfile dist/meta-windows-x64.exe --external @biomejs/wasm-bundler --external @biomejs/wasm-web
+```
+
+### SQLite driver inside the binary
+
+The standalone binary uses Bun's built-in **`bun:sqlite`** for the `sqlite` dialect (it ships inside the embedded Bun runtime). The npm/Node distribution continues to use the `@libsql/kysely-libsql` peer dependency. This is automatic — the same `--db file:./app.db --dialect sqlite` flags work in both. (Postgres in the standalone binary still requires the `pg` peer to be resolvable, because `pg` is a native module that `--compile` cannot embed; sqlite is the fully self-contained path.)
+
+Run schema ops from the compiled binary:
+
+```bash
+./dist/meta migrate --db file:./app.db --dialect sqlite --slug initial --apply
+./dist/meta verify  --db file:./app.db --dialect sqlite    # exit 0 when in sync, 1 on drift
+```
+
+(`dist/` is git-ignored — build the binary in CI/release, don't commit it.)
+
 ## Quick start
 
 ```bash
@@ -192,7 +230,6 @@ See `.metaobjects/AGENTS.md` (scaffolded by `meta init`) for the metaobjects met
 
 ## Not yet shipped
 
-- `meta migrate --apply` — emit only, no DB writes from CLI
 - `meta gen --watch` (dropped) — re-run on demand
 - True 3-way merge in `meta gen` — codegen-ts has overwrite/skip-existing only
 - Module-reference DB connections — URL-only

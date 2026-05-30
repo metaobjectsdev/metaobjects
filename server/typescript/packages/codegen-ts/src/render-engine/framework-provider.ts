@@ -27,8 +27,13 @@ const CANONICAL_TEMPLATE_REL = "docs/entity-page.md.mustache";
  *  `templates/` directory contains our canonical shipped template (i.e., the
  *  codegen-ts package root). Works the same way from
  *  `src/render-engine/framework-provider.ts` (during dev) and
- *  `dist/render-engine/framework-provider.js` (after `npm install`). */
-function findFrameworkTemplatesDir(start: string): string {
+ *  `dist/render-engine/framework-provider.js` (after `npm install`).
+ *
+ *  Returns `undefined` when no on-disk templates dir can be found — e.g. inside
+ *  the `bun build --compile` standalone binary, whose `import.meta.url` is a
+ *  `/$bunfs/root` virtual path with no real `package.json` alongside it. The
+ *  embedded-template fallback (see `FileSystemProvider`) covers that case. */
+function findFrameworkTemplatesDir(start: string): string | undefined {
   let dir = start;
   while (true) {
     const pkgJson = join(dir, "package.json");
@@ -43,19 +48,25 @@ function findFrameworkTemplatesDir(start: string): string {
     if (parent === dir) break;
     dir = parent;
   }
-  throw new Error(
-    `framework templates dir unresolved: walked up from ${start} without finding a package.json ` +
-    `whose templates/${CANONICAL_TEMPLATE_REL} exists. This usually means codegen-ts was installed ` +
-    `via a hoisted layout (pnpm/bun workspaces) into an unexpected location, or the published ` +
-    `tarball is missing the templates/ directory.`,
-  );
+  return undefined;
 }
 
 // In ESM (CLAUDE.md: "ESM only. No CommonJS."), `import.meta.url` is
 // guaranteed to be a file: URL; no defensive try/catch needed.
 const SELF_DIR = dirname(fileURLToPath(import.meta.url));
 
-const FRAMEWORK_TEMPLATES_DIR = findFrameworkTemplatesDir(SELF_DIR);
+// Lazy + cached: resolving the on-disk templates dir walks the filesystem, and
+// in the standalone binary it never finds one (the embedded fallback handles
+// it). Deferring the walk keeps merely *importing* this module side-effect-free
+// — critical for the compiled `meta` binary, where eager resolution at import
+// time used to throw before any command (even `--help`) could run.
+let _frameworkTemplatesDir: string | null | undefined;
+function frameworkTemplatesDir(): string | undefined {
+  if (_frameworkTemplatesDir === undefined) {
+    _frameworkTemplatesDir = findFrameworkTemplatesDir(SELF_DIR) ?? null;
+  }
+  return _frameworkTemplatesDir ?? undefined;
+}
 
 /** Provider backed by an arbitrary on-disk template directory. References
  *  resolve as `<dir>/<ref>.mustache`. Used by both the framework default
@@ -70,10 +81,27 @@ export class FileSystemProvider implements Provider {
 }
 
 /** The framework defaults provider — resolves refs against codegen-ts's own
- *  `templates/` directory. */
-export const frameworkTemplatesProvider: Provider = new FileSystemProvider(
-  FRAMEWORK_TEMPLATES_DIR,
-);
+ *  on-disk `templates/` directory.
+ *
+ *  Resolution is lazy: the directory is located on first `resolve()`, not at
+ *  module import. This keeps merely importing this module side-effect-free,
+ *  which matters for the `bun build --compile` standalone `meta` binary — its
+ *  `import.meta.url` is a `/$bunfs/root` virtual path with no on-disk
+ *  `templates/` dir, so eager resolution at import time used to throw before
+ *  any command (even `--help` or the schema ops `migrate`/`verify --db`) could
+ *  run. Now non-codegen commands import cleanly; only the codegen doc path
+ *  (which the standalone binary doesn't target) needs the on-disk dir. */
+class FrameworkTemplatesProvider implements Provider {
+  resolve(ref: string): string | undefined {
+    const dir = frameworkTemplatesDir();
+    if (dir === undefined) return undefined;
+    const path = join(dir, `${ref}.mustache`);
+    if (!existsSync(path)) return undefined;
+    return readFileSync(path, "utf-8");
+  }
+}
+
+export const frameworkTemplatesProvider: Provider = new FrameworkTemplatesProvider();
 
 /** Compose providers: first match wins. Adopters typically chain
  *  `[projectProvider, frameworkTemplatesProvider]` so their own templates
@@ -102,6 +130,15 @@ export function projectProvider(projectRoot?: string): Provider {
   ]);
 }
 
-/** Exposed for tests that want to inspect / clear the resolved framework
- *  templates directory (don't use outside tests). */
-export const __frameworkTemplatesDirForTests = FRAMEWORK_TEMPLATES_DIR;
+/** Exposed for tests that want to inspect the resolved framework templates
+ *  directory (don't use outside tests). Resolved lazily so that merely
+ *  importing this module never walks the filesystem or throws — tests always
+ *  run from source where the on-disk dir exists; the standalone binary (where
+ *  no dir exists) never touches this export. */
+export function frameworkTemplatesDirForTests(): string {
+  const dir = frameworkTemplatesDir();
+  if (dir === undefined) {
+    throw new Error("framework templates dir unresolved (test ran outside a source/install layout)");
+  }
+  return dir;
+}

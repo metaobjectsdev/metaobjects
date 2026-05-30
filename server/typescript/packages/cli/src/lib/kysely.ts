@@ -1,4 +1,5 @@
 import { Kysely } from "kysely";
+import { BunSqliteDialect, isBun } from "./bun-sqlite-dialect.js";
 
 export type Dialect = "sqlite" | "postgres" | "d1";
 
@@ -63,17 +64,29 @@ export async function buildKyselyFromUrl(
   }
 
   if (dialect === "sqlite") {
-    type LibsqlDialectCtor = new (opts: { url: string }) => ConstructorParameters<typeof Kysely<Record<string, unknown>>>[0]["dialect"];
-    let LibsqlDialect: LibsqlDialectCtor;
-    try {
-      const mod = await import("@libsql/kysely-libsql");
-      LibsqlDialect = mod.LibsqlDialect as unknown as LibsqlDialectCtor;
-    } catch {
-      throw new Error(
-        `dialect 'sqlite' requires '@libsql/kysely-libsql'; install it: 'bun add @libsql/kysely-libsql'`,
-      );
+    // Under Bun (notably the `bun build --compile` standalone binary), use the
+    // built-in `bun:sqlite` driver. It ships inside the embedded Bun runtime,
+    // so — unlike `@libsql/kysely-libsql`, whose platform-native `.node` addon
+    // can't be bundled into a single-file binary — it works in the compiled
+    // `meta` binary with no on-disk dependency. The Node/npm distribution falls
+    // through to libsql below.
+    let sqliteDialect: ConstructorParameters<typeof Kysely<Record<string, unknown>>>[0]["dialect"];
+    if (isBun()) {
+      sqliteDialect = new BunSqliteDialect(url);
+    } else {
+      type LibsqlDialectCtor = new (opts: { url: string }) => ConstructorParameters<typeof Kysely<Record<string, unknown>>>[0]["dialect"];
+      let LibsqlDialect: LibsqlDialectCtor;
+      try {
+        const mod = await import("@libsql/kysely-libsql");
+        LibsqlDialect = mod.LibsqlDialect as unknown as LibsqlDialectCtor;
+      } catch {
+        throw new Error(
+          `dialect 'sqlite' requires '@libsql/kysely-libsql'; install it: 'bun add @libsql/kysely-libsql'`,
+        );
+      }
+      sqliteDialect = new LibsqlDialect({ url });
     }
-    const db = new Kysely<Record<string, unknown>>({ dialect: new LibsqlDialect({ url }) });
+    const db = new Kysely<Record<string, unknown>>({ dialect: sqliteDialect });
     let closed = false;
     return {
       db,
