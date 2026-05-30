@@ -1,0 +1,6 @@
+{ "format": "xml", "rootName": "Triage", "roundTrip": true,
+  "fields": [
+    { "name": "priority", "kind": "ENUM", "required": true,
+      "enumValues": ["LOW", "MEDIUM", "HIGH"],
+      "enumDoc": { "LOW": "no urgency", "HIGH": "page on-call" },
+      "example": "HIGH", "instruction": "Pick one severity." } ] }

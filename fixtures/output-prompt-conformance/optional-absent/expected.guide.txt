@@ -1,0 +1,10 @@
+Fill in each field as described below:
+- title (required): Required.
+    e.g. Hello
+- subtitle (optional)
+
+Respond exactly like this:
+{
+  "title": "Hello",
+  "subtitle": "{subtitle}"
+}

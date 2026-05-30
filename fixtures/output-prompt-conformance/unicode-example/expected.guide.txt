@@ -1,0 +1,8 @@
+Fill in each field as described below:
+- greeting (required): A localized greeting.
+    e.g. こんにちは — café — 🚀
+
+Respond exactly like this:
+{
+  "greeting": "こんにちは — café — 🚀"
+}

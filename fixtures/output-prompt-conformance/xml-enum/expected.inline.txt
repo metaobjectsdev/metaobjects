@@ -1,0 +1,3 @@
+<Triage>
+  <priority>LOW | MEDIUM | HIGH</priority>
+</Triage>

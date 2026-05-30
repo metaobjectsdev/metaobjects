@@ -84,7 +84,9 @@ describe("output-prompt-conformance corpus", () => {
         .filter((n) => existsSync(join(CORPUS, n, "spec.json")))
         .sort()
     : [];
-  expect(names.length).toBeGreaterThan(0);
+  // Count guard: a port silently skipping cases must fail. Bump when adding cases.
+  const EXPECTED_CASE_COUNT = 10;
+  expect(names.length).toBe(EXPECTED_CASE_COUNT);
 
   for (const name of names) {
     test(name, () => {

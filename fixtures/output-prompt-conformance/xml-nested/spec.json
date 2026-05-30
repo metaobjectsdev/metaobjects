@@ -1,0 +1,8 @@
+{ "format": "xml", "rootName": "Review", "roundTrip": false,
+  "fields": [
+    { "name": "summary", "kind": "STRING", "required": true,
+      "example": "Solid work overall.", "instruction": "One sentence." },
+    { "name": "meta", "kind": "OBJECT", "required": true, "array": false,
+      "nested": { "format": "xml", "rootName": "Meta",
+        "fields": [
+          { "name": "score", "kind": "INT", "required": true, "example": "5", "instruction": "1-5." } ] } } ] }

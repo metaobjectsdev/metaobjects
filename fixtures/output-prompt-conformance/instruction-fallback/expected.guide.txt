@@ -1,0 +1,7 @@
+Fill in each field as described below:
+- value (required)
+
+Respond exactly like this:
+{
+  "value": "{value}"
+}

@@ -1,0 +1,7 @@
+Fill in each field as described below:
+- tags (required): Zero or more short labels.
+
+Respond exactly like this:
+{
+  "tags": "{tags}"
+}

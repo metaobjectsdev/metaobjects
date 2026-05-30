@@ -1,0 +1,11 @@
+Fill in each field as described below:
+- priority (required): Pick one severity.
+    one of LOW, MEDIUM, HIGH
+      LOW = no urgency
+      HIGH = page on-call
+    e.g. HIGH
+
+Respond exactly like this:
+{
+  "priority": "HIGH"
+}

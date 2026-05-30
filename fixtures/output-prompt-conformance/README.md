@@ -27,3 +27,9 @@ classifies every field cleanly (no MALFORMED / LOST_*).
 Example values are restricted to strings, integers, booleans, and dyadic decimals
 (e.g. 1.5, 0.125) only — never a raw float whose textual form differs across runtimes.
 This keeps zero-drift robust against cross-runtime float formatting.
+
+## Nested objects
+
+A field with `kind: "OBJECT"` renders as a flat `{name}` placeholder — the FR-010
+renderer does not expand nested objects (a documented deferral). Such cases use
+`roundTrip: false`; nested recovery is covered by the recover-conformance corpus.

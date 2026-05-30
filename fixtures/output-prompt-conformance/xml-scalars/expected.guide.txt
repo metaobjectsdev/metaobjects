@@ -1,0 +1,14 @@
+Fill in each field as described below:
+- text (required): One or two sentences to the customer.
+    e.g. Your refund will appear in 3-5 days.
+- confidence (required): Integer 1-5.
+    e.g. 4
+- resolved (required): Whether the issue is fully resolved.
+    e.g. true
+
+Respond exactly like this:
+<SupportAnswer>
+  <text>Your refund will appear in 3-5 days.</text>
+  <confidence>4</confidence>
+  <resolved>true</resolved>
+</SupportAnswer>

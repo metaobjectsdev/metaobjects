@@ -1,0 +1,5 @@
+<SupportAnswer>
+  <text>{One or two sentences to the customer.}</text>
+  <confidence>{Integer 1-5.}</confidence>
+  <resolved>true | false</resolved>
+</SupportAnswer>

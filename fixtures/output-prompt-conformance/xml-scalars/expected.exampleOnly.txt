@@ -1,0 +1,5 @@
+<SupportAnswer>
+  <text>Your refund will appear in 3-5 days.</text>
+  <confidence>4</confidence>
+  <resolved>true</resolved>
+</SupportAnswer>
