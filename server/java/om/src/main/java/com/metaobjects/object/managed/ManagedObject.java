@@ -616,7 +616,7 @@ public class ManagedObject implements Map<String, Object>, Serializable, MetaObj
         if (mf == null) {
             return null;
         }
-        Object o = mf.getObject(key);
+        Object o = mf.getObject(this);
         mf.setObject(this, null);
         return o;
     }
