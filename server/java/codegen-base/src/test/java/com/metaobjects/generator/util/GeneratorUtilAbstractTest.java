@@ -21,16 +21,23 @@ import static org.junit.Assert.assertTrue;
  */
 public class GeneratorUtilAbstractTest extends GeneratorTestBase {
 
-    // Deliberately field-free: the accessor reads the object's own `abstract`
-    // flag, so the model only needs `object.entity` (a registered type). Avoiding
-    // field subtypes keeps this unit test independent of the metadata-module
-    // provider-bootstrap path (which other codegen-base tests don't exercise).
+    // Field-bearing on purpose: loading field.long/field.string forces the
+    // metadata provider-bootstrap path. This is also a regression guard for the
+    // class-init cycle where MetaData's static{} block bootstrapped the registry
+    // during its own <clinit>, leaving subclass loggers null and the field
+    // subtypes unregistered (only field.base). See the removal of the redundant
+    // self-registration static{} blocks in MetaData/MetaRoot.
     private static final String MODEL = "{\n" +
         "  \"metadata.root\": {\n" +
         "    \"package\": \"acme\",\n" +
         "    \"children\": [\n" +
-        "      { \"object.entity\": { \"name\": \"Base\", \"abstract\": true } },\n" +
-        "      { \"object.entity\": { \"name\": \"Concrete\", \"extends\": \"Base\" } }\n" +
+        "      { \"object.entity\": { \"name\": \"Base\", \"abstract\": true, \"children\": [\n" +
+        "        { \"field.long\": { \"name\": \"id\" } }\n" +
+        "      ] } },\n" +
+        "      { \"object.entity\": { \"name\": \"Concrete\", \"extends\": \"Base\", \"children\": [\n" +
+        "        { \"field.string\": { \"name\": \"label\" } },\n" +
+        "        { \"identity.primary\": { \"name\": \"pk\", \"@fields\": [\"id\"] } }\n" +
+        "      ] } }\n" +
         "    ]\n" +
         "  }\n" +
         "}";

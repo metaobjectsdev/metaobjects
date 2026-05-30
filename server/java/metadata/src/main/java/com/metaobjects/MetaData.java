@@ -245,14 +245,15 @@ public class MetaData implements Cloneable, Serializable {
         registerTypes(MetaDataRegistry.getInstance());
     }
 
-    // Static registration block - automatically registers the root metadata type when class is loaded
-    static {
-        try {
-            registerTypes(MetaDataRegistry.getInstance());
-        } catch (Exception e) {
-            log.error("Failed to register root MetaData type during class loading", e);
-        }
-    }
+    // NOTE: metadata.base registration is performed by CoreTypeMetaDataProvider
+    // (the ServiceLoader bootstrap), invoked on first MetaDataRegistry.getInstance().
+    // A static{} block here that called getInstance() during MetaData.<clinit> is
+    // intentionally absent: because the field/object/etc. providers call
+    // registerTypes() on MetaData subclasses, bootstrapping the registry from this
+    // base class's initializer created a class-init cycle (a subclass's static
+    // logger could be observed null, aborting provider load and leaving only
+    // field.base registered). Registration via the provider is the single source.
+
     // Unified caching strategy
     private final CacheStrategy cache = new HybridCache();
     
