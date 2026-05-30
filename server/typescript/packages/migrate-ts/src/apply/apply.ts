@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { type Kysely, sql } from "kysely";
 import {
   appliedRecords,
+  DEFAULT_LEDGER_SCHEMA,
   ensureLedger,
   type LedgerDialect,
   type LedgerOptions,
+  MIGRATIONS_TABLE,
   recordApplied,
 } from "./ledger.js";
 
@@ -61,49 +63,104 @@ export async function applyPending(
   const dialect = opts.dialect ?? "sqlite";
   const ledger = opts.ledger;
 
-  await ensureLedger(db, dialect, ledger);
-  const recorded = await appliedRecords(db, dialect, ledger);
+  // Serialize concurrent applies against the same ledger with a Postgres
+  // session advisory lock (no-op on SQLite). Held for the whole apply duration.
+  return withAdvisoryLock(db, dialect, ledger, async () => {
+    await ensureLedger(db, dialect, ledger);
+    const recorded = await appliedRecords(db, dialect, ledger);
 
-  const discovered = await discoverMigrations(dir);
+    const discovered = await discoverMigrations(dir);
 
-  // Tamper guard: any already-applied migration whose current up.sql checksum
-  // differs from the recorded one is a hard error.
-  for (const m of discovered) {
-    const recordedChecksum = recorded.get(m.name);
-    if (recordedChecksum === undefined) continue;
-    const current = checksumOf(await readFile(m.upPath, "utf8"));
-    if (current !== recordedChecksum) {
-      throw new Error(
-        `migration '${m.name}' was already applied but its up.sql checksum changed ` +
-          `(recorded ${recordedChecksum.slice(0, 12)}…, current ${current.slice(0, 12)}…). ` +
-          `Applied migrations are immutable; revert the edit or author a new migration.`,
-      );
-    }
-  }
-
-  const pending = discovered.filter((m) => !recorded.has(m.name));
-  const pendingNames = pending.map((m) => m.name);
-
-  if (opts.dryRun) {
-    return { pending: pendingNames, applied: [] };
-  }
-
-  const applied: string[] = [];
-  for (const m of pending) {
-    const text = await readFile(m.upPath, "utf8");
-    const checksum = checksumOf(text);
-    // Run the file's SQL + the ledger insert in ONE transaction. A failure
-    // rolls the whole file back (unrecorded) and propagates — stopping the run.
-    await db.transaction().execute(async (trx) => {
-      for (const stmt of splitSqlStatements(text)) {
-        await sql.raw(stmt).execute(trx);
+    // Tamper guard: any already-applied migration whose current up.sql checksum
+    // differs from the recorded one is a hard error.
+    for (const m of discovered) {
+      const recordedChecksum = recorded.get(m.name);
+      if (recordedChecksum === undefined) continue;
+      const current = checksumOf(await readFile(m.upPath, "utf8"));
+      if (current !== recordedChecksum) {
+        throw new Error(
+          `migration '${m.name}' was already applied but its up.sql checksum changed ` +
+            `(recorded ${recordedChecksum.slice(0, 12)}…, current ${current.slice(0, 12)}…). ` +
+            `Applied migrations are immutable; revert the edit or author a new migration.`,
+        );
       }
-      await recordApplied(trx, m.name, checksum, dialect, ledger);
-    });
-    applied.push(m.name);
-  }
+    }
 
-  return { pending: pendingNames, applied };
+    const pending = discovered.filter((m) => !recorded.has(m.name));
+    const pendingNames = pending.map((m) => m.name);
+
+    if (opts.dryRun) {
+      return { pending: pendingNames, applied: [] };
+    }
+
+    const applied: string[] = [];
+    for (const m of pending) {
+      const text = await readFile(m.upPath, "utf8");
+      const checksum = checksumOf(text);
+      // Run the file's SQL + the ledger insert in ONE transaction. A failure
+      // rolls the whole file back (unrecorded) and propagates — stopping the run.
+      await db.transaction().execute(async (trx) => {
+        for (const stmt of splitSqlStatements(text)) {
+          await sql.raw(stmt).execute(trx);
+        }
+        await recordApplied(trx, m.name, checksum, dialect, ledger);
+      });
+      applied.push(m.name);
+    }
+
+    return { pending: pendingNames, applied };
+  });
+}
+
+/**
+ * Run `body` while holding a Postgres SESSION-level advisory lock for mutual
+ * exclusion across concurrent applies/rollbacks against the same ledger.
+ *
+ * pg session advisory locks are per-connection, so the lock is taken on a single
+ * dedicated connection (`db.connection()`) held for the entire `body` duration;
+ * `body` still runs its own migrations via `db.transaction()` on the pool — the
+ * lock only needs to be held by some session for mutual exclusion. SESSION (not
+ * transaction) level so a `CREATE INDEX CONCURRENTLY` in a migration cannot
+ * deadlock against it. On SQLite (single-writer; no advisory locks) it is a
+ * pass-through.
+ *
+ * Ported from src/runner/pg-history-store.ts acquireLock/releaseLock/advisoryKey.
+ */
+async function withAdvisoryLock<T>(
+  db: Kysely<Record<string, unknown>>,
+  dialect: LedgerDialect,
+  ledger: LedgerOptions | undefined,
+  body: () => Promise<T>,
+): Promise<T> {
+  if (dialect !== "postgres") {
+    return body();
+  }
+  const key = advisoryKey(lockNameFor(ledger));
+  return db.connection().execute(async (lockConn) => {
+    // Bind the key as a parameter cast to bigint (a signed 64-bit int as a
+    // decimal string, possibly negative) — matching the runner's
+    // `pg_advisory_lock($1::bigint)`.
+    await sql`SELECT pg_advisory_lock(${key}::bigint)`.execute(lockConn);
+    try {
+      return await body();
+    } finally {
+      await sql`SELECT pg_advisory_unlock(${key}::bigint)`.execute(lockConn);
+    }
+  });
+}
+
+/** Default advisory-lock name: explicit `lockName`, else `<schema>.<table>`. */
+function lockNameFor(ledger: LedgerOptions | undefined): string {
+  if (ledger?.lockName !== undefined) return ledger.lockName;
+  const schema = ledger?.schema ?? DEFAULT_LEDGER_SCHEMA;
+  const table = ledger?.table ?? MIGRATIONS_TABLE;
+  return `${schema}.${table}`;
+}
+
+/** Stable 64-bit signed advisory-lock key (decimal string) from a lock name. */
+function advisoryKey(name: string): string {
+  const hash = createHash("sha256").update(name).digest();
+  return hash.readBigInt64BE(0).toString();
 }
 
 async function discoverMigrations(dir: string): Promise<DiscoveredMigration[]> {
