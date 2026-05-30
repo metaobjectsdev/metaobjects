@@ -1,5 +1,6 @@
 package com.metaobjects.integration.kotlin
 
+import com.metaobjects.integration.kotlin.tables.AssetTable
 import com.metaobjects.integration.kotlin.tables.MeasurementTable
 import com.metaobjects.integration.kotlin.tables.ProgramTable
 import com.metaobjects.integration.kotlin.tables.ProgramV1Table
@@ -56,8 +57,9 @@ internal class MigrationScenarioConformanceTest {
 
             // 1. Apply the canonical schema via Exposed's full-CREATE path —
             //    Exposed's analogue of the sibling SchemaMigrationEngine.emit() flow.
+            //    AssetTable is part of the canonical corpus (R6 Plan 2a/2b).
             transaction(db) {
-                SchemaUtils.create(ProgramTable, WeekTable, MeasurementTable)
+                SchemaUtils.create(ProgramTable, WeekTable, MeasurementTable, AssetTable)
             }
 
             // 2. Run the scenario's apply-up-then-query post-condition: it queries
@@ -107,6 +109,34 @@ internal class MigrationScenarioConformanceTest {
             }
             out
         }
+
+    @Test
+    fun `asset native column types bootstrap to native uuid jsonb and timestamptz columns`() {
+        // R6 Plan 2a/2b: SchemaUtils.create(AssetTable) must realize the Asset entity's
+        // native physical column types in the live catalog. The scenario asserts against
+        // information_schema (not the DDL string) so it is port-independent: whatever the
+        // exact DDL spelling, the live catalog must converge to uuid / jsonb /
+        // timestamp with time zone. Mirrors the R6 REAL/DOUBLE PRECISION assertion pattern.
+        val corpus = ScenarioLoader.findCorpusRoot()
+        val scenarios = ScenarioLoader.loadMigrations(corpus.resolve("migrations"))
+        val scenario = scenarios.singleOrNull { it.name == "asset-native-column-types" }
+            ?: error("Expected scenario 'asset-native-column-types' in corpus")
+
+        PostgresContainer().use { pg ->
+            val db = Database.connect(pg.jdbcUrl, user = pg.username, password = pg.password)
+
+            transaction(db) {
+                SchemaUtils.create(AssetTable)
+            }
+
+            val auq = scenario.expect.applyUpThenQuery
+                ?: error("asset-native-column-types scenario must declare apply-up-then-query")
+            val actualRows = queryRows(pg, auq.sql)
+            val expectedJson = Normalization.canonicalRowsJson(auq.rows)
+            val actualJson = Normalization.canonicalRowsJson(actualRows)
+            assertEquals(expectedJson, actualJson, "asset-native-column-types catalog type mismatch")
+        }
+    }
 
     @Test
     fun `add nullable column emits ALTER TABLE ADD COLUMN and preserves existing rows`() {

@@ -71,6 +71,20 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("weekCount", families = setOf("long")),
             ),
         ),
+        // R6 Plan 2a/2b native physical column types: field.uuid → Exposed `uuid(...)`,
+        // field.string + @dbColumnType:uuid → `uuid(...)`, field.string + @dbColumnType:jsonb
+        // → `jsonb(...)` (NOT text), field.timestamp + @dbColumnType:timestamp_with_tz →
+        // `timestampWithTimeZone(...)`. Verifies the generator emits the native families the
+        // hand-written reference AssetTable carries.
+        "Asset" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("id", families = setOf("uuid")),
+                ExpectedColumn("ownerId", families = setOf("uuid")),
+                ExpectedColumn("externalId", families = setOf("uuid")),
+                ExpectedColumn("payload", families = setOf("jsonb")),
+                ExpectedColumn("recordedAt", families = setOf("timestampWithTimeZone")),
+            ),
+        ),
     )
 
     @Test
