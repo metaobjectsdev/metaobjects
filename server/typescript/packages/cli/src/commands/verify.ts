@@ -13,6 +13,8 @@ import { log } from "../lib/log.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
+import { buildKyselyFromUrl, type Dialect } from "../lib/kysely.js";
+import { computeDrift, type AllowOptions, type Change } from "@metaobjectsdev/migrate-ts";
 import { loadMemory } from "@metaobjectsdev/sdk";
 import {
   TYPE_TEMPLATE,
@@ -35,7 +37,7 @@ function attrAsStringArray(attr: unknown): string[] {
 }
 
 export async function verifyCommand(args: string[], cwd: string): Promise<number> {
-  let flags;
+  let flags: ReturnType<typeof parseVerifyArgs>;
   try {
     flags = parseVerifyArgs(args);
   } catch (err) {
@@ -56,7 +58,7 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
     configProviders = undefined;
   }
 
-  let root;
+  let root: Awaited<ReturnType<typeof loadMemory>>;
   try {
     root = await loadMemory(cwd, {
       ...(configProviders !== undefined ? { providers: configProviders } : {}),
@@ -74,15 +76,25 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
   const promptsDir = join(cwd, flags.prompts ?? DEFAULT_PROMPTS_DIR);
   const provider = new FileProvider(promptsDir);
 
-  const templates = root.ownChildren().filter((c) => c.type === TYPE_TEMPLATE);
-  if (templates.length === 0) {
-    log.info("meta verify — no template.* nodes found; nothing to check.");
-    return 0;
-  }
+  // Exit-code composition: the overall result is max(templateExit, schemaExit)
+  // so either kind of drift fails CI. The schema path only runs when --db is
+  // present (and not --skip-schema); with no --db it is skipped entirely and
+  // the exit reflects the template path alone (unchanged behavior).
+  const templateExit = runTemplateVerify();
+  const schemaExit = await runSchemaVerify();
+  return Math.max(templateExit, schemaExit);
 
-  let errorCount = 0;
-  let warnCount = 0;
-  let checked = 0;
+  // -- template (prompt / output) drift --------------------------------------
+  function runTemplateVerify(): number {
+    const templates = root.ownChildren().filter((c) => c.type === TYPE_TEMPLATE);
+    if (templates.length === 0) {
+      log.info("meta verify — no template.* nodes found; nothing to check.");
+      return 0;
+    }
+
+    let errorCount = 0;
+    let warnCount = 0;
+    let checked = 0;
 
   for (const tmpl of templates) {
     const textRef = tmpl.ownAttr(TEMPLATE_ATTR_TEXT_REF);
@@ -139,14 +151,127 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
     }
   }
 
-  if (errorCount > 0) {
-    log.error(
-      `meta verify — ${errorCount} drift error(s) across ${templates.length} template(s).`,
+    if (errorCount > 0) {
+      log.error(
+        `meta verify — ${errorCount} drift error(s) across ${templates.length} template(s).`,
+      );
+      return 1;
+    }
+    log.info(
+      `meta verify — ${checked} template(s) clean${warnCount > 0 ? ` (${warnCount} warning(s))` : ""}.`,
     );
-    return 1;
+    return 0;
   }
-  log.info(
-    `meta verify — ${checked} template(s) clean${warnCount > 0 ? ` (${warnCount} warning(s))` : ""}.`,
-  );
-  return 0;
+
+  // -- schema drift (live DB) ------------------------------------------------
+  // Gated on --db. With no --db (or --skip-schema), this is a no-op returning 0
+  // — the DB-free default behavior is unchanged.
+  async function runSchemaVerify(): Promise<number> {
+    if (flags.db === undefined || flags.skipSchema) return 0;
+
+    let kysely;
+    try {
+      kysely = await buildKyselyFromUrl(flags.db, flags.dialect as Dialect | undefined);
+    } catch (err) {
+      log.error(`verify: ${(err as Error).message}`);
+      return 1;
+    }
+
+    try {
+      if (kysely.dialect === "d1") {
+        // d1 has no Kysely-driver introspection path; schema-drift via verify is
+        // not supported for d1. Surface clearly rather than silently passing.
+        log.error(`verify: --db schema-drift gate does not support dialect 'd1'`);
+        return 1;
+      }
+
+      const allow = tokensToAllowOptions(flags.allow);
+      let driftResult;
+      try {
+        driftResult = await computeDrift(kysely.db, kysely.dialect, root, { allow });
+      } catch (err) {
+        log.error(`verify: failed to introspect ${kysely.displayUrl}: ${(err as Error).message}`);
+        return 1;
+      }
+
+      // TODO(Unit 3 — migration-history ledger): when the ledger table exists,
+      // a migration that is recorded-as-pending-but-unapplied must also count as
+      // drift here. Until Unit 3 ships the ledger, this MUST no-op — do not query
+      // a table that doesn't exist. `reconcileLedger` returns no extra drift today.
+      const ledgerDrift = await reconcileLedger();
+
+      const changes = driftResult.changes;
+      if (changes.length === 0 && ledgerDrift.length === 0) {
+        log.info(`meta verify — schema in sync with ${kysely.displayUrl}.`);
+        return 0;
+      }
+
+      log.error(`meta verify — schema drift vs ${kysely.displayUrl} (${changes.length} change(s)):`);
+      for (const line of summarizeDrift(changes)) log.error(`  ${line}`);
+      for (const line of ledgerDrift) log.error(`  ${line}`);
+      return 1;
+    } finally {
+      try {
+        await kysely.close();
+      } catch (err) {
+        log.warn(`verify: failed to close DB cleanly: ${(err as Error).message}`);
+      }
+    }
+  }
+}
+
+// Map CLI allow tokens → migrate-ts AllowOptions field names.
+const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
+  "drop-column": "dropColumn",
+  "drop-table": "dropTable",
+  "type-change": "typeChange",
+  "drop-index": "dropIndex",
+  "drop-fk": "dropFk",
+  "nullable-to-not-null": "nullableToNotNull",
+};
+
+function tokensToAllowOptions(tokens: string[]): AllowOptions {
+  const opts: AllowOptions = {};
+  for (const tok of tokens) {
+    const field = ALLOW_TOKEN_MAP[tok];
+    if (field !== undefined) opts[field] = true;
+  }
+  return opts;
+}
+
+/**
+ * Migration-history ledger reconciliation hook (Unit 3 — not yet built).
+ *
+ * When the ledger lands, this will read it and report any recorded-but-unapplied
+ * migration as drift. Until then it is a deliberate no-op: returning an empty
+ * array means "no ledger-derived drift", and crucially it does NOT touch any
+ * ledger table (which doesn't exist yet) so a fresh DB never trips on it.
+ */
+async function reconcileLedger(): Promise<string[]> {
+  return [];
+}
+
+/** Human-readable one-line-per-change drift summary (table/column/index/fk/view). */
+function summarizeDrift(changes: Change[]): string[] {
+  return changes.map((c) => {
+    switch (c.kind) {
+      case "create-table": return `+ table ${c.table.name}`;
+      case "drop-table": return `- table ${c.table}`;
+      case "rename-table": return `~ table ${c.from} → ${c.to}`;
+      case "add-column": return `+ column ${c.table}.${c.column.name}`;
+      case "drop-column": return `- column ${c.table}.${c.column}`;
+      case "rename-column": return `~ column ${c.table}.${c.from} → ${c.to}`;
+      case "change-column-type": return `~ column ${c.table}.${c.column} type (${c.from.kind} → ${c.to.kind})`;
+      case "change-column-nullable": return `~ column ${c.table}.${c.column} nullable (${c.from ? "NULL" : "NOT NULL"} → ${c.to ? "NULL" : "NOT NULL"})`;
+      case "change-column-default": return `~ column ${c.table}.${c.column} default`;
+      case "add-index": return `+ index ${c.table}.${c.index.name}`;
+      case "drop-index": return `- index ${c.table}.${c.index}`;
+      case "add-fk": return `+ fk ${c.table}.${c.fk.name}`;
+      case "drop-fk": return `- fk ${c.table}.${c.fk}`;
+      case "create-view": return `+ view ${c.view.name}`;
+      case "replace-view": return `~ view ${c.view.name} (body changed)`;
+      case "drop-view": return `- view ${c.view}`;
+      default: return JSON.stringify(c);
+    }
+  });
 }
