@@ -51,7 +51,15 @@ run_java() {
 
 run_python() {
   echo "==> Python persistence conformance"
-  ( cd server/python && uv sync --extra integration --quiet && uv run pytest tests/integration -q ) || FAIL=1
+  # BOTH extras are required, on `uv run` itself:
+  #   --extra dev          → puts pytest in the PROJECT venv. Without it, `uv run
+  #                          pytest` falls back to a global pytest (~/.local/bin)
+  #                          running in a foreign env that lacks the project deps.
+  #   --extra integration  → fastapi/httpx/pg8000 for the api-contract scenarios.
+  # Syncing only one (or `uv sync --extra ... && uv run pytest`, since `uv run`
+  # re-syncs to its own flags) silently drops fastapi and aborts api-contract
+  # collection, leaving only the query scenarios running.
+  ( cd server/python && uv run --extra dev --extra integration pytest tests/integration -q ) || FAIL=1
 }
 
 run_kotlin() {
