@@ -60,4 +60,12 @@ describe("snapshot store", () => {
     await writeSnapshot(path, snap);
     expect(await readSnapshot(path)).toEqual(parseSnapshot(serializeSnapshot(snap)));
   });
+
+  test("writeSnapshot creates a missing parent directory", async () => {
+    const dir = await makeDir();
+    const path = snapshotPath(join(dir, "nested", "deeper"), "postgres");
+    const snap = buildExpectedSchema(await loadJson(META), { dialect: "postgres" });
+    await writeSnapshot(path, snap);
+    expect(await readSnapshot(path)).toEqual(parseSnapshot(serializeSnapshot(snap)));
+  });
 });

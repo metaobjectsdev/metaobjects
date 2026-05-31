@@ -65,6 +65,9 @@ export function parseSnapshot(text: string): SchemaSnapshot {
         `${SNAPSHOT_FORMAT_VERSION}; upgrade @metaobjectsdev/migrate-ts`,
     );
   }
+  if (file.snapshot === null || typeof file.snapshot !== "object") {
+    throw new Error("snapshot file is missing a 'snapshot' object");
+  }
   // v1 is the only version today. Future versions add upgrade branches here
   // (read older shape, lift it forward) before returning.
   return file.snapshot;

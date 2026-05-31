@@ -87,4 +87,9 @@ describe("serializeSnapshot / parseSnapshot", () => {
   test("rejects a file with no formatVersion", () => {
     expect(() => parseSnapshot(JSON.stringify({ snapshot: snap }))).toThrow(/formatVersion/);
   });
+
+  test("rejects a file with formatVersion but no snapshot body", () => {
+    expect(() => parseSnapshot(JSON.stringify({ formatVersion: SNAPSHOT_FORMAT_VERSION })))
+      .toThrow(/missing a 'snapshot' object/);
+  });
 });
