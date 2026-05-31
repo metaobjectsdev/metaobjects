@@ -1,5 +1,7 @@
-import type { ColumnNamingStrategy, MetaData, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
+import type { ColumnNamingStrategy, MetaData, MetaObject, MetaRoot, MetaValidator } from "@metaobjectsdev/metadata";
 import {
+  VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
+  VALIDATOR_ATTR_PATTERN,
   TYPE_OBJECT,
   MetaSource,
   IDENTITY_ATTR_GENERATION,
@@ -107,7 +109,7 @@ export function buildExpectedSchema(
   // Schema is resolved here (not stored in Pass 1) to avoid exactOptionalPropertyTypes
   // issues with `string | undefined` vs `schema?: string`.
   const tables: TableDescriptor[] = entities.map(({ entity, tableName }) => {
-    const t = buildTable(entity, tableName, resolveTargetTable, root as MetaRoot, strategy);
+    const t = buildTable(entity, tableName, resolveTargetTable, root as MetaRoot, strategy, dialect);
     const schema = resolveTableSchema(entity);
     if (schema !== undefined) t.schema = schema;
     return t;
@@ -183,6 +185,7 @@ function buildTable(
   resolveTargetTable: (entityName: string) => string | undefined,
   root: MetaRoot,
   strategy: ColumnNamingStrategy,
+  dialect: Dialect | undefined,
 ): TableDescriptor {
   // Use effective accessors so inherited fields/identities (from `extends:` /
   // abstract bases like BaseEntity) are included.
@@ -218,7 +221,7 @@ function buildTable(
     columns,
     indexes: buildSecondaryIndexes(entity, tableName, strategy),
     foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy),
-    checks: buildChecks(entity, tableName, strategy),
+    checks: buildChecks(entity, tableName, strategy, dialect),
     primaryKey,
   };
   const entityDesc = readDescription(entity);
@@ -287,18 +290,48 @@ function buildSecondaryIndexes(
  * field always yields a non-empty member set; a defensive guard skips any edge
  * case where the array is absent rather than emitting `IN ()`.
  */
+/**
+ * Map a single declared validator to a DB CHECK descriptor, or null when it has
+ * no SQL-expressible form on this dialect. The constraint name is
+ * `<table>_<col>_<validator>_chk`. The expression references the resolved physical
+ * column name verbatim (matching the enum-check convention).
+ */
+function validatorCheck(
+  v: MetaValidator, col: string, tableName: string, dialect: Dialect | undefined,
+): CheckDescriptor | null {
+  switch (v.subType) {
+    case VALIDATOR_SUBTYPE_NUMERIC: {
+      const parts: string[] = [];
+      if (v.min !== undefined) parts.push(`${col} >= ${v.min}`);
+      if (v.max !== undefined) parts.push(`${col} <= ${v.max}`);
+      if (parts.length === 0) return null;
+      return { name: `${tableName}_${col}_numeric_chk`, expression: parts.join(" AND ") };
+    }
+    default:
+      return null;
+  }
+}
+
 function buildChecks(
-  entity: MetaObject, tableName: string, strategy: ColumnNamingStrategy,
+  entity: MetaObject, tableName: string, strategy: ColumnNamingStrategy, dialect: Dialect | undefined,
 ): CheckDescriptor[] {
   const checks: CheckDescriptor[] = [];
   for (const field of entity.fields()) {
-    if (field.subType !== FIELD_SUBTYPE_ENUM) continue;
-    const raw = field.attr(FIELD_ATTR_VALUES);
-    if (!Array.isArray(raw) || raw.length === 0) continue;
-    const values = raw.map((v) => String(v));
     const col = resolveColumnName(field, strategy);
-    const expression = `${col} IN (${values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
-    checks.push({ name: `${tableName}_${col}_chk`, expression });
+    // Enum membership check (unchanged).
+    if (field.subType === FIELD_SUBTYPE_ENUM) {
+      const raw = field.attr(FIELD_ATTR_VALUES);
+      if (Array.isArray(raw) && raw.length > 0) {
+        const values = raw.map((v) => String(v));
+        const expression = `${col} IN (${values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
+        checks.push({ name: `${tableName}_${col}_chk`, expression });
+      }
+    }
+    // Validator-derived checks.
+    for (const v of field.validators()) {
+      const check = validatorCheck(v, col, tableName, dialect);
+      if (check) checks.push(check);
+    }
   }
   return checks;
 }
