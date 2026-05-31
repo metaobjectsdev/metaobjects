@@ -39,12 +39,17 @@ import type { MetaValidator } from "../validator/meta-validator.js";
 export class MetaObject extends MetaData {
   get dbTable(): string | undefined {
     return this.cached("dbTable", () => {
-      // The primary writable source carries the physical table name (@table).
+      // The primary writable source carries the physical table name. FR-016:
+      // physicalName respects per-kind aliases + the four-step resolution rule.
+      // We still scope to writable + primary because dbTable is the WRITE target
+      // (CQRS read-side via dbView/dbProc is a different accessor).
       const source = this.children().find(
         (c): c is MetaSource =>
           c instanceof MetaSource && c.isWritable() && c.role === SOURCE_ROLE_PRIMARY,
       );
-      return source?.tableName;
+      if (source === undefined) return undefined;
+      const name = source.physicalName;
+      return name !== "" ? name : undefined;
     });
   }
 

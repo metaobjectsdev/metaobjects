@@ -46,12 +46,20 @@ function findRelationship(obj: MetaData, name: string): MetaData | undefined {
 }
 
 function viewName(projection: MetaObject, ctx: ExtractContext): string {
-  // The read-only source carries the physical view name (@table).
+  // The read-only source carries the physical view name. FR-016: physicalName
+  // implements the four-step rule (kind-matching alias → legacy @table →
+  // source.name → entity-name fallback), so the call below correctly resolves
+  // @view / @materializedView / legacy @table for projection sources.
   const viewSource = projection.ownChildren().find(
     (c): c is MetaSource => c instanceof MetaSource && c.isReadOnly(),
   );
-  const explicit = viewSource?.tableName;
-  return explicit ?? viewNameFromProjection(projection.name, ctx.columnNamingStrategy);
+  const explicit = viewSource?.physicalName;
+  // physicalName always returns a string; empty string means the source had
+  // neither alias nor a name and the owning entity name was empty (impossible
+  // for a real projection). Fall through to the helper anyway for safety.
+  return explicit !== undefined && explicit !== ""
+    ? explicit
+    : viewNameFromProjection(projection.name, ctx.columnNamingStrategy);
 }
 
 /**
