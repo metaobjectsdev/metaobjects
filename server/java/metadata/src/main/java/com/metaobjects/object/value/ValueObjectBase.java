@@ -134,6 +134,32 @@ public abstract class ValueObjectBase extends DataObjectBase implements Map<Stri
 
 
     //////////////////////////////////////////////////////////
+    // CACHED PER-FIELD VALUE HOLDER (perf primitive for valueObject codegen)
+
+    /**
+     * Returns the stable, cached value holder for a single field by name.
+     *
+     * <p>The valueObject codegen flavor binds a field's holder ONCE at accessor
+     * construction and then reads/writes the field's value via the holder's
+     * {@link DataObjectBase.Value#getValue()} / {@link DataObjectBase.Value#setValue(Object)}
+     * directly — avoiding a {@code get(name)} / {@code set(name,v)} hash lookup on
+     * every accessor call.</p>
+     *
+     * <p>The returned holder is the SAME cell that {@code get(name)} / {@code put(name,v)}
+     * operate on (it lives in the backing value map), so it is always current — never
+     * a snapshot — and writes through either path are mutually visible. Repeated calls
+     * for the same field name return the same instance (the backing map memoizes it),
+     * making the reference safe to cache in generated accessors.</p>
+     *
+     * @param name the field name
+     * @return the stable {@link DataObjectBase.Value} holder for the field, or
+     *         {@code null} if the field name is not valid for this object
+     */
+    public DataObjectBase.Value valueHolder(String name) {
+        return getObjectAttributeValue(name);
+    }
+
+    //////////////////////////////////////////////////////////
     // MAP METHODS
 
     @Override
