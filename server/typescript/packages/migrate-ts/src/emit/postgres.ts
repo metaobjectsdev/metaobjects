@@ -62,6 +62,10 @@ function renderUp(c: Change): string {
     case "drop-index":             return `DROP INDEX ${quoteIndexQualified(c.index, c.schema)};`;
     case "add-fk":                 return renderAddFk(c.table, c.schema, c.fk);
     case "drop-fk":                return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.fk)};`;
+    // add-check / drop-check are declared but NOT yet produced by the diff —
+    // checks are create-time-only (inlined in CREATE TABLE via renderCreateTable).
+    // These arms exist for future existing-table CHECK evolution support, mirroring
+    // the create-view/drop-view "declared, not yet produced" pattern.
     case "add-check":              return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD CONSTRAINT ${quote(c.check.name)} CHECK (${c.check.expression});`;
     case "drop-check":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.check)};`;
     case "create-view":            return renderCreateView(c.view, c.schema, /* orReplace */ false);
@@ -91,6 +95,8 @@ function renderDown(c: Change): string {
     case "drop-index":             return `-- WARNING: down migration cannot restore the original index definition`;
     case "add-fk":                 return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.fk.name)};`;
     case "drop-fk":                return `-- WARNING: down migration cannot restore the original FK definition`;
+    // add-check / drop-check down arms: declared but not yet produced by the diff
+    // (checks are create-time-only; see renderUp note).
     case "add-check":              return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.check.name)};`;
     case "drop-check":             return `-- WARNING: down migration cannot restore the original CHECK definition`;
     case "create-view":            return `DROP VIEW ${quoteQualifiedView(c.view.name, c.schema)};`;

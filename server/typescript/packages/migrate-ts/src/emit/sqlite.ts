@@ -193,8 +193,9 @@ function renderUpNative(c: Change): string {
     case "drop-index":     return `DROP INDEX ${quote(c.index)};`;
     case "add-check":
     case "drop-check":
-      // SQLite cannot ADD/DROP a CHECK in place; it needs the recreate-and-copy
-      // machinery (a follow-on). Throw rather than silently mis-emit.
+      // Declared for future existing-table support; the diff does not yet produce
+      // these (checks are create-time-only, inlined in CREATE TABLE). Unreachable
+      // today — throw rather than silently mis-emit if one ever arrives here.
       throw new Error("CHECK migration not implemented for sqlite (recreate path pending)");
     case "change-column-type":
     case "change-column-nullable":
@@ -222,8 +223,9 @@ function renderDownNative(c: Change): string {
     case "drop-index":     return `-- WARNING: down migration cannot restore the original index definition`;
     case "add-check":
     case "drop-check":
-      // SQLite cannot ADD/DROP a CHECK in place; it needs the recreate-and-copy
-      // machinery (a follow-on). Throw rather than silently mis-emit.
+      // Declared for future existing-table support; the diff does not yet produce
+      // these (checks are create-time-only, inlined in CREATE TABLE). Unreachable
+      // today — throw rather than silently mis-emit if one ever arrives here.
       throw new Error("CHECK migration not implemented for sqlite (recreate path pending)");
     case "change-column-type":
     case "change-column-nullable":
@@ -255,6 +257,12 @@ function renderCreateTable(t: TableDescriptor): string {
     if (fk.onDelete) clause += ` ON DELETE ${renderFkAction(fk.onDelete)}`;
     if (fk.onUpdate) clause += ` ON UPDATE ${renderFkAction(fk.onUpdate)}`;
     colDefs.push(clause);
+  }
+  // CHECK constraints are inlined into the CREATE TABLE DDL (SQLite supports
+  // inline named CHECK). Checks are create-time-only; the diff never produces
+  // add-check / drop-check, so this is the sole place SQLite emits a CHECK.
+  for (const chk of t.checks ?? []) {
+    colDefs.push(`  CONSTRAINT ${quote(chk.name)} CHECK (${chk.expression})`);
   }
   return `CREATE TABLE ${quote(t.name)} (\n${colDefs.join(",\n")}\n);`;
 }

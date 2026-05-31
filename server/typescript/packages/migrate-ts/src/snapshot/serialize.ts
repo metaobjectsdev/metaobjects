@@ -25,7 +25,7 @@ function canonicalize(s: SchemaSnapshot): SchemaSnapshot {
       columns: sortByName(t.columns),
       indexes: sortByName(t.indexes),
       foreignKeys: sortByName(t.foreignKeys),
-      checks: sortByName(t.checks),
+      checks: sortByName(t.checks ?? []),
     })),
     views: sortByName(s.views),
     ...(s.meta ? { meta: s.meta } : {}),

@@ -10,22 +10,28 @@ const tbl = (checks: { name: string; expression: string }[]): TableDescriptor =>
 const snap = (checks: { name: string; expression: string }[]): SchemaSnapshot => ({ tables: [tbl(checks)], views: [] });
 const CHK = { name: "orders_status_chk", expression: "status IN ('OPEN','CLOSED')" };
 
-describe("diff checks", () => {
-  test("create-table carries its checks as add-check", async () => {
+// Checks are create-time-only: they ride on `create-table.table.checks` and are
+// inlined into the CREATE TABLE DDL at emit time. The diff never produces
+// add-check / drop-check (existing-table enum-value evolution is deferred).
+describe("diff checks (inline create-time only)", () => {
+  test("create-table carries its checks on table.checks, not as a separate add-check", async () => {
     const r = await diff({ expected: snap([CHK]), actual: { tables: [], views: [] } });
-    expect(r.changes.some((c) => c.kind === "create-table")).toBe(true);
-    expect(r.changes.some((c) => c.kind === "add-check")).toBe(true);
+    const create = r.changes.find((c) => c.kind === "create-table");
+    expect(create).toBeDefined();
+    expect((create as { table: TableDescriptor }).table.checks).toEqual([CHK]);
+    // No standalone -check change is produced.
+    expect(r.changes.every((c) => !c.kind.endsWith("-check"))).toBe(true);
   });
-  test("check added to an existing table → add-check", async () => {
+  test("check added to an existing table → NO -check change (deferred)", async () => {
     const r = await diff({ expected: snap([CHK]), actual: snap([]) });
-    expect(r.changes.filter((c) => c.kind === "add-check")).toHaveLength(1);
+    expect(r.changes.every((c) => !c.kind.endsWith("-check"))).toBe(true);
   });
-  test("check removed → drop-check", async () => {
+  test("check removed from an existing table → NO -check change (deferred)", async () => {
     const r = await diff({ expected: snap([]), actual: snap([CHK]) });
-    expect(r.changes.filter((c) => c.kind === "drop-check")).toHaveLength(1);
+    expect(r.changes.every((c) => !c.kind.endsWith("-check"))).toBe(true);
   });
-  test("identical checks → no change", async () => {
+  test("identical checks → no -check change", async () => {
     const r = await diff({ expected: snap([CHK]), actual: snap([CHK]) });
-    expect(r.changes.filter((c) => c.kind.endsWith("-check"))).toHaveLength(0);
+    expect(r.changes.every((c) => !c.kind.endsWith("-check"))).toBe(true);
   });
 });
