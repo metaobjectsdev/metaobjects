@@ -10,9 +10,9 @@ using Xunit;
 namespace MetaObjects.Codegen.Tests;
 
 /// <summary>
-/// FR-010 codegen: the tolerant recover() API on OutputParserGenerator + the OutputPromptGenerator.
+/// FR-010 codegen: the tolerant extract() API on OutputParserGenerator + the OutputPromptGenerator.
 /// The headline is a compile-AND-RUN proof — generated parser + nullable mirror + payload + prompt
-/// are compiled together with the render engine via Roslyn, then Recover()/RenderFormat() are
+/// are compiled together with the render engine via Roslyn, then Extract()/RenderFormat() are
 /// invoked by reflection. This is the gold-standard that catches codegen bugs string-assertions miss.
 /// </summary>
 public sealed class Fr010CodegenTests
@@ -53,29 +53,29 @@ public sealed class Fr010CodegenTests
     // ---- emission shape ----
 
     [Fact]
-    public void Parser_emits_recover_api_and_nullable_mirror_for_json()
+    public void Parser_emits_extract_api_and_nullable_mirror_for_json()
     {
         var src = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(Model)))).Content;
 
-        Assert.Contains("using MetaObjects.Render.Recover;", src);
-        Assert.Contains("private static readonly RecoverSchema RecoverSchemaDef =", src);
+        Assert.Contains("using MetaObjects.Render.Extract;", src);
+        Assert.Contains("private static readonly ExtractSchema ExtractSchemaDef =", src);
         Assert.Contains("FieldSpec.EnumField(\"confidence\", true, new[] { \"HIGH\", \"OK\", \"LOW\" }", src);
-        Assert.Contains("public static RecoveryResult<AnswerPayloadRecovered> Recover(string text)", src);
-        Assert.Contains("public static RecoveryResult<AnswerPayloadRecovered> Recover(string text, RecoverOptions opts)", src);
-        Assert.Contains("public static bool TryRecover(string text, out RecoveryResult<AnswerPayloadRecovered> result)", src);
+        Assert.Contains("public static ExtractionResult<AnswerPayloadExtracted> ExtractLenient(string text)", src);
+        Assert.Contains("public static ExtractionResult<AnswerPayloadExtracted> ExtractLenient(string text, ExtractOptions opts)", src);
+        Assert.Contains("public static bool TryExtractLenient(string text, out ExtractionResult<AnswerPayloadExtracted> result)", src);
 
         // Nullable mirror record — no `required`, every component nullable.
-        Assert.Contains("public sealed record AnswerPayloadRecovered", src);
+        Assert.Contains("public sealed record AnswerPayloadExtracted", src);
         Assert.Contains("public string? text { get; init; }", src);
         Assert.Contains("public string? confidence { get; init; }", src);
         Assert.Contains("public int? score { get; init; }", src);
-        // Array field: nullable-element list matching RecoverMap.AsStringList's return type.
+        // Array field: nullable-element list matching ExtractMap.AsStringList's return type.
         Assert.Contains("global::System.Collections.Generic.IReadOnlyList<string?>? tags { get; init; }", src);
-        Assert.DoesNotContain("required", src.Split("AnswerPayloadRecovered")[1]); // mirror half has no required
+        Assert.DoesNotContain("required", src.Split("AnswerPayloadExtracted")[1]); // mirror half has no required
     }
 
     [Fact]
-    public void Parser_omits_recover_for_text_format()
+    public void Parser_omits_extract_for_text_format()
     {
         const string m = """
         { "metadata.root": { "package": "acme::ai", "children": [
@@ -85,8 +85,8 @@ public sealed class Fr010CodegenTests
         """;
         var src = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m)))).Content;
         Assert.Contains("Parse(string text)", src);          // strict parser still emitted
-        Assert.DoesNotContain("Recover(", src);               // no recover for text
-        Assert.DoesNotContain("Recovered", src);
+        Assert.DoesNotContain("ExtractLenient(", src);        // no extract for text
+        Assert.DoesNotContain("Extracted", src);
     }
 
     [Fact]
@@ -120,7 +120,7 @@ public sealed class Fr010CodegenTests
     // ---- compile-AND-run proof ----
 
     [Fact]
-    public void Generated_recover_and_prompt_compile_and_run()
+    public void Generated_extract_and_prompt_compile_and_run()
     {
         var root = Load(Model);
         var parserSrc = Assert.Single(new OutputParserGenerator().Generate(Ctx(root))).Content;
@@ -129,11 +129,11 @@ public sealed class Fr010CodegenTests
 
         var asm = CompileToAssembly(parserSrc, promptSrc, payloadSrc);
 
-        // --- invoke Recover() on a dirty response: preamble + off-vocab alias + missing optional ---
+        // --- invoke Extract() on a dirty response: preamble + off-vocab alias + missing optional ---
         var parserType = asm.GetType("Acme.Generated.AnswerOutputParser")!;
-        var recover = parserType.GetMethod("Recover", new[] { typeof(string) })!;
+        var extract = parserType.GetMethod("ExtractLenient", new[] { typeof(string) })!;
         const string dirty = "Sure! Here is the result:\n```json\n{ \"text\": \"Refund in 3-5 days\", \"confidence\": \"medium\", \"score\": 95 }\n```";
-        var result = recover.Invoke(null, new object[] { dirty })!;
+        var result = extract.Invoke(null, new object[] { dirty })!;
 
         var data = result.GetType().GetProperty("Data")!.GetValue(result)!;
         string? Get(string p) => data.GetType().GetProperty(p)!.GetValue(data) as string;
@@ -186,7 +186,7 @@ public sealed class Fr010CodegenTests
     }
 
     [Fact]
-    public void Generated_recover_folds_off_vocab_via_coerce_default_to_defaulted()
+    public void Generated_extract_folds_off_vocab_via_coerce_default_to_defaulted()
     {
         var root = Load(CoerceDefaultModel);
         var parserSrc = Assert.Single(new OutputParserGenerator().Generate(Ctx(root))).Content;
@@ -196,10 +196,10 @@ public sealed class Fr010CodegenTests
         var asm = CompileToAssembly(parserSrc, promptSrc, payloadSrc);
 
         var parserType = asm.GetType("Acme.Generated.TaskOutputParser")!;
-        var recover = parserType.GetMethod("Recover", new[] { typeof(string) })!;
+        var extract = parserType.GetMethod("ExtractLenient", new[] { typeof(string) })!;
         // Off-vocab enum value "banana" → @coerceDefault folds it to "DONE".
         const string dirty = "{ \"title\": \"ship it\", \"status\": \"banana\" }";
-        var result = recover.Invoke(null, new object[] { dirty })!;
+        var result = extract.Invoke(null, new object[] { dirty })!;
 
         var data = result.GetType().GetProperty("Data")!.GetValue(result)!;
         string? Get(string p) => data.GetType().GetProperty(p)!.GetValue(data) as string;
@@ -207,11 +207,11 @@ public sealed class Fr010CodegenTests
         Assert.Equal("ship it", Get("title"));
         Assert.Equal("DONE", Get("status")); // @coerceDefault fold
 
-        // The report classifies status as DEFAULTED (not RECOVERED).
+        // The report classifies status as DEFAULTED (not EXTRACTED).
         var report = result.GetType().GetProperty("Report")!.GetValue(result)!;
         var states = (System.Collections.IDictionary)report.GetType().GetMethod("States")!.Invoke(report, null)!;
         Assert.Equal("DEFAULTED", states["status"]!.ToString());
-        Assert.Equal("RECOVERED", states["title"]!.ToString());
+        Assert.Equal("EXTRACTED", states["title"]!.ToString());
     }
 
     private static Assembly CompileToAssembly(params string[] sources)
@@ -222,12 +222,12 @@ public sealed class Fr010CodegenTests
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator).Where(p => p.Length > 0)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
-        // The generated recover/prompt code references the render engine.
+        // The generated extract/prompt code references the render engine.
         refs.Add(MetadataReference.CreateFromFile(
-            typeof(MetaObjects.Render.Recover.RecoverSchema).Assembly.Location));
+            typeof(MetaObjects.Render.Extract.ExtractSchema).Assembly.Location));
 
         // Elevate the nullable-covariance warning (CS8619) to an error so a mirror-type ↔
-        // RecoverMap-return mismatch (e.g. on an array field) fails this proof rather than
+        // ExtractMap-return mismatch (e.g. on an array field) fails this proof rather than
         // silently emitting consumer-side warnings.
         var options = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
             .WithSpecificDiagnosticOptions(new Dictionary<string, ReportDiagnostic>

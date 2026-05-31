@@ -215,7 +215,7 @@ public static class CoreTypes
         foreach (string subType in OBJECT_SUBTYPES)
         {
             // FR-011: object.value additionally carries @normalize — the object-level
-            // default normalization mode for its enum fields' tolerant recover.
+            // default normalization mode for its enum fields' tolerant extract.
             List<AttrSchema> objectAttrs = subType == OBJECT_SUBTYPE_VALUE
                 ? [.. ObjectSchema.ObjectAttrs, FieldSchema.NormalizeAttr]
                 : ObjectSchema.ObjectAttrs.ToList();

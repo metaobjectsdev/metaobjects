@@ -1,6 +1,6 @@
-// FR-011 metamodel attrs — cross-port parity (recover hardening).
+// FR-011 metamodel attrs — cross-port parity (extract hardening).
 //
-// Registers the FR-011 tolerant-recover vocabulary in the C# loader, matching the TS pilot:
+// Registers the FR-011 tolerant-extract vocabulary in the C# loader, matching the TS pilot:
 //   - @coerceDefault : string on field.enum ONLY; member-validated against @values
 //                      (ERR_BAD_ATTR_VALUE when off-vocabulary).
 //   - @normalize     : closed enum (none|collapse|strip), default "strip", on field.enum

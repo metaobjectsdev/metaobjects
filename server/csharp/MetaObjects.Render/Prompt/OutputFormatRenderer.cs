@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Text;
-using MetaObjects.Render.Recover;
+using MetaObjects.Render.Extract;
 
 namespace MetaObjects.Render.Prompt;
 
@@ -258,7 +258,7 @@ public static class OutputFormatRenderer
     {
         if (!NumericKinds.Contains(kind)) return false;
         if (value is "true" or "false") return true;
-        // Invariant culture + finite-only — matches the recover engine and keeps the emitted JSON
+        // Invariant culture + finite-only — matches the extract engine and keeps the emitted JSON
         // valid (NaN/Infinity fall through to a quoted string).
         return double.TryParse(value, NumberStyles.Float | NumberStyles.AllowLeadingSign,
                    CultureInfo.InvariantCulture, out double d)

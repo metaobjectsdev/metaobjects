@@ -879,7 +879,7 @@ public static class ValidationPasses
 
             // Rule 4 (FR-011): the enum fallback attrs must be one of the field's @values.
             //
-            // Both @coerceDefault (recover-time coercion fallback) and @default (absent-fill
+            // Both @coerceDefault (extract-time coercion fallback) and @default (absent-fill
             // member) name an enum member, so each must be a member of @values. This block is
             // already inside the field.enum gate, so @default here is the enum-member default —
             // NOT the polymorphic column default on string/int/bool/etc. fields, which is never

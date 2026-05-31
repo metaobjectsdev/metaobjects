@@ -1,5 +1,5 @@
 using MetaObjects.Render.Prompt;
-using MetaObjects.Render.Recover;
+using MetaObjects.Render.Extract;
 using Xunit;
 
 namespace MetaObjects.Render.Tests;

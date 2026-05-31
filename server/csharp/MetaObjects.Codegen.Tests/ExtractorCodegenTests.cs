@@ -1,18 +1,18 @@
 // Cross-port Extractor codegen (Task 3, C#) — the compile-AND-RUN proof for the `extract` tier.
 //
-// The Extractor sits OVER the existing nested-capable runtime-delegating recover
-// (<Name>OutputParser.Recover(MetaObject, text)) and turns dirty LLM text into the STRICT typed
+// The Extractor sits OVER the existing nested-capable runtime-delegating extract
+// (<Name>OutputParser.ExtractLenient(MetaObject, text)) and turns dirty LLM text into the STRICT typed
 // payload record (PayloadCodegen's immutable `sealed record` with `required init` props) in one
-// call: run recover, throw ExtractException iff a @required field was lost, else map the
-// all-nullable <Name>Recovered mirror onto the strict <Name> via a generated recursive
+// call: run extract, throw ExtractException iff a @required field was lost, else map the
+// all-nullable <Name>Extracted mirror onto the strict <Name> via a generated recursive
 // mirror->strict mapper (recurse nested objects + arrays-of-objects; one-shot object-initializer
-// construct). recover is re-exposed unchanged. NO registry / binding / factory.
+// construct). extract is re-exposed unchanged. NO registry / binding / factory.
 //
 // NOTE on optionality (C#-specific). PayloadCodegen emits EVERY payload field as `required
 // {NonNullableType}` (it does not honor @required) — the strict record has no nullable/optional
 // props. So the mirror->strict mapper matches that predicate exactly: every field is mapped as
 // required (m.F! / ToStrict_X(m.F!) / array maps), with NO optional-null variant (there is no
-// nullable property to assign null to). A field absent from the recovered mirror that the strict
+// nullable property to assign null to). A field absent from the extracted mirror that the strict
 // record types non-null therefore must be present in the input — consistent with the strict
 // `Parse` path's `required`-keyword semantics. The lost-REQUIRED gate (ExtractException) fires
 // only for fields the metadata marks @required:true.
@@ -79,7 +79,7 @@ public sealed class ExtractorCodegenTests
     // ---- emission shape ----
 
     [Fact]
-    public void Extractor_emits_extract_recover_and_recursive_mappers()
+    public void Extractor_emits_extract_extractLenient_and_recursive_mappers()
     {
         var src = Assert.Single(new ExtractorGenerator().Generate(Ctx(Load(Model)))).Content;
 
@@ -89,17 +89,17 @@ public sealed class ExtractorCodegenTests
         // extract(MetaObject, text) returns the STRICT record + the opts overload.
         Assert.Contains("public static Order Extract(", src);
         Assert.Contains("global::MetaObjects.Meta.MetaObject mo, string text)", src);
-        Assert.Contains("RecoverOptions opts", src);
+        Assert.Contains("ExtractOptions opts", src);
 
-        // routes through the NESTED-CAPABLE delegating recover (NOT the self-contained Recover(string)).
-        Assert.Contains("OrderOutParser.Recover(mo, text", src);
+        // routes through the NESTED-CAPABLE delegating extract (NOT the self-contained ExtractLenient(string)).
+        Assert.Contains("OrderOutParser.ExtractLenient(mo, text", src);
 
         // throws ExtractException on lost-required.
         Assert.Contains("HasLostRequired()", src);
         Assert.Contains("throw new ExtractException(", src);
 
-        // re-exposes recover (returns the mirror result).
-        Assert.Contains("RecoveryResult<OrderRecovered> Recover(", src);
+        // re-exposes the lenient extract (returns the mirror result).
+        Assert.Contains("ExtractionResult<OrderExtracted> ExtractLenient(", src);
 
         // recursive mirror->strict mappers: one per type in the graph.
         Assert.Contains("ToStrict_Order(", src);
@@ -180,24 +180,24 @@ public sealed class ExtractorCodegenTests
         // Missing the REQUIRED customer (and lines/tags/orderId) -> lost-required -> throws.
         var ex = Assert.Throws<TargetInvocationException>(() =>
             extract.Invoke(null, new object?[] { orderMo, "{ \"lines\": [] }" }));
-        Assert.IsType<MetaObjects.Render.Recover.ExtractException>(ex.InnerException);
+        Assert.IsType<MetaObjects.Render.Extract.ExtractException>(ex.InnerException);
     }
 
     [Fact]
-    public void Re_exposed_recover_never_throws_on_clean_input()
+    public void Re_exposed_extract_never_throws_on_clean_input()
     {
         var root = Load(Model);
         var asm = Compile(root);
 
         var extractorType = asm.GetType("Acme.Generated.OrderExtractor")!;
-        var recover = extractorType.GetMethod("Recover", new[] { typeof(MetaObject), typeof(string) })!;
+        var extractLenient = extractorType.GetMethod("ExtractLenient", new[] { typeof(MetaObject), typeof(string) })!;
         MetaObject orderMo = root.FindObject("Order")!;
 
         const string clean =
             "{ \"orderId\": \"A-7\", \"customer\": { \"name\": \"Ada\" }," +
             "  \"lines\": [ { \"sku\": \"A\", \"qty\": 1 } ], \"tags\": [\"a\"], \"scores\": [1] }";
 
-        var result = recover.Invoke(null, new object?[] { orderMo, clean })!;
+        var result = extractLenient.Invoke(null, new object?[] { orderMo, clean })!;
         var report = result.GetType().GetProperty("Report")!.GetValue(result)!;
         Assert.False((bool)report.GetType().GetMethod("HasLostRequired")!.Invoke(report, null)!);
     }
@@ -217,9 +217,9 @@ public sealed class ExtractorCodegenTests
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator).Where(p => p.Length > 0)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
-        refs.Add(MetadataReference.CreateFromFile(typeof(MetaObjects.Render.Recover.RecoverSchema).Assembly.Location));
+        refs.Add(MetadataReference.CreateFromFile(typeof(MetaObjects.Render.Extract.ExtractSchema).Assembly.Location));
         refs.Add(MetadataReference.CreateFromFile(typeof(MetaObject).Assembly.Location));
-        refs.Add(MetadataReference.CreateFromFile(typeof(MetaObjects.Codegen.Runtime.RecoverObject).Assembly.Location));
+        refs.Add(MetadataReference.CreateFromFile(typeof(MetaObjects.Codegen.Runtime.ExtractObject).Assembly.Location));
 
         var options = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
             .WithSpecificDiagnosticOptions(new Dictionary<string, ReportDiagnostic>

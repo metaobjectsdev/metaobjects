@@ -4,7 +4,7 @@
 // OutputFormatRenderer (FR-010 artifact 1 — the "produce your answer like this" fragment).
 //
 // The baked OutputFormatSpec's rootName is the payload class name, so the prompt fragment and
-// the recover() codegen agree on the root element/object name. Mirrors the Java
+// the extract() codegen agree on the root element/object name. Mirrors the Java
 // SpringOutputPromptGenerator. Skips: template.prompt, missing/unresolved @payloadRef,
 // and @format values other than json/xml.
 
@@ -52,7 +52,7 @@ public sealed class OutputPromptGenerator : IGenerator
     {
         var templateName = tmpl.Name;
         var promptClass = $"{templateName}Prompt";
-        // rootName == payload class name so the prompt fragment and recover() agree.
+        // rootName == payload class name so the prompt fragment and extract() agree.
         var specLiteral = OutputFormatSpecEmitter.SpecLiteral(vo, tmpl, payloadRef);
 
         var sb = new StringBuilder();
@@ -61,7 +61,7 @@ public sealed class OutputPromptGenerator : IGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using MetaObjects.Render.Prompt;");
-        sb.AppendLine("using MetaObjects.Render.Recover;");
+        sb.AppendLine("using MetaObjects.Render.Extract;");
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();

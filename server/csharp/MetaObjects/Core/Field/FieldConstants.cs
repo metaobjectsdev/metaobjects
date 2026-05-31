@@ -144,7 +144,7 @@ public static class FieldConstants
 
     /// <summary>
     /// FR-010: map of off-vocabulary token → canonical enum member, feeding the
-    /// tolerant recover alias-fold. <c>properties</c>-shaped; only on field.enum.
+    /// tolerant extract alias-fold. <c>properties</c>-shaped; only on field.enum.
     /// </summary>
     public const string FIELD_ATTR_ENUM_ALIAS = "enumAlias";
 
@@ -155,7 +155,7 @@ public static class FieldConstants
     public const string FIELD_ATTR_ENUM_DOC = "enumDoc";
 
     // -----------------------------------------------------------------------
-    // FR-011 recover-hardening attrs (tolerant enum recover)
+    // FR-011 extract-hardening attrs (tolerant enum extract)
     // -----------------------------------------------------------------------
 
     /// <summary>
@@ -166,7 +166,7 @@ public static class FieldConstants
     public const string FIELD_ATTR_COERCE_DEFAULT = "coerceDefault";
 
     /// <summary>
-    /// FR-011: ASCII normalization mode for tolerant enum recover. Closed enum
+    /// FR-011: ASCII normalization mode for tolerant enum extract. Closed enum
     /// (none|collapse|strip). On field.enum (per-field) and object.value (default for its
     /// enum fields). Resolved field → object → global <see cref="NORMALIZE_DEFAULT"/>.
     /// </summary>
