@@ -114,7 +114,13 @@ public class FruitDBTest extends AbstractOMDBTest {
         
         assertFalse( "isEmpty", data.isEmpty() );
         assertEquals( Integer.valueOf(12), ((ValueObject) data.iterator().next()).getInt("oranges"));
-        
+
+        // OMDB no longer auto-creates views — schema (including views) is owned by the
+        // migrate toolchain. Materialize FULL_BASKET_VIEW the way a deployment would
+        // (the BASKET table was auto-created above when the first row was persisted),
+        // then verify OMDB reads through the view.
+        createView( "FULL_BASKET_VIEW", "SELECT B.* FROM BASKET B WHERE b.apples+b.oranges > 10" );
+
         MetaObject mo2 = getLoaderRegistry().findMetaObjectByName( "produce::FullBasketView" );
         data = omdb.getObjects(oc, mo2);
         assertFalse( "isEmpty", data.isEmpty() );

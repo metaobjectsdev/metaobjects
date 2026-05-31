@@ -42,23 +42,23 @@ final class QueryScenarioTests {
         ScenarioLoader.loadQueries(CORPUS.resolve("queries"));
 
     /**
-     * Scenarios deferred until the underlying Java port gap is closed.
+     * Scenarios skipped because their schema is not bootstrapped by the runtime.
      *
-     * <p>{@code projection-aggregate}: the aggregate-projection view body
-     * (the SQL behind {@code v_program_stat}, derived from {@code origin.aggregate}
-     * declarations) was synthesized by the diff-and-converge migration engine's
-     * {@code ViewBodyBuilder}, which was removed when schema migrations moved to
-     * the TypeScript toolchain. The retained runtime auto-create path
-     * ({@link com.metaobjects.manager.db.validator.MetaClassDBValidatorService})
-     * only materializes a view when the projection carries an explicit
-     * {@code dbViewSQL} attribute, so it cannot build the aggregate view from
-     * origins alone. Re-homing view-body synthesis into the runtime mapping
-     * layer is a separate piece of work tracked outside this removal.</p>
+     * <p>{@code projection-aggregate}: this scenario queries an aggregate-projection
+     * view ({@code v_program_stat}, derived from {@code origin.aggregate}). OMDB no
+     * longer auto-creates views — schema, including views, is owned by the TypeScript
+     * migrate toolchain — so the runtime auto-create path
+     * ({@link com.metaobjects.manager.db.validator.MetaClassDBValidatorService}) does
+     * not materialize the view and there is nothing for the query to read. The
+     * scenario stays covered cross-port (the Kotlin/TS/C# runners create the view from
+     * explicit DDL); re-homing view-body synthesis into the Java runtime is out of
+     * scope.</p>
      */
     private static final Map<String, String> EXPECTED_FAILURES = Map.of(
         "projection-aggregate",
-        "aggregate-projection view body builder was part of the removed migration engine; "
-            + "runtime auto-create only materializes views from an explicit dbViewSQL attr");
+        "OMDB no longer auto-creates views; schema (including aggregate-projection "
+            + "views) is owned by the TypeScript migrate toolchain, so the runtime "
+            + "does not materialize this scenario's view");
 
     @BeforeAll
     static void beforeAll() {

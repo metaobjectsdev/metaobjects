@@ -206,20 +206,10 @@ public class MetaClassDBValidatorService
 	  }
 	  
 	  if ( def instanceof ViewDef ) {
-
-		  // Check if the view exists and is valid
-		  ViewDef view = (ViewDef) def;
-		  if ( !dd.checkView( c, view ) ) {
-			
-			  // If not, then auto create it or throw a not found exception
-			  if ( shouldAutoCreate() ) {
-				  log.info( "VALIDATION - CREATING VIEW " + def );
-				  dd.createView( c, view );
-				  return true;
-			  } else {
-				  throw new TableDoesNotExistException( "View [" + def + "] does not exist" );
-			  }			  
-		  }		  
+		  // OMDB no longer auto-creates views. Schema — including projection /
+		  // aggregate views — is owned by the TypeScript migrate toolchain; the
+		  // runtime only reads from views that already exist. Nothing to create
+		  // or validate here.
 	  }
 	  else if ( def instanceof TableDef ) {
 		  

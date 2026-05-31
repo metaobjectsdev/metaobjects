@@ -25,7 +25,6 @@ import com.metaobjects.manager.db.defs.ForeignKeyDef;
 import com.metaobjects.manager.db.defs.IndexDef;
 import com.metaobjects.manager.db.defs.SequenceDef;
 import com.metaobjects.manager.db.defs.TableDef;
-import com.metaobjects.manager.db.defs.ViewDef;
 import com.metaobjects.manager.exp.Range;
 
 /**
@@ -173,25 +172,6 @@ public class MSSQLDriver extends GenericSQLDriver {
             s.execute(query);
         } catch (SQLException e) {
             throw new SQLException("Failed to drop SQL Server table [" + tableName + "]: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Creates a SQL Server view
-     */
-    @Override
-    public void createView(Connection c, ViewDef view) throws SQLException {
-        String viewName = getProperName(view.getNameDef());
-        String query = "CREATE VIEW " + viewName + " AS " + view.getSQL();
-        
-        if (log.isDebugEnabled()) {
-            log.debug("Creating SQL Server view [{}]: {}", viewName, query);
-        }
-        
-        try (Statement s = c.createStatement()) {
-            s.execute(query);
-        } catch (SQLException e) {
-            throw new SQLException("Failed to create SQL Server view [" + viewName + "]: " + e.getMessage(), e);
         }
     }
 

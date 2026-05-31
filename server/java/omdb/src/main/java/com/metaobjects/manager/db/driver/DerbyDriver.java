@@ -23,7 +23,6 @@ import com.metaobjects.manager.db.defs.ForeignKeyDef;
 import com.metaobjects.manager.db.defs.IndexDef;
 import com.metaobjects.manager.db.defs.SequenceDef;
 import com.metaobjects.manager.db.defs.TableDef;
-import com.metaobjects.manager.db.defs.ViewDef;
 import com.metaobjects.manager.exp.Range;
 
 /**
@@ -175,25 +174,6 @@ public class DerbyDriver extends GenericSQLDriver {
             s.execute(query);
         } catch (SQLException e) {
             throw new SQLException("Failed to drop Derby table [" + tableName + "]: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Creates a Derby view
-     */
-    @Override
-    public void createView(Connection c, ViewDef view) throws SQLException {
-        String viewName = getProperName(view.getNameDef());
-        String query = "CREATE VIEW " + viewName + " AS " + view.getSQL();
-        
-        if (log.isDebugEnabled()) {
-            log.debug("Creating Derby view [{}]: {}", viewName, query);
-        }
-        
-        try (Statement s = c.createStatement()) {
-            s.execute(query);
-        } catch (SQLException e) {
-            throw new SQLException("Failed to create Derby view [" + viewName + "]: " + e.getMessage(), e);
         }
     }
 

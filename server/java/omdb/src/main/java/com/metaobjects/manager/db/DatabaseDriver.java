@@ -19,7 +19,6 @@ import com.metaobjects.manager.db.defs.ForeignKeyDef;
 import com.metaobjects.manager.db.defs.IndexDef;
 import com.metaobjects.manager.db.defs.SequenceDef;
 import com.metaobjects.manager.db.defs.TableDef;
-import com.metaobjects.manager.db.defs.ViewDef;
 import com.metaobjects.manager.exp.Expression;
 
 /**
@@ -44,15 +43,6 @@ public interface DatabaseDriver
   public boolean checkTable( Connection c, TableDef table ) throws SQLException;
 
   /**
-   * Checks for the existence of the view in the database
-   * @param c	Database connection to use
-   * @param view	View Definition	
-   * @return Whether the view exists
-   * @throws SQLException If an invalid view structure exists in the DB
-   */
-  public boolean checkView( Connection c, ViewDef view ) throws SQLException;
-  
-  /**
    * Creates a table in the database
    */
   public void createTable( Connection c, TableDef tableDef ) throws SQLException;
@@ -61,11 +51,6 @@ public interface DatabaseDriver
    * Deletes a table from the database
    */
   public void deleteTable( Connection c, TableDef tableDef ) throws SQLException;
-
-  /**
-   * Creates a view in the database
-   */
-  public void createView(Connection c, ViewDef viewDef ) throws SQLException;
 
   /**
    * Creates the sequence in the database

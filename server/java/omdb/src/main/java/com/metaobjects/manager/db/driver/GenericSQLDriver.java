@@ -47,7 +47,6 @@ import com.metaobjects.manager.db.defs.InheritenceDef;
 import com.metaobjects.manager.db.defs.NameDef;
 import com.metaobjects.manager.db.defs.SequenceDef;
 import com.metaobjects.manager.db.defs.TableDef;
-import com.metaobjects.manager.db.defs.ViewDef;
 import com.metaobjects.manager.exp.Expression;
 import com.metaobjects.manager.exp.ExpressionGroup;
 import com.metaobjects.manager.exp.ExpressionOperator;
@@ -281,11 +280,6 @@ public class GenericSQLDriver implements DatabaseDriver {
         return checkBaseTable(c, table);
     }
 
-    @Override
-    public boolean checkView(Connection c, ViewDef view) throws SQLException {
-        return checkBaseTable(c, view);
-    }
-
     /**
      * Checks for the existence of the base table and optionally creates it if
      * it doesn't exist
@@ -430,38 +424,6 @@ public class GenericSQLDriver implements DatabaseDriver {
             throws SQLException {
         throw new UnsupportedOperationException("DELETE TABLE NOT IMPLEMENTED!");
     }
-
-/**
-	 * Creates a view in the database
-	 */
-	@Override
-	public void createView( Connection c, ViewDef view ) throws SQLException
-	{
-            StringBuilder query = new StringBuilder();
-            try {
-                String name = getProperName( view.getNameDef() );
-                query.append( "CREATE VIEW " )
-                    .append( name )
-                    .append( " AS " )
-                    .append( view.getSQL() );
-
-                if ( log.isDebugEnabled() ) {
-                    log.debug( "Creating view: " + query.toString() );
-                }
-                //ystem.out.println( ">>>> Creating View: " + query);
-
-                Statement s = c.createStatement();
-                try {
-                     s.execute( query.toString() );
-                } finally {
-                     s.close();
-                }
-            }
-            catch (Exception e) {
-                    throw new SQLException( "Creation of view [" + view + "] failed using SQL [" + query + "]: " + e.getMessage(), e );
-            }
-    }
-
 
     /**
      * Creates the sequence in the database
