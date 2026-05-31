@@ -48,6 +48,18 @@ public record FieldSpec(
     }
 
     /**
+     * A non-enum SCALAR ARRAY field (e.g. {@code List<String>} / {@code List<Integer>}). Same as
+     * {@link #scalar(String, FieldKind, boolean, String)} but with {@code array = true}, so the
+     * engine's array branch coerces each element to {@code kind} and stores the element list under
+     * {@code name}. (Array-of-enum uses {@link #enumArray} instead — enum elements need the
+     * values/alias/coerce pipeline.)
+     */
+    public static FieldSpec scalarArray(String name, FieldKind kind, boolean required, String defaultValue) {
+        return new FieldSpec(name, kind, required, true, null, null, null, null, null,
+                null, defaultValue, Normalize.DEFAULT);
+    }
+
+    /**
      * Build an enum field with its allowed values and optional case/alias map.
      * FR-010 back-compat overload: no coerceDefault/default, default normalize ("strip").
      */

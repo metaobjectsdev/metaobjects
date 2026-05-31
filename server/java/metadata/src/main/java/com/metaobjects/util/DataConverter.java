@@ -38,13 +38,14 @@ public final class DataConverter
 			case DATE: return toDate( val );
 			case OBJECT: return toObject( val );
 
-			case BOOLEAN_ARRAY: //return toBooleanArray( val );
+			case BOOLEAN_ARRAY: return toBooleanArray( val );
+			case INT_ARRAY: return toIntArray( val );
+			case LONG_ARRAY: return toLongArray( val );
+			case FLOAT_ARRAY: return toFloatArray( val );
+			case DOUBLE_ARRAY: return toDoubleArray( val );
+
 			case BYTE_ARRAY://return toByteArray( val );
 			case SHORT_ARRAY: //return toShortArray( val );
-			case INT_ARRAY: //return toIntArray( val );
-			case LONG_ARRAY: //return toLongArray( val );
-			case FLOAT_ARRAY: //return toFloatArray( val );
-			case DOUBLE_ARRAY: //return toDoubleArray( val );
 			case DATE_ARRAY: //toDateArray( val );
 				return unsupported(dataType,val);
 

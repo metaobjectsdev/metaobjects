@@ -59,7 +59,11 @@ public static class PayloadCodegen
             string? refVo = refAttr is string r ? r : null;
             return (IsArrayField(field) ? $"IReadOnlyList<{refName}>" : refName, refVo);
         }
-        return (ScalarType.GetValueOrDefault(field.SubType, "object"), null);
+        var scalar = ScalarType.GetValueOrDefault(field.SubType, "object");
+        // Scalar array (e.g. `field.string` with isArray) -> a list of the scalar, mirroring the
+        // object-array branch above and the TS payload-codegen reference. Without this a scalar
+        // array would collapse to a single scalar (lossy).
+        return (IsArrayField(field) ? $"IReadOnlyList<{scalar}>" : scalar, null);
     }
 
     private static void EmitRecord(MetaData root, string voName, HashSet<string> emitted, List<string> output)

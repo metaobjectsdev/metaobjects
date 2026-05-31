@@ -28,7 +28,7 @@ function findMigrationDir(migrationsRoot: string, slug: string): string | undefi
 
 async function setupMigratedRepo(): Promise<{ repo: string; dbUrl: string }> {
   const { repo, dbUrl } = setupRepo();
-  await run(["migrate", "--cwd", repo, "--db", dbUrl, "--slug", "initial"]);
+  await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--slug", "initial"]);
   const migrationsRoot = join(repo, ".metaobjects", "migrations");
   const initialDir = findMigrationDir(migrationsRoot, "initial")!;
   await applyMigration(dbUrl, join(migrationsRoot, initialDir, "up.sql"));
@@ -54,7 +54,7 @@ describe("meta migrate — blocked changes without --allow", () => {
       );
       writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 
-      const exit = await run(["migrate", "--cwd", repo, "--db", dbUrl, "--slug", "drop-display-name"]);
+      const exit = await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--slug", "drop-display-name"]);
       expect(exit).toBe(1);
 
       const migrationsRoot = join(repo, ".metaobjects", "migrations");
@@ -77,7 +77,7 @@ describe("meta migrate — blocked changes without --allow", () => {
       writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 
       const exit = await run([
-        "migrate", "--cwd", repo, "--db", dbUrl, "--slug", "drop-display-name", "--allow", "drop-column",
+        "migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--slug", "drop-display-name", "--allow", "drop-column",
       ]);
       expect(exit).toBe(0);
 

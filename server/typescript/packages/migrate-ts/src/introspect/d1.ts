@@ -71,6 +71,7 @@ export async function introspectD1(opts: IntrospectD1Options): Promise<SchemaSna
       columns: cols,
       indexes: await readIndexes(exec, name),
       foreignKeys: await readForeignKeys(exec, name),
+      checks: [], // CHECK introspection is out of scope; expected-side derives them
       primaryKey: pk,
     });
   }

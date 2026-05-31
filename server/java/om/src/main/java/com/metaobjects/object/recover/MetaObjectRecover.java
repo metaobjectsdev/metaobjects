@@ -195,6 +195,12 @@ public final class MetaObjectRecover {
         // --- Scalar (carry generalized @default) ----------------------------
         FieldKind kind = scalarKind(field);
         String defaultValue = ownAttrString(field, MetaField.ATTR_DEFAULT);
+        // A non-enum scalar ARRAY (e.g. List<String> / List<Integer>) must carry array=true so the
+        // engine's array branch coerces each element and stores the element list (otherwise an
+        // array value is rejected as a list-where-scalar-expected and the field recovers as null).
+        if (field.isArrayType()) {
+            return FieldSpec.scalarArray(name, kind, required, defaultValue);
+        }
         return FieldSpec.scalar(name, kind, required, defaultValue);
     }
 

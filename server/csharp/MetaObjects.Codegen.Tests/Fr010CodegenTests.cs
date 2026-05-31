@@ -125,7 +125,7 @@ public sealed class Fr010CodegenTests
         var root = Load(Model);
         var parserSrc = Assert.Single(new OutputParserGenerator().Generate(Ctx(root))).Content;
         var promptSrc = Assert.Single(new OutputPromptGenerator().Generate(Ctx(root))).Content;
-        var payloadSrc = "namespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "AnswerPayload");
+        var payloadSrc = "using System.Collections.Generic;\nnamespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "AnswerPayload");
 
         var asm = CompileToAssembly(parserSrc, promptSrc, payloadSrc);
 

@@ -5,7 +5,7 @@ import type { Change, ColumnDescriptor, TableDescriptor } from "../../src/types.
 const ALLOWED = { state: "allowed" as const };
 
 function table(name: string, cols: ColumnDescriptor[], pk: string[] = []): TableDescriptor {
-  return { name, columns: cols, indexes: [], foreignKeys: [], primaryKey: pk };
+  return { name, columns: cols, indexes: [], foreignKeys: [], primaryKey: pk, checks: [] };
 }
 
 function norm(s: string): string {

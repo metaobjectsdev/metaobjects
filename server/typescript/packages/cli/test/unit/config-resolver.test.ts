@@ -51,6 +51,8 @@ describe("resolveMigrateConfig", () => {
     apply: false,
     rollback: undefined,
     yes: false,
+    fromDb: false,
+    baseline: false,
   } as const;
 
   test("built-in defaults when no flag/env/config", async () => {
@@ -159,6 +161,8 @@ describe("resolveMigrateConfig", () => {
       apply: false,
       rollback: undefined,
       yes: false,
+      fromDb: false,
+      baseline: false,
     }, root);
     expect(resolved.d1?.binding).toBe("MYDB");
     expect(resolved.d1?.remote).toBe(true);
@@ -181,6 +185,8 @@ describe("resolveMigrateConfig", () => {
       apply: false,
       rollback: undefined,
       yes: false,
+      fromDb: false,
+      baseline: false,
     }, root);
     expect(resolved.d1?.remote).toBe(true);
   });

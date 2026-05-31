@@ -127,9 +127,15 @@ public static class RecoverObject
             return FieldSpec.Object(name, required, IsArrayType(field), nested);
         }
 
-        // --- Scalar (carry generalized @default) ----------------------------
+        // --- Scalar (single or array; carry generalized @default) -----------
         FieldKind kind = ScalarKind(field.SubType);
         string? scalarDefault = OwnAttrString(field, FIELD_ATTR_DEFAULT);
+        // A scalar ARRAY (e.g. field.string isArray) must carry Array=true so the engine reads a
+        // list (else a JSON array under a scalar key fails to coerce and the field is lost). The
+        // engine's f.Array branch handles non-enum scalar arrays (raw element list). @default is a
+        // single-value absent-fill and does not apply to the array element list, so it is dropped here.
+        if (IsArrayType(field))
+            return FieldSpec.ScalarArray(name, kind, required);
         return FieldSpec.Scalar(name, kind, required, scalarDefault);
     }
 

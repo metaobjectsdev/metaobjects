@@ -17,7 +17,7 @@ describe("meta migrate --dry-run", () => {
     console.log = (msg: string) => { captured.push(msg); };
 
     try {
-      const exit = await run(["migrate", "--cwd", root, "--db", dbUrl, "--slug", "initial", "--dry-run"]);
+      const exit = await run(["migrate", "--from-db", "--cwd", root, "--db", dbUrl, "--slug", "initial", "--dry-run"]);
       expect(exit).toBe(0);
 
       const stdout = captured.join("\n");

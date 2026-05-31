@@ -134,13 +134,56 @@ public static class RecoverMap
     /// coercing each element to string. Returns <c>null</c> when the key is absent or the value
     /// is not a list.
     /// </summary>
-    public static IReadOnlyList<string?>? AsStringList(IReadOnlyDictionary<string, object?> d, string k)
+    public static IReadOnlyList<string?>? AsStringList(IReadOnlyDictionary<string, object?> d, string k) =>
+        AsList(d, k, e => e == null ? null : Convert.ToString(e, CultureInfo.InvariantCulture));
+
+    /// <summary>
+    /// Returns the value as a list of nullable <see cref="int"/> for key <paramref name="k"/>,
+    /// coercing each element via the same numeric narrowing as <see cref="AsInt"/> (non-numeric
+    /// elements become <c>null</c>). Returns <c>null</c> when the key is absent / not a list.
+    /// </summary>
+    public static IReadOnlyList<int?>? AsIntList(IReadOnlyDictionary<string, object?> d, string k) =>
+        AsList(d, k, AsIntElem);
+
+    /// <summary>Returns the value as a list of nullable <see cref="long"/> (per-element, mirrors <see cref="AsLong"/>).</summary>
+    public static IReadOnlyList<long?>? AsLongList(IReadOnlyDictionary<string, object?> d, string k) =>
+        AsList(d, k, AsLongElem);
+
+    /// <summary>Returns the value as a list of nullable <see cref="double"/> (per-element, mirrors <see cref="AsDouble"/>).</summary>
+    public static IReadOnlyList<double?>? AsDoubleList(IReadOnlyDictionary<string, object?> d, string k) =>
+        AsList(d, k, AsDoubleElem);
+
+    /// <summary>Returns the value as a list of nullable <see cref="bool"/> (per-element, mirrors <see cref="AsBool"/>).</summary>
+    public static IReadOnlyList<bool?>? AsBoolList(IReadOnlyDictionary<string, object?> d, string k) =>
+        AsList(d, k, e => e is bool b ? b : (bool?)null);
+
+    /// <summary>Shared scalar-array reader: a recovered value is a <c>List&lt;object?&gt;</c> (else null); map each element.</summary>
+    private static IReadOnlyList<T?>? AsList<T>(IReadOnlyDictionary<string, object?> d, string k, Func<object?, T?> coerce)
     {
         if (!d.TryGetValue(k, out object? v)) return null;
         if (v is not List<object?> list) return null;
-        var out_ = new List<string?>(list.Count);
+        var out_ = new List<T?>(list.Count);
         foreach (object? e in list)
-            out_.Add(e == null ? null : Convert.ToString(e, CultureInfo.InvariantCulture));
+            out_.Add(coerce(e));
         return out_.AsReadOnly();
     }
+
+    // Per-element numeric coercions, mirroring the scalar As* narrowing (numeric-typed; never throws).
+    private static int? AsIntElem(object? v) => v switch
+    {
+        long l => (int)l, int i => i, double db => (int)db, float f => (int)f,
+        decimal m => (int)m, short s => s, byte b => b, _ => null,
+    };
+
+    private static long? AsLongElem(object? v) => v switch
+    {
+        long l => l, int i => i, double db => (long)db, float f => (long)f,
+        decimal m => (long)m, short s => s, byte b => b, _ => null,
+    };
+
+    private static double? AsDoubleElem(object? v) => v switch
+    {
+        long l => l, int i => i, double db => db, float f => f,
+        decimal m => (double)m, short s => s, byte b => b, _ => null,
+    };
 }

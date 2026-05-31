@@ -15,6 +15,11 @@ import {
   diff,
   emit,
   writeMigration,
+  baselineFromMetadata,
+  planOffline,
+  snapshotPath,
+  readSnapshot,
+  writeSnapshot,
   BlockedChangesError,
   renderD1,
   applyD1SafetyPass,
@@ -110,6 +115,10 @@ export async function migrateCommand(
   const config = await resolveMigrateConfig(flags, metaRoot);
 
   if (config.dialect === "d1") {
+    if (config.baseline) {
+      log.error(`migrate baseline is not supported for dialect 'd1' (snapshots are a postgres/sqlite concept)`);
+      return 2;
+    }
     if (config.databaseUrl !== undefined) {
       log.error(`migrate: --db / DATABASE_URL is not used for dialect 'd1' — wrangler.toml owns connection`);
       return 2;
@@ -119,6 +128,18 @@ export async function migrateCommand(
       return 2;
     }
     return await runD1Migrate(config, metaRoot, wranglerRunner ?? defaultWranglerRunner);
+  }
+
+  // `migrate baseline` — seed the committed reference snapshot, emit no migration.
+  if (config.baseline) {
+    return await runBaseline(config, metaRoot);
+  }
+
+  // Default = offline snapshot generation. The live-introspection path runs only
+  // when explicitly requested via --from-db, when --apply needs a connection, or
+  // for --rollback (which runs hand-authored down.sql against the live DB).
+  if (!config.fromDb && !config.apply && config.rollback === undefined) {
+    return await runOfflineGenerate(config, metaRoot);
   }
 
   if (config.databaseUrl === undefined) {
@@ -341,6 +362,9 @@ export async function migrateCommand(
             { dir: outDir, slug: config.slug },
           );
           writtenPaths = [res.upPath, res.downPath];
+          if (config.fromDb) {
+            log.info(`migrate: --from-db did not advance the committed snapshot; run 'meta migrate baseline --from-db' to re-sync`);
+          }
         }
       }
     }
@@ -393,6 +417,158 @@ export async function migrateCommand(
     }
   }
   return exitCode;
+}
+
+/**
+ * `meta migrate baseline [--from-db]` — seed the committed reference snapshot.
+ * `--from-metadata` (default) derives it from metadata; `--from-db` introspects
+ * an existing database once. Emits no migration.
+ */
+export async function runBaseline(
+  config: ResolvedMigrateConfig,
+  metaRoot: string,
+): Promise<number> {
+  if (config.dialect === undefined) {
+    log.error(`migrate baseline: --dialect required (or set migrate.dialect in .metaobjects/config.json)`);
+    return 2;
+  }
+  const outDir = resolvePath(metaRoot, config.outDir);
+  const path = snapshotPath(outDir, config.dialect);
+
+  let snapshot;
+  if (config.fromDb) {
+    if (config.databaseUrl === undefined) {
+      log.error(`migrate baseline --from-db: --db <url> required`);
+      return 2;
+    }
+    let kysely;
+    try {
+      kysely = await buildKyselyFromUrl(config.databaseUrl, config.dialect);
+    } catch (err) {
+      log.error(`migrate baseline: ${(err as Error).message}`);
+      return 2;
+    }
+    try {
+      snapshot = await introspect(kysely.db, kysely.dialect);
+    } finally {
+      await kysely.close();
+    }
+  } else {
+    let metadata;
+    try {
+      metadata = await loadMemory(metaRoot);
+    } catch (err) {
+      log.error(`migrate baseline: failed to load metadata: ${(err as Error).message}`);
+      return 2;
+    }
+    snapshot = baselineFromMetadata(metadata, config.dialect);
+  }
+
+  if (config.dryRun) {
+    log.info(`migrate baseline (dry-run): would write schema snapshot ${path}`);
+    return 0;
+  }
+
+  await writeSnapshot(path, snapshot);
+  log.info(`migrate: wrote schema snapshot ${path}`);
+  return 0;
+}
+
+/**
+ * Default `meta migrate` generate path — fully offline. Diffs metadata against
+ * the committed snapshot (no DB), writes up/down.sql, and advances the snapshot.
+ * The live-introspection path is used only with --from-db or --apply.
+ *
+ * Scope: table/column/index/FK changes. Projection-view migrations stay on the
+ * introspection path (offline-view parity is a follow-up).
+ */
+export async function runOfflineGenerate(
+  config: ResolvedMigrateConfig,
+  metaRoot: string,
+): Promise<number> {
+  if (config.dialect === undefined) {
+    log.error(`migrate: --dialect required for offline generation (or use --from-db)`);
+    return 2;
+  }
+  let metadata;
+  try {
+    metadata = await loadMemory(metaRoot);
+  } catch (err) {
+    log.error(`migrate: failed to load metadata: ${(err as Error).message}`);
+    return 2;
+  }
+
+  const outDir = resolvePath(metaRoot, config.outDir);
+  const path = snapshotPath(outDir, config.dialect);
+  let snapshot;
+  try {
+    snapshot = await readSnapshot(path);
+  } catch (err) {
+    log.error(`migrate: cannot read schema snapshot at ${path}: ${(err as Error).message}`);
+    return 2;
+  }
+  if (snapshot === null) {
+    log.error(`migrate: no schema snapshot at ${path}; run 'meta migrate baseline' first`);
+    return 2;
+  }
+
+  const collectedAmbiguous: AmbiguousChange[] = [];
+  const onAmbiguousResolution = mapOnAmbiguous(config.onAmbiguous);
+
+  let plan;
+  try {
+    plan = await planOffline({
+      metadata,
+      dialect: config.dialect,
+      snapshot,
+      allow: tokensToAllowOptions(config.allow),
+      onAmbiguous: async (a) => {
+        collectedAmbiguous.push(a);
+        return onAmbiguousResolution;
+      },
+    });
+  } catch (err) {
+    if ((err as Error).message.includes("aborted by onAmbiguous")) {
+      log.error(`migrate: ambiguous rename/drop detected; re-run with --on-ambiguous rename|drop-add`);
+      return 1;
+    }
+    throw err;
+  }
+
+  const { diff: diffResult, nextSnapshot } = plan;
+
+  if (diffResult.blocked.length > 0) {
+    log.error(`migrate: ${diffResult.blocked.length} destructive change(s) blocked; re-run with --allow <tokens>`);
+    return 1;
+  }
+  if (diffResult.changes.length === 0) {
+    log.info(`migrate: no changes`);
+    return 0;
+  }
+  if (config.slug === undefined) {
+    log.error(`migrate: --slug <name> required when there are changes (e.g., --slug add-user-shipping)`);
+    return 2;
+  }
+
+  const emitResult = emit(diffResult.changes, {
+    dialect: config.dialect,
+    expectedSchema: nextSnapshot,
+    ...(snapshot.meta ? { actualMeta: snapshot.meta } : {}),
+  });
+
+  if (config.dryRun) {
+    log.info(`-- UP --\n${emitResult.up}\n\n-- DOWN --\n${emitResult.down}`);
+    return 0;
+  }
+
+  await mkdir(outDir, { recursive: true });
+  const res = await writeMigration(
+    { up: emitResult.up, down: emitResult.down },
+    { dir: outDir, slug: config.slug },
+  );
+  await writeSnapshot(path, nextSnapshot);
+  log.info(`migrate: wrote ${res.upPath}`);
+  return 0;
 }
 
 /**

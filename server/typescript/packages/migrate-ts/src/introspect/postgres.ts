@@ -52,6 +52,7 @@ export async function introspectPostgres(db: Kysely<Record<string, unknown>>): P
       columns,
       indexes: await readPgIndexes(k, schema, name),
       foreignKeys: await readPgForeignKeys(k, schema, name),
+      checks: [], // CHECK introspection is out of scope; expected-side derives them
       primaryKey,
     });
   }

@@ -5,7 +5,7 @@ import type { Change, ColumnDescriptor, TableDescriptor, SchemaSnapshot, Snapsho
 const ALLOWED = { state: "allowed" as const };
 
 function table(name: string, cols: ColumnDescriptor[], pk: string[] = []): TableDescriptor {
-  return { name, columns: cols, indexes: [], foreignKeys: [], primaryKey: pk };
+  return { name, columns: cols, indexes: [], foreignKeys: [], primaryKey: pk, checks: [] };
 }
 function norm(s: string): string {
   return s.trim().split("\n").map((l) => l.trim()).filter((l) => l.length > 0).join("\n");
@@ -253,6 +253,7 @@ describe("renderSqlite — add-fk / drop-fk via recreate", () => {
       name: "weeks", columns: newCols, primaryKey: ["id"],
       indexes: [],
       foreignKeys: [{ name: "weeks_program_id_fk", columns: ["program_id"], refTable: "programs", refColumns: ["id"] }],
+      checks: [],
     };
     const expectedSchema: SchemaSnapshot = { tables: [newTable], views: [] };
     const { up } = emit(

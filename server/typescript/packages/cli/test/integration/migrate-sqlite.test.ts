@@ -38,7 +38,7 @@ describe("meta migrate — sqlite end-to-end round-trip", () => {
   test("empty DB → migrate writes CREATE TABLE; apply; re-migrate yields no changes", async () => {
     const { repo, dbUrl } = setupRepo();
     try {
-      const exit1 = await run(["migrate", "--cwd", repo, "--db", dbUrl, "--slug", "initial"]);
+      const exit1 = await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--slug", "initial"]);
       expect(exit1).toBe(0);
 
       const migrationsRoot = join(repo, ".metaobjects", "migrations");
@@ -52,7 +52,7 @@ describe("meta migrate — sqlite end-to-end round-trip", () => {
 
       await applyMigration(dbUrl, join(migrationDir, "up.sql"));
 
-      const exit2 = await run(["migrate", "--cwd", repo, "--db", dbUrl]);
+      const exit2 = await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl]);
       expect(exit2).toBe(0);
       const subdirsAfter = readdirSync(migrationsRoot);
       // No new migration should have been created (still just the one)
@@ -65,7 +65,7 @@ describe("meta migrate — sqlite end-to-end round-trip", () => {
   test("mutated metadata yields single add-column migration", async () => {
     const { repo, dbUrl } = setupRepo();
     try {
-      await run(["migrate", "--cwd", repo, "--db", dbUrl, "--slug", "initial"]);
+      await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--slug", "initial"]);
       const migrationsRoot = join(repo, ".metaobjects", "migrations");
       const initialDir = findMigrationDir(migrationsRoot, "initial");
       await applyMigration(dbUrl, join(initialDir, "up.sql"));
@@ -79,7 +79,7 @@ describe("meta migrate — sqlite end-to-end round-trip", () => {
       });
       writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 
-      const exit = await run(["migrate", "--cwd", repo, "--db", dbUrl, "--slug", "add-user-bio"]);
+      const exit = await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--slug", "add-user-bio"]);
       expect(exit).toBe(0);
 
       const newDir = findMigrationDir(migrationsRoot, "add-user-bio");
@@ -93,7 +93,7 @@ describe("meta migrate — sqlite end-to-end round-trip", () => {
   test("--slug missing with changes pending → exit 2 with helpful error", async () => {
     const { repo, dbUrl } = setupRepo();
     try {
-      const exit = await run(["migrate", "--cwd", repo, "--db", dbUrl]);
+      const exit = await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl]);
       expect(exit).toBe(2);
     } finally {
       rmSync(repo, { recursive: true, force: true });
@@ -103,12 +103,12 @@ describe("meta migrate — sqlite end-to-end round-trip", () => {
   test("no changes → exit 0, no new migration directory created", async () => {
     const { repo, dbUrl } = setupRepo();
     try {
-      await run(["migrate", "--cwd", repo, "--db", dbUrl, "--slug", "initial"]);
+      await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--slug", "initial"]);
       const migrationsRoot = join(repo, ".metaobjects", "migrations");
       const initialDir = findMigrationDir(migrationsRoot, "initial");
       await applyMigration(dbUrl, join(initialDir, "up.sql"));
 
-      const exit = await run(["migrate", "--cwd", repo, "--db", dbUrl]);
+      const exit = await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl]);
       expect(exit).toBe(0);
 
       const subdirsAfter = readdirSync(migrationsRoot);

@@ -6,7 +6,7 @@ import type { SchemaSnapshot } from "../types.js";
  * SchemaSnapshot descriptor gains a field (a DDL-coverage feature); add the
  * matching upgrade branch in parseSnapshot at the same time.
  */
-export const SNAPSHOT_FORMAT_VERSION = 1;
+export const SNAPSHOT_FORMAT_VERSION = 2;
 
 interface SnapshotFile {
   formatVersion: number;
@@ -25,6 +25,7 @@ function canonicalize(s: SchemaSnapshot): SchemaSnapshot {
       columns: sortByName(t.columns),
       indexes: sortByName(t.indexes),
       foreignKeys: sortByName(t.foreignKeys),
+      checks: sortByName(t.checks ?? []),
     })),
     views: sortByName(s.views),
     ...(s.meta ? { meta: s.meta } : {}),
@@ -68,7 +69,13 @@ export function parseSnapshot(text: string): SchemaSnapshot {
   if (file.snapshot === null || typeof file.snapshot !== "object") {
     throw new Error("snapshot file is missing a 'snapshot' object");
   }
-  // v1 is the only version today. Future versions add upgrade branches here
-  // (read older shape, lift it forward) before returning.
+  if (file.formatVersion < 2) {
+    // v1 → v2: the table descriptor gained `checks`; default older snapshots to [].
+    for (const t of file.snapshot.tables) {
+      if ((t as { checks?: unknown }).checks === undefined) {
+        (t as { checks: unknown[] }).checks = [];
+      }
+    }
+  }
   return file.snapshot;
 }

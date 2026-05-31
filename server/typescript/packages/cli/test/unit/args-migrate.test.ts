@@ -16,6 +16,8 @@ describe("parseMigrateArgs", () => {
       apply: false,
       rollback: undefined,
       yes: false,
+      fromDb: false,
+      baseline: false,
     });
   });
 

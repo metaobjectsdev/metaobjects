@@ -18,7 +18,6 @@ import com.metaobjects.MetaDataException;
 
 
 import com.metaobjects.manager.db.defs.ColumnDef;
-import com.metaobjects.manager.db.defs.TableDef;
 import com.metaobjects.manager.exp.Range;
 
 /**
@@ -43,25 +42,6 @@ public class MSSQLDriver extends GenericSQLDriver {
 
     public MSSQLDriver() {
         super();
-    }
-
-    /**
-     * Deletes a table from the SQL Server database
-     */
-    @Override
-    public void deleteTable(Connection c, TableDef table) throws SQLException {
-        String tableName = getProperName(table.getNameDef());
-        String query = "DROP TABLE " + tableName;
-        
-        if (log.isDebugEnabled()) {
-            log.debug("Dropping SQL Server table [{}]: {}", tableName, query);
-        }
-        
-        try (Statement s = c.createStatement()) {
-            s.execute(query);
-        } catch (SQLException e) {
-            throw new SQLException("Failed to drop SQL Server table [" + tableName + "]: " + e.getMessage(), e);
-        }
     }
 
     /**

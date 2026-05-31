@@ -15,6 +15,7 @@ function makeOrdersTable(schema: string | undefined): TableDescriptor {
     indexes: [],
     foreignKeys: [],
     primaryKey: ["id"],
+    checks: [],
   };
   if (schema !== undefined) t.schema = schema;
   return t;

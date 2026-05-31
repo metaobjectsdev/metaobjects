@@ -39,8 +39,11 @@ from metaobjects.shared.base_types import (
 # ---------------------------------------------------------------------------
 
 
-def _field(name: str, sub: str) -> MetaField:
-    return MetaField(TYPE_FIELD, sub, name)
+def _field(name: str, sub: str, *, required: bool = False) -> MetaField:
+    f = MetaField(TYPE_FIELD, sub, name)
+    if required:
+        f.set_attr(fc.FIELD_ATTR_REQUIRED, True)
+    return f
 
 
 def _payload_vo(name: str, fields: list[MetaField], *, package: str | None = None) -> MetaObject:
@@ -88,7 +91,12 @@ def _npc_root() -> MetaRoot:
     """Mirrors fixtures/conformance/template-output-simple/input/*.json."""
     payload = _payload_vo(
         "NpcResponsePayload",
-        [_field("name", fc.FIELD_SUBTYPE_STRING), _field("age", fc.FIELD_SUBTYPE_INT)],
+        [
+            # @required so the strict Pydantic payload keeps them non-optional —
+            # the missing-field round-trip below asserts parse raises when absent.
+            _field("name", fc.FIELD_SUBTYPE_STRING, required=True),
+            _field("age", fc.FIELD_SUBTYPE_INT, required=True),
+        ],
     )
     tmpl = _output_template("NpcResponseOutput", "NpcResponsePayload")
     return _root([payload, tmpl])

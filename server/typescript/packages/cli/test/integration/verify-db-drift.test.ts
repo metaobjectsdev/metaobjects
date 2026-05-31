@@ -51,7 +51,7 @@ async function applyMigration(dbUrl: string, sqlPath: string): Promise<void> {
 
 /** Run migrate to materialize the current metadata schema into the DB. */
 async function materialize(repo: string, dbUrl: string): Promise<void> {
-  const exit = await run(["migrate", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite", "--slug", "initial"]);
+  const exit = await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite", "--slug", "initial"]);
   expect(exit).toBe(0);
   const migrationsRoot = join(repo, ".metaobjects", "migrations");
   const dir = readdirSync(migrationsRoot).find((s) => s.endsWith("-initial"))!;

@@ -129,6 +129,12 @@ export async function diff(
           fk, status: ALLOWED,
         });
       }
+      // CHECK constraints are inlined into the CREATE TABLE DDL at emit time
+      // (both postgres and sqlite support inline CHECK), so they ride on
+      // `create-table.table.checks` rather than as separate add-check changes.
+      // The diff intentionally never produces add-check / drop-check today;
+      // existing-table enum-value evolution is deferred (see diffTableChecks
+      // removal note in Pass 2).
     }
   }
   // Pass 1b: tables present in actual but not expected → drop-table
@@ -136,7 +142,7 @@ export async function diff(
   for (const [id, t] of actualTables) {
     if (!expectedTables.has(id)) {
       const dropChange: Change & { _columns?: ColumnDescriptor[] } = {
-        kind: "drop-table", table: t.name, ...schemaSpread(t.schema), status: ALLOWED,
+        kind: "drop-table", table: t.name, ...schemaSpread(t.schema), restore: t, status: ALLOWED,
       };
       dropChange._columns = t.columns;
       changes.push(dropChange);
@@ -150,6 +156,10 @@ export async function diff(
     diffTableColumns(expectedTable, actualTable, changes);
     diffTableIndexes(expectedTable, actualTable, changes);
     diffTableForeignKeys(expectedTable, actualTable, changes);
+    // CHECK constraints on existing tables are intentionally NOT diffed:
+    // checks are a create-time-only concern (inlined in CREATE TABLE). Evolving
+    // an enum's values on a live table (which would alter its CHECK) is deferred
+    // until check introspection lands. No add-check / drop-check is produced here.
   }
 
   // Pass 2b: views. Identity is (schema, name). A name present on both sides
@@ -220,7 +230,7 @@ function diffTableColumns(
   for (const [name, ac] of actualCols) {
     if (!expectedCols.has(name)) {
       const dropChange: Change & { _sqlType?: SqlType; _nullable?: boolean } = {
-        kind: "drop-column", table, ...sx, column: name, status: ALLOWED,
+        kind: "drop-column", table, ...sx, column: name, restore: ac, status: ALLOWED,
       };
       dropChange._sqlType = ac.sqlType;
       dropChange._nullable = ac.nullable;
@@ -244,13 +254,14 @@ function diffTableIndexes(
       changes.push({ kind: "add-index", table, ...sx, index: ix, status: ALLOWED });
     } else if (!indexEquals(ix, a)) {
       // Index shape changed: drop + add (atomic from caller's perspective).
-      changes.push({ kind: "drop-index", table, ...sx, index: name, status: ALLOWED });
+      // restore = the ACTUAL shape so the down re-creates the original index.
+      changes.push({ kind: "drop-index", table, ...sx, index: name, restore: a, status: ALLOWED });
       changes.push({ kind: "add-index", table, ...sx, index: ix, status: ALLOWED });
     }
   }
-  for (const [name] of actualIdx) {
+  for (const [name, ai] of actualIdx) {
     if (!expectedIdx.has(name)) {
-      changes.push({ kind: "drop-index", table, ...sx, index: name, status: ALLOWED });
+      changes.push({ kind: "drop-index", table, ...sx, index: name, restore: ai, status: ALLOWED });
     }
   }
 }
@@ -269,13 +280,15 @@ function diffTableForeignKeys(
     if (!a) {
       changes.push({ kind: "add-fk", table, ...sx, fk, status: ALLOWED });
     } else if (!fkEquals(fk, a)) {
-      changes.push({ kind: "drop-fk", table, ...sx, fk: name, status: ALLOWED });
+      // FK shape changed: drop + add. restore = the ACTUAL shape so the down
+      // re-creates the original FK.
+      changes.push({ kind: "drop-fk", table, ...sx, fk: name, restore: a, status: ALLOWED });
       changes.push({ kind: "add-fk", table, ...sx, fk, status: ALLOWED });
     }
   }
-  for (const [name] of actualFk) {
+  for (const [name, af] of actualFk) {
     if (!expectedFk.has(name)) {
-      changes.push({ kind: "drop-fk", table, ...sx, fk: name, status: ALLOWED });
+      changes.push({ kind: "drop-fk", table, ...sx, fk: name, restore: af, status: ALLOWED });
     }
   }
 }

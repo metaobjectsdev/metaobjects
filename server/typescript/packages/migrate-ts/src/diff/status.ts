@@ -47,6 +47,8 @@ function blockedReasonFor(c: Change, allow: AllowOptions): string | null {
     case "change-column-default":
     case "add-index":
     case "add-fk":
+    case "add-check":
+    case "drop-check":
     case "create-view":
     case "drop-view":
     case "replace-view":

@@ -13,6 +13,7 @@ const STAGE_ORDER: Record<Change["kind"], number> = {
   "rename-column": 3, "rename-table": 3,
   "add-index": 4, "drop-index": 4,
   "add-fk": 5, "drop-fk": 5,
+  "add-check": 5, "drop-check": 5,
   "drop-table": 6,
   "create-view": 99, "drop-view": 99, "replace-view": 99,
 };
@@ -110,6 +111,8 @@ function changeTable(c: Change): string | undefined {
     case "drop-index":
     case "add-fk":
     case "drop-fk":
+    case "add-check":
+    case "drop-check":
       return c.table;
     default:
       return undefined;
@@ -188,6 +191,12 @@ function renderUpNative(c: Change): string {
     case "rename-column":  return `ALTER TABLE ${quote(c.table)} RENAME COLUMN ${quote(c.from)} TO ${quote(c.to)};`;
     case "add-index":      return renderCreateIndex(c.table, c.index);
     case "drop-index":     return `DROP INDEX ${quote(c.index)};`;
+    case "add-check":
+    case "drop-check":
+      // Declared for future existing-table support; the diff does not yet produce
+      // these (checks are create-time-only, inlined in CREATE TABLE). Unreachable
+      // today — throw rather than silently mis-emit if one ever arrives here.
+      throw new Error("CHECK migration not implemented for sqlite (recreate path pending)");
     case "change-column-type":
     case "change-column-nullable":
     case "change-column-default":
@@ -212,6 +221,12 @@ function renderDownNative(c: Change): string {
     case "rename-column":  return `ALTER TABLE ${quote(c.table)} RENAME COLUMN ${quote(c.to)} TO ${quote(c.from)};`;
     case "add-index":      return `DROP INDEX ${quote(c.index.name)};`;
     case "drop-index":     return `-- WARNING: down migration cannot restore the original index definition`;
+    case "add-check":
+    case "drop-check":
+      // Declared for future existing-table support; the diff does not yet produce
+      // these (checks are create-time-only, inlined in CREATE TABLE). Unreachable
+      // today — throw rather than silently mis-emit if one ever arrives here.
+      throw new Error("CHECK migration not implemented for sqlite (recreate path pending)");
     case "change-column-type":
     case "change-column-nullable":
     case "change-column-default":
@@ -242,6 +257,12 @@ function renderCreateTable(t: TableDescriptor): string {
     if (fk.onDelete) clause += ` ON DELETE ${renderFkAction(fk.onDelete)}`;
     if (fk.onUpdate) clause += ` ON UPDATE ${renderFkAction(fk.onUpdate)}`;
     colDefs.push(clause);
+  }
+  // CHECK constraints are inlined into the CREATE TABLE DDL (SQLite supports
+  // inline named CHECK). Checks are create-time-only; the diff never produces
+  // add-check / drop-check, so this is the sole place SQLite emits a CHECK.
+  for (const chk of t.checks ?? []) {
+    colDefs.push(`  CONSTRAINT ${quote(chk.name)} CHECK (${chk.expression})`);
   }
   return `CREATE TABLE ${quote(t.name)} (\n${colDefs.join(",\n")}\n);`;
 }

@@ -28,7 +28,7 @@ function findMigrationDir(migrationsRoot: string, slug: string): string | undefi
 
 async function setupMigratedRepo(): Promise<{ repo: string; dbUrl: string }> {
   const { repo, dbUrl } = setupRepo();
-  await run(["migrate", "--cwd", repo, "--db", dbUrl, "--slug", "initial"]);
+  await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--slug", "initial"]);
   const root = join(repo, ".metaobjects", "migrations");
   const dir = findMigrationDir(root, "initial")!;
   await applyMigration(dbUrl, join(root, dir, "up.sql"));
@@ -57,7 +57,7 @@ describe("meta migrate — --on-ambiguous", () => {
     try {
       renameField(join(repo, "metaobjects", "myapp.json"), "User", "displayName", "displayedName");
 
-      const exit = await run(["migrate", "--cwd", repo, "--db", dbUrl, "--slug", "rename"]);
+      const exit = await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--slug", "rename"]);
       expect(exit).toBe(1);
     } finally {
       rmSync(repo, { recursive: true, force: true });
@@ -70,7 +70,7 @@ describe("meta migrate — --on-ambiguous", () => {
       renameField(join(repo, "metaobjects", "myapp.json"), "User", "displayName", "displayedName");
 
       const exit = await run([
-        "migrate", "--cwd", repo, "--db", dbUrl, "--slug", "rename", "--on-ambiguous", "rename",
+        "migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--slug", "rename", "--on-ambiguous", "rename",
       ]);
       expect(exit).toBe(0);
 
@@ -90,7 +90,7 @@ describe("meta migrate — --on-ambiguous", () => {
       renameField(join(repo, "metaobjects", "myapp.json"), "User", "displayName", "displayedName");
 
       const exit = await run([
-        "migrate", "--cwd", repo, "--db", dbUrl, "--slug", "drop-add", "--on-ambiguous", "drop-add", "--allow", "drop-column",
+        "migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--slug", "drop-add", "--on-ambiguous", "drop-add", "--allow", "drop-column",
       ]);
       expect(exit).toBe(0);
 

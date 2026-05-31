@@ -17,7 +17,7 @@ describe("meta migrate — postgres (env-gated)", () => {
     const root = mkdtempSync(join(tmpdir(), "forge-migrate-pg-"));
     cpSync(join(FIXTURES, "trainer-website-meta"), root, { recursive: true });
     try {
-      const exit = await run(["migrate", "--cwd", root, "--db", PG_URL, "--slug", "initial"]);
+      const exit = await run(["migrate", "--from-db", "--cwd", root, "--db", PG_URL, "--slug", "initial"]);
       expect(exit).toBe(0);
 
       const migrationsRoot = join(root, ".metaobjects", "migrations");

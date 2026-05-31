@@ -16,6 +16,7 @@ describe("emit(dialect: 'd1')", () => {
         indexes: [],
         foreignKeys: [],
         primaryKey: ["id"],
+        checks: [],
       },
     }];
     const expected: SchemaSnapshot = { tables: [], views: [] };
@@ -38,6 +39,7 @@ describe("emit(dialect: 'd1')", () => {
         indexes: [],
         foreignKeys: [],
         primaryKey: ["id"],
+        checks: [],
       },
     }];
     const expected: SchemaSnapshot = { tables: [], views: [] };
@@ -66,6 +68,7 @@ describe("emit(dialect: 'd1')", () => {
         indexes: [],
         foreignKeys: [],
         primaryKey: ["id"],
+        checks: [],
       }],
       views: [],
     };
