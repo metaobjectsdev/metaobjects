@@ -6,9 +6,8 @@ import {
   type MetaObject,
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
-import { Format, FieldKind } from "../../src/recover/types.js";
-import { FieldRecovery, orThrow, RecoverError } from "../../src/recover/types.js";
-import { recoverObject, recoverSchemaFor } from "../../src/recover/recover-object.js";
+import { Format, FieldKind, FieldRecovery, orThrow, RecoverError } from "@metaobjectsdev/render";
+import { recoverObject, recoverSchemaFor } from "../src/recover-object.js";
 
 // Gold-standard "verdict oracle" proof for the Phase B runtime recover (recoverObject).
 //

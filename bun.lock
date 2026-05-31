@@ -310,7 +310,6 @@
       "name": "@metaobjectsdev/render",
       "version": "0.8.1",
       "dependencies": {
-        "@metaobjectsdev/metadata": "workspace:*",
         "mustache": "^4.2.0",
       },
       "devDependencies": {
@@ -324,6 +323,7 @@
       "version": "0.8.1",
       "dependencies": {
         "@metaobjectsdev/metadata": "workspace:*",
+        "@metaobjectsdev/render": "workspace:*",
         "qs": "^6.13.0",
       },
       "devDependencies": {

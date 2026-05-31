@@ -46,14 +46,6 @@ export {
   asStringList,
 } from "./recover/recover-map.js";
 
-// Phase B — metadata-driven runtime recover (engine + Phase A object model bridge).
-export {
-  recoverObject,
-  recoverSchemaFor,
-  assemble,
-  MAX_NEST_DEPTH,
-} from "./recover/recover-object.js";
-
 // FR-010 artifact 1 — output-format prompt renderer ("produce your answer like this").
 export { renderOutputFormat } from "./prompt/output-format-renderer.js";
 export { PromptStyle, promptStyleFrom } from "./prompt/prompt-style.js";

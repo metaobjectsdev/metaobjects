@@ -1,26 +1,28 @@
 // Phase B (metadata-driven recover) runtime entry point — the TS keystone that turns dirty
-// LLM text into a populated, typed object graph. Mirrors the JVM reference
-// (server/java/om/.../object/recover/MetaObjectRecover.java).
+// LLM text into a populated, typed object graph.
 //
 // This is the runtime bridge between the two halves of the standard:
-//   • the recover ENGINE (this package: RecoverSchema / FieldSpec / recover) — parses dirty
-//     JSON/XML into a forgiving record/array tree + a RecoveryReport;
+//   • the recover ENGINE (@metaobjectsdev/render: RecoverSchema / FieldSpec / recover) — a
+//     zero-core-dependency, descriptor-driven module that parses dirty JSON/XML into a forgiving
+//     record/array tree + a RecoveryReport. It knows nothing of the runtime object model.
 //   • the Phase A runtime OBJECT MODEL (@metaobjectsdev/metadata: MetaObject.newInstance() +
 //     the MetaField get/set SPI + @objectRef) — instantiates the right backing type
 //     (ValueObject or a registered/bound class) with the correct back-reference.
 //
-// Siting. The recover engine lives in @metaobjectsdev/render; the Phase A object model lives in
-// @metaobjectsdev/metadata. render now depends on metadata (a one-way edge — metadata does NOT
-// depend on render), so render is the lowest package that can see BOTH halves. This is the TS
-// analogue of the Java keystone living in `om` (above both render + metadata). The render→metadata
-// dep is type-and-runtime; no circular edge.
+// Siting. render stays metadata-free (it is a published render package; coupling it to the
+// metadata model would regress every render consumer). The metadata-driven bridge therefore lives
+// HERE, in @metaobjectsdev/runtime-ts — the lowest package that already depends on metadata and
+// that can also take a one-way dependency on render. This mirrors the JVM layering, where the
+// recover engine sits in the metadata-free `render` module and the runtime recover bridge lives in
+// the `om` runtime module (which depends on BOTH metadata and render). The edges are one-way:
+// runtime-ts → render and runtime-ts → metadata; render depends on neither, so there is no cycle.
 //
 // Reflection-free. Assembly uses MetaObject.newInstance() (the ObjectClassRegistry resolves the
 // bound type, else a ValueObject) and the MetaField setValue SPI — no eval / dynamic import.
 //
 // Never throws. Lost/malformed fields are classified in the report, never raised. Opt into
-// strictness with orThrow() (in ./types.ts), which throws a RecoverError iff a required field
-// was lost.
+// strictness with orThrow() (re-exported from @metaobjectsdev/render), which throws a RecoverError
+// iff a required field was lost.
 
 import {
   MetaObject,
@@ -56,10 +58,20 @@ import {
   type NormalizeMode,
 } from "@metaobjectsdev/metadata";
 
-import { Format } from "./types.js";
-import type { FieldSpec, RecoverOptions, RecoverSchema, RecoveryResult } from "./types.js";
-import { FieldKind, scalar, enumField, enumArray, object, recoverSchema } from "./types.js";
-import { recover } from "./recover.js";
+import {
+  Format,
+  FieldKind,
+  scalar,
+  enumField,
+  enumArray,
+  object,
+  recoverSchema,
+  recover,
+  type FieldSpec,
+  type RecoverOptions,
+  type RecoverSchema,
+  type RecoveryResult,
+} from "@metaobjectsdev/render";
 
 /**
  * Maximum nested-object recursion depth. Mirrors the render OutputFormatRenderer.MAX_NEST_DEPTH
