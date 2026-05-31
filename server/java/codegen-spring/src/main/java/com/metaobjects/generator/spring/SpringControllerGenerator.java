@@ -157,6 +157,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import com.metaobjects.generator.spring.runtime.FilterParser;\n");
         src.append("import com.metaobjects.generator.spring.runtime.FilterPredicate;\n");
         src.append("import jakarta.servlet.http.HttpServletRequest;\n");
+        src.append("import jakarta.validation.Valid;\n");
         src.append("import java.util.List;\n");
         src.append("import java.util.Map;\n");
         src.append("import java.util.Set;\n\n");
@@ -230,7 +231,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
         // POST — create.
         src.append("    @PostMapping\n");
-        src.append("    public ResponseEntity<").append(dtoName).append("> create(@RequestBody ").append(dtoName).append(" dto) {\n");
+        src.append("    public ResponseEntity<").append(dtoName).append("> create(@Valid @RequestBody ").append(dtoName).append(" dto) {\n");
         src.append("        ").append(dtoName).append(" saved = repository.create(dto);\n");
         src.append("        return ResponseEntity.status(HttpStatus.CREATED).body(saved);\n");
         src.append("    }\n\n");
@@ -238,7 +239,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // PATCH + PUT — single handler (per API contract; same body shape both verbs).
         src.append("    @PatchMapping(\"/{id}\")\n");
         src.append("    @PutMapping(\"/{id}\")\n");
-        src.append("    public ResponseEntity<?> update(@PathVariable Long id, @RequestBody ").append(dtoName).append(" dto) {\n");
+        src.append("    public ResponseEntity<?> update(@PathVariable Long id, @Valid @RequestBody ").append(dtoName).append(" dto) {\n");
         src.append("        return repository.update(id, dto)\n");
         src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
         src.append("                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");

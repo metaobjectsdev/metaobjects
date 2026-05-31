@@ -1,13 +1,21 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.MetaData;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
+import com.metaobjects.field.StringField;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.util.GeneratorUtil;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.validator.ArrayValidator;
+import com.metaobjects.validator.LengthValidator;
+import com.metaobjects.validator.MetaValidator;
+import com.metaobjects.validator.NumericValidator;
+import com.metaobjects.validator.RegexValidator;
+import com.metaobjects.validator.RequiredValidator;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -17,7 +25,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -72,9 +79,25 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         String shortName = split[1];
         String recordName = shortName + "Dto";
 
+        // Compute each component's validation annotations once (each call walks the
+        // field's validator children), then derive whether the jakarta import is needed.
+        List<MetaField> fields = scalarFields(entity);
+        List<String> annotationsPerField = new ArrayList<>(fields.size());
+        boolean usesValidation = false;
+        for (MetaField field : fields) {
+            String annotations = validationAnnotations(field);
+            annotationsPerField.add(annotations);
+            if (!annotations.isEmpty()) usesValidation = true;
+        }
+
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) {
             src.append("package ").append(pkg).append(";\n\n");
+        }
+        // Wildcard import keeps the emit simple — record components carry a small,
+        // closed set of jakarta.validation.constraints annotations.
+        if (usesValidation) {
+            src.append("import jakarta.validation.constraints.*;\n\n");
         }
         src.append("/** GENERATED — wire DTO for ").append(shortName)
            .append(". Do not hand-edit; regenerated from metadata. */\n");
@@ -82,12 +105,13 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
 
         // Filter ObjectField — see class javadoc. Same reason as the Kotlin port's
         // KotlinExposedTableGenerator scalar-only filter.
-        Iterator<MetaField> it = scalarFields(entity).iterator();
-        while (it.hasNext()) {
-            MetaField field = it.next();
-            String type = SpringTypeMapper.javaTypeName(field);
-            src.append("    ").append(type).append(' ').append(field.getName());
-            if (it.hasNext()) src.append(',');
+        for (int i = 0; i < fields.size(); i++) {
+            MetaField field = fields.get(i);
+            String annotations = annotationsPerField.get(i);
+            src.append("    ");
+            if (!annotations.isEmpty()) src.append(annotations).append(' ');
+            src.append(componentType(field)).append(' ').append(field.getName());
+            if (i < fields.size() - 1) src.append(',');
             src.append('\n');
         }
         src.append(") {}\n");
@@ -152,6 +176,148 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             out.add(field);
         }
         return out;
+    }
+
+    // === validation (SP-C validator parity) =================================
+
+    /** Field metadata attribute marking a field required (peer of {@code validator.required}). */
+    private static final String ATTR_REQUIRED = "required";
+    /** Field metadata attribute carrying the string-length cap (peer of {@code validator.length @max}). */
+    private static final String ATTR_MAX_LENGTH = "maxLength";
+
+    /**
+     * Java DTO-record component type for {@code field}. Scalar fields delegate
+     * to {@link SpringTypeMapper}; array fields ({@code isArray=true}) are
+     * wrapped as {@code List<elementType>} (the wrapped element type so an
+     * omitted JSON element deserialises to {@code null}).
+     */
+    private static String componentType(MetaField<?> field) {
+        String element = SpringTypeMapper.javaTypeName(field);
+        return field.isArrayType() ? "java.util.List<" + element + ">" : element;
+    }
+
+    /**
+     * Build the space-joined jakarta.validation annotation string for a record
+     * component from the field's constraint metadata — both field attrs
+     * ({@code @required}, {@code @maxLength}) and {@code validator.*} children
+     * (length / regex / numeric / array). Returns {@code ""} when the field
+     * carries no constraints.
+     *
+     * <p>Cross-port semantics (see the SP-C validator-parity contract):</p>
+     * <ul>
+     *   <li>required (field {@code @required} or {@code validator.required}) →
+     *       {@code @NotNull}, plus {@code @NotBlank} for non-array strings so an
+     *       empty string fails too.</li>
+     *   <li>{@code validator.length @min} + field {@code @maxLength} →
+     *       {@code @Size(min=…, max=…)} (each bound omitted when absent).</li>
+     *   <li>{@code validator.regex @pattern} → {@code @Pattern(regexp=…)}.</li>
+     *   <li>{@code validator.numeric @min/@max} → {@code @Min(…)} / {@code @Max(…)}.</li>
+     *   <li>{@code validator.array @min/@max} → {@code @Size(min=…, max=…)} on the {@code List}.</li>
+     * </ul>
+     */
+    private static String validationAnnotations(MetaField<?> field) {
+        boolean isArray = field.isArrayType();
+        boolean isString = field instanceof StringField;
+        List<String> out = new ArrayList<>();
+
+        boolean required = attrBool(field, ATTR_REQUIRED) || hasValidator(field, RequiredValidator.class);
+        if (required) {
+            out.add("@NotNull");
+            if (isString && !isArray) out.add("@NotBlank");
+        }
+
+        // String length: combine validator.length @min with the field-level @maxLength cap.
+        Integer lengthMin = null;
+        Integer lengthMax = null;
+        LengthValidator length = validator(field, LengthValidator.class);
+        if (length != null) {
+            lengthMin = attrInt(length, LengthValidator.ATTR_MIN);
+            lengthMax = attrInt(length, LengthValidator.ATTR_MAX);
+        }
+        if (attrInt(field, ATTR_MAX_LENGTH) != null) {
+            lengthMax = attrInt(field, ATTR_MAX_LENGTH);
+        }
+        if (lengthMin != null || lengthMax != null) {
+            out.add(sizeAnnotation(lengthMin, lengthMax));
+        }
+
+        // Regex pattern.
+        RegexValidator regex = validator(field, RegexValidator.class);
+        if (regex != null) {
+            String pattern = regex.resolvePattern();
+            if (pattern != null) {
+                out.add("@Pattern(regexp = \"" + escapeJavaString(pattern) + "\")");
+            }
+        }
+
+        // Numeric value bounds.
+        NumericValidator numeric = validator(field, NumericValidator.class);
+        if (numeric != null) {
+            Integer min = attrInt(numeric, NumericValidator.ATTR_MIN);
+            Integer max = attrInt(numeric, NumericValidator.ATTR_MAX);
+            if (min != null) out.add("@Min(" + min + ")");
+            if (max != null) out.add("@Max(" + max + ")");
+        }
+
+        // Array element-count bounds → @Size on the List component.
+        ArrayValidator array = validator(field, ArrayValidator.class);
+        if (array != null) {
+            Integer min = attrInt(array, ArrayValidator.ATTR_MIN, ArrayValidator.ATTR_MINSIZE);
+            Integer max = attrInt(array, ArrayValidator.ATTR_MAX, ArrayValidator.ATTR_MAXSIZE);
+            if (min != null || max != null) {
+                out.add(sizeAnnotation(min, max));
+            }
+        }
+
+        return String.join(" ", out);
+    }
+
+    private static String sizeAnnotation(Integer min, Integer max) {
+        StringBuilder b = new StringBuilder("@Size(");
+        boolean wrote = false;
+        if (min != null) { b.append("min = ").append(min); wrote = true; }
+        if (max != null) { if (wrote) b.append(", "); b.append("max = ").append(max); }
+        return b.append(')').toString();
+    }
+
+    // --- metadata read helpers ----------------------------------------------
+
+    private static boolean attrBool(MetaField<?> field, String attr) {
+        if (!field.hasMetaAttr(attr)) return false;
+        Object raw = field.getMetaAttr(attr).getValue();
+        if (raw instanceof Boolean b) return b;
+        return Boolean.parseBoolean(String.valueOf(raw));
+    }
+
+    /** Read an int-valued attr from a node, trying each name in order; {@code null} when absent. */
+    private static Integer attrInt(MetaData node, String... attrNames) {
+        for (String attr : attrNames) {
+            if (node.hasMetaAttr(attr)) {
+                try {
+                    return Integer.valueOf(node.getMetaAttr(attr).getValueAsString().trim());
+                } catch (NumberFormatException ignore) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <V extends MetaValidator> V validator(MetaField<?> field, Class<V> type) {
+        for (MetaData child : field.getChildren()) {
+            if (type.isInstance(child)) return (V) child;
+        }
+        return null;
+    }
+
+    private static boolean hasValidator(MetaField<?> field, Class<? extends MetaValidator> type) {
+        return validator(field, type) != null;
+    }
+
+    /** Escape a regex/string literal for safe embedding in generated Java source. */
+    private static String escapeJavaString(String s) {
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

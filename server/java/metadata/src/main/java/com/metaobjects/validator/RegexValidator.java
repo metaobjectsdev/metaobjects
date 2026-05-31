@@ -21,8 +21,13 @@ public class RegexValidator extends MetaValidator {
 
     public final static String SUBTYPE_REGEX = "regex";
 
-    /** Mask attribute */
+    /** Legacy mask attribute (pre-cross-port). Prefer {@link #ATTR_PATTERN}. */
     public final static String ATTR_MASK = "mask";
+    /**
+     * Cross-port pattern attribute ({@code @pattern}) — the canonical regex source
+     * shared with TS / C# / Python / Kotlin (see the SP-C validator-parity contract).
+     */
+    public final static String ATTR_PATTERN = "pattern";
 
     /**
      * Register this type with the MetaDataRegistry (called by provider)
@@ -34,10 +39,22 @@ public class RegexValidator extends MetaValidator {
                .inheritsFrom(TYPE_VALIDATOR, SUBTYPE_BASE);
 
             // REGEX-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
-            def.requiredAttributeWithConstraints(ATTR_MASK)
+            // Both are optional; exactly one of @pattern (cross-port canonical) or
+            // @mask (legacy) supplies the regex. @pattern wins when both are present.
+            def.optionalAttributeWithConstraints(ATTR_PATTERN)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .asSingle();
+            def.optionalAttributeWithConstraints(ATTR_MASK)
                .ofType(StringAttribute.SUBTYPE_STRING)
                .asSingle();
         });
+    }
+
+    /** Resolve the regex source — {@code @pattern} (canonical) preferred, falling back to {@code @mask}. */
+    public String resolvePattern() {
+        if (hasMetaAttr(ATTR_PATTERN)) return getMetaAttr(ATTR_PATTERN).getValueAsString();
+        if (hasMetaAttr(ATTR_MASK)) return getMetaAttr(ATTR_MASK).getValueAsString();
+        return null;
     }
 
     public RegexValidator(String name) {
@@ -50,12 +67,13 @@ public class RegexValidator extends MetaValidator {
     public void validate(Object object, Object value)
     //throws MetaException
     {
-        String mask = getMetaAttr(ATTR_MASK).getValueAsString();
+        String mask = resolvePattern();
         String msg = getMessage("Invalid value format");
 
         String val = (value == null) ? null : value.toString();
 
-        if (!GenericValidator.isBlankOrNull(val)
+        if (mask != null
+                && !GenericValidator.isBlankOrNull(val)
                 && !GenericValidator.matchRegexp(val, mask)) {
             throw new InvalidValueException(msg);
         }

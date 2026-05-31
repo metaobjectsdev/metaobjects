@@ -69,6 +69,22 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- validation-conformance runner: validate the generated DTO via a jakarta Validator.
+             Hibernate Validator brings jakarta.validation-api transitively; expressly is the
+             jakarta EL implementation the constraint-message interpolator needs at runtime. -->
+        <dependency>
+            <groupId>org.hibernate.validator</groupId>
+            <artifactId>hibernate-validator</artifactId>
+            <version>8.0.1.Final</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.glassfish.expressly</groupId>
+            <artifactId>expressly</artifactId>
+            <version>5.0.0</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Inherited from parent POM: SLF4J, JUnit 4, Logback -->
     </dependencies>
 

@@ -19,10 +19,14 @@ public class ArrayValidator extends MetaValidator {
 
     public final static String SUBTYPE_ARRAY = "array";
 
-    /** Attribute name for minimum array size validation */
+    /** Legacy minimum array size attribute (pre-cross-port). Prefer {@link #ATTR_MIN}. */
     public final static String ATTR_MINSIZE = "minSize";
-    /** Attribute name for maximum array size validation */
+    /** Legacy maximum array size attribute (pre-cross-port). Prefer {@link #ATTR_MAX}. */
     public final static String ATTR_MAXSIZE = "maxSize";
+    /** Cross-port minimum element-count attribute ({@code @min}). */
+    public final static String ATTR_MIN = "min";
+    /** Cross-port maximum element-count attribute ({@code @max}). */
+    public final static String ATTR_MAX = "max";
 
     /**
      * Register this type with the MetaDataRegistry (called by provider)
@@ -35,10 +39,16 @@ public class ArrayValidator extends MetaValidator {
                .inheritsFrom(TYPE_VALIDATOR, SUBTYPE_BASE);
 
             // ARRAY-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
+            // Cross-port canonical @min/@max preferred; legacy @minSize/@maxSize kept for back-compat.
+            def.optionalAttributeWithConstraints(ATTR_MIN)
+               .ofType(IntAttribute.SUBTYPE_INT)
+               .asSingle();
+            def.optionalAttributeWithConstraints(ATTR_MAX)
+               .ofType(IntAttribute.SUBTYPE_INT)
+               .asSingle();
             def.optionalAttributeWithConstraints(ATTR_MINSIZE)
                .ofType(IntAttribute.SUBTYPE_INT)
                .asSingle();
-
             def.optionalAttributeWithConstraints(ATTR_MAXSIZE)
                .ofType(IntAttribute.SUBTYPE_INT)
                .asSingle();
@@ -59,10 +69,20 @@ public class ArrayValidator extends MetaValidator {
         super(subType, name);
     }
 
+    /** Resolve the attribute name in effect for the minimum bound — canonical {@code @min} preferred. */
+    private String minAttrName() {
+        return hasMetaAttr(ATTR_MIN) ? ATTR_MIN : ATTR_MINSIZE;
+    }
+
+    /** Resolve the attribute name in effect for the maximum bound — canonical {@code @max} preferred. */
+    private String maxAttrName() {
+        return hasMetaAttr(ATTR_MAX) ? ATTR_MAX : ATTR_MAXSIZE;
+    }
+
     public int getMinSize() {
         if (!minSizeCached) {
-            if (hasMetaAttr(ATTR_MINSIZE)) {
-                MetaAttribute<?> attr = getMetaAttr(ATTR_MINSIZE);
+            if (hasMetaAttr(minAttrName())) {
+                MetaAttribute<?> attr = getMetaAttr(minAttrName());
                 try {
                     cachedMinSize = getAttrValueAsInt(attr);
                 }
@@ -87,13 +107,13 @@ public class ArrayValidator extends MetaValidator {
     }
 
     public boolean hasMaxSize() {
-        return hasMetaAttr(ATTR_MAXSIZE);
+        return hasMetaAttr(ATTR_MAX) || hasMetaAttr(ATTR_MAXSIZE);
     }
 
     public Integer getMaxSize() {
         if (!maxSizeCached) {
-            if (hasMetaAttr(ATTR_MAXSIZE)) {
-                MetaAttribute<?> attr = getMetaAttr(ATTR_MAXSIZE);
+            if (hasMaxSize()) {
+                MetaAttribute<?> attr = getMetaAttr(maxAttrName());
                 try {
                     cachedMaxSize = getAttrValueAsInt(attr);
                 }
