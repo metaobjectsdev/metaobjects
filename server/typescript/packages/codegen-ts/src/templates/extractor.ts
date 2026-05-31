@@ -22,10 +22,12 @@
 
 import {
   type MetaData,
+  type MetaField,
   TYPE_OBJECT,
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_OUTPUT,
   FIELD_SUBTYPE_OBJECT,
+  FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_REQUIRED,
   TEMPLATE_ATTR_PAYLOAD_REF,
@@ -34,6 +36,8 @@ import {
 } from "@metaobjectsdev/metadata";
 import { fields, isArray } from "./fr010-field-mapping.js";
 import { mirrorName } from "./extract-delegate-emitter.js";
+import { enumUnionAliasName } from "./inferred-types.js";
+import { enumValues } from "../enum-meta.js";
 
 function findObject(root: MetaData, name: string): MetaData | undefined {
   return root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
@@ -59,6 +63,19 @@ function isObjectField(field: MetaData): boolean {
 }
 
 /**
+ * The union-alias type name for a `field.enum` with effective `@values`, or undefined when the
+ * field is not a value-constrained enum. Reuses `enumUnionAliasName` — the SAME naming the payload
+ * emitter (`payload-codegen.ts`) types the field as — so the cast target resolves to the exact
+ * alias exported from `payloads.ts`. `ownerName` is the owning value-object's interface name.
+ */
+function enumAlias(field: MetaData, ownerName: string): string | undefined {
+  if (field.subType !== FIELD_SUBTYPE_ENUM) return undefined;
+  const values = enumValues(field as MetaField);
+  if (values === undefined) return undefined;
+  return enumUnionAliasName(ownerName, field as MetaField);
+}
+
+/**
  * True iff the field is required IN THE STRICT PAYLOAD TYPE. This MUST match
  * payload-codegen.ts's `isFieldRequired` predicate EXACTLY (boolean `true` only) — the payload
  * interface decides `T` vs `T | null` by that predicate, and the mapper's optionality assumption
@@ -79,7 +96,7 @@ function mapperName(vo: MetaData): string {
  * mapping it onto the strict payload's exact optionality (required → `m.f!`; optional → `m.f ?? null`).
  * Nested single/array objects recurse into their toStrict<Type> mapper, guarding null when optional.
  */
-function strictArg(field: MetaData, root: MetaData): string {
+function strictArg(field: MetaData, root: MetaData, ownerName: string): string {
   const name = field.name;
   const required = isFieldRequired(field);
 
@@ -106,15 +123,35 @@ function strictArg(field: MetaData, root: MetaData): string {
   // would leave the element type `T | null`, a `tsc --strict` TS2322 error. Filter out null
   // elements so the element type narrows to non-null (consistent with the lost-element DROP policy
   // already used for required arrays-of-objects above).
+  //
+  // ENUM arrays: the mirror element is a plain `string`, but the strict payload types it as the
+  // closed `<Alias>[]` union. The null-filter alone narrows to `string[]`, not `<Alias>[]` — a
+  // `tsc --strict` TS2322 error. So the null-filtered result is CAST to `<Alias>[]`. The cast is
+  // sound: the engine validated each present element is a member of the closed set (else the field
+  // is lost/MALFORMED and extract throws), so the runtime string IS a valid union member.
+  const alias = enumAlias(field, ownerName);
   if (isArray(field)) {
     if (required) {
-      return `(m.${name} ?? []).filter((x): x is NonNullable<typeof x> => x != null)`;
+      const filtered = `(m.${name} ?? []).filter((x): x is NonNullable<typeof x> => x != null)`;
+      return alias !== undefined ? `(${filtered}) as ${alias}[]` : filtered;
     }
-    return `m.${name} == null ? null : m.${name}.filter((x): x is NonNullable<typeof x> => x != null)`;
+    const filtered = `m.${name}.filter((x): x is NonNullable<typeof x> => x != null)`;
+    const guarded = `m.${name} == null ? null : ${filtered}`;
+    return alias !== undefined
+      ? `m.${name} == null ? null : (${filtered}) as ${alias}[]`
+      : guarded;
   }
 
   // Scalar / enum (single): the strict payload's optionality decides the shape.
   // Required → non-null assertion; optional → `?? null` (matches the payload's `f?: T | null`).
+  //
+  // ENUM scalar: the mirror member is a plain `string`, but the strict payload types it as the
+  // closed `<Alias>` union — assigning `string` into `<Alias>` is a `tsc --strict` TS2322 error.
+  // So the value is CAST to `<Alias>`. Sound for the same reason as enum arrays above: the engine
+  // already validated membership (or extract throws on a lost required field).
+  if (alias !== undefined) {
+    return required ? `m.${name}! as ${alias}` : `(m.${name} ?? null) as ${alias} | null`;
+  }
   return required ? `m.${name}!` : `m.${name} ?? null`;
 }
 
@@ -144,7 +181,7 @@ function emitMapper(
   const fn = mapperName(vo);
   const strict = vo.name;
   const mir = mirrorOverride ?? mirrorName(vo);
-  const assigns = fields(vo).map((f) => `    ${f.name}: ${strictArg(f, root)},`);
+  const assigns = fields(vo).map((f) => `    ${f.name}: ${strictArg(f, root, vo.name)},`);
   out.push(
     [
       `/** Map the all-nullable \`${mir}\` mirror onto the strict \`${strict}\` payload. Generated. */`,
@@ -164,7 +201,12 @@ function emitMapper(
   }
 }
 
-/** Collect the strict payload-interface names reachable from `vo` (for the type-only import). */
+/**
+ * Collect the strict payload-interface names reachable from `vo` (for the type-only import),
+ * PLUS every enum union-alias reachable from those VOs. Both are exported from `payloads.ts`
+ * (the alias is hoisted above the interface there), so the extractor's `as <Alias>` casts need
+ * the alias names imported alongside the interface names. Deduped, in discovery order.
+ */
 function reachablePayloadTypes(vo: MetaData, root: MetaData): string[] {
   const order: string[] = [];
   const seen = new Set<string>();
@@ -173,6 +215,11 @@ function reachablePayloadTypes(vo: MetaData, root: MetaData): string[] {
     seen.add(cur.name);
     order.push(cur.name);
     for (const f of fields(cur)) {
+      const alias = enumAlias(f, cur.name);
+      if (alias !== undefined && !seen.has(alias)) {
+        seen.add(alias);
+        order.push(alias);
+      }
       if (isObjectField(f)) {
         const target = refVo(f, root);
         if (target !== undefined) visit(target);

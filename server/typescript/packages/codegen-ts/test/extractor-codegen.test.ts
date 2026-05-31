@@ -13,10 +13,78 @@
 import { describe, test, expect, afterAll } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { renderOutputParser } from "../src/templates/output-parser.js";
 import { renderExtractor } from "../src/templates/extractor.js";
 import { generatePayloadInterfaces } from "../src/payload-codegen.js";
+
+// ---------------------------------------------------------------------------
+// tsc --strict compile gate (mirrors fr004-verify-demo.test.ts's `compile()`).
+//
+// Type-checks the EMITTED payload + output-parser + extractor sources with the
+// real TS compiler API under `{ strict: true, noEmit: true }`. This is what
+// proves the union-typed enum payload is genuinely value-constrained AND that
+// the generated mapper compiles: a bare `m.priority!` (string) assigned into the
+// `OrderPriority` union field is a TS2322 error — the gate fails unless the
+// extractor CASTS the mirror string to the union alias. Ambient `.d.ts` stubs
+// stand in for the engine packages so the program is hermetic (no workspace
+// self-link noise); `skipLibCheck` keeps the check focused on the emitted graph.
+// ---------------------------------------------------------------------------
+
+function compile(dir: string, files: string[]): readonly ts.Diagnostic[] {
+  const program = ts.createProgram(
+    files.map((f) => join(dir, f)),
+    {
+      strict: true,
+      noEmit: true,
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      skipLibCheck: true,
+    },
+  );
+  return ts.getPreEmitDiagnostics(program);
+}
+
+// Just-enough ambient surface for the engine packages the emitted output imports.
+// The point of the gate is the cross-module mirror→strict mapping (enum casts);
+// these stubs keep the resolver happy without pulling the real (workspace-linked)
+// type surface in.
+// `z` is used as BOTH a value (z.object(...)) and a type namespace (z.infer<...>) in the
+// emitted parser, so it is declared as an importable namespace whose every member is `any`.
+// The render/runtime surfaces are intentionally permissive (`any`) — the engine itself is a
+// real, separately-compiled package; the gate's job is the EMITTED extractor's enum casts +
+// the mirror→strict payload mapping, NOT re-type-checking the engine.
+const ENGINE_STUBS = `declare module "zod" {
+  export namespace z {
+    export type infer<T> = any;
+    export type ZodType = any;
+    export type ZodError = any;
+  }
+  export const z: any;
+}
+declare module "@metaobjectsdev/metadata" {
+  export type MetaRoot = any;
+}
+declare module "@metaobjectsdev/runtime-ts" {
+  export function extractObject(...args: any[]): any;
+}
+declare module "@metaobjectsdev/render" {
+  // data is nullable in the real engine surface; the emitted extractor reads \`r.data!\`.
+  export interface ExtractionResult<T> { data: T | null; report: any; }
+  export const extract: any;
+  export const extractSchema: any;
+  export const Format: any;
+  export const scalar: any;
+  export const enumField: any;
+  export const FieldKind: any;
+  export type ExtractSchema = any;
+  export type ExtractOptions = any;
+  export function asString(...args: any[]): any;
+  export function asStringList(...args: any[]): any;
+}
+`;
 
 const TEMP_DIRS: string[] = [];
 afterAll(() => {
@@ -118,6 +186,37 @@ describe("Extractor codegen — source shape", () => {
     expect(payloadSrc).toContain("labels: OrderLabels[];");
     expect(payloadSrc).not.toContain("priority: unknown");
     expect(payloadSrc).not.toContain("labels: unknown");
+  });
+
+  test("tsc --strict gate: emitted payload + parser + extractor type-check with ZERO diagnostics", async () => {
+    const root = await loadRoot(MODEL);
+    const payloadSrc = generatePayloadInterfaces(root, "Order");
+    const parserSrc = renderOutputParser(root, "OrderOut");
+    const extractorSrc = renderExtractor(root, "OrderOut");
+
+    // Sanity: the extractor CASTS the enum mirror-string to the union alias (the fix under test).
+    // Scalar enum → `m.priority! as OrderPriority`; enum array → `... as OrderLabels[]`.
+    expect(extractorSrc).toContain("m.priority! as OrderPriority");
+    expect(extractorSrc).toContain(") as OrderLabels[]");
+    // The union aliases are imported from the payload module so the cast target resolves.
+    expect(extractorSrc).toContain("OrderPriority, OrderLabels");
+
+    const dir = mkdtempSync(join(import.meta.dir, "extractor-tsc-"));
+    TEMP_DIRS.push(dir);
+    writeFileSync(join(dir, "payloads.ts"), payloadSrc);
+    writeFileSync(join(dir, "OrderOut.output.ts"), parserSrc);
+    writeFileSync(join(dir, "OrderOut.extractor.ts"), extractorSrc);
+    writeFileSync(join(dir, "engine.d.ts"), ENGINE_STUBS);
+
+    const diagnostics = compile(dir, [
+      "payloads.ts",
+      "OrderOut.output.ts",
+      "OrderOut.extractor.ts",
+      "engine.d.ts",
+    ]);
+
+    // ZERO diagnostics: the union-typed enum payload AND the strict mapper both compile.
+    expect(diagnostics.map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"))).toEqual([]);
   });
 });
 
