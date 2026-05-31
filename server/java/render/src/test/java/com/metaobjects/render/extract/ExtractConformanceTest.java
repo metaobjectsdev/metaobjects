@@ -59,9 +59,15 @@ public class ExtractConformanceTest {
             assertEquals(dir + " state[" + path + "]",
                     states.get(path).asText(), String.valueOf(out.report().states().get(path))));
 
+        // Data is compared as a flat DOTTED-LEAF map (mirroring states): nested objects and
+        // arrays are flattened to leaf paths (meta.score, items[0].label, tags[0], …) and every
+        // leaf VALUE is asserted — including scalar-array elements and nested-object leaves.
+        Map<String, Object> actualLeaves = new java.util.LinkedHashMap<>();
+        flattenLeaves("", out.data(), actualLeaves);
+
         JsonNode data = expected.get("data");
-        data.fieldNames().forEachRemaining(field ->
-            assertCanonical(dir + " data[" + field + "]", data.get(field), out.data().get(field)));
+        data.fieldNames().forEachRemaining(path ->
+            assertCanonical(dir + " data[" + path + "]", data.get(path), actualLeaves.get(path)));
 
         // Exhaustive key-set checks: no missing, no extra entries in either map.
         Set<String> expectedStateKeys = new LinkedHashSet<>();
@@ -70,29 +76,34 @@ public class ExtractConformanceTest {
 
         Set<String> expectedDataKeys = new LinkedHashSet<>();
         data.fieldNames().forEachRemaining(expectedDataKeys::add);
-        assertEquals(dir + " data key set", expectedDataKeys, out.data().keySet());
+        assertEquals(dir + " data key set", expectedDataKeys, actualLeaves.keySet());
     }
 
     /**
-     * Canonical comparison: numbers within 1e-9 tolerance; scalars string-equal.
-     *
-     * <p>FR-011: object/array expected values in the corpus are deliberate PLACEHOLDERS
-     * ({@code {}} / {@code [{},{}]}) — the cross-port runner stringifies both sides loosely,
-     * so a nested-object / array-of-objects field's real assertion lives in the per-field
-     * states (e.g. {@code meta.score} / {@code items[i].label}), not its top-level data value.
-     * Mirror that here by asserting only structural correspondence (map ↔ object, list ↔ array).</p>
+     * Flatten an assembled-data value into dotted leaf paths: maps recurse by key
+     * ({@code prefix.key}), lists recurse by index ({@code prefix[i]}), and every terminal
+     * scalar is recorded. Mirrors how the engine enumerates per-field states, so the data
+     * leaf-set lines up 1:1 with the states leaf-set (minus dropped/malformed leaves).
      */
+    private static void flattenLeaves(String prefix, Object value, Map<String, Object> out) {
+        if (value instanceof Map<?, ?> m) {
+            for (Map.Entry<?, ?> e : m.entrySet()) {
+                String key = prefix.isEmpty() ? String.valueOf(e.getKey()) : prefix + "." + e.getKey();
+                flattenLeaves(key, e.getValue(), out);
+            }
+        } else if (value instanceof List<?> list) {
+            for (int i = 0; i < list.size(); i++) {
+                flattenLeaves(prefix + "[" + i + "]", list.get(i), out);
+            }
+        } else {
+            out.put(prefix, value);
+        }
+    }
+
+    /** Canonical leaf comparison: numbers within 1e-9 tolerance; everything else string-equal. */
     private static void assertCanonical(String msg, JsonNode expected, Object actual) {
         if (expected.isNumber() && actual instanceof Number n) {
             assertEquals(msg, expected.asDouble(), n.doubleValue(), 1e-9);
-        } else if (expected.isObject()) {
-            assertTrue(msg + ": expected an object but got "
-                    + (actual == null ? "null" : actual.getClass().getSimpleName()),
-                    actual instanceof Map);
-        } else if (expected.isArray()) {
-            assertTrue(msg + ": expected an array but got "
-                    + (actual == null ? "null" : actual.getClass().getSimpleName()),
-                    actual instanceof List);
         } else {
             assertEquals(msg, expected.asText(), String.valueOf(actual));
         }

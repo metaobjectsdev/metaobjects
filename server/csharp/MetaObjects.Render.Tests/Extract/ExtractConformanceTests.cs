@@ -93,60 +93,75 @@ public class ExtractConformanceTests
             Assert.Equal(expectedKeys, actualKeys);
         }
 
-        // Assert: per-field data (canonical value check)
+        // Assert: data as a flat DOTTED-LEAF map (mirroring states). Nested objects and arrays
+        // are flattened to leaf paths (meta.score, items[0].label, tags[0], …) and every leaf
+        // VALUE is asserted — including scalar-array elements and nested-object leaves.
+        var actualLeaves = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (KeyValuePair<string, object?> kv in outcome.Data)
+            FlattenLeaves(kv.Key, kv.Value, actualLeaves);
+
         JsonElement expectedData = expected.GetProperty("data");
         foreach (JsonProperty dataProp in expectedData.EnumerateObject())
         {
-            string field = dataProp.Name;
-            Assert.True(outcome.Data.ContainsKey(field),
-                $"{caseName}: data key '{field}' missing from actual data");
-            AssertCanonical(caseName, field, dataProp.Value, outcome.Data[field]);
+            string path = dataProp.Name;
+            Assert.True(actualLeaves.ContainsKey(path),
+                $"{caseName}: data leaf '{path}' missing from actual data");
+            AssertCanonical(caseName, path, dataProp.Value, actualLeaves[path]);
         }
 
-        // Assert: data key-set exhaustive (no extra keys in actual)
+        // Assert: data leaf-set exhaustive (no extra leaves in actual)
         {
             var expectedKeys = new HashSet<string>(StringComparer.Ordinal);
             foreach (JsonProperty p in expectedData.EnumerateObject()) expectedKeys.Add(p.Name);
-            var actualKeys = new HashSet<string>(outcome.Data.Keys, StringComparer.Ordinal);
+            var actualKeys = new HashSet<string>(actualLeaves.Keys, StringComparer.Ordinal);
             Assert.Equal(expectedKeys, actualKeys);
         }
     }
 
     /// <summary>
-    /// Canonical comparison: numbers within 1e-9 tolerance; scalars string-equal.
-    ///
-    /// FR-011: object/array expected values in the corpus are deliberate PLACEHOLDERS
-    /// ({} / [{},{}]) — the cross-port runner stringifies both sides loosely (TS String()),
-    /// so a nested-object / array-of-objects field's real assertion lives in the per-field
-    /// states (e.g. meta.score / items[i].label), not its top-level data value. Mirror that
-    /// here by asserting only structural correspondence (map ↔ object, list ↔ array).
+    /// Flatten an assembled-data value into dotted leaf paths: dictionaries recurse by key
+    /// (prefix.key), lists recurse by index (prefix[i]), and every terminal scalar is recorded.
+    /// Mirrors the engine's per-field state enumeration so data leaves line up with state leaves.
     /// </summary>
-    private static void AssertCanonical(string caseName, string field, JsonElement expected, object? actual)
+    private static void FlattenLeaves(string prefix, object? value, IDictionary<string, object?> outMap)
     {
-        switch (expected.ValueKind)
+        switch (value)
         {
-            case JsonValueKind.Number:
-                double expectedNum = expected.GetDouble();
-                double actualNum = Convert.ToDouble(actual);
-                Assert.True(
-                    Math.Abs(expectedNum - actualNum) <= 1e-9,
-                    $"{caseName} data[{field}]: expected {expectedNum} but got {actualNum}");
+            case IDictionary<string, object?> map:
+                foreach (KeyValuePair<string, object?> e in map)
+                {
+                    string key = prefix.Length == 0 ? e.Key : $"{prefix}.{e.Key}";
+                    FlattenLeaves(key, e.Value, outMap);
+                }
                 break;
 
-            case JsonValueKind.Object:
-                Assert.True(actual is IReadOnlyDictionary<string, object?> or IDictionary<string, object?>,
-                    $"{caseName} data[{field}]: expected an object but got {actual?.GetType().Name ?? "null"}");
-                break;
-
-            case JsonValueKind.Array:
-                Assert.True(actual is System.Collections.IEnumerable and not string,
-                    $"{caseName} data[{field}]: expected an array but got {actual?.GetType().Name ?? "null"}");
+            case System.Collections.IEnumerable seq when value is not string:
+                int i = 0;
+                foreach (object? item in seq)
+                    FlattenLeaves($"{prefix}[{i++}]", item, outMap);
                 break;
 
             default:
-                string expectedStr = expected.GetString() ?? expected.ToString();
-                Assert.Equal(expectedStr, Convert.ToString(actual));
+                outMap[prefix] = value;
                 break;
+        }
+    }
+
+    /// <summary>Canonical leaf comparison: numbers within 1e-9 tolerance; else string-equal.</summary>
+    private static void AssertCanonical(string caseName, string path, JsonElement expected, object? actual)
+    {
+        if (expected.ValueKind == JsonValueKind.Number)
+        {
+            double expectedNum = expected.GetDouble();
+            double actualNum = Convert.ToDouble(actual);
+            Assert.True(
+                Math.Abs(expectedNum - actualNum) <= 1e-9,
+                $"{caseName} data[{path}]: expected {expectedNum} but got {actualNum}");
+        }
+        else
+        {
+            string expectedStr = expected.GetString() ?? expected.ToString();
+            Assert.Equal(expectedStr, Convert.ToString(actual));
         }
     }
 

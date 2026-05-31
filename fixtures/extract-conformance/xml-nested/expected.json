@@ -1,1 +1,1 @@
-{ "empty": false, "states": { "title": "EXTRACTED", "meta": "EXTRACTED", "meta.score": "EXTRACTED", "meta.label": "EXTRACTED" }, "data": { "title": "hello", "meta": {} } }
+{ "empty": false, "states": { "title": "EXTRACTED", "meta": "EXTRACTED", "meta.score": "EXTRACTED", "meta.label": "EXTRACTED" }, "data": { "title": "hello", "meta.score": 7, "meta.label": "beta" } }

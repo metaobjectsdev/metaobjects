@@ -1,1 +1,1 @@
-{ "empty": false, "states": { "items": "EXTRACTED", "items[0].label": "EXTRACTED", "items[1].label": "EXTRACTED" }, "data": { "items": [{},{}] } }
+{ "empty": false, "states": { "items": "EXTRACTED", "items[0].label": "EXTRACTED", "items[1].label": "EXTRACTED" }, "data": { "items[0].label": "a", "items[1].label": "b" } }
