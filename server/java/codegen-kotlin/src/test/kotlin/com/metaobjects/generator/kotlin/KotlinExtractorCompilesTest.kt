@@ -62,7 +62,7 @@ class KotlinExtractorCompilesTest {
       ] }
     }""".trimIndent()
 
-    @Test fun `extract maps the recovered mirror onto the strict payload`() {
+    @Test fun `extract maps the extracted mirror onto the strict payload`() {
         val outDir = Files.createTempDirectory("compile-extractor-")
         try {
             val loader = loadString("extractor-test", fixture)
@@ -149,16 +149,16 @@ class KotlinExtractorCompilesTest {
                 fail("extract must throw when a required field is lost")
             } catch (e: InvocationTargetException) {
                 assertTrue(e.cause is RuntimeException,
-                    "unwrapped cause must be a RuntimeException (RecoverException); got ${e.cause}")
+                    "unwrapped cause must be a RuntimeException (ExtractException); got ${e.cause}")
             }
 
-            // ---- re-exposed recover(loader, clean): never throws, no lost-required ----
-            val recoverMethod = extractorClass.getDeclaredMethod("recover", loaderClass, String::class.java)
+            // ---- re-exposed extractLenient(loader, clean): never throws, no lost-required ----
+            val extractLenientMethod = extractorClass.getDeclaredMethod("extractLenient", loaderClass, String::class.java)
             val clean = "{\"customer\":{\"name\":\"Ada\"}," +
                 "\"lines\":[{\"sku\":\"A\",\"qty\":1}]," +
                 "\"tags\":[\"x\"],\"scores\":[3],\"ratings\":[1.5],\"flags\":[\"A\"],\"note\":\"hi\"}"
-            val rr = recoverMethod.invoke(extractorInstance, loader, clean)
-            val reportClass = cl.loadClass("com.metaobjects.render.recover.RecoveryReport")
+            val rr = extractLenientMethod.invoke(extractorInstance, loader, clean)
+            val reportClass = cl.loadClass("com.metaobjects.render.extract.ExtractionReport")
             val report = rr.javaClass.getMethod("report").invoke(rr)
             assertFalse(reportClass.getDeclaredMethod("hasLostRequired").invoke(report) as Boolean,
                 "clean input must have hasLostRequired() == false")

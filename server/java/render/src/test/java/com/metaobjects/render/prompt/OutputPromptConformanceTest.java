@@ -2,14 +2,14 @@ package com.metaobjects.render.prompt;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.metaobjects.render.recover.FieldKind;
-import com.metaobjects.render.recover.FieldRecovery;
-import com.metaobjects.render.recover.FieldSpec;
-import com.metaobjects.render.recover.Format;
-import com.metaobjects.render.recover.Recover;
-import com.metaobjects.render.recover.RecoverOptions;
-import com.metaobjects.render.recover.RecoverOutcome;
-import com.metaobjects.render.recover.RecoverSchema;
+import com.metaobjects.render.extract.FieldKind;
+import com.metaobjects.render.extract.FieldExtraction;
+import com.metaobjects.render.extract.FieldSpec;
+import com.metaobjects.render.extract.Format;
+import com.metaobjects.render.extract.Extract;
+import com.metaobjects.render.extract.ExtractOptions;
+import com.metaobjects.render.extract.ExtractionOutcome;
+import com.metaobjects.render.extract.ExtractSchema;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -36,7 +36,7 @@ import static org.junit.Assert.assertFalse;
  * {@code fixtures/output-prompt-conformance/} using Java's {@link OutputFormatRenderer},
  * proving the Java renderer is byte-for-byte identical to the TS reference (and the C# port).
  * For {@code roundTrip} cases, also asserts the emitted example reads back cleanly through
- * {@link Recover} (no MALFORMED / LOST_* states).</p>
+ * {@link Extract} (no MALFORMED / LOST_* states).</p>
  *
  * <p>The corpus is the oracle: assertions are ordinal {@link String} equality on raw UTF-8
  * bytes with no newline translation.</p>
@@ -100,16 +100,16 @@ public class OutputPromptConformanceTest {
 
         if (spec.has("roundTrip") && spec.get("roundTrip").asBoolean()) {
             String exampleFragment = readUtf8(dir.resolve("expected.exampleOnly.txt"));
-            RecoverOutcome outcome = Recover.recover(exampleFragment, buildRecoverSchema(spec), RecoverOptions.defaults());
+            ExtractionOutcome outcome = Extract.extract(exampleFragment, buildExtractSchema(spec), ExtractOptions.defaults());
             // Skew guard: a field the renderer emitted must read back cleanly. Assert NO state
             // is MALFORMED or LOST_* (robust to DEFAULTED and to how a nested OBJECT-container
-            // path classifies); any such state means the renderer emitted an example the recover
+            // path classifies); any such state means the renderer emitted an example the extract
             // parser cannot read.
-            for (Map.Entry<String, FieldRecovery> e : outcome.report().states().entrySet()) {
-                FieldRecovery state = e.getValue();
-                boolean bad = state == FieldRecovery.MALFORMED
-                        || state == FieldRecovery.LOST_REQUIRED
-                        || state == FieldRecovery.LOST_OPTIONAL;
+            for (Map.Entry<String, FieldExtraction> e : outcome.report().states().entrySet()) {
+                FieldExtraction state = e.getValue();
+                boolean bad = state == FieldExtraction.MALFORMED
+                        || state == FieldExtraction.LOST_REQUIRED
+                        || state == FieldExtraction.LOST_OPTIONAL;
                 assertFalse(dir + " roundTrip state[" + e.getKey() + "]=" + state, bad);
             }
         }
@@ -119,7 +119,7 @@ public class OutputPromptConformanceTest {
         return new String(Files.readAllBytes(p), StandardCharsets.UTF_8);
     }
 
-    // ----- descriptor (spec.json) -> renderer/recover model -----
+    // ----- descriptor (spec.json) -> renderer/extract model -----
 
     private static OutputFormatSpec buildOutputSpec(JsonNode c) {
         Format fmt = toFormat(c.get("format").asText());
@@ -152,12 +152,12 @@ public class OutputPromptConformanceTest {
         return new PromptField(name, kind, required, array, enumValues, enumDoc, example, instruction, nested);
     }
 
-    private static RecoverSchema buildRecoverSchema(JsonNode c) {
+    private static ExtractSchema buildExtractSchema(JsonNode c) {
         Format fmt = toFormat(c.get("format").asText());
         String root = c.get("rootName").asText();
         List<FieldSpec> fields = new ArrayList<>();
         for (JsonNode f : c.get("fields")) fields.add(buildFieldSpec(f));
-        return new RecoverSchema(fmt, root, fields);
+        return new ExtractSchema(fmt, root, fields);
     }
 
     private static FieldSpec buildFieldSpec(JsonNode f) {
@@ -174,7 +174,7 @@ public class OutputPromptConformanceTest {
             return FieldSpec.enumField(name, required, vals, Map.of());
         }
         if (kind == FieldKind.OBJECT) {
-            RecoverSchema nested = f.has("nested") && !f.get("nested").isNull() ? buildRecoverSchema(f.get("nested")) : null;
+            ExtractSchema nested = f.has("nested") && !f.get("nested").isNull() ? buildExtractSchema(f.get("nested")) : null;
             return FieldSpec.object(name, required, array, nested);
         }
         return FieldSpec.scalar(name, kind, required);

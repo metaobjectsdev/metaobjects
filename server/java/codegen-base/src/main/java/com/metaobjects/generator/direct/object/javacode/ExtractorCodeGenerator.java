@@ -7,10 +7,10 @@ import java.nio.file.Files;
 
 /**
  * Emits a generated {@code <Name>Extractor} — the Task-6 payoff that wraps the Phase-B
- * runtime recover so a consumer turns dirty LLM text into a fully-typed flavored object
+ * runtime extract so a consumer turns dirty LLM text into a fully-typed flavored object
  * graph (nested objects + arrays-of-objects populated) in one call.
  *
- * <p>The emitted class references {@code com.metaobjects.object.recover.MetaObjectRecover}
+ * <p>The emitted class references {@code com.metaobjects.object.extract.MetaObjectExtractor}
  * (in module {@code metaobjects-om}) <b>by fully-qualified-name string only</b>. That keeps
  * {@code codegen-base} main free of any {@code om} compile dependency: the reference is a
  * source-level FQN that resolves on the <i>consumer's</i> classpath (where {@code om} is
@@ -19,19 +19,19 @@ import java.nio.file.Files;
  * <p>Two static entry points are emitted:</p>
  * <ul>
  *   <li>{@code extract(loader, text)} → the typed flavored object via
- *       {@code MetaObjectRecover.recover(mo, text).orThrow()} (throws iff a required field
+ *       {@code MetaObjectExtractor.extract(mo, text).orThrow()} (throws iff a required field
  *       was lost — the strict opt-in gate);</li>
- *   <li>{@code recover(loader, text)} → the full
- *       {@code RecoveryResult<<Type>>} (never-throws; carries the per-field report).</li>
+ *   <li>{@code extractLenient(loader, text)} → the full
+ *       {@code ExtractionResult<<Type>>} (never-throws; carries the per-field report).</li>
  * </ul>
  *
- * <p>The {@code MetaObjectRecover.recover(...)} signature emitted against is
- * {@code RecoveryResult<Object> recover(MetaObject, String)} (the JSON-default overload).
- * {@link com.metaobjects.render.recover.RecoveryResult#orThrow()} returns {@code Object};
+ * <p>The {@code MetaObjectExtractor.extract(...)} signature emitted against is
+ * {@code ExtractionResult<Object> extractLenient(MetaObject, String)} (the JSON-default overload).
+ * {@link com.metaobjects.render.extract.ExtractionResult#orThrow()} returns {@code Object};
  * the {@code (<Type>)} cast succeeds because the generated binding provider makes
  * {@code MetaObject.newInstance()} (and therefore the assembled graph root) the generated
- * flavored type. The {@code recover(...)} overload widens through {@code RecoveryResult<?>}
- * to expose the typed {@code RecoveryResult<<Type>>}.</p>
+ * flavored type. The {@code extractLenient(...)} overload widens through {@code ExtractionResult<?>}
+ * to expose the typed {@code ExtractionResult<<Type>>}.</p>
  *
  * <p>This is a plain emission helper (direct {@code StringBuilder} emit; no templates) driven
  * by {@link JavaObjectCodeGenerator#execute}. Its emission steps are {@code protected} so a
@@ -40,15 +40,15 @@ import java.nio.file.Files;
  */
 public class ExtractorCodeGenerator {
 
-    /** Fully-qualified name of the runtime recover entry point (emitted as a source FQN string). */
-    public static final String META_OBJECT_RECOVER_FQN =
-            "com.metaobjects.object.recover.MetaObjectRecover";
+    /** Fully-qualified name of the runtime extract entry point (emitted as a source FQN string). */
+    public static final String META_OBJECT_EXTRACT_FQN =
+            "com.metaobjects.object.extract.MetaObjectExtractor";
 
-    /** Fully-qualified name of the typed recover result (emitted as a source FQN string). */
-    public static final String RECOVERY_RESULT_FQN =
-            "com.metaobjects.render.recover.RecoveryResult";
+    /** Fully-qualified name of the typed extract result (emitted as a source FQN string). */
+    public static final String EXTRACTION_RESULT_FQN =
+            "com.metaobjects.render.extract.ExtractionResult";
 
-    /** Fully-qualified name of the loader the generated {@code extract}/{@code recover} accept. */
+    /** Fully-qualified name of the loader the generated {@code extract}/{@code extract} accept. */
     public static final String LOADER_FQN = "com.metaobjects.loader.MetaDataLoader";
 
     /** Suffix appended to the flavored class's simple name to form the Extractor class name. */
@@ -62,7 +62,7 @@ public class ExtractorCodeGenerator {
      * @param javaPackage     the generated flavored class's Java package (may be blank → default package)
      * @param className       the generated flavored class's simple Java class name (the {@code <Type>})
      * @param resolutionKey   the package-folded metadata resolution key ({@code "pkg::Name"}) the
-     *                        generated {@code extract}/{@code recover} pass to
+     *                        generated {@code extract}/{@code extract} pass to
      *                        {@code MetaDataLoader.getMetaObjectByName(...)}
      */
     public void emit(File outputDir, String javaPackage, String className, String resolutionKey)
@@ -79,7 +79,7 @@ public class ExtractorCodeGenerator {
         writeHeader(sb, javaPackage, className, extractorName);
         writeLookupHelper(sb, resolutionKey);
         writeExtractMethod(sb, className);
-        writeRecoverMethod(sb, className);
+        writeExtractLenientMethod(sb, className);
         writeFooter(sb);
 
         Files.write(src.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
@@ -96,7 +96,7 @@ public class ExtractorCodeGenerator {
         sb.append(" * <p>Turns dirty LLM text into a fully-typed {@code ").append(className)
           .append("} graph (nested\n");
         sb.append(" * objects + arrays-of-objects populated) in one call, by delegating to the Phase-B\n");
-        sb.append(" * runtime recover ({@code ").append(META_OBJECT_RECOVER_FQN).append("}).</p>\n");
+        sb.append(" * runtime extract ({@code ").append(META_OBJECT_EXTRACT_FQN).append("}).</p>\n");
         sb.append(" */\n");
         sb.append("public final class ").append(extractorName).append(" {\n\n");
         sb.append("    private ").append(extractorName).append("() { /* no instances */ }\n\n");
@@ -119,32 +119,32 @@ public class ExtractorCodeGenerator {
         sb.append("     * Extract a fully-typed {@code ").append(className)
           .append("} from dirty {@code text}.\n");
         sb.append("     *\n");
-        sb.append("     * @throws com.metaobjects.render.recover.RecoverException iff a required field was lost\n");
+        sb.append("     * @throws com.metaobjects.render.extract.ExtractException iff a required field was lost\n");
         sb.append("     */\n");
         sb.append("    public static ").append(className).append(" extract(")
           .append(LOADER_FQN).append(" loader, String text) {\n");
         sb.append("        return (").append(className).append(") ")
-          .append(META_OBJECT_RECOVER_FQN).append(".recover(lookup(loader), text).orThrow();\n");
+          .append(META_OBJECT_EXTRACT_FQN).append(".extract(lookup(loader), text).orThrow();\n");
         sb.append("    }\n\n");
     }
 
     /**
-     * Emit {@code recover(loader, text)} → the never-throws {@code RecoveryResult<<Type>>}
+     * Emit {@code extractLenient(loader, text)} → the never-throws {@code ExtractionResult<<Type>>}
      * (typed data + per-field report). Override to change the default format.
      */
-    protected void writeRecoverMethod(StringBuilder sb, String className) {
+    protected void writeExtractLenientMethod(StringBuilder sb, String className) {
         sb.append("    /**\n");
-        sb.append("     * Recover a {@code ").append(className)
+        sb.append("     * Extract a {@code ").append(className)
           .append("} from dirty {@code text}, never throwing.\n");
         sb.append("     *\n");
         sb.append("     * @return the typed result; inspect {@code report()} for lost/defaulted fields\n");
         sb.append("     */\n");
         sb.append("    @SuppressWarnings(\"unchecked\")\n");
-        sb.append("    public static ").append(RECOVERY_RESULT_FQN).append("<").append(className)
-          .append("> recover(").append(LOADER_FQN).append(" loader, String text) {\n");
-        sb.append("        return (").append(RECOVERY_RESULT_FQN).append("<").append(className).append(">) (")
-          .append(RECOVERY_RESULT_FQN).append("<?>) ")
-          .append(META_OBJECT_RECOVER_FQN).append(".recover(lookup(loader), text);\n");
+        sb.append("    public static ").append(EXTRACTION_RESULT_FQN).append("<").append(className)
+          .append("> extractLenient(").append(LOADER_FQN).append(" loader, String text) {\n");
+        sb.append("        return (").append(EXTRACTION_RESULT_FQN).append("<").append(className).append(">) (")
+          .append(EXTRACTION_RESULT_FQN).append("<?>) ")
+          .append(META_OBJECT_EXTRACT_FQN).append(".extract(lookup(loader), text);\n");
         sb.append("    }\n");
     }
 

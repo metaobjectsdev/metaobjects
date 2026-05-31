@@ -1041,7 +1041,7 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
      * {@link #createObject} would give them.
      *
      * <p>The per-1000-row mid-commit of the prior implementation was removed:
-     * intermediate commits made earlier chunks unrecoverable on a later
+     * intermediate commits made earlier chunks unextractable on a later
      * failure, defeating atomicity.
      *
      * <p><strong>Transaction ownership.</strong> Commit / rollback / auto-commit

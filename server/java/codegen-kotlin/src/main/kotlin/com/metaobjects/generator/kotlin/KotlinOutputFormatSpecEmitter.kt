@@ -28,7 +28,7 @@ import java.util.Properties
  * - [ObjectField]  → `FieldKind.OBJECT`, nested arg `null` (FR-010: nested prompt deferred)
  *
  * String escaping, scalar-kind mapping, required-field resolution, and map-literal
- * building all delegate to [KotlinRecoverSchemaEmitter] (shared helpers, same package).
+ * building all delegate to [KotlinExtractSchemaEmitter] (shared helpers, same package).
  *
  * This object is internal; generators delegate here.
  */
@@ -61,7 +61,7 @@ internal object KotlinOutputFormatSpecEmitter {
 
         val fieldLiterals = vo.metaFields.map { promptFieldLiteral(it) }
 
-        return "OutputFormatSpec($formatEnum, \"${KotlinRecoverSchemaEmitter.kotlinStringLiteral(rootName)}\", $promptStyleEnum, listOf(${fieldLiterals.joinToString(", ")}))"
+        return "OutputFormatSpec($formatEnum, \"${KotlinExtractSchemaEmitter.kotlinStringLiteral(rootName)}\", $promptStyleEnum, listOf(${fieldLiterals.joinToString(", ")}))"
     }
 
     // -------------------------------------------------------------------------
@@ -100,12 +100,12 @@ internal object KotlinOutputFormatSpecEmitter {
      */
     private fun promptFieldLiteral(field: MetaField<*>): String {
         val name = field.name
-        val required = KotlinRecoverSchemaEmitter.isRequired(field)
+        val required = KotlinExtractSchemaEmitter.isRequired(field)
         val array = field.isArray
 
         // Nested object — bounded deferral (mirrors Java plan 3.1).
         if (field is ObjectField) {
-            return "PromptField(\"${KotlinRecoverSchemaEmitter.kotlinStringLiteral(name)}\", FieldKind.OBJECT, $required, $array, null, null, null, null, null) /* FR-010: nested prompt deferred */"
+            return "PromptField(\"${KotlinExtractSchemaEmitter.kotlinStringLiteral(name)}\", FieldKind.OBJECT, $required, $array, null, null, null, null, null) /* FR-010: nested prompt deferred */"
         }
 
         // Enum field — include values + optional enumDoc.
@@ -114,11 +114,11 @@ internal object KotlinOutputFormatSpecEmitter {
         }
 
         // Scalar — resolve @example and @instruction.
-        val kindName = KotlinRecoverSchemaEmitter.scalarKind(field) ?: "STRING" // Unknown type: fall back to STRING.
+        val kindName = KotlinExtractSchemaEmitter.scalarKind(field) ?: "STRING" // Unknown type: fall back to STRING.
         val exampleLit = optStringAttr(field, MetaField.ATTR_EXAMPLE)
         val instructionLit = optStringAttr(field, MetaField.ATTR_INSTRUCTION)
 
-        return "PromptField(\"${KotlinRecoverSchemaEmitter.kotlinStringLiteral(name)}\", FieldKind.$kindName, $required, $array, null, null, $exampleLit, $instructionLit, null)"
+        return "PromptField(\"${KotlinExtractSchemaEmitter.kotlinStringLiteral(name)}\", FieldKind.$kindName, $required, $array, null, null, $exampleLit, $instructionLit, null)"
     }
 
     /**
@@ -132,20 +132,20 @@ internal object KotlinOutputFormatSpecEmitter {
         // @values — guaranteed non-null by the loader's ValidationPhase.
         @Suppress("UNCHECKED_CAST")
         val values = field.getMetaAttr(EnumField.ATTR_VALUES).value as List<String>
-        val valuesList = values.joinToString(", ") { "\"${KotlinRecoverSchemaEmitter.kotlinStringLiteral(it)}\"" }
+        val valuesList = values.joinToString(", ") { "\"${KotlinExtractSchemaEmitter.kotlinStringLiteral(it)}\"" }
         val valuesLit = "listOf($valuesList)"
 
         // @enumDoc — optional; null when absent or empty.
         val enumDocLit: String = run {
             if (!field.hasMetaAttr(EnumField.ATTR_ENUM_DOC, false)) return@run "null"
             val v = field.getMetaAttr(EnumField.ATTR_ENUM_DOC, false).value
-            if (v is Properties && v.isNotEmpty()) KotlinRecoverSchemaEmitter.buildMapOfLiteral(v) else "null"
+            if (v is Properties && v.isNotEmpty()) KotlinExtractSchemaEmitter.buildMapOfLiteral(v) else "null"
         }
 
         val exampleLit = optStringAttr(field, MetaField.ATTR_EXAMPLE)
         val instructionLit = optStringAttr(field, MetaField.ATTR_INSTRUCTION)
 
-        return "PromptField(\"${KotlinRecoverSchemaEmitter.kotlinStringLiteral(name)}\", FieldKind.ENUM, $required, $array, $valuesLit, $enumDocLit, $exampleLit, $instructionLit, null)"
+        return "PromptField(\"${KotlinExtractSchemaEmitter.kotlinStringLiteral(name)}\", FieldKind.ENUM, $required, $array, $valuesLit, $enumDocLit, $exampleLit, $instructionLit, null)"
     }
 
     // -------------------------------------------------------------------------
@@ -154,13 +154,13 @@ internal object KotlinOutputFormatSpecEmitter {
 
     /**
      * Return a Kotlin string literal for an optional String attribute, or the literal `null`.
-     * The value is escaped via [KotlinRecoverSchemaEmitter.kotlinStringLiteral] so that
+     * The value is escaped via [KotlinExtractSchemaEmitter.kotlinStringLiteral] so that
      * example/instruction free-text containing quotes or newlines embeds safely in Kotlin source.
      */
     private fun optStringAttr(field: MetaField<*>, attrName: String): String {
         if (!field.hasMetaAttr(attrName, false)) return "null"
         val v = field.getMetaAttr(attrName, false).valueAsString ?: return "null"
-        return "\"${KotlinRecoverSchemaEmitter.kotlinStringLiteral(v)}\""
+        return "\"${KotlinExtractSchemaEmitter.kotlinStringLiteral(v)}\""
     }
 
 }

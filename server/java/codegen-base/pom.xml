@@ -48,9 +48,9 @@
         </dependency>
 
         <!--
-          Test-only: the generated <Name>Extractor references the Phase-B runtime recover
-          (com.metaobjects.object.recover.MetaObjectRecover in metaobjects-om, returning
-          com.metaobjects.render.recover.RecoveryResult). codegen-base MAIN keeps NO om
+          Test-only: the generated <Name>Extractor references the Phase-B runtime extract
+          (com.metaobjects.object.extract.MetaObjectExtractor in metaobjects-om, returning
+          com.metaobjects.render.extract.ExtractionResult). codegen-base MAIN keeps NO om
           dependency (the generator emits that reference as an FQN string only); but the
           flavor compile-run tests now emit + COMPILE that Extractor, so the test classpath
           needs om (which transitively brings render + metadata). No cycle: om depends on

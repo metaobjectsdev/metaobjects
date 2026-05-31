@@ -118,8 +118,8 @@ public class PojoAwareCodeWriter extends JavaCodeWriter {
      * casts and forwards to the typed setter. The runtime reflection set-by-name SPI
      * ({@code AbstractObjectRepresentation.setValueWithReflection}) resolves a nested-object
      * field's setter by {@code MetaField.getEffectiveValueClass()} — which is {@code Object}
-     * for an {@code OBJECT} field — so without this bridge the metadata-driven runtime recover
-     * ({@code MetaObjectRecover.assemble}) cannot populate a nested object on a generated POJO.
+     * for an {@code OBJECT} field — so without this bridge the metadata-driven runtime extract
+     * ({@code MetaObjectExtractor.assemble}) cannot populate a nested object on a generated POJO.
      * Array-of-object fields need no bridge: their effective value class is {@code List}, and
      * the primary typed setter is already {@code set<Name>(java.util.List)}.</p>
      */

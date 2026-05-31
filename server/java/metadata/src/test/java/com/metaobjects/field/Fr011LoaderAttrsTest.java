@@ -17,7 +17,7 @@ import java.util.List;
 import static org.junit.Assert.*;
 
 /**
- * FR-011 metamodel attrs — recover hardening, cross-port parity with the TS pilot + C# port.
+ * FR-011 metamodel attrs — extract hardening, cross-port parity with the TS pilot + C# port.
  *
  * <ul>
  *   <li>{@code @coerceDefault} — string on {@code field.enum} only; member-validated against

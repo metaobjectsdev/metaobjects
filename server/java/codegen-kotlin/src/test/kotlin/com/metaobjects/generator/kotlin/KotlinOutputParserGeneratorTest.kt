@@ -234,9 +234,9 @@ class KotlinOutputParserGeneratorTest {
     }
 
     // ---------------------------------------------------------------------------
-    // 7. FR-010: json format emits recover() + RECOVER_SCHEMA + Recovered class.
+    // 7. FR-010: json format emits extractLenient() + EXTRACT_SCHEMA + Extracted class.
     // ---------------------------------------------------------------------------
-    @Test fun jsonFormatEmitsRecoverBlock() {
+    @Test fun jsonFormatEmitsExtractLenientBlock() {
         val fx = """{
           "metadata.root": { "package": "acme::ai", "children": [
             { "object.value": { "name": "AnswerOutputPayload", "children": [
@@ -253,50 +253,50 @@ class KotlinOutputParserGeneratorTest {
           ] }
         }""".trimIndent()
 
-        val outDir = Files.createTempDirectory("kparser-json-recover-")
+        val outDir = Files.createTempDirectory("kparser-json-extract-")
         try {
             val gen = KotlinOutputParserGenerator()
             gen.setArgs(mapOf("outputDir" to outDir.toString()))
-            gen.execute(loadString("test-json-recover", fx))
+            gen.execute(loadString("test-json-extract", fx))
 
             val src = Files.readString(outDir.resolve("acme/ai/prompts/AnswerParser.kt"))
 
-            // Recovered data class emitted at top level.
-            assertTrue("data class AnswerRecovered(" in src, "missing Recovered class decl; src:\n$src")
+            // Extracted data class emitted at top level.
+            assertTrue("data class AnswerExtracted(" in src, "missing Extracted class decl; src:\n$src")
 
-            // RECOVER_SCHEMA constant inside the object.
-            assertTrue("RECOVER_SCHEMA" in src, "missing RECOVER_SCHEMA; src:\n$src")
+            // EXTRACT_SCHEMA constant inside the object.
+            assertTrue("EXTRACT_SCHEMA" in src, "missing EXTRACT_SCHEMA; src:\n$src")
 
-            // Two recover() overloads.
-            assertTrue("fun recover(text: String): RecoveryResult<" in src,
-                "missing recover(String) overload; src:\n$src")
-            assertTrue("fun recover(text: String, opts: RecoverOptions)" in src,
-                "missing recover(String, RecoverOptions) overload; src:\n$src")
+            // Two extractLenient() overloads.
+            assertTrue("fun extractLenient(text: String): ExtractionResult<" in src,
+                "missing extractLenient(String) overload; src:\n$src")
+            assertTrue("fun extractLenient(text: String, opts: ExtractOptions)" in src,
+                "missing extractLenient(String, ExtractOptions) overload; src:\n$src")
 
             // Engine call site.
-            assertTrue("Recover.recover(text, RECOVER_SCHEMA" in src,
-                "missing Recover.recover(...) call site; src:\n$src")
+            assertTrue("Extract.extract(text, EXTRACT_SCHEMA" in src,
+                "missing Extract.extract(...) call site; src:\n$src")
 
-            // Kotlin property access on RecoverOutcome (not method call).
+            // Kotlin property access on ExtractionOutcome (not method call).
             assertTrue("val d = o.data" in src, "expected o.data property access; src:\n$src")
             assertTrue("o.report" in src, "expected o.report property access; src:\n$src")
 
-            // Recover imports.
-            assertTrue("import com.metaobjects.render.recover.Recover" in src,
-                "missing Recover import; src:\n$src")
-            assertTrue("import com.metaobjects.render.recover.RecoveryResult" in src,
-                "missing RecoveryResult import; src:\n$src")
-            assertTrue("import com.metaobjects.render.recover.RecoverOptions" in src,
-                "missing RecoverOptions import; src:\n$src")
-            assertTrue("import com.metaobjects.render.recover.RecoverSchema" in src,
-                "missing RecoverSchema import; src:\n$src")
-            assertTrue("import com.metaobjects.render.recover.RecoverMap" in src,
-                "missing RecoverMap import; src:\n$src")
-            assertTrue("import com.metaobjects.render.recover.FieldSpec" in src,
+            // Extract imports.
+            assertTrue("import com.metaobjects.render.extract.Extract" in src,
+                "missing Extract import; src:\n$src")
+            assertTrue("import com.metaobjects.render.extract.ExtractionResult" in src,
+                "missing ExtractionResult import; src:\n$src")
+            assertTrue("import com.metaobjects.render.extract.ExtractOptions" in src,
+                "missing ExtractOptions import; src:\n$src")
+            assertTrue("import com.metaobjects.render.extract.ExtractSchema" in src,
+                "missing ExtractSchema import; src:\n$src")
+            assertTrue("import com.metaobjects.render.extract.ExtractMap" in src,
+                "missing ExtractMap import; src:\n$src")
+            assertTrue("import com.metaobjects.render.extract.FieldSpec" in src,
                 "missing FieldSpec import; src:\n$src")
-            assertTrue("import com.metaobjects.render.recover.FieldKind" in src,
+            assertTrue("import com.metaobjects.render.extract.FieldKind" in src,
                 "missing FieldKind import; src:\n$src")
-            assertTrue("import com.metaobjects.render.recover.Format" in src,
+            assertTrue("import com.metaobjects.render.extract.Format" in src,
                 "missing Format import; src:\n$src")
 
             // Existing parse/safeParse API must still be present.
@@ -308,9 +308,9 @@ class KotlinOutputParserGeneratorTest {
     }
 
     // ---------------------------------------------------------------------------
-    // 8. FR-010: Recovered class name follows <TemplateShort>Recovered convention.
+    // 8. FR-010: Extracted class name follows <TemplateShort>Extracted convention.
     // ---------------------------------------------------------------------------
-    @Test fun recoveredClassNameFollowsTemplateShortConvention() {
+    @Test fun extractedClassNameFollowsTemplateShortConvention() {
         val fx = """{
           "metadata.root": { "package": "acme::ai", "children": [
             { "object.value": { "name": "AnswerOutputPayload", "children": [
@@ -323,19 +323,19 @@ class KotlinOutputParserGeneratorTest {
           ] }
         }""".trimIndent()
 
-        val outDir = Files.createTempDirectory("kparser-recovered-name-")
+        val outDir = Files.createTempDirectory("kparser-extracted-name-")
         try {
             val gen = KotlinOutputParserGenerator()
             gen.setArgs(mapOf("outputDir" to outDir.toString()))
-            gen.execute(loadString("test-recovered-name", fx))
+            gen.execute(loadString("test-extracted-name", fx))
 
             val src = Files.readString(outDir.resolve("acme/ai/prompts/AnswerParser.kt"))
 
-            // Recovered class name = templateShort + "Recovered" = "AnswerRecovered".
-            assertTrue("data class AnswerRecovered(" in src,
-                "Recovered class name must be <TemplateShort>Recovered = AnswerRecovered; src:\n$src")
-            assertTrue("RecoveryResult<AnswerRecovered>" in src,
-                "recover() return type must be RecoveryResult<AnswerRecovered>; src:\n$src")
+            // Extracted class name = templateShort + "Extracted" = "AnswerExtracted".
+            assertTrue("data class AnswerExtracted(" in src,
+                "Extracted class name must be <TemplateShort>Extracted = AnswerExtracted; src:\n$src")
+            assertTrue("ExtractionResult<AnswerExtracted>" in src,
+                "extractLenient() return type must be ExtractionResult<AnswerExtracted>; src:\n$src")
 
             // Must NOT redeclare the payload data class.
             assertFalse("data class AnswerPayload" in src,
@@ -346,9 +346,9 @@ class KotlinOutputParserGeneratorTest {
     }
 
     // ---------------------------------------------------------------------------
-    // 9. FR-010: text format (default) does NOT emit recover / RECOVER_SCHEMA.
+    // 9. FR-010: text format (default) does NOT emit extract / EXTRACT_SCHEMA.
     // ---------------------------------------------------------------------------
-    @Test fun textFormatDoesNotEmitRecoverBlock() {
+    @Test fun textFormatDoesNotEmitExtractLenientBlock() {
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.value": { "name": "Greeting", "children": [
@@ -361,20 +361,20 @@ class KotlinOutputParserGeneratorTest {
           ] }
         }""".trimIndent()
 
-        val outDir = Files.createTempDirectory("kparser-text-norecover-")
+        val outDir = Files.createTempDirectory("kparser-text-noextract-")
         try {
             val gen = KotlinOutputParserGenerator()
             gen.setArgs(mapOf("outputDir" to outDir.toString()))
-            gen.execute(loadString("test-text-norecover", fx))
+            gen.execute(loadString("test-text-noextract", fx))
 
             val src = Files.readString(outDir.resolve("acme/demo/prompts/ReplyParser.kt"))
 
-            assertFalse("recover" in src,
-                "text format must NOT emit recover; src:\n$src")
-            assertFalse("RECOVER_SCHEMA" in src,
-                "text format must NOT emit RECOVER_SCHEMA; src:\n$src")
-            assertFalse("RecoveryResult" in src,
-                "text format must NOT emit RecoveryResult; src:\n$src")
+            assertFalse("extract" in src,
+                "text format must NOT emit extract; src:\n$src")
+            assertFalse("EXTRACT_SCHEMA" in src,
+                "text format must NOT emit EXTRACT_SCHEMA; src:\n$src")
+            assertFalse("ExtractionResult" in src,
+                "text format must NOT emit ExtractionResult; src:\n$src")
 
             // parse/safeParse still present.
             assertTrue("fun parseReply" in src, "fun parseReply must still be present; src:\n$src")
@@ -385,9 +385,9 @@ class KotlinOutputParserGeneratorTest {
     }
 
     // ---------------------------------------------------------------------------
-    // 10. FR-010: xml format also emits recover block (same gate as json).
+    // 10. FR-010: xml format also emits extract block (same gate as json).
     // ---------------------------------------------------------------------------
-    @Test fun xmlFormatEmitsRecoverBlock() {
+    @Test fun xmlFormatEmitsExtractLenientBlock() {
         val fx = """{
           "metadata.root": { "package": "acme::reports", "children": [
             { "object.value": { "name": "SummaryOutputPayload", "children": [
@@ -400,22 +400,22 @@ class KotlinOutputParserGeneratorTest {
           ] }
         }""".trimIndent()
 
-        val outDir = Files.createTempDirectory("kparser-xml-recover-")
+        val outDir = Files.createTempDirectory("kparser-xml-extract-")
         try {
             val gen = KotlinOutputParserGenerator()
             gen.setArgs(mapOf("outputDir" to outDir.toString()))
-            gen.execute(loadString("test-xml-recover", fx))
+            gen.execute(loadString("test-xml-extract", fx))
 
             val src = Files.readString(outDir.resolve("acme/reports/prompts/SummaryParser.kt"))
 
-            assertTrue("data class SummaryRecovered(" in src,
-                "xml format must emit Recovered class; src:\n$src")
-            assertTrue("RECOVER_SCHEMA" in src,
-                "xml format must emit RECOVER_SCHEMA; src:\n$src")
+            assertTrue("data class SummaryExtracted(" in src,
+                "xml format must emit Extracted class; src:\n$src")
+            assertTrue("EXTRACT_SCHEMA" in src,
+                "xml format must emit EXTRACT_SCHEMA; src:\n$src")
             assertTrue("Format.XML" in src,
                 "xml format must use Format.XML in schema literal; src:\n$src")
-            assertTrue("fun recover(text: String): RecoveryResult<" in src,
-                "xml format must emit recover() overload; src:\n$src")
+            assertTrue("fun extractLenient(text: String): ExtractionResult<" in src,
+                "xml format must emit extractLenient() overload; src:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -424,9 +424,9 @@ class KotlinOutputParserGeneratorTest {
     // ---------------------------------------------------------------------------
     // 11. FR-010: no @format (default=text) behaves the same as @format=text.
     // ---------------------------------------------------------------------------
-    @Test fun noFormatAttrDefaultsToTextAndNoRecover() {
+    @Test fun noFormatAttrDefaultsToTextAndNoExtractLenient() {
         // The existing fixtures (tests 1-6) omit @format, which defaults to "text".
-        // This test makes the no-recover contract explicit for the default case.
+        // This test makes the no-extract contract explicit for the default case.
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.value": { "name": "Greeting", "children": [
@@ -437,18 +437,18 @@ class KotlinOutputParserGeneratorTest {
           ] }
         }""".trimIndent()
 
-        val outDir = Files.createTempDirectory("kparser-noformat-norecover-")
+        val outDir = Files.createTempDirectory("kparser-noformat-noextract-")
         try {
             val gen = KotlinOutputParserGenerator()
             gen.setArgs(mapOf("outputDir" to outDir.toString()))
-            gen.execute(loadString("test-noformat-norecover", fx))
+            gen.execute(loadString("test-noformat-noextract", fx))
 
             val src = Files.readString(outDir.resolve("acme/demo/prompts/ReplyParser.kt"))
 
-            assertFalse("RECOVER_SCHEMA" in src,
-                "absent @format (defaults to text) must not emit RECOVER_SCHEMA; src:\n$src")
-            assertFalse("RecoveryResult" in src,
-                "absent @format must not emit RecoveryResult; src:\n$src")
+            assertFalse("EXTRACT_SCHEMA" in src,
+                "absent @format (defaults to text) must not emit EXTRACT_SCHEMA; src:\n$src")
+            assertFalse("ExtractionResult" in src,
+                "absent @format must not emit ExtractionResult; src:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }

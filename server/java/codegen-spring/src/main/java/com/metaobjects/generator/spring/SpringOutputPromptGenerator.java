@@ -62,7 +62,7 @@ import java.util.List;
  *
  * <p>The {@code SPEC}'s {@code rootName} is the capitalized payload class name
  * (e.g. {@code "AnswerOutputPayload"}) — matches the convention used by Plan 2's
- * recover codegen so both artifacts agree on the root name.
+ * extract codegen so both artifacts agree on the root name.
  *
  * <p>Args:
  * <ul>
@@ -122,7 +122,7 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
         String payloadClass = capitalized + "Payload";
 
         // The SPEC rootName agrees with the payload class name so both prompt and
-        // recover artifacts share the same root element name.
+        // extract artifacts share the same root element name.
         String specLiteral = OutputFormatSpecEmitter.specLiteral(payloadVo, template, payloadClass);
 
         StringBuilder src = new StringBuilder();
@@ -134,8 +134,8 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
         src.append("import com.metaobjects.render.prompt.PromptField;\n");
         src.append("import com.metaobjects.render.prompt.PromptOverrides;\n");
         src.append("import com.metaobjects.render.prompt.PromptStyle;\n");
-        src.append("import com.metaobjects.render.recover.FieldKind;\n");
-        src.append("import com.metaobjects.render.recover.Format;\n");
+        src.append("import com.metaobjects.render.extract.FieldKind;\n");
+        src.append("import com.metaobjects.render.extract.Format;\n");
         src.append("\n");
         src.append("/** Output-format prompt fragment for the `")
            .append(templateShort).append("` template.output. */\n");

@@ -35,8 +35,8 @@ import org.slf4j.LoggerFactory
  * import com.metaobjects.render.prompt.PromptField
  * import com.metaobjects.render.prompt.PromptOverrides
  * import com.metaobjects.render.prompt.PromptStyle
- * import com.metaobjects.render.recover.FieldKind
- * import com.metaobjects.render.recover.Format
+ * import com.metaobjects.render.extract.FieldKind
+ * import com.metaobjects.render.extract.Format
  *
  * /** Output-format prompt fragment for the `AnswerOutput` template.output. */
  * object AnswerOutputPrompt {
@@ -53,7 +53,7 @@ import org.slf4j.LoggerFactory
  *
  * The SPEC's `rootName` is the payload class name derived from the template short name
  * (e.g. `"AnswerPayload"`) — matches the convention used by [KotlinOutputParserGenerator]'s
- * recover codegen so both artifacts agree on the root name.
+ * extract codegen so both artifacts agree on the root name.
  *
  * Class-name convention: `<TemplateShort>OutputPrompt` (e.g. template `AnswerOutput` →
  * class `AnswerOutputOutputPrompt` is avoided by using `<TemplateShort>Prompt` form only
@@ -118,7 +118,7 @@ class KotlinOutputPromptGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val payloadClass = "${templateShort}Payload"
 
         // The SPEC rootName agrees with the payload class name so both prompt and
-        // recover artifacts share the same root element name.
+        // extract artifacts share the same root element name.
         val specLiteral = KotlinOutputFormatSpecEmitter.specLiteral(payloadVo, template, payloadClass)
 
         val src = buildString {
@@ -133,8 +133,8 @@ class KotlinOutputPromptGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             append("import com.metaobjects.render.prompt.PromptField\n")
             append("import com.metaobjects.render.prompt.PromptOverrides\n")
             append("import com.metaobjects.render.prompt.PromptStyle\n")
-            append("import com.metaobjects.render.recover.FieldKind\n")
-            append("import com.metaobjects.render.recover.Format\n")
+            append("import com.metaobjects.render.extract.FieldKind\n")
+            append("import com.metaobjects.render.extract.Format\n")
             append("\n")
             append("/** Output-format prompt fragment for the `")
             append(templateShort)

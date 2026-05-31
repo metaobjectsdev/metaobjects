@@ -1,6 +1,6 @@
 package com.metaobjects.render.prompt;
 
-import com.metaobjects.render.recover.FieldKind;
+import com.metaobjects.render.extract.FieldKind;
 import java.util.List;
 import java.util.Map;
 

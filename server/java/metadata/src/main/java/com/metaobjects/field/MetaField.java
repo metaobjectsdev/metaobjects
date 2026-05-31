@@ -101,7 +101,7 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
 
     /**
      * The generalized {@code @default} attribute (string) — the absent-fill default for ANY
-     * field type. When the field is ABSENT from a model response, tolerant recover fills this
+     * field type. When the field is ABSENT from a model response, tolerant extract fills this
      * value (coerced to the field's kind) and classifies the field {@code DEFAULTED} (which
      * satisfies {@code required}); it is also the single source consumed by
      * {@link com.metaobjects.object.MetaObject#setDefaultValues(Object)} at {@code newInstance}
@@ -276,7 +276,7 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
         if ( defaultValue == null && !lookedForDefault ) {
 
             // Phase B unification: the generalized @default (MetaField.ATTR_DEFAULT) is the
-            // single absent-fill default source shared by tolerant recover and newInstance-time
+            // single absent-fill default source shared by tolerant extract and newInstance-time
             // population (MetaObject.setDefaultValues). It is preferred; the legacy @defaultValue
             // (column default) remains a fallback for back-compat.
             if (hasMetaAttr(MetaField.ATTR_DEFAULT)) {

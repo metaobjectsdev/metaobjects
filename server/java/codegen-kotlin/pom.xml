@@ -43,7 +43,7 @@
     </dependency>
 
     <!-- test -->
-    <!-- Shared JVM render engine (OutputFormatRenderer + Recover): the FR-010 output-prompt
+    <!-- Shared JVM render engine (OutputFormatRenderer + Extract): the FR-010 output-prompt
          conformance runner drives these Java classes directly, proving the corpus loads/runs
          in the Kotlin module. Brings jackson-databind transitively for spec.json parsing. -->
     <dependency>
@@ -78,9 +78,9 @@
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
-    <!-- Shared JVM runtime recover (MetaObjectRecover, in the om module): the Kotlin
-         verdict proof drives it directly, proving recover assembles a typed object graph
-         when called from Kotlin. Kotlin adds no recover code — this is a verdict proof. -->
+    <!-- Shared JVM runtime extract (MetaObjectExtractor, in the om module): the Kotlin
+         verdict proof drives it directly, proving extract assembles a typed object graph
+         when called from Kotlin. Kotlin adds no extract code — this is a verdict proof. -->
     <dependency>
       <groupId>com.metaobjects</groupId>
       <artifactId>metaobjects-om</artifactId>

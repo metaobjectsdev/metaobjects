@@ -103,14 +103,14 @@ public class OutputFormatSpecEmitterTest extends SharedRegistryTestBase {
 
     @Test
     public void enumDocNullWhenAbsent() throws Exception {
-        // The recover-VO fixture has @enumAlias but no @enumDoc — enumDoc should be null.
-        MetaObject recoverVo = SpringTestFixtures.loadVo(
-            SpringTestFixtures.RECOVER_VO_FIXTURE, "AnswerOutputPayload");
+        // The extract-VO fixture has @enumAlias but no @enumDoc — enumDoc should be null.
+        MetaObject extractVo = SpringTestFixtures.loadVo(
+            SpringTestFixtures.EXTRACT_VO_FIXTURE, "AnswerOutputPayload");
         // Use a minimal template with json format (we just need any template for format/style)
         MetaTemplate tmpl = SpringTestFixtures.loadTemplate(
-            SpringTestFixtures.RECOVER_OUTPUT_FIXTURE, "AnswerOutput");
+            SpringTestFixtures.EXTRACT_OUTPUT_FIXTURE, "AnswerOutput");
 
-        String s = OutputFormatSpecEmitter.specLiteral(recoverVo, tmpl, "AnswerOutputPayload");
+        String s = OutputFormatSpecEmitter.specLiteral(extractVo, tmpl, "AnswerOutputPayload");
 
         // The confidence field has @enumAlias but no @enumDoc, so enumDoc arg must be null.
         // Find the confidence PromptField in the output.
@@ -145,11 +145,11 @@ public class OutputFormatSpecEmitterTest extends SharedRegistryTestBase {
 
     @Test
     public void jsonFormatEmitsFormatJson() throws Exception {
-        // Use the RECOVER_OUTPUT_FIXTURE which has @format: "json"
+        // Use the EXTRACT_OUTPUT_FIXTURE which has @format: "json"
         MetaObject vo = SpringTestFixtures.loadVo(
-            SpringTestFixtures.RECOVER_OUTPUT_FIXTURE, "AnswerOutputPayload");
+            SpringTestFixtures.EXTRACT_OUTPUT_FIXTURE, "AnswerOutputPayload");
         MetaTemplate tmpl = SpringTestFixtures.loadTemplate(
-            SpringTestFixtures.RECOVER_OUTPUT_FIXTURE, "AnswerOutput");
+            SpringTestFixtures.EXTRACT_OUTPUT_FIXTURE, "AnswerOutput");
 
         String s = OutputFormatSpecEmitter.specLiteral(vo, tmpl, "AnswerOutputPayload");
 
@@ -215,11 +215,11 @@ public class OutputFormatSpecEmitterTest extends SharedRegistryTestBase {
 
     @Test
     public void absentPromptStyleDefaultsToGuide() throws Exception {
-        // RECOVER_OUTPUT_FIXTURE has no @promptStyle — should default to GUIDE.
+        // EXTRACT_OUTPUT_FIXTURE has no @promptStyle — should default to GUIDE.
         MetaObject vo = SpringTestFixtures.loadVo(
-            SpringTestFixtures.RECOVER_OUTPUT_FIXTURE, "AnswerOutputPayload");
+            SpringTestFixtures.EXTRACT_OUTPUT_FIXTURE, "AnswerOutputPayload");
         MetaTemplate tmpl = SpringTestFixtures.loadTemplate(
-            SpringTestFixtures.RECOVER_OUTPUT_FIXTURE, "AnswerOutput");
+            SpringTestFixtures.EXTRACT_OUTPUT_FIXTURE, "AnswerOutput");
 
         String s = OutputFormatSpecEmitter.specLiteral(vo, tmpl, "AnswerOutputPayload");
         assertTrue("absent @promptStyle should default to PromptStyle.GUIDE; saw:\n" + s,
