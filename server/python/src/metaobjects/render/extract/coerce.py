@@ -17,14 +17,14 @@ import math
 import re
 from typing import Final
 
-from metaobjects.render.recover.normalize import NONE as _NORMALIZE_NONE
-from metaobjects.render.recover.normalize import normalize_enum
-from metaobjects.render.recover.types import (
+from metaobjects.render.extract.normalize import NONE as _NORMALIZE_NONE
+from metaobjects.render.extract.normalize import normalize_enum
+from metaobjects.render.extract.types import (
     Coercion,
     FieldKind,
     FieldSpec,
-    RecoverOptions,
-    RecoveryReport,
+    ExtractOptions,
+    ExtractionReport,
     Tolerance,
 )
 
@@ -42,9 +42,9 @@ _ASCII_NUMERIC = re.compile(r"^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9
 def value(
     raw: str | None,
     spec: FieldSpec,
-    opts: RecoverOptions,
+    opts: ExtractOptions,
     field_path: str,
-    report: RecoveryReport,
+    report: ExtractionReport,
 ) -> object:
     """Canonicalize ``raw`` to the native type described by ``spec``, or MALFORMED."""
     if raw is None:
@@ -131,9 +131,9 @@ def scalar_coerce(raw: str | None, spec: FieldSpec) -> object:
 def _coerce_enum(
     raw: str,
     spec: FieldSpec,
-    opts: RecoverOptions,
+    opts: ExtractOptions,
     path: str,
-    report: RecoveryReport,
+    report: ExtractionReport,
     ci: bool,
 ) -> object:
     """FR-011 enum coercion pipeline: exact → normalize → ``@enumAlias`` →
@@ -208,7 +208,7 @@ def _lookup_alias_in(raw: str, aliases: dict[str, str] | None, mode: str) -> str
     return None
 
 
-def _coerce_int(raw: str, spec: FieldSpec, path: str, report: RecoveryReport) -> object:
+def _coerce_int(raw: str, spec: FieldSpec, path: str, report: ExtractionReport) -> object:
     trimmed = raw.strip()
     if not _ASCII_NUMERIC.match(trimmed):
         return MALFORMED
@@ -225,7 +225,7 @@ def _coerce_int(raw: str, spec: FieldSpec, path: str, report: RecoveryReport) ->
     return _clamp(d, spec, path, report, as_long=True)
 
 
-def _coerce_double(raw: str, spec: FieldSpec, path: str, report: RecoveryReport) -> object:
+def _coerce_double(raw: str, spec: FieldSpec, path: str, report: ExtractionReport) -> object:
     trimmed = raw.strip()
     if not _ASCII_NUMERIC.match(trimmed):
         return MALFORMED
@@ -237,7 +237,7 @@ def _coerce_double(raw: str, spec: FieldSpec, path: str, report: RecoveryReport)
 
 
 def _clamp(
-    n: float, spec: FieldSpec, path: str, report: RecoveryReport, as_long: bool
+    n: float, spec: FieldSpec, path: str, report: ExtractionReport, as_long: bool
 ) -> object:
     # Non-finite (NaN, ±Infinity) → MALFORMED (cross-port classification parity).
     if not math.isfinite(n):

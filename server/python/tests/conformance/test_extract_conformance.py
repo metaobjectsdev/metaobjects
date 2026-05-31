@@ -4,10 +4,10 @@ Each fixture dir under ``fixtures/recover-conformance/`` holds:
 
 - ``schema.json``   ``{ "format": "JSON"|"XML", "rootName": "...", "fields": [...] }``
 - ``input.txt``     the raw (possibly dirty) LLM output
-- ``expected.json`` ``{ "empty": bool, "states": {field: FieldRecovery}, "data": {field: value} }``
+- ``expected.json`` ``{ "empty": bool, "states": {field: FieldExtraction}, "data": {field: value} }``
 
 All 22 cases must pass. The corpus is the oracle — do not weaken assertions.
-1:1 port of ``RecoverConformanceTest.java`` / ``RecoverConformanceTests.cs``.
+1:1 port of ``ExtractConformanceTest.java`` / ``ExtractConformanceTests.cs``.
 """
 from __future__ import annotations
 
@@ -17,12 +17,12 @@ from pathlib import Path
 
 import pytest
 
-from metaobjects.render.recover import (
+from metaobjects.render.extract import (
     FieldKind,
     FieldSpec,
     Format,
-    RecoverSchema,
-    recover,
+    ExtractSchema,
+    extract,
 )
 
 
@@ -56,7 +56,7 @@ def _cases() -> list[str]:
     )
 
 
-def test_discovers_all_recover_conformance_cases() -> None:
+def test_discovers_all_extract_conformance_cases() -> None:
     """FR-011: lock the corpus size so a deleted fixture fails CI rather than
     silently reducing coverage. Mirrors the TS / Java / C# count guards."""
     assert len(_cases()) == 22
@@ -103,11 +103,11 @@ def _parse_field(f: dict[str, object]) -> FieldSpec:
 
     if kind == FieldKind.OBJECT:
         array = bool(f.get("array", False))
-        nested: RecoverSchema | None = None
+        nested: ExtractSchema | None = None
         nested_raw = f.get("fields")
         if isinstance(nested_raw, list):
             child_specs = [_parse_field(nf) for nf in nested_raw]  # type: ignore[arg-type]
-            nested = RecoverSchema(Format.JSON, name, child_specs)
+            nested = ExtractSchema(Format.JSON, name, child_specs)
         return FieldSpec.object_(name, required, array, nested)
 
     if "min" in f or "max" in f:
@@ -120,13 +120,13 @@ def _parse_field(f: dict[str, object]) -> FieldSpec:
     return FieldSpec.scalar(name, kind, required, default_value)
 
 
-def _parse_schema(node: dict[str, object]) -> RecoverSchema:
+def _parse_schema(node: dict[str, object]) -> ExtractSchema:
     fmt = _FORMATS[str(node["format"])]
     root_name = str(node["rootName"])
     fields_raw = node["fields"]
     assert isinstance(fields_raw, list)
     fields = [_parse_field(f) for f in fields_raw]
-    return RecoverSchema(fmt, root_name, fields)
+    return ExtractSchema(fmt, root_name, fields)
 
 
 @pytest.mark.parametrize("case_name", _cases())
@@ -137,7 +137,7 @@ def test_classification_and_canonical_value_match(case_name: str) -> None:
     text = (case_dir / "input.txt").read_text()
     expected = json.loads((case_dir / "expected.json").read_text())
 
-    outcome = recover(text, schema)
+    outcome = extract(text, schema)
 
     # empty flag
     assert outcome.report.is_empty() == bool(expected["empty"]), (

@@ -3,7 +3,7 @@
 Carries the FR-010 fixed-behavior edge cases:
 
 - No-throw on a leading ``</x>``.
-- Unclosed tags recover their text up to the next sibling open tag.
+- Unclosed tags extract their text up to the next sibling open tag.
 """
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ class XmlForgivingReader:
                 content_end = close_m.start()
                 nxt = close_m.end()
             else:
-                # unclosed tag: recover text up to the next sibling open tag
+                # unclosed tag: extract text up to the next sibling open tag
                 sib = open_tag.search(inner, content_start)
                 if sib is not None:
                     content_end = sib.start()

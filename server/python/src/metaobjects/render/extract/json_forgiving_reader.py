@@ -4,7 +4,7 @@ Carries the FR-010 fixed-behavior edge cases:
 
 - No-hang: ``{"xs":[}`` / ``{"xs":[1,`` terminate (no infinite loop).
 - TRUNCATED sentinel: a present-but-cut-off/empty value is recorded as ``TRUNCATED``
-  so the recover stage classifies it as MALFORMED (not LOST_REQUIRED).
+  so the extract stage classifies it as MALFORMED (not LOST_REQUIRED).
 """
 from __future__ import annotations
 

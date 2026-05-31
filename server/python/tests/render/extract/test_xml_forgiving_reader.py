@@ -4,7 +4,7 @@ Ported from XmlForgivingReader(Test|Tests).
 """
 from __future__ import annotations
 
-from metaobjects.render.recover.xml_forgiving_reader import XmlForgivingReader
+from metaobjects.render.extract.xml_forgiving_reader import XmlForgivingReader
 
 
 def _read(s: str | None, ci: bool) -> dict[str, object]:
@@ -34,7 +34,7 @@ def test_attributes_ignored_for_value() -> None:
     assert m["t"] == "hi"
 
 
-def test_unclosed_child_recovers_inner_text() -> None:
+def test_unclosed_child_extracts_inner_text() -> None:
     m = _read("<answer><t>hi<c>HIGH</c></answer>", False)
     assert m["t"] == "hi"
     assert m["c"] == "HIGH"

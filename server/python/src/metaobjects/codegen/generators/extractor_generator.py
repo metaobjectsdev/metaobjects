@@ -2,24 +2,24 @@
 
 The ``extract`` tier (cross-port parity with the Java ``ExtractorCodeGenerator``, the
 TS ``renderExtractor``, and the Kotlin / C# ports) sits OVER the existing tolerant
-recover. It turns dirty LLM text into the STRICT typed payload graph (nested objects +
+extract. It turns dirty LLM text into the STRICT typed payload graph (nested objects +
 arrays-of-objects populated) in ONE call:
 
     extract_<snake>(root, text, opts=None) -> <Template>Payload
-        r = recover_<snake>_with_loader(root, text, opts)   # nested-capable recover
+        r = extract_<snake>_with_loader(root, text, opts)   # nested-capable extract
         if r.report.has_lost_required(): raise ValueError(...)
         return _to_strict_<RootVo>(r.data)                  # mirror -> strict mapper
 
-Why the loaded ``root``: the SELF-CONTAINED ``recover_<snake>(text)`` leaves nested
+Why the loaded ``root``: the SELF-CONTAINED ``extract_<snake>(text)`` leaves nested
 objects ``None`` (the historical FR-010 gap — it only maps a flat dict). The
-nested-capable path is ``recover_<snake>_with_loader(root, text, opts)`` (emitted by
-``output_parser_generator``), which delegates to the metadata-driven runtime recover and
+nested-capable path is ``extract_<snake>_with_loader(root, text, opts)`` (emitted by
+``output_parser_generator``), which delegates to the metadata-driven runtime extract and
 assembles the FULL nested graph reflection-free. So ``extract`` / the re-exposed
-``recover`` are loader (``MetaRoot``)-driven, mirroring the Java ``extract(loader, text)``
+``extract`` are loader (``MetaRoot``)-driven, mirroring the Java ``extract(loader, text)``
 and the TS ``extract<Name>(root, text)``.
 
-The recover engine returns an all-nullable ``<Template>PayloadRecovered`` mirror (nested
-VOs as ``<Vo>Recovered``, arrays as ``list[...]``). ``extract`` maps that onto the strict
+The extract engine returns an all-nullable ``<Template>PayloadExtracted`` mirror (nested
+VOs as ``<Vo>Extracted``, arrays as ``list[...]``). ``extract`` maps that onto the strict
 ``<Template>Payload`` Pydantic model (nested VOs as ``<Vo>Payload``, arrays as
 ``list[<Vo>Payload]``) via a generated recursive ``_to_strict_<vo>`` mapper — one per
 value-object reachable through nested ``@objectRef`` fields (deduped, cycle-safe). The
@@ -28,7 +28,7 @@ required-by-contract for the C#/Kotlin record ports).
 
 NO registry / binding-provider / factory and NO new flavored object-class generation —
 codegen walks the whole type graph statically (the same MetaObject walk the
-recover-schema / payload emitters use). ``recover`` is re-exposed unchanged under its
+extract-schema / payload emitters use). ``extract`` is re-exposed unchanged under its
 public name.
 """
 from __future__ import annotations
@@ -36,7 +36,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from metaobjects.codegen import fr010_field_mapping as fm
-from metaobjects.codegen import recover_delegate_emitter as rde
+from metaobjects.codegen import extract_delegate_emitter as rde
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
@@ -54,8 +54,8 @@ from metaobjects.shared.base_types import TYPE_TEMPLATE
 
 _GENERATOR_NAME = "extractor-generator"
 
-# The extract tier only exists where the tolerant recover API does — json/xml.
-_RECOVER_FORMATS = frozenset({tc.TEMPLATE_FORMAT_JSON, tc.TEMPLATE_FORMAT_XML})
+# The extract tier only exists where the tolerant extract API does — json/xml.
+_EXTRACT_FORMATS = frozenset({tc.TEMPLATE_FORMAT_JSON, tc.TEMPLATE_FORMAT_XML})
 
 
 def _snake_case(name: str) -> str:
@@ -87,7 +87,7 @@ def _strict_arg(field: MetaData, root: MetaData) -> str:
     member ``m.<name>`` and mapping it onto the strict payload's exact optionality
     (``is_field_required`` — shared with payload_vo so there is no skew).
 
-    * required scalar/enum   → ``m.f`` (recover guarantees presence when not lost)
+    * required scalar/enum   → ``m.f`` (extract guarantees presence when not lost)
     * optional scalar/enum   → ``m.f`` (the strict field is ``T | None``)
     * scalar ARRAY           → ``[x for x in (m.f or []) if x is not None]`` (drop the
                                mirror's possible-null elements; the strict type is
@@ -123,7 +123,7 @@ def _strict_arg(field: MetaData, root: MetaData) -> str:
         )
 
     # Scalar / enum (single): pass the mirror value straight through. The strict field
-    # is ``T`` when required (recover guarantees presence — lost-required already
+    # is ``T`` when required (extract guarantees presence — lost-required already
     # raised) and ``T | None`` when optional, so a bare ``m.f`` fits both.
     return f"m.{name}"
 
@@ -135,7 +135,7 @@ def _emit_mapper(vo: MetaData, root: MetaData, root_vo: MetaData, template_name:
     strict = _strict_class(vo, root_vo, template_name)
     lines: list[str] = [
         f"def {fn}(m) -> {strict}:",
-        f'    """Map the all-nullable recovered mirror onto the strict ``{strict}``.',
+        f'    """Map the all-nullable extracted mirror onto the strict ``{strict}``.',
         '    One-shot constructed; generated."""',
         f"    return {strict}(",
     ]
@@ -150,7 +150,7 @@ def render_extractor(template: MetaData, root: MetaData) -> str | None:
 
     Returns ``None`` when the ``@payloadRef`` can't be resolved to an ``object.value``,
     or when the target ``@format`` is not json/xml (the extract tier requires the
-    tolerant recover API, which only the json/xml output-parsers emit)."""
+    tolerant extract API, which only the json/xml output-parsers emit)."""
     payload_ref = template.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)
     if not isinstance(payload_ref, str) or not payload_ref:
         return None
@@ -160,15 +160,15 @@ def render_extractor(template: MetaData, root: MetaData) -> str | None:
 
     fmt = template.attr(tc.TEMPLATE_ATTR_FORMAT)
     fmt_str = fmt if isinstance(fmt, str) else tc.TEMPLATE_FORMAT_DEFAULT
-    if fmt_str.lower() not in _RECOVER_FORMATS:
+    if fmt_str.lower() not in _EXTRACT_FORMATS:
         return None
 
     template_name = template.name
     snake = _snake_case(template_name)
     parser_module = f"{snake}_output_parser"
     payload_module = payload_module_name(template_name)
-    recover_with_fn = f"recover_{snake}_with_loader"
-    recover_fn = f"recover_{snake}"
+    extract_lenient_with_fn = f"extract_lenient_{snake}_with_loader"
+    extract_lenient_fn = f"extract_lenient_{snake}"
     extract_fn = f"extract_{snake}"
     root_strict = payload_class_name(template_name)
     root_mapper = _mapper_name(payload)
@@ -187,7 +187,7 @@ def render_extractor(template: MetaData, root: MetaData) -> str | None:
     lines: list[str] = [
         generated_header(template_name, fqn),
         "from __future__ import annotations\n",
-        f"from .{parser_module} import {recover_with_fn}",
+        f"from .{parser_module} import {extract_lenient_with_fn}",
         f"from .{payload_module} import (",
     ]
     for cls in sorted(strict_imports):
@@ -196,16 +196,16 @@ def render_extractor(template: MetaData, root: MetaData) -> str | None:
     lines.append("")
     lines.append("")
 
-    # extract — recover then map onto the strict payload, raising on lost-required.
+    # extract — extract then map onto the strict payload, raising on lost-required.
     lines.append(f"def {extract_fn}(root, text, opts=None) -> {root_strict}:")
     lines.append(f'    """Extract a fully-typed ``{root_strict}`` from dirty ``text`` using the')
     lines.append(f"    loaded ``root`` (which must declare the ``{payload.name}`` payload")
-    lines.append("    value-object). Runs the tolerant nested-capable recover, then maps the")
-    lines.append("    recovered mirror graph onto the strict Pydantic payload graph.")
+    lines.append("    value-object). Runs the tolerant nested-capable extract, then maps the")
+    lines.append("    extracted mirror graph onto the strict Pydantic payload graph.")
     lines.append("")
     lines.append("    :raises ValueError: iff a ``@required`` field was lost (the strict gate).")
     lines.append('    """')
-    lines.append(f"    r = {recover_with_fn}(root, text, opts)")
+    lines.append(f"    r = {extract_lenient_with_fn}(root, text, opts)")
     lines.append("    if r.report.has_lost_required():")
     lines.append("        raise ValueError(")
     lines.append(
@@ -217,13 +217,13 @@ def render_extractor(template: MetaData, root: MetaData) -> str | None:
     lines.append("")
     lines.append("")
 
-    # recover — re-exposed under the public name, delegating to the nested-capable path.
-    lines.append(f"def {recover_fn}(root, text, opts=None):")
-    lines.append(f'    """Recover a best-effort ``{root_strict}Recovered`` mirror from dirty')
+    # extract — re-exposed under the public name, delegating to the nested-capable path.
+    lines.append(f"def {extract_lenient_fn}(root, text, opts=None):")
+    lines.append(f'    """Extract a best-effort ``{root_strict}Extracted`` mirror from dirty')
     lines.append("    ``text`` using the loaded ``root``; never raises. Re-exposes the")
-    lines.append("    nested-capable recover; inspect ``report`` for lost / defaulted fields.")
+    lines.append("    nested-capable extract; inspect ``report`` for lost / defaulted fields.")
     lines.append('    """')
-    lines.append(f"    return {recover_with_fn}(root, text, opts)")
+    lines.append(f"    return {extract_lenient_with_fn}(root, text, opts)")
     lines.append("")
     lines.append("")
 
@@ -236,7 +236,7 @@ def render_extractor(template: MetaData, root: MetaData) -> str | None:
 
     lines.append("")
     lines.append("")
-    lines.append(f'__all__ = ["{extract_fn}", "{recover_fn}"]')
+    lines.append(f'__all__ = ["{extract_fn}", "{extract_lenient_fn}"]')
     lines.append("")
     return "\n".join(lines)
 

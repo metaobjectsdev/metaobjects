@@ -1,12 +1,12 @@
-"""Gold-standard "verdict oracle" proof for the Phase B runtime recover
-(``recover_object``). Python port of the JVM ``MetaObjectRecoverVerdictTest`` /
-TS ``recover-object-verdict.test.ts``.
+"""Gold-standard "verdict oracle" proof for the Phase B runtime extract
+(``extract_object``). Python port of the JVM ``MetaObjectExtractorVerdictTest`` /
+TS ``extract-object-verdict.test.ts``.
 
 A representative adjudication-verdict ``object.value`` graph — scalars (incl. an
-enum with a ``@default``), an enum-array, and two arrays-of-records — is recovered
+enum with a ``@default``), an enum-array, and two arrays-of-records — is extracted
 from a deliberately DIRTY XML response (preamble + whitespace, an empty array, an
 uncoercible enum value, an omitted defaulted field). Proves the full metadata-driven
-pipeline: ``recover_schema_for`` → engine → ``assemble`` into a typed object graph
+pipeline: ``extract_schema_for`` → engine → ``assemble`` into a typed object graph
 with correct back-references (``get_meta_data``), generalized ``@default`` fill,
 enum-array uncoercible-dropped, empty-array → empty list, never-raises, and the
 ``or_throw`` opt-in gate. Generic fixture — no private/domain names.
@@ -18,16 +18,16 @@ import json
 import pytest
 
 from metaobjects import (
-    RecoverError,
+    ExtractError,
     ValueObject,
     load_string,
     or_throw,
-    recover_object,
-    recover_schema_for,
+    extract_object,
+    extract_schema_for,
 )
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_root import MetaRoot
-from metaobjects.render.recover import FieldKind, FieldRecovery, Format
+from metaobjects.render.extract import FieldKind, FieldExtraction, Format
 
 PKG = "com::example::verdict"
 
@@ -142,12 +142,12 @@ _DIRTY_XML = (
 )
 
 
-def test_dirty_xml_recovers_into_typed_object_graph() -> None:
+def test_dirty_xml_extracts_into_typed_object_graph() -> None:
     root = _load_root()
     verdict_mo = _find_object(root, "Verdict")
     thread_mo = _find_object(root, "ThreadCheck")
 
-    result = recover_object(verdict_mo, _DIRTY_XML, Format.XML)
+    result = extract_object(verdict_mo, _DIRTY_XML, Format.XML)
 
     # ---- never throws; produced a typed Verdict object with the right back-ref ----
     verdict = result.data
@@ -160,14 +160,14 @@ def test_dirty_xml_recovers_into_typed_object_graph() -> None:
 
     # ---- @default fill: arc_transition was omitted → DEFAULTED to "not_ready" ----
     assert _field_value(verdict_mo, "arc_transition", verdict) == "not_ready"
-    assert result.report.states()["arc_transition"] == FieldRecovery.DEFAULTED
+    assert result.report.states()["arc_transition"] == FieldExtraction.DEFAULTED
 
     # ---- enum-array: valid element kept, uncoercible "zzz" dropped (partial) ----
     tags = _field_value(verdict_mo, "tags", verdict)
     assert tags == ["a"]
     # per-element classification
-    assert result.report.states()["tags[0]"] == FieldRecovery.RECOVERED
-    assert result.report.states()["tags[1]"] == FieldRecovery.MALFORMED
+    assert result.report.states()["tags[0]"] == FieldExtraction.EXTRACTED
+    assert result.report.states()["tags[1]"] == FieldExtraction.MALFORMED
 
     # ---- array-of-records: thread_checks fully populated as typed children ----
     threads = _field_value(verdict_mo, "thread_checks", verdict)
@@ -216,19 +216,19 @@ def test_or_throw_raises_when_required_field_lost() -> None:
     strict_mo = _find_object(result_load.root, "Strict")
 
     # Empty JSON object — "needed" is absent → LOST_REQUIRED.
-    result = recover_object(strict_mo, "{}", Format.JSON)
+    result = extract_object(strict_mo, "{}", Format.JSON)
     assert result.report.has_lost_required() is True
 
-    with pytest.raises(RecoverError) as exc:
+    with pytest.raises(ExtractError) as exc:
         or_throw(result)
     assert "needed" in exc.value.lost_required
 
 
-def test_recover_never_raises_on_total_garbage_and_still_defaults() -> None:
+def test_extract_never_raises_on_total_garbage_and_still_defaults() -> None:
     root = _load_root()
     verdict_mo = _find_object(root, "Verdict")
 
-    result = recover_object(verdict_mo, "%%% not even close %%%")
+    result = extract_object(verdict_mo, "%%% not even close %%%")
     assert result.data is not None
     obj = result.data
     assert isinstance(obj, ValueObject)
@@ -236,11 +236,11 @@ def test_recover_never_raises_on_total_garbage_and_still_defaults() -> None:
     assert _field_value(verdict_mo, "arc_transition", obj) == "not_ready"
 
 
-def test_recover_schema_for_mirrors_metadata_shape() -> None:
+def test_extract_schema_for_mirrors_metadata_shape() -> None:
     root = _load_root()
     verdict_mo = _find_object(root, "Verdict")
 
-    schema = recover_schema_for(verdict_mo, Format.XML)
+    schema = extract_schema_for(verdict_mo, Format.XML)
     assert schema.format == Format.XML
     assert schema.root_name == "Verdict"
 

@@ -1,6 +1,6 @@
-"""Null-safe coercions from a RecoverOutcome data map onto typed values.
+"""Null-safe coercions from a ExtractionOutcome data map onto typed values.
 
-Generated ``recover(...)`` code calls these helpers. Python has a single ``int``
+Generated ``extract(...)`` code calls these helpers. Python has a single ``int``
 type, so ``as_int`` and ``as_long`` are intentionally identical (both
 ``Optional[int]``, truncating toward zero). ``bool`` is excluded from the numeric
 helpers (it is an ``int`` subclass in Python, but a boolean is never a number here).

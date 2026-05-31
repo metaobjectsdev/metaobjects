@@ -1,7 +1,7 @@
 """Unit tests for ``strip`` (FR-010 stage 1). Ported from Strip(Test|Tests)."""
 from __future__ import annotations
 
-from metaobjects.render.recover import strip as _strip
+from metaobjects.render.extract import strip as _strip
 
 
 def test_unwraps_json_fence() -> None:

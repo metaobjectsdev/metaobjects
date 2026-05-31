@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from metaobjects.render.recover import Format
+from metaobjects.render.extract import Format
 from metaobjects.render.prompt.prompt_style import PromptStyle
 
 if TYPE_CHECKING:

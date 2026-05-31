@@ -1,5 +1,5 @@
 """Render-tier engine: the build-time template drift-check ``verify`` (FR-004), the
-FR-010 tolerant ``recover`` parser, and the FR-010 output-format prompt renderer."""
+FR-010 tolerant ``extract`` parser, and the FR-010 output-format prompt renderer."""
 
 from metaobjects.render.prompt import (
     PROMPT_OVERRIDES_NONE,
@@ -11,19 +11,19 @@ from metaobjects.render.prompt import (
     prompt_style_from,
     render_output_format,
 )
-from metaobjects.render.recover import (
+from metaobjects.render.extract import (
     FieldKind,
-    FieldRecovery,
+    FieldExtraction,
     FieldSpec,
     Format,
-    RecoverOptions,
-    RecoverOutcome,
-    RecoverSchema,
-    RecoveryReport,
-    RecoveryResult,
+    ExtractOptions,
+    ExtractionOutcome,
+    ExtractSchema,
+    ExtractionReport,
+    ExtractionResult,
     Tolerance,
-    recover,
-    recover_map,
+    extract,
+    extract_map,
 )
 from metaobjects.render.verify import (
     ERR_OUTPUT_TAG_MISSING,
@@ -44,7 +44,7 @@ __all__ = [
     "ERR_VAR_NOT_ON_PAYLOAD",
     "PROMPT_OVERRIDES_NONE",
     "FieldKind",
-    "FieldRecovery",
+    "FieldExtraction",
     "FieldSpec",
     "Format",
     "InMemoryProvider",
@@ -54,17 +54,17 @@ __all__ = [
     "PromptOverrides",
     "PromptStyle",
     "Provider",
-    "RecoverOptions",
-    "RecoverOutcome",
-    "RecoverSchema",
-    "RecoveryReport",
-    "RecoveryResult",
+    "ExtractOptions",
+    "ExtractionOutcome",
+    "ExtractSchema",
+    "ExtractionReport",
+    "ExtractionResult",
     "Tolerance",
     "VerifyError",
     "no_overrides",
     "prompt_style_from",
-    "recover",
-    "recover_map",
+    "extract",
+    "extract_map",
     "render_output_format",
     "verify",
 ]

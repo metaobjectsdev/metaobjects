@@ -1,37 +1,37 @@
-"""Public entry point. Runs the recover pipeline; never throws."""
+"""Public entry point. Runs the extract pipeline; never throws."""
 from __future__ import annotations
 
-from metaobjects.render.recover import coerce as _coerce
-from metaobjects.render.recover import locate as _locate
-from metaobjects.render.recover import strip as _strip
-from metaobjects.render.recover.coerce import MALFORMED
-from metaobjects.render.recover.json_forgiving_reader import (
+from metaobjects.render.extract import coerce as _coerce
+from metaobjects.render.extract import locate as _locate
+from metaobjects.render.extract import strip as _strip
+from metaobjects.render.extract.coerce import MALFORMED
+from metaobjects.render.extract.json_forgiving_reader import (
     TRUNCATED,
     JsonForgivingReader,
 )
-from metaobjects.render.recover.types import (
+from metaobjects.render.extract.types import (
     Coercion,
     FieldKind,
-    FieldRecovery,
+    FieldExtraction,
     FieldSpec,
     Format,
-    RecoverOptions,
-    RecoverOutcome,
-    RecoverSchema,
-    RecoveryReport,
+    ExtractOptions,
+    ExtractionOutcome,
+    ExtractSchema,
+    ExtractionReport,
     Tolerance,
 )
-from metaobjects.render.recover.xml_forgiving_reader import XmlForgivingReader
+from metaobjects.render.extract.xml_forgiving_reader import XmlForgivingReader
 
 
-def recover(
+def extract(
     text: str | None,
-    schema: RecoverSchema,
-    opts: RecoverOptions | None = None,
-) -> RecoverOutcome:
-    """Recover structured data from dirty ``text`` per ``schema``. Never raises."""
-    o = RecoverOptions.defaults() if opts is None else opts
-    report = RecoveryReport()
+    schema: ExtractSchema,
+    opts: ExtractOptions | None = None,
+) -> ExtractionOutcome:
+    """Extract structured data from dirty ``text`` per ``schema``. Never raises."""
+    o = ExtractOptions.defaults() if opts is None else opts
+    report = ExtractionReport()
     data: dict[str, object] = {}
 
     stripped = _strip.strip(text)
@@ -54,7 +54,7 @@ def recover(
         report.mark_empty()
 
     _extract(schema.fields, raw, "", data, report, o, ci)
-    return RecoverOutcome(data=data, report=report)
+    return ExtractionOutcome(data=data, report=report)
 
 
 def _extract(
@@ -62,8 +62,8 @@ def _extract(
     raw: dict[str, object],
     prefix: str,
     data: dict[str, object],
-    report: RecoveryReport,
-    o: RecoverOptions,
+    report: ExtractionReport,
+    o: ExtractOptions,
     ci: bool,
 ) -> None:
     for f in fields:
@@ -85,15 +85,15 @@ def _extract(
                 if coerced is not MALFORMED:
                     data[f.name] = coerced
                     report.add_coercion(Coercion(path, "", f.default_value, "default"))
-                    report.set(path, FieldRecovery.DEFAULTED)
+                    report.set(path, FieldExtraction.DEFAULTED)
                     continue
             report.set(
                 path,
-                FieldRecovery.LOST_REQUIRED if f.required else FieldRecovery.LOST_OPTIONAL,
+                FieldExtraction.LOST_REQUIRED if f.required else FieldExtraction.LOST_OPTIONAL,
             )
             continue
         if present is TRUNCATED:  # present-but-garbled (empty/cut-off value)
-            report.set(path, FieldRecovery.MALFORMED)
+            report.set(path, FieldExtraction.MALFORMED)
             continue
         if f.array:
             # A single non-list value is treated as a one-element array (e.g. a single
@@ -104,7 +104,7 @@ def _extract(
             # Phase B (array-of-enum): an enum element flows through the SAME enum
             # coercion pipeline a scalar enum uses (_extract_value → coerce.value →
             # _coerce_enum) and is CLASSIFIED per element by indexed path (tags[0],
-            # tags[1], …) exactly as a scalar enum: RECOVERED / DEFAULTED (via
+            # tags[1], …) exactly as a scalar enum: EXTRACTED / DEFAULTED (via
             # @coerceDefault) / MALFORMED. Non-enum scalar arrays keep their existing
             # behavior (coerced element list, no per-element states).
             enum_elements = f.kind == FieldKind.ENUM
@@ -114,45 +114,45 @@ def _extract(
                 if v is MALFORMED:
                     any_malformed = True
                     if enum_elements:
-                        report.set(elem_path, FieldRecovery.MALFORMED)
+                        report.set(elem_path, FieldExtraction.MALFORMED)
                 else:
                     out.append(v)
                     if enum_elements:
                         report.set(elem_path, _classify_coerced(elem_path, report))
             # Cross-port contract: a MALFORMED array still places its successfully-coerced
-            # elements into data (partial recovery), UNLIKE a MALFORMED scalar which is
+            # elements into data (partial extraction), UNLIKE a MALFORMED scalar which is
             # absent from data.
             data[f.name] = out
             report.set(
-                path, FieldRecovery.MALFORMED if any_malformed else FieldRecovery.RECOVERED
+                path, FieldExtraction.MALFORMED if any_malformed else FieldExtraction.EXTRACTED
             )
             continue
         if isinstance(present, list):  # a list where a singular value was expected
-            report.set(path, FieldRecovery.MALFORMED)
+            report.set(path, FieldExtraction.MALFORMED)
             continue
         v = _extract_value(f, present, path, report, o, ci)
         if v is MALFORMED:
-            report.set(path, FieldRecovery.MALFORMED)
+            report.set(path, FieldExtraction.MALFORMED)
         else:
             data[f.name] = v
             # FR-011: a value reached via @coerceDefault (or @default) is DEFAULTED,
-            # not RECOVERED.
+            # not EXTRACTED.
             report.set(path, _classify_coerced(path, report))
 
 
-def _classify_coerced(path: str, report: RecoveryReport) -> FieldRecovery:
+def _classify_coerced(path: str, report: ExtractionReport) -> FieldExtraction:
     """FR-011: classify a successfully-coerced field. DEFAULTED when its terminal
     (last-logged) coercion for this path is a default-class fallback
-    (``coerceDefault`` / ``default``); RECOVERED otherwise. Nested objects (which log
-    no coercion of their own) classify as RECOVERED. Mirrors the TS/C#/Java classify."""
+    (``coerceDefault`` / ``default``); EXTRACTED otherwise. Nested objects (which log
+    no coercion of their own) classify as EXTRACTED. Mirrors the TS/C#/Java classify."""
     terminal_kind: str | None = None
     for c in report.coercions():
         if c.field_path == path:
             terminal_kind = c.kind
     return (
-        FieldRecovery.DEFAULTED
+        FieldExtraction.DEFAULTED
         if terminal_kind in ("coerceDefault", "default")
-        else FieldRecovery.RECOVERED
+        else FieldExtraction.EXTRACTED
     )
 
 
@@ -160,8 +160,8 @@ def _extract_value(
     f: FieldSpec,
     present: object,
     path: str,
-    report: RecoveryReport,
-    o: RecoverOptions,
+    report: ExtractionReport,
+    o: ExtractOptions,
     ci: bool,
 ) -> object:
     """Coerce one (non-array) element: nested recursion or scalar coercion."""

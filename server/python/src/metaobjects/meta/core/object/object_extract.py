@@ -1,26 +1,26 @@
-"""Phase B (metadata-driven recover) runtime entry point — the Python keystone
+"""Phase B (metadata-driven extract) runtime entry point — the Python keystone
 that turns dirty LLM text into a populated, typed object graph.
 
 This is the runtime bridge between the two halves of the standard:
 
-* the recover **engine** (:mod:`metaobjects.render.recover`: ``RecoverSchema`` /
-  ``FieldSpec`` / ``recover``) — a low-level, descriptor-driven module that parses
-  dirty JSON/XML into a forgiving ``dict``/``list`` tree + a ``RecoveryReport``. It
+* the extract **engine** (:mod:`metaobjects.render.extract`: ``ExtractSchema`` /
+  ``FieldSpec`` / ``extract``) — a low-level, descriptor-driven module that parses
+  dirty JSON/XML into a forgiving ``dict``/``list`` tree + a ``ExtractionReport``. It
   knows nothing of the runtime object model.
 * the Phase A runtime **object model** (:mod:`metaobjects.meta.core.object`:
   ``MetaObject.new_instance()`` + the ``MetaField`` get/set SPI + ``@objectRef``) —
   instantiates the right backing type (``ValueObject`` or a registered/bound class)
   with the correct back-reference.
 
-**Siting.** ``render.recover`` is a LOWER layer and stays metadata-free by design
+**Siting.** ``render.extract`` is a LOWER layer and stays metadata-free by design
 (coupling it to the metadata model would invert the layering). The metadata-driven
 bridge therefore lives HERE, in :mod:`metaobjects.meta.core.object` — alongside the
 Phase A object model, the natural home for a runtime API that needs BOTH ``MetaObject``
-and the recover engine. This mirrors the JVM layering, where the recover engine sits
-in the metadata-free ``render`` module and the runtime recover bridge lives in the
+and the extract engine. This mirrors the JVM layering, where the extract engine sits
+in the metadata-free ``render`` module and the runtime extract bridge lives in the
 ``om`` runtime module (which depends on both); and the TS layering, where the bridge
 lives in ``runtime-ts`` rather than the published ``render`` engine package. The edges
-are one-way: this module → ``render.recover`` and this module → ``meta``; the engine
+are one-way: this module → ``render.extract`` and this module → ``meta``; the engine
 depends on neither, so there is no cycle.
 
 **Reflection-free.** Assembly uses ``MetaObject.new_instance()`` (the
@@ -29,7 +29,7 @@ depends on neither, so there is no cycle.
 (ADR-0001).
 
 **Never throws.** Lost/malformed fields are classified in the report, never raised.
-Opt into strictness with :func:`or_throw`, which raises :class:`RecoverError` iff a
+Opt into strictness with :func:`or_throw`, which raises :class:`ExtractError` iff a
 required field was lost.
 """
 from __future__ import annotations
@@ -37,14 +37,14 @@ from __future__ import annotations
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.meta_data import MetaData
-from metaobjects.render.recover import (
+from metaobjects.render.extract import (
     FieldKind,
     FieldSpec,
     Format,
-    RecoverOptions,
-    RecoverSchema,
-    RecoveryResult,
-    recover,
+    ExtractOptions,
+    ExtractSchema,
+    ExtractionResult,
+    extract,
 )
 from metaobjects.shared.structural import KEY_IS_ARRAY
 
@@ -52,33 +52,33 @@ from .meta_object import MetaObject
 
 #: Maximum nested-object recursion depth. Mirrors the render
 #: ``OutputFormatRenderer.MAX_NEST_DEPTH`` (and FR-012) — must stay identical
-#: cross-port (Java ``MetaObjectRecover.MAX_NEST_DEPTH = 8``). At or beyond this depth
+#: cross-port (Java ``MetaObjectExtractor.MAX_NEST_DEPTH = 8``). At or beyond this depth
 #: a nested OBJECT field becomes an opaque STRING leaf instead of recursing.
 MAX_NEST_DEPTH = 8
 
 
 # =============================================================================
-# RecoverError + or_throw — the opt-in strictness gate
+# ExtractError + or_throw — the opt-in strictness gate
 # =============================================================================
 
 
-class RecoverError(Exception):
-    """Raised by :func:`or_throw` when a recovery lost one or more ``@required``
+class ExtractError(Exception):
+    """Raised by :func:`or_throw` when a extraction lost one or more ``@required``
     fields. ``lost_required`` lists the field paths that were absent/uncoercible."""
 
     def __init__(self, lost_required: list[str]) -> None:
         self.lost_required = list(lost_required)
         joined = ", ".join(self.lost_required)
-        super().__init__(f"recover lost required field(s): {joined}")
+        super().__init__(f"extract lost required field(s): {joined}")
 
 
-def or_throw(result: RecoveryResult[object]) -> object:
+def or_throw(result: ExtractionResult[object]) -> object:
     """Opt into strictness: return ``result.data`` iff no ``@required`` field was
-    lost, else raise :class:`RecoverError`. Mirrors the cross-port ``RecoveryResult.
-    orThrow()`` / TS free ``orThrow``. Recover itself NEVER raises — this is the
+    lost, else raise :class:`ExtractError`. Mirrors the cross-port ``ExtractionResult.
+    orThrow()`` / TS free ``orThrow``. Extract itself NEVER raises — this is the
     explicit gate a caller reaches for when a lost-required field should fail."""
     if result.report.has_lost_required():
-        raise RecoverError(result.report.lost_required())
+        raise ExtractError(result.report.lost_required())
     return result.data
 
 
@@ -87,15 +87,15 @@ def or_throw(result: RecoveryResult[object]) -> object:
 # =============================================================================
 
 
-def recover_object(
+def extract_object(
     mo: MetaObject,
     text: str | None,
     format: Format = Format.JSON,
-    opts: RecoverOptions | None = None,
-) -> RecoveryResult[object]:
-    """Recover ``text`` into a typed object graph described by ``mo``.
+    opts: ExtractOptions | None = None,
+) -> ExtractionResult[object]:
+    """Extract ``text`` into a typed object graph described by ``mo``.
 
-    Pipeline: build a ``RecoverSchema`` from ``mo`` (driven entirely by metadata),
+    Pipeline: build a ``ExtractSchema`` from ``mo`` (driven entirely by metadata),
     run the engine to get a forgiving ``dict``/``list`` tree + report, then assemble
     that tree into a populated object graph.
 
@@ -106,33 +106,33 @@ def recover_object(
     :returns: the assembled object (a ``ValueObject`` unless a type is bound for the
               FQN) + report. NEVER ``None``; NEVER raises.
     """
-    schema = recover_schema_for(mo, format)
-    outcome = recover(text, schema, opts)
+    schema = extract_schema_for(mo, format)
+    outcome = extract(text, schema, opts)
     obj = assemble(mo, outcome.data)
-    return RecoveryResult(data=obj, report=outcome.report)
+    return ExtractionResult(data=obj, report=outcome.report)
 
 
 # =============================================================================
-# recover_schema_for — metadata -> RecoverSchema
+# extract_schema_for — metadata -> ExtractSchema
 # =============================================================================
 
 
-def recover_schema_for(mo: MetaObject, format: Format = Format.JSON) -> RecoverSchema:
-    """Build a ``RecoverSchema`` for ``mo`` by walking its effective fields and
+def extract_schema_for(mo: MetaObject, format: Format = Format.JSON) -> ExtractSchema:
+    """Build a ``ExtractSchema`` for ``mo`` by walking its effective fields and
     mapping each ``MetaField`` to a ``FieldSpec``. Recurses into nested OBJECT fields
     via ``@objectRef``, guarded against cycles/over-depth by an identity visited-set
     keyed on ``id(MetaObject)`` + a depth counter bounded by :data:`MAX_NEST_DEPTH`."""
-    return _recover_schema_for(mo, format, set(), 0)
+    return _extract_schema_for(mo, format, set(), 0)
 
 
-def _recover_schema_for(
+def _extract_schema_for(
     mo: MetaObject, format: Format, visited: set[int], depth: int
-) -> RecoverSchema:
+) -> ExtractSchema:
     visited.add(id(mo))
     fields = [_field_spec_for(f, mo, format, visited, depth) for f in mo.fields()]
     visited.discard(id(mo))
     # root_name is the simple (short) name; the engine's XML locate uses it as the root tag.
-    return RecoverSchema(format, mo.name, fields)
+    return ExtractSchema(format, mo.name, fields)
 
 
 def _field_spec_for(
@@ -164,7 +164,7 @@ def _field_spec_for(
             # Opaque leaf — never recurse into an unresolved ref / a cycle / past the
             # depth bound.
             return FieldSpec.scalar(name, FieldKind.STRING, required)
-        nested = _recover_schema_for(ref, format, visited, depth + 1)
+        nested = _extract_schema_for(ref, format, visited, depth + 1)
         return FieldSpec.object_(name, required, array, nested)
 
     # --- Scalar (carry generalized @default) ----------------------------------
@@ -177,12 +177,12 @@ def _field_spec_for(
 
 
 # =============================================================================
-# assemble — recovered dict/list tree -> object graph
+# assemble — extracted dict/list tree -> object graph
 # =============================================================================
 
 
 def assemble(mo: MetaObject, data: dict[str, object] | None) -> object:
-    """Assemble a recovered ``dict`` (the engine's forgiving tree) into a populated
+    """Assemble a extracted ``dict`` (the engine's forgiving tree) into a populated
     object graph described by ``mo``.
 
     ``mo.new_instance()`` yields the bound type (or a ``ValueObject``) with the
@@ -194,7 +194,7 @@ def assemble(mo: MetaObject, data: dict[str, object] | None) -> object:
     * OBJECT array → recursively assemble each element ``dict`` into a list, then
       ``set_value``.
 
-    Cycle/depth-guarded identically to :func:`recover_schema_for`. NEVER raises on
+    Cycle/depth-guarded identically to :func:`extract_schema_for`. NEVER raises on
     lost/malformed data — those were classified in the report during the engine pass.
     """
     return _assemble(mo, data, set(), 0)

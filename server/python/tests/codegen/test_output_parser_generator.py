@@ -113,8 +113,8 @@ def test_render_imports_payload_and_emits_parse_function() -> None:
     out = render_output_parser(_npc_root().own_children()[1], _npc_root())
     assert out is not None
     # The strict PAYLOAD comes from the sibling payload module — no inline Pydantic
-    # model. (FR-010 adds a separate nullable mirror dataclass for recover() — see
-    # the recover tests below — but the strict payload class is never inlined.)
+    # model. (FR-010 adds a separate nullable mirror dataclass for extract() — see
+    # the extract tests below — but the strict payload class is never inlined.)
     assert "class NpcResponseOutputPayload(" not in out
     assert "from .npc_response_output_payload import NpcResponseOutputPayload" in out
     assert "def parse_npc_response_output(text: str) -> NpcResponseOutputPayload:" in out

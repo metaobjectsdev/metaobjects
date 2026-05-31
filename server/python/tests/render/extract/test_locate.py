@@ -1,7 +1,7 @@
 """Unit tests for ``locate`` (FR-010 stages 2-3). Ported from Locate(Test|Tests)."""
 from __future__ import annotations
 
-from metaobjects.render.recover import locate as _locate
+from metaobjects.render.extract import locate as _locate
 
 
 # ---- json ----

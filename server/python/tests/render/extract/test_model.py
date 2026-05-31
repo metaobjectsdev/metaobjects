@@ -1,17 +1,17 @@
-"""Unit tests for the FR-010 recover data model + report. Mirrors Model/Report tests."""
+"""Unit tests for the FR-010 extract data model + report. Mirrors Model/Report tests."""
 from __future__ import annotations
 
-from metaobjects.render.recover import (
+from metaobjects.render.extract import (
     Coercion,
     FieldKind,
-    FieldRecovery,
+    FieldExtraction,
     FieldSpec,
     Format,
-    RecoverOptions,
-    RecoverOutcome,
-    RecoverSchema,
-    RecoveryReport,
-    RecoveryResult,
+    ExtractOptions,
+    ExtractionOutcome,
+    ExtractSchema,
+    ExtractionReport,
+    ExtractionResult,
     Tolerance,
 )
 
@@ -57,7 +57,7 @@ def test_range_field_spec_carries_min_and_max() -> None:
 
 
 def test_object_field_spec_carries_nested_schema() -> None:
-    nested = RecoverSchema(
+    nested = ExtractSchema(
         Format.JSON, "inner", [FieldSpec.scalar("x", FieldKind.INT, True)]
     )
     f = FieldSpec.object_("payload", True, False, nested)
@@ -69,16 +69,16 @@ def test_object_field_spec_carries_nested_schema() -> None:
 
 
 def test_object_field_spec_array_sets_array_flag() -> None:
-    nested = RecoverSchema(Format.JSON, "item")
+    nested = ExtractSchema(Format.JSON, "item")
     f = FieldSpec.object_("items", False, True, nested)
     assert f.array is True
 
 
-# ---- RecoverSchema ----
+# ---- ExtractSchema ----
 
 
 def test_schema_carries_format_root_and_fields() -> None:
-    schema = RecoverSchema(
+    schema = ExtractSchema(
         Format.XML, "answer", [FieldSpec.scalar("text", FieldKind.STRING, True)]
     )
     assert schema.format == Format.XML
@@ -87,15 +87,15 @@ def test_schema_carries_format_root_and_fields() -> None:
 
 
 def test_schema_default_fields_yields_empty_list() -> None:
-    schema = RecoverSchema(Format.JSON, "root")
+    schema = ExtractSchema(Format.JSON, "root")
     assert schema.fields == []
 
 
-# ---- RecoverOptions ----
+# ---- ExtractOptions ----
 
 
 def test_options_defaults_is_normal_tolerance_empty_maps_and_no_hook() -> None:
-    opts = RecoverOptions.defaults()
+    opts = ExtractOptions.defaults()
     assert opts.tolerance == Tolerance.NORMAL
     assert opts.aliases == {}
     assert opts.normalizers == {}
@@ -103,47 +103,47 @@ def test_options_defaults_is_normal_tolerance_empty_maps_and_no_hook() -> None:
 
 
 def test_options_with_tolerance_returns_new_instance() -> None:
-    opts = RecoverOptions.defaults().with_tolerance(Tolerance.STRICT)
+    opts = ExtractOptions.defaults().with_tolerance(Tolerance.STRICT)
     assert opts.tolerance == Tolerance.STRICT
     assert opts.aliases == {}
     assert opts.on_field is None
 
 
-# ---- RecoveryReport ----
+# ---- ExtractionReport ----
 
 
 def test_report_lost_required_filters() -> None:
-    r = RecoveryReport()
-    r.set("a", FieldRecovery.RECOVERED)
-    r.set("b", FieldRecovery.LOST_REQUIRED)
-    r.set("c", FieldRecovery.LOST_REQUIRED)
-    r.set("d", FieldRecovery.DEFAULTED)
+    r = ExtractionReport()
+    r.set("a", FieldExtraction.EXTRACTED)
+    r.set("b", FieldExtraction.LOST_REQUIRED)
+    r.set("c", FieldExtraction.LOST_REQUIRED)
+    r.set("d", FieldExtraction.DEFAULTED)
     assert r.lost_required() == ["b", "c"]
     assert r.has_lost_required()
 
 
 def test_report_mark_empty() -> None:
-    r = RecoveryReport()
+    r = ExtractionReport()
     r.mark_empty()
     assert r.is_empty()
     assert not r.has_lost_required()
 
 
 def test_report_states_returns_snapshot() -> None:
-    r = RecoveryReport()
-    r.set("x", FieldRecovery.RECOVERED)
-    r.set("y", FieldRecovery.MALFORMED)
+    r = ExtractionReport()
+    r.set("x", FieldExtraction.EXTRACTED)
+    r.set("y", FieldExtraction.MALFORMED)
     snap = r.states()
     assert len(snap) == 2
-    assert snap["x"] == FieldRecovery.RECOVERED
-    assert snap["y"] == FieldRecovery.MALFORMED
+    assert snap["x"] == FieldExtraction.EXTRACTED
+    assert snap["y"] == FieldExtraction.MALFORMED
     # snapshot is a copy
-    snap["z"] = FieldRecovery.RECOVERED
+    snap["z"] = FieldExtraction.EXTRACTED
     assert "z" not in r.states()
 
 
 def test_report_coercions_returns_all_in_order() -> None:
-    r = RecoveryReport()
+    r = ExtractionReport()
     r.add_coercion(Coercion("a", "raw", "ALIAS", "alias"))
     r.add_coercion(Coercion("b", "0", "10", "clamp"))
     lst = r.coercions()
@@ -153,41 +153,41 @@ def test_report_coercions_returns_all_in_order() -> None:
 
 
 def test_report_malformed_filters() -> None:
-    r = RecoveryReport()
-    r.set("ok", FieldRecovery.RECOVERED)
-    r.set("bad", FieldRecovery.MALFORMED)
+    r = ExtractionReport()
+    r.set("ok", FieldExtraction.EXTRACTED)
+    r.set("bad", FieldExtraction.MALFORMED)
     assert r.malformed() == ["bad"]
 
 
 def test_report_has_lost_required_false_when_none() -> None:
-    r = RecoveryReport()
-    r.set("x", FieldRecovery.RECOVERED)
+    r = ExtractionReport()
+    r.set("x", FieldExtraction.EXTRACTED)
     assert not r.has_lost_required()
 
 
-# ---- RecoverOutcome / RecoveryResult ----
+# ---- ExtractionOutcome / ExtractionResult ----
 
 
 def test_outcome_holds_data_and_report() -> None:
-    report = RecoveryReport()
-    outcome = RecoverOutcome({"x": 1}, report)
+    report = ExtractionReport()
+    outcome = ExtractionOutcome({"x": 1}, report)
     assert outcome.data["x"] == 1
     assert outcome.report is report
 
 
-def test_recovery_result_holds_typed_data_and_report() -> None:
-    report = RecoveryReport()
-    result: RecoveryResult[str] = RecoveryResult("hello", report)
+def test_extraction_result_holds_typed_data_and_report() -> None:
+    report = ExtractionReport()
+    result: ExtractionResult[str] = ExtractionResult("hello", report)
     assert result.data == "hello"
     assert result.report is report
 
 
-# ---- FieldRecovery enum values match corpus ----
+# ---- FieldExtraction enum values match corpus ----
 
 
-def test_field_recovery_values_match_corpus_expected_json() -> None:
-    assert FieldRecovery.RECOVERED.value == "RECOVERED"
-    assert FieldRecovery.DEFAULTED.value == "DEFAULTED"
-    assert FieldRecovery.LOST_OPTIONAL.value == "LOST_OPTIONAL"
-    assert FieldRecovery.LOST_REQUIRED.value == "LOST_REQUIRED"
-    assert FieldRecovery.MALFORMED.value == "MALFORMED"
+def test_field_extraction_values_match_corpus_expected_json() -> None:
+    assert FieldExtraction.EXTRACTED.value == "EXTRACTED"
+    assert FieldExtraction.DEFAULTED.value == "DEFAULTED"
+    assert FieldExtraction.LOST_OPTIONAL.value == "LOST_OPTIONAL"
+    assert FieldExtraction.LOST_REQUIRED.value == "LOST_REQUIRED"
+    assert FieldExtraction.MALFORMED.value == "MALFORMED"

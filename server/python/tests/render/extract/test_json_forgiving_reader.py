@@ -5,7 +5,7 @@ TRUNCATED sentinel and no-hang assertions.
 """
 from __future__ import annotations
 
-from metaobjects.render.recover.json_forgiving_reader import (
+from metaobjects.render.extract.json_forgiving_reader import (
     TRUNCATED,
     JsonForgivingReader,
 )
@@ -49,14 +49,14 @@ def test_array_values() -> None:
     assert m["xs"] == ["a", "b"]
 
 
-def test_truncated_recovers_complete_prefix_keys() -> None:
+def test_truncated_extracts_complete_prefix_keys() -> None:
     m = _read('{"a":"1","b":"2","c":')
     assert m["a"] == "1"
     assert m["b"] == "2"
     assert m["c"] is TRUNCATED
 
 
-def test_unrecoverable_returns_empty() -> None:
+def test_unextractable_returns_empty() -> None:
     assert _read("@@@@") == {}
 
 
@@ -72,7 +72,7 @@ def test_malformed_array_brace_close_after_comma_does_not_hang() -> None:
 
 def test_pathologically_deep_nesting_does_not_raise() -> None:
     # Python's recursion limit is far below the JVM/.NET stack; the depth guard must
-    # keep recover never-throwing on adversarial deeply-nested input (no RecursionError).
+    # keep extract never-throwing on adversarial deeply-nested input (no RecursionError).
     deep = '{"a":' + "[" * 5000 + "]" * 5000 + "}"
     m = _read(deep)  # must return, not raise
     assert isinstance(m, dict)

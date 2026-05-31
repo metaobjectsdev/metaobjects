@@ -1,19 +1,19 @@
-"""FR-010 nested-codegen-gap — the runtime-DELEGATING recover emitter (Python).
+"""FR-010 nested-codegen-gap — the runtime-DELEGATING extract emitter (Python).
 
-The self-contained ``recover_<name>(text)`` path (``recover_schema_emitter`` + the
-baked ``RecoverSchema``) covers scalars / enums / scalar-arrays but leaves
+The self-contained ``extract_<name>(text)`` path (``extract_schema_emitter`` + the
+baked ``ExtractSchema``) covers scalars / enums / scalar-arrays but leaves
 nested-object and array-of-object components ``None`` — the historical FR-010 codegen
 gap. This module emits the additive *delegating* entry that CLOSES that gap by
-wrapping the runtime recover:
+wrapping the runtime extract:
 
-    recover_<name>_with_loader(root, text, opts=None) -> RecoveryResult[<Name>Recovered]
+    extract_<name>_with_loader(root, text, opts=None) -> ExtractionResult[<Name>Extracted]
 
 It resolves this payload's ``MetaObject`` from the supplied loaded ``MetaRoot`` by its
-baked simple name (``PAYLOAD_NAME``), delegates to ``recover_object`` in
-:mod:`metaobjects.meta.core.object.object_recover` (which assembles the FULL nested
+baked simple name (``PAYLOAD_NAME``), delegates to ``extract_object`` in
+:mod:`metaobjects.meta.core.object.object_extract` (which assembles the FULL nested
 object graph reflection-free via the Phase A object model — ``MetaObject.new_instance()``
 + the ``MetaField`` set-by-name SPI), then maps the assembled ``ValueObject`` graph into
-the typed nullable mirror graph via generated ``_from_<vo>_recovered(o)`` mapper
+the typed nullable mirror graph via generated ``_from_<vo>_extracted(o)`` mapper
 functions (payload + every reachable nested VO, deduped).
 
 This is the codegen-wrapping-runtime pattern (a generated DAO calling the
@@ -23,7 +23,7 @@ mappers read the assembled graph through a tiny ``_read_prop`` helper that mirro
 emitted code stays self-sufficient and reflection-free.
 
 Bounded by the cross-port ``MAX_NEST_DEPTH`` via the runtime — codegen here only mirrors
-the runtime's resolved object graph, so depth/cycle guarding lives in ``object_recover``.
+the runtime's resolved object graph, so depth/cycle guarding lives in ``object_extract``.
 The emitter dedupes mirrors/mappers by VO simple name (cycle-safe).
 """
 from __future__ import annotations
@@ -65,19 +65,19 @@ def _is_object_field(field: MetaData) -> bool:
 
 
 def mirror_name(vo: MetaData) -> str:
-    """The recovered-mirror dataclass name for a value-object (``<Name>Recovered``)."""
-    return f"{vo.name}Recovered"
+    """The extracted-mirror dataclass name for a value-object (``<Name>Extracted``)."""
+    return f"{vo.name}Extracted"
 
 
 def _mapper_name(vo: MetaData) -> str:
-    """The mapper function name for a value-object (``_from_<name>_recovered``)."""
-    return f"_from_{_snake(vo.name)}_recovered"
+    """The mapper function name for a value-object (``_from_<name>_extracted``)."""
+    return f"_from_{_snake(vo.name)}_extracted"
 
 
 def root_mapper_name(template_name: str) -> str:
     """The root mapper's name — derived from the TEMPLATE (so it returns the
-    canonically-named ``<Template>Recovered`` mirror)."""
-    return f"_from_{_snake(template_name)}_recovered"
+    canonically-named ``<Template>Extracted`` mirror)."""
+    return f"_from_{_snake(template_name)}_extracted"
 
 
 def _snake(name: str) -> str:
@@ -98,7 +98,7 @@ def _snake(name: str) -> str:
 
 def _nested_mirror_type(field: MetaData, root: MetaData) -> str:
     """The nullable mirror annotation for one field — nested-aware (nested objects
-    become ``<Nested>Recovered``; array-of-objects become ``list[...]``)."""
+    become ``<Nested>Extracted``; array-of-objects become ``list[...]``)."""
     if _is_object_field(field):
         target = ref_vo(field, root)
         base = f'"{mirror_name(target)}"' if target is not None else "object"
@@ -160,10 +160,10 @@ def nested_mirror_dataclasses(
     vo: MetaData, root: MetaData, payload_mirror: str
 ) -> list[str]:
     """Emit the nested-aware mirror dataclass for ``vo`` and every reachable nested VO
-    (deduped). The payload mirror keeps the canonical ``<Template>Recovered`` name
-    (``payload_mirror``) so the existing self-contained ``recover_<name>()`` initializer
+    (deduped). The payload mirror keeps the canonical ``<Template>Extracted`` name
+    (``payload_mirror``) so the existing self-contained ``extract_<name>()`` initializer
     and the delegating path share ONE mirror type. The nested mirrors carry their own
-    ``<VO>Recovered`` name. Returns source lines (blank-line separated)."""
+    ``<VO>Extracted`` name. Returns source lines (blank-line separated)."""
     lines: list[str] = []
     for i, cur in enumerate(reachable_vos(vo, root)):
         if i > 0:
@@ -176,14 +176,14 @@ def nested_mirror_dataclasses(
 
 def _one_mirror(vo: MetaData, root: MetaData, record_name: str) -> list[str]:
     base = (
-        record_name[: -len("Recovered")]
-        if record_name.endswith("Recovered")
+        record_name[: -len("Extracted")]
+        if record_name.endswith("Extracted")
         else record_name
     )
     lines: list[str] = [
         "@dataclass(frozen=True, slots=True)",
         f"class {record_name}:",
-        f'    """Best-effort recovered twin of ``{base}`` — every field nullable',
+        f'    """Best-effort extracted twin of ``{base}`` — every field nullable',
         '    (``None`` where the value was lost or malformed)."""',
     ]
     field_lines = [
@@ -201,7 +201,7 @@ def _one_mirror(vo: MetaData, root: MetaData, record_name: str) -> list[str]:
 def nested_mappers(
     vo: MetaData, root: MetaData, root_mapper_fn: str, root_mirror: str
 ) -> list[str]:
-    """Emit one ``_from_<vo>_recovered(o)`` mapper per reachable VO (payload + nested,
+    """Emit one ``_from_<vo>_extracted(o)`` mapper per reachable VO (payload + nested,
     deduped). The ROOT mapper is overridden to the template-derived ``root_mapper_fn`` /
     ``root_mirror`` so it returns the canonically-named root mirror. Returns source
     lines (blank-line separated)."""
@@ -369,7 +369,7 @@ def delegate_helpers(used: set[str]) -> list[str]:
     """The shared helper block the generated mappers rely on, scoped to ``used`` and
     emitted in stable order. Returns source lines (blank-line separated)."""
     lines: list[str] = [
-        "# ---- runtime-delegating recover helpers (generated) ----"
+        "# ---- runtime-delegating extract helpers (generated) ----"
     ]
     for name in _HELPER_ORDER:
         if name in used:

@@ -26,13 +26,13 @@ from metaobjects.render import (
     PromptStyle,
     render_output_format,
 )
-from metaobjects.render.recover import (
+from metaobjects.render.extract import (
     FieldKind,
-    FieldRecovery,
+    FieldExtraction,
     FieldSpec,
     Format,
-    RecoverSchema,
-    recover,
+    ExtractSchema,
+    extract,
 )
 
 
@@ -124,7 +124,7 @@ def _build_output_spec(c: dict[str, object]) -> OutputFormatSpec:
     )
 
 
-def _build_recover_schema(c: dict[str, object]) -> RecoverSchema:
+def _build_extract_schema(c: dict[str, object]) -> ExtractSchema:
     fmt = _FORMATS[str(c["format"])]
     root_name = str(c["rootName"])
     fields_raw = c["fields"]
@@ -146,7 +146,7 @@ def _build_recover_schema(c: dict[str, object]) -> RecoverSchema:
         elif kind_token == "OBJECT":
             nested_raw = f.get("nested")
             nested = (
-                _build_recover_schema(nested_raw)
+                _build_extract_schema(nested_raw)
                 if isinstance(nested_raw, dict)
                 else None
             )
@@ -155,7 +155,7 @@ def _build_recover_schema(c: dict[str, object]) -> RecoverSchema:
             )
         else:
             fields.append(FieldSpec.scalar(name, _KINDS[kind_token], required))
-    return RecoverSchema(fmt, root_name, fields)
+    return ExtractSchema(fmt, root_name, fields)
 
 
 def _read_text(path: Path) -> str:
@@ -187,15 +187,15 @@ def test_renders_corpus_byte_exact(case_name: str) -> None:
 
     if spec_dict.get("roundTrip"):
         example_fragment = _read_text(case_dir / "expected.exampleOnly.txt")
-        outcome = recover(example_fragment, _build_recover_schema(spec_dict))
+        outcome = extract(example_fragment, _build_extract_schema(spec_dict))
         # Skew guard: a field the renderer emitted must read back cleanly. NO state
         # may be MALFORMED or LOST_* (robust to DEFAULTED and to how a nested
         # OBJECT-container path classifies); any such state means the renderer
-        # emitted an example the recover parser cannot read.
+        # emitted an example the extract parser cannot read.
         bad = {
-            FieldRecovery.MALFORMED,
-            FieldRecovery.LOST_REQUIRED,
-            FieldRecovery.LOST_OPTIONAL,
+            FieldExtraction.MALFORMED,
+            FieldExtraction.LOST_REQUIRED,
+            FieldExtraction.LOST_OPTIONAL,
         }
         for field_path, state in outcome.report.states().items():
             assert state not in bad, (

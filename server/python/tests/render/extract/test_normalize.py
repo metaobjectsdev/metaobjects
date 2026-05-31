@@ -5,7 +5,7 @@ Java ``Normalize.enumValue``). The rule is ASCII-only and byte-identical across 
 """
 from __future__ import annotations
 
-from metaobjects.render.recover.normalize import (
+from metaobjects.render.extract.normalize import (
     COLLAPSE,
     DEFAULT,
     NONE,
