@@ -45,6 +45,7 @@ from collections.abc import Callable
 
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
+from metaobjects.codegen import type_map
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
 from metaobjects.codegen.type_map import py_type_for
 from metaobjects.meta.core.field import field_constants as fc
@@ -155,6 +156,46 @@ def _resolve_dotted_field_ref(root: MetaData, dotted_ref: str) -> MetaField | No
         if f.name == field_name:
             return f
     return None
+
+
+def is_field_required(field: MetaField) -> bool:
+    """The single required-ness predicate the payload model uses to decide a field's
+    optionality (``T`` vs ``T | None = None``). A field is required iff its OWN
+    ``@required`` attr is the boolean ``True`` — matching the TS payload-codegen
+    ``isFieldRequired`` (``ownAttr === true``) so the extract-tier mapper that
+    constructs this payload can rely on the same boundary (no skew). A
+    ``@required: "true"`` string therefore types optional in BOTH the payload and the
+    mapper. The extractor generator imports THIS predicate."""
+    return field.attr(fc.FIELD_ATTR_REQUIRED) is True
+
+
+def _resolve_object_field_type(
+    field: MetaField,
+    root: MetaData,
+    nested_emit_queue: list[tuple[MetaObject, str]],
+    emitted_nested_fqns: set[str],
+) -> tuple[str, set[str]]:
+    """A plain ``field.object`` (``@objectRef``, no origin child) — resolve to the
+    nested ``<TargetShortName>Payload`` (single) or ``list[<TargetShortName>Payload]``
+    (array). The target VO is scheduled for in-file emission (per-file dedupe, same
+    mechanism as ``origin.collection``). Falls back to the bare type-map form when the
+    ``@objectRef`` can't be resolved (defensive — loader validation gates it first)."""
+    ref = field.attr(fc.FIELD_ATTR_OBJECT_REF)
+    if not isinstance(ref, str) or not ref:
+        return _fallback_type(field)
+    target = _resolve_object_by_short_or_fqn(root, ref)
+    if target is None and PACKAGE_SEP in ref:
+        target = _resolve_object_by_short_or_fqn(root, ref.rsplit(PACKAGE_SEP, 1)[-1])
+    if target is None:
+        return _fallback_type(field)
+    nested_class = payload_class_name(target.name)
+    target_fqn = target.fqn()
+    if target_fqn not in emitted_nested_fqns:
+        emitted_nested_fqns.add(target_fqn)
+        nested_emit_queue.append((target, nested_class))
+    if type_map.field_is_array(field):
+        return f"list[{nested_class}]", set()
+    return nested_class, set()
 
 
 def _find_origin_child(field: MetaField) -> MetaOrigin | None:
@@ -289,6 +330,14 @@ def _resolve_field_type(
     or ``origin.passthrough`` (scalar projection)."""
     origin = _find_origin_child(field)
     if origin is None:
+        # A plain ``field.object`` (``@objectRef``, no origin) → nested payload class
+        # (single or list), emitted in the same file. This is the prompt-pillar
+        # nested-payload case the extract tier maps onto; without it the payload would
+        # reference an undefined bare entity name (Pydantic "not fully defined").
+        if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
+            return _resolve_object_field_type(
+                field, root, nested_emit_queue, emitted_nested_fqns
+            )
         pt = py_type_for(field)
         return pt.expr, set(pt.imports)
     if origin.sub_type == "passthrough":
@@ -326,7 +375,14 @@ def _emit_payload_class(
             field, root, nested_emit_queue, emitted_nested_fqns
         )
         extra_imports.update(imports)
-        field_lines.append(f"    {field.name}: {annotation}")
+        # Optionality mirrors the cross-port (TS) payload-codegen: a ``@required``
+        # field is non-optional ``T``; everything else is ``T | None = None`` so the
+        # strict payload can carry an absent optional value (and the extract-tier
+        # mapper, which shares ``is_field_required``, agrees on the boundary).
+        if is_field_required(field):
+            field_lines.append(f"    {field.name}: {annotation}")
+        else:
+            field_lines.append(f"    {field.name}: {annotation} | None = None")
     if field_lines:
         lines.extend(field_lines)
     else:
