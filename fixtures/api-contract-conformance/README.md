@@ -145,6 +145,48 @@ The runner's job is to **map** the cross-port assertion vocabulary
 (`row` / `rows` / `envelope` / `error` / `empty`) onto its own port's
 test-assertion idioms.
 
+## TS: two runner lanes (hand-rolled reference + generated routes)
+
+On the TypeScript port the corpus is now driven by **two** lanes, both
+against a Postgres testcontainer over HTTP:
+
+1. **Hand-rolled reference lane** (`test/api-contract.test.ts`) — a server the
+   integration-tests package wires up directly. It is the stable reference
+   implementation of the contract semantics; it does **not** exercise the
+   codegen output.
+2. **Generated-routes lane** (`test/api-contract-generated.test.ts`) — runs
+   `codegen-ts`'s `runGen` to emit the real `Author.routes.ts` into a temp dir,
+   then dynamically imports the **emitted** route file unmodified and mounts it
+   on Fastify (the generated routes call `mountCrudRoutes` from
+   `@metaobjectsdev/runtime-ts/drizzle-fastify`). This drives the SAME corpus
+   over HTTP, so the deployed artifact — not a re-implementation — is what gets
+   verified. (Building this lane surfaced and fixed real divergences between the
+   generated routes / `drizzle-fastify` mount and the contract.)
+
+Both lanes live in `server/typescript/packages/integration-tests/test/` and are
+run by the same `cd server/typescript/packages/integration-tests && bun test`
+invocation, so the `.github/workflows/integration-tests.yml` TS job gates both
+on every PR and push-to-main — no separate opt-in.
+
+### Fan-out follow-on (generated-routes lane currently TS-only)
+
+The generated-routes lane — booting each port's **emitted** CRUD routes over
+HTTP against this corpus — currently covers **TypeScript only**. The other four
+ports run the corpus today via their hand-rolled / runtime runners, but their
+*generated* server artifacts are not yet driven over HTTP against the corpus.
+Extending the generated-routes lane to each port needs a per-port harness:
+
+| Port | Generated artifact | Test harness to build |
+|---|---|---|
+| Java (Spring) | generated `@RestController` (`codegen-spring`) | Spring Boot test context (`@SpringBootTest` + `MockMvc` / `WebTestClient`) booting the generated controller |
+| Kotlin (Spring) | generated `@RestController` (`codegen-kotlin`) | Spring Boot test context (`@SpringBootTest` + `MockMvc` / `WebTestClient`) booting the generated controller |
+| C# (ASP.NET) | generated minimal-API routes (`MetaObjects.Codegen`) | `WebApplicationFactory<>` hosting the generated routes |
+| Python (FastAPI) | generated FastAPI router | `TestClient` mounting the generated router |
+
+Until those land, **the generated artifacts of Java / Kotlin / C# / Python are
+not yet verified over HTTP against this corpus** — this is a known, explicit gap
+(not a silent one).
+
 ## Adding a scenario
 
 1. Drop a new `<name>.yaml` in `scenarios/`.
