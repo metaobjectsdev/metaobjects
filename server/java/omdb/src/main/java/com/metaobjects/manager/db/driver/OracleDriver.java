@@ -19,7 +19,6 @@ import com.metaobjects.MetaDataException;
 
 import com.metaobjects.manager.db.defs.ColumnDef;
 import com.metaobjects.manager.db.defs.TableDef;
-import com.metaobjects.manager.db.defs.ViewDef;
 import com.metaobjects.manager.exp.Range;
 
 /**
@@ -62,25 +61,6 @@ public class OracleDriver extends GenericSQLDriver {
             s.execute(query);
         } catch (SQLException e) {
             throw new SQLException("Failed to drop Oracle table [" + tableName + "]: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Creates an Oracle view
-     */
-    @Override
-    public void createView(Connection c, ViewDef view) throws SQLException {
-        String viewName = getProperName(view.getNameDef());
-        String query = "CREATE OR REPLACE VIEW " + viewName + " AS " + view.getSQL();
-        
-        if (log.isDebugEnabled()) {
-            log.debug("Creating Oracle view [{}]: {}", viewName, query);
-        }
-        
-        try (Statement s = c.createStatement()) {
-            s.execute(query);
-        } catch (SQLException e) {
-            throw new SQLException("Failed to create Oracle view [" + viewName + "]: " + e.getMessage(), e);
         }
     }
 
