@@ -292,3 +292,63 @@ describe("FR-016 loader validation", () => {
       .not.toContain("WARN_LEGACY_PHYSICAL_NAME_ALIAS");
   });
 });
+
+describe("FR-016 canonical-serializer rewrite (legacy @table → kind-matching alias)", () => {
+  test("input @kind: view + @table → output @kind: view + @view", async () => {
+    const { canonicalSerialize } = await import("../src/serializer-json.js");
+    const { root } = await load(
+      oneSourceEntity("OldStyleView", { "@kind": "view", "@table": "v_old" }),
+    );
+    const out = canonicalSerialize(root);
+    expect(out).toContain("\"@view\": \"v_old\"");
+    expect(out).not.toContain("\"@table\": \"v_old\"");
+  });
+
+  test("input @kind: storedProc + @table → output @kind: storedProc + @proc", async () => {
+    const { canonicalSerialize } = await import("../src/serializer-json.js");
+    const { root } = await load(
+      oneSourceEntity("OldStyleProc", { "@kind": "storedProc", "@table": "fn_x" }),
+    );
+    const out = canonicalSerialize(root);
+    expect(out).toContain("\"@proc\": \"fn_x\"");
+    expect(out).not.toContain("\"@table\": \"fn_x\"");
+  });
+
+  test("input @kind: materializedView + @table → output @kind: materializedView + @materializedView", async () => {
+    const { canonicalSerialize } = await import("../src/serializer-json.js");
+    const { root } = await load(
+      oneSourceEntity("OldStyleMV", { "@kind": "materializedView", "@table": "mv_x" }),
+    );
+    const out = canonicalSerialize(root);
+    expect(out).toContain("\"@materializedView\": \"mv_x\"");
+    expect(out).not.toContain("\"@table\": \"mv_x\"");
+  });
+
+  test("input @kind: tableFunction + @table → output @kind: tableFunction + @function", async () => {
+    const { canonicalSerialize } = await import("../src/serializer-json.js");
+    const { root } = await load(
+      oneSourceEntity("OldStyleFn", { "@kind": "tableFunction", "@table": "fn_list" }),
+    );
+    const out = canonicalSerialize(root);
+    expect(out).toContain("\"@function\": \"fn_list\"");
+    expect(out).not.toContain("\"@table\": \"fn_list\"");
+  });
+
+  test("input @kind: table + @table stays @table on output (no rewrite for the canonical case)", async () => {
+    const { canonicalSerialize } = await import("../src/serializer-json.js");
+    const { root } = await load(
+      oneSourceEntity("Customer", { "@table": "customers" }),
+    );
+    const out = canonicalSerialize(root);
+    expect(out).toContain("\"@table\": \"customers\"");
+  });
+
+  test("input @kind: view + @view (already canonical) round-trips unchanged", async () => {
+    const { canonicalSerialize } = await import("../src/serializer-json.js");
+    const { root } = await load(
+      oneSourceEntity("CustomerSummary", { "@kind": "view", "@view": "v_summary" }),
+    );
+    const out = canonicalSerialize(root);
+    expect(out).toContain("\"@view\": \"v_summary\"");
+  });
+});

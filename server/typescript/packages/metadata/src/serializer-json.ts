@@ -25,6 +25,16 @@ import {
   ATTR_SUBTYPE_BOOLEAN,
   ATTR_SUBTYPE_STRINGARRAY,
 } from "./core/attr/attr-constants.js";
+import {
+  SOURCE_SUBTYPE_RDB,
+  SOURCE_ATTR_KIND,
+  SOURCE_ATTR_TABLE,
+  DEFAULT_SOURCE_KIND,
+  PHYSICAL_NAME_ATTR_BY_KIND,
+} from "./persistence/source/source-constants.js";
+import { TYPE_SOURCE } from "./shared/base-types.js";
+
+const SOURCE_RDB_FUSED_KEY = `${TYPE_SOURCE}${TYPE_SUBTYPE_SEPARATOR}${SOURCE_SUBTYPE_RDB}`;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -153,6 +163,10 @@ export function canonicalSerialize(model: MetaData): string {
   const raw = serializeJson(model, { indent: 2 });
 
   const parsed = JSON.parse(raw) as unknown;
+  // FR-016 / ADR-0018: rewrite legacy @table → kind-matching alias on source.rdb
+  // wrappers (run before alphabetical sort so the rewritten key sorts in its
+  // canonical position).
+  rewriteSourceRdbPhysicalNames(parsed);
   const sorted = sortAttrKeys(parsed);
   const out = JSON.stringify(sorted, null, 2);
 
@@ -170,10 +184,46 @@ export function canonicalSerializeEffective(model: MetaData): string {
   const raw = JSON.stringify(nodeObj, null, 2);
 
   const parsed = JSON.parse(raw) as unknown;
+  rewriteSourceRdbPhysicalNames(parsed);
   const sorted = sortAttrKeys(parsed);
   const out = JSON.stringify(sorted, null, 2);
 
   return out + "\n";
+}
+
+/**
+ * FR-016 / ADR-0018 — when a source.rdb wrapper carries @table with a non-table
+ * @kind (the pre-1.0 legacy spelling), rewrite the attr key in place to the
+ * kind-matching alias (@view / @materializedView / @proc / @function). Mutates
+ * the parsed JSON in place; idempotent and a no-op for canonical inputs.
+ */
+function rewriteSourceRdbPhysicalNames(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const item of value) rewriteSourceRdbPhysicalNames(item);
+    return;
+  }
+  if (value === null || typeof value !== "object") return;
+
+  const obj = value as Record<string, unknown>;
+  const rdbBody = obj[SOURCE_RDB_FUSED_KEY];
+  if (rdbBody !== undefined && rdbBody !== null && typeof rdbBody === "object" && !Array.isArray(rdbBody)) {
+    const body = rdbBody as Record<string, unknown>;
+    const kindRaw = body[`${ATTR_PREFIX}${SOURCE_ATTR_KIND}`];
+    const kind = typeof kindRaw === "string" && kindRaw !== "" ? kindRaw : DEFAULT_SOURCE_KIND;
+    const canonical = PHYSICAL_NAME_ATTR_BY_KIND.get(kind);
+    if (canonical !== undefined && canonical !== SOURCE_ATTR_TABLE) {
+      const legacyKey = `${ATTR_PREFIX}${SOURCE_ATTR_TABLE}`;
+      const canonicalKey = `${ATTR_PREFIX}${canonical}`;
+      const legacyValue = body[legacyKey];
+      if (legacyValue !== undefined && body[canonicalKey] === undefined) {
+        body[canonicalKey] = legacyValue;
+        delete body[legacyKey];
+      }
+    }
+  }
+
+  // Recurse through every value (in particular `children`).
+  for (const v of Object.values(obj)) rewriteSourceRdbPhysicalNames(v);
 }
 
 function sortAttrKeys(value: unknown): unknown {
