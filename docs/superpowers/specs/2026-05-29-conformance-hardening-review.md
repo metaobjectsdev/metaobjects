@@ -2,6 +2,29 @@
 
 _Date: 2026-05-29. Status: Review complete; remediation is a ranked backlog (each item gets its own plan when picked up). No code changes in this document._
 
+> **UPDATE 2026-05-31 — conformance-hardening pass A/B shipped; FR-007/R12 rejected.** A fresh
+> corpus×port×CI audit drove a two-phase hardening:
+> - **Phase A (`db6440ff`)** — wired the byte-exact corpora (render/verify/recover/output-prompt/
+>   object-model) into the per-push `conformance.yml` for all 5 ports (incl. a new Kotlin job), and
+>   widened `integration-tests.yml` (persistence+api) to run on **all PRs + pushes to main**. Closes
+>   the "Kotlin runs only 2 corpora" + "persistence/api not in default CI" + the newly-found
+>   "byte-exact corpora run in NO workflow" gaps below.
+> - **Phase B (`62521308`, 6 units, all 5 ports)** — the remaining **R6** normalization
+>   (timestamp/timestamptz/date/time) is now gated by shared persistence round-trip scenarios
+>   (timestamptz-`Z` hazard resolved); **R10** projection holes closed (passthrough-view read +
+>   sum/avg/min/max aggregates — only `count` was tested); divergent per-port normalization unit
+>   tests retired. B caught a real codegen/normalization bug in every port (proof the behavior
+>   corpora gate codegen drift). Spec: `docs/superpowers/specs/2026-05-31-normalization-conformance-design.md`.
+> - **R12 (FR-007 codegen-conformance) — REJECTED (re-confirmed 2026-05-31).** Per the 2026-05-26
+>   rejection (`docs/superpowers/specs/2026-05-25-fr-007-codegen-conformance-corpus-design.md` §0):
+>   a dedicated codegen-output corpus adds ~0 net coverage — the behavior corpora gate codegen's
+>   observable consequences, and B proved it empirically. Do NOT build it. See
+>   `fixtures/codegen-conformance/README.md`.
+> - **Still open (opportunistic, lowest tier):** R10 vocabulary long-tail (`field.short`/`byte`,
+>   `validator.*`, non-cascade referential actions, advanced `@kind`s) — closed via the normal
+>   "new behavior ⇒ new fixture" discipline, not a campaign. R1 (CLI smoke gate, ties to CLI work)
+>   + install-smoke remain.
+
 ## Why this exists
 
 A real defect — the **Python port shipped with no CLI** (`meta gen` / `meta verify` / `meta migrate`) — passed every conformance corpus. That prompted a full audit of the conformance suite. The CLI gap is not a one-off; it is the visible tip of a structural blind spot plus several "looks-green-but-isn't-a-gate" issues and broad under-assertion.
@@ -43,7 +66,7 @@ Siblings of the CLI gap — a port can silently lack or diverge on these and sta
 
 6. **CLI / tooling entry point** — no corpus exercises any `meta` binary / maven-plugin / `dotnet meta`. Python ships none (`server/python` has no `[project.scripts]`, no `cli`/`__main__`); Kotlin ships none (driven only via the Java Maven plugin). Per-port CLI tests (TS, C#) are local, not a shared contract, and can't detect a port that ships no CLI.
 7. **Packaging / publish parity** — nothing installs the built/published artifact and runs it. This is the class that hid both the CLI gap and the documented `workspace:*` npm leak.
-8. **Codegen output drift** — `fixtures/codegen-conformance/README.md` states drift between ports is undetected. A port could mis-map `field.currency`, drop `@maxLength`, or omit a generator and stay green. FR-007 plans a *semantic* (not byte) corpus.
+8. **Codegen output drift** — ~~`fixtures/codegen-conformance/README.md` states drift between ports is undetected... FR-007 plans a *semantic* corpus.~~ **RESOLVED-BY-REJECTION (R12, 2026-05-31):** the framing was wrong — the behavior corpora (persistence/render/api-contract) gate codegen's observable consequences; a `field.currency`/`@maxLength`/missing-generator regression that *matters* explodes there (Phase B empirically caught real per-port codegen bugs that way). A dedicated codegen-output corpus = ~0 net coverage. Only the vocab long-tail no behavior corpus exercises (R10) is a residual gap, closed opportunistically.
 9. **Prompt output-parser (FR-006)** — claimed shipped in 5 ports, no corpus. Java even carries a documented origin-resolution deferral that a corpus would surface.
 10. **Doc-gen** — providers exist in several ports; no corpus for JSDoc / XML-doc / `COMMENT ON` / Mermaid output.
 
@@ -75,7 +98,7 @@ Siblings of the CLI gap — a port can silently lack or diverge on these and sta
 | R9 | **Add missing negative fixtures** for the live ERR codes (finding #14), starting with `ERR_SUBTYPE_RULE_VIOLATION` | 3 | fixtures | med |
 | R10 | **Fill vocabulary holes** — fixtures for the untested subtypes/attrs (finding #13); a jsonb-without-objectRef negative; a TIMESTAMPTZ row; a JSONB-row persistence scenario | 3 | fixtures | med |
 | R11 | ✅ **DONE (2026-05-29, `42f2e0ae`).** Kotlin query runner globs the corpus minus a deferral ledger (allowlist removed) — new fixtures auto-run. Verified 9/9 via Testcontainers. | 1 | refactor Kotlin persistence runner | done |
-| R12 | **FR-007 codegen-conformance** (semantic parity: file inventory + type-mapping + payload-VO shape, not bytes) — pulls Kotlin into a codegen gate | 2 | new corpus + per-port manifest emitters | high |
+| R12 | ❌ **REJECTED (2026-05-26, re-confirmed 2026-05-31).** FR-007 codegen-conformance — a codegen-output corpus adds ~0 net coverage; the behavior corpora gate codegen's observable consequences (Phase B proved it: real per-port codegen bugs were caught by persistence round-trip). Do NOT build. The residual vocab-hole tail is R10/opportunistic. See `fixtures/codegen-conformance/README.md`. | 2 | — | n/a |
 | R13 | **Prompt output-parser corpus** + **install/run smoke per port** | 2 | sibling corpora / CI smoke | med |
 
 ## Scope notes

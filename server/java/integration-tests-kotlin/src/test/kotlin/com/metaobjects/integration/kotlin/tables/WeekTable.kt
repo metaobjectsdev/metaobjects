@@ -13,6 +13,9 @@ object WeekTable : Table("weeks") {
     val id = long("id").autoIncrement()
     val programId = long("programId").references(ProgramTable.id)
     val label = varchar("label", 80).nullable()
+    // `field.int` → INTEGER (NOT NULL). Rolled up per Program by the v_program_stat
+    // sum/avg/min/max aggregate projections (see ProgramStatView).
+    val durationMinutes = integer("durationMinutes")
 
     override val primaryKey = PrimaryKey(id)
 }

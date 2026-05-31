@@ -23,6 +23,7 @@
           { "field.long":   { "name": "id" } },
           { "field.long":   { "name": "programId", "@required": true } },
           { "field.string": { "name": "label", "@maxLength": 80 } },
+          { "field.int":    { "name": "durationMinutes", "@required": true } },
           { "identity.primary":   { "@fields": "id", "@generation": "increment" } },
           { "identity.reference": { "name": "fkProgram", "@fields": "programId", "@references": "Program" } }
         ]
@@ -46,6 +47,9 @@
           { "field.string": { "name": "externalId", "@dbColumnType": "uuid" } },
           { "field.string": { "name": "payload",    "@dbColumnType": "jsonb" } },
           { "field.timestamp": { "name": "recordedAt", "@required": true, "@dbColumnType": "timestamp_with_tz" } },
+          { "field.timestamp": { "name": "observedAt", "@required": true } },
+          { "field.date":      { "name": "asOfDate",   "@required": true } },
+          { "field.time":      { "name": "atTime",     "@required": true } },
           { "identity.primary": { "@fields": "id", "@generation": "uuid" } }
         ]
       }},
@@ -69,6 +73,22 @@
           { "field.long": { "name": "weekCount",
             "children": [
               { "origin.aggregate": { "@agg": "count", "@of": "Week.id", "@via": "Program.weeks" } }
+          ]}},
+          { "field.long": { "name": "totalMinutes",
+            "children": [
+              { "origin.aggregate": { "@agg": "sum", "@of": "Week.durationMinutes", "@via": "Program.weeks" } }
+          ]}},
+          { "field.double": { "name": "avgMinutes",
+            "children": [
+              { "origin.aggregate": { "@agg": "avg", "@of": "Week.durationMinutes", "@via": "Program.weeks" } }
+          ]}},
+          { "field.long": { "name": "minMinutes",
+            "children": [
+              { "origin.aggregate": { "@agg": "min", "@of": "Week.durationMinutes", "@via": "Program.weeks" } }
+          ]}},
+          { "field.long": { "name": "maxMinutes",
+            "children": [
+              { "origin.aggregate": { "@agg": "max", "@of": "Week.durationMinutes", "@via": "Program.weeks" } }
           ]}},
           { "identity.primary": { "@fields": "programId" } }
         ]

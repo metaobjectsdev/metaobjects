@@ -1,0 +1,38 @@
+name: normalization-wire-types
+description: |
+  Exercises the pinned canonical wire form for every temporal type on Asset:
+  TIMESTAMPTZ (seeded with a NON-UTC offset, asserted as UTC Z — proving
+  normalization, not just formatting), plain TIMESTAMP (no Z), DATE, and TIME —
+  plus uuid lowercase canonicalization and jsonb key-sorting. Whole-second
+  values only (Phase B); the canonical forms carry no fractional component.
+
+  See fixtures/persistence-conformance/normalization.md for the per-type rules.
+  recordedAt/observedAt are seeded at the SAME instant via different wire forms:
+  recordedAt's -05:00 offset must read back as 14:30:00Z, while observedAt's
+  bare wall-clock 14:30:00 must read back unshifted with no Z.
+seed-data: |
+  INSERT INTO "assets"
+    ("id","ownerId","externalId","payload","recordedAt","observedAt","asOfDate","atTime")
+  VALUES
+    ('AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
+     'BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB',
+     NULL,
+     '{"b": 2, "a": 1}',
+     '2026-05-31T09:30:00-05:00',
+     '2026-05-31T14:30:00',
+     '2026-05-31',
+     '14:30:00');
+queries:
+  - name: wire-types-roundtrip
+    op: get
+    entity: Asset
+    by: { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }
+    expect:
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+      ownerId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+      externalId: null
+      payload: { a: 1, b: 2 }
+      recordedAt: "2026-05-31T14:30:00Z"
+      observedAt: "2026-05-31T14:30:00"
+      asOfDate: "2026-05-31"
+      atTime: "14:30:00"

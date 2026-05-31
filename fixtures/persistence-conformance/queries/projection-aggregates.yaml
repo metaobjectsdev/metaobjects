@@ -1,0 +1,39 @@
+name: projection-aggregates
+description: |
+  ProgramStat rolls Week.durationMinutes up per Program via sum/avg/min/max
+  aggregate projections over the v_program_stat VIEW (alongside the existing
+  count). Validates both the view-DDL emit AND the projection-read path for all
+  four aggregates across every port.
+
+  Pinned wire shapes follow normalization.md AND the ACTUAL Postgres aggregate
+  result type (the view column type — not the field.* declaration — drives it):
+    - weekCount  = COUNT(...)  → BIGINT  → string  "3"
+    - totalMinutes = SUM(int)  → BIGINT  → string  "180"
+    - minMinutes = MIN(int)    → INTEGER → number  30
+    - maxMinutes = MAX(int)    → INTEGER → number  90
+    - avgMinutes = AVG(int)    → NUMERIC → string  "60"  (no trailing zeros)
+  programId is field.long → BIGINT → string.
+
+  Seed durationMinutes 30/60/90: sum 180, avg 60 (NUMERIC, not a float column —
+  the float-authoring constraint applies only to REAL/DOUBLE columns read as JS
+  numbers; AVG over INTEGER is NUMERIC and uses the no-trailing-zeros string
+  rule, so an integer-valued avg is safe here), min 30, max 90.
+seed-data: |
+  INSERT INTO "programs" ("id","title","priceCents","status","createdAt") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00');
+  INSERT INTO "weeks" ("id","programId","label","durationMinutes") VALUES
+    (10, 1, 'Week 1', 30),
+    (11, 1, 'Week 2', 60),
+    (12, 1, 'Week 3', 90);
+queries:
+  - name: aggregates-for-program
+    op: get
+    entity: ProgramStat
+    by: { programId: 1 }
+    expect:
+      programId: "1"
+      weekCount: "3"
+      totalMinutes: "180"
+      avgMinutes: "60"
+      minMinutes: 30
+      maxMinutes: 90

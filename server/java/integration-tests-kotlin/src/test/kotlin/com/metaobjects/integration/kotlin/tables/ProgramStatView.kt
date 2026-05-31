@@ -22,7 +22,23 @@ import org.jetbrains.exposed.sql.Table
  */
 object ProgramStatView : Table("v_program_stat") {
     val programId = long("programId")
+    // weekCount = COUNT(...) → BIGINT → string. (Always non-null: COUNT over zero rows is 0.)
     val weekCount = long("weekCount")
+    // The four Phase B aggregate projections over Week.durationMinutes. All nullable — SQL
+    // SUM/AVG/MIN/MAX over an empty group yield NULL (→ JSON null per normalization.md).
+    // The wire shape is driven by the ACTUAL Postgres aggregate result type, so the Exposed
+    // mapping mirrors that, NOT the field.* declaration:
+    //   - SUM(int) → BIGINT  → Exposed `long`    → string  ("180")
+    //   - AVG(int) → NUMERIC → Exposed `decimal` → string  ("60", no trailing zeros)
+    //   - MIN(int) → INTEGER → Exposed `integer` → number  (30)
+    //   - MAX(int) → INTEGER → Exposed `integer` → number  (90)
+    // The decimal precision/scale below are immaterial: this is a read-only VIEW mapping (we
+    // never call SchemaUtils.create), so they don't emit DDL — Exposed just reads the column
+    // value back as a BigDecimal, which Normalization renders with the no-trailing-zeros rule.
+    val totalMinutes = long("totalMinutes").nullable()
+    val avgMinutes = decimal("avgMinutes", 38, 18).nullable()
+    val minMinutes = integer("minMinutes").nullable()
+    val maxMinutes = integer("maxMinutes").nullable()
 
     override val primaryKey = PrimaryKey(programId)
 }

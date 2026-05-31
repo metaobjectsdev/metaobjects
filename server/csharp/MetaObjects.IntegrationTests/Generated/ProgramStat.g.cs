@@ -15,4 +15,12 @@ public class ProgramStat
     public long ProgramId { get; set; }
     [Column("weekCount")]
     public long? WeekCount { get; set; }
+    [Column("totalMinutes")]
+    public long? TotalMinutes { get; set; }
+    [Column("avgMinutes")]
+    public double? AvgMinutes { get; set; }
+    [Column("minMinutes")]
+    public int? MinMinutes { get; set; }
+    [Column("maxMinutes")]
+    public int? MaxMinutes { get; set; }
 }

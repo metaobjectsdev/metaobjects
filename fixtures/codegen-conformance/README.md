@@ -1,38 +1,44 @@
-# `codegen-conformance/` — PENDING (FR-007)
+# `codegen-conformance/` — REJECTED (FR-007 will not be built)
 
-> ⚠️ **This corpus does not exist yet.** It is **DEFERRED** and tracked as **FR-007**.
+> ⚠️ **This corpus is NOT going to be built.** FR-007 was **formally rejected 2026-05-26**
+> (`docs/superpowers/specs/2026-05-25-fr-007-codegen-conformance-corpus-design.md` §0), and the
+> 2026-05-31 conformance-hardening pass (A/B) re-confirmed the rejection with empirical evidence.
+> This README is kept only so a newcomer who lands here understands *why* there is no codegen
+> corpus, instead of re-proposing one.
 
-Cross-language codegen conformance is the one shared-corpus gap in the MetaObjects testing matrix. Other corpora exist (`conformance/`, `render-conformance/`, `persistence-conformance/`, `verify-conformance/`, `yaml-conformance/`). This one will gate **what** each port's codegen emits — file inventory, type-mapping semantics, FR-004 payload-VO shape — independently of *how* (each port emits its own ecosystem's native code).
+## Why it was rejected
 
-## Status
+A dedicated cross-port **codegen-output** corpus would add ~0 net coverage at real maintenance cost,
+because **codegen is a substrate and the behavior corpora already gate its observable consequences**:
 
-- **Spec:** [docs/superpowers/specs/2026-05-25-fr-007-codegen-conformance-corpus-design.md](../../docs/superpowers/specs/2026-05-25-fr-007-codegen-conformance-corpus-design.md)
-- **Blocked on:** `codegen-kotlin` shipping (the 4th codegen target — 3rd is TS, C# already shipped; Java's codegen-base is general-purpose but doesn't have an FR-004-typed payload generator).
-- **Helped by:** Python codegen, when it ships, becoming the 5th port that needs to participate.
+- Field-type semantics (`field.long`→64-bit, `field.currency`→minor-units long), required/nullable,
+  and `@maxLength` propagation are gated by **`persistence-conformance/`** executing the generated
+  DDL + queries — a wrong mapping explodes there.
+- The FR-004 payload-VO field tree is gated by **`render-conformance/`** (a missing/renamed VO field
+  changes the byte-identical rendered output).
+- Generated validators, filters, and routes are gated by **`api-contract-conformance/`**.
+- "Generator-catalog membership" was a false premise — each port's catalog is idiomatic-divergent by
+  design (TS `entityFile/queriesFile/...` ≠ C# `entities/AppDbContext/routes` ≠ Kotlin
+  `Entity/ExposedTable/Payload/...`); there is no shared catalog to gate.
 
-## What this corpus will gate
+**Empirical confirmation (2026-05-31):** the Phase-B normalization+projection work surfaced a real
+*codegen* bug in **every** port (C#'s MIN/MAX projection result-type + enum-over-view conversion,
+Kotlin's missing `TimeField` arm, etc.) — and every one was caught by the **behavior** (persistence
+round-trip) corpus, exactly as the rejection predicted. Codegen drift that matters shows up in
+behavior; codegen drift that doesn't is, by definition, not a correctness issue.
 
-**Tier 1 (cross-port invariant):**
-- File-per-entity inventory per declared generator
-- Field type semantic mapping (`field.long` → 64-bit int everywhere; `field.currency` → minor-units long everywhere; etc.)
-- Required vs nullable flags
-- `@maxLength` propagation to the appropriate native column type
-- FR-004 payload-VO field tree (each port's generated payload class has the same property names + semantic types)
-- Generator-catalog membership (every port implements the same generator names)
+## The one residual gap — handled opportunistically, not by a corpus
 
-**NOT gated (intentionally divergent per port):**
-- Native column type spelling
-- Native repo / ORM style (Drizzle relations vs EF Core DbSet vs Exposed Table vs omdb-ktx extensions vs SQLAlchemy)
-- Native serialization annotation
-- Native package / module naming conventions
-- Native framework integration
+Codegen/type drift *could* go uncaught for vocabulary **no behavior corpus exercises** — the
+"type-universe-shrinks" long tail (`field.short`/`byte`, `validator.{length,regex,numeric,array}`,
+non-cascade `@onDelete`/`@onUpdate`, `@kind: storedProc|tableFunction|materializedView`, the
+`view.*` UI subtypes). This is the lowest-priority backlog tier (hardening-review **R10**), and it is
+closed the project's normal way: **adding new metamodel behavior ⇒ add a behavior-corpus fixture that
+exercises it** (`spec/conformance-tests.md`). No standing codegen-manifest corpus is needed; add a
+persistence/api-contract fixture when one of those types/validators is touched.
 
-## Why this README exists
+## Do not delete this README / do not re-propose FR-007
 
-To make the gap **impossible to miss**. If you're reading this because you stumbled into this directory while building a new codegen target or looking for cross-port codegen tests — that gate doesn't exist yet, and the spec above is the plan-of-record for when it does.
-
-Until then, each port runs its own codegen snapshot tests against port-local golden files. Drift between ports is undetected.
-
-## Do not delete this README
-
-Even when the corpus eventually ships (per FR-007), keep this README to point newcomers at the design spec.
+Keep this file so the gap-that-isn't stays documented. If you believe a codegen corpus is warranted,
+the bar (per the rejection) is **a concrete codegen-drift incident that slipped past the behavior
+corpora** — not a coverage-completeness argument.

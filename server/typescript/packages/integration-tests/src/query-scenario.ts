@@ -25,6 +25,12 @@ import { loadMetadataDir } from "./load-metadata.ts";
 import { canonicalJson, normalizeRow } from "./normalization.ts";
 import { executeSql } from "./postgres-sql.ts";
 import type { QueryScenario, QuerySpec } from "./scenario.ts";
+import { registerTemporalParsers } from "./temporal-parsers.ts";
+
+// node-postgres type parsers are process-global; register the canonical
+// temporal parsers once at module load so every pg-backed read (Kysely
+// included) returns the wire forms pinned in normalization.md.
+registerTemporalParsers();
 
 export async function runQueryScenario(
   scenario: QueryScenario,
@@ -43,8 +49,13 @@ export async function runQueryScenario(
     await executeSql(connectionUri, scenario.seedData);
 
   // Kysely owns its pool exclusively (see migration-scenario.ts for why).
+  // Pin the session timezone to UTC so TIMESTAMPTZ wire text always renders a
+  // `+00` offset; canonicalTimestamptz converts any offset to UTC regardless,
+  // but UTC sessions keep the read deterministic across host timezones.
   const kysely = new Kysely<Record<string, never>>({
-    dialect: new PostgresDialect({ pool: new Pool({ connectionString: connectionUri }) }),
+    dialect: new PostgresDialect({
+      pool: new Pool({ connectionString: connectionUri, options: "-c timezone=UTC" }),
+    }),
   });
   try {
     // kyselyDriver wants Kysely<Record<string, Row>>; the actual row types are

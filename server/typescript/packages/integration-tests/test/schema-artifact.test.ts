@@ -49,4 +49,27 @@ describe("canonical schema artifact (schema.postgres.sql)", () => {
     expect(committed).toContain(`CREATE VIEW "v_program" AS`);
     expect(committed).toContain(`CREATE VIEW "v_program_stat" AS`);
   });
+
+  test("Phase B: TS emits Asset temporal columns, weeks.durationMinutes, and sum/avg/min/max aggregates", async () => {
+    // Generated directly from metadata (not the committed file) so this names
+    // the emit-pipeline behavior independently of the drift check.
+    const root = await loadMetadataDir(CANONICAL_DIR);
+    const generated = await generateCanonicalSchemaSql(root);
+
+    // Asset temporal columns: plain TIMESTAMP (no tz), DATE, native TIME.
+    expect(generated).toContain(`"observedAt" TIMESTAMP NOT NULL`);
+    expect(generated).toContain(`"asOfDate" DATE NOT NULL`);
+    expect(generated).toContain(`"atTime" TIME NOT NULL`);
+
+    // Week numeric source column for the aggregate projections (field.int → INTEGER).
+    expect(generated).toContain(`"durationMinutes" INTEGER NOT NULL`);
+
+    // v_program_stat now rolls Week.durationMinutes up via sum/avg/min/max in
+    // addition to the existing count. The emitter renders the @agg verbatim
+    // (lowercase) inside the correlated subquery.
+    expect(generated).toContain(`SELECT sum(t."durationMinutes")`);
+    expect(generated).toContain(`SELECT avg(t."durationMinutes")`);
+    expect(generated).toContain(`SELECT min(t."durationMinutes")`);
+    expect(generated).toContain(`SELECT max(t."durationMinutes")`);
+  });
 });

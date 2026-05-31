@@ -4,6 +4,8 @@
 //
 // ScenarioLoader parses YAML into these records. The runners consume them.
 
+using YamlDotNet.RepresentationModel;
+
 namespace MetaObjects.IntegrationTests.Runner;
 
 /// <summary>Base type for any scenario in the corpus.</summary>
@@ -28,6 +30,6 @@ public sealed record QuerySpec(
     IReadOnlyList<SortSpec>? Sort,
     int? Limit,
     int? Offset,
-    object? Expect);                          // shape depends on Op (list → array, get → object|null, count → int)
+    YamlNode? Expect);                        // raw YAML subtree (scalar style preserved); shape depends on Op
 
 public sealed record SortSpec(string Field, string Dir);   // dir: asc | desc

@@ -33,6 +33,14 @@ public sealed class DbContextGenerator : IGenerator
             var name = CSharpNaming.Pascal(p.Name);
             var noKey = p.PrimaryIdentity() is null ? ".HasNoKey()" : string.Empty;
             modelLines.Add($"        modelBuilder.Entity<{name}>(){noKey}.ToView(\"{p.DbView}\");");
+            // Enum-typed projection columns persist as their string symbol in the view
+            // (string-backed enums, CHECK-constrained varchar/text). Without an explicit
+            // string conversion EF defaults to the int-ordinal mapping and reads the text
+            // column as Int32 at materialization — an InvalidCastException. Mirror the
+            // entity-side HasConversion<string>() so a projection that passes an enum
+            // through (e.g. ProgramView.status over v_program) round-trips.
+            foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM && !f.IsArray))
+                modelLines.Add($"        modelBuilder.Entity<{name}>().Property(x => x.{CSharpNaming.Pascal(f.Name)}).HasConversion<string>();");
         }
         foreach (var e in objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
         {

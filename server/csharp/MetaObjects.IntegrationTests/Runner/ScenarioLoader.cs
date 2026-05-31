@@ -4,6 +4,8 @@
 //
 // Relative metadata paths in YAML resolve against the scenario file's directory.
 
+using YamlDotNet.Core;
+using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -11,9 +13,61 @@ namespace MetaObjects.IntegrationTests.Runner;
 
 public static class ScenarioLoader
 {
+    // The `expect:` block is captured as a raw YamlNode (not a typed object graph)
+    // so the comparison side can honor the YAML scalar STYLE: a plain (unquoted)
+    // `45` is a JSON number, a quoted `"45"` is a JSON string. YamlDotNet's default
+    // object-graph deserialization collapses both to the string "45", which would
+    // make every INTEGER-typed expectation (durationMinutes, min/max aggregates)
+    // un-representable. This matches the TS authority, whose JS YAML loader infers
+    // scalar types the same way. See QueryScenarioRunner.YamlExpectToJsonNode.
     private static readonly IDeserializer Yaml = new DeserializerBuilder()
         .WithNamingConvention(HyphenatedNamingConvention.Instance)
+        .WithTypeConverter(new YamlNodeTypeConverter())
         .Build();
+
+    // Captures a YAML subtree verbatim (preserving scalar style) into a YamlNode,
+    // so a property typed as YamlNode? receives the raw representation. Builds the
+    // node graph by streaming events from the parser (YamlDotNet 18 has no public
+    // IParser→YamlNode bridge), consuming exactly one node subtree.
+    private sealed class YamlNodeTypeConverter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => typeof(YamlNode).IsAssignableFrom(type);
+
+        public object? ReadYaml(IParser parser, Type type, ObjectDeserializer rootDeserializer) =>
+            BuildNode(parser);
+
+        public void WriteYaml(IEmitter emitter, object? value, Type type, ObjectSerializer serializer) =>
+            throw new NotSupportedException("YamlNode serialization is not used in scenario loading.");
+
+        private static YamlNode BuildNode(IParser parser)
+        {
+            if (parser.TryConsume<YamlDotNet.Core.Events.Scalar>(out var scalar))
+                return new YamlScalarNode(scalar.Value) { Style = scalar.Style };
+
+            if (parser.TryConsume<YamlDotNet.Core.Events.SequenceStart>(out _))
+            {
+                var seq = new YamlSequenceNode();
+                while (!parser.TryConsume<YamlDotNet.Core.Events.SequenceEnd>(out _))
+                    seq.Add(BuildNode(parser));
+                return seq;
+            }
+
+            if (parser.TryConsume<YamlDotNet.Core.Events.MappingStart>(out _))
+            {
+                var map = new YamlMappingNode();
+                while (!parser.TryConsume<YamlDotNet.Core.Events.MappingEnd>(out _))
+                {
+                    var key = BuildNode(parser);
+                    var value = BuildNode(parser);
+                    map.Add(key, value);
+                }
+                return map;
+            }
+
+            throw new InvalidOperationException(
+                $"unexpected YAML event while reading an expect subtree: {parser.Current?.GetType().Name ?? "null"}");
+        }
+    }
 
     /// <summary>Load every <c>*.yaml</c> in a directory as query scenarios.</summary>
     public static IReadOnlyList<QueryScenario> LoadQueries(string dir) =>
@@ -62,7 +116,7 @@ public static class ScenarioLoader
         public List<SortYaml>? Sort { get; set; }
         public int? Limit { get; set; }
         public int? Offset { get; set; }
-        public object? Expect { get; set; }
+        public YamlNode? Expect { get; set; }
     }
 
     private sealed class SortYaml

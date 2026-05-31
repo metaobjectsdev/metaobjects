@@ -1,5 +1,7 @@
 package com.metaobjects.integration;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.integration.Scenarios.QuerySpec;
 import com.metaobjects.integration.Scenarios.SortSpec;
@@ -12,6 +14,8 @@ import com.metaobjects.manager.exp.SortOrder;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.value.ValueObject;
 
+import java.sql.Types;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -39,7 +43,8 @@ final class ObjectManagerDbAdapter {
      *   <li>{@code op:count} → {@code Long}</li>
      * </ul>
      */
-    static Object execute(ObjectManagerDB omdb, ObjectConnection conn, MetaObject mc, QuerySpec spec) throws Exception {
+    static Object execute(ObjectManagerDB omdb, ObjectConnection conn, MetaObject mc, QuerySpec spec,
+                          Map<String, Integer> columnSqlTypes) throws Exception {
         Expression filter = buildFilter(spec.by(), spec.filter());
 
         if ("count".equals(spec.op())) {
@@ -53,7 +58,7 @@ final class ObjectManagerDbAdapter {
 
         Collection<?> raw = omdb.getObjects(conn, mc, opts);
         List<Map<String, Object>> rows = new ArrayList<>(raw.size());
-        for (Object o : raw) rows.add(toRowMap(mc, o));
+        for (Object o : raw) rows.add(toRowMap(mc, o, columnSqlTypes));
 
         if ("get".equals(spec.op())) return rows.isEmpty() ? null : rows.get(0);
         return rows; // op:list
@@ -221,22 +226,73 @@ final class ObjectManagerDbAdapter {
      * For non-ValueObject types the row is keyed by the field's metadata
      * name and the value is what {@link ObjectManagerDB} loaded.</p>
      */
-    private static Map<String, Object> toRowMap(MetaObject mc, Object instance) {
+    private static Map<String, Object> toRowMap(MetaObject mc, Object instance,
+                                                Map<String, Integer> columnSqlTypes) {
         Map<String, Object> row = new LinkedHashMap<>();
         if (instance instanceof ValueObject vo) {
-            for (MetaField<?> mf : mc.getMetaFields()) row.put(mf.getName(), maybeParseJson(mf, vo.get(mf.getName())));
+            for (MetaField<?> mf : mc.getMetaFields())
+                row.put(mf.getName(), coerceWireType(mf, maybeParseJson(mf, vo.get(mf.getName())), columnSqlTypes));
             return row;
         }
         // Fallback: ask each MetaField for its value off the object.
         for (MetaField<?> mf : mc.getMetaFields()) {
-            try { row.put(mf.getName(), maybeParseJson(mf, mf.getObject(instance))); }
+            try { row.put(mf.getName(), coerceWireType(mf, maybeParseJson(mf, mf.getObject(instance)), columnSqlTypes)); }
             catch (Exception ignored) { row.put(mf.getName(), null); }
         }
         return row;
     }
 
-    private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
-        new com.fasterxml.jackson.databind.ObjectMapper();
+    /**
+     * Reconcile OMDB's MetaField-typed value with the ACTUAL SQL column type so the
+     * canonical wire shape ({@code fixtures/persistence-conformance/normalization.md})
+     * is driven by the column, not the {@code field.*} declaration. OMDB collapses
+     * every numeric column to its field subtype's Java type and reads both plain and
+     * tz-aware timestamps as the same {@link java.sql.Timestamp}; two corpus cases
+     * need the lost distinction restored:
+     *
+     * <ul>
+     *   <li><b>Aggregate INTEGER projections.</b> {@code MIN(int)}/{@code MAX(int)}
+     *       are declared {@code field.long} on the view but are INTEGER columns —
+     *       INTEGER → JSON <em>number</em>, BIGINT → JSON <em>string</em>. OMDB reads
+     *       both as {@link Long}; narrow to {@link Integer} when the catalog reports
+     *       an INTEGER/SMALLINT column so {@link Normalization} emits a number.</li>
+     *   <li><b>TIMESTAMPTZ.</b> A {@code field.timestamp} flagged
+     *       {@code @dbColumnType: timestamp_with_tz} is an absolute instant whose wire
+     *       form carries a {@code Z}; surface it as an {@link java.time.OffsetDateTime}
+     *       in UTC so {@link Normalization} appends the suffix (a plain TIMESTAMP stays
+     *       a {@link java.sql.Timestamp} and renders with no {@code Z}).</li>
+     * </ul>
+     */
+    private static Object coerceWireType(MetaField<?> mf, Object value, Map<String, Integer> columnSqlTypes) {
+        if (value == null) return null;
+        if (isTimestampTzField(mf) && value instanceof java.util.Date d) {
+            return d.toInstant().atOffset(ZoneOffset.UTC);
+        }
+        if (value instanceof Long l) {
+            Integer sqlType = columnSqlTypes.get(mf.getName());
+            if (sqlType != null && (sqlType == Types.INTEGER || sqlType == Types.SMALLINT || sqlType == Types.TINYINT)) {
+                return l.intValue();
+            }
+        }
+        return value;
+    }
+
+    /** True for a {@code field.timestamp} carrying {@code @dbColumnType: timestamp_with_tz}. */
+    private static boolean isTimestampTzField(MetaField<?> mf) {
+        return hasDbColumnType(mf, CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ);
+    }
+
+    /** True when {@code mf} carries {@code @dbColumnType: <expected>} (false on any read error). */
+    private static boolean hasDbColumnType(MetaField<?> mf, String expected) {
+        try {
+            return mf.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE)
+                && expected.equals(mf.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValueAsString());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     /**
      * R6 Plan 2b: an open-JSON column ({@code @dbColumnType: jsonb}) is a
@@ -246,15 +302,9 @@ final class ObjectManagerDbAdapter {
      * normalization. Non-jsonb fields and non-string values pass through unchanged.
      */
     private static Object maybeParseJson(MetaField<?> mf, Object value) {
-        boolean isOpenJsonb;
-        try {
-            isOpenJsonb = mf.hasMetaAttr(com.metaobjects.database.CoreDBMetaDataProvider.DB_COLUMN_TYPE)
-                && com.metaobjects.database.CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB.equals(
-                    mf.getMetaAttr(com.metaobjects.database.CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValueAsString());
-        } catch (Exception e) {
-            isOpenJsonb = false;
+        if (!hasDbColumnType(mf, CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB) || !(value instanceof String s)) {
+            return value;
         }
-        if (!isOpenJsonb || !(value instanceof String s)) return value;
         try {
             return JSON.readValue(s, Object.class);
         } catch (Exception e) {

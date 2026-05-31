@@ -147,6 +147,7 @@ function normalizeForSqlite(sqlType: SqlType): SqlType {
       return { kind: "integer", bits: 64 };
     case "timestamp":
     case "date":
+    case "time":
       return { kind: "text" };
     case "integer":
       // SQLite stores every INTEGER as a 64-bit value and Drizzle's int() emits
@@ -415,7 +416,7 @@ function subtypeToSqlType(field: MetaData): SqlType {
     case FIELD_SUBTYPE_DECIMAL:   return { kind: "numeric" };
     case FIELD_SUBTYPE_BOOLEAN:   return { kind: "boolean" };
     case FIELD_SUBTYPE_DATE:      return { kind: "date" };
-    case FIELD_SUBTYPE_TIME:      return { kind: "text" }; // SQL TIME rare; coerce to text
+    case FIELD_SUBTYPE_TIME:      return { kind: "time" }; // Postgres native TIME (whole-second wire form)
     case FIELD_SUBTYPE_TIMESTAMP: return { kind: "timestamp", withTimezone: false };
     case FIELD_SUBTYPE_OBJECT:
     case FIELD_SUBTYPE_CLASS:     return { kind: "json" };

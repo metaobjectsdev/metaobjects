@@ -10,6 +10,8 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -33,6 +35,10 @@ public final class Normalization {
 
     private static final DateTimeFormatter TIMESTAMP_FMT =
         DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+    private static final DateTimeFormatter DATE_FMT =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter TIME_FMT =
+        DateTimeFormatter.ofPattern("HH:mm:ss");
 
     public static Map<String, Object> normalizeRow(Map<String, Object> row) {
         TreeMap<String, Object> out = new TreeMap<>();
@@ -53,12 +59,29 @@ public final class Normalization {
         if (v instanceof BigDecimal bd) return canonicalDecimal(bd);
         if (v instanceof UUID u)   return u.toString().toLowerCase(java.util.Locale.ROOT);
         if (v instanceof byte[] bytes) return Base64.getEncoder().encodeToString(bytes);
-        if (v instanceof LocalDate d)  return d.toString();
-        if (v instanceof LocalTime t)  return t.toString();
-        if (v instanceof Time t)       return t.toLocalTime().toString();
-        if (v instanceof Timestamp ts) return ts.toLocalDateTime().format(TIMESTAMP_FMT);
+        if (v instanceof LocalDate d)  return d.format(DATE_FMT);
+        if (v instanceof LocalTime t)  return t.format(TIME_FMT);
+        if (v instanceof Time t)       return t.toLocalTime().format(TIME_FMT);
+        // TIMESTAMPTZ → UTC instant + "Z" suffix. The runner surfaces tz-aware
+        // timestamp columns as OffsetDateTime (normalized to UTC in
+        // ObjectManagerDbAdapter) so the zone discriminator survives — a plain
+        // TIMESTAMP arrives as Timestamp/LocalDateTime and renders with no Z.
+        if (v instanceof OffsetDateTime odt)
+            return odt.withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime().format(TIMESTAMP_FMT) + "Z";
         if (v instanceof LocalDateTime ts) return ts.format(TIMESTAMP_FMT);
-        if (v instanceof java.sql.Date sd)  return sd.toLocalDate().toString();
+        // java.sql.Date / java.sql.Timestamp BOTH extend java.util.Date, so order
+        // matters: the sql.Date (DATE column) → "YYYY-MM-DD"; sql.Timestamp and a
+        // plain util.Date carry a wall clock → "YYYY-MM-DDTHH:MM:SS" (no Z; a tz
+        // column is handled by the OffsetDateTime branch above). The JVM default
+        // zone is pinned to UTC by QueryScenarioTests so the wall clock is the UTC
+        // wall clock the cross-port fixtures expect.
+        if (v instanceof java.sql.Date sd)  return sd.toLocalDate().format(DATE_FMT);
+        if (v instanceof Timestamp ts) return ts.toLocalDateTime().format(TIMESTAMP_FMT);
+        if (v instanceof java.util.Date d) {
+            // OMDB's DateField codec stores a DATE column as a midnight-anchored
+            // java.util.Date; render the calendar date (UTC) per the DATE wire rule.
+            return DATE_FMT.format(d.toInstant().atZone(ZoneOffset.UTC));
+        }
         if (v instanceof CharSequence) return v.toString();
         if (v instanceof Map<?, ?> m) {
             TreeMap<String, Object> sorted = new TreeMap<>();

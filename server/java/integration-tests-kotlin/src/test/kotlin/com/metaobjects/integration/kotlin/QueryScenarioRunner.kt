@@ -7,6 +7,7 @@ import com.metaobjects.integration.kotlin.tables.AssetTable
 import com.metaobjects.integration.kotlin.tables.MeasurementTable
 import com.metaobjects.integration.kotlin.tables.ProgramStatView
 import com.metaobjects.integration.kotlin.tables.ProgramTable
+import com.metaobjects.integration.kotlin.tables.ProgramView
 import com.metaobjects.integration.kotlin.tables.WeekTable
 import org.jetbrains.exposed.sql.AndOp
 import org.jetbrains.exposed.sql.Column
@@ -25,7 +26,6 @@ import java.sql.DriverManager
 import java.sql.Timestamp
 import java.time.Instant
 import java.time.LocalDateTime
-import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -122,6 +122,7 @@ object QueryScenarioRunner {
         "Week" -> WeekTable
         "Measurement" -> MeasurementTable
         "ProgramStat" -> ProgramStatView
+        "ProgramView" -> ProgramView
         "Asset" -> AssetTable
         else -> error("No Exposed Table registered for entity '$entity' — extend QueryScenarioRunner.tableFor")
     }
@@ -279,16 +280,24 @@ object QueryScenarioRunner {
         val out = LinkedHashMap<String, Any?>(table.columns.size)
         for (col in table.columns) {
             var v: Any? = row[col]
-            // Exposed surfaces `timestamp` as java.time.Instant; the normalization
-            // contract emits TIMESTAMP (no TZ) as `yyyy-MM-ddTHH:mm:ss`. Convert
-            // to LocalDateTime in UTC so Normalization formats it correctly.
+            // Temporal columns must preserve their TZ-discriminator all the way to
+            // Normalization, which emits the TIMESTAMPTZ `…Z` suffix iff the value is an
+            // OffsetDateTime (re-anchored to UTC there) and NO suffix for a plain TIMESTAMP
+            // (LocalDateTime). See fixtures/persistence-conformance/normalization.md.
+            //
+            //  - `timestamp with time zone` (TIMESTAMPTZ) → java.time.OffsetDateTime: pass
+            //    through UNCHANGED. Normalization re-anchors to UTC and appends `Z`, so a
+            //    non-UTC stored offset (e.g. -05:00) reads back canonically as the UTC instant.
+            //  - plain `timestamp` (no tz) → java.time.LocalDateTime: pass through unchanged
+            //    (Normalization formats it with no `Z`).
+            //  - `date` → java.time.LocalDate, `time` → java.time.LocalTime: pass through; the
+            //    DATE / TIME normalization branches handle them.
+            //
+            // (The legacy JDBC Instant/Timestamp shapes are still bridged for any driver path
+            // that surfaces them; OffsetDateTime is deliberately NOT collapsed to LocalDateTime
+            // anymore — doing so destroyed the TZ discriminator.)
             if (v is Instant) v = LocalDateTime.ofInstant(v, ZoneOffset.UTC)
             if (v is Timestamp) v = v.toLocalDateTime()
-            // `timestamp with time zone` surfaces as OffsetDateTime — re-anchor to UTC
-            // and drop the offset so the no-TZ normalization formatter applies (the
-            // corpus seeds exact-UTC instants so this is lossless; see the scenario's
-            // TIMESTAMPTZ normalization note).
-            if (v is OffsetDateTime) v = v.atZoneSameInstant(ZoneOffset.UTC).toLocalDateTime()
             // `@dbColumnType:jsonb` open-JSON column round-trips as a raw JSON String
             // (identity decode). Parse it to a Map so Normalization sorts the keys and
             // the `expect` block (a YAML object) compares byte-equal. Detected by the

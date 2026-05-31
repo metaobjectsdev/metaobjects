@@ -286,6 +286,7 @@ function sqliteType(t: SqlType, identity: ColumnDescriptor["identity"]): string 
     case "boolean":   return "BOOLEAN";        // SQLite stores as 0/1 but preserves declared type for round-trip
     case "timestamp": return "TIMESTAMP";
     case "date":      return "DATE";
+    case "time":      return "TIME";
     case "json":      return "TEXT";          // SQLite has JSON1 but stores as text
     case "blob":      return "BLOB";
     case "uuid":      return "TEXT";

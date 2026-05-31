@@ -15,7 +15,9 @@
 using System.Text;
 using MetaObjects.Codegen.Docs;
 using MetaObjects.Meta;
+using MetaObjects.Persistence.Origin;
 using static MetaObjects.Core.Field.FieldConstants;
+using static MetaObjects.Persistence.Origin.OriginConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
@@ -104,7 +106,8 @@ public sealed class EntityGenerator : IGenerator
             string? member = null;
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
             {
-                member = ScalarProperty(entity, field, pkFields, withAttributes: true, strategy);
+                member = ScalarProperty(entity, field, pkFields, withAttributes: true, strategy,
+                    AggregateResultScalar(field, ctx));
             }
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
             {
@@ -282,9 +285,10 @@ public sealed class EntityGenerator : IGenerator
     // (the jsonb column holds the list; the list itself is never null in C#).
     private static string ScalarProperty(
         MetaObject owner, MetaField field, IReadOnlyList<string> pkFields,
-        bool withAttributes, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
+        bool withAttributes, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal,
+        string? baseTypeOverride = null)
     {
-        var baseType = CSharpNaming.ScalarFor(field.SubType)!;
+        var baseType = baseTypeOverride ?? CSharpNaming.ScalarFor(field.SubType)!;
         var propName = CSharpNaming.Pascal(field.Name);
 
         // Array fields: emit List<T> with an empty-list initializer and only a [Column]
@@ -335,6 +339,27 @@ public sealed class EntityGenerator : IGenerator
         return required
             ? $"    public {typeName} {propName} {{ get; set; }} = default!;"
             : $"    public {typeName}? {propName} {{ get; set; }}";
+    }
+
+    // The CLR scalar type for a projection field whose value is a MIN/MAX aggregate:
+    // the result type of MIN(col)/MAX(col) in SQL is the aggregated column's own type,
+    // NOT the (often-widened) field.* declaration. e.g. MIN over an INTEGER column is
+    // INTEGER — so the projection property must materialize as `int`, which the read
+    // path then surfaces as a JSON number (vs. a BIGINT → string). COUNT/SUM widen to
+    // BIGINT and AVG to NUMERIC, both already matched by the declared field.* type, so
+    // only MIN/MAX need the source-type narrowing. Returns null (use the declared type)
+    // for non-aggregate fields, non-MIN/MAX aggregates, or an unresolvable @of target.
+    private static string? AggregateResultScalar(MetaField field, GenContext ctx)
+    {
+        var agg = field.Children().OfType<MetaAggregateOrigin>().FirstOrDefault();
+        if (agg?.Agg is not (AGGREGATE_FN_MIN or AGGREGATE_FN_MAX)) return null;
+        // @of is a dotted "Entity.field" reference to the aggregated column.
+        if (agg.Of is not { } of) return null;
+        var dot = of.LastIndexOf('.');
+        if (dot <= 0 || dot == of.Length - 1) return null;
+        var sourceObj = ctx.Root.FindObject(CSharpNaming.StripPkg(of[..dot]));
+        var sourceField = sourceObj?.FindField(of[(dot + 1)..]);
+        return sourceField is null ? null : CSharpNaming.ScalarFor(sourceField.SubType);
     }
 
     // Transitive closure of plain value objects reachable through entity object-fields.
