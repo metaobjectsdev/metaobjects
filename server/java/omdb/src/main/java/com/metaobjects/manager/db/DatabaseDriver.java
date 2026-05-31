@@ -15,7 +15,6 @@ import java.util.Map;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.manager.QueryOptions;
-import com.metaobjects.manager.db.defs.TableDef;
 import com.metaobjects.manager.exp.Expression;
 
 /**
@@ -29,20 +28,6 @@ public interface DatabaseDriver
   //public final static int AUTO_POST    = ObjectManager.AUTO_POST;
 
   public void setManager( ObjectManagerDB man );
-
-  /**
-   * Checks for the existence of the table 
-   * @param c	Database connection to use
-   * @param table	Table Definition	
-   * @return Whether the table exists
-   * @throws SQLException If an invalid table structure exists in the DB
-   */
-  public boolean checkTable( Connection c, TableDef table ) throws SQLException;
-
-  /**
-   * Deletes a table from the database
-   */
-  public void deleteTable( Connection c, TableDef tableDef ) throws SQLException;
 
   /**
    * Creates the specified object

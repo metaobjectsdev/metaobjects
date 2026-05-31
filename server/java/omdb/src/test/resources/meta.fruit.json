@@ -46,7 +46,6 @@
           "name": "FullBasketView",
           "extends": "container::Basket",
           "@object": "com.metaobjects.object.value.ValueObject",
-          "@dbViewSQL": "SELECT B.* FROM BASKET B WHERE b.apples+b.oranges > 10",
           "children": [
             {
               "source.rdb": {
