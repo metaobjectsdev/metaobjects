@@ -203,7 +203,7 @@ that ledger is loader-corpus only.
 
 Two further corpora cover the **runtime** tier and are exercised by **all five ports, including Kotlin**, on demand against Testcontainers Postgres via `scripts/integration-test.sh` (these are **not** in the default `test` path for the JVM/.NET ports — see the hardening review):
 
-- **`fixtures/persistence-conformance/`** — live DDL + CRUD / filter / projection round-trips.
+- **`fixtures/persistence-conformance/`** — CRUD / filter / projection round-trips. The **query** scenarios run on every port; each port provisions its test DB by **executing the committed, TS-produced `canonical/schema.postgres.sql`** (no port synthesizes schema) and then exercises its runtime data-access layer. Per ADR-0015 schema migrations are TS-owned, so the **migration** scenarios are run by **TS only**, and the cross-port query corpus is **Postgres-only** (Derby was dropped for it).
 - **`fixtures/api-contract-conformance/`** — emitted CRUD routes answered over real HTTP (URL grammar + wire format).
 
 A `fixtures/render-conformance/template-generator/` sub-corpus additionally exercises the codegen *walk* (file-per-entity inventory + render) in TS, C#, Java, and Python.

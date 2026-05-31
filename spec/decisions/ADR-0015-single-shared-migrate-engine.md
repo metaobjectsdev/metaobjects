@@ -211,12 +211,25 @@ final step of each port's cutover. Inventory (as of 2026-05-30):
 ## Realization status
 
 - **Decided:** the strategy above.
-- **Pending (staged consolidation plan):** the **homegrown apply + journal/history runner** for
+- **Implemented (2026-05-30) — the schema-authority consolidation** (per the
+  `docs/superpowers/specs/2026-05-30-ts-schema-authority-consolidation-design.md` phasing): **TS is
+  the single owner of schema migrations and the single producer of the canonical conformance DDL**
+  (`fixtures/persistence-conformance/canonical/schema.postgres.sql`, drift-checked). Every port's
+  persistence-conformance **query** runner now executes that committed DDL instead of synthesizing
+  schema; the **C# migrate engine** (`MetaObjects.Codegen/Migrate` + `Schema`, the `migrate` /
+  `--from-db` CLI), the **Python** `metaobjects/migrate` engine, and the **Kotlin**
+  `ExposedMigrationEngine` migration-conformance scaffolding were **deleted**. Java's engine was
+  already gone; per **Decision 2** Java's OMDB runtime schema **auto-create** path
+  (`MetaClassDBValidatorService` + the drivers' `createTable`/`createIndex`/`createForeignKey`/
+  `createSequence` DDL) was **also removed** — OMDB is now pure data-access. Migration-conformance
+  scenarios are **TS-only**; query + api-contract conformance still run on every port. Kept per-port:
+  codegen, loader, runtime data-access (EF Core / SQLAlchemy-ObjectManager / OMDB CRUD / Exposed),
+  render, verify.
+- **Pending (the broader shared-engine plan):** the **homegrown apply + journal/history runner** for
   Postgres/SQLite (net-new — only D1/Wrangler + the harness apply today); the runner output-format
-  adapters (Flyway-prefix / two-file / single-file-divider); the `bun --compile` binary; the
-  migrate-conformance / runtime-conformance corpus split; per-port cutover onto the shared engine;
-  retiring the legacy engines. `field.uuid` / `@dbColumnType` (R6 Plan 2) implemented in the shared
-  engine + the per-port logical/codegen parts.
+  adapters (Flyway-prefix / two-file / single-file-divider); the `bun --compile` binary; per-port
+  *build-tool* cutover onto the shared engine (fetch-and-wrap); `field.uuid` / `@dbColumnType`
+  (R6 Plan 2) in the shared engine + the per-port logical/codegen parts.
 
 ## Conformance note
 

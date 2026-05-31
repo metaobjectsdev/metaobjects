@@ -17,22 +17,22 @@ Equal weight — all four ship per-language today across the five ports (TS / C#
 
 ## Status
 
-_Last refreshed 2026-05-27._
+_Last refreshed 2026-05-30._
 
 **TypeScript reference implementation** is **published to npm at `0.7.0-rc.2`** (`@metaobjectsdev/*` packages, 12 packages on the `latest` tag). 2500+ tests passing across the workspace.
 
 **All five ports ship loader + canonical serializer + conformance + codegen + render + payload-VO + `verify`:**
 
 - **TypeScript** — `codegen-ts` (Vite-style plugins; Drizzle, Zod, Fastify) + `runtime-ts` + `migrate-ts` + the universal web client packages (`runtime-web`, `react`, `tanstack`).
-- **C#** — `MetaObjects` (loader + canonical serializer + conformance) + `MetaObjects.Render` (Mustache + payload-VO + `verify`) + `MetaObjects.Codegen` (EF Core entities + `AppDbContext` + CRUD minimal-API routes + Postgres DDL via full-CREATE and incremental introspect/diff/migrate). The `meta` CLI (`verify`/`gen`/`migrate`/`--from-db`) is the entry point.
-- **Java** — `metadata` + `omdb` + `om` + `dynamic` + `core-spring` + `metadata-ktx` (Kotlin facade) + `codegen-spring` (Spring controllers + DTOs + repositories + filter allowlists + payload records + output parsers) + `codegen-mustache` + `codegen-plantuml` + `render` + `maven-plugin` (`meta:gen`/`meta:editor`). FR-003 (OMDB runtime persistence + binding registry + typed jsonb + Spring-tx + source/origin metamodel) fully shipped, including Plan 4 (engine-debt remediation: atomic mapping cache, JDBC codec registry, `inTransaction` template). **Schema migrations are owned by the TypeScript toolchain** (`@metaobjectsdev/cli migrate`); the Java port's diff-and-converge migration engine and its `meta:migrate` / live-DB-drift `meta:verify` Maven goals were removed — OMDB retains runtime persistence + a dev/test runtime auto-create path (`MetaClassDBValidatorService` + the drivers' legacy `createTable` DDL) only.
-- **Python** — `metaobjects` (loader + canonical serializer + conformance + render + verify + codegen) + `migrate` + an `ObjectManager` runtime layer. All five conformance corpora green.
+- **C#** — `MetaObjects` (loader + canonical serializer + conformance) + `MetaObjects.Render` (Mustache + payload-VO + `verify`) + `MetaObjects.Codegen` (EF Core entities + `AppDbContext` + CRUD minimal-API routes). Schema migrations are TS-owned (ADR-0015): the C# migrate engine and the `migrate`/`--from-db` CLI surface were removed; the C# `meta` CLI is `verify`/`gen` only. EF Core runtime data-access stays per-port.
+- **Java** — `metadata` + `omdb` + `om` + `dynamic` + `core-spring` + `metadata-ktx` (Kotlin facade) + `codegen-spring` (Spring controllers + DTOs + repositories + filter allowlists + payload records + output parsers) + `codegen-mustache` + `codegen-plantuml` + `render` + `maven-plugin` (`meta:gen`/`meta:editor`). FR-003 (OMDB runtime persistence + binding registry + typed jsonb + Spring-tx + source/origin metamodel) fully shipped, including Plan 4 (engine-debt remediation: atomic mapping cache, JDBC codec registry, `inTransaction` template). **Schema migrations are owned by the TypeScript toolchain** (`@metaobjectsdev/cli migrate`); the Java port's diff-and-converge migration engine and its `meta:migrate` / live-DB-drift `meta:verify` Maven goals were removed, and per ADR-0015 Decision 2 the dev/test runtime auto-create path (`MetaClassDBValidatorService` + the drivers' `createTable`/`createIndex`/`createForeignKey`/`createSequence` DDL) is **also** removed — **OMDB is pure data-access** (CRUD/query/codec/transactions only).
+- **Python** — `metaobjects` (loader + canonical serializer + conformance + render + verify + codegen) + an `ObjectManager` runtime layer. The `migrate` module was removed (schema is TS-owned, ADR-0015); Python is pure data-access (codegen + ObjectManager runtime). All five conformance corpora green.
 - **Kotlin** — `codegen-kotlin` (KotlinPoet on JVM): entity + Exposed table + Spring controller + payload + relations + filter allowlist + validator + stored-proc + output-parser generators. `integration-tests-kotlin` runs the persistence-conformance corpus through Exposed against Testcontainers Postgres.
 
 **Cross-port conformance corpora** (every port runs the shared corpus):
 - Metamodel: `fixtures/conformance/` (~90 fixtures). TS / C# / Java / Python all green.
 - Render: `fixtures/render-conformance/`. TS / C# / Java / Kotlin / Python byte-identical.
-- Persistence: `fixtures/persistence-conformance/`. TS / C# / Java / Kotlin / Python all 12/12 against Testcontainers Postgres / Derby.
+- Persistence: `fixtures/persistence-conformance/`. **Query** scenarios run on every port (TS / C# / Java / Kotlin / Python), each provisioning its test DB by executing the committed, TS-produced `canonical/schema.postgres.sql` (Postgres only — Derby dropped for the cross-port query corpus, ADR-0015). The **migration** scenarios are exercised by **TS only** (TS owns schema migrations).
 - API-contract: `fixtures/api-contract-conformance/`. TS / C# / Java / Kotlin / Python all 20/20.
 - YAML / verify corpora green across the ports that ship those layers.
 

@@ -72,11 +72,11 @@ Decisions (locked 2026-05-30):
 - **No wire-format impact.**
 
 ## Sequencing (phases — each independently shippable)
-- **Phase 1 — Java engine removal** (DONE, parked on `omdb-migration-removal`): finalize + merge as the first step.
-- **Phase 2 — TS schema commands:** `meta verify --db` drift gate (+ view-body drift detection) AND `meta migrate --apply` for postgres/sqlite (versioned apply of pending committed migration files, tracked by a migration-history ledger, transactional; reusing `--dry-run`/`--allow`); + tests. (The standalone-binary packaging can land here or in its own phase.) Note: this is more than a thin wrapper — the ledger + apply-pending-in-order is Flyway-shaped work.
-- **Phase 3 — corpus schema-DDL artifact:** TS generator + committed `schema.<dialect>.sql` + regenerate/drift-check; rewire the **Java + Kotlin** runners to consume it (the JVM side first, since Java's harness currently leans on the kept validator).
-- **Phase 4 — rewire TS/C#/Python runners** to the committed DDL; **remove the C#/Python/Kotlin migration engines**; remove Java's runtime auto-create (validator + legacy DDL) if the "fully pure" decision holds.
-- **Phase 5 — migration conformance → TS-only; docs/spec/README/memories.**
+- **Phase 1 — Java engine removal** (**DONE**, merged): the diff-and-converge engine + `meta:migrate`/`meta:verify` mojos + `render(Change)` were removed.
+- **Phase 2 — TS schema commands:** `meta verify --db` drift gate (+ view-body drift detection) AND `meta migrate --apply` for postgres/sqlite (versioned apply of pending committed migration files, tracked by a migration-history ledger, transactional; reusing `--dry-run`/`--allow`); + tests. (The standalone-binary packaging can land here or in its own phase.) Note: this is more than a thin wrapper — the ledger + apply-pending-in-order is Flyway-shaped work. **Status: still pending** (the apply runner + drift gate are net-new TS work, not part of the schema-authority consolidation that just landed).
+- **Phase 3 — corpus schema-DDL artifact** (**IMPLEMENTED 2026-05-30**): TS generator (`gen:schema` in `server/typescript/packages/integration-tests`) + committed `canonical/schema.postgres.sql` + drift-check (`schema-artifact.test.ts`); the **Java + Kotlin** query runners now consume it.
+- **Phase 4 — rewire TS/C#/Python runners** (**IMPLEMENTED 2026-05-30**): all five ports' query runners execute the committed DDL; the **C# / Python migration engines** and the **Kotlin** Exposed-migration scaffolding were removed; per Decision 2 (the "fully pure" choice held) Java's runtime auto-create (validator + legacy DDL) was also removed — OMDB is pure data-access.
+- **Phase 5 — migration conformance → TS-only; docs/spec/README/memories** (**IMPLEMENTED 2026-05-30**): migration scenarios run only in TS; `spec/conformance-tests.md`, the corpus README, `CLAUDE.md`, and this design's status were updated.
 
 Each phase ends with the standard gate (suite green → code-reviewer + code-simplifier → merge forward).
 
