@@ -28,26 +28,4 @@ object Scenarios {
         val seedData: String? = null,
         val queries: List<QuerySpec>,
     )
-
-    data class BlockedChange(val kind: String, val reasonContains: String)
-
-    data class ApplyUpThenQuery(val sql: String, val rows: List<Map<String, Any?>>)
-
-    data class MigrationExpect(
-        val blocked: List<BlockedChange> = emptyList(),
-        val upContains: List<String> = emptyList(),
-        val upEmpty: Boolean? = null,
-        val applyUpThenQuery: ApplyUpThenQuery? = null,
-    )
-
-    data class MigrationScenario(
-        val name: String,
-        val description: String,
-        val sourcePath: String,
-        val seedMetadataDir: String? = null,
-        val seedData: String? = null,
-        val targetMetadataDir: String? = null,
-        val targetMetadataInline: String? = null,
-        val expect: MigrationExpect,
-    )
 }
