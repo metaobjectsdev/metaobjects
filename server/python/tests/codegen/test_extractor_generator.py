@@ -104,6 +104,11 @@ def _order_root() -> MetaRoot:
                 fc.FIELD_SUBTYPE_STRING,
                 **{fc.FIELD_ATTR_REQUIRED: True, KEY_IS_ARRAY: True},
             ),
+            _field(
+                "scores",
+                fc.FIELD_SUBTYPE_INT,
+                **{fc.FIELD_ATTR_REQUIRED: True, KEY_IS_ARRAY: True},
+            ),
             _field("note", fc.FIELD_SUBTYPE_STRING),  # optional scalar
             _field(
                 "ship_to",
@@ -231,7 +236,8 @@ def test_extract_recovers_dirty_into_strict_payload(tmp_path, monkeypatch) -> No
         "Sure, here you go!\n```json\n"
         '{ "customer": {"name": "Ada"}, '
         '"lines": [{"sku":"A","qty":2},{"sku":"B","qty":1}], '
-        '"tags": ["x","y"] }\n```'
+        '"tags": ["x","y"], '
+        '"scores": [3, 7] }\n```'
     )
     order = ex.extract_order_out(root, dirty)
     # nested single populated + typed.
@@ -242,6 +248,9 @@ def test_extract_recovers_dirty_into_strict_payload(tmp_path, monkeypatch) -> No
     assert order.lines[1].qty == 1
     # scalar array → list[str], no None elements.
     assert order.tags == ["x", "y"]
+    # NON-string scalar array → list[int], coerced per-kind (cross-port parity).
+    assert order.scores == [3, 7]
+    assert all(isinstance(s, int) for s in order.scores)
     # optional nested absent → None.
     assert order.ship_to is None
 
@@ -272,6 +281,7 @@ def test_recover_reexposed_never_raises_and_no_lost_required(tmp_path, monkeypat
             "customer": {"name": "Ada"},
             "lines": [{"sku": "A", "qty": 2}],
             "tags": ["x"],
+            "scores": [3, 7],
         }
     )
     r = ex.recover_order_out(root, clean)
