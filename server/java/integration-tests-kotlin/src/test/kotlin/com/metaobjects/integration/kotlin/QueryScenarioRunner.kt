@@ -14,7 +14,6 @@ import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.Op
 import org.jetbrains.exposed.sql.Query
 import org.jetbrains.exposed.sql.ResultRow
-import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder
 import org.jetbrains.exposed.sql.IsNotNullOp
@@ -35,10 +34,18 @@ import java.util.UUID
  * JetBrains Exposed, not ObjectManagerDB:
  *
  *  1. Connect Exposed to the testcontainer's Postgres.
- *  2. `SchemaUtils.create(...)` the fitness Tables.
+ *  2. Provision the schema by executing the committed canonical DDL
+ *     (`fixtures/persistence-conformance/canonical/schema.postgres.sql`)
+ *     verbatim. Schema authority is TS-only (ADR-0015); the Kotlin port no
+ *     longer creates the schema from Exposed `Table` objects.
  *  3. Run the scenario's seed-data SQL verbatim.
  *  4. For each [QuerySpec]: dispatch to Exposed (`selectAll`/`count` + Op filter),
  *     normalize the result, compare against the scenario's `expect` block.
+ *
+ * The Exposed `Table` objects ([ProgramTable], [WeekTable], etc.) survive only
+ * as the runtime data-access mapping the query dispatcher addresses — they no
+ * longer create tables. Their column names match the canonical DDL's literal
+ * (camelCase) physical columns so the queries hit the right columns.
  *
  * Only entities exercised by the curated query-scenario subset need to be
  * dispatched in [tableFor]. New scenarios touching other entities will need
@@ -47,38 +54,37 @@ import java.util.UUID
 object QueryScenarioRunner {
 
     /**
-     * Run a single query scenario end-to-end. Schema creation is idempotent within
-     * a fresh container (one container per scenario at the JUnit level).
+     * Run a single query scenario end-to-end against a fresh container (one
+     * container per scenario at the JUnit level).
      */
     fun run(scenario: QueryScenario, pg: PostgresContainer) {
         val db = Database.connect(pg.jdbcUrl, user = pg.username, password = pg.password)
 
-        transaction(db) {
-            SchemaUtils.create(ProgramTable, WeekTable, MeasurementTable, AssetTable)
-        }
+        // 1. Provision the schema from the committed canonical DDL (base tables +
+        //    projection views). Executed verbatim on a direct JDBC connection —
+        //    schema authority is the TS-produced artifact, not Exposed.
+        val schemaDdl = ScenarioLoader.readCanonicalSchema(ScenarioLoader.findCorpusRoot())
+        execSql(pg, schemaDdl)
 
-        // 2. Seed via the YAML's raw SQL — runs outside Exposed transactions, on a
-        // direct JDBC connection, because the seed SQL is portable Postgres DDL/DML
-        // that may use double-quoted identifiers Exposed wouldn't synthesize.
-        scenario.seedData?.takeIf { it.isNotBlank() }?.let { sql ->
-            DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
-                c.createStatement().use { it.execute(sql) }
-            }
-        }
-
-        // 2b. Projection views — only created when a scenario actually touches
-        // the relevant projection entity. Cheap and explicit; avoids running
-        // view DDL on scenarios that don't need it.
-        if (scenario.queries.any { it.entity == "ProgramStat" }) {
-            DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
-                c.createStatement().use { it.execute(ProgramStatView.VIEW_DDL) }
-            }
-        }
+        // 2. Seed via the YAML's raw SQL.
+        scenario.seedData?.takeIf { it.isNotBlank() }?.let { sql -> execSql(pg, sql) }
 
         // 3. Run queries; each gets its own Exposed transaction.
         for (spec in scenario.queries) {
             val actual = transaction(db) { dispatch(spec) }
             assertResult(scenario.sourcePath, spec, actual)
+        }
+    }
+
+    /**
+     * Execute verbatim SQL on a fresh direct JDBC connection — used for both the
+     * canonical schema DDL and the scenario's seed SQL, neither of which goes
+     * through Exposed (they may use double-quoted identifiers Exposed wouldn't
+     * synthesize).
+     */
+    private fun execSql(pg: PostgresContainer, sql: String) {
+        DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
+            c.createStatement().use { it.execute(sql) }
         }
     }
 

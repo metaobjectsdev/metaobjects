@@ -13,7 +13,7 @@ import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.QueryOptions;
 import com.metaobjects.manager.db.ObjectManagerDB;
 import com.metaobjects.manager.db.driver.DerbyDriver;
-import com.metaobjects.manager.db.validator.MetaClassDBValidatorService;
+import com.metaobjects.manager.db.test.CodecSchema;
 import com.metaobjects.field.TimeField;
 import com.metaobjects.manager.exp.Expression;
 import com.metaobjects.object.MetaObject;
@@ -68,11 +68,8 @@ public class JdbcCodecRoundTripTest {
         omdb.setDataSource(ds);
         omdb.init();
 
-        MetaClassDBValidatorService vs = new MetaClassDBValidatorService();
-        vs.setObjectManager(omdb);
-        vs.setAutoCreate(true);
-        vs.setMetaDataLoaderRegistry(registry);
-        vs.init();
+        // Schema is external/explicit (ADR-0015): create CODEC_SAMPLE via literal DDL.
+        CodecSchema.create(JdbcCodecRoundTripTest::getConnection);
     }
 
     private static Connection getConnection() throws SQLException {

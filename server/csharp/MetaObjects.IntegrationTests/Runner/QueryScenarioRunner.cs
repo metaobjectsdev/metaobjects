@@ -1,17 +1,22 @@
 // QueryScenarioRunner — executes a QueryScenario end-to-end:
 //
 //   1. Spin up a Postgres testcontainer.
-//   2. Apply the canonical schema (CREATE TABLE/VIEW etc.) — same chain as `meta migrate`.
+//   2. Provision the schema by executing the committed canonical schema DDL
+//      (fixtures/persistence-conformance/canonical/schema.postgres.sql) verbatim.
 //   3. Execute the scenario's seed-data SQL.
 //   4. Open an AppDbContext pointed at the container.
 //   5. For each QuerySpec: translate via DbContextAdapter, normalize the result,
 //      compare against the scenario's `expect:` block.
+//
+// C# no longer synthesizes the query-scenario schema from metadata — TypeScript
+// is the single PRODUCER of one committed DDL artifact (drift-checked on the TS
+// side) that every port executes verbatim. The committed DDL uses literal column
+// names; the generated AppDbContext entities map to those exact names via
+// [Column(...)], so the EF Core runtime addresses the schema's columns directly.
+// See docs/superpowers/specs/2026-05-30-ts-schema-authority-consolidation-design.md.
 
 using System.Text.Json.Nodes;
-using MetaObjects.Codegen.Migrate;
-using MetaObjects.Codegen.Schema;
 using MetaObjects.IntegrationTests.Generated;
-using MetaObjects.Loader;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Xunit.Sdk;
@@ -20,10 +25,11 @@ namespace MetaObjects.IntegrationTests.Runner;
 
 public static class QueryScenarioRunner
 {
-    public static async Task RunAsync(QueryScenario scenario, PostgresContainer pg, string canonicalMetadataDir)
+    public static async Task RunAsync(QueryScenario scenario, PostgresContainer pg)
     {
-        // Apply the canonical schema (engine full-CREATE via diff-against-empty).
-        await ApplyCanonicalSchemaAsync(pg.ConnectionString, canonicalMetadataDir);
+        // Provision the schema from the committed canonical DDL — the single
+        // TS-produced artifact every port executes. (No per-scenario synthesis.)
+        await ExecuteAsync(pg.ConnectionString, ReadCanonicalSchemaSql());
 
         // Optional seed data.
         if (!string.IsNullOrWhiteSpace(scenario.SeedData))
@@ -42,26 +48,15 @@ public static class QueryScenarioRunner
         }
     }
 
-    private static async Task ApplyCanonicalSchemaAsync(string connString, string canonicalDir)
+    /// <summary>Read the committed canonical Postgres schema artifact (TS-produced).</summary>
+    private static string ReadCanonicalSchemaSql()
     {
-        var load = MetaDataLoader.FromDirectory(canonicalDir);
-        if (load.Errors.Count > 0)
+        var path = CorpusPaths.CanonicalSchemaSql;
+        if (!File.Exists(path))
             throw new InvalidOperationException(
-                $"canonical metadata at {canonicalDir} did not load cleanly: " +
-                string.Join("; ", load.Errors.Select(e => $"{e.Code}: {e.Message}")));
-
-        // Tables via the engine path; views + enum CHECK + comments via the tail helpers.
-        var diff = SchemaDiff.Diff(ExpectedSchema.Build(load.Root), new SchemaSnapshot([]));
-        var tableDdl = PostgresEmit.Render(diff.Changes).Up;
-        await ExecuteAsync(connString, tableDdl);
-
-        foreach (var stmt in PostgresSchema.EnumCheckConstraints(load.Root))
-            await ExecuteAsync(connString, stmt);
-        foreach (var stmt in PostgresSchema.TableAndColumnComments(load.Root))
-            await ExecuteAsync(connString, stmt);
-        foreach (var p in load.Root.Objects().Where(o => o.IsReadOnlyProjection())
-                                   .OrderBy(o => o.Name, StringComparer.Ordinal))
-            await ExecuteAsync(connString, PostgresSchema.CreateView(p, load.Root, _ => { }));
+                $"canonical schema artifact not found at {path}; it is produced by the " +
+                "TypeScript conformance tooling and committed to the corpus.");
+        return File.ReadAllText(path);
     }
 
     private static async Task ExecuteAsync(string connString, string sql)

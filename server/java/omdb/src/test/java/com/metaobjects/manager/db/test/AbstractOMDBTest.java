@@ -14,7 +14,6 @@ import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.db.ObjectManagerDB;
 import com.metaobjects.manager.db.driver.DerbyDriver;
-import com.metaobjects.manager.db.validator.MetaClassDBValidatorService;
 import com.metaobjects.registry.MetaDataLoaderRegistry;
 import com.metaobjects.registry.ServiceRegistryFactory;
 import org.junit.After;
@@ -116,13 +115,31 @@ public class AbstractOMDBTest {
             omdb.setDataSource( ds );
             omdb.init();
 
-            // Create the Tables
-            MetaClassDBValidatorService vs = new MetaClassDBValidatorService();
-            vs.setObjectManager( omdb );
-            vs.setAutoCreate( true );
-            vs.setMetaDataLoaderRegistry( registry );  // Use our specific registry
-            vs.init();
-        }        
+            // Schema is external/explicit now (no runtime auto-create): create the
+            // BASKET table + the FULL_BASKET_VIEW projection from meta.fruit.json
+            // via literal Derby DDL. The PK uses Derby's GENERATED ALWAYS AS IDENTITY
+            // to mirror the @generation:"increment" identity the metadata declares.
+            createSchema(
+                "CREATE TABLE BASKET (\n"
+                    + "  id BIGINT GENERATED ALWAYS AS IDENTITY CONSTRAINT BASKET_id_PK PRIMARY KEY,\n"
+                    + "  apples INTEGER NOT NULL,\n"
+                    + "  oranges INTEGER NOT NULL\n"
+                    + ")",
+                "CREATE VIEW FULL_BASKET_VIEW AS "
+                    + "SELECT B.* FROM BASKET B WHERE b.apples+b.oranges > 10");
+        }
+    }
+
+    /**
+     * Executes one or more literal DDL statements against the test database to
+     * stand up the schema a test needs. Schema is external/explicit (ADR-0015):
+     * OMDB is pure data-access and no longer auto-creates tables from metadata,
+     * so each test bootstraps its own schema with verbatim {@code CREATE} SQL.
+     */
+    protected static void createSchema( String... ddl ) throws SQLException {
+        for ( String stmt : ddl ) {
+            executeSql( stmt );
+        }
     }
     
     /** Returns a new database Connection for the Derby test database */

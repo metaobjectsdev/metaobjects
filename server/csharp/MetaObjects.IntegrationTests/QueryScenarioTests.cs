@@ -14,7 +14,7 @@ public sealed class QueryScenarioTests
     {
         var scenario = ScenarioLoader.LoadQuery(scenarioPath);
         await using var pg = await PostgresContainer.StartAsync();
-        await QueryScenarioRunner.RunAsync(scenario, pg, CorpusPaths.CanonicalDir);
+        await QueryScenarioRunner.RunAsync(scenario, pg);
     }
 
     public static IEnumerable<object[]> Scenarios() =>

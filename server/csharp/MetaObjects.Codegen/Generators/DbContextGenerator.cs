@@ -136,13 +136,14 @@ public sealed class DbContextGenerator : IGenerator
 
     // Owned-type config for an object-typed entity field. @storage flattened maps each
     // nested scalar to "{parentCol}_{nestedCol}"; every other storage collapses to one
-    // json column (.ToJson) — matching PostgresSchema's table DDL. null (with a warning)
+    // json column (.ToJson) — matching the TS-owned schema DDL. null (with a warning)
     // when @objectRef can't be resolved.
     //
     // KNOWN GAP: a @required non-flattened object field gets a NOT NULL jsonb column in
-    // PostgresSchema's DDL, but .ToJson here does not mark the owned navigation required,
-    // so EF models it nullable — a gen↔migrate nullability mismatch. Deferred until the
-    // exact EF Core required-owned-JSON mapping can be validated against a live provider.
+    // the TS-owned schema DDL, but .ToJson here does not mark the owned navigation
+    // required, so EF models it nullable — a gen↔schema nullability mismatch. Deferred
+    // until the exact EF Core required-owned-JSON mapping can be validated against a
+    // live provider.
     private string? OwnedTypeConfig(MetaObject entity, MetaField field, GenContext ctx)
     {
         if (field.ObjectRef is not { } oref || ctx.Root.FindObject(CSharpNaming.StripPkg(oref)) is not { } vo)

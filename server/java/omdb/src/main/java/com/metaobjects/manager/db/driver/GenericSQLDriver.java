@@ -41,11 +41,8 @@ import com.metaobjects.manager.db.SubSelectValue;
 import com.metaobjects.manager.db.defs.BaseDef;
 import com.metaobjects.manager.db.defs.BaseTableDef;
 import com.metaobjects.manager.db.defs.ColumnDef;
-import com.metaobjects.manager.db.defs.ForeignKeyDef;
-import com.metaobjects.manager.db.defs.IndexDef;
 import com.metaobjects.manager.db.defs.InheritenceDef;
 import com.metaobjects.manager.db.defs.NameDef;
-import com.metaobjects.manager.db.defs.SequenceDef;
 import com.metaobjects.manager.db.defs.TableDef;
 import com.metaobjects.manager.db.defs.ViewDef;
 import com.metaobjects.manager.exp.Expression;
@@ -287,12 +284,11 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
-     * Checks for the existence of the base table and optionally creates it if
-     * it doesn't exist
+     * Checks for the existence of the base table or view. This method only
+     * verifies existence; it does not create anything.
      *
      * @param c Database connection to use
      * @param baseTable Base Table Definition (Table or View)
-     * @param autoCreate Whether to auto create the table or view
      * @return Whether the table or view exists
      * @throws SQLException Exception if it exists in an invalid format
      */
@@ -414,15 +410,6 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
-     * Creates a table in the database
-     */
-    @Override
-    public void createTable(Connection c, TableDef tableDef)
-            throws SQLException {
-        throw new UnsupportedOperationException("CREATE TABLE NOT IMPLEMENTED!");
-    }
-
-    /**
      * Deletes a table from the database
      */
     @Override
@@ -462,32 +449,6 @@ public class GenericSQLDriver implements DatabaseDriver {
             }
     }
 
-
-    /**
-     * Creates the sequence in the database
-     */
-    public void createSequence(Connection c, SequenceDef sequenceDef)
-            throws SQLException {
-        throw new UnsupportedOperationException(
-                "CREATE SEQUENCE NOT IMPLEMENTED!");
-    }
-
-    /**
-     * Creates the index in the database
-     */
-    public void createIndex(Connection c, IndexDef indexDef)
-            throws SQLException {
-        // Do Nothing
-    }
-
-    /**
-     * Creates the foreign keys for the table in the database
-     */
-    @Override
-    public void createForeignKey(Connection c, ForeignKeyDef foreignKeyDef)
-            throws SQLException {
-        // DO Nothing
-    }
 
     /**
      * Returns the proper name of the table or view

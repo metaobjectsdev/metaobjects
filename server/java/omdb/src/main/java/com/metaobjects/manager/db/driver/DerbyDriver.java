@@ -10,8 +10,6 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Types;
-import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,9 +17,6 @@ import org.slf4j.LoggerFactory;
 import com.metaobjects.MetaDataException;
 
 import com.metaobjects.manager.db.defs.ColumnDef;
-import com.metaobjects.manager.db.defs.ForeignKeyDef;
-import com.metaobjects.manager.db.defs.IndexDef;
-import com.metaobjects.manager.db.defs.SequenceDef;
 import com.metaobjects.manager.db.defs.TableDef;
 import com.metaobjects.manager.db.defs.ViewDef;
 import com.metaobjects.manager.exp.Range;
@@ -48,115 +43,6 @@ public class DerbyDriver extends GenericSQLDriver {
     
     public DerbyDriver() {
         super();
-    }
-
-    /**
-     * Creates a table in the Derby database with modern features
-     */
-    @Override
-    public void createTable(Connection c, TableDef table) throws SQLException {
-        StringBuilder query = new StringBuilder();
-        
-        try {
-            query.append("CREATE TABLE ")
-                 .append(getProperName(table.getNameDef()))
-                 .append(" (\n");
-
-            List<ColumnDef> cols = table.getColumns();
-            int keys = table.getPrimaryKeys().size();
-            boolean hasIdentity = false;
-
-            // Create columns with Derby-specific optimizations
-            for (int i = 0; i < cols.size(); i++) {
-                ColumnDef col = cols.get(i);
-                String name = col.getName();
-                
-                if (name == null) continue;
-                
-                if (i > 0) query.append(",\n");
-                
-                query.append("  ").append(name).append(" ");
-
-                // R6 Plan 2a/2b: physical column-type hint. Derby has no native
-                // uuid/jsonb/timestamptz, so map to portable fallbacks (the hint
-                // still records intent; Postgres is the dialect with native types).
-                String hint = col.getDbColumnType();
-                if (hint != null) {
-                    query.append(derbyNativeColumnType(hint));
-                } else {
-                    // Derby-specific type mapping
-                    switch (col.getSQLType()) {
-                        case Types.BOOLEAN, Types.BIT -> query.append("BOOLEAN");
-                        case Types.TINYINT, Types.SMALLINT -> query.append("SMALLINT");
-                        case Types.INTEGER -> query.append("INTEGER");
-                        case Types.BIGINT -> query.append("BIGINT");
-                        case Types.FLOAT -> query.append("REAL");
-                        case Types.DOUBLE -> query.append("DOUBLE");
-                        case Types.TIMESTAMP -> query.append("TIMESTAMP");
-                        case Types.TIME -> query.append("TIME");
-                        case Types.VARCHAR -> {
-                            if (col.getLength() > 32700) {
-                                query.append("CLOB");
-                            } else {
-                                query.append("VARCHAR(").append(col.getLength()).append(")");
-                            }
-                        }
-                        default -> throw new UnsupportedOperationException(
-                            "Derby driver does not support SQL type: " + col.getSQLType());
-                    }
-                }
-                
-                // Add IDENTITY constraint if needed
-                if (col.isAutoIncrementor()) {
-                    SequenceDef seq = col.getSequence();
-                    query.append(" GENERATED ALWAYS AS IDENTITY");
-                    if (seq != null) {
-                        query.append(" (START WITH ").append(seq.getStart())
-                             .append(", INCREMENT BY ").append(seq.getIncrement()).append(")");
-                    }
-                    hasIdentity = true;
-                }
-                
-                // Add constraints
-                if (!col.isAutoIncrementor()) {
-                    query.append(" NOT NULL");
-                }
-                
-                if (col.isPrimaryKey() && keys == 1) {
-                    query.append(" CONSTRAINT ")
-                         .append(table.getNameDef().getName()).append("_")
-                         .append(name).append("_PK PRIMARY KEY");
-                } else if (col.isUnique()) {
-                    query.append(" UNIQUE");
-                }
-            }
-            
-            // Add composite primary key if needed
-            if (keys > 1) {
-                query.append(",\n  CONSTRAINT ")
-                     .append(table.getNameDef().getName())
-                     .append("_PK PRIMARY KEY (");
-                table.getPrimaryKeys().stream()
-                    .map(ColumnDef::getName)
-                    .reduce((a, b) -> a + ", " + b)
-                    .ifPresent(query::append);
-                query.append(")");
-            }
-            
-            query.append("\n)");
-
-            if (log.isDebugEnabled()) {
-                log.debug("Creating Derby table [{}]: {}", table.getNameDef().getFullname(), query);
-            }
-
-            try (Statement s = c.createStatement()) {
-                s.execute(query.toString());
-            }
-            
-        } catch (Exception e) {
-            throw new SQLException("Failed to create Derby table [" + table.getNameDef().getFullname() + 
-                                 "] using SQL [" + query + "]: " + e.getMessage(), e);
-        }
     }
 
     /**
@@ -197,90 +83,6 @@ public class DerbyDriver extends GenericSQLDriver {
         }
     }
 
-    /**
-     * Creates a Derby sequence
-     */
-    @Override
-    public void createSequence(Connection c, SequenceDef sequence) throws SQLException {
-        String seqName = getProperName(sequence.getNameDef());
-        StringBuilder query = new StringBuilder();
-        
-        query.append("CREATE SEQUENCE ")
-             .append(seqName)
-             .append(" AS BIGINT START WITH ")
-             .append(sequence.getStart())
-             .append(" INCREMENT BY ")
-             .append(sequence.getIncrement());
-        
-        if (log.isDebugEnabled()) {
-            log.debug("Creating Derby sequence [{}]: {}", seqName, query);
-        }
-        
-        try (Statement s = c.createStatement()) {
-            s.execute(query.toString());
-        } catch (SQLException e) {
-            throw new SQLException("Failed to create Derby sequence [" + seqName + "]: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Creates a Derby index
-     */
-    @Override
-    public void createIndex(Connection c, IndexDef index) throws SQLException {
-        StringBuilder query = new StringBuilder();
-        String indexName = index.getName();
-        String tableName = getProperName(index.getTable().getNameDef());
-        
-        query.append("CREATE INDEX ")
-             .append(indexName)
-             .append(" ON ")
-             .append(tableName)
-             .append(" (");
-        
-        String columns = String.join(", ", index.getColumnNames());
-        query.append(columns).append(")");
-        
-        if (log.isDebugEnabled()) {
-            log.debug("Creating Derby index [{}]: {}", indexName, query);
-        }
-        
-        try (Statement s = c.createStatement()) {
-            s.execute(query.toString());
-        } catch (SQLException e) {
-            throw new SQLException("Failed to create Derby index [" + indexName + "]: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Creates a Derby foreign key constraint
-     */
-    @Override
-    public void createForeignKey(Connection c, ForeignKeyDef keyDef) throws SQLException {
-        StringBuilder query = new StringBuilder();
-        
-        query.append("ALTER TABLE ")
-             .append(getProperName(keyDef.getTable().getNameDef()))
-             .append(" ADD CONSTRAINT ")
-             .append(keyDef.getName())
-             .append(" FOREIGN KEY (")
-             .append(keyDef.getColumnName())
-             .append(") REFERENCES ")
-             .append(getProperName(keyDef.getRefTable().getNameDef()))
-             .append(" (")
-             .append(keyDef.getRefColumn().getName())
-             .append(")");
-        
-        if (log.isDebugEnabled()) {
-            log.debug("Creating Derby foreign key [{}]: {}", keyDef.getName(), query);
-        }
-        
-        try (Statement s = c.createStatement()) {
-            s.execute(query.toString());
-        } catch (SQLException e) {
-            throw new SQLException("Failed to create Derby foreign key [" + keyDef.getName() + "]: " + e.getMessage(), e);
-        }
-    }
     /**
      * Gets the last inserted IDENTITY value using Derby's IDENTITY_VAL_LOCAL()
      */
@@ -347,25 +149,6 @@ public class DerbyDriver extends GenericSQLDriver {
     @Override
     public String getDateFormat() {
         return "yyyy-MM-dd HH:mm:ss";
-    }
-
-    /**
-     * Map a dialect-neutral physical column-type hint (R6 Plan 2a/2b) to a
-     * portable Derby column type. Derby has no native uuid/jsonb/timestamptz:
-     * a uuid becomes {@code CHAR(36)} (canonical-string width), open JSON a
-     * {@code CLOB}, and timestamptz a plain {@code TIMESTAMP}. Postgres is the
-     * dialect that realizes these as native types (the conformance corpus runs
-     * against Postgres); Derby keeps the schema buildable for the rest of the
-     * runtime/test path.
-     */
-    private static String derbyNativeColumnType(String hint) {
-        return switch (hint) {
-            case ColumnDef.COLTYPE_UUID         -> "CHAR(36)";
-            case ColumnDef.COLTYPE_JSONB        -> "CLOB";
-            case ColumnDef.COLTYPE_TIMESTAMP_TZ -> "TIMESTAMP";
-            default -> throw new UnsupportedOperationException(
-                "Derby driver does not support column-type hint: " + hint);
-        };
     }
 
     @Override

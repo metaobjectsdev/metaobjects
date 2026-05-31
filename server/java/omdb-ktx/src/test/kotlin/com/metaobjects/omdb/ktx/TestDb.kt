@@ -4,7 +4,6 @@ import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.manager.ObjectRef
 import com.metaobjects.manager.db.ObjectManagerDB
 import com.metaobjects.manager.db.driver.DerbyDriver
-import com.metaobjects.manager.db.validator.MetaClassDBValidatorService
 import com.metaobjects.registry.MetaDataLoaderRegistry
 import com.metaobjects.registry.ServiceRegistryFactory
 import java.io.PrintWriter
@@ -16,8 +15,9 @@ import javax.sql.DataSource
 
 /**
  * Shared test fixture: spins up an in-memory Derby database, loads metadata from
- * meta.widget.json, and initialises a fully-wired [ObjectManagerDB] (tables created via
- * [MetaClassDBValidatorService]).
+ * meta.widget.json, and initialises a fully-wired [ObjectManagerDB]. Schema is
+ * external/explicit (ADR-0015): OMDB is pure data-access and no longer auto-creates
+ * tables from metadata, so the WIDGET table is created here via literal Derby DDL.
  *
  * Pattern mirrors AbstractOMDBTest in the omdb module (the proven Java test base class).
  * Call [build] once per test class (e.g. in a companion-object @BeforeAll) and [destroy]
@@ -118,12 +118,22 @@ class TestDb private constructor(
             omdb.setDataSource(ds)
             omdb.init()
 
-            // 5. Auto-create tables for all loaded metadata objects.
-            val vs = MetaClassDBValidatorService()
-            vs.setObjectManager(omdb)
-            vs.setAutoCreate(true)
-            vs.setMetaDataLoaderRegistry(registry)
-            vs.init()
+            // 5. Schema is external/explicit (ADR-0015): create the WIDGET table from
+            //    meta.widget.json via literal Derby DDL. The PK uses GENERATED ALWAYS AS
+            //    IDENTITY to mirror the @generation:"increment" identity the metadata declares.
+            DriverManager.getConnection("jdbc:derby:memory:$dbName;create=true").use { c ->
+                c.createStatement().use { s ->
+                    s.execute(
+                        """
+                        CREATE TABLE WIDGET (
+                          id BIGINT GENERATED ALWAYS AS IDENTITY CONSTRAINT WIDGET_id_PK PRIMARY KEY,
+                          name VARCHAR(255),
+                          quantity INTEGER
+                        )
+                        """.trimIndent()
+                    )
+                }
+            }
 
             return TestDb(omdb, registry, ds, dbName, loader)
         }
