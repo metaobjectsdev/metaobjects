@@ -129,6 +129,12 @@ export async function diff(
           fk, status: ALLOWED,
         });
       }
+      for (const check of table.checks) {
+        changes.push({
+          kind: "add-check", table: table.name, ...schemaSpread(table.schema),
+          check, status: ALLOWED,
+        });
+      }
     }
   }
   // Pass 1b: tables present in actual but not expected → drop-table
@@ -150,6 +156,7 @@ export async function diff(
     diffTableColumns(expectedTable, actualTable, changes);
     diffTableIndexes(expectedTable, actualTable, changes);
     diffTableForeignKeys(expectedTable, actualTable, changes);
+    diffTableChecks(expectedTable, actualTable, changes);
   }
 
   // Pass 2b: views. Identity is (schema, name). A name present on both sides
@@ -251,6 +258,32 @@ function diffTableIndexes(
   for (const [name] of actualIdx) {
     if (!expectedIdx.has(name)) {
       changes.push({ kind: "drop-index", table, ...sx, index: name, status: ALLOWED });
+    }
+  }
+}
+
+function diffTableChecks(
+  expected: TableDescriptor,
+  actual: TableDescriptor,
+  changes: Change[],
+): void {
+  const table = expected.name;
+  const sx = schemaSpread(expected.schema);
+  const expectedChk = new Map(expected.checks.map((c) => [c.name, c]));
+  const actualChk = new Map(actual.checks.map((c) => [c.name, c]));
+  for (const [name, ec] of expectedChk) {
+    const ac = actualChk.get(name);
+    if (!ac) {
+      changes.push({ kind: "add-check", table, ...sx, check: ec, status: ALLOWED });
+    } else if (ac.expression !== ec.expression) {
+      // expression change = drop + re-add (no in-place ALTER for a CHECK body)
+      changes.push({ kind: "drop-check", table, ...sx, check: name, status: ALLOWED });
+      changes.push({ kind: "add-check", table, ...sx, check: ec, status: ALLOWED });
+    }
+  }
+  for (const [name] of actualChk) {
+    if (!expectedChk.has(name)) {
+      changes.push({ kind: "drop-check", table, ...sx, check: name, status: ALLOWED });
     }
   }
 }
