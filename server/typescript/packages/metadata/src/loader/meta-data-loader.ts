@@ -17,7 +17,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults } from "./validation-passes.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
@@ -441,6 +441,12 @@ export class MetaDataLoader {
       // exactly one must carry role "primary" (ERR_SOURCE_NO_PRIMARY /
       // ERR_SOURCE_MULTIPLE_PRIMARY).
       errors.push(...validateSourceRoles(root));
+
+      // Eleventh pass: per-type @default coercibility — a field's @default value
+      // must coerce to the field's type (int/long → integer, double/float/decimal →
+      // finite number, boolean → true|false). Enum @default membership is validated
+      // by validateAttrSchema (Check 5). Cross-port parity with Java/Python/C#.
+      errors.push(...validateFieldDefaults(root));
     }
 
     // If nothing parsed successfully, synthesize an empty root so callers

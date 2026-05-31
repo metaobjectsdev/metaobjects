@@ -18,13 +18,31 @@ byte-identical to the Java port by construction.
   carries the partial result. (Decided 2026-05-29; Tier-2 idiomatic divergence
   from Java, whose records tolerate null. Classification/report is identical.)
 
-- **Bounded mapping scope (Plan KT.1 deferral):** scalar / enum (incl.
-  `@enumAlias` folding) / scalar-array fields are mapped. Nested-object and
-  object-array recover + prompt rendering are deferred — such a field is a
-  `FieldKind.STRING`/`OBJECT` placeholder mapped to `null` (with a
-  `/* FR-010: nested … deferred */` marker). The `RecoveryReport` still classifies
-  it, so nothing is silently wrong.
+- **Two recover overloads (nested gap CLOSED for recover).** The parser now emits
+  both:
+  - **Self-contained** `recover(text[, opts]): RecoveryResult<<Name>Recovered>` —
+    drives the baked `RECOVER_SCHEMA` + `RecoverMap` reads. No runtime loader needed,
+    but it does NOT populate nested-object / array-of-object components (those stay
+    `null`, with a `/* FR-010: nested recover deferred — use recover(loader, text) */`
+    marker). Kept for back-compat callers that have no `MetaDataLoader` and only need
+    the scalar/enum surface.
+  - **Runtime-delegating** `recover(loader: MetaDataLoader, text[, opts]): RecoveryResult<<Name>Recovered>`
+    — resolves this payload's `MetaObject` by its baked `PAYLOAD_FQN` from `loader` and
+    delegates to `com.metaobjects.object.recover.MetaObjectRecover` (module
+    `metaobjects-om`), which assembles the full object graph (nested objects +
+    arrays-of-objects + enum coercion + generalized `@default`) reflection-free. The
+    assembled `ValueObject` graph (a `Map<String, Any?>`) is then mapped into the typed
+    `<Name>Recovered` mirror graph by generated `from<…Recovered>(Map)` helpers. This is
+    the codegen-wrapping-runtime pattern (a generated DAO calling the runtime) and CLOSES
+    the nested gap for recover. The nested mirror types are emitted alongside the root
+    (`<NestedShort>Recovered?` single / `List<<NestedShort>Recovered>?` array).
+  - **Prompt rendering** of nested fields remains a placeholder (the recover gap is the
+    one closed here).
 
-- **Runtime classpath:** generated `recover()`/`renderFormat()` depend on
-  `com.metaobjects:metaobjects-render` (transitive via `metadata-ktx`). Consumers
-  using them must have it on the classpath — same precedent as the render engine.
+- **Runtime classpath:**
+  - Self-contained `recover(text)` / `renderFormat()` depend only on
+    `com.metaobjects:metaobjects-render` (transitive via `metadata-ktx`).
+  - Runtime-delegating `recover(loader, …)` additionally references
+    `metaobjects-om` (which transitively brings `render` + `metadata`) and
+    `com.metaobjects.loader.MetaDataLoader`. Consumers wanting nested recovery must have
+    `metaobjects-om` on the classpath.

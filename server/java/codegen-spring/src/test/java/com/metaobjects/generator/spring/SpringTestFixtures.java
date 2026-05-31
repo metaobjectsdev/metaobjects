@@ -177,6 +177,48 @@ final class SpringTestFixtures {
         }
         """;
 
+    /**
+     * Plan 2.1 nested fixture: an {@code object.value} payload with a single nested
+     * object field AND an array-of-objects field, plus a {@code template.output}
+     * (json) referencing it. Proves the runtime-delegating {@code recover(loader, text)}
+     * populates nested + array-of-object components (the historical FR-010 codegen gap).
+     * Package: {@code acme::ai}.
+     *
+     * <ul>
+     *   <li>{@code NestedAnswerPayload}: {@code title} (string, required),
+     *       {@code address} (object → {@code AddressPayload}, single),
+     *       {@code items} (object → {@code LineItemPayload}, array).</li>
+     *   <li>{@code AddressPayload}: {@code city} (string), {@code zip} (string).</li>
+     *   <li>{@code LineItemPayload}: {@code sku} (string), {@code qty} (int).</li>
+     * </ul>
+     */
+    static final String RECOVER_NESTED_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ai", "children": [
+            { "object.value": { "name": "AddressPayload", "children": [
+                { "field.string": { "name": "city" } },
+                { "field.string": { "name": "zip" } }
+            ] } },
+            { "object.value": { "name": "LineItemPayload", "children": [
+                { "field.string": { "name": "sku" } },
+                { "field.int":    { "name": "qty" } }
+            ] } },
+            { "object.value": { "name": "NestedAnswerPayload", "children": [
+                { "field.string": { "name": "title", "@required": true } },
+                { "field.object": { "name": "address", "@objectRef": "acme::ai::AddressPayload" } },
+                { "field.object": { "name": "items", "@objectRef": "acme::ai::LineItemPayload",
+                                    "isArray": true } }
+            ] } },
+            { "template.output": {
+                "name": "NestedAnswer",
+                "@payloadRef": "NestedAnswerPayload",
+                "@textRef": "ai/nested",
+                "@format": "json"
+            } }
+          ] }
+        }
+        """;
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------

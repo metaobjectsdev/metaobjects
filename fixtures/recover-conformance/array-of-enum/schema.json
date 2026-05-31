@@ -1,0 +1,5 @@
+{ "format": "JSON", "rootName": "doc", "fields": [
+  { "name": "tags", "kind": "ENUM", "required": true, "array": true,
+    "enumValues": ["LOW", "MEDIUM", "HIGH"],
+    "enumAlias": { "med": "MEDIUM" },
+    "coerceDefault": "LOW" } ] }

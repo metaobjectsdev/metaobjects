@@ -113,6 +113,7 @@ public final class ValidationPhase {
         // R1b for template.toolcall) into a single cross-port-aligned pass.
         validateRequiredAttrs(root, loader);
         validateEnumValues(root);
+        validateFieldDefaults(root);
         validateDbColumnType(root);
         validateSourceAttrs(root);
         validateOnePrimarySource(root);
@@ -397,6 +398,84 @@ public final class ValidationPhase {
             return out;
         }
         return List.of();
+    }
+
+    // =========================================================================
+    // Generalized @default per-type validation (Phase B)
+    //
+    // The @default attribute is registered on the field base (MetaField.ATTR_DEFAULT) so any
+    // field subtype may declare it. Its string value must coerce to the field's type:
+    //   - int / long / currency  → integer parse
+    //   - double / float / decimal → number parse
+    //   - boolean                → true|false (exact)
+    //   - enum                   → member of @values (handled by validateEnumFr011Attrs)
+    //   - string / date / time / others → any (no validation)
+    // A violation emits ERR_BAD_ATTR_VALUE, mirroring the enum @default membership check.
+    //
+    // Own-only: validates @default declared on THIS node (includeParentData=false), matching
+    // the @values / FR-011 own-attr passes.
+    // =========================================================================
+
+    static void validateFieldDefaults(MetaRoot root) {
+        walkFieldDefaults(root);
+    }
+
+    private static void walkFieldDefaults(MetaData node) {
+        validateFieldDefaultNode(node);
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkFieldDefaults(child);
+        }
+    }
+
+    private static void validateFieldDefaultNode(MetaData node) {
+        if (!MetaField.TYPE_FIELD.equals(node.getType())) return;
+        // Enum @default membership is validated by validateEnumFr011Attrs.
+        if (EnumField.SUBTYPE_ENUM.equals(node.getSubType())) return;
+        if (!node.hasMetaAttr(MetaField.ATTR_DEFAULT, false)) return;
+
+        String def = node.getMetaAttr(MetaField.ATTR_DEFAULT, false).getValueAsString();
+        if (def == null) return;
+
+        String subType = node.getSubType();
+        boolean ok;
+        if (IntegerField.SUBTYPE_INT.equals(subType)
+                || LongField.SUBTYPE_LONG.equals(subType)
+                || CurrencyField.SUBTYPE_CURRENCY.equals(subType)) {
+            ok = parsesAsLong(def);
+        } else if (DoubleField.SUBTYPE_DOUBLE.equals(subType)
+                || FloatField.SUBTYPE_FLOAT.equals(subType)
+                || DecimalField.SUBTYPE_DECIMAL.equals(subType)) {
+            ok = parsesAsFiniteNumber(def);
+        } else if (BooleanField.SUBTYPE_BOOLEAN.equals(subType)) {
+            ok = "true".equals(def) || "false".equals(def);
+        } else {
+            ok = true;   // string / date / time / object / others — any value allowed
+        }
+
+        if (!ok) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                    + ": field." + subType + " '" + node.getName()
+                    + "' @" + MetaField.ATTR_DEFAULT + " '" + def
+                    + "' is not coercible to the field's type",
+                ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+        }
+    }
+
+    private static boolean parsesAsLong(String s) {
+        String t = s.trim();
+        try { Long.parseLong(t); return true; }
+        catch (NumberFormatException e) {
+            // accept a finite decimal that truncates to an integer value (matches the engine's
+            // Coerce.scalar INT/LONG fallback)
+            try { return Double.isFinite(Double.parseDouble(t)); }
+            catch (NumberFormatException e2) { return false; }
+        }
+    }
+
+    private static boolean parsesAsFiniteNumber(String s) {
+        try { return Double.isFinite(Double.parseDouble(s.trim())); }
+        catch (NumberFormatException e) { return false; }
     }
 
     // =========================================================================

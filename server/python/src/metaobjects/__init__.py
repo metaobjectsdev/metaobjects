@@ -26,6 +26,14 @@ from .meta.core.object.object_class_registry import (
     ObjectFactory,
     default_object_class_registry,
 )
+from .meta.core.object.object_recover import (
+    MAX_NEST_DEPTH,
+    RecoverError,
+    assemble,
+    or_throw,
+    recover_object,
+    recover_schema_for,
+)
 from .meta.core.object.value_object import ValueObject
 
 # Module-level shortcuts: the 99% case for callers who don't need a
@@ -57,4 +65,11 @@ __all__ = [
     "ObjectClassRegistry",
     "ObjectFactory",
     "default_object_class_registry",
+    # Phase B metadata-driven recover bridge
+    "recover_object",
+    "recover_schema_for",
+    "assemble",
+    "or_throw",
+    "RecoverError",
+    "MAX_NEST_DEPTH",
 ]

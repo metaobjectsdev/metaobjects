@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.int": { "name": "priority", "@default": "abc" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

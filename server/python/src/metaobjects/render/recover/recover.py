@@ -70,13 +70,23 @@ def _extract(
         path = f.name if prefix == "" else prefix + "." + f.name
         present = _lookup(raw, f.name, ci)
         if present is None:
-            # FR-011: an absent enum with a declared @default fills the value →
-            # DEFAULTED (which satisfies a @required field).
-            if f.kind == FieldKind.ENUM and f.default_value is not None:
-                data[f.name] = f.default_value
-                report.add_coercion(Coercion(path, "", f.default_value, "default"))
-                report.set(path, FieldRecovery.DEFAULTED)
-                continue
+            # FR-011 / Phase B: an absent field with a declared @default fills the
+            # value → DEFAULTED (which satisfies a @required field). Generalized to
+            # all field kinds: an enum default is its member string verbatim; a
+            # non-enum default is coerced to the field's kind via the PURE
+            # scalar_coerce (so @default "0" on field.int yields integer 0). A
+            # non-coercible non-enum default is treated as no default.
+            if f.default_value is not None:
+                coerced = (
+                    f.default_value
+                    if f.kind == FieldKind.ENUM
+                    else _coerce.scalar_coerce(f.default_value, f)
+                )
+                if coerced is not MALFORMED:
+                    data[f.name] = coerced
+                    report.add_coercion(Coercion(path, "", f.default_value, "default"))
+                    report.set(path, FieldRecovery.DEFAULTED)
+                    continue
             report.set(
                 path,
                 FieldRecovery.LOST_REQUIRED if f.required else FieldRecovery.LOST_OPTIONAL,
@@ -91,12 +101,24 @@ def _extract(
             elements = present if isinstance(present, list) else [present]
             out: list[object] = []
             any_malformed = False
+            # Phase B (array-of-enum): an enum element flows through the SAME enum
+            # coercion pipeline a scalar enum uses (_extract_value → coerce.value →
+            # _coerce_enum) and is CLASSIFIED per element by indexed path (tags[0],
+            # tags[1], …) exactly as a scalar enum: RECOVERED / DEFAULTED (via
+            # @coerceDefault) / MALFORMED. Non-enum scalar arrays keep their existing
+            # behavior (coerced element list, no per-element states).
+            enum_elements = f.kind == FieldKind.ENUM
             for idx, el in enumerate(elements):
-                v = _extract_value(f, el, f"{path}[{idx}]", report, o, ci)
+                elem_path = f"{path}[{idx}]"
+                v = _extract_value(f, el, elem_path, report, o, ci)
                 if v is MALFORMED:
                     any_malformed = True
+                    if enum_elements:
+                        report.set(elem_path, FieldRecovery.MALFORMED)
                 else:
                     out.append(v)
+                    if enum_elements:
+                        report.set(elem_path, _classify_coerced(elem_path, report))
             # Cross-port contract: a MALFORMED array still places its successfully-coerced
             # elements into data (partial recovery), UNLIKE a MALFORMED scalar which is
             # absent from data.

@@ -52,6 +52,16 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- compile-and-run test: the runtime-delegating recover(MetaDataLoader, String)
+             overload delegates to com.metaobjects.object.recover.MetaObjectRecover (om).
+             om transitively brings render + metadata onto the test classpath. -->
+        <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-om</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- compile-and-run test: generated parser imports Jackson ObjectMapper -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

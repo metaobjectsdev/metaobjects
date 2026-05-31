@@ -46,7 +46,7 @@ public class RecoverConformanceTests
     {
         // FR-011: lock the corpus size so a deleted fixture fails CI rather than
         // silently reducing coverage. Mirrors the TS / Java / Python count guards.
-        Assert.Equal(20, Cases().Count());
+        Assert.Equal(22, Cases().Count());
     }
 
     [Theory]
@@ -205,7 +205,12 @@ public class RecoverConformanceTests
                 f.TryGetProperty("normalize", out JsonElement nm) ? nm.GetString() : null);
             string? defaultValue = f.TryGetProperty("default", out JsonElement dv) ? dv.GetString() : null;
 
-            return FieldSpec.EnumField(name, required, values, aliases, coerceDefault, normalize, defaultValue);
+            // Phase B (array-of-enum): kind:"ENUM" + array:true → List<enum>, each element
+            // coerced through the enum pipeline and classified by indexed path.
+            bool enumArray = f.TryGetProperty("array", out JsonElement arr) && arr.GetBoolean();
+            return enumArray
+                ? FieldSpec.EnumArray(name, required, values, aliases, coerceDefault, normalize, defaultValue)
+                : FieldSpec.EnumField(name, required, values, aliases, coerceDefault, normalize, defaultValue);
         }
 
         if (kind == FieldKind.Object)
@@ -229,7 +234,9 @@ public class RecoverConformanceTests
             return FieldSpec.Range(name, kind, required, min, max);
         }
 
-        return FieldSpec.Scalar(name, kind, required);
+        // Phase B: a scalar field may carry a generalized @default absent-fill string.
+        string? scalarDefault = f.TryGetProperty("default", out JsonElement sd) ? sd.GetString() : null;
+        return FieldSpec.Scalar(name, kind, required, scalarDefault);
     }
 
     /// <summary>FR-011: parse the @normalize mode string; absent → the global default "strip".</summary>

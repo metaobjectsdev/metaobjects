@@ -43,13 +43,21 @@ public final class Recover {
             String path = prefix.isEmpty() ? f.name() : prefix + "." + f.name();
             Object present = lookup(raw, f.name(), ci);
             if (present == null) {
-                // FR-011: an absent enum with a declared @default fills the value → DEFAULTED
-                // (which satisfies a @required field).
-                if (f.kind() == FieldKind.ENUM && f.defaultValue() != null) {
-                    data.put(f.name(), f.defaultValue());
-                    report.addCoercion(new Coercion(path, "", f.defaultValue(), "default"));
-                    report.set(path, FieldRecovery.DEFAULTED);
-                    continue;
+                // FR-011 / Phase B: an absent field with a declared @default fills the value
+                // → DEFAULTED (which satisfies a @required field). Generalized to all field
+                // kinds: an enum default is its member string as-is; a non-enum default is
+                // coerced to the field's kind via Coerce (so @default "0" on field.int yields
+                // integer 0). A non-coercible non-enum default is treated as no default.
+                if (f.defaultValue() != null) {
+                    Object coerced = (f.kind() == FieldKind.ENUM)
+                            ? f.defaultValue()
+                            : Coerce.scalar(f.defaultValue(), f);
+                    if (coerced != Coerce.MALFORMED) {
+                        data.put(f.name(), coerced);
+                        report.addCoercion(new Coercion(path, "", f.defaultValue(), "default"));
+                        report.set(path, FieldRecovery.DEFAULTED);
+                        continue;
+                    }
                 }
                 report.set(path, f.required() ? FieldRecovery.LOST_REQUIRED : FieldRecovery.LOST_OPTIONAL);
                 continue;
@@ -64,10 +72,22 @@ public final class Recover {
                 List<?> elements = (present instanceof List<?> l) ? l : List.of(present);
                 List<Object> out = new ArrayList<>();
                 boolean anyMalformed = false;
+                // Phase B (array-of-enum): an enum element flows through the SAME enum coercion
+                // pipeline a scalar enum uses (extractValue → Coerce.value → coerceEnum), and is
+                // CLASSIFIED per element by indexed path (tags[0], tags[1], …) exactly as a scalar
+                // enum: RECOVERED / DEFAULTED (via @coerceDefault) / MALFORMED. Non-enum scalar
+                // arrays keep their existing behavior (raw element list, no per-element states).
+                boolean enumElements = f.kind() == FieldKind.ENUM;
                 for (int idx = 0; idx < elements.size(); idx++) {
-                    Object v = extractValue(f, elements.get(idx), path + "[" + idx + "]", report, o, ci);
-                    if (v == Coerce.MALFORMED) anyMalformed = true;
-                    else out.add(v);
+                    String elemPath = path + "[" + idx + "]";
+                    Object v = extractValue(f, elements.get(idx), elemPath, report, o, ci);
+                    if (v == Coerce.MALFORMED) {
+                        anyMalformed = true;
+                        if (enumElements) report.set(elemPath, FieldRecovery.MALFORMED);
+                    } else {
+                        out.add(v);
+                        if (enumElements) report.set(elemPath, classifyCoerced(elemPath, report));
+                    }
                 }
                 // NOTE (cross-port contract): a MALFORMED array still places its successfully-coerced
                 // elements into data (partial recovery), UNLIKE a MALFORMED scalar which is absent from

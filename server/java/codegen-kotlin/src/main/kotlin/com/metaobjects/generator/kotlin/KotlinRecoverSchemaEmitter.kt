@@ -9,6 +9,7 @@ import com.metaobjects.field.MetaField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.field.StringField
 import com.metaobjects.`object`.MetaObject
+import com.metaobjects.util.MetaDataUtil
 import java.util.Properties
 
 /**
@@ -91,6 +92,77 @@ internal object KotlinRecoverSchemaEmitter {
      */
     fun recoveredCtorArgs(vo: MetaObject): String =
         vo.metaFields.joinToString(", ") { constructorArgForField(it) }
+
+    // -------------------------------------------------------------------------
+    // Public API — nested-aware (runtime-delegating recover)
+    // -------------------------------------------------------------------------
+
+    /**
+     * FR-010 nested gap (codegen-wrapping-runtime): emit the all-nullable recovered
+     * mirror `data class` for [rootVo] AS [rootClassName], PLUS one nested mirror
+     * `data class <NestedShort>Recovered` per reachable nested value-object (deduped
+     * by FQN). Unlike [recoveredClassDecl] — which flattens nested objects to
+     * `String?` — nested object fields here are typed as the nested mirror
+     * (`<NestedShort>Recovered?`) or `List<<NestedShort>Recovered>?` for an
+     * array-of-objects, so the runtime-delegating recover can populate the full graph.
+     *
+     * <p>Cycle/depth bounding is handled upstream by `MetaObjectRecover`; the per-FQN
+     * dedupe set here also stops the emitter from recursing forever on a cyclic graph.</p>
+     *
+     * @return Kotlin source: the root mirror declaration followed by the nested ones,
+     *         separated by blank lines. Returns the same shape as [recoveredClassDecl]
+     *         when [rootVo] has no nested object fields.
+     */
+    fun recoveredClassDeclsNested(rootVo: MetaObject, rootClassName: String): String {
+        val out = StringBuilder()
+        val emitted = LinkedHashSet<String>()
+        emitMirror(rootVo, rootClassName, out, emitted)
+        return out.toString().trimEnd()
+    }
+
+    /**
+     * The nested mirror class name for a value-object: `<ShortName>Recovered`. Mirrors
+     * [KotlinPayloadGenerator]'s nested payload naming (`<ShortName>Payload`) but for the
+     * recovered (all-nullable) mirror. Public so the parser generator names mappers consistently.
+     */
+    fun nestedRecoveredClass(vo: MetaObject): String =
+        PackageMapping.splitFqn(vo.name).second + "Recovered"
+
+    private fun emitMirror(
+        vo: MetaObject,
+        className: String,
+        out: StringBuilder,
+        emitted: LinkedHashSet<String>,
+    ) {
+        if (!emitted.add(vo.name)) return // dedupe + cycle guard
+
+        val nested = mutableListOf<MetaObject>()
+        val props = vo.metaFields.joinToString(",\n") { field ->
+            "    val ${field.name}: ${nestedNullableTypeName(field, nested)} = null"
+        }
+        out.append("data class $className(\n$props,\n)\n\n")
+
+        for (nestedVo in nested) {
+            emitMirror(nestedVo, nestedRecoveredClass(nestedVo), out, emitted)
+        }
+    }
+
+    /**
+     * Nullable Kotlin type for a field in the nested-aware mirror. Object fields whose
+     * `@objectRef` resolves to a value-object become the nested mirror type (single) or
+     * `List<<NestedShort>Recovered>?` (array-of-objects); the discovered nested VO is
+     * recorded into [nested] so the caller emits its mirror. All other fields fall back
+     * to the scalar mapping in [nullableTypeName].
+     */
+    private fun nestedNullableTypeName(field: MetaField<*>, nested: MutableList<MetaObject>): String {
+        val target = objectRefValueObject(field)
+        if (target != null) {
+            val nestedClass = nestedRecoveredClass(target)
+            nested.add(target)
+            return if (field.isArrayType()) "List<$nestedClass>?" else "$nestedClass?"
+        }
+        return nullableTypeName(field)
+    }
 
     // -------------------------------------------------------------------------
     // Private helpers — schema literal
@@ -238,7 +310,16 @@ internal object KotlinRecoverSchemaEmitter {
     private fun constructorArgForField(field: MetaField<*>): String {
         val name = field.name
 
-        // Array fields: List<String> — checked first so isArray+EnumField → asStringList.
+        // Nested object / array-of-objects (NOT enum): deferred in the self-contained path
+        // (the mirror property is a nested Recovered mirror or List<NestedRecovered>?, which
+        // the scalar RecoverMap readers can't produce). The runtime-delegating recover
+        // overload populates these — emit a null so the self-contained ctor still compiles.
+        // Checked BEFORE isArray so array-of-objects also defers (not asStringList).
+        if (objectRefValueObject(field) != null) {
+            return "null /* FR-010: nested recover deferred — use recover(loader, text) */"
+        }
+
+        // Array fields: List<String> — checked before EnumField so isArray+EnumField → asStringList.
         if (field.isArray) {
             return "RecoverMap.asStringList(d, \"${kotlinStringLiteral(name)}\")"
         }
@@ -248,7 +329,7 @@ internal object KotlinRecoverSchemaEmitter {
             return "RecoverMap.asString(d, \"${kotlinStringLiteral(name)}\")"
         }
 
-        // Nested object: deferred.
+        // Nested object whose ref is unresolved / non-VO: defensive deferral.
         if (field is ObjectField) {
             return "null /* FR-010: nested recover deferred */"
         }
@@ -293,4 +374,22 @@ internal object KotlinRecoverSchemaEmitter {
          .replace("\n", "\\n")
          .replace("\t", "\\t")
          .replace("\r", "\\r")
+
+    /**
+     * Resolve a field's `@objectRef` to its target value-object, or null when the field is
+     * not an object reference, is an enum (string-backed scalar), the ref can't be resolved,
+     * or the target is not an `object.value` (e.g. an entity — defensive, matches the payload-VO
+     * contract). Used to decide whether a field is a nested-object component.
+     */
+    internal fun objectRefValueObject(field: MetaField<*>): MetaObject? {
+        if (field is EnumField) return null
+        val isObjectField = field is ObjectField || MetaDataUtil.hasObjectRef(field)
+        if (!isObjectField) return null
+        val target = try {
+            MetaDataUtil.getObjectRef(field)
+        } catch (e: RuntimeException) {
+            return null
+        }
+        return target?.takeIf { it.subType == MetaObject.SUBTYPE_VALUE }
+    }
 }

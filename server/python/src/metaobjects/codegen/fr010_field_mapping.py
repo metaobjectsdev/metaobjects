@@ -114,10 +114,14 @@ def mirror_type(field: MetaData) -> str:
     A recovered array can contain null elements where individual items were lost, so
     the array type is ``list[str | None] | None`` (matches ``recover_map.as_string_list``).
     """
+    # Nested object (single OR array): the self-contained path defers to a typed null;
+    # the runtime-delegating path overrides this with the nested mirror type. Checked
+    # BEFORE the generic is_array branch so an array-of-objects is NOT mistyped as a
+    # string array. Mirrors the Java/TS fix.
+    if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
+        return "object | None"  # nested deferred (self-contained path)
     if is_array(field):
         return "list[str | None] | None"
-    if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
-        return "object | None"  # nested deferred
     if field.sub_type == fc.FIELD_SUBTYPE_ENUM:
         return "str | None"  # enum is string-backed
     kind = scalar_kind(field.sub_type)
@@ -136,10 +140,13 @@ def recover_map_helper(field: MetaData) -> str | None:
 
     Single source of the field → accessor decision; ``recover_map_call`` builds
     the ``as_*(d, "name")`` call on top of this."""
-    if is_array(field):
-        return "as_string_list"
+    # Nested object (single OR array) → no helper in the self-contained path. Checked
+    # BEFORE is_array so an array-of-objects is NOT read via as_string_list. Mirrors the
+    # Java/TS fix.
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
         return None
+    if is_array(field):
+        return "as_string_list"
     if field.sub_type == fc.FIELD_SUBTYPE_ENUM:
         return "as_string"
     return {
@@ -157,7 +164,10 @@ def recover_map_call(field: MetaData) -> str:
     ``recover_schema_emitter.recover_map_imports``)."""
     helper = recover_map_helper(field)
     if helper is None:
-        return "None  # FR-010: nested recover deferred"
+        # Nested object: the self-contained initializer leaves it None (the
+        # runtime-delegating path populates it). Bare ``None`` — no trailing inline
+        # comment: this expr is joined into a ``Name(field=..., …)`` call-args list.
+        return "None"
     return f'{helper}(d, "{field.name}")'
 
 

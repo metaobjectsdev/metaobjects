@@ -911,6 +911,98 @@ public static class ValidationPasses
     }
 
     // =========================================================================
+    // Pass 10b: ValidateFieldDefaults (Phase B — generalized @default per-type)
+    //
+    // The @default attribute is registered on the field base, so any field subtype may
+    // declare it. Its string value must coerce to the field's type:
+    //   - int / long / currency       → integer parse (or finite-number truncation)
+    //   - double / float / decimal     → finite-number parse
+    //   - boolean                      → true|false (exact)
+    //   - enum                         → member of @values (handled by ValidateEnumValues Rule 4)
+    //   - string / date / time / others → any (no validation)
+    // A violation emits ERR_BAD_ATTR_VALUE, mirroring the enum @default membership check.
+    //
+    // Own-only: validates @default declared on THIS node, matching the @values / FR-011 own-attr
+    // passes. Numeric gates are ASCII-only (CultureInfo.InvariantCulture / NumberStyles without
+    // AllowThousands) to match the Java/Python ports exactly — no "1_000"-style separators.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateFieldDefaults(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        WalkFieldDefaults(root, errors);
+        return errors.AsReadOnly();
+    }
+
+    private static void WalkFieldDefaults(MetaData node, List<MetaError> errors)
+    {
+        if (node is MetaField field
+            && field.SubType != FIELD_SUBTYPE_ENUM   // enum @default membership: ValidateEnumValues Rule 4
+            && field.OwnAttr(FIELD_ATTR_DEFAULT) is { } rawDefault)
+        {
+            // @default is declared-but-untyped (ValueType: null), so the parser stores the raw
+            // JSON value type-preserved: a JSON true/false → bool, a JSON number → long/double,
+            // a JSON string → string. Stringify to the canonical form Java's getValueAsString
+            // produces (lower-case bool, invariant-culture number) before the per-type gate.
+            string def = StringifyDefault(rawDefault);
+            bool ok = field.SubType switch
+            {
+                FIELD_SUBTYPE_INT or FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_CURRENCY => ParsesAsLong(def),
+                FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT or FIELD_SUBTYPE_DECIMAL => ParsesAsFiniteNumber(def),
+                FIELD_SUBTYPE_BOOLEAN => def == "true" || def == "false",
+                _ => true,   // string / date / time / object / others — any value allowed
+            };
+
+            if (!ok)
+            {
+                errors.Add(new MetaError(
+                    $"field.{field.SubType} '{field.Name}' @{FIELD_ATTR_DEFAULT} '{def}' " +
+                    "is not coercible to the field's type",
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    Envelope: field.Source));
+            }
+        }
+
+        foreach (var child in node.OwnChildren())
+            WalkFieldDefaults(child, errors);
+    }
+
+    /// <summary>
+    /// Canonical string form of a type-preserved <c>@default</c> value, matching Java's
+    /// <c>getValueAsString</c>: a bool lowercases to <c>true</c>/<c>false</c>; a number renders
+    /// invariant-culture; a string passes through; null becomes the empty string.
+    /// </summary>
+    private static string StringifyDefault(object value) => value switch
+    {
+        string s => s,
+        bool b => b ? "true" : "false",
+        IFormattable f => f.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
+        _ => value.ToString() ?? "",
+    };
+
+    /// <summary>
+    /// ASCII-only integer gate (Java parity): an integer parse, or a finite decimal that
+    /// truncates to an integer (matches the engine's <c>Coerce.Scalar</c> INT/LONG fallback).
+    /// Uses <see cref="NumberStyles"/> without <c>AllowThousands</c> and InvariantCulture.
+    /// </summary>
+    private static bool ParsesAsLong(string s)
+    {
+        string t = s.Trim();
+        if (long.TryParse(t, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out _))
+            return true;
+        return double.TryParse(t, System.Globalization.NumberStyles.Float,
+                   System.Globalization.CultureInfo.InvariantCulture, out double d)
+               && double.IsFinite(d);
+    }
+
+    /// <summary>ASCII-only finite-number gate (Java parity): InvariantCulture, no thousands separator.</summary>
+    private static bool ParsesAsFiniteNumber(string s) =>
+        double.TryParse(s.Trim(), System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out double d)
+        && double.IsFinite(d);
+
+    // =========================================================================
     // Pass 12: ValidateDbColumnType (R6 Plan 2b, ADR-0013)
     //   Own-only validation of the @dbColumnType physical column-type attribute,
     //   mirroring the field.enum @values precedent. Two rules:

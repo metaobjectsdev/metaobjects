@@ -60,6 +60,34 @@ export function coerceValue(
 }
 
 /**
+ * Phase B (generalized `@default`): PURE coercion of a metadata-sourced string to the field's
+ * scalar kind, with NO side effects (no normalizer/onField hooks, no clamp logging) — the value
+ * originates from metadata, not the model response. Returns the coerced value or the MALFORMED
+ * sentinel. INT/LONG accept an integer or a truncatable finite number; DOUBLE accepts any finite
+ * number; BOOLEAN accepts `true|false|yes|no|1|0`; STRING (and any other kind) passes through
+ * verbatim. Mirrors Java `Coerce.scalar` (parse semantics of {@link coerceValue} without its
+ * range-clamp / report machinery).
+ */
+export function scalarCoerce(raw: string | null, spec: FieldSpec): unknown | typeof MALFORMED {
+  if (raw == null) return MALFORMED;
+  switch (spec.kind) {
+    case FieldKind.INT:
+    case FieldKind.LONG: {
+      const n = parseFiniteNumber(raw);
+      return n === null ? MALFORMED : Math.trunc(n);
+    }
+    case FieldKind.DOUBLE: {
+      const n = parseFiniteNumber(raw);
+      return n === null ? MALFORMED : n;
+    }
+    case FieldKind.BOOLEAN:
+      return coerceBool(raw, true);
+    default:
+      return raw; // STRING / ENUM / OBJECT — verbatim
+  }
+}
+
+/**
  * FR-011 enum coercion pipeline: exact → normalize → @enumAlias → (reserved fuzzy) →
  * @coerceDefault → MALFORMED. Resolution mode is `spec.normalize` (default "strip"); under
  * STRICT tolerance (ci === false) normalization is forced to "none" (exact-only), preserving
