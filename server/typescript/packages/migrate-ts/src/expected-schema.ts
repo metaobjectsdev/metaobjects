@@ -307,6 +307,11 @@ function validatorCheck(
       if (parts.length === 0) return null;
       return { name: `${tableName}_${col}_numeric_chk`, expression: parts.join(" AND ") };
     }
+    case VALIDATOR_SUBTYPE_LENGTH: {
+      // Only @min needs a CHECK; @max already maps to the column's VARCHAR(n) bound.
+      if (v.min === undefined) return null;
+      return { name: `${tableName}_${col}_length_chk`, expression: `length(${col}) >= ${v.min}` };
+    }
     default:
       return null;
   }
