@@ -54,6 +54,31 @@ class MetaData:
         """Own FQN: ``package::name`` if own package is set, else just ``name``."""
         return self.name if not self.package else f"{self.package}{PACKAGE_SEP}{self.name}"
 
+    def resolution_key(self) -> str:
+        """Package-folded FQN: ``<pkg>::<name>`` where *pkg* is this node's own
+        package if set, else the nearest ancestor's package (the file-default
+        package captured at parse time as the root's package). Returns the bare
+        name when neither is available.
+
+        This is the Python equivalent of the TS ``MetaData.resolutionKey()`` —
+        the package-folded form used by a nested field's ``@objectRef``. It is
+        the key the runtime object model binds on (``ObjectClassRegistry``) and
+        the key nested object-refs resolve against. Distinct from ``fqn()``,
+        which stays bare for objects (the parser does not fold the file-default
+        package onto an object's own ``package``).
+        """
+        pkg = self.package
+        if not pkg:
+            node = self.parent
+            while node is not None:
+                if node.package:
+                    pkg = node.package
+                    break
+                node = node.parent
+        if pkg:
+            return f"{pkg}{PACKAGE_SEP}{self.name}"
+        return self.name
+
     def _require_mutable(self) -> None:
         if self._frozen:
             raise RuntimeError(f"Cannot mutate frozen MetaData {self.fqn()}")

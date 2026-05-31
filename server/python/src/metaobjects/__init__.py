@@ -17,6 +17,16 @@ from .loader.sources import (
     MetaDataSource,
     UriSource,
 )
+from .meta.core.object.meta_object_aware import (
+    MetaObjectAware,
+    is_meta_object_aware,
+)
+from .meta.core.object.object_class_registry import (
+    ObjectClassRegistry,
+    ObjectFactory,
+    default_object_class_registry,
+)
+from .meta.core.object.value_object import ValueObject
 
 # Module-level shortcuts: the 99% case for callers who don't need a
 # long-lived loader. Signatures + docstrings come straight from the
@@ -40,4 +50,11 @@ __all__ = [
     "load_directory",
     "load_uris",
     "load_string",
+    # Runtime object model (Phase A)
+    "ValueObject",
+    "MetaObjectAware",
+    "is_meta_object_aware",
+    "ObjectClassRegistry",
+    "ObjectFactory",
+    "default_object_class_registry",
 ]
