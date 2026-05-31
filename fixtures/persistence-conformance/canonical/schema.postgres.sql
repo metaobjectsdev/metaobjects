@@ -11,7 +11,8 @@ CREATE TABLE "programs" (
   "priceCents" BIGINT NOT NULL,
   "status" TEXT NOT NULL,
   "createdAt" TIMESTAMP NOT NULL,
-  CONSTRAINT "programs_pkey" PRIMARY KEY ("id")
+  CONSTRAINT "programs_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "programs_status_chk" CHECK (status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED'))
 );
 
 CREATE TABLE "weeks" (
