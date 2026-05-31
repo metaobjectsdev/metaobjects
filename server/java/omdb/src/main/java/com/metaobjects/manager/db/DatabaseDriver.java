@@ -15,9 +15,6 @@ import java.util.Map;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.manager.QueryOptions;
-import com.metaobjects.manager.db.defs.ForeignKeyDef;
-import com.metaobjects.manager.db.defs.IndexDef;
-import com.metaobjects.manager.db.defs.SequenceDef;
 import com.metaobjects.manager.db.defs.TableDef;
 import com.metaobjects.manager.db.defs.ViewDef;
 import com.metaobjects.manager.exp.Expression;
@@ -53,11 +50,6 @@ public interface DatabaseDriver
   public boolean checkView( Connection c, ViewDef view ) throws SQLException;
   
   /**
-   * Creates a table in the database
-   */
-  public void createTable( Connection c, TableDef tableDef ) throws SQLException;
-
-  /**
    * Deletes a table from the database
    */
   public void deleteTable( Connection c, TableDef tableDef ) throws SQLException;
@@ -66,21 +58,6 @@ public interface DatabaseDriver
    * Creates a view in the database
    */
   public void createView(Connection c, ViewDef viewDef ) throws SQLException;
-
-  /**
-   * Creates the sequence in the database
-   */
-  public void createSequence( Connection c, SequenceDef sequenceDef ) throws SQLException;
-
-  /**
-   * Creates the index in the database
-   */
-  public void createIndex( Connection c, IndexDef indexDef ) throws SQLException;
-
-  /**
-   * Creates the foreign key in the database
-   */
-  public void createForeignKey( Connection c, ForeignKeyDef keyDef ) throws SQLException;
 
   /**
    * Creates the specified object

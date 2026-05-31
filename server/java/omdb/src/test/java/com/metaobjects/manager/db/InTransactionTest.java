@@ -11,7 +11,6 @@ package com.metaobjects.manager.db;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.manager.db.driver.DerbyDriver;
-import com.metaobjects.manager.db.validator.MetaClassDBValidatorService;
 import com.metaobjects.registry.MetaDataLoaderRegistry;
 import com.metaobjects.registry.ServiceRegistryFactory;
 import org.junit.AfterClass;
@@ -65,11 +64,10 @@ public class InTransactionTest {
         omdb.setDataSource(ds);
         omdb.init();
 
-        MetaClassDBValidatorService vs = new MetaClassDBValidatorService();
-        vs.setObjectManager(omdb);
-        vs.setAutoCreate(true);
-        vs.setMetaDataLoaderRegistry(registry);
-        vs.init();
+        // No schema needed: this test exercises only the inTransaction template
+        // (commit/rollback/connection-lifecycle semantics) via lambdas that never
+        // touch a table. Nothing to bootstrap now that runtime auto-create is
+        // removed.
     }
 
     private static Connection connection() throws SQLException {

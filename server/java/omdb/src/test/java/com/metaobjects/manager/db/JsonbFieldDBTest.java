@@ -10,7 +10,6 @@ package com.metaobjects.manager.db;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.db.driver.DerbyDriver;
-import com.metaobjects.manager.db.validator.MetaClassDBValidatorService;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.value.ValueObject;
 import com.metaobjects.registry.MetaDataLoaderRegistry;
@@ -103,11 +102,19 @@ public class JsonbFieldDBTest {
         omdb.setDataSource(ds);
         omdb.init();
 
-        MetaClassDBValidatorService vs = new MetaClassDBValidatorService();
-        vs.setObjectManager(omdb);
-        vs.setAutoCreate(true);
-        vs.setMetaDataLoaderRegistry(registry);
-        vs.init();
+        // Schema is external/explicit (ADR-0015): create JSONB_ITEM via literal DDL.
+        // The `prefs` jsonb value-object column (@dbType: jsonb) is written as a JSON
+        // string (driver setString) and read back as a JSON string (driver getString),
+        // so a portable text column holds it on Derby (Postgres uses native jsonb). This
+        // exercises the runtime typed-jsonb bind/read path end-to-end against a live table.
+        try (Connection c = getConnection();
+             Statement s = c.createStatement()) {
+            s.execute(
+                "CREATE TABLE JSONB_ITEM (\n"
+                    + "  id BIGINT GENERATED ALWAYS AS IDENTITY CONSTRAINT JSONB_ITEM_id_PK PRIMARY KEY,\n"
+                    + "  prefs VARCHAR(4000)\n"
+                    + ")");
+        }
     }
 
     private static Connection getConnection() throws SQLException {
