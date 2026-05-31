@@ -17,6 +17,7 @@ import {
   FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_UUID,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
+  VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_ARRAY,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
   FIELD_ATTR_AUTO_SET, FIELD_ATTR_OBJECT_REF, AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE,
@@ -201,12 +202,28 @@ function fieldWillBeOptional(field: MetaField): boolean {
   return !isRequired || hasDefault;
 }
 
-/** Append .min/.max/.regex/.optional() based on field-level validators + required state. */
+/** Numeric field subtypes whose Zod base is `z.number()` — value bounds apply. */
+const NUMERIC_FIELD_SUBTYPES = new Set<string>([
+  FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
+  FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+]);
+
+/** Append .min/.max/.regex/.optional() based on field-level validators + required state.
+ *
+ * Bound semantics by field shape:
+ *  - string (scalar)        → .min/.max = character count (validator.length + @maxLength)
+ *  - numeric (scalar)       → .min/.max = numeric value     (validator.numeric)
+ *  - array (any element)    → .min/.max = element count     (validator.array)
+ */
 function appendValidatorChain(base: Code, field: MetaField): Code {
   let isRequired = field.ownAttr(FIELD_ATTR_REQUIRED) === true;
   let maxLen: number | undefined = field.ownAttr(FIELD_ATTR_MAX_LENGTH) as number | undefined;
   let minLen: number | undefined;
   let pattern: string | undefined;
+  let numMin: number | undefined;
+  let numMax: number | undefined;
+  let arrMin: number | undefined;
+  let arrMax: number | undefined;
   for (const child of field.validators()) {
     if (child.subType === VALIDATOR_SUBTYPE_REQUIRED) isRequired = true;
     if (child.subType === VALIDATOR_SUBTYPE_LENGTH) {
@@ -219,14 +236,33 @@ function appendValidatorChain(base: Code, field: MetaField): Code {
       const p = child.ownAttr(VALIDATOR_ATTR_PATTERN);
       if (typeof p === "string") pattern = p;
     }
+    if (child.subType === VALIDATOR_SUBTYPE_NUMERIC) {
+      const max = child.ownAttr(VALIDATOR_ATTR_MAX);
+      const min = child.ownAttr(VALIDATOR_ATTR_MIN);
+      if (typeof max === "number") numMax = max;
+      if (typeof min === "number") numMin = min;
+    }
+    if (child.subType === VALIDATOR_SUBTYPE_ARRAY) {
+      const max = child.ownAttr(VALIDATOR_ATTR_MAX);
+      const min = child.ownAttr(VALIDATOR_ATTR_MIN);
+      if (typeof max === "number") arrMax = max;
+      if (typeof min === "number") arrMin = min;
+    }
   }
 
   let chain: Code = base;
-  if (field.subType === FIELD_SUBTYPE_STRING && !field.isArray) {
+  // Array element-count bounds apply to the z.array(...) wrapper regardless of element type.
+  if (field.isArray) {
+    if (arrMin !== undefined) chain = code`${chain}.min(${arrMin})`;
+    if (arrMax !== undefined) chain = code`${chain}.max(${arrMax})`;
+  } else if (field.subType === FIELD_SUBTYPE_STRING) {
     if (minLen !== undefined) chain = code`${chain}.min(${minLen})`;
     else if (isRequired) chain = code`${chain}.min(1)`;
     if (maxLen !== undefined) chain = code`${chain}.max(${maxLen})`;
     if (pattern !== undefined) chain = code`${chain}.regex(new RegExp(${JSON.stringify(pattern)}))`;
+  } else if (NUMERIC_FIELD_SUBTYPES.has(field.subType)) {
+    if (numMin !== undefined) chain = code`${chain}.min(${numMin})`;
+    if (numMax !== undefined) chain = code`${chain}.max(${numMax})`;
   }
 
   // Fields with DB-level defaults are optional in the InsertSchema: the caller

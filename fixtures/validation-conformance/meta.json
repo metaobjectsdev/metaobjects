@@ -1,0 +1,26 @@
+{
+  "metadata.root": {
+    "package": "acme::auth",
+    "children": [
+      { "object.entity": {
+        "name": "Account",
+        "children": [
+          { "source.rdb":       { "@table": "accounts" } },
+          { "field.long":       { "name": "id" } },
+          { "field.string":     { "name": "name", "@required": true, "@maxLength": 10 } },
+          { "field.string":     { "name": "code", "children": [
+            { "validator.length": { "@min": 3 } },
+            { "validator.regex":  { "@pattern": "^[A-Z]+$" } }
+          ] } },
+          { "field.int":        { "name": "score", "children": [
+            { "validator.numeric": { "@min": 0, "@max": 100 } }
+          ] } },
+          { "field.string":     { "name": "tags", "isArray": true, "children": [
+            { "validator.array": { "@min": 1, "@max": 3 } }
+          ] } },
+          { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ]
+      }}
+    ]
+  }
+}

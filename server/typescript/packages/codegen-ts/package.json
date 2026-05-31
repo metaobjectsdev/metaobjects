@@ -15,6 +15,11 @@
       "bun": "./src/generators/index.ts",
       "types": "./dist/generators/index.d.ts",
       "default": "./dist/generators/index.js"
+    },
+    "./templates/zod-validators": {
+      "bun": "./src/templates/zod-validators.ts",
+      "types": "./dist/templates/zod-validators.d.ts",
+      "default": "./dist/templates/zod-validators.js"
     }
   },
   "files": ["dist", "src", "templates", "README.md", "LICENSE"],

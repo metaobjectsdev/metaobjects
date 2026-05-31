@@ -1,0 +1,49 @@
+{
+  "cases": [
+    {
+      "name": "valid-baseline",
+      "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"] },
+      "expectValid": true
+    },
+    {
+      "name": "name-missing",
+      "payload": { "code": "ABC", "score": 50, "tags": ["x"] },
+      "expectValid": false
+    },
+    {
+      "name": "name-too-long",
+      "payload": { "name": "AcmeAccount1", "code": "ABC", "score": 50, "tags": ["x"] },
+      "expectValid": false
+    },
+    {
+      "name": "code-too-short",
+      "payload": { "name": "Acme", "code": "AB", "score": 50, "tags": ["x"] },
+      "expectValid": false
+    },
+    {
+      "name": "code-pattern-mismatch",
+      "payload": { "name": "Acme", "code": "abc", "score": 50, "tags": ["x"] },
+      "expectValid": false
+    },
+    {
+      "name": "score-below-min",
+      "payload": { "name": "Acme", "code": "ABC", "score": -1, "tags": ["x"] },
+      "expectValid": false
+    },
+    {
+      "name": "score-above-max",
+      "payload": { "name": "Acme", "code": "ABC", "score": 101, "tags": ["x"] },
+      "expectValid": false
+    },
+    {
+      "name": "tags-empty",
+      "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": [] },
+      "expectValid": false
+    },
+    {
+      "name": "tags-too-many",
+      "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["a", "b", "c", "d"] },
+      "expectValid": false
+    }
+  ]
+}
