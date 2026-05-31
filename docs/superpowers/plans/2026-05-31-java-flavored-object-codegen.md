@@ -6,7 +6,7 @@
 
 **Architecture:** Reuse the byte-identical legacy direct object-codegen framework already in this repo (`codegen-base/.../generator/direct/object/` `BaseObjectCodeGenerator`/`BaseObjectCodeWriter` + `javacode/JavaCodeGenerator`/`JavaCodeWriter`). Add concrete-class **writer subclasses** of `JavaCodeWriter` (one per flavor) that emit bodies + the `extends <base>` clause + a `MetaObject` ctor (and, for `valueObject`, cached per-field value-holder accessors), selected by a `flavor` generator-config option; a runtime `PojoObject` base; a `ValueObjectBase` cached-holder primitive; a self-registering `ObjectClassBindingProvider` emitted per flavored class; and a separate `Extractor` generator. Direct emission — no templates. **Java only.**
 
-**Tech Stack:** Java / Maven. Spec: `docs/superpowers/specs/2026-05-31-java-flavored-object-codegen-design.md`. Builds on Phase A (runtime object model) + Phase B (`MetaObjectRecover` in `om`). Reference: the legacy `metaobjects-core`/`-dynamic` (study read-only; never name them or their paths in committed content — say "the legacy reference").
+**Tech Stack:** Java / Maven. Spec: `docs/superpowers/specs/2026-05-31-java-flavored-object-codegen-design.md`. Builds on Phase A (runtime object model) + Phase B (`MetaObjectRecover` in `om`). Reference: the legacy sibling reference projects (study read-only; never name them or their paths in committed content — say "the legacy reference").
 
 ---
 
