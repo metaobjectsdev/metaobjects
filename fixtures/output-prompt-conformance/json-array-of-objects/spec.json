@@ -1,0 +1,10 @@
+{
+  "format": "json", "rootName": "Cart", "roundTrip": true,
+  "fields": [
+    { "name": "lines", "kind": "OBJECT", "required": true, "array": true, "nested": {
+      "format": "json", "rootName": "Line",
+      "fields": [
+        { "name": "sku", "kind": "STRING", "required": true, "example": "A-100", "instruction": "product code" },
+        { "name": "qty", "kind": "INT", "required": true, "example": "2", "instruction": "quantity" }
+      ] } } ]
+}

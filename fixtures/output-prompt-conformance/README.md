@@ -30,6 +30,9 @@ This keeps zero-drift robust against cross-runtime float formatting.
 
 ## Nested objects
 
-A field with `kind: "OBJECT"` renders as a flat `{name}` placeholder — the FR-010
-renderer does not expand nested objects (a documented deferral). Such cases use
-`roundTrip: false`; nested recovery is covered by the recover-conformance corpus.
+A field with `kind: "OBJECT"` and a `nested` spec recurses: the renderer expands the
+full nested shape across all three styles. JSON arrays render as `[ one example element ]`;
+XML arrays show one representative element; in `guide`, nested fields appear with a dotted
+path (`meta.score`, or `items[].label` for arrays). A depth/cycle guard falls back to the
+flat `{name}` placeholder beyond `MAX_NEST_DEPTH` (or on a repeated spec in the path), so
+the renderer never recurses unboundedly.

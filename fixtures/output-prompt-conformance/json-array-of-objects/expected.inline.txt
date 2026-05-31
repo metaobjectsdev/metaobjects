@@ -1,0 +1,8 @@
+{
+  "lines": [
+    {
+      "sku": "{product code}",
+      "qty": "{quantity}"
+    }
+  ]
+}

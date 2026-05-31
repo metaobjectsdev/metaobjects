@@ -1,4 +1,4 @@
-{ "format": "xml", "rootName": "Review", "roundTrip": false,
+{ "format": "xml", "rootName": "Review", "roundTrip": true,
   "fields": [
     { "name": "summary", "kind": "STRING", "required": true,
       "example": "Solid work overall.", "instruction": "One sentence." },

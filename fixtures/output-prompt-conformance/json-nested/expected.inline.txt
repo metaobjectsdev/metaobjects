@@ -1,4 +1,6 @@
 {
   "summary": "{One sentence.}",
-  "meta": "{meta}"
+  "meta": {
+    "score": "{1-5.}"
+  }
 }
