@@ -18,4 +18,6 @@ public class Measurement
     public float TempC { get; set; }
     [Column("massKg")]
     public double MassKg { get; set; }
+    [Column("preciseKg")]
+    public decimal PreciseKg { get; set; }
 }

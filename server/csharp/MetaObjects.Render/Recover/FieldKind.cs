@@ -11,6 +11,7 @@ public enum FieldKind
     Int,
     Long,
     Double,
+    Decimal,
     Boolean,
     Enum,
     Object,

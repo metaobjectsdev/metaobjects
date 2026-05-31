@@ -70,6 +70,18 @@ public sealed class DbContextGenerator : IGenerator
                 var prop = CSharpNaming.Pascal(f.Name);
                 modelLines.Add($"        modelBuilder.Entity<{owner}>().PrimitiveCollection(x => x.{prop});");
             }
+            // SP-A — field.decimal precision/scale. The CLR property is System.Decimal;
+            // EF Core .HasPrecision(p, s) maps it onto the NUMERIC(p,s) column so the
+            // model agrees with the TS-owned schema DDL and the value round-trips
+            // precision-exact (vs. EF's default decimal(18,2) coercion).
+            foreach (var f in e.Fields().Where(f =>
+                         !f.IsArray && f.SubType == FIELD_SUBTYPE_DECIMAL && f.Precision is not null))
+            {
+                var prop = CSharpNaming.Pascal(f.Name);
+                modelLines.Add(f.Scale is long sc
+                    ? $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision}, {sc});"
+                    : $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision});");
+            }
             // R6 Plan 2b — @dbColumnType physical overrides. The logical field stays its
             // native CLR type (a @dbColumnType:uuid string is still C# string); EF must be
             // told the provider column type (and, for uuid, a string↔Guid value converter)

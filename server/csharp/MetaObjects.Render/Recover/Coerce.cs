@@ -67,6 +67,7 @@ public static class Coerce
             FieldKind.Int     => CoerceInt(raw, spec, fieldPath, report),
             FieldKind.Long    => CoerceInt(raw, spec, fieldPath, report),
             FieldKind.Double  => CoerceDouble(raw, spec, fieldPath, report),
+            FieldKind.Decimal => CoerceDecimal(raw),
             FieldKind.Boolean => CoerceBool(raw, ci),
             _                 => raw,
         };
@@ -102,6 +103,8 @@ public static class Coerce
                     return double.IsFinite(d) ? (object)d : Malformed;
                 return Malformed;
             }
+            case FieldKind.Decimal:
+                return CoerceDecimal(raw);
             case FieldKind.Boolean:
             {
                 string t = raw.Trim().ToLowerInvariant();
@@ -239,6 +242,16 @@ public static class Coerce
         {
             return Clamp(d, spec, path, report, asLong: false);
         }
+        return Malformed;
+    }
+
+    // DECIMAL (field.decimal): parse precision-exact as System.Decimal — NOT through
+    // double (which would lose precision). InvariantCulture; no range clamp (decimal
+    // fields carry no min/max). Present-but-unparseable → MALFORMED.
+    private static object CoerceDecimal(string raw)
+    {
+        if (decimal.TryParse(raw.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out decimal d))
+            return d;
         return Malformed;
     }
 

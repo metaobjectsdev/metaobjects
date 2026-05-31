@@ -4,6 +4,7 @@ import com.metaobjects.database.CoreDBMetaDataProvider
 import com.metaobjects.field.BooleanField
 import com.metaobjects.field.CurrencyField
 import com.metaobjects.field.DateField
+import com.metaobjects.field.DecimalField
 import com.metaobjects.field.DoubleField
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.FloatField
@@ -32,9 +33,10 @@ import com.squareup.kotlinpoet.TypeName
  * type per field subtype is identical across all language ports. The exact Kotlin/Exposed
  * names are Tier-2 idiomatic per port.
  *
- * Coverage: 7 primitive types + currency + enum + uuid. R6 Plan 2a: `field.uuid` is a real
- * [UuidField] JVM class, matched by instanceof (native `java.util.UUID` binding). Object /
- * class / decimal etc. still throw IllegalArgumentException with a clear message; add support
+ * Coverage: 7 primitive types + currency + enum + uuid + decimal. R6 Plan 2a: `field.uuid`
+ * is a real [UuidField] JVM class, matched by instanceof (native `java.util.UUID` binding).
+ * SP-A: `field.decimal` maps to native `java.math.BigDecimal` + Exposed `decimal(p, s)`.
+ * Object / class etc. still throw IllegalArgumentException with a clear message; add support
  * per real consumer ask.
  */
 object KotlinTypeMapper {
@@ -131,6 +133,9 @@ object KotlinTypeMapper {
         is IntegerField   -> INT
         is LongField      -> LONG
         is DoubleField    -> DOUBLE
+        // field.decimal → exact-precision java.math.BigDecimal (NUMERIC/DECIMAL). NEVER a
+        // floating type — the whole point of field.decimal is to avoid float rounding.
+        is DecimalField   -> ClassName("java.math", "BigDecimal")
         // REAL (float4) — distinct single-precision arm so field.float round-trips as
         // Kotlin Float / Exposed REAL, separate from field.double (float8). See R6.
         is FloatField     -> FLOAT
@@ -246,6 +251,10 @@ object KotlinTypeMapper {
         // Exposed `float(name)` maps to Postgres REAL (float4); `double` maps to
         // DOUBLE PRECISION (float8). Keeps field.float distinct on the wire. See R6.
         is FloatField     -> "float(\"$colName\")"
+        // field.decimal → Exposed `decimal(name, precision, scale)` (Postgres NUMERIC(p,s)).
+        // Exposed requires both precision and scale; read the declared @precision/@scale,
+        // falling back to 19,4 (matching the TS column-mapper default) when absent.
+        is DecimalField   -> "decimal(\"$colName\", ${decimalPrecision(field)}, ${decimalScale(field)})"
         is BooleanField   -> "bool(\"$colName\")"
         is DateField      -> "date(\"$colName\")"
         // field.time → Exposed `time(name)` (Postgres TIME, java.time.LocalTime).
@@ -298,6 +307,35 @@ object KotlinTypeMapper {
             field.getMetaAttr(name, false)
         }.getOrNull() as? com.metaobjects.attr.MetaAttribute<*> ?: return null
         return attr.valueAsString
+    }
+
+    /**
+     * Default NUMERIC precision when a [DecimalField] declares no `@precision`. Matches the
+     * TS column-mapper fallback so a decimal with no precision/scale lands on the same
+     * physical NUMERIC(19,4) shape across ports.
+     */
+    private const val DECIMAL_DEFAULT_PRECISION = 19
+
+    /** Default NUMERIC scale when a [DecimalField] declares no `@scale`. See [DECIMAL_DEFAULT_PRECISION]. */
+    private const val DECIMAL_DEFAULT_SCALE = 4
+
+    /** Resolve @precision on a DecimalField; default [DECIMAL_DEFAULT_PRECISION]. */
+    private fun decimalPrecision(field: DecimalField): Int =
+        intAttr(field, DecimalField.ATTR_PRECISION) ?: DECIMAL_DEFAULT_PRECISION
+
+    /** Resolve @scale on a DecimalField; default [DECIMAL_DEFAULT_SCALE]. */
+    private fun decimalScale(field: DecimalField): Int =
+        intAttr(field, DecimalField.ATTR_SCALE) ?: DECIMAL_DEFAULT_SCALE
+
+    /** Best-effort read of a named int-valued attribute (own-only) on [field]; null when absent/unparseable. */
+    private fun intAttr(field: MetaField<*>, name: String): Int? {
+        if (!field.hasMetaAttr(name, false)) return null
+        val raw = runCatching { field.getMetaAttr(name, false).value }.getOrNull()
+        return when (raw) {
+            is Number -> raw.toInt()
+            is String -> raw.toIntOrNull()
+            else -> null
+        }
     }
 
     /** Resolve @maxLength on a StringField; default 255. */

@@ -272,6 +272,9 @@ function scalarKind(subType: string): FieldKind {
     case FIELD_SUBTYPE_DATE:
     case FIELD_SUBTYPE_TIME:
     case FIELD_SUBTYPE_TIMESTAMP:
+    // decimal's wire form is an exact decimal STRING (parsing it as a float would be
+    // lossy) — matching the codegen sibling (fr010-field-mapping) + C# runtime recover.
+    case FIELD_SUBTYPE_DECIMAL:
       return FieldKind.STRING;
     case FIELD_SUBTYPE_INT:
     case FIELD_SUBTYPE_SHORT:
@@ -282,7 +285,6 @@ function scalarKind(subType: string): FieldKind {
       return FieldKind.LONG;
     case FIELD_SUBTYPE_DOUBLE:
     case FIELD_SUBTYPE_FLOAT:
-    case FIELD_SUBTYPE_DECIMAL:
       return FieldKind.DOUBLE;
     case FIELD_SUBTYPE_BOOLEAN:
       return FieldKind.BOOLEAN;

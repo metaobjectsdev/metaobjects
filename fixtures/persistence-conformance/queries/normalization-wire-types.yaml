@@ -3,13 +3,21 @@ description: |
   Exercises the pinned canonical wire form for every temporal type on Asset:
   TIMESTAMPTZ (seeded with a NON-UTC offset, asserted as UTC Z — proving
   normalization, not just formatting), plain TIMESTAMP (no Z), DATE, and TIME —
-  plus uuid lowercase canonicalization and jsonb key-sorting. Whole-second
-  values only (Phase B); the canonical forms carry no fractional component.
+  plus uuid lowercase canonicalization and jsonb key-sorting.
 
   See fixtures/persistence-conformance/normalization.md for the per-type rules.
   recordedAt/observedAt are seeded at the SAME instant via different wire forms:
-  recordedAt's -05:00 offset must read back as 14:30:00Z, while observedAt's
-  bare wall-clock 14:30:00 must read back unshifted with no Z.
+  recordedAt's -05:00 offset must read back as 14:30:00.123Z, while observedAt's
+  bare wall-clock 14:30:00.123 must read back unshifted with no Z.
+
+  SP-A: this row carries a sub-second component. recordedAt (TIMESTAMPTZ) and
+  atTime (TIME) are seeded with SIX fractional digits (.123456) whose 4th-6th
+  digits are non-zero, so every port must TRUNCATE to millisecond resolution
+  (.123456 → .123) rather than round or pass through — a port emitting .123456
+  fails the gate. observedAt (TIMESTAMP) keeps .120 to exercise the
+  no-trailing-zeros rule (.120 → .12). The whole-second omit-the-dot rule is
+  proven separately by asset-uuid-roundtrip.yaml, whose rows stay at
+  "...:00" / "...:00Z".
 seed-data: |
   INSERT INTO "assets"
     ("id","ownerId","externalId","payload","recordedAt","observedAt","asOfDate","atTime")
@@ -18,10 +26,10 @@ seed-data: |
      'BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB',
      NULL,
      '{"b": 2, "a": 1}',
-     '2026-05-31T09:30:00-05:00',
-     '2026-05-31T14:30:00',
+     '2026-05-31T09:30:00.123456-05:00',
+     '2026-05-31T14:30:00.120',
      '2026-05-31',
-     '14:30:00');
+     '14:30:00.123456');
 queries:
   - name: wire-types-roundtrip
     op: get
@@ -32,7 +40,7 @@ queries:
       ownerId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
       externalId: null
       payload: { a: 1, b: 2 }
-      recordedAt: "2026-05-31T14:30:00Z"
-      observedAt: "2026-05-31T14:30:00"
+      recordedAt: "2026-05-31T14:30:00.123Z"
+      observedAt: "2026-05-31T14:30:00.12"
       asOfDate: "2026-05-31"
-      atTime: "14:30:00"
+      atTime: "14:30:00.123"

@@ -105,9 +105,28 @@ internal static class Fr010FieldMapping
             "Int" => "int?",
             "Long" => "long?",
             "Double" => "double?",
+            "Decimal" => "decimal?",
             "Boolean" => "bool?",
             _ => "string?",
         },
+    };
+
+    /// <summary>
+    /// The nullable C# element type for a scalar ARRAY in a recover mirror. Kept in lock-step with
+    /// the array reader (<see cref="RecoverMapCall"/>'s <c>As*List</c> switch): only int/long/double/bool
+    /// have kind-typed list readers; everything else (enum, decimal, date/time, string) is string-backed
+    /// via <c>AsStringList</c>. Deliberately distinct from <see cref="ScalarMirrorType"/> (single scalars),
+    /// where a single decimal is <c>decimal?</c> via <c>AsDecimal</c> — there is no <c>AsDecimalList</c>
+    /// (decimal is single-only, SP-A), so a decimal array degrades to string here rather than emitting
+    /// a mirror/reader type mismatch.
+    /// </summary>
+    public static string ScalarArrayElementType(string subType) => ScalarKind(subType) switch
+    {
+        "Int" => "int?",
+        "Long" => "long?",
+        "Double" => "double?",
+        "Boolean" => "bool?",
+        _ => "string?",
     };
 
     /// <summary>The render-engine <c>FieldKind</c> member name for a scalar field subtype, or null if non-scalar.</summary>
@@ -117,7 +136,8 @@ internal static class Fr010FieldMapping
         FIELD_SUBTYPE_DATE or FIELD_SUBTYPE_TIME or FIELD_SUBTYPE_TIMESTAMP => "String",
         FIELD_SUBTYPE_INT or FIELD_SUBTYPE_SHORT or FIELD_SUBTYPE_BYTE => "Int",
         FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_CURRENCY => "Long",
-        FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT or FIELD_SUBTYPE_DECIMAL => "Double",
+        FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT => "Double",
+        FIELD_SUBTYPE_DECIMAL => "Decimal",
         FIELD_SUBTYPE_BOOLEAN => "Boolean",
         _ => null,
     };
@@ -131,12 +151,14 @@ internal static class Fr010FieldMapping
         // and mismatch the nested-aware mirror the delegating path shares). The delegating path
         // overrides this with nested-mirror typing (RecoverDelegateEmitter.NestedMirrorRecords).
         if (field.SubType == FIELD_SUBTYPE_OBJECT) return "object?"; // nested deferred (self-contained)
-        // Scalar ARRAY: kind-type the element (int?/long?/double?/bool?/string?) so the mirror list
-        // matches PayloadCodegen's strict element type — and so the self-contained and delegating
-        // paths share ONE kind-typed <Payload>Recovered. Nullable element: a recovered array can
-        // carry null where individual items were lost. (Matches the kind-typed RecoverMap.As*List.)
+        // Scalar ARRAY: kind-type the element so the mirror list matches what the kind-typed
+        // RecoverMap.As*List reader actually produces (int?/long?/double?/bool?/string?). Nullable
+        // element: a recovered array can carry null where individual items were lost. NOTE: this
+        // uses ScalarArrayElementType (NOT ScalarMirrorType) — decimal/date/enum arrays are
+        // string-backed here because there is no AsDecimalList reader (decimal is single-only,
+        // SP-A); a single decimal stays decimal? via ScalarMirrorType below.
         if (IsArray(field))
-            return $"global::System.Collections.Generic.IReadOnlyList<{ScalarMirrorType(field.SubType)}>?";
+            return $"global::System.Collections.Generic.IReadOnlyList<{ScalarArrayElementType(field.SubType)}>?";
         return ScalarMirrorType(field.SubType);
     }
 
@@ -166,6 +188,7 @@ internal static class Fr010FieldMapping
             "Int" => $"RecoverMap.AsInt(d, \"{name}\")",
             "Long" => $"RecoverMap.AsLong(d, \"{name}\")",
             "Double" => $"RecoverMap.AsDouble(d, \"{name}\")",
+            "Decimal" => $"RecoverMap.AsDecimal(d, \"{name}\")",
             "Boolean" => $"RecoverMap.AsBool(d, \"{name}\")",
             _ => $"RecoverMap.AsString(d, \"{name}\")",
         };

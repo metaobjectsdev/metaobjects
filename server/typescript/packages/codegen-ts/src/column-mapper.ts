@@ -21,6 +21,8 @@ import {
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   FIELD_ATTR_MAX_LENGTH,
+  FIELD_ATTR_PRECISION,
+  FIELD_ATTR_SCALE,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
@@ -296,10 +298,23 @@ export function mapColumnType(
           // Postgres native uuid column; native TS binding stays `string`.
           fnName = "uuid";
           break;
-        case FIELD_SUBTYPE_DECIMAL:
+        case FIELD_SUBTYPE_DECIMAL: {
+          // Drizzle pg `numeric` infers as a TS `string` (precision-exact); the
+          // native TS binding for field.decimal is `string` to match. Read the
+          // declared @precision/@scale (mirroring migrate-ts/expected-schema so
+          // codegen and the DDL agree), falling back to a sane default.
           fnName = "numeric";
-          fnOptions = { precision: 19, scale: 4 }; // sane default; @precision/@scale attrs override
+          const precision = field.ownAttr(FIELD_ATTR_PRECISION);
+          const scale = field.ownAttr(FIELD_ATTR_SCALE);
+          if (typeof precision === "number" && typeof scale === "number") {
+            fnOptions = { precision, scale };
+          } else if (typeof precision === "number") {
+            fnOptions = { precision };
+          } else {
+            fnOptions = { precision: 19, scale: 4 };
+          }
           break;
+        }
         case FIELD_SUBTYPE_STRING: {
           const maxLen = getMaxLength(field);
           if (maxLen !== undefined) {
