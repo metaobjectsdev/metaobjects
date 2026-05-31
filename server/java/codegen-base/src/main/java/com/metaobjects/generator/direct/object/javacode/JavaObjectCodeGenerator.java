@@ -88,18 +88,21 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
                 GeneratorUtil.getFilteredMetaData(loader, getFilterClass(), getMetaDataFilters());
         try {
             for (MetaObject mo : metadata) {
+                // Abstract objects cannot be instantiated via newInstance(), so binding their
+                // resolution key to a generated class would make newInstance() try to construct
+                // a non-instantiable type — and an extractor for one could never produce a typed
+                // graph. Skip BOTH the binding entry and the extractor for abstract metadata
+                // (honors the abstract-codegen invariant: no instance artifacts for abstracts).
+                if (IOUtil.isAbstract(mo)) {
+                    continue;
+                }
                 String javaPkg = namer.getLanguagePackage(mo);
                 String javaClass = namer.getClassName(mo);
                 String generatedFqn = isNotBlank(javaPkg) ? javaPkg + "." + javaClass : javaClass;
                 // Key on the package-folded resolution key — NOT the dotted Java FQN.
                 fqnToClass.put(mo.getName(), generatedFqn);
-
-                // Emit a <Name>Extractor alongside each CONCRETE flavored class. Abstract
-                // objects cannot be instantiated (newInstance), so an extractor for one would
-                // never produce a typed graph — skip them.
-                if (!IOUtil.isAbstract(mo)) {
-                    extractorGen.emit(getOutputDir(), javaPkg, javaClass, mo.getName());
-                }
+                // Emit a <Name>Extractor alongside each CONCRETE flavored class.
+                extractorGen.emit(getOutputDir(), javaPkg, javaClass, mo.getName());
             }
         } catch (IOException e) {
             throw new GeneratorException("Unable to emit generated Extractor: " + e, e);
