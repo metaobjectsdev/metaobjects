@@ -175,7 +175,14 @@ export async function appliedNames(
   return new Set((await appliedRecords(db, dialect, opts)).keys());
 }
 
-/** Return a name→checksum map for all applied migrations (tamper-guard input). */
+/**
+ * Return a name→checksum map for all applied migrations (tamper-guard input).
+ *
+ * The {@link BASELINE_NAME} marker row is excluded at the SQL level: it is a
+ * marker, NOT a migration, so no migration-listing consumer (e.g. rollback-all,
+ * which derives its work list from these names) should ever see it. The baseline
+ * is read independently via {@link baselineRecord}.
+ */
 export async function appliedRecords(
   db: Kysely<Record<string, unknown>>,
   dialect: LedgerDialect = "sqlite",
@@ -185,7 +192,7 @@ export async function appliedRecords(
   // Raw select keeps this dialect-portable and sidesteps typing the dynamic
   // table name against the untyped Kysely<Record<string, unknown>> schema.
   const result = await sql<{ name: string; checksum: string }>`
-    SELECT name, checksum FROM ${ledger.ref}
+    SELECT name, checksum FROM ${ledger.ref} WHERE name != ${BASELINE_NAME}
   `.execute(db);
   const map = new Map<string, string>();
   for (const row of result.rows) {
@@ -204,7 +211,7 @@ export const BASELINE_NAME = "0000-baseline";
  */
 export async function recordBaseline(
   db: Kysely<Record<string, unknown>>,
-  dialect: LedgerDialect = "sqlite",
+  dialect: LedgerDialect,
   checksum: string,
   opts?: LedgerOptions,
 ): Promise<void> {
