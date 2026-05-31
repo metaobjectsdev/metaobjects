@@ -9,23 +9,28 @@ from typing import Any
 import pg8000.dbapi as pg8000
 
 from metaobjects import load_directory
-from metaobjects.migrate import build_expected_schema, diff, emit_postgres
-from metaobjects.migrate.types import SchemaSnapshot
 from metaobjects.runtime import ObjectManager, PostgresDriver
 
 from .normalization import canonical_rows_json, normalize_row
 from .postgres_container import PostgresContainer
 from .scenarios import QueryScenario, QuerySpec
 
+#: The single TS-produced schema artifact every port's query-runner executes
+#: verbatim (ADR-0015). Lives under the corpus ``canonical/`` directory.
+SCHEMA_ARTIFACT_FILE = "schema.postgres.sql"
+
 
 def run(scenario: QueryScenario, pg: PostgresContainer, canonical_dir: Path) -> None:
     info = pg.info()
 
-    # 1. Apply the canonical schema (engine full-CREATE).
+    # 1. Provision the schema by executing the committed TS-produced DDL
+    #    artifact verbatim — schema migrations are TS-only (ADR-0015), so no
+    #    port synthesizes its conformance schema from metadata anymore.
+    _apply_schema_artifact(info, canonical_dir / SCHEMA_ARTIFACT_FILE)
+
+    # Metadata is still loaded — but only for entity → row mapping (table +
+    # column names, field types), never to derive DDL.
     root_for_bootstrap = _load(canonical_dir)
-    expected = build_expected_schema(root_for_bootstrap)
-    up = emit_postgres(diff(expected, SchemaSnapshot()))
-    _execute(info, up)
 
     # 2. Seed data.
     if scenario.seed_data and scenario.seed_data.strip():
@@ -70,6 +75,34 @@ def _execute_spec(om: ObjectManager, spec: QuerySpec) -> Any:
 # ----------------------------------------------------------------------------
 # Postgres helpers + assertions
 # ----------------------------------------------------------------------------
+
+
+def _apply_schema_artifact(info: Any, artifact: Path) -> None:
+    """Execute the committed Postgres DDL artifact statement-by-statement.
+
+    The artifact is a flat list of CREATE / ALTER statements terminated by ``;``
+    with no embedded semicolons (no functions / dollar-quoting), so a naive
+    split on ``;`` is sufficient and keeps us off any driver multi-statement
+    quirk. Comment-only lines (``--``) are stripped before splitting.
+    """
+    text = artifact.read_text()
+    statements = [s.strip() for s in _strip_comments(text).split(";")]
+    with closing(pg8000.connect(
+        host=info.host, port=info.port, user=info.user, password=info.password, database=info.database,
+    )) as conn:
+        cur = conn.cursor()
+        try:
+            for stmt in statements:
+                if stmt:
+                    cur.execute(stmt)
+            conn.commit()
+        finally:
+            cur.close()
+
+
+def _strip_comments(sql: str) -> str:
+    lines = [ln for ln in sql.splitlines() if not ln.lstrip().startswith("--")]
+    return "\n".join(lines)
 
 
 def _load(metadata_dir: Path):
