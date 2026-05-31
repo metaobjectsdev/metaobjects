@@ -19,7 +19,7 @@ public static class ScenarioLoader
     // object-graph deserialization collapses both to the string "45", which would
     // make every INTEGER-typed expectation (durationMinutes, min/max aggregates)
     // un-representable. This matches the TS authority, whose JS YAML loader infers
-    // scalar types the same way. See ExpectNode.ToJsonNode.
+    // scalar types the same way. See QueryScenarioRunner.YamlExpectToJsonNode.
     private static readonly IDeserializer Yaml = new DeserializerBuilder()
         .WithNamingConvention(HyphenatedNamingConvention.Instance)
         .WithTypeConverter(new YamlNodeTypeConverter())
