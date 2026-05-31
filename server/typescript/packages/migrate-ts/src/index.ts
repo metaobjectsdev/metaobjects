@@ -24,6 +24,7 @@ export {
   parseSnapshot,
   SNAPSHOT_FORMAT_VERSION,
 } from "./snapshot/serialize.js";
+export { snapshotChecksum } from "./snapshot/checksum.js";
 export { snapshotPath, readSnapshot, writeSnapshot } from "./snapshot/store.js";
 export { planOffline, baselineFromMetadata } from "./snapshot/plan.js";
 export type { PlanOfflineArgs, PlanOfflineResult } from "./snapshot/plan.js";
@@ -81,6 +82,9 @@ export {
   deleteApplied,
   appliedNames,
   appliedRecords,
+  recordBaseline,
+  baselineRecord,
+  BASELINE_NAME,
   MIGRATIONS_TABLE,
   DEFAULT_LEDGER_SCHEMA,
   type LedgerRow,
@@ -95,6 +99,10 @@ export {
   type RollbackToOptions,
   type RollbackToResult,
 } from "./apply/apply.js";
+
+// Snapshot-integrity: replay migrations and assert == committed snapshot.
+export { verifyReplay } from "./verify/replay.js";
+export type { VerifyReplayArgs, VerifyReplayResult } from "./verify/replay.js";
 
 // Wrangler config helpers
 export {
