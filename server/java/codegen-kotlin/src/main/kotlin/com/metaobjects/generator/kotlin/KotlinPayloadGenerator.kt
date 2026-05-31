@@ -155,7 +155,14 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             return resolveObjectFieldType(field, loader, nestedPkg, outRoot, emittedNestedFqns)
         }
 
-        return KotlinTypeMapper.kotlinTypeName(field)
+        // Scalar array (`isArray: true` on a non-object field, incl. array-of-enum): model as
+        // List<ElementType> in the strict payload (matching the cross-port payload shape). Without
+        // this, `kotlinTypeName` returns the bare element type and the array semantics are lost.
+        val scalarType = KotlinTypeMapper.kotlinTypeName(field)
+        if (field.isArrayType()) {
+            return ClassName("kotlin.collections", "List").parameterizedBy(scalarType)
+        }
+        return scalarType
     }
 
     /**
