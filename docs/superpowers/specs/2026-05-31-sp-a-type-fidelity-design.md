@@ -71,6 +71,14 @@ Each unit ends with the **review + simplify** gate before the sub-project merges
 - **No wire-format change** beyond un-deferring fractional ms (the NUMERIC-as-string rule pre-exists).
 - **`decimalType` TS config knob** — future YAGNI; not built.
 
+## Scope boundary — JVM/Python runtime decimal surface deferred to SP-D
+
+**Discovered during Unit 4 (Java).** Java's `DecimalField extends PrimitiveField<BigDecimal>` but its constructor passes `DataTypes.DOUBLE` (a literal `// for now, could add DECIMAL later`), and there is no `DataTypes.DECIMAL` member. Python's `meta_field.py` likewise maps `FIELD_SUBTYPE_DECIMAL → DataType.DOUBLE`. Consequence: even with exact codegen bindings, the **Java/Python runtime ObjectManager surfaces a `Double`/float** for a decimal column — lossy beyond ~15 significant digits.
+
+**Decision:** SP-A delivers **codegen + wire-format fidelity** (TS→string, C#→decimal, Kotlin→BigDecimal, Java codegen already BigDecimal, Python codegen already Decimal) and conformance gating. The corpus value (`NUMERIC(9,4)`) is within double's exact range, so the gate is honestly green. The **field-level runtime fix** — adding `DataTypes.DECIMAL` (valueClass `BigDecimal`, `isNumeric`) in Java and the parallel Python `DataType` change, plus auditing the ~11 Java `DataTypes` switch sites and cross-port serialization — is **routed to SP-D (runtime return-type contract)**, whose charter already owns "what the runtime returns" (native vs wire types). This keeps SP-A symmetric across all five ports (Java + Python both use test-runner-seam canonicalization here) rather than fixing the field level in some ports and not others.
+
+**Until SP-D lands:** the Java/Python integration runners canonicalize decimal at the harness seam (`BigDecimal.valueOf(double)` / equivalent) — exact for the corpus, double-precision-bounded for arbitrary NUMERIC. SP-D removes that seam workaround when the runtime surfaces exact decimals natively.
+
 ## Definition of done
 
 - `field.decimal` (with `@precision`/`@scale`) and fractional-ms `TIMESTAMP`/`TIMESTAMPTZ`/`TIME` are exercised by `fixtures/persistence-conformance/` and pass **byte-identically on all five ports**.
