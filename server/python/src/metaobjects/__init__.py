@@ -26,13 +26,13 @@ from .meta.core.object.object_class_registry import (
     ObjectFactory,
     default_object_class_registry,
 )
-from .meta.core.object.object_recover import (
+from .meta.core.object.object_extract import (
     MAX_NEST_DEPTH,
-    RecoverError,
+    ExtractError,
     assemble,
     or_throw,
-    recover_object,
-    recover_schema_for,
+    extract_object,
+    extract_schema_for,
 )
 from .meta.core.object.value_object import ValueObject
 
@@ -65,11 +65,11 @@ __all__ = [
     "ObjectClassRegistry",
     "ObjectFactory",
     "default_object_class_registry",
-    # Phase B metadata-driven recover bridge
-    "recover_object",
-    "recover_schema_for",
+    # Phase B metadata-driven extract bridge
+    "extract_object",
+    "extract_schema_for",
     "assemble",
     "or_throw",
-    "RecoverError",
+    "ExtractError",
     "MAX_NEST_DEPTH",
 ]

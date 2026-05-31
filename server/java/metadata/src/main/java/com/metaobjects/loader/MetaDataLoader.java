@@ -135,7 +135,7 @@ public class MetaDataLoader implements LoaderConfigurable {
     // a phase chose to RECORD rather than eager-throw. The Java loader continues
     // to be eager-throw on the first hard error in any phase, but phases may
     // opt to call {@link #addError(MetaDataException)} when they have collected
-    // multiple recoverable errors in a single pass — see the conformance contract
+    // multiple extractable errors in a single pass — see the conformance contract
     // (spec/conformance-tests.md): the sorted set of error codes from a load
     // attempt MUST equal the expected set, so multi-error fixtures need every
     // collected error visible to the harness.
@@ -800,7 +800,7 @@ public class MetaDataLoader implements LoaderConfigurable {
     }
 
     /**
-     * Retry initialization with error recovery
+     * Retry initialization with error extraction
      * @param maxRetries Maximum number of retry attempts
      * @param retryDelayMs Delay between retries in milliseconds
      * @return This MetaDataLoader

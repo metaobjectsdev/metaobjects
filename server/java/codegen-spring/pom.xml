@@ -44,7 +44,7 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- compile-and-run test: generated parser uses metaobjects-render recover engine -->
+        <!-- compile-and-run test: generated parser uses metaobjects-render extract engine -->
         <dependency>
             <groupId>com.metaobjects</groupId>
             <artifactId>metaobjects-render</artifactId>
@@ -52,8 +52,8 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- compile-and-run test: the runtime-delegating recover(MetaDataLoader, String)
-             overload delegates to com.metaobjects.object.recover.MetaObjectRecover (om).
+        <!-- compile-and-run test: the runtime-delegating extractLenient(MetaDataLoader, String)
+             overload delegates to com.metaobjects.object.extract.MetaObjectExtractor (om).
              om transitively brings render + metadata onto the test classpath. -->
         <dependency>
             <groupId>com.metaobjects</groupId>

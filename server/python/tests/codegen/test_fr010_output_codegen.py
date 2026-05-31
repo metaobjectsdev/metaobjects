@@ -1,8 +1,8 @@
-"""FR-010 codegen — tolerant ``recover_<name>()`` + output-format prompt fragment.
+"""FR-010 codegen — tolerant ``extract_<name>()`` + output-format prompt fragment.
 
-Python's advantage (like TS's import-and-run): we GENERATE the parser+recover module
+Python's advantage (like TS's import-and-run): we GENERATE the parser+extract module
 and the prompt module for a hand-built model, write them to a temp package, import
-them, and actually CALL ``recover_<name>()`` on dirty input + ``render_<name>_format()``.
+them, and actually CALL ``extract_<name>()`` on dirty input + ``render_<name>_format()``.
 
 Mirrors the intent of C#'s ``Fr010CodegenTests`` / TS's ``fr010-output-codegen.test``.
 The model exercises: a string field with ``@example``/``@instruction``; an enum field
@@ -17,7 +17,7 @@ import sys
 import metaobjects.core_types  # noqa: F401 — side-effect: registers attr classes
 from metaobjects.codegen import (
     output_format_spec_emitter as ofs,
-    recover_schema_emitter as rse,
+    extract_schema_emitter as rse,
 )
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator import EmittedFile, GenContext
@@ -120,18 +120,18 @@ def _import_pkg(pkg_dir: str, monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_recover_schema_literal_bakes_enum_alias_and_values() -> None:
+def test_extract_schema_literal_bakes_enum_alias_and_values() -> None:
     root = _rich_root()
     vo = root.own_children()[0]
     lit = rse.schema_literal(vo, "json", "TaskPayload")
-    assert lit.startswith('RecoverSchema(Format.JSON, "TaskPayload", [')
+    assert lit.startswith('ExtractSchema(Format.JSON, "TaskPayload", [')
     # enum field: @values + @enumAlias (sorted keys, off-vocab "medium" -> LOW).
     assert 'FieldSpec.enum_field("priority", True, ["HIGH", "LOW"], ' in lit
     assert '{"hi": "HIGH", "medium": "LOW"}' in lit
     # required string + int scalars.
     assert 'FieldSpec.scalar("title", FieldKind.STRING, True)' in lit
     assert 'FieldSpec.scalar("count", FieldKind.INT, False)' in lit
-    # array string -> still a STRING scalar slot in the recover schema.
+    # array string -> still a STRING scalar slot in the extract schema.
     assert 'FieldSpec.scalar("tags", FieldKind.STRING, False)' in lit
 
 
@@ -147,19 +147,19 @@ def test_output_format_spec_literal_bakes_example_instruction_enum_doc() -> None
     assert 'array=True' in lit  # the tags array field
 
 
-def test_xml_format_selects_xml_enum_and_skips_recover_for_text() -> None:
+def test_xml_format_selects_xml_enum_and_skips_extract_for_text() -> None:
     xml_root = _rich_root(fmt="xml")
     parser = render_output_parser(xml_root.own_children()[1], xml_root)
     assert parser is not None
-    assert "RecoverSchema(Format.XML," in parser
-    assert "def recover_task_output(" in parser
+    assert "ExtractSchema(Format.XML," in parser
+    assert "def extract_lenient_task_output(" in parser
 
     text_root = _rich_root(fmt="text")
     text_parser = render_output_parser(text_root.own_children()[1], text_root)
     assert text_parser is not None
-    # text-format outputs get NO recover — strict parser only.
-    assert "def recover_task_output(" not in text_parser
-    assert "RecoverSchema" not in text_parser
+    # text-format outputs get NO extract — strict parser only.
+    assert "def extract_lenient_task_output(" not in text_parser
+    assert "ExtractSchema" not in text_parser
     # ...and no prompt fragment.
     assert render_output_prompt(text_root.own_children()[1], text_root) is None
 
@@ -169,7 +169,7 @@ def test_xml_format_selects_xml_enum_and_skips_recover_for_text() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_generated_recover_folds_alias_and_classifies(tmp_path, monkeypatch) -> None:
+def test_generated_extract_folds_alias_and_classifies(tmp_path, monkeypatch) -> None:
     root = _rich_root()
     parser_files = OutputParserGenerator().generate(_ctx(root))
     payload_files = PayloadVoGenerator().generate(_ctx(root))
@@ -185,8 +185,8 @@ def test_generated_recover_folds_alias_and_classifies(tmp_path, monkeypatch) -> 
 
     # Dirty input: preamble prose + ```json fence + off-vocab alias "medium"
     # (folds to LOW) + a missing optional ("note" absent). Mirrors the C# proof
-    # (Fr010CodegenTests): scalar/enum recovery is asserted by value; scalar-array
-    # recovery is bounded-scope-deferred (the schema slot is a STRING scalar — the
+    # (Fr010CodegenTests): scalar/enum extraction is asserted by value; scalar-array
+    # extraction is bounded-scope-deferred (the schema slot is a STRING scalar — the
     # mirror carries a typed `list[str | None] | None` accessor but the engine does
     # not populate it), so `tags` is asserted by SHAPE (a None slot), not value.
     dirty = (
@@ -197,7 +197,7 @@ def test_generated_recover_folds_alias_and_classifies(tmp_path, monkeypatch) -> 
         "```\n"
         "Hope that helps!"
     )
-    result = parser_mod.recover_task_output(dirty)
+    result = parser_mod.extract_lenient_task_output(dirty)
 
     # The @enumAlias fold: off-vocab "medium" -> canonical "LOW".
     assert result.data is not None
@@ -206,7 +206,7 @@ def test_generated_recover_folds_alias_and_classifies(tmp_path, monkeypatch) -> 
     assert result.data.count == 3
     # The missing optional surfaces as None on the mirror.
     assert result.data.note is None
-    # The mirror EXPOSES the array slot with the deferred-recovery accessor type.
+    # The mirror EXPOSES the array slot with the deferred-extraction accessor type.
     assert hasattr(result.data, "tags")
 
     # Classification: nothing required was lost; the report is non-empty.
@@ -214,8 +214,8 @@ def test_generated_recover_folds_alias_and_classifies(tmp_path, monkeypatch) -> 
     assert not report.is_empty()
     assert not report.has_lost_required()
     states = report.states()
-    assert states["priority"].value == "RECOVERED"
-    assert states["title"].value == "RECOVERED"
+    assert states["priority"].value == "EXTRACTED"
+    assert states["title"].value == "EXTRACTED"
     # The missing optional is classified LOST_OPTIONAL, never LOST_REQUIRED.
     assert "note" not in report.lost_required()
 
@@ -251,7 +251,7 @@ def test_prompt_generator_emits_one_file_named_by_template(tmp_path) -> None:
 
 # ---------------------------------------------------------------------------
 # FR-011: codegen bakes @coerceDefault + resolved @normalize; the generated
-# recover folds an off-vocab enum to the coerceDefault member → DEFAULTED.
+# extract folds an off-vocab enum to the coerceDefault member → DEFAULTED.
 # ---------------------------------------------------------------------------
 
 
@@ -285,7 +285,7 @@ def _fr011_root() -> MetaRoot:
     return root
 
 
-def test_recover_schema_literal_bakes_coerce_default_and_normalize() -> None:
+def test_extract_schema_literal_bakes_coerce_default_and_normalize() -> None:
     root = _fr011_root()
     vo = root.own_children()[0]
     lit = rse.schema_literal(vo, "json", "OpinionPayload")
@@ -296,7 +296,7 @@ def test_recover_schema_literal_bakes_coerce_default_and_normalize() -> None:
     )
 
 
-def test_generated_recover_folds_coerce_default_and_classifies_defaulted(
+def test_generated_extract_folds_coerce_default_and_classifies_defaulted(
     tmp_path, monkeypatch
 ) -> None:
     root = _fr011_root()
@@ -312,7 +312,7 @@ def test_generated_recover_folds_coerce_default_and_classifies_defaulted(
 
     # Off-vocab confidence "banana" → folds to @coerceDefault "LOW", DEFAULTED.
     dirty = '{"text":"hi","confidence":"banana"}'
-    result = parser_mod.recover_opinion_output(dirty)
+    result = parser_mod.extract_lenient_opinion_output(dirty)
 
     assert result.data is not None
     assert result.data.text == "hi"
@@ -321,11 +321,11 @@ def test_generated_recover_folds_coerce_default_and_classifies_defaulted(
     report = result.report
     assert not report.has_lost_required()
     assert report.states()["confidence"].value == "DEFAULTED"
-    assert report.states()["text"].value == "RECOVERED"
+    assert report.states()["text"].value == "EXTRACTED"
 
 
 # ---------------------------------------------------------------------------
-# FR-010 nested-codegen-gap PROOF — the runtime-delegating recover populates
+# FR-010 nested-codegen-gap PROOF — the runtime-delegating extract populates
 # nested-object + array-of-object components (the self-contained path leaves
 # them None). Import-and-run via the generated parser + a loaded MetaRoot.
 # Mirrors the Java/Kotlin/TS nested pilots.
@@ -392,7 +392,7 @@ def _stub_order_payload() -> list[EmittedFile]:
     import OrderOutputPayload``, so SOME payload module must exist on import. The
     strict Pydantic emit for *nested-object* payload fields is an orthogonal,
     pre-existing payload-VO codegen concern; this proof targets ONLY the
-    runtime-delegating recover path, which never touches the strict payload class.
+    runtime-delegating extract path, which never touches the strict payload class.
     A hand-written stub keeps the proof focused and import-clean."""
     src = (
         "from __future__ import annotations\n\n"
@@ -404,28 +404,28 @@ def _stub_order_payload() -> list[EmittedFile]:
 
 
 def test_nested_mirror_dataclasses_are_typed_not_object() -> None:
-    """The emitted parser types the nested mirror fields as the nested ``*Recovered``
+    """The emitted parser types the nested mirror fields as the nested ``*Extracted``
     dataclasses (+ ``list[...]``), not a flat ``object``/``str`` — the gap-closing shape."""
     root = _nested_root()
     parser = render_output_parser(root.own_children()[-1], root)
     assert parser is not None
     # nested single object -> the nested mirror type
-    assert 'address: "AddressPayloadRecovered" | None = None' in parser
+    assert 'address: "AddressPayloadExtracted" | None = None' in parser
     # array-of-objects -> list of the nested mirror (NOT list[str | None])
-    assert 'items: list["LineItemPayloadRecovered" | None] | None = None' in parser
+    assert 'items: list["LineItemPayloadExtracted" | None] | None = None' in parser
     # the nested mirror dataclasses themselves are emitted
-    assert "class AddressPayloadRecovered:" in parser
-    assert "class LineItemPayloadRecovered:" in parser
+    assert "class AddressPayloadExtracted:" in parser
+    assert "class LineItemPayloadExtracted:" in parser
     # the delegating entry + baked payload name
     assert 'PAYLOAD_NAME = "OrderPayload"' in parser
-    assert "def recover_order_output_with_loader(" in parser
-    assert "recover_object(mo, text, Format.JSON, opts)" in parser
+    assert "def extract_lenient_order_output_with_loader(" in parser
+    assert "extract_object(mo, text, Format.JSON, opts)" in parser
 
 
-def test_delegating_recover_populates_nested_and_array_of_objects(
+def test_delegating_extract_populates_nested_and_array_of_objects(
     tmp_path, monkeypatch
 ) -> None:
-    """Import-and-run PROOF: the generated delegating recover, given a loaded MetaRoot
+    """Import-and-run PROOF: the generated delegating extract, given a loaded MetaRoot
     + dirty input, FULLY populates the nested object + array-of-objects into typed
     mirrors. The self-contained path leaves those components None."""
     root = _nested_root()
@@ -453,24 +453,24 @@ def test_delegating_recover_populates_nested_and_array_of_objects(
     )
 
     # --- self-contained path: nested components stay None (the historical gap) ---
-    self_contained = parser_mod.recover_order_output(dirty)
+    self_contained = parser_mod.extract_lenient_order_output(dirty)
     assert self_contained.data is not None
     assert self_contained.data.customer == "Ada"
     assert self_contained.data.address is None
     assert self_contained.data.items is None
 
     # --- delegating path: nested + array-of-objects FULLY populate ---
-    result = parser_mod.recover_order_output_with_loader(root, dirty)
+    result = parser_mod.extract_lenient_order_output_with_loader(root, dirty)
     assert result.data is not None
     assert result.data.customer == "Ada"
 
-    # nested single object -> typed AddressPayloadRecovered mirror, populated.
+    # nested single object -> typed AddressPayloadExtracted mirror, populated.
     addr = result.data.address
     assert addr is not None
     assert addr.street == "1 Main St"
     assert addr.zip == "12345"
 
-    # array-of-objects -> list of typed LineItemPayloadRecovered mirrors, populated.
+    # array-of-objects -> list of typed LineItemPayloadExtracted mirrors, populated.
     items = result.data.items
     assert isinstance(items, list)
     assert len(items) == 2
@@ -481,7 +481,7 @@ def test_delegating_recover_populates_nested_and_array_of_objects(
     assert not result.report.has_lost_required()
 
 
-def test_delegating_recover_raises_on_unknown_payload(tmp_path, monkeypatch) -> None:
+def test_delegating_extract_raises_on_unknown_payload(tmp_path, monkeypatch) -> None:
     """The delegating entry raises a clear error when the supplied MetaRoot does not
     declare the baked payload value-object."""
     root = _nested_root()
@@ -498,4 +498,4 @@ def test_delegating_recover_raises_on_unknown_payload(tmp_path, monkeypatch) -> 
     import pytest
 
     with pytest.raises(ValueError, match="OrderPayload"):
-        parser_mod.recover_order_output_with_loader(empty, "{}")
+        parser_mod.extract_lenient_order_output_with_loader(empty, "{}")

@@ -1,7 +1,7 @@
 package com.metaobjects.render;
 
 import com.metaobjects.render.prompt.*;
-import com.metaobjects.render.recover.*;
+import com.metaobjects.render.extract.*;
 import org.junit.Test;
 import java.util.List;
 import java.util.Map;
@@ -23,18 +23,18 @@ public class OutputPromptVerifyTest {
         assertTrue(e.isEmpty());
     }
 
-    @Test public void roundTripExampleOnlyRecoversComplete() {
-        // render the exampleOnly skeleton, then recover() it — required fields must all be present
+    @Test public void roundTripExampleOnlyExtractsComplete() {
+        // render the exampleOnly skeleton, then extractLenient() it — required fields must all be present
         OutputFormatSpec spec = new OutputFormatSpec(Format.JSON, "Answer", PromptStyle.EXAMPLE_ONLY, List.of(
             new PromptField("text", FieldKind.STRING, true, false, null, null, "hi", null, null),
             new PromptField("confidence", FieldKind.ENUM, true, false, List.of("HIGH"), null, "HIGH", null, null)));
         String fragment = OutputFormatRenderer.render(spec, PromptOverrides.none());
         String example = fragment.substring(fragment.indexOf('{'), fragment.lastIndexOf('}') + 1);
 
-        RecoverSchema rs = new RecoverSchema(Format.JSON, "Answer", List.of(
+        ExtractSchema rs = new ExtractSchema(Format.JSON, "Answer", List.of(
             FieldSpec.scalar("text", FieldKind.STRING, true),
             FieldSpec.enumField("confidence", true, List.of("HIGH"), Map.of())));
-        RecoverOutcome o = Recover.recover(example, rs, RecoverOptions.defaults());
+        ExtractionOutcome o = Extract.extract(example, rs, ExtractOptions.defaults());
         assertTrue("round-trip complete (no lostRequired): " + o.report().lostRequired(),
                 o.report().lostRequired().isEmpty());
     }
@@ -44,10 +44,10 @@ public class OutputPromptVerifyTest {
             new PromptField("text", FieldKind.STRING, true, false, null, null, "hi", null, null),
             new PromptField("confidence", FieldKind.ENUM, true, false, List.of("HIGH"), null, "HIGH", null, null)));
         String fragment = OutputFormatRenderer.render(spec, PromptOverrides.none());
-        RecoverSchema rs = new RecoverSchema(Format.XML, "Answer", List.of(
+        ExtractSchema rs = new ExtractSchema(Format.XML, "Answer", List.of(
             FieldSpec.scalar("text", FieldKind.STRING, true),
             FieldSpec.enumField("confidence", true, List.of("HIGH"), Map.of())));
-        RecoverOutcome o = Recover.recover(fragment, rs, RecoverOptions.defaults());
+        ExtractionOutcome o = Extract.extract(fragment, rs, ExtractOptions.defaults());
         assertTrue("xml round-trip complete: " + o.report().lostRequired(), o.report().lostRequired().isEmpty());
     }
 }

@@ -1,6 +1,6 @@
 """FR-011 metamodel attrs — cross-port parity (mirrors C#/Java Fr011LoaderAttrsTests).
 
-Registers + validates the FR-011 recover-hardening vocabulary in the Python loader:
+Registers + validates the FR-011 extract-hardening vocabulary in the Python loader:
   - @coerceDefault : string on field.enum ONLY; member-validated against effective
                      @values (own or inherited) -> ERR_BAD_ATTR_VALUE.
   - @normalize     : closed enum (none|collapse|strip, default strip) on field.enum

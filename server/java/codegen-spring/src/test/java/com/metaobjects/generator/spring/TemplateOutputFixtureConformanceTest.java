@@ -24,11 +24,11 @@ import static org.junit.Assert.assertTrue;
  * <p>Asserts the key structural markers emitted by both
  * {@link SpringOutputPromptGenerator} and {@link SpringOutputParserGenerator} for each
  * fixture. Behavioral correctness is proven by the compile-run tests
- * ({@code GeneratedOutputPromptCompileRunTest}, {@code GeneratedRecoverCompileRunTest}).
+ * ({@code GeneratedOutputPromptCompileRunTest}, {@code GeneratedExtractLenientCompileRunTest}).
  *
  * <p>Repo root is located by walking up from {@code user.dir} until the
  * {@code fixtures/conformance} directory is found — the same strategy used by
- * {@code RecoverConformanceTest} in the render module.
+ * {@code ExtractConformanceTest} in the render module.
  */
 @RunWith(Parameterized.class)
 public class TemplateOutputFixtureConformanceTest extends SharedRegistryTestBase {
@@ -135,19 +135,19 @@ public class TemplateOutputFixtureConformanceTest extends SharedRegistryTestBase
                 + parserFile, Files.exists(parserFile));
         String parserSrc = Files.readString(parserFile);
 
-        assertTrue("[" + fixtureName + "] expected `RecoverSchema RECOVER_SCHEMA`; saw:\n" + parserSrc,
-            parserSrc.contains("RecoverSchema RECOVER_SCHEMA"));
+        assertTrue("[" + fixtureName + "] expected `ExtractSchema EXTRACT_SCHEMA`; saw:\n" + parserSrc,
+            parserSrc.contains("ExtractSchema EXTRACT_SCHEMA"));
 
-        assertTrue("[" + fixtureName + "] expected `recover(`; saw:\n" + parserSrc,
-            parserSrc.contains("recover("));
+        assertTrue("[" + fixtureName + "] expected `extractLenient(`; saw:\n" + parserSrc,
+            parserSrc.contains("extractLenient("));
 
         assertTrue("[" + fixtureName + "] expected `parse(`; saw:\n" + parserSrc,
             parserSrc.contains("parse("));
 
         // @enumAlias medium→OK must appear in the schema literal.
-        assertTrue("[" + fixtureName + "] expected enumAlias `medium` key in RECOVER_SCHEMA literal; saw:\n" + parserSrc,
+        assertTrue("[" + fixtureName + "] expected enumAlias `medium` key in EXTRACT_SCHEMA literal; saw:\n" + parserSrc,
             parserSrc.contains("\"medium\""));
-        assertTrue("[" + fixtureName + "] expected enumAlias value `OK` in RECOVER_SCHEMA literal; saw:\n" + parserSrc,
+        assertTrue("[" + fixtureName + "] expected enumAlias value `OK` in EXTRACT_SCHEMA literal; saw:\n" + parserSrc,
             parserSrc.contains("\"OK\""));
     }
 }

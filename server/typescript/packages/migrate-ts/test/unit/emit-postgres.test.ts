@@ -230,7 +230,7 @@ describe("renderPostgres — down statements", () => {
     expect(down).toContain('ALTER COLUMN "n" TYPE INTEGER');
   });
 
-  test("drop-column down → WARNING comment (no data recovery)", () => {
+  test("drop-column down → WARNING comment (no data extraction)", () => {
     const { down } = emit([{ kind: "drop-column", table: "u", column: "x", status: ALLOWED }], { dialect: "postgres" });
     expect(down).toContain("WARNING");
     expect(down).toContain('"x"');

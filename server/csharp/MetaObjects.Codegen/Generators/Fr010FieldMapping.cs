@@ -1,9 +1,9 @@
-// Shared field-kind mapping for the FR-010 codegen emitters (RecoverSchemaEmitter +
+// Shared field-kind mapping for the FR-010 codegen emitters (ExtractSchemaEmitter +
 // OutputFormatSpecEmitter). Maps a metadata field subtype onto the render engine's
-// FieldKind, the idiomatic nullable C# type used by the recover mirror record, and the
-// RecoverMap accessor that reads it from the forgiving outcome map.
+// FieldKind, the idiomatic nullable C# type used by the extract mirror record, and the
+// ExtractMap accessor that reads it from the forgiving outcome map.
 //
-// Mirrors the Java SpringTypeMapper / RecoverSchemaEmitter instanceof order and the C#
+// Mirrors the Java SpringTypeMapper / ExtractSchemaEmitter instanceof order and the C#
 // PayloadCodegen scalar map. Bounded scope (parity with Java/Kotlin): scalar / enum /
 // scalar-array. Nested object + array-of-enum are deferred (see KNOWN_GAPS).
 
@@ -91,7 +91,7 @@ internal static class Fr010FieldMapping
     };
 
     /// <summary>
-    /// The nullable C# type for a SINGLE scalar field subtype in a recover mirror
+    /// The nullable C# type for a SINGLE scalar field subtype in a extract mirror
     /// (e.g. <c>int?</c> / <c>long?</c> / <c>double?</c> / <c>bool?</c> / <c>string?</c>). Enum is
     /// string-backed (<c>string?</c>). Shared by the self-contained mirror, the nested-aware
     /// (delegating) mirror, and the scalar-ARRAY element type so the three stay in lock-step with
@@ -112,8 +112,8 @@ internal static class Fr010FieldMapping
     };
 
     /// <summary>
-    /// The nullable C# element type for a scalar ARRAY in a recover mirror. Kept in lock-step with
-    /// the array reader (<see cref="RecoverMapCall"/>'s <c>As*List</c> switch): only int/long/double/bool
+    /// The nullable C# element type for a scalar ARRAY in a extract mirror. Kept in lock-step with
+    /// the array reader (<see cref="ExtractMapCall"/>'s <c>As*List</c> switch): only int/long/double/bool
     /// have kind-typed list readers; everything else (enum, decimal, date/time, string) is string-backed
     /// via <c>AsStringList</c>. Deliberately distinct from <see cref="ScalarMirrorType"/> (single scalars),
     /// where a single decimal is <c>decimal?</c> via <c>AsDecimal</c> — there is no <c>AsDecimalList</c>
@@ -142,18 +142,18 @@ internal static class Fr010FieldMapping
         _ => null,
     };
 
-    /// <summary>The nullable C# type for a field in the SELF-CONTAINED recover mirror record.</summary>
+    /// <summary>The nullable C# type for a field in the SELF-CONTAINED extract mirror record.</summary>
     public static string MirrorType(MetaData field)
     {
         // Object BEFORE array (the object-before-isArray fix): a nested-object field — whether
         // single OR array — is deferred to null in the self-contained path, so it must NOT be
-        // typed as a string list (that would force RecoverMapCall down the AsStringList branch
+        // typed as a string list (that would force ExtractMapCall down the AsStringList branch
         // and mismatch the nested-aware mirror the delegating path shares). The delegating path
-        // overrides this with nested-mirror typing (RecoverDelegateEmitter.NestedMirrorRecords).
+        // overrides this with nested-mirror typing (ExtractDelegateEmitter.NestedMirrorRecords).
         if (field.SubType == FIELD_SUBTYPE_OBJECT) return "object?"; // nested deferred (self-contained)
         // Scalar ARRAY: kind-type the element so the mirror list matches what the kind-typed
-        // RecoverMap.As*List reader actually produces (int?/long?/double?/bool?/string?). Nullable
-        // element: a recovered array can carry null where individual items were lost. NOTE: this
+        // ExtractMap.As*List reader actually produces (int?/long?/double?/bool?/string?). Nullable
+        // element: a extracted array can carry null where individual items were lost. NOTE: this
         // uses ScalarArrayElementType (NOT ScalarMirrorType) — decimal/date/enum arrays are
         // string-backed here because there is no AsDecimalList reader (decimal is single-only,
         // SP-A); a single decimal stays decimal? via ScalarMirrorType below.
@@ -162,35 +162,35 @@ internal static class Fr010FieldMapping
         return ScalarMirrorType(field.SubType);
     }
 
-    /// <summary>The <c>RecoverMap.As*</c> call that reads this field from the forgiving map <c>d</c>.</summary>
-    public static string RecoverMapCall(MetaData field)
+    /// <summary>The <c>ExtractMap.As*</c> call that reads this field from the forgiving map <c>d</c>.</summary>
+    public static string ExtractMapCall(MetaData field)
     {
         string name = field.Name;
         // Object BEFORE array (object-before-isArray): a nested object/array-of-objects defers to
-        // null on the self-contained path (it cannot map a List<NestedRecovered> from a flat map).
-        if (field.SubType == FIELD_SUBTYPE_OBJECT) return "null /* FR-010: nested recover deferred (self-contained) */";
-        // Scalar ARRAY: read via the kind-typed RecoverMap.As*List so the produced element type
+        // null on the self-contained path (it cannot map a List<NestedExtracted> from a flat map).
+        if (field.SubType == FIELD_SUBTYPE_OBJECT) return "null /* FR-010: nested extract deferred (self-contained) */";
+        // Scalar ARRAY: read via the kind-typed ExtractMap.As*List so the produced element type
         // matches the kind-typed mirror list (an int[] reads via AsIntList, etc.). Enum arrays stay
         // string-backed (AsStringList) — they are string-typed in the mirror.
         if (IsArray(field) && field.SubType != FIELD_SUBTYPE_ENUM)
             return ScalarKind(field.SubType) switch
             {
-                "Int" => $"RecoverMap.AsIntList(d, \"{name}\")",
-                "Long" => $"RecoverMap.AsLongList(d, \"{name}\")",
-                "Double" => $"RecoverMap.AsDoubleList(d, \"{name}\")",
-                "Boolean" => $"RecoverMap.AsBoolList(d, \"{name}\")",
-                _ => $"RecoverMap.AsStringList(d, \"{name}\")",
+                "Int" => $"ExtractMap.AsIntList(d, \"{name}\")",
+                "Long" => $"ExtractMap.AsLongList(d, \"{name}\")",
+                "Double" => $"ExtractMap.AsDoubleList(d, \"{name}\")",
+                "Boolean" => $"ExtractMap.AsBoolList(d, \"{name}\")",
+                _ => $"ExtractMap.AsStringList(d, \"{name}\")",
             };
-        if (IsArray(field)) return $"RecoverMap.AsStringList(d, \"{name}\")";
-        if (field.SubType == FIELD_SUBTYPE_ENUM) return $"RecoverMap.AsString(d, \"{name}\")";
+        if (IsArray(field)) return $"ExtractMap.AsStringList(d, \"{name}\")";
+        if (field.SubType == FIELD_SUBTYPE_ENUM) return $"ExtractMap.AsString(d, \"{name}\")";
         return ScalarKind(field.SubType) switch
         {
-            "Int" => $"RecoverMap.AsInt(d, \"{name}\")",
-            "Long" => $"RecoverMap.AsLong(d, \"{name}\")",
-            "Double" => $"RecoverMap.AsDouble(d, \"{name}\")",
-            "Decimal" => $"RecoverMap.AsDecimal(d, \"{name}\")",
-            "Boolean" => $"RecoverMap.AsBool(d, \"{name}\")",
-            _ => $"RecoverMap.AsString(d, \"{name}\")",
+            "Int" => $"ExtractMap.AsInt(d, \"{name}\")",
+            "Long" => $"ExtractMap.AsLong(d, \"{name}\")",
+            "Double" => $"ExtractMap.AsDouble(d, \"{name}\")",
+            "Decimal" => $"ExtractMap.AsDecimal(d, \"{name}\")",
+            "Boolean" => $"ExtractMap.AsBool(d, \"{name}\")",
+            _ => $"ExtractMap.AsString(d, \"{name}\")",
         };
     }
 

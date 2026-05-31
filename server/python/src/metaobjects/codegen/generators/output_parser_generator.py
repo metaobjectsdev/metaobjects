@@ -23,8 +23,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from metaobjects.codegen import recover_delegate_emitter as rde
-from metaobjects.codegen import recover_schema_emitter as rse
+from metaobjects.codegen import extract_delegate_emitter as rde
+from metaobjects.codegen import extract_schema_emitter as rse
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
@@ -38,8 +38,8 @@ from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.shared.base_types import TYPE_TEMPLATE
 
-# FR-010: only structured formats get a tolerant recover() alongside the strict parser.
-_RECOVER_FORMATS = frozenset({tc.TEMPLATE_FORMAT_JSON, tc.TEMPLATE_FORMAT_XML})
+# FR-010: only structured formats get a tolerant extract() alongside the strict parser.
+_EXTRACT_FORMATS = frozenset({tc.TEMPLATE_FORMAT_JSON, tc.TEMPLATE_FORMAT_XML})
 
 
 _GENERATOR_NAME = "output-parser-generator"
@@ -85,49 +85,49 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
         else template_name
     )
 
-    # FR-010: emit the tolerant recover() API alongside the strict parser when the
+    # FR-010: emit the tolerant extract() API alongside the strict parser when the
     # template targets json/xml. Otherwise only the FR-006 strict parser is emitted
-    # (text-format outputs get no recover). The mirror is a nullable twin of the
+    # (text-format outputs get no extract). The mirror is a nullable twin of the
     # payload, so the strict ``parse_*`` is left exactly as FR-006 shipped it.
     fmt = template.attr(tc.TEMPLATE_ATTR_FORMAT)
     fmt_str = fmt if isinstance(fmt, str) else tc.TEMPLATE_FORMAT_DEFAULT
-    emit_recover = fmt_str.lower() in _RECOVER_FORMATS
-    recovered_class = f"{payload_class}Recovered"
-    recover_fn = f"recover_{snake}"
+    emit_extract_lenient = fmt_str.lower() in _EXTRACT_FORMATS
+    extracted_class = f"{payload_class}Extracted"
+    extract_lenient_fn = f"extract_lenient_{snake}"
 
     lines: list[str] = [
         generated_header(template_name, fqn),
         "from __future__ import annotations\n",
     ]
 
-    if emit_recover:
-        helpers = rse.recover_map_imports(payload)
+    if emit_extract_lenient:
+        helpers = rse.extract_map_imports(payload)
         lines.append("from dataclasses import dataclass")
         lines.append("")
         lines.append("from metaobjects.render import (")
         lines.append("    FieldKind,")
         lines.append("    FieldSpec,")
         lines.append("    Format,")
-        lines.append("    RecoverOptions,")
-        lines.append("    RecoverSchema,")
-        lines.append("    RecoveryResult,")
-        lines.append("    recover,")
+        lines.append("    ExtractOptions,")
+        lines.append("    ExtractSchema,")
+        lines.append("    ExtractionResult,")
+        lines.append("    extract,")
         lines.append(")")
         if helpers:
-            lines.append("from metaobjects.render.recover.recover_map import (")
+            lines.append("from metaobjects.render.extract.extract_map import (")
             for h in helpers:
                 lines.append(f"    {h},")
             lines.append(")")
         # FR-010 nested-gap: the runtime-delegating path resolves the payload
         # MetaObject from a loaded MetaRoot and delegates to the metadata-driven
-        # runtime recover (which assembles the FULL nested object graph
+        # runtime extract (which assembles the FULL nested object graph
         # reflection-free). Codegen-wrapping-runtime — mirrors the Java/Kotlin/TS
         # pilots.
         lines.append(
             "from metaobjects.meta.core.object.meta_object import MetaObject"
         )
         lines.append(
-            "from metaobjects.meta.core.object.object_recover import recover_object"
+            "from metaobjects.meta.core.object.object_extract import extract_object"
         )
         lines.append("from metaobjects.meta.meta_root import MetaRoot")
         lines.append("")
@@ -149,79 +149,79 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
         ]
     )
 
-    if emit_recover:
+    if emit_extract_lenient:
         schema_literal = rse.schema_literal(payload, fmt_str, payload_class)
-        initializer = rse.mirror_initializer(payload, recovered_class)
-        # FR-010 nested-gap: the recovered mirror is emitted nested-AWARE — the
-        # payload mirror keeps the canonical ``<Name>PayloadRecovered`` name, and a
+        initializer = rse.mirror_initializer(payload, extracted_class)
+        # FR-010 nested-gap: the extracted mirror is emitted nested-AWARE — the
+        # payload mirror keeps the canonical ``<Name>PayloadExtracted`` name, and a
         # mirror dataclass is emitted for every reachable nested value-object. Both
-        # the self-contained ``recover_<name>()`` initializer (scalars/enums only)
+        # the self-contained ``extract_<name>()`` initializer (scalars/enums only)
         # and the delegating path share the ONE payload mirror type.
-        lines.extend(rde.nested_mirror_dataclasses(payload, root, recovered_class))
+        lines.extend(rde.nested_mirror_dataclasses(payload, root, extracted_class))
         lines.append("")
         lines.append("")
-        lines.append("# FR-010 baked recover descriptor — the format/root/field shape")
+        lines.append("# FR-010 baked extract descriptor — the format/root/field shape")
         lines.append("# the tolerant parser repairs dirty LLM output against.")
-        lines.append(f"_RECOVER_SCHEMA: RecoverSchema = {schema_literal}")
+        lines.append(f"_EXTRACT_SCHEMA: ExtractSchema = {schema_literal}")
         lines.append("")
         lines.append("")
         lines.append(
-            f"def {recover_fn}("
-            "text: str, opts: RecoverOptions | None = None"
-            f") -> RecoveryResult[{recovered_class}]:"
+            f"def {extract_lenient_fn}("
+            "text: str, opts: ExtractOptions | None = None"
+            f") -> ExtractionResult[{extracted_class}]:"
         )
         lines.append(
-            '    """Self-contained tolerant best-effort recovery of a dirty LLM response'
+            '    """Self-contained tolerant best-effort extraction of a dirty LLM response'
         )
-        lines.append(f"    into a ``{recovered_class}`` mirror; never raises.")
+        lines.append(f"    into a ``{extracted_class}`` mirror; never raises.")
         lines.append("")
         lines.append(f"    Unlike the strict ``{parse_fn}`` (Pydantic, throw-only), this folds")
         lines.append("    fenced / preamble / prose-wrapped / truncated input and classifies")
         lines.append("    each field via the returned report. Components are ``None`` where the")
         lines.append("    value was lost or malformed. Does NOT populate nested-object /")
         lines.append("    array-of-object components (those stay ``None`` — the historical")
-        lines.append(f"    FR-010 gap); use ``{recover_fn}_with_loader(root, text)`` for full")
-        lines.append('    nested recovery, which delegates to the runtime recover."""')
-        lines.append("    outcome = recover(text, _RECOVER_SCHEMA, opts)")
+        lines.append(f"    FR-010 gap); use ``{extract_lenient_fn}_with_loader(root, text)`` for full")
+        lines.append('    nested extraction, which delegates to the runtime extract."""')
+        lines.append("    outcome = extract(text, _EXTRACT_SCHEMA, opts)")
         lines.append("    d = outcome.data")
         lines.append(f"    data = {initializer}")
-        lines.append("    return RecoveryResult(data=data, report=outcome.report)")
+        lines.append("    return ExtractionResult(data=data, report=outcome.report)")
         lines.append("")
         lines.append("")
 
-        # ---- Runtime-delegating recover (closes the nested gap) ----
+        # ---- Runtime-delegating extract (closes the nested gap) ----
         # The baked PAYLOAD_NAME is the resolved payload VO's SIMPLE name: the
         # delegating entry resolves the MetaObject from a loaded MetaRoot by it
         # (root child named ``payload.name``), then delegates to the runtime
-        # ``recover_object`` (FULL nested graph, reflection-free) and maps the
+        # ``extract_object`` (FULL nested graph, reflection-free) and maps the
         # assembled ValueObject graph into the typed nullable mirror graph.
         format_enum = "Format.XML" if fmt_str.lower() == "xml" else "Format.JSON"
         root_mapper = rde.root_mapper_name(template_name)
-        recover_with_fn = f"{recover_fn}_with_loader"
-        lines.append("#: Payload value-object name this parser recovers — resolved")
+        extract_lenient_with_fn = f"{extract_lenient_fn}_with_loader"
+        lines.append("#: Payload value-object name this parser extracts — resolved")
         lines.append("#: against a loaded MetaRoot at runtime.")
         lines.append(f'PAYLOAD_NAME = "{payload.name}"')
         lines.append("")
         lines.append("")
-        lines.extend(rde.nested_mappers(payload, root, root_mapper, recovered_class))
+        lines.extend(rde.nested_mappers(payload, root, root_mapper, extracted_class))
         lines.append("")
         lines.append("")
         lines.extend(rde.delegate_helpers(rde.used_helpers(payload, root)))
         lines.append("")
         lines.append("")
         lines.append(
-            f"def {recover_with_fn}("
-            "root: MetaRoot, text: str, opts: RecoverOptions | None = None"
-            f") -> RecoveryResult[{recovered_class}]:"
+            f"def {extract_lenient_with_fn}("
+            "root: MetaRoot, text: str, opts: ExtractOptions | None = None"
+            f") -> ExtractionResult[{extracted_class}]:"
         )
         lines.append(
-            '    """Runtime-delegating tolerant recovery; never raises. Unlike'
+            '    """Runtime-delegating tolerant extraction; never raises. Unlike'
         )
-        lines.append(f"    ``{recover_fn}(text)``, this FULLY populates nested-object and")
+        lines.append(f"    ``{extract_lenient_fn}(text)``, this FULLY populates nested-object and")
         lines.append("    array-of-object components by delegating to the metadata-driven")
-        lines.append("    runtime ``recover_object`` (which assembles the whole graph")
+        lines.append("    runtime ``extract_object`` (which assembles the whole graph")
         lines.append("    reflection-free via the Phase A object model), then maps the")
-        lines.append(f"    assembled graph into the typed ``{recovered_class}`` mirror.")
+        lines.append(f"    assembled graph into the typed ``{extracted_class}`` mirror.")
         lines.append("")
         lines.append("    :param root: a loaded ``MetaRoot`` that declares the")
         lines.append(f'                 ``{payload.name}`` value-object."""')
@@ -236,20 +236,20 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
         lines.append("    if mo is None:")
         lines.append("        raise ValueError(")
         lines.append(
-            f'            f"{recover_with_fn}: payload \'{{PAYLOAD_NAME}}\' not found "'
+            f'            f"{extract_lenient_with_fn}: payload \'{{PAYLOAD_NAME}}\' not found "'
         )
         lines.append('            "in the supplied MetaRoot"')
         lines.append("        )")
         lines.append(
-            f"    outcome = recover_object(mo, text, {format_enum}, opts)"
+            f"    outcome = extract_object(mo, text, {format_enum}, opts)"
         )
         lines.append(f"    data = {root_mapper}(outcome.data)")
-        lines.append("    return RecoveryResult(data=data, report=outcome.report)")
+        lines.append("    return ExtractionResult(data=data, report=outcome.report)")
         lines.append("")
         lines.append("")
         lines.append(
-            f'__all__ = ["{parse_fn}", "{recover_fn}", "{recover_with_fn}", '
-            f'"{recovered_class}", "PAYLOAD_NAME"]'
+            f'__all__ = ["{parse_fn}", "{extract_lenient_fn}", "{extract_lenient_with_fn}", '
+            f'"{extracted_class}", "PAYLOAD_NAME"]'
         )
     else:
         lines.append(f'__all__ = ["{parse_fn}"]')

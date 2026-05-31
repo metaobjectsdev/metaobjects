@@ -23,12 +23,12 @@ export {
   UnsafeNameError,
 } from "./errors.js";
 
-// FR-010 Phase B — metadata-driven runtime recover. The descriptor-driven recover ENGINE lives in
+// FR-010 Phase B — metadata-driven runtime extract. The descriptor-driven extract ENGINE lives in
 // the metadata-free @metaobjectsdev/render package; this bridge wires it to the Phase A runtime
 // object model (MetaObject.newInstance() + the MetaField SPI), mirroring the JVM `om` siting.
 export {
-  recoverObject,
-  recoverSchemaFor,
+  extractObject,
+  extractSchemaFor,
   assemble,
   MAX_NEST_DEPTH,
-} from "./recover-object.js";
+} from "./extract-object.js";

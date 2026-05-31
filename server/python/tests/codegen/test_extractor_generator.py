@@ -1,8 +1,8 @@
 """Tests for the ``<Name>Extractor`` generator (cross-port extract tier).
 
-The ``extract`` tier sits OVER the existing tolerant recover: it runs the
-nested-capable ``recover_<snake>_with_loader``, raises when a ``@required`` field
-was lost, and otherwise maps the all-nullable ``<Name>PayloadRecovered`` mirror
+The ``extract`` tier sits OVER the existing tolerant extract: it runs the
+nested-capable ``extract_<snake>_with_loader``, raises when a ``@required`` field
+was lost, and otherwise maps the all-nullable ``<Name>PayloadExtracted`` mirror
 graph onto the STRICT ``<Name>Payload`` Pydantic graph via a generated recursive
 mirror→strict mapper (recursing nested objects + arrays-of-objects).
 
@@ -140,18 +140,18 @@ def _ctx(root: MetaRoot, *, out_dir: str = "/tmp/out") -> GenContext:
 # ---------------------------------------------------------------------------
 
 
-def test_render_emits_extract_and_recover_and_mappers() -> None:
+def test_render_emits_extract_and_extract_and_mappers() -> None:
     out = render_extractor(_order_root().own_children()[3], _order_root())
     assert out is not None
-    # extract returns the STRICT payload type, routes through the with-loader recover.
+    # extract returns the STRICT payload type, routes through the with-loader extract.
     assert "def extract_order_out(root, text, opts=None) -> OrderOutPayload:" in out
-    assert "recover_order_out_with_loader(root, text, opts)" in out
+    assert "extract_lenient_order_out_with_loader(root, text, opts)" in out
     assert "if r.report.has_lost_required():" in out
-    # re-exposed recover under the public name, delegating to the nested-capable path.
-    assert "def recover_order_out(root, text, opts=None):" in out
-    # imports the strict payload graph + the with-loader recover.
+    # re-exposed extract under the public name, delegating to the nested-capable path.
+    assert "def extract_lenient_order_out(root, text, opts=None):" in out
+    # imports the strict payload graph + the with-loader extract.
     assert (
-        "from .order_out_output_parser import recover_order_out_with_loader" in out
+        "from .order_out_output_parser import extract_lenient_order_out_with_loader" in out
     )
     assert "from .order_out_payload import" in out
     # one mapper per type in the graph (root + nested).
@@ -168,7 +168,7 @@ def test_render_returns_none_when_payload_ref_unresolved() -> None:
 
 
 def test_render_returns_none_for_text_format() -> None:
-    """No recover API for text-format outputs → no extract tier."""
+    """No extract API for text-format outputs → no extract tier."""
     payload = _value_object("P", [_field("x", fc.FIELD_SUBTYPE_STRING)])
     tmpl = _output_template("TextOut", "P", fmt="text")
     root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
@@ -224,7 +224,7 @@ def _all_files(root: MetaRoot) -> list:
     )
 
 
-def test_extract_recovers_dirty_into_strict_payload(tmp_path, monkeypatch) -> None:
+def test_extract_extracts_dirty_into_strict_payload(tmp_path, monkeypatch) -> None:
     from importlib import import_module
 
     root = _order_root()
@@ -268,7 +268,7 @@ def test_extract_raises_on_lost_required(tmp_path, monkeypatch) -> None:
         ex.extract_order_out(root, '{ "lines": [] }')
 
 
-def test_recover_reexposed_never_raises_and_no_lost_required(tmp_path, monkeypatch) -> None:
+def test_extract_reexposed_never_raises_and_no_lost_required(tmp_path, monkeypatch) -> None:
     from importlib import import_module
 
     root = _order_root()
@@ -284,7 +284,7 @@ def test_recover_reexposed_never_raises_and_no_lost_required(tmp_path, monkeypat
             "scores": [3, 7],
         }
     )
-    r = ex.recover_order_out(root, clean)
+    r = ex.extract_lenient_order_out(root, clean)
     assert r.report.has_lost_required() is False
     # nested populated in the mirror too (with-loader path).
     assert r.data.customer.name == "Ada"

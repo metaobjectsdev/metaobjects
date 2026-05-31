@@ -13,7 +13,7 @@ from metaobjects.render import (
     PromptStyle,
     render_output_format,
 )
-from metaobjects.render.recover import FieldKind, Format
+from metaobjects.render.extract import FieldKind, Format
 
 
 def _example_only(spec: OutputFormatSpec) -> str:

@@ -317,7 +317,7 @@ core_provider.add(
                 required=True,
             ),
             # FR-010: properties-shaped maps, field.enum only.
-            # @enumAlias: off-vocabulary token -> canonical member (recover alias-fold).
+            # @enumAlias: off-vocabulary token -> canonical member (extract alias-fold).
             # @enumDoc:   member -> human-readable description (guide prompt fragment).
             AttrSchema(
                 name=FIELD_ATTR_ENUM_ALIAS,
@@ -329,7 +329,7 @@ core_provider.add(
                 value_type=ATTR_SUBTYPE_PROPERTIES,
                 required=False,
             ),
-            # FR-011: present-but-uncoercible recover fallback member. Membership
+            # FR-011: present-but-uncoercible extract fallback member. Membership
             # against the effective @values is validated post-load in
             # validation_passes (ERR_BAD_ATTR_VALUE), mirroring the @values pass.
             AttrSchema(
@@ -337,7 +337,7 @@ core_provider.add(
                 value_type=ATTR_SUBTYPE_STRING,
                 required=False,
             ),
-            # FR-011: per-field ASCII normalization mode for tolerant enum recover.
+            # FR-011: per-field ASCII normalization mode for tolerant enum extract.
             # Closed enum (none|collapse|strip); allowed_values gates it →
             # ERR_BAD_ATTR_VALUE. The default ("strip") is resolved at codegen time
             # (field → owning object.value → "strip").

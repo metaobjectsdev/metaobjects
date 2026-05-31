@@ -37,11 +37,11 @@ final class SpringTestFixtures {
 
     /**
      * Inline metadata declaring one {@code object.value} for
-     * {@link RecoverSchemaEmitter} unit tests. Package: {@code acme::ai}.
+     * {@link ExtractSchemaEmitter} unit tests. Package: {@code acme::ai}.
      * Fields: {@code text} (string, required), {@code confidence} (enum, required,
      * values HIGH/OK/LOW, alias medium→OK), {@code note} (string, optional).
      */
-    static final String RECOVER_VO_FIXTURE = """
+    static final String EXTRACT_VO_FIXTURE = """
         {
           "metadata.root": { "package": "acme::ai", "children": [
             { "object.value": { "name": "AnswerOutputPayload", "children": [
@@ -58,12 +58,12 @@ final class SpringTestFixtures {
     /**
      * Inline metadata declaring an {@code object.value} whose single enum field has
      * 12 {@code @enumAlias} entries — more than the 10-pair limit of
-     * {@code java.util.Map.of}. Used by {@link RecoverSchemaEmitterTest} to verify that
-     * {@link RecoverSchemaEmitter} emits {@code Map.ofEntries} instead of {@code Map.of}.
+     * {@code java.util.Map.of}. Used by {@link ExtractSchemaEmitterTest} to verify that
+     * {@link ExtractSchemaEmitter} emits {@code Map.ofEntries} instead of {@code Map.of}.
      * Package: {@code acme::ai}. VO: {@code BigAliasPayload}.
      * Field: {@code label} (enum, required, values HIGH/LOW, aliases a1..a12 → HIGH).
      */
-    static final String RECOVER_BIG_ALIAS_FIXTURE = """
+    static final String EXTRACT_BIG_ALIAS_FIXTURE = """
         {
           "metadata.root": { "package": "acme::ai", "children": [
             { "object.value": { "name": "BigAliasPayload", "children": [
@@ -91,7 +91,7 @@ final class SpringTestFixtures {
      *   <li>{@code plain}: enum HIGH/OK/LOW, no FR-011 attrs but inherits object {@code "collapse"}.</li>
      * </ul>
      */
-    static final String RECOVER_FR011_FIXTURE = """
+    static final String EXTRACT_FR011_FIXTURE = """
         {
           "metadata.root": { "package": "acme::ai", "children": [
             { "object.value": { "name": "Fr011Payload", "@normalize": "collapse", "children": [
@@ -148,12 +148,12 @@ final class SpringTestFixtures {
         """;
 
     /**
-     * Inline metadata combining {@link #RECOVER_VO_FIXTURE}'s {@code AnswerOutputPayload}
+     * Inline metadata combining {@link #EXTRACT_VO_FIXTURE}'s {@code AnswerOutputPayload}
      * VO with a {@code template.output} named {@code AnswerOutput} ({@code @format: json})
-     * for end-to-end {@link SpringOutputParserGenerator} recover-codegen tests.
+     * for end-to-end {@link SpringOutputParserGenerator} extract-codegen tests.
      * Package: {@code acme::ai}.
      */
-    static final String RECOVER_OUTPUT_FIXTURE = """
+    static final String EXTRACT_OUTPUT_FIXTURE = """
         {
           "metadata.root": { "package": "acme::ai", "children": [
             { "object.value": { "name": "AnswerOutputPayload", "children": [
@@ -180,7 +180,7 @@ final class SpringTestFixtures {
     /**
      * Plan 2.1 nested fixture: an {@code object.value} payload with a single nested
      * object field AND an array-of-objects field, plus a {@code template.output}
-     * (json) referencing it. Proves the runtime-delegating {@code recover(loader, text)}
+     * (json) referencing it. Proves the runtime-delegating {@code extractLenient(loader, text)}
      * populates nested + array-of-object components (the historical FR-010 codegen gap).
      * Package: {@code acme::ai}.
      *
@@ -192,7 +192,7 @@ final class SpringTestFixtures {
      *   <li>{@code LineItemPayload}: {@code sku} (string), {@code qty} (int).</li>
      * </ul>
      */
-    static final String RECOVER_NESTED_FIXTURE = """
+    static final String EXTRACT_NESTED_FIXTURE = """
         {
           "metadata.root": { "package": "acme::ai", "children": [
             { "object.value": { "name": "AddressPayload", "children": [

@@ -71,26 +71,26 @@ Non-Spring-Boot consumers (or those who exclude Jackson from
 `spring-boot-starter-web` via `<exclusions>`) must add
 `com.fasterxml.jackson.core:jackson-databind` explicitly.
 
-## FR-010 tolerant `recover()` — two overloads (Plan 2 + Plan 2.1)
+## FR-010 tolerant `extractLenient()` — two overloads (Plan 2 + Plan 2.1)
 
 For `template.output` nodes whose `@format` is `json` or `xml`,
 `SpringOutputParserGenerator` emits two never-throwing, typed
-`recover(...)` flavours returning `RecoveryResult<<Payload>>`:
+`extractLenient(...)` flavours returning `ExtractionResult<<Payload>>`:
 
-1. **Self-contained** `recover(String[, RecoverOptions])` — driven by a
-   codegen-baked `RecoverSchema` (`RecoverSchemaEmitter`) + `RecoverMap`
+1. **Self-contained** `extractLenient(String[, ExtractOptions])` — driven by a
+   codegen-baked `ExtractSchema` (`ExtractSchemaEmitter`) + `ExtractMap`
    reads. Maps **scalar, enum (incl. `@enumAlias` folding), and
    scalar-array** payload fields. Needs only `metaobjects-render` (+
    Jackson for `parse`). **Does NOT populate nested-object /
    array-of-object components** — those map to a typed `null` (a
-   `/* FR-010: nested recover deferred — use recover(loader, text) */`
-   marker appears in the generated source). The `RecoveryReport` still
+   `/* FR-010: nested extract deferred — use extractLenient(loader, text) */`
+   marker appears in the generated source). The `ExtractionReport` still
    classifies the field, so nothing is silently wrong.
 
-2. **Runtime-delegating** `recover(MetaDataLoader, String[, RecoverOptions])`
+2. **Runtime-delegating** `extractLenient(MetaDataLoader, String[, ExtractOptions])`
    (Plan 2.1) — resolves this payload's `MetaObject` by its baked
    `PAYLOAD_FQN` from the supplied loader and delegates to
-   `com.metaobjects.object.recover.MetaObjectRecover` (module
+   `com.metaobjects.object.extract.MetaObjectExtractor` (module
    `metaobjects-om`), which assembles the **full object graph** —
    nested objects, arrays-of-objects, enum coercion, generalized
    `@default` — reflection-free via the Phase A object model. The
@@ -104,14 +104,14 @@ runtime-delegating form whenever the payload has nested objects or
 arrays-of-objects (or whenever a loader is available — it is strictly
 more capable).
 
-**Runtime classpath.** The self-contained `recover(String)` needs
+**Runtime classpath.** The self-contained `extractLenient(String)` needs
 `com.metaobjects:metaobjects-render` (+ Jackson for `parse`). The
-runtime-delegating `recover(MetaDataLoader, ...)` additionally needs
+runtime-delegating `extractLenient(MetaDataLoader, ...)` additionally needs
 `com.metaobjects:metaobjects-om` (which transitively brings `render` +
 `metadata`). This is the codegen-wrapping-runtime precedent (a generated
 DAO depending on OMDB).
 
-**Hardening TODO (minor):** `RecoverSchemaEmitter` emits string literals
+**Hardening TODO (minor):** `ExtractSchemaEmitter` emits string literals
 (field names, enum values, alias keys/values) without Java-string
 escaping. Field names and enum members are identifier-safe and alias
 *values* are canonical members, so the only at-risk input is an

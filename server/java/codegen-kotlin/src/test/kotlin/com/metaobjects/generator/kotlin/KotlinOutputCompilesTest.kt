@@ -1,7 +1,7 @@
 package com.metaobjects.generator.kotlin
 
 import com.metaobjects.metadata.ktx.loadString
-import com.metaobjects.render.recover.RecoveryResult
+import com.metaobjects.render.extract.ExtractionResult
 import com.tschuchort.compiletesting.KotlinCompilation
 import com.tschuchort.compiletesting.SourceFile
 import java.nio.file.Files
@@ -79,19 +79,19 @@ class KotlinOutputCompilesTest {
 
     /**
      * FR-010 compile-proof: generates OpinionPayload.kt (KotlinPayloadGenerator),
-     * OpinionParser.kt with recover() + RECOVER_SCHEMA + OpinionRecovered
+     * OpinionParser.kt with extractLenient() + EXTRACT_SCHEMA + OpinionExtracted
      * (KotlinOutputParserGenerator), and OpinionPrompt.kt with renderFormat()
      * (KotlinOutputPromptGenerator), then compiles all three together and
-     * behaviorally exercises recover() and renderFormat() via reflection.
+     * behaviorally exercises extractLenient() and renderFormat() via reflection.
      *
      * Behavioral assertions:
-     *  - recover("...{\"text\":\"hi\",\"confidence\":\"medium\"}...").data.confidence == "OK"
+     *  - extractLenient("...{\"text\":\"hi\",\"confidence\":\"medium\"}...").data.confidence == "OK"
      *    (alias medium→OK fires)
-     *  - recover(...).data.text == "hi"
-     *  - recover(...).report.hasLostRequired() == false
+     *  - extractLenient(...).data.text == "hi"
+     *  - extractLenient(...).report.hasLostRequired() == false
      *  - renderFormat() returns a non-empty string with no HTML comments (<!)
      */
-    @Test fun `FR-010 recover and renderFormat compile and run`() {
+    @Test fun `FR-010 extract and renderFormat compile and run`() {
         val outDir = Files.createTempDirectory("compile-fr010-")
         try {
             val loader = loadString("fr010-test", fr010Fixture)
@@ -131,41 +131,41 @@ class KotlinOutputCompilesTest {
             // ----------------------------------------------------------------
             val cl = compileResult.classLoader
 
-            // --- recover() ---
+            // --- extractLenient() ---
             val parserClass = cl.loadClass("acme.ai.prompts.OpinionParser")
             assertNotNull(parserClass, "OpinionParser class must be loadable")
 
             // The object's singleton instance is in the INSTANCE field (Kotlin object companion).
             val parserInstance = parserClass.getDeclaredField("INSTANCE").get(null)
 
-            val recoverMethod = parserClass.getDeclaredMethod("recover", String::class.java)
+            val extractLenientMethod = parserClass.getDeclaredMethod("extractLenient", String::class.java)
             @Suppress("UNCHECKED_CAST")
-            val recoveryResult = recoverMethod.invoke(parserInstance,
+            val extractionResult = extractLenientMethod.invoke(parserInstance,
                 "Sure!\n```json\n{\"text\":\"hi\",\"confidence\":\"medium\",\"priority\":\"banana\"}\n```"
-            ) as RecoveryResult<*>
+            ) as ExtractionResult<*>
 
-            // data: OpinionRecovered — access fields via Kotlin data class properties (getters).
-            val recovered = recoveryResult.data
-            assertNotNull(recovered, "RecoveryResult.data must not be null")
+            // data: OpinionExtracted — access fields via Kotlin data class properties (getters).
+            val extracted = extractionResult.data
+            assertNotNull(extracted, "ExtractionResult.data must not be null")
 
-            val recoveredClass = cl.loadClass("acme.ai.prompts.OpinionRecovered")
-            val confidenceGetter = recoveredClass.getDeclaredMethod("getConfidence")
-            val textGetter = recoveredClass.getDeclaredMethod("getText")
-            val priorityGetter = recoveredClass.getDeclaredMethod("getPriority")
+            val extractedClass = cl.loadClass("acme.ai.prompts.OpinionExtracted")
+            val confidenceGetter = extractedClass.getDeclaredMethod("getConfidence")
+            val textGetter = extractedClass.getDeclaredMethod("getText")
+            val priorityGetter = extractedClass.getDeclaredMethod("getPriority")
 
-            val confidenceVal = confidenceGetter.invoke(recovered)
-            val textVal = textGetter.invoke(recovered)
-            val priorityVal = priorityGetter.invoke(recovered)
+            val confidenceVal = confidenceGetter.invoke(extracted)
+            val textVal = textGetter.invoke(extracted)
+            val priorityVal = priorityGetter.invoke(extracted)
 
             assertEquals("OK", confidenceVal,
                 "alias medium→OK must fire: expected confidence=OK, got $confidenceVal")
             assertEquals("hi", textVal,
-                "text field must be recovered as 'hi', got $textVal")
+                "text field must be extracted as 'hi', got $textVal")
             // FR-011: off-vocab priority="banana" folds to @coerceDefault "LOW".
             assertEquals("LOW", priorityVal,
                 "FR-011 @coerceDefault must fold off-vocab 'banana' to LOW, got $priorityVal")
 
-            val report = recoveryResult.report
+            val report = extractionResult.report
             assertFalse(report.hasLostRequired(),
                 "no required fields were absent so hasLostRequired() must be false; lost=${report.lostRequired()}")
             // FR-011: priority classifies DEFAULTED (reached via @coerceDefault).

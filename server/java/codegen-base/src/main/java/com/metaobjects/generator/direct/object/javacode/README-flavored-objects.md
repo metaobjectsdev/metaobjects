@@ -1,11 +1,11 @@
 # Flavored object + extractor codegen (Java)
 
 Direct (code-as-code, no templates) generation of objects that carry their `MetaObject`
-and recover a typed object graph (nested objects + arrays-of-objects) from dirty LLM text.
+and extract a typed object graph (nested objects + arrays-of-objects) from dirty LLM text.
 General-purpose: usable for entities, prompt-request VOs, and extraction-target VOs alike.
 
 Builds on the runtime object model (`MetaObjectAware`, `ValueObject`, `ObjectClassRegistry`,
-`MetaObject.newInstance()`) and the runtime recover (`MetaObjectRecover.recover` in `om`).
+`MetaObject.newInstance()`) and the runtime extract (`MetaObjectExtractor.extract` in `om`).
 
 ## Flavors (selected by a generator config option, not metadata)
 
@@ -23,8 +23,8 @@ For each concrete flavor, the generator also emits, per object:
   `META-INF/services` registration, so `MetaObject.newInstance()` yields the generated
   type for that object's FQN;
 - a `<Name>Extractor` with `static <Name> extract(MetaDataLoader, String)` (typed,
-  `orThrow`) and `static RecoveryResult<<Name>> recover(MetaDataLoader, String)`
-  (never-throws), both wrapping the runtime `MetaObjectRecover.recover`.
+  `orThrow`) and `static ExtractionResult<<Name>> extractLenient(MetaDataLoader, String)`
+  (never-throws), both wrapping the runtime `MetaObjectExtractor.extract`.
 
 Abstract objects are skipped for both the binding entry and the Extractor (they cannot be
 `newInstance()`-d — honors the abstract-codegen invariant: no instance artifacts for abstracts).
@@ -70,7 +70,7 @@ The default is reuse; these are the accounted-for exceptions.
    `META-INF/services` file via `Files.write` after `super.execute()`. No legacy change.
 4. **`PojoAwareCodeWriter` emits an `Object`-typed bridge setter for single nested-object
    fields.** The runtime set-by-name SPI hands an `Object` for an `OBJECT` field, but the
-   typed setter takes `<SubType>`; the bridge setter lets recover populate a single nested
+   typed setter takes `<SubType>`; the bridge setter lets extract populate a single nested
    object. (Arrays need none — their effective value class is `List`.)
 5. **Recursive nested emission is moot.** `@objectRef` always targets a top-level named
    `MetaObject` already in the loader, so the inherited flat multi-file loop emits every
@@ -80,5 +80,5 @@ The default is reuse; these are the accounted-for exceptions.
 ## Status / known gaps
 
 - Java only. Other ports (TS/Python/C#/Kotlin) are out of scope for this feature.
-- The `extract`/`recover` method names track the runtime `MetaObjectRecover`/`RecoveryResult`
-  naming; the queued cross-port `recover → extract` rename will sweep both.
+- The `extract`/`extract` method names track the runtime `MetaObjectExtractor`/`ExtractionResult`
+  naming; the queued cross-port `extract → extract` rename will sweep both.

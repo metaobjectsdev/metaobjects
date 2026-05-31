@@ -41,7 +41,7 @@ import static org.junit.Assert.*;
  *   <li>generates the flavored class + its sub-object classes + the self-registering
  *       {@link ObjectClassBindingProvider} + the {@code <Name>Extractor};</li>
  *   <li>compiles everything in-memory ({@code om} is on the test classpath, so the generated
- *       {@code Extractor}'s reference to {@code com.metaobjects.object.recover.MetaObjectRecover}
+ *       {@code Extractor}'s reference to {@code com.metaobjects.object.extract.MetaObjectExtractor}
  *       resolves);</li>
  *   <li>registers the generated binding provider so {@link MetaObject#newInstance()} yields the
  *       generated flavored type;</li>
@@ -49,14 +49,14 @@ import static org.junit.Assert.*;
  *       object IS the generated flavored type, the nested object is populated (NOT null), the
  *       array-of-objects is populated (size 2, element fields set), and the
  *       {@link MetaObjectAware} back-ref is set;</li>
- *   <li>invokes {@code <Name>Extractor.recover(loader, cleanJson)} and asserts the report has
+ *   <li>invokes {@code <Name>Extractor.extractLenient(loader, cleanJson)} and asserts the report has
  *       no lost-required.</li>
  * </ol>
  *
- * <p>The Extractor is emitted in {@code codegen-base} (referencing {@code MetaObjectRecover} by
+ * <p>The Extractor is emitted in {@code codegen-base} (referencing {@code MetaObjectExtractor} by
  * FQN string so {@code codegen-base} main keeps NO {@code om} compile dep). This test lives in
  * {@code codegen-spring} because that module already depends on {@code codegen-base} (compile)
- * AND {@code om} (test) — the existing home for the compile-run-recover harness, no pom change
+ * AND {@code om} (test) — the existing home for the compile-run-extract harness, no pom change
  * and no reactor reordering of the foundational {@code codegen-base} module.</p>
  */
 public class GeneratedExtractorCompileRunTest {
@@ -249,19 +249,19 @@ public class GeneratedExtractorCompileRunTest {
             assertEquals("items[1].sku", "B2", item1.getClass().getMethod("getSku").invoke(item1));
             assertEquals("items[1].qty", Integer.valueOf(5), item1.getClass().getMethod("getQty").invoke(item1));
 
-            // --- recover(loader, clean) — report has no lost-required ---
-            Method recover = extractorCls.getMethod("recover", MetaDataLoader.class, String.class);
-            Object result = recover.invoke(null, loader, CLEAN);
-            assertNotNull("recover result must be non-null", result);
+            // --- extractLenient(loader, clean) — report has no lost-required ---
+            Method extractLenient = extractorCls.getMethod("extractLenient", MetaDataLoader.class, String.class);
+            Object result = extractLenient.invoke(null, loader, CLEAN);
+            assertNotNull("extractLenient result must be non-null", result);
             Object report = result.getClass().getMethod("report").invoke(result);
             boolean hasLostRequired =
                     (boolean) report.getClass().getMethod("hasLostRequired").invoke(report);
             assertFalse("clean input must lose no required field (flavor=" + flavor + ")", hasLostRequired);
 
-            // the recover result's data is the same flavored type
-            Object recovered = result.getClass().getMethod("data").invoke(result);
-            assertSame("recover().data() must be the generated flavored type",
-                    answerCls, recovered.getClass());
+            // the extract result's data is the same flavored type
+            Object extracted = result.getClass().getMethod("data").invoke(result);
+            assertSame("extractLenient().data() must be the generated flavored type",
+                    answerCls, extracted.getClass());
         }
     }
 }

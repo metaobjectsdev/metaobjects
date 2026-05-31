@@ -161,7 +161,7 @@ public abstract class MetaObject extends MetaData {
                .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE);
 
             // FR-011: object.value carries an object-level @normalize default — the
-            // normalization mode inherited by its enum fields' tolerant recover when the
+            // normalization mode inherited by its enum fields' tolerant extract when the
             // field does not declare its own @normalize. Closed enum (none|collapse|strip).
             def.optionalAttributeWithConstraints(com.metaobjects.field.EnumField.ATTR_NORMALIZE)
                .ofType(com.metaobjects.attr.StringAttribute.SUBTYPE_STRING)

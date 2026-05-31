@@ -1,6 +1,6 @@
 package com.metaobjects.render.prompt;
 
-import com.metaobjects.render.recover.Format;
+import com.metaobjects.render.extract.Format;
 import java.util.List;
 import java.util.Objects;
 

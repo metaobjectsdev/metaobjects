@@ -18,7 +18,7 @@ from metaobjects.render.prompt.output_format_spec import OutputFormatSpec
 from metaobjects.render.prompt.prompt_field import PromptField
 from metaobjects.render.prompt.prompt_overrides import PromptOverrides
 from metaobjects.render.prompt.prompt_style import PromptStyle
-from metaobjects.render.recover import FieldKind, Format
+from metaobjects.render.extract import FieldKind, Format
 
 _NUMERIC_KINDS: frozenset[FieldKind] = frozenset(
     {FieldKind.INT, FieldKind.LONG, FieldKind.DOUBLE, FieldKind.BOOLEAN}
@@ -325,7 +325,7 @@ def _example_value(field: PromptField, overrides: PromptOverrides) -> str:
     return "{" + field.name + "}"
 
 
-# A canonical ASCII numeric literal. Mirrors the recover engine's `_ASCII_NUMERIC`:
+# A canonical ASCII numeric literal. Mirrors the extract engine's `_ASCII_NUMERIC`:
 # `[0-9]` (not `\d`) keeps it ASCII-only, rejecting Unicode digits, underscore digit
 # grouping, and radix prefixes (0x../0b../0o..) so the emitted JSON stays valid and
 # cross-port-identical.

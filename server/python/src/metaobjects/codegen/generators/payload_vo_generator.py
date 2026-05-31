@@ -169,7 +169,7 @@ def is_field_required(field: MetaField) -> bool:
 
     Note: this intentionally accepts ONLY the boolean ``True`` (matching the TS
     payload-codegen predicate), which DELIBERATELY differs from the runtime
-    ``object_recover._is_required`` / ``fr010_field_mapping.is_required``, both of which
+    ``object_extract._is_required`` / ``fr010_field_mapping.is_required``, both of which
     additionally treat the string ``"true"`` as required. The payload type's optionality
     and the extractor mapper's None-guarding are kept in lockstep by sharing THIS
     predicate, so do not "reconcile" it with the runtime predicate."""

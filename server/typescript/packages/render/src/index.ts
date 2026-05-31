@@ -12,31 +12,31 @@ export {
   type VerifyOptions,
 } from "./verify.js";
 
-// FR-010 tolerant recover engine (Tier-2 forgiving parser).
-export { recover } from "./recover/recover.js";
+// FR-010 tolerant extract engine (Tier-2 forgiving parser).
+export { extract } from "./extract/extract.js";
 export {
   Format,
   FieldKind,
-  FieldRecovery,
+  FieldExtraction,
   Tolerance,
-  RecoveryReport,
+  ExtractionReport,
   scalar,
   enumField,
   enumArray,
   range,
   object,
-  recoverSchema,
+  extractSchema,
   defaults,
   orThrow,
-  RecoverError,
+  ExtractError,
   type FieldSpec,
-  type RecoverSchema,
-  type RecoverOptions,
-  type RecoverOutcome,
-  type RecoveryResult,
+  type ExtractSchema,
+  type ExtractOptions,
+  type ExtractionOutcome,
+  type ExtractionResult,
   type Coercion,
   type OnField,
-} from "./recover/types.js";
+} from "./extract/types.js";
 export {
   asString,
   asInt,
@@ -44,7 +44,7 @@ export {
   asDouble,
   asBool,
   asStringList,
-} from "./recover/recover-map.js";
+} from "./extract/extract-map.js";
 
 // FR-010 artifact 1 — output-format prompt renderer ("produce your answer like this").
 export { renderOutputFormat } from "./prompt/output-format-renderer.js";

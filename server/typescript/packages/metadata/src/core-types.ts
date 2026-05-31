@@ -184,7 +184,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   ];
   for (const subType of OBJECT_SUBTYPES) {
     // FR-011: object.value additionally carries @normalize — the object-level
-    // default normalization mode for its enum fields' tolerant recover.
+    // default normalization mode for its enum fields' tolerant extract.
     const subTypeObjectAttrs =
       subType === OBJECT_SUBTYPE_VALUE
         ? [...objectAttrs, { ...normalizeAttr }]

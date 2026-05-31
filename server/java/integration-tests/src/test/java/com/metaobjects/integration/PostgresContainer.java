@@ -18,7 +18,7 @@ import java.util.UUID;
  * which hardcodes a client API version (1.32-class) below the minimum
  * supported by recent Docker daemons (Docker Engine 29+ requires API 1.44+).
  * That mismatch surfaces as a BadRequestException during the Testcontainers
- * discovery phase, with no recovery path short of waiting for an upstream
+ * discovery phase, with no extraction path short of waiting for an upstream
  * docker-java upgrade. The hand-managed CLI path here is small, fast (~3s
  * incl. pg_isready), and avoids the version-negotiation issue entirely.
  * Mirrors the TS port's {@code postgres-container.ts} workaround for the

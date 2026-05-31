@@ -104,8 +104,8 @@ class KotlinOutputPromptGeneratorTest {
             assertTrue("import com.metaobjects.render.prompt.OutputFormatSpec" in src, src)
             assertTrue("import com.metaobjects.render.prompt.PromptOverrides" in src, src)
             assertTrue("import com.metaobjects.render.prompt.PromptStyle" in src, src)
-            assertTrue("import com.metaobjects.render.recover.FieldKind" in src, src)
-            assertTrue("import com.metaobjects.render.recover.Format" in src, src)
+            assertTrue("import com.metaobjects.render.extract.FieldKind" in src, src)
+            assertTrue("import com.metaobjects.render.extract.Format" in src, src)
 
             // Format.JSON in SPEC literal
             assertTrue("Format.JSON" in src, "expected Format.JSON in SPEC; src:\n$src")

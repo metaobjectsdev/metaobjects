@@ -1,16 +1,16 @@
-"""Shared field-kind mapping for the FR-010 codegen emitters (``recover_schema_emitter``
+"""Shared field-kind mapping for the FR-010 codegen emitters (``extract_schema_emitter``
 + ``output_format_spec_emitter``).
 
 Maps a metadata field subtype onto the render engine's ``FieldKind`` member, the
-idiomatic ``X | None`` Python type used by the recover mirror dataclass, and the
-``recover_map.as_*`` accessor that reads it from the forgiving outcome map.
+idiomatic ``X | None`` Python type used by the extract mirror dataclass, and the
+``extract_map.as_*`` accessor that reads it from the forgiving outcome map.
 
-Mirrors the C# ``Fr010FieldMapping`` and the Java ``RecoverSchemaEmitter`` ordering.
+Mirrors the C# ``Fr010FieldMapping`` and the Java ``ExtractSchemaEmitter`` ordering.
 Bounded scope (parity with Java / Kotlin / C#): scalar / enum / scalar-array. Nested
-object + array-of-enum are deferred (see ``render/recover/KNOWN_GAPS.md``).
+object + array-of-enum are deferred (see ``render/extract/KNOWN_GAPS.md``).
 
 Python has a single ``int`` type, so the ``LONG`` and ``CURRENCY`` subtypes map to the
-``LONG`` ``FieldKind`` (and ``recover_map.as_long`` — identical to ``as_int``), keeping
+``LONG`` ``FieldKind`` (and ``extract_map.as_long`` — identical to ``as_int``), keeping
 the cross-port ``FieldKind`` vocabulary intact even though the emitted accessor is the
 same. The mirror annotation collapses ``INT``/``LONG`` to ``int`` (one numeric int type).
 """
@@ -109,10 +109,10 @@ def scalar_kind(sub_type: str) -> str | None:
 
 
 def mirror_type(field: MetaData) -> str:
-    """The ``X | None`` Python annotation for a field in the recover mirror dataclass.
+    """The ``X | None`` Python annotation for a field in the extract mirror dataclass.
 
-    A recovered array can contain null elements where individual items were lost, so
-    the array type is ``list[str | None] | None`` (matches ``recover_map.as_string_list``).
+    A extracted array can contain null elements where individual items were lost, so
+    the array type is ``list[str | None] | None`` (matches ``extract_map.as_string_list``).
     """
     # Nested object (single OR array): the self-contained path defers to a typed null;
     # the runtime-delegating path overrides this with the nested mirror type. Checked
@@ -134,11 +134,11 @@ def mirror_type(field: MetaData) -> str:
     return "str | None"
 
 
-def recover_map_helper(field: MetaData) -> str | None:
-    """The ``recover_map`` accessor a field reads through, or ``None``
+def extract_map_helper(field: MetaData) -> str | None:
+    """The ``extract_map`` accessor a field reads through, or ``None``
     (object/deferred fields read no helper).
 
-    Single source of the field → accessor decision; ``recover_map_call`` builds
+    Single source of the field → accessor decision; ``extract_map_call`` builds
     the ``as_*(d, "name")`` call on top of this."""
     # Nested object (single OR array) → no helper in the self-contained path. Checked
     # BEFORE is_array so an array-of-objects is NOT read via as_string_list. Mirrors the
@@ -157,12 +157,12 @@ def recover_map_helper(field: MetaData) -> str | None:
     }.get(scalar_kind(field.sub_type) or "", "as_string")
 
 
-def recover_map_call(field: MetaData) -> str:
+def extract_map_call(field: MetaData) -> str:
     """The ``as_*(d, "name")`` call that reads this field from the forgiving map ``d``.
 
     The helpers are imported by name into the generated module (see
-    ``recover_schema_emitter.recover_map_imports``)."""
-    helper = recover_map_helper(field)
+    ``extract_schema_emitter.extract_map_imports``)."""
+    helper = extract_map_helper(field)
     if helper is None:
         # Nested object: the self-contained initializer leaves it None (the
         # runtime-delegating path populates it). Bare ``None`` — no trailing inline

@@ -52,7 +52,7 @@ public class EnumField extends PrimitiveField<String> {
 
     /**
      * Name of the optional off-vocabulary → canonical-member alias map (properties).
-     * Consumed by FR-010 recover: maps raw input tokens to their canonical enum member.
+     * Consumed by FR-010 extract: maps raw input tokens to their canonical enum member.
      * Cross-language vocabulary: {@code @enumAlias} in canonical JSON.
      */
     public static final String ATTR_ENUM_ALIAS = "enumAlias";
@@ -68,7 +68,7 @@ public class EnumField extends PrimitiveField<String> {
 
     /**
      * Name of the optional FR-011 {@code @coerceDefault} attribute (string).
-     * Member symbol used by tolerant recover as the fallback when a present-but-uncoercible
+     * Member symbol used by tolerant extract as the fallback when a present-but-uncoercible
      * value is seen → the field classifies as {@code DEFAULTED}. Loader-validated to be one
      * of the field's effective {@code @values} ({@code ERR_BAD_ATTR_VALUE} otherwise).
      * Cross-language vocabulary: {@code @coerceDefault} in canonical JSON.
@@ -77,7 +77,7 @@ public class EnumField extends PrimitiveField<String> {
 
     /**
      * Name of the optional {@code @default} attribute (string) — the absent-fill member.
-     * When the field is ABSENT from the model response, tolerant recover fills this value and
+     * When the field is ABSENT from the model response, tolerant extract fills this value and
      * classifies the field {@code DEFAULTED} (which satisfies {@code required}). Loader-validated
      * to be one of the field's effective {@code @values}.
      *
@@ -91,7 +91,7 @@ public class EnumField extends PrimitiveField<String> {
     /**
      * Name of the optional FR-011 {@code @normalize} attribute (closed enum
      * {@code none|collapse|strip}, default {@code strip}). Controls the ASCII normalization
-     * applied during tolerant enum recover. On {@code field.enum} it is per-field; on
+     * applied during tolerant enum extract. On {@code field.enum} it is per-field; on
      * {@code object.value} it is the object-level default for its enum fields.
      * Cross-language vocabulary: {@code @normalize} in canonical JSON.
      */
@@ -167,7 +167,7 @@ public class EnumField extends PrimitiveField<String> {
                    .asArray();
 
                 // Optional @enumAlias properties attribute — off-vocabulary → canonical-member map.
-                // Consumed by FR-010 recover; not validated at load time.
+                // Consumed by FR-010 extract; not validated at load time.
                 def.optionalAttributeWithConstraints(ATTR_ENUM_ALIAS)
                    .ofType(PropertiesAttribute.SUBTYPE_PROPERTIES)
                    .asSingle();
@@ -178,7 +178,7 @@ public class EnumField extends PrimitiveField<String> {
                    .ofType(PropertiesAttribute.SUBTYPE_PROPERTIES)
                    .asSingle();
 
-                // FR-011: optional @coerceDefault string — present-but-uncoercible recover
+                // FR-011: optional @coerceDefault string — present-but-uncoercible extract
                 // fallback member. Membership against @values is validated post-load in
                 // ValidationPhase (ERR_BAD_ATTR_VALUE), mirroring the @values content pass.
                 def.optionalAttributeWithConstraints(ATTR_COERCE_DEFAULT)

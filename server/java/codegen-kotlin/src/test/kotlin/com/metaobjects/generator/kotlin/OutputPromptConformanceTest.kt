@@ -7,13 +7,13 @@ import com.metaobjects.render.prompt.OutputFormatSpec
 import com.metaobjects.render.prompt.PromptField
 import com.metaobjects.render.prompt.PromptOverrides
 import com.metaobjects.render.prompt.PromptStyle
-import com.metaobjects.render.recover.FieldKind
-import com.metaobjects.render.recover.FieldRecovery
-import com.metaobjects.render.recover.FieldSpec
-import com.metaobjects.render.recover.Format
-import com.metaobjects.render.recover.Recover
-import com.metaobjects.render.recover.RecoverOptions
-import com.metaobjects.render.recover.RecoverSchema
+import com.metaobjects.render.extract.FieldKind
+import com.metaobjects.render.extract.FieldExtraction
+import com.metaobjects.render.extract.FieldSpec
+import com.metaobjects.render.extract.Format
+import com.metaobjects.render.extract.Extract
+import com.metaobjects.render.extract.ExtractOptions
+import com.metaobjects.render.extract.ExtractSchema
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -26,7 +26,7 @@ import kotlin.test.assertTrue
  * Cross-port byte-identity gate for the FR-010 output-format prompt fragment — Kotlin runner.
  *
  * Kotlin REUSES the shared JVM `render` engine (the same Java [OutputFormatRenderer] and
- * [Recover] classes that the Java runner validates). This runner drives those Java classes
+ * [Extract] classes that the Java runner validates). This runner drives those Java classes
  * directly against the shared corpus at `fixtures/output-prompt-conformance/`, proving the
  * corpus loads + runs in the Kotlin module. Byte-identity to Java/TS/C#/Python holds by
  * construction (same engine); the value here is the loads-in-Kotlin guarantee.
@@ -93,15 +93,15 @@ class OutputPromptConformanceTest {
 
             if (spec.has("roundTrip") && spec.get("roundTrip").asBoolean()) {
                 val exampleFragment = readUtf8(dir.resolve("expected.exampleOnly.txt"))
-                val outcome = Recover.recover(exampleFragment, buildRecoverSchema(spec), RecoverOptions.defaults())
+                val outcome = Extract.extract(exampleFragment, buildExtractSchema(spec), ExtractOptions.defaults())
                 // Skew guard: a field the renderer emitted must read back cleanly. Assert NO state
                 // is MALFORMED or LOST_* (robust to DEFAULTED and to how a nested OBJECT-container
                 // path classifies); any such state means the renderer emitted an example the
-                // recover parser cannot read.
+                // extract parser cannot read.
                 for ((field, state) in outcome.report().states()) {
-                    val bad = state == FieldRecovery.MALFORMED ||
-                        state == FieldRecovery.LOST_REQUIRED ||
-                        state == FieldRecovery.LOST_OPTIONAL
+                    val bad = state == FieldExtraction.MALFORMED ||
+                        state == FieldExtraction.LOST_REQUIRED ||
+                        state == FieldExtraction.LOST_OPTIONAL
                     assertFalse(bad, "$dir roundTrip state[$field]=$state")
                 }
             }
@@ -110,7 +110,7 @@ class OutputPromptConformanceTest {
 
     private fun readUtf8(p: Path): String = String(Files.readAllBytes(p), StandardCharsets.UTF_8)
 
-    // ----- descriptor (spec.json) -> renderer/recover model -----
+    // ----- descriptor (spec.json) -> renderer/extract model -----
 
     private fun buildOutputSpec(c: JsonNode): OutputFormatSpec {
         val fmt = toFormat(c.get("format").asText())
@@ -141,11 +141,11 @@ class OutputPromptConformanceTest {
         return PromptField(name, kind, required, array, enumValues, enumDoc, example, instruction, nested)
     }
 
-    private fun buildRecoverSchema(c: JsonNode): RecoverSchema {
+    private fun buildExtractSchema(c: JsonNode): ExtractSchema {
         val fmt = toFormat(c.get("format").asText())
         val root = c.get("rootName").asText()
         val fields = c.get("fields").map { buildFieldSpec(it) }
-        return RecoverSchema(fmt, root, fields)
+        return ExtractSchema(fmt, root, fields)
     }
 
     private fun buildFieldSpec(f: JsonNode): FieldSpec {
@@ -159,7 +159,7 @@ class OutputPromptConformanceTest {
             return FieldSpec.enumField(name, required, vals, emptyMap<String, String>())
         }
         if (kind == FieldKind.OBJECT) {
-            val nested = if (f.has("nested") && !f.get("nested").isNull) buildRecoverSchema(f.get("nested")) else null
+            val nested = if (f.has("nested") && !f.get("nested").isNull) buildExtractSchema(f.get("nested")) else null
             return FieldSpec.`object`(name, required, array, nested)
         }
         return FieldSpec.scalar(name, kind, required)

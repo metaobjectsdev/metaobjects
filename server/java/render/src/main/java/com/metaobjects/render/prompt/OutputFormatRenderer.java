@@ -1,8 +1,8 @@
 package com.metaobjects.render.prompt;
 
 import com.metaobjects.render.Escapers;
-import com.metaobjects.render.recover.FieldKind;
-import com.metaobjects.render.recover.Format;
+import com.metaobjects.render.extract.FieldKind;
+import com.metaobjects.render.extract.Format;
 
 import java.util.Collections;
 import java.util.IdentityHashMap;

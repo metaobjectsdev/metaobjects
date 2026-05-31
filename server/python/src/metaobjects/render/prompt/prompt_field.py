@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from metaobjects.render.recover import FieldKind
+from metaobjects.render.extract import FieldKind
 from metaobjects.render.prompt.output_format_spec import OutputFormatSpec
 
 

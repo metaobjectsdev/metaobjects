@@ -15,7 +15,7 @@ import {
   PROMPT_OVERRIDES_NONE,
   renderOutputFormat,
 } from "../../src/index.js";
-import { FieldKind, Format } from "../../src/recover/types.js";
+import { FieldKind, Format } from "../../src/extract/types.js";
 
 /** The JSON substring of a fragment: first `{` to last `}`. Mirrors the Java tests. */
 function extractJson(fragment: string): Record<string, unknown> {

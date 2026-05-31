@@ -1,8 +1,8 @@
 using System.Text.Json;
 using MetaObjects.Render.Prompt;
-using MetaObjects.Render.Recover;
+using MetaObjects.Render.Extract;
 using Xunit;
-using RecoverEngine = MetaObjects.Render.Recover.Recover;
+using ExtractEngine = MetaObjects.Render.Extract.ExtractEngine;
 
 namespace MetaObjects.Render.Tests;
 
@@ -17,7 +17,7 @@ namespace MetaObjects.Render.Tests;
 ///
 /// The corpus (authored by the TS pilot) is the oracle — do NOT edit it. Each style render must be
 /// byte-equal to its expected file; roundTrip cases additionally feed the exampleOnly fragment back
-/// through the recover engine and assert no field is MALFORMED / LOST_*. Mirrors the TS runner
+/// through the extract engine and assert no field is MALFORMED / LOST_*. Mirrors the TS runner
 /// (server/typescript/packages/render/test/output-prompt-conformance.test.ts) exactly.
 /// </summary>
 public class OutputPromptConformanceTests
@@ -87,22 +87,22 @@ public class OutputPromptConformanceTests
         if (spec.RoundTrip)
         {
             string exampleFragment = File.ReadAllText(Path.Combine(dir, "expected.exampleOnly.txt"));
-            RecoverOutcome outcome = RecoverEngine.Run(exampleFragment, BuildRecoverSchema(spec));
+            ExtractionOutcome outcome = ExtractEngine.Run(exampleFragment, BuildExtractSchema(spec));
 
             // Skew guard: a field the renderer emitted must read back cleanly. Assert NO state is
             // MALFORMED or LOST_* (robust to DEFAULTED and to how a nested OBJECT-container path
-            // classifies). Any such state means the renderer emitted an example recover cannot read.
+            // classifies). Any such state means the renderer emitted an example extract cannot read.
             foreach (var (field, state) in outcome.Report.States())
             {
-                bool bad = state is FieldRecovery.MALFORMED
-                    or FieldRecovery.LOST_REQUIRED
-                    or FieldRecovery.LOST_OPTIONAL;
+                bool bad = state is FieldExtraction.MALFORMED
+                    or FieldExtraction.LOST_REQUIRED
+                    or FieldExtraction.LOST_OPTIONAL;
                 Assert.False(bad, $"{caseName}: field '{field}' read back as {state}");
             }
         }
     }
 
-    // ─── BuildOutputSpec / BuildRecoverSchema (mirror the TS runner) ──────────
+    // ─── BuildOutputSpec / BuildExtractSchema (mirror the TS runner) ──────────
 
     private static OutputFormatSpec BuildOutputSpec(CaseSpec c)
     {
@@ -120,17 +120,17 @@ public class OutputPromptConformanceTests
         return new OutputFormatSpec(c.Format, c.RootName, PromptStyle.Guide, fields);
     }
 
-    private static RecoverSchema BuildRecoverSchema(CaseSpec c)
+    private static ExtractSchema BuildExtractSchema(CaseSpec c)
     {
         var fields = c.Fields.Select(f => f.Kind switch
         {
             FieldKind.Enum => FieldSpec.EnumField(f.Name, f.Required, f.EnumValues, null),
             FieldKind.Object => FieldSpec.Object(
                 f.Name, f.Required, f.Array,
-                f.Nested is null ? null! : BuildRecoverSchema(f.Nested)),
+                f.Nested is null ? null! : BuildExtractSchema(f.Nested)),
             _ => FieldSpec.Scalar(f.Name, f.Kind, f.Required),
         }).ToList();
-        return new RecoverSchema(c.Format, c.RootName, fields);
+        return new ExtractSchema(c.Format, c.RootName, fields);
     }
 
     // ─── descriptor parsing (the spec.json shape) ────────────────────────────

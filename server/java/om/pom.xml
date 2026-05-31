@@ -21,10 +21,10 @@
             <artifactId>metaobjects-metadata</artifactId>
         </dependency>
         <!--
-            Runtime recover engine (RecoverSchema / FieldSpec / Recover). The render
+            Runtime extract engine (ExtractSchema / FieldSpec / Extract). The render
             module is zero-core-dependency by design (it cannot see MetaObject), so the
-            metadata->RecoverSchema bridge + object-graph assembly (Phase B runtime
-            recover) is sited HERE, in the ObjectManager runtime, which sits above both
+            metadata->ExtractSchema bridge + object-graph assembly (Phase B runtime
+            extract) is sited HERE, in the ObjectManager runtime, which sits above both
             metadata and render and is the natural home for a runtime API (NOT codegen).
         -->
         <dependency>

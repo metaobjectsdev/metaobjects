@@ -13,7 +13,7 @@ import static org.junit.Assert.*;
  * Tests for the optional {@code @enumAlias} (properties) attribute on {@link EnumField}.
  *
  * <p>FR-010: the alias map carries off-vocabulary → canonical-member mappings consumed
- * by the recover engine.  This attribute is optional and additive — loading an
+ * by the extract engine.  This attribute is optional and additive — loading an
  * {@code EnumField} without it remains valid.</p>
  */
 public class EnumFieldEnumAliasTest extends SharedRegistryTestBase {

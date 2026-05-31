@@ -1,0 +1,7 @@
+{ "empty": false,
+  "states": {
+    "tags": "EXTRACTED",
+    "tags[0]": "EXTRACTED",
+    "tags[1]": "EXTRACTED",
+    "tags[2]": "DEFAULTED" },
+  "data": { "tags": ["LOW", "MEDIUM", "LOW"] } }

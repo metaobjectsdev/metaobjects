@@ -1,9 +1,9 @@
 // server/typescript/packages/codegen-ts/src/templates/fr010-field-mapping.ts
 //
-// Shared field-kind mapping for the FR-010 codegen emitters (recover-schema-emitter +
+// Shared field-kind mapping for the FR-010 codegen emitters (extract-schema-emitter +
 // output-format-spec-emitter). Maps a metadata field subtype onto the render engine's
-// FieldKind member, the idiomatic nullable TS type used by the recover mirror interface,
-// and the RecoverMap accessor that reads it from the forgiving outcome map.
+// FieldKind member, the idiomatic nullable TS type used by the extract mirror interface,
+// and the ExtractMap accessor that reads it from the forgiving outcome map.
 //
 // Mirrors the C# Fr010FieldMapping (adapted to TS syntax + the `| null` nullable mirror).
 // Bounded scope (parity with Java/Kotlin/C#): scalar / enum / scalar-array. Nested object +
@@ -48,7 +48,7 @@ export function scalarKind(subType: string): string | null {
     case FIELD_SUBTYPE_TIME:
     case FIELD_SUBTYPE_TIMESTAMP:
     // field.decimal is a precision-exact decimal STRING on the wire (not a
-    // float64): recover/output map it as a string scalar so digits survive a
+    // float64): extract/output map it as a string scalar so digits survive a
     // round-trip — matching the generated TS `string` representation.
     case FIELD_SUBTYPE_DECIMAL:
       return "STRING";
@@ -130,13 +130,13 @@ function normalizeAttrOf(node: MetaData): NormalizeMode | null {
   return typeof v === "string" && v.length > 0 ? (v as NormalizeMode) : null;
 }
 
-/** The nullable TS type for a field in the recover mirror interface. */
+/** The nullable TS type for a field in the extract mirror interface. */
 export function mirrorType(field: MetaData): string {
   // Nested object (single or array): the self-contained path defers to null (typed unknown);
   // the runtime-delegating path overrides this with the nested mirror type. Checked BEFORE the
   // generic isArray branch so an array-of-objects is NOT mistyped as a string array.
   if (field.subType === FIELD_SUBTYPE_OBJECT) return "unknown"; // nested deferred
-  // Matches asStringList's `(string | null)[] | null` return — a recovered array
+  // Matches asStringList's `(string | null)[] | null` return — a extracted array
   // can contain null elements where individual items were lost.
   if (isArray(field)) return "(string | null)[] | null";
   if (field.subType === FIELD_SUBTYPE_ENUM) return "string | null"; // enum is string-backed
@@ -153,14 +153,14 @@ export function mirrorType(field: MetaData): string {
 }
 
 /**
- * The RecoverMap.as* helper name that reads this field from the forgiving map, or null
+ * The ExtractMap.as* helper name that reads this field from the forgiving map, or null
  * for a nested object (which emits a null literal, not a helper call). Single source of
- * truth for the per-field dispatch — both recoverMapCall and recoverMapHelpersUsed use it.
+ * truth for the per-field dispatch — both extractMapCall and extractMapHelpersUsed use it.
  */
-function recoverMapHelper(field: MetaData): string | null {
+function extractMapHelper(field: MetaData): string | null {
   // Nested object (single or array) → null literal in the self-contained path (no helper).
   // Checked BEFORE isArray so an array-of-objects is NOT read via asStringList (which would not
-  // type-check against the nested mirror's `(NestedRecovered | null)[]`). Mirrors the Java fix.
+  // type-check against the nested mirror's `(NestedExtracted | null)[]`). Mirrors the Java fix.
   if (field.subType === FIELD_SUBTYPE_OBJECT) return null;
   if (isArray(field)) return "asStringList";
   if (field.subType === FIELD_SUBTYPE_ENUM) return "asString";
@@ -178,18 +178,18 @@ function recoverMapHelper(field: MetaData): string | null {
   }
 }
 
-/** The RecoverMap.as* helper name + call that reads this field from the forgiving map `d`. */
-export function recoverMapCall(field: MetaData): string {
-  const helper = recoverMapHelper(field);
-  if (helper === null) return "null /* FR-010: nested recover deferred */";
+/** The ExtractMap.as* helper name + call that reads this field from the forgiving map `d`. */
+export function extractMapCall(field: MetaData): string {
+  const helper = extractMapHelper(field);
+  if (helper === null) return "null /* FR-010: nested extract deferred */";
   return `${helper}(d, ${jsonStringLiteral(field.name)})`;
 }
 
-/** Distinct RecoverMap helper names used across a value-object's fields (for the import). */
-export function recoverMapHelpersUsed(vo: MetaData): string[] {
+/** Distinct ExtractMap helper names used across a value-object's fields (for the import). */
+export function extractMapHelpersUsed(vo: MetaData): string[] {
   const used = new Set<string>();
   for (const f of fields(vo)) {
-    const helper = recoverMapHelper(f);
+    const helper = extractMapHelper(f);
     if (helper !== null) used.add(helper);
   }
   return [...used].sort();

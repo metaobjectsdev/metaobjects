@@ -6,8 +6,8 @@ import com.metaobjects.render.prompt.OutputFormatSpec
 import com.metaobjects.render.prompt.PromptField
 import com.metaobjects.render.prompt.PromptOverrides
 import com.metaobjects.render.prompt.PromptStyle
-import com.metaobjects.render.recover.FieldKind
-import com.metaobjects.render.recover.Format
+import com.metaobjects.render.extract.FieldKind
+import com.metaobjects.render.extract.Format
 
 /** Output-format prompt fragment for the `Opinion` template.output. */
 object OpinionPrompt {

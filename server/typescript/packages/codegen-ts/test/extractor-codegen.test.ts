@@ -1,9 +1,9 @@
 // <Name>Extractor codegen proof (compile-AND-run).
 //
-// The extract tier sits over the existing tolerant recover<Name>: run recover, throw if a
-// @required field was lost, else map the all-nullable <Name>Recovered mirror onto the STRICT
+// The extract tier sits over the existing tolerant extract<Name>: run extract, throw if a
+// @required field was lost, else map the all-nullable <Name>Extracted mirror onto the STRICT
 // <Name>Payload via a generated recursive mirror->strict mapper (recurses nested objects +
-// arrays-of-objects). recover<Name> is re-exposed unchanged. extract<Name> returns the STRICT
+// arrays-of-objects). extract<Name> is re-exposed unchanged. extract<Name> returns the STRICT
 // payload type, NOT the mirror.
 //
 // Mirrors fr010-output-codegen.test.ts's harness: build a MetaRoot via InMemoryStringSource,
@@ -75,7 +75,7 @@ const MODEL = [
 ];
 
 describe("Extractor codegen — source shape", () => {
-  test("renderExtractor emits extract<Name> returning the strict payload + re-exports recover", async () => {
+  test("renderExtractor emits extract<Name> returning the strict payload + re-exports extract", async () => {
     const root = await loadRoot(MODEL);
     const src = renderExtractor(root, "OrderOut");
 
@@ -83,8 +83,8 @@ describe("Extractor codegen — source shape", () => {
     // returns the STRICT payload type (the payload VO's interface name, not the mirror)
     expect(src).toContain("): Order {");
     expect(src).toContain("hasLostRequired()");
-    // recover is re-exposed (nested-capable, loader-driven path — see Java ExtractorCodeGenerator)
-    expect(src).toContain("export function recoverOrderOut(");
+    // extract is re-exposed (nested-capable, loader-driven path — see Java ExtractorCodeGenerator)
+    expect(src).toContain("export function extractLenientOrderOut(");
     // recursive mirror->strict mappers for nested types
     expect(src).toContain("toStrictCustomer");
     expect(src).toContain("toStrictLine");
@@ -104,7 +104,7 @@ describe("Extractor codegen — source shape", () => {
 });
 
 describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () => {
-  test("extractOrder() recovers dirty JSON into the strict payload; missing-required throws; recover re-exposed", async () => {
+  test("extractOrder() extracts dirty JSON into the strict payload; missing-required throws; extract re-exposed", async () => {
     const root = await loadRoot(MODEL);
     const payloadSrc = generatePayloadInterfaces(root, "Order");
     const parserSrc = renderOutputParser(root, "OrderOut");
@@ -118,7 +118,7 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
 
     const ex = await import(join(dir, "OrderOut.extractor.ts"));
 
-    // dirty input: preamble + trailing comma — recover repairs it, extract maps to strict payload.
+    // dirty input: preamble + trailing comma — extract repairs it, extract maps to strict payload.
     // Includes a REQUIRED scalar array `tags` and an OPTIONAL scalar array `flags`.
     const dirty = [
       "Here you go:",
@@ -127,7 +127,7 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
       "```",
     ].join("\n");
 
-    // extract takes the loaded MetaRoot (nested-capable recover path — matches the Java port's
+    // extract takes the loaded MetaRoot (nested-capable extract path — matches the Java port's
     // loader-driven ExtractorCodeGenerator). The all-nullable mirror is mapped onto the strict payload.
     const order = ex.extractOrderOut(root, dirty);
     expect(order.customer.name).toBe("Ada");
@@ -143,10 +143,10 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
     // missing required `customer` → throws
     expect(() => ex.extractOrderOut(root, '{ "lines": [] }')).toThrow();
 
-    // recover re-exposed (nested-capable): clean JSON → no lost-required
+    // extract re-exposed (nested-capable): clean JSON → no lost-required
     const clean =
       '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"] }';
-    const r = ex.recoverOrderOut(root, clean);
+    const r = ex.extractLenientOrderOut(root, clean);
     expect(r.report.hasLostRequired()).toBe(false);
   });
 });

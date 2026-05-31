@@ -3,17 +3,17 @@ package acme.ai.prompts
 
 import kotlinx.serialization.json.Json
 import com.metaobjects.loader.MetaDataLoader
-import com.metaobjects.`object`.recover.MetaObjectRecover
-import com.metaobjects.render.recover.FieldKind
-import com.metaobjects.render.recover.FieldSpec
-import com.metaobjects.render.recover.Format
-import com.metaobjects.render.recover.Recover
-import com.metaobjects.render.recover.RecoverMap
-import com.metaobjects.render.recover.RecoverOptions
-import com.metaobjects.render.recover.RecoverSchema
-import com.metaobjects.render.recover.RecoveryResult
+import com.metaobjects.`object`.extract.MetaObjectExtractor
+import com.metaobjects.render.extract.FieldKind
+import com.metaobjects.render.extract.FieldSpec
+import com.metaobjects.render.extract.Format
+import com.metaobjects.render.extract.Extract
+import com.metaobjects.render.extract.ExtractMap
+import com.metaobjects.render.extract.ExtractOptions
+import com.metaobjects.render.extract.ExtractSchema
+import com.metaobjects.render.extract.ExtractionResult
 
-data class OpinionRecovered(
+data class OpinionExtracted(
     val text: String? = null,
     val confidence: String? = null,
     val note: String? = null,
@@ -24,8 +24,8 @@ object OpinionParser {
 
     private val json: Json = Json { ignoreUnknownKeys = false }
 
-    private val RECOVER_SCHEMA: RecoverSchema =
-        RecoverSchema(Format.JSON, "OpinionPayload", listOf(FieldSpec.scalar("text", FieldKind.STRING, true), FieldSpec.enumField("confidence", true, listOf("HIGH", "OK", "LOW"), mapOf("medium" to "OK")), FieldSpec.scalar("note", FieldKind.STRING, false)))
+    private val EXTRACT_SCHEMA: ExtractSchema =
+        ExtractSchema(Format.JSON, "OpinionPayload", listOf(FieldSpec.scalar("text", FieldKind.STRING, true), FieldSpec.enumField("confidence", true, listOf("HIGH", "OK", "LOW"), mapOf("medium" to "OK")), FieldSpec.scalar("note", FieldKind.STRING, false)))
 
     /**
      * Parse an LLM response into a typed [OpinionPayload].
@@ -42,45 +42,45 @@ object OpinionParser {
         runCatching { parseOpinion(text) }
 
     /**
-     * Self-contained tolerant recovery; never throws. Components are null where
+     * Self-contained tolerant extraction; never throws. Components are null where
      * lost/malformed. Does NOT populate nested-object / array-of-object components
-     * (use the recover(loader, text) overload for full nested recovery).
+     * (use the extractLenient(loader, text) overload for full nested extraction).
      */
-    fun recover(text: String): RecoveryResult<OpinionRecovered> =
-        recover(text, RecoverOptions.defaults())
+    fun extractLenient(text: String): ExtractionResult<OpinionExtracted> =
+        extractLenient(text, ExtractOptions.defaults())
 
-    fun recover(text: String, opts: RecoverOptions): RecoveryResult<OpinionRecovered> {
-        val o = Recover.recover(text, RECOVER_SCHEMA, opts)
+    fun extractLenient(text: String, opts: ExtractOptions): ExtractionResult<OpinionExtracted> {
+        val o = Extract.extract(text, EXTRACT_SCHEMA, opts)
         val d = o.data
-        return RecoveryResult(OpinionRecovered(RecoverMap.asString(d, "text"), RecoverMap.asString(d, "confidence"), RecoverMap.asString(d, "note")), o.report)
+        return ExtractionResult(OpinionExtracted(ExtractMap.asString(d, "text"), ExtractMap.asString(d, "confidence"), ExtractMap.asString(d, "note")), o.report)
     }
 
-    /** Payload FQN this parser recovers — resolved against the supplied loader at runtime. */
+    /** Payload FQN this parser extracts — resolved against the supplied loader at runtime. */
     const val PAYLOAD_FQN: String = "acme::ai::OpinionOutputPayload"
 
     /**
-     * Tolerant best-effort recovery delegating to the runtime MetaObjectRecover;
+     * Tolerant best-effort extraction delegating to the runtime MetaObjectExtractor;
      * never throws. Fully populates nested-object and array-of-object components
-     * (unlike the self-contained recover(text) overload). Resolves this payload's
+     * (unlike the self-contained extractLenient(text) overload). Resolves this payload's
      * MetaObject by [PAYLOAD_FQN] from [loader].
      */
-    fun recover(loader: MetaDataLoader, text: String, opts: RecoverOptions = RecoverOptions.defaults()): RecoveryResult<OpinionRecovered> {
+    fun extractLenient(loader: MetaDataLoader, text: String, opts: ExtractOptions = ExtractOptions.defaults()): ExtractionResult<OpinionExtracted> {
         val mo = loader.getMetaObjectByName(PAYLOAD_FQN)
-        val raw = MetaObjectRecover.recover(mo, text, Format.JSON, opts)
+        val raw = MetaObjectExtractor.extract(mo, text, Format.JSON, opts)
         // The assembled graph is a ValueObject (a Map<String, Any?>) with nested
-        // ValueObjects / List<ValueObject> — map it into the typed Recovered mirror graph.
+        // ValueObjects / List<ValueObject> — map it into the typed Extracted mirror graph.
         @Suppress("UNCHECKED_CAST")
         val d = raw.data as? Map<String, Any?>
-        return RecoveryResult(fromOpinionRecovered(d), raw.report)
+        return ExtractionResult(fromOpinionExtracted(d), raw.report)
     }
 
-    /** Map an assembled ValueObject (Map) into a typed [OpinionRecovered]; null-tolerant. */
-    private fun fromOpinionRecovered(d: Map<String, Any?>?): OpinionRecovered? {
+    /** Map an assembled ValueObject (Map) into a typed [OpinionExtracted]; null-tolerant. */
+    private fun fromOpinionExtracted(d: Map<String, Any?>?): OpinionExtracted? {
         if (d == null) return null
-        return OpinionRecovered(
-            RecoverMap.asString(d, "text"),
-            RecoverMap.asString(d, "confidence"),
-            RecoverMap.asString(d, "note"),
+        return OpinionExtracted(
+            ExtractMap.asString(d, "text"),
+            ExtractMap.asString(d, "confidence"),
+            ExtractMap.asString(d, "note"),
         )
     }
 

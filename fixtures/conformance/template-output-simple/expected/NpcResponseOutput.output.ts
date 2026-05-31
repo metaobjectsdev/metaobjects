@@ -1,18 +1,18 @@
 import { z } from "zod";
 import {
-  recover,
-  recoverSchema,
+  extract,
+  extractSchema,
   Format,
   scalar,
   FieldKind,
-  type RecoverSchema,
-  type RecoverOptions,
-  type RecoveryResult,
+  type ExtractSchema,
+  type ExtractOptions,
+  type ExtractionResult,
   asInt,
   asString,
 } from "@metaobjectsdev/render";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
-import { recoverObject } from "@metaobjectsdev/runtime-ts";
+import { extractObject } from "@metaobjectsdev/runtime-ts";
 
 const NpcResponseOutputSchema = z.object({
   name: z.string(),
@@ -52,50 +52,50 @@ export function safeParseNpcResponseOutput(
     : { success: false, error: result.error };
 }
 
-/** Baked recover descriptor for the NpcResponseOutput output. */
-const NpcResponseOutputRecoverSchema: RecoverSchema = recoverSchema(Format.JSON, "NpcResponsePayload", [scalar("name", FieldKind.STRING, false), scalar("age", FieldKind.INT, false)]);
+/** Baked extract descriptor for the NpcResponseOutput output. */
+const NpcResponseOutputExtractSchema: ExtractSchema = extractSchema(Format.JSON, "NpcResponsePayload", [scalar("name", FieldKind.STRING, false), scalar("age", FieldKind.INT, false)]);
 
-/** Best-effort recovered twin of `NpcResponseOutput` — every field nullable (null where lost/malformed). */
-export interface NpcResponseOutputRecovered {
+/** Best-effort extracted twin of `NpcResponseOutput` — every field nullable (null where lost/malformed). */
+export interface NpcResponseOutputExtracted {
   name: string | null;
   age: number | null;
 }
 
 /**
- * Self-contained tolerant best-effort recovery of a dirty LLM response; never throws.
- * Returns a nullable mirror (`NpcResponseOutputRecovered`) with fields null where lost/malformed,
- * plus the per-field recovery report. Does NOT populate nested-object / array-of-object
- * components (those stay null — the historical FR-010 gap). For full nested recovery, use
- * `recoverNpcResponseOutputWithLoader(root, text)`, which delegates to the runtime recover.
+ * Self-contained tolerant best-effort extraction of a dirty LLM response; never throws.
+ * Returns a nullable mirror (`NpcResponseOutputExtracted`) with fields null where lost/malformed,
+ * plus the per-field extraction report. Does NOT populate nested-object / array-of-object
+ * components (those stay null — the historical FR-010 gap). For full nested extraction, use
+ * `extractLenientNpcResponseOutputWithLoader(root, text)`, which delegates to the runtime extract.
  */
-export function recoverNpcResponseOutput(
+export function extractLenientNpcResponseOutput(
   text: string,
-  opts?: RecoverOptions,
-): RecoveryResult<NpcResponseOutputRecovered> {
-  const outcome = recover(text, NpcResponseOutputRecoverSchema, opts);
+  opts?: ExtractOptions,
+): ExtractionResult<NpcResponseOutputExtracted> {
+  const outcome = extract(text, NpcResponseOutputExtractSchema, opts);
   const d = outcome.data;
-  const data: NpcResponseOutputRecovered = { name: asString(d, "name"), age: asInt(d, "age") };
+  const data: NpcResponseOutputExtracted = { name: asString(d, "name"), age: asInt(d, "age") };
   return { data, report: outcome.report };
 }
 
 /**
- * Recovery as a bool gate: `true` when the response was non-empty and no required
- * field was lost. On success, `result` carries the recovered mirror + report.
+ * Extraction as a bool gate: `true` when the response was non-empty and no required
+ * field was lost. On success, `result` carries the extracted mirror + report.
  */
-export function tryRecoverNpcResponseOutput(
+export function tryExtractLenientNpcResponseOutput(
   text: string,
-): { ok: boolean; result: RecoveryResult<NpcResponseOutputRecovered> } {
-  const result = recoverNpcResponseOutput(text);
+): { ok: boolean; result: ExtractionResult<NpcResponseOutputExtracted> } {
+  const result = extractLenientNpcResponseOutput(text);
   const ok = !result.report.isEmpty() && !result.report.hasLostRequired();
   return { ok, result };
 }
 
 
-/** Payload value-object name this parser recovers — resolved against a loaded MetaRoot at runtime. */
+/** Payload value-object name this parser extracts — resolved against a loaded MetaRoot at runtime. */
 export const NPCRESPONSEOUTPUT_PAYLOAD_NAME = "NpcResponsePayload";
 
-/** Map an assembled ValueObject graph into a typed `NpcResponseOutputRecovered` mirror. Generated; null-tolerant. */
-function fromNpcResponseOutputRecovered(o: unknown): NpcResponseOutputRecovered | null {
+/** Map an assembled ValueObject graph into a typed `NpcResponseOutputExtracted` mirror. Generated; null-tolerant. */
+function fromNpcResponseOutputExtracted(o: unknown): NpcResponseOutputExtracted | null {
   if (o == null) return null;
   return {
     name: dlgString(readProp(o, "name")),
@@ -103,7 +103,7 @@ function fromNpcResponseOutputRecovered(o: unknown): NpcResponseOutputRecovered 
   };
 }
 
-// ---- runtime-delegating recover helpers (generated) ----
+// ---- runtime-delegating extract helpers (generated) ----
 
 /** Read a property from an assembled backing object, mirroring the MetaField getValue SPI. */
 function readProp(o: unknown, name: string): unknown {
@@ -124,23 +124,23 @@ function dlgInt(v: unknown): number | null {
 }
 
 /**
- * Runtime-delegating tolerant recovery; never throws. Unlike `recoverNpcResponseOutput(text)`, this FULLY
+ * Runtime-delegating tolerant extraction; never throws. Unlike `extractLenientNpcResponseOutput(text)`, this FULLY
  * populates nested-object and array-of-object components by delegating to the metadata-driven
- * runtime `recoverObject` (which assembles the whole graph reflection-free via the Phase A object
- * model), then maps the assembled graph into the typed `NpcResponseOutputRecovered` mirror.
+ * runtime `extractObject` (which assembles the whole graph reflection-free via the Phase A object
+ * model), then maps the assembled graph into the typed `NpcResponseOutputExtracted` mirror.
  *
  * @param root a loaded MetaRoot (e.g. `(await new MetaDataLoader().load(...)).root`) that declares
  *             the `NpcResponsePayload` value-object.
  */
-export function recoverNpcResponseOutputWithLoader(
+export function extractLenientNpcResponseOutputWithLoader(
   root: MetaRoot,
   text: string,
-  opts?: Partial<RecoverOptions> | null,
-): RecoveryResult<NpcResponseOutputRecovered> {
+  opts?: Partial<ExtractOptions> | null,
+): ExtractionResult<NpcResponseOutputExtracted> {
   const mo = root.findObject(NPCRESPONSEOUTPUT_PAYLOAD_NAME);
   if (mo === undefined) {
-    throw new Error(`recoverNpcResponseOutputWithLoader: payload "${NPCRESPONSEOUTPUT_PAYLOAD_NAME}" not found in the supplied MetaRoot`);
+    throw new Error(`extractLenientNpcResponseOutputWithLoader: payload "${NPCRESPONSEOUTPUT_PAYLOAD_NAME}" not found in the supplied MetaRoot`);
   }
-  const outcome = recoverObject(mo, text, Format.JSON, opts);
-  return { data: fromNpcResponseOutputRecovered(outcome.data), report: outcome.report };
+  const outcome = extractObject(mo, text, Format.JSON, opts);
+  return { data: fromNpcResponseOutputExtracted(outcome.data), report: outcome.report };
 }

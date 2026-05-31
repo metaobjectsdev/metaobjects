@@ -58,14 +58,14 @@ FIELD_ATTR_VALUES = "values"
 FIELD_ATTR_EXAMPLE = "example"
 FIELD_ATTR_INSTRUCTION = "instruction"
 # FR-010 enum attrs (field.enum only). `properties`-shaped maps:
-#   @enumAlias: off-vocabulary token -> canonical member (feeds the recover alias-fold).
+#   @enumAlias: off-vocabulary token -> canonical member (feeds the extract alias-fold).
 #   @enumDoc:   member -> human-readable description (shown per-member in the 'guide' prompt).
 FIELD_ATTR_ENUM_ALIAS = "enumAlias"
 FIELD_ATTR_ENUM_DOC = "enumDoc"
-# FR-011 enum recover-hardening attrs (field.enum only).
-#   @coerceDefault: present-but-uncoercible recover fallback member → DEFAULTED.
+# FR-011 enum extract-hardening attrs (field.enum only).
+#   @coerceDefault: present-but-uncoercible extract fallback member → DEFAULTED.
 #       Member-validated against the effective @values (own or inherited).
-#   @normalize:     ASCII normalization mode applied during tolerant enum recover.
+#   @normalize:     ASCII normalization mode applied during tolerant enum extract.
 #       Closed enum (none|collapse|strip, default strip). On field.enum (per-field)
 #       and object.value (object-level default for its enum fields). NOT on entity/base.
 # @default (FIELD_ATTR_DEFAULT, declared above) doubles as the enum absent-fill member.

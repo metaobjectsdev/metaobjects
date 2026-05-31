@@ -8,7 +8,7 @@ engine's :func:`~metaobjects.render.render_output_format` (the "produce your ans
 like this" fragment).
 
 The baked :class:`~metaobjects.render.OutputFormatSpec`'s ``root_name`` is the payload
-class name, so the prompt fragment and the ``recover_<name>()`` codegen agree on the
+class name, so the prompt fragment and the ``extract_<name>()`` codegen agree on the
 root element/object name. Mirrors the C# ``OutputPromptGenerator`` / Java
 ``SpringOutputPromptGenerator``. Skips: ``template.prompt``, missing/unresolved
 ``@payloadRef``, and ``@format`` values other than json/xml.
@@ -68,7 +68,7 @@ def render_output_prompt(template: MetaData, root: MetaData) -> str | None:
     template_name = template.name
     snake = _snake_case(template_name)
     render_fn = f"render_{snake}_format"
-    # root_name == payload class name so the fragment and recover() agree.
+    # root_name == payload class name so the fragment and extract() agree.
     root_name = payload_class_name(template_name)
     spec_literal = ofs.spec_literal(payload, template, root_name)
 
