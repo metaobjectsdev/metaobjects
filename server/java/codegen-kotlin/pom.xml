@@ -78,6 +78,15 @@
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
+    <!-- Shared JVM runtime recover (MetaObjectRecover, in the om module): the Kotlin
+         verdict proof drives it directly, proving recover assembles a typed object graph
+         when called from Kotlin. Kotlin adds no recover code — this is a verdict proof. -->
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-om</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>com.github.tschuchortdev</groupId>
       <artifactId>kotlin-compile-testing</artifactId>

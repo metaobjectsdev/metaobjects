@@ -22,4 +22,10 @@ public class Asset
     public string? Payload { get; set; }
     [Column("recordedAt")]
     public DateTime RecordedAt { get; set; }
+    [Column("observedAt")]
+    public DateTime ObservedAt { get; set; }
+    [Column("asOfDate")]
+    public DateOnly AsOfDate { get; set; }
+    [Column("atTime")]
+    public TimeOnly AtTime { get; set; }
 }

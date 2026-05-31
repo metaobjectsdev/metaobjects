@@ -7,6 +7,7 @@ import com.metaobjects.integration.kotlin.tables.AssetTable
 import com.metaobjects.integration.kotlin.tables.MeasurementTable
 import com.metaobjects.integration.kotlin.tables.ProgramStatView
 import com.metaobjects.integration.kotlin.tables.ProgramTable
+import com.metaobjects.integration.kotlin.tables.ProgramView
 import com.metaobjects.integration.kotlin.tables.WeekTable
 import org.jetbrains.exposed.sql.AndOp
 import org.jetbrains.exposed.sql.Column
@@ -14,7 +15,6 @@ import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.Op
 import org.jetbrains.exposed.sql.Query
 import org.jetbrains.exposed.sql.ResultRow
-import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder
 import org.jetbrains.exposed.sql.IsNotNullOp
@@ -26,7 +26,6 @@ import java.sql.DriverManager
 import java.sql.Timestamp
 import java.time.Instant
 import java.time.LocalDateTime
-import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -35,10 +34,18 @@ import java.util.UUID
  * JetBrains Exposed, not ObjectManagerDB:
  *
  *  1. Connect Exposed to the testcontainer's Postgres.
- *  2. `SchemaUtils.create(...)` the fitness Tables.
+ *  2. Provision the schema by executing the committed canonical DDL
+ *     (`fixtures/persistence-conformance/canonical/schema.postgres.sql`)
+ *     verbatim. Schema authority is TS-only (ADR-0015); the Kotlin port no
+ *     longer creates the schema from Exposed `Table` objects.
  *  3. Run the scenario's seed-data SQL verbatim.
  *  4. For each [QuerySpec]: dispatch to Exposed (`selectAll`/`count` + Op filter),
  *     normalize the result, compare against the scenario's `expect` block.
+ *
+ * The Exposed `Table` objects ([ProgramTable], [WeekTable], etc.) survive only
+ * as the runtime data-access mapping the query dispatcher addresses — they no
+ * longer create tables. Their column names match the canonical DDL's literal
+ * (camelCase) physical columns so the queries hit the right columns.
  *
  * Only entities exercised by the curated query-scenario subset need to be
  * dispatched in [tableFor]. New scenarios touching other entities will need
@@ -47,38 +54,37 @@ import java.util.UUID
 object QueryScenarioRunner {
 
     /**
-     * Run a single query scenario end-to-end. Schema creation is idempotent within
-     * a fresh container (one container per scenario at the JUnit level).
+     * Run a single query scenario end-to-end against a fresh container (one
+     * container per scenario at the JUnit level).
      */
     fun run(scenario: QueryScenario, pg: PostgresContainer) {
         val db = Database.connect(pg.jdbcUrl, user = pg.username, password = pg.password)
 
-        transaction(db) {
-            SchemaUtils.create(ProgramTable, WeekTable, MeasurementTable, AssetTable)
-        }
+        // 1. Provision the schema from the committed canonical DDL (base tables +
+        //    projection views). Executed verbatim on a direct JDBC connection —
+        //    schema authority is the TS-produced artifact, not Exposed.
+        val schemaDdl = ScenarioLoader.readCanonicalSchema(ScenarioLoader.findCorpusRoot())
+        execSql(pg, schemaDdl)
 
-        // 2. Seed via the YAML's raw SQL — runs outside Exposed transactions, on a
-        // direct JDBC connection, because the seed SQL is portable Postgres DDL/DML
-        // that may use double-quoted identifiers Exposed wouldn't synthesize.
-        scenario.seedData?.takeIf { it.isNotBlank() }?.let { sql ->
-            DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
-                c.createStatement().use { it.execute(sql) }
-            }
-        }
-
-        // 2b. Projection views — only created when a scenario actually touches
-        // the relevant projection entity. Cheap and explicit; avoids running
-        // view DDL on scenarios that don't need it.
-        if (scenario.queries.any { it.entity == "ProgramStat" }) {
-            DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
-                c.createStatement().use { it.execute(ProgramStatView.VIEW_DDL) }
-            }
-        }
+        // 2. Seed via the YAML's raw SQL.
+        scenario.seedData?.takeIf { it.isNotBlank() }?.let { sql -> execSql(pg, sql) }
 
         // 3. Run queries; each gets its own Exposed transaction.
         for (spec in scenario.queries) {
             val actual = transaction(db) { dispatch(spec) }
             assertResult(scenario.sourcePath, spec, actual)
+        }
+    }
+
+    /**
+     * Execute verbatim SQL on a fresh direct JDBC connection — used for both the
+     * canonical schema DDL and the scenario's seed SQL, neither of which goes
+     * through Exposed (they may use double-quoted identifiers Exposed wouldn't
+     * synthesize).
+     */
+    private fun execSql(pg: PostgresContainer, sql: String) {
+        DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
+            c.createStatement().use { it.execute(sql) }
         }
     }
 
@@ -116,6 +122,7 @@ object QueryScenarioRunner {
         "Week" -> WeekTable
         "Measurement" -> MeasurementTable
         "ProgramStat" -> ProgramStatView
+        "ProgramView" -> ProgramView
         "Asset" -> AssetTable
         else -> error("No Exposed Table registered for entity '$entity' — extend QueryScenarioRunner.tableFor")
     }
@@ -273,16 +280,24 @@ object QueryScenarioRunner {
         val out = LinkedHashMap<String, Any?>(table.columns.size)
         for (col in table.columns) {
             var v: Any? = row[col]
-            // Exposed surfaces `timestamp` as java.time.Instant; the normalization
-            // contract emits TIMESTAMP (no TZ) as `yyyy-MM-ddTHH:mm:ss`. Convert
-            // to LocalDateTime in UTC so Normalization formats it correctly.
+            // Temporal columns must preserve their TZ-discriminator all the way to
+            // Normalization, which emits the TIMESTAMPTZ `…Z` suffix iff the value is an
+            // OffsetDateTime (re-anchored to UTC there) and NO suffix for a plain TIMESTAMP
+            // (LocalDateTime). See fixtures/persistence-conformance/normalization.md.
+            //
+            //  - `timestamp with time zone` (TIMESTAMPTZ) → java.time.OffsetDateTime: pass
+            //    through UNCHANGED. Normalization re-anchors to UTC and appends `Z`, so a
+            //    non-UTC stored offset (e.g. -05:00) reads back canonically as the UTC instant.
+            //  - plain `timestamp` (no tz) → java.time.LocalDateTime: pass through unchanged
+            //    (Normalization formats it with no `Z`).
+            //  - `date` → java.time.LocalDate, `time` → java.time.LocalTime: pass through; the
+            //    DATE / TIME normalization branches handle them.
+            //
+            // (The legacy JDBC Instant/Timestamp shapes are still bridged for any driver path
+            // that surfaces them; OffsetDateTime is deliberately NOT collapsed to LocalDateTime
+            // anymore — doing so destroyed the TZ discriminator.)
             if (v is Instant) v = LocalDateTime.ofInstant(v, ZoneOffset.UTC)
             if (v is Timestamp) v = v.toLocalDateTime()
-            // `timestamp with time zone` surfaces as OffsetDateTime — re-anchor to UTC
-            // and drop the offset so the no-TZ normalization formatter applies (the
-            // corpus seeds exact-UTC instants so this is lossless; see the scenario's
-            // TIMESTAMPTZ normalization note).
-            if (v is OffsetDateTime) v = v.atZoneSameInstant(ZoneOffset.UTC).toLocalDateTime()
             // `@dbColumnType:jsonb` open-JSON column round-trips as a raw JSON String
             // (identity decode). Parse it to a Map so Normalization sorts the keys and
             // the `expect` block (a YAML object) compares byte-equal. Detected by the

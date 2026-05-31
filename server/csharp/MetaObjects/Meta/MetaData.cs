@@ -119,6 +119,39 @@ public abstract class MetaData
         return Name;
     }
 
+    /// <summary>
+    /// The node's package-folded qualified key: <c>&lt;pkg&gt;::&lt;name&gt;</c> where
+    /// <c>pkg</c> is this node's own package if set, else the nearest ancestor's
+    /// package (the file-default package, carried on the tree root). Returns the
+    /// bare name when neither is available.
+    ///
+    /// This is the C# equivalent of TS <c>MetaData.resolutionKey()</c> and Python
+    /// <c>MetaData.resolution_key()</c>. It is the SAME form a nested field's
+    /// <c>@objectRef</c> uses (e.g. <c>com::example::om::Address</c>) and the key
+    /// the runtime object model binds on (<see cref="ObjectClassRegistry"/>) /
+    /// nested object-refs resolve against. Distinct from <see cref="Fqn"/>, which
+    /// stays bare for objects (the parser does not fold the file-default package
+    /// onto an object's own <c>package</c>).
+    /// </summary>
+    public string ResolutionKey()
+    {
+        var pkg = _package;
+        if (string.IsNullOrEmpty(pkg))
+        {
+            var node = _parent;
+            while (node is not null)
+            {
+                if (!string.IsNullOrEmpty(node._package))
+                {
+                    pkg = node._package;
+                    break;
+                }
+                node = node._parent;
+            }
+        }
+        return string.IsNullOrEmpty(pkg) ? Name : $"{pkg}{PACKAGE_SEPARATOR}{Name}";
+    }
+
     // ---------------------------------------------------------------------------
     // Freeze guard
     // ---------------------------------------------------------------------------

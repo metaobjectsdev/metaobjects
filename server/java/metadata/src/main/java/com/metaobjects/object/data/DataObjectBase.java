@@ -391,10 +391,14 @@ public abstract class DataObjectBase implements Serializable, MetaObjectAware, V
     /** Get the data type for the specified field */
     private DataTypes getDataType( String name, Object forValue ) {
 
-        // Use the MetaField specific type when setting as an object
+        // Use the MetaField specific type when setting as an object. Honor the
+        // universal @isArray pattern via getEffectiveDataType() — an array field
+        // (e.g. field.object isArray=true) must carry its array-equivalent type
+        // (OBJECT -> OBJECT_ARRAY) so a multi-element List coerces via toObjectArray()
+        // instead of being routed through the scalar toObject() (which rejects >1 element).
         DataTypes type = DataTypes.OBJECT;
         if ( hasMetaDataAttached() && getMetaData().hasMetaField( name )) {
-            type = getMetaData().getMetaField(name).getDataType();
+            type = getMetaData().getMetaField(name).getEffectiveDataType();
         }
 
         // If no MetaData is attached, then use the value being set to define the data type

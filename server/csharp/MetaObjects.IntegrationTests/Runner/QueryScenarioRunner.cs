@@ -1,29 +1,38 @@
 // QueryScenarioRunner — executes a QueryScenario end-to-end:
 //
 //   1. Spin up a Postgres testcontainer.
-//   2. Apply the canonical schema (CREATE TABLE/VIEW etc.) — same chain as `meta migrate`.
+//   2. Provision the schema by executing the committed canonical schema DDL
+//      (fixtures/persistence-conformance/canonical/schema.postgres.sql) verbatim.
 //   3. Execute the scenario's seed-data SQL.
 //   4. Open an AppDbContext pointed at the container.
 //   5. For each QuerySpec: translate via DbContextAdapter, normalize the result,
 //      compare against the scenario's `expect:` block.
+//
+// C# no longer synthesizes the query-scenario schema from metadata — TypeScript
+// is the single PRODUCER of one committed DDL artifact (drift-checked on the TS
+// side) that every port executes verbatim. The committed DDL uses literal column
+// names; the generated AppDbContext entities map to those exact names via
+// [Column(...)], so the EF Core runtime addresses the schema's columns directly.
+// See docs/superpowers/specs/2026-05-30-ts-schema-authority-consolidation-design.md.
 
+using System.Globalization;
 using System.Text.Json.Nodes;
-using MetaObjects.Codegen.Migrate;
-using MetaObjects.Codegen.Schema;
 using MetaObjects.IntegrationTests.Generated;
-using MetaObjects.Loader;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Xunit.Sdk;
+using YamlDotNet.Core;
+using YamlDotNet.RepresentationModel;
 
 namespace MetaObjects.IntegrationTests.Runner;
 
 public static class QueryScenarioRunner
 {
-    public static async Task RunAsync(QueryScenario scenario, PostgresContainer pg, string canonicalMetadataDir)
+    public static async Task RunAsync(QueryScenario scenario, PostgresContainer pg)
     {
-        // Apply the canonical schema (engine full-CREATE via diff-against-empty).
-        await ApplyCanonicalSchemaAsync(pg.ConnectionString, canonicalMetadataDir);
+        // Provision the schema from the committed canonical DDL — the single
+        // TS-produced artifact every port executes. (No per-scenario synthesis.)
+        await ExecuteAsync(pg.ConnectionString, ReadCanonicalSchemaSql());
 
         // Optional seed data.
         if (!string.IsNullOrWhiteSpace(scenario.SeedData))
@@ -42,26 +51,15 @@ public static class QueryScenarioRunner
         }
     }
 
-    private static async Task ApplyCanonicalSchemaAsync(string connString, string canonicalDir)
+    /// <summary>Read the committed canonical Postgres schema artifact (TS-produced).</summary>
+    private static string ReadCanonicalSchemaSql()
     {
-        var load = MetaDataLoader.FromDirectory(canonicalDir);
-        if (load.Errors.Count > 0)
+        var path = CorpusPaths.CanonicalSchemaSql;
+        if (!File.Exists(path))
             throw new InvalidOperationException(
-                $"canonical metadata at {canonicalDir} did not load cleanly: " +
-                string.Join("; ", load.Errors.Select(e => $"{e.Code}: {e.Message}")));
-
-        // Tables via the engine path; views + enum CHECK + comments via the tail helpers.
-        var diff = SchemaDiff.Diff(ExpectedSchema.Build(load.Root), new SchemaSnapshot([]));
-        var tableDdl = PostgresEmit.Render(diff.Changes).Up;
-        await ExecuteAsync(connString, tableDdl);
-
-        foreach (var stmt in PostgresSchema.EnumCheckConstraints(load.Root))
-            await ExecuteAsync(connString, stmt);
-        foreach (var stmt in PostgresSchema.TableAndColumnComments(load.Root))
-            await ExecuteAsync(connString, stmt);
-        foreach (var p in load.Root.Objects().Where(o => o.IsReadOnlyProjection())
-                                   .OrderBy(o => o.Name, StringComparer.Ordinal))
-            await ExecuteAsync(connString, PostgresSchema.CreateView(p, load.Root, _ => { }));
+                $"canonical schema artifact not found at {path}; it is produced by the " +
+                "TypeScript conformance tooling and committed to the corpus.");
+        return File.ReadAllText(path);
     }
 
     private static async Task ExecuteAsync(string connString, string sql)
@@ -85,25 +83,72 @@ public static class QueryScenarioRunner
                 $"{scenarioPath} / {spec.Name}: result mismatch\n  expected: {expectedJson}\n  actual:   {actualJson}");
     }
 
-    private static string CanonicalizeExpected(object? expect, string op)
+    private static string CanonicalizeExpected(YamlNode? expect, string op)
     {
-        // YamlDotNet hands back nested mappings as Dictionary<object,object?> and
-        // bare scalars (including integers) as strings when the parent property is
-        // typed as object?. For `op:count` the expected is logically an integer;
-        // parse it so the comparison is number-vs-number, not string-vs-number.
+        // For `op:count` the expected is logically an integer; parse the scalar so
+        // the comparison is number-vs-number, not string-vs-number.
         if (op == "count")
         {
-            var n = expect switch
-            {
-                long l => l,
-                int i => i,
-                string s when long.TryParse(s, out var p) => p,
-                _ => throw new InvalidOperationException($"op:count expects an integer, got: {expect}"),
-            };
-            return n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var raw = (expect as YamlScalarNode)?.Value;
+            if (raw is null || !long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n))
+                throw new InvalidOperationException($"op:count expects an integer, got: {raw ?? "null"}");
+            return n.ToString(CultureInfo.InvariantCulture);
         }
-        var node = ToJsonNode(expect);
-        return Canonical(node);
+        return Canonical(YamlExpectToJsonNode(expect));
+    }
+
+    // Convert the raw `expect:` YAML subtree to a JsonNode, honoring scalar STYLE so
+    // the comparison matches the wire contract (normalization.md): a plain (unquoted)
+    // scalar is YAML-core-schema-inferred (45 → number, true → bool, null/~ → null),
+    // while a QUOTED scalar is always a JSON string ("45" → "45"). This is exactly the
+    // type inference the TS authority's JS YAML loader performs; without it every
+    // INTEGER-typed expectation would degrade to a string and never match the
+    // number-shaped actual rows.
+    private static JsonNode? YamlExpectToJsonNode(YamlNode? node)
+    {
+        switch (node)
+        {
+            case null:
+            case YamlScalarNode { Value: null }:
+                return null;
+            case YamlScalarNode scalar:
+                return ScalarToJsonNode(scalar);
+            case YamlMappingNode map:
+                var obj = new JsonObject();
+                foreach (var (k, v) in map.Children)
+                    obj[((YamlScalarNode)k).Value!] = YamlExpectToJsonNode(v);
+                return obj;
+            case YamlSequenceNode seq:
+                var arr = new JsonArray();
+                foreach (var item in seq.Children) arr.Add(YamlExpectToJsonNode(item));
+                return arr;
+            default:
+                throw new InvalidOperationException($"unsupported YAML node kind in expect: {node.GetType().Name}");
+        }
+    }
+
+    // A quoted scalar is always a string. A plain scalar follows YAML core-schema
+    // inference: null/~ → null, true/false → bool, integer → long, otherwise the
+    // literal string (NUMERIC/BIGINT/UUID/float values are authored as strings, so
+    // floats and big integers stay strings here and the contract's string forms hold).
+    private static JsonNode? ScalarToJsonNode(YamlScalarNode scalar)
+    {
+        var value = scalar.Value!;
+        var quoted = scalar.Style is ScalarStyle.SingleQuoted or ScalarStyle.DoubleQuoted;
+        if (quoted) return JsonValue.Create(value);
+
+        switch (value)
+        {
+            case "" or "~" or "null" or "Null" or "NULL":
+                return null;
+            case "true" or "True" or "TRUE":
+                return JsonValue.Create(true);
+            case "false" or "False" or "FALSE":
+                return JsonValue.Create(false);
+        }
+        if (long.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var l))
+            return JsonValue.Create(l);
+        return JsonValue.Create(value);
     }
 
     private static string CanonicalizeActual(object? actual, string op)

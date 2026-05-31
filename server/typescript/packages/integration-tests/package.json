@@ -5,7 +5,8 @@
   "description": "Cross-language persistence conformance — TS runner against fixtures/persistence-conformance/. On-demand only (requires Docker).",
   "type": "module",
   "scripts": {
-    "test": "bun test"
+    "test": "bun test",
+    "gen:schema": "bun run src/gen-canonical-schema.ts"
   },
   "dependencies": {
     "@metaobjectsdev/metadata": "workspace:*",

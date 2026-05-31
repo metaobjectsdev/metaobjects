@@ -1,0 +1,18 @@
+{ "metadata.root": {
+    "package": "com::example::om",
+    "children": [
+      { "object.value": { "name": "Address", "children": [
+        { "field.string": { "name": "street" } },
+        { "field.string": { "name": "city" } }
+      ]}},
+      { "object.value": { "name": "Tag", "children": [
+        { "field.string": { "name": "label" } }
+      ]}},
+      { "object.value": { "name": "Person", "children": [
+        { "field.string": { "name": "name" } },
+        { "field.int":    { "name": "age" } },
+        { "field.object": { "name": "home", "@objectRef": "com::example::om::Address" } },
+        { "field.object": { "name": "tags", "isArray": true, "@objectRef": "com::example::om::Tag" } }
+      ]}}
+    ]
+}}

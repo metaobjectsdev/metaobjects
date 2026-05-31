@@ -11,6 +11,7 @@ import com.metaobjects.field.IntegerField
 import com.metaobjects.field.LongField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.StringField
+import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
 import com.metaobjects.field.UuidField
 import com.metaobjects.`object`.MetaObject
@@ -135,6 +136,9 @@ object KotlinTypeMapper {
         is FloatField     -> FLOAT
         is BooleanField   -> BOOLEAN
         is DateField      -> ClassName("java.time", "LocalDate")
+        // field.time → java.time.LocalTime / Exposed `time(...)` (Postgres TIME). The
+        // wall-clock-only sibling of DateField; the wire form is "HH:MM:SS".
+        is TimeField      -> ClassName("java.time", "LocalTime")
         is TimestampField -> ClassName("java.time", "Instant")
         // Currency: integer minor units on the wire (project-wide invariant). Same JVM
         // representation as Long; surfaced as its own arm so the semantic is documented
@@ -181,6 +185,9 @@ object KotlinTypeMapper {
      */
     fun exposedColumnImport(field: MetaField<*>): String? = when (field) {
         is DateField      -> "org.jetbrains.exposed.sql.javatime.date"
+        // field.time → Exposed `time(...)` (javatime extension; needs an explicit import,
+        // same as `date(...)`).
+        is TimeField      -> "org.jetbrains.exposed.sql.javatime.time"
         // Default for field.timestamp is plain `timestamp(...)` (Postgres `timestamp
         // without time zone` — the more common shape). Opt-in `@dbColumnType=timestamp_with_tz`
         // switches to `timestampWithTimeZone(...)` (Postgres `timestamp with time zone`).
@@ -241,6 +248,8 @@ object KotlinTypeMapper {
         is FloatField     -> "float(\"$colName\")"
         is BooleanField   -> "bool(\"$colName\")"
         is DateField      -> "date(\"$colName\")"
+        // field.time → Exposed `time(name)` (Postgres TIME, java.time.LocalTime).
+        is TimeField      -> "time(\"$colName\")"
         // Default for field.timestamp is plain `timestamp(...)` — Postgres `timestamp
         // without time zone` is the more common shape. Opt in to TZ-aware via
         // `@dbColumnType=timestamp_with_tz`.

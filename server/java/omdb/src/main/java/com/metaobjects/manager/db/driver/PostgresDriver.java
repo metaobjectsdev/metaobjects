@@ -11,8 +11,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Types;
-import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,10 +19,8 @@ import com.metaobjects.MetaDataException;
 
 
 import com.metaobjects.manager.db.defs.ColumnDef;
-import com.metaobjects.manager.db.defs.ForeignKeyDef;
-import com.metaobjects.manager.db.defs.IndexDef;
-import com.metaobjects.manager.db.defs.SequenceDef;
 import com.metaobjects.manager.db.defs.TableDef;
+import com.metaobjects.manager.db.defs.ViewDef;
 import com.metaobjects.manager.exp.Range;
 
 /**
@@ -52,118 +48,6 @@ public class PostgresDriver extends GenericSQLDriver {
     }
 
     /**
-     * Creates a table in the PostgreSQL database with modern type mapping
-     */
-    @Override
-    public void createTable(Connection c, TableDef table) throws SQLException {
-        StringBuilder query = new StringBuilder();
-        
-        try {
-            query.append("CREATE TABLE ")
-                 .append(getProperName(table.getNameDef()))
-                 .append(" (\n");
-
-            List<ColumnDef> cols = table.getColumns();
-            int keys = table.getPrimaryKeys().size();
-            String primaryKey = null;
-
-            // Create columns with modern type mapping
-            for (int i = 0; i < cols.size(); i++) {
-                ColumnDef col = cols.get(i);
-                String name = col.getName();
-                
-                if (name == null) continue;
-                
-                if (i > 0) query.append(",\n");
-
-                query.append("  ").append(quoteIdent(name)).append(" ");
-
-                // R6 Plan 2a/2b: a physical column-type hint (native uuid/jsonb/
-                // timestamptz) overrides the java.sql.Types default. The hint is
-                // dialect-neutral; map it to Postgres's native spelling here.
-                String hint = col.getDbColumnType();
-                if (hint != null) {
-                    query.append(pgNativeColumnType(hint));
-                } else {
-                    // PostgreSQL-specific type mapping with modern features
-                    switch (col.getSQLType()) {
-                        case Types.BOOLEAN, Types.BIT -> query.append("BOOLEAN");
-                        case Types.TINYINT -> query.append("SMALLINT"); // PostgreSQL doesn't have TINYINT
-                        case Types.SMALLINT -> query.append("SMALLINT");
-                        case Types.INTEGER -> query.append("INTEGER");
-                        case Types.BIGINT -> query.append("BIGINT");
-                        case Types.FLOAT -> query.append("REAL");
-                        case Types.DOUBLE -> query.append("DOUBLE PRECISION");
-                        case Types.TIMESTAMP -> query.append("TIMESTAMP WITH TIME ZONE");
-                        case Types.TIME -> query.append("TIME");
-                        case Types.VARCHAR -> {
-                            if (col.getLength() > 10485760) { // 10MB limit for VARCHAR
-                                query.append("TEXT");
-                            } else {
-                                query.append("VARCHAR(").append(col.getLength()).append(")");
-                            }
-                        }
-                        default -> throw new UnsupportedOperationException(
-                            "PostgreSQL driver does not support SQL type: " + col.getSQLType());
-                    }
-                }
-
-                // R6 Plan 2a: a uuid primary key whose identity declares
-                // @generation: uuid gets a server-side gen_random_uuid() default,
-                // so an INSERT that omits the PK still succeeds (and the value is
-                // a native uuid). Routed through the existing AUTO_UUID generation
-                // signal — not a parallel emitter.
-                //
-                // NOTE: the OMDB runtime insert path mints the UUID app-side (see
-                // GenericSQLDriver.getInsertStatement / AUTO_UUID), so for OMDB writes this
-                // DEFAULT is never consulted and looks redundant. It is intentional: it
-                // serves external/raw-SQL inserts that omit the PK column. Don't remove it.
-                if (ColumnDef.COLTYPE_UUID.equals(hint)
-                        && col.getAutoType() == ColumnDef.AUTO_UUID) {
-                    query.append(" DEFAULT gen_random_uuid()");
-                }
-
-                // PostgreSQL constraints can be added here if needed
-
-                if (col.isPrimaryKey() && keys == 1) {
-                    primaryKey = name;
-                } else if (col.isUnique()) {
-                    query.append(" UNIQUE");
-                }
-                
-                // Default values can be added via ColumnDef if needed
-            }
-            
-            // Add primary key constraint
-            if (primaryKey != null) {
-                query.append(",\n  PRIMARY KEY (").append(quoteIdent(primaryKey)).append(")");
-            } else if (keys > 1) {
-                query.append(",\n  PRIMARY KEY (");
-                table.getPrimaryKeys().stream()
-                    .map(ColumnDef::getName)
-                    .map(this::quoteIdent)
-                    .reduce((a, b) -> a + ", " + b)
-                    .ifPresent(query::append);
-                query.append(")");
-            }
-            
-            query.append("\n)");
-
-            if (log.isDebugEnabled()) {
-                log.debug("Creating PostgreSQL table [{}]: {}", table.getNameDef().getFullname(), query);
-            }
-
-            try (Statement s = c.createStatement()) {
-                s.execute(query.toString());
-            }
-            
-        } catch (Exception e) {
-            throw new SQLException("Failed to create PostgreSQL table [" + table.getNameDef().getFullname() + 
-                                 "] using SQL [" + query + "]: " + e.getMessage(), e);
-        }
-    }
-
-    /**
      * Deletes a table from the PostgreSQL database
      */
     @Override
@@ -183,97 +67,24 @@ public class PostgresDriver extends GenericSQLDriver {
     }
 
     /**
-     * Creates a PostgreSQL sequence with proper configuration
+     * Creates a PostgreSQL view
      */
     @Override
-    public void createSequence(Connection c, SequenceDef sequence) throws SQLException {
-
-		StringBuilder query = new StringBuilder();
-		try {
-			String seq = getProperName( sequence.getNameDef() );
-			query.append( "CREATE SEQUENCE " )
-			.append( seq )
-			.append( " START " )
-			.append( sequence.getStart() );
-	
-			Statement s = c.createStatement();
-			try { s.execute( query.toString() ); }
-			finally {  s.close(); }
-	
-			if ( log.isDebugEnabled() ) {
-				log.debug( "Creating sequence [" + sequence + "]: " + query );
-			}
-		}
-		catch( Exception e ) {
-			throw new SQLException( "Creation of sequence [" + sequence + "] failed using SQL [" + query + "]: " + e.getMessage(), e );
-		}
-	}
-
-	@Override
-	public void createIndex( Connection c, IndexDef index ) throws SQLException {
-		
-		StringBuilder query = new StringBuilder();
-		try {
-			String name = index.getName();
-			
-			query.append( "CREATE INDEX " )
-			.append( name )
-			.append( " ON " )
-			.append( getProperName( index.getTable().getNameDef() ) )
-			.append( "(" );
-			
-			boolean first = true;
-			for ( String colName : index.getColumnNames() ) {
-				if ( first ) first = false;
-				else query.append( "," );
-				query.append( quoteIdent( colName ) );
-			}
-			
-			query.append( ")" );
-	
-			if ( log.isDebugEnabled() ) {
-				log.debug( "Creating index [" + index + "]: " + query );
-			}
-	
-			Statement s = c.createStatement();
-			try { s.execute( query.toString() ); }
-			finally { s.close(); }
-		}
-		catch( Exception e ) {
-			throw new SQLException( "Creation of index [" + index + "] failed using SQL [" + query + "]: " + e.getMessage(), e );
-		}
-    }
-
-    /**
-     * Creates a PostgreSQL foreign key constraint
-     */
-    @Override
-    public void createForeignKey(Connection c, ForeignKeyDef keyDef) throws SQLException {
-        StringBuilder query = new StringBuilder();
-        
-        query.append("ALTER TABLE ")
-             .append(getProperName(keyDef.getTable().getNameDef()))
-             .append(" ADD CONSTRAINT ")
-             .append(keyDef.getName())
-             .append(" FOREIGN KEY (")
-             .append(quoteIdent(keyDef.getColumnName()))
-             .append(") REFERENCES ")
-             .append(getProperName(keyDef.getRefTable().getNameDef()))
-             .append(" (")
-             .append(quoteIdent(keyDef.getRefColumn().getName()))
-             .append(") ON DELETE RESTRICT ON UPDATE CASCADE");
+    public void createView(Connection c, ViewDef view) throws SQLException {
+        String viewName = getProperName(view.getNameDef());
+        String query = "CREATE OR REPLACE VIEW " + viewName + " AS " + view.getSQL();
         
         if (log.isDebugEnabled()) {
-            log.debug("Creating PostgreSQL foreign key [{}]: {}", keyDef.getName(), query);
+            log.debug("Creating PostgreSQL view [{}]: {}", viewName, query);
         }
         
         try (Statement s = c.createStatement()) {
-            s.execute(query.toString());
+            s.execute(query);
         } catch (SQLException e) {
-            throw new SQLException("Failed to create PostgreSQL foreign key [" + keyDef.getName() + "]: " + e.getMessage(), e);
+            throw new SQLException("Failed to create PostgreSQL view [" + viewName + "]: " + e.getMessage(), e);
         }
     }
-		
+
     /**
      * Gets the next sequence value using PostgreSQL's nextval()
      */
@@ -359,23 +170,6 @@ public class PostgresDriver extends GenericSQLDriver {
     protected String quoteIdent(String name) {
         if (name.indexOf('"') >= 0) throw new IllegalArgumentException("unsafe identifier: " + name);
         return "\"" + name + "\"";
-    }
-
-    /**
-     * Map a dialect-neutral physical column-type hint (R6 Plan 2a/2b) to its
-     * Postgres native spelling. Cross-port: the live {@code information_schema}
-     * type ({@code uuid} / {@code jsonb} / {@code timestamp with time zone}) is
-     * what the persistence-conformance corpus asserts, so whatever exact spelling
-     * we emit must converge to those catalog types.
-     */
-    private static String pgNativeColumnType(String hint) {
-        return switch (hint) {
-            case ColumnDef.COLTYPE_UUID         -> "UUID";
-            case ColumnDef.COLTYPE_JSONB        -> "JSONB";
-            case ColumnDef.COLTYPE_TIMESTAMP_TZ -> "TIMESTAMP WITH TIME ZONE";
-            default -> throw new UnsupportedOperationException(
-                "PostgreSQL driver does not support column-type hint: " + hint);
-        };
     }
 
     @Override

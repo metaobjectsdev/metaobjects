@@ -120,7 +120,12 @@ public class RecoverConformanceTest {
             String coerceDefault = f.has("coerceDefault") ? f.get("coerceDefault").asText() : null;
             String normalize = parseNormalize(f.has("normalize") ? f.get("normalize").asText() : null);
             String defaultValue = f.has("default") ? f.get("default").asText() : null;
-            return FieldSpec.enumField(name, req, vals, aliases, coerceDefault, normalize, defaultValue);
+            // Phase B (array-of-enum): kind:"ENUM" + array:true → List<enum>, each element
+            // coerced through the enum pipeline and classified by indexed path.
+            boolean array = f.has("array") && f.get("array").asBoolean();
+            return array
+                    ? FieldSpec.enumArray(name, req, vals, aliases, coerceDefault, normalize, defaultValue)
+                    : FieldSpec.enumField(name, req, vals, aliases, coerceDefault, normalize, defaultValue);
         }
         if (kind == FieldKind.OBJECT) {
             boolean array = f.has("array") && f.get("array").asBoolean();
@@ -137,7 +142,9 @@ public class RecoverConformanceTest {
             Double max = f.has("max") ? f.get("max").asDouble() : null;
             return FieldSpec.range(name, kind, req, min, max);
         }
-        return FieldSpec.scalar(name, kind, req);
+        // Phase B: a scalar field may carry a generalized @default absent-fill string.
+        String defaultValue = f.has("default") ? f.get("default").asText() : null;
+        return FieldSpec.scalar(name, kind, req, defaultValue);
     }
 
     /** FR-011: parse the {@code @normalize} mode string; absent → the global default "strip". */

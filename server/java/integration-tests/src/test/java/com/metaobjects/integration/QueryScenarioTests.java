@@ -42,23 +42,17 @@ final class QueryScenarioTests {
         ScenarioLoader.loadQueries(CORPUS.resolve("queries"));
 
     /**
-     * Scenarios skipped because their schema is not bootstrapped by the runtime.
+     * Scenarios deferred until the underlying Java port gap is closed.
      *
-     * <p>{@code projection-aggregate}: this scenario queries an aggregate-projection
-     * view ({@code v_program_stat}, derived from {@code origin.aggregate}). OMDB no
-     * longer auto-creates views — schema, including views, is owned by the TypeScript
-     * migrate toolchain — so the runtime auto-create path
-     * ({@link com.metaobjects.manager.db.validator.MetaClassDBValidatorService}) does
-     * not materialize the view and there is nothing for the query to read. The
-     * scenario stays covered cross-port (the Kotlin/TS/C# runners create the view from
-     * explicit DDL); re-homing view-body synthesis into the Java runtime is out of
-     * scope.</p>
+     * <p>None: schema authority is now the committed canonical DDL
+     * (ADR-0015), which materializes the aggregate-projection view
+     * ({@code v_program_stat}) directly. The previous {@code projection-aggregate}
+     * deferral — the view body had been synthesized by the removed migration
+     * engine, and runtime auto-create could only build a view from an explicit
+     * {@code dbViewSQL} attr — no longer applies: the OMDB runtime simply reads
+     * the TS-authored view through its projection-read path.</p>
      */
-    private static final Map<String, String> EXPECTED_FAILURES = Map.of(
-        "projection-aggregate",
-        "OMDB no longer auto-creates views; schema (including aggregate-projection "
-            + "views) is owned by the TypeScript migrate toolchain, so the runtime "
-            + "does not materialize this scenario's view");
+    private static final Map<String, String> EXPECTED_FAILURES = Map.of();
 
     @BeforeAll
     static void beforeAll() {

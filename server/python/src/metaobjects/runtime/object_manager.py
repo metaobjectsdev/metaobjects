@@ -7,6 +7,7 @@ driver. Identifiers are double-quoted throughout (mixed-case columns like
 """
 from __future__ import annotations
 
+import datetime as _datetime
 import decimal
 import re
 import uuid as _uuid
@@ -22,12 +23,21 @@ from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source import source_constants as sc
 
 
-# pg8000 / psycopg type oids coerced to string at extraction so the cross-port
-# normalization contract (BIGINT → string, NUMERIC → canonical decimal string)
-# is honored without leaking SQL-type awareness into the comparison layer.
+# pg8000 / psycopg type oids coerced at extraction so the cross-port
+# normalization contract (BIGINT → string, NUMERIC → canonical decimal string,
+# the temporal wire forms) is honored without leaking SQL-type awareness into
+# the comparison layer. Mirrors the TS authority's OID-keyed driver parsers
+# (temporal-parsers.ts) — pg8000 surfaces TIMESTAMP and TIMESTAMPTZ as datetimes
+# that differ only by tzinfo, but the OID is the authoritative discriminator, so
+# we key off it (never off the python value type) exactly like TS keys off the
+# column type OID. Stable across PG versions (see pg_type.dat).
 _PG_OID_BIGINT = 20
 _PG_OID_NUMERIC = 1700
 _PG_OID_UUID = 2950
+_PG_OID_DATE = 1082
+_PG_OID_TIME = 1083
+_PG_OID_TIMESTAMP = 1114
+_PG_OID_TIMESTAMPTZ = 1184
 
 # Canonical 8-4-4-4-12 hex shape (case-insensitive). Used to recognize a uuid
 # value surfaced as text so the PORT can lowercase-canonicalize it dialect-
@@ -276,4 +286,45 @@ def _coerce_for_contract(value: Any, oid: int) -> Any:
         return str(value).lower()
     if oid == _PG_OID_UUID and isinstance(value, str) and _UUID_SHAPE.match(value):
         return value.lower()
+    # Temporal canonicalization, keyed by column OID (the authoritative
+    # TIMESTAMP-vs-TIMESTAMPTZ discriminator — pg8000 returns a tz-aware datetime
+    # for TIMESTAMPTZ and a naive datetime for plain TIMESTAMP, but we trust the
+    # OID, not the python value, to mirror the TS authority's OID-keyed parsers).
+    if oid == _PG_OID_TIMESTAMPTZ and isinstance(value, _datetime.datetime):
+        return _canonical_timestamptz(value)
+    if oid == _PG_OID_TIMESTAMP and isinstance(value, _datetime.datetime):
+        return _canonical_timestamp(value)
+    if oid == _PG_OID_DATE and isinstance(value, _datetime.date):
+        return _canonical_date(value)
+    if oid == _PG_OID_TIME and isinstance(value, _datetime.time):
+        return _canonical_time(value)
     return value
+
+
+def _canonical_timestamptz(dt: _datetime.datetime) -> str:
+    """TIMESTAMPTZ → ``YYYY-MM-DDTHH:MM:SSZ`` (always UTC).
+
+    pg8000 surfaces a TIMESTAMPTZ as a tz-aware ``datetime``; convert any offset
+    to UTC and append ``Z`` so a non-UTC-seeded value reads back as its UTC
+    equivalent (proving normalization, not just formatting). A naive datetime on
+    this OID is treated as already-UTC (defensive; pg8000 always carries tzinfo
+    here). Phase B seeds whole seconds only — no fractional component emitted.
+    """
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(_datetime.timezone.utc).replace(tzinfo=None)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+
+
+def _canonical_timestamp(dt: _datetime.datetime) -> str:
+    """TIMESTAMP (no tz) → ``YYYY-MM-DDTHH:MM:SS`` (no Z); wall clock passes through."""
+    return dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _canonical_date(d: _datetime.date) -> str:
+    """DATE → ``YYYY-MM-DD``."""
+    return d.strftime("%Y-%m-%d")
+
+
+def _canonical_time(t: _datetime.time) -> str:
+    """TIME → ``HH:MM:SS`` (whole seconds; Phase B seeds no fractional part)."""
+    return t.strftime("%H:%M:%S")

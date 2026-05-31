@@ -12,7 +12,6 @@ import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.QueryOptions;
 import com.metaobjects.manager.db.driver.DerbyDriver;
-import com.metaobjects.manager.db.validator.MetaClassDBValidatorService;
 import com.metaobjects.manager.exp.Expression;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.value.ValueObject;
@@ -65,11 +64,20 @@ public class UuidPrimaryKeyTest {
         omdb.setDataSource(ds);
         omdb.init();
 
-        MetaClassDBValidatorService vs = new MetaClassDBValidatorService();
-        vs.setObjectManager(omdb);
-        vs.setAutoCreate(true);
-        vs.setMetaDataLoaderRegistry(registry);
-        vs.init();
+        // Schema is external/explicit (ADR-0015): create UUID_WIDGET via literal DDL.
+        // The `id` PK is an app-side UUID (identity @generation:"uuid" → AUTO_UUID):
+        // OMDB mints the java.util.UUID string before INSERT, so the column is a plain
+        // portable CHAR(36) with NO DB-side identity/default (this is the DB-portable
+        // app-side-mint path; native uuid columns + gen_random_uuid() are a Postgres
+        // concern exercised by the Testcontainers integration suite).
+        try (Connection c = getConnection();
+             Statement s = c.createStatement()) {
+            s.execute(
+                "CREATE TABLE UUID_WIDGET (\n"
+                    + "  id CHAR(36) CONSTRAINT UUID_WIDGET_id_PK PRIMARY KEY,\n"
+                    + "  name VARCHAR(100)\n"
+                    + ")");
+        }
     }
 
     private static Connection getConnection() throws SQLException {

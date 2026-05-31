@@ -47,6 +47,22 @@
             <scope>test</scope>
         </dependency>
 
+        <!--
+          Test-only: the generated <Name>Extractor references the Phase-B runtime recover
+          (com.metaobjects.object.recover.MetaObjectRecover in metaobjects-om, returning
+          com.metaobjects.render.recover.RecoveryResult). codegen-base MAIN keeps NO om
+          dependency (the generator emits that reference as an FQN string only); but the
+          flavor compile-run tests now emit + COMPILE that Extractor, so the test classpath
+          needs om (which transitively brings render + metadata). No cycle: om depends on
+          render + metadata, never on codegen-base.
+        -->
+        <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-om</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Inherited from parent POM: SLF4J, JUnit, Logback -->
     </dependencies>
 

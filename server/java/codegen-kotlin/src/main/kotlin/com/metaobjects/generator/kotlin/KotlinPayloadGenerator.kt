@@ -1,6 +1,7 @@
 package com.metaobjects.generator.kotlin
 
 import com.metaobjects.field.MetaField
+import com.metaobjects.field.ObjectField
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.loader.MetaDataLoader
@@ -135,15 +136,68 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         emittedNestedFqns: MutableSet<String>,
     ): TypeName {
         val origin = field.children.filterIsInstance<MetaOrigin>().firstOrNull()
-            ?: return KotlinTypeMapper.kotlinTypeName(field)
 
-        return when (origin) {
-            is PassthroughOrigin -> resolvePassthroughType(origin, loader, field)
-            is AggregateOrigin -> resolveAggregateType(origin, loader, field)
-            is CollectionOrigin -> resolveCollectionType(
-                origin, loader, nestedPkg, outRoot, emittedNestedFqns, field
+        if (origin != null) {
+            return when (origin) {
+                is PassthroughOrigin -> resolvePassthroughType(origin, loader, field)
+                is AggregateOrigin -> resolveAggregateType(origin, loader, field)
+                is CollectionOrigin -> resolveCollectionType(
+                    origin, loader, nestedPkg, outRoot, emittedNestedFqns, field
+                )
+                else -> KotlinTypeMapper.kotlinTypeName(field)
+            }
+        }
+
+        // Naked `field.object @objectRef` (no origin child): emit the nested payload class
+        // and return its type (single, or List<TargetPayload> when isArray). Mirrors the
+        // Spring port's resolveObjectFieldType — needed so a nested-object payload compiles.
+        if (field is ObjectField) {
+            return resolveObjectFieldType(field, loader, nestedPkg, outRoot, emittedNestedFqns)
+        }
+
+        return KotlinTypeMapper.kotlinTypeName(field)
+    }
+
+    /**
+     * Naked `field.object @objectRef`: recursively emit `<TargetShortName>Payload` for the
+     * referenced value-object (deduped per run) and return that type — or
+     * `List<TargetPayload>` when `isArray: true`. Falls back to the scalar type mapping when
+     * the ref can't be resolved or the target is not an `object.value` (defensive — loader
+     * validation normally gates these).
+     */
+    private fun resolveObjectFieldType(
+        field: ObjectField,
+        loader: MetaDataLoader,
+        nestedPkg: String,
+        outRoot: Path,
+        emittedNestedFqns: MutableSet<String>,
+    ): TypeName {
+        val fallbackType = { KotlinTypeMapper.kotlinTypeName(field) }
+        val target = try {
+            field.objectRef
+        } catch (e: RuntimeException) {
+            return fallbackType()
+        } ?: return fallbackType()
+        if (target.subType != MetaObject.SUBTYPE_VALUE) return fallbackType()
+
+        val nestedClassName = PackageMapping.splitFqn(target.name).second + "Payload"
+        if (emittedNestedFqns.add(target.name)) {
+            emitPayloadClass(
+                outPkg = nestedPkg,
+                className = nestedClassName,
+                kdoc = "GENERATED — nested payload for object field target `${target.name}`.\n",
+                voObject = target,
+                loader = loader,
+                outRoot = outRoot,
+                emittedNestedFqns = emittedNestedFqns,
             )
-            else -> KotlinTypeMapper.kotlinTypeName(field)
+        }
+
+        val nestedType = ClassName(nestedPkg, nestedClassName)
+        return if (field.isArrayType()) {
+            ClassName("kotlin.collections", "List").parameterizedBy(nestedType)
+        } else {
+            nestedType
         }
     }
 

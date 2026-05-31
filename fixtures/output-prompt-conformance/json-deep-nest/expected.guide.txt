@@ -1,0 +1,14 @@
+Fill in each field as described below:
+- level1 (required)
+- level1.level2 (required)
+- level1.level2.value (required): the deep value
+    e.g. deep
+
+Respond exactly like this:
+{
+  "level1": {
+    "level2": {
+      "value": "deep"
+    }
+  }
+}

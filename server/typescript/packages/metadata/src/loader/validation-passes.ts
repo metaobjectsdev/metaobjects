@@ -36,6 +36,15 @@ import {
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STORAGE,
   STORAGE_FLATTENED,
+  FIELD_ATTR_DEFAULT,
+  FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_LONG,
+  FIELD_SUBTYPE_CURRENCY,
+  FIELD_SUBTYPE_DOUBLE,
+  FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_DECIMAL,
+  FIELD_SUBTYPE_BOOLEAN,
+  FIELD_SUBTYPE_ENUM,
 } from "../core/field/field-constants.js";
 import { FIELD_ATTR_DB_INDEXED } from "../persistence/db/db-constants.js";
 import { IDENTITY_ATTR_FIELDS } from "../core/identity/identity-constants.js";
@@ -452,6 +461,101 @@ export function validateFieldObjectStorage(root: MetaData): ParseError[] {
     }
   }
   return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Per-type @default coercibility validation (Phase B — generalized @default)
+//
+// The @default attr is registered on the field base, so any field subtype may
+// declare it. Its value must coerce to the field's type (cross-port parity with
+// Java ValidationPhase.validateFieldDefaults, Python _validate_field_defaults,
+// C# ValidateFieldDefaults):
+//   - int / long / currency        → ASCII integer parse (or finite decimal that
+//                                     truncates — matches the engine's Coerce INT/LONG fallback)
+//   - double / float / decimal      → finite-number parse (ASCII)
+//   - boolean                       → exactly "true" | "false"
+//   - enum                          → member of @values (handled by attr-schema-validate
+//                                     Check 5; SKIPPED here to avoid double-emit)
+//   - string / date / time / object / others → any value allowed
+// A violation emits ERR_BAD_ATTR_VALUE on the field node's source.
+//
+// Own-only: validates @default declared on THIS node (ownAttr), matching the
+// @values / FR-011 own-attr passes. Numeric gates are ASCII-only — they reject
+// "1_000" separators, "0x.."/radix literals, and unicode digits (JS Number()
+// would accept some of these). This mirrors Java's Long.parseLong / Double.parseDouble
+// strictness exactly.
+//
+// The @default value is type-preserved by the parser (a JSON true/false → boolean,
+// a JSON number → number, a JSON string → string), so it is stringified to the
+// canonical form before the per-type gate (lower-case bool, plain number).
+// ---------------------------------------------------------------------------
+
+const _INT_DEFAULT_SUBTYPES = new Set<string>([
+  FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_LONG,
+  FIELD_SUBTYPE_CURRENCY,
+]);
+const _NUM_DEFAULT_SUBTYPES = new Set<string>([
+  FIELD_SUBTYPE_DOUBLE,
+  FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_DECIMAL,
+]);
+
+// ASCII-only integer: optional sign, then digits. No separators, radix, unicode.
+const _ASCII_INT = /^[+-]?\d+$/;
+// ASCII-only decimal: optional sign, digits with optional fraction/exponent.
+// No separators, no hex, no Infinity/NaN.
+const _ASCII_NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+/** Canonical string form of a type-preserved @default value (lower-case bool, plain number). */
+function _stringifyDefault(value: string | number | boolean): string {
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return String(value);
+}
+
+/** ASCII integer, or a finite ASCII decimal that truncates to an integer (Java parsesAsLong parity). */
+function _parsesAsLong(s: string): boolean {
+  const t = s.trim();
+  if (_ASCII_INT.test(t)) return true;
+  // accept a finite decimal that truncates to an integer value
+  return _ASCII_NUMBER.test(t) && Number.isFinite(Number(t));
+}
+
+/** Finite ASCII number (Java parsesAsFiniteNumber parity). */
+function _parsesAsFiniteNumber(s: string): boolean {
+  const t = s.trim();
+  return _ASCII_NUMBER.test(t) && Number.isFinite(Number(t));
+}
+
+export function validateFieldDefaults(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  _walkFieldDefaults(root, errors);
+  return errors;
+}
+
+function _walkFieldDefaults(node: MetaData, errors: ParseError[]): void {
+  if (node.type === TYPE_FIELD && node.subType !== FIELD_SUBTYPE_ENUM) {
+    // Enum @default membership is validated by attr-schema-validate Check 5.
+    const raw = node.ownAttr(FIELD_ATTR_DEFAULT);
+    if (raw !== undefined && raw !== null && !Array.isArray(raw) && typeof raw !== "object") {
+      const def = _stringifyDefault(raw as string | number | boolean);
+      const sub = node.subType;
+      let ok: boolean;
+      if (_INT_DEFAULT_SUBTYPES.has(sub)) ok = _parsesAsLong(def);
+      else if (_NUM_DEFAULT_SUBTYPES.has(sub)) ok = _parsesAsFiniteNumber(def);
+      else if (sub === FIELD_SUBTYPE_BOOLEAN) ok = def === "true" || def === "false";
+      else ok = true; // string / date / time / object / others — any value allowed
+      if (!ok) {
+        errors.push(
+          new ParseError(
+            `field.${sub} "${node.name}" @${FIELD_ATTR_DEFAULT} "${def}" is not coercible to the field's type`,
+            { code: "ERR_BAD_ATTR_VALUE", source: node.source },
+          ),
+        );
+      }
+    }
+  }
+  for (const child of node.ownChildren()) _walkFieldDefaults(child, errors);
 }
 
 // ---------------------------------------------------------------------------

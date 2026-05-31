@@ -50,6 +50,7 @@
   "publishConfig": { "access": "public" },
   "dependencies": {
     "@metaobjectsdev/metadata": "workspace:*",
+    "@metaobjectsdev/render": "workspace:*",
     "qs": "^6.13.0"
   },
   "peerDependencies": {

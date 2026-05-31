@@ -1,0 +1,12 @@
+{
+  "format": "json", "rootName": "Outer", "roundTrip": true,
+  "fields": [
+    { "name": "level1", "kind": "OBJECT", "required": true, "nested": {
+      "format": "json", "rootName": "L1",
+      "fields": [
+        { "name": "level2", "kind": "OBJECT", "required": true, "nested": {
+          "format": "json", "rootName": "L2",
+          "fields": [
+            { "name": "value", "kind": "STRING", "required": true, "example": "deep", "instruction": "the deep value" }
+          ] } } ] } } ]
+}

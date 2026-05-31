@@ -72,6 +72,51 @@ public static class Coerce
         };
     }
 
+    /// <summary>
+    /// Phase B (generalized <c>@default</c>): coerce a non-enum default string to a field's
+    /// scalar kind, with NO side effects (no normalizer/onField hooks, no clamp logging) — the
+    /// value originates from metadata, not the model response. Returns the coerced value or the
+    /// <see cref="Malformed"/> sentinel. INT/LONG accept an integer or a truncatable finite number;
+    /// DOUBLE accepts any finite number; BOOLEAN accepts <c>true|false|yes|no|1|0</c>; STRING (and
+    /// any other kind) passes through verbatim. Mirrors the parse semantics of <see cref="Value"/>
+    /// without its range-clamp / report machinery.
+    /// </summary>
+    public static object? Scalar(string? raw, FieldSpec spec)
+    {
+        if (raw == null) return Malformed;
+        switch (spec.Kind)
+        {
+            case FieldKind.Int:
+            case FieldKind.Long:
+            {
+                string t = raw.Trim();
+                if (long.TryParse(t, NumberStyles.Integer, CultureInfo.InvariantCulture, out long n))
+                    return n;
+                if (double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out double d))
+                    return double.IsFinite(d) ? (object)(long)d : Malformed;
+                return Malformed;
+            }
+            case FieldKind.Double:
+            {
+                if (double.TryParse(raw.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double d))
+                    return double.IsFinite(d) ? (object)d : Malformed;
+                return Malformed;
+            }
+            case FieldKind.Boolean:
+            {
+                string t = raw.Trim().ToLowerInvariant();
+                return t switch
+                {
+                    "true" or "yes" or "1" => (object)true,
+                    "false" or "no" or "0" => (object)false,
+                    _ => Malformed,
+                };
+            }
+            default:
+                return raw;   // STRING / ENUM / OBJECT — verbatim
+        }
+    }
+
     // ---- private helpers ----
 
     /// <summary>

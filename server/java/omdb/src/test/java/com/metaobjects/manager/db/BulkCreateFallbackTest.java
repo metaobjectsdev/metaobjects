@@ -9,7 +9,7 @@ package com.metaobjects.manager.db;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.db.driver.DerbyDriver;
-import com.metaobjects.manager.db.validator.MetaClassDBValidatorService;
+import com.metaobjects.manager.db.test.CodecSchema;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.value.ValueObject;
 import com.metaobjects.registry.MetaDataLoaderRegistry;
@@ -80,11 +80,8 @@ public class BulkCreateFallbackTest {
         omdb.setDataSource(ds);
         omdb.init();
 
-        MetaClassDBValidatorService vs = new MetaClassDBValidatorService();
-        vs.setObjectManager(omdb);
-        vs.setAutoCreate(true);
-        vs.setMetaDataLoaderRegistry(registry);
-        vs.init();
+        // Schema is external/explicit (ADR-0015): create CODEC_SAMPLE via literal DDL.
+        CodecSchema.create(BulkCreateFallbackTest::getConnection);
     }
 
     private static Connection getConnection() throws SQLException {

@@ -1,38 +1,15 @@
 // Scenario records — the typed in-memory shape of a fixture YAML file.
 //
-// Two scenario kinds in one tagged union:
-//   * MigrationScenario — exercises the schema-evolution pipeline.
-//   * QueryScenario — exercises the runtime/persistence layer against the canonical schema.
+// QueryScenario exercises the runtime/persistence layer against the canonical schema.
 //
 // ScenarioLoader parses YAML into these records. The runners consume them.
+
+using YamlDotNet.RepresentationModel;
 
 namespace MetaObjects.IntegrationTests.Runner;
 
 /// <summary>Base type for any scenario in the corpus.</summary>
 public abstract record Scenario(string Name, string Description, string SourcePath);
-
-/// <summary>A schema-evolution scenario from <c>fixtures/persistence-conformance/migrations/</c>.</summary>
-public sealed record MigrationScenario(
-    string Name,
-    string Description,
-    string SourcePath,
-    string? SeedMetadataDir,                 // absolute path or null (empty starting state)
-    string? SeedData,                        // optional raw seed SQL (post-bootstrap)
-    string? TargetMetadataDir,               // absolute path (mutually exclusive with TargetMetadataInline)
-    string? TargetMetadataInline,            // inline JSON; loaded via InMemorySource
-    MigrationExpect Expect)
-    : Scenario(Name, Description, SourcePath);
-
-/// <summary>Assertions on the up migration + optional post-apply state.</summary>
-public sealed record MigrationExpect(
-    IReadOnlyList<BlockedChange> Blocked,
-    IReadOnlyList<string> UpContains,
-    bool? UpEmpty,
-    ApplyUpThenQuery? ApplyUpThenQuery);
-
-public sealed record BlockedChange(string Kind, string ReasonContains);
-
-public sealed record ApplyUpThenQuery(string Sql, IReadOnlyList<IReadOnlyDictionary<string, object?>> Rows);
 
 /// <summary>A query scenario from <c>fixtures/persistence-conformance/queries/</c>.</summary>
 public sealed record QueryScenario(
@@ -53,6 +30,6 @@ public sealed record QuerySpec(
     IReadOnlyList<SortSpec>? Sort,
     int? Limit,
     int? Offset,
-    object? Expect);                          // shape depends on Op (list → array, get → object|null, count → int)
+    YamlNode? Expect);                        // raw YAML subtree (scalar style preserved); shape depends on Op
 
 public sealed record SortSpec(string Field, string Dir);   // dir: asc | desc

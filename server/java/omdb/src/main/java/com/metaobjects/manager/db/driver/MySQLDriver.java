@@ -7,12 +7,9 @@
 package com.metaobjects.manager.db.driver;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Types;
-import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,10 +18,8 @@ import com.metaobjects.MetaDataException;
 
 
 import com.metaobjects.manager.db.defs.ColumnDef;
-import com.metaobjects.manager.db.defs.ForeignKeyDef;
-import com.metaobjects.manager.db.defs.IndexDef;
-import com.metaobjects.manager.db.defs.SequenceDef;
 import com.metaobjects.manager.db.defs.TableDef;
+import com.metaobjects.manager.db.defs.ViewDef;
 import com.metaobjects.manager.exp.Range;
 
 /**
@@ -52,93 +47,6 @@ public class MySQLDriver extends GenericSQLDriver {
     }
 
     /**
-     * Creates a table in the MySQL database with InnoDB optimizations
-     */
-    @Override
-    public void createTable(Connection c, TableDef table) throws SQLException {
-        StringBuilder query = new StringBuilder();
-        
-        try {
-            query.append("CREATE TABLE ")
-                 .append(getProperName(table.getNameDef()))
-                 .append(" (\n");
-
-            List<ColumnDef> cols = table.getColumns();
-            int keys = table.getPrimaryKeys().size();
-
-            // Create columns
-            for (int i = 0; i < cols.size(); i++) {
-                ColumnDef col = cols.get(i);
-                String name = col.getName();
-                
-                if (i > 0) query.append(",\n");
-                
-                query.append("  ").append(name).append(" ");
-                
-                // MySQL-specific type mapping
-                switch (col.getSQLType()) {
-                    case Types.BOOLEAN, Types.BIT -> query.append("BOOLEAN");
-                    case Types.TINYINT -> query.append("TINYINT");
-                    case Types.SMALLINT -> query.append("SMALLINT");
-                    case Types.INTEGER -> query.append("INT");
-                    case Types.BIGINT -> query.append("BIGINT");
-                    case Types.FLOAT -> query.append("FLOAT");
-                    case Types.DOUBLE -> query.append("DOUBLE");
-                    case Types.TIMESTAMP -> query.append("TIMESTAMP");
-                    case Types.VARCHAR -> {
-                        if (col.getLength() > 65535) {
-                            query.append("LONGTEXT");
-                        } else if (col.getLength() > 255) {
-                            query.append("TEXT");
-                        } else {
-                            query.append("VARCHAR(").append(col.getLength()).append(")");
-                        }
-                    }
-                    default -> throw new UnsupportedOperationException(
-                        "MySQL driver does not support SQL type: " + col.getSQLType());
-                }
-                
-                // Add AUTO_INCREMENT if needed
-                if (col.isAutoIncrementor()) {
-                    query.append(" AUTO_INCREMENT");
-                }
-                
-                // Add constraints (MySQL allows NULL by default)
-                
-                if (col.isPrimaryKey() && keys == 1) {
-                    query.append(" PRIMARY KEY");
-                } else if (col.isUnique()) {
-                    query.append(" UNIQUE");
-                }
-            }
-            
-            // Add composite primary key if needed
-            if (keys > 1) {
-                query.append(",\n  PRIMARY KEY (");
-                table.getPrimaryKeys().stream()
-                    .map(ColumnDef::getName)
-                    .reduce((a, b) -> a + ", " + b)
-                    .ifPresent(query::append);
-                query.append(")");
-            }
-            
-            query.append("\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-            if (log.isDebugEnabled()) {
-                log.debug("Creating MySQL table [{}]: {}", table.getNameDef().getFullname(), query);
-            }
-
-            try (Statement s = c.createStatement()) {
-                s.execute(query.toString());
-            }
-            
-        } catch (Exception e) {
-            throw new SQLException("Failed to create MySQL table [" + table.getNameDef().getFullname() + 
-                                 "] using SQL [" + query + "]: " + e.getMessage(), e);
-        }
-    }
-
-    /**
      * Deletes a table from the MySQL database
      */
     @Override
@@ -158,96 +66,21 @@ public class MySQLDriver extends GenericSQLDriver {
     }
 
     /**
-     * MySQL doesn't have native sequences - uses AUTO_INCREMENT instead
-     * This creates a simple sequence table for compatibility
+     * Creates a MySQL view
      */
     @Override
-    public void createSequence(Connection c, SequenceDef sequence) throws SQLException {
-        String seqName = getProperName(sequence.getNameDef());
-        StringBuilder query = new StringBuilder();
-        
-        // Create sequence table
-        query.append("""
-            CREATE TABLE %s (
-                id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                current_value BIGINT NOT NULL DEFAULT %d
-            ) ENGINE=InnoDB
-            """.formatted(seqName, sequence.getStart() - 1));
+    public void createView(Connection c, ViewDef view) throws SQLException {
+        String viewName = getProperName(view.getNameDef());
+        String query = "CREATE OR REPLACE VIEW " + viewName + " AS " + view.getSQL();
         
         if (log.isDebugEnabled()) {
-            log.debug("Creating MySQL sequence table [{}]: {}", seqName, query);
+            log.debug("Creating MySQL view [{}]: {}", viewName, query);
         }
         
         try (Statement s = c.createStatement()) {
-            s.execute(query.toString());
-            
-            // Initialize the sequence
-            String initQuery = "INSERT INTO " + seqName + " (current_value) VALUES (" + (sequence.getStart() - 1) + ")";
-            s.execute(initQuery);
+            s.execute(query);
         } catch (SQLException e) {
-            throw new SQLException("Failed to create MySQL sequence [" + seqName + "]: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Creates a MySQL index with optimization hints
-     */
-    @Override
-    public void createIndex(Connection c, IndexDef index) throws SQLException {
-        StringBuilder query = new StringBuilder();
-        String indexName = index.getName();
-        String tableName = getProperName(index.getTable().getNameDef());
-        
-        query.append("CREATE INDEX ")
-             .append(indexName)
-             .append(" ON ")
-             .append(tableName)
-             .append(" (");
-        
-        String columns = String.join(", ", index.getColumnNames());
-        query.append(columns).append(")");
-        
-        // Add index hints for InnoDB
-        query.append(" USING BTREE");
-        
-        if (log.isDebugEnabled()) {
-            log.debug("Creating MySQL index [{}]: {}", indexName, query);
-        }
-        
-        try (Statement s = c.createStatement()) {
-            s.execute(query.toString());
-        } catch (SQLException e) {
-            throw new SQLException("Failed to create MySQL index [" + indexName + "]: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Creates a MySQL foreign key constraint
-     */
-    @Override
-    public void createForeignKey(Connection c, ForeignKeyDef keyDef) throws SQLException {
-        StringBuilder query = new StringBuilder();
-        
-        query.append("ALTER TABLE ")
-             .append(getProperName(keyDef.getTable().getNameDef()))
-             .append(" ADD CONSTRAINT ")
-             .append(keyDef.getName())
-             .append(" FOREIGN KEY (")
-             .append(keyDef.getColumnName())
-             .append(") REFERENCES ")
-             .append(getProperName(keyDef.getRefTable().getNameDef()))
-             .append(" (")
-             .append(keyDef.getRefColumn().getName())
-             .append(") ON DELETE RESTRICT ON UPDATE CASCADE");
-        
-        if (log.isDebugEnabled()) {
-            log.debug("Creating MySQL foreign key [{}]: {}", keyDef.getName(), query);
-        }
-        
-        try (Statement s = c.createStatement()) {
-            s.execute(query.toString());
-        } catch (SQLException e) {
-            throw new SQLException("Failed to create MySQL foreign key [" + keyDef.getName() + "]: " + e.getMessage(), e);
+            throw new SQLException("Failed to create MySQL view [" + viewName + "]: " + e.getMessage(), e);
         }
     }
 

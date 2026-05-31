@@ -32,8 +32,19 @@ public record FieldSpec(
         String normalize) {
 
     public static FieldSpec scalar(String name, FieldKind kind, boolean required) {
+        return scalar(name, kind, required, null);
+    }
+
+    /**
+     * Phase B (generalized {@code @default}): a scalar field carrying an absent-fill
+     * {@code @default}. When the field is ABSENT from the model response, tolerant recover
+     * coerces this string to {@code kind} and classifies the field {@code DEFAULTED} (which
+     * satisfies {@code required}). {@code defaultValue == null} is the no-default case
+     * (identical to the back-compat {@link #scalar(String, FieldKind, boolean)} overload).
+     */
+    public static FieldSpec scalar(String name, FieldKind kind, boolean required, String defaultValue) {
         return new FieldSpec(name, kind, required, false, null, null, null, null, null,
-                null, null, Normalize.DEFAULT);
+                null, defaultValue, Normalize.DEFAULT);
     }
 
     /**
@@ -57,6 +68,30 @@ public record FieldSpec(
                                       List<String> values, Map<String, String> aliases,
                                       String coerceDefault, String normalize, String defaultValue) {
         return new FieldSpec(name, FieldKind.ENUM, required, false,
+                values == null ? null : List.copyOf(values),
+                aliases == null ? Map.of() : Map.copyOf(aliases),
+                null, null, null,
+                coerceDefault,
+                defaultValue,
+                normalize == null ? Normalize.DEFAULT : normalize);
+    }
+
+    /**
+     * Phase B (array-of-enum): an enum field that is a {@code List<enum>} ({@code array == true}).
+     * Each element is coerced through the SAME enum pipeline a scalar enum uses
+     * (exact &rarr; normalize &rarr; {@code @enumAlias} &rarr; {@code @coerceDefault} &rarr; MALFORMED),
+     * classified independently by indexed path ({@code tags[0]}, {@code tags[1]}, …). Mirrors
+     * {@link #enumField(String, boolean, List, Map, String, String, String)} but with {@code array = true}.
+     *
+     * @param coerceDefault present-but-uncoercible per-element fallback member (or {@code null})
+     * @param normalize     the resolved normalization mode ({@code none|collapse|strip});
+     *                      {@code null} is treated as {@link Normalize#DEFAULT}
+     * @param defaultValue  absent-fill member for the whole field (or {@code null})
+     */
+    public static FieldSpec enumArray(String name, boolean required,
+                                      List<String> values, Map<String, String> aliases,
+                                      String coerceDefault, String normalize, String defaultValue) {
+        return new FieldSpec(name, FieldKind.ENUM, required, true,
                 values == null ? null : List.copyOf(values),
                 aliases == null ? Map.of() : Map.copyOf(aliases),
                 null, null, null,

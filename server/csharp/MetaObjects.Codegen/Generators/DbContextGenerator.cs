@@ -33,6 +33,14 @@ public sealed class DbContextGenerator : IGenerator
             var name = CSharpNaming.Pascal(p.Name);
             var noKey = p.PrimaryIdentity() is null ? ".HasNoKey()" : string.Empty;
             modelLines.Add($"        modelBuilder.Entity<{name}>(){noKey}.ToView(\"{p.DbView}\");");
+            // Enum-typed projection columns persist as their string symbol in the view
+            // (string-backed enums, CHECK-constrained varchar/text). Without an explicit
+            // string conversion EF defaults to the int-ordinal mapping and reads the text
+            // column as Int32 at materialization — an InvalidCastException. Mirror the
+            // entity-side HasConversion<string>() so a projection that passes an enum
+            // through (e.g. ProgramView.status over v_program) round-trips.
+            foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM && !f.IsArray))
+                modelLines.Add($"        modelBuilder.Entity<{name}>().Property(x => x.{CSharpNaming.Pascal(f.Name)}).HasConversion<string>();");
         }
         foreach (var e in objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
         {
@@ -136,13 +144,14 @@ public sealed class DbContextGenerator : IGenerator
 
     // Owned-type config for an object-typed entity field. @storage flattened maps each
     // nested scalar to "{parentCol}_{nestedCol}"; every other storage collapses to one
-    // json column (.ToJson) — matching PostgresSchema's table DDL. null (with a warning)
+    // json column (.ToJson) — matching the TS-owned schema DDL. null (with a warning)
     // when @objectRef can't be resolved.
     //
     // KNOWN GAP: a @required non-flattened object field gets a NOT NULL jsonb column in
-    // PostgresSchema's DDL, but .ToJson here does not mark the owned navigation required,
-    // so EF models it nullable — a gen↔migrate nullability mismatch. Deferred until the
-    // exact EF Core required-owned-JSON mapping can be validated against a live provider.
+    // the TS-owned schema DDL, but .ToJson here does not mark the owned navigation
+    // required, so EF models it nullable — a gen↔schema nullability mismatch. Deferred
+    // until the exact EF Core required-owned-JSON mapping can be validated against a
+    // live provider.
     private string? OwnedTypeConfig(MetaObject entity, MetaField field, GenContext ctx)
     {
         if (field.ObjectRef is not { } oref || ctx.Root.FindObject(CSharpNaming.StripPkg(oref)) is not { } vo)

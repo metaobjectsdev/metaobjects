@@ -40,6 +40,46 @@ public final class Coerce {
     }
 
     /**
+     * Phase B (generalized {@code @default}): coerce a non-enum default string to a field's
+     * scalar kind, with NO side effects (no normalizer/onField hooks, no clamp logging) — the
+     * value originates from metadata, not the model response. Returns the coerced value or the
+     * {@link #MALFORMED} sentinel. INT/LONG accept an integer or a truncatable number; DOUBLE
+     * accepts any finite number; BOOLEAN accepts {@code true|false|yes|no|1|0}; STRING (and any
+     * other kind) passes through verbatim. Mirrors the parse semantics of {@link #value} without
+     * its range-clamp / report machinery.
+     */
+    public static Object scalar(String raw, FieldSpec spec) {
+        if (raw == null) return MALFORMED;
+        return switch (spec.kind()) {
+            case INT, LONG -> {
+                String t = raw.trim();
+                try { yield Long.parseLong(t); }
+                catch (NumberFormatException e) {
+                    try {
+                        double d = Double.parseDouble(t);
+                        yield Double.isFinite(d) ? (Object) (long) d : MALFORMED;
+                    } catch (NumberFormatException e2) { yield MALFORMED; }
+                }
+            }
+            case DOUBLE -> {
+                try {
+                    double d = Double.parseDouble(raw.trim());
+                    yield Double.isFinite(d) ? (Object) d : MALFORMED;
+                } catch (NumberFormatException e) { yield MALFORMED; }
+            }
+            case BOOLEAN -> {
+                String t = raw.trim().toLowerCase();
+                yield switch (t) {
+                    case "true", "yes", "1" -> Boolean.TRUE;
+                    case "false", "no", "0" -> Boolean.FALSE;
+                    default -> MALFORMED;
+                };
+            }
+            default -> raw;   // STRING / ENUM / OBJECT — verbatim
+        };
+    }
+
+    /**
      * FR-011 enum coercion pipeline: exact &rarr; normalize &rarr; {@code @enumAlias} &rarr;
      * (reserved fuzzy) &rarr; {@code @coerceDefault} &rarr; MALFORMED. Resolution mode is
      * {@link FieldSpec#normalize()} (default {@code strip}); under STRICT tolerance

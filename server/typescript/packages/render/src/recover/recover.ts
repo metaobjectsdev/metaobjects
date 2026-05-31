@@ -13,7 +13,7 @@ import { strip } from "./strip.js";
 import { locateJson, locateXml } from "./locate.js";
 import { readJson, TRUNCATED } from "./json-forgiving-reader.js";
 import { readXml } from "./xml-forgiving-reader.js";
-import { coerceValue, MALFORMED } from "./coerce.js";
+import { coerceValue, scalarCoerce, MALFORMED } from "./coerce.js";
 
 /** The forgiving entry point: recover dirty `text` against `schema`. Never throws. */
 export function recover(
@@ -61,12 +61,20 @@ function extract(
     const path = prefix.length === 0 ? f.name : `${prefix}.${f.name}`;
     const present = lookup(raw, f.name, ci);
     if (present === undefined) {
-      // FR-011: an absent enum with a declared @default fills the value → DEFAULTED (satisfies @required).
-      if (f.kind === FieldKind.ENUM && f.defaultValue != null) {
-        data[f.name] = f.defaultValue;
-        report.addCoercion({ fieldPath: path, from: "", to: f.defaultValue, kind: "default" });
-        report.set(path, FieldRecovery.DEFAULTED);
-        continue;
+      // FR-011 / Phase B: an absent field with a declared @default fills the value → DEFAULTED
+      // (which satisfies a @required field). Generalized to all field kinds: an enum default is
+      // its member string as-is; a non-enum default is coerced to the field's kind via the pure
+      // scalar coerce (so @default "0" on field.int yields integer 0). A non-coercible non-enum
+      // default is treated as no default.
+      if (f.defaultValue != null) {
+        const coerced =
+          f.kind === FieldKind.ENUM ? f.defaultValue : scalarCoerce(f.defaultValue, f);
+        if (coerced !== MALFORMED) {
+          data[f.name] = coerced;
+          report.addCoercion({ fieldPath: path, from: "", to: f.defaultValue, kind: "default" });
+          report.set(path, FieldRecovery.DEFAULTED);
+          continue;
+        }
       }
       report.set(path, f.required ? FieldRecovery.LOST_REQUIRED : FieldRecovery.LOST_OPTIONAL);
       continue;
@@ -82,10 +90,22 @@ function extract(
       const elements: unknown[] = Array.isArray(present) ? present : [present];
       const out: unknown[] = [];
       let anyMalformed = false;
+      // Phase B (array-of-enum): an enum element flows through the SAME enum coercion pipeline a
+      // scalar enum uses (extractValue → coerceValue → coerceEnum), and is CLASSIFIED per element
+      // by indexed path (tags[0], tags[1], …) exactly as a scalar enum: RECOVERED / DEFAULTED (via
+      // @coerceDefault) / MALFORMED. Non-enum scalar arrays keep their existing behavior (raw
+      // element list, no per-element states).
+      const enumElements = f.kind === FieldKind.ENUM;
       for (let idx = 0; idx < elements.length; idx++) {
-        const v = extractValue(f, elements[idx], `${path}[${idx}]`, report, o, ci);
-        if (v === MALFORMED) anyMalformed = true;
-        else out.push(v);
+        const elemPath = `${path}[${idx}]`;
+        const v = extractValue(f, elements[idx], elemPath, report, o, ci);
+        if (v === MALFORMED) {
+          anyMalformed = true;
+          if (enumElements) report.set(elemPath, FieldRecovery.MALFORMED);
+        } else {
+          out.push(v);
+          if (enumElements) report.set(elemPath, classifyCoerced(elemPath, report));
+        }
       }
       // Cross-port contract: a MALFORMED array still places its successfully-coerced
       // elements into data (partial recovery), UNLIKE a MALFORMED scalar which is absent.

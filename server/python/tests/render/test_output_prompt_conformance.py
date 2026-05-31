@@ -51,7 +51,7 @@ def _find_corpus() -> Path:
 _CORPUS = _find_corpus()
 
 # Count guard: a port silently skipping cases must fail. Bump when adding cases.
-EXPECTED_CASE_COUNT = 10
+EXPECTED_CASE_COUNT = 12
 
 _FORMATS = {"json": Format.JSON, "xml": Format.XML}
 _KINDS = {

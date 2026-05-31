@@ -19,6 +19,12 @@ import {
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
 } from "./object-constants.js";
+import { ValueObject } from "./value-object.js";
+import { isMetaObjectAware } from "./meta-object-aware.js";
+import {
+  ObjectClassRegistry,
+  defaultObjectClassRegistry,
+} from "./object-class-registry.js";
 import {
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
@@ -147,5 +153,39 @@ export class MetaObject extends MetaData {
     return this.cached(`findField:${name}`, () =>
       this.fields().find((f) => f.name === name),
     );
+  }
+
+  /** Java parity alias for findField() — locate an effective field by name. */
+  getMetaField(name: string): MetaField | undefined {
+    return this.findField(name);
+  }
+
+  /**
+   * Instantiate a backing object for this MetaObject (Java parity:
+   * MetaObject.newInstance()). Resolution order:
+   *
+   *   1. If `registry.resolve(this.fqn())` yields a factory, call it; if the
+   *      result is MetaObjectAware, attach this MetaObject as its back-reference.
+   *   2. Otherwise create a map-backed ValueObject (the unbound default for
+   *      `object.value`), which sets its own back-reference via the constructor.
+   *
+   * The registry key is the object's fully-qualified name as produced by
+   * `resolutionKey()` (`<package>::<name>`, folding the file-default package).
+   * This is the SAME FQN form used by a nested field's `@objectRef`, so a
+   * factory registered for an object's FQN is found whether instantiation is
+   * driven top-down or via an object-ref. (An object's bare `fqn()` is reserved
+   * for the FR5d cross-port referrer-envelope contract and is NOT the binding
+   * key.) Reflection-free: only registered factories are consulted.
+   */
+  newInstance(registry: ObjectClassRegistry = defaultObjectClassRegistry): object {
+    const factory = registry.resolve(this.resolutionKey());
+    if (factory !== undefined) {
+      const instance = factory(this);
+      if (isMetaObjectAware(instance)) {
+        instance.setMetaData(this);
+      }
+      return instance;
+    }
+    return new ValueObject(this);
   }
 }

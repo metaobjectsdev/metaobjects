@@ -33,7 +33,7 @@ export type FieldKind = (typeof FieldKind)[keyof typeof FieldKind];
  */
 export const FieldRecovery = {
   RECOVERED: "RECOVERED",
-  // DEFAULTED is reserved (a future @default-backed value); the engine does not emit it yet.
+  // A `@default`/`@coerceDefault`-backed value (absent-fill or present-but-uncoercible fallback).
   DEFAULTED: "DEFAULTED",
   LOST_OPTIONAL: "LOST_OPTIONAL",
   LOST_REQUIRED: "LOST_REQUIRED",
@@ -76,13 +76,29 @@ export interface FieldSpec {
   readonly nested: RecoverSchema | null;
   /** FR-011: present-but-uncoercible fallback member (from `@coerceDefault`). ENUM-only; null = none. */
   readonly coerceDefault: string | null;
-  /** FR-011: absent-fill member (from `@default`). ENUM-only; null = none. */
+  /**
+   * Absent-fill default (from `@default`). When the field is ABSENT, recover fills this value
+   * → DEFAULTED (which satisfies `@required`). Generalized to ALL field kinds (Phase B): for an
+   * enum it is the member string verbatim; for a non-enum it is coerced to `kind` via the pure
+   * scalar coerce (so `@default "0"` on `field.int` yields integer 0). null = no default.
+   */
   readonly defaultValue: string | null;
   /** FR-011: resolved enum normalization mode (from `@normalize`; default `"strip"`). */
   readonly normalize: NormalizeMode;
 }
 
-export function scalar(name: string, kind: FieldKind, required: boolean): FieldSpec {
+/**
+ * A scalar field, optionally carrying an absent-fill `@default` (Phase B — generalized
+ * `@default`). When ABSENT from the model response, recover coerces `defaultValue` to `kind`
+ * and classifies the field DEFAULTED (which satisfies `@required`). `defaultValue == null` is
+ * the no-default case (back-compat with the original two-arg call).
+ */
+export function scalar(
+  name: string,
+  kind: FieldKind,
+  required: boolean,
+  defaultValue?: string | null,
+): FieldSpec {
   return {
     name,
     kind,
@@ -94,7 +110,7 @@ export function scalar(name: string, kind: FieldKind, required: boolean): FieldS
     max: null,
     nested: null,
     coerceDefault: null,
-    defaultValue: null,
+    defaultValue: defaultValue ?? null,
     normalize: "strip",
   };
 }
@@ -113,6 +129,37 @@ export function enumField(
     kind: FieldKind.ENUM,
     required,
     array: false,
+    enumValues: values == null ? null : [...values],
+    enumAlias: aliases == null ? {} : { ...aliases },
+    min: null,
+    max: null,
+    nested: null,
+    coerceDefault: coerceDefault ?? null,
+    defaultValue: defaultValue ?? null,
+    normalize,
+  };
+}
+
+/**
+ * Phase B (array-of-enum): an enum field that is a list (`array === true`). Each element flows
+ * through the SAME enum coercion pipeline a scalar enum uses (exact → normalize → `@enumAlias`
+ * → `@coerceDefault` → MALFORMED) and is classified independently by indexed path (`tags[0]`,
+ * `tags[1]`, …). Mirrors {@link enumField} but with `array = true`.
+ */
+export function enumArray(
+  name: string,
+  required: boolean,
+  values: readonly string[] | null,
+  aliases: Readonly<Record<string, string>> | null,
+  coerceDefault?: string | null,
+  normalize: NormalizeMode = "strip",
+  defaultValue?: string | null,
+): FieldSpec {
+  return {
+    name,
+    kind: FieldKind.ENUM,
+    required,
+    array: true,
     enumValues: values == null ? null : [...values],
     enumAlias: aliases == null ? {} : { ...aliases },
     min: null,
@@ -217,6 +264,35 @@ export interface RecoverOutcome {
 export interface RecoveryResult<T> {
   readonly data: T | null;
   readonly report: RecoveryReport;
+}
+
+/**
+ * Thrown by {@link orThrow} when a {@link RecoveryResult} lost a `@required` field. Mirrors
+ * Java's `RecoverException`. Carries the list of lost-required field paths.
+ */
+export class RecoverError extends Error {
+  readonly lostRequired: readonly string[];
+  constructor(lostRequired: readonly string[]) {
+    super(`recover: required field(s) lost: ${lostRequired.join(", ")}`);
+    this.name = "RecoverError";
+    this.lostRequired = [...lostRequired];
+  }
+}
+
+/**
+ * Opt-in strictness over a never-throwing {@link RecoveryResult}. Mirrors Java
+ * `RecoveryResult.orThrow()`. Throws a {@link RecoverError} iff the report has a lost
+ * `@required` field; otherwise returns `result.data`.
+ *
+ * <p>TS divergence from Java (documented): `RecoveryResult` is a plain interface (the generated
+ * output-parsers build it as an object literal), so `orThrow` is a free function rather than a
+ * method on the result. Semantics are identical.</p>
+ */
+export function orThrow<T>(result: RecoveryResult<T>): T | null {
+  if (result.report.hasLostRequired()) {
+    throw new RecoverError(result.report.lostRequired());
+  }
+  return result.data;
 }
 
 /** Mutable accumulator of per-field recovery classification, the degenerate-response flag, and coercion notes. */

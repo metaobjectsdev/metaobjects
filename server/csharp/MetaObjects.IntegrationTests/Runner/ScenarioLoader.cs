@@ -1,11 +1,11 @@
 // ScenarioLoader — parse a fixture YAML into a typed Scenario record.
 //
-// Two scenario kinds are distinguished by their file location:
-//   fixtures/persistence-conformance/migrations/*.yaml  → MigrationScenario
 //   fixtures/persistence-conformance/queries/*.yaml     → QueryScenario
 //
 // Relative metadata paths in YAML resolve against the scenario file's directory.
 
+using YamlDotNet.Core;
+using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -13,43 +13,68 @@ namespace MetaObjects.IntegrationTests.Runner;
 
 public static class ScenarioLoader
 {
+    // The `expect:` block is captured as a raw YamlNode (not a typed object graph)
+    // so the comparison side can honor the YAML scalar STYLE: a plain (unquoted)
+    // `45` is a JSON number, a quoted `"45"` is a JSON string. YamlDotNet's default
+    // object-graph deserialization collapses both to the string "45", which would
+    // make every INTEGER-typed expectation (durationMinutes, min/max aggregates)
+    // un-representable. This matches the TS authority, whose JS YAML loader infers
+    // scalar types the same way. See QueryScenarioRunner.YamlExpectToJsonNode.
     private static readonly IDeserializer Yaml = new DeserializerBuilder()
         .WithNamingConvention(HyphenatedNamingConvention.Instance)
+        .WithTypeConverter(new YamlNodeTypeConverter())
         .Build();
 
-    /// <summary>Load every <c>*.yaml</c> in a directory as scenarios of the given kind.</summary>
-    public static IReadOnlyList<MigrationScenario> LoadMigrations(string dir) =>
-        Directory.EnumerateFiles(dir, "*.yaml", SearchOption.TopDirectoryOnly)
-            .OrderBy(p => p, StringComparer.Ordinal)
-            .Select(LoadMigration)
-            .ToList();
+    // Captures a YAML subtree verbatim (preserving scalar style) into a YamlNode,
+    // so a property typed as YamlNode? receives the raw representation. Builds the
+    // node graph by streaming events from the parser (YamlDotNet 18 has no public
+    // IParser→YamlNode bridge), consuming exactly one node subtree.
+    private sealed class YamlNodeTypeConverter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => typeof(YamlNode).IsAssignableFrom(type);
 
+        public object? ReadYaml(IParser parser, Type type, ObjectDeserializer rootDeserializer) =>
+            BuildNode(parser);
+
+        public void WriteYaml(IEmitter emitter, object? value, Type type, ObjectSerializer serializer) =>
+            throw new NotSupportedException("YamlNode serialization is not used in scenario loading.");
+
+        private static YamlNode BuildNode(IParser parser)
+        {
+            if (parser.TryConsume<YamlDotNet.Core.Events.Scalar>(out var scalar))
+                return new YamlScalarNode(scalar.Value) { Style = scalar.Style };
+
+            if (parser.TryConsume<YamlDotNet.Core.Events.SequenceStart>(out _))
+            {
+                var seq = new YamlSequenceNode();
+                while (!parser.TryConsume<YamlDotNet.Core.Events.SequenceEnd>(out _))
+                    seq.Add(BuildNode(parser));
+                return seq;
+            }
+
+            if (parser.TryConsume<YamlDotNet.Core.Events.MappingStart>(out _))
+            {
+                var map = new YamlMappingNode();
+                while (!parser.TryConsume<YamlDotNet.Core.Events.MappingEnd>(out _))
+                {
+                    var key = BuildNode(parser);
+                    var value = BuildNode(parser);
+                    map.Add(key, value);
+                }
+                return map;
+            }
+
+            throw new InvalidOperationException(
+                $"unexpected YAML event while reading an expect subtree: {parser.Current?.GetType().Name ?? "null"}");
+        }
+    }
+
+    /// <summary>Load every <c>*.yaml</c> in a directory as query scenarios.</summary>
     public static IReadOnlyList<QueryScenario> LoadQueries(string dir) =>
         Directory.EnumerateFiles(dir, "*.yaml", SearchOption.TopDirectoryOnly)
             .OrderBy(p => p, StringComparer.Ordinal)
             .Select(LoadQuery)
             .ToList();
-
-    public static MigrationScenario LoadMigration(string yamlPath)
-    {
-        var raw = Yaml.Deserialize<MigrationYaml>(File.ReadAllText(yamlPath));
-        var dir = Path.GetDirectoryName(yamlPath)!;
-        return new MigrationScenario(
-            Name: raw.Name ?? throw new InvalidOperationException($"{yamlPath}: missing 'name'"),
-            Description: raw.Description ?? "",
-            SourcePath: yamlPath,
-            SeedMetadataDir: Resolve(dir, raw.SeedMetadata),
-            SeedData: raw.SeedData,
-            TargetMetadataDir: Resolve(dir, raw.TargetMetadata),
-            TargetMetadataInline: raw.TargetMetadataInline,
-            Expect: new MigrationExpect(
-                Blocked: (raw.Expect?.Blocked ?? []).Select(b => new BlockedChange(b.Kind ?? "", b.ReasonContains ?? "")).ToList(),
-                UpContains: raw.Expect?.UpContains ?? [],
-                UpEmpty: raw.Expect?.UpEmpty,
-                ApplyUpThenQuery: raw.Expect?.ApplyUpThenQuery is { } q
-                    ? new ApplyUpThenQuery(q.Sql ?? "", q.Rows ?? [])
-                    : null));
-    }
 
     public static QueryScenario LoadQuery(string yamlPath)
     {
@@ -71,41 +96,7 @@ public static class ScenarioLoader
                 Expect: q.Expect)).ToList());
     }
 
-    private static string? Resolve(string baseDir, string? rel) =>
-        string.IsNullOrEmpty(rel) ? null : Path.GetFullPath(Path.Combine(baseDir, rel));
-
     // ---------- YAML wire shapes (lower-cased + hyphenated via the naming convention) ----------
-
-    private sealed class MigrationYaml
-    {
-        public string? Name { get; set; }
-        public string? Description { get; set; }
-        public string? SeedMetadata { get; set; }
-        public string? SeedData { get; set; }
-        public string? TargetMetadata { get; set; }
-        public string? TargetMetadataInline { get; set; }
-        public MigrationExpectYaml? Expect { get; set; }
-    }
-
-    private sealed class MigrationExpectYaml
-    {
-        public List<BlockedYaml>? Blocked { get; set; }
-        public List<string>? UpContains { get; set; }
-        public bool? UpEmpty { get; set; }
-        public ApplyUpThenQueryYaml? ApplyUpThenQuery { get; set; }
-    }
-
-    private sealed class BlockedYaml
-    {
-        public string? Kind { get; set; }
-        public string? ReasonContains { get; set; }
-    }
-
-    private sealed class ApplyUpThenQueryYaml
-    {
-        public string? Sql { get; set; }
-        public List<Dictionary<string, object?>>? Rows { get; set; }
-    }
 
     private sealed class QueryYaml
     {
@@ -125,7 +116,7 @@ public static class ScenarioLoader
         public List<SortYaml>? Sort { get; set; }
         public int? Limit { get; set; }
         public int? Offset { get; set; }
-        public object? Expect { get; set; }
+        public YamlNode? Expect { get; set; }
     }
 
     private sealed class SortYaml

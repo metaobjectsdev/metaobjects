@@ -41,12 +41,10 @@ import com.metaobjects.manager.db.SubSelectValue;
 import com.metaobjects.manager.db.defs.BaseDef;
 import com.metaobjects.manager.db.defs.BaseTableDef;
 import com.metaobjects.manager.db.defs.ColumnDef;
-import com.metaobjects.manager.db.defs.ForeignKeyDef;
-import com.metaobjects.manager.db.defs.IndexDef;
 import com.metaobjects.manager.db.defs.InheritenceDef;
 import com.metaobjects.manager.db.defs.NameDef;
-import com.metaobjects.manager.db.defs.SequenceDef;
 import com.metaobjects.manager.db.defs.TableDef;
+import com.metaobjects.manager.db.defs.ViewDef;
 import com.metaobjects.manager.exp.Expression;
 import com.metaobjects.manager.exp.ExpressionGroup;
 import com.metaobjects.manager.exp.ExpressionOperator;
@@ -280,13 +278,17 @@ public class GenericSQLDriver implements DatabaseDriver {
         return checkBaseTable(c, table);
     }
 
+    @Override
+    public boolean checkView(Connection c, ViewDef view) throws SQLException {
+        return checkBaseTable(c, view);
+    }
+
     /**
-     * Checks for the existence of the base table and optionally creates it if
-     * it doesn't exist
+     * Checks for the existence of the base table or view. This method only
+     * verifies existence; it does not create anything.
      *
      * @param c Database connection to use
      * @param baseTable Base Table Definition (Table or View)
-     * @param autoCreate Whether to auto create the table or view
      * @return Whether the table or view exists
      * @throws SQLException Exception if it exists in an invalid format
      */
@@ -408,15 +410,6 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
-     * Creates a table in the database
-     */
-    @Override
-    public void createTable(Connection c, TableDef tableDef)
-            throws SQLException {
-        throw new UnsupportedOperationException("CREATE TABLE NOT IMPLEMENTED!");
-    }
-
-    /**
      * Deletes a table from the database
      */
     @Override
@@ -425,31 +418,37 @@ public class GenericSQLDriver implements DatabaseDriver {
         throw new UnsupportedOperationException("DELETE TABLE NOT IMPLEMENTED!");
     }
 
-    /**
-     * Creates the sequence in the database
-     */
-    public void createSequence(Connection c, SequenceDef sequenceDef)
-            throws SQLException {
-        throw new UnsupportedOperationException(
-                "CREATE SEQUENCE NOT IMPLEMENTED!");
+/**
+	 * Creates a view in the database
+	 */
+	@Override
+	public void createView( Connection c, ViewDef view ) throws SQLException
+	{
+            StringBuilder query = new StringBuilder();
+            try {
+                String name = getProperName( view.getNameDef() );
+                query.append( "CREATE VIEW " )
+                    .append( name )
+                    .append( " AS " )
+                    .append( view.getSQL() );
+
+                if ( log.isDebugEnabled() ) {
+                    log.debug( "Creating view: " + query.toString() );
+                }
+                //ystem.out.println( ">>>> Creating View: " + query);
+
+                Statement s = c.createStatement();
+                try {
+                     s.execute( query.toString() );
+                } finally {
+                     s.close();
+                }
+            }
+            catch (Exception e) {
+                    throw new SQLException( "Creation of view [" + view + "] failed using SQL [" + query + "]: " + e.getMessage(), e );
+            }
     }
 
-    /**
-     * Creates the index in the database
-     */
-    public void createIndex(Connection c, IndexDef indexDef)
-            throws SQLException {
-        // Do Nothing
-    }
-
-    /**
-     * Creates the foreign keys for the table in the database
-     */
-    @Override
-    public void createForeignKey(Connection c, ForeignKeyDef foreignKeyDef)
-            throws SQLException {
-        // DO Nothing
-    }
 
     /**
      * Returns the proper name of the table or view

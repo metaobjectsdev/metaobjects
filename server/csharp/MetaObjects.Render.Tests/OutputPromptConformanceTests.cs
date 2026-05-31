@@ -50,7 +50,7 @@ public class OutputPromptConformanceTests
     {
         // Count guard: a port silently skipping cases must fail CI rather than reduce coverage.
         // Mirrors the TS / Java / Python count guards.
-        Assert.Equal(10, Cases().Count());
+        Assert.Equal(12, Cases().Count());
     }
 
     private static readonly (string Key, PromptStyle Style)[] Styles =

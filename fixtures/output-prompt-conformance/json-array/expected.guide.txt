@@ -3,5 +3,7 @@ Fill in each field as described below:
 
 Respond exactly like this:
 {
-  "tags": "{tags}"
+  "tags": [
+    "{tags}"
+  ]
 }

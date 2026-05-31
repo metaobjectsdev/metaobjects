@@ -121,6 +121,48 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
             Fields().FirstOrDefault(f => f.Name == fieldName));
     }
 
+    /// <summary>Java-parity alias for <see cref="FindField"/>.</summary>
+    public MetaField? GetField(string fieldName) => FindField(fieldName);
+
+    // -------------------------------------------------------------------------
+    // Runtime instantiation (object model)
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Instantiate a backing object for this MetaObject (Java parity:
+    /// <c>MetaObject.newInstance()</c>). Resolution order:
+    ///
+    ///   1. If <paramref name="registry"/> yields a factory for this object's
+    ///      <see cref="MetaData.ResolutionKey"/>, invoke it; if the result is
+    ///      <see cref="IMetaObjectAware"/>, attach this MetaObject as its back-reference.
+    ///   2. Otherwise create a map-backed <see cref="ValueObject"/> (the unbound
+    ///      default for <c>object.value</c>), which sets its own back-reference via
+    ///      the constructor.
+    ///
+    /// The registry key is the object's package-folded <see cref="MetaData.ResolutionKey"/>
+    /// (<c>package::name</c>) — the SAME form a nested field's <c>@objectRef</c> uses,
+    /// so a factory registered for an object's resolution key is found whether
+    /// instantiation is driven top-down or via an object-ref.
+    ///
+    /// AOT-safe: only registered <see cref="ObjectFactory"/> constructor delegates
+    /// are consulted — no <c>Type.GetType</c> / <c>Activator</c> / reflection.
+    /// </summary>
+    public object NewInstance(ObjectClassRegistry? registry = null)
+    {
+        var reg = registry ?? ObjectClassRegistry.Default;
+        var factory = reg.Resolve(ResolutionKey());
+        if (factory is not null)
+        {
+            var instance = factory(this);
+            if (instance is IMetaObjectAware aware)
+            {
+                aware.SetMetaData(this);
+            }
+            return instance;
+        }
+        return new ValueObject(this);
+    }
+
     // -------------------------------------------------------------------------
     // Identities
     // -------------------------------------------------------------------------

@@ -129,10 +129,13 @@ function normalizeAttrOf(node: MetaData): NormalizeMode | null {
 
 /** The nullable TS type for a field in the recover mirror interface. */
 export function mirrorType(field: MetaData): string {
+  // Nested object (single or array): the self-contained path defers to null (typed unknown);
+  // the runtime-delegating path overrides this with the nested mirror type. Checked BEFORE the
+  // generic isArray branch so an array-of-objects is NOT mistyped as a string array.
+  if (field.subType === FIELD_SUBTYPE_OBJECT) return "unknown"; // nested deferred
   // Matches asStringList's `(string | null)[] | null` return — a recovered array
   // can contain null elements where individual items were lost.
   if (isArray(field)) return "(string | null)[] | null";
-  if (field.subType === FIELD_SUBTYPE_OBJECT) return "unknown"; // nested deferred
   if (field.subType === FIELD_SUBTYPE_ENUM) return "string | null"; // enum is string-backed
   switch (scalarKind(field.subType)) {
     case "INT":
@@ -152,8 +155,11 @@ export function mirrorType(field: MetaData): string {
  * truth for the per-field dispatch — both recoverMapCall and recoverMapHelpersUsed use it.
  */
 function recoverMapHelper(field: MetaData): string | null {
+  // Nested object (single or array) → null literal in the self-contained path (no helper).
+  // Checked BEFORE isArray so an array-of-objects is NOT read via asStringList (which would not
+  // type-check against the nested mirror's `(NestedRecovered | null)[]`). Mirrors the Java fix.
+  if (field.subType === FIELD_SUBTYPE_OBJECT) return null;
   if (isArray(field)) return "asStringList";
-  if (field.subType === FIELD_SUBTYPE_OBJECT) return null; // null literal, no helper
   if (field.subType === FIELD_SUBTYPE_ENUM) return "asString";
   switch (scalarKind(field.subType)) {
     case "INT":

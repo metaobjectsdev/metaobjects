@@ -11,6 +11,7 @@ import com.metaobjects.field.FloatField
 import com.metaobjects.field.IntegerField
 import com.metaobjects.field.LongField
 import com.metaobjects.field.StringField
+import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
 import com.metaobjects.field.UuidField
 import com.metaobjects.metadata.ktx.loadString
@@ -72,6 +73,13 @@ class KotlinTypeMapperTest {
         assertEquals("LocalDate", tn.simpleName)
     }
 
+    @Test fun `time field maps to java time LocalTime`() {
+        val f = TimeField("startTime")
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        assertEquals("java.time", tn.packageName)
+        assertEquals("LocalTime", tn.simpleName)
+    }
+
     @Test fun `timestamp field maps to java time Instant`() {
         val f = TimestampField("createdAt")
         val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
@@ -115,6 +123,22 @@ class KotlinTypeMapperTest {
     @Test fun `date field maps to date exposed column`() {
         val f = DateField("birthday")
         assertEquals("date(\"birthday\")", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
+    @Test fun `time field maps to time exposed column`() {
+        val f = TimeField("startTime")
+        // Column name snake_case-d for Postgres convention (mirrors date(...)).
+        assertEquals("time(\"start_time\")", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
+    @Test fun `time field import is javatime time`() {
+        // `time(...)` is a javatime extension function (like `date(...)`); it needs an
+        // explicit import — the bug-prone part of the arm.
+        val f = TimeField("startTime")
+        assertEquals(
+            "org.jetbrains.exposed.sql.javatime.time",
+            KotlinTypeMapper.exposedColumnImport(f),
+        )
     }
 
     @Test fun `timestamp field defaults to plain timestamp exposed column with snake_case column name`() {

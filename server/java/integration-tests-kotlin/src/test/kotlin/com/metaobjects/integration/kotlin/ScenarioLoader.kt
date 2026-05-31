@@ -1,9 +1,5 @@
 package com.metaobjects.integration.kotlin
 
-import com.metaobjects.integration.kotlin.Scenarios.ApplyUpThenQuery
-import com.metaobjects.integration.kotlin.Scenarios.BlockedChange
-import com.metaobjects.integration.kotlin.Scenarios.MigrationExpect
-import com.metaobjects.integration.kotlin.Scenarios.MigrationScenario
 import com.metaobjects.integration.kotlin.Scenarios.QueryScenario
 import com.metaobjects.integration.kotlin.Scenarios.QuerySpec
 import com.metaobjects.integration.kotlin.Scenarios.SortSpec
@@ -14,12 +10,16 @@ import java.nio.file.Path
 import java.nio.file.Paths
 
 /**
- * Parse persistence-conformance scenario YAML into typed records. Hyphenated
- * YAML keys lower to camelCase Kotlin properties by hand because SnakeYAML
- * doesn't impose a naming convention on a raw Map load. Matches the Java
- * port's ScenarioLoader semantics.
+ * Parse persistence-conformance query-scenario YAML into typed records. Shape
+ * mirrors the Java port's `ScenarioLoader` semantics. Schema migrations are
+ * owned by the TypeScript toolchain (ADR-0015): the canonical schema artifact
+ * the query runner provisions its DB from is committed at
+ * [CANONICAL_SCHEMA_RELATIVE], produced by TS from the canonical metadata.
  */
 object ScenarioLoader {
+
+    /** Canonical Postgres schema artifact, relative to the corpus root. */
+    private const val CANONICAL_SCHEMA_RELATIVE = "canonical/schema.postgres.sql"
 
     private val yaml = Yaml()
 
@@ -29,15 +29,6 @@ object ScenarioLoader {
                 .filter { it.fileName.toString().endsWith(".yaml") }
                 .sorted()
                 .map { parseQuery(it, parseYamlMap(it)) }
-                .toList()
-        }
-
-    fun loadMigrations(dir: Path): List<MigrationScenario> =
-        Files.list(dir).use { stream ->
-            stream
-                .filter { it.fileName.toString().endsWith(".yaml") }
-                .sorted()
-                .map { parseMigration(it, parseYamlMap(it)) }
                 .toList()
         }
 
@@ -52,6 +43,13 @@ object ScenarioLoader {
         throw IllegalStateException(
             "Could not locate fixtures/persistence-conformance from ${Paths.get("").toAbsolutePath()}"
         )
+    }
+
+    /** Read the committed canonical Postgres schema DDL (executed verbatim by the query runner). */
+    fun readCanonicalSchema(corpusRoot: Path): String {
+        val schema = corpusRoot.resolve(CANONICAL_SCHEMA_RELATIVE)
+        require(Files.isRegularFile(schema)) { "Canonical schema not found: $schema" }
+        return Files.readString(schema, StandardCharsets.UTF_8)
     }
 
     // -----------------------------------------------------------------------
@@ -101,50 +99,8 @@ object ScenarioLoader {
     }
 
     // -----------------------------------------------------------------------
-    // Migration parsing
-    // -----------------------------------------------------------------------
-
-    @Suppress("UNCHECKED_CAST")
-    private fun parseMigration(file: Path, root: Map<String, Any?>): MigrationScenario {
-        val dir = file.parent
-        return MigrationScenario(
-            name = requireString(file, root, "name"),
-            description = (root["description"] as? String) ?: "",
-            sourcePath = file.toString(),
-            seedMetadataDir = resolveRelative(dir, root["seed-metadata"] as? String),
-            seedData = root["seed-data"] as? String,
-            targetMetadataDir = resolveRelative(dir, root["target-metadata"] as? String),
-            targetMetadataInline = root["target-metadata-inline"] as? String,
-            expect = parseMigrationExpect((root["expect"] as? Map<String, Any?>) ?: emptyMap()),
-        )
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun parseMigrationExpect(e: Map<String, Any?>): MigrationExpect {
-        val blockedRaw = (e["blocked"] as? List<Map<String, Any?>>) ?: emptyList()
-        val blocked = blockedRaw.map {
-            BlockedChange(it["kind"] as String, (it["reason-contains"] as? String) ?: "")
-        }
-        val upContains = (e["up-contains"] as? List<String>) ?: emptyList()
-        val upEmpty = e["up-empty"] as? Boolean
-        val auq = e["apply-up-then-query"] as? Map<String, Any?>
-        val applyUpThenQuery = auq?.let {
-            ApplyUpThenQuery(
-                sql = (it["sql"] as? String) ?: "",
-                rows = (it["rows"] as? List<Map<String, Any?>>) ?: emptyList(),
-            )
-        }
-        return MigrationExpect(blocked, upContains, upEmpty, applyUpThenQuery)
-    }
-
-    // -----------------------------------------------------------------------
     // Common helpers
     // -----------------------------------------------------------------------
-
-    private fun resolveRelative(scenarioDir: Path, relative: String?): String? {
-        if (relative.isNullOrEmpty()) return null
-        return scenarioDir.resolve(relative).normalize().toString()
-    }
 
     private fun requireString(file: Path, map: Map<String, Any?>, key: String): String {
         val v = map[key]

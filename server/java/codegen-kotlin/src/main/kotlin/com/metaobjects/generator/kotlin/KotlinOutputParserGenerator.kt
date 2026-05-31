@@ -132,6 +132,8 @@ class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             append("\n\n")
             append("import kotlinx.serialization.json.Json\n")
             if (emitRecover) {
+                append("import com.metaobjects.loader.MetaDataLoader\n")
+                append("import com.metaobjects.`object`.recover.MetaObjectRecover\n")
                 append("import com.metaobjects.render.recover.FieldKind\n")
                 append("import com.metaobjects.render.recover.FieldSpec\n")
                 append("import com.metaobjects.render.recover.Format\n")
@@ -143,7 +145,11 @@ class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             }
             append("\n")
             if (emitRecover) {
-                append(KotlinRecoverSchemaEmitter.recoveredClassDecl(payloadVo, recoveredClass))
+                // Nested-aware mirror: the root Recovered class + one mirror per reachable
+                // nested value-object. Object fields are typed as the nested mirror (single)
+                // or List<NestedRecovered>? (array-of-objects) so the runtime-delegating
+                // recover(loader, ...) overload can populate the full graph (FR-010 nested gap).
+                append(KotlinRecoverSchemaEmitter.recoveredClassDeclsNested(payloadVo, recoveredClass))
                 append("\n\n")
             }
             append("/** Parser for LLM responses matching the `")
@@ -191,8 +197,17 @@ class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             append("(text) }\n")
             if (emitRecover) {
                 val ctorArgs = KotlinRecoverSchemaEmitter.recoveredCtorArgs(payloadVo)
+                val formatEnum = if (TemplateConstants.FORMAT_XML.equals(format, ignoreCase = true))
+                    "Format.XML" else "Format.JSON"
+                val payloadFqn = payloadVo.name
+
+                // ---- Self-contained, scalar/enum-only recover (back-compat; nested stays null) ----
                 append("\n")
-                append("    /** Tolerant best-effort recovery; never throws. Components are null where lost/malformed. */\n")
+                append("    /**\n")
+                append("     * Self-contained tolerant recovery; never throws. Components are null where\n")
+                append("     * lost/malformed. Does NOT populate nested-object / array-of-object components\n")
+                append("     * (use the recover(loader, text) overload for full nested recovery).\n")
+                append("     */\n")
                 append("    fun recover(text: String): RecoveryResult<")
                 append(recoveredClass)
                 append("> =\n")
@@ -209,6 +224,38 @@ class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 append(ctorArgs)
                 append("), o.report)\n")
                 append("    }\n")
+
+                // ---- Runtime-delegating recover (closes the nested gap) ----
+                append("\n")
+                append("    /** Payload FQN this parser recovers — resolved against the supplied loader at runtime. */\n")
+                append("    const val PAYLOAD_FQN: String = \"")
+                append(KotlinRecoverSchemaEmitter.kotlinStringLiteral(payloadFqn))
+                append("\"\n")
+                append("\n")
+                append("    /**\n")
+                append("     * Tolerant best-effort recovery delegating to the runtime MetaObjectRecover;\n")
+                append("     * never throws. Fully populates nested-object and array-of-object components\n")
+                append("     * (unlike the self-contained recover(text) overload). Resolves this payload's\n")
+                append("     * MetaObject by [PAYLOAD_FQN] from [loader].\n")
+                append("     */\n")
+                append("    fun recover(loader: MetaDataLoader, text: String, opts: RecoverOptions = RecoverOptions.defaults()): RecoveryResult<")
+                append(recoveredClass)
+                append("> {\n")
+                append("        val mo = loader.getMetaObjectByName(PAYLOAD_FQN)\n")
+                append("        val raw = MetaObjectRecover.recover(mo, text, ")
+                append(formatEnum)
+                append(", opts)\n")
+                append("        // The assembled graph is a ValueObject (a Map<String, Any?>) with nested\n")
+                append("        // ValueObjects / List<ValueObject> — map it into the typed Recovered mirror graph.\n")
+                append("        @Suppress(\"UNCHECKED_CAST\")\n")
+                append("        val d = raw.data as? Map<String, Any?>\n")
+                append("        return RecoveryResult(from")
+                append(recoveredClass)
+                append("(d), raw.report)\n")
+                append("    }\n")
+
+                // ---- Generated ValueObject(Map) -> typed Recovered-mirror mappers (root + nested, deduped) ----
+                append(KotlinRecoverMapperEmitter.mapperMethods(payloadVo, recoveredClass))
             }
             append("}\n")
         }

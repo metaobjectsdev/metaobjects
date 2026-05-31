@@ -7,12 +7,9 @@
 package com.metaobjects.manager.db.driver;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Types;
-import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,10 +18,8 @@ import com.metaobjects.MetaDataException;
 
 
 import com.metaobjects.manager.db.defs.ColumnDef;
-import com.metaobjects.manager.db.defs.ForeignKeyDef;
-import com.metaobjects.manager.db.defs.IndexDef;
-import com.metaobjects.manager.db.defs.SequenceDef;
 import com.metaobjects.manager.db.defs.TableDef;
+import com.metaobjects.manager.db.defs.ViewDef;
 import com.metaobjects.manager.exp.Range;
 
 /**
@@ -52,111 +47,6 @@ public class MSSQLDriver extends GenericSQLDriver {
     }
 
     /**
-     * Creates a table in the SQL Server database with optimizations
-     */
-    @Override
-    public void createTable(Connection c, TableDef table) throws SQLException {
-        StringBuilder query = new StringBuilder();
-        
-        try {
-            query.append("CREATE TABLE ")
-                 .append(getProperName(table.getNameDef()))
-                 .append(" (\n");
-
-            List<ColumnDef> cols = table.getColumns();
-            int keys = table.getPrimaryKeys().size();
-            boolean hasIdentity = false;
-
-            // Create columns
-            for (int i = 0; i < cols.size(); i++) {
-                ColumnDef col = cols.get(i);
-                String name = col.getName();
-                
-                if (name == null || name.isEmpty()) {
-                    throw new IllegalArgumentException("No name defined for column [" + col + "]");
-                }
-                
-                if (i > 0) query.append(",\n");
-                
-                query.append("  [").append(name).append("] ");
-                
-                // SQL Server-specific type mapping
-                switch (col.getSQLType()) {
-                    case Types.BOOLEAN, Types.BIT -> query.append("[bit]");
-                    case Types.TINYINT -> query.append("[tinyint]");
-                    case Types.SMALLINT -> query.append("[smallint]");
-                    case Types.INTEGER -> query.append("[int]");
-                    case Types.BIGINT -> query.append("[bigint]");
-                    case Types.FLOAT -> query.append("[float]");
-                    case Types.DOUBLE -> query.append("[decimal](19,4)");
-                    case Types.TIMESTAMP -> query.append("[datetime2]"); // Modern SQL Server datetime
-                    case Types.VARCHAR -> {
-                        if (col.getLength() > 4000) {
-                            query.append("[nvarchar](MAX)");
-                        } else {
-                            query.append("[nvarchar](").append(col.getLength()).append(")");
-                        }
-                    }
-                    default -> throw new UnsupportedOperationException(
-                        "SQL Server driver does not support SQL type: " + col.getSQLType());
-                }
-                
-                // Add IDENTITY if needed
-                if (col.isAutoIncrementor()) {
-                    if (hasIdentity) {
-                        throw new MetaDataException("Table [" + table.getNameDef().getFullname() + 
-                                              "] cannot have multiple IDENTITY columns!");
-                    }
-                    
-                    SequenceDef seq = col.getSequence();
-                    query.append(" NOT NULL IDENTITY(")
-                         .append(seq != null ? seq.getStart() : 1)
-                         .append(", ")
-                         .append(seq != null ? seq.getIncrement() : 1)
-                         .append(")");
-                    
-                    hasIdentity = true;
-                }
-                
-                // Add constraints
-                if (!col.isAutoIncrementor()) {
-                    query.append(" NOT NULL");
-                }
-                
-                if (col.isPrimaryKey() && keys == 1 && !hasIdentity) {
-                    query.append(" PRIMARY KEY CLUSTERED");
-                } else if (col.isUnique()) {
-                    query.append(" UNIQUE");
-                }
-            }
-            
-            // Add composite primary key if needed
-            if (keys > 1) {
-                query.append(",\n  CONSTRAINT [PK_").append(table.getNameDef().getName()).append("] PRIMARY KEY CLUSTERED (");
-                table.getPrimaryKeys().stream()
-                    .map(col -> "[" + col.getName() + "]")
-                    .reduce((a, b) -> a + ", " + b)
-                    .ifPresent(query::append);
-                query.append(")");
-            }
-            
-            query.append("\n)");
-
-            if (log.isDebugEnabled()) {
-                log.debug("Creating SQL Server table [{}]: {}", table.getNameDef().getFullname(), query);
-            }
-
-            try (Statement s = c.createStatement()) {
-                s.execute(query.toString());
-            }
-            
-        } catch (Exception e) {
-            throw new SQLException("Failed to create SQL Server table [" + table.getNameDef().getFullname() + 
-                                 "] using SQL [" + query + "]: " + e.getMessage(), e);
-        }
-    }
-
-    /**
      * Deletes a table from the SQL Server database
      */
     @Override
@@ -176,97 +66,21 @@ public class MSSQLDriver extends GenericSQLDriver {
     }
 
     /**
-     * Creates a SQL Server sequence (SQL Server 2012+)
+     * Creates a SQL Server view
      */
     @Override
-    public void createSequence(Connection c, SequenceDef sequence) throws SQLException {
-        String seqName = getProperName(sequence.getNameDef());
-        StringBuilder query = new StringBuilder();
-        
-        query.append("CREATE SEQUENCE ")
-             .append(seqName)
-             .append(" AS [bigint] START WITH ")
-             .append(sequence.getStart())
-             .append(" INCREMENT BY ")
-             .append(sequence.getIncrement())
-             .append(" CACHE 50"); // SQL Server optimization
+    public void createView(Connection c, ViewDef view) throws SQLException {
+        String viewName = getProperName(view.getNameDef());
+        String query = "CREATE VIEW " + viewName + " AS " + view.getSQL();
         
         if (log.isDebugEnabled()) {
-            log.debug("Creating SQL Server sequence [{}]: {}", seqName, query);
+            log.debug("Creating SQL Server view [{}]: {}", viewName, query);
         }
         
         try (Statement s = c.createStatement()) {
-            s.execute(query.toString());
+            s.execute(query);
         } catch (SQLException e) {
-            throw new SQLException("Failed to create SQL Server sequence [" + seqName + "]: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Creates a SQL Server index with clustering options
-     */
-    @Override
-    public void createIndex(Connection c, IndexDef index) throws SQLException {
-        StringBuilder query = new StringBuilder();
-        String indexName = index.getName();
-        String tableName = getProperName(index.getTable().getNameDef());
-        
-        // Create non-clustered index by default
-        query.append("CREATE NONCLUSTERED INDEX ")
-             .append("[").append(indexName).append("]")
-             .append(" ON ")
-             .append(tableName)
-             .append(" (");
-        
-        String columns = index.getColumnNames().stream()
-            .map(col -> "[" + col + "]")
-            .reduce((a, b) -> a + ", " + b)
-            .orElse("");
-        query.append(columns).append(")");
-        
-        // Add index options for performance
-        query.append(" WITH (FILLFACTOR = 90, PAD_INDEX = ON)");
-        
-        if (log.isDebugEnabled()) {
-            log.debug("Creating SQL Server index [{}]: {}", indexName, query);
-        }
-        
-        try (Statement s = c.createStatement()) {
-            s.execute(query.toString());
-        } catch (SQLException e) {
-            throw new SQLException("Failed to create SQL Server index [" + indexName + "]: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Creates a SQL Server foreign key constraint
-     */
-    @Override
-    public void createForeignKey(Connection c, ForeignKeyDef keyDef) throws SQLException {
-        StringBuilder query = new StringBuilder();
-        
-        query.append("ALTER TABLE ")
-             .append(getProperName(keyDef.getTable().getNameDef()))
-             .append(" ADD CONSTRAINT [")
-             .append(keyDef.getName())
-             .append("] FOREIGN KEY (");
-        
-        query.append("[" + keyDef.getColumnName() + "]");
-        
-        query.append(") REFERENCES ")
-             .append(getProperName(keyDef.getRefTable().getNameDef()))
-             .append(" (");
-             
-        query.append("[" + keyDef.getRefColumn().getName() + "]").append(")");
-        
-        if (log.isDebugEnabled()) {
-            log.debug("Creating SQL Server foreign key [{}]: {}", keyDef.getName(), query);
-        }
-        
-        try (Statement s = c.createStatement()) {
-            s.execute(query.toString());
-        } catch (SQLException e) {
-            throw new SQLException("Failed to create SQL Server foreign key [" + keyDef.getName() + "]: " + e.getMessage(), e);
+            throw new SQLException("Failed to create SQL Server view [" + viewName + "]: " + e.getMessage(), e);
         }
     }
 

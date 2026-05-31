@@ -203,7 +203,14 @@ that ledger is loader-corpus only.
 
 Two further corpora cover the **runtime** tier and are exercised by **all five ports, including Kotlin**, on demand against Testcontainers Postgres via `scripts/integration-test.sh` (these are **not** in the default `test` path for the JVM/.NET ports — see the hardening review):
 
-- **`fixtures/persistence-conformance/`** — live DDL + CRUD / filter / projection round-trips.
+- **`fixtures/persistence-conformance/`** — CRUD / filter / projection round-trips. The **query** scenarios run on every port; each port provisions its test DB by **executing the committed, TS-produced `canonical/schema.postgres.sql`** (no port synthesizes schema) and then exercises its runtime data-access layer. Per ADR-0015 schema migrations are TS-owned, so the **migration** scenarios are run by **TS only**, and the cross-port query corpus is **Postgres-only** (Derby was dropped for it).
+
+  **Wire-type normalization + projection reads are gated by these shared round-trips on all five ports** (see `fixtures/persistence-conformance/normalization.md` for the per-type canonical rules):
+  - **REAL/DOUBLE** → plain-decimal strings, no trailing zeros, no exponential notation (`queries/measurement-floats.yaml`).
+  - **uuid** (lowercase canonicalization), **jsonb** (key-sorting), **TIMESTAMPTZ** (seeded with a non-UTC offset, read back as UTC `Z` — proving normalization, not mere formatting), plain **TIMESTAMP** (no `Z`), **DATE**, **TIME** (`queries/normalization-wire-types.yaml`, with companion coverage in `queries/asset-uuid-roundtrip.yaml`).
+  - **projection reads** — passthrough-view read (`queries/projection-passthrough.yaml`) and `sum`/`avg`/`min`/`max`/`count` aggregates over a VIEW, including the aggregate-over-zero-rows NULL semantics (`queries/projection-aggregates.yaml`, `queries/projection-aggregate.yaml`). These also pin INTEGER→number, BIGINT→string, and NUMERIC→no-trailing-zeros-string.
+
+  Because this end-to-end round-trip enforces the canonical wire shape identically across ports, the **divergent per-port normalization _unit_ tests were retired** (they had drifted in coverage — TS ~9 cases, Java/Kotlin 4, Python 3 — and are now subsumed). Each port keeps its `Normalization` **helper module** (the runner depends on it). The **only** unit assertion kept per port is the out-of-band float guard (`canonicalFloat`/`normalize_value` must **throw/raise** on exponential-notation values) — a value that must throw cannot be expressed as a successful round-trip seed, so it stays a standalone unit test (TS `normalization.test.ts`, Java/Kotlin `NormalizationFloatTest`, Python `test_normalization.py`). C# never had a separate normalization unit test (only the runner + helper), so nothing was removed there.
 - **`fixtures/api-contract-conformance/`** — emitted CRUD routes answered over real HTTP (URL grammar + wire format).
 
 A `fixtures/render-conformance/template-generator/` sub-corpus additionally exercises the codegen *walk* (file-per-entity inventory + render) in TS, C#, Java, and Python.

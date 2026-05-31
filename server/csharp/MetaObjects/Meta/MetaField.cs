@@ -150,6 +150,64 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     }
 
     // -------------------------------------------------------------------------
+    // Value SPI (object model) — read/write this field's value on a backing object
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Read this field's value from a backing object. <paramref name="name"/>
+    /// defaults to this field's own <see cref="MetaData.Name"/> (override to read a
+    /// differently keyed slot).
+    ///
+    /// Dispatches on backing kind, AOT-safe (no reflection):
+    ///   - <see cref="ValueObject"/> → reads through its map.
+    ///   - <see cref="ITypedFieldAccessor"/> → delegates to the type's own
+    ///     reflection-free typed accessor (the bound-type lane).
+    ///
+    /// Any other object kind throws — production never falls back to
+    /// <c>PropertyInfo</c> reflection (ADR-0001 / .NET-AOT). A bound type must
+    /// expose <see cref="ITypedFieldAccessor"/> to participate in the SPI.
+    /// </summary>
+    public object? GetValue(object obj, string? name = null)
+    {
+        var key = name ?? Name;
+        return obj switch
+        {
+            ValueObject vo => vo.Get(key),
+            ITypedFieldAccessor a => a.GetFieldValue(key),
+            _ => throw new InvalidOperationException(
+                $"Cannot read field '{key}' from backing type '{obj.GetType().Name}': " +
+                "it is neither a ValueObject nor an ITypedFieldAccessor. Production is " +
+                "reflection-free (AOT-safe); a bound type must implement ITypedFieldAccessor."),
+        };
+    }
+
+    /// <summary>
+    /// Write <paramref name="value"/> into a backing object under <paramref name="name"/>
+    /// (defaults to this field's own <see cref="MetaData.Name"/>). No coercion here;
+    /// nested objects / arrays are stored as-given (the consumer recurses for nested
+    /// OBJECT fields: resolve the child via <see cref="ObjectRef"/> + NewInstance and
+    /// SetValue it). Same AOT-safe dispatch as <see cref="GetValue"/>.
+    /// </summary>
+    public void SetValue(object obj, object? value, string? name = null)
+    {
+        var key = name ?? Name;
+        switch (obj)
+        {
+            case ValueObject vo:
+                vo.Set(key, value);
+                return;
+            case ITypedFieldAccessor a:
+                a.SetFieldValue(key, value);
+                return;
+            default:
+                throw new InvalidOperationException(
+                    $"Cannot write field '{key}' to backing type '{obj.GetType().Name}': " +
+                    "it is neither a ValueObject nor an ITypedFieldAccessor. Production is " +
+                    "reflection-free (AOT-safe); a bound type must implement ITypedFieldAccessor.");
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Validators
     // -------------------------------------------------------------------------
 

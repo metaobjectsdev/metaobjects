@@ -71,33 +71,45 @@ Non-Spring-Boot consumers (or those who exclude Jackson from
 `spring-boot-starter-web` via `<exclusions>`) must add
 `com.fasterxml.jackson.core:jackson-databind` explicitly.
 
-## FR-010 tolerant `recover()` — bounded mapping scope (Plan 2)
-
-**Status:** intentional Day-1 bound.
+## FR-010 tolerant `recover()` — two overloads (Plan 2 + Plan 2.1)
 
 For `template.output` nodes whose `@format` is `json` or `xml`,
-`SpringOutputParserGenerator` also emits a typed, never-throwing
-`recover(String[, RecoverOptions])` returning
-`RecoveryResult<<Payload>>`, driven by a codegen-baked `RecoverSchema`
-(`RecoverSchemaEmitter`). It maps **scalar, enum (incl. `@enumAlias`
-folding), and scalar-array** payload fields.
+`SpringOutputParserGenerator` emits two never-throwing, typed
+`recover(...)` flavours returning `RecoveryResult<<Payload>>`:
 
-**Deferred (Plan 2.1):** nested-object and object-array recover mapping.
-Such a field is emitted as a `FieldSpec.scalar(..., FieldKind.STRING, ...)`
-placeholder and mapped to `null` in the recovered record (a
-`/* FR-010: nested recover deferred */` marker appears in the generated
-source). The `RecoveryReport` still classifies the field, so no data is
-silently wrong — the nested value is just not reconstructed yet.
+1. **Self-contained** `recover(String[, RecoverOptions])` — driven by a
+   codegen-baked `RecoverSchema` (`RecoverSchemaEmitter`) + `RecoverMap`
+   reads. Maps **scalar, enum (incl. `@enumAlias` folding), and
+   scalar-array** payload fields. Needs only `metaobjects-render` (+
+   Jackson for `parse`). **Does NOT populate nested-object /
+   array-of-object components** — those map to a typed `null` (a
+   `/* FR-010: nested recover deferred — use recover(loader, text) */`
+   marker appears in the generated source). The `RecoveryReport` still
+   classifies the field, so nothing is silently wrong.
 
-- **Array-of-enum fields** (`field.enum` with `@isArray: true`) recover as `null`:
-  the schema treats them as a scalar enum while the record component is a
-  `List<String>` — within the nested/array deferral boundary, safe (no crash).
+2. **Runtime-delegating** `recover(MetaDataLoader, String[, RecoverOptions])`
+   (Plan 2.1) — resolves this payload's `MetaObject` by its baked
+   `PAYLOAD_FQN` from the supplied loader and delegates to
+   `com.metaobjects.object.recover.MetaObjectRecover` (module
+   `metaobjects-om`), which assembles the **full object graph** —
+   nested objects, arrays-of-objects, enum coercion, generalized
+   `@default` — reflection-free via the Phase A object model. The
+   assembled `ValueObject` graph (a `Map<String,Object>`) is then mapped
+   into the typed payload-record graph by generated `from<Payload>(Map)`
+   helpers. **This closes the nested codegen gap.**
 
-**Runtime classpath:** the generated `recover()` depends on
-`com.metaobjects:metaobjects-render` (the shared recover engine) in
-addition to Jackson. Consumers using `recover` must have it on the
-classpath — the same precedent as render handles depending on the render
-engine.
+**Choosing an overload.** Use the self-contained form for a flat
+scalar/enum payload with no `MetaDataLoader` on hand; use the
+runtime-delegating form whenever the payload has nested objects or
+arrays-of-objects (or whenever a loader is available — it is strictly
+more capable).
+
+**Runtime classpath.** The self-contained `recover(String)` needs
+`com.metaobjects:metaobjects-render` (+ Jackson for `parse`). The
+runtime-delegating `recover(MetaDataLoader, ...)` additionally needs
+`com.metaobjects:metaobjects-om` (which transitively brings `render` +
+`metadata`). This is the codegen-wrapping-runtime precedent (a generated
+DAO depending on OMDB).
 
 **Hardening TODO (minor):** `RecoverSchemaEmitter` emits string literals
 (field names, enum values, alias keys/values) without Java-string

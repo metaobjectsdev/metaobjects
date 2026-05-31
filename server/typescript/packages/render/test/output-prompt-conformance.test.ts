@@ -85,7 +85,7 @@ describe("output-prompt-conformance corpus", () => {
         .sort()
     : [];
   // Count guard: a port silently skipping cases must fail. Bump when adding cases.
-  const EXPECTED_CASE_COUNT = 10;
+  const EXPECTED_CASE_COUNT = 12;
   expect(names.length).toBe(EXPECTED_CASE_COUNT);
 
   for (const name of names) {

@@ -152,10 +152,15 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
 
                 String name = getSetterName(f);
 
+                // Honor the universal @isArray pattern: an array field's bound setter
+                // takes a List (getEffectiveValueClass() -> List.class), not the scalar
+                // element type. Scalar fields are unaffected (effective == base class).
+                Class<?> argClass = f.getEffectiveValueClass();
+
                 try {
-                    method = objClass.getMethod( name,f.getValueClass() );
+                    method = objClass.getMethod( name, argClass );
                 } catch (NoSuchMethodException e) {
-                    throw new NoSuchMethodError("No setter with a single variable exists named [" + name + "] with argument class [" + f.getValueClass().getSimpleName() + "] on object [" + objClass.getName() + "]");
+                    throw new NoSuchMethodError("No setter with a single variable exists named [" + name + "] with argument class [" + argClass.getSimpleName() + "] on object [" + objClass.getName() + "]");
                 }
 
                 f.setCacheValue(CACHE_PARAM_SETTER_METHOD + "." + objClass.getName(), method);
@@ -267,7 +272,11 @@ public abstract class AbstractObjectRepresentation extends MetaObject {
     public void setValue(MetaField f, Object obj, Object value) {
         ObjectAdapter adapter = resolveAdapter();
         if (adapter != null) { adapter.setValue(this, f, obj, value); return; }
-        value = DataConverter.toType(f.getDataType(), value);
+        // Honor the universal @isArray pattern: an array field (e.g. object.value with
+        // a field.object isArray=true) must coerce via its array-equivalent data type
+        // (OBJECT -> OBJECT_ARRAY), not the scalar base type — otherwise a multi-element
+        // List is wrongly routed through toObject() and rejected.
+        value = DataConverter.toType(f.getEffectiveDataType(), value);
         if (obj instanceof DataObjectBase) {
             if (hasSetterMethod(f, obj.getClass())) setValueWithReflection(f, obj, value);
             else ((DataObjectBase) obj)._setObjectAttribute(f.getName(), value);

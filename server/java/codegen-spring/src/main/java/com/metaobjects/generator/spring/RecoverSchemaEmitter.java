@@ -256,17 +256,24 @@ final class RecoverSchemaEmitter {
 
         // Enum fields: string-backed on the wire.
         if (field instanceof EnumField) {
-            return "RecoverMap.asString(d, \"" + name + "\")";
+            // enum-array is List<String> on the wire; scalar enum is a String.
+            return field.isArray()
+                ? "RecoverMap.asStringList(d, \"" + name + "\")"
+                : "RecoverMap.asString(d, \"" + name + "\")";
         }
 
-        // Array fields: List<String>.
+        // Nested object / array-of-objects: deferred in the self-contained path (the
+        // record component type is a nested payload or List<NestedPayload>, which the
+        // scalar RecoverMap readers can't produce). The runtime-delegating recover
+        // overload populates these — see SpringOutputParserGenerator. Emit a typed
+        // null so the generated constructor still compiles.
+        if (field instanceof ObjectField) {
+            return "null /* FR-010: nested recover deferred — use recover(loader, text) */";
+        }
+
+        // Scalar array fields: List<String>.
         if (field.isArray()) {
             return "RecoverMap.asStringList(d, \"" + name + "\")";
-        }
-
-        // Nested object: deferred.
-        if (field instanceof ObjectField) {
-            return "null /* FR-010: nested recover deferred */";
         }
 
         // Scalar types.

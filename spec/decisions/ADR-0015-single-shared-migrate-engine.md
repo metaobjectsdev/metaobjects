@@ -211,12 +211,32 @@ final step of each port's cutover. Inventory (as of 2026-05-30):
 ## Realization status
 
 - **Decided:** the strategy above.
-- **Pending (staged consolidation plan):** the **homegrown apply + journal/history runner** for
-  Postgres/SQLite (net-new — only D1/Wrangler + the harness apply today); the runner output-format
-  adapters (Flyway-prefix / two-file / single-file-divider); the `bun --compile` binary; the
-  migrate-conformance / runtime-conformance corpus split; per-port cutover onto the shared engine;
-  retiring the legacy engines. `field.uuid` / `@dbColumnType` (R6 Plan 2) implemented in the shared
-  engine + the per-port logical/codegen parts.
+- **Implemented (2026-05-30) — the schema-authority consolidation** (per the
+  `docs/superpowers/specs/2026-05-30-ts-schema-authority-consolidation-design.md` phasing): **TS is
+  the single owner of schema migrations and the single producer of the canonical conformance DDL**
+  (`fixtures/persistence-conformance/canonical/schema.postgres.sql`, drift-checked). Every port's
+  persistence-conformance **query** runner now executes that committed DDL instead of synthesizing
+  schema; the **C# migrate engine** (`MetaObjects.Codegen/Migrate` + `Schema`, the `migrate` /
+  `--from-db` CLI), the **Python** `metaobjects/migrate` engine, and the **Kotlin**
+  `ExposedMigrationEngine` migration-conformance scaffolding were **deleted**. Java's engine was
+  already gone; per **Decision 2** Java's OMDB runtime schema **auto-create** path
+  (`MetaClassDBValidatorService` + the drivers' `createTable`/`createIndex`/`createForeignKey`/
+  `createSequence` DDL) was **also removed** — OMDB is now pure data-access. Migration-conformance
+  scenarios are **TS-only**; query + api-contract conformance still run on every port. Kept per-port:
+  codegen, loader, runtime data-access (EF Core / SQLAlchemy-ObjectManager / OMDB CRUD / Exposed),
+  render, verify.
+- **Implemented (2026-05-30, merge `61b5a3b8`) — the TS schema commands** (Phase 2 of the
+  schema-authority consolidation): the **`meta verify --db` schema-drift gate** (incl. view-body drift
+  detection); **`meta migrate --apply`** for Postgres/SQLite — a **versioned** apply of pending
+  committed migration files tracked by a migration-history ledger, transactional — plus
+  **`meta migrate --rollback <target>`** (reverse-order `down.sql`); a **multi-tenant ledger**
+  (configurable schema/table) + a **Postgres session advisory lock** (folded in from the reconciliation
+  with the parallel ADR-0016 runner); and the **standalone `meta` binary** (`bun build --compile`, with
+  a `bun:sqlite` dialect). The `field.uuid` subtype + `@dbColumnType` DDL (R6 Plan 2) shipped
+  2026-05-30 (merge `16ae824a`) in all five ports.
+- **Pending (the broader shared-engine plan):** the runner **output-format adapters** (Flyway/dbmate
+  emit) for an external runner; the **`pg_try_advisory_lock` + backoff** contention refinement (the
+  shipped lock is blocking); and the **`info`/`state`/`validate`/`repair`/`baseline`** command surfaces.
 
 ## Conformance note
 

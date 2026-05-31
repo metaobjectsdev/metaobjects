@@ -76,14 +76,17 @@ public class EnumField extends PrimitiveField<String> {
     public static final String ATTR_COERCE_DEFAULT = "coerceDefault";
 
     /**
-     * Name of the optional FR-011 {@code @default} attribute (string) — the absent-fill
-     * enum member. When the field is ABSENT from the model response, tolerant recover fills
-     * this value and classifies the field {@code DEFAULTED} (which satisfies {@code required}).
-     * Distinct from the framework's {@code defaultValue} (column default). Loader-validated to
-     * be one of the field's effective {@code @values}.
-     * Cross-language vocabulary: {@code @default} in canonical JSON.
+     * Name of the optional {@code @default} attribute (string) — the absent-fill member.
+     * When the field is ABSENT from the model response, tolerant recover fills this value and
+     * classifies the field {@code DEFAULTED} (which satisfies {@code required}). Loader-validated
+     * to be one of the field's effective {@code @values}.
+     *
+     * <p>Phase B: the {@code @default} attribute is now registered on the field base
+     * ({@link MetaField#ATTR_DEFAULT}) so ANY field type may declare it; this alias preserves the
+     * FR-011 reference site. Distinct from the framework's legacy {@code @defaultValue}
+     * (column default). Cross-language vocabulary: {@code @default} in canonical JSON.</p>
      */
-    public static final String ATTR_DEFAULT = "default";
+    public static final String ATTR_DEFAULT = MetaField.ATTR_DEFAULT;
 
     /**
      * Name of the optional FR-011 {@code @normalize} attribute (closed enum
@@ -182,11 +185,10 @@ public class EnumField extends PrimitiveField<String> {
                    .ofType(StringAttribute.SUBTYPE_STRING)
                    .asSingle();
 
-                // FR-011: optional @default string — absent-fill recover member (DEFAULTED).
-                // Membership against @values is validated post-load in ValidationPhase.
-                def.optionalAttributeWithConstraints(ATTR_DEFAULT)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .asSingle();
+                // Phase B: @default (absent-fill member) is registered on the field base
+                // (MetaField.ATTR_DEFAULT) and inherited via field.base — no enum-specific
+                // registration. Enum-membership of its value is still validated post-load in
+                // ValidationPhase.
 
                 // FR-011: optional @normalize closed-enum string (none|collapse|strip, default
                 // strip). The withEnum constraint records the vocabulary; ValidationPhase also

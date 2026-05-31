@@ -1,4 +1,9 @@
-"""Parameterized: one test per query .yaml. See test_migration_scenarios.py for usage."""
+"""Parameterized: one test per query .yaml.
+
+Each scenario provisions a fresh Testcontainers Postgres, applies the committed
+TS-produced ``canonical/schema.postgres.sql`` verbatim (schema migrations are
+TS-only — ADR-0015), then runs the query DSL through the ObjectManager runtime.
+"""
 from __future__ import annotations
 
 import pytest

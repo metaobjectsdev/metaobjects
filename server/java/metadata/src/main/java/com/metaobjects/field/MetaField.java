@@ -99,6 +99,20 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
     /** Default value specification attribute - MetaField owns this concept */
     public static final String ATTR_DEFAULT_VALUE = "defaultValue";
 
+    /**
+     * The generalized {@code @default} attribute (string) — the absent-fill default for ANY
+     * field type. When the field is ABSENT from a model response, tolerant recover fills this
+     * value (coerced to the field's kind) and classifies the field {@code DEFAULTED} (which
+     * satisfies {@code required}); it is also the single source consumed by
+     * {@link com.metaobjects.object.MetaObject#setDefaultValues(Object)} at {@code newInstance}
+     * time. Generalized from FR-011's enum-only {@code @default}. Loader-validated per field
+     * type (numeric parse, boolean {@code true|false}, enum membership). Distinct from the
+     * framework's legacy {@code @defaultValue} (column default), which {@link #getDefaultValue()}
+     * still honors as a fallback for back-compat.
+     * Cross-language vocabulary: {@code @default} in canonical JSON.
+     */
+    public static final String ATTR_DEFAULT = "default";
+
     /** Default view specification attribute - MetaField owns this concept */
     public static final String ATTR_DEFAULT_VIEW = "defaultView";
 
@@ -159,6 +173,13 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
                 def.optionalAttributeWithConstraints(ATTR_EXAMPLE)
                    .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
                 def.optionalAttributeWithConstraints(ATTR_INSTRUCTION)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
+                // Phase B: generalized @default absent-fill string — optional on ANY field
+                // subtype (inherited via field.base). Per-type value validation (numeric parse,
+                // boolean true|false, enum membership) runs post-load in ValidationPhase
+                // (ERR_BAD_ATTR_VALUE). Generalized from FR-011's enum-only @default.
+                def.optionalAttributeWithConstraints(ATTR_DEFAULT)
                    .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             });
 
@@ -254,7 +275,14 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
 
         if ( defaultValue == null && !lookedForDefault ) {
 
-            if (hasMetaAttr(MetaField.ATTR_DEFAULT_VALUE)) {
+            // Phase B unification: the generalized @default (MetaField.ATTR_DEFAULT) is the
+            // single absent-fill default source shared by tolerant recover and newInstance-time
+            // population (MetaObject.setDefaultValues). It is preferred; the legacy @defaultValue
+            // (column default) remains a fallback for back-compat.
+            if (hasMetaAttr(MetaField.ATTR_DEFAULT)) {
+                Object o = getMetaAttr(MetaField.ATTR_DEFAULT).getValue();
+                defaultValue = convertDefaultValue(o);
+            } else if (hasMetaAttr(MetaField.ATTR_DEFAULT_VALUE)) {
                 Object o = getMetaAttr(MetaField.ATTR_DEFAULT_VALUE).getValue();
                 defaultValue = convertDefaultValue(o);
             }

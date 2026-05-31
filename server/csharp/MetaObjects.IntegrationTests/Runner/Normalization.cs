@@ -43,16 +43,18 @@ public static class Normalization
         decimal dec => CanonicalDecimal(dec),
         // A jsonb/json column is read-as-string by Npgsql. Re-serialize with sorted
         // keys per the cross-port contract (normalization.md: JSON/JSONB → sorted
-        // keys). Scalar leaves are stringified so the shape matches the expect: block
-        // (YAML scalars deserialize as strings) and the corpus's string-scalar
-        // philosophy (BIGINT/NUMERIC as strings). A plain text value that does not
-        // parse as a JSON object/array stays a string.
-        string js when TryParseJsonContainer(js, out var node) => StringifyLeaves(SortKeys(node!)),
+        // keys), recursing through containers and normalizing each scalar leaf by its
+        // JSON type. Leaves keep their JSON-native shape (matching the TS authority,
+        // whose parsed-jsonb leaves stay JS numbers/booleans): integer numbers stay
+        // JSON numbers, non-integer numbers become canonical plain-decimal strings,
+        // strings/bools/null pass through. A plain text value that does not parse as a
+        // JSON object/array stays a string.
+        string js when TryParseJsonContainer(js, out var node) => NormalizeJsonContainer(node!),
         // Strings already canonical.
         string str => str,
         // Date/time discriminated by source CLR type.
         DateOnly date => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-        TimeOnly time => time.ToString("HH:mm:ss.fffffff", CultureInfo.InvariantCulture),
+        TimeOnly time => FormatTimeOnly(time),
         DateTime dt => FormatDateTime(dt),
         DateTimeOffset dto => dto.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffK", CultureInfo.InvariantCulture)
                                             .TrimEnd('0').TrimEnd('.') + "Z",
@@ -104,15 +106,34 @@ public static class Normalization
         return s;
     }
 
-    // TIMESTAMP (no TZ) → "YYYY-MM-DDTHH:MM:SS[.fff]" with no trailing zeros and no Z.
-    // TIMESTAMPTZ comes via DateTimeOffset above and gets a Z; the bare DateTime
-    // branch never appends one.
+    // TIMESTAMP vs TIMESTAMPTZ are BOTH surfaced by Npgsql/EF as `DateTime`; the
+    // discriminator is DateTimeKind (Npgsql 6+/EF Core contract):
+    //   * `timestamp with time zone`    → DateTimeKind.Utc, value already in UTC
+    //                                      → "YYYY-MM-DDTHH:MM:SS[.fff]Z".
+    //   * `timestamp` (no tz)            → DateTimeKind.Unspecified, wall-clock value
+    //                                      → "YYYY-MM-DDTHH:MM:SS[.fff]" (no Z).
+    // This mirrors the TS port's OID-keyed temporal parsers (canonicalTimestamptz
+    // converts any offset to UTC + appends Z; canonicalTimestamp passes the wall
+    // clock through with no Z) — see fixtures/persistence-conformance/normalization.md
+    // and the TS temporal-parsers.ts. A non-UTC-seeded TIMESTAMPTZ thus reads back
+    // as its UTC equivalent, proving normalization (not just formatting).
     private static string FormatDateTime(DateTime dt)
     {
-        var withSubseconds = dt.ToString("yyyy-MM-ddTHH:mm:ss.fffffff", CultureInfo.InvariantCulture);
-        // Trim trailing zeros in the subsecond fraction, then trim the decimal point
-        // if the subsecond portion was entirely zero.
-        var s = withSubseconds.TrimEnd('0');
+        var s = TrimSubseconds(dt.ToString("yyyy-MM-ddTHH:mm:ss.fffffff", CultureInfo.InvariantCulture));
+        return dt.Kind == DateTimeKind.Utc ? s + "Z" : s;
+    }
+
+    // TIME → "HH:MM:SS[.fff]" with trailing zero subseconds (and a bare decimal
+    // point) stripped. Phase B seeds whole seconds, so this yields "HH:MM:SS".
+    private static string FormatTimeOnly(TimeOnly time) =>
+        TrimSubseconds(time.ToString("HH:mm:ss.fffffff", CultureInfo.InvariantCulture));
+
+    // Strip trailing zeros from a subsecond fraction, then drop the decimal point
+    // if the subsecond portion was entirely zero.
+    private static string TrimSubseconds(string formatted)
+    {
+        if (!formatted.Contains('.')) return formatted;
+        var s = formatted.TrimEnd('0');
         if (s.EndsWith('.')) s = s[..^1];
         return s;
     }
@@ -151,30 +172,46 @@ public static class Normalization
         catch (JsonException) { return false; }
     }
 
-    // Coerce every scalar leaf to its string form (numbers/bools → string), preserving
-    // object/array structure. Matches the expect: block, whose YAML scalars deserialize
-    // as strings, and the corpus's string-scalar normalization philosophy.
-    private static JsonNode StringifyLeaves(JsonNode node)
+    // Normalize a parsed jsonb container: sort object keys recursively and normalize
+    // each scalar leaf by its JSON type, mirroring the TS authority's recursion over
+    // parsed jsonb (normalizeValue): integer numbers stay JSON numbers, non-integer
+    // numbers become canonical plain-decimal strings (no trailing zeros), and
+    // strings/bools/null pass through unchanged. Object/array structure is preserved.
+    private static JsonNode? NormalizeJsonContainer(JsonNode node)
     {
         switch (node)
         {
             case JsonObject obj:
                 var o = new JsonObject();
-                foreach (var (k, v) in obj) o[k] = v is null ? null : StringifyLeaves(v.DeepClone());
+                foreach (var (k, v) in obj.OrderBy(p => p.Key, StringComparer.Ordinal))
+                    o[k] = v is null ? null : NormalizeJsonContainer(v.DeepClone());
                 return o;
             case JsonArray arr:
                 var a = new JsonArray();
-                foreach (var item in arr) a.Add(item is null ? null : StringifyLeaves(item.DeepClone()));
+                foreach (var item in arr) a.Add(item is null ? null : NormalizeJsonContainer(item.DeepClone()));
                 return a;
             default:
-                // JsonValue scalar → its canonical string form. Parse (not Trim('"'))
-                // so a string leaf containing embedded quotes/escapes round-trips
-                // losslessly: take the raw string value for JSON strings, and the
-                // serialized form for non-string scalars (numbers/bools/null).
-                return JsonValue.Create(node.GetValueKind() == JsonValueKind.String
-                    ? node.GetValue<string>()
-                    : node.ToJsonString());
+                return NormalizeJsonLeaf(node);
         }
+    }
+
+    private static JsonNode? NormalizeJsonLeaf(JsonNode node) => node.GetValueKind() switch
+    {
+        JsonValueKind.String  => JsonValue.Create(node.GetValue<string>()),
+        JsonValueKind.True    => JsonValue.Create(true),
+        JsonValueKind.False   => JsonValue.Create(false),
+        JsonValueKind.Null    => null,
+        // Numbers: an integer-valued number stays a JSON number (INTEGER → number per
+        // the contract); a non-integer becomes the canonical plain-decimal string.
+        JsonValueKind.Number  => NormalizeJsonNumber(node),
+        _                     => node.DeepClone(),
+    };
+
+    private static JsonNode NormalizeJsonNumber(JsonNode node)
+    {
+        var element = node.GetValue<System.Text.Json.JsonElement>();
+        if (element.TryGetInt64(out var l)) return JsonValue.Create(l);
+        return JsonValue.Create(CanonicalFloat(element.GetDouble()));
     }
 
     /// <summary>

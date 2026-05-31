@@ -23,6 +23,11 @@ const NUMERIC_KINDS: ReadonlySet<FieldKind> = new Set<FieldKind>([
   FieldKind.BOOLEAN,
 ]);
 
+const INDENT = "  ";
+const MAX_NEST_DEPTH = 8;
+
+type SkelMode = "example" | "inline";
+
 // The render engine OWNS format-keyed escaping; Format ("JSON"/"XML") maps to the
 // lowercase ESCAPERS keys.
 const escapeXml = (s: string): string => ESCAPERS.xml(s);
@@ -48,24 +53,8 @@ export function renderOutputFormat(spec: OutputFormatSpec, overrides: PromptOver
 
 function renderInline(spec: OutputFormatSpec, overrides: PromptOverrides): string {
   return spec.format === Format.XML
-    ? renderXmlInline(spec, overrides)
-    : renderJsonInline(spec, overrides);
-}
-
-function renderXmlInline(spec: OutputFormatSpec, overrides: PromptOverrides): string {
-  const lines = spec.fields.map((field) => {
-    const escaped = escapeXml(inlineContent(field, overrides));
-    return `  <${field.name}>${escaped}</${field.name}>\n`;
-  });
-  return `<${spec.rootName}>\n${lines.join("")}</${spec.rootName}>`;
-}
-
-function renderJsonInline(spec: OutputFormatSpec, overrides: PromptOverrides): string {
-  const lines = spec.fields.map(
-    (field) => `  "${field.name}": "${escapeJson(inlineContent(field, overrides))}"`,
-  );
-  // Empty object is `{\n}` (Java/C# parity), not `{\n\n}` from join("") on no lines.
-  return spec.fields.length === 0 ? "{\n}" : `{\n${lines.join(",\n")}\n}`;
+    ? renderXmlSkeleton(spec, overrides, "inline")
+    : renderJsonSkeleton(spec, overrides, "inline");
 }
 
 function inlineContent(field: PromptField, overrides: PromptOverrides): string {
@@ -90,33 +79,49 @@ function resolveInstruction(field: PromptField, overrides: PromptOverrides): str
 
 function renderGuide(spec: OutputFormatSpec, overrides: PromptOverrides): string {
   let sb = "Fill in each field as described below:\n";
-  for (const field of spec.fields) {
-    const req = field.required ? "required" : "optional";
-    sb += `- ${field.name} (${req})`;
-    const instruction = resolveInstruction(field, overrides);
-    if (instruction != null) {
-      sb += `: ${instruction}`;
-    }
-    sb += "\n";
-    if (field.kind === FieldKind.ENUM && field.enumValues != null && field.enumValues.length > 0) {
-      sb += `    one of ${field.enumValues.join(", ")}\n`;
-      const enumDoc = field.enumDoc;
-      if (enumDoc != null) {
-        for (const val of field.enumValues) {
-          const doc = enumDoc[val];
-          if (doc != null) {
-            sb += `      ${val} = ${doc}\n`;
-          }
-        }
-      }
-    }
-    const eg = exampleValueIfDeclared(field, overrides);
-    if (eg != null) {
-      sb += `    e.g. ${eg}\n`;
-    }
-  }
+  sb += guideFields(spec, overrides, "", new Set<OutputFormatSpec>([spec]), 0);
   sb += "\nRespond exactly like this:\n";
   sb += renderExampleOnly(spec, overrides);
+  return sb;
+}
+
+function guideFields(
+  spec: OutputFormatSpec, overrides: PromptOverrides, prefix: string,
+  path: Set<OutputFormatSpec>, depth: number,
+): string {
+  let sb = "";
+  for (const field of spec.fields) {
+    const displayName = prefix + field.name;
+    sb += guideEntry(field, overrides, displayName);
+    if (canExpand(field, path, depth)) {
+      const nested = field.nested!;
+      const childPrefix = field.array ? `${displayName}[].` : `${displayName}.`;
+      path.add(nested);
+      sb += guideFields(nested, overrides, childPrefix, path, depth + 1);
+      path.delete(nested);
+    }
+  }
+  return sb;
+}
+
+function guideEntry(field: PromptField, overrides: PromptOverrides, displayName: string): string {
+  const req = field.required ? "required" : "optional";
+  let sb = `- ${displayName} (${req})`;
+  const instruction = resolveInstruction(field, overrides);
+  if (instruction != null) sb += `: ${instruction}`;
+  sb += "\n";
+  if (field.kind === FieldKind.ENUM && field.enumValues != null && field.enumValues.length > 0) {
+    sb += `    one of ${field.enumValues.join(", ")}\n`;
+    const enumDoc = field.enumDoc;
+    if (enumDoc != null) {
+      for (const val of field.enumValues) {
+        const doc = enumDoc[val];
+        if (doc != null) sb += `      ${val} = ${doc}\n`;
+      }
+    }
+  }
+  const eg = exampleValueIfDeclared(field, overrides);
+  if (eg != null) sb += `    e.g. ${eg}\n`;
   return sb;
 }
 
@@ -124,29 +129,103 @@ function renderGuide(spec: OutputFormatSpec, overrides: PromptOverrides): string
 
 function renderExampleOnly(spec: OutputFormatSpec, overrides: PromptOverrides): string {
   return spec.format === Format.XML
-    ? renderXmlSkeleton(spec, overrides)
-    : renderJsonSkeleton(spec, overrides);
+    ? renderXmlSkeleton(spec, overrides, "example")
+    : renderJsonSkeleton(spec, overrides, "example");
 }
 
-function renderXmlSkeleton(spec: OutputFormatSpec, overrides: PromptOverrides): string {
-  const lines = spec.fields.map((field) => {
-    const escaped = escapeXml(exampleValue(field, overrides));
-    return `  <${field.name}>${escaped}</${field.name}>\n`;
-  });
-  return `<${spec.rootName}>\n${lines.join("")}</${spec.rootName}>`;
+// ---- JSON skeleton (recursive) ---------------------------------------------
+
+function renderJsonSkeleton(spec: OutputFormatSpec, overrides: PromptOverrides, mode: SkelMode): string {
+  return jsonObject(spec, overrides, "", mode, new Set<OutputFormatSpec>([spec]), 0);
 }
 
-function renderJsonSkeleton(spec: OutputFormatSpec, overrides: PromptOverrides): string {
-  // NOTE: FieldKind.OBJECT / nested fields are not expanded here — they render as
-  // a "{fieldName}" placeholder. Nested-object expansion is a bounded deferral
-  // (mirrors Java/C#).
-  const lines = spec.fields.map((field) => {
-    const value = exampleValue(field, overrides);
-    const rendered = isNumericOrBoolean(field.kind, value) ? value : `"${escapeJson(value)}"`;
-    return `  "${field.name}": ${rendered}`;
-  });
-  // Empty object is `{\n}` (Java/C# parity), not `{\n\n}` from join("") on no lines.
-  return spec.fields.length === 0 ? "{\n}" : `{\n${lines.join(",\n")}\n}`;
+function jsonObject(
+  spec: OutputFormatSpec, overrides: PromptOverrides, braceIndent: string,
+  mode: SkelMode, path: Set<OutputFormatSpec>, depth: number,
+): string {
+  if (spec.fields.length === 0) return `{\n${braceIndent}}`;
+  const fieldIndent = braceIndent + INDENT;
+  const lines = spec.fields.map(
+    (field) => `${fieldIndent}"${field.name}": ${jsonValue(field, overrides, fieldIndent, mode, path, depth)}`,
+  );
+  return `{\n${lines.join(",\n")}\n${braceIndent}}`;
+}
+
+function jsonValue(
+  field: PromptField, overrides: PromptOverrides, indent: string,
+  mode: SkelMode, path: Set<OutputFormatSpec>, depth: number,
+): string {
+  if (field.array) return jsonArray(field, overrides, indent, mode, path, depth);
+  if (field.kind === FieldKind.OBJECT) return jsonObjectField(field, overrides, indent, mode, path, depth);
+  return jsonLeaf(field, overrides, mode);
+}
+
+function jsonLeaf(field: PromptField, overrides: PromptOverrides, mode: SkelMode): string {
+  if (mode === "inline") return `"${escapeJson(inlineContent(field, overrides))}"`;
+  const value = exampleValue(field, overrides);
+  return isNumericOrBoolean(field.kind, value) ? value : `"${escapeJson(value)}"`;
+}
+
+function canExpand(field: PromptField, path: Set<OutputFormatSpec>, depth: number): boolean {
+  return field.kind === FieldKind.OBJECT && field.nested != null
+    && depth < MAX_NEST_DEPTH && !path.has(field.nested);
+}
+
+function jsonObjectField(
+  field: PromptField, overrides: PromptOverrides, indent: string,
+  mode: SkelMode, path: Set<OutputFormatSpec>, depth: number,
+): string {
+  if (!canExpand(field, path, depth)) return jsonLeaf(field, overrides, mode);
+  const nested = field.nested!;
+  path.add(nested);
+  const out = jsonObject(nested, overrides, indent, mode, path, depth + 1);
+  path.delete(nested);
+  return out;
+}
+
+function jsonArray(
+  field: PromptField, overrides: PromptOverrides, indent: string,
+  mode: SkelMode, path: Set<OutputFormatSpec>, depth: number,
+): string {
+  const elemIndent = indent + INDENT;
+  let elem: string;
+  if (canExpand(field, path, depth)) {
+    const nested = field.nested!;
+    path.add(nested);
+    elem = jsonObject(nested, overrides, elemIndent, mode, path, depth + 1);
+    path.delete(nested);
+  } else {
+    elem = jsonLeaf(field, overrides, mode);
+  }
+  return `[\n${elemIndent}${elem}\n${indent}]`;
+}
+
+// ---- XML skeleton (recursive) ----------------------------------------------
+
+function renderXmlSkeleton(spec: OutputFormatSpec, overrides: PromptOverrides, mode: SkelMode): string {
+  return `<${spec.rootName}>\n${xmlBody(spec, overrides, INDENT, mode, new Set<OutputFormatSpec>([spec]), 0)}</${spec.rootName}>`;
+}
+
+function xmlBody(
+  spec: OutputFormatSpec, overrides: PromptOverrides, indent: string,
+  mode: SkelMode, path: Set<OutputFormatSpec>, depth: number,
+): string {
+  return spec.fields.map((field) => xmlField(field, overrides, indent, mode, path, depth)).join("");
+}
+
+function xmlField(
+  field: PromptField, overrides: PromptOverrides, indent: string,
+  mode: SkelMode, path: Set<OutputFormatSpec>, depth: number,
+): string {
+  if (canExpand(field, path, depth)) {
+    const nested = field.nested!;
+    path.add(nested);
+    const body = xmlBody(nested, overrides, indent + INDENT, mode, path, depth + 1);
+    path.delete(nested);
+    return `${indent}<${field.name}>\n${body}${indent}</${field.name}>\n`;
+  }
+  const content = mode === "inline" ? inlineContent(field, overrides) : exampleValue(field, overrides);
+  return `${indent}<${field.name}>${escapeXml(content)}</${field.name}>\n`;
 }
 
 function exampleValueIfDeclared(field: PromptField, overrides: PromptOverrides): string | null {

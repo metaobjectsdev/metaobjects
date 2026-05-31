@@ -9,6 +9,8 @@ import java.sql.Timestamp
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Base64
 import java.util.TreeMap
@@ -23,7 +25,12 @@ import java.util.UUID
 object Normalization {
 
     private val mapper: ObjectMapper = ObjectMapper().configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
+    // Fixed-width whole-second formatters — java.time's own toString() ELIDES a zero
+    // seconds field (LocalTime(14,30) → "14:30", not "14:30:00"), which would diverge
+    // from the canonical "HH:MM:SS" / "YYYY-MM-DDTHH:MM:SS" wire forms. Phase B seeds
+    // whole-second temporal values only, so no fractional component is emitted.
     private val timestampFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
+    private val timeFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
 
     fun normalizeRow(row: Map<String, Any?>): Map<String, Any?> {
         val out = TreeMap<String, Any?>()
@@ -44,9 +51,17 @@ object Normalization {
         is BigDecimal -> canonicalDecimal(v)
         is UUID -> v.toString().lowercase()
         is ByteArray -> Base64.getEncoder().encodeToString(v)
+        // DATE → "YYYY-MM-DD"; LocalDate.toString() is already this exact form.
         is LocalDate -> v.toString()
-        is LocalTime -> v.toString()
-        is Time -> v.toLocalTime().toString()
+        // TIME → "HH:MM:SS" (whole seconds); fixed formatter so a zero-seconds value
+        // renders "14:30:00", not java.time's elided "14:30".
+        is LocalTime -> v.format(timeFmt)
+        is Time -> v.toLocalTime().format(timeFmt)
+        // TIMESTAMPTZ → UTC instant + "Z" suffix. The runner surfaces tz-aware columns as
+        // OffsetDateTime (NOT collapsed to LocalDateTime), so the zone discriminator survives:
+        // re-anchor to UTC and append "Z". A plain TIMESTAMP arrives as Timestamp/LocalDateTime
+        // and renders with NO Z (the branches below). This mirrors the Java reference runner.
+        is OffsetDateTime -> v.withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime().format(timestampFmt) + "Z"
         is Timestamp -> v.toLocalDateTime().format(timestampFmt)
         is LocalDateTime -> v.format(timestampFmt)
         is java.sql.Date -> v.toLocalDate().toString()

@@ -48,6 +48,7 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	// Source-v2 ADR-0007: table/view names come from source.rdb @table (via
 	// MetaObject.getPrimaryRdbTableName() / .getPrimaryRdbViewName()), not
 	// from object-level @dbTable / @dbView (dropped in Stage 2).
+	public final static String VIEW_SQL_REF = "dbViewSQL";
 	public final static String COL_REF      = "column";
 	public final static String SEQ_REF      = "dbSequence";
 	public final static String SEQ_START_REF   = "dbSeqStart";
@@ -147,11 +148,15 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	/** Get the table mapping */
 	protected ObjectMapping getViewMapping( MetaObject mc ) {
 
-		// Create the view definition. The view name comes from source.rdb @table
-		// (@kind=view); OMDB reads from a view that already exists in the database
-		// (created by the migrate toolchain) — it does not synthesize view DDL.
+		// Create the view definition
 		ViewDef v = new ViewDef( NameDef.parseName( getViewRef( mc )));
-
+		
+		// Add the SQL if it exists
+		String sql = getViewSQL( mc );
+		if ( sql != null ) {
+			v.setSQL( sql );
+		}
+		
 		// Create the mapping
 		ObjectMappingDB mapping = new ObjectMappingDB( v );
 		
@@ -506,6 +511,17 @@ public class SimpleMappingHandlerDB implements MappingHandler {
     protected String getViewRef( MetaObject mc )
     {
       return mc.getPrimaryRdbViewName();
+    }
+
+	/**
+     * Retrieves the SQL generation for the view
+     *
+     * @return Returns the SQL to create the view
+     * @throws MetaDataException An exception is thrown if the object is not persistable
+     */
+    protected String getViewSQL( MetaObject mc )
+    {
+      return getPersistenceAttribute( mc, VIEW_SQL_REF );
     }
 
     /**

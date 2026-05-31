@@ -19,7 +19,6 @@ import com.metaobjects.manager.QueryOptions;
 import com.metaobjects.manager.db.ObjectManagerDB;
 import com.metaobjects.manager.db.ObjectMapping;
 import com.metaobjects.manager.db.ObjectMappingDB;
-import com.metaobjects.manager.db.validator.MetaClassDBValidatorService;
 import com.metaobjects.manager.exp.Range;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.MetaDataLoaderRegistry;
@@ -88,11 +87,10 @@ public class SelectAssemblyRangeTest {
         m.init();
         omdb = m;
 
-        MetaClassDBValidatorService vs = new MetaClassDBValidatorService();
-        vs.setObjectManager(omdb);
-        vs.setAutoCreate(true);
-        vs.setMetaDataLoaderRegistry(registry);
-        vs.init();
+        // No schema needed: this test only assembles a SELECT statement string
+        // (against a capturing stub Connection) from the read MAPPING, which is
+        // derived from metadata — it never executes SQL against a live table. So
+        // there is nothing to bootstrap now that runtime auto-create is removed.
     }
 
     private static Connection derbyConnection() throws SQLException {

@@ -7,11 +7,16 @@ runtime does the lowercasing, never the database.
 """
 from __future__ import annotations
 
+import datetime as _datetime
 import uuid as _uuid
 
 from metaobjects.runtime.object_manager import (
     _PG_OID_BIGINT,
+    _PG_OID_DATE,
     _PG_OID_NUMERIC,
+    _PG_OID_TIME,
+    _PG_OID_TIMESTAMP,
+    _PG_OID_TIMESTAMPTZ,
     _PG_OID_UUID,
     _coerce_for_contract,
 )
@@ -66,3 +71,45 @@ def test_bigint_and_numeric_still_coerced() -> None:
 
     assert _coerce_for_contract(42, _PG_OID_BIGINT) == "42"
     assert _coerce_for_contract(decimal.Decimal("1.2300"), _PG_OID_NUMERIC) == "1.23"
+
+
+# --- Temporal wire contract (Phase B Unit 4) --------------------------------
+#
+# The OID — not the python value type — discriminates TIMESTAMP from TIMESTAMPTZ
+# (pg8000 returns datetimes that differ only by tzinfo). These feed
+# _coerce_for_contract directly (no DB) so the assertion proves the PORT pins the
+# wire form: TIMESTAMPTZ → UTC + "Z", TIMESTAMP → no Z, DATE/TIME → ISO.
+
+
+def test_timestamptz_non_utc_offset_reads_back_as_utc_z() -> None:
+    # A NON-UTC-offset instant must normalize to its UTC equivalent + "Z" —
+    # proving normalization, not just formatting. 09:30-05:00 == 14:30Z.
+    val = _datetime.datetime(
+        2026, 5, 31, 9, 30, 0,
+        tzinfo=_datetime.timezone(-_datetime.timedelta(hours=5)),
+    )
+    assert _coerce_for_contract(val, _PG_OID_TIMESTAMPTZ) == "2026-05-31T14:30:00Z"
+
+
+def test_timestamptz_utc_instant_keeps_z() -> None:
+    val = _datetime.datetime(2026, 5, 31, 14, 30, 0, tzinfo=_datetime.timezone.utc)
+    assert _coerce_for_contract(val, _PG_OID_TIMESTAMPTZ) == "2026-05-31T14:30:00Z"
+
+
+def test_plain_timestamp_naive_has_no_z() -> None:
+    # pg8000 returns a naive datetime for plain TIMESTAMP; the wall clock passes
+    # through with NO Z (the Z suffix is the TIMESTAMPTZ discriminator).
+    val = _datetime.datetime(2026, 5, 31, 14, 30, 0)
+    assert _coerce_for_contract(val, _PG_OID_TIMESTAMP) == "2026-05-31T14:30:00"
+
+
+def test_date_coerced_to_iso_date() -> None:
+    assert _coerce_for_contract(_datetime.date(2026, 5, 31), _PG_OID_DATE) == "2026-05-31"
+
+
+def test_time_coerced_to_whole_second_hms() -> None:
+    assert _coerce_for_contract(_datetime.time(14, 30, 0), _PG_OID_TIME) == "14:30:00"
+
+
+def test_temporal_none_passthrough() -> None:
+    assert _coerce_for_contract(None, _PG_OID_TIMESTAMPTZ) is None

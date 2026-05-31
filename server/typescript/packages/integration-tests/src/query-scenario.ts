@@ -1,46 +1,71 @@
 // query-scenario.ts — execute a QueryScenario end-to-end:
-//   1. Apply the canonical schema — tables + views via the migrate-ts engine.
+//   1. Provision the schema by executing the committed canonical schema DDL
+//      (fixtures/persistence-conformance/canonical/schema.postgres.sql).
 //   2. Execute seed-data SQL.
 //   3. For each QuerySpec: translate to ObjectManager call, normalize, compare.
 //
+// TS no longer synthesizes the query-scenario schema from metadata — it is the
+// single PRODUCER of one committed DDL artifact (drift-checked by
+// schema-artifact.test.ts) that every port executes verbatim. See
+// docs/superpowers/specs/2026-05-30-ts-schema-authority-consolidation-design.md.
+//
 // COMMENT ON / enum CHECK are still C#-only (TS migrate-ts doesn't emit them).
-// None of the current query scenarios depend on those, so the runner skips them.
+// None of the current query scenarios depend on those, so the artifact omits them.
 
-import { type MetaRoot } from "@metaobjectsdev/metadata";
-import { buildExpectedSchema, diff, emit } from "@metaobjectsdev/migrate-ts";
 import { ObjectManager, type Filter } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 
+import {
+  CANONICAL_COLUMN_NAMING,
+  readCanonicalSchemaSql,
+} from "./canonical-schema.ts";
 import { loadMetadataDir } from "./load-metadata.ts";
 import { canonicalJson, normalizeRow } from "./normalization.ts";
 import { executeSql } from "./postgres-sql.ts";
 import type { QueryScenario, QuerySpec } from "./scenario.ts";
+import { registerTemporalParsers } from "./temporal-parsers.ts";
+
+// node-postgres type parsers are process-global; register the canonical
+// temporal parsers once at module load so every pg-backed read (Kysely
+// included) returns the wire forms pinned in normalization.md.
+registerTemporalParsers();
 
 export async function runQueryScenario(
   scenario: QueryScenario,
   connectionUri: string,
   canonicalDir: string,
 ): Promise<void> {
-  // 1. Apply the canonical schema — tables AND views, both via the engine pipeline.
+  // 1. Provision the schema from the committed canonical DDL — the single
+  //    TS-produced artifact every port executes. (No per-scenario synthesis.)
+  await executeSql(connectionUri, readCanonicalSchemaSql());
+
+  // The ObjectManager still needs the loaded metadata to map entities → rows.
   const root = await loadMetadataDir(canonicalDir);
-  await applyCanonicalSchema(connectionUri, root);
 
   // 2. Seed data.
   if (scenario.seedData && scenario.seedData.trim().length > 0)
     await executeSql(connectionUri, scenario.seedData);
 
   // Kysely owns its pool exclusively (see migration-scenario.ts for why).
+  // Pin the session timezone to UTC so TIMESTAMPTZ wire text always renders a
+  // `+00` offset; canonicalTimestamptz converts any offset to UTC regardless,
+  // but UTC sessions keep the read deterministic across host timezones.
   const kysely = new Kysely<Record<string, never>>({
-    dialect: new PostgresDialect({ pool: new Pool({ connectionString: connectionUri }) }),
+    dialect: new PostgresDialect({
+      pool: new Pool({ connectionString: connectionUri, options: "-c timezone=UTC" }),
+    }),
   });
   try {
     // kyselyDriver wants Kysely<Record<string, Row>>; the actual row types are
     // resolved per-query so the placeholder generic is harmless.
     const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });
-    // See migration-scenario.ts for why both runners pin "literal".
-    const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: "literal" });
+    // Runtime column-naming MUST match what the committed schema artifact was
+    // generated with (CANONICAL_COLUMN_NAMING), or the ObjectManager addresses
+    // columns the schema doesn't have. See migration-scenario.ts for why both
+    // runners pin "literal".
+    const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: CANONICAL_COLUMN_NAMING });
 
     for (const spec of scenario.queries) {
       const actual = await execute(om, spec);
@@ -49,16 +74,6 @@ export async function runQueryScenario(
   } finally {
     await kysely.destroy();
   }
-}
-
-// ---------------------------------------------------------------------------
-// Schema bootstrap
-// ---------------------------------------------------------------------------
-
-async function applyCanonicalSchema(connectionUri: string, root: MetaRoot): Promise<void> {
-  const expected = buildExpectedSchema(root, { columnNamingStrategy: "literal" });
-  const r = await diff({ expected, actual: { tables: [], views: [] } });
-  await executeSql(connectionUri, emit(r.changes, { dialect: "postgres" }).up);
 }
 
 // ---------------------------------------------------------------------------

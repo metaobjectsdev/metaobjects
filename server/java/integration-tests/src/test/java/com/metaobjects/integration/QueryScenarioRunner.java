@@ -6,18 +6,19 @@ import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.db.ObjectManagerDB;
 import com.metaobjects.manager.db.driver.PostgresDriver;
-import com.metaobjects.manager.db.validator.MetaClassDBValidatorService;
 import com.metaobjects.object.MetaObject;
-import com.metaobjects.registry.MetaDataLoaderRegistry;
-import com.metaobjects.registry.ServiceRegistryFactory;
 
 import javax.sql.DataSource;
 import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -26,12 +27,14 @@ import java.util.logging.Logger;
 /**
  * Mirrors C# QueryScenarioRunner / TS query-scenario.ts. End-to-end:
  *
- *   1. Apply the canonical schema via the runtime auto-create path
- *      ({@link MetaClassDBValidatorService} with {@code autoCreate=true},
- *      which issues the drivers' legacy {@code createTable}/{@code createIndex}/
- *      {@code createForeignKey}/{@code createSequence} DDL). Schema migrations
- *      (diff-and-converge) are owned by the TS toolchain; the Java port only
- *      retains runtime auto-create for test/dev schema bootstrap.
+ *   1. Provision the schema by executing the committed canonical DDL
+ *      ({@code fixtures/persistence-conformance/canonical/schema.postgres.sql})
+ *      verbatim on a direct JDBC connection. Schema authority is the
+ *      TS-produced artifact (ADR-0015); the Java port no longer derives the
+ *      conformance schema from metadata at test time. The committed DDL is the
+ *      sole schema source — OMDB's runtime auto-create is NOT engaged here, so
+ *      this exercises OMDB's native uuid/jsonb/timestamptz runtime read against
+ *      a TS-authored schema.
  *   2. Execute the scenario's seed-data SQL.
  *   3. For each {@link QuerySpec}: translate via {@link ObjectManagerDbAdapter}
  *      → {@link ObjectManagerDB#getObjects} / {@code getObjectsCount},
@@ -45,18 +48,14 @@ public final class QueryScenarioRunner {
         // from a previous scenario doesn't leak across containers.
         String tag = "canonical-" + UUID.randomUUID().toString().substring(0, 8);
         MetaDataLoader loader = MetaDataLoader.fromDirectory(tag, canonicalDir);
-        MetaDataLoaderRegistry registry = new MetaDataLoaderRegistry(ServiceRegistryFactory.getDefault());
-        registry.registerLoader(loader);
 
         ObjectManagerDB omdb = newOmdb(pg);
 
-        // 1. Apply canonical schema via the runtime auto-create path (the
-        //    drivers' legacy createTable/createIndex/createForeignKey DDL).
-        MetaClassDBValidatorService validator = new MetaClassDBValidatorService();
-        validator.setObjectManager(omdb);
-        validator.setAutoCreate(true);
-        validator.setMetaDataLoaderRegistry(registry);
-        validator.init();
+        // 1. Provision the schema by executing the committed canonical DDL
+        //    verbatim — the TS-produced artifact is the sole schema source
+        //    (ADR-0015). OMDB's runtime auto-create is intentionally NOT engaged.
+        String schemaDdl = ScenarioLoader.readCanonicalSchema(canonicalDir.getParent());
+        try (Connection c = openConnection(pg)) { executeSql(c, schemaDdl); }
 
         // 2. Seed data.
         if (scenario.seedData() != null && !scenario.seedData().isBlank()) {
@@ -65,18 +64,52 @@ public final class QueryScenarioRunner {
 
         // 3. Run queries.
         ObjectConnection oc = omdb.getConnection();
+        // Per-entity actual SQL column types, probed once from the catalog. OMDB
+        // collapses a column to its field-subtype Java type (losing INTEGER vs
+        // BIGINT), but the canonical wire shape is driven by the real column type
+        // — see ObjectManagerDbAdapter.coerceWireType.
+        Map<MetaObject, Map<String, Integer>> columnTypeCache = new HashMap<>();
         try {
             for (QuerySpec spec : scenario.queries()) {
                 MetaObject mc = findEntityByShortName(loader, spec.entity());
                 if (mc == null) throw new AssertionError(
                     scenario.sourcePath() + " / " + spec.name() +
                     ": no MetaObject named '" + spec.entity() + "' in canonical loader");
-                Object actual = ObjectManagerDbAdapter.execute(omdb, oc, mc, spec);
+                Map<String, Integer> columnSqlTypes = columnTypeCache.computeIfAbsent(
+                    mc, m -> probeColumnSqlTypes(pg, m));
+                Object actual = ObjectManagerDbAdapter.execute(omdb, oc, mc, spec, columnSqlTypes);
                 assertResult(scenario.sourcePath(), spec, actual);
             }
         } finally {
             omdb.releaseConnection(oc);
         }
+    }
+
+    /**
+     * Probe the actual JDBC column type ({@link java.sql.Types}) of each column on
+     * the entity's primary physical relation (table or view), keyed by column name.
+     * The corpus declares no {@code @column} renames, so a column name equals its
+     * {@code field.*} name; {@link ObjectManagerDbAdapter} keys the result by field
+     * name. A {@code SELECT * ... WHERE 1=0} returns no rows but a fully-typed
+     * {@link ResultSetMetaData}. Returns an empty map for a non-persistent object.
+     */
+    private static Map<String, Integer> probeColumnSqlTypes(PostgresContainer pg, MetaObject mc) {
+        String relation = mc.getPrimaryRdbViewName();
+        if (relation == null) relation = mc.getPrimaryRdbTableName();
+        if (relation == null) return Map.of();
+        Map<String, Integer> types = new LinkedHashMap<>();
+        String sql = "SELECT * FROM \"" + relation + "\" WHERE 1=0";
+        try (Connection c = openConnection(pg);
+             Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery(sql)) {
+            ResultSetMetaData md = rs.getMetaData();
+            for (int i = 1; i <= md.getColumnCount(); i++) {
+                types.put(md.getColumnName(i), md.getColumnType(i));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to probe column types for relation '" + relation + "'", e);
+        }
+        return types;
     }
 
     /**

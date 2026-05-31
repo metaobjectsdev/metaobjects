@@ -122,6 +122,7 @@ export function pgTypeToSqlType(dataType: string, maxLength?: number | null): Sq
 
   // Date + time
   if (dt === "date") return { kind: "date" };
+  if (dt === "time" || dt === "time without time zone") return { kind: "time" };
   if (dt === "timestamp" || dt === "timestamp without time zone") {
     return { kind: "timestamp", withTimezone: false };
   }
