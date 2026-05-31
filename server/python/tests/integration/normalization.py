@@ -39,16 +39,16 @@ def normalize_value(v: Any) -> Any:
     if isinstance(v, (bytes, bytearray, memoryview)):
         return base64.b64encode(bytes(v)).decode("ascii")
     if isinstance(v, datetime.datetime):
-        # Cross-port contract: the DB driver cannot reliably distinguish TIMESTAMP
-        # from TIMESTAMPTZ at the value level (node-pg returns both as JS Date; the
-        # TS/C# ports therefore format every driver-returned timestamp as UTC with
-        # NO Z — see fixtures/persistence-conformance/normalization.md + TS
-        # normalization.ts formatDateUtcNoZ). pg8000 happens to return tz-aware for
-        # TIMESTAMPTZ; we convert to UTC and emit no Z so Python stays byte-identical
-        # to the other ports. Scenarios needing the Z discriminator must pin it
-        # explicitly on the expected side.
+        # Fallback only: TIMESTAMP/TIMESTAMPTZ rows are canonicalized to their
+        # wire strings at the driver layer (PostgresDriver._coerce_for_contract,
+        # keyed by column OID — the authoritative TIMESTAMP-vs-TIMESTAMPTZ
+        # discriminator), so a typed datetime should not normally reach here. If
+        # one does, follow the cross-port contract by tzinfo: tz-aware → UTC + "Z"
+        # (TIMESTAMPTZ), naive → no Z (plain TIMESTAMP). See
+        # fixtures/persistence-conformance/normalization.md.
         if v.tzinfo is not None:
             v = v.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+            return v.strftime("%Y-%m-%dT%H:%M:%S") + _ms_suffix(v.microsecond) + "Z"
         return v.strftime("%Y-%m-%dT%H:%M:%S") + _ms_suffix(v.microsecond)
     if isinstance(v, datetime.date):
         return v.isoformat()
