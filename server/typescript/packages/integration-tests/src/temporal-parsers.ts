@@ -23,7 +23,9 @@ export const PG_OID_TIME = 1083;
 export const PG_OID_TIMESTAMP = 1114;
 export const PG_OID_TIMESTAMPTZ = 1184;
 
-const pad = (n: number, w = 2): string => Math.trunc(Math.abs(n)).toString().padStart(w, "0");
+// All callers pass non-negative integer getUTC* components, so a fixed 2-digit
+// zero-pad is sufficient.
+const pad = (n: number): string => n.toString().padStart(2, "0");
 
 /**
  * TIMESTAMPTZ → canonical UTC `...Z`. The on-wire text always carries an
@@ -34,8 +36,7 @@ const pad = (n: number, w = 2): string => Math.trunc(Math.abs(n)).toString().pad
 export function canonicalTimestamptz(raw: string): string {
   // ISO-ify: space → 'T', and expand a bare `±HH` offset to `±HH:MM` so the
   // JS Date parser accepts it.
-  let iso = raw.replace(" ", "T");
-  iso = iso.replace(/([+-]\d{2})$/, "$1:00");
+  const iso = raw.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00");
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) {
     throw new Error(`canonicalTimestamptz: unparseable timestamptz "${raw}"`);
