@@ -137,7 +137,9 @@ public class RecoverConformanceTest {
             Double max = f.has("max") ? f.get("max").asDouble() : null;
             return FieldSpec.range(name, kind, req, min, max);
         }
-        return FieldSpec.scalar(name, kind, req);
+        // Phase B: a scalar field may carry a generalized @default absent-fill string.
+        String defaultValue = f.has("default") ? f.get("default").asText() : null;
+        return FieldSpec.scalar(name, kind, req, defaultValue);
     }
 
     /** FR-011: parse the {@code @normalize} mode string; absent → the global default "strip". */

@@ -32,8 +32,19 @@ public record FieldSpec(
         String normalize) {
 
     public static FieldSpec scalar(String name, FieldKind kind, boolean required) {
+        return scalar(name, kind, required, null);
+    }
+
+    /**
+     * Phase B (generalized {@code @default}): a scalar field carrying an absent-fill
+     * {@code @default}. When the field is ABSENT from the model response, tolerant recover
+     * coerces this string to {@code kind} and classifies the field {@code DEFAULTED} (which
+     * satisfies {@code required}). {@code defaultValue == null} is the no-default case
+     * (identical to the back-compat {@link #scalar(String, FieldKind, boolean)} overload).
+     */
+    public static FieldSpec scalar(String name, FieldKind kind, boolean required, String defaultValue) {
         return new FieldSpec(name, kind, required, false, null, null, null, null, null,
-                null, null, Normalize.DEFAULT);
+                null, defaultValue, Normalize.DEFAULT);
     }
 
     /**

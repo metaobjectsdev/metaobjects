@@ -43,13 +43,21 @@ public final class Recover {
             String path = prefix.isEmpty() ? f.name() : prefix + "." + f.name();
             Object present = lookup(raw, f.name(), ci);
             if (present == null) {
-                // FR-011: an absent enum with a declared @default fills the value → DEFAULTED
-                // (which satisfies a @required field).
-                if (f.kind() == FieldKind.ENUM && f.defaultValue() != null) {
-                    data.put(f.name(), f.defaultValue());
-                    report.addCoercion(new Coercion(path, "", f.defaultValue(), "default"));
-                    report.set(path, FieldRecovery.DEFAULTED);
-                    continue;
+                // FR-011 / Phase B: an absent field with a declared @default fills the value
+                // → DEFAULTED (which satisfies a @required field). Generalized to all field
+                // kinds: an enum default is its member string as-is; a non-enum default is
+                // coerced to the field's kind via Coerce (so @default "0" on field.int yields
+                // integer 0). A non-coercible non-enum default is treated as no default.
+                if (f.defaultValue() != null) {
+                    Object coerced = (f.kind() == FieldKind.ENUM)
+                            ? f.defaultValue()
+                            : Coerce.scalar(f.defaultValue(), f);
+                    if (coerced != Coerce.MALFORMED) {
+                        data.put(f.name(), coerced);
+                        report.addCoercion(new Coercion(path, "", f.defaultValue(), "default"));
+                        report.set(path, FieldRecovery.DEFAULTED);
+                        continue;
+                    }
                 }
                 report.set(path, f.required() ? FieldRecovery.LOST_REQUIRED : FieldRecovery.LOST_OPTIONAL);
                 continue;
