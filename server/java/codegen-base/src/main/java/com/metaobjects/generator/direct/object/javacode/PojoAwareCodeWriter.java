@@ -112,6 +112,16 @@ public class PojoAwareCodeWriter extends JavaCodeWriter {
 
     /**
      * Emit a setter BODY: {@code this.<field> = <param>;}.
+     *
+     * <p>For a SINGLE nested-object field (a {@code field.object} with an {@code @objectRef}
+     * that is not an array) an additional {@code Object}-typed bridge setter is emitted that
+     * casts and forwards to the typed setter. The runtime reflection set-by-name SPI
+     * ({@code AbstractObjectRepresentation.setValueWithReflection}) resolves a nested-object
+     * field's setter by {@code MetaField.getEffectiveValueClass()} — which is {@code Object}
+     * for an {@code OBJECT} field — so without this bridge the metadata-driven runtime recover
+     * ({@code MetaObjectRecover.assemble}) cannot populate a nested object on a generated POJO.
+     * Array-of-object fields need no bridge: their effective value class is {@code List}, and
+     * the primary typed setter is already {@code set<Name>(java.util.List)}.</p>
      */
     @Override
     protected void writeSetter(String setterName, String paramName, String typeName, MetaField field) {
@@ -124,6 +134,34 @@ public class PojoAwareCodeWriter extends JavaCodeWriter {
         println(true, "public void " + setterName + "(" + typeName + " " + paramName + ") {");
         inc();
         println(true, "this." + fieldName + " = " + paramName + ";");
+        dec();
+        println(true, "}");
+
+        if (isSingleNestedObjectField(field)) {
+            writeNestedObjectBridgeSetter(setterName, typeName);
+        }
+    }
+
+    /**
+     * Whether {@code field} is a SINGLE nested-object field (has an {@code @objectRef} and is
+     * NOT an array) — the only shape that needs the {@code Object}-typed bridge setter.
+     */
+    protected boolean isSingleNestedObjectField(MetaField field) {
+        return objectReferenceMap.get(field) != null && !field.isArrayType();
+    }
+
+    /**
+     * Emit an {@code Object}-typed bridge setter forwarding to the typed setter, so the runtime
+     * reflection set-by-name SPI (which looks up {@code set<Name>(Object)} for an OBJECT field)
+     * can populate the nested object on a generated POJO.
+     */
+    protected void writeNestedObjectBridgeSetter(String setterName, String typeName) {
+        println(true, "/**");
+        println(true, " * " + setterName + " bridge accepting Object, for the runtime set-by-name SPI.");
+        println(true, " */");
+        println(true, "public void " + setterName + "(Object value) {");
+        inc();
+        println(true, setterName + "((" + typeName + ") value);");
         dec();
         println(true, "}");
     }

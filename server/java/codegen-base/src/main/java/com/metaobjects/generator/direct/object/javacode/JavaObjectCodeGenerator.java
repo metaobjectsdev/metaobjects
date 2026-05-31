@@ -4,6 +4,7 @@ import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.direct.GenerationContext;
 import com.metaobjects.generator.direct.object.BaseObjectCodeWriter;
 import com.metaobjects.generator.util.GeneratorUtil;
+import com.metaobjects.io.util.IOUtil;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.ObjectClassBindingProvider;
@@ -82,14 +83,26 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
         JavaCodeWriter namer = (JavaCodeWriter)
                 createWriter(loader, null, new PrintWriter(new java.io.StringWriter()), globalContext);
         Map<String, String> fqnToClass = new LinkedHashMap<>();
+        ExtractorCodeGenerator extractorGen = new ExtractorCodeGenerator();
         Collection<MetaObject> metadata =
                 GeneratorUtil.getFilteredMetaData(loader, getFilterClass(), getMetaDataFilters());
-        for (MetaObject mo : metadata) {
-            String javaPkg = namer.getLanguagePackage(mo);
-            String javaClass = namer.getClassName(mo);
-            String generatedFqn = isNotBlank(javaPkg) ? javaPkg + "." + javaClass : javaClass;
-            // Key on the package-folded resolution key — NOT the dotted Java FQN.
-            fqnToClass.put(mo.getName(), generatedFqn);
+        try {
+            for (MetaObject mo : metadata) {
+                String javaPkg = namer.getLanguagePackage(mo);
+                String javaClass = namer.getClassName(mo);
+                String generatedFqn = isNotBlank(javaPkg) ? javaPkg + "." + javaClass : javaClass;
+                // Key on the package-folded resolution key — NOT the dotted Java FQN.
+                fqnToClass.put(mo.getName(), generatedFqn);
+
+                // Emit a <Name>Extractor alongside each CONCRETE flavored class. Abstract
+                // objects cannot be instantiated (newInstance), so an extractor for one would
+                // never produce a typed graph — skip them.
+                if (!IOUtil.isAbstract(mo)) {
+                    extractorGen.emit(getOutputDir(), javaPkg, javaClass, mo.getName());
+                }
+            }
+        } catch (IOException e) {
+            throw new GeneratorException("Unable to emit generated Extractor: " + e, e);
         }
 
         if (fqnToClass.isEmpty()) return;
