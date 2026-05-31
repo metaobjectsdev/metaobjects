@@ -117,6 +117,11 @@ class ObjectManager:
         #: keyed by metadata field name. Out-of-band SQL-type metadata for the
         #: serialization boundary (the int4-vs-int8 wire discriminator); the
         #: returned row values themselves stay native (ADR-0019).
+        #:
+        #: Single-query-scoped: overwritten by each ``find_*`` call, so read it
+        #: immediately after the query whose result you are serializing. Not
+        #: safe to interleave concurrent queries on one ObjectManager instance
+        #: (the row values are unaffected — only this discriminator is racy).
         self.last_column_oids: dict[str, int] = {}
 
     # --- Public API ----------------------------------------------------------
