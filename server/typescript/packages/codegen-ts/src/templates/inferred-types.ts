@@ -48,6 +48,29 @@ export type ${entity.name}Update = Partial<${entity.name}Insert>;
 }
 
 /**
+ * The string-literal-union type-alias name for a `field.enum` field — the SINGLE
+ * source of truth for enum-union naming (reused by the entity inferred-types
+ * emitter AND the payload-VO emitter so both agree byte-for-byte).
+ *
+ * - If the field extends an abstract field.enum (super), use the super field's
+ *   PascalCase name (so multiple fields sharing one abstract enum collapse to a
+ *   single alias).
+ * - Otherwise use `<Owner><FieldPascal>` for inline enums, where `<Owner>` is the
+ *   owning object's name (entity OR payload value-object).
+ */
+export function enumUnionAliasName(ownerName: string, field: MetaField): string {
+  const superField = field.resolveSuper();
+  return superField !== undefined
+    ? toPascalCase(superField.name)
+    : `${ownerName}${toPascalCase(field.name)}`;
+}
+
+/** The `"A" | "B"` union string for a set of enum member values. */
+export function enumUnionString(values: string[]): string {
+  return values.map((v) => JSON.stringify(v)).join(" | ");
+}
+
+/**
  * Emit one `export type <Name> = "A" | "B";` line per field.enum field on the entity.
  * - If the field extends an abstract field.enum (super), use the super field's PascalCase name.
  * - Otherwise use `<Entity><FieldPascal>` for inline enums.
@@ -64,17 +87,11 @@ export function renderEnumTypeAliases(entity: MetaObject): Code | null {
     const values = enumValues(field);
     if (values === undefined) continue;
 
-    // Derive the type-alias name.
-    const superField = field.resolveSuper();
-    const typeName = superField !== undefined
-      ? toPascalCase(superField.name)
-      : `${entity.name}${toPascalCase(field.name)}`;
-
+    const typeName = enumUnionAliasName(entity.name, field);
     if (seen.has(typeName)) continue;
     seen.add(typeName);
 
-    const union = values.map((v) => JSON.stringify(v)).join(" | ");
-    lines.push(`export type ${typeName} = ${union};`);
+    lines.push(`export type ${typeName} = ${enumUnionString(values)};`);
   }
 
   return lines.length > 0 ? code`${lines.join("\n")}` : null;
@@ -105,14 +122,6 @@ const SCALAR_TS_BY_SUBTYPE: Record<string, string> = {
   [FIELD_SUBTYPE_TIMESTAMP]: "string",
 };
 
-/** Type-alias name for a field.enum, mirroring renderEnumTypeAliases. */
-function enumTypeAliasName(entity: MetaObject, field: MetaField): string {
-  const superField = field.resolveSuper();
-  return superField !== undefined
-    ? toPascalCase(superField.name)
-    : `${entity.name}${toPascalCase(field.name)}`;
-}
-
 /**
  * One-line TS type expression for a field on a value-only object.
  * Returns a `Code` so cross-module `field.object` refs can be hoisted via
@@ -135,7 +144,7 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField): Code {
   if (field.subType === FIELD_SUBTYPE_ENUM) {
     const values = enumValues(field);
     if (values !== undefined) {
-      const alias = enumTypeAliasName(entity, field);
+      const alias = enumUnionAliasName(entity.name, field);
       return field.isArray ? code`${alias}[]` : code`${alias}`;
     }
     return field.isArray ? code`string[]` : code`string`;

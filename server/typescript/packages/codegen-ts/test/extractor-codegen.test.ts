@@ -61,6 +61,10 @@ const MODEL = [
         { "field.string": { name: "tags", isArray: true, "@required": true } },
         { "field.string": { name: "flags", isArray: true } },
         { "field.object": { name: "shipTo", "@objectRef": "Customer" } },
+        // REQUIRED single enum `priority` (-> union "LOW" | "HIGH"),
+        // REQUIRED enum ARRAY `labels` (-> union "A" | "B", as OrderLabels[]).
+        { "field.enum": { name: "priority", "@required": true, "@values": ["LOW", "HIGH"] } },
+        { "field.enum": { name: "labels", isArray: true, "@required": true, "@values": ["A", "B"] } },
       ],
     },
   },
@@ -101,6 +105,20 @@ describe("Extractor codegen — source shape", () => {
     // optional single nested object → null-guarded recurse into its mapper
     expect(src).toContain("m.shipTo ? toStrictCustomer(m.shipTo) : null");
   });
+
+  test("payload typing: field.enum is a value-constrained union alias (not unknown), single + array", async () => {
+    const root = await loadRoot(MODEL);
+    const payloadSrc = generatePayloadInterfaces(root, "Order");
+
+    // Inline enum naming = <Entity><FieldPascal> (reused from renderEnumTypeAliases).
+    expect(payloadSrc).toContain(`export type OrderPriority = "LOW" | "HIGH";`);
+    expect(payloadSrc).toContain(`export type OrderLabels = "A" | "B";`);
+    // Field typed as the union alias — NOT `unknown`, NOT bare `string`.
+    expect(payloadSrc).toContain("priority: OrderPriority;");
+    expect(payloadSrc).toContain("labels: OrderLabels[];");
+    expect(payloadSrc).not.toContain("priority: unknown");
+    expect(payloadSrc).not.toContain("labels: unknown");
+  });
 });
 
 describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () => {
@@ -123,7 +141,7 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
     const dirty = [
       "Here you go:",
       "```json",
-      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 }, { "sku": "B", "qty": 1 }, ], "note": "rush", "tags": ["urgent", "vip"], "flags": ["fragile"] }',
+      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 }, { "sku": "B", "qty": 1 }, ], "note": "rush", "tags": ["urgent", "vip"], "flags": ["fragile"], "priority": "HIGH", "labels": ["A", "B"] }',
       "```",
     ].join("\n");
 
@@ -139,20 +157,24 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
     expect(order.tags.every((t: unknown) => typeof t === "string")).toBe(true);
     // optional scalar array present → null-filtered string[]
     expect(order.flags).toEqual(["fragile"]);
+    // enum scalar: identity-mapped validated member, typed as the OrderPriority union.
+    expect(order.priority).toBe("HIGH");
+    // enum array: null-filtered, typed as OrderLabels[].
+    expect(order.labels).toEqual(["A", "B"]);
     // optional single nested object `shipTo` ABSENT in this input → the `m.shipTo ? toStrictCustomer(...) : null`
     // branch produces null at runtime (not undefined, not a partial object).
     expect(order.shipTo).toBeNull();
 
     // optional single nested object PRESENT → the null-guard recurses into toStrictCustomer and populates.
     const withShipTo =
-      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"], "shipTo": { "name": "Grace" } }';
+      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"], "priority": "LOW", "labels": ["A"], "shipTo": { "name": "Grace" } }';
     const shipped = ex.extractOrderOut(root, withShipTo);
     expect(shipped.shipTo).not.toBeNull();
     expect(shipped.shipTo.name).toBe("Grace");
     // and when shipTo is genuinely absent on a separate clean input, it is null (re-confirm the branch)
     const noShipTo = ex.extractOrderOut(
       root,
-      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"] }',
+      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"], "priority": "LOW", "labels": ["A"] }',
     );
     expect(noShipTo.shipTo).toBeNull();
 
@@ -161,8 +183,15 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
 
     // extract re-exposed (nested-capable): clean JSON → no lost-required
     const clean =
-      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"] }';
+      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"], "priority": "LOW", "labels": ["A"] }';
     const r = ex.extractLenientOrderOut(root, clean);
     expect(r.report.hasLostRequired()).toBe(false);
+
+    // The lenient `<Name>Extracted` mirror leaf is UNCHANGED — enum stays a plain string.
+    // Assert it works on DIRTY input and returns priority as a raw string (not narrowed).
+    const lenientDirty = ex.extractLenientOrderOut(root, dirty);
+    expect(lenientDirty.report.hasLostRequired()).toBe(false);
+    expect(lenientDirty.data.priority).toBe("HIGH");
+    expect(typeof lenientDirty.data.priority).toBe("string");
   });
 });

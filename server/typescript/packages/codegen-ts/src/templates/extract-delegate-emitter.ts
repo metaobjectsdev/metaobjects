@@ -214,6 +214,11 @@ function mapperArg(field: MetaData, root: MetaData): string {
   // mirror's nullable shape via the locally-defined dlg* readers. (These are distinct from the
   // render ExtractMap helpers `asString(d, key)` etc., which the self-contained path imports — a
   // local helper must NOT shadow those, so the delegate readers carry the `dlg` prefix.)
+  // An enum ARRAY is string-backed PER ELEMENT — it must use the list reader, NOT dlgString
+  // (which would String()-collapse the whole array into "A,B"). Check isArray before the enum
+  // scalar case. The mirror TYPE for an enum array is already `(string | null)[] | null` (see
+  // mirrorFieldType), so the list reader matches.
+  if (field.subType === FIELD_SUBTYPE_ENUM && isArray(field)) return `dlgStringList(readProp(o, ${key}))`;
   if (field.subType === FIELD_SUBTYPE_ENUM) return `dlgString(readProp(o, ${key}))`;
   if (isArray(field)) return `dlgStringList(readProp(o, ${key}))`;
   switch (scalarKind(field.subType)) {
@@ -250,7 +255,9 @@ export function usedHelpers(vo: MetaData, root: MetaData): Set<string> {
         if (isArray(f)) used.add("mapObjectList");
         continue;
       }
-      if (f.subType === FIELD_SUBTYPE_ENUM) {
+      if (f.subType === FIELD_SUBTYPE_ENUM && isArray(f)) {
+        used.add("dlgStringList");
+      } else if (f.subType === FIELD_SUBTYPE_ENUM) {
         used.add("dlgString");
       } else if (isArray(f)) {
         used.add("dlgStringList");
