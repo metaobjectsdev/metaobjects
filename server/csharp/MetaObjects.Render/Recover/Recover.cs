@@ -57,14 +57,23 @@ public static class Recover
 
             if (present == null)
             {
-                // FR-011: an absent enum with a declared @default fills the value → DEFAULTED
-                // (which satisfies a @required field).
-                if (f.Kind == FieldKind.Enum && f.DefaultValue != null)
+                // FR-011 / Phase B: an absent field with a declared @default fills the value
+                // → DEFAULTED (which satisfies a @required field). Generalized to all field
+                // kinds: an enum default is its member string as-is; a non-enum default is
+                // coerced to the field's kind via Coerce.Scalar (so @default "0" on field.int
+                // yields integer 0). A non-coercible non-enum default is treated as no default.
+                if (f.DefaultValue != null)
                 {
-                    data[f.Name] = f.DefaultValue;
-                    report.AddCoercion(new Coercion(path, "", f.DefaultValue, "default"));
-                    report.Set(path, FieldRecovery.DEFAULTED);
-                    continue;
+                    object? coerced = f.Kind == FieldKind.Enum
+                        ? f.DefaultValue
+                        : Coerce.Scalar(f.DefaultValue, f);
+                    if (!ReferenceEquals(coerced, Coerce.Malformed))
+                    {
+                        data[f.Name] = coerced;
+                        report.AddCoercion(new Coercion(path, "", f.DefaultValue, "default"));
+                        report.Set(path, FieldRecovery.DEFAULTED);
+                        continue;
+                    }
                 }
                 report.Set(path, f.Required ? FieldRecovery.LOST_REQUIRED : FieldRecovery.LOST_OPTIONAL);
                 continue;
@@ -86,13 +95,26 @@ public static class Recover
 
                 var outList = new List<object?>();
                 bool anyMalformed = false;
+                // Phase B (array-of-enum): an enum element flows through the SAME enum coercion
+                // pipeline a scalar enum uses, and is CLASSIFIED per element by indexed path
+                // (tags[0], tags[1], …) exactly as a scalar enum: RECOVERED / DEFAULTED (via
+                // @coerceDefault) / MALFORMED. Non-enum scalar arrays keep their existing
+                // behavior (raw element list, no per-element states).
+                bool enumElements = f.Kind == FieldKind.Enum;
                 for (int idx = 0; idx < elements.Count; idx++)
                 {
-                    object? v = ExtractValue(f, elements[idx], path + "[" + idx + "]", report, o, ci);
+                    string elemPath = path + "[" + idx + "]";
+                    object? v = ExtractValue(f, elements[idx], elemPath, report, o, ci);
                     if (ReferenceEquals(v, Coerce.Malformed))
+                    {
                         anyMalformed = true;
+                        if (enumElements) report.Set(elemPath, FieldRecovery.MALFORMED);
+                    }
                     else
+                    {
                         outList.Add(v);
+                        if (enumElements) report.Set(elemPath, ClassifyCoerced(elemPath, report));
+                    }
                 }
                 // NOTE (cross-port contract): a MALFORMED array still places its successfully-coerced
                 // elements into data (partial recovery), UNLIKE a MALFORMED scalar which is absent from

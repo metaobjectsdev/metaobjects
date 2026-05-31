@@ -350,6 +350,10 @@ public class MetaDataLoader
             // Pass 10: enum @values content rules (non-empty, identifier-safe, no duplicates)
             errors.AddRange(ValidationPasses.ValidateEnumValues(root));
 
+            // Pass 10b: generalized @default per-type coercibility (Phase B) — non-enum fields'
+            // @default must coerce to the field's type (ASCII-only numeric gate, Java parity).
+            errors.AddRange(ValidationPasses.ValidateFieldDefaults(root));
+
             // Pass 11: source-v2 one-primary rule — an object with ≥1 source must
             // have exactly one with role "primary" (own-only).
             errors.AddRange(ValidationPasses.ValidateOnePrimarySource(root));
