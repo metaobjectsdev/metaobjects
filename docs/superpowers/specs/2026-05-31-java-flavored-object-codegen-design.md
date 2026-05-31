@@ -35,10 +35,13 @@ A Java object generator built on `BaseObjectCodeGenerator`/`BaseObjectCodeWriter
   - typed fields for every `MetaField`: scalars/enums mapped to Java types; a nested `field.object` (`@objectRef`) → the nested class type `<Sub>` (single) or `java.util.List<<Sub>>` (when `isArrayType()`), the nested class generated recursively in the same flavor (deduped per run);
   - standard getters/setters; a `public <Name>(MetaObject mo){ super(mo); }` ctor (+ a no-arg ctor if needed by the field-IO reflective path);
   - field write/read at runtime uses the existing Phase A reflective setter/getter path.
-- **`valueObject`** → `public class <Name> extends ValueObject`:
+- **`valueObject`** → `public class <Name> extends ValueObject` — **structurally different from `pojoAware`, and performance-tuned**:
   - `public <Name>(MetaObject mo){ super(mo); }`;
-  - typed getter/setter pairs that delegate to the backing map by field name (`get(name)`/`set(name, v)`), nested accessors typed `<Sub>`/`List<<Sub>>`;
-  - the map carries everything, so metadata-declared values beyond the typed accessors are retained (extensible).
+  - **NOT** naive `get(name)`/`set(name, v)` per call. Each field's **value-holder is cached once** (at construction) and the typed `getX`/`setX` operate on the cached holder directly (`holder.getValue()` / `holder.setValue(v)`), avoiding a keyed map lookup on every accessor call. This is the perf pattern the legacy reference uses.
+  - the backing map carries everything, so metadata-declared values beyond the typed accessors are retained (extensible);
+  - nested accessors typed `<Sub>`/`List<<Sub>>`.
+
+  **Reference + a likely runtime reconciliation:** the perf-tuned holder pattern is in the legacy reference's data/managed object bases — a `Map<String, Value>` where `Value` is a per-field holder exposing `getValue()`/`setValue()`, so a cached holder reference services get/set without re-hashing (the legacy `ManagedObject`/`DataObjectBase` + this repo's `ValueObjectBase.AttributeEntry`). This repo's `ValueObjectBase` currently exposes `AttributeEntry` but may re-look-up by name; the plan must **study the legacy reference and reconcile `ValueObjectBase` to expose a cached per-field value-holder primitive** (e.g. `valueHolder(name)` returning a stable holder) that the generated accessors cache + use directly. The `pojoAware` flavor needs no such primitive (plain typed fields).
 - Both flavors emit a **self-registering `ObjectClassBindingProvider`** (FQN→generated class) — wired via ServiceLoader — so `MetaObject.newInstance()` / extract yield the generated type for that object's FQN.
 
 ### Dedicated `Extractor` generator (direct)
