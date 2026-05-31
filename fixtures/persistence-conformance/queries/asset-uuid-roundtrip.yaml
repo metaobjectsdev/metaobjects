@@ -18,9 +18,12 @@ description: |
   independently in migrations/asset-native-column-types.yaml. Here it is seeded
   at exact-UTC instants and asserted in the canonical UTC Z form per
   normalization.md. observedAt/asOfDate/atTime are the @required temporal
-  columns on Asset; they carry deterministic whole-second values so every
-  port's row normalizer yields the same canonical strings (full wire-type
-  coverage lives in normalization-wire-types.yaml).
+  columns on Asset (full wire-type coverage lives in normalization-wire-types.yaml).
+
+  SP-A: the FIRST seeded row carries a sub-second (millisecond) component on its
+  temporal columns (recordedAt/observedAt/atTime), proving the fractional wire
+  form; the SECOND row stays whole-second, proving the omit-the-dot-when-zero
+  rule (a whole-second value stays "...:00" / "...:00Z", never "...:00.000").
 seed-data: |
   INSERT INTO "assets"
     ("id","ownerId","externalId","payload","recordedAt","observedAt","asOfDate","atTime")
@@ -29,7 +32,7 @@ seed-data: |
      'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
      '22222222-2222-4222-8222-222222222222',
      '{"b": 2, "a": 1}',
-     '2026-05-30T14:30:00Z', '2026-05-30T14:30:00', '2026-05-30', '14:30:00'),
+     '2026-05-30T14:30:00.123Z', '2026-05-30T14:30:00.123', '2026-05-30', '14:30:00.123'),
     ('33333333-3333-4333-8333-333333333333',
      '44444444-4444-4444-8444-444444444444',
      '55555555-5555-4555-8555-555555555555',
@@ -53,10 +56,10 @@ queries:
       ownerId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
       externalId: "22222222-2222-4222-8222-222222222222"
       payload: { a: 1, b: 2 }
-      recordedAt: "2026-05-30T14:30:00Z"
-      observedAt: "2026-05-30T14:30:00"
+      recordedAt: "2026-05-30T14:30:00.123Z"
+      observedAt: "2026-05-30T14:30:00.123"
       asOfDate: "2026-05-30"
-      atTime: "14:30:00"
+      atTime: "14:30:00.123"
 
   - name: list-assets-with-explicit-ids-by-owner-eq
     op: list

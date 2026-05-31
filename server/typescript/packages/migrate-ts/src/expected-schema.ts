@@ -6,6 +6,8 @@ import {
   IDENTITY_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_MAX_LENGTH,
+  FIELD_ATTR_PRECISION,
+  FIELD_ATTR_SCALE,
   FIELD_ATTR_UNIQUE,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
@@ -413,7 +415,19 @@ function subtypeToSqlType(field: MetaData): SqlType {
     case FIELD_SUBTYPE_CURRENCY:  return { kind: "integer", bits: 64 };
     case FIELD_SUBTYPE_DOUBLE:    return { kind: "real" };
     case FIELD_SUBTYPE_FLOAT:     return { kind: "real4" };
-    case FIELD_SUBTYPE_DECIMAL:   return { kind: "numeric" };
+    case FIELD_SUBTYPE_DECIMAL:   {
+      // @precision/@scale are declared as ATTR_SUBTYPE_INT so the loader coerces them
+      // to numbers. Both present → NUMERIC(p,s); absent → bare NUMERIC (back-compat).
+      const precision = field.ownAttr(FIELD_ATTR_PRECISION);
+      const scale = field.ownAttr(FIELD_ATTR_SCALE);
+      if (typeof precision === "number" && typeof scale === "number") {
+        return { kind: "numeric", precision, scale };
+      }
+      if (typeof precision === "number") {
+        return { kind: "numeric", precision };
+      }
+      return { kind: "numeric" };
+    }
     case FIELD_SUBTYPE_BOOLEAN:   return { kind: "boolean" };
     case FIELD_SUBTYPE_DATE:      return { kind: "date" };
     case FIELD_SUBTYPE_TIME:      return { kind: "time" }; // Postgres native TIME (whole-second wire form)

@@ -34,7 +34,7 @@ byte equality check.
 | `REAL`, `DOUBLE`    | **string** (plain decimal, no trailing zeros) | `"1.5"`, `"0.125"`, `"-3.25"`       |
 | `TEXT`, `VARCHAR`   | string                                    | `"hello"`                             |
 | `DATE`              | string `"YYYY-MM-DD"`                     | `"2026-05-25"`                        |
-| `TIME`              | string `"HH:MM:SS"` (whole seconds)       | `"14:30:00"`                          |
+| `TIME`              | string `"HH:MM:SS[.fff]"`                 | `"14:30:00"`, `"14:30:00.12"`         |
 | `TIMESTAMP`         | string `"YYYY-MM-DDTHH:MM:SS[.fff]"`      | `"2026-05-25T10:30:00"` (no Z)        |
 | `TIMESTAMPTZ`       | string `"YYYY-MM-DDTHH:MM:SS[.fff]Z"`     | `"2026-05-25T14:30:00Z"` (UTC always) |
 | `UUID`              | string (lowercase canonical)              | `"550e8400-e29b-41d4-a716-446655440000"` |
@@ -42,9 +42,31 @@ byte equality check.
 | `BYTEA`             | base64 string                             | `"aGVsbG8="`                          |
 | `NULL`              | JSON `null`                               |                                       |
 
-Phase B seeds whole-second `TIMESTAMP`/`TIMESTAMPTZ`/`TIME` values only; the
-canonical form carries no fractional-seconds component. Fractional-second
-normalization is deferred.
+### Sub-second (fractional) temporal precision
+
+`TIMESTAMP`/`TIMESTAMPTZ`/`TIME` carry a sub-second component at **millisecond**
+resolution:
+
+* `TIMESTAMP`   → `"YYYY-MM-DDTHH:MM:SS.fff"` (no `Z`)
+* `TIMESTAMPTZ` → `"YYYY-MM-DDTHH:MM:SS.fffZ"` (UTC always)
+* `TIME`        → `"HH:MM:SS.fff"`
+
+The fractional part carries **no trailing zeros**, and the `.` **and the entire
+fractional component are OMITTED when the sub-second value is zero**. This is the
+exact analogue of the `NUMERIC`/float trailing-zero rule above — applied to the
+fractional-seconds field — and it is the linchpin that keeps every existing
+whole-second scenario byte-identical (a whole-second value stays `"...:00"` /
+`"...:00Z"`, never `"...:00.000"`).
+
+Examples:
+
+* `…:00.120` → `…:00.12` (strip the trailing zero)
+* `…:00.123` → `…:00.123` (no change)
+* `…:00.000` → `…:00`     (omit the `.` and the fractional part entirely)
+* `…:00`     → `…:00`     (already whole-second — unchanged)
+
+Every port's temporal canonicalizer MUST implement the omit-when-zero rule
+identically, or whole-second rows diverge.
 
 ### Rationale highlights
 
