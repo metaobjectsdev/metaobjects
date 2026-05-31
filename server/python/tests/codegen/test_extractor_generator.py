@@ -453,3 +453,104 @@ def test_lenient_mirror_enum_leaf_stays_str(tmp_path, monkeypatch) -> None:
     assert ann["priority"] == "str | None"
     # enum array mirror stays the string-list shape (no Literal).
     assert ann["labels"] == "list[str | None] | None"
+
+
+# ---------------------------------------------------------------------------
+# Shared abstract-enum alias dedup — TWO payload fields that ``extends`` ONE
+# abstract ``field.enum`` collapse to a SINGLE module-level ``<Super> = Literal[...]``
+# alias (keyed on the SUPER's Pascal name), referenced by both fields — NOT one
+# alias per field, NOT two copies. Proves the cross-port shared-enum naming/dedup.
+# ---------------------------------------------------------------------------
+
+
+def _shared_enum_root() -> MetaRoot:
+    """An abstract ``field.enum`` ``Priority`` (``@values ["LOW","HIGH"]``) + two concrete
+    payload fields (``priority`` + ``escalation``) that BOTH ``extends`` it (own ``@values``
+    absent — inherited via ``super_data``)."""
+    abstract_priority = _field(
+        "Priority",
+        fc.FIELD_SUBTYPE_ENUM,
+        **{fc.FIELD_ATTR_VALUES: ["LOW", "HIGH"]},
+    )
+    abstract_priority.is_abstract = True
+
+    # Concrete fields extend the abstract enum (no own @values; resolved via super_data).
+    priority = _field("priority", fc.FIELD_SUBTYPE_ENUM, **{fc.FIELD_ATTR_REQUIRED: True})
+    priority.super_data = abstract_priority
+    escalation = _field("escalation", fc.FIELD_SUBTYPE_ENUM)  # optional
+    escalation.super_data = abstract_priority
+
+    ticket = _value_object("Ticket", [priority, escalation])
+    tmpl = _output_template("TicketOut", "Ticket")
+    root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
+    root.package = "acme::ai"
+    # Register the abstract enum as a root field child so it is part of the model.
+    for c in (abstract_priority, ticket, tmpl):
+        root.add_child(c)
+    return root
+
+
+def test_effective_values_resolve_through_extends() -> None:
+    """Sanity: the concrete fields have NO own ``@values`` but resolve the abstract
+    super's effective ``@values`` (the precondition the alias dedup relies on)."""
+    from metaobjects.codegen import type_map
+
+    root = _shared_enum_root()
+    ticket = root.own_children()[1]
+    fields = {f.name: f for f in ticket.fields()}
+    # own @values absent on the concrete fields...
+    assert fields["priority"].attr(fc.FIELD_ATTR_VALUES) is None
+    assert fields["escalation"].attr(fc.FIELD_ATTR_VALUES) is None
+    # ...but effective (via extends) resolves to the abstract super's members.
+    assert type_map.effective_enum_values(fields["priority"]) == ["LOW", "HIGH"]
+    assert type_map.effective_enum_values(fields["escalation"]) == ["LOW", "HIGH"]
+
+
+def test_shared_abstract_enum_emits_single_deduped_alias() -> None:
+    """Both extending fields reference ONE module-level ``Priority = Literal[...]`` alias,
+    named for the SUPER (``Priority``) — NOT per-field (``OrderPriority``/``OrderEscalation``)
+    and NOT duplicated."""
+    from metaobjects.codegen.generators.payload_vo_generator import render_payload_vo
+
+    root = _shared_enum_root()
+    tmpl = root.own_children()[2]
+    src = render_payload_vo(tmpl, root)
+    assert src is not None
+
+    # Exactly ONE module-level alias line, named for the SUPER.
+    alias_lines = [
+        ln for ln in src.splitlines() if ln.strip() == 'Priority = Literal["LOW", "HIGH"]'
+    ]
+    assert alias_lines == ['Priority = Literal["LOW", "HIGH"]'], src
+    # Dedup: no per-field aliases, no second copy.
+    assert "OrderPriority" not in src
+    assert "OrderEscalation" not in src
+    assert src.count("= Literal[") == 1
+    # BOTH fields are typed as the shared alias (required → bare; optional → ``| None``).
+    assert "priority: Priority" in src
+    assert "escalation: Priority | None = None" in src
+    # The fields reference the alias, NOT an inline Literal.
+    assert 'priority: Literal[' not in src
+    assert "from typing import Literal" in src
+
+
+def test_shared_abstract_enum_alias_round_trips(tmp_path, monkeypatch) -> None:
+    """Materialize + import the alias-typed payload and confirm a value round-trips into
+    the alias-typed field (the ``Priority`` alias is a usable, Pydantic-validated type)."""
+    from importlib import import_module
+
+    import pydantic
+
+    root = _shared_enum_root()
+    pkg_dir = _materialize_package(PayloadVoGenerator().generate(_ctx(root)), tmp_path)
+    _import_package(pkg_dir, monkeypatch)
+    payload_mod = import_module("_gen_pkg.ticket_out_payload")
+    TicketOutPayload = payload_mod.TicketOutPayload
+
+    # A valid member round-trips into the alias-typed field.
+    ok = TicketOutPayload(priority="HIGH", escalation="LOW")
+    assert ok.priority == "HIGH"
+    assert ok.escalation == "LOW"
+    # The alias is Pydantic-validated (an off-set member raises).
+    with pytest.raises(pydantic.ValidationError):
+        TicketOutPayload(priority="BOGUS")
