@@ -16,6 +16,16 @@ export { emit } from "./emit/index.js";
 export { writeMigration } from "./write-migration.js";
 export { writeMigrationD1 } from "./write-migration-d1.js";
 
+// Reference-snapshot generation (offline, deterministic).
+export {
+  serializeSnapshot,
+  parseSnapshot,
+  SNAPSHOT_FORMAT_VERSION,
+} from "./snapshot/serialize.js";
+export { snapshotPath, readSnapshot, writeSnapshot } from "./snapshot/store.js";
+export { planOffline, baselineFromMetadata } from "./snapshot/plan.js";
+export type { PlanOfflineArgs, PlanOfflineResult } from "./snapshot/plan.js";
+
 // Errors
 export { BlockedChangesError, SetNullNotNullableError } from "./errors.js";
 
