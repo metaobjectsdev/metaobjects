@@ -119,14 +119,18 @@ public static class Normalization
     // as its UTC equivalent, proving normalization (not just formatting).
     private static string FormatDateTime(DateTime dt)
     {
-        var s = TrimSubseconds(dt.ToString("yyyy-MM-ddTHH:mm:ss.fffffff", CultureInfo.InvariantCulture));
+        // Truncate (NOT round) sub-second to millisecond resolution — `fff` — to match
+        // the other four ports' integer-division truncation (TS slice(dot+1,dot+4),
+        // Java/Kotlin nanos/1_000_000, Python microsecond//1000). A 7-digit `fffffff`
+        // here would surface `.123456` where every other port emits `.123`.
+        var s = TrimSubseconds(dt.ToString("yyyy-MM-ddTHH:mm:ss.fff", CultureInfo.InvariantCulture));
         return dt.Kind == DateTimeKind.Utc ? s + "Z" : s;
     }
 
-    // TIME → "HH:MM:SS[.fff]" with trailing zero subseconds (and a bare decimal
-    // point) stripped. Phase B seeds whole seconds, so this yields "HH:MM:SS".
+    // TIME → "HH:MM:SS[.fff]" — truncated to millisecond resolution then trailing-zero
+    // subseconds (and a bare decimal point) stripped, matching the other ports.
     private static string FormatTimeOnly(TimeOnly time) =>
-        TrimSubseconds(time.ToString("HH:mm:ss.fffffff", CultureInfo.InvariantCulture));
+        TrimSubseconds(time.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture));
 
     // Strip trailing zeros from a subsecond fraction, then drop the decimal point
     // if the subsecond portion was entirely zero.

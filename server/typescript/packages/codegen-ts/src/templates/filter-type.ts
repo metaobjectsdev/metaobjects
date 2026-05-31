@@ -13,25 +13,27 @@ import {
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
-  FIELD_SUBTYPE_DECIMAL,
   opsForSubType,
 } from "@metaobjectsdev/metadata";
 import { isSortableField } from "./filter-shared.js";
 
-const NUMBER_SUBTYPES = new Set<string>([
+// VALUE-type classification only (distinct from the OPERATOR band, which comes from
+// opsForSubType). decimal is deliberately NOT here: its operator band stays NUMERIC
+// (eq/ne/gt/gte/lt/lte/in/isNull, see OPS_BY_SUBTYPE) but its VALUE type is `string`,
+// matching the entity field representation (exact decimal string, not lossy number).
+const NUMBER_VALUE_SUBTYPES = new Set<string>([
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_SHORT,
   FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
-  FIELD_SUBTYPE_DECIMAL,
 ]);
 
-/** Maps a field subtype to its TS value type name for operator union codegen. */
+/** Maps a field subtype to its TS VALUE type name for operator union codegen. */
 function tsNameFor(fieldSubType: string): string {
   if (fieldSubType === FIELD_SUBTYPE_BOOLEAN) return "boolean";
-  if (NUMBER_SUBTYPES.has(fieldSubType)) return "number";
+  if (NUMBER_VALUE_SUBTYPES.has(fieldSubType)) return "number";
   return "string";
 }
 

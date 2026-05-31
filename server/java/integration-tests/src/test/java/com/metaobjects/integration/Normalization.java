@@ -61,7 +61,7 @@ public final class Normalization {
         if (v instanceof byte[] bytes) return Base64.getEncoder().encodeToString(bytes);
         if (v instanceof LocalDate d)  return d.format(DATE_FMT);
         if (v instanceof LocalTime t)  return t.format(TIME_FMT) + fractionalSuffix(t.getNano());
-        if (v instanceof Time t)       return t.toLocalTime().format(TIME_FMT);
+        if (v instanceof Time t)       return t.toLocalTime().format(TIME_FMT) + fractionalSuffix(t.toLocalTime().getNano());
         // TIMESTAMPTZ → UTC instant + "Z" suffix. The runner surfaces tz-aware
         // timestamp columns as OffsetDateTime (normalized to UTC in
         // ObjectManagerDbAdapter) so the zone discriminator survives — a plain

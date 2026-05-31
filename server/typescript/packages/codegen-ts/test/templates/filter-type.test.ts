@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { renderFilterType } from "../../src/templates/filter-type.js";
 import { resolve } from "node:path";
-import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const FIXTURE = resolve(import.meta.dir, "..", "fixtures", "filter-fixture.json");
@@ -85,5 +85,37 @@ describe("renderFilterType", () => {
     expect(out).toMatch(/"price"/);
     // price should NOT appear as a filterable field (no @filterable)
     expect(out).not.toContain("price?:");
+  });
+
+  // SP-A close-out: a filterable decimal field's VALUE type is `string` (exact-decimal
+  // wire form, matching the entity field) while its OPERATOR band stays NUMERIC
+  // (gt/gte/lt/lte/in — NOT the string `like`).
+  test("decimal filterable field has string value type but numeric operator band", async () => {
+    const meta = {
+      "metadata.root": {
+        package: "shop::money",
+        children: [
+          {
+            "object.entity": {
+              name: "Invoice",
+              children: [
+                { "field.decimal": { name: "total", "@filterable": true, "@precision": 12, "@scale": 2 } },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const { root } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(meta))]);
+    const entity = root.objects().find((c) => c.name === "Invoice")!;
+    const out = renderFilterType(entity).toString();
+    // value type is string (gt?: string, not gt?: number)
+    expect(out).toMatch(/total\?:\s*string\s*\|\s*\{/);
+    expect(out).toMatch(/total\?:[\s\S]*?gt\?:\s*string/);
+    // numeric operator band present...
+    expect(out).toMatch(/total\?:[\s\S]*?gte\?:/);
+    expect(out).toMatch(/total\?:[\s\S]*?lte\?:/);
+    // ...and the string-only `like` operator absent.
+    expect(out).not.toMatch(/total\?:\s*string\s*\|\s*\{[^}]*like\?:/);
   });
 });

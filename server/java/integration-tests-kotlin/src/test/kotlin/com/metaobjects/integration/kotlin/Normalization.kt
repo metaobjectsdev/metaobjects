@@ -58,7 +58,7 @@ object Normalization {
         // "14:30:00", not java.time's elided "14:30"); millisecond fractional suffix
         // appended when sub-second is non-zero (SP-A).
         is LocalTime -> v.format(timeFmt) + fractionalSuffix(v.nano)
-        is Time -> v.toLocalTime().format(timeFmt)
+        is Time -> v.toLocalTime().let { it.format(timeFmt) + fractionalSuffix(it.nano) }
         // TIMESTAMPTZ → UTC instant + "Z" suffix. The runner surfaces tz-aware columns as
         // OffsetDateTime (NOT collapsed to LocalDateTime), so the zone discriminator survives:
         // re-anchor to UTC and append "Z". A plain TIMESTAMP arrives as Timestamp/LocalDateTime

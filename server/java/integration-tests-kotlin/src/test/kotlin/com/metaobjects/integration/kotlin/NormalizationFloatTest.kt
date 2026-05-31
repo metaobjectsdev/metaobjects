@@ -61,4 +61,13 @@ class NormalizationFloatTest {
     @Test fun `whole-second time omits the dot`() {
         assertEquals("14:30:00", Normalization.normalizeValue(LocalTime.of(14, 30, 0, 0)))
     }
+    // SP-A close-out: sub-millisecond fractional seconds TRUNCATE to ms (.123456 → .123),
+    // never round to .124 or pass through 6 digits.
+    @Test fun `sub-millisecond time truncates to millis`() {
+        assertEquals("14:30:00.123", Normalization.normalizeValue(LocalTime.of(14, 30, 0, 123_456_000)))
+    }
+    @Test fun `sub-millisecond timestamp truncates to millis`() {
+        assertEquals("2026-05-31T14:30:00.123",
+            Normalization.normalizeValue(LocalDateTime.of(2026, 5, 31, 14, 30, 0, 123_456_000)))
+    }
 }

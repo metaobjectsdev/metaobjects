@@ -58,9 +58,19 @@ describe("temporal canonical parsers — fractional milliseconds", () => {
     expect(canonicalTimestamp("2026-05-31 14:30:00.123456")).toBe("2026-05-31T14:30:00.123");
   });
 
+  test("TIMESTAMPTZ truncates beyond milliseconds (and converts to UTC Z)", () => {
+    // SP-A close-out: the corpus seeds .123456 here; the pinned contract truncates to ms.
+    expect(canonicalTimestamptz("2026-05-31 10:30:00.123456-04")).toBe("2026-05-31T14:30:00.123Z");
+  });
+
   test("TIME carries milliseconds, strips trailing zeros, omits dot when zero", () => {
     expect(canonicalTime("14:30:00.123")).toBe("14:30:00.123");
     expect(canonicalTime("14:30:00.120")).toBe("14:30:00.12");
     expect(canonicalTime("14:30:00.000")).toBe("14:30:00");
+  });
+
+  test("TIME truncates beyond milliseconds", () => {
+    // SP-A close-out: the corpus seeds .123456 here; truncate to ms (not round, not passthrough).
+    expect(canonicalTime("14:30:00.123456")).toBe("14:30:00.123");
   });
 });

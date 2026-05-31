@@ -10,10 +10,14 @@ description: |
   recordedAt's -05:00 offset must read back as 14:30:00.123Z, while observedAt's
   bare wall-clock 14:30:00.123 must read back unshifted with no Z.
 
-  SP-A: this row carries a sub-second component (millisecond resolution). The
-  fractional digits carry no trailing zeros (.120 → .12). The whole-second
-  omit-the-dot rule is proven separately by asset-uuid-roundtrip.yaml, whose
-  rows stay at "...:00" / "...:00Z".
+  SP-A: this row carries a sub-second component. recordedAt (TIMESTAMPTZ) and
+  atTime (TIME) are seeded with SIX fractional digits (.123456) whose 4th-6th
+  digits are non-zero, so every port must TRUNCATE to millisecond resolution
+  (.123456 → .123) rather than round or pass through — a port emitting .123456
+  fails the gate. observedAt (TIMESTAMP) keeps .120 to exercise the
+  no-trailing-zeros rule (.120 → .12). The whole-second omit-the-dot rule is
+  proven separately by asset-uuid-roundtrip.yaml, whose rows stay at
+  "...:00" / "...:00Z".
 seed-data: |
   INSERT INTO "assets"
     ("id","ownerId","externalId","payload","recordedAt","observedAt","asOfDate","atTime")
@@ -22,10 +26,10 @@ seed-data: |
      'BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB',
      NULL,
      '{"b": 2, "a": 1}',
-     '2026-05-31T09:30:00.123-05:00',
+     '2026-05-31T09:30:00.123456-05:00',
      '2026-05-31T14:30:00.120',
      '2026-05-31',
-     '14:30:00.123');
+     '14:30:00.123456');
 queries:
   - name: wire-types-roundtrip
     op: get

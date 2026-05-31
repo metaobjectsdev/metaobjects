@@ -220,4 +220,34 @@ describe("recoverObject — verdict oracle (dirty XML → typed object graph)", 
     expect(threads.nested).not.toBeNull();
     expect(threads.nested!.rootName).toBe("ThreadCheck");
   });
+
+  // SP-A close-out: field.decimal recovers as a STRING (its exact-decimal wire form),
+  // NOT a lossy DOUBLE — matching the codegen sibling (fr010-field-mapping) + C#.
+  test("recoverSchemaFor maps field.decimal to STRING (exact, not lossy double)", async () => {
+    const meta = {
+      "metadata.root": {
+        package: "com::example::money",
+        children: [
+          {
+            "object.value": {
+              name: "Money",
+              children: [
+                { "field.decimal": { name: "amount", "@precision": 12, "@scale": 4 } },
+                { "field.double": { name: "rate" } },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const res = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(meta))]);
+    expect(res.errors).toEqual([]);
+    const moneyMo = res.root.findObject("Money")!;
+
+    const schema = recoverSchemaFor(moneyMo, Format.JSON);
+    const byName = new Map(schema.fields.map((f) => [f.name, f]));
+    expect(byName.get("amount")!.kind).toBe(FieldKind.STRING);
+    // sanity: double stays DOUBLE — only decimal moved.
+    expect(byName.get("rate")!.kind).toBe(FieldKind.DOUBLE);
+  });
 });

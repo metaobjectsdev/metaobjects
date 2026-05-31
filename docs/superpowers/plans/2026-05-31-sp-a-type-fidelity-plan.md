@@ -8,7 +8,7 @@
 
 **Tech stack:** TS (bun, migrate-ts, codegen-ts), C# (EF Core, xUnit, Testcontainers), Java (OMDB, JUnit), Python (SQLAlchemy Core, pytest), Kotlin (Exposed, KotlinPoet). Design: `docs/superpowers/specs/2026-05-31-sp-a-type-fidelity-design.md`.
 
-**Worktree:** `/home/doug/Development/metaobjects/.claude/worktrees/sp-a-type-fidelity` (branch `sp-a-type-fidelity`, off origin/main).
+**Worktree:** `<repo-root>/.claude/worktrees/sp-a-type-fidelity` (branch `sp-a-type-fidelity`, off origin/main).
 
 ---
 
