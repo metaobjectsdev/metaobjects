@@ -1,6 +1,5 @@
 package com.metaobjects.generator.kotlin
 
-import com.metaobjects.DataTypes
 import com.metaobjects.attr.IntAttribute
 import com.metaobjects.attr.StringAttribute
 import com.metaobjects.field.BooleanField
@@ -11,9 +10,9 @@ import com.metaobjects.field.EnumField
 import com.metaobjects.field.FloatField
 import com.metaobjects.field.IntegerField
 import com.metaobjects.field.LongField
-import com.metaobjects.field.PrimitiveField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.TimestampField
+import com.metaobjects.field.UuidField
 import com.metaobjects.metadata.ktx.loadString
 import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
@@ -156,16 +155,18 @@ class KotlinTypeMapperTest {
         assertEquals(STRING, KotlinTypeMapper.kotlinTypeName(f))
     }
 
-    @Test fun `string field with dbColumnType=jsonb emits text column not capped varchar`() {
-        // `@dbColumnType=jsonb` on a `field.string` opts the column to Postgres JSONB on
-        // the DB side. The Exposed column is `text(...)` (unbounded) rather than the
-        // default `varchar(name, 255)` — JSON payloads routinely exceed 255 chars and
-        // Postgres accepts text I/O against a JSONB column. Kotlin property stays String
-        // (raw JSON text); the application is responsible for validity.
+    @Test fun `string field with dbColumnType=jsonb emits real jsonb column not text`() {
+        // R6 Plan 2b: `@dbColumnType=jsonb` on a `field.string` selects a native Postgres
+        // JSONB column (matching the other 4 ports). The Exposed column is the
+        // `jsonb(name, encoder, decoder)` extension with identity String functions (the
+        // property stays a raw-JSON `String`), NOT the old `text(...)` — a TEXT column
+        // never round-trips to JSONB in the introspection corpus.
         val f = StringField("rubricWeights")
         f.addMetaAttr(StringAttribute.create("dbColumnType", "jsonb"))
-        assertEquals("text(\"rubric_weights\")", KotlinTypeMapper.exposedColumnSpec(f))
+        assertEquals("jsonb(\"rubric_weights\", { it }, { it })", KotlinTypeMapper.exposedColumnSpec(f))
         assertEquals(STRING, KotlinTypeMapper.kotlinTypeName(f))
+        // The column needs the exposed-json `jsonb` extension import.
+        assertEquals("org.jetbrains.exposed.sql.json.jsonb", KotlinTypeMapper.exposedColumnImport(f))
     }
 
     @Test fun `string field with dbColumnType=jsonb is case-insensitive`() {
@@ -173,16 +174,16 @@ class KotlinTypeMapperTest {
         // `"JSONB"` and `"jsonb"` route to the JSONB branch.
         val f = StringField("featureFlags")
         f.addMetaAttr(StringAttribute.create("dbColumnType", "JSONB"))
-        assertEquals("text(\"feature_flags\")", KotlinTypeMapper.exposedColumnSpec(f))
+        assertEquals("jsonb(\"feature_flags\", { it }, { it })", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
     @Test fun `string field with dbColumnType=jsonb ignores maxLength`() {
         // A short `@maxLength` would normally select varchar; the JSONB override wins
-        // regardless so a YAML with both attributes still gets the unbounded text column.
+        // regardless so a YAML with both attributes still gets the JSONB column.
         val f = StringField("blob")
         f.addMetaAttr(StringAttribute.create("dbColumnType", "jsonb"))
         f.addMetaAttr(IntAttribute.create("maxLength", 64))
-        assertEquals("text(\"blob\")", KotlinTypeMapper.exposedColumnSpec(f))
+        assertEquals("jsonb(\"blob\", { it }, { it })", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
     // === Currency / Enum / UUID coverage ===
@@ -249,14 +250,16 @@ class KotlinTypeMapperTest {
         assertTrue(spec.contains("varchar") && spec.contains("100"), "got: $spec")
     }
 
-    @Test fun `uuid field (matched by subtype) maps to java util UUID and uuid exposed column`() {
-        // `field.uuid` has no dedicated Java class today — mapper matches by subtype name.
-        // Use a minimal anonymous PrimitiveField with subType="uuid" to drive the path.
-        val f = object : PrimitiveField<String>("uuid", "externalId", DataTypes.STRING) {}
+    @Test fun `uuid field maps to java util UUID and uuid exposed column`() {
+        // R6 Plan 2a: `field.uuid` is now a real UuidField JVM class — the mapper matches it
+        // by instanceof (the latent subtype-string arm is promoted to a live typed arm).
+        val f = UuidField("externalId")
         val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
         assertEquals("java.util", tn.packageName)
         assertEquals("UUID", tn.simpleName)
         // Column name snake_case-d for Postgres convention.
         assertEquals("uuid(\"external_id\")", KotlinTypeMapper.exposedColumnSpec(f))
+        // `uuid(...)` is a Table member — no extra import line needed.
+        assertNull(KotlinTypeMapper.exposedColumnImport(f))
     }
 }

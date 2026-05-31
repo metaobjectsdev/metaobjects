@@ -38,6 +38,12 @@ import {
   FIELD_ATTR_DEFAULT,
   ENUM_MEMBER_PATTERN,
 } from "./core/field/field-constants.js";
+import {
+  FIELD_ATTR_DB_COLUMN_TYPE,
+  DB_COLUMN_TYPE_VALUES,
+  DB_COLUMN_TYPE_LEGAL_SUBTYPES,
+  type DbColumnTypeValue,
+} from "./persistence/db/db-constants.js";
 
 export interface AttrSchemaValidationResult {
   errors: ParseError[];
@@ -241,6 +247,37 @@ function validateNode(
             ),
           );
         }
+      }
+    }
+  }
+
+  // --- Check 6 (R6 Plan 2b): @dbColumnType (logical subtype × value) pairing ---
+  //
+  // @dbColumnType is a physical column-type override registered on every field
+  // subtype by the dbProvider. Its legal value depends on the field's logical
+  // subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp),
+  // a pairing that a flat allowedValues set cannot express — so validate it here.
+  // Own-only (matches Checks 2+3): an inherited @dbColumnType was validated on
+  // the declaring node. Both an unrecognized value and an illegal pairing emit
+  // ERR_BAD_ATTR_VALUE naming the field, the value, and the legal set.
+  if (node.type === TYPE_FIELD) {
+    const ownValue = node.ownAttrs().get(FIELD_ATTR_DB_COLUMN_TYPE);
+    if (typeof ownValue === "string") {
+      const legalSubtypes = (DB_COLUMN_TYPE_VALUES as readonly string[]).includes(ownValue)
+        ? DB_COLUMN_TYPE_LEGAL_SUBTYPES[ownValue as DbColumnTypeValue]
+        : undefined;
+      if (legalSubtypes === undefined || !legalSubtypes.includes(node.subType)) {
+        errors.push(
+          new ParseError(
+            `${nodeLabel(node)} attribute '@${FIELD_ATTR_DB_COLUMN_TYPE}' value ` +
+              `'${ownValue}' is not legal on field.${node.subType}. ` +
+              `Legal @${FIELD_ATTR_DB_COLUMN_TYPE} pairings: ` +
+              `${DB_COLUMN_TYPE_VALUES.map(
+                (v) => `${v} (field.${DB_COLUMN_TYPE_LEGAL_SUBTYPES[v].join("/field.")})`,
+              ).join(", ")}.`,
+            { code: "ERR_BAD_ATTR_VALUE", source: node.source },
+          ),
+        );
       }
     }
   }

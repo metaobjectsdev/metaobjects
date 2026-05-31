@@ -8,6 +8,8 @@ driver. Identifiers are double-quoted throughout (mixed-case columns like
 from __future__ import annotations
 
 import decimal
+import re
+import uuid as _uuid
 from collections.abc import Iterable
 from typing import Any, Protocol
 
@@ -25,6 +27,15 @@ from ..meta.persistence.source import source_constants as sc
 # is honored without leaking SQL-type awareness into the comparison layer.
 _PG_OID_BIGINT = 20
 _PG_OID_NUMERIC = 1700
+_PG_OID_UUID = 2950
+
+# Canonical 8-4-4-4-12 hex shape (case-insensitive). Used to recognize a uuid
+# value surfaced as text so the PORT can lowercase-canonicalize it dialect-
+# independently (mirrors the Java parseField uuid fix) — never relying on the DB
+# to return lowercase.
+_UUID_SHAPE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
 
 
 # Filter shape:
@@ -256,4 +267,13 @@ def _coerce_for_contract(value: Any, oid: int) -> Any:
         if "." in s:
             s = s.rstrip("0").rstrip(".")
         return s
+    # uuid: the PORT canonicalizes to a lowercased str dialect-independently
+    # (matching the wire contract + the other ports — mirrors the Java parseField
+    # uuid fix). A driver may surface a uuid column as a native uuid.UUID (pg8000)
+    # or as text; either way the runtime row value is a lowercased str, never a
+    # raw uuid.UUID. We do NOT rely on Postgres returning canonical lowercase.
+    if isinstance(value, _uuid.UUID):
+        return str(value).lower()
+    if oid == _PG_OID_UUID and isinstance(value, str) and _UUID_SHAPE.match(value):
+        return value.lower()
     return value

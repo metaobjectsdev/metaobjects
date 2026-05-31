@@ -19,6 +19,7 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_ENUM,
+  FIELD_SUBTYPE_UUID,
   VIEW_SUBTYPE_TEXT,
   VIEW_SUBTYPE_DATE,
   VIEW_SUBTYPE_NUMBER,
@@ -80,6 +81,7 @@ function defaultViewForSubType(subType: string): string {
 export function zodTypeFor(field: MetaField): string {
   switch (field.subType) {
     case FIELD_SUBTYPE_STRING:
+    case FIELD_SUBTYPE_UUID:
       return "z.string()";
     case FIELD_SUBTYPE_BOOLEAN:
       return "z.boolean()";

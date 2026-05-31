@@ -10,13 +10,13 @@ using MetaObjects.Shared;
 namespace MetaObjects.Core.Field;
 
 /// <summary>
-/// Field concern constants — the 16 field subtypes (plus the universal base),
+/// Field concern constants — the 17 field subtypes (plus the universal base),
 /// the field-level attr keys, AUTO_SET semantics, and currency attrs.
 /// </summary>
 public static class FieldConstants
 {
     // -----------------------------------------------------------------------
-    // Field subtypes (16)
+    // Field subtypes (17)
     // -----------------------------------------------------------------------
 
     public const string FIELD_SUBTYPE_STRING    = "string";
@@ -35,6 +35,14 @@ public static class FieldConstants
     public const string FIELD_SUBTYPE_CLASS     = "class";
     public const string FIELD_SUBTYPE_CURRENCY  = "currency";
     public const string FIELD_SUBTYPE_ENUM      = "enum";
+    /// <summary>
+    /// R6 Plan 2a — <c>field.uuid</c>: a logical identity scalar (ADR-0013) whose value
+    /// is a lowercase-canonical UUID string. String-backed on the wire (like
+    /// <see cref="FIELD_SUBTYPE_STRING"/>); native binding is <c>System.Guid</c> in entity
+    /// codegen and a Postgres native <c>uuid</c> column in the migrate engine. A bare scalar:
+    /// no required attrs and no loader value-validation.
+    /// </summary>
+    public const string FIELD_SUBTYPE_UUID      = "uuid";
 
     public static readonly string[] FIELD_SUBTYPES =
     [
@@ -55,6 +63,7 @@ public static class FieldConstants
         FIELD_SUBTYPE_CLASS,
         FIELD_SUBTYPE_CURRENCY,
         FIELD_SUBTYPE_ENUM,
+        FIELD_SUBTYPE_UUID,
     ];
 
     // -----------------------------------------------------------------------

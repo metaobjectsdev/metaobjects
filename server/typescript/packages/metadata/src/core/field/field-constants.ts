@@ -3,7 +3,7 @@
 import { SUBTYPE_BASE } from "../../shared/base-types.js";
 
 // ---------------------------------------------------------------------------
-// Field subtypes (16)
+// Field subtypes (17)
 // ---------------------------------------------------------------------------
 
 export const FIELD_SUBTYPE_STRING = "string";
@@ -22,6 +22,10 @@ export const FIELD_SUBTYPE_OBJECT = "object";
 export const FIELD_SUBTYPE_CLASS = "class";
 export const FIELD_SUBTYPE_CURRENCY = "currency";
 export const FIELD_SUBTYPE_ENUM = "enum";
+/** R6 Plan 2a: logical UUID identity scalar. Bare scalar (no required attrs, no
+ *  loader value-validation) — like field.long; native binding is forced to TS
+ *  `string` (TS has no native UUID type). DB column is Postgres-native `uuid`. */
+export const FIELD_SUBTYPE_UUID = "uuid";
 
 export const FIELD_SUBTYPES = [
   SUBTYPE_BASE,
@@ -41,6 +45,7 @@ export const FIELD_SUBTYPES = [
   FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_ENUM,
+  FIELD_SUBTYPE_UUID,
 ] as const;
 export type FieldSubType = (typeof FIELD_SUBTYPES)[number];
 

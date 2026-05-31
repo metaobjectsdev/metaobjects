@@ -26,6 +26,7 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_CLASS,
+  FIELD_SUBTYPE_UUID,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_OBJECT_REF,
 } from "@metaobjectsdev/metadata";
@@ -86,6 +87,7 @@ export function renderEnumTypeAliases(entity: MetaObject): Code | null {
 const SCALAR_TS_BY_SUBTYPE: Record<string, string> = {
   [FIELD_SUBTYPE_STRING]: "string",
   [FIELD_SUBTYPE_CLASS]: "string",
+  [FIELD_SUBTYPE_UUID]: "string",
   [FIELD_SUBTYPE_INT]: "number",
   [FIELD_SUBTYPE_SHORT]: "number",
   [FIELD_SUBTYPE_BYTE]: "number",

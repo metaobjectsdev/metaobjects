@@ -224,14 +224,41 @@ final class ObjectManagerDbAdapter {
     private static Map<String, Object> toRowMap(MetaObject mc, Object instance) {
         Map<String, Object> row = new LinkedHashMap<>();
         if (instance instanceof ValueObject vo) {
-            for (MetaField<?> mf : mc.getMetaFields()) row.put(mf.getName(), vo.get(mf.getName()));
+            for (MetaField<?> mf : mc.getMetaFields()) row.put(mf.getName(), maybeParseJson(mf, vo.get(mf.getName())));
             return row;
         }
         // Fallback: ask each MetaField for its value off the object.
         for (MetaField<?> mf : mc.getMetaFields()) {
-            try { row.put(mf.getName(), mf.getObject(instance)); }
+            try { row.put(mf.getName(), maybeParseJson(mf, mf.getObject(instance))); }
             catch (Exception ignored) { row.put(mf.getName(), null); }
         }
         return row;
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
+        new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /**
+     * R6 Plan 2b: an open-JSON column ({@code @dbColumnType: jsonb}) is a
+     * {@code field.string} whose stored value is raw JSON text. The cross-port
+     * corpus asserts the <em>parsed</em> structure (and the row normalizer then
+     * re-serializes it with sorted keys), so parse the JSON string here before
+     * normalization. Non-jsonb fields and non-string values pass through unchanged.
+     */
+    private static Object maybeParseJson(MetaField<?> mf, Object value) {
+        boolean isOpenJsonb;
+        try {
+            isOpenJsonb = mf.hasMetaAttr(com.metaobjects.database.CoreDBMetaDataProvider.DB_COLUMN_TYPE)
+                && com.metaobjects.database.CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB.equals(
+                    mf.getMetaAttr(com.metaobjects.database.CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValueAsString());
+        } catch (Exception e) {
+            isOpenJsonb = false;
+        }
+        if (!isOpenJsonb || !(value instanceof String s)) return value;
+        try {
+            return JSON.readValue(s, Object.class);
+        } catch (Exception e) {
+            return value; // not JSON — leave as-is
+        }
     }
 }

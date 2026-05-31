@@ -18,6 +18,7 @@ from ..meta.core.relationship.meta_relationship import MetaRelationship
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source import source_constants as sc
 from .expected_views import build_expected_views
+from ..meta.persistence.db import db_constants as dbc
 from .sql_type import (
     Boolean,
     Date,
@@ -29,6 +30,7 @@ from .sql_type import (
     SqlType,
     Text,
     Timestamp,
+    Uuid,
 )
 from .types import (
     ColumnDescriptor,
@@ -107,7 +109,29 @@ def _build_column(field: MetaField, pk_field_names: tuple[str, ...]) -> ColumnDe
     )
 
 
+# R6 Plan 2b — @dbColumnType value → mapped physical SqlType. The native binding
+# is unchanged; only the DB column type is overridden. Postgres emission for each
+# already exists (postgres_emit._pg_type): Uuid→UUID, Json→JSONB,
+# Timestamp(with_timezone=True)→TIMESTAMP WITH TIME ZONE.
+_DB_COLUMN_TYPE_TO_SQL: dict[str, SqlType] = {
+    dbc.DB_COLUMN_TYPE_UUID: Uuid(),
+    dbc.DB_COLUMN_TYPE_JSONB: Json(),
+    dbc.DB_COLUMN_TYPE_TIMESTAMP_TZ: Timestamp(with_timezone=True),
+}
+
+
 def _subtype_to_sql_type(field: MetaField) -> SqlType:
+    # R6 Plan 2b — a present (own-only) @dbColumnType selects the mapped physical
+    # SqlType instead of the subtype default. The logical subtype and its native
+    # binding are unchanged (a @dbColumnType:uuid field.string still binds str).
+    # Pairing legality is enforced at load time (validation_passes); here we trust
+    # the validated value.
+    db_col_type = field.attr(dbc.FIELD_ATTR_DB_COLUMN_TYPE)
+    if isinstance(db_col_type, str):
+        mapped = _DB_COLUMN_TYPE_TO_SQL.get(db_col_type)
+        if mapped is not None:
+            return mapped
+
     st = field.sub_type
     if st == fc.FIELD_SUBTYPE_STRING:
         max_len = field.attr(fc.FIELD_ATTR_MAX_LENGTH)
@@ -134,6 +158,9 @@ def _subtype_to_sql_type(field: MetaField) -> SqlType:
         return Text()
     if st == fc.FIELD_SUBTYPE_TIMESTAMP:
         return Timestamp(with_timezone=False)
+    if st == fc.FIELD_SUBTYPE_UUID:
+        # R6 Plan 2a — logical field.uuid → native Postgres uuid column.
+        return Uuid()
     if st == fc.FIELD_SUBTYPE_ENUM:
         # Enum members stored as text; CHECK constraint is C#-only today.
         max_len = field.attr(fc.FIELD_ATTR_MAX_LENGTH)

@@ -1,6 +1,5 @@
 package com.metaobjects.generator.spring;
 
-import com.metaobjects.DataTypes;
 import com.metaobjects.field.BooleanField;
 import com.metaobjects.field.CurrencyField;
 import com.metaobjects.field.DateField;
@@ -8,7 +7,6 @@ import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
-import com.metaobjects.field.PrimitiveField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimestampField;
 import com.metaobjects.registry.SharedRegistryTestBase;
@@ -77,12 +75,11 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void uuidFieldMatchedBySubtypeMapsToUUID() {
-        // field.uuid has no dedicated JVM class today — mapper matches on subtype name.
-        // Use a minimal anonymous PrimitiveField with subType="uuid" to drive the path
-        // (parallel of KotlinTypeMapperTest's `uuid` arm).
-        PrimitiveField<String> field = new PrimitiveField<>("uuid", "externalId", DataTypes.STRING) {};
-        assertEquals("java.util.UUID", SpringTypeMapper.javaTypeName(field));
+    public void uuidFieldMapsToUUID() {
+        // R6 Plan 2a: field.uuid is a first-class subtype (UuidField) with a native
+        // java.util.UUID binding (parallel of KotlinTypeMapperTest's `uuid` arm).
+        assertEquals("java.util.UUID",
+            SpringTypeMapper.javaTypeName(new com.metaobjects.field.UuidField("externalId")));
     }
 
     @Test

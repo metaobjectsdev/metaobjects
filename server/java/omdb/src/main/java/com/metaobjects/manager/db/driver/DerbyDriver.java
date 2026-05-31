@@ -76,26 +76,34 @@ public class DerbyDriver extends GenericSQLDriver {
                 if (i > 0) query.append(",\n");
                 
                 query.append("  ").append(name).append(" ");
-                
-                // Derby-specific type mapping
-                switch (col.getSQLType()) {
-                    case Types.BOOLEAN, Types.BIT -> query.append("BOOLEAN");
-                    case Types.TINYINT, Types.SMALLINT -> query.append("SMALLINT");
-                    case Types.INTEGER -> query.append("INTEGER");
-                    case Types.BIGINT -> query.append("BIGINT");
-                    case Types.FLOAT -> query.append("REAL");
-                    case Types.DOUBLE -> query.append("DOUBLE");
-                    case Types.TIMESTAMP -> query.append("TIMESTAMP");
-                    case Types.TIME -> query.append("TIME");
-                    case Types.VARCHAR -> {
-                        if (col.getLength() > 32700) {
-                            query.append("CLOB");
-                        } else {
-                            query.append("VARCHAR(").append(col.getLength()).append(")");
+
+                // R6 Plan 2a/2b: physical column-type hint. Derby has no native
+                // uuid/jsonb/timestamptz, so map to portable fallbacks (the hint
+                // still records intent; Postgres is the dialect with native types).
+                String hint = col.getDbColumnType();
+                if (hint != null) {
+                    query.append(derbyNativeColumnType(hint));
+                } else {
+                    // Derby-specific type mapping
+                    switch (col.getSQLType()) {
+                        case Types.BOOLEAN, Types.BIT -> query.append("BOOLEAN");
+                        case Types.TINYINT, Types.SMALLINT -> query.append("SMALLINT");
+                        case Types.INTEGER -> query.append("INTEGER");
+                        case Types.BIGINT -> query.append("BIGINT");
+                        case Types.FLOAT -> query.append("REAL");
+                        case Types.DOUBLE -> query.append("DOUBLE");
+                        case Types.TIMESTAMP -> query.append("TIMESTAMP");
+                        case Types.TIME -> query.append("TIME");
+                        case Types.VARCHAR -> {
+                            if (col.getLength() > 32700) {
+                                query.append("CLOB");
+                            } else {
+                                query.append("VARCHAR(").append(col.getLength()).append(")");
+                            }
                         }
+                        default -> throw new UnsupportedOperationException(
+                            "Derby driver does not support SQL type: " + col.getSQLType());
                     }
-                    default -> throw new UnsupportedOperationException(
-                        "Derby driver does not support SQL type: " + col.getSQLType());
                 }
                 
                 // Add IDENTITY constraint if needed
@@ -339,6 +347,25 @@ public class DerbyDriver extends GenericSQLDriver {
     @Override
     public String getDateFormat() {
         return "yyyy-MM-dd HH:mm:ss";
+    }
+
+    /**
+     * Map a dialect-neutral physical column-type hint (R6 Plan 2a/2b) to a
+     * portable Derby column type. Derby has no native uuid/jsonb/timestamptz:
+     * a uuid becomes {@code CHAR(36)} (canonical-string width), open JSON a
+     * {@code CLOB}, and timestamptz a plain {@code TIMESTAMP}. Postgres is the
+     * dialect that realizes these as native types (the conformance corpus runs
+     * against Postgres); Derby keeps the schema buildable for the rest of the
+     * runtime/test path.
+     */
+    private static String derbyNativeColumnType(String hint) {
+        return switch (hint) {
+            case ColumnDef.COLTYPE_UUID         -> "CHAR(36)";
+            case ColumnDef.COLTYPE_JSONB        -> "CLOB";
+            case ColumnDef.COLTYPE_TIMESTAMP_TZ -> "TIMESTAMP";
+            default -> throw new UnsupportedOperationException(
+                "Derby driver does not support column-type hint: " + hint);
+        };
     }
 
     @Override

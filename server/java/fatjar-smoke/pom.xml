@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.metaobjects.smoke</groupId>
+  <artifactId>fatjar-smoke</artifactId>
+  <version>1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <!--
+    Standalone Spring Boot fat-jar bootstrap smoke test for metaobjects.
+
+    INTENTIONALLY NOT part of the reactor build (absent from the parent
+    <modules>) so it never slows the normal build. Run on demand via
+    scripts/fatjar-smoke.sh after installing the metaobjects snapshot.
+
+    It packages a `java -jar`-runnable Spring Boot fat jar whose
+    MetaDataTypeProvider service manifests live in nested BOOT-INF/lib jars, then
+    forces the adverse classloader condition that broke the runtime loader and
+    verifies a bare `metadata:` YAML root still loads.
+  -->
+
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <metaobjects.version>7.1.1-SNAPSHOT</metaobjects.version>
+    <spring-boot.version>3.5.6</spring-boot.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-metadata</artifactId>
+      <version>${metaobjects.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>fatjar-smoke</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <release>17</release>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <version>${spring-boot.version}</version>
+        <configuration>
+          <mainClass>com.metaobjects.smoke.FatJarSmoke</mainClass>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

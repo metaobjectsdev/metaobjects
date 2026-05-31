@@ -11,6 +11,7 @@ import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
+import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.field.BooleanField;
 import com.metaobjects.field.CurrencyField;
 import com.metaobjects.field.DateField;
@@ -22,6 +23,7 @@ import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
+import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
 import com.metaobjects.layout.DataGridLayout;
@@ -111,6 +113,7 @@ public final class ValidationPhase {
         // R1b for template.toolcall) into a single cross-port-aligned pass.
         validateRequiredAttrs(root, loader);
         validateEnumValues(root);
+        validateDbColumnType(root);
         validateSourceAttrs(root);
         validateOnePrimarySource(root);
         validateRelationshipReferentialActions(root);
@@ -394,6 +397,78 @@ public final class ValidationPhase {
             return out;
         }
         return List.of();
+    }
+
+    // =========================================================================
+    // @dbColumnType physical column-type validation (R6 Plan 2b, ADR-0013)
+    //
+    // Own-only: validates the @dbColumnType attribute declared on THIS field node
+    // (not inherited), mirroring the field.enum @values pass. Two rules:
+    //
+    //   1. The value must be one of the closed set uuid|jsonb|timestamp_with_tz
+    //      → ERR_BAD_ATTR_VALUE otherwise.
+    //   2. The value's legal (subtype × dbColumnType) pairing must hold:
+    //        uuid              → field.string
+    //        jsonb             → field.string
+    //        timestamp_with_tz → field.timestamp
+    //      → ERR_BAD_ATTR_VALUE on an illegal pairing.
+    //
+    // The error message names the field, the value, and the legal set — matching
+    // the field.enum ERR_BAD_ATTR_VALUE precedent. Cross-port: TS/C#/Python run
+    // the identical own-only pairing check (the dbProvider validation in ADR-0013 §3).
+    // =========================================================================
+
+    static void validateDbColumnType(MetaRoot root) {
+        walkDbColumnType(root);
+    }
+
+    private static void walkDbColumnType(MetaData node) {
+        validateDbColumnTypeNode(node);
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkDbColumnType(child);
+        }
+    }
+
+    private static void validateDbColumnTypeNode(MetaData node) {
+        if (!MetaField.TYPE_FIELD.equals(node.getType())) {
+            return;
+        }
+        // Own-only: only validate @dbColumnType declared on this node.
+        if (!node.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE, false)) {
+            return;
+        }
+        String value = node.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE, false)
+                           .getValueAsString();
+
+        // Rule 1: recognized value.
+        if (value == null || !CoreDBMetaDataProvider.VALID_DB_COLUMN_TYPES.contains(value)) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                    + ": field '" + node.getName()
+                    + "' @" + CoreDBMetaDataProvider.DB_COLUMN_TYPE + " '" + value
+                    + "' is not a valid value; allowed: "
+                    + CoreDBMetaDataProvider.VALID_DB_COLUMN_TYPES,
+                ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+        }
+
+        // Rule 2: legal (subtype × value) pairing.
+        String subType = node.getSubType();
+        String requiredSubType = switch (value) {
+            case CoreDBMetaDataProvider.DB_COLUMN_TYPE_UUID,
+                 CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB -> StringField.SUBTYPE_STRING;
+            case CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ -> TimestampField.SUBTYPE_TIMESTAMP;
+            default -> null; // unreachable — Rule 1 already rejected unknown values
+        };
+        if (requiredSubType != null && !requiredSubType.equals(subType)) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                    + ": field '" + node.getName()
+                    + "' @" + CoreDBMetaDataProvider.DB_COLUMN_TYPE + " '" + value
+                    + "' is not valid on field." + subType
+                    + " (requires field." + requiredSubType + "); allowed pairings: "
+                    + "uuid→field.string, jsonb→field.string, timestamp_with_tz→field.timestamp",
+                ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+        }
     }
 
     // =========================================================================

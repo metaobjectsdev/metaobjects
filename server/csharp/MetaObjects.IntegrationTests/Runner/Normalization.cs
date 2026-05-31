@@ -41,6 +41,13 @@ public static class Normalization
         double d => CanonicalFloat(d),
         // NUMERIC / DECIMAL — canonical decimal string, no trailing zeros.
         decimal dec => CanonicalDecimal(dec),
+        // A jsonb/json column is read-as-string by Npgsql. Re-serialize with sorted
+        // keys per the cross-port contract (normalization.md: JSON/JSONB → sorted
+        // keys). Scalar leaves are stringified so the shape matches the expect: block
+        // (YAML scalars deserialize as strings) and the corpus's string-scalar
+        // philosophy (BIGINT/NUMERIC as strings). A plain text value that does not
+        // parse as a JSON object/array stays a string.
+        string js when TryParseJsonContainer(js, out var node) => StringifyLeaves(SortKeys(node!)),
         // Strings already canonical.
         string str => str,
         // Date/time discriminated by source CLR type.
@@ -59,6 +66,18 @@ public static class Normalization
         // a raw enum value need to surface as the symbol name.
         Enum e => e.ToString(),
         _ => v.ToString(),
+    };
+
+    /// <summary>
+    /// Wrap a normalized cell value as a <see cref="JsonNode"/> for assembly into a
+    /// row object. A value that is already a <see cref="JsonNode"/> (a normalized
+    /// jsonb container) is taken as-is; null → null; everything else → a JsonValue.
+    /// </summary>
+    public static JsonNode? ToJsonValue(object? v) => v switch
+    {
+        null => null,
+        JsonNode node => node,
+        _ => JsonValue.Create(v),
     };
 
     private static string CanonicalDecimal(decimal d)
@@ -120,6 +139,44 @@ public static class Normalization
         return node.DeepClone();
     }
 
+    // True (with the parsed node) when `s` is a JSON object or array. A bare JSON
+    // scalar (e.g. "42", "\"hi\"") is NOT treated as a container — an ordinary TEXT
+    // column that happens to hold a number-looking string must stay a string.
+    private static bool TryParseJsonContainer(string s, out JsonNode? node)
+    {
+        node = null;
+        var t = s.TrimStart();
+        if (t.Length == 0 || (t[0] != '{' && t[0] != '[')) return false;
+        try { node = JsonNode.Parse(s); return node is JsonObject or JsonArray; }
+        catch (JsonException) { return false; }
+    }
+
+    // Coerce every scalar leaf to its string form (numbers/bools → string), preserving
+    // object/array structure. Matches the expect: block, whose YAML scalars deserialize
+    // as strings, and the corpus's string-scalar normalization philosophy.
+    private static JsonNode StringifyLeaves(JsonNode node)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                var o = new JsonObject();
+                foreach (var (k, v) in obj) o[k] = v is null ? null : StringifyLeaves(v.DeepClone());
+                return o;
+            case JsonArray arr:
+                var a = new JsonArray();
+                foreach (var item in arr) a.Add(item is null ? null : StringifyLeaves(item.DeepClone()));
+                return a;
+            default:
+                // JsonValue scalar → its canonical string form. Parse (not Trim('"'))
+                // so a string leaf containing embedded quotes/escapes round-trips
+                // losslessly: take the raw string value for JSON strings, and the
+                // serialized form for non-string scalars (numbers/bools/null).
+                return JsonValue.Create(node.GetValueKind() == JsonValueKind.String
+                    ? node.GetValue<string>()
+                    : node.ToJsonString());
+        }
+    }
+
     /// <summary>
     /// Canonical-JSON serialization of an arbitrary node: object keys sorted
     /// recursively so two semantically-equal trees compare byte-equal.
@@ -141,7 +198,7 @@ public static class Normalization
         {
             var obj = new JsonObject();
             foreach (var (k, v) in NormalizeRow(row))
-                obj[k] = v is null ? null : JsonValue.Create(v);
+                obj[k] = ToJsonValue(v);
             arr.Add(obj);
         }
         return CanonicalJson(arr);

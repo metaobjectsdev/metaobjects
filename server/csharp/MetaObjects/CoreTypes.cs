@@ -96,6 +96,9 @@ public static class CoreTypes
         [FIELD_SUBTYPE_LONG]      = DataType.Long,
         [FIELD_SUBTYPE_CURRENCY]  = DataType.Long,
         [FIELD_SUBTYPE_ENUM]      = DataType.String,
+        // R6 Plan 2a — field.uuid is string-backed on the wire (lowercase-canonical
+        // UUID string); the native System.Guid binding is a build-time codegen concern.
+        [FIELD_SUBTYPE_UUID]      = DataType.String,
         [FIELD_SUBTYPE_DOUBLE]    = DataType.Double,
         [FIELD_SUBTYPE_FLOAT]     = DataType.Double,
         [FIELD_SUBTYPE_DECIMAL]   = DataType.Double,
@@ -227,7 +230,7 @@ public static class CoreTypes
                     objectAttrs));
         }
 
-        // field — 17 subtypes (base + 16)
+        // field — 18 subtypes (base + 17)
         List<ChildRule> fieldRules =
         [
             Wildcard(TYPE_VALIDATOR),
