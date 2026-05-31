@@ -44,21 +44,15 @@ final class QueryScenarioTests {
     /**
      * Scenarios deferred until the underlying Java port gap is closed.
      *
-     * <p>{@code projection-aggregate}: the aggregate-projection view body
-     * (the SQL behind {@code v_program_stat}, derived from {@code origin.aggregate}
-     * declarations) was synthesized by the diff-and-converge migration engine's
-     * {@code ViewBodyBuilder}, which was removed when schema migrations moved to
-     * the TypeScript toolchain. The retained runtime auto-create path
-     * ({@link com.metaobjects.manager.db.validator.MetaClassDBValidatorService})
-     * only materializes a view when the projection carries an explicit
-     * {@code dbViewSQL} attribute, so it cannot build the aggregate view from
-     * origins alone. Re-homing view-body synthesis into the runtime mapping
-     * layer is a separate piece of work tracked outside this removal.</p>
+     * <p>None: schema authority is now the committed canonical DDL
+     * (ADR-0015), which materializes the aggregate-projection view
+     * ({@code v_program_stat}) directly. The previous {@code projection-aggregate}
+     * deferral — the view body had been synthesized by the removed migration
+     * engine, and runtime auto-create could only build a view from an explicit
+     * {@code dbViewSQL} attr — no longer applies: the OMDB runtime simply reads
+     * the TS-authored view through its projection-read path.</p>
      */
-    private static final Map<String, String> EXPECTED_FAILURES = Map.of(
-        "projection-aggregate",
-        "aggregate-projection view body builder was part of the removed migration engine; "
-            + "runtime auto-create only materializes views from an explicit dbViewSQL attr");
+    private static final Map<String, String> EXPECTED_FAILURES = Map.of();
 
     @BeforeAll
     static void beforeAll() {

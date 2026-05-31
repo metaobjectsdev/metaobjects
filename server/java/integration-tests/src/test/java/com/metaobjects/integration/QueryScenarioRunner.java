@@ -6,10 +6,7 @@ import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.db.ObjectManagerDB;
 import com.metaobjects.manager.db.driver.PostgresDriver;
-import com.metaobjects.manager.db.validator.MetaClassDBValidatorService;
 import com.metaobjects.object.MetaObject;
-import com.metaobjects.registry.MetaDataLoaderRegistry;
-import com.metaobjects.registry.ServiceRegistryFactory;
 
 import javax.sql.DataSource;
 import java.io.PrintWriter;
@@ -26,12 +23,14 @@ import java.util.logging.Logger;
 /**
  * Mirrors C# QueryScenarioRunner / TS query-scenario.ts. End-to-end:
  *
- *   1. Apply the canonical schema via the runtime auto-create path
- *      ({@link MetaClassDBValidatorService} with {@code autoCreate=true},
- *      which issues the drivers' legacy {@code createTable}/{@code createIndex}/
- *      {@code createForeignKey}/{@code createSequence} DDL). Schema migrations
- *      (diff-and-converge) are owned by the TS toolchain; the Java port only
- *      retains runtime auto-create for test/dev schema bootstrap.
+ *   1. Provision the schema by executing the committed canonical DDL
+ *      ({@code fixtures/persistence-conformance/canonical/schema.postgres.sql})
+ *      verbatim on a direct JDBC connection. Schema authority is the
+ *      TS-produced artifact (ADR-0015); the Java port no longer derives the
+ *      conformance schema from metadata at test time. The committed DDL is the
+ *      sole schema source — OMDB's runtime auto-create is NOT engaged here, so
+ *      this exercises OMDB's native uuid/jsonb/timestamptz runtime read against
+ *      a TS-authored schema.
  *   2. Execute the scenario's seed-data SQL.
  *   3. For each {@link QuerySpec}: translate via {@link ObjectManagerDbAdapter}
  *      → {@link ObjectManagerDB#getObjects} / {@code getObjectsCount},
@@ -45,18 +44,14 @@ public final class QueryScenarioRunner {
         // from a previous scenario doesn't leak across containers.
         String tag = "canonical-" + UUID.randomUUID().toString().substring(0, 8);
         MetaDataLoader loader = MetaDataLoader.fromDirectory(tag, canonicalDir);
-        MetaDataLoaderRegistry registry = new MetaDataLoaderRegistry(ServiceRegistryFactory.getDefault());
-        registry.registerLoader(loader);
 
         ObjectManagerDB omdb = newOmdb(pg);
 
-        // 1. Apply canonical schema via the runtime auto-create path (the
-        //    drivers' legacy createTable/createIndex/createForeignKey DDL).
-        MetaClassDBValidatorService validator = new MetaClassDBValidatorService();
-        validator.setObjectManager(omdb);
-        validator.setAutoCreate(true);
-        validator.setMetaDataLoaderRegistry(registry);
-        validator.init();
+        // 1. Provision the schema by executing the committed canonical DDL
+        //    verbatim — the TS-produced artifact is the sole schema source
+        //    (ADR-0015). OMDB's runtime auto-create is intentionally NOT engaged.
+        String schemaDdl = ScenarioLoader.readCanonicalSchema(canonicalDir.getParent());
+        try (Connection c = openConnection(pg)) { executeSql(c, schemaDdl); }
 
         // 2. Seed data.
         if (scenario.seedData() != null && !scenario.seedData().isBlank()) {

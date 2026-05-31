@@ -28,6 +28,9 @@ public final class ScenarioLoader {
 
     private static final Yaml YAML = new Yaml();
 
+    /** Canonical Postgres schema artifact, relative to the corpus root. */
+    private static final String CANONICAL_SCHEMA_RELATIVE = "canonical/schema.postgres.sql";
+
     public static List<QueryScenario> loadQueries(Path dir) {
         return loadAll(dir, ScenarioLoader::parseQuery);
     }
@@ -127,5 +130,23 @@ public final class ScenarioLoader {
         }
         throw new IllegalStateException(
             "Could not locate fixtures/persistence-conformance from " + Paths.get("").toAbsolutePath());
+    }
+
+    /**
+     * Read the committed canonical Postgres schema DDL (base tables + projection
+     * views), executed verbatim by the query runner to provision its test DB.
+     * Schema authority is the TS-produced artifact (ADR-0015); the Java port no
+     * longer derives the conformance schema from metadata at test time.
+     */
+    public static String readCanonicalSchema(Path corpusRoot) {
+        Path schema = corpusRoot.resolve(CANONICAL_SCHEMA_RELATIVE);
+        if (!Files.isRegularFile(schema)) {
+            throw new IllegalStateException("Canonical schema not found: " + schema);
+        }
+        try {
+            return Files.readString(schema, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 }
