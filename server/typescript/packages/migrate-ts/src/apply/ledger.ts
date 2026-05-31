@@ -193,3 +193,42 @@ export async function appliedRecords(
   }
   return map;
 }
+
+/** Reserved ledger name for the baseline marker (sorts before any timestamped migration). */
+export const BASELINE_NAME = "0000-baseline";
+
+/**
+ * Record (or overwrite) the baseline marker — the snapshot checksum captured when
+ * `migrate baseline` seeded the reference snapshot. Lets a later check detect a
+ * snapshot that was hand-edited out of sync with the migration chain.
+ */
+export async function recordBaseline(
+  db: Kysely<Record<string, unknown>>,
+  dialect: LedgerDialect = "sqlite",
+  checksum: string,
+  opts?: LedgerOptions,
+): Promise<void> {
+  const ledger = resolveLedger(dialect, opts);
+  await ensureLedger(db, dialect, opts);
+  const appliedAt = new Date().toISOString();
+  // Upsert: delete any prior baseline, then insert (portable across sqlite/pg).
+  await sql`DELETE FROM ${ledger.ref} WHERE name = ${BASELINE_NAME}`.execute(db);
+  await sql`
+    INSERT INTO ${ledger.ref} (name, applied_at, checksum)
+    VALUES (${BASELINE_NAME}, ${appliedAt}, ${checksum})
+  `.execute(db);
+}
+
+/** Read the baseline marker, or null if none recorded. */
+export async function baselineRecord(
+  db: Kysely<Record<string, unknown>>,
+  dialect: LedgerDialect = "sqlite",
+  opts?: LedgerOptions,
+): Promise<{ name: string; checksum: string } | null> {
+  const ledger = resolveLedger(dialect, opts);
+  const result = await sql<{ name: string; checksum: string }>`
+    SELECT name, checksum FROM ${ledger.ref} WHERE name = ${BASELINE_NAME}
+  `.execute(db);
+  const row = result.rows[0];
+  return row ? { name: row.name, checksum: row.checksum } : null;
+}
