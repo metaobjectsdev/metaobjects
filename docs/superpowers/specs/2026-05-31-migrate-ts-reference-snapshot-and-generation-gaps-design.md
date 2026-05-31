@@ -80,6 +80,20 @@ feature means extending the descriptor** (§7). That coupling is the descriptor 
 honest about what the schema can express — the same data `buildExpectedSchema`
 computes anyway — and it is bounded to genuinely-new physical features.
 
+**Alternatives considered — replay DB (Prisma shadow-DB / Atlas dev-DB).** Deriving
+"current" by replaying migrations into a throwaway database (embedded via PGlite /
+libsql) is sound — it is deterministic, surfaces projector-rule changes, and captures
+hand-edited DDL — and it reuses migrate-ts's existing introspector. But as the
+*primary* generate reference it degrades **hard**: a single un-replayable statement
+(`CREATE EXTENSION postgis`, `CREATE ROLE`, a tablespace, an untrusted PL) fails
+generation entirely, and PGlite has a real fidelity ceiling there. The descriptor
+snapshot is **execution-free**, so it is unbounded by database complexity and
+degrades **gracefully** (an un-modeled object is simply absent → it survives, never
+diffed). Coverage of complex constructs (CHECK, etc.) is a *diff-coverage* problem
+solved by §7 regardless of reference, not by switching to replay. We therefore keep
+the descriptor snapshot as the generate reference and retain replay only as the
+optional `verify --replay` integrity aid (§8).
+
 ## 4. Snapshot format & storage
 
 - **One file per dialect**, committed alongside migrations:
@@ -179,10 +193,21 @@ itself and is not a separate roadmap item.
 - **Ledger checksum.** Record a hash of the post-migration snapshot per applied
   migration (Atlas `atlas.sum` analog) so an out-of-band snapshot edit or a broken
   migration chain is detectable.
-- **`verify --replay` (CI).** Replay all migrations into a scratch SQLite/Postgres,
-  introspect the result, and assert it equals the snapshot. This catches
-  hand-edited *structural* DDL diverging from the metadata-derived snapshot — the one
-  residual hazard of trusting metadata as the schema truth.
+- **`verify --replay`.** Replay all migrations into a throwaway database, introspect
+  the result, and assert it equals the snapshot. This catches hand-edited *structural*
+  DDL diverging from the metadata-derived snapshot — the one residual hazard of
+  trusting metadata as the schema truth. It reuses migrate-ts's existing apply runner
+  + introspector verbatim. Engine is **tiered by fidelity**:
+  - **CI → real Postgres** (the existing Testcontainers path): full fidelity, replays
+    extension / role / tablespace DDL too.
+  - **Local → embedded, zero-infra**: `:memory:` libsql for sqlite, **PGlite**
+    (`@electric-sql/pglite`, WASM Postgres in-process) for postgres.
+  - **PGlite fidelity ceiling:** PGlite runs the real PG engine (CHECK, partial/
+    expression indexes, generated columns, matviews, plpgsql triggers, domains,
+    `CREATE TYPE` enums, RLS, exclusion constraints all work) but cannot run native
+    extensions (PostGIS), cluster/role/tablespace DDL, or untrusted PLs
+    (plpython/plperl). Replay flags + skips statements it can't execute and notes the
+    reduced-fidelity result; the CI real-PG tier is authoritative.
 
 ## 9. Testing
 
