@@ -44,7 +44,9 @@ def run(scenario: QueryScenario, pg: PostgresContainer, canonical_dir: Path) -> 
         om = ObjectManager(root_for_bootstrap, driver)
         for spec in scenario.queries:
             actual = _execute_spec(om, spec)
-            _assert_result(scenario.source_path, spec, actual)
+            # The OID map from the just-run query supplies the int4-vs-int8
+            # wire discriminator the native row values can't carry (ADR-0019).
+            _assert_result(scenario.source_path, spec, actual, om.last_column_oids)
 
 
 # ----------------------------------------------------------------------------
@@ -127,9 +129,11 @@ def _execute(info: Any, sql: str) -> None:
             cur.close()
 
 
-def _assert_result(scenario_path: str, spec: QuerySpec, actual: Any) -> None:
+def _assert_result(
+    scenario_path: str, spec: QuerySpec, actual: Any, column_oids: dict[str, int]
+) -> None:
     expected_json = _canonicalize_expected(spec.expect, spec.op)
-    actual_json = _canonicalize_actual(actual, spec.op)
+    actual_json = _canonicalize_actual(actual, spec.op, column_oids)
     if expected_json != actual_json:
         raise AssertionError(
             f"{scenario_path} / {spec.name}: result mismatch\n"
@@ -152,11 +156,13 @@ def _canonicalize_expected(expect: Any, op: str) -> str:
     return canonical_rows_json(expect)
 
 
-def _canonicalize_actual(actual: Any, op: str) -> str:
+def _canonicalize_actual(actual: Any, op: str, column_oids: dict[str, int]) -> str:
     if op == "count":
         return str(int(actual) if actual is not None else 0)
     if actual is None:
         return "null"
     if op == "get":
-        return json.dumps(normalize_row(actual), sort_keys=True, separators=(",", ":"))
-    return canonical_rows_json(actual)
+        return json.dumps(
+            normalize_row(actual, column_oids), sort_keys=True, separators=(",", ":")
+        )
+    return canonical_rows_json(actual, column_oids)
