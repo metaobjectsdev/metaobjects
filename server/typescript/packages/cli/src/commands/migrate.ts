@@ -131,6 +131,13 @@ export async function migrateCommand(
     return await runBaseline(config, metaRoot);
   }
 
+  // Default = offline snapshot generation. The live-introspection path runs only
+  // when explicitly requested via --from-db, when --apply needs a connection, or
+  // for --rollback (which runs hand-authored down.sql against the live DB).
+  if (!config.fromDb && !config.apply && config.rollback === undefined) {
+    return await runOfflineGenerate(config, metaRoot);
+  }
+
   if (config.databaseUrl === undefined) {
     log.error(`migrate: --db <url> required (or set DATABASE_URL, or add migrate.databaseUrl to .metaobjects/config.json)`);
     return 2;
@@ -452,6 +459,93 @@ export async function runBaseline(
 
   await writeSnapshot(path, snapshot);
   log.info(`migrate: wrote schema snapshot ${path}`);
+  return 0;
+}
+
+/**
+ * Default `meta migrate` generate path — fully offline. Diffs metadata against
+ * the committed snapshot (no DB), writes up/down.sql, and advances the snapshot.
+ * The live-introspection path is used only with --from-db or --apply.
+ *
+ * Scope: table/column/index/FK changes. Projection-view migrations stay on the
+ * introspection path (offline-view parity is a follow-up).
+ */
+export async function runOfflineGenerate(
+  config: ResolvedMigrateConfig,
+  metaRoot: string,
+): Promise<number> {
+  if (config.dialect === undefined) {
+    log.error(`migrate: --dialect required for offline generation (or use --from-db)`);
+    return 2;
+  }
+  let metadata;
+  try {
+    metadata = await loadMemory(metaRoot);
+  } catch (err) {
+    log.error(`migrate: failed to load metadata: ${(err as Error).message}`);
+    return 2;
+  }
+
+  const outDir = resolvePath(metaRoot, config.outDir);
+  const path = snapshotPath(outDir, config.dialect);
+  const snapshot = await readSnapshot(path);
+  if (snapshot === null) {
+    log.error(`migrate: no schema snapshot at ${path}; run 'meta migrate baseline' first`);
+    return 2;
+  }
+
+  const collectedAmbiguous: AmbiguousChange[] = [];
+  const onAmbiguousResolution = mapOnAmbiguous(config.onAmbiguous);
+
+  let plan;
+  try {
+    plan = await planOffline({
+      metadata,
+      dialect: config.dialect,
+      snapshot,
+      allow: tokensToAllowOptions(config.allow),
+      onAmbiguous: async (a) => {
+        collectedAmbiguous.push(a);
+        return onAmbiguousResolution;
+      },
+    });
+  } catch (err) {
+    if ((err as Error).message.includes("aborted by onAmbiguous")) {
+      log.error(`migrate: ambiguous rename/drop detected; re-run with --on-ambiguous rename|drop-add`);
+      return 1;
+    }
+    throw err;
+  }
+
+  const { diff: diffResult, nextSnapshot } = plan;
+
+  if (diffResult.blocked.length > 0) {
+    log.error(`migrate: ${diffResult.blocked.length} destructive change(s) blocked; re-run with --allow <tokens>`);
+    return 1;
+  }
+  if (diffResult.changes.length === 0) {
+    log.info(`migrate: no changes`);
+    return 0;
+  }
+
+  const emitResult = emit(diffResult.changes, {
+    dialect: config.dialect,
+    expectedSchema: nextSnapshot,
+    ...(snapshot.meta ? { actualMeta: snapshot.meta } : {}),
+  });
+
+  if (config.dryRun) {
+    log.info(`-- UP --\n${emitResult.up}\n\n-- DOWN --\n${emitResult.down}`);
+    return 0;
+  }
+
+  await mkdir(outDir, { recursive: true });
+  const res = await writeMigration(
+    { up: emitResult.up, down: emitResult.down },
+    { dir: outDir, slug: config.slug ?? "migration" },
+  );
+  await writeSnapshot(path, nextSnapshot);
+  log.info(`migrate: wrote ${res.upPath}`);
   return 0;
 }
 
