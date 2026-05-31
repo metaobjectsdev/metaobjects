@@ -81,6 +81,53 @@ def value(
             return raw
 
 
+def scalar_coerce(raw: str | None, spec: FieldSpec) -> object:
+    """Phase B (generalized ``@default``): coerce a non-enum default string to a
+    field's scalar kind, with NO side effects (no normalizer/on_field hooks, no
+    clamp logging) — the value originates from metadata, not the model response.
+
+    Returns the coerced value or the ``MALFORMED`` sentinel. INT/LONG accept an
+    integer or a truncatable finite number; DOUBLE accepts any finite number;
+    BOOLEAN accepts ``true|false|yes|no|1|0``; STRING (and any other kind) passes
+    through verbatim. Mirrors the parse semantics of :func:`value` without its
+    range-clamp / report machinery (Java ``Coerce.scalar``).
+    """
+    if raw is None:
+        return MALFORMED
+    match spec.kind:
+        case FieldKind.INT | FieldKind.LONG:
+            trimmed = raw.strip()
+            if not _ASCII_NUMERIC.match(trimmed):
+                return MALFORMED
+            try:
+                return int(trimmed)
+            except ValueError:
+                pass
+            try:
+                d = float(trimmed)
+            except ValueError:
+                return MALFORMED
+            return math.trunc(d) if math.isfinite(d) else MALFORMED
+        case FieldKind.DOUBLE:
+            trimmed = raw.strip()
+            if not _ASCII_NUMERIC.match(trimmed):
+                return MALFORMED
+            try:
+                d = float(trimmed)
+            except ValueError:
+                return MALFORMED
+            return d if math.isfinite(d) else MALFORMED
+        case FieldKind.BOOLEAN:
+            t = raw.strip().lower()
+            if t in ("true", "yes", "1"):
+                return True
+            if t in ("false", "no", "0"):
+                return False
+            return MALFORMED
+        case _:
+            return raw  # STRING / ENUM / OBJECT — verbatim
+
+
 def _coerce_enum(
     raw: str,
     spec: FieldSpec,

@@ -112,8 +112,53 @@ class FieldSpec:
     normalize: str = _NORMALIZE_DEFAULT
 
     @staticmethod
-    def scalar(name: str, kind: FieldKind, required: bool) -> "FieldSpec":
-        return FieldSpec(name=name, kind=kind, required=required)
+    def scalar(
+        name: str,
+        kind: FieldKind,
+        required: bool,
+        default_value: str | None = None,
+    ) -> "FieldSpec":
+        """Phase B (generalized ``@default``): a scalar field optionally carrying an
+        absent-fill ``@default``. When the field is ABSENT, tolerant recover coerces
+        this string to ``kind`` (via the pure ``scalar_coerce``) and classifies the
+        field DEFAULTED (which satisfies ``required``). ``default_value is None`` is
+        the no-default case (back-compat)."""
+        return FieldSpec(
+            name=name, kind=kind, required=required, default_value=default_value
+        )
+
+    @staticmethod
+    def scalar_array(name: str, kind: FieldKind, required: bool) -> "FieldSpec":
+        """A scalar-array FieldSpec (``array == True``); each element is coerced via
+        the scalar pipeline. No per-element default fill."""
+        return FieldSpec(name=name, kind=kind, required=required, array=True)
+
+    @staticmethod
+    def enum_array(
+        name: str,
+        required: bool,
+        values: list[str] | None,
+        aliases: dict[str, str] | None,
+        coerce_default: str | None = None,
+        normalize: str = _NORMALIZE_DEFAULT,
+        default_value: str | None = None,
+    ) -> "FieldSpec":
+        """Phase B (array-of-enum): an enum field that is a ``list[enum]``
+        (``array == True``). Each element flows through the SAME enum pipeline a
+        scalar enum uses (exact → normalize → ``@enumAlias`` → ``@coerceDefault`` →
+        MALFORMED) and is classified independently by indexed path (``tags[0]``,
+        ``tags[1]``, …). Mirrors :meth:`enum_field` but with ``array = True``."""
+        return FieldSpec(
+            name=name,
+            kind=FieldKind.ENUM,
+            required=required,
+            array=True,
+            enum_values=None if values is None else list(values),
+            enum_alias={} if aliases is None else dict(aliases),
+            coerce_default=coerce_default,
+            default_value=default_value,
+            normalize=normalize,
+        )
 
     @staticmethod
     def enum_field(

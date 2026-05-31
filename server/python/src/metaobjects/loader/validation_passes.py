@@ -7,6 +7,7 @@ Warning strings are byte-identical to the expected-warnings fixtures.
 """
 from __future__ import annotations
 
+import math
 import re
 
 from ..errors import ErrorCode, MetaError
@@ -17,7 +18,14 @@ from ..meta.core.field.field_constants import (
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_STORAGE,
     FIELD_ATTR_VALUES,
+    FIELD_SUBTYPE_BOOLEAN,
+    FIELD_SUBTYPE_CURRENCY,
+    FIELD_SUBTYPE_DECIMAL,
+    FIELD_SUBTYPE_DOUBLE,
     FIELD_SUBTYPE_ENUM,
+    FIELD_SUBTYPE_FLOAT,
+    FIELD_SUBTYPE_INT,
+    FIELD_SUBTYPE_LONG,
     FIELD_SUBTYPE_OBJECT,
     FIELD_SUBTYPE_STRING,
     FIELD_SUBTYPE_TIMESTAMP,
@@ -79,6 +87,7 @@ def run_validations(
     """
     _validate_attr_schema(root, registry, errors)
     _validate_enum_values(root, errors)
+    _validate_field_defaults(root, errors)
     _validate_db_column_type(root, errors)
     _validate_datagrid_sort_fields(root, errors)
     _validate_datagrid_filter_values(root, errors)
@@ -374,6 +383,75 @@ def _validate_enum_fr011_attrs(node: MetaData, errors: list[MetaError]) -> None:
                 MetaError(
                     f"{label} attribute '@{attr_name}' value {own!r} "
                     f"is not one of '@{FIELD_ATTR_VALUES}': {', '.join(members)}",
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=node.source,
+                )
+            )
+
+
+# ---------------------------------------------------------------------------
+# Pass: generalized @default per-type validation (Phase B)
+# ---------------------------------------------------------------------------
+# @default is registered on the field base (FIELD_ATTR_DEFAULT) so any field subtype
+# may declare it. Its string value must coerce to the field's type:
+#   - int / long / currency    → integer parse (or finite-number truncation fallback)
+#   - double / float / decimal → finite-number parse
+#   - boolean                  → exact "true"|"false"
+#   - enum                     → member of @values (handled by _validate_enum_fr011_attrs)
+#   - string / date / time / object / others → any value allowed
+# A violation emits ERR_BAD_ATTR_VALUE, mirroring the enum @default membership check.
+# Own-only: validates @default declared on THIS node. Mirrors Java ValidationPhase
+# .validateFieldDefaults (cross-port) + the engine's Coerce.scalar parse semantics.
+
+_INT_SUBTYPES = (FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY)
+_NUM_SUBTYPES = (FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL)
+
+
+def _parses_as_finite_number(s: str) -> bool:
+    try:
+        return math.isfinite(float(s.strip()))
+    except ValueError:
+        return False
+
+
+def _parses_as_long(s: str) -> bool:
+    t = s.strip()
+    try:
+        int(t)
+        return True
+    except ValueError:
+        # Accept a finite decimal that truncates to an integer value (matches the
+        # engine's Coerce.scalar INT/LONG fallback).
+        return _parses_as_finite_number(t)
+
+
+def _validate_field_defaults(root: MetaData, errors: list[MetaError]) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_FIELD:
+            continue
+        # Enum @default membership is validated by _validate_enum_fr011_attrs.
+        if node.sub_type == FIELD_SUBTYPE_ENUM:
+            continue
+        # Own-only: node.attr() reads only this node's own attrs.
+        own = node.attr(FIELD_ATTR_DEFAULT)
+        if not isinstance(own, str):
+            continue
+
+        sub = node.sub_type
+        if sub in _INT_SUBTYPES:
+            ok = _parses_as_long(own)
+        elif sub in _NUM_SUBTYPES:
+            ok = _parses_as_finite_number(own)
+        elif sub == FIELD_SUBTYPE_BOOLEAN:
+            ok = own in ("true", "false")
+        else:
+            ok = True  # string / date / time / object / others — any value allowed
+
+        if not ok:
+            errors.append(
+                MetaError(
+                    f"{_node_label(node)} attribute '@{FIELD_ATTR_DEFAULT}' value "
+                    f"{own!r} is not coercible to the field's type",
                     ErrorCode.ERR_BAD_ATTR_VALUE,
                     envelope=node.source,
                 )

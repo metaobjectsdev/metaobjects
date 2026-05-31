@@ -10,7 +10,7 @@ Public entry point: :func:`recover`.
 from __future__ import annotations
 
 from metaobjects.render.recover import recover_map
-from metaobjects.render.recover.coerce import MALFORMED
+from metaobjects.render.recover.coerce import MALFORMED, scalar_coerce
 from metaobjects.render.recover.json_forgiving_reader import (
     TRUNCATED,
     JsonForgivingReader,
@@ -55,4 +55,5 @@ __all__ = [
     "normalize_enum",
     "recover",
     "recover_map",
+    "scalar_coerce",
 ]

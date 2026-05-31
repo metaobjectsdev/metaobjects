@@ -6,7 +6,7 @@ Each fixture dir under ``fixtures/recover-conformance/`` holds:
 - ``input.txt``     the raw (possibly dirty) LLM output
 - ``expected.json`` ``{ "empty": bool, "states": {field: FieldRecovery}, "data": {field: value} }``
 
-All 20 cases must pass. The corpus is the oracle — do not weaken assertions.
+All 22 cases must pass. The corpus is the oracle — do not weaken assertions.
 1:1 port of ``RecoverConformanceTest.java`` / ``RecoverConformanceTests.cs``.
 """
 from __future__ import annotations
@@ -59,7 +59,7 @@ def _cases() -> list[str]:
 def test_discovers_all_recover_conformance_cases() -> None:
     """FR-011: lock the corpus size so a deleted fixture fails CI rather than
     silently reducing coverage. Mirrors the TS / Java / C# count guards."""
-    assert len(_cases()) == 20
+    assert len(_cases()) == 22
 
 
 _NORMALIZE_MODES = {"none", "collapse", "strip"}
@@ -92,6 +92,11 @@ def _parse_field(f: dict[str, object]) -> FieldSpec:
         coerce_default = str(f["coerceDefault"]) if "coerceDefault" in f else None
         normalize = _parse_normalize(f.get("normalize"))
         default_value = str(f["default"]) if "default" in f else None
+        # Phase B (array-of-enum): kind ENUM + array true → per-element enum coercion.
+        if bool(f.get("array", False)):
+            return FieldSpec.enum_array(
+                name, required, values, aliases, coerce_default, normalize, default_value
+            )
         return FieldSpec.enum_field(
             name, required, values, aliases, coerce_default, normalize, default_value
         )
@@ -110,7 +115,9 @@ def _parse_field(f: dict[str, object]) -> FieldSpec:
         max_v = float(f["max"]) if "max" in f else None  # type: ignore[arg-type]
         return FieldSpec.range_(name, kind, required, min_v, max_v)
 
-    return FieldSpec.scalar(name, kind, required)
+    # Phase B (generalized @default): a scalar field may carry an absent-fill @default.
+    default_value = str(f["default"]) if "default" in f else None
+    return FieldSpec.scalar(name, kind, required, default_value)
 
 
 def _parse_schema(node: dict[str, object]) -> RecoverSchema:
