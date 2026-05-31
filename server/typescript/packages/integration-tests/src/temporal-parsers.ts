@@ -42,17 +42,19 @@ function msSuffix(ms: number): string {
 }
 
 /**
- * Canonical sub-second suffix from the raw on-wire fractional digits (the chars
- * after the `.`, e.g. "123" or "120000"). Truncates to millisecond resolution
- * (first 3 digits — Postgres stores microseconds; the contract is ms), then
- * applies the same strip/omit rule as msSuffix. Returns "" when absent or zero.
+ * Split an on-wire temporal literal at its fractional-seconds `.` into the
+ * whole-seconds part (everything before the dot) and the canonical millisecond
+ * suffix (everything after, run through the truncate/strip/omit rule). Locating
+ * the `.` once here keeps `canonicalTimestamp`/`canonicalTime` from re-deriving
+ * it. The fractional digits are truncated to millisecond resolution (first 3 —
+ * Postgres stores microseconds; the contract is ms) before applying `msSuffix`.
+ * Examples: "14:30:00.120000" → { whole: "14:30:00", suffix: ".12" }.
  */
-function fractionSuffix(raw: string): string {
+function splitFraction(raw: string): { whole: string; suffix: string } {
   const dot = raw.indexOf(".");
-  if (dot === -1) return "";
-  const frac = raw.slice(dot + 1);
-  const ms = Number.parseInt(frac.slice(0, 3).padEnd(3, "0"), 10);
-  return Number.isNaN(ms) ? "" : msSuffix(ms);
+  if (dot === -1) return { whole: raw, suffix: "" };
+  const ms = Number.parseInt(raw.slice(dot + 1, dot + 4).padEnd(3, "0"), 10);
+  return { whole: raw.slice(0, dot), suffix: Number.isNaN(ms) ? "" : msSuffix(ms) };
 }
 
 /**
@@ -84,8 +86,8 @@ export function canonicalTimestamptz(raw: string): string {
  * when zero — so a `.120` seed reads `.12` and a whole-second value stays bare).
  */
 export function canonicalTimestamp(raw: string): string {
-  const dotless = raw.includes(".") ? raw.slice(0, raw.indexOf(".")) : raw;
-  return `${dotless.replace(" ", "T")}${fractionSuffix(raw)}`;
+  const { whole, suffix } = splitFraction(raw);
+  return `${whole.replace(" ", "T")}${suffix}`;
 }
 
 /** DATE → `YYYY-MM-DD` (passthrough; Postgres already emits this form). */
@@ -99,8 +101,8 @@ export function canonicalDate(raw: string): string {
  * TIMESTAMP, so a whole-second value stays `HH:MM:SS`.
  */
 export function canonicalTime(raw: string): string {
-  const dotless = raw.includes(".") ? raw.slice(0, raw.indexOf(".")) : raw;
-  return `${dotless}${fractionSuffix(raw)}`;
+  const { whole, suffix } = splitFraction(raw);
+  return `${whole}${suffix}`;
 }
 
 /**
