@@ -23,7 +23,6 @@
 import {
   type MetaData,
   TYPE_OBJECT,
-  TYPE_FIELD,
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_OUTPUT,
   FIELD_SUBTYPE_OBJECT,
@@ -33,7 +32,7 @@ import {
   TEMPLATE_ATTR_FORMAT,
   PACKAGE_SEPARATOR,
 } from "@metaobjectsdev/metadata";
-import { fields, isArray, jsonStringLiteral } from "./fr010-field-mapping.js";
+import { fields, isArray } from "./fr010-field-mapping.js";
 import { mirrorName } from "./recover-delegate-emitter.js";
 
 function findObject(root: MetaData, name: string): MetaData | undefined {
@@ -59,11 +58,15 @@ function isObjectField(field: MetaData): boolean {
   return field.subType === FIELD_SUBTYPE_OBJECT;
 }
 
-/** True iff the field's @required is explicitly set (mirrors payload-codegen.isFieldRequired). */
+/**
+ * True iff the field is required IN THE STRICT PAYLOAD TYPE. This MUST match
+ * payload-codegen.ts's `isFieldRequired` predicate EXACTLY (boolean `true` only) — the payload
+ * interface decides `T` vs `T | null` by that predicate, and the mapper's optionality assumption
+ * (`m.f!` vs `m.f ?? null`) has to agree with the type it is constructing. A `@required:"true"`
+ * string field is therefore `T | null` in the payload AND optional here (no skew).
+ */
 function isFieldRequired(field: MetaData): boolean {
-  const v = field.ownAttr(FIELD_ATTR_REQUIRED);
-  if (v === true) return true;
-  return typeof v === "string" && v.toLowerCase() === "true";
+  return field.ownAttr(FIELD_ATTR_REQUIRED) === true;
 }
 
 /** The mirror→strict mapper name for a value-object (`toStrict<Name>`). */
@@ -98,7 +101,19 @@ function strictArg(field: MetaData, root: MetaData): string {
     return `m.${name} ? ${fn}(m.${name}) : null`;
   }
 
-  // Scalar / enum / scalar-array: the strict payload's optionality decides the shape.
+  // Scalar ARRAY (e.g. `field.string` with isArray): the mirror types it `(T | null)[] | null`
+  // but the strict payload types it `T[]` (required) / `T[] | null` (optional). A bare `m.f!`
+  // would leave the element type `T | null`, a `tsc --strict` TS2322 error. Filter out null
+  // elements so the element type narrows to non-null (consistent with the lost-element DROP policy
+  // already used for required arrays-of-objects above).
+  if (isArray(field)) {
+    if (required) {
+      return `(m.${name} ?? []).filter((x): x is NonNullable<typeof x> => x != null)`;
+    }
+    return `m.${name} == null ? null : m.${name}.filter((x): x is NonNullable<typeof x> => x != null)`;
+  }
+
+  // Scalar / enum (single): the strict payload's optionality decides the shape.
   // Required → non-null assertion; optional → `?? null` (matches the payload's `f?: T | null`).
   return required ? `m.${name}!` : `m.${name} ?? null`;
 }

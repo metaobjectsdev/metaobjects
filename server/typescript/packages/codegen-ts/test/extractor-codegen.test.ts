@@ -32,7 +32,9 @@ async function loadRoot(children: unknown[]) {
 }
 
 // Order: REQUIRED single nested object `customer` (-> Customer{name:string}),
-// REQUIRED array-of-objects `lines` (-> Line{sku:string, qty:int}), OPTIONAL scalar `note:string`.
+// REQUIRED array-of-objects `lines` (-> Line{sku:string, qty:int}), OPTIONAL scalar `note:string`,
+// REQUIRED scalar-array `tags:string[]`, OPTIONAL scalar-array `flags:string[]`,
+// OPTIONAL single nested object `shipTo` (-> Customer) to hit the null-guard branch.
 const MODEL = [
   {
     "object.value": {
@@ -56,6 +58,9 @@ const MODEL = [
         { "field.object": { name: "customer", "@required": true, "@objectRef": "Customer" } },
         { "field.object": { name: "lines", isArray: true, "@required": true, "@objectRef": "Line" } },
         { "field.string": { name: "note" } },
+        { "field.string": { name: "tags", isArray: true, "@required": true } },
+        { "field.string": { name: "flags", isArray: true } },
+        { "field.object": { name: "shipTo", "@objectRef": "Customer" } },
       ],
     },
   },
@@ -85,6 +90,16 @@ describe("Extractor codegen — source shape", () => {
     expect(src).toContain("toStrictLine");
     // array-of-objects mapped element-wise
     expect(src).toContain(".map(");
+    // C1: scalar arrays are null-filtered (so `(string|null)[]` narrows to the strict `string[]`),
+    // NOT a bare `m.tags!` / `m.flags!` (which would be a tsc --strict TS2322 error).
+    expect(src).toContain("(m.tags ?? []).filter((x): x is NonNullable<typeof x> => x != null)");
+    expect(src).toContain(
+      "m.flags == null ? null : m.flags.filter((x): x is NonNullable<typeof x> => x != null)",
+    );
+    expect(src).not.toContain("m.tags!");
+    expect(src).not.toContain("m.flags!");
+    // optional single nested object → null-guarded recurse into its mapper
+    expect(src).toContain("m.shipTo ? toStrictCustomer(m.shipTo) : null");
   });
 });
 
@@ -104,10 +119,11 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
     const ex = await import(join(dir, "OrderOut.extractor.ts"));
 
     // dirty input: preamble + trailing comma — recover repairs it, extract maps to strict payload.
+    // Includes a REQUIRED scalar array `tags` and an OPTIONAL scalar array `flags`.
     const dirty = [
       "Here you go:",
       "```json",
-      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 }, { "sku": "B", "qty": 1 }, ], "note": "rush" }',
+      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 }, { "sku": "B", "qty": 1 }, ], "note": "rush", "tags": ["urgent", "vip"], "flags": ["fragile"] }',
       "```",
     ].join("\n");
 
@@ -118,12 +134,18 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
     expect(order.lines.length).toBe(2);
     expect(order.lines[0].sku).toBe("A");
     expect(order.lines[1].qty).toBe(1);
+    // C1 (compile-and-run): the required scalar array is a populated string[] with no null elements.
+    expect(order.tags).toEqual(["urgent", "vip"]);
+    expect(order.tags.every((t: unknown) => typeof t === "string")).toBe(true);
+    // optional scalar array present → null-filtered string[]
+    expect(order.flags).toEqual(["fragile"]);
 
     // missing required `customer` → throws
     expect(() => ex.extractOrderOut(root, '{ "lines": [] }')).toThrow();
 
     // recover re-exposed (nested-capable): clean JSON → no lost-required
-    const clean = '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ] }';
+    const clean =
+      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"] }';
     const r = ex.recoverOrderOut(root, clean);
     expect(r.report.hasLostRequired()).toBe(false);
   });
