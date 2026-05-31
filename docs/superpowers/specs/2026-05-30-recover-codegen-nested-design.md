@@ -1,123 +1,99 @@
-# Metadata-Driven Recover: Nested Objects, Arrays-of-Objects, Array-of-Enum & Generalized Defaults — Design
+# Metadata-Driven Recover — Design (Phase B)
 
-_Date: 2026-05-30. Status: approved (design). Completes the FR-010/FR-011 recover pillar's codegen + engine deferrals ("Plan 2.1" in `codegen-spring/.../KNOWN_GAPS.md`)._
+_Date: 2026-05-30 (revised post-Phase-A). Status: approved (design). Builds on Phase A (`docs/superpowers/specs/2026-05-30-cross-port-runtime-object-model-design.md`, shipped `a15a8421`, ADR-0017). Completes the FR-010/FR-011 recover pillar._
 
 ## Problem
 
-The tolerant `recover()` **engine** handles nested objects + arrays-of-objects (`FieldSpec.object(name, required, array, nested)`, dotted-path classification). But three gaps remain, all of which a real consumer hits when recovering a deeply-nested LLM response into a typed VO:
+The tolerant `recover()` **engine** parses dirty LLM output into a forgiving tree (`Map`/`List`) + a `RecoveryReport` (per-field classification), byte-pinned cross-port. But:
 
-1. **Codegen drops nesting.** Every port's recover-schema emitter (`RecoverSchemaEmitter.java` + `KotlinRecoverSchemaEmitter.kt` + `recover-schema-emitter.ts` + `RecoverSchemaEmitter.cs` + Python's emitter) stubs a nested-object/array-of-objects payload field as `FieldKind.STRING` → `null`. The engine can recover it; the generated parser can't assemble it.
-2. **No array-of-enum coercion.** An array field of enum elements recovers as raw `List<String>` (`asStringList`) — no per-element normalize/alias/coerceDefault. Enums are first-class; a list of them must coerce element-wise.
-3. **Defaults are enum-only.** `@default` (FR-011) populates an absent *enum*; no other field type can declare a default, so a missing scalar/object is always `null`. Defaults should come from the model for every field type.
+1. **No metadata-driven assembly into a typed object graph.** Today the codegen `recover()` builds the payload from baked constructor-args, and stubs nested-object / array-of-objects fields as `null`. There is no runtime path that turns the recovered tree into a populated object — even though Phase A now provides exactly the machinery (`MetaObject.newInstance()` + field get/set SPI, ValueObject-or-codegen'd).
+2. **Array-of-enum isn't coerced** — a `List<enum>` recovers as raw `List<String>` (no per-element normalize/alias/coerceDefault).
+3. **`@default` is enum-only** (FR-011); other field types can't declare a default, and Java carries a *separate* legacy default mechanism (`MetaField.getDefaultValue()` / `MetaObject.setDefaultValues()`).
 
 ## Goal
 
-Make recover **fully metadata-driven for both parse and assemble**, end to end, across all five ports:
+Make recover **fully metadata-driven and runtime-first**, assembling through the Phase A object model:
 
-- Codegen emits recursive `FieldSpec.object(...)` for nested-object + array-of-objects fields and assembles typed nested VOs (single → nested VO; array → `List<NestedVo>`).
-- Array-of-enum fields coerce each element through the enum pipeline, classified per element.
-- `@default` generalizes to **all field types**; an absent field with a declared default is populated from metadata → `DEFAULTED`.
-- Works for `json` + `xml`; preserves `@required`/`@normalize`/`@enumAlias`/`@coerceDefault`/`@default` at every nesting level; `RecoveryReport` classifies nested/array fields. `recover()` stays never-throws.
+- A runtime `recover(MetaObject, text) → RecoveryResult<Object>` that builds the object graph via `newInstance` + the field SPI — recursing nested objects and arrays-of-objects — and **returns an `Object` the caller casts** (a `ValueObject` when nothing is bound, or a code-generated type when one is registered; the caller doesn't care). **No codegen required** to recover into a usable object.
+- The `RecoverSchema` the engine needs is built **from the `MetaObject` at runtime** (kinds, required, enum values/aliases, nested refs, declared defaults) — no baked literal.
+- **Array-of-enum** coerces each element through the enum pipeline.
+- **`@default` generalized to all field types**, populated from metadata → `DEFAULTED`; the legacy Java mechanism is unified into it.
+- `recover()` stays **never-throws**; opt-in `orThrow()` for required-missing. `RecoveryReport` classification preserved at every nesting level.
+- The existing **codegen `recover()` delegates** to the runtime path (so typed-VO callers get nested/array support for free, and the codegen nested-stub gap closes as a consequence).
 
-## Core principle — metadata drives both parse AND assemble
+## Core principle
 
-The emitter already walks the metamodel (`vo.getMetaFields()`); `ObjectField.getObjectRef()` resolves a nested field's referenced VO. We derive **both** sides from that single metadata source at build time (ADR-0001 — no runtime reflection): the parse schema (kinds, required, enum values/aliases, **declared defaults**, nested refs) AND the typed assembly (nested VO type from `@objectRef`, required-ness, array→empty-list, per-element enum coercion, metadata defaults). Assembly has the model's full "extra info," not blind map extraction.
+Metadata drives **parse and assemble** at runtime (ADR-0001: build-time *binding* of the typed class via the self-registering registry, but the recover *logic* is metadata-driven runtime code — no reflection). The `MetaObject` is the single source: `getMetaField`/`getObjectRef`/data-types/enum-attrs/`@default` feed both the `RecoverSchema` and the assembly. This is the "runtime metadata is powerful" payoff Phase A unlocked.
 
-## Capability 1 — Nested objects & arrays-of-objects (codegen)
+## Capability 1 — Runtime `RecoverSchema` from a `MetaObject`
 
-Replace the two `ObjectField` stub branches in each emitter:
+A runtime builder `recoverSchemaFor(MetaObject) → RecoverSchema` walks the object's fields:
+- scalar → `FieldSpec.scalar(kind)`; enum → `FieldSpec.enumField(values, aliases, normalize, coerceDefault, default)`; enum-array → enum-array spec (Capability 3); object → `FieldSpec.object(required, array, recoverSchemaFor(getObjectRef()))` recursively; carries generalized `@default` (Capability 4).
+- A depth/cycle guard (visited `MetaObject` set + `MAX_NEST_DEPTH`, mirroring Phase A / FR-012): a cyclic VO graph stops recursing and treats the field as opaque. Identical constant cross-port.
 
-- **Schema literal**: recurse — `FieldSpec.object(name, required, array, <nested RecoverSchema built from getObjectRef()'s fields>)`. `array == true` for list fields.
-- **Constructor args**: construct the typed nested VO from the recovered sub-map (recursively); array → build the typed list by iterating recovered elements.
+This replaces the codegen-baked `RecoverSchema` literal for the runtime path (the codegen emitter may still bake one, but it now produces the same shape and delegates assembly).
 
-Per-port binding (forced by each port's existing recover convention):
+## Capability 2 — Runtime assembler (recovered tree → object graph via the Phase A SPI)
 
-- **Java** — `recover()` builds the **real payload record** (`new SupportAnswer(...)`); nested fields build the **already-generated nested payload records** (`new ThreadCheck(...)`). No new types. *(A plan task verifies nested payload records are generated for `@objectRef` fields; emitting them is in scope if a port omits them.)*
-- **Kotlin / C# / TS / Python** — `recover()` returns an all-nullable **mirror** (`<Name>Recovered`); these ports **generate nested mirror records recursively** and construct those.
+`assemble(MetaObject, recoveredData: Map, report) → Object`:
+- `obj = metaObject.newInstance()` (Phase A — ValueObject or bound type).
+- For each field: read the recovered value; **scalar/enum** → `field.setValue(obj, coercedValue)`; **nested OBJECT** → `assemble(getObjectRef(field), childMap)` then `setValue`; **OBJECT_ARRAY** → map each recovered element through `assemble(getObjectRef(field), elemMap)` into a list, `setValue`; **enum-array** → coerced element list (Capability 3).
+- **Defaults / classification (never-throws):** absent field with a declared `@default` → populate from metadata (`DEFAULTED`); absent array → empty list; absent optional → null (`LOST_OPTIONAL`); absent required, no default → null/empty + `LOST_REQUIRED`. Each nested leaf classified by dotted path (FR-011 path semantics already in the engine).
 
-Engine helpers added to `RecoverMap` (+ per-port equivalents):
+`recover(MetaObject, text, opts?) → RecoveryResult<Object>` = engine recovers `text` against `recoverSchemaFor(mo)` → `assemble(mo, outcome.data)` + `outcome.report`. **Returns `Object`; the caller casts** (or uses the ValueObject). Never throws; `RecoveryResult.orThrow()` (Phase B addition, idiomatic per port) throws iff `report.hasLostRequired()`.
 
-- `asObject(d, key, mapper)` — `d[key]` is a map → `mapper: Map → T`; else `null`.
-- `asObjectList(d, key, mapper)` — `d[key]` is a list → map each map element; **empty/missing → empty list** (never null); non-map elements skipped tolerantly.
+## Capability 3 — Array-of-enum
 
-The constructor-arg recursion threads a **depth-unique map variable** (`d`→`m1`→`m2`) so nested mapper closures don't shadow.
+A `List<enum>` field coerces **each element** through the enum pipeline (exact → `@normalize` → `@enumAlias` → `@coerceDefault` → MALFORMED), classified per indexed path (`tags[0]`…). Requires: a `FieldSpec` enum-array representation (extend `enumField` with an `array` flag or an `enumArray` factory, carrying values/aliases/normalize/coerceDefault/default); the engine's coerce stage applies per-element enum coercion (the same code scalar enums use); empty/missing → empty list. The assembler reads the coerced element list. (Non-enum typed scalar arrays — `List<int>` — stay `asStringList`; out of scope.)
 
-## Capability 2 — Array-of-enum
+## Capability 4 — Generalized `@default` (all field types)
 
-A field that is a `List<enum>` coerces **each element** through the full enum pipeline (exact → `@normalize` → `@enumAlias` → `@coerceDefault` → MALFORMED), preserving per-element `RecoveryReport` classification (e.g. `tags[0]`, `tags[1]`). This requires:
+- **Metamodel:** register `@default` on the field base (not just `field.enum`), validated **per type** at load (int/long/double parse; boolean `true|false`; string any; enum member-validated). `ERR_BAD_ATTR_VALUE` on violation. Shared `error-*` conformance fixtures.
+- **Engine:** `FieldSpec` carries a per-kind `defaultValue`; the coerce/classify stage populates a declared default for an absent field → `DEFAULTED` (generalizing FR-011's enum behavior). Byte-pinned by recover-conformance.
+- **Java unification:** fold the legacy `MetaField.getDefaultValue()` / `MetaObject.setDefaultValues()` into the generalized `@default` — one default source feeding both Phase A `newInstance` population and recover. (This is the "change the Java default values" the user approved.)
+- Consumed **by recover** (and Phase A `newInstance`) here; strict `parse()` / entity codegen / DDL `DEFAULT` consuming `@default` are follow-ons, out of scope.
 
-- **Schema**: `FieldSpec` gains an enum-array representation — extend `enumField(...)` with an `array` flag (or a dedicated `enumArray(...)` factory), carrying values/aliases/normalize/coerceDefault/default. Cross-port identical.
-- **Engine**: the coerce stage, when a field is an enum array, coerces each element via the existing enum coercion (the same code path scalar enums use), classifying each by indexed path; an uncoercible element → `@coerceDefault` or MALFORMED per the existing rules. Empty/missing → empty list.
-- **Codegen**: emit the enum-array `FieldSpec`; assemble a typed `List<EnumOrString>` (the wire type stays string per the enum-is-string-backed contract; the element list is the coerced canonical strings). `RecoverMap.asEnumList(d, key, values, aliases, …)` (or `asStringList` driven by the schema's per-element coercion already applied by the engine — engine coerces, codegen just reads the list).
+## Codegen `recover()` — delegates to the runtime path
 
-(Scalar non-string typed arrays — e.g. `List<int>` — remain a separate, smaller concern unless trivially covered; the enum case is the one called out as important.)
+The existing per-port codegen `recover()` (FR-010/FR-011) is **reimplemented to delegate**: it resolves its payload `MetaObject` (already known at codegen time) and calls the runtime `recover(mo, text)`, then returns the typed result (cast / the typed mirror). This (a) closes the nested/array codegen stub gap as a consequence, (b) removes the baked-`RecoverSchema`/constructor-args duplication, (c) keeps the shipped typed `recover()` signature for existing callers. Where a port's `recover()` returns an all-nullable mirror (TS/C#/Python/Kotlin), the mirror is populated from the assembled object (or the assembler targets the mirror type via the registry). Net: one runtime recover engine + thin typed wrappers.
 
-## Capability 3 — Generalized `@default` (all field types)
+## Cycle / depth guard
 
-`@default` generalizes from enum-only to **any field type**:
-
-- **Metamodel**: register `@default` on the field base (not just `field.enum`), validated **per type** at load — the value must be coercible to the field's kind (int/long/double parse; boolean `true|false`; string any; enum still member-validated against `@values`). Member/type validation emits `ERR_BAD_ATTR_VALUE`. Cross-port loader change + shared `error-*` conformance fixtures.
-- **Engine**: `FieldSpec` carries `defaultValue` for every kind (not just enum); the coerce/classify stage, when a field is **absent**, populates the declared default and classifies `DEFAULTED` (generalizing FR-011's enum behavior to all kinds). Byte-pinned by recover-conformance.
-- **Codegen**: the schema literal emits the default per kind; assembly needs no special-casing (the engine has already populated `d[key]`).
-
-Defaults consumed **by recover only** in this feature. Strict `parse()`, entity codegen, and DDL `DEFAULT` consuming the same `@default` are natural follow-ons, not in this scope.
-
-## Tolerance & defaults (never-throw preserved)
-
-`recover()` stays **never-throws** (the cross-port invariant). Population order for an absent field:
-
-1. Declared `@default` (any type, Capability 3) → populated → `DEFAULTED`.
-2. Else array → **empty list** (from the array kind); enum-array empty too.
-3. Else optional scalar/object → `null` (`LOST_OPTIONAL`).
-4. Else required scalar/object → `null` slot + `LOST_REQUIRED` in the report.
-
-A present nested object with missing leaves constructs with null/default/empty per leaf, each classified. **Opt-in strictness:** `RecoveryResult.orThrow()` (added; idiomatic name per port) throws iff any field is `LOST_REQUIRED`; `report.hasLostRequired()` is the predicate. The tolerant core never throws.
-
-## Cycle / depth guard at codegen
-
-A self-referential VO graph would infinite-loop the recursive emitter. Schema-literal + constructor-arg recursion carry a visited-set (by `MetaObject` identity) + a shared `MAX_NEST_DEPTH`; at a cycle or the bound, fall back to the `FieldSpec.scalar(STRING)` + `null` leaf (the current deferral, now only at the guard boundary). Mirrors FR-012's renderer guard. Identical constant across ports.
+Both `recoverSchemaFor` (schema recursion) and `assemble` (object recursion) carry the visited-`MetaObject`-identity set + `MAX_NEST_DEPTH` (shared constant, mirrors Phase A + FR-012). A cyclic/over-deep VO graph stops recursing (the field becomes opaque/null) — never infinite-loops. Unit-tested per port (a cyclic spec is hand-built, not in the finite-tree corpus).
 
 ## Test oracle (the consumer's shape)
 
-An XML "adjudication verdict" VO — scalars + arrays-of-records, exercising all three capabilities:
+An XML "adjudication verdict" object — scalars + arrays-of-records + an array-of-enum + a defaulted scalar:
+- Scalars: `objective_complete` (bool), `objective_status` (string), `arc_transition` (enum `ready|not-ready`, with a declared `@default: not-ready`).
+- Arrays-of-records: `thread_checks {id, resolved (enum yes|no), actor_id?, reason, closure_payoff?}`, `event_checks {id, fires (enum), reason}`, `emergent_events {scale (enum), description}`, `vibe_updates {thread_id, text}`, `position_corrections {id, reason, area?, at?, stance?}`, `companion_joins {npc, role (enum), reason}`.
+- An array-of-enum field (e.g. `tags: List<enum>`).
 
-- Scalars: `objective_complete` (bool), `objective_status` (string), `objective_failed` (bool), `arc_transition` (enum `ready|not-ready`).
-- Arrays-of-records:
-  - `thread_checks` `{ id, resolved (enum yes|no), actor_id?, reason, closure_payoff? }`
-  - `event_checks` `{ id, fires (enum), reason }`
-  - `emergent_events` `{ scale (enum), description }`
-  - `vibe_updates` `{ thread_id, text }`
-  - `position_corrections` `{ id, reason, area?, at?, stance? }`
-  - `companion_joins` `{ npc, role (enum), reason }`
-- Plus, to exercise Capability 2 + 3 directly: at least one **array-of-enum** field (e.g. `tags: List<enum>`) and a scalar with a declared **`@default`** (e.g. `arc_transition @default: not-ready`).
+`recover(verdictMetaObject, xml)` populates every array with typed records (via `newInstance` + field SPI), coerces array-of-enum elements, fills the declared default → `DEFAULTED`, self-closing/empty arrays → empty list, optional fields absent → null — and **never throws**; `orThrow()` is available. Lands as a per-port object-recover test + extensions to the shared corpora.
 
-A generated `recover(xml)` must populate every array with **typed records** (not null), coerce array-of-enum elements, fill declared defaults (→ DEFAULTED), and treat self-closing/empty arrays → empty list; optional fields absent → null. Lands as: (1) a per-port codegen compile/import-and-run test that generates the verdict parser and asserts the fully-typed populated VO; (2) shared recover-conformance engine fixtures extended to cover array-of-enum + generalized-default + arrays-of-records-with-enums (the existing `nested-object-clean` / `array-of-objects` plus new cases).
+## Conformance (first-class)
 
-## Components / files (per port)
-
-- **Metamodel**: generalize `@default` registration to the field base + per-type load validation; shared `error-*` conformance fixtures.
-- **Engine** (`render` recover module + per-port equivalents): `FieldSpec` carries per-kind `defaultValue` + enum-array representation; coerce/classify populates generalized defaults (→ DEFAULTED) and coerces enum-array elements; `RecoverMap.asObject`/`asObjectList` (+ enum-list helper if needed); `RecoveryResult.orThrow()` + `report.hasLostRequired()`.
-- **Emitter**: `RecoverSchemaEmitter` `schemaLiteral`/`constructorArgs` — recurse nested/array-of-object (resolve `getObjectRef()`, depth-unique var, cycle/depth guard), emit enum-array + generalized-default specs.
-- **Mirror-record generation** (Kotlin/C#/TS/Python): parser generator emits nested mirror records recursively.
-- **Docs**: close Plan 2.1 in each port's `KNOWN_GAPS.md`.
+- **recover-conformance** (engine, byte-pinned, all ports): new cases for generalized-`@default` population, array-of-enum coercion, and arrays-of-records-with-enums (the existing `nested-object-clean`/`array-of-objects` plus new).
+- **object-recover-conformance** (behavioral, building on Phase A's `object-model-conformance`): `recover(mo, text)` for the verdict shape yields a populated object graph — nested records typed, arrays populated, defaults filled, classification correct — asserted identically in every port.
+- FR-011 attr-validation **error fixtures** extended for generalized `@default` (per-type) on the loader ports.
 
 ## Build order & merge strategy
 
-Single branch, single final merge. Layered, **Java pilot first** so the engine + metamodel land once and the JVM engine is shared by Kotlin:
+Single branch (the kept `worktree-recover-codegen-nested`), single final merge:
 
-1. **Metamodel + engine (Java/JVM pilot)** — generalized `@default` (metamodel + validation + shared error fixtures), enum-array coercion, generalized-default population, `asObject`/`asObjectList`/`orThrow`; extend recover-conformance fixtures (engine-level, all ports verify).
-2. **Java codegen** — emitter recursion + verdict codegen compile-run test.
-3. **Kotlin** — emitter + nested mirror records (reuses the JVM engine + its generalized-default/enum-array support).
-4. **TypeScript** — engine port (generalized default, enum-array) + emitter + nested mirror records + import-and-run verdict test.
+1. **Metamodel + engine (JVM pilot)** — generalized `@default` (metamodel + per-type load validation + shared error fixtures + Java legacy-default unification), enum-array coercion, generalized-default population; extend recover-conformance (engine-level, all ports verify).
+2. **Runtime recover (Java)** — `recoverSchemaFor(MetaObject)` + `assemble` via Phase A `newInstance`/field SPI + `recover(mo, text) → RecoveryResult<Object>` + `orThrow()` + cycle/depth guard; the verdict object-recover test.
+3. **Kotlin** — over the JVM runtime recover (runner / thin glue).
+4. **TypeScript** — runtime recover on the Phase A TS object model.
 5. **Python** — same.
-6. **C#** — same.
-7. **Close-out** — KNOWN_GAPS, roadmap, memory; final whole-branch review; merge forward.
+6. **C#** — same (reflection-free; uses the Phase A `ITypedFieldAccessor`/registry).
+7. **Codegen delegation** — each port's codegen `recover()` delegates to the runtime path; remove the baked-schema/constructor-args duplication; verify FR-010/FR-011 recover-conformance + the typed `recover()` still green.
+8. **Close-out** — KNOWN_GAPS (Plan 2.1 closed), roadmap, memory; final review; merge forward. **Publish** (the user's final ask) confirmed post-merge.
 
-Each unit: spec-compliance + code-quality review; compile/import-and-run proof of a generated verdict parser is the gold-standard gate; shared recover-conformance stays green. **Publish** deferred to a post-merge confirm (`docs/RELEASING.md`).
+Each unit: spec + quality review; compile/import-and-run proof of a runtime recover into the verdict object graph is the gold-standard gate; recover-conformance stays byte-green.
 
 ## Out of scope (explicit)
 
-- Strict `parse()` / entity codegen / DDL consuming the generalized `@default` (natural follow-ons; recover-only here).
-- Typed **non-enum** scalar arrays (`List<int>` etc.) coercing element-wise — only array-of-**enum** is in scope (enums are first-class; numeric-array element coercion is a separate, lower-value concern).
-- Runtime (reflective) metadata-driven recovery — build-time binding only (ADR-0001).
+- Strict `parse()` / entity codegen / DDL `DEFAULT` consuming generalized `@default` (recover + Phase A `newInstance` only).
+- Non-enum typed scalar arrays (`List<int>`) coercing element-wise (only array-of-enum).
 - The output-format **prompt** side (FR-012, shipped).
+- Reflective native-class resolution (ADR-0001 — typed binding stays the Phase A self-registering registry).
