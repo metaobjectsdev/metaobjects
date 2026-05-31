@@ -362,6 +362,9 @@ export async function migrateCommand(
             { dir: outDir, slug: config.slug },
           );
           writtenPaths = [res.upPath, res.downPath];
+          if (config.fromDb) {
+            log.info(`migrate: --from-db did not advance the committed snapshot; run 'meta migrate baseline --from-db' to re-sync`);
+          }
         }
       }
     }
@@ -461,6 +464,11 @@ export async function runBaseline(
     snapshot = baselineFromMetadata(metadata, config.dialect);
   }
 
+  if (config.dryRun) {
+    log.info(`migrate baseline (dry-run): would write schema snapshot ${path}`);
+    return 0;
+  }
+
   await writeSnapshot(path, snapshot);
   log.info(`migrate: wrote schema snapshot ${path}`);
   return 0;
@@ -492,7 +500,13 @@ export async function runOfflineGenerate(
 
   const outDir = resolvePath(metaRoot, config.outDir);
   const path = snapshotPath(outDir, config.dialect);
-  const snapshot = await readSnapshot(path);
+  let snapshot;
+  try {
+    snapshot = await readSnapshot(path);
+  } catch (err) {
+    log.error(`migrate: cannot read schema snapshot at ${path}: ${(err as Error).message}`);
+    return 2;
+  }
   if (snapshot === null) {
     log.error(`migrate: no schema snapshot at ${path}; run 'meta migrate baseline' first`);
     return 2;

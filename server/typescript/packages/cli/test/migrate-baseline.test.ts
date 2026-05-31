@@ -1,5 +1,5 @@
 import { describe, test, expect, afterAll } from "bun:test";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readSnapshot, snapshotPath } from "@metaobjectsdev/migrate-ts";
@@ -44,5 +44,22 @@ describe("runBaseline --from-metadata", () => {
     expect(code).toBe(0);
     const snap = await readSnapshot(snapshotPath(join(root, ".metaobjects/migrations"), "postgres"));
     expect(snap?.tables.map((t) => t.name)).toEqual(["orders"]);
+  });
+
+  test("--dry-run reports but writes no snapshot file", async () => {
+    const root = await project();
+    const code = await runBaseline(
+      { dialect: "postgres", outDir: "./.metaobjects/migrations", fromDb: false, dryRun: true } as any,
+      root,
+    );
+    expect(code).toBe(0);
+    const path = snapshotPath(join(root, ".metaobjects/migrations"), "postgres");
+    let exists = true;
+    try {
+      await access(path);
+    } catch {
+      exists = false;
+    }
+    expect(exists).toBe(false);
   });
 });
