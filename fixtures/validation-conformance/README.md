@@ -47,6 +47,13 @@ Cases: `valid-baseline` (true), then `name-missing`, `name-too-long`,
 `code-too-short`, `code-pattern-mismatch`, `score-below-min`, `score-above-max`,
 `tags-empty`, `tags-too-many` (all false).
 
+## CI gate
+
+All five port runners are wired into `.github/workflows/conformance.yml` (the
+non-Docker conformance job) — TS/C#/Java/Python under the `conformance` matrix,
+Kotlin under `conformance-kotlin` — so every PR and push asserts byte-identical
+boolean verdicts across all five generated validation artifacts.
+
 ## Notes
 
 - **Cross-engine-safe regex.** The `code` pattern `^[A-Z]+$` is a plain ASCII

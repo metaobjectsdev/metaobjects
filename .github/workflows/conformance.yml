@@ -49,6 +49,8 @@ jobs:
           cd server/typescript/packages/metadata && bun test test/conformance.test.ts test/yaml-conformance.test.ts test/object-model-conformance.test.ts
           # Byte-exact render / verify / extract / output-prompt corpora (packages/render).
           cd ../render && bun test test/render-conformance.test.ts test/verify-conformance.test.ts test/extract/extract-conformance.test.ts test/output-prompt-conformance.test.ts
+          # Validator-parity corpus (generated input validation). No Docker.
+          cd ../integration-tests && bun test test/validation-conformance.test.ts
 
       - name: C# conformance
         if: matrix.language == 'csharp'
@@ -57,6 +59,8 @@ jobs:
           cd server/csharp && dotnet test MetaObjects.Conformance.Tests/MetaObjects.Conformance.Tests.csproj --nologo --verbosity quiet
           # Byte-exact render / verify / extract / output-prompt corpora (Render.Tests project).
           dotnet test MetaObjects.Render.Tests/MetaObjects.Render.Tests.csproj --nologo --verbosity quiet
+          # Validator-parity corpus (generated DataAnnotations input validation).
+          dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --filter "FullyQualifiedName~ValidationConformance" --nologo --verbosity quiet
 
       - name: Java conformance
         if: matrix.language == 'java'
@@ -65,11 +69,13 @@ jobs:
           # Install metadata + render first to avoid the SNAPSHOT-resolution race
           # ("No type registered for: field.uuid") when the render module's tests
           # reference the freshly-built metadata artifact.
-          mvn -pl metadata,render -am install -DskipTests -q
+          mvn -pl metadata,render,codegen-spring -am install -DskipTests -q
           # Loader + YAML + object-model corpora (metadata module).
           mvn -pl metadata test -Dtest='ConformanceTest,YamlConformanceTest,ObjectModelConformanceTest' -q
           # Byte-exact render / verify / extract / output-prompt corpora (render module).
           mvn -pl render test -Dtest='RenderCrossPortReportTest,VerifyConformanceTest,ExtractConformanceTest,OutputPromptConformanceTest' -q
+          # Validator-parity corpus (generated DTO jakarta.validation, codegen-spring module).
+          mvn -pl codegen-spring test -Dtest='ValidationConformanceTest' -q
 
       - name: Python conformance
         if: matrix.language == 'python'
@@ -79,11 +85,14 @@ jobs:
           uv run pytest tests/conformance -q
           # Byte-exact render / verify / extract / output-prompt corpora.
           uv run pytest tests/render -q
+          # Validator-parity corpus (generated Pydantic input validation).
+          uv run pytest tests/codegen/test_validation_conformance.py -q
 
   conformance-kotlin:
     # Kotlin (codegen-kotlin, KotlinPoet on the JVM) ships no loader / YAML /
     # render / verify of its own — it reuses the shared JVM render engine. It
-    # runs only the corpora it actually has: object-model + output-prompt.
+    # runs the corpora it actually has: object-model + output-prompt +
+    # validator-parity (generated payload jakarta.validation).
     needs: fixture-lint
     runs-on: ubuntu-latest
     steps:
@@ -102,8 +111,8 @@ jobs:
           # SNAPSHOT-resolution race when the test module references freshly-built
           # artifacts.
           mvn -pl codegen-kotlin -am install -DskipTests -q
-          # object-model + output-prompt corpora (the only corpora Kotlin has).
-          mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest' -q
+          # object-model + output-prompt + validator-parity corpora (the corpora Kotlin has).
+          mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest' -q
 
   completeness-gate:
     needs: [conformance, conformance-kotlin]
