@@ -40,7 +40,8 @@ public sealed class ExtractorCodegenTests
     //   • quantities: REQUIRED scalar-array long[]   (StrictArg long .Value unwrap)
     //   • weights : REQUIRED scalar-array double[]   (StrictArg double .Value unwrap)
     //   • flagsArr: REQUIRED scalar-array bool[]   (StrictArg bool .Value unwrap)
-    //   • priority: REQUIRED enum (strict-map `m.priority!` run-proof)
+    //   • priority: REQUIRED enum -> nested enum OrderPriority (Enum.Parse strict-map run-proof)
+    //   • labels  : REQUIRED enum ARRAY -> IReadOnlyList<OrderLabels> (per-element Enum.Parse)
     //   • note    : scalar (not @required)
     //   • shipTo  : single nested Customer (not @required)
     private const string Model = """
@@ -62,6 +63,7 @@ public sealed class ExtractorCodegenTests
         { "field.double": { "name": "weights", "isArray": true, "@required": true } },
         { "field.boolean":{ "name": "flagsArr", "isArray": true, "@required": true } },
         { "field.enum":   { "name": "priority", "@required": true, "@values": ["LOW", "HIGH"] } },
+        { "field.enum":   { "name": "labels", "isArray": true, "@required": true, "@values": ["A", "B"] } },
         { "field.string": { "name": "note" } },
         { "field.object": { "name": "shipTo", "@objectRef": "Customer" } }
       ]}},
@@ -146,6 +148,7 @@ public sealed class ExtractorCodegenTests
             "  \"weights\": [1.5, 2.25]," +
             "  \"flagsArr\": [true, false, true]," +
             "  \"priority\": \"HIGH\"," +
+            "  \"labels\": [\"A\", \"B\"]," +
             "  \"shipTo\": { \"name\": \"Grace\" }, }\n```";
 
         var order = extract.Invoke(null, new object?[] { orderMo, dirty })!;
@@ -197,13 +200,32 @@ public sealed class ExtractorCodegenTests
         Assert.Equal(new object[] { true, false, true }, flags.ToArray());
         Assert.IsType<bool>(flags[0]);
 
-        // required ENUM through the strict tier — the StrictArg enum branch (`m.priority!`,
-        // string-backed) populates the strict record from dirty input. NOTE the strict property
-        // type is `object` (not `string`): PayloadCodegen's scalar map has no enum entry, so an enum
-        // field falls through to the `object` default — but the value is the string-backed member.
+        // required ENUM through the strict tier — the StrictArg enum branch
+        // (`System.Enum.Parse<OrderPriority>(m.priority!)`) coerces the string-backed mirror member
+        // into the generated NESTED enum type. The strict property type is the nested enum
+        // (Order.OrderPriority), NOT `object` and NOT `string`.
         var priorityProp = order.GetType().GetProperty("priority")!;
-        Assert.Equal(typeof(object), priorityProp.PropertyType);
-        Assert.Equal("HIGH", priorityProp.GetValue(order));
+        Assert.True(priorityProp.PropertyType.IsEnum, "priority should be a nested enum type, not object/string");
+        Assert.Equal("OrderPriority", priorityProp.PropertyType.Name);
+        var priorityVal = priorityProp.GetValue(order)!;
+        Assert.Equal("HIGH", priorityVal.ToString());
+        Assert.Equal(System.Enum.Parse(priorityProp.PropertyType, "HIGH"), priorityVal);
+
+        // required ENUM ARRAY -> IReadOnlyList<OrderLabels> (element type IsEnum), per-element
+        // Enum.Parse from the string-backed mirror list. Proves the enum-array routes through the
+        // string-LIST reader (not the scalar enum reader) and each element coerces to the nested enum.
+        var labelsProp = order.GetType().GetProperty("labels")!;
+        Assert.True(typeof(IEnumerable).IsAssignableFrom(labelsProp.PropertyType));
+        var labelsElemType = labelsProp.PropertyType.GetGenericArguments().Single();
+        Assert.True(labelsElemType.IsEnum, "labels element should be a nested enum type");
+        Assert.Equal("OrderLabels", labelsElemType.Name);
+        Assert.Equal(new[] { "A", "B" }, labelsElemType.GetEnumNames());
+        var labels = ((IEnumerable)labelsProp.GetValue(order)!).Cast<object>().ToList();
+        Assert.Equal(new object[]
+        {
+            System.Enum.Parse(labelsElemType, "A"),
+            System.Enum.Parse(labelsElemType, "B"),
+        }, labels.ToArray());
 
         // non-@required single nested, present -> populates.
         var shipTo = order.GetType().GetProperty("shipTo")!.GetValue(order)!;
@@ -240,6 +262,7 @@ public sealed class ExtractorCodegenTests
             "  \"weights\": [3.5]," +
             "  \"flagsArr\": [false]," +
             "  \"priority\": \"HIGH\"," +
+            "  \"labels\": [\"B\"]," +
             "  \"shipTo\": { \"name\": \"Grace\" } }\n```";
 
         var opts = optsType.GetMethod("Defaults")!.Invoke(null, null);
@@ -253,7 +276,9 @@ public sealed class ExtractorCodegenTests
         var quantities = ((IEnumerable)order.GetType().GetProperty("quantities")!.GetValue(order)!)
             .Cast<object>().ToList();
         Assert.Equal(new object[] { 42L }, quantities.ToArray());
-        Assert.Equal("HIGH", order.GetType().GetProperty("priority")!.GetValue(order));
+        var priorityProp = order.GetType().GetProperty("priority")!;
+        Assert.True(priorityProp.PropertyType.IsEnum);
+        Assert.Equal("HIGH", priorityProp.GetValue(order)!.ToString());
     }
 
     [Fact]
@@ -285,11 +310,71 @@ public sealed class ExtractorCodegenTests
         const string clean =
             "{ \"orderId\": \"A-7\", \"customer\": { \"name\": \"Ada\" }," +
             "  \"lines\": [ { \"sku\": \"A\", \"qty\": 1 } ], \"tags\": [\"a\"], \"scores\": [1]," +
-            "  \"quantities\": [1], \"weights\": [1.0], \"flagsArr\": [true], \"priority\": \"LOW\" }";
+            "  \"quantities\": [1], \"weights\": [1.0], \"flagsArr\": [true], \"priority\": \"LOW\"," +
+            "  \"labels\": [\"A\"] }";
 
         var result = extractLenient.Invoke(null, new object?[] { orderMo, clean })!;
         var report = result.GetType().GetProperty("Report")!.GetValue(result)!;
         Assert.False((bool)report.GetType().GetMethod("HasLostRequired")!.Invoke(report, null)!);
+    }
+
+    // ---- nested-enum-typed payload: strict typing + lenient mirror stays string ----
+
+    [Fact]
+    public void Strict_payload_types_enum_as_nested_enum_lenient_mirror_stays_string()
+    {
+        var root = Load(Model);
+
+        // STRICT payload: enum scalar -> nested enum type; enum array -> IReadOnlyList<NestedEnum>.
+        var payloadSrc = PayloadCodegen.GeneratePayloadRecords(root, "Order");
+        Assert.Contains("public enum OrderPriority { LOW, HIGH }", payloadSrc);
+        Assert.Contains("public enum OrderLabels { A, B }", payloadSrc);
+        Assert.Contains("public required OrderPriority priority { get; init; }", payloadSrc);
+        Assert.Contains("public required IReadOnlyList<OrderLabels> labels { get; init; }", payloadSrc);
+        Assert.DoesNotContain("public required object priority", payloadSrc);
+
+        // The extract mapper coerces the string mirror via System.Enum.Parse<NestedEnum>.
+        var extractorSrc = Assert.Single(new ExtractorGenerator().Generate(Ctx(root))).Content;
+        Assert.Contains("System.Enum.Parse<Order.OrderPriority>(m.priority!)", extractorSrc);
+        Assert.Contains("System.Enum.Parse<Order.OrderLabels>(", extractorSrc);
+
+        // LENIENT mirror: the enum leaf stays string-backed (scalar string?, array string list).
+        var ctx = Ctx(root);
+        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(ctx)).Content;
+        Assert.Contains("string? priority { get; init; }", parserSrc);
+        Assert.Contains("IReadOnlyList<string?>? labels { get; init; }", parserSrc);
+        // No nested enum type bleeds into the lenient mirror.
+        Assert.DoesNotContain("OrderPriority priority", parserSrc);
+        Assert.DoesNotContain("OrderLabels", parserSrc);
+    }
+
+    // ---- shared-enum dedup proof: one abstract enum, two extending fields, ONE decl ----
+
+    private const string SharedEnumModel = """
+    { "metadata.root": { "package": "acme::orders", "children": [
+      { "field.enum": { "name": "Priority", "abstract": true, "@values": ["LOW", "HIGH"] } },
+      { "object.value": { "name": "Ticket", "children": [
+        { "field.string": { "name": "ticketId", "@required": true } },
+        { "field.enum":   { "name": "currentPriority",  "@required": true, "extends": "Priority" } },
+        { "field.enum":   { "name": "previousPriority", "@required": true, "extends": "Priority" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void Shared_abstract_enum_emits_one_nested_enum_both_fields_typed_by_super()
+    {
+        var root = Load(SharedEnumModel);
+        var payloadSrc = PayloadCodegen.GeneratePayloadRecords(root, "Ticket");
+
+        // Exactly ONE nested enum declaration, named for the super (deduped), members verbatim.
+        int enumDeclCount = System.Text.RegularExpressions.Regex.Matches(payloadSrc, @"public enum Priority \{").Count;
+        Assert.True(enumDeclCount == 1, $"expected exactly one nested enum Priority, got {enumDeclCount}");
+        Assert.Contains("public enum Priority { LOW, HIGH }", payloadSrc);
+
+        // BOTH fields typed by the shared enum.
+        Assert.Contains("public required Priority currentPriority { get; init; }", payloadSrc);
+        Assert.Contains("public required Priority previousPriority { get; init; }", payloadSrc);
     }
 
     private static Assembly Compile(MetaRoot root)

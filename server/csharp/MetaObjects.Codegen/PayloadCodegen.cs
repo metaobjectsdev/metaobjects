@@ -50,7 +50,7 @@ public static class PayloadCodegen
     private static bool IsArrayField(MetaData field) =>
         field.OwnAttr(RESERVED_KEY_IS_ARRAY) is true || field.IsArray;
 
-    private static (string Type, string? RefVo) FieldType(MetaData field)
+    private static (string Type, string? RefVo) FieldType(MetaData owner, MetaData field)
     {
         if (field.SubType == FIELD_SUBTYPE_OBJECT)
         {
@@ -59,11 +59,52 @@ public static class PayloadCodegen
             string? refVo = refAttr is string r ? r : null;
             return (IsArrayField(field) ? $"IReadOnlyList<{refName}>" : refName, refVo);
         }
+        // Enum payload field -> the generated nested C# enum type (same scheme entity codegen uses
+        // via CSharpNaming.EnumTypeName), NOT the `object` fallback. An enum array becomes
+        // IReadOnlyList<<EnumType>>; the extract mapper coerces the string mirror via Enum.Parse.
+        if (field.SubType == FIELD_SUBTYPE_ENUM)
+        {
+            string enumType = EnumTypeName(owner, field);
+            return (IsArrayField(field) ? $"IReadOnlyList<{enumType}>" : enumType, null);
+        }
         var scalar = ScalarType.GetValueOrDefault(field.SubType, "object");
         // Scalar array (e.g. `field.string` with isArray) -> a list of the scalar, mirroring the
         // object-array branch above and the TS payload-codegen reference. Without this a scalar
         // array would collapse to a single scalar (lossy).
         return (IsArrayField(field) ? $"IReadOnlyList<{scalar}>" : scalar, null);
+    }
+
+    /// <summary>
+    /// The nested C# enum type name for an enum-subtype payload field — the SAME scheme as
+    /// <see cref="CSharpNaming.EnumTypeName"/> (the super name when the field <c>extends:</c> an
+    /// abstract enum so all extenders share one type, else <c>&lt;OwnerPascal&gt;&lt;FieldPascal&gt;</c>).
+    /// PayloadCodegen walks <see cref="MetaData"/>, so the super is resolved off the field node directly.
+    /// </summary>
+    public static string EnumTypeName(MetaData owner, MetaData field)
+    {
+        if (field is MetaField mf && mf.ResolveSuper() is { } super)
+            return Pascal(super.Name);
+        return Pascal(owner.Name) + Pascal(field.Name);
+    }
+
+    /// <summary>
+    /// Collect nested <c>public enum &lt;Name&gt; { &lt;members&gt; }</c> declarations for the enum
+    /// fields of <paramref name="vo"/>, deduped by type name (two fields extending one abstract enum
+    /// emit ONE declaration). Mirrors EntityGenerator.CollectEnumDecls; members verbatim.
+    /// </summary>
+    private static List<string> CollectEnumDecls(MetaData vo)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var decls = new List<string>();
+        foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD && c.SubType == FIELD_SUBTYPE_ENUM))
+        {
+            var values = f is MetaField mf ? mf.EffectiveEnumValues : null;
+            if (values is null || values.Count == 0) continue;
+            var typeName = EnumTypeName(vo, f);
+            if (!seen.Add(typeName)) continue;   // dedup shared abstract-enum types
+            decls.Add($"    public enum {typeName} {{ {string.Join(", ", values)} }}");
+        }
+        return decls;
     }
 
     private static void EmitRecord(MetaData root, string voName, HashSet<string> emitted, List<string> output)
@@ -73,11 +114,14 @@ public static class PayloadCodegen
         if (vo is null) return;
 
         var lines = new List<string> { $"public sealed record {voName}", "{" };
+        // Nested enum declarations first — C# requires an enum type be declared before a
+        // property references it (deduped so shared abstract-enum extenders emit one decl).
+        lines.AddRange(CollectEnumDecls(vo));
         var refs = new List<string>();
         // Use Children() (effective) so inherited projection fields are included.
         foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
         {
-            var (type, refVo) = FieldType(f);
+            var (type, refVo) = FieldType(vo, f);
             lines.Add($"    public required {type} {f.Name} {{ get; init; }}");
             if (refVo is not null) refs.Add(refVo);
         }
