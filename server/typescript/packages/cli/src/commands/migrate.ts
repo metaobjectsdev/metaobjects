@@ -115,6 +115,10 @@ export async function migrateCommand(
   const config = await resolveMigrateConfig(flags, metaRoot);
 
   if (config.dialect === "d1") {
+    if (config.baseline) {
+      log.error(`migrate baseline is not supported for dialect 'd1' (snapshots are a postgres/sqlite concept)`);
+      return 2;
+    }
     if (config.databaseUrl !== undefined) {
       log.error(`migrate: --db / DATABASE_URL is not used for dialect 'd1' — wrangler.toml owns connection`);
       return 2;
@@ -425,13 +429,6 @@ export async function runBaseline(
     log.error(`migrate baseline: --dialect required (or set migrate.dialect in .metaobjects/config.json)`);
     return 2;
   }
-  let metadata;
-  try {
-    metadata = await loadMemory(metaRoot);
-  } catch (err) {
-    log.error(`migrate baseline: failed to load metadata: ${(err as Error).message}`);
-    return 2;
-  }
   const outDir = resolvePath(metaRoot, config.outDir);
   const path = snapshotPath(outDir, config.dialect);
 
@@ -454,6 +451,13 @@ export async function runBaseline(
       await kysely.close();
     }
   } else {
+    let metadata;
+    try {
+      metadata = await loadMemory(metaRoot);
+    } catch (err) {
+      log.error(`migrate baseline: failed to load metadata: ${(err as Error).message}`);
+      return 2;
+    }
     snapshot = baselineFromMetadata(metadata, config.dialect);
   }
 
@@ -527,6 +531,10 @@ export async function runOfflineGenerate(
     log.info(`migrate: no changes`);
     return 0;
   }
+  if (config.slug === undefined) {
+    log.error(`migrate: --slug <name> required when there are changes (e.g., --slug add-user-shipping)`);
+    return 2;
+  }
 
   const emitResult = emit(diffResult.changes, {
     dialect: config.dialect,
@@ -542,7 +550,7 @@ export async function runOfflineGenerate(
   await mkdir(outDir, { recursive: true });
   const res = await writeMigration(
     { up: emitResult.up, down: emitResult.down },
-    { dir: outDir, slug: config.slug ?? "migration" },
+    { dir: outDir, slug: config.slug },
   );
   await writeSnapshot(path, nextSnapshot);
   log.info(`migrate: wrote ${res.upPath}`);

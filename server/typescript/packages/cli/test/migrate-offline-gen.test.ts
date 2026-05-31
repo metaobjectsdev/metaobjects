@@ -64,4 +64,28 @@ describe("runOfflineGenerate", () => {
     const after = (await readdir(join(root, ".metaobjects/migrations"))).filter((e) => !e.startsWith("."));
     expect(after).toHaveLength(1);
   });
+
+  test("requires --slug when there are changes — exit 2, no migration written", async () => {
+    const root = await project('[{"field.string":{"name":"ref"}}]');
+    await runBaseline(cfg(root), root);
+    await rewrite(root, '[{"field.string":{"name":"ref"}},{"field.string":{"name":"note"}}]');
+    const noSlug = { ...cfg(root), slug: undefined };
+    expect(await runOfflineGenerate(noSlug, root)).toBe(2);
+    const entries = (await readdir(join(root, ".metaobjects/migrations"))).filter((e) => !e.startsWith("."));
+    expect(entries).toHaveLength(0);
+  });
+
+  test("--dry-run writes nothing and does not advance the snapshot", async () => {
+    const root = await project('[{"field.string":{"name":"ref"}}]');
+    await runBaseline(cfg(root), root);
+    await rewrite(root, '[{"field.string":{"name":"ref"}},{"field.string":{"name":"note"}}]');
+    const dry = { ...cfg(root), dryRun: true };
+    expect(await runOfflineGenerate(dry, root)).toBe(0);
+    const entries = (await readdir(join(root, ".metaobjects/migrations"))).filter((e) => !e.startsWith("."));
+    expect(entries).toHaveLength(0);
+    // snapshot NOT advanced by the dry-run: a real generate still sees the change
+    expect(await runOfflineGenerate(cfg(root), root)).toBe(0);
+    const after = (await readdir(join(root, ".metaobjects/migrations"))).filter((e) => !e.startsWith("."));
+    expect(after).toHaveLength(1);
+  });
 });
