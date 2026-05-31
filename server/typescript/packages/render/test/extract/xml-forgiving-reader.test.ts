@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { readXml } from "../../src/recover/xml-forgiving-reader.js";
+import { readXml } from "../../src/extract/xml-forgiving-reader.js";
 
 // Mirrors Java XmlForgivingReaderTest / C# XmlForgivingReaderTests (FR-010 stage 4 — XML).
 describe("xml forgiving reader", () => {
@@ -25,7 +25,7 @@ describe("xml forgiving reader", () => {
     expect(m["t"]).toBe("hi");
   });
 
-  test("unclosed child recovers inner text", () => {
+  test("unclosed child extracts inner text", () => {
     const m = readXml("<answer><t>hi<c>HIGH</c></answer>", false);
     expect(m["t"]).toBe("hi");
     expect(m["c"]).toBe("HIGH");

@@ -6,18 +6,18 @@ import {
   type MetaObject,
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
-import { Format, FieldKind, FieldRecovery, orThrow, RecoverError } from "@metaobjectsdev/render";
-import { recoverObject, recoverSchemaFor } from "../src/recover-object.js";
+import { Format, FieldKind, FieldExtraction, orThrow, ExtractError } from "@metaobjectsdev/render";
+import { extractObject, extractSchemaFor } from "../src/extract-object.js";
 
-// Gold-standard "verdict oracle" proof for the Phase B runtime recover (recoverObject).
+// Gold-standard "verdict oracle" proof for the Phase B runtime extract (extractObject).
 //
 // A representative adjudication-verdict object.value graph — scalars (incl. an enum with a
-// @default), an enum-array, and two arrays-of-records — is recovered from a deliberately DIRTY
+// @default), an enum-array, and two arrays-of-records — is extracted from a deliberately DIRTY
 // XML response (preamble + whitespace, an empty array, an uncoercible enum value, an omitted
-// defaulted field). Proves the full metadata-driven pipeline: recoverSchemaFor → engine →
+// defaulted field). Proves the full metadata-driven pipeline: extractSchemaFor → engine →
 // assemble into a typed object graph with correct back-references, generalized @default fill,
 // empty-array → empty-list, never-throws, and the orThrow() opt-in gate. Mirrors the JVM
-// reference MetaObjectRecoverVerdictTest.java (generic verdict fixture — no private names).
+// reference MetaObjectExtractorVerdictTest.java (generic verdict fixture — no private names).
 
 const PKG = "com::example::verdict";
 
@@ -81,8 +81,8 @@ function field(mo: MetaObject, name: string) {
   return f;
 }
 
-describe("recoverObject — verdict oracle (dirty XML → typed object graph)", () => {
-  test("dirty XML recovers into a typed object graph", async () => {
+describe("extractObject — verdict oracle (dirty XML → typed object graph)", () => {
+  test("dirty XML extracts into a typed object graph", async () => {
     const root = await loadRoot();
     const verdictMo = root.findObject("Verdict")!;
     expect(verdictMo).toBeDefined();
@@ -103,7 +103,7 @@ describe("recoverObject — verdict oracle (dirty XML → typed object graph)", 
       "</Verdict>\n" +
       "\nLet me know if you need anything else!";
 
-    const result = recoverObject(verdictMo, dirtyXml, Format.XML);
+    const result = extractObject(verdictMo, dirtyXml, Format.XML);
 
     // ---- never throws; produced a typed Verdict object with the right back-ref ----
     const verdict = result.data as ValueObject;
@@ -117,9 +117,9 @@ describe("recoverObject — verdict oracle (dirty XML → typed object graph)", 
 
     // ---- @default fill: arc_transition was omitted → DEFAULTED to "not_ready" ----
     expect(field(verdictMo, "arc_transition").getValue(verdict)).toBe("not_ready");
-    expect(result.report.states().get("arc_transition")).toBe(FieldRecovery.DEFAULTED);
+    expect(result.report.states().get("arc_transition")).toBe(FieldExtraction.DEFAULTED);
 
-    // ---- enum-array: valid element kept, uncoercible "zzz" dropped (partial recovery) ----
+    // ---- enum-array: valid element kept, uncoercible "zzz" dropped (partial extraction) ----
     const tags = field(verdictMo, "tags").getValue(verdict) as unknown[];
     expect(tags).toEqual(["a"]);
 
@@ -169,7 +169,7 @@ describe("recoverObject — verdict oracle (dirty XML → typed object graph)", 
     const strictMo = res.root.findObject("Strict")!;
 
     // Empty JSON object — "needed" is absent → LOST_REQUIRED.
-    const result = recoverObject(strictMo, "{}", Format.JSON);
+    const result = extractObject(strictMo, "{}", Format.JSON);
     expect(result.report.hasLostRequired()).toBe(true);
 
     let threw: unknown = null;
@@ -178,15 +178,15 @@ describe("recoverObject — verdict oracle (dirty XML → typed object graph)", 
     } catch (e) {
       threw = e;
     }
-    expect(threw instanceof RecoverError).toBe(true);
-    expect((threw as RecoverError).lostRequired).toContain("needed");
+    expect(threw instanceof ExtractError).toBe(true);
+    expect((threw as ExtractError).lostRequired).toContain("needed");
   });
 
-  test("recover never throws on total garbage (and still defaults)", async () => {
+  test("extract never throws on total garbage (and still defaults)", async () => {
     const root = await loadRoot();
     const verdictMo = root.findObject("Verdict")!;
 
-    const result = recoverObject(verdictMo, "%%% not even close %%%");
+    const result = extractObject(verdictMo, "%%% not even close %%%");
     expect(result).not.toBeNull();
     const obj = result.data as ValueObject;
     expect(obj).not.toBeNull();
@@ -194,11 +194,11 @@ describe("recoverObject — verdict oracle (dirty XML → typed object graph)", 
     expect(field(verdictMo, "arc_transition").getValue(obj)).toBe("not_ready");
   });
 
-  test("recoverSchemaFor mirrors the metadata shape", async () => {
+  test("extractSchemaFor mirrors the metadata shape", async () => {
     const root = await loadRoot();
     const verdictMo = root.findObject("Verdict")!;
 
-    const schema = recoverSchemaFor(verdictMo, Format.XML);
+    const schema = extractSchemaFor(verdictMo, Format.XML);
     expect(schema.format).toBe(Format.XML);
     expect(schema.rootName).toBe("Verdict");
 
@@ -221,9 +221,9 @@ describe("recoverObject — verdict oracle (dirty XML → typed object graph)", 
     expect(threads.nested!.rootName).toBe("ThreadCheck");
   });
 
-  // SP-A close-out: field.decimal recovers as a STRING (its exact-decimal wire form),
+  // SP-A close-out: field.decimal extracts as a STRING (its exact-decimal wire form),
   // NOT a lossy DOUBLE — matching the codegen sibling (fr010-field-mapping) + C#.
-  test("recoverSchemaFor maps field.decimal to STRING (exact, not lossy double)", async () => {
+  test("extractSchemaFor maps field.decimal to STRING (exact, not lossy double)", async () => {
     const meta = {
       "metadata.root": {
         package: "com::example::money",
@@ -244,7 +244,7 @@ describe("recoverObject — verdict oracle (dirty XML → typed object graph)", 
     expect(res.errors).toEqual([]);
     const moneyMo = res.root.findObject("Money")!;
 
-    const schema = recoverSchemaFor(moneyMo, Format.JSON);
+    const schema = extractSchemaFor(moneyMo, Format.JSON);
     const byName = new Map(schema.fields.map((f) => [f.name, f]));
     expect(byName.get("amount")!.kind).toBe(FieldKind.STRING);
     // sanity: double stays DOUBLE — only decimal moved.

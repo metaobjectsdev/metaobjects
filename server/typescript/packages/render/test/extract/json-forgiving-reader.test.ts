@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { readJson, TRUNCATED } from "../../src/recover/json-forgiving-reader.js";
+import { readJson, TRUNCATED } from "../../src/extract/json-forgiving-reader.js";
 
 // Mirrors Java JsonForgivingReaderTest / C# JsonForgivingReaderTests (FR-010 stage 4),
 // including the TRUNCATED sentinel and no-hang assertions.
@@ -38,14 +38,14 @@ describe("json forgiving reader", () => {
     expect(m["xs"]).toEqual(["a", "b"]);
   });
 
-  test("truncated recovers complete prefix keys", () => {
+  test("truncated extracts complete prefix keys", () => {
     const m = readJson('{"a":"1","b":"2","c":');
     expect(m["a"]).toBe("1");
     expect(m["b"]).toBe("2");
     expect(m["c"]).toBe(TRUNCATED);
   });
 
-  test("unrecoverable returns empty", () => {
+  test("unextractable returns empty", () => {
     expect(Object.keys(readJson("@@@@"))).toHaveLength(0);
   });
 

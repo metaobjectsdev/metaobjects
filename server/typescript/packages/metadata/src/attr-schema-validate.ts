@@ -221,7 +221,7 @@ function validateNode(
 
     // --- Check 5 (FR-011): enum fallback attrs must be a member of @values ---
     //
-    // Both @coerceDefault (recover-time coercion fallback) and @default (absent-fill
+    // Both @coerceDefault (extract-time coercion fallback) and @default (absent-fill
     // member) name an enum member, so each must be one of the field's @values.
     // Only validate when THIS node owns the attr (own-attrs-only policy, matching
     // Checks 2+3). The membership set is the EFFECTIVE @values — own or inherited

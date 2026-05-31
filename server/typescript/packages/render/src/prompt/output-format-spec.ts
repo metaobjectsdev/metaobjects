@@ -1,6 +1,6 @@
 // FR-010 artifact 1 — a complete output-format descriptor.
 
-import type { Format } from "../recover/types.js";
+import type { Format } from "../extract/types.js";
 import type { PromptField } from "./prompt-field.js";
 import type { PromptStyle } from "./prompt-style.js";
 

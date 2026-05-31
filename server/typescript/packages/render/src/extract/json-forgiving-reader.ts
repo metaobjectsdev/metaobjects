@@ -2,7 +2,7 @@
 // Mirrors Java JsonForgivingReader. The no-hang + TRUNCATED contracts are load-bearing.
 
 /** Sentinel: a key appeared in the text but its value was empty/cut-off (present-but-garbled). */
-export const TRUNCATED: unique symbol = Symbol("recover.json.TRUNCATED");
+export const TRUNCATED: unique symbol = Symbol("extract.json.TRUNCATED");
 
 /** A character is JSON-insignificant whitespace. Mirrors Java Character.isWhitespace closely enough for the corpus. */
 function isWhitespace(c: string): boolean {

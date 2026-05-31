@@ -1,9 +1,9 @@
-// FR-010 Plan 2.1 — nested-recover codegen import-and-RUN proof (the TS analogue of the
-// Java GeneratedNestedRecoverCompileRunTest). Generates the output parser for a payload with a
+// FR-010 Plan 2.1 — nested-extract codegen import-and-RUN proof (the TS analogue of the
+// Java GeneratedNestedExtractCompileRunTest). Generates the output parser for a payload with a
 // NESTED object + an ARRAY-OF-objects, writes the emitted .ts, dynamically import()s it under bun,
-// then calls the runtime-DELEGATING recover<Name>WithLoader(root, dirtyJson) and asserts the
+// then calls the runtime-DELEGATING extract<Name>WithLoader(root, dirtyJson) and asserts the
 // nested object + array-of-objects populate into the typed nullable mirror (NOT null) — the gap
-// the self-contained recover<Name>(text) leaves open.
+// the self-contained extract<Name>(text) leaves open.
 
 import { describe, test, expect, afterAll } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
@@ -79,39 +79,39 @@ async function loadRoot(): Promise<MetaRoot> {
   return res.root;
 }
 
-describe("FR-010 nested recover codegen — source shape", () => {
+describe("FR-010 nested extract codegen — source shape", () => {
   test("emits a typed nested mirror, nested mappers, and the runtime-delegating overload", async () => {
     const root = await loadRoot();
     const src = renderOutputParser(root, "OrderOut");
 
     // delegating wiring
-    expect(src).toContain('import { recoverObject } from "@metaobjectsdev/runtime-ts";');
+    expect(src).toContain('import { extractObject } from "@metaobjectsdev/runtime-ts";');
     expect(src).toContain('import type { MetaRoot } from "@metaobjectsdev/metadata";');
     expect(src).toContain('export const ORDEROUT_PAYLOAD_NAME = "Order";');
-    expect(src).toContain("export function recoverOrderOutWithLoader(");
-    expect(src).toContain("recoverObject(mo, text, Format.JSON, opts)");
+    expect(src).toContain("export function extractLenientOrderOutWithLoader(");
+    expect(src).toContain("extractObject(mo, text, Format.JSON, opts)");
 
     // self-contained path still present (back-compat)
-    expect(src).toContain("export function recoverOrderOut(");
-    expect(src).toContain("export function tryRecoverOrderOut(");
+    expect(src).toContain("export function extractLenientOrderOut(");
+    expect(src).toContain("export function tryExtractLenientOrderOut(");
 
     // nested-aware mirror types (NOT `unknown`)
-    expect(src).toContain("export interface OrderOutRecovered {");
-    expect(src).toContain("customer: CustomerRecovered | null;");
-    expect(src).toContain("items: (LineItemRecovered | null)[] | null;");
-    expect(src).toContain("export interface CustomerRecovered {");
-    expect(src).toContain("export interface LineItemRecovered {");
+    expect(src).toContain("export interface OrderOutExtracted {");
+    expect(src).toContain("customer: CustomerExtracted | null;");
+    expect(src).toContain("items: (LineItemExtracted | null)[] | null;");
+    expect(src).toContain("export interface CustomerExtracted {");
+    expect(src).toContain("export interface LineItemExtracted {");
 
-    // nested mappers — root mapper is template-named (`from<Template>Recovered`); nested use VO names
-    expect(src).toContain("function fromOrderOutRecovered(");
-    expect(src).toContain("function fromCustomerRecovered(");
-    expect(src).toContain("function fromLineItemRecovered(");
+    // nested mappers — root mapper is template-named (`from<Template>Extracted`); nested use VO names
+    expect(src).toContain("function fromOrderOutExtracted(");
+    expect(src).toContain("function fromCustomerExtracted(");
+    expect(src).toContain("function fromLineItemExtracted(");
     expect(src).toContain("mapObjectList(readProp(o,");
   });
 });
 
-describe("FR-010 nested recover codegen — import-and-RUN proof (delegating path populates nested)", () => {
-  test("recoverOrderOutWithLoader(root, dirtyJson) populates the nested object + array-of-objects", async () => {
+describe("FR-010 nested extract codegen — import-and-RUN proof (delegating path populates nested)", () => {
+  test("extractLenientOrderOutWithLoader(root, dirtyJson) populates the nested object + array-of-objects", async () => {
     const root = await loadRoot();
     const parserSrc = renderOutputParser(root, "OrderOut");
 
@@ -127,7 +127,7 @@ describe("FR-010 nested recover codegen — import-and-RUN proof (delegating pat
       "```json",
       JSON.stringify({
         orderId: "A-100",
-        status: "open", // off-canonical case → still recovers the scalar surface
+        status: "open", // off-canonical case → still extracts the scalar surface
         customer: { name: "Ada Lovelace", email: "ada@example.com" },
         items: [
           { sku: "SKU-1", qty: 2 },
@@ -142,23 +142,23 @@ describe("FR-010 nested recover codegen — import-and-RUN proof (delegating pat
     // (the historical FR-010 gap: the baked-schema path treats them as opaque leaves and the
     // generated mirror initializer emits null for object fields). The delegating path below
     // is what populates them.
-    const selfContained = parser.recoverOrderOut(dirty);
+    const selfContained = parser.extractLenientOrderOut(dirty);
     expect(selfContained.data.customer).toBeNull();
     expect(selfContained.data.items).toBeNull();
 
     // ---- runtime-delegating path POPULATES nested + array-of-objects ----
-    const { data, report } = parser.recoverOrderOutWithLoader(root, dirty);
+    const { data, report } = parser.extractLenientOrderOutWithLoader(root, dirty);
     expect(data).not.toBeNull();
 
     // root scalars
     expect(data.orderId).toBe("A-100");
 
-    // nested object recovered into the typed CustomerRecovered mirror
+    // nested object extracted into the typed CustomerExtracted mirror
     expect(data.customer).not.toBeNull();
     expect(data.customer.name).toBe("Ada Lovelace");
     expect(data.customer.email).toBe("ada@example.com");
 
-    // array-of-objects recovered into LineItemRecovered[]
+    // array-of-objects extracted into LineItemExtracted[]
     expect(Array.isArray(data.items)).toBe(true);
     expect(data.items.length).toBe(2);
     expect(data.items[0].sku).toBe("SKU-1");

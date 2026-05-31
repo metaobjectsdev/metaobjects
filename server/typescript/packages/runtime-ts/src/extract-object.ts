@@ -1,10 +1,10 @@
-// Phase B (metadata-driven recover) runtime entry point — the TS keystone that turns dirty
+// Phase B (metadata-driven extract) runtime entry point — the TS keystone that turns dirty
 // LLM text into a populated, typed object graph.
 //
 // This is the runtime bridge between the two halves of the standard:
-//   • the recover ENGINE (@metaobjectsdev/render: RecoverSchema / FieldSpec / recover) — a
+//   • the extract ENGINE (@metaobjectsdev/render: ExtractSchema / FieldSpec / extract) — a
 //     zero-core-dependency, descriptor-driven module that parses dirty JSON/XML into a forgiving
-//     record/array tree + a RecoveryReport. It knows nothing of the runtime object model.
+//     record/array tree + a ExtractionReport. It knows nothing of the runtime object model.
 //   • the Phase A runtime OBJECT MODEL (@metaobjectsdev/metadata: MetaObject.newInstance() +
 //     the MetaField get/set SPI + @objectRef) — instantiates the right backing type
 //     (ValueObject or a registered/bound class) with the correct back-reference.
@@ -13,7 +13,7 @@
 // metadata model would regress every render consumer). The metadata-driven bridge therefore lives
 // HERE, in @metaobjectsdev/runtime-ts — the lowest package that already depends on metadata and
 // that can also take a one-way dependency on render. This mirrors the JVM layering, where the
-// recover engine sits in the metadata-free `render` module and the runtime recover bridge lives in
+// extract engine sits in the metadata-free `render` module and the runtime extract bridge lives in
 // the `om` runtime module (which depends on BOTH metadata and render). The edges are one-way:
 // runtime-ts → render and runtime-ts → metadata; render depends on neither, so there is no cycle.
 //
@@ -21,7 +21,7 @@
 // bound type, else a ValueObject) and the MetaField setValue SPI — no eval / dynamic import.
 //
 // Never throws. Lost/malformed fields are classified in the report, never raised. Opt into
-// strictness with orThrow() (re-exported from @metaobjectsdev/render), which throws a RecoverError
+// strictness with orThrow() (re-exported from @metaobjectsdev/render), which throws a ExtractError
 // iff a required field was lost.
 
 import {
@@ -65,17 +65,17 @@ import {
   enumField,
   enumArray,
   object,
-  recoverSchema,
-  recover,
+  extractSchema,
+  extract,
   type FieldSpec,
-  type RecoverOptions,
-  type RecoverSchema,
-  type RecoveryResult,
+  type ExtractOptions,
+  type ExtractSchema,
+  type ExtractionResult,
 } from "@metaobjectsdev/render";
 
 /**
  * Maximum nested-object recursion depth. Mirrors the render OutputFormatRenderer.MAX_NEST_DEPTH
- * (and FR-012) — must stay identical cross-port (Java MetaObjectRecover.MAX_NEST_DEPTH = 8). At or
+ * (and FR-012) — must stay identical cross-port (Java MetaObjectExtractor.MAX_NEST_DEPTH = 8). At or
  * beyond this depth a nested OBJECT field becomes an opaque STRING leaf instead of recursing.
  */
 export const MAX_NEST_DEPTH = 8;
@@ -85,9 +85,9 @@ export const MAX_NEST_DEPTH = 8;
 // =============================================================================
 
 /**
- * Recover `text` into a typed object graph described by `mo`.
+ * Extract `text` into a typed object graph described by `mo`.
  *
- * Pipeline: build a RecoverSchema from `mo` (driven entirely by metadata), run the engine to get
+ * Pipeline: build a ExtractSchema from `mo` (driven entirely by metadata), run the engine to get
  * a forgiving record/array tree + report, then assemble that tree into a populated object graph.
  *
  * @param mo     the object describing the expected shape (the single source of truth)
@@ -97,42 +97,42 @@ export const MAX_NEST_DEPTH = 8;
  * @returns the assembled object (a ValueObject unless a type is bound for the FQN) + report.
  *          NEVER throws.
  */
-export function recoverObject(
+export function extractObject(
   mo: MetaObject,
   text: string | null | undefined,
   format: Format = Format.JSON,
-  opts?: Partial<RecoverOptions> | null,
-): RecoveryResult<object> {
-  const schema = recoverSchemaFor(mo, format);
-  const outcome = recover(text, schema, opts);
+  opts?: Partial<ExtractOptions> | null,
+): ExtractionResult<object> {
+  const schema = extractSchemaFor(mo, format);
+  const outcome = extract(text, schema, opts);
   const obj = assemble(mo, outcome.data);
   return { data: obj, report: outcome.report };
 }
 
 // =============================================================================
-// recoverSchemaFor — metadata -> RecoverSchema
+// extractSchemaFor — metadata -> ExtractSchema
 // =============================================================================
 
 /**
- * Build a RecoverSchema for `mo` by walking its effective fields and mapping each MetaField to a
+ * Build a ExtractSchema for `mo` by walking its effective fields and mapping each MetaField to a
  * FieldSpec. Recurses into nested OBJECT fields via `@objectRef`, guarded against cycles/over-depth
  * by an identity visited-set keyed on MetaObject + a depth counter bounded by {@link MAX_NEST_DEPTH}.
  */
-export function recoverSchemaFor(mo: MetaObject, format: Format = Format.JSON): RecoverSchema {
-  return recoverSchemaForInner(mo, format, new Set<MetaObject>(), 0);
+export function extractSchemaFor(mo: MetaObject, format: Format = Format.JSON): ExtractSchema {
+  return extractSchemaForInner(mo, format, new Set<MetaObject>(), 0);
 }
 
-function recoverSchemaForInner(
+function extractSchemaForInner(
   mo: MetaObject,
   format: Format,
   visited: Set<MetaObject>,
   depth: number,
-): RecoverSchema {
+): ExtractSchema {
   visited.add(mo);
   const fields: FieldSpec[] = mo.fields().map((f) => fieldSpecFor(f, mo, format, visited, depth));
   visited.delete(mo);
   // rootName is the simple (short) name; the engine's XML locate uses it as the root tag.
-  return recoverSchema(format, mo.name, fields);
+  return extractSchema(format, mo.name, fields);
 }
 
 function fieldSpecFor(
@@ -164,7 +164,7 @@ function fieldSpecFor(
       // Opaque leaf — never recurse into a cycle / past the depth bound.
       return scalar(name, FieldKind.STRING, required);
     }
-    const nested = recoverSchemaForInner(ref, format, visited, depth + 1);
+    const nested = extractSchemaForInner(ref, format, visited, depth + 1);
     return object(name, required, field.isArray === true, nested);
   }
 
@@ -179,11 +179,11 @@ function fieldSpecFor(
 }
 
 // =============================================================================
-// assemble — recovered record/array tree -> object graph
+// assemble — extracted record/array tree -> object graph
 // =============================================================================
 
 /**
- * Assemble a recovered `Record<string, unknown>` (the engine's forgiving tree) into a populated
+ * Assemble a extracted `Record<string, unknown>` (the engine's forgiving tree) into a populated
  * object graph described by `mo`.
  *
  * `mo.newInstance()` yields the bound type (or a ValueObject) with the back-ref already set. Each
@@ -193,7 +193,7 @@ function fieldSpecFor(
  *   • OBJECT non-array → recursively assemble the child record, then setValue;
  *   • OBJECT array → recursively assemble each element record into a list, then setValue.
  *
- * Cycle/depth-guarded identically to recoverSchemaFor. NEVER throws on lost/malformed data — those
+ * Cycle/depth-guarded identically to extractSchemaFor. NEVER throws on lost/malformed data — those
  * were classified in the report during the engine pass.
  */
 export function assemble(mo: MetaObject, data: Record<string, unknown> | null | undefined): object {
@@ -273,7 +273,7 @@ function scalarKind(subType: string): FieldKind {
     case FIELD_SUBTYPE_TIME:
     case FIELD_SUBTYPE_TIMESTAMP:
     // decimal's wire form is an exact decimal STRING (parsing it as a float would be
-    // lossy) — matching the codegen sibling (fr010-field-mapping) + C# runtime recover.
+    // lossy) — matching the codegen sibling (fr010-field-mapping) + C# runtime extract.
     case FIELD_SUBTYPE_DECIMAL:
       return FieldKind.STRING;
     case FIELD_SUBTYPE_INT:

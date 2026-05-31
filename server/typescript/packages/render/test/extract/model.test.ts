@@ -2,17 +2,17 @@ import { describe, test, expect } from "bun:test";
 import {
   Format,
   FieldKind,
-  FieldRecovery,
+  FieldExtraction,
   Tolerance,
   scalar,
   enumField,
   range,
   object,
-  recoverSchema,
+  extractSchema,
   defaults,
   normalizeOptions,
-  RecoveryReport,
-} from "../../src/recover/types.js";
+  ExtractionReport,
+} from "../../src/extract/types.js";
 
 // Mirrors Java ModelTest + ReportTest / C# ModelTests.
 describe("model: FieldSpec factories", () => {
@@ -52,7 +52,7 @@ describe("model: FieldSpec factories", () => {
   });
 
   test("object carries nested schema", () => {
-    const nested = recoverSchema(Format.JSON, "inner", [scalar("x", FieldKind.INT, true)]);
+    const nested = extractSchema(Format.JSON, "inner", [scalar("x", FieldKind.INT, true)]);
     const f = object("payload", true, false, nested);
     expect(f.kind).toBe(FieldKind.OBJECT);
     expect(f.required).toBe(true);
@@ -61,26 +61,26 @@ describe("model: FieldSpec factories", () => {
   });
 
   test("object array sets array flag", () => {
-    const f = object("items", false, true, recoverSchema(Format.JSON, "item", []));
+    const f = object("items", false, true, extractSchema(Format.JSON, "item", []));
     expect(f.array).toBe(true);
   });
 });
 
-describe("model: RecoverSchema", () => {
+describe("model: ExtractSchema", () => {
   test("carries format, root, fields", () => {
-    const schema = recoverSchema(Format.XML, "answer", [scalar("text", FieldKind.STRING, true)]);
+    const schema = extractSchema(Format.XML, "answer", [scalar("text", FieldKind.STRING, true)]);
     expect(schema.format).toBe(Format.XML);
     expect(schema.rootName).toBe("answer");
     expect(schema.fields).toHaveLength(1);
   });
 
   test("null fields yields empty list", () => {
-    const schema = recoverSchema(Format.JSON, "root", null);
+    const schema = extractSchema(Format.JSON, "root", null);
     expect(schema.fields).toEqual([]);
   });
 });
 
-describe("model: RecoverOptions", () => {
+describe("model: ExtractOptions", () => {
   test("defaults: normal tolerance, empty maps, null hook", () => {
     const opts = defaults();
     expect(opts.tolerance).toBe(Tolerance.NORMAL);
@@ -102,36 +102,36 @@ describe("model: RecoverOptions", () => {
   });
 });
 
-describe("model: RecoveryReport", () => {
+describe("model: ExtractionReport", () => {
   test("lostRequired filters to LOST_REQUIRED states", () => {
-    const r = new RecoveryReport();
-    r.set("a", FieldRecovery.RECOVERED);
-    r.set("b", FieldRecovery.LOST_REQUIRED);
-    r.set("c", FieldRecovery.LOST_REQUIRED);
-    r.set("d", FieldRecovery.DEFAULTED);
+    const r = new ExtractionReport();
+    r.set("a", FieldExtraction.EXTRACTED);
+    r.set("b", FieldExtraction.LOST_REQUIRED);
+    r.set("c", FieldExtraction.LOST_REQUIRED);
+    r.set("d", FieldExtraction.DEFAULTED);
     expect(r.lostRequired()).toEqual(["b", "c"]);
     expect(r.hasLostRequired()).toBe(true);
   });
 
   test("markEmpty sets flag; hasLostRequired false", () => {
-    const r = new RecoveryReport();
+    const r = new ExtractionReport();
     r.markEmpty();
     expect(r.isEmpty()).toBe(true);
     expect(r.hasLostRequired()).toBe(false);
   });
 
   test("states returns snapshot with all entries", () => {
-    const r = new RecoveryReport();
-    r.set("x", FieldRecovery.RECOVERED);
-    r.set("y", FieldRecovery.MALFORMED);
+    const r = new ExtractionReport();
+    r.set("x", FieldExtraction.EXTRACTED);
+    r.set("y", FieldExtraction.MALFORMED);
     const snap = r.states();
     expect(snap.size).toBe(2);
-    expect(snap.get("x")).toBe(FieldRecovery.RECOVERED);
-    expect(snap.get("y")).toBe(FieldRecovery.MALFORMED);
+    expect(snap.get("x")).toBe(FieldExtraction.EXTRACTED);
+    expect(snap.get("y")).toBe(FieldExtraction.MALFORMED);
   });
 
   test("coercions returns all in order", () => {
-    const r = new RecoveryReport();
+    const r = new ExtractionReport();
     r.addCoercion({ fieldPath: "a", from: "raw", to: "ALIAS", kind: "alias" });
     r.addCoercion({ fieldPath: "b", from: "x", to: "y", kind: "clamp" });
     const list = r.coercions();
@@ -141,27 +141,27 @@ describe("model: RecoveryReport", () => {
   });
 
   test("malformed filters to MALFORMED states", () => {
-    const r = new RecoveryReport();
-    r.set("ok", FieldRecovery.RECOVERED);
-    r.set("bad", FieldRecovery.MALFORMED);
+    const r = new ExtractionReport();
+    r.set("ok", FieldExtraction.EXTRACTED);
+    r.set("bad", FieldExtraction.MALFORMED);
     expect(r.malformed()).toEqual(["bad"]);
   });
 
   test("states insertion order preserved", () => {
-    const r = new RecoveryReport();
-    r.set("z", FieldRecovery.RECOVERED);
-    r.set("a", FieldRecovery.RECOVERED);
-    r.set("m", FieldRecovery.RECOVERED);
+    const r = new ExtractionReport();
+    r.set("z", FieldExtraction.EXTRACTED);
+    r.set("a", FieldExtraction.EXTRACTED);
+    r.set("m", FieldExtraction.EXTRACTED);
     expect([...r.states().keys()]).toEqual(["z", "a", "m"]);
   });
 });
 
-describe("model: FieldRecovery names match corpus", () => {
+describe("model: FieldExtraction names match corpus", () => {
   test("frozen string values", () => {
-    expect(FieldRecovery.RECOVERED).toBe("RECOVERED");
-    expect(FieldRecovery.DEFAULTED).toBe("DEFAULTED");
-    expect(FieldRecovery.LOST_OPTIONAL).toBe("LOST_OPTIONAL");
-    expect(FieldRecovery.LOST_REQUIRED).toBe("LOST_REQUIRED");
-    expect(FieldRecovery.MALFORMED).toBe("MALFORMED");
+    expect(FieldExtraction.EXTRACTED).toBe("EXTRACTED");
+    expect(FieldExtraction.DEFAULTED).toBe("DEFAULTED");
+    expect(FieldExtraction.LOST_OPTIONAL).toBe("LOST_OPTIONAL");
+    expect(FieldExtraction.LOST_REQUIRED).toBe("LOST_REQUIRED");
+    expect(FieldExtraction.MALFORMED).toBe("MALFORMED");
   });
 });

@@ -3,7 +3,7 @@
 // Stock generator that emits one <TemplateName>.extractor.ts file per declared template.output
 // node whose @format is json/xml. Wraps renderExtractor() from templates/extractor.ts.
 //
-// The emitted extractor sits over the output-parser's nested-capable recover and turns dirty LLM
+// The emitted extractor sits over the output-parser's nested-capable extract and turns dirty LLM
 // text into the strict typed payload graph. It imports from the sibling <Name>.output.ts (the
 // output-parser) and ./payloads.ts, so run it alongside outputParser() + a payload generator.
 //
@@ -39,7 +39,7 @@ export const extractor = function extractor(opts?: ExtractorOpts): Generator {
         .filter((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_OUTPUT);
       const files: EmittedFile[] = [];
       for (const t of outputs) {
-        // The extract tier requires the recover API, which only json/xml output-parsers emit.
+        // The extract tier requires the extract API, which only json/xml output-parsers emit.
         const format = ((t.ownAttr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
         if (format !== "json" && format !== "xml") continue;
         files.push({

@@ -44,7 +44,7 @@ function parseChildren(inner: string, ci: boolean, out: Record<string, unknown>)
       contentEnd = close.index;
       next = close.index + close[0].length;
     } else {
-      // unclosed tag: recover text up to the next sibling open tag
+      // unclosed tag: extract text up to the next sibling open tag
       const sib = matchFrom(OPEN_TAG_SRC, flags, inner, contentStart);
       if (sib != null) {
         contentEnd = sib.index;

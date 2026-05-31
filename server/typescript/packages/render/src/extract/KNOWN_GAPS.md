@@ -1,12 +1,12 @@
-# FR-010 TypeScript recover engine — known gaps & intentional cross-port divergences
+# FR-010 TypeScript extract engine — known gaps & intentional cross-port divergences
 
-Scope: the tolerant `recover` pipeline (`src/recover/`). The Java engine
-(`server/java/render/.../recover/`) is the cross-port reference; `fixtures/recover-conformance/`
+Scope: the tolerant `extract` pipeline (`src/extract/`). The Java engine
+(`server/java/render/.../extract/`) is the cross-port reference; `fixtures/recover-conformance/`
 is the oracle. All 10 corpus cases pass.
 
 ## Additive capability (TS + C#, beyond Java/Kotlin)
 
-- **Nested-object recover is implemented.** A `FieldSpec` with a non-null `nested` schema
+- **Nested-object extract is implemented.** A `FieldSpec` with a non-null `nested` schema
   (built via the `object(...)` factory) is descended into and its sub-fields classified. The
   Java/Kotlin ports defer this (their codegen emits a scalar-STRING placeholder). The C# port
   also carries the OBJECT branch, so TS and C# agree. This is **dormant** under both the
@@ -20,7 +20,7 @@ The cross-port contract pins *classification + canonical value* (numbers within 
 byte-identical native parsing.
 
 - **Java-style numeric suffixes / hex-float literals.** Java's `Double.parseDouble` accepts
-  `"42d"` / `"42f"` and hex-float forms (→ RECOVERED); TS uses `Number(...)` + `Number.isFinite`,
+  `"42d"` / `"42f"` and hex-float forms (→ EXTRACTED); TS uses `Number(...)` + `Number.isFinite`,
   which rejects them → **MALFORMED** (same accepted divergence the C# port records). The
   load-bearing behavior — finite-only acceptance, `NaN`/`±Infinity` → MALFORMED — is identical.
 
@@ -31,20 +31,20 @@ byte-identical native parsing.
 
 ## Bounded deferral (parity with all ports)
 
-- Array-of-enum is not specialized (a scalar array recovers via `asStringList`).
+- Array-of-enum is not specialized (a scalar array extracts via `asStringList`).
 - `asInt`/`asLong` both return `number | null` (JS has one number type) and truncate toward zero.
 
-## FR-011 recover hardening — current state
+## FR-011 extract hardening — current state
 
-- **Enum coercion pipeline.** Enum recovery runs a fixed ladder: exact → normalize
+- **Enum coercion pipeline.** Enum extraction runs a fixed ladder: exact → normalize
   (`@normalize` mode `none | collapse | strip`, default `strip`, per-field with an
   `object.value`-level default) → `@enumAlias` → `@coerceDefault` → MALFORMED. `@default` fills
   an absent enum (→ `DEFAULTED`, which satisfies `@required`); the `DEFAULTED` classification is
   now emitted by the engine.
-- **Nested/embedded-object recovery is supported** uniformly at the engine level (dotted child
+- **Nested/embedded-object extraction is supported** uniformly at the engine level (dotted child
   paths, element-wise arrays) — this closes the FR-010 nested deferral noted above for the
   *engine*. NOTE: the codegen schema-emitters still emit a scalar-STRING placeholder for nested
-  object fields (a deliberate, cross-port-consistent codegen deferral), so nested recovery is
+  object fields (a deliberate, cross-port-consistent codegen deferral), so nested extraction is
   reachable via a hand-built / engine-level schema but is not yet auto-emitted by codegen.
 - **Fuzzy matching is deliberately DEFERRED.** A reserved no-op slot exists in the pipeline
   (between `@enumAlias` and `@coerceDefault`). If added later it must be guarded integer

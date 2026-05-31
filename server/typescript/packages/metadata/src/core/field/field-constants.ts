@@ -124,7 +124,7 @@ export const FIELD_ATTR_VALUES = "values";
 export const ENUM_MEMBER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** FR-010: map of off-vocabulary token → canonical enum member, feeding the
- *  tolerant recover alias-fold. `properties`-shaped; only on field.enum. */
+ *  tolerant extract alias-fold. `properties`-shaped; only on field.enum. */
 export const FIELD_ATTR_ENUM_ALIAS = "enumAlias";
 
 /** FR-010: map of enum member → human-readable description, shown per-member in
@@ -142,14 +142,14 @@ export const FIELD_ATTR_EXAMPLE = "example";
 export const FIELD_ATTR_INSTRUCTION = "instruction";
 
 // ---------------------------------------------------------------------------
-// FR-011 recover-hardening attrs (enum tolerant recover)
+// FR-011 extract-hardening attrs (enum tolerant extract)
 // ---------------------------------------------------------------------------
 
 /** FR-011: fallback enum member used when an LLM sends a present-but-uncoercible
  *  value. Must be one of the field's @values (loader-validated). On field.enum only. */
 export const FIELD_ATTR_COERCE_DEFAULT = "coerceDefault";
 
-/** FR-011: ASCII normalization mode for tolerant enum recover. Closed enum
+/** FR-011: ASCII normalization mode for tolerant enum extract. Closed enum
  *  (none|collapse|strip). On field.enum (per-field) and object.value (default
  *  for its enum fields). Resolved field → object → global NORMALIZE_DEFAULT. */
 export const FIELD_ATTR_NORMALIZE = "normalize";

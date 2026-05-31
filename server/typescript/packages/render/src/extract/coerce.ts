@@ -9,19 +9,19 @@
 // classification) is identical across ports.
 
 import { FieldKind, Tolerance } from "./types.js";
-import type { FieldSpec, RecoverOptions, RecoveryReport } from "./types.js";
+import type { FieldSpec, ExtractOptions, ExtractionReport } from "./types.js";
 import { normalizeEnum } from "./normalize.js";
 import type { NormalizeMode } from "./normalize.js";
 
 /** Sentinel: the value was present but could not be coerced to the declared kind/vocabulary. */
-export const MALFORMED: unique symbol = Symbol("recover.coerce.MALFORMED");
+export const MALFORMED: unique symbol = Symbol("extract.coerce.MALFORMED");
 
 export function coerceValue(
   raw: string | null,
   spec: FieldSpec,
-  opts: RecoverOptions,
+  opts: ExtractOptions,
   fieldPath: string,
-  report: RecoveryReport,
+  report: ExtractionReport,
 ): unknown | typeof MALFORMED {
   if (raw == null) return MALFORMED;
 
@@ -96,9 +96,9 @@ export function scalarCoerce(raw: string | null, spec: FieldSpec): unknown | typ
 function coerceEnum(
   raw: string,
   spec: FieldSpec,
-  opts: RecoverOptions,
+  opts: ExtractOptions,
   path: string,
-  report: RecoveryReport,
+  report: ExtractionReport,
   ci: boolean,
 ): unknown | typeof MALFORMED {
   const mode: NormalizeMode = ci ? spec.normalize : "none";
@@ -150,7 +150,7 @@ function coerceEnum(
 function lookupAlias(
   raw: string,
   spec: FieldSpec,
-  opts: RecoverOptions,
+  opts: ExtractOptions,
   mode: NormalizeMode,
 ): { target: string; fromRuntime: boolean } | null {
   const runtime = lookupAliasIn(raw, opts.aliases, mode);
@@ -171,13 +171,13 @@ function lookupAliasIn(raw: string, aliases: Readonly<Record<string, string>>, m
   return null;
 }
 
-function coerceInt(raw: string, spec: FieldSpec, path: string, report: RecoveryReport): unknown | typeof MALFORMED {
+function coerceInt(raw: string, spec: FieldSpec, path: string, report: ExtractionReport): unknown | typeof MALFORMED {
   const n = parseFiniteNumber(raw);
   if (n === null) return MALFORMED;
   return clamp(Math.trunc(n), spec, path, report);
 }
 
-function coerceDouble(raw: string, spec: FieldSpec, path: string, report: RecoveryReport): unknown | typeof MALFORMED {
+function coerceDouble(raw: string, spec: FieldSpec, path: string, report: ExtractionReport): unknown | typeof MALFORMED {
   const n = parseFiniteNumber(raw);
   if (n === null) return MALFORMED;
   return clamp(n, spec, path, report);
@@ -194,7 +194,7 @@ function parseFiniteNumber(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function clamp(n: number, spec: FieldSpec, path: string, report: RecoveryReport): number {
+function clamp(n: number, spec: FieldSpec, path: string, report: ExtractionReport): number {
   let c = n;
   if (spec.min != null && c < spec.min) c = spec.min;
   if (spec.max != null && c > spec.max) c = spec.max;

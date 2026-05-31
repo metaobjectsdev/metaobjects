@@ -1,9 +1,9 @@
 // FR-010 codegen proof — the TS analogue of C#'s Fr010CodegenTests.cs (compile-AND-run).
 //
-// Generates the parser+recover file and the prompt file for a hand-built model, writes
+// Generates the parser+extract file and the prompt file for a hand-built model, writes
 // the emitted .ts (plus the payload interface) to a temp dir under this test dir, then
 // dynamically import()s the emitted module under bun and CALLS the generated functions:
-//   • recover<Name>() on a dirty input (preamble + ```json fence + off-vocab enum alias +
+//   • extract<Name>() on a dirty input (preamble + ```json fence + off-vocab enum alias +
 //     missing optional) — asserts the @enumAlias fold, classification, and lost-optional.
 //   • render<Name>Format() — asserts the comment-free guide fragment.
 // Also typechecks the emitted source via `tsc --noEmit` when available.
@@ -69,8 +69,8 @@ const MODEL = [
   },
 ];
 
-describe("FR-010 codegen — recover-schema + output-format-spec emitters (source shape)", () => {
-  test("output-parser emits the strict Zod parser AND the tolerant recover API for json", async () => {
+describe("FR-010 codegen — extract-schema + output-format-spec emitters (source shape)", () => {
+  test("output-parser emits the strict Zod parser AND the tolerant extract API for json", async () => {
     const root = await loadRoot(MODEL);
     const src = renderOutputParser(root, "TicketOut");
 
@@ -79,11 +79,11 @@ describe("FR-010 codegen — recover-schema + output-format-spec emitters (sourc
     expect(src).toContain("export function parseTicketOut(text: string)");
     expect(src).toContain("export function safeParseTicketOut(");
 
-    // recover API
+    // extract API
     expect(src).toContain('from "@metaobjectsdev/render"');
-    expect(src).toContain("export interface TicketOutRecovered {");
-    expect(src).toContain("export function recoverTicketOut(");
-    expect(src).toContain("export function tryRecoverTicketOut(");
+    expect(src).toContain("export interface TicketOutExtracted {");
+    expect(src).toContain("export function extractLenientTicketOut(");
+    expect(src).toContain("export function tryExtractLenientTicketOut(");
     // nullable mirror
     expect(src).toContain("priority: string | null;");
     expect(src).toContain("score: number | null;");
@@ -92,19 +92,19 @@ describe("FR-010 codegen — recover-schema + output-format-spec emitters (sourc
     expect(src).toContain('enumField("priority", true, ["LOW", "HIGH"]');
     expect(src).toContain('"med": "HIGH"');
     expect(src).toContain('"medium": "HIGH"');
-    // recover-map initializer + scoped imports
+    // extract-map initializer + scoped imports
     expect(src).toContain('asStringList(d, "tags")');
     expect(src).toContain('asInt(d, "score")');
   });
 
-  test("text-format output gets NO recover block", async () => {
+  test("text-format output gets NO extract block", async () => {
     const root = await loadRoot([
       { "object.value": { name: "Note", children: [{ "field.string": { name: "body", "@required": true } }] } },
       { "template.output": { name: "NoteOut", "@payloadRef": "Note", "@textRef": "out/note", "@format": "text" } },
     ]);
     const src = renderOutputParser(root, "NoteOut");
     expect(src).toContain("export function parseNoteOut(");
-    expect(src).not.toContain("recoverNoteOut");
+    expect(src).not.toContain("extractLenientNoteOut");
     expect(src).not.toContain("@metaobjectsdev/render");
   });
 
@@ -233,7 +233,7 @@ describe("FR-011 codegen — @coerceDefault/@normalize emission + import-and-RUN
     expect(src).not.toContain('enumField("priority", true, ["LOW", "HIGH"], null,');
   });
 
-  test("emitted recoverTaskOut() folds an off-vocab value to @coerceDefault and classifies DEFAULTED", async () => {
+  test("emitted extractLenientTaskOut() folds an off-vocab value to @coerceDefault and classifies DEFAULTED", async () => {
     const root = await loadRoot(MODEL_FR011);
     const parserSrc = renderOutputParser(root, "TaskOut");
     const payloadSrc = generatePayloadInterfaces(root, "Task");
@@ -247,7 +247,7 @@ describe("FR-011 codegen — @coerceDefault/@normalize emission + import-and-RUN
 
     // off-vocab, non-aliasable enum value → @coerceDefault fallback to "LOW"
     const dirty = '{ "title": "Ship it", "priority": "kinda high!!" }';
-    const { data, report } = parser.recoverTaskOut(dirty);
+    const { data, report } = parser.extractLenientTaskOut(dirty);
     expect(data).not.toBeNull();
     expect(data.priority).toBe("LOW");
     expect(data.title).toBe("Ship it");
@@ -258,7 +258,7 @@ describe("FR-011 codegen — @coerceDefault/@normalize emission + import-and-RUN
 });
 
 describe("FR-010 codegen — import-and-RUN proof (bun dynamic import)", () => {
-  test("emitted recoverTicketOut() folds the @enumAlias + classifies a dirty input; renderTicketOutFormat() emits the guide fragment", async () => {
+  test("emitted extractLenientTicketOut() folds the @enumAlias + classifies a dirty input; renderTicketOutFormat() emits the guide fragment", async () => {
     const root = await loadRoot(MODEL);
     const parserSrc = renderOutputParser(root, "TicketOut");
     const promptSrc = renderOutputPrompt(root, "TicketOut");
@@ -273,7 +273,7 @@ describe("FR-010 codegen — import-and-RUN proof (bun dynamic import)", () => {
     const parser = await import(join(dir, "TicketOut.output.ts"));
     const prompt = await import(join(dir, "TicketOut.prompt.ts"));
 
-    // ---- recover() on a dirty input: preamble + ```json fence + off-vocab alias + missing optional ----
+    // ---- extract() on a dirty input: preamble + ```json fence + off-vocab alias + missing optional ----
     const dirty = [
       "Sure! Here is the ticket you asked for:",
       "```json",
@@ -282,7 +282,7 @@ describe("FR-010 codegen — import-and-RUN proof (bun dynamic import)", () => {
       "Hope that helps!",
     ].join("\n");
 
-    const { data, report } = parser.recoverTicketOut(dirty);
+    const { data, report } = parser.extractLenientTicketOut(dirty);
     expect(data).not.toBeNull();
     // @enumAlias fold: off-vocab "medium" → canonical "HIGH"
     expect(data.priority).toBe("HIGH");
@@ -295,10 +295,10 @@ describe("FR-010 codegen — import-and-RUN proof (bun dynamic import)", () => {
     expect(report.hasLostRequired()).toBe(false);
     const states = report.states();
     expect(states.get("assignee")).toBe("LOST_OPTIONAL");
-    expect(states.get("priority")).toBe("RECOVERED");
+    expect(states.get("priority")).toBe("EXTRACTED");
 
-    // tryRecover gate: non-empty, no required lost → ok
-    const gate = parser.tryRecoverTicketOut(dirty);
+    // tryExtract gate: non-empty, no required lost → ok
+    const gate = parser.tryExtractLenientTicketOut(dirty);
     expect(gate.ok).toBe(true);
 
     // ---- render*Format(): comment-free guide fragment ----

@@ -1,24 +1,24 @@
 // server/typescript/packages/codegen-ts/src/templates/extractor.ts
 //
-// The `extract` tier — a generated `<Name>.extractor.ts` that sits OVER the existing tolerant
-// recover<Name> and turns dirty LLM text into the STRICT typed payload graph (nested objects +
+// The strict `extract` tier — a generated `<Name>.extractor.ts` that sits OVER the existing tolerant
+// extractLenient<Name> and turns dirty LLM text into the STRICT typed payload graph (nested objects +
 // arrays-of-objects populated) in one call.
 //
 // Cross-port parity: this mirrors the Java ExtractorCodeGenerator (FOC Task 6). The Java port's
-// extract(loader, text) / recover(loader, text) both take the loaded MetaDataLoader and delegate
-// to the Phase-B runtime recover (MetaObjectRecover) so the WHOLE nested graph is assembled; the
+// extract(loader, text) / extractLenient(loader, text) both take the loaded MetaDataLoader and delegate
+// to the Phase-B runtime extract (MetaObjectExtractor) so the WHOLE nested graph is assembled; the
 // returned flavored object IS the strict type there (the binding provider makes newInstance()
-// return it). TS has no flavored object-class — recover returns an all-nullable `<Name>Recovered`
+// return it). TS has no flavored object-class — extractLenient returns an all-nullable `<Name>Extracted`
 // mirror and the strict payload is a separate `interface`, so the TS port adds the recursive
 // mirror→strict mapper (toStrict<Type>) that the Java/Kotlin ports get for free from the runtime.
 //
-// Why extract takes the MetaRoot: the SELF-CONTAINED recover<Name>(text) leaves nested objects
-// null (the historical FR-010 gap). The nested-capable path is recover<Name>WithLoader(root, text),
-// which delegates to the runtime recover. So the extract tier — like the Java port — is loader
-// (MetaRoot)-driven. recover<Name>WithLoader is re-exposed here under the public name recover<Name>.
+// Why extract takes the MetaRoot: the SELF-CONTAINED extractLenient<Name>(text) leaves nested objects
+// null (the historical FR-010 gap). The nested-capable path is extractLenient<Name>WithLoader(root, text),
+// which delegates to the runtime extract. So the extract tier — like the Java port — is loader
+// (MetaRoot)-driven. extractLenient<Name>WithLoader is re-exposed here under the public name extractLenient<Name>.
 //
 // NO registry / binding provider / factory; codegen walks the whole type graph statically (the
-// same MetaObject walk the recover-schema / payload emitters use).
+// same MetaObject walk the extract-schema / payload emitters use).
 
 import {
   type MetaData,
@@ -33,7 +33,7 @@ import {
   PACKAGE_SEPARATOR,
 } from "@metaobjectsdev/metadata";
 import { fields, isArray } from "./fr010-field-mapping.js";
-import { mirrorName } from "./recover-delegate-emitter.js";
+import { mirrorName } from "./extract-delegate-emitter.js";
 
 function findObject(root: MetaData, name: string): MetaData | undefined {
   return root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
@@ -92,7 +92,7 @@ function strictArg(field: MetaData, root: MetaData): string {
     const fn = mapperName(target);
     if (isArray(field)) {
       // Required array-of-objects: each element mapped; element nulls dropped at the type level
-      // via the non-null assertion (recover never yields null elements for a present array).
+      // via the non-null assertion (extract never yields null elements for a present array).
       if (required) return `m.${name}!.map((e) => ${fn}(e!))`;
       return `m.${name} ? m.${name}!.map((e) => ${fn}(e!)) : null`;
     }
@@ -120,8 +120,8 @@ function strictArg(field: MetaData, root: MetaData): string {
 
 /**
  * Emit one `toStrict<VO>(m)` mapper per value-object reachable from `vo` (payload + nested,
- * deduped, cycle-safe). Each maps the all-nullable `<VO>Recovered` mirror onto the strict `<VO>`
- * payload interface. The ROOT mapper reads the canonically-named root mirror (`<Template>Recovered`)
+ * deduped, cycle-safe). Each maps the all-nullable `<VO>Extracted` mirror onto the strict `<VO>`
+ * payload interface. The ROOT mapper reads the canonically-named root mirror (`<Template>Extracted`)
  * since the template name may differ from the payload VO name.
  */
 function emitMappers(payloadVo: MetaData, root: MetaData, rootMirror: string): string {
@@ -206,7 +206,7 @@ function reachableMirrorTypes(vo: MetaData, root: MetaData, rootMirror: string):
 /**
  * Render the full `<TemplateName>.extractor.ts` for one `template.output` node.
  * Throws if the template isn't found / isn't a template.output / its @payloadRef doesn't resolve,
- * or if the target format is not json/xml (the extract tier requires the recover<Name> API, which
+ * or if the target format is not json/xml (the extract tier requires the extract<Name> API, which
  * only the json/xml output-parsers emit).
  */
 export function renderExtractor(root: MetaData, templateName: string): string {
@@ -228,14 +228,14 @@ export function renderExtractor(root: MetaData, templateName: string): string {
   const format = ((tmpl.ownAttr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
   if (format !== "json" && format !== "xml") {
     throw new Error(
-      `template "${templateName}" @format "${format}" has no recover API to extract over (json/xml only)`,
+      `template "${templateName}" @format "${format}" has no extract API to extract over (json/xml only)`,
     );
   }
 
   const strictType = vo.name; // the payload VO's interface name (payload-codegen emits the bare VO name)
-  const rootMirror = `${templateName}Recovered`;
-  const recoverWithName = `recover${templateName}WithLoader`; // the nested-capable recover (output-parser)
-  const recoverPublic = `recover${templateName}`; // re-exposed extract-tier name
+  const rootMirror = `${templateName}Extracted`;
+  const extractLenientWithName = `extractLenient${templateName}WithLoader`; // the nested-capable lenient extract (output-parser)
+  const extractLenientPublic = `extractLenient${templateName}`; // re-exposed never-throws lenient tier name
   const extractName = `extract${templateName}`;
   const rootMapper = mapperName(vo);
 
@@ -250,23 +250,23 @@ export function renderExtractor(root: MetaData, templateName: string): string {
     `// GENERATED — extractor for "${templateName}".\n` +
     `//\n` +
     `// Turns dirty LLM text into a fully-typed \`${strictType}\` graph (nested objects +\n` +
-    `// arrays-of-objects populated) in one call, by delegating to the nested-capable recover and\n` +
+    `// arrays-of-objects populated) in one call, by delegating to the nested-capable extract and\n` +
     `// mapping the all-nullable mirror onto the strict payload. No registry / binding / factory.\n` +
     `\n` +
-    `import {\n  ${recoverWithName},\n  type ${mirrorTypes.join(",\n  type ")},\n} from "./${templateName}.output.js";\n` +
+    `import {\n  ${extractLenientWithName},\n  type ${mirrorTypes.join(",\n  type ")},\n} from "./${templateName}.output.js";\n` +
     `import type { ${payloadTypes.join(", ")} } from "./payloads.js";\n` +
     `import type { MetaRoot } from "@metaobjectsdev/metadata";\n` +
-    `import type { RecoveryResult } from "@metaobjectsdev/render";\n` +
+    `import type { ExtractionResult } from "@metaobjectsdev/render";\n` +
     `\n` +
     `/**\n` +
     ` * Extract a fully-typed \`${strictType}\` from dirty \`text\` using the loaded \`root\` (which must\n` +
-    ` * declare the "${payloadRef}" payload value-object). Runs the tolerant recover, then maps the\n` +
-    ` * recovered mirror onto the strict payload.\n` +
+    ` * declare the "${payloadRef}" payload value-object). Runs the tolerant extract, then maps the\n` +
+    ` * extracted mirror onto the strict payload.\n` +
     ` *\n` +
     ` * @throws Error iff a \`@required\` field was lost (the strict opt-in gate).\n` +
     ` */\n` +
     `export function ${extractName}(root: MetaRoot, text: string): ${strictType} {\n` +
-    `  const r = ${recoverWithName}(root, text);\n` +
+    `  const r = ${extractLenientWithName}(root, text);\n` +
     `  if (r.report.hasLostRequired()) {\n` +
     `    throw new Error(${JSON.stringify(lostMsg)} + r.report.lostRequired().join(", "));\n` +
     `  }\n` +
@@ -274,11 +274,11 @@ export function renderExtractor(root: MetaData, templateName: string): string {
     `}\n` +
     `\n` +
     `/**\n` +
-    ` * Recover a \`${strictType}\` from dirty \`text\` using the loaded \`root\`, never throwing.\n` +
-    ` * Re-exposes the nested-capable recover; inspect \`report\` for lost/defaulted fields.\n` +
+    ` * Extract a \`${strictType}\` from dirty \`text\` using the loaded \`root\`, never throwing.\n` +
+    ` * Re-exposes the nested-capable extract; inspect \`report\` for lost/defaulted fields.\n` +
     ` */\n` +
-    `export function ${recoverPublic}(root: MetaRoot, text: string): RecoveryResult<${rootMirror}> {\n` +
-    `  return ${recoverWithName}(root, text);\n` +
+    `export function ${extractLenientPublic}(root: MetaRoot, text: string): ExtractionResult<${rootMirror}> {\n` +
+    `  return ${extractLenientWithName}(root, text);\n` +
     `}\n` +
     `\n` +
     `${mappers}\n`

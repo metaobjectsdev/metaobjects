@@ -6,16 +6,16 @@ import {
   Format,
   FieldKind,
   PromptStyle,
-  recover,
-  recoverSchema,
+  extract,
+  extractSchema,
   scalar,
   enumField,
   object,
-  FieldRecovery,
+  FieldExtraction,
   type OutputFormatSpec,
   type PromptField,
   type PromptOverrides,
-  type RecoverSchema,
+  type ExtractSchema,
   type FieldSpec,
 } from "../src/index.js";
 
@@ -68,13 +68,13 @@ function buildOutputSpec(c: CaseSpec): OutputFormatSpec {
   return { format: toFormat(c.format), rootName: c.rootName, style: PromptStyle.GUIDE, fields };
 }
 
-function buildRecoverSchema(c: CaseSpec): RecoverSchema {
+function buildExtractSchema(c: CaseSpec): ExtractSchema {
   const fields: FieldSpec[] = c.fields.map((f) => {
     if (f.kind === "ENUM") return enumField(f.name, f.required, f.enumValues ?? null, {});
-    if (f.kind === "OBJECT") return object(f.name, f.required, f.array ?? false, f.nested ? buildRecoverSchema(f.nested) : null);
+    if (f.kind === "OBJECT") return object(f.name, f.required, f.array ?? false, f.nested ? buildExtractSchema(f.nested) : null);
     return scalar(f.name, FieldKind[f.kind], f.required);
   });
-  return recoverSchema(toFormat(c.format), c.rootName, fields);
+  return extractSchema(toFormat(c.format), c.rootName, fields);
 }
 
 describe("output-prompt-conformance corpus", () => {
@@ -111,12 +111,12 @@ describe("output-prompt-conformance corpus", () => {
 
       if (spec.roundTrip) {
         const exampleFragment = readFileSync(join(dir, "expected.exampleOnly.txt"), "utf8");
-        const outcome = recover(exampleFragment, buildRecoverSchema(spec));
+        const outcome = extract(exampleFragment, buildExtractSchema(spec));
         // Skew guard: a field the renderer emitted must read back cleanly. We assert
         // NO state is MALFORMED or LOST_* (robust to DEFAULTED and to how a nested
         // OBJECT-container path classifies); any such state means the renderer emitted
-        // an example the recover parser cannot read.
-        const bad = [FieldRecovery.MALFORMED, FieldRecovery.LOST_REQUIRED, FieldRecovery.LOST_OPTIONAL] as const;
+        // an example the extract parser cannot read.
+        const bad = [FieldExtraction.MALFORMED, FieldExtraction.LOST_REQUIRED, FieldExtraction.LOST_OPTIONAL] as const;
         for (const [field, state] of outcome.report.states()) {
           expect([field, bad.includes(state as (typeof bad)[number])]).toEqual([field, false]);
         }

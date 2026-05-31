@@ -1,5 +1,5 @@
-// Null-safe coercions from a RecoverOutcome data map onto typed values. Generated
-// recover(...) calls these. Mirrors Java RecoverMap.
+// Null-safe coercions from a ExtractionOutcome data map onto typed values. Generated
+// extract(...) calls these. Mirrors Java ExtractMap.
 //
 // Tier-2 divergence: JS has one number type, so asInt/asLong both return `number | null`
 // and truncate toward zero via Math.trunc (Java intValue()/longValue() also truncate).

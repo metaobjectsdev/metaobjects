@@ -1,6 +1,6 @@
 // FR-010 artifact 1 — one field of an output-format fragment.
 
-import type { FieldKind } from "../recover/types.js";
+import type { FieldKind } from "../extract/types.js";
 import type { OutputFormatSpec } from "./output-format-spec.js";
 
 /**

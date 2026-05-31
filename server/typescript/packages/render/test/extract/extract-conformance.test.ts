@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { recover } from "../../src/recover/recover.js";
+import { extract } from "../../src/extract/extract.js";
 import {
   Format,
   FieldKind,
@@ -11,17 +11,17 @@ import {
   range,
   object,
   type FieldSpec,
-  type RecoverSchema,
-} from "../../src/recover/types.js";
-import type { NormalizeMode } from "../../src/recover/normalize.js";
+  type ExtractSchema,
+} from "../../src/extract/types.js";
+import type { NormalizeMode } from "../../src/extract/normalize.js";
 
 // FR-010 cross-language recover-conformance corpus runner — the correctness gate.
 // Each fixture dir under fixtures/recover-conformance/ holds:
 //   schema.json   { "format": "JSON"|"XML", "rootName": "...", "fields": [...] }
 //   input.txt     the raw (possibly dirty) LLM output
-//   expected.json { "empty": bool, "states": { path: FieldRecovery }, "data": { field: value } }
+//   expected.json { "empty": bool, "states": { path: FieldExtraction }, "data": { field: value } }
 // All cases must pass. The corpus is the oracle — do not weaken assertions.
-// Mirrors RecoverConformanceTest.java / RecoverConformanceTests.cs exactly.
+// Mirrors ExtractConformanceTest.java / ExtractConformanceTests.cs exactly.
 
 /** Walk up from this test dir to the repo root that contains fixtures/recover-conformance. */
 function corpusRoot(): string {
@@ -134,7 +134,7 @@ function parseField(f: RawFieldJson): FieldSpec {
   return scalar(name, kind, required, f.default ?? null);
 }
 
-function parseSchema(n: { format: string; rootName: string; fields: RawFieldJson[] }): RecoverSchema {
+function parseSchema(n: { format: string; rootName: string; fields: RawFieldJson[] }): ExtractSchema {
   return {
     format: parseFormat(n.format),
     rootName: n.rootName,
@@ -168,7 +168,7 @@ describe("recover-conformance corpus", () => {
       const input = readFileSync(join(caseDir, "input.txt"), "utf8");
       const expected = JSON.parse(readFileSync(join(caseDir, "expected.json"), "utf8")) as ExpectedJson;
 
-      const outcome = recover(input, schema);
+      const outcome = extract(input, schema);
 
       // empty flag
       expect(outcome.report.isEmpty()).toBe(expected.empty);

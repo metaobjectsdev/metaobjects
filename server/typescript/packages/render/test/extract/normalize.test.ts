@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeEnum } from "../../src/recover/normalize.js";
+import { normalizeEnum } from "../../src/extract/normalize.js";
 
 describe("normalizeEnum", () => {
   test("none = identity", () => expect(normalizeEnum("In Progress", "none")).toBe("In Progress"));

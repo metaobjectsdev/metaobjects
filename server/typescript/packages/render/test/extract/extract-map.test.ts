@@ -1,12 +1,12 @@
 import { describe, test, expect } from "bun:test";
-import { asString, asInt, asLong, asDouble, asBool, asStringList } from "../../src/recover/recover-map.js";
+import { asString, asInt, asLong, asDouble, asBool, asStringList } from "../../src/extract/extract-map.js";
 
-// Mirrors Java RecoverMapTest / C# RecoverMapTests (FR-010 null-safe coercion helpers).
+// Mirrors Java ExtractMapTest / C# ExtractMapTests (FR-010 null-safe coercion helpers).
 function data(): Record<string, unknown> {
   return { s: "hi", n: 7, d: 1.5, b: true, xs: ["a", "b"] };
 }
 
-describe("recover map", () => {
+describe("extract map", () => {
   test("asString reads and defaults null", () => {
     expect(asString(data(), "s")).toBe("hi");
     expect(asString({}, "s")).toBeNull();

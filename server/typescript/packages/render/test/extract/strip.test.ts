@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { strip } from "../../src/recover/strip.js";
+import { strip } from "../../src/extract/strip.js";
 
 // Mirrors Java StripTest / C# StripTests (FR-010 stage 1).
 describe("strip", () => {

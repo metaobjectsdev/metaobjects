@@ -10,7 +10,7 @@
 // the verbatim prose, skeleton shapes, or numeric-vs-quoted decision.
 
 import { ESCAPERS } from "../escapers.js";
-import { FieldKind, Format } from "../recover/types.js";
+import { FieldKind, Format } from "../extract/types.js";
 import type { OutputFormatSpec } from "./output-format-spec.js";
 import type { PromptField } from "./prompt-field.js";
 import type { PromptOverrides } from "./prompt-overrides.js";
@@ -251,7 +251,7 @@ function isNumericOrBoolean(kind: FieldKind, value: string): boolean {
   // Finite-only: NaN/Infinity fall through to a quoted string so the emitted JSON
   // stays valid. Number("") is 0, so guard the empty/blank case explicitly. Reject
   // JS-only radix literals (0x../0b../0o..) that Number() accepts but Java/C# don't —
-  // same guard as the recover engine's parseFiniteNumber (keeps the JSON valid + parity).
+  // same guard as the extract engine's parseFiniteNumber (keeps the JSON valid + parity).
   const t = value.trim();
   if (t === "" || /^[+-]?0[xXbBoO]/.test(t)) return false;
   return Number.isFinite(Number(t));

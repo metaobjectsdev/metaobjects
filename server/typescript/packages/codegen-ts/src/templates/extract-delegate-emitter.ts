@@ -1,16 +1,16 @@
-// server/typescript/packages/codegen-ts/src/templates/recover-delegate-emitter.ts
+// server/typescript/packages/codegen-ts/src/templates/extract-delegate-emitter.ts
 //
-// FR-010 Plan 2.1 (nested codegen gap) — the runtime-DELEGATING recover emitter.
+// FR-010 Plan 2.1 (nested codegen gap) — the runtime-DELEGATING extract emitter.
 //
-// The self-contained recover<Name>(text) path (recover-schema-emitter + the baked
-// RecoverSchema) covers scalars / enums / scalar-arrays but leaves nested-object and
+// The self-contained extract<Name>(text) path (extract-schema-emitter + the baked
+// ExtractSchema) covers scalars / enums / scalar-arrays but leaves nested-object and
 // array-of-object components NULL — the historical FR-010 codegen gap. This module emits
-// the additive delegating overload that CLOSES that gap by wrapping the runtime recover:
+// the additive delegating overload that CLOSES that gap by wrapping the runtime extract:
 //
-//   recover<Name>(root: MetaRoot, text, opts?) -> RecoveryResult<<Name>Recovered>
+//   extract<Name>(root: MetaRoot, text, opts?) -> ExtractionResult<<Name>Extracted>
 //
 // It resolves this payload's MetaObject by its baked simple name from the supplied MetaRoot,
-// delegates to recoverObject() in @metaobjectsdev/runtime-ts (which assembles the FULL nested
+// delegates to extractObject() in @metaobjectsdev/runtime-ts (which assembles the FULL nested
 // object graph reflection-free via the Phase A object model — MetaObject.newInstance() + the
 // MetaField SPI), then maps the assembled ValueObject graph into the typed nullable mirror
 // graph via generated from<VO>(...) mapper functions (payload + every nested VO, deduped).
@@ -53,14 +53,14 @@ function isObjectField(field: MetaData): boolean {
   return field.subType === FIELD_SUBTYPE_OBJECT;
 }
 
-/** The recovered-mirror interface name for a value-object (`<Name>Recovered`). */
+/** The extracted-mirror interface name for a value-object (`<Name>Extracted`). */
 export function mirrorName(vo: MetaData): string {
-  return `${vo.name}Recovered`;
+  return `${vo.name}Extracted`;
 }
 
-/** The mapper function name for a value-object (`from<Name>Recovered`). */
+/** The mapper function name for a value-object (`from<Name>Extracted`). */
 function mapperName(vo: MetaData): string {
-  return `from${vo.name}Recovered`;
+  return `from${vo.name}Extracted`;
 }
 
 // =============================================================================
@@ -91,8 +91,8 @@ function nestedMirrorType(field: MetaData, root: MetaData): string {
 
 /**
  * Emit the nested-aware mirror interface for `vo` and every value-object reachable from it
- * (deduped by simple name; cycle-safe). The payload mirror keeps the canonical `<Payload>Recovered`
- * name (passed in) so the existing self-contained recover<Name>() and the delegating overload
+ * (deduped by simple name; cycle-safe). The payload mirror keeps the canonical `<Payload>Extracted`
+ * name (passed in) so the existing self-contained extract<Name>() and the delegating overload
  * share one mirror type. Returns the joined interface declarations in stable (BFS) order.
  */
 export function nestedMirrorInterfaces(vo: MetaData, root: MetaData, payloadMirror: string): string {
@@ -112,12 +112,12 @@ function emitMirror(
   if (seen.has(vo.name)) return;
   seen.add(vo.name);
 
-  const base = interfaceName.endsWith("Recovered")
-    ? interfaceName.slice(0, -"Recovered".length)
+  const base = interfaceName.endsWith("Extracted")
+    ? interfaceName.slice(0, -"Extracted".length)
     : interfaceName;
   const lines: string[] = [];
   lines.push(
-    `/** Best-effort recovered twin of \`${base}\` — every field nullable (null where lost/malformed). */`,
+    `/** Best-effort extracted twin of \`${base}\` — every field nullable (null where lost/malformed). */`,
   );
   lines.push(`export interface ${interfaceName} {`);
   for (const f of fields(vo)) {
@@ -140,10 +140,10 @@ function emitMirror(
 // =============================================================================
 
 /**
- * Emit one `from<VO>Recovered(o)` mapper per value-object reachable from `vo` (payload + nested,
+ * Emit one `from<VO>Extracted(o)` mapper per value-object reachable from `vo` (payload + nested,
  * deduped). Each mapper reads the assembled object via readProp() and recurses into nested
- * mappers for object/array-of-object components. Nested mappers use `from<NestedName>Recovered`
- * returning `<NestedName>Recovered`. The ROOT mapper is overridden to the template-derived names
+ * mappers for object/array-of-object components. Nested mappers use `from<NestedName>Extracted`
+ * returning `<NestedName>Extracted`. The ROOT mapper is overridden to the template-derived names
  * (`rootMapperFn` / `rootMirror`) so it matches the canonically-named root mirror interface — the
  * payload VO's own name may differ from the template name.
  */
@@ -161,7 +161,7 @@ export function nestedMappers(
 
 /** The root mapper's name + mirror — derived from the template, not the payload VO. */
 export function rootMapperName(template: string): string {
-  return `from${template}Recovered`;
+  return `from${template}Extracted`;
 }
 
 function emitMapper(
@@ -212,7 +212,7 @@ function mapperArg(field: MetaData, root: MetaData): string {
 
   // Enum / scalar / scalar-array: the runtime already coerced; read + light-coerce to the
   // mirror's nullable shape via the locally-defined dlg* readers. (These are distinct from the
-  // render RecoverMap helpers `asString(d, key)` etc., which the self-contained path imports — a
+  // render ExtractMap helpers `asString(d, key)` etc., which the self-contained path imports — a
   // local helper must NOT shadow those, so the delegate readers carry the `dlg` prefix.)
   if (field.subType === FIELD_SUBTYPE_ENUM) return `dlgString(readProp(o, ${key}))`;
   if (isArray(field)) return `dlgStringList(readProp(o, ${key}))`;
@@ -303,13 +303,13 @@ export function hasNested(vo: MetaData, root: MetaData): boolean {
  *                 else plain-property access); keeps the mappers reflection-free + backing-agnostic.
  *   • mapObjectList — map each element of an assembled array via a per-element mapper.
  *   • dlg* readers — light null-tolerant coercion to the mirror's nullable scalar shapes. The
- *     `dlg` prefix avoids shadowing the render RecoverMap helpers (`asString(d, key)` etc.) that
- *     the self-contained recover path imports into the SAME file — a collision would silently
+ *     `dlg` prefix avoids shadowing the render ExtractMap helpers (`asString(d, key)` etc.) that
+ *     the self-contained extract path imports into the SAME file — a collision would silently
  *     rebind those two-arg map readers to these one-arg readers.
  * Emitted once per parser file.
  */
 export function delegateHelpers(used: Set<string>): string {
-  const blocks: string[] = ["// ---- runtime-delegating recover helpers (generated) ----"];
+  const blocks: string[] = ["// ---- runtime-delegating extract helpers (generated) ----"];
 
   // readProp is always needed once a mapper exists.
   blocks.push(`/** Read a property from an assembled backing object, mirroring the MetaField getValue SPI. */

@@ -171,13 +171,13 @@ export const enumFieldAttr: AttrSchema = {
 };
 
 /** The @enumAlias attr — only on field.enum. Map of off-vocabulary token → canonical
- *  member, feeding the FR-010 tolerant recover alias-fold (runtime aliases win on conflict). */
+ *  member, feeding the FR-010 tolerant extract alias-fold (runtime aliases win on conflict). */
 export const enumAliasAttr: AttrSchema = {
   name: FIELD_ATTR_ENUM_ALIAS,
   valueType: ATTR_SUBTYPE_PROPERTIES,
   required: false,
   description:
-    "Map of alternate/off-vocabulary tokens to canonical enum members; feeds the FR-010 tolerant recover alias-fold.",
+    "Map of alternate/off-vocabulary tokens to canonical enum members; feeds the FR-010 tolerant extract alias-fold.",
 };
 
 /** The @enumDoc attr — only on field.enum. Map of member → human-readable description,
@@ -191,19 +191,19 @@ export const enumDocAttr: AttrSchema = {
 };
 
 /** FR-011: the @coerceDefault attr — only on field.enum. String member symbol used as
- *  the recover fallback when an LLM sends a present-but-uncoercible value. Loader-validated
+ *  the extract fallback when an LLM sends a present-but-uncoercible value. Loader-validated
  *  to be one of the field's @values (ERR_BAD_ATTR_VALUE otherwise). */
 export const coerceDefaultAttr: AttrSchema = {
   name: FIELD_ATTR_COERCE_DEFAULT,
   valueType: ATTR_SUBTYPE_STRING,
   required: false,
   description:
-    "Fallback enum member used by tolerant recover when a present value cannot be coerced; must be one of the field's @values.",
+    "Fallback enum member used by tolerant extract when a present value cannot be coerced; must be one of the field's @values.",
 };
 
 /** FR-011: the @normalize attr — on field.enum (per-field) and object.value (object default).
  *  Closed enum (none|collapse|strip); controls the ASCII normalization applied during tolerant
- *  enum recover. Resolved field → owning object.value → global default (strip). */
+ *  enum extract. Resolved field → owning object.value → global default (strip). */
 export const normalizeAttr: AttrSchema = {
   name: FIELD_ATTR_NORMALIZE,
   valueType: ATTR_SUBTYPE_STRING,
@@ -211,6 +211,6 @@ export const normalizeAttr: AttrSchema = {
   default: NORMALIZE_DEFAULT,
   allowedValues: [...NORMALIZE_MODES],
   description:
-    "ASCII normalization mode for tolerant enum recover (none|collapse|strip, default strip). " +
+    "ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). " +
     "On field.enum it is per-field; on object.value it is the default for the object's enum fields.",
 };

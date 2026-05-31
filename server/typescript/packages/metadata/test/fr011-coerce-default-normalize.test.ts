@@ -1,9 +1,9 @@
-// FR-011 metamodel attrs — cross-port parity (recover hardening).
+// FR-011 metamodel attrs — cross-port parity (extract hardening).
 //
-// Registers the FR-011 enum-recover vocabulary in the TS loader:
+// Registers the FR-011 enum-extract vocabulary in the TS loader:
 //   - @coerceDefault : string member symbol on field.enum ONLY. Must be one of
 //                      the field's @values (loader-validated → ERR_BAD_ATTR_VALUE).
-//                      Drives the tolerant recover present-but-garbage fallback.
+//                      Drives the tolerant extract present-but-garbage fallback.
 //   - @normalize     : closed enum (none|collapse|strip) on field.enum (per-field)
 //                      AND object.value (default for its enum fields). Default "strip".
 //

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { locateJson, locateXml } from "../../src/recover/locate.js";
+import { locateJson, locateXml } from "../../src/extract/locate.js";
 
 // Mirrors Java LocateTest / C# LocateTests (FR-010 stages 2-3).
 describe("locate json", () => {

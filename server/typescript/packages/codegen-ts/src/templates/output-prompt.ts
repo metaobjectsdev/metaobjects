@@ -5,7 +5,7 @@
 // @payloadRef resolves to a value-object, emits a `<TemplateName>.prompt.ts` file
 // exporting `render<TemplateName>Format(overrides?)` backed by the render engine's
 // renderOutputFormat(). The baked OutputFormatSpec's rootName is the payload name,
-// so the prompt fragment and the recover() codegen agree on the root name.
+// so the prompt fragment and the extract() codegen agree on the root name.
 //
 // Mirrors the C# OutputPromptGenerator + OutputFormatSpecEmitter (split into a
 // generator factory + this pure renderer, matching the TS output-parser shape).
@@ -59,7 +59,7 @@ export function renderOutputPrompt(root: MetaData, templateName: string): string
     throw new Error(`template "${templateName}" @payloadRef "${payloadRef}" not found in metadata root`);
   }
 
-  // rootName == payload name so the prompt fragment and recover() agree.
+  // rootName == payload name so the prompt fragment and extract() agree.
   const spec = specLiteral(vo, tmpl, payloadRef);
   const specName = `${templateName}FormatSpec`;
   const fnName = `render${templateName}Format`;
