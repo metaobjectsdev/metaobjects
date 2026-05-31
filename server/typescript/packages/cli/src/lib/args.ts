@@ -219,10 +219,14 @@ export interface MigrateFlags {
    */
   rollback: string | undefined;
   yes: boolean;
+  /** Use live-DB introspection instead of the committed snapshot (legacy/adoption). */
+  fromDb: boolean;
+  /** `migrate baseline` subcommand: seed the snapshot, emit no migration. */
+  baseline: boolean;
 }
 
 export function parseMigrateArgs(argv: string[]): MigrateFlags {
-  const { values } = parseArgs({
+  const { values, positionals } = parseArgs({
     args: argv,
     options: {
       "db": { type: "string" },
@@ -232,6 +236,7 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
       "allow": { type: "string" },
       "on-ambiguous": { type: "string" },
       "dry-run": { type: "boolean", default: false },
+      "from-db": { type: "boolean", default: false },
       "d1": { type: "string" },
       "remote": { type: "boolean", default: false },
       "apply": { type: "boolean", default: false },
@@ -239,8 +244,13 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
       "yes": { type: "boolean", default: false },
     },
     strict: true,
-    allowPositionals: false,
+    allowPositionals: true,
   });
+
+  const baseline = positionals[0] === "baseline";
+  if (positionals.length > 0 && !baseline) {
+    throw new Error(`unknown migrate subcommand '${positionals[0]}'; expected 'baseline' or no subcommand`);
+  }
 
   if (values.rollback !== undefined && values.apply === true) {
     throw new Error(`--rollback and --apply are mutually exclusive`);
@@ -281,5 +291,7 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
     apply: !!values.apply,
     rollback: values.rollback as string | undefined,
     yes: !!values.yes,
+    fromDb: !!values["from-db"],
+    baseline,
   };
 }

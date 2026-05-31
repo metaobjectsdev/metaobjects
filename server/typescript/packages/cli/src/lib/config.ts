@@ -50,6 +50,10 @@ export interface ResolvedMigrateConfig {
    */
   rollback: string | undefined;
   yes: boolean;
+  /** Use live-DB introspection instead of the committed snapshot. */
+  fromDb: boolean;
+  /** Seed the snapshot and exit (no migration). */
+  baseline: boolean;
   d1: ResolvedD1Config;
 }
 
@@ -97,6 +101,8 @@ export async function resolveMigrateConfig(
     apply: flags.apply,
     rollback: flags.rollback,
     yes: flags.yes,
+    fromDb: flags.fromDb,
+    baseline: flags.baseline,
     d1: {
       binding: flags.d1Binding ?? d1Block.binding,
       remote: flags.remote || (d1Block.remote ?? false),
