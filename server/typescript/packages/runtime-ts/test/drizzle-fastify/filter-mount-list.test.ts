@@ -70,7 +70,9 @@ describe("mountListRoute with filter+sort allowlists", () => {
   test("filter on disallowed op → 400 with structured error", async () => {
     const r = await app.inject({ method: "GET", url: "/subscribers?filter[email][gte]=x" });
     expect(r.statusCode).toBe(400);
-    expect(JSON.parse(r.body).error).toBe("filter.unsupported_op");
+    // HTTP boundary emits the cross-port contract envelope, not the internal
+    // dotted FilterParseError code.
+    expect(JSON.parse(r.body).error).toBe("invalid_filter_op");
   });
 
   test("like with leading wildcard blocked → 400", async () => {
@@ -82,7 +84,7 @@ describe("mountListRoute with filter+sort allowlists", () => {
   test("filter on unknown field → 400", async () => {
     const r = await app.inject({ method: "GET", url: "/subscribers?filter[notReal][eq]=x" });
     expect(r.statusCode).toBe(400);
-    expect(JSON.parse(r.body).error).toBe("filter.unknown_field");
+    expect(JSON.parse(r.body).error).toBe("invalid_filter_field");
   });
 
   test("sort produces ordered results", async () => {

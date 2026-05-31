@@ -19,7 +19,7 @@ export const subscribers = pgTable("subscribers", {
   firstName: varchar("first_name", { length: 100 }).notNull(),
   lastName: varchar("last_name", { length: 100 }),
   subscribed: boolean("subscribed").notNull().default(true),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
 });
 export const subscribersRelations = relations(subscribers, ({ many }) => ({
   workoutEvents: many(workoutEvents),

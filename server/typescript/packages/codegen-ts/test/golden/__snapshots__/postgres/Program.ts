@@ -22,7 +22,7 @@ export const programs = pgTable("programs", {
   description: text("description"),
   priceCents: integer("price_cents").notNull(),
   isPublished: boolean("is_published").notNull().default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
 });
 export const programsRelations = relations(programs, ({ many }) => ({
   weeks: many(weeks),

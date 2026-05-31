@@ -22,7 +22,9 @@ export const purchases = pgTable("purchases", {
     .notNull()
     .references(() => programs.id),
   amountCents: integer("amount_cents").notNull(),
-  purchasedAt: timestamp("purchased_at").notNull().defaultNow(),
+  purchasedAt: timestamp("purchased_at", { mode: "string" })
+    .notNull()
+    .defaultNow(),
 });
 export const purchasesRelations = relations(purchases, ({ one }) => ({
   subscriber: one(subscribers, {

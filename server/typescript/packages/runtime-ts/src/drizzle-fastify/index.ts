@@ -16,13 +16,13 @@
 
 import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import type { ZodTypeAny } from "zod";
-import { eq, count, and } from "drizzle-orm";
+import { eq, count, and, asc } from "drizzle-orm";
 import qs from "qs";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { parseFilterParams, FilterParseError } from "./filter-parser.js";
-import { isTruthyFlag } from "./util.js";
-export { isTruthyFlag } from "./util.js";
+import { isTruthyFlag, contractErrorCode } from "./util.js";
+export { isTruthyFlag, contractErrorCode } from "./util.js";
 
 // ---------------------------------------------------------------------------
 // Loose types — we don't bind to a specific Drizzle backend so the helper
@@ -109,29 +109,39 @@ export function mountListRoute(opts: VerbOptions): void {
           ? and(parsed.where, parsed.searchWhere)
           : (parsed.where ?? parsed.searchWhere);
         if (combinedWhere) { q = q.where(combinedWhere); where = combinedWhere; }
+        // Default to stable id-ascending order when the caller specifies no
+        // sort — the cross-port contract asserts deterministic ordering for
+        // pagination + filter scenarios (Postgres otherwise returns rows in an
+        // unspecified order).
         if (parsed.orderBy) q = q.orderBy(...parsed.orderBy);
+        else if (opts.table.id !== undefined) q = q.orderBy(asc(opts.table.id));
         if (parsed.limit  !== undefined) q = q.limit(parsed.limit);
         if (parsed.offset !== undefined) q = q.offset(parsed.offset);
       } else {
         // Legacy path — no allowlists configured. Only limit/offset.
         const { limit, offset } = req.query as { limit?: string; offset?: string };
+        if (opts.table.id !== undefined) q = q.orderBy(asc(opts.table.id));
         if (limit  !== undefined) q = q.limit(Number(limit));
         if (offset !== undefined) q = q.offset(Number(offset));
       }
 
-      const rows = await q.all();
+      // Await the query directly rather than calling `.all()`: the
+      // drizzle-orm node-postgres query builder is thenable but has no `.all()`
+      // method (that is a libsql/better-sqlite3-only API). Awaiting works on
+      // both dialects and is what makes this helper genuinely Postgres-capable.
+      const rows = await q;
 
       if (!withCount) return rows;
 
       // Count query: same WHERE, no limit/offset/orderBy.
       let cq = opts.db.select({ c: count() }).from(opts.table).$dynamic();
       if (where) cq = cq.where(where);
-      const countRow = (await cq.all())[0] as { c: number } | undefined;
+      const countRow = (await cq)[0] as { c: number } | undefined;
       const total = countRow?.c ?? 0;
       return { rows, total };
     } catch (err) {
       if (err instanceof FilterParseError) {
-        return reply.code(400).send({ error: err.code, ...(err.details ?? {}) });
+        return reply.code(400).send({ error: contractErrorCode(err.code), ...(err.details ?? {}) });
       }
       throw err;
     }
@@ -141,11 +151,15 @@ export function mountListRoute(opts: VerbOptions): void {
 export function mountGetRoute(opts: VerbOptions): void {
   opts.fastify.get(`${opts.path}/:id`, routeOpts(opts), async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await opts.db
+    // Await + take the first row rather than `.get()` — `.get()` is a
+    // libsql/better-sqlite3-only method; the node-postgres builder is thenable
+    // but has no `.get()`. Awaiting works on both dialects.
+    const rows = await opts.db
       .select()
       .from(opts.table)
       .where(eq(opts.table.id, parseId(id)))
-      .get();
+      .limit(1);
+    const row = (rows as unknown[])[0];
     return row ?? reply.code(404).send({ error: "not_found" });
   });
 }
@@ -182,11 +196,20 @@ export function mountUpdateRoute(opts: VerbOptions): void {
   };
   const path = `${opts.path}/:id`;
   const ro = routeOpts(opts);
+  // Cross-port REST contract (FR-008): the update verb is reachable via BOTH
+  // PATCH and PUT, each routed to the same handler (the Java/Kotlin/C#/Python
+  // controllers map both methods to the update path). Mount both by default so
+  // the generated TS routes match. `updateMethod` remains an explicit
+  // single-verb override for a consumer that wants to restrict the surface.
   // biome-ignore lint/suspicious/noExplicitAny: handler signature is generic
+  const h = handler as any;
   if (opts.updateMethod === "put") {
-    opts.fastify.put(path, ro, handler as any);
+    opts.fastify.put(path, ro, h);
+  } else if (opts.updateMethod === "patch") {
+    opts.fastify.patch(path, ro, h);
   } else {
-    opts.fastify.patch(path, ro, handler as any);
+    opts.fastify.patch(path, ro, h);
+    opts.fastify.put(path, ro, h);
   }
 }
 

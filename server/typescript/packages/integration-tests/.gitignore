@@ -1,0 +1,3 @@
+# Per-scenario codegen output for the generated-routes api-contract lane.
+# Written + torn down by api-contract-generated-server.ts; never committed.
+.gen-tmp/

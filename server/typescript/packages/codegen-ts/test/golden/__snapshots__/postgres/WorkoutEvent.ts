@@ -21,7 +21,9 @@ export const workoutEvents = pgTable("workout_events", {
   workoutId: bigint("workout_id", { mode: "number" })
     .notNull()
     .references(() => workouts.id),
-  completedAt: timestamp("completed_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { mode: "string" })
+    .notNull()
+    .defaultNow(),
   durationMinutes: integer("duration_minutes"),
 });
 export const workoutEventsRelations = relations(workoutEvents, ({ one }) => ({

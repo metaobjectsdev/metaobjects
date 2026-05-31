@@ -3,7 +3,7 @@ import { sql, eq, and, count } from "drizzle-orm";
 import qs from "qs";
 import { parseFilterParams, FilterParseError } from "./filter-parser.js";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
-import { isTruthyFlag } from "./util.js";
+import { isTruthyFlag, contractErrorCode } from "./util.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user-supplied views
 type AnyView = any;
@@ -140,19 +140,23 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       if (result.orderBy) q = q.orderBy(...result.orderBy);
       if (result.limit !== undefined) q = q.limit(result.limit);
       if (result.offset !== undefined) q = q.offset(result.offset);
-      const rows = await q.all();
+      // Await directly — `.all()` is libsql/better-sqlite3-only; the
+      // node-postgres builder is thenable. (The useRawSql branch above keeps
+      // db.all(sql.raw(...)) because that is the libsql raw-exec API, only
+      // reachable for `.existing()` empty-column views which are sqlite-only.)
+      const rows = await q;
 
       if (!withCount) return rows;
 
       // Count query: same WHERE, no limit/offset/orderBy.
       let cq = db.select({ c: count() }).from(view);
       if (combinedWhere) cq = cq.where(combinedWhere);
-      const countRow = (await cq.all())[0] as { c: number } | undefined;
+      const countRow = (await cq)[0] as { c: number } | undefined;
       const total = countRow?.c ?? 0;
       return { rows, total };
     } catch (err) {
       if (err instanceof FilterParseError) {
-        reply.code(400).send({ error: err.code, message: err.message });
+        reply.code(400).send({ error: contractErrorCode(err.code), message: err.message });
         return;
       }
       throw err;
@@ -174,9 +178,11 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
     }
     // biome-ignore lint/suspicious/noExplicitAny: Drizzle table/view column ref
     const colRef = (view as any)[idCol];
-    const row = await db.select().from(view).where(
+    // Await + first row rather than `.get()` (libsql/better-sqlite3-only).
+    const rows = await db.select().from(view).where(
       colRef !== undefined ? eq(colRef, Number(id)) : undefined
-    ).get();
+    ).limit(1);
+    const row = (rows as unknown[])[0];
     return row ?? reply.code(404).send({ error: "not_found" });
   });
 

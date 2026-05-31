@@ -173,7 +173,9 @@ function pgColumnTypeOverride(
       return { fnName: "jsonb" };
     case DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ:
       // Drizzle pg-core: timestamp(col, { withTimezone: true }) → timestamptz.
-      return { fnName: "timestamp", fnOptions: { withTimezone: true } };
+      // mode:"string" for the same reason as the plain-timestamp branch — the
+      // schema + wire contract carry timestamps as strings.
+      return { fnName: "timestamp", fnOptions: { mode: "string", withTimezone: true } };
     default:
       return undefined;
   }
@@ -292,7 +294,15 @@ export function mapColumnType(
           fnName = "time";
           break;
         case FIELD_SUBTYPE_TIMESTAMP:
+          // mode:"string" so the column round-trips ISO-8601 strings — the
+          // generated Zod schema validates timestamp fields as z.string() and
+          // the cross-port wire format carries timestamps as JSON strings.
+          // Drizzle's default timestamp mode is "date" (expects/returns a JS
+          // Date and calls value.toISOString() on write), which is internally
+          // inconsistent with the string-typed schema + wire contract and
+          // throws on a string write. See SP-B api-contract-generated lane.
           fnName = "timestamp";
+          fnOptions = { mode: "string" };
           break;
         case FIELD_SUBTYPE_UUID:
           // Postgres native uuid column; native TS binding stays `string`.

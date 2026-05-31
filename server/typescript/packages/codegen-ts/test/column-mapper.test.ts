@@ -167,12 +167,14 @@ describe("mapColumnType — @dbColumnType physical override (R6 Plan 2b)", () =>
     expect(f.subType).toBe(FIELD_SUBTYPE_STRING);
   });
 
-  test("Postgres: @dbColumnType timestamp_with_tz → timestamp({ withTimezone: true })", () => {
+  test("Postgres: @dbColumnType timestamp_with_tz → timestamp({ mode: 'string', withTimezone: true })", () => {
     const f = metaField(FIELD_SUBTYPE_TIMESTAMP, "createdAt");
     f.setAttr("dbColumnType", "timestamp_with_tz");
     const spec = mapColumnType(f, "postgres");
     expect(spec.fnName).toBe("timestamp");
-    expect(spec.fnOptions).toEqual({ withTimezone: true });
+    // mode:"string" keeps the column round-tripping ISO strings (matches the
+    // string-typed Zod schema + the cross-port wire contract).
+    expect(spec.fnOptions).toEqual({ mode: "string", withTimezone: true });
     // field.timestamp binds to `string` natively — the override is physical-only.
     expect(f.subType).toBe(FIELD_SUBTYPE_TIMESTAMP);
   });
