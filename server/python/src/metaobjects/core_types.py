@@ -14,6 +14,7 @@ from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPES,
 )
 from .meta.core.field import field_constants as fc
+from .meta.core.validator import validator_constants as vc
 from .meta.core.field.field_constants import (
     AUTO_SET_VALUES,
     FIELD_ATTR_AUTO_SET,
@@ -563,18 +564,35 @@ for _sub in LAYOUT_SUBTYPES:
         )
     )
 
-# validator.* — base + required (validates a field has a value at write time).
-# Sized to satisfy the cross-port corpus today; richer validator subtypes
-# (regex/length/numeric) can join later mirroring Java's ValidatorTypesMetaDataProvider.
-VALIDATOR_SUBTYPE_REQUIRED = "required"
-_VALIDATOR_SUBTYPES = (SUBTYPE_BASE, VALIDATOR_SUBTYPE_REQUIRED)
-_register_subtypes(
-    core_provider,
-    TYPE_VALIDATOR,
-    _VALIDATOR_SUBTYPES,
-    factory=lambda t, s, n: MetaData(t, s, n),
-    child_rules=[ChildRule(TYPE_ATTR, "*")],
-)
+# validator.* — base + required/length/regex/numeric/array. Subtype + attr
+# vocabulary is cross-port identical (mirrors TS VALIDATOR_ATTRS_MAP). @min/@max
+# are shared by base/length/numeric/array; regex adds @pattern. Codegen reads these
+# children to emit each port's input-validation constraints (SP-C validator parity).
+_VALIDATOR_MIN_MAX_ATTRS = [
+    AttrSchema(name=vc.VALIDATOR_ATTR_MIN, value_type=ATTR_SUBTYPE_INT),
+    AttrSchema(name=vc.VALIDATOR_ATTR_MAX, value_type=ATTR_SUBTYPE_INT),
+]
+_VALIDATOR_ATTRS_BY_SUBTYPE: dict[str, list[AttrSchema]] = {
+    SUBTYPE_BASE: list(_VALIDATOR_MIN_MAX_ATTRS),
+    vc.VALIDATOR_SUBTYPE_REQUIRED: [],
+    vc.VALIDATOR_SUBTYPE_LENGTH: list(_VALIDATOR_MIN_MAX_ATTRS),
+    vc.VALIDATOR_SUBTYPE_REGEX: [
+        *_VALIDATOR_MIN_MAX_ATTRS,
+        AttrSchema(name=vc.VALIDATOR_ATTR_PATTERN, value_type=ATTR_SUBTYPE_STRING),
+    ],
+    vc.VALIDATOR_SUBTYPE_NUMERIC: list(_VALIDATOR_MIN_MAX_ATTRS),
+    vc.VALIDATOR_SUBTYPE_ARRAY: list(_VALIDATOR_MIN_MAX_ATTRS),
+}
+for _sub, _attrs in _VALIDATOR_ATTRS_BY_SUBTYPE.items():
+    core_provider.add(
+        TypeDefinition(
+            type=TYPE_VALIDATOR,
+            sub_type=_sub,
+            factory=lambda t, s, n: MetaData(t, s, n),
+            attrs=list(_attrs),
+            child_rules=[ChildRule(TYPE_ATTR, "*")],
+        )
+    )
 
 # template.* (FR-004) — base + prompt + output + toolcall. @payloadRef / @textRef
 # / @format / @maxChars / @owner / @since / @requiredTags are shared across prompt
