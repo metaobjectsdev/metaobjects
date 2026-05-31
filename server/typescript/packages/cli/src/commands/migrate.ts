@@ -15,6 +15,11 @@ import {
   diff,
   emit,
   writeMigration,
+  baselineFromMetadata,
+  planOffline,
+  snapshotPath,
+  readSnapshot,
+  writeSnapshot,
   BlockedChangesError,
   renderD1,
   applyD1SafetyPass,
@@ -119,6 +124,11 @@ export async function migrateCommand(
       return 2;
     }
     return await runD1Migrate(config, metaRoot, wranglerRunner ?? defaultWranglerRunner);
+  }
+
+  // `migrate baseline` — seed the committed reference snapshot, emit no migration.
+  if (config.baseline) {
+    return await runBaseline(config, metaRoot);
   }
 
   if (config.databaseUrl === undefined) {
@@ -393,6 +403,56 @@ export async function migrateCommand(
     }
   }
   return exitCode;
+}
+
+/**
+ * `meta migrate baseline [--from-db]` — seed the committed reference snapshot.
+ * `--from-metadata` (default) derives it from metadata; `--from-db` introspects
+ * an existing database once. Emits no migration.
+ */
+export async function runBaseline(
+  config: ResolvedMigrateConfig,
+  metaRoot: string,
+): Promise<number> {
+  if (config.dialect === undefined) {
+    log.error(`migrate baseline: --dialect required (or set migrate.dialect in .metaobjects/config.json)`);
+    return 2;
+  }
+  let metadata;
+  try {
+    metadata = await loadMemory(metaRoot);
+  } catch (err) {
+    log.error(`migrate baseline: failed to load metadata: ${(err as Error).message}`);
+    return 2;
+  }
+  const outDir = resolvePath(metaRoot, config.outDir);
+  const path = snapshotPath(outDir, config.dialect);
+
+  let snapshot;
+  if (config.fromDb) {
+    if (config.databaseUrl === undefined) {
+      log.error(`migrate baseline --from-db: --db <url> required`);
+      return 2;
+    }
+    let kysely;
+    try {
+      kysely = await buildKyselyFromUrl(config.databaseUrl, config.dialect);
+    } catch (err) {
+      log.error(`migrate baseline: ${(err as Error).message}`);
+      return 2;
+    }
+    try {
+      snapshot = await introspect(kysely.db, kysely.dialect);
+    } finally {
+      await kysely.close();
+    }
+  } else {
+    snapshot = baselineFromMetadata(metadata, config.dialect);
+  }
+
+  await writeSnapshot(path, snapshot);
+  log.info(`migrate: wrote schema snapshot ${path}`);
+  return 0;
 }
 
 /**
