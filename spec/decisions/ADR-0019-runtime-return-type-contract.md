@@ -27,7 +27,9 @@ Per-concept native return type:
 | `field.timestamp` / `date` / `time` | native temporal type; a **timezone-aware** value denotes `TIMESTAMPTZ`, a **naive** value denotes `TIMESTAMP` (this is how the boundary canonicalizer distinguishes them without column OIDs) |
 | `field.uuid` | native uuid type, or string where idiomatic for the port |
 | `field.string` / `field.enum` | native string |
-| jsonb / `field.object` | native map / dict / object |
+| `field.object` (structured jsonb) | native map / dict / object |
+
+**jsonb representation is driver-dependent, by design.** For a `field.string` physically stored as jsonb (`@dbColumnType: jsonb`), the runtime returns whatever the port's DB driver natively yields: a JSON **string** under JDBC (Java OMDB, Kotlin Exposed) and EF Core; a parsed **dict/object** under pg8000 (Python) and node-postgres (TS), which auto-decode jsonb. The runtime does NOT force a uniform representation — that would mean re-parsing or re-stringifying against the driver. The boundary canonicalizer key-sorts *either* form to the same wire bytes, so the cross-port wire contract holds regardless. (A future option, if a uniform in-process jsonb shape is wanted, is to normalize at the runtime's read codec — out of scope here.) The per-port runtime-type gate asserts each port's genuine native return for this field, documenting the divergence rather than hiding it.
 
 The wire canonicalization itself (and `normalization.md`) is **unchanged** by this ADR — only *where* it runs moves: to the boundary, never the runtime.
 
