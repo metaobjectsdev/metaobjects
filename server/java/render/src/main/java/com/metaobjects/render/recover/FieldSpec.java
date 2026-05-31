@@ -76,6 +76,30 @@ public record FieldSpec(
                 normalize == null ? Normalize.DEFAULT : normalize);
     }
 
+    /**
+     * Phase B (array-of-enum): an enum field that is a {@code List<enum>} ({@code array == true}).
+     * Each element is coerced through the SAME enum pipeline a scalar enum uses
+     * (exact &rarr; normalize &rarr; {@code @enumAlias} &rarr; {@code @coerceDefault} &rarr; MALFORMED),
+     * classified independently by indexed path ({@code tags[0]}, {@code tags[1]}, …). Mirrors
+     * {@link #enumField(String, boolean, List, Map, String, String, String)} but with {@code array = true}.
+     *
+     * @param coerceDefault present-but-uncoercible per-element fallback member (or {@code null})
+     * @param normalize     the resolved normalization mode ({@code none|collapse|strip});
+     *                      {@code null} is treated as {@link Normalize#DEFAULT}
+     * @param defaultValue  absent-fill member for the whole field (or {@code null})
+     */
+    public static FieldSpec enumArray(String name, boolean required,
+                                      List<String> values, Map<String, String> aliases,
+                                      String coerceDefault, String normalize, String defaultValue) {
+        return new FieldSpec(name, FieldKind.ENUM, required, true,
+                values == null ? null : List.copyOf(values),
+                aliases == null ? Map.of() : Map.copyOf(aliases),
+                null, null, null,
+                coerceDefault,
+                defaultValue,
+                normalize == null ? Normalize.DEFAULT : normalize);
+    }
+
     public static FieldSpec range(String name, FieldKind kind, boolean required,
                                   Double min, Double max) {
         return new FieldSpec(name, kind, required, false, null, null, min, max, null,

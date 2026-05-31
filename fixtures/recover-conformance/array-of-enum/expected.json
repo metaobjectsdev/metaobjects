@@ -1,0 +1,7 @@
+{ "empty": false,
+  "states": {
+    "tags": "RECOVERED",
+    "tags[0]": "RECOVERED",
+    "tags[1]": "RECOVERED",
+    "tags[2]": "DEFAULTED" },
+  "data": { "tags": ["LOW", "MEDIUM", "LOW"] } }

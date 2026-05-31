@@ -72,10 +72,22 @@ public final class Recover {
                 List<?> elements = (present instanceof List<?> l) ? l : List.of(present);
                 List<Object> out = new ArrayList<>();
                 boolean anyMalformed = false;
+                // Phase B (array-of-enum): an enum element flows through the SAME enum coercion
+                // pipeline a scalar enum uses (extractValue → Coerce.value → coerceEnum), and is
+                // CLASSIFIED per element by indexed path (tags[0], tags[1], …) exactly as a scalar
+                // enum: RECOVERED / DEFAULTED (via @coerceDefault) / MALFORMED. Non-enum scalar
+                // arrays keep their existing behavior (raw element list, no per-element states).
+                boolean enumElements = f.kind() == FieldKind.ENUM;
                 for (int idx = 0; idx < elements.size(); idx++) {
-                    Object v = extractValue(f, elements.get(idx), path + "[" + idx + "]", report, o, ci);
-                    if (v == Coerce.MALFORMED) anyMalformed = true;
-                    else out.add(v);
+                    String elemPath = path + "[" + idx + "]";
+                    Object v = extractValue(f, elements.get(idx), elemPath, report, o, ci);
+                    if (v == Coerce.MALFORMED) {
+                        anyMalformed = true;
+                        if (enumElements) report.set(elemPath, FieldRecovery.MALFORMED);
+                    } else {
+                        out.add(v);
+                        if (enumElements) report.set(elemPath, classifyCoerced(elemPath, report));
+                    }
                 }
                 // NOTE (cross-port contract): a MALFORMED array still places its successfully-coerced
                 // elements into data (partial recovery), UNLIKE a MALFORMED scalar which is absent from
