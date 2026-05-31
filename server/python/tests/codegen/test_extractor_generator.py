@@ -44,7 +44,8 @@ from metaobjects.shared.structural import KEY_IS_ARRAY
 # ---------------------------------------------------------------------------
 # Builders — a template.output "OrderOut" over an "Order" payload with a
 # REQUIRED single nested object, a REQUIRED array-of-objects, a REQUIRED
-# scalar-array, an OPTIONAL scalar, and an OPTIONAL single nested object.
+# scalar-array, an OPTIONAL scalar, an OPTIONAL scalar-array, and an OPTIONAL
+# single nested object.
 # ---------------------------------------------------------------------------
 
 
@@ -110,6 +111,11 @@ def _order_root() -> MetaRoot:
                 **{fc.FIELD_ATTR_REQUIRED: True, KEY_IS_ARRAY: True},
             ),
             _field("note", fc.FIELD_SUBTYPE_STRING),  # optional scalar
+            _field(
+                "aliases",
+                fc.FIELD_SUBTYPE_STRING,
+                **{KEY_IS_ARRAY: True},  # optional scalar-array (non-@required)
+            ),
             _field(
                 "ship_to",
                 fc.FIELD_SUBTYPE_OBJECT,
@@ -253,6 +259,59 @@ def test_extract_extracts_dirty_into_strict_payload(tmp_path, monkeypatch) -> No
     assert all(isinstance(s, int) for s in order.scores)
     # optional nested absent → None.
     assert order.ship_to is None
+    # optional scalar-array absent → None (the `if m.f is not None else None` branch).
+    assert order.aliases is None
+
+
+def test_extract_populates_optional_nested_when_present(tmp_path, monkeypatch) -> None:
+    """Exercise the OPTIONAL single-nested PRESENT branch:
+    ``(_to_strict_customer(m.ship_to) if m.ship_to is not None else None)``."""
+    from importlib import import_module
+
+    root = _order_root()
+    pkg_dir = _materialize_package(_all_files(root), tmp_path)
+    _import_package(pkg_dir, monkeypatch)
+    ex = import_module("_gen_pkg.order_out_extractor")
+
+    dirty = (
+        "Sure, here you go!\n```json\n"
+        '{ "customer": {"name": "Ada"}, '
+        '"lines": [{"sku":"A","qty":2}], '
+        '"tags": ["x"], '
+        '"scores": [3], '
+        '"ship_to": {"name": "Grace"} }\n```'
+    )
+    order = ex.extract_order_out(root, dirty)
+    # optional nested PRESENT → mapped through _to_strict_customer + strictly typed.
+    assert order.ship_to is not None
+    assert order.ship_to.name == "Grace"
+    assert isinstance(order.ship_to, type(order.customer))
+
+
+def test_extract_populates_optional_scalar_array_when_present(
+    tmp_path, monkeypatch
+) -> None:
+    """Exercise the OPTIONAL scalar-array PRESENT branch:
+    ``[x for x in m.aliases if x is not None] if m.aliases is not None else None``."""
+    from importlib import import_module
+
+    root = _order_root()
+    pkg_dir = _materialize_package(_all_files(root), tmp_path)
+    _import_package(pkg_dir, monkeypatch)
+    ex = import_module("_gen_pkg.order_out_extractor")
+
+    dirty = (
+        "Sure, here you go!\n```json\n"
+        '{ "customer": {"name": "Ada"}, '
+        '"lines": [{"sku":"A","qty":2}], '
+        '"tags": ["x"], '
+        '"scores": [3], '
+        '"aliases": ["ada", "lovelace"] }\n```'
+    )
+    order = ex.extract_order_out(root, dirty)
+    # optional scalar-array PRESENT → populated list[str].
+    assert order.aliases == ["ada", "lovelace"]
+    assert all(isinstance(a, str) for a in order.aliases)
 
 
 def test_extract_raises_on_lost_required(tmp_path, monkeypatch) -> None:
