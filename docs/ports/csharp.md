@@ -17,9 +17,11 @@ Postgres + Npgsql.
 </ItemGroup>
 ```
 
-The `meta` CLI ships as a .NET tool (`dotnet tool install --global
-MetaObjects.Cli`) or run directly from the repo via `dotnet run --project
-server/csharp/MetaObjects.Cli`.
+The C# CLI ships as a .NET tool invoked as `dotnet meta` (`dotnet tool install
+--global MetaObjects.Cli`, command `dotnet-meta`) or run directly from the repo
+via `dotnet run --project server/csharp/MetaObjects.Cli`. It is deliberately
+**not** a bare `meta` executable — that name belongs to the canonical Node `meta`
+CLI, which owns schema + TS codegen (ADR-0015).
 
 ## Configure
 
@@ -75,19 +77,14 @@ for a worked example.
 
 ```bash
 # Generate EF Core entities + AppDbContext + CRUD minimal-API routes
-meta gen ./metadata --out ./Generated --namespace Acme.Blog
-
-# Emit Postgres DDL — full CREATE on first run
-meta migrate ./metadata --out ./Migrations/001_init.sql
-
-# Incremental — diff metadata vs live DB
-meta migrate ./metadata --out ./Migrations/002.sql \
-  --from-db "Host=localhost;Database=blog;Username=postgres" \
-  --down   ./Migrations/002_down.sql
+dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog
 
 # Drift-check templates against payloads (FR-004)
-meta verify ./metadata --templates ./prompts
+dotnet meta verify ./metadata --templates ./prompts
 ```
+
+Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the C# CLI is
+`gen` + `verify` only.
 
 The codegen emits:
 
@@ -95,10 +92,6 @@ The codegen emits:
 - `AppDbContext.cs` — `DbSet<Author>`, projection `.ToView()`, `@storage` owned
   types via `OwnsOne`, enum-as-string via `HasConversion<string>()`.
 - `Author.routes.cs` — CRUD minimal-API endpoints.
-
-`meta migrate` emits Postgres `CREATE TABLE` with PK / NOT NULL / UNIQUE / FK +
-`@storage` columns; `CREATE VIEW` for projection entities (incl. aggregate /
-passthrough-`@via` / collection origins).
 
 ## Use
 
@@ -154,7 +147,7 @@ string output = Renderer.Render(new RenderRequest(
 ```
 
 `Verify` in `MetaObjects.Render` drift-checks every `template.*` against its
-`@payloadRef`. Wire it into your CI step or invoke `meta verify` directly.
+`@payloadRef`. Wire it into your CI step or invoke `dotnet meta verify` directly.
 
 ## FR-006 — output parsing
 
@@ -221,7 +214,7 @@ codegen packages. The generated ASP.NET Minimal API routes (from
 and wire format the Angular client expects — no special-casing.
 
 End-to-end recipe — CORS wiring, dev-server port conventions, base-URL
-configuration, the meta gen command sequence that emits both halves —
+configuration, the `dotnet meta gen` command sequence that emits both halves —
 lives at [`docs/recipes/csharp-angular18.md`](../recipes/csharp-angular18.md).
 
 Today's `RoutesGenerator` honours pagination (`?limit`/`?offset`), sort
@@ -243,8 +236,8 @@ are not yet generated — see
 | Templates + render (FR-004) | Yes (`MetaObjects.Render`) |
 | Output parser codegen (FR-006) | Yes (`OutputParserGenerator` — `Parse`/`TryParse` BCL pattern) |
 | Payload-VO codegen | Yes (`MetaObjects.Codegen`) |
-| Migrations | `meta migrate` — full CREATE today; introspection-driven incremental landing |
-| Drift verify | `meta verify` (template drift); DB-drift verify on the same incremental path |
+| Migrations | Owned by the Node `meta` CLI (ADR-0015) — no C# migrate surface |
+| Drift verify | `dotnet meta verify` (template drift, FR-004) |
 | Runtime metadata | Loader API + render engine; ObjectManager-style runtime tier on the roadmap |
 
 ## Conformance status (as of 2026-05-27)

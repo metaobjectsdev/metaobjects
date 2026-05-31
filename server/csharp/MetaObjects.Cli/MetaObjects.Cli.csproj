@@ -7,7 +7,12 @@
     <LangVersion>12</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>MetaObjects.Cli</RootNamespace>
-    <AssemblyName>meta</AssemblyName>
+    <!-- Packaged as a .NET tool invoked as `dotnet meta` (command `dotnet-meta`),
+         deliberately NOT a bare `meta` executable — that name belongs to the
+         canonical Node `meta` CLI which owns schema + TS codegen (ADR-0015). -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>dotnet-meta</ToolCommandName>
+    <PackageId>MetaObjects.Cli</PackageId>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../MetaObjects/MetaObjects.csproj" />

@@ -403,7 +403,7 @@ and checks each one exists on the payload VO. If a template references
 | TypeScript | `meta verify` (CLI) |
 | Java | `mvn meta:verify` (Maven goal) |
 | Kotlin | `mvn meta:verify` (same Maven goal) |
-| C# | `meta verify <metadataDir> --templates <root>` |
+| C# | `dotnet meta verify <metadataDir> --templates <root>` |
 | Python | `python -m metaobjects.render.verify` |
 
 ## Determinism contract

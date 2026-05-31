@@ -195,9 +195,9 @@ object AuthorTable : Table("authors") {
 
 ### C#
 
-`MetaObjects.Codegen` (via `meta gen`) emits an EF Core entity record, a `DbSet`
-on the generated `AppDbContext`, and a `CREATE TABLE` in the migration emitted by
-`meta migrate`.
+`MetaObjects.Codegen` (via `dotnet meta gen`) emits an EF Core entity record, a
+`DbSet` on the generated `AppDbContext`, and a `CREATE TABLE` in the migration
+emitted by the Node `meta migrate` (schema is Node-owned, ADR-0015).
 
 ```csharp
 // generated/Acme/Blog/Author.cs

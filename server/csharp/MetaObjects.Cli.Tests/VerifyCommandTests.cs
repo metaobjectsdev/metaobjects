@@ -4,7 +4,7 @@ using Xunit;
 namespace MetaObjects.Cli.Tests;
 
 /// <summary>
-/// End-to-end `meta verify`: a metadata dir + a filesystem templates dir, run
+/// End-to-end `dotnet meta verify`: a metadata dir + a filesystem templates dir, run
 /// through VerifyCommand.Run. Proves the build-time drift gate catches a template
 /// variable the payload doesn't declare, and passes a clean template.
 /// </summary>

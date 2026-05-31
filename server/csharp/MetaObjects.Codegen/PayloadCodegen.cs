@@ -100,7 +100,7 @@ public static class PayloadCodegen
     /// <summary>
     /// Derive the verify field tree (the input to <c>Verify.Check</c>) from an
     /// object.value view-object: scalars become leaves, object-ref fields recurse
-    /// into nested element trees. This is the metadata→verify bridge a `meta verify`
+    /// into nested element trees. This is the metadata→verify bridge a `dotnet meta verify`
     /// command uses to drift-check a template against its @payloadRef.
     /// </summary>
     public static IReadOnlyList<PayloadField> BuildPayloadFieldTree(MetaData root, string voName) =>

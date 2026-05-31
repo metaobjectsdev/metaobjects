@@ -16,7 +16,7 @@ runtime coupling to MetaObjects in either process.
 | Backend framework | ASP.NET Core Minimal API |
 | ORM | EF Core 8 (Postgres via `Npgsql.EntityFrameworkCore.PostgreSQL`, or SQLite) |
 | Backend codegen | `MetaObjects.Codegen` (entities + `AppDbContext` + `RoutesGenerator`) |
-| Backend CLI | `meta` (in `MetaObjects.Cli`) |
+| Backend CLI | `dotnet meta` (in `MetaObjects.Cli`) |
 | Frontend framework | Angular 18 — standalone components, signals, no NgModules |
 | Frontend runtime | `@metaobjectsdev/angular` (peer-deps `@angular/core`, `@angular/common`, `@angular/forms`, `@tanstack/angular-table`) |
 | Frontend codegen | `@metaobjectsdev/codegen-ts-angular` (services + forms + grids) |
@@ -31,7 +31,7 @@ same packages serve any backend that conforms to the API contract.
 ## 2. Backend setup — `Program.cs`
 
 ```csharp
-using Acme.Generated;                       // namespace produced by meta gen
+using Acme.Generated;                       // namespace produced by dotnet meta gen
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -179,11 +179,11 @@ bootstrapApplication(AppComponent, appConfig);
 }}
 ```
 
-### 4.2 Codegen — `meta gen` runs both halves
+### 4.2 Codegen — two `gen` commands run both halves
 
-The `meta` CLI (`MetaObjects.Cli`) emits the C# half; the TS `meta` (`@metaobjectsdev/cli`)
-emits the Angular half. Most repos run them as two adjacent commands in the
-build pipeline.
+The `dotnet meta` CLI (`MetaObjects.Cli`) emits the C# half; the Node `meta`
+(`@metaobjectsdev/cli`) emits the Angular half. Most repos run them as two
+adjacent commands in the build pipeline.
 
 **C# half** — driven by `MetaObjects.Cli`'s config (`appsettings.codegen.json`
 or CLI flags). Emits:

@@ -1,4 +1,4 @@
-// `meta verify` — the build-time template drift gate (FR-004 Plan #3, T6;
+// `dotnet meta verify` — the build-time template drift gate (FR-004 Plan #3, T6;
 // extended to template.output by FR6, ADR-0010).
 //
 // Loads metadata from a directory; for each template node derives the

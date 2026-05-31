@@ -3,7 +3,7 @@ using Xunit;
 
 namespace MetaObjects.Cli.Tests;
 
-/// <summary>End-to-end `meta gen`: a metadata dir -> generated EF Core files on disk.</summary>
+/// <summary>End-to-end `dotnet meta gen`: a metadata dir -> generated EF Core files on disk.</summary>
 public sealed class GenCommandTests : IDisposable
 {
     private readonly string _tmp = Path.Combine(Path.GetTempPath(), "meta-gen-" + Guid.NewGuid().ToString("N"));

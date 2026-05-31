@@ -1,4 +1,4 @@
-// `meta gen` — generate idiomatic C# (EF Core) code from metadata.
+// `dotnet meta gen` — generate idiomatic C# (EF Core) code from metadata.
 //
 // Loads metadata from a directory and runs the codegen generator set, writing
 // files under the @generated-header guard. Generated today: EF Core entity

@@ -1,5 +1,7 @@
-// `meta` — the MetaObjects C# CLI host. Subcommands hang off here: `gen` (EF Core
-// codegen) and `verify` (the FR-004 build-time prompt drift gate).
+// `dotnet meta` — the MetaObjects C# CLI host, packaged as a .NET tool (command
+// `dotnet-meta`, invoked `dotnet meta`). Subcommands hang off here: `gen` (EF Core
+// codegen) and `verify` (the FR-004 build-time prompt drift gate). It is NOT a bare
+// `meta` executable — that name belongs to the canonical Node `meta` CLI.
 //
 // Schema migrations are owned by the TypeScript `meta` CLI (ADR-0015): the C# CLI
 // keeps codegen + verify only. There is no `migrate` / `--from-db` surface here.
@@ -9,7 +11,7 @@ using MetaObjects.Cli;
 if (args.Length == 0)
 {
     Console.Error.WriteLine(
-        "usage: meta <command> [options]\n" +
+        "usage: dotnet meta <command> [options]\n" +
         "  commands:\n" +
         "    gen <metadataDir> --out <dir> --namespace <ns> [--emit-abstract-shapes]\n" +
         "                                                     generate EF Core code from metadata\n" +
@@ -39,7 +41,7 @@ static int RunGen(string[] rest)
     }
     if (metadataDir is null || outDir is null)
     {
-        Console.Error.WriteLine("usage: meta gen <metadataDir> --out <dir> [--namespace <ns>] [--emit-abstract-shapes]");
+        Console.Error.WriteLine("usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--emit-abstract-shapes]");
         return 2;
     }
 
@@ -47,18 +49,18 @@ static int RunGen(string[] rest)
     if (!outcome.Ok)
     {
         foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
-        Console.Error.WriteLine("meta gen: FAILED (metadata did not load cleanly)");
+        Console.Error.WriteLine("dotnet meta gen: FAILED (metadata did not load cleanly)");
         return 1;
     }
     foreach (var f in outcome.Result!.Files) Console.WriteLine($"  {f.Status}: {f.Path}");
     foreach (var w in outcome.Result!.Warnings) Console.Error.WriteLine($"  warning: {w}");
-    Console.WriteLine($"meta gen: {outcome.Result!.Files.Count(f => f.Status == "written")} file(s) written");
+    Console.WriteLine($"dotnet meta gen: {outcome.Result!.Files.Count(f => f.Status == "written")} file(s) written");
     return 0;
 }
 
 static int Unknown(string cmd)
 {
-    Console.Error.WriteLine($"meta: unknown command \"{cmd}\"");
+    Console.Error.WriteLine($"dotnet meta: unknown command \"{cmd}\"");
     return 2;
 }
 
@@ -73,7 +75,7 @@ static int RunVerify(string[] rest)
     }
     if (metadataDir is null || templatesRoot is null)
     {
-        Console.Error.WriteLine("usage: meta verify <metadataDir> --templates <templatesRoot>");
+        Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> --templates <templatesRoot>");
         return 2;
     }
 
@@ -85,9 +87,9 @@ static int RunVerify(string[] rest)
 
     if (outcome.Ok)
     {
-        Console.WriteLine("meta verify: OK");
+        Console.WriteLine("dotnet meta verify: OK");
         return 0;
     }
-    Console.Error.WriteLine("meta verify: FAILED");
+    Console.Error.WriteLine("dotnet meta verify: FAILED");
     return 1;
 }
