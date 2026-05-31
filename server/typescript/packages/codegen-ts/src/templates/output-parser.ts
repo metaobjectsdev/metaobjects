@@ -21,10 +21,17 @@ import {
 } from "@metaobjectsdev/metadata";
 import {
   schemaLiteral,
-  mirrorInterface,
   mirrorInitializer,
 } from "./recover-schema-emitter.js";
 import { recoverMapHelpersUsed } from "./fr010-field-mapping.js";
+import {
+  nestedMirrorInterfaces,
+  nestedMappers,
+  rootMapperName,
+  delegateHelpers,
+  usedHelpers,
+  hasNested,
+} from "./recover-delegate-emitter.js";
 
 const SCALAR_ZOD: Record<string, string> = {
   string: "z.string()",
@@ -161,11 +168,21 @@ export function ${safeParseName}(
   const recoveredName = `${templateName}Recovered`;
   const recoverFnName = `recover${templateName}`;
   const tryRecoverName = `tryRecover${templateName}`;
+  const recoverWithName = `recover${templateName}WithLoader`;
   const schemaConstName = `${templateName}RecoverSchema`;
+  const payloadFqnConst = `${templateName.toUpperCase()}_PAYLOAD_NAME`;
+  const formatEnum = format.toLowerCase() === "xml" ? "Format.XML" : "Format.JSON";
   const schemaLit = schemaLiteral(vo, format, payloadRef);
-  const mirrorDecl = mirrorInterface(vo, recoveredName);
   const initializer = mirrorInitializer(vo);
   const mapHelpers = recoverMapHelpersUsed(vo);
+
+  // The nullable mirror is shared by BOTH recover paths. Use the nested-aware emitter so the
+  // payload mirror's nested-object / array-of-object components are typed (not `unknown`), and
+  // so a mirror interface is emitted for every reachable nested value-object. The payload mirror
+  // keeps the canonical `<Template>Recovered` name (instead of `<PayloadVO>Recovered`) so the
+  // existing self-contained recover<Name>() initializer continues to satisfy it.
+  const mirrorDecls = nestedMirrorInterfaces(vo, root, recoveredName);
+  const payloadHasNested = hasNested(vo, root);
 
   // Render-package imports the recover block needs. Only pull in the names the emitted
   // source actually references, so the file has no unused imports (tsc noUnusedLocals-safe).
@@ -176,15 +193,17 @@ export function ${safeParseName}(
   renderImports.push("type RecoverSchema", "type RecoverOptions", "type RecoveryResult");
   renderImports.push(...mapHelpers);
 
-  const recoverBody = `/** Baked recover descriptor for the ${templateName} output. */
+  const selfContained = `/** Baked recover descriptor for the ${templateName} output. */
 const ${schemaConstName}: RecoverSchema = ${schemaLit};
 
-${mirrorDecl}
+${mirrorDecls}
 
 /**
- * Tolerant best-effort recovery of a dirty LLM response; never throws. Returns a
- * nullable mirror (\`${recoveredName}\`) with fields null where lost/malformed,
- * plus the per-field recovery report.
+ * Self-contained tolerant best-effort recovery of a dirty LLM response; never throws.
+ * Returns a nullable mirror (\`${recoveredName}\`) with fields null where lost/malformed,
+ * plus the per-field recovery report. Does NOT populate nested-object / array-of-object
+ * components (those stay null — the historical FR-010 gap). For full nested recovery, use
+ * \`${recoverWithName}(root, text)\`, which delegates to the runtime recover.
  */
 export function ${recoverFnName}(
   text: string,
@@ -209,10 +228,64 @@ export function ${tryRecoverName}(
 }
 `;
 
+  // ---- Runtime-delegating recover (closes the nested gap) ----
+  // Resolves this payload's MetaObject from a loaded MetaRoot by its baked simple name and
+  // delegates to recoverObject() in @metaobjectsdev/runtime-ts, which assembles the FULL nested
+  // object graph reflection-free. The assembled ValueObject graph is then mapped into the typed
+  // nullable mirror graph by the generated from<VO>Recovered mappers. Codegen-wrapping-runtime
+  // (a generated DAO calling the dynamic-metadata runtime) — mirrors the Java/Kotlin pilots.
+  //
+  // The baked PAYLOAD_NAME is the resolved payload VO's SIMPLE name (root.findObject matches on
+  // the object's `name`, not its FQN). The root mapper is named for the TEMPLATE (so it returns
+  // the canonically-named `<Template>Recovered` mirror); nested mappers use their VO names.
+  const payloadName = vo.name;
+  const rootMapper = rootMapperName(templateName);
+  const delegating = `
+/** Payload value-object name this parser recovers — resolved against a loaded MetaRoot at runtime. */
+export const ${payloadFqnConst} = ${JSON.stringify(payloadName)};
+
+${nestedMappers(vo, root, rootMapper, recoveredName)}
+
+${delegateHelpers(usedHelpers(vo, root))}
+
+/**
+ * Runtime-delegating tolerant recovery; never throws. Unlike \`${recoverFnName}(text)\`, this FULLY
+ * populates nested-object and array-of-object components by delegating to the metadata-driven
+ * runtime \`recoverObject\` (which assembles the whole graph reflection-free via the Phase A object
+ * model), then maps the assembled graph into the typed \`${recoveredName}\` mirror.
+ *
+ * @param root a loaded MetaRoot (e.g. \`(await new MetaDataLoader().load(...)).root\`) that declares
+ *             the \`${payloadRef}\` value-object.
+ */
+export function ${recoverWithName}(
+  root: MetaRoot,
+  text: string,
+  opts?: Partial<RecoverOptions> | null,
+): RecoveryResult<${recoveredName}> {
+  const mo = root.findObject(${payloadFqnConst});
+  if (mo === undefined) {
+    throw new Error(\`${recoverWithName}: payload "\${${payloadFqnConst}}" not found in the supplied MetaRoot\`);
+  }
+  const outcome = recoverObject(mo, text, ${formatEnum}, opts);
+  return { data: ${rootMapper}(outcome.data), report: outcome.report };
+}
+`;
+
+  // The delegating overload needs runtime-ts (recoverObject) + the MetaRoot type from metadata.
+  // It is always emitted (the gap-closing path), regardless of whether THIS payload has nested
+  // fields — a flat payload still benefits from the loader-driven path and keeps the API uniform.
+  void payloadHasNested;
+  const metadataImport = `import type { MetaRoot } from "@metaobjectsdev/metadata";\n`;
+  const runtimeImport = `import { recoverObject } from "@metaobjectsdev/runtime-ts";\n`;
+
   return (
     `import { z } from "zod";\n` +
-    `import {\n  ${renderImports.join(",\n  ")},\n} from "@metaobjectsdev/render";\n\n` +
+    `import {\n  ${renderImports.join(",\n  ")},\n} from "@metaobjectsdev/render";\n` +
+    metadataImport +
+    runtimeImport +
+    `\n` +
     `${strictBody}\n` +
-    `${recoverBody}`
+    `${selfContained}\n` +
+    `${delegating}`
   );
 }
