@@ -6,19 +6,22 @@ name: integration-tests
 # run in parallel; any port red blocks the gate.
 #
 # Triggers:
-#   - pull_request to `main` — gates the default branch so persistence/api-contract
+#   - pull_request (any target branch) — gates every PR so persistence/api-contract
 #     drift can't merge green (these corpora are not covered by conformance.yml).
+#   - push to `main` — guards the default branch directly (e.g. forward-merges that
+#     land on main without going through a PR).
 #   - tag push matching v* (release gate, per docs/RELEASING.md).
 #   - manual dispatch (workflow_dispatch).
-# NOTE: this runs a 5-port Testcontainers matrix; if main-PR CI cost is too high,
-# narrow `pull_request.branches` or re-introduce an opt-in label.
+# NOTE: this runs a 5-port Testcontainers matrix on every PR; if CI cost is too
+# high, narrow `pull_request.branches` or re-introduce an opt-in label.
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
