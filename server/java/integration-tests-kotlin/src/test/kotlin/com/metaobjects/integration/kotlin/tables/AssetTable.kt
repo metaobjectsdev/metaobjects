@@ -3,6 +3,9 @@ package com.metaobjects.integration.kotlin.tables
 import org.jetbrains.exposed.sql.CustomFunction
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.UUIDColumnType
+import org.jetbrains.exposed.sql.javatime.date
+import org.jetbrains.exposed.sql.javatime.datetime
+import org.jetbrains.exposed.sql.javatime.time
 import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone
 import org.jetbrains.exposed.sql.json.jsonb
 
@@ -34,7 +37,17 @@ object AssetTable : Table("assets") {
     // (the property is String); the runner parses it to a Map before normalization so the
     // jsonb re-serializes with sorted keys per the normalization contract.
     val payload = jsonb("payload", { it }, { it })
+    // `recordedAt` is a TIMESTAMPTZ column → Exposed surfaces it as java.time.OffsetDateTime.
+    // The offset survives all the way to Normalization, which re-anchors to UTC and emits the
+    // `…Z` suffix (the TZ discriminator). This is what distinguishes it from `observedAt` below.
     val recordedAt = timestampWithTimeZone("recordedAt")
+    // The three @required temporal columns added in Phase B (full wire-type coverage).
+    //  - `observedAt`: plain TIMESTAMP (no tz) → java.time.LocalDateTime → "YYYY-MM-DDTHH:MM:SS" (no Z).
+    //  - `asOfDate`:   DATE                    → java.time.LocalDate     → "YYYY-MM-DD".
+    //  - `atTime`:     TIME                    → java.time.LocalTime     → "HH:MM:SS".
+    val observedAt = datetime("observedAt")
+    val asOfDate = date("asOfDate")
+    val atTime = time("atTime")
 
     override val primaryKey = PrimaryKey(id)
 }
