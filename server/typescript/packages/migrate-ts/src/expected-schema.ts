@@ -312,6 +312,16 @@ function validatorCheck(
       if (v.min === undefined) return null;
       return { name: `${tableName}_${col}_length_chk`, expression: `length(${col}) >= ${v.min}` };
     }
+    case VALIDATOR_SUBTYPE_REGEX: {
+      // Postgres-only: SQLite has no native regex operator.
+      if (dialect === "sqlite" || dialect === "d1") return null;
+      const pattern = v.ownAttr(VALIDATOR_ATTR_PATTERN);
+      if (typeof pattern !== "string" || pattern.length === 0) return null;
+      return {
+        name: `${tableName}_${col}_regex_chk`,
+        expression: `${col} ~ '${pattern.replace(/'/g, "''")}'`,
+      };
+    }
     default:
       return null;
   }
