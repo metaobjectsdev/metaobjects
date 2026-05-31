@@ -19,6 +19,7 @@ import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults } from "./validation-passes.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
+import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
 import { validateAttrSchema } from "../attr-schema-validate.js";
@@ -441,6 +442,12 @@ export class MetaDataLoader {
       // exactly one must carry role "primary" (ERR_SOURCE_NO_PRIMARY /
       // ERR_SOURCE_MULTIPLE_PRIMARY).
       errors.push(...validateSourceRoles(root));
+
+      // FR-016 / ADR-0018 — per-kind physical-name alias validation on
+      // source.rdb (kind-matching alias, no multiples, legacy @table warning).
+      const physicalNameResult = validateSourcePhysicalNames(root);
+      errors.push(...physicalNameResult.errors);
+      envelopeWarnings.push(...physicalNameResult.warnings);
 
       // Eleventh pass: per-type @default coercibility — a field's @default value
       // must coerce to the field's type (int/long → integer, double/float/decimal →

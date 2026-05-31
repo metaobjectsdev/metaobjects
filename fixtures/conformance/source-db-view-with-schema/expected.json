@@ -10,7 +10,7 @@
               "source.rdb": {
                 "@kind": "view",
                 "@schema": "p3_api",
-                "@table": "cases_v1"
+                "@view": "cases_v1"
               }
             },
             {

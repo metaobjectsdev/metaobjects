@@ -30,8 +30,28 @@ export const DEFAULT_DB_SCHEMA_POSTGRES = "public";
 // Source v2 (ADR-0007) — rdb paradigm: kind, role, physical table name.
 // ---------------------------------------------------------------------------
 
-/** Physical table/view name on source.rdb. */
+// FR-016 / ADR-0007 point 2: the source's "logical name" is the structural
+// `name` field every MetaData node already carries — accessed via `source.name`,
+// NOT an @-attr. (An @-attr would conflict with the ERR_RESERVED_ATTR rule for
+// the reserved structural key `name`.) See the four-step physical-name
+// resolution rule on MetaSource.physicalName.
+
+// --- Per-kind physical-name aliases (FR-016 / ADR-0018) -----------------------
+// One canonical attr key per rdb @kind. The single internal physical-name
+// "slot" on the source is filled by whichever alias matches @kind; the
+// canonical serializer emits the kind-matching alias regardless of which
+// spelling was on input.
+/** Physical SQL table name. Canonical attr for @kind: "table" (default). */
 export const SOURCE_ATTR_TABLE = "table";
+/** Physical SQL view name. Canonical attr for @kind: "view". */
+export const SOURCE_ATTR_VIEW = "view";
+/** Physical SQL materialized-view name. Canonical attr for @kind: "materializedView". */
+export const SOURCE_ATTR_MATERIALIZED_VIEW = "materializedView";
+/** Physical SQL stored-procedure name. Canonical attr for @kind: "storedProc". */
+export const SOURCE_ATTR_PROC = "proc";
+/** Physical SQL table-function name. Canonical attr for @kind: "tableFunction". */
+export const SOURCE_ATTR_FUNCTION = "function";
+
 /** Object kind within the rdb paradigm; read-only-ness is derived from it. */
 export const SOURCE_ATTR_KIND = "kind";
 /** Multi-source role; exactly one primary per object. */
@@ -51,6 +71,18 @@ export const SOURCE_RDB_KINDS = [
   SOURCE_KIND_TABLE_FUNCTION,
 ] as const;
 export type SourceRdbKind = (typeof SOURCE_RDB_KINDS)[number];
+
+/** Map @kind → canonical kind-aware physical-name attr key (FR-016 / ADR-0018).
+ *  Drives the four-step physical-name resolution rule and the canonical-serializer
+ *  per-kind rewrite. The single internal physical-name "slot" on a source is the
+ *  value of whichever alias matches the source's @kind. */
+export const PHYSICAL_NAME_ATTR_BY_KIND: ReadonlyMap<string, string> = new Map([
+  [SOURCE_KIND_TABLE,             SOURCE_ATTR_TABLE],
+  [SOURCE_KIND_VIEW,              SOURCE_ATTR_VIEW],
+  [SOURCE_KIND_MATERIALIZED_VIEW, SOURCE_ATTR_MATERIALIZED_VIEW],
+  [SOURCE_KIND_STORED_PROC,       SOURCE_ATTR_PROC],
+  [SOURCE_KIND_TABLE_FUNCTION,    SOURCE_ATTR_FUNCTION],
+]);
 
 /** rdb @kind default when omitted (writable table). */
 export const DEFAULT_SOURCE_KIND = SOURCE_KIND_TABLE;

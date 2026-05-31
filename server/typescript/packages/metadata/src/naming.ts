@@ -60,14 +60,15 @@ export function pluralize(s: string): string {
 }
 
 export function resolveTableName(entity: MetaData): string {
-  // Primary source carries the physical table/view name (@table). Writability
-  // (table vs view/storedProc/tableFunction) only affects write-routing — for
-  // SELECT-side name resolution, a read-only primary source is the right answer.
+  // FR-016: primary source's `physicalName` implements the four-step rule
+  // (kind-matching alias → legacy @table → source.name → entity-name fallback),
+  // so this helper now just delegates. Writability (table vs view/storedProc/
+  // tableFunction) only affects write-routing — for SELECT-side name resolution,
+  // a read-only primary source is the right answer.
   const source = entity.ownChildren().find(
     (c): c is MetaSource => c instanceof MetaSource && c.role === SOURCE_ROLE_PRIMARY,
   );
-  const name = source?.tableName;
-  if (typeof name === "string" && name !== "") return name;
+  if (source !== undefined) return source.physicalName;
   return pluralize(toSnakeCase(entity.name));
 }
 

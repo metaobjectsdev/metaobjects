@@ -1,21 +1,40 @@
 // MetaSource — concrete node class for type=source nodes.
 // Declares where an object's data lives (Project E).
-// source.rdb uses @table/@kind/@role/@schema; read-only is derived from @kind.
+// source.rdb uses kind-aware physical-name aliases + @kind/@role/@schema;
+// read-only-ness is derived from @kind.
 //
 // Extends MetaData directly: no model wrapper, no metaOf() indirection.
 
 import { MetaData } from "../../shared/meta-data.js";
+import { pluralize, toSnakeCase } from "../../naming.js";
 import {
   SOURCE_ATTR_TABLE,
+  SOURCE_ATTR_VIEW,
+  SOURCE_ATTR_MATERIALIZED_VIEW,
+  SOURCE_ATTR_PROC,
+  SOURCE_ATTR_FUNCTION,
   SOURCE_ATTR_KIND,
   SOURCE_ATTR_ROLE,
   SOURCE_READ_ONLY_KINDS,
   DEFAULT_SOURCE_KIND,
   DEFAULT_SOURCE_ROLE,
+  PHYSICAL_NAME_ATTR_BY_KIND,
 } from "./source-constants.js";
 
+/** Every kind-aware physical-name alias key, ordered for deterministic
+ *  iteration (matches the SOURCE_RDB_KINDS order). */
+const ALL_PHYSICAL_NAME_ALIASES = [
+  SOURCE_ATTR_TABLE,
+  SOURCE_ATTR_VIEW,
+  SOURCE_ATTR_MATERIALIZED_VIEW,
+  SOURCE_ATTR_PROC,
+  SOURCE_ATTR_FUNCTION,
+] as const;
+
 export class MetaSource extends MetaData {
-  /** Physical SQL table/view name from @table (source.rdb). */
+  /** Physical SQL table/view name from the legacy @table attr. Kept as a
+   *  back-compat accessor that reads ONLY the @table slot — callers should
+   *  use physicalName for the FR-016 four-step rule. */
   get tableName(): string | undefined {
     const v = this.ownAttr(SOURCE_ATTR_TABLE);
     return typeof v === "string" && v !== "" ? v : undefined;
@@ -47,5 +66,48 @@ export class MetaSource extends MetaData {
   /** True when this source is writable (i.e. not read-only). */
   isWritable(): boolean {
     return !this.isReadOnly();
+  }
+
+  /**
+   * Resolved physical SQL name for this source, following the FR-016 / ADR-0018
+   * four-step rule:
+   *   1. Kind-matching alias (e.g. @proc when @kind: "storedProc").
+   *   2. Legacy @table for non-table kind (pre-1.0 fallback).
+   *   3. Source's bare structural `name` via snake_case.
+   *   4. Owning entity's name via pluralize(snake_case).
+   *
+   * Callers needing the legacy raw @table slot only should use `tableName`;
+   * codegen / migrate / runtime should use `physicalName`.
+   */
+  get physicalName(): string {
+    const kind = this.effectiveKind;
+
+    // Step 1: kind-matching alias.
+    const canonicalAttr = PHYSICAL_NAME_ATTR_BY_KIND.get(kind);
+    if (canonicalAttr !== undefined) {
+      const v = this.ownAttr(canonicalAttr);
+      if (typeof v === "string" && v !== "") return v;
+    }
+
+    // Step 2: legacy @table for non-table kind.
+    if (canonicalAttr !== SOURCE_ATTR_TABLE) {
+      const legacy = this.ownAttr(SOURCE_ATTR_TABLE);
+      if (typeof legacy === "string" && legacy !== "") return legacy;
+    }
+
+    // Step 3: source's structural `name` via snake_case (no pluralization —
+    // the source's name IS the logical name).
+    if (this.name !== "") {
+      return toSnakeCase(this.name);
+    }
+
+    // Step 4: owning entity's name via pluralize(snake_case). The MetaData
+    // parent of a source is always the entity that declared it.
+    const owner = this.parent;
+    if (owner !== undefined && owner.name !== "") {
+      return pluralize(toSnakeCase(owner.name));
+    }
+
+    return "";
   }
 }
