@@ -60,15 +60,17 @@ public final class Normalization {
         if (v instanceof UUID u)   return u.toString().toLowerCase(java.util.Locale.ROOT);
         if (v instanceof byte[] bytes) return Base64.getEncoder().encodeToString(bytes);
         if (v instanceof LocalDate d)  return d.format(DATE_FMT);
-        if (v instanceof LocalTime t)  return t.format(TIME_FMT);
+        if (v instanceof LocalTime t)  return t.format(TIME_FMT) + fractionalSuffix(t.getNano());
         if (v instanceof Time t)       return t.toLocalTime().format(TIME_FMT);
         // TIMESTAMPTZ → UTC instant + "Z" suffix. The runner surfaces tz-aware
         // timestamp columns as OffsetDateTime (normalized to UTC in
         // ObjectManagerDbAdapter) so the zone discriminator survives — a plain
         // TIMESTAMP arrives as Timestamp/LocalDateTime and renders with no Z.
-        if (v instanceof OffsetDateTime odt)
-            return odt.withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime().format(TIMESTAMP_FMT) + "Z";
-        if (v instanceof LocalDateTime ts) return ts.format(TIMESTAMP_FMT);
+        if (v instanceof OffsetDateTime odt) {
+            OffsetDateTime utc = odt.withOffsetSameInstant(ZoneOffset.UTC);
+            return utc.toLocalDateTime().format(TIMESTAMP_FMT) + fractionalSuffix(utc.getNano()) + "Z";
+        }
+        if (v instanceof LocalDateTime ts) return ts.format(TIMESTAMP_FMT) + fractionalSuffix(ts.getNano());
         // java.sql.Date / java.sql.Timestamp BOTH extend java.util.Date, so order
         // matters: the sql.Date (DATE column) → "YYYY-MM-DD"; sql.Timestamp and a
         // plain util.Date carry a wall clock → "YYYY-MM-DDTHH:MM:SS" (no Z; a tz
@@ -76,7 +78,10 @@ public final class Normalization {
         // zone is pinned to UTC by QueryScenarioTests so the wall clock is the UTC
         // wall clock the cross-port fixtures expect.
         if (v instanceof java.sql.Date sd)  return sd.toLocalDate().format(DATE_FMT);
-        if (v instanceof Timestamp ts) return ts.toLocalDateTime().format(TIMESTAMP_FMT);
+        if (v instanceof Timestamp ts) {
+            LocalDateTime ldt = ts.toLocalDateTime();
+            return ldt.format(TIMESTAMP_FMT) + fractionalSuffix(ldt.getNano());
+        }
         if (v instanceof java.util.Date d) {
             // OMDB's DateField codec stores a DATE column as a midnight-anchored
             // java.util.Date; render the calendar date (UTC) per the DATE wire rule.
@@ -114,10 +119,34 @@ public final class Normalization {
         return s;
     }
 
-    /** NUMERIC/DECIMAL → canonical string: strip trailing zeros + the decimal point if integral. */
+    /**
+     * NUMERIC/DECIMAL → canonical string: strip trailing zeros + the decimal point
+     * if integral. {@code stripTrailingZeros().toPlainString()} handles the four
+     * corpus values byte-exactly (12.5000→"12.5", -3.2500→"-3.25", 100.0000→"100",
+     * 0.0001→"0.0001"). The one JDK pitfall is a value of zero: {@code new
+     * BigDecimal("0.0000").stripTrailingZeros()} yields {@code 0E-4}, whose
+     * {@code toPlainString()} is the un-stripped {@code "0.0000"} — so short-circuit
+     * a zero magnitude to {@code "0"}.
+     */
     private static String canonicalDecimal(BigDecimal d) {
-        String s = d.stripTrailingZeros().toPlainString();
-        return s.contains(".") || !s.contains("E") ? s : new BigDecimal(s).toPlainString();
+        BigDecimal stripped = d.stripTrailingZeros();
+        if (stripped.signum() == 0) return "0";
+        return stripped.toPlainString();
+    }
+
+    /**
+     * Canonical millisecond fractional-seconds suffix for a temporal value's
+     * nanosecond field, per {@code fixtures/persistence-conformance/normalization.md}:
+     * millisecond resolution, no trailing zeros, and the {@code .} and the entire
+     * fractional component OMITTED when the sub-second value is zero (so whole-second
+     * rows stay byte-identical — the linchpin of the omit-when-zero rule). Examples:
+     * {@code .120 → ".12"}, {@code .123 → ".123"}, {@code .000 → ""}.
+     */
+    private static String fractionalSuffix(int nanos) {
+        long millis = nanos / 1_000_000L;
+        if (millis == 0) return "";
+        String s = String.format("%03d", millis).replaceAll("0+$", "");
+        return "." + s;
     }
 
     /** Canonical JSON for a row list — each row normalized + serialized with sorted keys. */

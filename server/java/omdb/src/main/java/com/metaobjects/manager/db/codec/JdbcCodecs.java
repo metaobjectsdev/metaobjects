@@ -138,8 +138,20 @@ public final class JdbcCodecs {
         @Override public int sqlLength() { return 0; }
 
         @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
-            java.sql.Time tv = rs.getTime(j);
-            f.setObject(o, rs.wasNull() ? null : tv.toLocalTime());
+            // Prefer reading TIME as a LocalTime via JDBC 4.2 getObject: java.sql.Time
+            // has no sub-second component, so going through it silently truncates the
+            // fractional seconds a TIME column carries (e.g. 14:30:00.123 → 14:30:00).
+            // pgjdbc honours getObject(LocalTime.class) and preserves the fraction;
+            // drivers that reject the conversion (e.g. Derby) fall back to the
+            // java.sql.Time path — those backends are second-resolution anyway.
+            LocalTime tv;
+            try {
+                tv = rs.getObject(j, LocalTime.class);
+            } catch (SQLException ex) {
+                java.sql.Time t = rs.getTime(j);
+                tv = t == null ? null : t.toLocalTime();
+            }
+            f.setObject(o, rs.wasNull() ? null : tv);
         }
         @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
             if (v == null) s.setNull(j, Types.TIME);

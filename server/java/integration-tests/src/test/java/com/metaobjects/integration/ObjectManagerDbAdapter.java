@@ -268,6 +268,19 @@ final class ObjectManagerDbAdapter {
         if (isTimestampTzField(mf) && value instanceof java.util.Date d) {
             return d.toInstant().atOffset(ZoneOffset.UTC);
         }
+        // NUMERIC/DECIMAL → BigDecimal. OMDB's DecimalField is backed by DataTypes.DOUBLE
+        // (its getValueClass is Double), so ObjectManagerDB surfaces the value as a Double
+        // even though the DecimalCodec read it via ResultSet.getBigDecimal. Restore the
+        // BigDecimal for a NUMERIC/DECIMAL column so Normalization emits the canonical
+        // no-trailing-zeros wire string. BigDecimal.valueOf(double) round-trips through the
+        // shortest-decimal Double.toString, which is exact for the in-band corpus values
+        // (12.5, -3.25, 100.0, 0.0001).
+        if (value instanceof Double dbl) {
+            Integer sqlType = columnSqlTypes.get(mf.getName());
+            if (sqlType != null && (sqlType == Types.NUMERIC || sqlType == Types.DECIMAL)) {
+                return java.math.BigDecimal.valueOf(dbl);
+            }
+        }
         if (value instanceof Long l) {
             Integer sqlType = columnSqlTypes.get(mf.getName());
             if (sqlType != null && (sqlType == Types.INTEGER || sqlType == Types.SMALLINT || sqlType == Types.TINYINT)) {
