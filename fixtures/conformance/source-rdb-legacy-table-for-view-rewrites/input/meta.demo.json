@@ -1,0 +1,30 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "OldStyleView",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@table": "v_old_style"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

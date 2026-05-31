@@ -51,6 +51,20 @@ export function validateSourcePhysicalNames(root: MetaData): PhysicalNameValidat
       );
 
     for (const source of sources) {
+      // Empty-string check first — explicit "" is meaningless and an
+      // authoring error regardless of which alias was used.
+      for (const attr of ALL_PHYSICAL_NAME_ALIASES) {
+        const v = source.ownAttr(attr);
+        if (typeof v === "string" && v === "") {
+          errors.push(
+            new ParseError(
+              `source.rdb on object "${obj.name}" sets @${attr} to an empty string; physical name attrs require a non-empty value`,
+              { code: "ERR_BAD_ATTR_VALUE", source: source.source },
+            ),
+          );
+        }
+      }
+
       const setAliases = ALL_PHYSICAL_NAME_ALIASES.filter((attr) => {
         const v = source.ownAttr(attr);
         return typeof v === "string" && v !== "";
