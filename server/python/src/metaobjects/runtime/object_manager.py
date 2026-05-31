@@ -301,23 +301,42 @@ def _coerce_for_contract(value: Any, oid: int) -> Any:
     return value
 
 
+def _ms_suffix(microsecond: int) -> str:
+    """Sub-second wire component at **millisecond** resolution (SP-A).
+
+    Mirrors the cross-port rule in fixtures/persistence-conformance/normalization.md:
+    truncate to milliseconds, strip trailing zeros, and OMIT the ``.`` and the entire
+    fractional component when the sub-second value is zero — the exact analogue of the
+    NUMERIC/float trailing-zero rule, applied to the fractional-seconds field. This is
+    the linchpin that keeps every whole-second row byte-identical (``…:00`` stays
+    ``…:00``, never ``…:00.000``). ``.120`` → ``.12``; ``.123`` → ``.123``.
+    """
+    if microsecond == 0:
+        return ""
+    return f".{microsecond // 1000:03d}".rstrip("0")
+
+
 def _canonical_timestamptz(dt: _datetime.datetime) -> str:
-    """TIMESTAMPTZ → ``YYYY-MM-DDTHH:MM:SSZ`` (always UTC).
+    """TIMESTAMPTZ → ``YYYY-MM-DDTHH:MM:SS[.fff]Z`` (always UTC).
 
     pg8000 surfaces a TIMESTAMPTZ as a tz-aware ``datetime``; convert any offset
     to UTC and append ``Z`` so a non-UTC-seeded value reads back as its UTC
     equivalent (proving normalization, not just formatting). A naive datetime on
     this OID is treated as already-UTC (defensive; pg8000 always carries tzinfo
-    here). Phase B seeds whole seconds only — no fractional component emitted.
+    here). A sub-second component is carried at millisecond resolution per the
+    omit-when-zero rule (see ``_ms_suffix``).
     """
     if dt.tzinfo is not None:
         dt = dt.astimezone(_datetime.timezone.utc).replace(tzinfo=None)
-    return dt.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+    return dt.strftime("%Y-%m-%dT%H:%M:%S") + _ms_suffix(dt.microsecond) + "Z"
 
 
 def _canonical_timestamp(dt: _datetime.datetime) -> str:
-    """TIMESTAMP (no tz) → ``YYYY-MM-DDTHH:MM:SS`` (no Z); wall clock passes through."""
-    return dt.strftime("%Y-%m-%dT%H:%M:%S")
+    """TIMESTAMP (no tz) → ``YYYY-MM-DDTHH:MM:SS[.fff]`` (no Z); wall clock passes through.
+
+    Carries a millisecond sub-second component per the omit-when-zero rule.
+    """
+    return dt.strftime("%Y-%m-%dT%H:%M:%S") + _ms_suffix(dt.microsecond)
 
 
 def _canonical_date(d: _datetime.date) -> str:
@@ -326,5 +345,5 @@ def _canonical_date(d: _datetime.date) -> str:
 
 
 def _canonical_time(t: _datetime.time) -> str:
-    """TIME → ``HH:MM:SS`` (whole seconds; Phase B seeds no fractional part)."""
-    return t.strftime("%H:%M:%S")
+    """TIME → ``HH:MM:SS[.fff]``; millisecond sub-second component, omit-when-zero."""
+    return t.strftime("%H:%M:%S") + _ms_suffix(t.microsecond)
