@@ -1,5 +1,7 @@
 package com.metaobjects.integration;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.integration.Scenarios.QuerySpec;
 import com.metaobjects.integration.Scenarios.SortSpec;
@@ -277,17 +279,20 @@ final class ObjectManagerDbAdapter {
 
     /** True for a {@code field.timestamp} carrying {@code @dbColumnType: timestamp_with_tz}. */
     private static boolean isTimestampTzField(MetaField<?> mf) {
+        return hasDbColumnType(mf, CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ);
+    }
+
+    /** True when {@code mf} carries {@code @dbColumnType: <expected>} (false on any read error). */
+    private static boolean hasDbColumnType(MetaField<?> mf, String expected) {
         try {
-            return mf.hasMetaAttr(com.metaobjects.database.CoreDBMetaDataProvider.DB_COLUMN_TYPE)
-                && com.metaobjects.database.CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ.equals(
-                    mf.getMetaAttr(com.metaobjects.database.CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValueAsString());
+            return mf.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE)
+                && expected.equals(mf.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValueAsString());
         } catch (Exception e) {
             return false;
         }
     }
 
-    private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
-        new com.fasterxml.jackson.databind.ObjectMapper();
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     /**
      * R6 Plan 2b: an open-JSON column ({@code @dbColumnType: jsonb}) is a
@@ -297,15 +302,9 @@ final class ObjectManagerDbAdapter {
      * normalization. Non-jsonb fields and non-string values pass through unchanged.
      */
     private static Object maybeParseJson(MetaField<?> mf, Object value) {
-        boolean isOpenJsonb;
-        try {
-            isOpenJsonb = mf.hasMetaAttr(com.metaobjects.database.CoreDBMetaDataProvider.DB_COLUMN_TYPE)
-                && com.metaobjects.database.CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB.equals(
-                    mf.getMetaAttr(com.metaobjects.database.CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValueAsString());
-        } catch (Exception e) {
-            isOpenJsonb = false;
+        if (!hasDbColumnType(mf, CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB) || !(value instanceof String s)) {
+            return value;
         }
-        if (!isOpenJsonb || !(value instanceof String s)) return value;
         try {
             return JSON.readValue(s, Object.class);
         } catch (Exception e) {
