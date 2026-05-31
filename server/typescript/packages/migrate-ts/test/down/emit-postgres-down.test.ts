@@ -34,6 +34,23 @@ describe("postgres down-from-restore", () => {
     const d = down(c);
     expect(d).toContain(`ALTER TABLE "orders" ADD CONSTRAINT "orders_user_fk" FOREIGN KEY ("user_id") REFERENCES "users" ("id")`);
   });
+  test("drop-table with restore re-creates the table's own indexes + FKs", () => {
+    const c = { kind: "drop-table", table: "users",
+      restore: { name: "users",
+        columns: [
+          { name: "id", sqlType: { kind: "integer", bits: 64 }, nullable: false },
+          { name: "email", sqlType: { kind: "text" }, nullable: false },
+          { name: "org_id", sqlType: { kind: "integer", bits: 64 }, nullable: false },
+        ],
+        indexes: [{ name: "users_email_idx", columns: ["email"], unique: true }],
+        foreignKeys: [{ name: "users_org_fk", columns: ["org_id"], refTable: "orgs", refColumns: ["id"] }],
+        primaryKey: ["id"], checks: [] }, status: ALLOWED } as unknown as Change;
+    const d = down(c);
+    expect(d).toContain(`CREATE TABLE "users"`);
+    expect(d).toContain(`CREATE UNIQUE INDEX "users_email_idx" ON "users" ("email");`);
+    expect(d).toContain(`ALTER TABLE "users" ADD CONSTRAINT "users_org_fk" FOREIGN KEY ("org_id") REFERENCES "orgs" ("id")`);
+    expect(d).toMatch(/table data is not restored/i);
+  });
   test("drop-column WITHOUT restore → falls back to the legacy TODO stub", () => {
     const c = { kind: "drop-column", table: "users", column: "email", status: ALLOWED } as unknown as Change;
     expect(down(c)).toMatch(/TODO: re-add dropped column/i);

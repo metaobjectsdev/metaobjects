@@ -254,7 +254,8 @@ function diffTableIndexes(
       changes.push({ kind: "add-index", table, ...sx, index: ix, status: ALLOWED });
     } else if (!indexEquals(ix, a)) {
       // Index shape changed: drop + add (atomic from caller's perspective).
-      changes.push({ kind: "drop-index", table, ...sx, index: name, status: ALLOWED });
+      // restore = the ACTUAL shape so the down re-creates the original index.
+      changes.push({ kind: "drop-index", table, ...sx, index: name, restore: a, status: ALLOWED });
       changes.push({ kind: "add-index", table, ...sx, index: ix, status: ALLOWED });
     }
   }
@@ -279,7 +280,9 @@ function diffTableForeignKeys(
     if (!a) {
       changes.push({ kind: "add-fk", table, ...sx, fk, status: ALLOWED });
     } else if (!fkEquals(fk, a)) {
-      changes.push({ kind: "drop-fk", table, ...sx, fk: name, status: ALLOWED });
+      // FK shape changed: drop + add. restore = the ACTUAL shape so the down
+      // re-creates the original FK.
+      changes.push({ kind: "drop-fk", table, ...sx, fk: name, restore: a, status: ALLOWED });
       changes.push({ kind: "add-fk", table, ...sx, fk, status: ALLOWED });
     }
   }

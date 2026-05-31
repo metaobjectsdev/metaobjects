@@ -33,3 +33,29 @@ describe("diff attaches the prior descriptor as restore on drops", () => {
     expect(dt && dt.kind === "drop-table" && dt.restore?.columns.length).toBe(2);
   });
 });
+
+describe("diff attaches restore on shape-change drops (drop+add)", () => {
+  test("index unique flips true→false → drop-index restore is the ORIGINAL (unique=true) + add-index", async () => {
+    // actual: unique=true; expected: unique=false (same name, different shape)
+    const expected = usersTable(true);
+    expected.indexes = [{ name: "users_email_idx", columns: ["email"], unique: false }];
+    const actual = usersTable(true); // unique=true
+    const r = await diff({ expected: snap(expected), actual: snap(actual) });
+    const di = r.changes.find((c) => c.kind === "drop-index");
+    const ai = r.changes.find((c) => c.kind === "add-index");
+    expect(di && di.kind === "drop-index" && di.restore?.unique).toBe(true);
+    expect(ai && ai.kind === "add-index").toBe(true);
+  });
+  test("fk onDelete changes → drop-fk restore is the ORIGINAL fk + add-fk", async () => {
+    const baseFk = { name: "users_org_fk", columns: ["org_id"], refTable: "orgs", refColumns: ["id"] };
+    const expected = usersTable(true);
+    expected.foreignKeys = [{ ...baseFk, onDelete: "cascade" }];
+    const actual = usersTable(true);
+    actual.foreignKeys = [{ ...baseFk, onDelete: "set-null" }];
+    const r = await diff({ expected: snap(expected), actual: snap(actual) });
+    const df = r.changes.find((c) => c.kind === "drop-fk");
+    const af = r.changes.find((c) => c.kind === "add-fk");
+    expect(df && df.kind === "drop-fk" && df.restore?.onDelete).toBe("set-null");
+    expect(af && af.kind === "add-fk").toBe(true);
+  });
+});

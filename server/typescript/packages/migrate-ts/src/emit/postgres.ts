@@ -77,10 +77,23 @@ function renderUp(c: Change): string {
 function renderDown(c: Change): string {
   switch (c.kind) {
     case "create-table":           return `DROP TABLE ${quoteQualified(c.table.name, c.table.schema)};`;
-    case "drop-table":
-      return c.restore
-        ? `${renderCreateTable(c.restore)}\n-- NOTE: table data is not restored by this down migration.`
-        : `-- WARNING: down migration cannot restore data\n-- TODO: restore table "${c.table}" structure manually`;
+    case "drop-table": {
+      if (!c.restore) {
+        return `-- WARNING: down migration cannot restore data\n-- TODO: restore table "${c.table}" structure manually`;
+      }
+      // renderCreateTable emits only columns + PK + checks. Indexes and FKs ride
+      // as separate add-index/add-fk changes on the up side, so re-create them
+      // explicitly here or the down silently loses them.
+      const parts = [renderCreateTable(c.restore)];
+      for (const index of c.restore.indexes) {
+        parts.push(renderCreateIndex(c.restore.name, c.restore.schema, index));
+      }
+      for (const fk of c.restore.foreignKeys) {
+        parts.push(renderAddFk(c.restore.name, c.restore.schema, fk));
+      }
+      parts.push("-- NOTE: table data is not restored by this down migration.");
+      return parts.join("\n");
+    }
     case "rename-table":           return `ALTER TABLE ${quoteQualified(c.to, c.schema)} RENAME TO ${quote(c.from)};`;
     case "add-column":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP COLUMN ${quote(c.column.name)};`;
     case "drop-column":
