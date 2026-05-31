@@ -37,14 +37,15 @@ internal static class RecoverDelegateEmitter
     // VO / field discovery (object-before-isArray order — the cross-port fix)
     // =========================================================================
 
-    private static MetaData? FindObject(MetaData root, string name) =>
+    internal static MetaData? FindObject(MetaData root, string name) =>
         root.OwnChildren().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == name);
 
     /// <summary>
     /// The <c>@objectRef</c> target VO for a nested-object field, or null when unresolvable.
-    /// Matches by the bare ref first, then by the package-stripped short name.
+    /// Matches by the bare ref first, then by the package-stripped short name. Shared with
+    /// <see cref="ExtractorGenerator"/> (the extract tier walks the same VO graph).
     /// </summary>
-    private static MetaData? RefVo(MetaData field, MetaData root)
+    internal static MetaData? RefVo(MetaData field, MetaData root)
     {
         if (field.OwnAttr(FIELD_ATTR_OBJECT_REF) is not string objectRef) return null;
         var direct = FindObject(root, objectRef);
@@ -59,7 +60,7 @@ internal static class RecoverDelegateEmitter
     /// IsArray (the object-before-isArray order) so an array-of-objects maps to nested mirrors,
     /// not a string list.
     /// </summary>
-    private static bool IsObjectField(MetaData field) => field.SubType == FIELD_SUBTYPE_OBJECT;
+    internal static bool IsObjectField(MetaData field) => field.SubType == FIELD_SUBTYPE_OBJECT;
 
     /// <summary>The recovered-mirror record name for a value-object (<c>&lt;Name&gt;Recovered</c>).</summary>
     public static string MirrorName(MetaData vo) => $"{vo.Name}Recovered";
@@ -109,17 +110,12 @@ internal static class RecoverDelegateEmitter
                 ? $"global::System.Collections.Generic.IReadOnlyList<{baseName}?>?"
                 : $"{baseName}?";
         }
+        // Scalar ARRAY: kind-type the element exactly as a SINGLE scalar would be typed, so the
+        // mirror list element matches PayloadCodegen's strict element type (an int[] field strict-
+        // types as IReadOnlyList<int>, so the mirror must be IReadOnlyList<int?>?, not <string?>?).
         if (Fr010FieldMapping.IsArray(field))
-            return "global::System.Collections.Generic.IReadOnlyList<string?>?";
-        if (field.SubType == FIELD_SUBTYPE_ENUM) return "string?";
-        return Fr010FieldMapping.ScalarKind(field.SubType) switch
-        {
-            "Int" => "int?",
-            "Long" => "long?",
-            "Double" => "double?",
-            "Boolean" => "bool?",
-            _ => "string?",
-        };
+            return $"global::System.Collections.Generic.IReadOnlyList<{Fr010FieldMapping.ScalarMirrorType(field.SubType)}>?";
+        return Fr010FieldMapping.ScalarMirrorType(field.SubType);
     }
 
     /// <summary>
@@ -283,17 +279,26 @@ internal static class RecoverDelegateEmitter
         }
 
         // Enum / scalar / scalar-array: the runtime already coerced; read + light-coerce via Dlg*.
+        // A scalar ARRAY maps each element through the SAME per-kind Dlg* reader the single scalar
+        // uses, so the produced element type matches the kind-typed mirror list (int?/long?/...).
         if (field.SubType == FIELD_SUBTYPE_ENUM) return $"DlgString(ReadProp(o, {key}))";
-        if (Fr010FieldMapping.IsArray(field)) return $"DlgStringList(ReadProp(o, {key}))";
-        return Fr010FieldMapping.ScalarKind(field.SubType) switch
+        if (Fr010FieldMapping.IsArray(field))
         {
-            "Int" => $"DlgInt(ReadProp(o, {key}))",
-            "Long" => $"DlgLong(ReadProp(o, {key}))",
-            "Double" => $"DlgDouble(ReadProp(o, {key}))",
-            "Boolean" => $"DlgBool(ReadProp(o, {key}))",
-            _ => $"DlgString(ReadProp(o, {key}))",
-        };
+            string elemReader = field.SubType == FIELD_SUBTYPE_ENUM ? "DlgString" : ScalarReader(field.SubType);
+            return $"DlgList(ReadProp(o, {key}), {elemReader})";
+        }
+        return $"{ScalarReader(field.SubType)}(ReadProp(o, {key}))";
     }
+
+    /// <summary>The per-kind <c>Dlg*</c> nullable-scalar reader name for a (non-enum) scalar subtype.</summary>
+    private static string ScalarReader(string subType) => Fr010FieldMapping.ScalarKind(subType) switch
+    {
+        "Int" => "DlgInt",
+        "Long" => "DlgLong",
+        "Double" => "DlgDouble",
+        "Boolean" => "DlgBool",
+        _ => "DlgString",
+    };
 
     /// <summary>
     /// Append the shared runtime-delegating helpers the mappers rely on. <c>ReadProp</c> mirrors
@@ -356,12 +361,23 @@ internal static class RecoverDelegateEmitter
         sb.AppendLine("        _ => string.Equals(v.ToString(), \"true\", global::System.StringComparison.OrdinalIgnoreCase),");
         sb.AppendLine("    };");
         sb.AppendLine();
-        sb.AppendLine("    /// <summary>Map an assembled list of scalars into a nullable-element string list.</summary>");
-        sb.AppendLine("    private static global::System.Collections.Generic.IReadOnlyList<string?>? DlgStringList(object? v)");
+        sb.AppendLine("    /// <summary>Map an assembled scalar list element-wise via <paramref name=\"fn\"/> into a kind-typed nullable-element list.");
+        sb.AppendLine("    /// Two overloads (value-type struct element vs reference-type string element) keep the element nullable for both.</summary>");
+        sb.AppendLine("    private static global::System.Collections.Generic.IReadOnlyList<T?>? DlgList<T>(");
+        sb.AppendLine("        object? v, global::System.Func<object?, T?> fn) where T : struct");
         sb.AppendLine("    {");
         sb.AppendLine("        if (v is not global::System.Collections.IEnumerable e || v is string) return null;");
-        sb.AppendLine("        var outList = new global::System.Collections.Generic.List<string?>();");
-        sb.AppendLine("        foreach (var elem in e) outList.Add(elem?.ToString());");
+        sb.AppendLine("        var outList = new global::System.Collections.Generic.List<T?>();");
+        sb.AppendLine("        foreach (var elem in e) outList.Add(fn(elem));");
+        sb.AppendLine("        return outList;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    private static global::System.Collections.Generic.IReadOnlyList<T?>? DlgList<T>(");
+        sb.AppendLine("        object? v, global::System.Func<object?, T?> fn) where T : class");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (v is not global::System.Collections.IEnumerable e || v is string) return null;");
+        sb.AppendLine("        var outList = new global::System.Collections.Generic.List<T?>();");
+        sb.AppendLine("        foreach (var elem in e) outList.Add(fn(elem));");
         sb.AppendLine("        return outList;");
         sb.AppendLine("    }");
     }

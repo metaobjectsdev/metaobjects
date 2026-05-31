@@ -64,7 +64,7 @@ public sealed class ExtractorGenerator : IGenerator
             bool formatSupportsRecover =
                 format.Equals("json", System.StringComparison.OrdinalIgnoreCase) ||
                 format.Equals("xml", System.StringComparison.OrdinalIgnoreCase);
-            var vo = FindObject(ctx.Root, payloadRef);
+            var vo = RecoverDelegateEmitter.FindObject(ctx.Root, payloadRef);
 
             // The extract tier sits over the NESTED-CAPABLE delegating recover, which
             // OutputParserGenerator emits only for json/xml payloads that have a nested object /
@@ -160,7 +160,7 @@ public sealed class ExtractorGenerator : IGenerator
 
         // Recurse into nested-object targets (single + array) for their mappers.
         foreach (var f in Fr010FieldMapping.Fields(vo))
-            if (IsObjectField(f) && RefVo(f, root) is { } target)
+            if (RecoverDelegateEmitter.IsObjectField(f) && RecoverDelegateEmitter.RefVo(f, root) is { } target)
                 EmitMapper(sb, target, root, seen);
     }
 
@@ -174,9 +174,9 @@ public sealed class ExtractorGenerator : IGenerator
         string name = field.Name;
 
         // Object BEFORE array (object-before-isArray): array-of-objects maps element-wise.
-        if (IsObjectField(field))
+        if (RecoverDelegateEmitter.IsObjectField(field))
         {
-            var target = RefVo(field, root);
+            var target = RecoverDelegateEmitter.RefVo(field, root);
             if (target is null)
                 // Unresolved @objectRef — PayloadCodegen types this as the bare ref name; pass through.
                 return $"m.{name}!";
@@ -186,10 +186,18 @@ public sealed class ExtractorGenerator : IGenerator
                 : $"{fn}(m.{name}!)";
         }
 
-        // Scalar ARRAY: mirror is IReadOnlyList<string?>? but the strict payload is
-        // IReadOnlyList<string> — drop nulls so the element type narrows to non-null.
+        // Scalar ARRAY: the mirror is kind-typed IReadOnlyList<TElem?>? (int?/long?/double?/bool?/
+        // string?) and the strict payload is IReadOnlyList<TElem> — drop nulls so the element narrows
+        // to non-null, unwrapping value-type elements via `.Value` (reference-type string stays bare),
+        // matching the single-scalar unwrap below.
         if (Fr010FieldMapping.IsArray(field))
-            return $"(m.{name} ?? global::System.Linq.Enumerable.Empty<string?>()).Where(x => x is not null).Select(x => x!).ToList()";
+        {
+            string elem = Fr010FieldMapping.ScalarMirrorType(field.SubType); // e.g. "int?" / "string?"
+            string unwrap = field.SubType != FIELD_SUBTYPE_ENUM &&
+                            Fr010FieldMapping.ScalarKind(field.SubType) is "Int" or "Long" or "Double" or "Boolean"
+                ? "x!.Value" : "x!";
+            return $"(m.{name} ?? global::System.Linq.Enumerable.Empty<{elem}>()).Where(x => x is not null).Select(x => {unwrap}).ToList()";
+        }
 
         // Scalar / enum (single): the strict record is non-null. Value-type scalars (int/long/
         // double/bool) are typed T? in the mirror, so `m.F!` keeps type T? — unwrap via `.Value`.
@@ -200,22 +208,5 @@ public sealed class ExtractorGenerator : IGenerator
             "Int" or "Long" or "Double" or "Boolean" => $"m.{name}!.Value",
             _ => $"m.{name}!",
         };
-    }
-
-    // ---- VO / field discovery (mirrors RecoverDelegateEmitter / PayloadCodegen) ----
-
-    private static MetaData? FindObject(MetaData root, string name) =>
-        root.OwnChildren().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == name);
-
-    private static bool IsObjectField(MetaData field) => field.SubType == FIELD_SUBTYPE_OBJECT;
-
-    /// <summary>The <c>@objectRef</c> target VO for a nested-object field, or null when unresolvable.</summary>
-    private static MetaData? RefVo(MetaData field, MetaData root)
-    {
-        if (field.OwnAttr(FIELD_ATTR_OBJECT_REF) is not string objectRef) return null;
-        var direct = FindObject(root, objectRef);
-        if (direct is not null) return direct;
-        int sep = objectRef.LastIndexOf(PACKAGE_SEPARATOR, System.StringComparison.Ordinal);
-        return sep >= 0 ? FindObject(root, objectRef[(sep + PACKAGE_SEPARATOR.Length)..]) : null;
     }
 }

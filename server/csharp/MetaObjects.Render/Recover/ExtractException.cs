@@ -24,9 +24,14 @@ public sealed class ExtractException : Exception
     public IReadOnlyList<string> LostRequired { get; }
 
     public ExtractException(RecoveryReport report)
-        : base("extract lost required field(s): [" + string.Join(", ", report.LostRequired()) + "]")
+        : this(report, report.LostRequired())
+    {
+    }
+
+    private ExtractException(RecoveryReport report, IReadOnlyList<string> lostRequired)
+        : base("extract lost required field(s): [" + string.Join(", ", lostRequired) + "]")
     {
         Report = report;
-        LostRequired = report.LostRequired();
+        LostRequired = lostRequired;
     }
 }

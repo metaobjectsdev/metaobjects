@@ -27,6 +27,15 @@ public sealed record FieldSpec(
         new(name, kind, required, false, null, null, null, null, null);
 
     /// <summary>
+    /// Phase B (scalar array): a non-enum scalar field that is a list (<c>Array == true</c>).
+    /// The engine reads a raw element list and coerces each element to <paramref name="kind"/>;
+    /// a single-value <c>@default</c> does not apply to the element list. Mirrors
+    /// <see cref="Scalar(string, FieldKind, bool)"/> but with <c>array = true</c>.
+    /// </summary>
+    public static FieldSpec ScalarArray(string name, FieldKind kind, bool required) =>
+        new(name, kind, required, true, null, null, null, null, null);
+
+    /// <summary>
     /// Phase B (generalized <c>@default</c>): a scalar field carrying an absent-fill
     /// <paramref name="defaultValue"/>. When the field is ABSENT from the model response,
     /// tolerant recover coerces this string to <paramref name="kind"/> via

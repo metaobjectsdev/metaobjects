@@ -135,7 +135,7 @@ public static class RecoverObject
         // engine's f.Array branch handles non-enum scalar arrays (raw element list). @default is a
         // single-value absent-fill and does not apply to the array element list, so it is dropped here.
         if (IsArrayType(field))
-            return new FieldSpec(name, kind, required, true, null, null, null, null, null);
+            return FieldSpec.ScalarArray(name, kind, required);
         return FieldSpec.Scalar(name, kind, required, scalarDefault);
     }
 

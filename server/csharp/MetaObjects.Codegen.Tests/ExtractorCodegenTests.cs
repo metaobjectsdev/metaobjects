@@ -36,6 +36,7 @@ public sealed class ExtractorCodegenTests
     //   • customer: REQUIRED single nested Customer{ name (required) }
     //   • lines   : REQUIRED array-of-objects Line{ sku (required), qty:int }
     //   • tags    : REQUIRED scalar-array string[]
+    //   • scores  : REQUIRED scalar-array int[]   (kind-typed mirror element regression guard)
     //   • note    : scalar (not @required)
     //   • shipTo  : single nested Customer (not @required)
     private const string Model = """
@@ -52,6 +53,7 @@ public sealed class ExtractorCodegenTests
         { "field.object": { "name": "customer", "@required": true, "@objectRef": "Customer" } },
         { "field.object": { "name": "lines", "isArray": true, "@required": true, "@objectRef": "Line" } },
         { "field.string": { "name": "tags", "isArray": true, "@required": true } },
+        { "field.int":    { "name": "scores", "isArray": true, "@required": true } },
         { "field.string": { "name": "note" } },
         { "field.object": { "name": "shipTo", "@objectRef": "Customer" } }
       ]}},
@@ -131,6 +133,7 @@ public sealed class ExtractorCodegenTests
             "  \"customer\": { \"name\": \"Ada\" }," +
             "  \"lines\": [ { \"sku\": \"A\", \"qty\": 2 }, { \"sku\": \"B\", \"qty\": 5 } ]," +
             "  \"tags\": [\"x\", \"y\"]," +
+            "  \"scores\": [3, 7]," +
             "  \"shipTo\": { \"name\": \"Grace\" }, }\n```";
 
         var order = extract.Invoke(null, new object?[] { orderMo, dirty })!;
@@ -151,6 +154,13 @@ public sealed class ExtractorCodegenTests
         // required scalar-array populates with NO null elements (drop-null projection).
         var tags = ((IEnumerable)order.GetType().GetProperty("tags")!.GetValue(order)!).Cast<object>().ToList();
         Assert.Equal(new object[] { "x", "y" }, tags.ToArray());
+
+        // required NON-STRING scalar-array (int[]) populates as IReadOnlyList<int> — proves the
+        // kind-typed mirror element (IReadOnlyList<int?>?) narrows to the strict int element.
+        var scoresProp = order.GetType().GetProperty("scores")!;
+        Assert.Equal(typeof(IReadOnlyList<int>), scoresProp.PropertyType);
+        var scores = ((IEnumerable)scoresProp.GetValue(order)!).Cast<object>().ToList();
+        Assert.Equal(new object[] { 3, 7 }, scores.ToArray());
 
         // non-@required single nested, present -> populates.
         var shipTo = order.GetType().GetProperty("shipTo")!.GetValue(order)!;
@@ -185,7 +195,7 @@ public sealed class ExtractorCodegenTests
 
         const string clean =
             "{ \"orderId\": \"A-7\", \"customer\": { \"name\": \"Ada\" }," +
-            "  \"lines\": [ { \"sku\": \"A\", \"qty\": 1 } ], \"tags\": [\"a\"] }";
+            "  \"lines\": [ { \"sku\": \"A\", \"qty\": 1 } ], \"tags\": [\"a\"], \"scores\": [1] }";
 
         var result = recover.Invoke(null, new object?[] { orderMo, clean })!;
         var report = result.GetType().GetProperty("Report")!.GetValue(result)!;

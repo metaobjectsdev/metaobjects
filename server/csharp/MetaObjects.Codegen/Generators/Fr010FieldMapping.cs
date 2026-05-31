@@ -90,6 +90,26 @@ internal static class Fr010FieldMapping
         _          => "NormalizeMode.Strip",
     };
 
+    /// <summary>
+    /// The nullable C# type for a SINGLE scalar field subtype in a recover mirror
+    /// (e.g. <c>int?</c> / <c>long?</c> / <c>double?</c> / <c>bool?</c> / <c>string?</c>). Enum is
+    /// string-backed (<c>string?</c>). Shared by the self-contained mirror, the nested-aware
+    /// (delegating) mirror, and the scalar-ARRAY element type so the three stay in lock-step with
+    /// PayloadCodegen's strict scalar map.
+    /// </summary>
+    public static string ScalarMirrorType(string subType) => subType switch
+    {
+        FIELD_SUBTYPE_ENUM => "string?",
+        _ => ScalarKind(subType) switch
+        {
+            "Int" => "int?",
+            "Long" => "long?",
+            "Double" => "double?",
+            "Boolean" => "bool?",
+            _ => "string?",
+        },
+    };
+
     /// <summary>The render-engine <c>FieldKind</c> member name for a scalar field subtype, or null if non-scalar.</summary>
     public static string? ScalarKind(string subType) => subType switch
     {
@@ -111,18 +131,13 @@ internal static class Fr010FieldMapping
         // and mismatch the nested-aware mirror the delegating path shares). The delegating path
         // overrides this with nested-mirror typing (RecoverDelegateEmitter.NestedMirrorRecords).
         if (field.SubType == FIELD_SUBTYPE_OBJECT) return "object?"; // nested deferred (self-contained)
-        // Nullable element to match RecoverMap.AsStringList's IReadOnlyList<string?>? return —
-        // a recovered array can contain null elements where individual items were lost.
-        if (IsArray(field)) return "global::System.Collections.Generic.IReadOnlyList<string?>?";
-        if (field.SubType == FIELD_SUBTYPE_ENUM) return "string?";   // enum is string-backed
-        return ScalarKind(field.SubType) switch
-        {
-            "Int" => "int?",
-            "Long" => "long?",
-            "Double" => "double?",
-            "Boolean" => "bool?",
-            _ => "string?",
-        };
+        // Scalar ARRAY: kind-type the element (int?/long?/double?/bool?/string?) so the mirror list
+        // matches PayloadCodegen's strict element type — and so the self-contained and delegating
+        // paths share ONE kind-typed <Payload>Recovered. Nullable element: a recovered array can
+        // carry null where individual items were lost. (Matches the kind-typed RecoverMap.As*List.)
+        if (IsArray(field))
+            return $"global::System.Collections.Generic.IReadOnlyList<{ScalarMirrorType(field.SubType)}>?";
+        return ScalarMirrorType(field.SubType);
     }
 
     /// <summary>The <c>RecoverMap.As*</c> call that reads this field from the forgiving map <c>d</c>.</summary>
@@ -132,6 +147,18 @@ internal static class Fr010FieldMapping
         // Object BEFORE array (object-before-isArray): a nested object/array-of-objects defers to
         // null on the self-contained path (it cannot map a List<NestedRecovered> from a flat map).
         if (field.SubType == FIELD_SUBTYPE_OBJECT) return "null /* FR-010: nested recover deferred (self-contained) */";
+        // Scalar ARRAY: read via the kind-typed RecoverMap.As*List so the produced element type
+        // matches the kind-typed mirror list (an int[] reads via AsIntList, etc.). Enum arrays stay
+        // string-backed (AsStringList) — they are string-typed in the mirror.
+        if (IsArray(field) && field.SubType != FIELD_SUBTYPE_ENUM)
+            return ScalarKind(field.SubType) switch
+            {
+                "Int" => $"RecoverMap.AsIntList(d, \"{name}\")",
+                "Long" => $"RecoverMap.AsLongList(d, \"{name}\")",
+                "Double" => $"RecoverMap.AsDoubleList(d, \"{name}\")",
+                "Boolean" => $"RecoverMap.AsBoolList(d, \"{name}\")",
+                _ => $"RecoverMap.AsStringList(d, \"{name}\")",
+            };
         if (IsArray(field)) return $"RecoverMap.AsStringList(d, \"{name}\")";
         if (field.SubType == FIELD_SUBTYPE_ENUM) return $"RecoverMap.AsString(d, \"{name}\")";
         return ScalarKind(field.SubType) switch
