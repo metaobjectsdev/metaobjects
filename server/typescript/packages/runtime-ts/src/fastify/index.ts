@@ -13,9 +13,12 @@
 
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeAny } from "zod";
+import qs from "qs";
 import type { ObjectManager } from "../object-manager.js";
 import type { Row } from "../persistence-driver.js";
 import type { RouteShorthandOptions } from "fastify";
+import type { SortAllowlist } from "../drizzle-fastify/filter-allowlist.js";
+import { isTruthyFlag, contractErrorCode } from "../drizzle-fastify/util.js";
 
 // ---------------------------------------------------------------------------
 // Public surface
@@ -59,6 +62,14 @@ export interface CrudRoutesOptions {
    * uses PUT for updates.
    */
   updateMethod?: "patch" | "put";
+  /**
+   * Per-entity sort allowlist (`<Entity>SortAllowlist` from codegen). When set,
+   * a `?sort=field:dir` referencing a field NOT in the allowlist (or an invalid
+   * order) is rejected with HTTP 400 `{ error: "invalid_sort" }` — matching the
+   * cross-port REST contract and the drizzle-fastify mount. When absent, `?sort`
+   * is ignored (legacy back-compat: limit/offset only).
+   */
+  sortAllowlist?: SortAllowlist;
 }
 
 const ALL_VERBS: readonly CrudVerb[] = ["list", "get", "create", "update", "delete"];
@@ -98,13 +109,54 @@ function routeOpts(opts: SingleVerbOptions): RouteShorthandOptions {
 }
 
 export function mountListRoute(opts: SingleVerbOptions): void {
-  opts.fastify.get(opts.path, routeOpts(opts), async (req) => {
+  opts.fastify.get(opts.path, routeOpts(opts), async (req, reply) => {
+    // Re-parse the raw URL with qs so the top-level withCount flag and the
+    // sort=field:dir param are available regardless of Fastify's query parser.
+    const rawSearch = req.raw.url?.includes("?")
+      ? req.raw.url.slice(req.raw.url.indexOf("?") + 1)
+      : "";
+    const parsed = qs.parse(rawSearch) as Record<string, unknown>;
+    const withCount = isTruthyFlag(parsed["withCount"]);
+
+    const readOpts: { limit?: number; offset?: number; orderBy?: [string, "asc" | "desc"] } = {};
     const { limit, offset } = req.query as { limit?: string; offset?: string };
-    const readOpts: { limit?: number; offset?: number } = {};
     if (limit !== undefined) readOpts.limit = Number(limit);
     if (offset !== undefined) readOpts.offset = Number(offset);
-    return (await opts.om()).findMany(opts.entity, undefined, readOpts);
+
+    // Sort allowlist gate (cross-port REST contract). Only enforced when a
+    // sortAllowlist is configured; absent → ?sort is ignored (back-compat).
+    if (opts.sortAllowlist && typeof parsed["sort"] === "string") {
+      const sortParse = parseSort(parsed["sort"], opts.sortAllowlist);
+      if (sortParse.error) {
+        return reply.code(400).send({ error: contractErrorCode(sortParse.error) });
+      }
+      if (sortParse.orderBy) readOpts.orderBy = sortParse.orderBy;
+    }
+
+    const om = await opts.om();
+    const rows = await om.findMany(opts.entity, undefined, readOpts);
+    if (!withCount) return rows;
+    // total is the UNPAGINATED count (no limit/offset).
+    const total = await om.count(opts.entity);
+    return { rows, total };
   });
+}
+
+/**
+ * Validate a `sort=field:dir` spec against the allowlist. Mirrors the
+ * drizzle-fastify filter-parser's sort semantics + internal error codes
+ * (`sort.unknown_field` / `sort.invalid_order`) so both mounts emit the same
+ * `invalid_sort` envelope at the HTTP boundary.
+ */
+function parseSort(
+  spec: string,
+  sortAllowlist: SortAllowlist,
+): { orderBy?: [string, "asc" | "desc"]; error?: string } {
+  const [field, orderRaw] = spec.split(":");
+  if (!field || !sortAllowlist[field]) return { error: "sort.unknown_field" };
+  const order = (orderRaw ?? "asc").toLowerCase();
+  if (order !== "asc" && order !== "desc") return { error: "sort.invalid_order" };
+  return { orderBy: [field, order] };
 }
 
 export function mountGetRoute(opts: SingleVerbOptions): void {
