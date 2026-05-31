@@ -5,6 +5,7 @@ import com.metaobjects.attr.StringAttribute
 import com.metaobjects.field.BooleanField
 import com.metaobjects.field.CurrencyField
 import com.metaobjects.field.DateField
+import com.metaobjects.field.DecimalField
 import com.metaobjects.field.DoubleField
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.FloatField
@@ -272,6 +273,26 @@ class KotlinTypeMapperTest {
         f.addMetaAttr(IntAttribute.create(StringField.ATTR_MAX_LENGTH, 100))
         val spec = KotlinTypeMapper.exposedColumnSpec(f)
         assertTrue(spec.contains("varchar") && spec.contains("100"), "got: $spec")
+    }
+
+    // === Decimal coverage (SP-A) ===
+
+    @Test fun `decimal field maps to java math BigDecimal`() {
+        // field.decimal → high-precision java.math.BigDecimal (NUMERIC/DECIMAL).
+        val f = DecimalField.create("preciseKg", 9, 4)
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        assertEquals("java.math", tn.packageName)
+        assertEquals("BigDecimal", tn.simpleName)
+    }
+
+    @Test fun `decimal field maps to decimal exposed column reading precision and scale`() {
+        // field.decimal → Exposed `decimal(name, precision, scale)`. Declared
+        // @precision/@scale flow through (the corpus declares 9,4). Column name
+        // snake_case-d for Postgres convention (mirrors the other arms).
+        val f = DecimalField.create("preciseKg", 9, 4)
+        assertEquals("decimal(\"precise_kg\", 9, 4)", KotlinTypeMapper.exposedColumnSpec(f))
+        // `decimal(...)` is a member of Table — no extra import line.
+        assertNull(KotlinTypeMapper.exposedColumnImport(f))
     }
 
     @Test fun `uuid field maps to java util UUID and uuid exposed column`() {

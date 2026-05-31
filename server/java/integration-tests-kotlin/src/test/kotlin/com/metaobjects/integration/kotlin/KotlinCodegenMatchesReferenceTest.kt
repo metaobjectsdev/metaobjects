@@ -49,13 +49,15 @@ internal class KotlinCodegenMatchesReferenceTest {
             ),
         ),
         // R6 float fidelity: field.float → Exposed `float(...)` (REAL),
-        // field.double → `double(...)` (DOUBLE PRECISION). Verifies the generator
-        // emits the distinct single/double-precision column families.
+        // field.double → `double(...)` (DOUBLE PRECISION). SP-A: field.decimal →
+        // `decimal(...)` (NUMERIC, exact precision). Verifies the generator emits the
+        // distinct single/double-precision + exact-decimal column families.
         "Measurement" to EntityExpectation(
             columns = listOf(
                 ExpectedColumn("id", families = setOf("long")),
                 ExpectedColumn("tempC", families = setOf("float")),
                 ExpectedColumn("massKg", families = setOf("double")),
+                ExpectedColumn("preciseKg", families = setOf("decimal")),
             ),
         ),
         "ProgramView" to EntityExpectation(

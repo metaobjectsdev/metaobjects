@@ -5,7 +5,6 @@ import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.UUIDColumnType
 import org.jetbrains.exposed.sql.javatime.date
 import org.jetbrains.exposed.sql.javatime.datetime
-import org.jetbrains.exposed.sql.javatime.time
 import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone
 import org.jetbrains.exposed.sql.json.jsonb
 
@@ -44,10 +43,13 @@ object AssetTable : Table("assets") {
     // The three @required temporal columns added in Phase B (full wire-type coverage).
     //  - `observedAt`: plain TIMESTAMP (no tz) → java.time.LocalDateTime → "YYYY-MM-DDTHH:MM:SS" (no Z).
     //  - `asOfDate`:   DATE                    → java.time.LocalDate     → "YYYY-MM-DD".
-    //  - `atTime`:     TIME                    → java.time.LocalTime     → "HH:MM:SS".
+    //  - `atTime`:     TIME                    → java.time.LocalTime     → "HH:MM:SS[.fff]".
     val observedAt = datetime("observedAt")
     val asOfDate = date("asOfDate")
-    val atTime = time("atTime")
+    // `preciseTime` (not Exposed's stock `time`) — the stock TIME column type reads via
+    // java.sql.Time and truncates sub-second precision, which would drop the SP-A
+    // millisecond fractional component. See PreciseLocalTimeColumnType.
+    val atTime = preciseTime("atTime")
 
     override val primaryKey = PrimaryKey(id)
 }
