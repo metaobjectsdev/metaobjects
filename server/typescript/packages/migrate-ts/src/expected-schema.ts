@@ -308,9 +308,11 @@ function validatorCheck(
       return { name: `${tableName}_${col}_numeric_chk`, expression: parts.join(" AND ") };
     }
     case VALIDATOR_SUBTYPE_LENGTH: {
-      // Only @min needs a CHECK; @max already maps to the column's VARCHAR(n) bound.
-      if (v.min === undefined) return null;
-      return { name: `${tableName}_${col}_length_chk`, expression: `length(${col}) >= ${v.min}` };
+      const parts: string[] = [];
+      if (v.min !== undefined) parts.push(`length(${col}) >= ${v.min}`);
+      if (v.max !== undefined) parts.push(`length(${col}) <= ${v.max}`);
+      if (parts.length === 0) return null;
+      return { name: `${tableName}_${col}_length_chk`, expression: parts.join(" AND ") };
     }
     case VALIDATOR_SUBTYPE_REGEX: {
       // Postgres-only: SQLite has no native regex operator.

@@ -43,15 +43,17 @@ is the column the expression references.
 | Validator (subType) | Attrs | Derived CHECK expression | Dialects |
 |---|---|---|---|
 | `numeric` | `@min` and/or `@max` (int) | `"col" >= min`, `"col" <= max`, joined by `AND` when both present | postgres + sqlite |
-| `length` | `@min` (int) | `length("col") >= min` | postgres + sqlite |
+| `length` | `@min` and/or `@max` (int) | `length("col") >= min` and/or `length("col") <= max`, joined by `AND` when both present | postgres + sqlite |
 | `regex` | `@pattern` (string) | `"col" ~ 'pattern'` (single-quotes in the pattern doubled) | **postgres only** |
 | `enum` (`field.enum`) | `@values` | `"col" IN ('A', 'B', …)` | postgres + sqlite — **already shipped** |
 | `required` | — | `NOT NULL` (column nullability) — **already done** |
 
 Rules:
-- **`validator.length` `@max` is intentionally NOT a CHECK** — a max string length
-  already maps to `VARCHAR(n)` via the column's `SqlType.maxLength` (existing
-  behavior). Only **min-length** needs a CHECK, so no duplication.
+- **`validator.length` emits a length-range CHECK** for whichever of `@min`/`@max`
+  are present (`length("col") >= min` and/or `length("col") <= max`, joined by `AND`
+  when both present). The field-level **`@maxLength` attr** (distinct from
+  `validator.length @max`) is what maps to `VARCHAR(n)` via the column's
+  `SqlType.maxLength`.
 - **`numeric` with both `@min` and `@max`** emits a single check
   `"col" >= min AND "col" <= max` (one constraint, not two).
 - **`regex` is postgres-only.** SQLite has no native regex operator, so a regex
@@ -105,9 +107,11 @@ validator metamodel/loaders, not `migrate-ts`'s consumption of it).
 ## 7. Testing
 
 - `buildExpectedSchema` derives the right `CheckDescriptor` per validator: numeric
-  `@min`+`@max` → one `>= AND <=` check; numeric `@min` only → `>=`; length `@min` →
-  `length(col) >= n`; regex `@pattern` → `col ~ 'p'` on postgres, **none** on sqlite.
-- Length `@max` produces VARCHAR(n) and **no** check (no duplication).
+  `@min`+`@max` → one `>= AND <=` check; numeric `@min` only → `>=`; length `@min`
+  and/or `@max` → `length(col) >= n` / `length(col) <= n` (joined by `AND` when both);
+  regex `@pattern` → `col ~ 'p'` on postgres, **none** on sqlite.
+- Length `@max` produces a `length(col) <= max` check (it does **NOT** map to
+  VARCHAR(n); only the `@maxLength` field attr does).
 - A field with an enum + a numeric validator emits both, distinctly named.
 - Single-quote escaping in a regex `@pattern`.
 - e2e: an entity with validators → `emit` inlines the derived `CHECK (...)` into

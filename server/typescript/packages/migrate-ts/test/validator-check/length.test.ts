@@ -26,16 +26,22 @@ describe("validator.length → CHECK", () => {
     const c = table(root).checks.find((x) => x.name === "users_code_length_chk");
     expect(c?.expression).toBe("length(code) >= 3");
   });
-  test("@max length validator → NOT a check (no duplication)", async () => {
+  test("@max → length upper-bound check", async () => {
     const root = await load(ENTITY(`[{"field.string":{"name":"code","children":[
       {"validator.length":{"name":"l","@max":10}}]}}]`));
     const t = table(root);
-    // max becomes a column-type concern (@maxLength), not a check; a length
-    // validator's @max alone does NOT emit a length check.
-    expect(t.checks.some((x) => x.name.includes("_length_chk"))).toBe(false);
+    // A validator.length @max emits a length upper-bound CHECK — it does NOT
+    // map to VARCHAR(n) (only the field-level @maxLength attr drives the column
+    // bound), so the string column stays bare text.
+    const c = t.checks.find((x) => x.name === "users_code_length_chk");
+    expect(c?.expression).toBe("length(code) <= 10");
     const col = t.columns.find((c) => c.name === "code")!;
-    // A validator.length @max does NOT map to VARCHAR(n) — only the field-level
-    // @maxLength attr drives the column bound — so the string column stays bare text.
     expect(col.sqlType).toEqual({ kind: "text" });
+  });
+  test("@min + @max → length range check (both bounds, joined by AND)", async () => {
+    const root = await load(ENTITY(`[{"field.string":{"name":"code","children":[
+      {"validator.length":{"name":"l","@min":3,"@max":10}}]}}]`));
+    const c = table(root).checks.find((x) => x.name === "users_code_length_chk");
+    expect(c?.expression).toBe("length(code) >= 3 AND length(code) <= 10");
   });
 });
