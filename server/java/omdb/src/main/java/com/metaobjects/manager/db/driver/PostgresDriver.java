@@ -19,7 +19,6 @@ import com.metaobjects.MetaDataException;
 
 
 import com.metaobjects.manager.db.defs.ColumnDef;
-import com.metaobjects.manager.db.defs.TableDef;
 import com.metaobjects.manager.exp.Range;
 
 /**
@@ -44,25 +43,6 @@ public class PostgresDriver extends GenericSQLDriver {
 
     public PostgresDriver() {
         super();
-    }
-
-    /**
-     * Deletes a table from the PostgreSQL database
-     */
-    @Override
-    public void deleteTable(Connection c, TableDef table) throws SQLException {
-        String tableName = getProperName(table.getNameDef());
-        String query = "DROP TABLE IF EXISTS " + tableName + " CASCADE";
-        
-        if (log.isDebugEnabled()) {
-            log.debug("Dropping PostgreSQL table [{}]: {}", tableName, query);
-        }
-        
-        try (Statement s = c.createStatement()) {
-            s.execute(query);
-        } catch (SQLException e) {
-            throw new SQLException("Failed to drop PostgreSQL table [" + tableName + "]: " + e.getMessage(), e);
-        }
     }
 
     /**

@@ -123,10 +123,10 @@ export interface ViewDescriptor {
  */
 export type Change =
   | { kind: "create-table"; table: TableDescriptor; schema?: string; status: ChangeStatus }
-  | { kind: "drop-table"; table: string; schema?: string; status: ChangeStatus }
+  | { kind: "drop-table"; table: string; schema?: string; restore?: TableDescriptor; status: ChangeStatus }
   | { kind: "rename-table"; from: string; to: string; schema?: string; status: ChangeStatus }
   | { kind: "add-column"; table: string; schema?: string; column: ColumnDescriptor; status: ChangeStatus }
-  | { kind: "drop-column"; table: string; schema?: string; column: string; status: ChangeStatus }
+  | { kind: "drop-column"; table: string; schema?: string; column: string; restore?: ColumnDescriptor; status: ChangeStatus }
   | { kind: "rename-column"; table: string; schema?: string; from: string; to: string; status: ChangeStatus }
   | { kind: "change-column-type"; table: string; schema?: string; column: string;
       from: SqlType; to: SqlType; status: ChangeStatus }
@@ -135,9 +135,9 @@ export type Change =
   | { kind: "change-column-default"; table: string; schema?: string; column: string;
       from?: ColumnDefault; to?: ColumnDefault; status: ChangeStatus }
   | { kind: "add-index"; table: string; schema?: string; index: IndexDescriptor; status: ChangeStatus }
-  | { kind: "drop-index"; table: string; schema?: string; index: string; status: ChangeStatus }
+  | { kind: "drop-index"; table: string; schema?: string; index: string; restore?: IndexDescriptor; status: ChangeStatus }
   | { kind: "add-fk"; table: string; schema?: string; fk: FkDescriptor; status: ChangeStatus }
-  | { kind: "drop-fk"; table: string; schema?: string; fk: string; status: ChangeStatus }
+  | { kind: "drop-fk"; table: string; schema?: string; fk: string; restore?: FkDescriptor; status: ChangeStatus }
   | { kind: "add-check"; table: string; schema?: string; check: CheckDescriptor; status: ChangeStatus }
   | { kind: "drop-check"; table: string; schema?: string; check: string; status: ChangeStatus }
   // Declared for v0.3, never produced in v0.1:

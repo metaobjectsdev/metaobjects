@@ -18,7 +18,6 @@ import com.metaobjects.MetaDataException;
 
 
 import com.metaobjects.manager.db.defs.ColumnDef;
-import com.metaobjects.manager.db.defs.TableDef;
 import com.metaobjects.manager.exp.Range;
 
 /**
@@ -43,25 +42,6 @@ public class OracleDriver extends GenericSQLDriver {
     
     public OracleDriver() {
         super();
-    }
-
-    /**
-     * Deletes a table from the Oracle database
-     */
-    @Override
-    public void deleteTable(Connection c, TableDef table) throws SQLException {
-        String tableName = getProperName(table.getNameDef());
-        String query = "DROP TABLE " + tableName + " CASCADE CONSTRAINTS";
-        
-        if (log.isDebugEnabled()) {
-            log.debug("Dropping Oracle table [{}]: {}", tableName, query);
-        }
-        
-        try (Statement s = c.createStatement()) {
-            s.execute(query);
-        } catch (SQLException e) {
-            throw new SQLException("Failed to drop Oracle table [" + tableName + "]: " + e.getMessage(), e);
-        }
     }
 
     /**

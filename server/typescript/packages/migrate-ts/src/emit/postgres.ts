@@ -77,10 +77,29 @@ function renderUp(c: Change): string {
 function renderDown(c: Change): string {
   switch (c.kind) {
     case "create-table":           return `DROP TABLE ${quoteQualified(c.table.name, c.table.schema)};`;
-    case "drop-table":             return `-- WARNING: down migration cannot restore data\n-- TODO: restore table "${c.table}" structure manually`;
+    case "drop-table": {
+      if (!c.restore) {
+        return `-- WARNING: down migration cannot restore data\n-- TODO: restore table "${c.table}" structure manually`;
+      }
+      // renderCreateTable emits only columns + PK + checks. Indexes and FKs ride
+      // as separate add-index/add-fk changes on the up side, so re-create them
+      // explicitly here or the down silently loses them.
+      const parts = [renderCreateTable(c.restore)];
+      for (const index of c.restore.indexes) {
+        parts.push(renderCreateIndex(c.restore.name, c.restore.schema, index));
+      }
+      for (const fk of c.restore.foreignKeys) {
+        parts.push(renderAddFk(c.restore.name, c.restore.schema, fk));
+      }
+      parts.push("-- NOTE: table data is not restored by this down migration.");
+      return parts.join("\n");
+    }
     case "rename-table":           return `ALTER TABLE ${quoteQualified(c.to, c.schema)} RENAME TO ${quote(c.from)};`;
     case "add-column":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP COLUMN ${quote(c.column.name)};`;
-    case "drop-column":            return `-- WARNING: down migration cannot restore data\n-- TODO: re-add dropped column "${c.column}" manually with original type/nullable/default`;
+    case "drop-column":
+      return c.restore
+        ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD COLUMN ${renderColumn(c.restore)};\n-- NOTE: column data is not restored by this down migration.`
+        : `-- WARNING: down migration cannot restore data\n-- TODO: re-add dropped column "${c.column}" manually with original type/nullable/default`;
     case "rename-column":          return `ALTER TABLE ${quoteQualified(c.table, c.schema)} RENAME COLUMN ${quote(c.to)} TO ${quote(c.from)};`;
     case "change-column-type":     return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} TYPE ${pgType(c.from)};`;
     case "change-column-nullable":
@@ -92,9 +111,15 @@ function renderDown(c: Change): string {
         ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} SET DEFAULT ${renderDefault(c.from)};`
         : `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} DROP DEFAULT;`;
     case "add-index":              return `DROP INDEX ${quoteIndexQualified(c.index.name, c.schema)};`;
-    case "drop-index":             return `-- WARNING: down migration cannot restore the original index definition`;
+    case "drop-index":
+      return c.restore
+        ? renderCreateIndex(c.table, c.schema, c.restore)
+        : `-- WARNING: down migration cannot restore the original index definition`;
     case "add-fk":                 return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.fk.name)};`;
-    case "drop-fk":                return `-- WARNING: down migration cannot restore the original FK definition`;
+    case "drop-fk":
+      return c.restore
+        ? renderAddFk(c.table, c.schema, c.restore)
+        : `-- WARNING: down migration cannot restore the original FK definition`;
     // add-check / drop-check down arms: declared but not yet produced by the diff
     // (checks are create-time-only; see renderUp note).
     case "add-check":              return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.check.name)};`;

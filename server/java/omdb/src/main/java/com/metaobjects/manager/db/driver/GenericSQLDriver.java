@@ -272,71 +272,6 @@ public class GenericSQLDriver implements DatabaseDriver {
         return mManager;
     }
 
-    @Override
-    public boolean checkTable(Connection c, TableDef table) throws SQLException {
-        return checkBaseTable(c, table);
-    }
-
-    /**
-     * Checks for the existence of the base table or view. This method only
-     * verifies existence; it does not create anything.
-     *
-     * @param c Database connection to use
-     * @param baseTable Base Table Definition (Table or View)
-     * @return Whether the table or view exists
-     * @throws SQLException Exception if it exists in an invalid format
-     */
-    protected boolean checkBaseTable(Connection c, BaseTableDef baseTable)
-            throws SQLException {
-        String schema = baseTable.getNameDef().getSchema();
-        String name = baseTable.getNameDef().getName().toUpperCase();
-
-        // VALIDATE TABLE OR VIEW
-        ResultSet rs = c.getMetaData().getTables(null, schema, name, null);
-        try {
-            boolean found = false;
-            while (rs.next()) {
-                if (name.equalsIgnoreCase(rs.getString(3))) {
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found) {
-                // throw new TableDoesNotExistException( "Table or View [" +
-                // baseTable.getNameDef() + "] does not exist" );
-                return false;
-            }
-        } finally {
-            rs.close();
-        }
-
-        // VALIDATE THE COLUMNS
-        for (ColumnDef col : baseTable.getColumns()) {
-            rs = c.getMetaData().getColumns(null, schema, name, col.getName().toUpperCase());
-            try {
-                boolean found = false;
-                while (rs.next()) {
-                    if (col.getName().equalsIgnoreCase(rs.getString(4))) {
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (!found) {
-                    throw new SQLException("Table or View ["
-                            + baseTable.getNameDef()
-                            + "] does not have a Column [" + col.getName()
-                            + "]");
-                }
-            } finally {
-                rs.close();
-            }
-        }
-
-        return true;
-    }
-
     protected String getLastAutoId(Connection conn, ColumnDef col) throws SQLException {
         throw new IllegalStateException("This should not get called");
     }
@@ -401,15 +336,6 @@ public class GenericSQLDriver implements DatabaseDriver {
             throw new SQLException("Unable to get next id for column [" + col
                     + "]: " + e.getMessage(), e);
         }
-    }
-
-    /**
-     * Deletes a table from the database
-     */
-    @Override
-    public void deleteTable(Connection c, TableDef tableDef)
-            throws SQLException {
-        throw new UnsupportedOperationException("DELETE TABLE NOT IMPLEMENTED!");
     }
 
     /**
