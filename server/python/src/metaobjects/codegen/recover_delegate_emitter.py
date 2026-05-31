@@ -43,7 +43,7 @@ def _find_object(root: MetaData, name: str) -> MetaData | None:
     return None
 
 
-def _ref_vo(field: MetaData, root: MetaData) -> MetaData | None:
+def ref_vo(field: MetaData, root: MetaData) -> MetaData | None:
     """The ``@objectRef`` target VO for a nested-object field, or ``None`` when
     unresolvable. Matches first on the full ref, then the trailing simple-name
     segment (mirrors the runtime ``_resolve_object_ref`` short-name fallback)."""
@@ -100,7 +100,7 @@ def _nested_mirror_type(field: MetaData, root: MetaData) -> str:
     """The nullable mirror annotation for one field — nested-aware (nested objects
     become ``<Nested>Recovered``; array-of-objects become ``list[...]``)."""
     if _is_object_field(field):
-        target = _ref_vo(field, root)
+        target = ref_vo(field, root)
         base = f'"{mirror_name(target)}"' if target is not None else "object"
         elem = f"{base} | None"
         return f"list[{elem}] | None" if fm.is_array(field) else elem
@@ -137,7 +137,7 @@ def reachable_vos(vo: MetaData, root: MetaData) -> list[MetaData]:
         out.append(cur)
         for f in fm.fields(cur):
             if _is_object_field(f):
-                target = _ref_vo(f, root)
+                target = ref_vo(f, root)
                 if target is not None and target.name not in seen:
                     queue.append(target)
     return out
@@ -238,7 +238,7 @@ def _mapper_arg(field: MetaData, root: MetaData) -> str:
     """The mirror-field initializer that reads ``field`` from the assembled object ``o``."""
     key = f'"{field.name}"'
     if _is_object_field(field):
-        target = _ref_vo(field, root)
+        target = ref_vo(field, root)
         if target is None:
             return "None  # unresolved @objectRef"
         fn = _mapper_name(target)

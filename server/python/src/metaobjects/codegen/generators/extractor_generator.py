@@ -99,7 +99,7 @@ def _strict_arg(field: MetaData, root: MetaData) -> str:
     required = is_field_required(field)
 
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
-        target = rde._ref_vo(field, root)
+        target = rde.ref_vo(field, root)
         if target is None:
             return f"m.{name}"  # unresolved @objectRef — pass the mirror value through
         fn = _mapper_name(target)

@@ -165,7 +165,14 @@ def is_field_required(field: MetaField) -> bool:
     ``isFieldRequired`` (``ownAttr === true``) so the extract-tier mapper that
     constructs this payload can rely on the same boundary (no skew). A
     ``@required: "true"`` string therefore types optional in BOTH the payload and the
-    mapper. The extractor generator imports THIS predicate."""
+    mapper. The extractor generator imports THIS predicate.
+
+    Note: this intentionally accepts ONLY the boolean ``True`` (matching the TS
+    payload-codegen predicate), which DELIBERATELY differs from the runtime
+    ``object_recover._is_required`` / ``fr010_field_mapping.is_required``, both of which
+    additionally treat the string ``"true"`` as required. The payload type's optionality
+    and the extractor mapper's None-guarding are kept in lockstep by sharing THIS
+    predicate, so do not "reconcile" it with the runtime predicate."""
     return field.attr(fc.FIELD_ATTR_REQUIRED) is True
 
 
