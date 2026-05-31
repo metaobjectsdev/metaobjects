@@ -50,6 +50,16 @@ export { MetaRoot } from "./shared/meta-root.js";
 export { MetaObject } from "./core/object/meta-object.js";
 export { MetaField } from "./core/field/meta-field.js";
 export { MetaAttr } from "./core/attr/meta-attr.js";
+
+// Runtime object model — backing objects + FQN→factory binding (Phase A).
+export { ValueObject } from "./core/object/value-object.js";
+export { isMetaObjectAware } from "./core/object/meta-object-aware.js";
+export type { MetaObjectAware } from "./core/object/meta-object-aware.js";
+export {
+  ObjectClassRegistry,
+  defaultObjectClassRegistry,
+} from "./core/object/object-class-registry.js";
+export type { ObjectFactory } from "./core/object/object-class-registry.js";
 // Identity: base + subtype-specific
 export {
   MetaIdentity,

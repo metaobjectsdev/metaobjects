@@ -47,6 +47,7 @@ import { FIELD_ATTR_COLUMN } from "../../persistence/db/db-constants.js";
 import { VALIDATOR_SUBTYPE_REQUIRED } from "../validator/validator-constants.js";
 import type { MetaValidator } from "../validator/meta-validator.js";
 import type { MetaView } from "../../presentation/view/meta-view.js";
+import { ValueObject } from "../object/value-object.js";
 
 /** Field subtype → DataType. Co-located with the class — a provider adding a
  *  field subtype supplies its own dataType the same way. */
@@ -181,5 +182,40 @@ export class MetaField extends MetaData implements DataTypeAware {
   /** The typed supertype field if `extends:` resolved, else undefined. */
   resolveSuper(): MetaField | undefined {
     return this.superData as MetaField | undefined;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Runtime value access (Java parity: MetaField.getObject / setObject by name).
+  //
+  // Minimal backing-object SPI: dispatch on the backing object's shape — a
+  // ValueObject uses its map, any other object uses typed property access.
+  // Nested OBJECT fields and arrays are driven by the CONSUMER (resolve the
+  // child MetaObject via objectRef, newInstance, recurse); these methods read
+  // and write whatever value (scalar, nested object, or array) the caller
+  // supplies. No coercion here — coerce() is available separately.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Read this field's value from a backing object. `name` defaults to the
+   * field's own `name`; pass an override only to read a differently-keyed slot.
+   */
+  getValue(obj: object, name: string = this.name): unknown {
+    if (obj instanceof ValueObject) {
+      return obj.get(name);
+    }
+    // Typed property access — the unavoidable dynamic-property bridge.
+    return (obj as Record<string, unknown>)[name];
+  }
+
+  /**
+   * Write `value` into a backing object under `name` (defaults to this field's
+   * own `name`). ValueObject → map set; any other object → typed property set.
+   */
+  setValue(obj: object, value: unknown, name: string = this.name): void {
+    if (obj instanceof ValueObject) {
+      obj.set(name, value);
+      return;
+    }
+    (obj as Record<string, unknown>)[name] = value;
   }
 }
