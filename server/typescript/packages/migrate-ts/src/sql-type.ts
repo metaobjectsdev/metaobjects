@@ -14,6 +14,7 @@ export type SqlType =
   | { kind: "boolean" }
   | { kind: "timestamp"; withTimezone: boolean }
   | { kind: "date" }
+  | { kind: "time" }
   | { kind: "json" }
   | { kind: "blob" }
   | { kind: "uuid" };
@@ -36,6 +37,7 @@ export function sqlTypeEquals(a: SqlType, b: SqlType): boolean {
     case "real4":
     case "boolean":
     case "date":
+    case "time":
     case "json":
     case "blob":
     case "uuid":
@@ -85,6 +87,7 @@ export function isWidening(from: SqlType, to: SqlType): boolean {
     case "real4":
     case "boolean":
     case "date":
+    case "time":
     case "json":
     case "blob":
     case "uuid":

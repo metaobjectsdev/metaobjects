@@ -4,11 +4,14 @@ description: |
   end against real Postgres. After the canonical schema is applied, the live
   catalog (information_schema.columns) must report:
 
-    id          uuid                      (field.uuid PK, server-default gen_random_uuid())
-    ownerId     uuid                      (field.uuid, non-key)
-    externalId  uuid                      (field.string + @dbColumnType: uuid)
-    payload     jsonb                     (field.string + @dbColumnType: jsonb, genuinely-open JSON)
-    recordedAt  timestamp with time zone  (field.timestamp + @dbColumnType: timestamp_with_tz)
+    id          uuid                         (field.uuid PK, server-default gen_random_uuid())
+    ownerId     uuid                         (field.uuid, non-key)
+    externalId  uuid                         (field.string + @dbColumnType: uuid)
+    payload     jsonb                        (field.string + @dbColumnType: jsonb, genuinely-open JSON)
+    recordedAt  timestamp with time zone     (field.timestamp + @dbColumnType: timestamp_with_tz)
+    observedAt  timestamp without time zone  (field.timestamp → TIMESTAMP)
+    asOfDate    date                         (field.date → DATE)
+    atTime      time without time zone       (field.time → TIME)
 
   Asserting against information_schema (not the DDL string) makes this assertion
   port-independent: every port's bootstrap DDL — whatever its exact spelling
@@ -28,8 +31,11 @@ expect:
        WHERE table_schema = 'public' AND table_name = 'assets'
        ORDER BY column_name
     rows:
+      - { column_name: "asOfDate",   data_type: "date" }
+      - { column_name: "atTime",     data_type: "time without time zone" }
       - { column_name: "externalId", data_type: "uuid" }
       - { column_name: "id",         data_type: "uuid" }
+      - { column_name: "observedAt", data_type: "timestamp without time zone" }
       - { column_name: "ownerId",    data_type: "uuid" }
       - { column_name: "payload",    data_type: "jsonb" }
       - { column_name: "recordedAt", data_type: "timestamp with time zone" }

@@ -156,6 +156,7 @@ function pgType(t: SqlType): string {
     case "boolean":   return "BOOLEAN";
     case "timestamp": return t.withTimezone ? "TIMESTAMPTZ" : "TIMESTAMP";
     case "date":      return "DATE";
+    case "time":      return "TIME";
     case "json":      return "JSONB";
     case "blob":      return "BYTEA";
     case "uuid":      return "UUID";

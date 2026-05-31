@@ -7,11 +7,11 @@ description: |
 seed-data: |
   INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
     (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00');
-  INSERT INTO "weeks" ("id", "programId", "label") VALUES
-    (1, 1, 'Week 1'),
-    (2, 1, NULL),
-    (3, 1, 'Week 3'),
-    (4, 1, NULL);
+  INSERT INTO "weeks" ("id", "programId", "label", "durationMinutes") VALUES
+    (1, 1, 'Week 1', 30),
+    (2, 1, NULL,     45),
+    (3, 1, 'Week 3', 60),
+    (4, 1, NULL,     75);
 queries:
   - name: weeks-with-null-label
     op: list
@@ -19,8 +19,8 @@ queries:
     filter: { label: { isNull: true } }
     sort: [{ field: id, dir: asc }]
     expect:
-      - { id: "2", programId: "1", label: null }
-      - { id: "4", programId: "1", label: null }
+      - { id: "2", programId: "1", label: null, durationMinutes: 45 }
+      - { id: "4", programId: "1", label: null, durationMinutes: 75 }
 
   - name: weeks-with-non-null-label
     op: list
@@ -28,5 +28,5 @@ queries:
     filter: { label: { isNull: false } }
     sort: [{ field: id, dir: asc }]
     expect:
-      - { id: "1", programId: "1", label: "Week 1" }
-      - { id: "3", programId: "1", label: "Week 3" }
+      - { id: "1", programId: "1", label: "Week 1", durationMinutes: 30 }
+      - { id: "3", programId: "1", label: "Week 3", durationMinutes: 60 }

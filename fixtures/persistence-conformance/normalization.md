@@ -34,12 +34,17 @@ byte equality check.
 | `REAL`, `DOUBLE`    | **string** (plain decimal, no trailing zeros) | `"1.5"`, `"0.125"`, `"-3.25"`       |
 | `TEXT`, `VARCHAR`   | string                                    | `"hello"`                             |
 | `DATE`              | string `"YYYY-MM-DD"`                     | `"2026-05-25"`                        |
+| `TIME`              | string `"HH:MM:SS"` (whole seconds)       | `"14:30:00"`                          |
 | `TIMESTAMP`         | string `"YYYY-MM-DDTHH:MM:SS[.fff]"`      | `"2026-05-25T10:30:00"` (no Z)        |
 | `TIMESTAMPTZ`       | string `"YYYY-MM-DDTHH:MM:SS[.fff]Z"`     | `"2026-05-25T14:30:00Z"` (UTC always) |
 | `UUID`              | string (lowercase canonical)              | `"550e8400-e29b-41d4-a716-446655440000"` |
 | `JSON`, `JSONB`     | re-serialized with **sorted keys**        | `{"a": 1, "b": 2}` not `{"b": 2, "a": 1}` |
 | `BYTEA`             | base64 string                             | `"aGVsbG8="`                          |
 | `NULL`              | JSON `null`                               |                                       |
+
+Phase B seeds whole-second `TIMESTAMP`/`TIMESTAMPTZ`/`TIME` values only; the
+canonical form carries no fractional-seconds component. Fractional-second
+normalization is deferred.
 
 ### Rationale highlights
 

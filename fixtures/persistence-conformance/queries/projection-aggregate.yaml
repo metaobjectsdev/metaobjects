@@ -1,27 +1,44 @@
 name: projection-aggregate
 description: |
-  ProgramStat is a read-only projection over a Postgres VIEW backed by a
-  correlated-subquery aggregate (count of Weeks per Program). Every port must
-  query the view through its persistence layer and produce the same rolled-up
-  rows. This validates both the view DDL (engine emits CREATE VIEW correctly)
-  AND the runtime layer's projection-read path end-to-end.
+  ProgramStat is a read-only projection over a Postgres VIEW backed by
+  correlated-subquery aggregates over Weeks per Program. Every port must query
+  the view through its persistence layer and produce the same rolled-up rows.
+  This validates both the view DDL (engine emits CREATE VIEW correctly) AND the
+  runtime layer's projection-read path end-to-end.
+
+  The empty-program row (no weeks) exercises the SQL aggregate-over-zero-rows
+  semantics: COUNT → 0, but SUM/AVG/MIN/MAX → NULL. Per normalization.md a SQL
+  NULL is JSON null. (projection-aggregates.yaml covers the populated wire
+  shapes for sum/avg/min/max.)
 seed-data: |
   INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
     (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
     (2, 'Empty',       1999, 'DRAFT',     '2026-05-02T10:00:00');
-  INSERT INTO "weeks" ("id", "programId", "label") VALUES
-    (10, 1, 'Week 1'),
-    (11, 1, 'Week 2'),
-    (12, 1, 'Week 3');
+  INSERT INTO "weeks" ("id", "programId", "label", "durationMinutes") VALUES
+    (10, 1, 'Week 1', 30),
+    (11, 1, 'Week 2', 60),
+    (12, 1, 'Week 3', 90);
 queries:
   - name: stats-for-program-with-weeks
     op: get
     entity: ProgramStat
     by: { programId: 1 }
-    expect: { programId: "1", weekCount: "3" }
+    expect:
+      programId: "1"
+      weekCount: "3"
+      totalMinutes: "180"
+      avgMinutes: "60"
+      minMinutes: 30
+      maxMinutes: 90
 
   - name: stats-for-program-without-weeks
     op: get
     entity: ProgramStat
     by: { programId: 2 }
-    expect: { programId: "2", weekCount: "0" }
+    expect:
+      programId: "2"
+      weekCount: "0"
+      totalMinutes: null
+      avgMinutes: null
+      minMinutes: null
+      maxMinutes: null
