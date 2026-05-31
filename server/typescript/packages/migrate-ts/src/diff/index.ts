@@ -129,7 +129,7 @@ export async function diff(
           fk, status: ALLOWED,
         });
       }
-      for (const check of table.checks) {
+      for (const check of table.checks ?? []) {
         changes.push({
           kind: "add-check", table: table.name, ...schemaSpread(table.schema),
           check, status: ALLOWED,
@@ -269,8 +269,10 @@ function diffTableChecks(
 ): void {
   const table = expected.name;
   const sx = schemaSpread(expected.schema);
-  const expectedChk = new Map(expected.checks.map((c) => [c.name, c]));
-  const actualChk = new Map(actual.checks.map((c) => [c.name, c]));
+  // Tolerate a missing `checks` array (older snapshots / hand-built fixtures);
+  // mirrors the v1→v2 parse upgrade that defaults absent checks to [].
+  const expectedChk = new Map((expected.checks ?? []).map((c) => [c.name, c]));
+  const actualChk = new Map((actual.checks ?? []).map((c) => [c.name, c]));
   for (const [name, ec] of expectedChk) {
     const ac = actualChk.get(name);
     if (!ac) {

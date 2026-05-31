@@ -13,6 +13,7 @@ const STAGE_ORDER: Record<Change["kind"], number> = {
   "rename-column": 3, "rename-table": 3,
   "add-index": 4, "drop-index": 4,
   "add-fk": 5, "drop-fk": 5,
+  "add-check": 5, "drop-check": 5,
   "drop-table": 6,
   "create-view": 99, "drop-view": 99, "replace-view": 99,
 };
@@ -110,6 +111,8 @@ function changeTable(c: Change): string | undefined {
     case "drop-index":
     case "add-fk":
     case "drop-fk":
+    case "add-check":
+    case "drop-check":
       return c.table;
     default:
       return undefined;
@@ -188,6 +191,11 @@ function renderUpNative(c: Change): string {
     case "rename-column":  return `ALTER TABLE ${quote(c.table)} RENAME COLUMN ${quote(c.from)} TO ${quote(c.to)};`;
     case "add-index":      return renderCreateIndex(c.table, c.index);
     case "drop-index":     return `DROP INDEX ${quote(c.index)};`;
+    case "add-check":
+    case "drop-check":
+      // SQLite cannot ADD/DROP a CHECK in place; it needs the recreate-and-copy
+      // machinery (a follow-on). Throw rather than silently mis-emit.
+      throw new Error("CHECK migration not implemented for sqlite (recreate path pending)");
     case "change-column-type":
     case "change-column-nullable":
     case "change-column-default":
@@ -212,6 +220,11 @@ function renderDownNative(c: Change): string {
     case "rename-column":  return `ALTER TABLE ${quote(c.table)} RENAME COLUMN ${quote(c.to)} TO ${quote(c.from)};`;
     case "add-index":      return `DROP INDEX ${quote(c.index.name)};`;
     case "drop-index":     return `-- WARNING: down migration cannot restore the original index definition`;
+    case "add-check":
+    case "drop-check":
+      // SQLite cannot ADD/DROP a CHECK in place; it needs the recreate-and-copy
+      // machinery (a follow-on). Throw rather than silently mis-emit.
+      throw new Error("CHECK migration not implemented for sqlite (recreate path pending)");
     case "change-column-type":
     case "change-column-nullable":
     case "change-column-default":

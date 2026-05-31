@@ -16,6 +16,7 @@ const STAGE_ORDER: Record<Change["kind"], number> = {
   "rename-column": 3, "rename-table": 3,
   "add-index": 4, "drop-index": 4,
   "add-fk": 5, "drop-fk": 5,
+  "add-check": 5, "drop-check": 5,
   "drop-table": 6,
   "create-view": 7, "replace-view": 7,
 };
@@ -61,6 +62,8 @@ function renderUp(c: Change): string {
     case "drop-index":             return `DROP INDEX ${quoteIndexQualified(c.index, c.schema)};`;
     case "add-fk":                 return renderAddFk(c.table, c.schema, c.fk);
     case "drop-fk":                return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.fk)};`;
+    case "add-check":              return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD CONSTRAINT ${quote(c.check.name)} CHECK (${c.check.expression});`;
+    case "drop-check":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.check)};`;
     case "create-view":            return renderCreateView(c.view, c.schema, /* orReplace */ false);
     case "drop-view":              return `DROP VIEW ${quoteQualifiedView(c.view, c.schema)};`;
     case "replace-view":           return renderCreateView(c.view, c.schema, /* orReplace */ true);
@@ -88,6 +91,8 @@ function renderDown(c: Change): string {
     case "drop-index":             return `-- WARNING: down migration cannot restore the original index definition`;
     case "add-fk":                 return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.fk.name)};`;
     case "drop-fk":                return `-- WARNING: down migration cannot restore the original FK definition`;
+    case "add-check":              return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.check.name)};`;
+    case "drop-check":             return `-- WARNING: down migration cannot restore the original CHECK definition`;
     case "create-view":            return `DROP VIEW ${quoteQualifiedView(c.view.name, c.schema)};`;
     case "drop-view":              return `-- WARNING: down migration cannot restore the original view definition`;
     case "replace-view":           return `-- WARNING: down migration cannot restore the original view definition`;
@@ -98,6 +103,9 @@ function renderCreateTable(t: TableDescriptor): string {
   const colDefs = t.columns.map((c) => `  ${renderColumn(c)}`);
   if (t.primaryKey.length > 0) {
     colDefs.push(`  CONSTRAINT ${quote(t.name + "_pkey")} PRIMARY KEY (${t.primaryKey.map(quote).join(", ")})`);
+  }
+  for (const chk of t.checks ?? []) {
+    colDefs.push(`  CONSTRAINT ${quote(chk.name)} CHECK (${chk.expression})`);
   }
   const create = `CREATE TABLE ${quoteQualified(t.name, t.schema)} (\n${colDefs.join(",\n")}\n);`;
   const comments = renderTableComments(t);

@@ -65,6 +65,10 @@ function changeLocator(c: Change): string {
       return `${c.table}.${c.fk.name}`;
     case "drop-fk":
       return `${c.table}.${c.fk}`;
+    case "add-check":
+      return `${c.table}.${c.check.name}`;
+    case "drop-check":
+      return `${c.table}.${c.check}`;
     case "create-view":
     case "replace-view":
       return c.view.name;
