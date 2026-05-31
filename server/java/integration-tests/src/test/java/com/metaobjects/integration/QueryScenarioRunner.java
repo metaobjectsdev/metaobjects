@@ -13,8 +13,12 @@ import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -60,18 +64,52 @@ public final class QueryScenarioRunner {
 
         // 3. Run queries.
         ObjectConnection oc = omdb.getConnection();
+        // Per-entity actual SQL column types, probed once from the catalog. OMDB
+        // collapses a column to its field-subtype Java type (losing INTEGER vs
+        // BIGINT), but the canonical wire shape is driven by the real column type
+        // — see ObjectManagerDbAdapter.coerceWireType.
+        Map<MetaObject, Map<String, Integer>> columnTypeCache = new HashMap<>();
         try {
             for (QuerySpec spec : scenario.queries()) {
                 MetaObject mc = findEntityByShortName(loader, spec.entity());
                 if (mc == null) throw new AssertionError(
                     scenario.sourcePath() + " / " + spec.name() +
                     ": no MetaObject named '" + spec.entity() + "' in canonical loader");
-                Object actual = ObjectManagerDbAdapter.execute(omdb, oc, mc, spec);
+                Map<String, Integer> columnSqlTypes = columnTypeCache.computeIfAbsent(
+                    mc, m -> probeColumnSqlTypes(pg, m));
+                Object actual = ObjectManagerDbAdapter.execute(omdb, oc, mc, spec, columnSqlTypes);
                 assertResult(scenario.sourcePath(), spec, actual);
             }
         } finally {
             omdb.releaseConnection(oc);
         }
+    }
+
+    /**
+     * Probe the actual JDBC column type ({@link java.sql.Types}) of each column on
+     * the entity's primary physical relation (table or view), keyed by column name.
+     * The corpus declares no {@code @column} renames, so a column name equals its
+     * {@code field.*} name; {@link ObjectManagerDbAdapter} keys the result by field
+     * name. A {@code SELECT * ... WHERE 1=0} returns no rows but a fully-typed
+     * {@link ResultSetMetaData}. Returns an empty map for a non-persistent object.
+     */
+    private static Map<String, Integer> probeColumnSqlTypes(PostgresContainer pg, MetaObject mc) {
+        String relation = mc.getPrimaryRdbViewName();
+        if (relation == null) relation = mc.getPrimaryRdbTableName();
+        if (relation == null) return Map.of();
+        Map<String, Integer> types = new LinkedHashMap<>();
+        String sql = "SELECT * FROM \"" + relation + "\" WHERE 1=0";
+        try (Connection c = openConnection(pg);
+             Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery(sql)) {
+            ResultSetMetaData md = rs.getMetaData();
+            for (int i = 1; i <= md.getColumnCount(); i++) {
+                types.put(md.getColumnName(i), md.getColumnType(i));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to probe column types for relation '" + relation + "'", e);
+        }
+        return types;
     }
 
     /**
