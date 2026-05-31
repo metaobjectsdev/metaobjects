@@ -25,7 +25,13 @@ import kotlin.test.fail
  *  - REQUIRED array-of-objects (lines -> Line{sku, qty})
  *  - REQUIRED string scalar-array (tags: List<String>)
  *  - REQUIRED int scalar-array (scores: List<Int>) — proves non-string scalar arrays (the C# bug)
+ *  - REQUIRED float scalar-array (ratings: List<Float>) — proves a non-Int numeric element parse
+ *  - REQUIRED enum scalar-array (flags: List<String>) — proves the enum element type passthrough
  *  - OPTIONAL scalar (note: String)
+ *
+ * The generated extractor source is additionally compiled with warnings-as-errors (see the
+ * extractor-source `allWarningsAsErrors` compile below) so an "Unnecessary non-null assertion"
+ * warning (e.g. a stray `it!!` on the array-of-objects element) is a hard failure.
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
 class KotlinExtractorCompilesTest {
@@ -44,6 +50,8 @@ class KotlinExtractorCompilesTest {
             { "field.object":   { "name": "lines", "@objectRef": "acme::shop::Line", "isArray": true, "@required": true } },
             { "field.string":   { "name": "tags", "isArray": true, "@required": true } },
             { "field.int":      { "name": "scores", "isArray": true, "@required": true } },
+            { "field.float":    { "name": "ratings", "isArray": true, "@required": true } },
+            { "field.enum":     { "name": "flags", "isArray": true, "@required": true, "@values": ["A", "B"] } },
             { "field.string":   { "name": "note" } }
         ] } },
         { "template.output": { "name": "OrderOut",
@@ -93,6 +101,8 @@ class KotlinExtractorCompilesTest {
                 "\"lines\":[{\"sku\":\"A\",\"qty\":1},{\"sku\":\"B\",\"qty\":2}]," +
                 "\"tags\":[\"x\",\"y\"]," +
                 "\"scores\":[3,7]," +
+                "\"ratings\":[1.5,2.5]," +
+                "\"flags\":[\"A\",\"B\"]," +
                 "\"note\":\"hi\",}\n```"
 
             val order = extractMethod.invoke(extractorInstance, loader, dirty)
@@ -120,6 +130,16 @@ class KotlinExtractorCompilesTest {
             val scores = orderClass.getDeclaredMethod("getScores").invoke(order) as List<Int>
             assertEquals(listOf(3, 7), scores, "int scalar-array must populate as typed List<Int>")
 
+            @Suppress("UNCHECKED_CAST")
+            val ratings = orderClass.getDeclaredMethod("getRatings").invoke(order) as List<Float>
+            assertEquals(listOf(1.5f, 2.5f), ratings,
+                "float scalar-array must populate as typed List<Float> (non-Int numeric element parse)")
+
+            @Suppress("UNCHECKED_CAST")
+            val flags = orderClass.getDeclaredMethod("getFlags").invoke(order) as List<String>
+            assertEquals(listOf("A", "B"), flags,
+                "enum scalar-array must populate (enum element type is String → passthrough)")
+
             assertEquals("hi", orderClass.getDeclaredMethod("getNote").invoke(order),
                 "optional scalar note must populate")
 
@@ -136,12 +156,64 @@ class KotlinExtractorCompilesTest {
             val recoverMethod = extractorClass.getDeclaredMethod("recover", loaderClass, String::class.java)
             val clean = "{\"customer\":{\"name\":\"Ada\"}," +
                 "\"lines\":[{\"sku\":\"A\",\"qty\":1}]," +
-                "\"tags\":[\"x\"],\"scores\":[3],\"note\":\"hi\"}"
+                "\"tags\":[\"x\"],\"scores\":[3],\"ratings\":[1.5],\"flags\":[\"A\"],\"note\":\"hi\"}"
             val rr = recoverMethod.invoke(extractorInstance, loader, clean)
             val reportClass = cl.loadClass("com.metaobjects.render.recover.RecoveryReport")
             val report = rr.javaClass.getMethod("report").invoke(rr)
             assertFalse(reportClass.getDeclaredMethod("hasLostRequired").invoke(report) as Boolean,
                 "clean input must have hasLostRequired() == false")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Lock in I1: the generated extractor must compile warning-free under warnings-as-errors so a
+     * stray "Unnecessary non-null assertion" (e.g. a per-element `it!!` on the array-of-objects map)
+     * cannot regress for `-Werror` consumers.
+     *
+     * Approach: compile the FULL generated set (Payload + Parser + Extractor) with
+     * `allWarningsAsErrors = true`. If the build is clean this is the strongest gate. If
+     * pre-existing warnings in the payload/parser (which this fix does not own) trip the global
+     * flag, fall back to asserting specifically that the extractor produced no "Unnecessary non-null
+     * assertion" warning — and report which path was taken via the failure message.
+     */
+    @Test fun `generated extractor compiles warning-free (no unnecessary non-null assertion)`() {
+        val outDir = Files.createTempDirectory("compile-extractor-werror-")
+        try {
+            val loader = loadString("extractor-werror-test", fixture)
+            for (gen in listOf(KotlinPayloadGenerator(), KotlinOutputParserGenerator(), KotlinExtractorGenerator())) {
+                gen.setArgs(mapOf("outputDir" to outDir.toString()))
+                gen.execute(loader)
+            }
+
+            val emitted = Files.walk(outDir).filter { it.isRegularFile() }.sorted().toList()
+            val sources = emitted.map { path ->
+                SourceFile.kotlin(path.parent.relativize(path).toString().replace('/', '_'), path.readText())
+            }
+
+            val werror = KotlinCompilation().apply {
+                this.sources = sources
+                inheritClassPath = true
+                allWarningsAsErrors = true
+                messageOutputStream = System.out
+            }
+            val result = werror.compile()
+
+            // No "Unnecessary non-null assertion" anywhere in the generated set — the direct I1 gate.
+            assertFalse(
+                result.messages.contains("Unnecessary non-null assertion"),
+                "generated extractor must not emit an 'Unnecessary non-null assertion' warning:\n${result.messages}"
+            )
+
+            // Strongest form: the whole generated set is warning-clean under -Werror. If this trips
+            // on a pre-existing payload/parser warning we don't own, the assertion above already
+            // proved I1; surface the messages so the offending (non-extractor) warning is visible.
+            assertEquals(
+                KotlinCompilation.ExitCode.OK, result.exitCode,
+                "generated set failed under allWarningsAsErrors (I1's no-non-null-assertion gate already " +
+                    "passed; remaining warnings are not owned by this fix):\n${result.messages}"
+            )
         } finally {
             outDir.toFile().deleteRecursively()
         }

@@ -1,11 +1,7 @@
 package com.metaobjects.generator.kotlin
 
-import com.metaobjects.field.BooleanField
-import com.metaobjects.field.DoubleField
-import com.metaobjects.field.EnumField
-import com.metaobjects.field.IntegerField
-import com.metaobjects.field.LongField
 import com.metaobjects.field.MetaField
+import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.loader.MetaDataLoader
@@ -13,6 +9,12 @@ import com.metaobjects.`object`.MetaObject
 import com.metaobjects.template.MetaTemplate
 import com.metaobjects.template.OutputTemplate
 import com.metaobjects.template.TemplateConstants
+import com.squareup.kotlinpoet.BOOLEAN
+import com.squareup.kotlinpoet.DOUBLE
+import com.squareup.kotlinpoet.FLOAT
+import com.squareup.kotlinpoet.INT
+import com.squareup.kotlinpoet.LONG
+import com.squareup.kotlinpoet.STRING
 import java.io.OutputStream
 import java.io.PrintWriter
 import java.nio.file.Files
@@ -248,8 +250,9 @@ class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      *   <li>single nested object → `toStrict<Nested>(m.f!!)`;</li>
      *   <li>array-of-objects → `m.f!!.map { toStrict<Item>(it!!) }`;</li>
      *   <li>scalar array → `m.f!!.filterNotNull()` (drop nulls); a non-string element type
-     *       (Int/Long/Double/Boolean) additionally maps each `String` element to the strict
-     *       element type. String + enum arrays pass through unchanged;</li>
+     *       (Int/Long/Double/Float/Boolean/UUID/LocalDate/LocalTime/Instant) additionally maps
+     *       each `String` element to the strict element type. String + enum arrays pass through
+     *       unchanged;</li>
      *   <li>scalar / enum (single) → `m.f!!`.</li>
      * </ul>
      */
@@ -262,7 +265,11 @@ class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             nested.add(target)
             val nestedStrict = PackageMapping.splitFqn(target.name).second + "Payload"
             return if (field.isArrayType()) {
-                "m.$name!!.map { toStrict$nestedStrict(it!!) }"
+                // The mirror element type for an array-of-objects is the NON-NULL nested mirror
+                // (KotlinRecoverSchemaEmitter.nestedNullableTypeName emits `List<<Nested>Recovered>?`),
+                // so `it` is already non-null after `m.f!!` — no per-element `!!` (which would be an
+                // "Unnecessary non-null assertion" warning, breaking -Werror consumers).
+                "m.$name!!.map { toStrict$nestedStrict(it) }"
             } else {
                 "toStrict$nestedStrict(m.$name!!)"
             }
@@ -287,16 +294,44 @@ class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     /**
      * The per-element conversion (applied to a non-null `String` element `it`) that narrows the
      * mirror's `List<String>` element to the strict payload's scalar-array element type. Returns
-     * `null` for string-backed elements (string + enum), which pass through unchanged. Mirrors the
-     * single-scalar [KotlinTypeMapper.kotlinTypeName] type mapping (enum is string-backed → null).
+     * `null` for string-backed elements (`String` + `enum`), which pass through unchanged.
+     *
+     * <p>DRIFT-PROOF by construction: the strict element type is derived from the SAME call
+     * [KotlinPayloadGenerator.resolveFieldType] uses for a scalar-array element —
+     * [KotlinTypeMapper.kotlinTypeName] — so the element type the payload declares
+     * (`List<<that type>>`) and the parse emitted here cannot diverge. We dispatch on the resulting
+     * KotlinPoet [com.squareup.kotlinpoet.TypeName] rather than on the field subtype, so the two
+     * sites stay in lockstep through the single mapper.</p>
+     *
+     * <p>If [KotlinTypeMapper] ever grows an element type with no safe `String`→type parse, this
+     * FAILS LOUD at codegen time ([GeneratorException]) rather than emitting non-compiling code.</p>
      */
-    private fun scalarArrayElementConversion(field: MetaField<*>): String? = when (field) {
-        is EnumField    -> null   // string-backed on the wire
-        is IntegerField -> "it.toInt()"
-        is LongField    -> "it.toLong()"
-        is DoubleField  -> "it.toDouble()"
-        is BooleanField -> "it.toBoolean()"
-        else            -> null   // StringField + any unrecognized type stay String
+    private fun scalarArrayElementConversion(field: MetaField<*>): String? {
+        // Same path the payload generator wraps in List<…> for a scalar-array element.
+        val elementType = KotlinTypeMapper.kotlinTypeName(field)
+        return when (elementType) {
+            STRING -> null            // String element — passthrough (also the enum element type)
+            INT     -> "it.toInt()"
+            LONG    -> "it.toLong()"  // also field.currency (minor-unit Long)
+            DOUBLE  -> "it.toDouble()"
+            FLOAT   -> "it.toFloat()"
+            BOOLEAN -> "it.toBoolean()"
+            // Reference element types — match on the fully-qualified canonical name and emit a
+            // parse using FQNs so the emitted code resolves without imports (as the rest of the
+            // generator does). java.time.Instant is field.timestamp's element type.
+            else -> when (elementType.toString()) {
+                "java.util.UUID"          -> "java.util.UUID.fromString(it)"
+                "java.time.LocalDate"     -> "java.time.LocalDate.parse(it)"
+                "java.time.LocalTime"     -> "java.time.LocalTime.parse(it)"
+                "java.time.LocalDateTime" -> "java.time.LocalDateTime.parse(it)"
+                "java.time.Instant"       -> "java.time.Instant.parse(it)"
+                else -> throw GeneratorException(
+                    "no scalar-array element conversion for field '${field.name}' " +
+                        "(element type $elementType) — add a String->type parse in " +
+                        "KotlinExtractorGenerator.scalarArrayElementConversion"
+                )
+            }
+        }
     }
 
     /** Resolve a `@payloadRef` to its `object.value` (rejects entities — payloads must be VOs). */
