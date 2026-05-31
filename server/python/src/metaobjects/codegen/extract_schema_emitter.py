@@ -40,6 +40,14 @@ def _field_spec_literal(field: MetaData, owner: MetaData) -> str:
     required = fm.is_required(field)
     req = "True" if required else "False"
 
+    # ARRAY is checked BEFORE the scalar-enum branch below: an enum ARRAY is baked as a
+    # string-list scalar slot (read via as_string_list), NOT a scalar enum_field —
+    # otherwise the runtime collapses the list to one stringified value (the cross-port
+    # "enum-before-isArray" ordering bug). The mirror type / extract_map helper already
+    # route arrays first; this keeps the baked schema spec consistent with them.
+    if fm.is_array(field):
+        return f'FieldSpec.scalar("{name}", FieldKind.STRING, {req})'
+
     if field.sub_type == fc.FIELD_SUBTYPE_ENUM:
         values_lit = fm.string_list_literal(fm.enum_values(field))
         alias_lit = fm.properties_map_literal(field.attr(fc.FIELD_ATTR_ENUM_ALIAS))

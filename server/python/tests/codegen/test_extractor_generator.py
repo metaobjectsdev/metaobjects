@@ -110,6 +110,23 @@ def _order_root() -> MetaRoot:
                 fc.FIELD_SUBTYPE_INT,
                 **{fc.FIELD_ATTR_REQUIRED: True, KEY_IS_ARRAY: True},
             ),
+            _field(
+                "priority",
+                fc.FIELD_SUBTYPE_ENUM,
+                **{
+                    fc.FIELD_ATTR_REQUIRED: True,
+                    fc.FIELD_ATTR_VALUES: ["LOW", "HIGH"],
+                },
+            ),
+            _field(
+                "labels",
+                fc.FIELD_SUBTYPE_ENUM,
+                **{
+                    fc.FIELD_ATTR_REQUIRED: True,
+                    fc.FIELD_ATTR_VALUES: ["A", "B"],
+                    KEY_IS_ARRAY: True,
+                },
+            ),
             _field("note", fc.FIELD_SUBTYPE_STRING),  # optional scalar
             _field(
                 "aliases",
@@ -243,7 +260,9 @@ def test_extract_extracts_dirty_into_strict_payload(tmp_path, monkeypatch) -> No
         '{ "customer": {"name": "Ada"}, '
         '"lines": [{"sku":"A","qty":2},{"sku":"B","qty":1}], '
         '"tags": ["x","y"], '
-        '"scores": [3, 7] }\n```'
+        '"scores": [3, 7], '
+        '"priority": "HIGH", '
+        '"labels": ["A", "B"] }\n```'
     )
     order = ex.extract_order_out(root, dirty)
     # nested single populated + typed.
@@ -257,6 +276,10 @@ def test_extract_extracts_dirty_into_strict_payload(tmp_path, monkeypatch) -> No
     # NON-string scalar array → list[int], coerced per-kind (cross-port parity).
     assert order.scores == [3, 7]
     assert all(isinstance(s, int) for s in order.scores)
+    # enum scalar → Literal-typed member (identity through the mapper).
+    assert order.priority == "HIGH"
+    # enum array → list[Literal[...]] (string-list path, NOT collapsed to a scalar).
+    assert order.labels == ["A", "B"]
     # optional nested absent → None.
     assert order.ship_to is None
     # optional scalar-array absent → None (the `if m.f is not None else None` branch).
@@ -279,6 +302,8 @@ def test_extract_populates_optional_nested_when_present(tmp_path, monkeypatch) -
         '"lines": [{"sku":"A","qty":2}], '
         '"tags": ["x"], '
         '"scores": [3], '
+        '"priority": "LOW", '
+        '"labels": ["A"], '
         '"ship_to": {"name": "Grace"} }\n```'
     )
     order = ex.extract_order_out(root, dirty)
@@ -306,6 +331,8 @@ def test_extract_populates_optional_scalar_array_when_present(
         '"lines": [{"sku":"A","qty":2}], '
         '"tags": ["x"], '
         '"scores": [3], '
+        '"priority": "LOW", '
+        '"labels": ["A"], '
         '"aliases": ["ada", "lovelace"] }\n```'
     )
     order = ex.extract_order_out(root, dirty)
@@ -341,9 +368,88 @@ def test_extract_reexposed_never_raises_and_no_lost_required(tmp_path, monkeypat
             "lines": [{"sku": "A", "qty": 2}],
             "tags": ["x"],
             "scores": [3, 7],
+            "priority": "HIGH",
+            "labels": ["A", "B"],
         }
     )
     r = ex.extract_lenient_order_out(root, clean)
     assert r.report.has_lost_required() is False
     # nested populated in the mirror too (with-loader path).
     assert r.data.customer.name == "Ada"
+
+
+# ---------------------------------------------------------------------------
+# Typed-enum payload fields (Task 2) — Literal scalar + list[Literal[...]] array,
+# Pydantic runtime-enforced; lenient mirror leaf stays bare ``str``.
+# ---------------------------------------------------------------------------
+
+
+def test_payload_types_enum_field_as_literal_scalar_and_array() -> None:
+    """The STRICT payload annotates an enum field as ``Literal[...]`` (scalar) and an
+    enum array as ``list[Literal[...]]`` — NOT bare ``str`` / ``list[str]``."""
+    from metaobjects.codegen.generators.payload_vo_generator import render_payload_vo
+
+    root = _order_root()
+    payload_src = render_payload_vo(root.own_children()[3], root)
+    assert payload_src is not None
+    # Inline enum (no shared super) → inline Literal, NOT a bare str.
+    assert 'priority: Literal["LOW", "HIGH"]' in payload_src
+    assert "priority: str" not in payload_src
+    # Enum array → list[Literal[...]], NOT list[str] and NOT a collapsed scalar.
+    assert 'labels: list[Literal["A", "B"]]' in payload_src
+    assert "labels: list[str]" not in payload_src
+    assert "from typing import Literal" in payload_src
+
+
+def test_payload_literal_is_pydantic_runtime_enforced(tmp_path, monkeypatch) -> None:
+    """Constructing the generated payload with an OFF-set enum member raises
+    ``pydantic.ValidationError`` — proving the ``Literal`` is runtime-validated."""
+    from importlib import import_module
+
+    import pydantic
+
+    root = _order_root()
+    pkg_dir = _materialize_package(_all_files(root), tmp_path)
+    _import_package(pkg_dir, monkeypatch)
+    payload_mod = import_module("_gen_pkg.order_out_payload")
+    OrderOutPayload = payload_mod.OrderOutPayload
+
+    # A valid member constructs fine.
+    ok = OrderOutPayload(
+        customer={"name": "Ada"},
+        lines=[{"sku": "A", "qty": 2}],
+        tags=["x"],
+        scores=[3],
+        priority="HIGH",
+        labels=["A", "B"],
+    )
+    assert ok.priority == "HIGH"
+    # An OFF-set member raises — the Literal is enforced by Pydantic at construction.
+    with pytest.raises(pydantic.ValidationError):
+        OrderOutPayload(
+            customer={"name": "Ada"},
+            lines=[{"sku": "A", "qty": 2}],
+            tags=["x"],
+            scores=[3],
+            priority="BOGUS",
+            labels=["A"],
+        )
+
+
+def test_lenient_mirror_enum_leaf_stays_str(tmp_path, monkeypatch) -> None:
+    """The lenient ``<Name>Extracted`` mirror keeps the enum leaf as bare ``str`` —
+    the strict Literal typing is the extract tier's concern, not the mirror's."""
+    from importlib import import_module
+
+    root = _order_root()
+    pkg_dir = _materialize_package(_all_files(root), tmp_path)
+    _import_package(pkg_dir, monkeypatch)
+    parser = import_module("_gen_pkg.order_out_output_parser")
+    import dataclasses
+
+    mirror = parser.OrderOutPayloadExtracted
+    ann = {f.name: f.type for f in dataclasses.fields(mirror)}
+    # enum scalar mirror stays str (no Literal).
+    assert ann["priority"] == "str | None"
+    # enum array mirror stays the string-list shape (no Literal).
+    assert ann["labels"] == "list[str | None] | None"
