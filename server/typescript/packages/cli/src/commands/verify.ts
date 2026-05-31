@@ -246,6 +246,8 @@ const DRIFT_PRESENTATION: Record<Change["kind"], { glyph: string; noun: string }
   "drop-index": { glyph: "-", noun: "index" },
   "add-fk": { glyph: "+", noun: "fk" },
   "drop-fk": { glyph: "-", noun: "fk" },
+  "add-check": { glyph: "+", noun: "check" },
+  "drop-check": { glyph: "-", noun: "check" },
   "create-view": { glyph: "+", noun: "view" },
   "replace-view": { glyph: "~", noun: "view" },
   "drop-view": { glyph: "-", noun: "view" },
