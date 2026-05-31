@@ -1,7 +1,7 @@
 # FR-010 TypeScript extract engine — known gaps & intentional cross-port divergences
 
 Scope: the tolerant `extract` pipeline (`src/extract/`). The Java engine
-(`server/java/render/.../extract/`) is the cross-port reference; `fixtures/recover-conformance/`
+(`server/java/render/.../extract/`) is the cross-port reference; `fixtures/extract-conformance/`
 is the oracle. All 10 corpus cases pass.
 
 ## Additive capability (TS + C#, beyond Java/Kotlin)

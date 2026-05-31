@@ -2,7 +2,7 @@
 
 Scope: the tolerant `extract` pipeline (`com.metaobjects.render.extract`). This Java engine is the
 cross-port reference (Kotlin reuses it directly via the shared JVM render engine);
-`fixtures/recover-conformance/` is the oracle. All corpus cases pass.
+`fixtures/extract-conformance/` is the oracle. All corpus cases pass.
 
 ## FR-011 extract hardening — current state
 

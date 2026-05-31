@@ -6,28 +6,28 @@ using ExtractEngine = MetaObjects.Render.Extract.ExtractEngine;
 namespace MetaObjects.Render.Tests.Extract;
 
 /// <summary>
-/// Cross-language recover-conformance corpus runner — FR-010 + FR-011 correctness gate.
-/// Each fixture dir under fixtures/recover-conformance/ holds:
+/// Cross-language extract-conformance corpus runner — FR-010 + FR-011 correctness gate.
+/// Each fixture dir under fixtures/extract-conformance/ holds:
 ///   schema.json   { "format": "JSON"|"XML", "rootName": "...", "fields": [...] }
 ///   input.txt     the raw (possibly dirty) LLM output
 ///   expected.json { "empty": bool, "states": { field: FieldExtraction }, "data": { field: value } }
 ///
 /// All corpus cases must pass. The corpus is the oracle — do not weaken assertions.
-/// Mirrors the cross-port recover-conformance runner exactly.
+/// Mirrors the cross-port extract-conformance runner exactly.
 /// </summary>
 public class ExtractConformanceTests
 {
     private static string CorpusRoot()
     {
         string root = AppContext.BaseDirectory;
-        while (!Directory.Exists(Path.Combine(root, "fixtures", "recover-conformance")))
+        while (!Directory.Exists(Path.Combine(root, "fixtures", "extract-conformance")))
         {
             string? parent = Directory.GetParent(root)?.FullName;
             if (parent is null || parent == root)
-                throw new InvalidOperationException("fixtures/recover-conformance not found");
+                throw new InvalidOperationException("fixtures/extract-conformance not found");
             root = parent;
         }
-        return Path.Combine(root, "fixtures", "recover-conformance");
+        return Path.Combine(root, "fixtures", "extract-conformance");
     }
 
     public static IEnumerable<object[]> Cases()

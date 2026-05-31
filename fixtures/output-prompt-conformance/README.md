@@ -11,7 +11,7 @@ across all five ports. Each case directory holds:
 Every port: parse `spec.json` → build native `OutputFormatSpec` → `render(spec, style)` for
 each style → assert byte-equal to `expected.<style>.txt`. Zero-drift: no ledger; any
 divergence fails the build. For `spec.json` with `"roundTrip": true`, also build a
-`RecoverSchema` from the same descriptor and assert `recover(expected.exampleOnly.txt)`
+`ExtractSchema` from the same descriptor and assert `extract(expected.exampleOnly.txt)`
 classifies every field cleanly (no MALFORMED / LOST_*).
 
 ## `spec.json` schema

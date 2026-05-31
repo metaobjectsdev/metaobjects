@@ -9,7 +9,7 @@ field values, list contents, overflow), not byte-identity.
 
 Mirrors the Java ``ObjectModelConformanceTest`` and the TS
 ``object-model-conformance.test.ts`` runners. The corpus dir is resolved by
-walking up to the repo root (same as the sibling recover-conformance runner).
+walking up to the repo root (same as the sibling extract-conformance runner).
 """
 from __future__ import annotations
 

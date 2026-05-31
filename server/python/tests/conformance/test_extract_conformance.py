@@ -1,6 +1,6 @@
-"""Cross-language recover-conformance corpus runner — FR-010 correctness gate.
+"""Cross-language extract-conformance corpus runner — FR-010 correctness gate.
 
-Each fixture dir under ``fixtures/recover-conformance/`` holds:
+Each fixture dir under ``fixtures/extract-conformance/`` holds:
 
 - ``schema.json``   ``{ "format": "JSON"|"XML", "rootName": "...", "fields": [...] }``
 - ``input.txt``     the raw (possibly dirty) LLM output
@@ -29,11 +29,11 @@ from metaobjects.render.extract import (
 def _find_corpus() -> Path:
     p = Path(__file__).resolve()
     while p != p.parent:
-        candidate = p / "fixtures" / "recover-conformance"
+        candidate = p / "fixtures" / "extract-conformance"
         if candidate.is_dir():
             return candidate
         p = p.parent
-    raise RuntimeError("fixtures/recover-conformance not found walking up from tests/")
+    raise RuntimeError("fixtures/extract-conformance not found walking up from tests/")
 
 
 _CORPUS = _find_corpus()

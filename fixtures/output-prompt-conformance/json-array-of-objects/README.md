@@ -2,4 +2,4 @@
 
 Array-of-objects (`lines: Line[]`). Exercises `[ {…} ]` element expansion + guide
 `lines[].sku` / `lines[].qty` dotted paths; round-trips through nested array
-recovery. roundTrip:true.
+extraction. roundTrip:true.

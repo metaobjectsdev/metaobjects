@@ -15,22 +15,22 @@ import {
 } from "../../src/extract/types.js";
 import type { NormalizeMode } from "../../src/extract/normalize.js";
 
-// FR-010 cross-language recover-conformance corpus runner — the correctness gate.
-// Each fixture dir under fixtures/recover-conformance/ holds:
+// FR-010 cross-language extract-conformance corpus runner — the correctness gate.
+// Each fixture dir under fixtures/extract-conformance/ holds:
 //   schema.json   { "format": "JSON"|"XML", "rootName": "...", "fields": [...] }
 //   input.txt     the raw (possibly dirty) LLM output
 //   expected.json { "empty": bool, "states": { path: FieldExtraction }, "data": { field: value } }
 // All cases must pass. The corpus is the oracle — do not weaken assertions.
 // Mirrors ExtractConformanceTest.java / ExtractConformanceTests.cs exactly.
 
-/** Walk up from this test dir to the repo root that contains fixtures/recover-conformance. */
+/** Walk up from this test dir to the repo root that contains fixtures/extract-conformance. */
 function corpusRoot(): string {
   let dir = import.meta.dir;
   for (;;) {
-    const candidate = join(dir, "fixtures", "recover-conformance");
+    const candidate = join(dir, "fixtures", "extract-conformance");
     if (existsSync(candidate)) return candidate;
     const parent = dirname(dir);
-    if (parent === dir) throw new Error("fixtures/recover-conformance not found");
+    if (parent === dir) throw new Error("fixtures/extract-conformance not found");
     dir = parent;
   }
 }
@@ -152,7 +152,7 @@ function assertCanonical(caseName: string, field: string, expected: unknown, act
   }
 }
 
-describe("recover-conformance corpus", () => {
+describe("extract-conformance corpus", () => {
   const corpus = corpusRoot();
   const cases = readdirSync(corpus)
     .filter((n) => statSync(join(corpus, n)).isDirectory())

@@ -27,8 +27,8 @@ public class ExtractConformanceTest {
     private static final Path CORPUS;
     static {
         Path p = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
-        while (p != null && !Files.exists(p.resolve("fixtures/recover-conformance"))) p = p.getParent();
-        CORPUS = p == null ? null : p.resolve("fixtures/recover-conformance");
+        while (p != null && !Files.exists(p.resolve("fixtures/extract-conformance"))) p = p.getParent();
+        CORPUS = p == null ? null : p.resolve("fixtures/extract-conformance");
     }
 
     private final Path dir;

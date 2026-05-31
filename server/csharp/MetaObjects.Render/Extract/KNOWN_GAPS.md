@@ -1,7 +1,7 @@
 # FR-010 C# extract engine — known gaps & intentional cross-port divergences
 
 Scope: the tolerant `Extract` pipeline (`MetaObjects.Render/Extract/`). The Java engine
-(`server/java/render/.../extract/`) is the reference; `fixtures/recover-conformance/` is the
+(`server/java/render/.../extract/`) is the reference; `fixtures/extract-conformance/` is the
 cross-port oracle. All 10 corpus cases pass.
 
 ## Bounded deferrals (parity with Java/Kotlin)
