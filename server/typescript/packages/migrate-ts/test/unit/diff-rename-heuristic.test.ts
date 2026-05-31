@@ -15,6 +15,7 @@ function tableWithCols(cols: { name: string; type?: "text" | "integer"; nullable
     indexes: [],
     foreignKeys: [],
     primaryKey: [],
+    checks: [],
   };
 }
 
@@ -99,6 +100,7 @@ describe("rename-heuristic — table", () => {
       indexes: [],
       foreignKeys: [],
       primaryKey: ["id"],
+      checks: [],
     };
   }
 
@@ -128,7 +130,7 @@ describe("rename-heuristic — table", () => {
           { name: "x", sqlType: { kind: "integer" as const, bits: 32 as const }, nullable: true },
           { name: "y", sqlType: { kind: "real" as const }, nullable: true },
         ],
-        indexes: [], foreignKeys: [], primaryKey: [],
+        indexes: [], foreignKeys: [], primaryKey: [], checks: [],
       }],
       views: [],
     };

@@ -11,7 +11,7 @@ import { buildExpectedSchema } from "../../src/expected-schema.js";
 import { diff } from "../../src/diff/index.js";
 import { emit } from "../../src/emit/index.js";
 import { baselineFromMetadata, planOffline } from "../../src/snapshot/plan.js";
-import type { Dialect } from "../../src/types.js";
+import type { Dialect, SchemaSnapshot } from "../../src/types.js";
 
 async function load(json: string): Promise<MetaData> {
   return (await new MetaDataLoader().load([new InMemoryStringSource(json)])).root;
@@ -28,7 +28,7 @@ const META = JSON.stringify({
   }] },
 });
 
-const EMPTY = { tables: [], views: [] } as const;
+const EMPTY: SchemaSnapshot = { tables: [], views: [] };
 
 describe("CHECK constraints — end-to-end (enum → CHECK)", () => {
   test("(a) new postgres table inlines the CHECK exactly once, no ADD CONSTRAINT", async () => {
