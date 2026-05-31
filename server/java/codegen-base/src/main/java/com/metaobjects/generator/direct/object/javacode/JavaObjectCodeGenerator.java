@@ -1,11 +1,21 @@
 package com.metaobjects.generator.direct.object.javacode;
 
+import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.direct.GenerationContext;
 import com.metaobjects.generator.direct.object.BaseObjectCodeWriter;
+import com.metaobjects.generator.util.GeneratorUtil;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.registry.ObjectClassBindingProvider;
 
+import java.io.File;
+import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Flavor-selecting Java object code generator.
@@ -39,6 +49,102 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
     /** Read the {@code flavor} argument (empty = legacy interface flavor). */
     public String getFlavor() {
         return getArg(ARG_FLAVOR, "");
+    }
+
+    /** Whether this run emits CONCRETE classes (and therefore a binding provider). */
+    private boolean isConcreteFlavor() {
+        return FLAVOR_POJO_AWARE.equals(getFlavor()) || FLAVOR_VALUE_OBJECT.equals(getFlavor());
+    }
+
+    // FQN ("pkg::Name") of the generated provider class self-registered via ServiceLoader.
+    static final String PROVIDER_PACKAGE = "com.metaobjects.generated";
+    static final String PROVIDER_SIMPLE_NAME = "GeneratedObjectClassBindingProvider";
+    static final String PROVIDER_FQN = PROVIDER_PACKAGE + "." + PROVIDER_SIMPLE_NAME;
+
+    /**
+     * Runs the standard multi-file emission, then — for a concrete flavor — emits ONE
+     * self-registering {@link ObjectClassBindingProvider} covering every generated object
+     * (keyed on the package-folded metadata resolution key {@code pkg::Name}, which is what
+     * {@link MetaObject#newInstance()} looks up), plus its {@code META-INF/services}
+     * registration so the provider is discoverable via {@code ServiceLoader}.
+     */
+    @Override
+    public void execute(MetaDataLoader loader) {
+        super.execute(loader);
+
+        if (!isConcreteFlavor()) {
+            return; // legacy interface flavor emits no instantiable class → no binding
+        }
+
+        // Map each generated object's resolution key (mo.getName(), the "pkg::Name" FQN)
+        // to its generated fully-qualified Java class name, reusing the SAME naming hooks
+        // the writer used so the binding targets the class that was actually emitted.
+        JavaCodeWriter namer = (JavaCodeWriter)
+                createWriter(loader, null, new PrintWriter(new java.io.StringWriter()), globalContext);
+        Map<String, String> fqnToClass = new LinkedHashMap<>();
+        Collection<MetaObject> metadata =
+                GeneratorUtil.getFilteredMetaData(loader, getFilterClass(), getMetaDataFilters());
+        for (MetaObject mo : metadata) {
+            String javaPkg = namer.getLanguagePackage(mo);
+            String javaClass = namer.getClassName(mo);
+            String generatedFqn = isNotBlank(javaPkg) ? javaPkg + "." + javaClass : javaClass;
+            // Key on the package-folded resolution key — NOT the dotted Java FQN.
+            fqnToClass.put(mo.getName(), generatedFqn);
+        }
+
+        if (fqnToClass.isEmpty()) return;
+
+        try {
+            emitProviderSource(fqnToClass);
+            emitServicesRegistration();
+        } catch (IOException e) {
+            throw new GeneratorException("Unable to emit ObjectClassBindingProvider: " + e, e);
+        }
+    }
+
+    /** Emit the generated {@code ObjectClassBindingProvider} {@code .java} source. */
+    private void emitProviderSource(Map<String, String> fqnToClass) throws IOException {
+        File pkgDir = new File(getOutputDir(), PROVIDER_PACKAGE.replace('.', File.separatorChar));
+        if (!pkgDir.exists()) pkgDir.mkdirs();
+        File src = new File(pkgDir, PROVIDER_SIMPLE_NAME + ".java");
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("package ").append(PROVIDER_PACKAGE).append(";\n\n");
+        sb.append("import java.util.Map;\n");
+        sb.append("import java.util.HashMap;\n\n");
+        sb.append("/**\n");
+        sb.append(" * GENERATED — self-registering ").append(ObjectClassBindingProvider.class.getSimpleName())
+          .append(" (ADR-0001).\n");
+        sb.append(" * Maps each generated object's metadata resolution key (\"pkg::Name\") to its\n");
+        sb.append(" * generated Java class, so MetaObject.newInstance() yields the generated type.\n");
+        sb.append(" */\n");
+        sb.append("public final class ").append(PROVIDER_SIMPLE_NAME)
+          .append(" implements ").append(ObjectClassBindingProvider.class.getName()).append(" {\n\n");
+        sb.append("    @Override\n");
+        sb.append("    public Map<String, Class<?>> bindings() {\n");
+        sb.append("        Map<String, Class<?>> m = new HashMap<>();\n");
+        for (Map.Entry<String, String> e : fqnToClass.entrySet()) {
+            sb.append("        m.put(\"").append(escape(e.getKey())).append("\", ")
+              .append(e.getValue()).append(".class);\n");
+        }
+        sb.append("        return m;\n");
+        sb.append("    }\n");
+        sb.append("}\n");
+
+        Files.write(src.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Emit the {@code META-INF/services} registration naming the generated provider. */
+    private void emitServicesRegistration() throws IOException {
+        File servicesDir = new File(getOutputDir(),
+                "META-INF" + File.separatorChar + "services");
+        if (!servicesDir.exists()) servicesDir.mkdirs();
+        File services = new File(servicesDir, ObjectClassBindingProvider.class.getName());
+        Files.write(services.toPath(), (PROVIDER_FQN + "\n").getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String escape(String s) {
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     @Override
