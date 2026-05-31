@@ -42,5 +42,12 @@ public static class OriginConstants
     public const string ORIGIN_COLLECTION_ATTR_VIA = "via";
 
     // aggregate function vocabulary
-    public static readonly string[] AGGREGATE_FUNCTIONS = ["count", "sum", "avg", "min", "max"];
+    public const string AGGREGATE_FN_COUNT = "count";
+    public const string AGGREGATE_FN_SUM   = "sum";
+    public const string AGGREGATE_FN_AVG   = "avg";
+    public const string AGGREGATE_FN_MIN   = "min";
+    public const string AGGREGATE_FN_MAX   = "max";
+
+    public static readonly string[] AGGREGATE_FUNCTIONS =
+        [AGGREGATE_FN_COUNT, AGGREGATE_FN_SUM, AGGREGATE_FN_AVG, AGGREGATE_FN_MIN, AGGREGATE_FN_MAX];
 }

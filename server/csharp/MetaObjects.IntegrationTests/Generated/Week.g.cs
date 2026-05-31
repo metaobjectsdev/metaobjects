@@ -19,4 +19,6 @@ public class Week
     [Column("label")]
     [MaxLength(80)]
     public string? Label { get; set; }
+    [Column("durationMinutes")]
+    public int DurationMinutes { get; set; }
 }
