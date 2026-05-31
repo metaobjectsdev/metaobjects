@@ -20,8 +20,8 @@ public sealed record GenConfig
     /// <summary>
     /// Strategy applied to field names with no <c>@column</c> override. Defaults
     /// to <see cref="ColumnNamingStrategy.Literal"/> (EF Core convention).
-    /// Plumbed through every <c>CSharpNaming.Column</c> call site in
-    /// ExpectedSchema, PostgresSchema, and the entity + DbContext generators.
+    /// Plumbed through every <c>CSharpNaming.Column</c> call site in the entity +
+    /// DbContext generators.
     /// </summary>
     public ColumnNamingStrategy ColumnNamingStrategy { get; init; } = ColumnNamingStrategy.Literal;
 

@@ -13,8 +13,5 @@
     <ProjectReference Include="../MetaObjects/MetaObjects.csproj" />
     <ProjectReference Include="../MetaObjects.Render/MetaObjects.Render.csproj" />
     <ProjectReference Include="../MetaObjects.Codegen/MetaObjects.Codegen.csproj" />
-    <!-- Npgsql lives ONLY here — the migration engine + introspection helpers stay
-         provider-agnostic via IPgIntrospector. -->
-    <PackageReference Include="Npgsql" Version="8.0.4" />
   </ItemGroup>
 </Project>

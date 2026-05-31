@@ -296,26 +296,9 @@ public class EntityGeneratorTests
             file.Content);
     }
 
-    [Fact]
-    public void Postgres_schema_emits_text_column_with_check_constraint()
-    {
-        // After the reconciliation cleanup, the engine emits the table DDL (enum → TEXT
-        // column) and PostgresSchema.EnumCheckConstraints is tail-appended for the
-        // CHECK. Together they reproduce what the previous BuildSchema rendered inline.
-        var root = LoadEnum();
-        var snap = MetaObjects.Codegen.Migrate.ExpectedSchema.Build(root);
-        var ddl = MetaObjects.Codegen.Migrate.PostgresEmit
-            .Render(MetaObjects.Codegen.Migrate.SchemaDiff
-                .Diff(snap, new MetaObjects.Codegen.Migrate.SchemaSnapshot([])).Changes).Up;
-        var checks = string.Join("\n", MetaObjects.Codegen.Schema.PostgresSchema.EnumCheckConstraints(root));
-
-        // Enum column maps to TEXT (engine-canonical: quoted + UPPERCASE).
-        Assert.Contains("\"status\" TEXT", ddl);
-        // CHECK constraint with all values, fully quoted, stable {table}_{column}_check name.
-        Assert.Contains(
-            "ALTER TABLE \"orders\" ADD CONSTRAINT \"orders_status_check\" CHECK (\"status\" IN ('DRAFT', 'PUBLISHED', 'ARCHIVED'));",
-            checks);
-    }
+    // (Postgres schema DDL — enum → TEXT column + CHECK constraint — is now owned
+    // by the TypeScript toolchain; the C# port emits no DDL, so that assertion moved
+    // TS-side. The EF Core enum→string conversion is still covered above.)
 
     [Fact]
     public void Two_fields_extending_same_abstract_enum_emit_declaration_exactly_once()

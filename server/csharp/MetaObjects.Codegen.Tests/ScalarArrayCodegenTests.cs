@@ -2,8 +2,6 @@
 //
 // When a scalar or enum field carries isArray: true the generators must:
 //   EntityGenerator  — emit List<T> property instead of a scalar T property.
-//   PostgresSchema   — emit a jsonb column instead of the scalar PG type.
-//   PostgresSchema   — suppress the enum CHECK for array-of-enum fields.
 //   DbContextGenerator — emit .PrimitiveCollection(...) for scalar arrays (EF Core 8).
 //   DbContextGenerator — emit .PrimitiveCollection(...).ElementType().HasConversion<string>()
 //                        for enum arrays so elements persist as string symbols, not int ordinals.
@@ -14,7 +12,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
-using MetaObjects.Codegen.Schema;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 using Xunit;

@@ -11,7 +11,6 @@
 
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
-using MetaObjects.Codegen.Migrate;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 using Xunit;
@@ -92,17 +91,8 @@ public class AbstractConformanceTests
         Assert.Contains("WidgetFilterAllowlist.g.cs", paths);
     }
 
-    // ---- DDL: no CREATE TABLE for abstract entities (abstract_records absent) ----
-
-    [Fact]
-    public void ExpectedSchema_omits_abstract_table_and_includes_the_concrete_one()
-    {
-        var root = LoadFixture();
-        var tables = ExpectedSchema.Build(root).Tables.Select(t => t.Name).ToList();
-
-        Assert.DoesNotContain("abstract_records", tables);
-        Assert.Contains("widgets", tables);
-    }
+    // (Schema DDL is now owned by the TypeScript toolchain — the C# port emits no
+    // CREATE TABLE, so the abstract-entity "no DDL" invariant is asserted TS-side.)
 
     // ---- EmitAbstractShapes knob (entity generator) ----
 
