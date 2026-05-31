@@ -86,7 +86,9 @@ const SCALAR_TS_BY_SUBTYPE: Record<string, string> = {
   [FIELD_SUBTYPE_LONG]: "number",
   [FIELD_SUBTYPE_DOUBLE]: "number",
   [FIELD_SUBTYPE_FLOAT]: "number",
-  [FIELD_SUBTYPE_DECIMAL]: "number",
+  // field.decimal is precision-exact: surfaced as a TS `string` (Drizzle pg
+  // `numeric` infers `string`). Keep the docs scalar mapping in lockstep.
+  [FIELD_SUBTYPE_DECIMAL]: "string",
   [FIELD_SUBTYPE_CURRENCY]: "number",
   [FIELD_SUBTYPE_BOOLEAN]: "boolean",
   [FIELD_SUBTYPE_DATE]: "string",

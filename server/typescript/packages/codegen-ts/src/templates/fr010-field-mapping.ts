@@ -47,6 +47,10 @@ export function scalarKind(subType: string): string | null {
     case FIELD_SUBTYPE_DATE:
     case FIELD_SUBTYPE_TIME:
     case FIELD_SUBTYPE_TIMESTAMP:
+    // field.decimal is a precision-exact decimal STRING on the wire (not a
+    // float64): recover/output map it as a string scalar so digits survive a
+    // round-trip — matching the generated TS `string` representation.
+    case FIELD_SUBTYPE_DECIMAL:
       return "STRING";
     case FIELD_SUBTYPE_INT:
     case FIELD_SUBTYPE_SHORT:
@@ -57,7 +61,6 @@ export function scalarKind(subType: string): string | null {
       return "LONG";
     case FIELD_SUBTYPE_DOUBLE:
     case FIELD_SUBTYPE_FLOAT:
-    case FIELD_SUBTYPE_DECIMAL:
       return "DOUBLE";
     case FIELD_SUBTYPE_BOOLEAN:
       return "BOOLEAN";

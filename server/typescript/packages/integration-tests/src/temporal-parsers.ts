@@ -9,11 +9,12 @@
 //   both hazards: we see the exact bytes Postgres sent and the OID tells us
 //   which canonical rule applies.
 //
-// Canonical forms (whole-second; Phase B seeds no fractional seconds):
-//   TIMESTAMPTZ (OID 1184) → "YYYY-MM-DDTHH:MM:SSZ" (always UTC)
-//   TIMESTAMP   (OID 1114) → "YYYY-MM-DDTHH:MM:SS"  (no Z)
+// Canonical forms (SP-A: sub-second at MILLISECOND resolution, no trailing
+// zeros, the `.` and fractional part OMITTED entirely when sub-second is zero):
+//   TIMESTAMPTZ (OID 1184) → "YYYY-MM-DDTHH:MM:SS[.fff]Z" (always UTC)
+//   TIMESTAMP   (OID 1114) → "YYYY-MM-DDTHH:MM:SS[.fff]"  (no Z)
 //   DATE        (OID 1082) → "YYYY-MM-DD"
-//   TIME        (OID 1083) → "HH:MM:SS"
+//   TIME        (OID 1083) → "HH:MM:SS[.fff]"
 
 import pg from "pg";
 
@@ -26,6 +27,33 @@ export const PG_OID_TIMESTAMPTZ = 1184;
 // All callers pass non-negative integer getUTC* components, so a fixed 2-digit
 // zero-pad is sufficient.
 const pad = (n: number): string => n.toString().padStart(2, "0");
+
+/**
+ * Canonical sub-second suffix from a millisecond count (0–999): "" when zero
+ * (omit the `.` and the fractional part entirely), else ".fff" with trailing
+ * zeros stripped (e.g. 120 → ".12", 123 → ".123", 0 → ""). This is the exact
+ * analogue of the NUMERIC/float trailing-zero rule, applied to the fractional-
+ * seconds field — the linchpin that keeps whole-second rows byte-identical.
+ */
+function msSuffix(ms: number): string {
+  if (ms === 0) return "";
+  const stripped = ms.toString().padStart(3, "0").replace(/0+$/, "");
+  return `.${stripped}`;
+}
+
+/**
+ * Canonical sub-second suffix from the raw on-wire fractional digits (the chars
+ * after the `.`, e.g. "123" or "120000"). Truncates to millisecond resolution
+ * (first 3 digits — Postgres stores microseconds; the contract is ms), then
+ * applies the same strip/omit rule as msSuffix. Returns "" when absent or zero.
+ */
+function fractionSuffix(raw: string): string {
+  const dot = raw.indexOf(".");
+  if (dot === -1) return "";
+  const frac = raw.slice(dot + 1);
+  const ms = Number.parseInt(frac.slice(0, 3).padEnd(3, "0"), 10);
+  return Number.isNaN(ms) ? "" : msSuffix(ms);
+}
 
 /**
  * TIMESTAMPTZ → canonical UTC `...Z`. The on-wire text always carries an
@@ -43,17 +71,21 @@ export function canonicalTimestamptz(raw: string): string {
   }
   return (
     `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
-    `T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}Z`
+    `T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}` +
+    `${msSuffix(d.getUTCMilliseconds())}Z`
   );
 }
 
 /**
- * TIMESTAMP (no tz) → `YYYY-MM-DDTHH:MM:SS` (no Z). The on-wire text has no
- * offset; we just swap the space separator for `T` and pass the literal
- * wall-clock value through unshifted (no host-timezone interpretation).
+ * TIMESTAMP (no tz) → `YYYY-MM-DDTHH:MM:SS[.fff]` (no Z). The on-wire text has
+ * no offset; we swap the space separator for `T`, pass the literal wall-clock
+ * value through unshifted (no host-timezone interpretation), and canonicalize
+ * the fractional seconds to millisecond resolution (strip trailing zeros, omit
+ * when zero — so a `.120` seed reads `.12` and a whole-second value stays bare).
  */
 export function canonicalTimestamp(raw: string): string {
-  return raw.replace(" ", "T");
+  const dotless = raw.includes(".") ? raw.slice(0, raw.indexOf(".")) : raw;
+  return `${dotless.replace(" ", "T")}${fractionSuffix(raw)}`;
 }
 
 /** DATE → `YYYY-MM-DD` (passthrough; Postgres already emits this form). */
@@ -61,9 +93,14 @@ export function canonicalDate(raw: string): string {
   return raw;
 }
 
-/** TIME → `HH:MM:SS` (whole-second passthrough; Phase B seeds no fractional part). */
+/**
+ * TIME → `HH:MM:SS[.fff]`. Canonicalize the fractional seconds to millisecond
+ * resolution (strip trailing zeros, omit the `.` when zero) — same rule as
+ * TIMESTAMP, so a whole-second value stays `HH:MM:SS`.
+ */
 export function canonicalTime(raw: string): string {
-  return raw;
+  const dotless = raw.includes(".") ? raw.slice(0, raw.indexOf(".")) : raw;
+  return `${dotless}${fractionSuffix(raw)}`;
 }
 
 /**
