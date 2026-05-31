@@ -97,7 +97,8 @@ internal static class Fr010FieldMapping
         FIELD_SUBTYPE_DATE or FIELD_SUBTYPE_TIME or FIELD_SUBTYPE_TIMESTAMP => "String",
         FIELD_SUBTYPE_INT or FIELD_SUBTYPE_SHORT or FIELD_SUBTYPE_BYTE => "Int",
         FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_CURRENCY => "Long",
-        FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT or FIELD_SUBTYPE_DECIMAL => "Double",
+        FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT => "Double",
+        FIELD_SUBTYPE_DECIMAL => "Decimal",
         FIELD_SUBTYPE_BOOLEAN => "Boolean",
         _ => null,
     };
@@ -120,6 +121,7 @@ internal static class Fr010FieldMapping
             "Int" => "int?",
             "Long" => "long?",
             "Double" => "double?",
+            "Decimal" => "decimal?",
             "Boolean" => "bool?",
             _ => "string?",
         };
@@ -139,6 +141,7 @@ internal static class Fr010FieldMapping
             "Int" => $"RecoverMap.AsInt(d, \"{name}\")",
             "Long" => $"RecoverMap.AsLong(d, \"{name}\")",
             "Double" => $"RecoverMap.AsDouble(d, \"{name}\")",
+            "Decimal" => $"RecoverMap.AsDecimal(d, \"{name}\")",
             "Boolean" => $"RecoverMap.AsBool(d, \"{name}\")",
             _ => $"RecoverMap.AsString(d, \"{name}\")",
         };

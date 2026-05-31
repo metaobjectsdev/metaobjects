@@ -24,6 +24,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Asset>().Property(x => x.ExternalId).HasColumnType("uuid").HasConversion(v => Guid.Parse(v!), g => g.ToString("D"));
         modelBuilder.Entity<Asset>().Property(x => x.Payload).HasColumnType("jsonb");
         modelBuilder.Entity<Asset>().Property(x => x.RecordedAt).HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<Measurement>().Property(x => x.PreciseKg).HasPrecision(9, 4);
         modelBuilder.Entity<Program>().Property(x => x.Status).HasConversion<string>();
     }
 }

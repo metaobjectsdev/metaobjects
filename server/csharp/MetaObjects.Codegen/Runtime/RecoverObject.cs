@@ -249,7 +249,8 @@ public static class RecoverObject
     {
         FIELD_SUBTYPE_INT or FIELD_SUBTYPE_SHORT or FIELD_SUBTYPE_BYTE => FieldKind.Int,
         FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_CURRENCY => FieldKind.Long,
-        FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT or FIELD_SUBTYPE_DECIMAL => FieldKind.Double,
+        FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT => FieldKind.Double,
+        FIELD_SUBTYPE_DECIMAL => FieldKind.Decimal,
         FIELD_SUBTYPE_BOOLEAN => FieldKind.Boolean,
         _ => FieldKind.String,
     };

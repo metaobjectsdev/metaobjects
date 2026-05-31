@@ -94,6 +94,32 @@ public static class RecoverMap
     }
 
     /// <summary>
+    /// Returns the value as <see cref="decimal"/> for key <paramref name="k"/>.
+    /// Returns <c>null</c> when the key is absent or the value is not a number.
+    /// </summary>
+    /// <remarks>
+    /// The engine coerces a <see cref="FieldKind.Decimal"/> field to a boxed
+    /// <see cref="decimal"/> (precision-exact). Integer kinds widen losslessly; a boxed
+    /// <see cref="double"/>/<see cref="float"/> is converted (lossy by nature of the source),
+    /// preserving the never-throws contract.
+    /// </remarks>
+    public static decimal? AsDecimal(IReadOnlyDictionary<string, object?> d, string k)
+    {
+        if (!d.TryGetValue(k, out object? v)) return null;
+        return v switch
+        {
+            decimal m => m,
+            long l => l,
+            int i => i,
+            short s => s,
+            byte b => b,
+            double db => (decimal)db,
+            float f => (decimal)f,
+            _ => null,
+        };
+    }
+
+    /// <summary>
     /// Returns the value as <see cref="bool"/> for key <paramref name="k"/>.
     /// Returns <c>null</c> when the key is absent or the value is not a <see cref="bool"/>.
     /// </summary>

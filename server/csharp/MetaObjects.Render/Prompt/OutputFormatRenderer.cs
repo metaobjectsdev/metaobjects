@@ -17,7 +17,7 @@ namespace MetaObjects.Render.Prompt;
 public static class OutputFormatRenderer
 {
     private static readonly HashSet<FieldKind> NumericKinds =
-        [FieldKind.Int, FieldKind.Long, FieldKind.Double, FieldKind.Boolean];
+        [FieldKind.Int, FieldKind.Long, FieldKind.Double, FieldKind.Decimal, FieldKind.Boolean];
 
     private const string Indent = "  ";
     private const int MaxNestDepth = 8;
