@@ -25,14 +25,9 @@ import { type MetaRoot } from "@metaobjectsdev/metadata";
 import { ObjectManager, type Filter } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { Kysely, PostgresDialect } from "kysely";
-import pg, { Pool } from "pg";
+import { Pool } from "pg";
 import { executeSql } from "./postgres-sql.ts";
-
-// `pg` returns BIGINT (Postgres OID 20) as a string by default, since JS numbers
-// can't represent all 64-bit ints. For the small ids used by this corpus
-// (1-100), parsing as Number is safe and matches the cross-port wire format
-// contract (`field.long` → JSON number unless overflow).
-pg.types.setTypeParser(20, (v: string) => Number(v));
+import { bigintAsNumberTypes } from "./pg-bigint-number-types.ts";
 
 const ENTITY = "Author";
 const ROUTE_BASE = "/api/authors";
@@ -79,7 +74,14 @@ export interface AuthorRow {
  */
 export async function startServer(connectionUri: string, root: MetaRoot): Promise<ServerHandle> {
   const kysely = new Kysely<Record<string, never>>({
-    dialect: new PostgresDialect({ pool: new Pool({ connectionString: connectionUri }) }),
+    dialect: new PostgresDialect({
+      // BIGINT (OID 20) → Number is configured PER-POOL via `types`, not on the
+      // global `pg` type registry. This corpus uses small ids (1-100) and its
+      // expectations carry `id` as a JSON number, but a global mutation would
+      // leak into the persistence-conformance query tests (which require the
+      // default bigint→string wire contract) when both run in one process.
+      pool: new Pool({ connectionString: connectionUri, types: bigintAsNumberTypes }),
+    }),
   });
 
   // Hand-create the schema rather than going through migrate-ts. The corpus

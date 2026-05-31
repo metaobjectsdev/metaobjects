@@ -35,12 +35,6 @@ import { executeSql } from "./postgres-sql.ts";
 import { loadMetadataFile } from "./load-metadata.ts";
 import type { AuthorRow } from "./api-contract-server.ts";
 
-// `pg` returns BIGINT (OID 20) as a string by default. The corpus uses small
-// ids (1–100); parse as Number to match the cross-port wire format
-// (`field.long` → JSON number). Module-global, applied once — mirrors the
-// hand-rolled server.
-pg.types.setTypeParser(20, (v: string) => Number(v));
-
 /**
  * Handle for the generated-routes server under test. Mirrors the hand-rolled
  * `ServerHandle` surface the runner drives (`baseUrl`, `applySeed`, `truncate`,
@@ -99,10 +93,18 @@ export async function startGeneratedServer(
   // 2. Write the db module the emitted route imports (`import { db } from
   //    "./db"`). Drizzle node-postgres over a pg Pool bound to this scenario's
   //    testcontainer. Bun runs the .ts directly — no build step needed.
+  // BIGINT (OID 20) → Number is configured PER-POOL via the `types` option, not
+  // on the global `pg` type registry. A global mutation would leak into the
+  // persistence-conformance query tests (which require the default bigint→string
+  // wire contract) when both lanes run in one process. The temp dir lives at
+  // <package>/.gen-tmp/api-contract-generated-XXXX/, so the shared helper in
+  // src/ is two levels up.
+  const bigintTypesImport = pathToFileURL(join(here, "pg-bigint-number-types.ts")).href;
   const dbModule = `
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-export const pool = new pg.Pool({ connectionString: ${JSON.stringify(connectionUri)} });
+import { bigintAsNumberTypes } from ${JSON.stringify(bigintTypesImport)};
+export const pool = new pg.Pool({ connectionString: ${JSON.stringify(connectionUri)}, types: bigintAsNumberTypes });
 export const db = drizzle(pool);
 `;
   writeFileSync(join(tmp, "db.ts"), dbModule, "utf8");
