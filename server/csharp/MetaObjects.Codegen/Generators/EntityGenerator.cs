@@ -17,6 +17,7 @@ using MetaObjects.Codegen.Docs;
 using MetaObjects.Meta;
 using MetaObjects.Persistence.Origin;
 using static MetaObjects.Core.Field.FieldConstants;
+using static MetaObjects.Core.Validator.ValidatorConstants;
 using static MetaObjects.Persistence.Origin.OriginConstants;
 
 namespace MetaObjects.Codegen.Generators;
@@ -298,7 +299,11 @@ public sealed class EntityGenerator : IGenerator
         {
             var arr = new StringBuilder();
             if (withAttributes)
+            {
                 arr.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
+                // validator.array @min/@max → element-count bounds on the collection.
+                AppendArrayValidatorAttributes(arr, field);
+            }
             arr.Append($"    public List<{baseType}> {propName} {{ get; set; }} = new();");
             return arr.ToString();
         }
@@ -312,8 +317,10 @@ public sealed class EntityGenerator : IGenerator
             if (pkFields.Count == 1 && pkFields[0] == field.Name)
                 sb.AppendLine("    [Key]");
             sb.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
-            if (baseType == "string" && field.MaxLength is long max)
-                sb.AppendLine($"    [MaxLength({max})]");
+            if (baseType == "string")
+                AppendStringValidatorAttributes(sb, field);
+            else
+                AppendNumericValidatorAttributes(sb, field);
             if (required && !isValue)
                 sb.AppendLine("    [Required]");
         }
@@ -323,6 +330,72 @@ public sealed class EntityGenerator : IGenerator
         sb.Append($"    public {type} {propName} {{ get; set; }}{init}");
         return sb.ToString();
     }
+
+    // String length + pattern DataAnnotations for a string scalar, combining the field
+    // @maxLength attr with validator.length (@min/@max) and validator.regex (@pattern).
+    //
+    // Length: when both a minimum (validator.length @min) and a maximum (@maxLength or
+    // validator.length @max) apply, emit a single [StringLength(max, MinimumLength = min)]
+    // — the form TryValidateObject enforces on BOTH ends. Min-only → [MinLength]; max-only
+    // → [MaxLength] (preserving the existing @maxLength semantics).
+    private static void AppendStringValidatorAttributes(StringBuilder sb, MetaField field)
+    {
+        long? min = null;
+        long? max = field.MaxLength;
+        foreach (var v in field.Validators())
+        {
+            if (v.SubType == VALIDATOR_SUBTYPE_LENGTH)
+            {
+                if (v.Min is long lmin) min = lmin;
+                if (v.Max is long lmax) max = lmax;
+            }
+            else if (v.SubType == VALIDATOR_SUBTYPE_REGEX
+                     && v is MetaRegexValidator { Pattern: { } pattern })
+            {
+                sb.AppendLine($"    [RegularExpression(\"{EscapeAttrString(pattern)}\")]");
+            }
+        }
+
+        if (min is long mn && max is long mx)
+            sb.AppendLine($"    [StringLength({mx}, MinimumLength = {mn})]");
+        else if (min is long mn2)
+            sb.AppendLine($"    [MinLength({mn2})]");
+        else if (max is long mx2)
+            sb.AppendLine($"    [MaxLength({mx2})]");
+    }
+
+    // Numeric value bounds for a non-string scalar: validator.numeric (@min/@max) →
+    // [Range(min, max)]. Both bounds present in the canonical corpus; when only one is
+    // declared the other defaults to the type's extreme so the single bound still gates.
+    private static void AppendNumericValidatorAttributes(StringBuilder sb, MetaField field)
+    {
+        foreach (var v in field.Validators())
+        {
+            if (v.SubType != VALIDATOR_SUBTYPE_NUMERIC) continue;
+            if (v.Min is null && v.Max is null) continue;
+            long lo = v.Min ?? long.MinValue;
+            long hi = v.Max ?? long.MaxValue;
+            sb.AppendLine($"    [Range({lo}, {hi})]");
+            return;
+        }
+    }
+
+    // Element-count bounds for an array field: validator.array (@min/@max) →
+    // [MinLength(min)] + [MaxLength(max)] on the List<T> property.
+    private static void AppendArrayValidatorAttributes(StringBuilder sb, MetaField field)
+    {
+        foreach (var v in field.Validators())
+        {
+            if (v.SubType != VALIDATOR_SUBTYPE_ARRAY) continue;
+            if (v.Min is long amin) sb.AppendLine($"    [MinLength({amin})]");
+            if (v.Max is long amax) sb.AppendLine($"    [MaxLength({amax})]");
+            return;
+        }
+    }
+
+    // Escapes a regex pattern for embedding in a C# string-literal attribute argument.
+    private static string EscapeAttrString(string s) =>
+        s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
     // An owned-type navigation property for an object-typed field. Returns null (with
     // a warning) when the @objectRef can't be resolved.
