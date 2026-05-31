@@ -142,7 +142,7 @@ export async function diff(
   for (const [id, t] of actualTables) {
     if (!expectedTables.has(id)) {
       const dropChange: Change & { _columns?: ColumnDescriptor[] } = {
-        kind: "drop-table", table: t.name, ...schemaSpread(t.schema), status: ALLOWED,
+        kind: "drop-table", table: t.name, ...schemaSpread(t.schema), restore: t, status: ALLOWED,
       };
       dropChange._columns = t.columns;
       changes.push(dropChange);
@@ -230,7 +230,7 @@ function diffTableColumns(
   for (const [name, ac] of actualCols) {
     if (!expectedCols.has(name)) {
       const dropChange: Change & { _sqlType?: SqlType; _nullable?: boolean } = {
-        kind: "drop-column", table, ...sx, column: name, status: ALLOWED,
+        kind: "drop-column", table, ...sx, column: name, restore: ac, status: ALLOWED,
       };
       dropChange._sqlType = ac.sqlType;
       dropChange._nullable = ac.nullable;
@@ -258,9 +258,9 @@ function diffTableIndexes(
       changes.push({ kind: "add-index", table, ...sx, index: ix, status: ALLOWED });
     }
   }
-  for (const [name] of actualIdx) {
+  for (const [name, ai] of actualIdx) {
     if (!expectedIdx.has(name)) {
-      changes.push({ kind: "drop-index", table, ...sx, index: name, status: ALLOWED });
+      changes.push({ kind: "drop-index", table, ...sx, index: name, restore: ai, status: ALLOWED });
     }
   }
 }
@@ -283,9 +283,9 @@ function diffTableForeignKeys(
       changes.push({ kind: "add-fk", table, ...sx, fk, status: ALLOWED });
     }
   }
-  for (const [name] of actualFk) {
+  for (const [name, af] of actualFk) {
     if (!expectedFk.has(name)) {
-      changes.push({ kind: "drop-fk", table, ...sx, fk: name, status: ALLOWED });
+      changes.push({ kind: "drop-fk", table, ...sx, fk: name, restore: af, status: ALLOWED });
     }
   }
 }
