@@ -29,6 +29,7 @@
   "keywords": ["metaobjects", "render", "mustache", "prompt", "template"],
   "publishConfig": { "access": "public" },
   "dependencies": {
+    "@metaobjectsdev/metadata": "workspace:*",
     "mustache": "^4.2.0"
   },
   "devDependencies": {

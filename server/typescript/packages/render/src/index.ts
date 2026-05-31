@@ -22,10 +22,13 @@ export {
   RecoveryReport,
   scalar,
   enumField,
+  enumArray,
   range,
   object,
   recoverSchema,
   defaults,
+  orThrow,
+  RecoverError,
   type FieldSpec,
   type RecoverSchema,
   type RecoverOptions,
@@ -42,6 +45,14 @@ export {
   asBool,
   asStringList,
 } from "./recover/recover-map.js";
+
+// Phase B — metadata-driven runtime recover (engine + Phase A object model bridge).
+export {
+  recoverObject,
+  recoverSchemaFor,
+  assemble,
+  MAX_NEST_DEPTH,
+} from "./recover/recover-object.js";
 
 // FR-010 artifact 1 — output-format prompt renderer ("produce your answer like this").
 export { renderOutputFormat } from "./prompt/output-format-renderer.js";

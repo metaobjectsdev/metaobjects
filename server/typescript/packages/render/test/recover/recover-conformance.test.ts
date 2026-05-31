@@ -7,6 +7,7 @@ import {
   FieldKind,
   scalar,
   enumField,
+  enumArray,
   range,
   object,
   type FieldSpec,
@@ -108,7 +109,8 @@ function parseField(f: RawFieldJson): FieldSpec {
   const required = f.required === true;
 
   if (kind === FieldKind.ENUM) {
-    return enumField(
+    const build = f.array === true ? enumArray : enumField;
+    return build(
       name,
       required,
       f.enumValues ?? [],
@@ -128,7 +130,8 @@ function parseField(f: RawFieldJson): FieldSpec {
   if (f.min !== undefined || f.max !== undefined) {
     return range(name, kind, required, f.min ?? null, f.max ?? null);
   }
-  return scalar(name, kind, required);
+  // Phase B (generalized @default): a scalar `default` key fills an absent field, coerced to kind.
+  return scalar(name, kind, required, f.default ?? null);
 }
 
 function parseSchema(n: { format: string; rootName: string; fields: RawFieldJson[] }): RecoverSchema {
@@ -156,7 +159,7 @@ describe("recover-conformance corpus", () => {
     .filter((n) => existsSync(join(corpus, n, "schema.json")))
     .sort();
 
-  expect(cases.length).toBe(20);
+  expect(cases.length).toBe(22);
 
   for (const caseName of cases) {
     test(caseName, () => {
