@@ -12,8 +12,10 @@ import java.io.PrintWriter;
  *
  * <p>Extends the legacy reference {@link JavaCodeGenerator} and adds a {@code flavor}
  * argument. When {@code flavor=pojoAware}, {@link #createWriter} returns a
- * {@link PojoAwareCodeWriter} (a concrete class {@code extends PojoObject}); otherwise
- * it falls through to the legacy interface-emitting {@link JavaCodeWriter}.</p>
+ * {@link PojoAwareCodeWriter} (a concrete class {@code extends PojoObject}); when
+ * {@code flavor=valueObject}, it returns a {@link ValueObjectCodeWriter} (a concrete
+ * class {@code extends ValueObject} with cached per-field value-holder accessors);
+ * otherwise it falls through to the legacy interface-emitting {@link JavaCodeWriter}.</p>
  *
  * <p>All other behavior — supported types, file extension, naming, the multi-file
  * emission loop (which already iterates EVERY {@code MetaObject} in the loader, so the
@@ -28,6 +30,12 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
     /** Concrete-class flavor: emit {@code class <Name> extends PojoObject}. */
     public static final String FLAVOR_POJO_AWARE = "pojoAware";
 
+    /**
+     * Concrete-class flavor: emit {@code class <Name> extends ValueObject} with
+     * cached per-field value-holder accessors (perf-tuned, map-backed/extensible).
+     */
+    public static final String FLAVOR_VALUE_OBJECT = "valueObject";
+
     /** Read the {@code flavor} argument (empty = legacy interface flavor). */
     public String getFlavor() {
         return getArg(ARG_FLAVOR, "");
@@ -38,6 +46,17 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
                                                 PrintWriter pw, GenerationContext context) {
         if (FLAVOR_POJO_AWARE.equals(getFlavor())) {
             return new PojoAwareCodeWriter(loader, pw, context)
+                    .forType(TYPE_CLASS)
+                    .withPkgPrefix(getPkgPrefix())
+                    .withPkgSuffix(getPkgSuffix())
+                    .withNamePrefix(getNamePrefix())
+                    .withNameSuffix(getNameSuffix())
+                    .addArrayMethods(addArrayMethods())
+                    .addKeyMethods(addKeyMethods())
+                    .withIndentor("    ");
+        }
+        if (FLAVOR_VALUE_OBJECT.equals(getFlavor())) {
+            return new ValueObjectCodeWriter(loader, pw, context)
                     .forType(TYPE_CLASS)
                     .withPkgPrefix(getPkgPrefix())
                     .withPkgSuffix(getPkgSuffix())
