@@ -284,12 +284,11 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
-     * Checks for the existence of the base table and optionally creates it if
-     * it doesn't exist
+     * Checks for the existence of the base table or view. This method only
+     * verifies existence; it does not create anything.
      *
      * @param c Database connection to use
      * @param baseTable Base Table Definition (Table or View)
-     * @param autoCreate Whether to auto create the table or view
      * @return Whether the table or view exists
      * @throws SQLException Exception if it exists in an invalid format
      */
