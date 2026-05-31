@@ -1,5 +1,8 @@
 package acme.demo
 
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
+import jakarta.validation.constraints.Size
 import java.time.Instant
 import java.time.LocalDate
 import kotlin.Boolean
@@ -15,6 +18,9 @@ import kotlinx.serialization.Serializable
 @Serializable
 public data class Author(
   public val id: Long? = null,
+  @field:NotNull
+  @field:NotBlank
+  @field:Size(max = 100)
   public val name: String,
   public val bio: String? = null,
   public val age: Int? = null,

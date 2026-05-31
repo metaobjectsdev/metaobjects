@@ -164,6 +164,7 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
             append("import org.jetbrains.exposed.sql.selectAll\n")
             append("import org.jetbrains.exposed.sql.update\n")
             append("import org.jetbrains.exposed.sql.transactions.transaction\n")
+            append("import jakarta.validation.Valid\n")
             append("import org.springframework.http.HttpStatus\n")
             append("import org.springframework.http.ResponseEntity\n")
             append("import org.springframework.web.bind.annotation.DeleteMapping\n")
@@ -288,7 +289,7 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
 
             // POST — create
             append("    @PostMapping\n")
-            append("    fun create(@RequestBody dto: ${shortName}): ResponseEntity<${shortName}> = transaction {\n")
+            append("    fun create(@Valid @RequestBody dto: ${shortName}): ResponseEntity<${shortName}> = transaction {\n")
             append("        val newId = ${tableObjectName}.insert {\n")
             for (field in entity.metaFields) {
                 if (field is ObjectField) continue
@@ -306,7 +307,7 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
             // PATCH + PUT — same handler (per API contract).
             append("    @PatchMapping(\"/{id}\")\n")
             append("    @PutMapping(\"/{id}\")\n")
-            append("    fun update(@PathVariable id: Long, @RequestBody dto: ${shortName}): ResponseEntity<Any> = transaction {\n")
+            append("    fun update(@PathVariable id: Long, @Valid @RequestBody dto: ${shortName}): ResponseEntity<Any> = transaction {\n")
             append("        val updated = ${tableObjectName}.update({ ${tableObjectName}.${pkFieldName} eq id }) {\n")
             for (field in entity.metaFields) {
                 if (field is ObjectField) continue

@@ -1,12 +1,21 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.MetaData
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.ObjectField
+import com.metaobjects.field.StringField
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
+import com.metaobjects.validator.ArrayValidator
+import com.metaobjects.validator.LengthValidator
+import com.metaobjects.validator.MetaValidator
+import com.metaobjects.validator.NumericValidator
+import com.metaobjects.validator.RegexValidator
+import com.metaobjects.validator.RequiredValidator
+import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
@@ -92,9 +101,11 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 .apply { if (nullable) defaultValue("null") }
                 .build()
             ctorBuilder.addParameter(param)
-            typeBuilder.addProperty(
-                PropertySpec.builder(propName, propType).initializer(propName).build()
-            )
+            val propBuilder = PropertySpec.builder(propName, propType).initializer(propName)
+            for (annotation in validationAnnotations(field)) {
+                propBuilder.addAnnotation(annotation)
+            }
+            typeBuilder.addProperty(propBuilder.build())
         }
 
         val fileSpec = FileSpec.builder(pkg, shortName)
@@ -213,9 +224,142 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .getOrNull()
     }
 
+    // === validation (SP-C validator parity, Unit 5) =========================
+
+    /**
+     * Build the `@field:`-site-targeted jakarta.validation annotations for a generated
+     * property from the field's constraint metadata — both field attrs (`@required`,
+     * `@maxLength`) and `validator.*` children (length / regex / numeric / array).
+     * Returns an empty list when the field carries no constraints.
+     *
+     * <p>The Kotlin entity data class IS the controller request body
+     * (`@RequestBody dto: <Entity>` in [KotlinSpringControllerGenerator]); these
+     * annotations make Spring's `@Valid` enforce the constraints at the boundary.
+     * Site target is [AnnotationSpec.UseSiteTarget.FIELD] because jakarta's reflective
+     * validator reads the backing field, not the Kotlin property/getter.
+     *
+     * <p>Cross-port semantics (the SP-C validator-parity contract — mirrors the Spring
+     * port's `SpringDtoGenerator`):
+     * <ul>
+     *   <li>required (field `@required` or `validator.required`) → `@NotNull`, plus
+     *       `@NotBlank` for non-array strings so an empty string fails too.</li>
+     *   <li>`validator.length @min` + field `@maxLength` → `@Size(min=…, max=…)`.</li>
+     *   <li>`validator.regex @pattern` → `@Pattern(regexp=…)`.</li>
+     *   <li>`validator.numeric @min/@max` → `@Min(…)` / `@Max(…)`.</li>
+     *   <li>`validator.array @min/@max` → `@Size(min=…, max=…)` on the `List`.</li>
+     * </ul>
+     */
+    private fun validationAnnotations(field: MetaField<*>): List<AnnotationSpec> {
+        val isArray = field.isArrayType
+        val isString = field is StringField
+        val out = mutableListOf<AnnotationSpec>()
+
+        val required = KotlinGenUtil.isRequiredField(field) || hasValidator(field, RequiredValidator::class.java)
+        if (required) {
+            out.add(constraint(NOT_NULL))
+            if (isString && !isArray) out.add(constraint(NOT_BLANK))
+        }
+
+        // String length: combine validator.length @min with the field-level @maxLength cap.
+        var lengthMin: Int? = null
+        var lengthMax: Int? = null
+        validator(field, LengthValidator::class.java)?.let { length ->
+            lengthMin = attrInt(length, LengthValidator.ATTR_MIN)
+            lengthMax = attrInt(length, LengthValidator.ATTR_MAX)
+        }
+        attrInt(field, StringField.ATTR_MAX_LENGTH)?.let { lengthMax = it }
+        if (lengthMin != null || lengthMax != null) {
+            out.add(sizeAnnotation(lengthMin, lengthMax))
+        }
+
+        // Regex pattern.
+        validator(field, RegexValidator::class.java)?.let { regex ->
+            regex.resolvePattern()?.let { pattern ->
+                out.add(
+                    AnnotationSpec.builder(PATTERN)
+                        .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
+                        .addMember("regexp = %S", pattern)
+                        .build()
+                )
+            }
+        }
+
+        // Numeric value bounds.
+        validator(field, NumericValidator::class.java)?.let { numeric ->
+            attrInt(numeric, NumericValidator.ATTR_MIN)?.let { min ->
+                out.add(
+                    AnnotationSpec.builder(MIN)
+                        .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
+                        .addMember("value = %L", min.toLong())
+                        .build()
+                )
+            }
+            attrInt(numeric, NumericValidator.ATTR_MAX)?.let { max ->
+                out.add(
+                    AnnotationSpec.builder(MAX)
+                        .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
+                        .addMember("value = %L", max.toLong())
+                        .build()
+                )
+            }
+        }
+
+        // Array element-count bounds → @Size on the List property.
+        validator(field, ArrayValidator::class.java)?.let { array ->
+            val min = attrInt(array, ArrayValidator.ATTR_MIN, ArrayValidator.ATTR_MINSIZE)
+            val max = attrInt(array, ArrayValidator.ATTR_MAX, ArrayValidator.ATTR_MAXSIZE)
+            if (min != null || max != null) out.add(sizeAnnotation(min, max))
+        }
+
+        return out
+    }
+
+    /** A no-member `@field:`-targeted constraint annotation (e.g. `@field:NotNull`). */
+    private fun constraint(type: ClassName): AnnotationSpec =
+        AnnotationSpec.builder(type)
+            .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
+            .build()
+
+    /** `@field:Size(min = …, max = …)` — each bound omitted when null. */
+    private fun sizeAnnotation(min: Int?, max: Int?): AnnotationSpec {
+        val b = AnnotationSpec.builder(SIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
+        if (min != null) b.addMember("min = %L", min)
+        if (max != null) b.addMember("max = %L", max)
+        return b.build()
+    }
+
+    /** Read an int-valued attr from a node, trying each name in order; null when absent/unparseable. */
+    private fun attrInt(node: MetaData, vararg attrNames: String): Int? {
+        for (attr in attrNames) {
+            if (node.hasMetaAttr(attr)) {
+                return runCatching { node.getMetaAttr(attr).valueAsString.trim().toInt() }.getOrNull()
+            }
+        }
+        return null
+    }
+
+    private fun <V : MetaValidator> validator(field: MetaField<*>, type: Class<V>): V? {
+        for (child in field.children) {
+            if (type.isInstance(child)) return type.cast(child)
+        }
+        return null
+    }
+
+    private fun hasValidator(field: MetaField<*>, type: Class<out MetaValidator>): Boolean =
+        validator(field, type) != null
+
     private companion object {
         /** MetaObject subtypes this generator emits a Kotlin data class for. */
         val EMITTED_SUBTYPES = setOf(MetaObject.SUBTYPE_ENTITY, MetaObject.SUBTYPE_VALUE)
+
+        // jakarta.validation.constraints annotation types (SP-C validator parity).
+        private const val JAKARTA_CONSTRAINTS = "jakarta.validation.constraints"
+        val NOT_NULL = ClassName(JAKARTA_CONSTRAINTS, "NotNull")
+        val NOT_BLANK = ClassName(JAKARTA_CONSTRAINTS, "NotBlank")
+        val SIZE = ClassName(JAKARTA_CONSTRAINTS, "Size")
+        val PATTERN = ClassName(JAKARTA_CONSTRAINTS, "Pattern")
+        val MIN = ClassName(JAKARTA_CONSTRAINTS, "Min")
+        val MAX = ClassName(JAKARTA_CONSTRAINTS, "Max")
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

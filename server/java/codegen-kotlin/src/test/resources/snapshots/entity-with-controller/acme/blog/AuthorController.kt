@@ -10,6 +10,7 @@ import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.transactions.transaction
+import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -264,7 +265,7 @@ class AuthorController {
     }
 
     @PostMapping
-    fun create(@RequestBody dto: Author): ResponseEntity<Author> = transaction {
+    fun create(@Valid @RequestBody dto: Author): ResponseEntity<Author> = transaction {
         val newId = AuthorTable.insert {
             it[name] = dto.name
         }[AuthorTable.id]
@@ -274,7 +275,7 @@ class AuthorController {
 
     @PatchMapping("/{id}")
     @PutMapping("/{id}")
-    fun update(@PathVariable id: Long, @RequestBody dto: Author): ResponseEntity<Any> = transaction {
+    fun update(@PathVariable id: Long, @Valid @RequestBody dto: Author): ResponseEntity<Any> = transaction {
         val updated = AuthorTable.update({ AuthorTable.id eq id }) {
             it[name] = dto.name
         }
