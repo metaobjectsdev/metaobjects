@@ -1,5 +1,6 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.field.EnumField
 import com.metaobjects.field.MetaField
 import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.GeneratorIOWriter
@@ -211,7 +212,7 @@ class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val nested = mutableListOf<MetaObject>()
 
         val args = vo.metaFields.joinToString(",\n") { field ->
-            "        ${field.name} = ${strictArg(field, nested)}"
+            "        ${field.name} = ${strictArg(field, vo, nested)}"
         }
 
         append("\n")
@@ -249,14 +250,18 @@ class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * <ul>
      *   <li>single nested object → `toStrict<Nested>(m.f!!)`;</li>
      *   <li>array-of-objects → `m.f!!.map { toStrict<Item>(it!!) }`;</li>
+     *   <li>enum (single) → `<EnumFqn>.valueOf(m.f!!)` (the string-backed mirror member is coerced
+     *       to the generated strict enum class — `valueOf` returns the enum, so the strict
+     *       property type matches with no cast);</li>
+     *   <li>enum array → `m.f!!.filterNotNull().map { <EnumFqn>.valueOf(it) }` (per-element
+     *       coercion; the mirror element stays `String`);</li>
      *   <li>scalar array → `m.f!!.filterNotNull()` (drop nulls); a non-string element type
      *       (Int/Long/Double/Float/Boolean/UUID/LocalDate/LocalTime/Instant) additionally maps
-     *       each `String` element to the strict element type. String + enum arrays pass through
-     *       unchanged;</li>
-     *   <li>scalar / enum (single) → `m.f!!`.</li>
+     *       each `String` element to the strict element type. String arrays pass through unchanged;</li>
+     *   <li>scalar (single) → `m.f!!`.</li>
      * </ul>
      */
-    private fun strictArg(field: MetaField<*>, nested: MutableList<MetaObject>): String {
+    private fun strictArg(field: MetaField<*>, owner: MetaObject, nested: MutableList<MetaObject>): String {
         val name = field.name
 
         // Object BEFORE array: array-of-objects maps element-wise (checked before isArray).
@@ -275,19 +280,38 @@ class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             }
         }
 
+        // Enum BEFORE the generic scalar-array branch (an enum array is still List<String> in the
+        // mirror but must coerce each element to the strict enum class). The strict payload types
+        // a `field.enum` as the generated enum class (single) / List<enum> (array); the mirror leaf
+        // stays String / List<String?>. Bridge via `<EnumFqn>.valueOf(...)` — `valueOf` returns the
+        // enum, so the strict element type matches with no cast. FQN-qualified so the emitted code
+        // resolves without an import (as the rest of this generator does). @values has already been
+        // validated == enum constants, so valueOf is safe.
+        if (field is EnumField) {
+            val enumType = KotlinTypeMapper.enumTypeName(field, owner)
+            if (enumType != null) {
+                val enumFqn = enumType.canonicalName
+                return if (field.isArrayType()) {
+                    "m.$name!!.filterNotNull().map { $enumFqn.valueOf(it) }"
+                } else {
+                    "$enumFqn.valueOf(m.$name!!)"
+                }
+            }
+        }
+
         // Scalar arrays: the mirror is always List<String>? (the extract engine's only list
         // accessor, ExtractMap.asStringList, string-ifies every element). The strict payload is
         // List<ElementType>. filterNotNull() drops nulls; a per-element parse then narrows each
         // String to the strict element type (Int/Long/Double/Boolean) — handling non-string
-        // scalar arrays, not just string (the C# string-only-array bug). String + enum arrays
-        // pass through unchanged.
+        // scalar arrays, not just string (the C# string-only-array bug). String arrays pass
+        // through unchanged.
         if (field.isArrayType()) {
             val conv = scalarArrayElementConversion(field)
             return if (conv == null) "m.$name!!.filterNotNull()"
             else "m.$name!!.filterNotNull().map { $conv }"
         }
 
-        // Scalar / enum (single): mirror is T?, strict is T — null-assert.
+        // Scalar (single): mirror is T?, strict is T — null-assert.
         return "m.$name!!"
     }
 
@@ -310,7 +334,7 @@ class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // Same path the payload generator wraps in List<…> for a scalar-array element.
         val elementType = KotlinTypeMapper.kotlinTypeName(field)
         return when (elementType) {
-            STRING -> null            // String element — passthrough (also the enum element type)
+            STRING -> null            // String element — passthrough (enum arrays are handled earlier)
             INT     -> "it.toInt()"
             LONG    -> "it.toLong()"  // also field.currency (minor-unit Long)
             DOUBLE  -> "it.toDouble()"

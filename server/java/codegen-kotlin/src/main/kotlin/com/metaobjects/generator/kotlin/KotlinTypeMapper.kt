@@ -118,6 +118,18 @@ object KotlinTypeMapper {
      */
     fun enumTypeName(field: MetaField<*>, entity: MetaObject?): ClassName? {
         if (field !is EnumField) return null
+
+        // Shared-enum naming: when this field `extends` an abstract enum super (e.g. two fields
+        // both `extends: Priority`), ALL such fields collapse onto ONE enum class named for the
+        // top-most super (`Priority`) so the generated type is shared (and deduped by FQN at
+        // emission). Walk the super chain to the root. When there is no super, fall back to the
+        // per-entity `<EntityShort><FieldPascal>` naming. Mirrors the C#/TS/Python ports.
+        val superRoot = resolveSuperRoot(field)
+        if (superRoot != null) {
+            val (superPkg, superShort) = PackageMapping.splitFqn(superRoot.name)
+            return ClassName(superPkg, superShort.replaceFirstChar { it.uppercase() })
+        }
+
         val fieldPascal = field.name.replaceFirstChar { it.uppercase() }
         return if (entity == null) {
             ClassName("", fieldPascal)
@@ -125,6 +137,23 @@ object KotlinTypeMapper {
             val (pkg, entityShort) = PackageMapping.splitFqn(entity.name)
             ClassName(pkg, entityShort + fieldPascal)
         }
+    }
+
+    /**
+     * Walk a field's `extends` (super-field) chain to the top-most ancestor, returning it, or
+     * `null` when the field has no super. The top-most super is an abstract enum declared at the
+     * metadata root (e.g. `field.enum Priority @abstract`); naming the generated enum class after
+     * it makes every extending field share one type. Defensive against cycles via a visited set.
+     */
+    private fun resolveSuperRoot(field: EnumField): MetaField<*>? {
+        var current: MetaField<*>? = field.superField ?: return null
+        val seen = HashSet<String>()
+        while (true) {
+            val next = current?.superField ?: break
+            if (!seen.add(current.name)) break // cycle guard
+            current = next
+        }
+        return current
     }
 
     /** Map a MetaField to its KotlinPoet data-class property TypeName. */

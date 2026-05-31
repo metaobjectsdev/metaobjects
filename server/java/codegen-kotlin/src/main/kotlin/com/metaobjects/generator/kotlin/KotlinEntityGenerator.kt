@@ -61,6 +61,9 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // `interface` shape (read-only properties) instead of being suppressed. It is NEVER
         // emitted as an instantiable @Serializable data class — abstracts are scaffolding.
         val emitAbstractShapes = (getArg("emitAbstractShapes", "false") ?: "false").toBoolean()
+        // Run-level dedupe of emitted enum-class files by enum FQN: two fields sharing an
+        // abstract enum super (resolved by KotlinTypeMapper.enumTypeName) collapse onto one file.
+        val emittedEnumFqns = mutableSetOf<String>()
         // Emit a data class for entities AND value objects. Value objects (object.value) are
         // referenced by field.object on entities; the value class must exist for the entity's
         // typed property to resolve.
@@ -69,18 +72,18 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         for (obj in loader.metaObjects) {
             if (obj.subType !in EMITTED_SUBTYPES) continue
             if (KotlinGenUtil.isAbstractEntity(obj)) {
-                if (emitAbstractShapes) emitAbstractShape(obj, outRoot, loader)
+                if (emitAbstractShapes) emitAbstractShape(obj, outRoot, loader, emittedEnumFqns)
                 continue
             }
-            emit(obj, outRoot, loader)
+            emit(obj, outRoot, loader, emittedEnumFqns)
         }
     }
 
-    private fun emit(obj: MetaObject, outRoot: Path, loader: MetaDataLoader) {
+    private fun emit(obj: MetaObject, outRoot: Path, loader: MetaDataLoader, emittedEnumFqns: MutableSet<String>) {
         // Emit one Kotlin enum class file per `field.enum` child BEFORE the data class
-        // so the resolved property type (a ClassName) points at a real file.
+        // so the resolved property type (a ClassName) points at a real file. Deduped per run.
         for (field in obj.metaFields) {
-            if (field is EnumField) emitEnumFile(obj, field, outRoot)
+            if (field is EnumField) KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns)
         }
 
         val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
@@ -123,9 +126,9 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * subtypes a shared shape to implement. Enum-field files are still emitted so property
      * types resolve. Written to the same package path/file (`<Name>.kt`) as [emit] would use.
      */
-    private fun emitAbstractShape(obj: MetaObject, outRoot: Path, loader: MetaDataLoader) {
+    private fun emitAbstractShape(obj: MetaObject, outRoot: Path, loader: MetaDataLoader, emittedEnumFqns: MutableSet<String>) {
         for (field in obj.metaFields) {
-            if (field is EnumField) emitEnumFile(obj, field, outRoot)
+            if (field is EnumField) KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns)
         }
 
         val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
@@ -146,42 +149,6 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .addType(typeBuilder.build())
             .build()
             .writeTo(outRoot)
-    }
-
-    /**
-     * Emit a top-level `@Serializable enum class` for a [field.enum] hung off [owner].
-     * Members come from the field's required `@values` string-array attr — emitted
-     * verbatim to preserve case (typically SCREAMING_SNAKE_CASE per spec).
-     */
-    private fun emitEnumFile(owner: MetaObject, field: EnumField, outRoot: Path) {
-        val enumClassName = KotlinTypeMapper.enumTypeName(field, owner) ?: return
-        val members = readEnumValues(field)
-        if (members.isNullOrEmpty()) {
-            // Defensive: the loader's ValidationPhase already requires @values be
-            // non-empty. Skip emission rather than produce a syntactically broken file.
-            return
-        }
-        val serializable = ClassName("kotlinx.serialization", "Serializable")
-        val enumBuilder = TypeSpec.enumBuilder(enumClassName.simpleName)
-            .addAnnotation(serializable)
-            .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
-        for (member in members) {
-            enumBuilder.addEnumConstant(member)
-        }
-        FileSpec.builder(enumClassName.packageName, enumClassName.simpleName)
-            .addType(enumBuilder.build())
-            .build()
-            .writeTo(outRoot)
-    }
-
-    /** Read the `@values` string-array attr (own-only); null/empty if absent. */
-    private fun readEnumValues(field: EnumField): List<String>? {
-        if (!field.hasMetaAttr(EnumField.ATTR_VALUES, false)) return null
-        val raw = runCatching { field.getMetaAttr(EnumField.ATTR_VALUES, false).value }.getOrNull()
-        return when (raw) {
-            is List<*> -> raw.mapNotNull { it?.toString() }
-            else -> null
-        }
     }
 
     /**

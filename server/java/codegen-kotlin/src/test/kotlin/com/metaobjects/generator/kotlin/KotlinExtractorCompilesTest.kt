@@ -58,6 +58,8 @@ class KotlinExtractorCompilesTest {
             { "field.double":   { "name": "weights", "isArray": true, "@required": true } },
             { "field.boolean":  { "name": "active", "isArray": true, "@required": true } },
             { "field.enum":     { "name": "flags", "isArray": true, "@required": true, "@values": ["A", "B"] } },
+            { "field.enum":     { "name": "priority", "@required": true, "@values": ["LOW", "HIGH"] } },
+            { "field.enum":     { "name": "labels", "isArray": true, "@required": true, "@values": ["A", "B"] } },
             { "field.string":   { "name": "note" } }
         ] } },
         { "template.output": { "name": "OrderOut",
@@ -112,6 +114,8 @@ class KotlinExtractorCompilesTest {
                 "\"weights\":[1.25,2.75]," +
                 "\"active\":[true,false]," +
                 "\"flags\":[\"A\",\"B\"]," +
+                "\"priority\":\"HIGH\"," +
+                "\"labels\":[\"A\",\"B\"]," +
                 "\"note\":\"hi\",}\n```"
 
             val order = extractMethod.invoke(extractorInstance, loader, dirty)
@@ -163,12 +167,44 @@ class KotlinExtractorCompilesTest {
             active.forEach { assertTrue(it is Boolean, "active element must be a boxed Boolean, got ${it!!::class}") }
 
             @Suppress("UNCHECKED_CAST")
-            val flags = orderClass.getDeclaredMethod("getFlags").invoke(order) as List<String>
-            assertEquals(listOf("A", "B"), flags,
-                "enum scalar-array must populate (enum element type is String → passthrough)")
+            val flags = orderClass.getDeclaredMethod("getFlags").invoke(order) as List<Any>
+            val flagsElemType = cl.loadClass("acme.shop.OrderFlags")
+            assertTrue(flagsElemType.isEnum, "OrderFlags must be a generated enum class")
+            assertEquals(listOf("A", "B"), flags.map { (it as Enum<*>).name },
+                "enum scalar-array must populate as typed List<OrderFlags> (per-element valueOf)")
+
+            // ---- typed enum (single): strict property is the generated enum class OrderPriority ----
+            val priority = orderClass.getDeclaredMethod("getPriority").invoke(order)
+            val priorityType = orderClass.getDeclaredMethod("getPriority").returnType
+            assertTrue(priorityType.isEnum,
+                "strict priority must be a generated enum class, not String; was $priorityType")
+            assertEquals("OrderPriority", priorityType.simpleName,
+                "enum class must be named <EntityShort><FieldPascal> = OrderPriority")
+            assertEquals("HIGH", (priority as Enum<*>).name,
+                "priority must coerce to OrderPriority.HIGH via valueOf")
+
+            // ---- typed enum ARRAY: List<OrderLabels>, members ["A","B"], per-element valueOf ----
+            @Suppress("UNCHECKED_CAST")
+            val labels = orderClass.getDeclaredMethod("getLabels").invoke(order) as List<Any>
+            val labelsElemType = cl.loadClass("acme.shop.OrderLabels")
+            assertTrue(labelsElemType.isEnum, "OrderLabels must be a generated enum class")
+            assertEquals(listOf("A", "B"), labelsElemType.enumConstants.map { (it as Enum<*>).name },
+                "OrderLabels members must be [A, B] verbatim")
+            assertEquals(2, labels.size, "labels array must have 2 elements")
+            assertTrue(labels.all { labelsElemType.isInstance(it) },
+                "every labels element must be an OrderLabels enum instance")
+            assertEquals(listOf("A", "B"), labels.map { (it as Enum<*>).name },
+                "labels must coerce element-wise via OrderLabels.valueOf")
 
             assertEquals("hi", orderClass.getDeclaredMethod("getNote").invoke(order),
                 "optional scalar note must populate")
+
+            // ---- lenient mirror leaf STAYS String / List<String?> (only strict changes) ----
+            val mirrorClass = cl.loadClass("acme.shop.prompts.OrderOutExtracted")
+            assertEquals(String::class.java, mirrorClass.getDeclaredMethod("getPriority").returnType,
+                "lenient mirror priority must stay String (only the strict payload is enum-typed)")
+            assertTrue(List::class.java.isAssignableFrom(mirrorClass.getDeclaredMethod("getLabels").returnType),
+                "lenient mirror labels must stay a List<String?> (not List<enum>)")
 
             // ---- lost-required path: missing required customer -> throws ----
             try {
@@ -184,7 +220,8 @@ class KotlinExtractorCompilesTest {
             val clean = "{\"customer\":{\"name\":\"Ada\"}," +
                 "\"lines\":[{\"sku\":\"A\",\"qty\":1}]," +
                 "\"tags\":[\"x\"],\"scores\":[3],\"ratings\":[1.5]," +
-                "\"counts\":[10],\"weights\":[1.25],\"active\":[true],\"flags\":[\"A\"],\"note\":\"hi\"}"
+                "\"counts\":[10],\"weights\":[1.25],\"active\":[true],\"flags\":[\"A\"]," +
+                "\"priority\":\"LOW\",\"labels\":[\"A\"],\"note\":\"hi\"}"
             val rr = extractLenientMethod.invoke(extractorInstance, loader, clean)
             val reportClass = cl.loadClass("com.metaobjects.render.extract.ExtractionReport")
             val report = rr.javaClass.getMethod("report").invoke(rr)
@@ -242,6 +279,77 @@ class KotlinExtractorCompilesTest {
                 "generated set failed under allWarningsAsErrors (I1's no-non-null-assertion gate already " +
                     "passed; remaining warnings are not owned by this fix):\n${result.messages}"
             )
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Shared-enum dedup proof: an abstract `field.enum Priority @values ["LOW","HIGH"]` plus two
+     * fields that `extends` it must emit EXACTLY ONE `enum class Priority` (named for the super,
+     * deduped by FQN), with BOTH strict-payload fields typed `Priority`. The lenient mirror leaves
+     * them String. Compile + reflect to prove the single shared enum class.
+     */
+    private val sharedEnumFixture = """{
+      "metadata.root": { "package": "acme::orders", "children": [
+        { "field.enum": { "name": "Priority", "abstract": true, "@values": ["LOW", "HIGH"] } },
+        { "object.value": { "name": "Ticket", "children": [
+            { "field.string": { "name": "ticketId", "@required": true } },
+            { "field.enum":   { "name": "currentPriority",  "@required": true, "extends": "Priority" } },
+            { "field.enum":   { "name": "previousPriority", "@required": true, "extends": "Priority" } }
+        ] } },
+        { "template.output": { "name": "TicketOut",
+            "@payloadRef": "Ticket",
+            "@textRef": "orders/ticket",
+            "@format": "json",
+            "@promptStyle": "guide" } }
+      ] }
+    }""".trimIndent()
+
+    @Test fun `shared abstract field-enum emits one enum class named for the super, both fields typed by it`() {
+        val outDir = Files.createTempDirectory("compile-extractor-sharedenum-")
+        try {
+            val loader = loadString("shared-enum-test", sharedEnumFixture)
+
+            for (gen in listOf(KotlinPayloadGenerator(), KotlinOutputParserGenerator(), KotlinExtractorGenerator())) {
+                gen.setArgs(mapOf("outputDir" to outDir.toString()))
+                gen.execute(loader)
+            }
+
+            // Exactly ONE Priority enum file emitted (deduped by FQN across the two fields).
+            val priorityFiles = Files.walk(outDir)
+                .filter { it.isRegularFile() && it.fileName.toString() == "Priority.kt" }
+                .toList()
+            assertEquals(1, priorityFiles.size,
+                "exactly one Priority enum file must be emitted (deduped by super FQN); got " +
+                    priorityFiles.map { it.toString() })
+            assertTrue(priorityFiles[0].readText().contains("enum class Priority"),
+                "emitted file must declare `enum class Priority`")
+
+            val emitted = Files.walk(outDir).filter { it.isRegularFile() }.sorted().toList()
+            val sources = emitted.map { path ->
+                SourceFile.kotlin(path.parent.relativize(path).toString().replace('/', '_'), path.readText())
+            }
+            val result = KotlinCompilation().apply {
+                this.sources = sources
+                inheritClassPath = true
+                messageOutputStream = System.out
+            }.compile()
+            assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode,
+                "shared-enum generated Kotlin failed to compile:\n${result.messages}")
+
+            val cl = result.classLoader
+            val ticketPayload = cl.loadClass("acme.orders.prompts.TicketOutPayload")
+            val priorityEnum = cl.loadClass("acme.orders.Priority")
+            assertTrue(priorityEnum.isEnum, "Priority must be a generated enum class")
+            assertEquals(listOf("LOW", "HIGH"), priorityEnum.enumConstants.map { (it as Enum<*>).name },
+                "Priority members must be [LOW, HIGH] verbatim")
+
+            // Both strict fields typed by the SAME shared enum class.
+            assertEquals(priorityEnum, ticketPayload.getDeclaredMethod("getCurrentPriority").returnType,
+                "currentPriority must be typed Priority (the shared super enum)")
+            assertEquals(priorityEnum, ticketPayload.getDeclaredMethod("getPreviousPriority").returnType,
+                "previousPriority must be typed by the SAME Priority enum (shared)")
         } finally {
             outDir.toFile().deleteRecursively()
         }
